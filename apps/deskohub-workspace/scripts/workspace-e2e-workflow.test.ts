@@ -3,12 +3,16 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { workspaceE2EPlaywrightCheckoutTimeout } from "../e2e/timeouts";
 import {
-  countOccurrences,
-  countTokenSequence,
-  extractImportSpecifiers,
-  sourceTokens,
-  tokenSequenceIndex,
-} from "./shared/source-contract";
+  callsNamed,
+  identifierNames,
+  importSpecifiers,
+  methodCallsNamed,
+  nodesOf,
+  parseSource,
+  parseTrackedSource,
+  positionDelta,
+  stringLiterals,
+} from "./shared/source-ast";
 import {
   findStepByName,
   parseWorkflow,
@@ -90,8 +94,9 @@ const stepsBetweenNames = (
 const readTrackedJson = <T>(path: string): T =>
   JSON.parse(readFileSync(resolve(import.meta.dir, path), "utf8")) as T;
 
-const readTrackedTokens = (path: string): readonly string[] =>
-  sourceTokens(readFileSync(resolve(import.meta.dir, path), "utf8"));
+/** Parsed syntax tree of a tracked repository module. */
+const parseTrackedModule = (path: string) =>
+  parseTrackedSource(resolve(import.meta.dir, path));
 
 const projectByName = (config: PlaywrightCheckoutConfig, name: string) =>
   config.projects.find((project) => project.name === name);
@@ -455,9 +460,9 @@ describe("workspace E2E workflow", () => {
     );
 
     // Exactly the Playwright checkout step: one env key plus its secret
-    // reference, counted over the parsed workflow structure.
+    // reference, counted over the serialized parsed workflow structure.
     expect(
-      countOccurrences(serializedWorkflow, "WORKSPACE_E2E_RESEND_API_KEY")
+      serializedWorkflow.split("WORKSPACE_E2E_RESEND_API_KEY").length - 1
     ).toBe(2);
 
     expect(serializedWorkflow.includes("secrets.RESEND_API_KEY")).toBe(false);
@@ -501,80 +506,82 @@ describe("workspace E2E workflow", () => {
       projectByName(playwrightConfig, "checkout-plan")?.dependencies
     ).toContain("checkout-invoice-persistence");
 
-    const projectTokens = readTrackedTokens(
+    // The Playwright phase imports the persistence assertion and owns the
+    // single "invoice-persistence" phase id; verdicts come from the parsed
+    // module, so comments and formatting cannot satisfy them.
+    const invoicePhase = parseTrackedModule(
       "../e2e/playwright-checkout/invoice-persistence.pw.ts"
     );
     expect(
-      countTokenSequence(projectTokens, ["assertInvoicePersistence"])
-    ).toBeGreaterThan(0);
-    expect(countTokenSequence(projectTokens, ['"invoice-persistence"'])).toBe(
-      1
-    );
+      identifierNames(invoicePhase.ast).has("assertInvoicePersistence")
+    ).toBe(true);
+    expect(
+      stringLiterals(invoicePhase.ast).filter(
+        (literal) => literal.value === "invoice-persistence"
+      )
+    ).toHaveLength(1);
 
-    const integrationTokens = readTrackedTokens(
+    const integration = parseTrackedModule(
       "../e2e/integrations/invoice-persistence.ts"
     );
+    // One delegated E2EDatabase requirement wires the disposable datasource.
     expect(
-      countTokenSequence(integrationTokens, ["yield", "*", "E2EDatabase"])
-    ).toBe(1);
-    expect(
-      countTokenSequence(integrationTokens, [
-        "temporalInstantToIsoString",
-        "(",
-        "Temporal",
-        ".",
-        "Now",
-        ".",
-        "instant",
-        "(",
-        ")",
-        ")",
-      ])
-    ).toBe(1);
-    expect(
-      countTokenSequence(integrationTokens, [
-        "like",
-        "(",
-        "invoices",
-        ".",
-        "dotyposCustomerId",
-        ",",
-        '"synthetic-customer-%"',
-      ])
-    ).toBeGreaterThan(0);
-    // Email deliveries are cleaned before the immutable invoices table.
-    const deliveryCleanupAt = tokenSequenceIndex(integrationTokens, [
-      "delete",
-      "(",
-      "invoiceEmailDeliveries",
-    ]);
-    const invoiceCleanupAt = tokenSequenceIndex(integrationTokens, [
-      "delete",
-      "(",
-      "invoices",
-    ]);
-    expect(deliveryCleanupAt).toBeGreaterThan(-1);
-    expect(deliveryCleanupAt).toBeLessThan(invoiceCleanupAt);
-    expect(
-      countTokenSequence(integrationTokens, [
-        "WORKSPACE_E2E_DATABASE_ALLOWLIST",
-      ])
-    ).toBe(0);
-
-    const databaseImports = extractImportSpecifiers(
-      readFileSync(
-        resolve(import.meta.dir, "../db/database.service.ts"),
-        "utf8"
+      nodesOf(integration.ast).filter(
+        (node) =>
+          node.type === "YieldExpression" &&
+          node.delegate &&
+          node.argument.type === "Identifier" &&
+          node.argument.name === "E2EDatabase"
       )
+    ).toHaveLength(1);
+    // Persisted timestamps pass through the shared Temporal conversion, and
+    // the synthetic-customer filter keys on the customer-id column.
+    const temporalCalls = callsNamed(
+      integration.ast,
+      "temporalInstantToIsoString"
     );
-    const accountingKeyImports = extractImportSpecifiers(
-      readFileSync(
-        resolve(
-          import.meta.dir,
-          "../features/accounting/backend/accounting-snapshot-key.service.ts"
-        ),
-        "utf8"
-      )
+    expect(temporalCalls).toHaveLength(1);
+    expect(
+      temporalCalls[0]!.arguments.length === 1 &&
+        identifierNames(temporalCalls[0]!).has("Temporal")
+    ).toBe(true);
+    const likeCalls = callsNamed(integration.ast, "like").filter(
+      (call) =>
+        call.arguments[0]?.type === "MemberExpression" &&
+        !call.arguments[0].computed &&
+        call.arguments[0].object.type === "Identifier" &&
+        call.arguments[0].object.name === "invoices" &&
+        call.arguments[0].property.type === "Identifier" &&
+        call.arguments[0].property.name === "dotyposCustomerId" &&
+        call.arguments[1]?.type === "Literal" &&
+        call.arguments[1].value === "synthetic-customer-%"
+    );
+    expect(likeCalls.length).toBeGreaterThan(0);
+    // Email deliveries are cleaned before the immutable invoices table.
+    const tableDelete = (table: string) =>
+      callsNamed(integration.ast, "delete")
+        .concat(methodCallsNamed(integration.ast, "delete"))
+        .find(
+          (call) =>
+            call.arguments[0]?.type === "Identifier" &&
+            call.arguments[0].name === table
+        );
+    const deliveryCleanup = tableDelete("invoiceEmailDeliveries");
+    const invoiceCleanup = tableDelete("invoices");
+    expect(deliveryCleanup).toBeDefined();
+    expect(invoiceCleanup).toBeDefined();
+    expect(positionDelta(deliveryCleanup!, invoiceCleanup!)).toBeLessThan(0);
+    expect(
+      identifierNames(integration.ast).has("WORKSPACE_E2E_DATABASE_ALLOWLIST")
+    ).toBe(false);
+
+    const databaseImports = importSpecifiers(
+      parseTrackedModule("../db/database.service.ts").ast
+    );
+    const accountingKeyImports = importSpecifiers(
+      parseTrackedModule(
+        "../features/accounting/backend/accounting-snapshot-key.service.ts"
+      ).ast
     );
     expect(databaseImports).not.toContain("@/env");
     expect(accountingKeyImports).not.toContain("@/env");
@@ -594,26 +601,31 @@ describe("workspace E2E workflow", () => {
 
   test("lets Playwright own checkout preparation, scheduling, and parallelism", () => {
     const playwrightConfig = playwrightConfigStructure();
-    const entryTokens = readTrackedTokens("workspace-e2e.ts");
-    const suiteTokens = readTrackedTokens("../e2e/suite.ts");
-    const cleanupRuntimeTokens = readTrackedTokens(
+    const entry = parseTrackedModule("workspace-e2e.ts");
+    const suite = parseTrackedModule("../e2e/suite.ts");
+    const cleanupRuntime = parseTrackedModule(
       "../e2e/playwright-checkout/cleanup-runtime-fixtures.ts"
     );
-    const cleanupTokens = readTrackedTokens(
+    const cleanup = parseTrackedModule(
       "../e2e/playwright-checkout/cleanup.pw.ts"
     );
 
     // Entry wiring: the real launcher points at the real config and forwards
     // exactly the derived Playwright environment, never the raw process env.
     expect(
-      countTokenSequence(entryTokens, ['"playwright.e2e.config.ts"'])
-    ).toBeGreaterThan(0);
+      stringLiterals(entry.ast).some(
+        (literal) => literal.value === "playwright.e2e.config.ts"
+      )
+    ).toBe(true);
+    expect(identifierNames(entry.ast).has("playwrightEnvironment")).toBe(true);
     expect(
-      countTokenSequence(entryTokens, ["playwrightEnvironment"])
-    ).toBeGreaterThan(0);
-    expect(
-      countTokenSequence(entryTokens, ["...", "process", ".", "env"])
-    ).toBe(0);
+      nodesOf(entry.ast).some(
+        (node) =>
+          node.type === "SpreadElement" &&
+          identifierNames(node).has("process") &&
+          identifierNames(node).has("env")
+      )
+    ).toBe(false);
 
     // The imported Playwright config owns scheduling and parallelism.
     expect(playwrightConfig.fullyParallel).toBe(true);
@@ -637,24 +649,38 @@ describe("workspace E2E workflow", () => {
       "checkout-invoice-persistence",
     ]);
 
-    // The Effect suite stays out of the Playwright lane's concurrency story.
-    expect(countTokenSequence(suiteTokens, ["Effect", ".", "forEach"])).toBe(0);
-    expect(countTokenSequence(suiteTokens, ["Semaphore"])).toBe(0);
-    expect(countTokenSequence(suiteTokens, ["Deferred"])).toBe(0);
+    // The Effect suite stays out of the Playwright lane's concurrency story:
+    // no Effect.forEach fan-out and no concurrency primitives, decided on
+    // the parsed module rather than token text.
+    const suiteIdentifiers = identifierNames(suite.ast);
+    expect(
+      nodesOf(suite.ast).some(
+        (node) =>
+          node.type === "MemberExpression" &&
+          !node.computed &&
+          node.object.type === "Identifier" &&
+          node.object.name === "Effect" &&
+          node.property.type === "Identifier" &&
+          node.property.name === "forEach"
+      )
+    ).toBe(false);
+    expect(suiteIdentifiers.has("Semaphore")).toBe(false);
+    expect(suiteIdentifiers.has("Deferred")).toBe(false);
 
     expect(
-      countTokenSequence(cleanupTokens, ['"suite-cleanup"'])
-    ).toBeGreaterThan(0);
+      stringLiterals(cleanup.ast).some(
+        (literal) => literal.value === "suite-cleanup"
+      )
+    ).toBe(true);
+    const cleanupRuntimeIdentifiers = identifierNames(cleanupRuntime.ast);
     expect(
-      countTokenSequence(cleanupRuntimeTokens, [
-        "makeWorkspaceE2EProviderVerificationPermitLive",
-      ])
-    ).toBe(0);
+      cleanupRuntimeIdentifiers.has(
+        "makeWorkspaceE2EProviderVerificationPermitLive"
+      )
+    ).toBe(false);
     expect(
-      countTokenSequence(cleanupRuntimeTokens, [
-        "makeWorkspaceE2ECaseRuntimeLive",
-      ])
-    ).toBe(0);
+      cleanupRuntimeIdentifiers.has("makeWorkspaceE2ECaseRuntimeLive")
+    ).toBe(false);
   });
 
   test("preserves discount seeding and account phase dependencies", () => {

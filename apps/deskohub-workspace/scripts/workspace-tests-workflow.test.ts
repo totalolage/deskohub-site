@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { identifierNames, parseTrackedSource } from "./shared/source-ast";
 import {
   findStepByName,
   parseWorkflow,
@@ -135,22 +136,25 @@ test("passes the disposable test database through Turborepo at the test task onl
 });
 
 test("keeps the disposable test database out of runtime configuration", async () => {
-  const envSchema = readFileSync(
-    resolve(import.meta.dir, "../env.schema.ts"),
-    "utf8"
+  // Static absence rules come from the parsed modules: an identifier exists
+  // only in live syntax, so commented-out wiring can never satisfy or fail
+  // the checks.
+  const envSchema = parseTrackedSource(
+    resolve(import.meta.dir, "../env.schema.ts")
   );
-  const helper = readFileSync(
+  const helper = parseTrackedSource(
     resolve(
       import.meta.dir,
       "../shared/testing/workspace-postgres-test-database.test-utils.ts"
-    ),
-    "utf8"
+    )
   );
 
-  // Static absence rules: neither the runtime env schema nor the helper may
-  // route the disposable test database through runtime configuration.
-  expect(envSchema.includes("WORKSPACE_TEST_DATABASE_URL")).toBe(false);
-  expect(helper.includes("process.env.DATABASE_URL")).toBe(false);
+  // Neither the runtime env schema nor the helper may route the disposable
+  // test database through runtime configuration.
+  expect(
+    identifierNames(envSchema.ast).has("WORKSPACE_TEST_DATABASE_URL")
+  ).toBe(false);
+  expect(identifierNames(helper.ast).has("DATABASE_URL")).toBe(false);
 
   // The helper/preload positive wiring is covered by execution: this very
   // test process ran the preload, which mirrors the disposable database into

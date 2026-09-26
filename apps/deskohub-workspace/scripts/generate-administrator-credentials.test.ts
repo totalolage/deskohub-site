@@ -3,8 +3,12 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Schema } from "effect";
+
+/** Occurrence count over process output and environment documentation. */
+const occurrences = (text: string, needle: string): number =>
+  text.split(needle).length - 1;
+
 import { administratorCredentialRegistrySchema } from "../shared/administrator/administrator-credentials";
-import { countOccurrences } from "./shared/source-contract";
 
 const generatorScriptPath = fileURLToPath(
   new URL("./generate-administrator-credentials.sh", import.meta.url)
@@ -74,10 +78,7 @@ describe("administrator credential generator", () => {
 
     expect(result.exitCode).toBe(0);
     expect(
-      countOccurrences(
-        result.stderr,
-        "Rejected: that username was already added."
-      )
+      occurrences(result.stderr, "Rejected: that username was already added.")
     ).toBe(1);
     expect(result.stdout).toBe(
       `ADMIN_BASIC_AUTH_CREDENTIALS='admin:${digest("admin:pw-one")}\noperator:${digest("operator:pw-three")}'\n`
@@ -90,7 +91,7 @@ describe("administrator credential generator", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(countOccurrences(result.stderr, "Rejected: usernames")).toBe(5);
+    expect(occurrences(result.stderr, "Rejected: usernames")).toBe(5);
     expect(result.stdout).toBe(
       `ADMIN_BASIC_AUTH_CREDENTIALS='admin:${digest("admin:pw")}'\n`
     );
@@ -141,16 +142,23 @@ describe("administrator credential generator", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(
-      countOccurrences(result.stderr.toString(), "Rejected: usernames")
-    ).toBe(1);
+    expect(occurrences(result.stderr.toString(), "Rejected: usernames")).toBe(
+      1
+    );
     expect(result.stdout.toString()).toBe(
       `ADMIN_BASIC_AUTH_CREDENTIALS='admin:${digest("admin:pw")}\noperator:${digest("operator:pw-two")}'\n`
     );
   });
 
   test("pins the C locale and case-sensitive matching for username validation", () => {
-    const script = readFileSync(generatorScriptPath, "utf8");
+    // The tracked generator is a bash script: it is outside the
+    // TypeScript source-contract boundary and is asserted on directly.
+    const script = readFileSync(
+      fileURLToPath(
+        new URL("./generate-administrator-credentials.sh", import.meta.url)
+      ),
+      "utf8"
+    );
     // Comment-aware: a commented-out command must not count as configured.
     const stripBashComments = (source: string) =>
       source
@@ -163,16 +171,16 @@ describe("administrator credential generator", () => {
         .replace(/\s+/g, " ");
     const activeScript = stripBashComments(script);
 
-    expect(countOccurrences(activeScript, "export LC_ALL=C")).toBe(1);
-    expect(countOccurrences(activeScript, "shopt -u nocasematch")).toBe(1);
+    expect(occurrences(activeScript, "export LC_ALL=C")).toBe(1);
+    expect(occurrences(activeScript, "shopt -u nocasematch")).toBe(1);
 
     // Negative fixture: the commented-out spelling satisfies nothing.
     const commentedOut = ["# export LC_ALL=C", "# shopt -u nocasematch"].join(
       "\n"
     );
     const strippedFixture = stripBashComments(commentedOut);
-    expect(countOccurrences(strippedFixture, "export LC_ALL=C")).toBe(0);
-    expect(countOccurrences(strippedFixture, "shopt -u nocasematch")).toBe(0);
+    expect(occurrences(strippedFixture, "export LC_ALL=C")).toBe(0);
+    expect(occurrences(strippedFixture, "shopt -u nocasematch")).toBe(0);
   });
 
   test("digests the complete username and password bytes", () => {
@@ -211,9 +219,9 @@ describe("administrator credential tooling documentation", () => {
       "reuse the previously configured single-credential digest",
       "as the admin entry",
     ]) {
-      expect(countOccurrences(envExample, required)).toBeGreaterThan(0);
+      expect(occurrences(envExample, required)).toBeGreaterThan(0);
     }
-    expect(countOccurrences(envExample, "ADMIN_BASIC_AUTH_SHA256")).toBe(0);
+    expect(occurrences(envExample, "ADMIN_BASIC_AUTH_SHA256")).toBe(0);
   });
 
   test("keeps real credentials out of .env.example", async () => {

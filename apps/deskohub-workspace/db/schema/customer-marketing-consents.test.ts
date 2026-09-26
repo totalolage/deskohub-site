@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { getTableConfig } from "drizzle-orm/pg-core";
-import { Effect, Layer } from "effect";
-import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
-import { CustomerMarketingConsentRepository } from "../../features/legal/backend/customer-marketing-consent.repository";
 import { customerMarketingConsents } from "./customer-marketing-consents";
 
 describe("customer marketing consent persistence", () => {
@@ -34,45 +31,11 @@ describe("customer marketing consent persistence", () => {
     ]);
   });
 
-  test("distinguishes initial and explicit consent grants", async () => {
-    const recording = await makeRecordingWorkspaceDatabase();
-    const repository = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* CustomerMarketingConsentRepository;
-      }).pipe(
-        Effect.provide(
-          CustomerMarketingConsentRepository.Default.pipe(
-            Layer.provide(recording.layer)
-          )
-        )
-      )
-    );
-    const grantInput = {
-      dotyposCustomerId: "dotypos-customer-1" as never,
-      documentHash: "hash-1",
-      locale: "en-US" as never,
-      grantedAt: "2026-01-01T00:00:00.000Z" as never,
-    };
-
-    await Effect.runPromise(repository.grantInitial(grantInput));
-    await Effect.runPromise(repository.grant(grantInput));
-
-    expect(recording.statements).toHaveLength(2);
-    const [initialSql, explicitSql] = recording.statements.map(
-      ({ sql }) => sql
-    );
-
-    // An initial grant never overwrites an existing consent row.
-    expect(initialSql).toContain("on conflict do nothing");
-
-    // An explicit grant re-activates a withdrawn consent in place.
-    expect(explicitSql).toContain("on conflict");
-    expect(explicitSql).toContain('"dotypos_customer_id"');
-    expect(explicitSql).toContain('"withdrawn_at" = $');
-    const explicitParams = recording.statements[1].params;
-    expect(explicitParams).toContain(null);
-    expect(explicitParams).toContain("hash-1");
-  });
+  // Initial-grant idempotency and explicit-grant reactivation are covered
+  // behaviorally against a real disposable Postgres by
+  // features/legal/backend/customer-marketing-consent.repository.postgres.test.ts
+  // (grantInitial/grant with conflict behavior asserted on persisted rows),
+  // so no recording-SQL source contract is kept here.
 
   test("creates the customer table without a historical backfill", async () => {
     const migration = await Bun.file(

@@ -2,11 +2,16 @@ import "../../shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import type { Page } from "@playwright/test";
 import { Cause, Effect, Exit, Fiber } from "effect";
+import {
+  callsNamed,
+  identifierNames,
+  parseTrackedSource,
+  stringLiterals,
+} from "../../scripts/shared/source-ast";
 import { formatWorkspaceE2EFailure, type WorkspaceE2EError } from "../errors";
 import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 import {
@@ -1186,33 +1191,42 @@ describe("workspace marketing preferences helper", () => {
     expect(fakePage.gotoCalls).toHaveLength(1);
   });
 
-  test("keeps the helper out of auth sends, rate budgets, provider concurrency, and unapproved screenshot IDs", async () => {
+  test("keeps the helper out of auth sends, rate budgets, provider concurrency, and unapproved screenshot IDs", () => {
     expect(typeof verifyWorkspaceE2EMarketingPreferences).toBe("function");
 
-    const source = readFileSync(
-      fileURLToPath(new URL("./marketing-preferences.ts", import.meta.url)),
-      "utf8"
+    // Verdicts come from the parsed helper module: identifiers and string
+    // literals exist only as live syntax, so a commented-out call can never
+    // satisfy or fail these checks.
+    const { ast } = parseTrackedSource(
+      fileURLToPath(new URL("./marketing-preferences.ts", import.meta.url))
     );
+    // Identifiers are matched as whole names (the page-action member names
+    // legitimately mention "SignIn" steps); literals keep substring checks
+    // so URL spellings cannot sneak an auth route in.
+    const forbiddenNames = /^(signIn|sendMagicLink|rateBudget|concurrency)$/i;
+    const forbiddenLiterals = /api\/auth|sign[-_]in|magic[-_]link/i;
 
-    for (const forbidden of [
-      /\/api\/auth/i,
-      /sign[-_]in/i,
-      /magic[-_]link/i,
-      /\bsignIn\b/i,
-      /\bsendMagicLink\b/i,
-      /rate[-_]budget/i,
-      /\brateBudget\b/i,
-      /\bconcurrency\b/i,
-      /provider[\s\S]{0,80}concurrency/i,
-    ]) {
-      expect(source).not.toMatch(forbidden);
+    const names = identifierNames(ast);
+    for (const name of names) {
+      expect(forbiddenNames.test(name)).toBe(false);
+    }
+    for (const literal of stringLiterals(ast).map((entry) => entry.value)) {
+      expect(forbiddenLiterals.test(literal)).toBe(false);
     }
 
-    const screenshotCallIds = Array.from(
-      source.matchAll(
-        /captureMarketingReview\(\s*[\s\S]*?["']([^"']+)["']\s*\)/g
-      )
-    ).map((match) => match[1]);
+    // Every review capture call carries one allowlisted screenshot ID.
+    const captureCalls = callsNamed(ast, "captureMarketingReview");
+    const screenshotCallIds = captureCalls.flatMap((call) => {
+      const callStart = call.range![0];
+      const callEnd = call.range![1];
+      return stringLiterals(ast)
+        .filter(
+          (literal) =>
+            literal.node.range![0] > callStart &&
+            literal.node.range![1] < callEnd
+        )
+        .map((literal) => literal.value);
+    });
     const expectedScreenshotCallIds = [
       "account-marketing-active-mobile",
       "account-marketing-withdrawn-desktop",

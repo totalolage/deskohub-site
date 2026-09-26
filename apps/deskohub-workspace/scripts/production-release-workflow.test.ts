@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { isNumber, isString } from "effect/Predicate";
 import {
-  countOccurrences,
-  extractImportSpecifiers,
-  readTrackedSource,
-  stripLineComments,
-} from "./shared/source-contract";
+  exportedNames,
+  identifierNames,
+  importSpecifiers,
+  nodesOf,
+  parseTrackedSource,
+  topLevelConstInitializer,
+} from "./shared/source-ast";
 import {
   findStepByName,
   parseWorkflow,
@@ -24,9 +27,30 @@ const deployJob = doc.jobs.deploy;
 const stepNames = workflowStepNames(doc);
 const allSteps = Object.values(doc.jobs).flatMap((job) => job.steps ?? []);
 const rawWorkflow = readFileSync(workflowPath, "utf8");
-const script = readTrackedSource(
+const releaseScript = parseTrackedSource(
   resolve(import.meta.dir, "production-release.ts")
 );
+
+const scriptIdentifiers = identifierNames(releaseScript.ast);
+const scriptImportModules = importSpecifiers(releaseScript.ast);
+const exportedModuleNames = exportedNames(releaseScript.ast);
+
+/** Text of every template quasi and string literal in the release script. */
+const scriptTexts = (): readonly string[] =>
+  nodesOf(releaseScript.ast).flatMap((node) => {
+    if (node.type === "Literal") {
+      return isString(node.value) ? [node.value] : [];
+    }
+    if (node.type === "TemplateLiteral") {
+      // Both the full static text (quasis joined) and each segment: an
+      // interpolation may separate the markers a contract pins together.
+      const joined = node.quasis
+        .map((quasi) => quasi.value.cooked ?? "")
+        .join(" ");
+      return [joined, ...node.quasis.map((quasi) => quasi.value.cooked ?? "")];
+    }
+    return [];
+  });
 
 const stepByName = (name: string): WorkflowStep => {
   const step = findStepByName(doc, name);
@@ -142,8 +166,14 @@ describe("deploy-workspace-production workflow", () => {
     expect(restoreStep.run).toBe(
       `bun scripts/production-release.ts rollback --url "\${{ steps.promote.outputs.baseline_url }}" --id "\${{ steps.promote.outputs.baseline_id }}"`
     );
-    expect(countOccurrences(script, "baseline_url=")).toBeGreaterThan(0);
-    expect(countOccurrences(script, "baseline_id=")).toBeGreaterThan(0);
+    // The script persists both baseline outputs; literal values come from
+    // the parsed module, so commented-out lines can never satisfy them.
+    expect(scriptTexts().some((text) => text.includes("baseline_url="))).toBe(
+      true
+    );
+    expect(scriptTexts().some((text) => text.includes("baseline_id="))).toBe(
+      true
+    );
   });
 
   test("survives workflow cancellation at the job level so the always() finalizers are reached", () => {
@@ -207,15 +237,41 @@ describe("deploy-workspace-production workflow", () => {
     const jobTimeoutMinutes = Number(
       rawWorkflow.match(/timeout-minutes: (\d+)/)?.[1]
     );
-    const pollDeadlineMinutes = Number(
-      script.match(/defaultPollDeadlineMilliseconds = (\d+) \* 60_000/)?.[1]
+    // The in-script poll deadline is a `minutes * 60_000` initializer in the
+    // parsed module; evaluate its numeric operands instead of pinning prose.
+    const pollDeadlineInitializer = topLevelConstInitializer(
+      releaseScript.ast,
+      "defaultPollDeadlineMilliseconds"
     );
-    const rollbackTimeoutMinutes = Number(
-      script.match(/rollback \$\{url\} --scope \S+ --yes --timeout (\d+)m/)?.[1]
+    expect(pollDeadlineInitializer).toBeDefined();
+    const pollBinary = nodesOf(pollDeadlineInitializer!).find(
+      (node) => node.type === "BinaryExpression"
     );
-
-    expect(jobTimeoutMinutes).toBeGreaterThan(0);
+    expect(pollBinary).toBeDefined();
+    const pollOperands =
+      pollBinary?.type === "BinaryExpression"
+        ? [pollBinary.left, pollBinary.right]
+        : [];
+    expect(pollBinary?.type === "BinaryExpression" && pollBinary.operator).toBe(
+      "*"
+    );
+    const pollFactors = pollOperands.flatMap((operand) =>
+      operand.type === "Literal" && isNumber(operand.value)
+        ? [operand.value]
+        : []
+    );
+    expect(pollFactors).toContain(60_000);
+    const pollDeadlineMinutes = pollFactors.find((factor) => factor !== 60_000);
     expect(pollDeadlineMinutes).toBeGreaterThan(0);
+    // Each rollback runs under an explicit CLI timeout spelled in the
+    // rollback command template.
+    const rollbackCommand = scriptTexts().find(
+      (text) => text.includes("rollback ") && text.includes("--timeout ")
+    );
+    expect(rollbackCommand).toBeDefined();
+    const rollbackTimeoutMinutes = Number(
+      rollbackCommand?.match(/--timeout (\d+)m/)?.[1]
+    );
     expect(rollbackTimeoutMinutes).toBeGreaterThan(0);
 
     // Worst case after the promotion request: the bounded promotion poll,
@@ -232,7 +288,7 @@ describe("deploy-workspace-production workflow", () => {
     );
   });
 
-  test("smokes the customer-facing production host only after a confirmed promotion", () => {
+  test("smokes the customer-facing production host only after a confirmed promotion", async () => {
     const canonicalStep = stepByName(
       "Probe canonical production after promotion"
     );
@@ -242,21 +298,14 @@ describe("deploy-workspace-production workflow", () => {
     expect(canonicalStep.run).toBe(
       "bun scripts/production-release.ts verify-canonical"
     );
-    expect(
-      countOccurrences(script, "customerFacingProductionDomain")
-    ).toBeGreaterThan(0);
-    expect(
-      extractImportSpecifiers(script)
-        .join("\n")
-        .includes("@/shared/utils/site-constants")
-    ).toBe(true);
-    const siteConstants = readFileSync(
-      resolve(import.meta.dir, "../shared/utils/site-constants.ts"),
-      "utf8"
+    expect(scriptIdentifiers.has("customerFacingProductionDomain")).toBe(true);
+    expect(scriptImportModules).toContain("@/shared/utils/site-constants");
+    // The domain comes from the real site-constants module at runtime, not
+    // from any pinned declaration text.
+    const { workspaceSiteConstants } = await import(
+      "../shared/utils/site-constants"
     );
-    expect(siteConstants.includes('domain: "workspace.deskohub.cz"')).toBe(
-      true
-    );
+    expect(workspaceSiteConstants.brand.domain).toBe("workspace.deskohub.cz");
   });
 
   test("never leaves a possibly promoted release untested or unrestored", () => {
@@ -280,11 +329,21 @@ describe("deploy-workspace-production workflow", () => {
   });
 
   test("rolls the release back through the script's Vercel rollback operation", () => {
-    // Comment-aware: a commented-out operation must not count as present.
-    expect(/vercel@\d[\d.]* rollback/.test(stripLineComments(script))).toBe(
-      true
+    // Comment-immune by construction: verdicts come from parsed template
+    // literals, so a commented-out operation satisfies nothing.
+    const vercelCommands = scriptTexts().filter((text) =>
+      text.includes("vercel@")
     );
-    expect(/vercel@\d[\d.]* promote/.test(script)).toBe(false);
+    expect(
+      vercelCommands.some((command) =>
+        /\bvercel@\d[\d.]* rollback\b/.test(command)
+      )
+    ).toBe(true);
+    expect(
+      vercelCommands.some((command) =>
+        /\bvercel@\d[\d.]* promote\b/.test(command)
+      )
+    ).toBe(false);
     expect(/rollback[^\n]*vercel@\d[\d.]* promote/.test(rawWorkflow)).toBe(
       false
     );
@@ -298,30 +357,20 @@ describe("deploy-workspace-production workflow", () => {
   });
 
   test("confirms rollbacks against the paginated required-alias authority, not a single canonical alias", () => {
-    // Comment-aware: commented-out identifiers must not count as present.
-    const activeScript = stripLineComments(script);
-    expect(
-      countOccurrences(activeScript, "listProjectAliases")
-    ).toBeGreaterThan(0);
-    expect(
-      countOccurrences(activeScript, "requiredProductionAliases")
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(activeScript, "waitForCanonicalAlias")).toBe(0);
-
-    // Negative fixture: commenting out the authority call satisfies nothing.
-    const commentedOut = [
-      "// const aliases = await listProjectAliases(client, config);",
-    ].join("\n");
-    expect(
-      countOccurrences(stripLineComments(commentedOut), "listProjectAliases")
-    ).toBe(0);
+    // Comment-immune by construction: identifiers exist only when declared
+    // or referenced in the live syntax tree.
+    expect(scriptIdentifiers.has("listProjectAliases")).toBe(true);
+    expect(scriptIdentifiers.has("requiredProductionAliases")).toBe(true);
+    expect(scriptIdentifiers.has("waitForCanonicalAlias")).toBe(false);
   });
 
   test("publishes recovery state through GITHUB_OUTPUT for the workflow conditions", () => {
-    // Comment-aware: commented-out output writes must not count as present.
-    const activeScript = stripLineComments(script);
-    expect(countOccurrences(activeScript, "GITHUB_OUTPUT")).toBeGreaterThan(0);
-    expect(countOccurrences(activeScript, "::add-mask::")).toBeGreaterThan(0);
+    expect(scriptTexts().some((text) => text.includes("GITHUB_OUTPUT"))).toBe(
+      true
+    );
+    expect(scriptTexts().some((text) => text.includes("::add-mask::"))).toBe(
+      true
+    );
     expect(
       JSON.stringify(deployJob).includes("steps.promote.outputs.baseline_url")
     ).toBe(true);

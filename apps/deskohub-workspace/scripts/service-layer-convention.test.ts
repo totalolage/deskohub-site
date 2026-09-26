@@ -1,11 +1,14 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { TSESTree } from "@typescript-eslint/types";
 import {
-  countTokenSequence,
-  extractImportSpecifiers,
-  sourceTokens,
-} from "./shared/source-contract";
+  importSpecifiers,
+  methodCallsNamed,
+  nodesOf,
+  parseSource,
+} from "./shared/source-ast";
 
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const sourcePaths = [
@@ -20,32 +23,73 @@ const sourcePaths = [
     !path.includes("/.next/")
 );
 
-test("Context capabilities own their default and live layers", async () => {
-  expect(sourcePaths.length).toBeGreaterThan(0);
-  const sources = await Promise.all(
-    sourcePaths.map(
-      async (path) => [path, await Bun.file(path).text()] as const
-    )
-  );
-  const capabilities = new Set<string>();
-  const capabilityDeclaration =
-    /\bclass\s+([A-Z][A-Za-z0-9]*)\s+extends\s+Context\.Service\b|\bconst\s+([A-Z][A-Za-z0-9]*)\s*=\s*Context\.Service\b/g;
+type ParsedCapabilityModule = {
+  readonly path: string;
+  readonly ast: TSESTree.Program;
+};
 
-  for (const [, source] of sources) {
-    for (const match of source.matchAll(capabilityDeclaration)) {
-      capabilities.add(match[1] ?? match[2]);
+let cachedModules: readonly ParsedCapabilityModule[] | undefined;
+/** Every tracked module parsed once per run. */
+const parseCapabilityModules = (): readonly ParsedCapabilityModule[] => {
+  if (cachedModules === undefined) {
+    cachedModules = sourcePaths.map((path) => ({
+      ast: parseSource(readFileSync(path, "utf8"), {
+        jsx: path.endsWith(".tsx"),
+      }),
+      path,
+    }));
+  }
+  return cachedModules;
+};
+
+/** `class X extends Context.Service` capability declarations. */
+const declaredCapability = (node: TSESTree.Node): string | undefined => {
+  if (node.type === "ClassDeclaration" && node.superClass) {
+    const superClass = node.superClass;
+    if (
+      superClass.type === "MemberExpression" &&
+      !superClass.computed &&
+      superClass.object.type === "Identifier" &&
+      superClass.object.name === "Context" &&
+      superClass.property.type === "Identifier" &&
+      superClass.property.name === "Service" &&
+      node.id
+    ) {
+      return node.id.name;
+    }
+  }
+  return undefined;
+};
+
+/** A standalone `XDefault` / `XLive` layer constant outside its capability. */
+const standaloneLayerName = (node: TSESTree.Node): string | undefined => {
+  if (node.type !== "VariableDeclarator" || node.id.type !== "Identifier") {
+    return undefined;
+  }
+  return /^(?<capability>[A-Z][A-Za-z0-9]*?)(Default|Live(?:WithDependencies)?)$/.exec(
+    node.id.name
+  )?.groups?.capability;
+};
+
+test("Context capabilities own their default and live layers", () => {
+  expect(sourcePaths.length).toBeGreaterThan(0);
+  const modules = parseCapabilityModules();
+  const capabilities = new Set<string>();
+
+  for (const { ast } of modules) {
+    for (const node of nodesOf(ast)) {
+      const capability = declaredCapability(node);
+      if (capability) capabilities.add(capability);
     }
   }
 
-  const standaloneLayer =
-    /\b(?:declare\s+)?const\s+([A-Z][A-Za-z0-9]*?)(Default|Live(?:WithDependencies)?)\b/g;
   const offenders: string[] = [];
-
-  for (const [path, source] of sources) {
-    for (const match of source.matchAll(standaloneLayer)) {
-      if (capabilities.has(match[1])) {
+  for (const { path, ast } of modules) {
+    for (const node of nodesOf(ast)) {
+      const capability = standaloneLayerName(node);
+      if (capability !== undefined && capabilities.has(capability)) {
         offenders.push(
-          `${relative(repositoryRoot, path)}: ${match[1]}${match[2]}`
+          `${relative(repositoryRoot, path)}: ${capability} layer constant`
         );
       }
     }
@@ -54,39 +98,45 @@ test("Context capabilities own their default and live layers", async () => {
   expect(offenders.sort()).toEqual([]);
 });
 
-test("fully wired capability layers are named Live", async () => {
+test("fully wired capability layers are named Live", () => {
   const obsoleteName = ["Live", "With", "Dependencies"].join("");
-  const offenders = (
-    await Promise.all(
-      sourcePaths.map(async (path) => ({
-        path,
-        source: await Bun.file(path).text(),
-      }))
+  const offenders = parseCapabilityModules()
+    .filter(({ ast }) =>
+      nodesOf(ast).some(
+        (node) => node.type === "Identifier" && node.name === obsoleteName
+      )
     )
-  )
-    .filter(({ source }) => source.includes(obsoleteName))
     .map(({ path }) => relative(repositoryRoot, path));
 
   expect(offenders.sort()).toEqual([]);
 });
 
-test("server-only feature flag providers are loaded lazily", async () => {
-  const source = await Bun.file(
-    `${repositoryRoot}/apps/deskohub-workspace/features/feature-flags/backend/workspace-feature-flag.service.ts`
-  ).text();
-  const imports = extractImportSpecifiers(source);
+test("server-only feature flag providers are loaded lazily", () => {
+  const { ast } = parseCapabilityModules().find(({ path }) =>
+    path.endsWith(
+      "apps/deskohub-workspace/features/feature-flags/backend/workspace-feature-flag.service.ts"
+    )
+  )!;
+  const imports = importSpecifiers(ast);
 
   expect(imports).not.toContain("server-only");
   expect(imports.some((specifier) => specifier === "./node")).toBe(false);
   expect(imports.some((specifier) => specifier === "./subject")).toBe(false);
 });
 
-test("the Dotypos adapter retains its process-wide token cache", async () => {
-  const source = await Bun.file(
-    `${repositoryRoot}/apps/deskohub-workspace/shared/backend/config/dotypos.config.ts`
-  ).text();
+test("the Dotypos adapter retains its process-wide token cache", () => {
+  const { ast } = parseCapabilityModules().find(({ path }) =>
+    path.endsWith(
+      "apps/deskohub-workspace/shared/backend/config/dotypos.config.ts"
+    )
+  )!;
 
   expect(
-    countTokenSequence(sourceTokens(source), ["Layer", ".", "buildWithMemoMap"])
-  ).toBeGreaterThan(0);
+    methodCallsNamed(ast, "buildWithMemoMap").some(
+      (call) =>
+        call.callee.type === "MemberExpression" &&
+        call.callee.object.type === "Identifier" &&
+        call.callee.object.name === "Layer"
+    )
+  ).toBe(true);
 });

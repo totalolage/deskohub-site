@@ -1,13 +1,23 @@
 import { describe, expect, mock, test } from "bun:test";
+import type { TSESTree } from "@typescript-eslint/types";
+import { isString } from "effect/Predicate";
+import {
+  exportedNames,
+  identifierNames,
+  importSpecifiers,
+  nodesOf,
+  parseTrackedSource,
+  stringLiterals,
+} from "@/scripts/shared/source-ast";
 import { updateCustomerProfileStandardSchema } from "../contracts";
-
-const readFile = async (relativePath: string) =>
-  Bun.file(`${accountDirectory}/${relativePath}`).text();
 
 const accountDirectory = (await import("node:path")).resolve(
   import.meta.dir,
   ".."
 );
+
+const parsedAccountFile = (relativePath: string) =>
+  parseTrackedSource(`${accountDirectory}/${relativePath}`);
 
 const listAccountFiles = async (
   directory: string = accountDirectory
@@ -27,22 +37,25 @@ const listAccountFiles = async (
   return files;
 };
 
+const AUTH_MODULE_PATTERN = /^(better-auth|@better-auth\/[\w-]+(?:\/[\w-]+)?)$/;
+
+/** Import specifiers of a parsed module that resolve into Better Auth. */
+const betterAuthImports = (ast: TSESTree.Program): readonly string[] =>
+  importSpecifiers(ast).filter((specifier) =>
+    AUTH_MODULE_PATTERN.test(specifier)
+  );
+
+/** Every identifier, member property, and string literal in the module. */
+const referencedNames = (ast: TSESTree.Program): ReadonlySet<string> => {
+  const names = new Set<string>(identifierNames(ast));
+  for (const literal of stringLiterals(ast)) names.add(literal.value);
+  return names;
+};
+
 describe("Customer-account boundary", () => {
-  test("exposes exactly the descendant compatibility exports from the barrel", async () => {
-    const source = await readFile("index.ts");
-    const exportedNames = [
-      ...source.matchAll(/export(?: type)?\s+\{([^}]*)\}/g),
-    ]
-      .flatMap((match) => match[1]!.split(","))
-      .map((name) =>
-        name
-          .trim()
-          .replace(/^type\s+/, "")
-          .split(/\s+as\s+/)
-          .pop()!
-          .trim()
-      )
-      .filter(Boolean);
+  test("exposes exactly the descendant compatibility exports from the barrel", () => {
+    const { ast } = parsedAccountFile("index.ts");
+    const exported = exportedNames(ast);
 
     for (const requiredName of [
       "CustomerAccountResolver",
@@ -51,10 +64,11 @@ describe("Customer-account boundary", () => {
       "CustomerAccountId",
       "LinkedCustomerAccount",
     ]) {
-      expect(exportedNames).toContain(requiredName);
+      expect(exported).toContain(requiredName);
     }
 
-    expect(source).not.toMatch(/export \*/);
+    // No wildcard re-export: the barrel lists every descendant export.
+    expect(exported).not.toContain("*");
   });
 
   test("keeps CustomerAccountResolver.Live and the page convenience wired", async () => {
@@ -102,9 +116,8 @@ describe("Customer-account boundary", () => {
     const offenders: string[] = [];
 
     for (const file of files) {
-      const source = await Bun.file(file).text();
       const importsBetterAuth =
-        /from\s+"(better-auth|@better-auth\/[\w-]+(?:\/[\w-]+)?)"/.test(source);
+        betterAuthImports(parseTrackedSource(file).ast).length > 0;
       const withinAuthBoundary =
         file.includes(`${accountDirectory}/backend/auth/`) ||
         file.includes(
@@ -119,7 +132,7 @@ describe("Customer-account boundary", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("keeps Better Auth type names out of the domain surface", async () => {
+  test("keeps Better Auth type names out of the domain surface", () => {
     for (const domainFile of [
       "customer-account.ts",
       "contracts.ts",
@@ -130,25 +143,14 @@ describe("Customer-account boundary", () => {
       "backend/customer-reservation-history.service.ts",
       "backend/customer-account-deletion.ts",
     ]) {
-      const source = await readFile(domainFile);
-      expect(source).not.toMatch(/BetterAuth|better-auth/);
+      const { ast } = parsedAccountFile(domainFile);
+      const names = referencedNames(ast);
+      expect(
+        [...names].some(
+          (name) => name.includes("better-auth") || name.includes("BetterAuth")
+        )
+      ).toBe(false);
     }
-  });
-
-  test("exposes the official GET/POST auth route without a React auth provider", async () => {
-    const fs = await import("node:fs/promises");
-    const path = await import("node:path");
-
-    const routeSource = await Bun.file(
-      path.resolve(accountDirectory, "../../app/api/auth/[...all]/route.ts")
-    ).text();
-    expect(/export const GET/.test(routeSource)).toBe(true);
-    expect(/export const POST/.test(routeSource)).toBe(true);
-    expect(/export const (PUT|PATCH|DELETE)\b/.test(routeSource)).toBe(false);
-
-    await expect(
-      fs.access(path.resolve(accountDirectory, "components/auth-provider.tsx"))
-    ).rejects.toThrow();
   });
 
   test("executes the auth route handler and forces private, no-store onto the response", async () => {
@@ -170,7 +172,13 @@ describe("Customer-account boundary", () => {
     try {
       const route = await import("../../../app/api/auth/[...all]/route");
 
+      // The official route exposes exactly the GET/POST surface.
+      expect(route.GET).toBeDefined();
       expect(route.POST).toBe(route.GET);
+      expect(route.PUT).toBeUndefined();
+      expect(route.PATCH).toBeUndefined();
+      expect(route.DELETE).toBeUndefined();
+
       const response = await route.GET(
         new Request("https://deskohub.test/api/auth/get-session")
       );
@@ -182,6 +190,13 @@ describe("Customer-account boundary", () => {
     } finally {
       mock.restore();
     }
+
+    // No React auth provider exists beside the route handler.
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    await expect(
+      fs.access(path.resolve(accountDirectory, "components/auth-provider.tsx"))
+    ).rejects.toThrow();
   });
 
   test("keeps client and server directives out of the backend and confines the browser client", async () => {
@@ -189,16 +204,26 @@ describe("Customer-account boundary", () => {
       (file) => !file.includes("account-boundary.test")
     );
     for (const file of files) {
-      const source = await Bun.file(file).text();
+      const { ast } = parseTrackedSource(file);
       const isBackendFile = file.includes("/backend/");
+      // A runtime directive is a leading string-literal expression
+      // statement, visible in the tree regardless of quote style.
+      const directives = nodesOf(ast).flatMap((node) =>
+        node.type === "ExpressionStatement" &&
+        node.expression.type === "Literal" &&
+        isString(node.expression.value)
+          ? [node.expression.value]
+          : []
+      );
       if (isBackendFile) {
-        expect(source).not.toContain("use client");
-        expect(source).not.toContain("use server");
+        expect(directives).not.toContain("use client");
+        expect(directives).not.toContain("use server");
       }
+      const names = referencedNames(ast);
       if (!file.includes(`${accountDirectory}/auth.client.ts`)) {
-        expect(source).not.toContain("createAuthClient");
+        expect(names.has("createAuthClient")).toBe(false);
       }
-      expect(source).not.toContain("toNextJsHandler");
+      expect(names.has("toNextJsHandler")).toBe(false);
     }
   });
 
@@ -208,11 +233,36 @@ describe("Customer-account boundary", () => {
     );
 
     for (const file of backendFiles) {
-      const source = await Bun.file(file).text();
-      expect(source).not.toMatch(/\bconsole\.(log|info|warn|error)\b/);
-      expect(source).not.toMatch(
-        /log(Info|Warning|Error|Debug)\([^)]*\b(data\.(url|token)|data\.email)\b/
+      const { ast } = parseTrackedSource(file);
+      const consoleCalls = nodesOf(ast).flatMap((node) =>
+        node.type === "MemberExpression" &&
+        !node.computed &&
+        node.object.type === "Identifier" &&
+        node.object.name === "console" &&
+        node.property.type === "Identifier" &&
+        ["log", "info", "warn", "error"].includes(node.property.name)
+          ? [node.property.name]
+          : []
       );
+      expect(consoleCalls).toEqual([]);
+
+      // A tagged logging helper must never receive the raw email or URL.
+      const leakingLogCalls = nodesOf(ast).filter((node) => {
+        if (node.type !== "CallExpression") return false;
+        const callee = node.callee;
+        if (
+          callee.type !== "Identifier" ||
+          !/^log(Info|Warning|Error|Debug)$/.test(callee.name)
+        ) {
+          return false;
+        }
+        return node.arguments.some(
+          (argument) =>
+            identifierNames(argument).has("email") ||
+            identifierNames(argument).has("url")
+        );
+      });
+      expect(leakingLogCalls).toEqual([]);
     }
   });
 

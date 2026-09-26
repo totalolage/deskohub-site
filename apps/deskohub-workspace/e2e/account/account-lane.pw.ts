@@ -5,7 +5,6 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
-import type { AccountSection } from "@/features/account/components/shell/account-shell";
 import { WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import type { E2EDatabase } from "../integrations/database.service";
@@ -19,10 +18,7 @@ import {
   findLinkedDotyposCustomerId,
 } from "./auth-rows";
 import { withCallbackHandoffReview } from "./callback-handoff";
-import {
-  type WorkspaceE2EAccountCaseId,
-  workspaceE2EAccountCaseIds,
-} from "./catalog";
+import { workspaceE2EAccountCaseIds } from "./catalog";
 import {
   getAccountE2EConfig,
   makeWorkspaceE2EAccountRecipient,
@@ -42,38 +38,17 @@ import {
   verifyWorkspaceE2EReservationHistoryNavigation,
 } from "./reservation-navigation";
 import {
-  type AccountReviewTarget,
   captureAccountReview,
   captureReservationStatusReview,
   withSignInPendingReview,
 } from "./review-screenshots";
+import {
+  accountReviewTargetByCaseId,
+  accountReviewTargetBySection,
+  mobileAccountReviewTargetBySection,
+} from "./review-targets";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
 
-const accountReviewTargetByCaseId: Partial<
-  Record<WorkspaceE2EAccountCaseId, AccountReviewTarget>
-> = {
-  "account-anonymous-redirect": "sign-in-desktop",
-  "account-sign-in-form": "sign-in-accepted-desktop",
-  "account-magic-link-delivery": "completion-mobile375x900",
-  "account-session-lifecycle": "callback-failed-desktop",
-  "account-linking-variants": "support-desktop",
-};
-const accountReviewTargetBySection = {
-  reservations: "linked-reservations-desktop",
-  profile: "linked-profile-desktop",
-  billing: "linked-billing-desktop",
-  legal: "linked-legal-desktop",
-  danger: "linked-danger-desktop",
-} as const satisfies Readonly<Record<AccountSection, AccountReviewTarget>>;
-const mobileAccountReviewTargetBySection: Readonly<
-  Record<AccountSection, AccountReviewTarget | undefined>
-> = {
-  reservations: "linked-reservations-mobile",
-  billing: "linked-billing-mobile",
-  danger: "linked-danger-mobile",
-  profile: undefined,
-  legal: undefined,
-};
 const accountReviewCaptureFailureMessage =
   "Account review screenshot capture failed";
 

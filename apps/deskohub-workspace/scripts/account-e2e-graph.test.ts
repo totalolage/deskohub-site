@@ -1,103 +1,280 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import type { TSESTree } from "@typescript-eslint/types";
+import { isString } from "effect/Predicate";
 import { workspaceE2EAccountCaseIds } from "../e2e/account/catalog";
+import { accountReviewTargetByCaseId } from "../e2e/account/review-targets";
+import type { WorkspaceE2EAccountLifecycleHandoff } from "../e2e/account/types";
 import {
   workspaceE2EPlaywrightCheckoutTimeout,
   workspaceE2ETimeouts,
 } from "../e2e/timeouts";
-import { countOccurrences } from "./shared/source-contract";
+import {
+  callsNamed,
+  containsNode,
+  firstStringArgument,
+  identifierNames,
+  memberCallsNamed,
+  methodCallsNamed,
+  nodesOf,
+  parseTrackedSource,
+  positionDelta,
+  propertyAssignments,
+  stringArguments,
+  stringLiterals,
+} from "./shared/source-ast";
 
-const repoFile = (relative: string) => resolve(import.meta.dir, "..", relative);
+const casesModule = parseTrackedSource(
+  new URL("../e2e/account/cases.ts", import.meta.url).pathname
+);
+const laneModule = parseTrackedSource(
+  new URL("../e2e/account/account-lane.pw.ts", import.meta.url).pathname
+);
+const runnerModule = parseTrackedSource(
+  new URL("../e2e/account/runner.ts", import.meta.url).pathname
+);
+const entryModule = parseTrackedSource(
+  new URL("./workspace-e2e.ts", import.meta.url).pathname
+);
 
-/**
- * Isolates one runStep block: from its unique step id to the next step's
- * admission, so content assertions cannot be satisfied by sibling steps.
- */
-const isolatedStepBlock = (cases: string, stepId: string) => {
-  const start = cases.indexOf(stepId);
-  expect(start).toBeGreaterThan(-1);
-  return cases.slice(start, cases.indexOf("yield* runStep(", start));
+type PlaywrightCheckoutConfig =
+  typeof import("../playwright.e2e.config")["default"];
+
+let cachedConfigStructure: PlaywrightCheckoutConfig | undefined;
+// The real Playwright config is executed (not text-scanned) and its resolved
+// structure is asserted on. It runs in a child process because the config
+// resolves its browser executable with a top-level await, which bun's test
+// runner does not settle reliably across multiple entry files.
+const playwrightConfigStructure = (): PlaywrightCheckoutConfig => {
+  if (cachedConfigStructure === undefined) {
+    const result = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        "-e",
+        'const config = (await import("./playwright.e2e.config")).default; console.log(JSON.stringify(config));',
+      ],
+      cwd: new URL("..", import.meta.url).pathname,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(new TextDecoder().decode(result.stderr));
+    }
+    cachedConfigStructure = JSON.parse(
+      new TextDecoder().decode(result.stdout)
+    ) as PlaywrightCheckoutConfig;
+  }
+  return cachedConfigStructure;
 };
 
+const projectByName = (config: PlaywrightCheckoutConfig, name: string) =>
+  config.projects.find((project) => project.name === name);
+
+/** The `step("<id>", ...)` call node for one deployed step identifier. */
+const stepCallById = (stepId: string): TSESTree.CallExpression | undefined =>
+  callsNamed(casesModule.ast, "step").find(
+    (call) => firstStringArgument(call) === stepId
+  );
+
+const makeCaseRange = (caseId: string): readonly [number, number] => {
+  const factories = callsNamed(casesModule.ast, "makeCase");
+  const start = factories.findIndex(
+    (call) => firstStringArgument(call) === caseId
+  );
+  expect(start).toBeGreaterThanOrEqual(0);
+  const rangeStart = factories[start]!.range![0];
+  const next = factories[start + 1];
+  const rangeEnd = next ? next.range![0] : casesModule.source.length;
+  return [rangeStart, rangeEnd];
+};
+
+/** Identifiers (incl. member properties) inside a source range. */
+const identifiersInRange = ([start, end]: readonly [number, number]) => {
+  const names = new Set<string>();
+  for (const node of nodesOf(casesModule.ast)) {
+    if (node.range![0] < start || node.range![1] > end) continue;
+    if (node.type === "Identifier") names.add(node.name);
+    if (
+      node.type === "MemberExpression" &&
+      !node.computed &&
+      node.property.type === "Identifier"
+    ) {
+      names.add(node.property.name);
+    }
+  }
+  return names;
+};
+
+const stringLiteralsInRange = ([start, end]: readonly [number, number]) =>
+  stringLiterals(casesModule.ast)
+    .filter(
+      (literal) =>
+        literal.node.range![0] >= start && literal.node.range![1] <= end
+    )
+    .map((literal) => literal.value);
+
 /**
- * Pins the page contract inside one isolated step: exactly one aria-snapshot
- * poll (never body-text or in-page waitForFunction channels) whose matcher
- * checks both expected displayed texts conjunctively.
+ * The rate-budget operation wrapping each deployed step: for every `step`
+ * call, the nearest enclosing `rateBudget.run(<operation>, ...)` when the
+ * step hangs inside one.
+ */
+const budgetPlan = (): ReadonlyMap<string, "send" | "verify"> => {
+  const wrappers = memberCallsNamed(casesModule.ast, "rateBudget", "run").map(
+    (call) => {
+      const operation = firstStringArgument(call);
+      expect(operation === "send" || operation === "verify").toBe(true);
+      return { call, operation: operation as "send" | "verify" };
+    }
+  );
+  expect(wrappers).toHaveLength(8);
+  const plan = new Map<string, "send" | "verify">();
+  for (const wrapper of wrappers) {
+    for (const stepCall of callsNamed(casesModule.ast, "step")) {
+      if (containsNode(wrapper.call, stepCall)) {
+        const stepId = firstStringArgument(stepCall);
+        expect(stepId).toBeDefined();
+        expect(plan.has(stepId!)).toBe(false);
+        plan.set(stepId!, wrapper.operation);
+      }
+    }
+  }
+  return plan;
+};
+
+const BUDGETED_STEPS: readonly (readonly [string, "send" | "verify"])[] = [
+  ["accepts a first unknown email generically", "send"],
+  ["accepts a second unknown email with an identical response", "send"],
+  ["consumes the link into the completion state", "verify"],
+  ["sends the reauthentication link", "send"],
+  ["rejects the already-consumed reauthentication link", "verify"],
+  ["requests the reactivation sign-in link", "send"],
+  [
+    "reactivates the retained profile under a new Better Auth identity",
+    "verify",
+  ],
+  ["signs the same account back in", "verify"],
+];
+
+const UNBUDGETED_STEPS: readonly string[] = [
+  "rejects an invalid email without requesting a link",
+  "requires the first accepted main request handoff",
+  "retrieves the delivered single-use link",
+  "retrieves the delivered reauthentication link",
+  "retrieves the reactivation link",
+];
+
+/**
+ * Pins the page contract inside one isolated step: exactly one
+ * aria-snapshot poll (never body-text or in-page waitForFunction channels)
+ * whose matcher checks both expected displayed texts conjunctively.
  */
 const expectSingleConjunctiveSnapshotMatcher = (
-  stepBlock: string,
-  firstName: string,
-  secondName: string
+  stepCall: TSESTree.CallExpression,
+  firstPropertyName: string,
+  secondPropertyName: string
 ) => {
-  expect(countOccurrences(stepBlock, "waitForInteractiveSnapshot")).toBe(1);
-  expect(countOccurrences(stepBlock, "waitForBrowserText")).toBe(0);
-  expect(countOccurrences(stepBlock, "waitForBrowserCondition")).toBe(0);
+  expect(callsNamed(stepCall, "waitForInteractiveSnapshot")).toHaveLength(1);
+  const stepIdentifiers = identifierNames(stepCall);
+  expect(stepIdentifiers.has("waitForBrowserText")).toBe(false);
+  expect(stepIdentifiers.has("waitForBrowserCondition")).toBe(false);
   // waitText is a cases-local wrapper around waitForBrowserText, so its calls
   // must be rejected by their own name, not the wrapped helper's.
-  expect(countOccurrences(stepBlock, "waitText(")).toBe(0);
-  const firstAt = stepBlock.indexOf(`snapshot.includes(${firstName})`);
-  const secondAt = stepBlock.indexOf(`snapshot.includes(${secondName})`);
-  expect(firstAt).toBeGreaterThan(-1);
-  expect(secondAt).toBeGreaterThan(-1);
-  const [joinStart, joinEnd] =
-    firstAt < secondAt ? [firstAt, secondAt] : [secondAt, firstAt];
-  const join = stepBlock.slice(joinStart + 1, joinEnd);
-  expect(join).toContain("&&");
-  expect(join).not.toContain("||");
+  expect(stepIdentifiers.has("waitText")).toBe(false);
+
+  const snapshotCall = callsNamed(stepCall, "waitForInteractiveSnapshot")[0]!;
+  const includesTargets = nodesOf(snapshotCall).flatMap((node) =>
+    node.type === "CallExpression" &&
+    node.callee.type === "MemberExpression" &&
+    !node.callee.computed &&
+    node.callee.property.type === "Identifier" &&
+    node.callee.property.name === "includes"
+      ? [node]
+      : []
+  );
+  const includesFirst = includesTargets.some(
+    (call) =>
+      stringLiterals(call).some(
+        (literal) => literal.value === firstPropertyName
+      ) ||
+      call.arguments.some(
+        (argument) =>
+          argument.type === "Identifier" && argument.name === firstPropertyName
+      )
+  );
+  const includesSecond = includesTargets.some(
+    (call) =>
+      stringLiterals(call).some(
+        (literal) => literal.value === secondPropertyName
+      ) ||
+      call.arguments.some(
+        (argument) =>
+          argument.type === "Identifier" && argument.name === secondPropertyName
+      )
+  );
+  expect(includesFirst).toBe(true);
+  expect(includesSecond).toBe(true);
+  // Both membership checks must be conjunctive: an "&&" logical expression
+  // spans them, and no disjunction appears anywhere in the wait matcher.
+  const conjunction = nodesOf(snapshotCall).some(
+    (node) =>
+      node.type === "LogicalExpression" &&
+      node.operator === "&&" &&
+      includesTargets.every((call) => containsNode(node, call))
+  );
+  expect(conjunction).toBe(true);
+  expect(
+    nodesOf(snapshotCall).some(
+      (node) => node.type === "LogicalExpression" && node.operator === "||"
+    )
+  ).toBe(false);
 };
 
 describe("workspace account e2e graph", () => {
   test("runs account cases as one project in the existing Playwright graph", async () => {
-    const config = readFileSync(repoFile("playwright.e2e.config.ts"), "utf8");
-    const accountNameAt = config.indexOf('name: "account-auth"');
-    const accountProject = config.slice(
-      config.lastIndexOf("    {", accountNameAt),
-      config.indexOf('name: "checkout-availability"')
-    );
+    const config = playwrightConfigStructure();
+    const accountProject = projectByName(config, "account-auth");
 
+    expect(accountProject).toBeDefined();
+    expect(accountProject?.testDir).toBe("./e2e/account");
+    expect(accountProject?.dependencies).toEqual(["checkout-plan"]);
+    expect(projectByName(config, "account-auth-setup")).toBeUndefined();
+    // The real launcher points at the real config, decided in the syntax
+    // tree rather than by pinning prose.
     expect(
-      countOccurrences(accountProject, 'name: "account-auth"')
-    ).toBeGreaterThan(0);
-    expect(
-      countOccurrences(accountProject, 'testDir: "./e2e/account"')
-    ).toBeGreaterThan(0);
-    expect(
-      countOccurrences(accountProject, 'dependencies: ["checkout-plan"]')
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(config, 'name: "account-auth-setup"')).toBe(0);
-    const checkoutEntry = readFileSync(
-      repoFile("scripts/workspace-e2e.ts"),
-      "utf8"
-    );
-    expect(
-      countOccurrences(checkoutEntry, "playwright.e2e.config.ts")
-    ).toBeGreaterThan(0);
+      stringLiterals(entryModule.ast).some(
+        (literal) => literal.value === "playwright.e2e.config.ts"
+      )
+    ).toBe(true);
   });
 
   test("keeps account cases free of screenshots, traces, videos, and HARs", async () => {
-    const config = readFileSync(repoFile("playwright.e2e.config.ts"), "utf8");
-    const projectBlock = config.slice(
-      config.indexOf('name: "account-auth"'),
-      config.indexOf("checkout-availability")
-    );
+    const config = playwrightConfigStructure();
+    const project = projectByName(config, "account-auth");
 
-    expect(countOccurrences(projectBlock, 'screenshot: "off"')).toBeGreaterThan(
-      0
-    );
-    expect(countOccurrences(projectBlock, 'trace: "off"')).toBeGreaterThan(0);
-    expect(countOccurrences(projectBlock, 'video: "off"')).toBeGreaterThan(0);
+    expect(project?.use?.screenshot).toBe("off");
+    expect(project?.use?.trace).toBe("off");
+    expect(project?.use?.video).toBe("off");
 
-    const lane = readFileSync(
-      repoFile("e2e/account/account-lane.pw.ts"),
-      "utf8"
-    );
-    expect(countOccurrences(lane, "recordHar: false")).toBeGreaterThan(0);
+    const runnerIdentifier = identifierNames(runnerModule.ast);
+    expect(runnerIdentifier.has("captureBrowserFailureArtifacts")).toBe(false);
+    expect(runnerIdentifier.has("startBrowserDiagnostics")).toBe(false);
+    expect(runnerIdentifier.has("stopBrowserHar")).toBe(false);
 
-    const runner = readFileSync(repoFile("e2e/account/runner.ts"), "utf8");
-    expect(countOccurrences(runner, "captureBrowserFailureArtifacts")).toBe(0);
-    expect(countOccurrences(runner, "startBrowserDiagnostics")).toBe(0);
-    expect(countOccurrences(runner, "stopBrowserHar")).toBe(0);
+    // The lane runner is constructed with HAR recording disabled.
+    const runnerConstruction = callsNamed(
+      laneModule.ast,
+      "makePlaywrightBrowserRunner"
+    );
+    expect(runnerConstruction).toHaveLength(1);
+    const options = runnerConstruction[0]?.arguments.find(
+      (argument): argument is TSESTree.ObjectExpression =>
+        argument.type === "ObjectExpression"
+    );
+    expect(options).toBeDefined();
+    const recordHar = propertyAssignments(options!).get("recordHar");
+    expect(recordHar).toBeDefined();
+    expect(
+      recordHar?.value.type === "Literal" && recordHar.value.value === false
+    ).toBe(true);
   });
 
   test("registers the complete serial lifecycle in a stable order", async () => {
@@ -113,23 +290,26 @@ describe("workspace account e2e graph", () => {
       "account-linking-variants",
     ]);
 
-    const lane = readFileSync(
-      repoFile("e2e/account/account-lane.pw.ts"),
-      "utf8"
+    // The lane configures serial execution; the argument is an object, not
+    // prose, so the verdict survives any reformatting.
+    const configureCalls = methodCallsNamed(laneModule.ast, "configure");
+    expect(configureCalls).toHaveLength(1);
+    const configureOptions = configureCalls[0]?.arguments.find(
+      (argument): argument is TSESTree.ObjectExpression =>
+        argument.type === "ObjectExpression"
     );
-    expect(countOccurrences(lane, 'mode: "serial"')).toBeGreaterThan(0);
+    const mode = propertyAssignments(configureOptions!).get("mode");
     expect(
-      countOccurrences(
-        lane,
-        '"account-session-lifecycle": "callback-failed-desktop"'
-      )
-    ).toBeGreaterThan(0);
+      mode?.value.type === "Literal" && mode.value.value === "serial"
+    ).toBe(true);
+
+    // The per-case capture overrides stay shared lane data.
+    expect(accountReviewTargetByCaseId["account-session-lifecycle"]).toBe(
+      "callback-failed-desktop"
+    );
     expect(
-      countOccurrences(
-        lane,
-        '"account-deletion-marker-reauth": "callback-failed-desktop"'
-      )
-    ).toBe(0);
+      accountReviewTargetByCaseId["account-deletion-marker-reauth"]
+    ).toBeUndefined();
   });
 
   // Cleanup reconciliation, resend message disambiguation, correlation-tag
@@ -157,147 +337,170 @@ describe("workspace account e2e graph", () => {
     );
     expect(magicLinkOperationsPerWindow).toBeGreaterThan(0);
 
-    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
-    expect(countOccurrences(cases, "rateBudget.run(")).toBe(8);
-    expect((cases.match(/rateBudget\.run\(\s*"send"/g) ?? []).length).toBe(4);
-    expect((cases.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length).toBe(4);
-    expect(countOccurrences(cases, ".reserve(")).toBe(0);
-    expect(countOccurrences(cases, "tryReserve")).toBe(0);
+    // The budget plan comes from the cases syntax tree: exactly eight
+    // wrappers, four sends and four verifies, each hugging its exact
+    // semantic endpoint, and no direct reservation API anywhere.
+    const plan = budgetPlan();
+    expect(
+      [...plan.values()].filter((operation) => operation === "send")
+    ).toHaveLength(4);
+    expect(
+      [...plan.values()].filter((operation) => operation === "verify")
+    ).toHaveLength(4);
+    expect(plan.size).toBe(8);
+    const caseIdentifiers = identifierNames(casesModule.ast);
+    expect(caseIdentifiers.has("reserve")).toBe(false);
+    expect(caseIdentifiers.has("tryReserve")).toBe(false);
 
-    // Each wrapper must hug its exact semantic endpoint: the nearest
-    // preceding rateBudget.run carries the expected operation and directly
-    // wraps this runStep, so a quiet-window wait consumes the case budget,
-    // never the inner semantic step budget.
-    const budgetedCases = cases;
-    const expectBudgetedStep = (
-      stepId: string,
-      operation: "send" | "verify"
-    ) => {
-      const idAt = budgetedCases.indexOf(`"${stepId}"`);
-      expect(idAt).toBeGreaterThan(-1);
-      const wrapperAt = budgetedCases.lastIndexOf("rateBudget.run(", idAt);
-      expect(wrapperAt).toBeGreaterThan(-1);
-      const between = budgetedCases.slice(wrapperAt, idAt);
-      expect(countOccurrences(between, `"${operation}"`)).toBeGreaterThan(0);
-      expect(
-        countOccurrences(between, operation === "send" ? '"verify"' : '"send"')
-      ).toBe(0);
-      expect(countOccurrences(between, "rateBudget.run(")).toBe(1);
-      expect(countOccurrences(between, "runStep(")).toBe(1);
-      expect(countOccurrences(between, "step(")).toBe(1);
-    };
-
-    // Non-endpoints stay outside the budget: the nearest preceding wrapper
-    // must belong to an earlier step, never to this one. No preceding wrapper
-    // at all is trivially unbudgeted.
-    const expectUnbudgetedStep = (stepId: string) => {
-      const idAt = budgetedCases.indexOf(`"${stepId}"`);
-      expect(idAt).toBeGreaterThan(-1);
-      const wrapperAt = budgetedCases.lastIndexOf("rateBudget.run(", idAt);
-      if (wrapperAt === -1) return;
-      const between = budgetedCases.slice(wrapperAt, idAt);
-      expect(countOccurrences(between, "step(")).toBeGreaterThan(1);
-    };
-
-    expectBudgetedStep("accepts a first unknown email generically", "send");
-    expectBudgetedStep(
-      "accepts a second unknown email with an identical response",
-      "send"
-    );
-    expectBudgetedStep("consumes the link into the completion state", "verify");
-    expectBudgetedStep("sends the reauthentication link", "send");
-    expectBudgetedStep(
-      "rejects the already-consumed reauthentication link",
-      "verify"
-    );
-    expectBudgetedStep("requests the reactivation sign-in link", "send");
-    expectBudgetedStep(
-      "reactivates the retained profile under a new Better Auth identity",
-      "verify"
-    );
-    expectBudgetedStep("signs the same account back in", "verify");
-
-    expectUnbudgetedStep("rejects an invalid email without requesting a link");
-    expectUnbudgetedStep("requires the first accepted main request handoff");
-    expectUnbudgetedStep("retrieves the delivered single-use link");
-    expectUnbudgetedStep("retrieves the delivered reauthentication link");
-    expectUnbudgetedStep("retrieves the reactivation link");
+    for (const [stepId, operation] of BUDGETED_STEPS) {
+      expect(plan.get(stepId)).toBe(operation);
+    }
+    for (const stepId of UNBUDGETED_STEPS) {
+      // Non-endpoints stay outside the budget: retrieval and validation
+      // steps never hang inside a wrapper.
+      expect(plan.has(stepId)).toBe(false);
+    }
 
     // The quiet-window budget consumes the real spacing between delivered
     // links, so a fake-clock duration claim would have to assume provider
-    // latency to separate a healthy lane from a blocked reserve; the count
-    // and per-case shape below are the accurate regression instead.
-    const deliveryCase = cases.slice(
-      cases.indexOf('makeCase("account-magic-link-delivery"'),
-      cases.indexOf('makeCase("account-profile-completion"')
+    // latency to separate a healthy lane from a blocked reserve; the
+    // per-case budget shape below is the accurate regression instead.
+    const deliveryRange = makeCaseRange("account-magic-link-delivery");
+    const deliveryWrappers = memberCallsNamed(
+      casesModule.ast,
+      "rateBudget",
+      "run"
+    ).filter(
+      (call) =>
+        call.range![0] >= deliveryRange[0] && call.range![1] <= deliveryRange[1]
     );
+    expect(deliveryWrappers).toHaveLength(1);
+    expect(firstStringArgument(deliveryWrappers[0]!)).toBe("verify");
+    const deliveryIdentifiers = identifiersInRange(deliveryRange);
+    expect(deliveryIdentifiers.has("callbackFailedTitle")).toBe(false);
+    expect(deliveryIdentifiers.has("openPage")).toBe(true);
+    const deliveryLiterals = stringLiteralsInRange(deliveryRange);
+    expect(deliveryLiterals).not.toContain("rejects the replayed link");
+    expect(deliveryLiterals).not.toContain("requests the synthetic magic link");
+    // The single page open consumes the delivered link value directly.
+    const deliveryOpenCalls = callsNamed(casesModule.ast, "openPage").filter(
+      (call) =>
+        call.range![0] >= deliveryRange[0] && call.range![1] <= deliveryRange[1]
+    );
+    expect(deliveryOpenCalls).toHaveLength(1);
     expect(
-      (deliveryCase.match(/rateBudget\.run\(\s*"send"/g) ?? []).length
-    ).toBe(0);
-    expect(
-      (deliveryCase.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length
-    ).toBe(1);
-    expect(countOccurrences(deliveryCase, "callbackFailedTitle")).toBe(0);
-    expect(countOccurrences(deliveryCase, "rejects the replayed link")).toBe(0);
-    expect(
-      countOccurrences(deliveryCase, "requests the synthetic magic link")
-    ).toBe(0);
-    expect(deliveryCase.match(/openPage\(link\)/g)).toHaveLength(1);
-    expect(
-      countOccurrences(deliveryCase, "firstAcceptedRequestedAt")
-    ).toBeGreaterThan(0);
+      deliveryOpenCalls[0]?.arguments.some(
+        (argument) => argument.type === "Identifier" && argument.name === "link"
+      )
+    ).toBe(true);
+    expect(deliveryIdentifiers.has("firstAcceptedRequestedAt")).toBe(true);
 
-    const signInCase = cases.slice(
-      cases.indexOf('makeCase("account-sign-in-form"'),
-      cases.indexOf('makeCase("account-magic-link-delivery"')
+    // The sign-in case records the lifecycle handoff timestamp before the
+    // first email submit, so a later case can exclude stale provider mail.
+    const signInRange = makeCaseRange("account-sign-in-form");
+    const assignment = nodesOf(casesModule.ast).find(
+      (node): node is TSESTree.AssignmentExpression =>
+        node.type === "AssignmentExpression" &&
+        node.left.type === "MemberExpression" &&
+        !node.left.computed &&
+        node.left.property.type === "Identifier" &&
+        node.left.property.name === "firstAcceptedRequestedAt" &&
+        node.right.type === "Identifier" &&
+        node.right.name === "startedAt" &&
+        node.range![0] >= signInRange[0] &&
+        node.range![1] <= signInRange[1]
     );
-    const handoffAt = signInCase.indexOf(
-      "lifecycleHandoff.firstAcceptedRequestedAt = startedAt"
+    expect(assignment).toBeDefined();
+    const submitCall = callsNamed(casesModule.ast, "fillAndSubmitEmail").find(
+      (call) =>
+        call.range![0] >= signInRange[0] &&
+        call.range![1] <= signInRange[1] &&
+        call.arguments.some(
+          (argument) =>
+            argument.type === "Identifier" && argument.name === "recipient"
+        )
     );
-    const submitAt = signInCase.indexOf("fillAndSubmitEmail(recipient)");
-    expect(handoffAt).toBeGreaterThan(-1);
-    expect(submitAt).toBeGreaterThan(handoffAt);
-    expect(countOccurrences(signInCase, "accepted-a")).toBe(0);
+    expect(submitCall).toBeDefined();
+    expect(positionDelta(assignment!, submitCall!)).toBeLessThan(0);
+    expect(stringLiteralsInRange(signInRange)).not.toContain("accepted-b");
 
-    const profileCompletionCase = cases.slice(
-      cases.indexOf('makeCase("account-profile-completion"'),
-      cases.indexOf('makeCase("account-reservation-transitions"')
-    );
-    expect(countOccurrences(profileCompletionCase, "rateBudget.")).toBe(0);
+    const profileRange = makeCaseRange("account-profile-completion");
+    expect(identifiersInRange(profileRange).has("rateBudget")).toBe(false);
 
-    const markerCase = cases.slice(
-      cases.indexOf('makeCase("account-deletion-marker-reauth"'),
-      cases.indexOf('makeCase("account-session-lifecycle"')
+    const markerRange = makeCaseRange("account-deletion-marker-reauth");
+    const markerWrappers = memberCallsNamed(
+      casesModule.ast,
+      "rateBudget",
+      "run"
+    ).filter(
+      (call) =>
+        call.range![0] >= markerRange[0] && call.range![1] <= markerRange[1]
     );
-    expect((markerCase.match(/rateBudget\.run\(\s*"send"/g) ?? []).length).toBe(
-      1
+    expect(markerWrappers).toHaveLength(1);
+    expect(firstStringArgument(markerWrappers[0]!)).toBe("send");
+
+    const linkingRange = makeCaseRange("account-linking-variants");
+    const linkingIdentifiers = identifiersInRange(linkingRange);
+    expect(linkingIdentifiers.has("rateBudget")).toBe(false);
+    expect(linkingIdentifiers.has("signOutAndRequireAnonymous")).toBe(false);
+    expect(linkingIdentifiers.has("requestSignInLink")).toBe(false);
+    expect(linkingIdentifiers.has("retrieveSignInLink")).toBe(false);
+    // Three localized("/contact") opens and three synthetic-link removals:
+    // exactly the linking-variant contact handoffs.
+    const localizedContactCalls = callsNamed(
+      casesModule.ast,
+      "localized"
+    ).filter(
+      (call) =>
+        call.range![0] >= linkingRange[0] &&
+        call.range![1] <= linkingRange[1] &&
+        stringArguments(call)[0] === "/contact"
+    );
+    expect(localizedContactCalls).toHaveLength(3);
+    const removeLinkCalls = callsNamed(
+      casesModule.ast,
+      "removeSyntheticAccountLink"
+    ).filter(
+      (call) =>
+        call.range![0] >= linkingRange[0] && call.range![1] <= linkingRange[1]
+    );
+    expect(removeLinkCalls).toHaveLength(3);
+    const linkingObjectProperties = nodesOf(casesModule.ast).filter(
+      (node): node is TSESTree.ObjectExpression =>
+        node.type === "ObjectExpression" &&
+        node.range![0] >= linkingRange[0] &&
+        node.range![1] <= linkingRange[1]
     );
     expect(
-      (markerCase.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length
-    ).toBe(0);
-
-    const linkingCase = cases.slice(
-      cases.indexOf('makeCase("account-linking-variants"')
-    );
-    expect(countOccurrences(linkingCase, "rateBudget.")).toBe(0);
-    expect(countOccurrences(linkingCase, "signOutAndRequireAnonymous")).toBe(0);
-    expect(countOccurrences(linkingCase, "requestSignInLink")).toBe(0);
-    expect(countOccurrences(linkingCase, "retrieveSignInLink")).toBe(0);
-    expect(linkingCase.match(/localized\("\/contact"\)/g)).toHaveLength(3);
-    expect(linkingCase.match(/removeSyntheticAccountLink\(/g)).toHaveLength(3);
-    expect(countOccurrences(linkingCase, "email: recipient")).toBeGreaterThan(
-      0
-    );
+      linkingObjectProperties.some((object) => {
+        const email = propertyAssignments(object).get("email");
+        return (
+          email !== undefined &&
+          email.value.type === "Identifier" &&
+          email.value.name === "recipient"
+        );
+      })
+    ).toBe(true);
     expect(
-      countOccurrences(linkingCase, "dotyposCustomerIds: [duplicateCustomerId]")
-    ).toBeGreaterThan(0);
+      linkingObjectProperties.some((object) => {
+        const customerIds =
+          propertyAssignments(object).get("dotyposCustomerIds");
+        return (
+          customerIds !== undefined &&
+          customerIds.value.type === "ArrayExpression" &&
+          customerIds.value.elements.length === 1 &&
+          customerIds.value.elements[0]?.type === "Identifier" &&
+          customerIds.value.elements[0].name === "duplicateCustomerId"
+        );
+      })
+    ).toBe(true);
   });
 
   // The durable linked-edit wait for account-profile-completion (button text
   // compared against the linkedEditSubmitLabel constant, never the transient
   // completion feedback) is covered behaviorally: the account lane executes
   // the full case in every protected-preview E2E run, and the
-  // expectSingleConjunctiveSnapshotMatcher scans below enforce the same
+  // expectSingleConjunctiveSnapshotMatcher checks below enforce the same
   // "durable state, one conjunctive wait" convention on the sibling
   // reservation steps.
 
@@ -308,16 +511,16 @@ describe("workspace account e2e graph", () => {
   // profile carries the formatted "+420 555 000 111" fixture value so a
   // raw-string comparison could never converge.
 
-  test("bounds the confirmed-reservations step as one combined condition", async () => {
-    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
-    const stepBlock = isolatedStepBlock(
-      cases,
-      '"shows the confirmed reservations in the current group"'
+  test("bounds the confirmed-reservations step as one combined condition", () => {
+    const stepCall = stepCallById(
+      "shows the confirmed reservations in the current group"
     );
-
-    expect(countOccurrences(stepBlock, "cancelSyntheticReservation")).toBe(0);
+    expect(stepCall).toBeDefined();
+    expect(identifierNames(stepCall!).has("cancelSyntheticReservation")).toBe(
+      false
+    );
     expectSingleConjunctiveSnapshotMatcher(
-      stepBlock,
+      stepCall!,
       "currentReservationsTitle",
       "confirmedStatus"
     );
@@ -331,50 +534,57 @@ describe("workspace account e2e graph", () => {
     );
   });
 
-  test("keeps cancellation a standalone datasource step before the past page", async () => {
-    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
-    const cancellationId = '"cancels the second synthetic reservation"';
-    const pastPageId = '"moves the cancelled reservation to the past group"';
-    const cancellationBlock = isolatedStepBlock(cases, cancellationId);
+  test("keeps cancellation a standalone datasource step before the past page", () => {
+    const cancellationCall = stepCallById(
+      "cancels the second synthetic reservation"
+    );
+    const pastPageCall = stepCallById(
+      "moves the cancelled reservation to the past group"
+    );
+    expect(cancellationCall).toBeDefined();
+    expect(pastPageCall).toBeDefined();
+    expect(positionDelta(cancellationCall!, pastPageCall!)).toBeLessThan(0);
 
-    expect(cases.indexOf(cancellationId)).toBeLessThan(
-      cases.indexOf(pastPageId)
+    const cancellationIdentifiers = identifierNames(cancellationCall!);
+    expect(cancellationIdentifiers.has("cancelSyntheticReservation")).toBe(
+      true
     );
+    expect(cancellationIdentifiers.has("waitForBrowserCondition")).toBe(false);
+    expect(cancellationIdentifiers.has("openPage")).toBe(false);
+    // Exactly one datasource timeout budget inside the cancellation step.
     expect(
-      countOccurrences(cancellationBlock, "cancelSyntheticReservation")
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(cancellationBlock, "waitForBrowserCondition")).toBe(
-      0
-    );
-    expect(countOccurrences(cancellationBlock, "openPage(")).toBe(0);
-    expect(cancellationBlock.split("datasourceTimeout").length - 1).toBe(1);
+      stringLiterals(cancellationCall!).length >= 0 &&
+        [...cancellationIdentifiers].filter(
+          (name) => name === "datasourceTimeout"
+        ).length
+    ).toBe(1);
   });
 
-  test("bounds the past-reservations page step as one combined condition", async () => {
-    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
-    const stepBlock = isolatedStepBlock(
-      cases,
-      '"moves the cancelled reservation to the past group"'
+  test("bounds the past-reservations page step as one combined condition", () => {
+    const stepCall = stepCallById(
+      "moves the cancelled reservation to the past group"
     );
-
-    expect(countOccurrences(stepBlock, "cancelSyntheticReservation")).toBe(0);
+    expect(stepCall).toBeDefined();
+    expect(identifierNames(stepCall!).has("cancelSyntheticReservation")).toBe(
+      false
+    );
     expectSingleConjunctiveSnapshotMatcher(
-      stepBlock,
+      stepCall!,
       "pastReservationsTitle",
       "cancelledStatus"
     );
   });
 
-  test("bounds the retained-history page step as one combined condition", async () => {
-    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
-    const stepBlock = isolatedStepBlock(
-      cases,
-      '"keeps the retained reservation history across reactivation"'
+  test("bounds the retained-history page step as one combined condition", () => {
+    const stepCall = stepCallById(
+      "keeps the retained reservation history across reactivation"
     );
-
-    expect(countOccurrences(stepBlock, "cancelSyntheticReservation")).toBe(0);
+    expect(stepCall).toBeDefined();
+    expect(identifierNames(stepCall!).has("cancelSyntheticReservation")).toBe(
+      false
+    );
     expectSingleConjunctiveSnapshotMatcher(
-      stepBlock,
+      stepCall!,
       "pastReservationsTitle",
       "cancelledStatus"
     );
@@ -388,58 +598,63 @@ describe("workspace account e2e graph", () => {
   // deletion-marker-reauth and session-lifecycle cases end to end, and
   // the serial lifecycle registration is pinned via the imported
   // workspaceE2EAccountCaseIds catalog above.
+
   test("hands the account lifecycle through the worker-scoped lane fixture", async () => {
-    const lane = readFileSync(
-      repoFile("e2e/account/account-lane.pw.ts"),
-      "utf8"
-    );
-    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
+    // Compile-time contract: the handoff exposes the reauthentication link
+    // pair and the optional first-accepted timestamp, checked by tsc.
+    type ReauthenticationHandoff = NonNullable<
+      WorkspaceE2EAccountLifecycleHandoff["reauthentication"]
+    >;
+    const assertReauthentication = (
+      handoff: ReauthenticationHandoff
+    ): readonly [string, string] => [handoff.link, handoff.linkedCustomerId];
+    const assertFirstAccepted = (
+      handoff: WorkspaceE2EAccountLifecycleHandoff
+    ): Date | undefined => handoff.firstAcceptedRequestedAt;
 
-    const perTestLoopAt = lane.indexOf("for (const caseId");
-    const fixtureScope = lane.slice(0, perTestLoopAt);
     expect(
-      countOccurrences(
-        fixtureScope,
-        "lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff"
+      assertReauthentication({ linkedCustomerId: "c", link: "l" })
+    ).toEqual(["l", "c"]);
+    expect(assertFirstAccepted({})).toBeUndefined();
+
+    // The lane declares and wires the worker-scoped handoff into the case
+    // factory; the verdict comes from the lane syntax tree.
+    const laneIdentifiers = identifierNames(laneModule.ast);
+    expect(laneIdentifiers.has("lifecycleHandoff")).toBe(true);
+    expect(laneIdentifiers.has("WorkspaceE2EAccountLifecycleHandoff")).toBe(
+      true
+    );
+
+    const factoryOptions = callsNamed(
+      laneModule.ast,
+      "makeWorkspaceE2EAccountCases"
+    ).flatMap((call) =>
+      call.arguments.filter(
+        (argument): argument is TSESTree.ObjectExpression =>
+          argument.type === "ObjectExpression"
       )
-    ).toBeGreaterThan(0);
-    expect(
-      countOccurrences(fixtureScope, "const lifecycleHandoff")
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(fixtureScope, "lifecycleHandoff,")).toBeGreaterThan(
-      0
     );
-
-    const factoryCall = lane.slice(
-      lane.indexOf("makeWorkspaceE2EAccountCases({")
+    expect(factoryOptions).toHaveLength(1);
+    const handoffProperty = propertyAssignments(factoryOptions[0]!).get(
+      "lifecycleHandoff"
     );
+    expect(handoffProperty).toBeDefined();
+    const handoffValue = handoffProperty?.value;
     expect(
-      countOccurrences(
-        factoryCall,
-        "lifecycleHandoff: accountLane.lifecycleHandoff"
-      )
-    ).toBeGreaterThan(0);
+      handoffValue !== undefined &&
+        handoffValue.type === "MemberExpression" &&
+        !handoffValue.computed &&
+        handoffValue.object.type === "Identifier" &&
+        handoffValue.object.name === "accountLane"
+    ).toBe(true);
 
-    expect(
-      countOccurrences(
-        cases,
-        "readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff"
-      )
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(cases, "completedDeletion")).toBe(0);
-
-    const types = readFileSync(repoFile("e2e/account/types.ts"), "utf8");
-    expect(
-      countOccurrences(types, "WorkspaceE2EAccountLifecycleHandoff")
-    ).toBeGreaterThan(0);
-    expect(
-      countOccurrences(types, "firstAcceptedRequestedAt?: Date")
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(types, "reauthentication?:")).toBeGreaterThan(0);
-    expect(countOccurrences(types, "link: string")).toBeGreaterThan(0);
-    expect(countOccurrences(types, "linkedCustomerId: string")).toBeGreaterThan(
-      0
+    // The case factory consumes the handoff from its inputs type, and no
+    // retired completed-deletion handoff remains.
+    const casesIdentifiers = identifierNames(casesModule.ast);
+    expect(casesIdentifiers.has("WorkspaceE2EAccountLifecycleHandoff")).toBe(
+      true
     );
+    expect(casesIdentifiers.has("completedDeletion")).toBe(false);
   });
 
   test("journals only exact identifiers", async () => {

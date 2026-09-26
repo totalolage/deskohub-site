@@ -1,17 +1,16 @@
 import { expect, mock, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import {
-  countOccurrences,
-  stripLineComments,
-} from "../../scripts/shared/source-contract";
-
-const readTrackedSource = (url: URL) =>
-  readFileSync(fileURLToPath(url), "utf8");
-
+import type { TSESTree } from "@typescript-eslint/types";
 import { Cause, Effect, Exit, Fiber, Layer } from "effect";
+import { isString } from "effect/Predicate";
 import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
+import {
+  callsNamed,
+  identifierNames,
+  methodCallsNamed,
+  nodesOf,
+  parseTrackedSource,
+} from "../../scripts/shared/source-ast";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutRow } from "../types";
@@ -103,77 +102,119 @@ test("accepts reservation terms evidence from payment submission", () => {
 });
 
 test("reads persisted reservation details without legacy product columns", () => {
-  const source = readTrackedSource(new URL("./database.ts", import.meta.url));
-
-  expect(
-    countOccurrences(
-      stripLineComments(source),
-      "reservation_details: workspaceReservations.reservationDetails"
-    )
-  ).toBe(1);
-  expect(countOccurrences(source, "workspaceReservations.productTier")).toBe(0);
-  expect(countOccurrences(source, "workspaceReservations.productCoffee")).toBe(
-    0
+  const { ast } = parseTrackedSource(
+    new URL("./database.ts", import.meta.url).pathname
   );
-  expect(
-    countOccurrences(source, "workspaceReservations.productMonitorOption")
-  ).toBe(0);
+
+  // The persisted read projects reservation_details from the real column.
+  const detailProjections = nodesOf(ast).filter(
+    (node): node is TSESTree.Property => {
+      if (node.type !== "Property") return false;
+      const value = node.value;
+      return (
+        node.key.type === "Identifier" &&
+        node.key.name === "reservation_details" &&
+        value.type === "MemberExpression" &&
+        !value.computed &&
+        value.object.type === "Identifier" &&
+        value.object.name === "workspaceReservations" &&
+        value.property.type === "Identifier" &&
+        value.property.name === "reservationDetails"
+      );
+    }
+  );
+  expect(detailProjections).toHaveLength(1);
+
+  // No retired product column is read anywhere.
+  const memberProperties = new Set(
+    nodesOf(ast).flatMap((node) =>
+      node.type === "MemberExpression" &&
+      !node.computed &&
+      node.object.type === "Identifier" &&
+      node.object.name === "workspaceReservations" &&
+      node.property.type === "Identifier"
+        ? [node.property.name]
+        : []
+    )
+  );
+  expect(memberProperties.has("productTier")).toBe(false);
+  expect(memberProperties.has("productCoffee")).toBe(false);
+  expect(memberProperties.has("productMonitorOption")).toBe(false);
 });
 
 test("uses one worker-scoped Drizzle client for the exact preview datasource", () => {
-  const databaseServiceSource = readTrackedSource(
-    new URL("./database.service.ts", import.meta.url)
+  const databaseService = parseTrackedSource(
+    new URL("./database.service.ts", import.meta.url).pathname
   );
-  const runnerSource = readTrackedSource(
-    new URL("../services/runner.ts", import.meta.url)
+  const runner = parseTrackedSource(
+    new URL("../services/runner.ts", import.meta.url).pathname
   );
 
+  // The Drizzle client is constructed from the unpooled datasource URL only.
+  const connectionStringValues = nodesOf(databaseService.ast).flatMap((node) =>
+    node.type === "Property" &&
+    node.key.type === "Identifier" &&
+    node.key.name === "connectionString" &&
+    node.value.type === "MemberExpression" &&
+    !node.value.computed &&
+    node.value.object.type === "Identifier" &&
+    node.value.object.name === "config" &&
+    node.value.property.type === "Identifier"
+      ? [node.value.property.name]
+      : []
+  );
+  expect(connectionStringValues).toEqual(["databaseUrlUnpooled"]);
+
+  // The runner builds the E2E database layer from the datasource config and
+  // merges the support layer into the case service.
   expect(
-    countOccurrences(
-      stripLineComments(databaseServiceSource),
-      "connectionString: config.databaseUrlUnpooled"
+    methodCallsNamed(runner.ast, "layer").some(
+      (call) =>
+        call.callee.type === "MemberExpression" &&
+        call.callee.object.type === "Identifier" &&
+        call.callee.object.name === "E2EDatabase" &&
+        call.arguments[0]?.type === "Identifier" &&
+        call.arguments[0].name === "datasourceConfig"
     )
-  ).toBe(1);
+  ).toBe(true);
+  const runnerIdentifiers = identifierNames(runner.ast);
+  expect(runnerIdentifiers.has("WorkspaceE2ECaseService")).toBe(true);
   expect(
-    countOccurrences(
-      databaseServiceSource,
-      "connectionString: config.databaseUrl,"
+    methodCallsNamed(runner.ast, "provideMerge").some(
+      (call) =>
+        call.arguments[0]?.type === "Identifier" &&
+        call.arguments[0].name === "support"
     )
-  ).toBe(0);
-  expect(
-    countOccurrences(
-      stripLineComments(runnerSource),
-      "E2EDatabase.layer(datasourceConfig)"
-    )
-  ).toBeGreaterThan(0);
-  expect(
-    countOccurrences(
-      stripLineComments(runnerSource),
-      "WorkspaceE2ECaseService.Default.pipe(Layer.provideMerge(support))"
-    )
-  ).toBe(1);
+  ).toBe(true);
 });
 
 test("polls for checkout rows before asserting reservation replacement state", () => {
-  const databaseSource = readTrackedSource(
-    new URL("./database.ts", import.meta.url)
+  const database = parseTrackedSource(
+    new URL("./database.ts", import.meta.url).pathname
   );
-  const reservationReplacementSource = readTrackedSource(
-    new URL("../cases/reservation-reuse.ts", import.meta.url)
+  const reservationReplacement = parseTrackedSource(
+    new URL("../cases/reservation-reuse.ts", import.meta.url).pathname
   );
 
+  // The database read runs under the bounded poll, waiting on the checkout
+  // row for the exact order.
   expect(
-    countOccurrences(
-      stripLineComments(databaseSource),
-      "pollUntil(readCheckoutRowFromDatabase(db, orderId)"
+    callsNamed(database.ast, "pollUntil").filter(
+      (call) =>
+        call.arguments[0]?.type === "CallExpression" &&
+        call.arguments[0].callee.type === "Identifier" &&
+        call.arguments[0].callee.name === "readCheckoutRowFromDatabase"
     )
-  ).toBe(1);
+  ).toHaveLength(1);
   expect(
-    countOccurrences(
-      stripLineComments(reservationReplacementSource),
-      "waitForCheckoutRow(datasourceConfig, orderId)"
+    callsNamed(reservationReplacement.ast, "waitForCheckoutRow").filter(
+      (call) =>
+        call.arguments[0]?.type === "Identifier" &&
+        call.arguments[0].name === "datasourceConfig" &&
+        call.arguments[1]?.type === "Identifier" &&
+        call.arguments[1].name === "orderId"
     )
-  ).toBe(1);
+  ).toHaveLength(1);
 });
 
 test("classifies provider session rows after the hosted redirect barrier", () => {
@@ -283,8 +324,23 @@ test("retains the last provider session diagnostic after convergence times out",
   });
 });
 
-test("assigns fixed diagnostics to the Postgres validation boundaries", async () => {
-  const source = readTrackedSource(new URL("./database.ts", import.meta.url));
+test("assigns fixed diagnostics to the Postgres validation boundaries", () => {
+  const { ast } = parseTrackedSource(
+    new URL("./database.ts", import.meta.url).pathname
+  );
+
+  // The diagnostic wrapper always carries its fixed code as the first
+  // string-literal argument; the parsed calls are the authority.
+  const assignedCodes = new Set(
+    callsNamed(ast, "withWorkspaceE2EDiagnosticCode").flatMap((call) => {
+      const argument = call.arguments[0];
+      return argument !== undefined &&
+        argument.type === "Literal" &&
+        isString(argument.value)
+        ? [argument.value]
+        : [];
+    })
+  );
 
   for (const diagnosticCode of [
     "postgres_checkout_row_convergence_failed",
@@ -292,11 +348,7 @@ test("assigns fixed diagnostics to the Postgres validation boundaries", async ()
     "postgres_legal_evidence_validation_failed",
     "postgres_local_pii_validation_failed",
   ]) {
-    expect(
-      new RegExp(
-        `withWorkspaceE2EDiagnosticCode\\(\\s*"${diagnosticCode}"\\s*\\)`
-      ).test(source)
-    ).toBe(true);
+    expect(assignedCodes.has(diagnosticCode)).toBe(true);
   }
 });
 
@@ -510,15 +562,3 @@ const makeCheckoutRow = () =>
     reservation_id: "reservation-1",
     security_token: "test-security-token",
   }) as CheckoutRow;
-
-test("presence counts are comment-aware: a commented-out call satisfies nothing", () => {
-  const commentedOut = [
-    "// const row = await pollUntil(readCheckoutRowFromDatabase(db, orderId));",
-  ].join("\n");
-  expect(
-    countOccurrences(
-      stripLineComments(commentedOut),
-      "pollUntil(readCheckoutRowFromDatabase(db, orderId)"
-    )
-  ).toBe(0);
-});
