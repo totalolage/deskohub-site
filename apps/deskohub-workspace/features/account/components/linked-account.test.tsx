@@ -68,6 +68,17 @@ mock.module("@/features/account/actions", () => ({
   updateCustomerProfile,
 }));
 
+mock.module("@/features/account/avatar-actions", () => ({
+  removeCustomerAvatar: () => Promise.resolve({ data: { status: "removed" } }),
+  uploadCustomerAvatar: () =>
+    Promise.resolve({
+      data: {
+        avatar: { url: "https://res.cloudinary.test/avatar.webp", version: 1 },
+        status: "uploaded",
+      },
+    }),
+}));
+
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
     signIn: { magicLink: () => Promise.resolve({ error: null }) },
@@ -89,8 +100,6 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
       },
     },
     profile: {
-      avatarUnavailableDescription: "Profile photos are not available here.",
-      avatarUnavailableLabel: "Profile photo unavailable",
       emailLabel: "Email",
       emailVerification: {
         unverified: "This email still needs verification.",

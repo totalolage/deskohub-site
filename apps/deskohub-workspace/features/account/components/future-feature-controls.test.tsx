@@ -81,6 +81,18 @@ mock.module("@/features/account/actions", () => ({
   updateCustomerProfile,
 }));
 
+const uploadCustomerAvatar = mock(() =>
+  Promise.resolve({ data: { status: "removed" } })
+);
+const removeCustomerAvatar = mock(() =>
+  Promise.resolve({ data: { status: "removed" } })
+);
+
+mock.module("@/features/account/avatar-actions", () => ({
+  removeCustomerAvatar,
+  uploadCustomerAvatar,
+}));
+
 type MarketingPreferenceSaveInput = {
   readonly confirmed: true;
   readonly context: string;
@@ -161,8 +173,6 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
 
 const profileCopy = {
   "en-US": {
-    avatarUnavailableDescription: "Profile photos are not available here.",
-    avatarUnavailableLabel: "Profile photo unavailable",
     emailLabel: "Email address",
     emailVerification: {
       unverified: "This email still needs verification.",
@@ -175,8 +185,6 @@ const profileCopy = {
     verifiedEmail: "Verified login email",
   },
   "cs-CZ": {
-    avatarUnavailableDescription: "Profilové fotografie nejsou k dispozici.",
-    avatarUnavailableLabel: "Profilová fotografie není k dispozici",
     emailLabel: "E-mailová adresa",
     emailVerification: {
       unverified: "Tento e-mail stále vyžaduje ověření.",
@@ -301,6 +309,8 @@ afterEach(() => {
   signInMagicLink.mockClear();
   signOut.mockClear();
   updateCustomerProfile.mockClear();
+  uploadCustomerAvatar.mockClear();
+  removeCustomerAvatar.mockClear();
 });
 
 afterAll(unregisterWorkspaceComponentTestEnv);
@@ -441,11 +451,6 @@ type FutureFeatureTarget = {
 };
 
 const futureFeatureTargets: readonly FutureFeatureTarget[] = [
-  {
-    label: (locale) => profileCopy[locale].avatarUnavailableLabel,
-    name: "profile avatar",
-    render: renderProfileScreen,
-  },
   {
     label: (locale) => profileCopy[locale].languageLabel,
     name: "language control",

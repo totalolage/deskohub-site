@@ -17,8 +17,6 @@ import type { ProfileScreenCopy, ProfileScreenProps } from "./profile-screen";
 import { ProfileScreen } from "./profile-screen";
 
 const englishCopy: ProfileScreenCopy = {
-  avatarUnavailableDescription: "Profile photos are not available here.",
-  avatarUnavailableLabel: "Profile photo unavailable",
   emailLabel: "Email",
   emailVerification: {
     unverified: "This email still needs verification.",
@@ -32,8 +30,6 @@ const englishCopy: ProfileScreenCopy = {
 };
 
 const czechCopy: ProfileScreenCopy = {
-  avatarUnavailableDescription: "Profilové fotografie nejsou k dispozici.",
-  avatarUnavailableLabel: "Profilová fotografie není k dispozici",
   emailLabel: "E-mail",
   emailVerification: {
     unverified: "Tento e-mail stále vyžaduje ověření.",
@@ -296,13 +292,15 @@ describe("ProfileScreen", () => {
     expect(verificationButton).toContain("text-emerald-800");
   });
 
-  test("disables unavailable camera and language controls without a preference", () => {
-    const markup = renderProfile();
+  test("disables the unavailable language control and renders a provided avatar slot", () => {
+    const markup = renderProfile({
+      avatar: <span data-avatar-marker="avatar-slot" />,
+    });
     const disabledButtons = markup.match(/<button\b[^>]*disabled=""/g) ?? [];
     const options = markup.match(/<option\b/g) ?? [];
 
-    expect(disabledButtons).toHaveLength(2);
-    expect(markup).toContain('aria-label="Profile photo unavailable"');
+    expect(markup).toContain('data-avatar-marker="avatar-slot"');
+    expect(disabledButtons).toHaveLength(1);
     expect(markup).toContain('data-slot="select-trigger"');
     expect(markup).toContain('role="combobox"');
     expect(markup).toMatch(
@@ -390,11 +388,6 @@ describe("ProfileScreen", () => {
   test("keeps informational text and the verification indicator contrast-safe", () => {
     const markup = renderProfile();
     const sectionClass = markup.match(/<section[^>]*class="([^"]*)"/)?.[1];
-    const informationalText = extractLiteralColor(
-      markup,
-      "text",
-      /<p class="[^"]*"[^>]*>Profile photos are not available here\.<\/p>/
-    );
     const emailBackground = extractLiteralColor(
       markup,
       "bg",
@@ -415,26 +408,21 @@ describe("ProfileScreen", () => {
     expect(sectionClass).toContain("bg-white");
     expect(emailBackground).toBe("#f8fafc");
     expect(verificationButton).toContain("text-emerald-800");
-    expect(contrastRatio(informationalText, "#ffffff")).toBeGreaterThanOrEqual(
-      4.5
-    );
     expect(
       contrastRatio(languageText, languageBackground)
     ).toBeGreaterThanOrEqual(4.5);
   });
 
-  test("uses real Unicode code points and a neutral icon when names are absent", () => {
+  test("uses real Unicode code points in the display name", () => {
     const unicodeMarkup = renderProfile({
       firstName: "  𐐀da",
       lastName: "😀ski  ",
     });
     expect(unicodeMarkup).toContain("𐐀da 😀ski");
-    expect(unicodeMarkup).toContain("𐐀😀");
     expect(unicodeMarkup).not.toContain("�");
 
     const fallbackMarkup = renderProfile({ firstName: "  ", lastName: null });
     expect(fallbackMarkup).toContain("Workspace member");
-    expect(fallbackMarkup).toContain("lucide-user-round");
     expect(fallbackMarkup).not.toContain(">WM<");
   });
 

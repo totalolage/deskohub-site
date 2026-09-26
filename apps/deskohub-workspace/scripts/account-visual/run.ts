@@ -1249,6 +1249,7 @@ const createBuildPlugin = (): Bun.BunPlugin => ({
   setup(build) {
     const exactAliases = new Map([
       ["@/features/account/actions", accountActionsStubPath],
+      ["@/features/account/avatar-actions", accountActionsStubPath],
       ["@/features/legal/actions", accountActionsStubPath],
       ["@/features/account/analytics-identity", analyticsIdentityStubPath],
       ["@/features/account/auth.client", authClientStubPath],

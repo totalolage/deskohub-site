@@ -108,3 +108,5 @@ export const deleteCustomerAccount = unavailable;
 export const saveMarketingPreferencesAction = unavailable;
 export const confirmMarketingManagementAction = unavailable;
 export const clearMarketingManagementAction = unavailable;
+export const uploadCustomerAvatar = unavailable;
+export const removeCustomerAvatar = unavailable;
