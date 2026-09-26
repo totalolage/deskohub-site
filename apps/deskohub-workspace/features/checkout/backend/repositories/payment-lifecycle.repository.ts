@@ -71,6 +71,8 @@ import { getWorkspaceProductTarget } from "@/features/discounts/product-target";
 import { getPromotionTiming } from "@/features/discounts/promotion-code";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
 import { type Locale, m } from "@/features/i18n";
+import { orderIdSchema } from "@/features/order";
+import { ensureReservationOrder } from "@/features/order/backend/reservation-order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
@@ -210,19 +212,13 @@ export class PaymentLifecycleRepository extends Context.Service<
         const commitment = getDiscountCommitmentPayload(input.commitment);
         const claimedApplication =
           yield* validateDiscountCommitment(commitment);
+        const orderId = orderIdSchema.make(input.workspaceReservationId);
 
         return yield* db
           .transaction(
             Effect.fn(function* (tx) {
               const [reservation] = yield* tx
-                .select({
-                  id: workspaceReservations.id,
-                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-                  dotyposReservationId:
-                    workspaceReservations.dotyposReservationId,
-                  reservationHoldExpiresAt:
-                    workspaceReservations.reservationHoldExpiresAt,
-                })
+                .select()
                 .from(workspaceReservations)
                 .where(
                   and(
@@ -259,6 +255,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                 });
               }
 
+              yield* ensureReservationOrder({ tx, reservation });
+
               yield* validateAccountingDocumentSnapshotProviderIdentity({
                 snapshot: accountingSnapshot,
                 paymentReference: {
@@ -273,6 +271,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 .insert(paymentAttempts)
                 .values({
                   id: postgresUuidV7,
+                  orderId,
                   workspaceReservationId: input.workspaceReservationId,
                   provider: "nexi",
                   providerOrderId: input.providerOrderId,
@@ -316,7 +315,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                     ])
                   )
                 )
-                .returning({ id: workspaceReservations.id });
+                .returning();
 
               if (!linked) {
                 return yield* new PaymentLifecycleStateError({
@@ -330,6 +329,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                     "Payment attempts can only be linked to held unpaid reservations.",
                 });
               }
+              yield* ensureReservationOrder({ tx, reservation: linked });
 
               const applicationRows = yield* persistDiscountApplications({
                 tx,
@@ -406,19 +406,7 @@ export class PaymentLifecycleRepository extends Context.Service<
           .transaction(
             Effect.fn(function* (tx) {
               const [reservation] = yield* tx
-                .select({
-                  id: workspaceReservations.id,
-                  activePaymentAttemptId:
-                    workspaceReservations.activePaymentAttemptId,
-                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-                  dotyposReservationId:
-                    workspaceReservations.dotyposReservationId,
-                  paidAt: workspaceReservations.paidAt,
-                  paymentState: workspaceReservations.paymentState,
-                  reservationHoldExpiresAt:
-                    workspaceReservations.reservationHoldExpiresAt,
-                  reservationState: workspaceReservations.reservationState,
-                })
+                .select()
                 .from(workspaceReservations)
                 .where(
                   eq(workspaceReservations.id, input.workspaceReservationId)
@@ -432,6 +420,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 reservation?.paymentState === "paid" &&
                 reservation.activePaymentAttemptId
               ) {
+                yield* ensureReservationOrder({ tx, reservation });
                 const [existingAttempt] = yield* tx
                   .select()
                   .from(paymentAttempts)
@@ -517,6 +506,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 .insert(paymentAttempts)
                 .values({
                   id: postgresUuidV7,
+                  orderId: orderIdSchema.make(input.workspaceReservationId),
                   workspaceReservationId: input.workspaceReservationId,
                   provider: "internal",
                   providerOrderId: null,
@@ -564,7 +554,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                     ])
                   )
                 )
-                .returning({ id: workspaceReservations.id });
+                .returning();
 
               if (!completedReservation) {
                 return yield* lifecycleStateError(
@@ -573,6 +563,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                   "Internal payment could not atomically complete the held reservation."
                 );
               }
+              yield* ensureReservationOrder({
+                tx,
+                reservation: completedReservation,
+              });
 
               const applicationRows = yield* persistDiscountApplications({
                 tx,
@@ -715,9 +709,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                     eq(workspaceReservations.activePaymentAttemptId, input.id)
                   )
                 )
-                .returning({ paidAt: workspaceReservations.paidAt });
+                .returning();
 
               if (reservation) {
+                yield* ensureReservationOrder({ tx, reservation });
                 yield* redeemCodeClaim(tx, input.id, input.paidAt);
                 return {
                   attempt: toPaymentAttempt(attempt),
@@ -820,9 +815,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                     eq(workspaceReservations.activePaymentAttemptId, input.id)
                   )
                 )
-                .returning({ updatedAt: workspaceReservations.updatedAt });
+                .returning();
 
               if (reservation) {
+                yield* ensureReservationOrder({ tx, reservation });
                 yield* releaseCodeClaim(
                   tx,
                   input.id,

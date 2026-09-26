@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
+import { ensureReservationOrder } from "@/features/order/backend/reservation-order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { redeemCodeClaim } from "./payment-lifecycle.repository";
 
@@ -164,6 +165,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   "Late-payment reservation was not found."
                 );
               }
+              yield* ensureReservationOrder({ tx, reservation });
               const isActiveAttempt =
                 reservation.activePaymentAttemptId === input.paymentAttemptId;
               if (!isActiveAttempt && input.state !== "refund_required") {
@@ -314,7 +316,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                       )
                     )
                   )
-                  .returning({ id: workspaceReservations.id });
+                  .returning();
                 if (!updatedReservation) {
                   return yield* recoveryStateError(
                     "settle",
@@ -322,6 +324,10 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     "Late-payment reservation settlement failed."
                   );
                 }
+                yield* ensureReservationOrder({
+                  tx,
+                  reservation: updatedReservation,
+                });
               }
 
               yield* tx
@@ -404,6 +410,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     "Late-payment recovery requires a terminal attempt and its Dotypos reservation."
                   );
                 }
+                yield* ensureReservationOrder({ tx, reservation });
 
                 const [recovery] = yield* tx
                   .insert(latePaymentRecoveries)

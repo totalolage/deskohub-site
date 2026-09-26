@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { getTableColumns } from "drizzle-orm";
 import { Effect, Layer } from "effect";
-import { workspaceReservations } from "@/db/schema";
+import { orders, workspaceReservations } from "@/db/schema";
 import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
 import {
   WorkspaceReservationRepository,
@@ -32,7 +32,7 @@ const makeRepository = async () => {
 // The recording database answers in pg's array row mode: build positional
 // rows from the table's column order.
 const reservationRowBase = {
-  id: "reservation-1",
+  id: "00000000-0000-4000-8000-000000000001",
   checkoutSessionKey: "session-1",
   checkoutAttemptKey: "attempt-key-1",
   correlationId: "correlation-1",
@@ -66,6 +66,19 @@ const sqlTextsOf = (
   recording: Awaited<ReturnType<typeof makeRecordingWorkspaceDatabase>>
 ) => recording.statements.map(({ sql }) => sql);
 
+/**
+ * The order mirror upsert returns the mirrored order row; canned rows must be
+ * complete because the orders table decodes every column positionally.
+ */
+const orderRowValues = { kind: "reservation" };
+
+const orderRow = () =>
+  Object.entries(getTableColumns(orders)).map(([propertyKey]) =>
+    propertyKey === "id"
+      ? reservationRowBase.id
+      : (orderRowValues[propertyKey as keyof typeof orderRowValues] ?? null)
+  );
+
 describe("WorkspaceReservationRepository", () => {
   test("selects expired holds in a deterministic starvation-safe limited order", async () => {
     const { recording, repository } = await makeRepository();
@@ -97,7 +110,7 @@ describe("WorkspaceReservationRepository", () => {
     const error = await Effect.runPromise(
       Effect.flip(
         repository.recordHoldCleanupSkipped({
-          id: "reservation-1" as never,
+          id: "00000000-0000-4000-8000-000000000001" as never,
           holdExpiredAt: now,
           failureCode: "provider_unavailable",
         })
@@ -123,7 +136,7 @@ describe("WorkspaceReservationRepository", () => {
 
     const claimed = await Effect.runPromise(
       repository.claimPaidFulfillment({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         staleProcessingBefore: staleBefore,
       })
     );
@@ -145,11 +158,11 @@ describe("WorkspaceReservationRepository", () => {
   test("marks paid Nexi attempts as requiring a refund with admin cancellation fencing", async () => {
     const { recording, repository } = await makeRepository();
     const claimedAt = Temporal.Instant.from("2026-01-01T10:00:00.000Z");
-    recording.setRows([[["reservation-1"]], []]);
+    recording.setRows([[["00000000-0000-4000-8000-000000000001"]], []]);
 
     await Effect.runPromise(
       repository.markAdministrationCancelled({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         cancelledAt: now,
         claimedAt,
         failureCode: "operator_cancelled",
@@ -187,7 +200,7 @@ describe("WorkspaceReservationRepository", () => {
     const error = await Effect.runPromise(
       Effect.flip(
         repository.markAdministrationCancellationFailed({
-          id: "reservation-1" as never,
+          id: "00000000-0000-4000-8000-000000000001" as never,
           claimedAt,
           failureCode: "provider_rejected_cancellation",
         })
@@ -210,7 +223,7 @@ describe("WorkspaceReservationRepository", () => {
 
     const claimed = await Effect.runPromise(
       repository.claimAdministrationCancellation({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         providerCredentialRemoved: false,
         accessGrantUpdatedAt: null,
         staleCancellingBefore: staleBefore,
@@ -232,6 +245,7 @@ describe("WorkspaceReservationRepository", () => {
     recording.setRows([
       [], // access grant lookup
       [reservationRow()], // claimed reservation row
+      [orderRow()], // order mirror upsert
       [["attempt-1"]], // cancelled payment attempt
       [], // discount claim lookup for release
       [], // voucher claim lookup for release
@@ -239,7 +253,7 @@ describe("WorkspaceReservationRepository", () => {
 
     await Effect.runPromise(
       repository.claimAdministrationCancellation({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         providerCredentialRemoved: true,
         accessGrantUpdatedAt: null,
         staleCancellingBefore: staleBefore,
@@ -280,6 +294,7 @@ describe("WorkspaceReservationRepository", () => {
         ],
       ],
       [reservationRow()],
+      [orderRow()], // order mirror upsert
       [["attempt-1"]],
       [],
       [],
@@ -288,7 +303,7 @@ describe("WorkspaceReservationRepository", () => {
 
     await Effect.runPromise(
       repository.claimAdministrationCancellation({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         providerCredentialRemoved: true,
         accessGrantUpdatedAt: "2026-01-01T09:59:00Z",
         staleCancellingBefore: staleBefore,
@@ -313,7 +328,7 @@ describe("WorkspaceReservationRepository", () => {
 
     const recovered = await Effect.runPromise(
       repository.recoverEmailDeliveryFailure({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         deliveredAt: now,
       })
     );
@@ -335,7 +350,7 @@ describe("WorkspaceReservationRepository", () => {
 
     const failed = await Effect.runPromise(
       repository.markFulfillmentDeliveryFailed({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         failureCode: "fulfillment_email_failed",
         failedAt: now,
       })
@@ -359,7 +374,7 @@ describe("WorkspaceReservationRepository", () => {
     const error = await Effect.runPromise(
       Effect.flip(
         repository.markFulfilled({
-          id: "reservation-1" as never,
+          id: "00000000-0000-4000-8000-000000000001" as never,
           fulfilledAt: now,
         })
       )

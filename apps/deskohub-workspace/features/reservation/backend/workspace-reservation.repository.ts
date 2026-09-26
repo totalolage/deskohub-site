@@ -36,6 +36,7 @@ import type {
   PaymentAttemptId,
 } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
+import { ensureReservationOrder } from "@/features/order/backend/reservation-order";
 import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
@@ -88,7 +89,9 @@ export interface IWorkspaceReservationRepository {
     input: CreateWorkspaceReservationInput
   ) => Effect.Effect<
     WorkspaceReservation,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
+    | WorkspaceReservationDetailsMalformedError
   >;
   readonly findById: (
     id: WorkspaceReservationId
@@ -365,50 +368,69 @@ export class WorkspaceReservationRepository extends Context.Service<
               reservationHoldExpiresAt: input.reservationHoldExpiresAt,
             };
 
-            const [inserted] = yield* db
-              .insert(workspaceReservations)
-              .values(row)
-              .onConflictDoNothing()
-              .returning();
+            const reservation = yield* db.transaction(
+              Effect.fn(function* (tx) {
+                const [inserted] = yield* tx
+                  .insert(workspaceReservations)
+                  .values(row)
+                  .onConflictDoNothing()
+                  .returning();
 
-            if (inserted) return yield* decodeWorkspaceReservation(inserted);
+                if (inserted) {
+                  yield* ensureReservationOrder({ tx, reservation: inserted });
+                  return inserted;
+                }
 
-            const [existingAttempt] = yield* db
-              .select()
-              .from(workspaceReservations)
-              .where(
-                eq(
-                  workspaceReservations.checkoutAttemptKey,
-                  input.checkoutAttemptKey
-                )
-              )
-              .limit(1);
+                const [existingAttempt] = yield* tx
+                  .select()
+                  .from(workspaceReservations)
+                  .where(
+                    eq(
+                      workspaceReservations.checkoutAttemptKey,
+                      input.checkoutAttemptKey
+                    )
+                  )
+                  .limit(1)
+                  .for("update");
 
-            if (existingAttempt) {
-              return yield* decodeWorkspaceReservation(existingAttempt);
-            }
+                if (existingAttempt) {
+                  yield* ensureReservationOrder({
+                    tx,
+                    reservation: existingAttempt,
+                  });
+                  return existingAttempt;
+                }
 
-            const [currentAttempt] = yield* db
-              .select()
-              .from(workspaceReservations)
-              .where(
-                and(
-                  eq(
-                    workspaceReservations.checkoutSessionKey,
-                    input.checkoutSessionKey
-                  ),
-                  sql`${workspaceReservations.reservationState} <> 'cancelled'`
-                )
-              )
-              .orderBy(desc(workspaceReservations.createdAt))
-              .limit(1);
+                const [currentAttempt] = yield* tx
+                  .select()
+                  .from(workspaceReservations)
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.checkoutSessionKey,
+                        input.checkoutSessionKey
+                      ),
+                      sql`${workspaceReservations.reservationState} <> 'cancelled'`
+                    )
+                  )
+                  .orderBy(desc(workspaceReservations.createdAt))
+                  .limit(1)
+                  .for("update");
 
-            if (!currentAttempt) {
-              return yield* Effect.die(
-                "Workspace reservation insert returned no row."
-              );
-            }
-            return yield* decodeWorkspaceReservation(currentAttempt);
+                if (!currentAttempt) {
+                  return yield* Effect.die(
+                    "Workspace reservation insert returned no row."
+                  );
+                }
+                yield* ensureReservationOrder({
+                  tx,
+                  reservation: currentAttempt,
+                });
+                return currentAttempt;
+              })
+            );
+
+            return yield* decodeWorkspaceReservation(reservation);
           },
           (effect, input) =>
             effect.pipe(
@@ -719,6 +741,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                 )
                 .returning();
               if (!claimed) return null;
+              yield* ensureReservationOrder({ tx, reservation: claimed });
 
               if (input.pendingPaymentCancellation) {
                 const [attempt] = yield* tx
