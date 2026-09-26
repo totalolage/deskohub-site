@@ -57,6 +57,7 @@ const validSelect: Order = {
   dotyposCustomerId: "12345" as DotyposCustomerId,
   paymentState: "paid",
   fulfillmentState: "fulfilled",
+  activePaymentAttemptId: null,
   paidAt: Temporal.Instant.from("2026-09-26T10:00:00.000Z"),
   fulfilledAt: Temporal.Instant.from("2026-09-26T11:00:00.000Z"),
   fulfillmentFailedAt: null,
