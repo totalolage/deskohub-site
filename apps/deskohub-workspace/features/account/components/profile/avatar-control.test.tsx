@@ -30,9 +30,9 @@ const routerRefresh = mock(() => undefined);
 
 let uploadResult: () => Promise<ActionResult> = () =>
   Promise.resolve({ data: { status: "uploaded" } });
-const removeCustomerAvatar = mock(
-  (): Promise<ActionResult> => Promise.resolve({ data: { status: "removed" } })
-);
+let removeResult: () => Promise<ActionResult> = () =>
+  Promise.resolve({ data: { status: "removed" } });
+const removeCustomerAvatar = mock((): Promise<ActionResult> => removeResult());
 
 mock.module("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefresh }),
@@ -74,6 +74,7 @@ describe("AvatarControl failure feedback", () => {
   afterEach(() => {
     cleanup();
     uploadResult = () => Promise.resolve({ data: { status: "uploaded" } });
+    removeResult = () => Promise.resolve({ data: { status: "removed" } });
     removeCustomerAvatar.mockClear();
     routerRefresh.mockClear();
   });
@@ -174,5 +175,104 @@ describe("AvatarControl failure feedback", () => {
     expect(
       view.getByText(m.accountProfileAvatarUploading({}, { locale: "en-US" }))
     ).toBeDefined();
+  });
+
+  test("a later successful remove is not masked by a previous failed upload", async () => {
+    uploadResult = () => Promise.reject(new Error("network down"));
+
+    const view = renderControl();
+    await act(async () => {
+      chooseFile(
+        view,
+        new File(["png-bytes"], "photo.png", { type: "image/png" })
+      );
+    });
+    await waitFor(() =>
+      expect(
+        view.getByText(
+          m.accountProfileAvatarErrorGeneric({}, { locale: "en-US" })
+        )
+      ).toBeDefined()
+    );
+
+    removeResult = () => Promise.resolve({ data: { status: "removed" } });
+    await act(async () => {
+      fireEvent.click(
+        view.getByText(m.accountProfileAvatarRemove({}, { locale: "en-US" }))
+      );
+    });
+
+    await waitFor(() =>
+      expect(
+        view.getByText(m.accountProfileAvatarRemoved({}, { locale: "en-US" }))
+      ).toBeDefined()
+    );
+    // The stale upload failure is gone and the image was removed.
+    expect(
+      view.queryByText(
+        m.accountProfileAvatarErrorGeneric({}, { locale: "en-US" })
+      )
+    ).toBeNull();
+    expect(
+      view.queryByAltText(m.accountProfileAvatarAlt({}, { locale: "en-US" }))
+    ).toBeNull();
+    expect(routerRefresh).toHaveBeenCalled();
+  });
+
+  test("a later successful upload is not masked by a previous failed remove", async () => {
+    removeResult = () => Promise.reject(new Error("network down"));
+
+    const view = renderControl();
+    await act(async () => {
+      fireEvent.click(
+        view.getByText(m.accountProfileAvatarRemove({}, { locale: "en-US" }))
+      );
+    });
+    await waitFor(() =>
+      expect(
+        view.getByText(
+          m.accountProfileAvatarErrorGeneric({}, { locale: "en-US" })
+        )
+      ).toBeDefined()
+    );
+    // The failed remove keeps the previous image in place.
+    expect(
+      view.getByAltText(m.accountProfileAvatarAlt({}, { locale: "en-US" }))
+    ).toBeDefined();
+
+    uploadResult = () =>
+      Promise.resolve({
+        data: {
+          status: "uploaded",
+          avatar: {
+            url: "https://res.cloudinary.test/upload/v2/avatars/next",
+            version: 2,
+          },
+        },
+      });
+    await act(async () => {
+      chooseFile(
+        view,
+        new File(["png-bytes"], "photo-2.png", { type: "image/png" })
+      );
+    });
+
+    await waitFor(() =>
+      expect(
+        view.getByText(m.accountProfileAvatarUpdated({}, { locale: "en-US" }))
+      ).toBeDefined()
+    );
+    // The stale remove failure is gone and the new image is shown.
+    expect(
+      view.queryByText(
+        m.accountProfileAvatarErrorGeneric({}, { locale: "en-US" })
+      )
+    ).toBeNull();
+    const image = view.getByAltText(
+      m.accountProfileAvatarAlt({}, { locale: "en-US" })
+    ) as HTMLImageElement;
+    expect(image.getAttribute("src")).toBe(
+      "https://res.cloudinary.test/upload/v2/avatars/next"
+    );
   });
 });

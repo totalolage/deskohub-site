@@ -206,6 +206,27 @@ type CloudinaryRejectedValue =
  */
 const publicIdLookupExpression = "public_id lookup";
 
+/**
+ * Fixed, identifier-free failure message for the by-public-ID lookup path.
+ * The provider's rejection text can echo the requested asset identifier, so
+ * it is classified into an HTTP code and never carried into the error
+ * message that callers (and their loggers) see.
+ */
+const publicIdLookupFailureMessage = "Cloudinary public ID lookup failed";
+
+function toPublicIdLookupSearchError(error: CloudinaryRejectedValue) {
+  const httpCode =
+    typeof error === "object" && error !== null
+      ? readCloudinaryHttpCode(error)
+      : undefined;
+
+  return new CloudinarySearchError({
+    message: publicIdLookupFailureMessage,
+    expression: publicIdLookupExpression,
+    httpCode,
+  });
+}
+
 function decodeAssetResponse(result: unknown) {
   return pipe(
     decodeCloudinaryAsset(result),
@@ -485,10 +506,7 @@ function createPublicIdLookupExecutor() {
               context: true,
             }),
           catch: (error) =>
-            toCloudinarySearchError(
-              error as CloudinaryRejectedValue,
-              publicIdLookupExpression
-            ),
+            toPublicIdLookupSearchError(error as CloudinaryRejectedValue),
         }),
         Effect.flatMap((result) => decodeAssetResponse(result)),
         Effect.tap(() =>
@@ -496,7 +514,6 @@ function createPublicIdLookupExecutor() {
         ),
         Effect.tapError((error) =>
           Effect.logError("Cloudinary public ID lookup failed", {
-            errorMessage: error.message,
             httpCode: error.httpCode,
           })
         ),

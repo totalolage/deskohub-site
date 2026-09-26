@@ -43,6 +43,23 @@ within the production namespace from a preview.
 - Treat a rename failure as uncertain; retry the promotion instead of
   reporting the swap as done, and never delete the staged asset while the
   promotion outcome is unknown and the old avatar is gone.
+- When a promotion fails with no previous live avatar, the staged asset is
+  retained as the only recoverable copy instead of destroyed. The next
+  upload recovers it first: `recoverRetainedStaging` promotes the newest
+  retained staging asset onto the live ID before anything new is staged.
+  Recovery is best-effort; a failed recovery never blocks the fresh upload.
+- Deletion destroys the live asset first, then sweeps the account's staging
+  folder. The sweep is bounded: one `searchByFolder` call with `maxResults`
+  set to 8, destroying only the listed assets. An overflow of retained
+  staging beyond the bound never fails deletion — the live destroy is the
+  authoritative step. `searchByFolder` ordering is provider-defined; the
+  code does not rely on any particular order.
+- Avatar mutations (upload, remove, destroy) run the whole media critical
+  section — provider calls, reconciliation, and cleanup — under the account
+  advisory lock and uninterruptibly: an interruption cannot release the lock
+  while a provider rename, upload, or destroy is still in flight, so no late
+  provider mutation can land after a concurrent deletion destroyed the
+  avatar and removed the identity. There is no late rename after deletion.
 - Deletion removes the Cloudinary asset before Better Auth identity removal,
   fails retryably on `uncertain`, and accepts `not-found` as done.
 
