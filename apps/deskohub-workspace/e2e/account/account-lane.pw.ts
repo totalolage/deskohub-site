@@ -32,6 +32,7 @@ import {
 import { verifyWorkspaceE2EMarketingPreferences } from "./marketing-preferences";
 import { verifyProfileNavigation } from "./profile-navigation";
 import { makeMagicLinkRateBudget } from "./rate-budget";
+import { verifyCustomerInvoiceAccess } from "./invoice-access";
 import { withWorkspaceE2EReservationHistoryFixture } from "./reservation-history-fixture";
 import {
   toWorkspaceE2EReservationHistoryFailure,
@@ -258,6 +259,22 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               });
             }),
             id: "checks account layout navigation",
+            timeoutMs: workspaceE2ETimeouts.providerTransition,
+          },
+          {
+            execute: Effect.tryPromise({
+              catch: () =>
+                workspaceE2EError(
+                  "verify customer invoice access failed",
+                  { operation: "verify customer invoice access" }
+                ),
+              try: () =>
+                verifyCustomerInvoiceAccess(
+                  getOwnedPage(),
+                  accountLane.config.baseUrl
+                ),
+            }),
+            id: "checks customer invoice access privacy",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
           {

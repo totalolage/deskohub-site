@@ -19,6 +19,7 @@ const linkedFixture = {
     kind: "available",
     groups: { current: [], past: [], unavailable: [] },
   },
+  invoices: { kind: "empty" },
 } as const satisfies CustomerAccountPageState;
 
 export const accountVisualFixture = linkedFixture;

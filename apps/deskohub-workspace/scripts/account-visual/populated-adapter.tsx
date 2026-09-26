@@ -85,6 +85,29 @@ const populatedFixture = {
       unavailable: [],
     },
   },
+  invoices: {
+    kind: "populated",
+    invoices: [
+      {
+        id: "account-visual-invoice-1",
+        invoiceNumber: "WS-FV-2026-000001",
+        issuedAt: "2026-09-01T08:00:00.000Z",
+        total: "450",
+        currency: "CZK",
+        paymentStatus: "paid",
+        dueDate: null,
+      },
+      {
+        id: "account-visual-invoice-2",
+        invoiceNumber: "WS-FV-2026-000002",
+        issuedAt: "2026-09-18T08:00:00.000Z",
+        total: "1200",
+        currency: "CZK",
+        paymentStatus: "due",
+        dueDate: "2026-10-02",
+      },
+    ],
+  },
 } as const satisfies CustomerAccountPageState;
 
 export const accountVisualFixture = populatedFixture;
@@ -92,7 +115,7 @@ export const accountVisualFixture = populatedFixture;
 export const accountVisualAdapterMetadata = {
   owner: "account-visual populated adapter",
   fixture:
-    "synthetic Ada Example business billing with three current and two past reservations",
+    "synthetic Ada Example business billing with three current and two past reservations and two issued invoices",
 } as const;
 
 export function PopulatedAccountAdapter({ locale }: AccountVisualAdapterProps) {

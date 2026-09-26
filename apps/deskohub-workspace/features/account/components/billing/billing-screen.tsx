@@ -1,10 +1,14 @@
-import { Download, FileDown, Plus, RefreshCw } from "lucide-react";
+import { FileDown, Plus, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId } from "react";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
-import type { Locale } from "@/features/i18n";
+import type { CustomerInvoiceListState } from "@/features/account/contracts";
+import type { CustomerInvoiceSummary } from "@/features/accounting/customer-invoice";
+import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
+import { formatInstantDate } from "@/shared/utils/date-time-format";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 /*
  * THESIS: Billing stays honest about unavailable account capabilities instead of
@@ -12,7 +16,7 @@ import { Button } from "@/shared/components/ui/button";
  * OWN-WORLD: Sculpin, navy, slate, and white surfaces extend the account shell
  * with compact controls and quiet empty states.
  * STORY: Visitors see what billing supports, understand what is unavailable,
- * and continue into their own billing details.
+ * download their issued invoices, and continue into their own billing details.
  * FIRST VIEWPORT: One padded billing card places title, payment methods,
  * billing details, invoice history, and the caller-owned footer in one stack.
  * FORM: This shell never owns form markup, fields, values, or persistence; the caller owns them.
@@ -28,13 +32,17 @@ export interface BillingScreenCopy {
   readonly billingDetailsTitle: string;
   readonly syncAres: string;
   readonly invoiceHistoryTitle: string;
-  readonly invoiceHistoryUnavailable: string;
+  readonly invoiceEmpty: string;
+  readonly invoiceFailed: string;
+  readonly invoiceLoading: string;
+  readonly invoiceUnavailable: string;
   readonly downloadInvoice: string;
   readonly exportInvoices: string;
 }
 
 export interface BillingScreenProps {
   readonly copy: BillingScreenCopy;
+  readonly invoices: CustomerInvoiceListState;
   readonly locale: Locale;
   readonly children: ReactNode;
   readonly footer?: ReactNode;
@@ -44,6 +52,7 @@ export function BillingScreen({
   children,
   copy,
   footer,
+  invoices,
   locale,
 }: BillingScreenProps) {
   const instanceId = useId();
@@ -51,7 +60,10 @@ export function BillingScreen({
   const paymentMethodsTitleId = `${instanceId}-payment-methods-title`;
   const billingDetailsTitleId = `${instanceId}-billing-details-title`;
   const invoiceHistoryTitleId = `${instanceId}-invoice-history-title`;
-  const invoiceHistoryUnavailableId = `${instanceId}-invoice-history-unavailable`;
+  const invoiceHistoryStateId = `${instanceId}-invoice-history-state`;
+
+  const invoiceStateCopy = getInvoiceStateCopy(copy, invoices);
+  const canExport = invoices.kind === "populated";
 
   return (
     <AccountSectionPanel
@@ -126,24 +138,21 @@ export function BillingScreen({
             {copy.invoiceHistoryTitle}
           </h3>
           <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto">
-            <FutureFeatureTooltip locale={locale}>
-              <Button
-                aria-describedby={invoiceHistoryUnavailableId}
-                className="h-auto max-w-full whitespace-normal text-left text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
-                disabled
-                size="sm"
-                type="button"
-                variant="secondary"
+            {canExport ? (
+              <a
+                aria-describedby={invoiceHistoryStateId}
+                className="inline-flex h-auto max-w-full items-center justify-center gap-2 whitespace-normal rounded-xl border border-[#cbd7e5] bg-white px-4 py-2 text-sm font-semibold text-[#344258] transition-colors hover:bg-[#f2f6fa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
+                download
+                href={`/${locale}/account/invoices/export`}
               >
-                <Download aria-hidden="true" className="size-4 shrink-0" />
+                <FileDown aria-hidden="true" className="size-4 shrink-0" />
                 <span className="min-w-0 break-words">
-                  {copy.downloadInvoice}
+                  {copy.exportInvoices}
                 </span>
-              </Button>
-            </FutureFeatureTooltip>
-            <FutureFeatureTooltip locale={locale}>
+              </a>
+            ) : (
               <Button
-                aria-describedby={invoiceHistoryUnavailableId}
+                aria-describedby={invoiceHistoryStateId}
                 className="h-auto max-w-full whitespace-normal text-left text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
                 disabled
                 size="sm"
@@ -155,18 +164,94 @@ export function BillingScreen({
                   {copy.exportInvoices}
                 </span>
               </Button>
-            </FutureFeatureTooltip>
+            )}
           </div>
         </div>
         <div className="mt-4 min-w-0 rounded-2xl border border-[#e0e6ee] bg-[#fbfcfd] px-4 py-5">
           <p
-            id={invoiceHistoryUnavailableId}
+            id={invoiceHistoryStateId}
             className="min-w-0 break-words text-sm leading-6 text-[#51627c]"
           >
-            {copy.invoiceHistoryUnavailable}
+            {invoiceStateCopy}
           </p>
+          {invoices.kind === "populated" && (
+            <ul className="mt-4 min-w-0 divide-y divide-[#e6ebf1]">
+              {invoices.invoices.map((invoice) => (
+                <li
+                  className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3"
+                  key={invoice.id}
+                >
+                  <div className="min-w-0">
+                    <p className="min-w-0 break-words text-sm font-semibold text-[#344258]">
+                      {invoice.invoiceNumber}
+                    </p>
+                    <p className="min-w-0 break-words text-xs leading-5 text-[#51627c]">
+                      {formatInvoiceListDate(invoice.issuedAt, locale)} ·{" "}
+                      {invoice.total} {invoice.currency} ·{" "}
+                      {getInvoiceStatusCopy(invoice, locale)}
+                      {invoice.dueDate
+                        ? ` · ${m.invoiceManualDueDate({}, { locale })} ${formatInvoiceListPlainDate(invoice.dueDate, locale)}`
+                        : ""}
+                    </p>
+                  </div>
+                  {/* A plain anchor keeps the download out of any form
+                      submission path and stays keyboard operable. */}
+                  <a
+                    aria-label={m.accountBillingInvoiceDownloadAriaLabel(
+                      { invoiceNumber: invoice.invoiceNumber },
+                      { locale }
+                    )}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-[#cbd7e5] bg-white px-3 py-1.5 text-sm font-semibold text-[#344258] transition-colors hover:bg-[#f2f6fa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
+                    download
+                    href={`/${locale}/account/invoices/${invoice.id}/pdf`}
+                  >
+                    {copy.downloadInvoice}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </section>
     </AccountSectionPanel>
   );
 }
+
+const getInvoiceStateCopy = (
+  copy: BillingScreenCopy,
+  invoices: CustomerInvoiceListState
+): string => {
+  switch (invoices.kind) {
+    case "populated":
+      return "";
+    case "empty":
+      return copy.invoiceEmpty;
+    case "loading":
+      return copy.invoiceLoading;
+    case "unavailable":
+      return copy.invoiceUnavailable;
+    case "failed":
+      return copy.invoiceFailed;
+  }
+};
+
+const getInvoiceStatusCopy = (
+  invoice: CustomerInvoiceSummary,
+  locale: Locale
+): string =>
+  invoice.paymentStatus === "paid"
+    ? m.invoicePaidStatus({}, { locale })
+    : m.invoiceManualUnpaid({}, { locale });
+
+const formatInvoiceListDate = (value: string, locale: Locale) =>
+  formatInstantDate({
+    instant: Temporal.Instant.from(value),
+    locale,
+    timeZone: workspaceSiteConstants.location.timeZone,
+  });
+
+const formatInvoiceListPlainDate = (value: string, locale: Locale) =>
+  new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00Z`));

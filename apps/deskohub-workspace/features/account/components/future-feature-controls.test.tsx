@@ -194,10 +194,14 @@ const billingCopy = {
     billingDetailsTitle: "Billing details",
     currency: "Currency: CZK (Kč)",
     downloadInvoice: "Download PDF",
-    exportInvoices: "Export all",
+    exportInvoices: "Export CSV",
+    invoiceEmpty:
+      "You have no invoices yet. Invoices appear here after your first invoiced visit.",
+    invoiceFailed: "Invoices could not be loaded. Please try again later.",
     invoiceHistoryTitle: "Invoice history",
-    invoiceHistoryUnavailable:
-      "Invoice history and downloads are not available in this account.",
+    invoiceLoading: "Loading invoices…",
+    invoiceUnavailable:
+      "Invoices are temporarily unavailable. Please try again later.",
     paymentMethodsTitle: "Saved payment methods",
     paymentMethodsUnavailable:
       "Saved payment methods are not available in this account.",
@@ -210,10 +214,14 @@ const billingCopy = {
     billingDetailsTitle: "Fakturační údaje",
     currency: "Měna: CZK (Kč)",
     downloadInvoice: "Stáhnout PDF",
-    exportInvoices: "Exportovat vše",
+    exportInvoices: "Exportovat CSV",
+    invoiceEmpty:
+      "Zatím nemáte žádné faktury. Zobrazí se zde po vaší první fakturované návštěvě.",
+    invoiceFailed: "Faktury se nepodařilo načíst. Zkuste to prosím později.",
     invoiceHistoryTitle: "Historie faktur",
-    invoiceHistoryUnavailable:
-      "Historie faktur a jejich stahování nejsou pro tento účet dostupné.",
+    invoiceLoading: "Načítání faktur…",
+    invoiceUnavailable:
+      "Faktury jsou dočasně nedostupné. Zkuste to prosím později.",
     paymentMethodsTitle: "Uložené platební metody",
     paymentMethodsUnavailable:
       "Uložené platební metody nejsou pro tento účet dostupné.",
@@ -357,7 +365,11 @@ function renderProfileScreen(locale: Locale): ScreenView {
 
 function renderBillingScreen(locale: Locale): ScreenView {
   return render(
-    <BillingScreen copy={billingCopy[locale]} locale={locale}>
+    <BillingScreen
+      copy={billingCopy[locale]}
+      invoices={{ kind: "unavailable" }}
+      locale={locale}
+    >
       <div>Caller-owned billing fields</div>
     </BillingScreen>
   );
@@ -463,16 +475,6 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
     render: renderBillingScreen,
   },
   {
-    label: (locale) => billingCopy[locale].downloadInvoice,
-    name: "download invoice control",
-    render: renderBillingScreen,
-  },
-  {
-    label: (locale) => billingCopy[locale].exportInvoices,
-    name: "export invoices control",
-    render: renderBillingScreen,
-  },
-  {
     label: (locale) => reservationCopy[locale].checkIn,
     name: "check-in control",
     render: renderReservationHistory,
@@ -490,8 +492,8 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
 ];
 
 describe("account future-feature controls", () => {
-  test("keeps the future-feature inventory at nine controls", () => {
-    expect(futureFeatureTargets).toHaveLength(9);
+  test("keeps the future-feature inventory at seven controls", () => {
+    expect(futureFeatureTargets).toHaveLength(7);
   });
 
   for (const target of futureFeatureTargets) {

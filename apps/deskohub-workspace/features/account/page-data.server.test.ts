@@ -152,6 +152,26 @@ mock.module(
     CustomerReservationHistoryService: History,
   })
 );
+let invoicesEffect: Effect.Effect<
+  readonly unknown[],
+  { readonly _tag: string }
+> = Effect.succeed([]);
+
+const Invoices = Context.Service<
+  Invoices,
+  { readonly list: typeof invoicesEffect }
+>()("@test/AccountInvoices");
+
+const InvoicesLayer = Layer.succeed(Invoices, {
+  get list() {
+    return invoicesEffect;
+  },
+});
+Object.assign(Invoices, { Live: InvoicesLayer });
+
+mock.module("@/features/account/backend/customer-invoice.service", () => ({
+  CustomerInvoiceService: Invoices,
+}));
 mock.module("@/shared/backend/workspace-effect", () => ({
   runWorkspaceEffect:
     (_operation: string, _options: { readonly boundary: string }) =>
@@ -170,6 +190,7 @@ describe("loadCustomerAccountPage", () => {
       kind: "available",
       groups: { current: [], past: [], unavailable: [] },
     });
+    invoicesEffect = Effect.succeed([]);
   });
 
   const loadPageState = async () => {
@@ -296,6 +317,35 @@ describe("loadCustomerAccountPage", () => {
         billing: null,
       },
       history: { kind: "unavailable", reason: "provider-unavailable" },
+      invoices: { kind: "empty" },
+    });
+  });
+
+  test("renders the populated invoice list when issued invoices exist", async () => {
+    invoicesEffect = Effect.succeed([
+      {
+        id: "invoice-1",
+        invoiceNumber: "WS-FV-2026-000042",
+        issuedAt: "2026-08-12T12:34:56.789Z",
+        total: "450",
+        currency: "CZK",
+        paymentStatus: "paid",
+        dueDate: null,
+      },
+    ]);
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      invoices: { kind: "populated" },
+    });
+  });
+
+  test("degrades to the failed invoice state when the ledger read fails", async () => {
+    invoicesEffect = Effect.fail({ _tag: "CustomerInvoicesLoadError" });
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      invoices: { kind: "failed" },
     });
   });
 

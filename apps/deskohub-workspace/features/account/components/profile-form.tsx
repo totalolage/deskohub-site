@@ -17,7 +17,10 @@ import type { CustomerProfileBilling } from "@/features/account/backend/customer
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { BillingScreen } from "@/features/account/components/billing/billing-screen";
 import { ProfileScreen } from "@/features/account/components/profile/profile-screen";
-import type { CustomerProfileInput } from "@/features/account/contracts";
+import type {
+  CustomerInvoiceListState,
+  CustomerProfileInput,
+} from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -32,6 +35,7 @@ type ProfileFormProps = {
   readonly locale: Locale;
   readonly mode: CustomerProfileFormMode;
   readonly onSectionChange?: (section: "profile" | "billing") => void;
+  readonly invoices?: CustomerInvoiceListState;
   readonly profile?: {
     readonly firstName: string;
     readonly lastName: string | null;
@@ -108,6 +112,7 @@ export function ProfileForm({
   locale,
   mode,
   onSectionChange,
+  invoices = { kind: "loading" },
   profile,
   section = "profile",
 }: ProfileFormProps) {
@@ -454,6 +459,7 @@ export function ProfileForm({
               <BillingScreen
                 copy={screenCopy.billing}
                 footer={section === "billing" ? formFooter : undefined}
+                invoices={invoices}
                 locale={locale}
               >
                 <div className="grid gap-5 sm:grid-cols-2">{billingFields}</div>

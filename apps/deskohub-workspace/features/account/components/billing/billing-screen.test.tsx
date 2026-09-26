@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ComponentPropsWithoutRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Locale } from "@/features/i18n";
 import type { BillingScreenCopy } from "./billing-screen";
@@ -15,10 +16,14 @@ const englishCopy = {
   billingDetailsTitle: "Billing details",
   syncAres: "Sync with ARES Registry",
   invoiceHistoryTitle: "Invoice history",
-  invoiceHistoryUnavailable:
-    "Invoice history and downloads are not available in this account.",
+  invoiceEmpty:
+    "You have no invoices yet. Invoices appear here after your first invoiced visit.",
+  invoiceFailed: "Invoices could not be loaded. Please try again later.",
+  invoiceLoading: "Loading invoices…",
+  invoiceUnavailable:
+    "Invoices are temporarily unavailable. Please try again later.",
   downloadInvoice: "Download PDF",
-  exportInvoices: "Export all",
+  exportInvoices: "Export CSV",
 } satisfies BillingScreenCopy;
 
 const czechCopy = {
@@ -32,10 +37,14 @@ const czechCopy = {
   billingDetailsTitle: "Fakturační údaje",
   syncAres: "Synchronizovat s registrem ARES",
   invoiceHistoryTitle: "Historie faktur",
-  invoiceHistoryUnavailable:
-    "Historie faktur a jejich stahování nejsou pro tento účet dostupné.",
+  invoiceEmpty:
+    "Zatím nemáte žádné faktury. Zobrazí se zde po vaší první fakturované návštěvě.",
+  invoiceFailed: "Faktury se nepodařilo načíst. Zkuste to prosím později.",
+  invoiceLoading: "Načítání faktur…",
+  invoiceUnavailable:
+    "Faktury jsou dočasně nedostupné. Zkuste to prosím později.",
   downloadInvoice: "Stáhnout PDF",
-  exportInvoices: "Exportovat vše",
+  exportInvoices: "Exportovat CSV",
 } satisfies BillingScreenCopy;
 
 const countOccurrences = (value: string, needle: string) =>
@@ -49,9 +58,15 @@ const escapeHtml = (value: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#x27;");
 
-const renderScreen = (copy: BillingScreenCopy, locale: Locale) =>
+const renderScreen = (
+  copy: BillingScreenCopy,
+  locale: Locale,
+  invoices: ComponentPropsWithoutRef<typeof BillingScreen>["invoices"] = {
+    kind: "empty",
+  }
+) =>
   renderToStaticMarkup(
-    <BillingScreen copy={copy} locale={locale}>
+    <BillingScreen copy={copy} invoices={invoices} locale={locale}>
       <div data-child-marker="billing-fields">Caller-owned billing fields</div>
     </BillingScreen>
   );
@@ -77,6 +92,7 @@ describe("BillingScreen", () => {
     const markup = renderToStaticMarkup(
       <BillingScreen
         copy={englishCopy}
+        invoices={{ kind: "empty" }}
         footer={<span data-footer-marker="billing-footer">Save billing</span>}
         locale="en-US"
       >
@@ -100,6 +116,7 @@ describe("BillingScreen", () => {
     const markup = renderToStaticMarkup(
       <BillingScreen
         copy={englishCopy}
+        invoices={{ kind: "empty" }}
         footer={<span data-footer-marker="billing-footer">Save billing</span>}
         locale="en-US"
       >
@@ -164,6 +181,7 @@ describe("BillingScreen", () => {
       <form id="account-profile-form">
         <BillingScreen
           copy={englishCopy}
+          invoices={{ kind: "empty" }}
           footer={<button type="submit">Save billing</button>}
           locale="en-US"
         >
@@ -192,7 +210,7 @@ describe("BillingScreen", () => {
     const markup = renderScreen(englishCopy, "en-US");
     const buttons = markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
 
-    expect(buttons).toHaveLength(4);
+    expect(buttons).toHaveLength(3);
     for (const button of buttons) {
       expect(button).toMatch(/\btype="button"/);
       expect(button).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
@@ -231,7 +249,30 @@ describe("BillingScreen", () => {
   ] as const)(
     "renders every supplied %s string without invented billing data",
     (_language, locale, copy) => {
-      const markup = renderScreen(copy, locale);
+      // Each invoice list state is rendered so every supplied string must
+      // appear in at least one state's markup.
+      const markup = [
+        { kind: "empty" },
+        { kind: "loading" },
+        { kind: "unavailable" },
+        { kind: "failed" },
+        {
+          invoices: [
+            {
+              currency: "CZK",
+              dueDate: null,
+              id: "billing-screen-test-invoice",
+              invoiceNumber: "WS-FV-2026-000001",
+              issuedAt: "2026-09-01T08:00:00.000Z",
+              paymentStatus: "paid",
+              total: "100",
+            },
+          ],
+          kind: "populated",
+        },
+      ]
+        .map((invoices) => renderScreen(copy, locale, invoices as never))
+        .join("\n");
       const {
         currency,
         paymentMethodsUnavailable,
@@ -255,10 +296,18 @@ describe("BillingScreen", () => {
   test("keeps labels and description references unique across two instances", () => {
     const markup = renderToStaticMarkup(
       <div>
-        <BillingScreen copy={englishCopy} locale="en-US">
+        <BillingScreen
+          copy={englishCopy}
+          invoices={{ kind: "empty" }}
+          locale="en-US"
+        >
           <div>First billing fields</div>
         </BillingScreen>
-        <BillingScreen copy={czechCopy} locale="cs-CZ">
+        <BillingScreen
+          copy={czechCopy}
+          invoices={{ kind: "empty" }}
+          locale="cs-CZ"
+        >
           <div>Second billing fields</div>
         </BillingScreen>
       </div>

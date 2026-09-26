@@ -51,10 +51,10 @@ export function getAccountScreenCopy(locale: Locale) {
       billingDetailsTitle: m.accountBillingDetailsTitle({}, { locale }),
       syncAres: m.accountBillingSyncAres({}, { locale }),
       invoiceHistoryTitle: m.accountBillingInvoiceHistoryTitle({}, { locale }),
-      invoiceHistoryUnavailable: m.accountBillingInvoiceHistoryUnavailable(
-        {},
-        { locale }
-      ),
+      invoiceEmpty: m.accountBillingInvoiceEmpty({}, { locale }),
+      invoiceFailed: m.accountBillingInvoiceFailed({}, { locale }),
+      invoiceLoading: m.accountBillingInvoiceLoading({}, { locale }),
+      invoiceUnavailable: m.accountBillingInvoiceUnavailable({}, { locale }),
       downloadInvoice: m.accountBillingDownloadInvoice({}, { locale }),
       exportInvoices: m.accountBillingExportInvoices({}, { locale }),
     } satisfies BillingScreenCopy,
