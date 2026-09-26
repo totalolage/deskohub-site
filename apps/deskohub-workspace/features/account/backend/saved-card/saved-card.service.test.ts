@@ -159,7 +159,10 @@ const makeRepositoryLayer = (state: RepoState) =>
             candidate.orderId === input.orderId &&
             candidate.customerAccountId === input.customerAccountId
         );
-        if (row) row.updatedAt = new Date();
+        // Deterministic fixed bump, larger than any seeded stagger: a
+        // touched row always sorts strictly after every untouched row,
+        // independent of the wall clock and millisecond collisions.
+        if (row) row.updatedAt = new Date(row.updatedAt.getTime() + 60_000);
       }),
     confirmEnrollmentFromAnyState: (input: {
       orderId: string;
@@ -1428,9 +1431,13 @@ describe("listCards rotation over unresolved enrollments", () => {
     for (let index = 0; index < 10; index += 1) {
       const id = orderId(`rot${index}`);
       ids.push(id);
-      const row = seedEnrollment(state, { orderId: id });
+      const row = seedEnrollment(state, {
+        orderId: id,
+        // Distinct contract ids make the updatedAt tie-breaker decisive.
+        providerContractId: contractId(`rot${index}`),
+      });
       // Deterministic stagger into the past so the oldest-first order is
-      // the seed order, and a touch (now) definitively moves a row back.
+      // the seed order, and a touch (+1s) definitively moves a row back.
       row.updatedAt = new Date(Date.now() - (10 - index) * 1000);
     }
 
@@ -1460,10 +1467,16 @@ describe("listCards rotation over unresolved enrollments", () => {
 describe("listCards rotation past failing rows", () => {
   test("a failing oldest row is touched and the request stays fail-closed", async () => {
     const state = makeState();
-    const stale = seedEnrollment(state, { orderId: orderId("stale1") });
+    const stale = seedEnrollment(state, {
+      orderId: orderId("stale1"),
+      providerContractId: contractId("rot1"),
+    });
     stale.updatedAt = new Date(Date.now() - 10_000);
     const staleTouchedBefore = stale.updatedAt.getTime();
-    seedEnrollment(state, { orderId: orderId("fresh1") });
+    seedEnrollment(state, {
+      orderId: orderId("fresh1"),
+      providerContractId: contractId("rot2"),
+    });
 
     const calls = emptyCalls();
     const { run } = makeService(state, calls, {
@@ -1487,9 +1500,15 @@ describe("listCards rotation past failing rows", () => {
 
   test("the reload after a failing row rotates to the later rows", async () => {
     const state = makeState();
-    const stale = seedEnrollment(state, { orderId: orderId("stale1") });
+    const stale = seedEnrollment(state, {
+      orderId: orderId("stale1"),
+      providerContractId: contractId("rot1"),
+    });
     stale.updatedAt = new Date(Date.now() - 10_000);
-    const later = seedEnrollment(state, { orderId: orderId("fresh1") });
+    const later = seedEnrollment(state, {
+      orderId: orderId("fresh1"),
+      providerContractId: contractId("rot2"),
+    });
 
     const failing = makeService(state, undefined, {
       orderErrors: { [orderId("stale1")]: networkError },
