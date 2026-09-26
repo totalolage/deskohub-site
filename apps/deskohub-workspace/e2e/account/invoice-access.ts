@@ -1,7 +1,13 @@
-import { expect, type Page } from "@playwright/test";
+import {
+  type Browser,
+  type BrowserContext,
+  expect,
+  type Page,
+} from "@playwright/test";
 import { m } from "@/features/i18n";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { selectAccountSection } from "./account-sections";
+import type { WorkspaceE2ECustomerInvoiceFixture } from "./invoice-fixture";
 import { captureAccountReview } from "./review-screenshots";
 
 const invoiceHistoryCopy = m.accountBillingInvoiceHistoryTitle(
@@ -10,17 +16,54 @@ const invoiceHistoryCopy = m.accountBillingInvoiceHistoryTitle(
 );
 const invoiceEmptyCopy = m.accountBillingInvoiceEmpty({}, { locale: "en-US" });
 
+const privateNoStore = "private, no-store";
+
+/** A fresh browser context that passes Vercel protection but holds no Better Auth session. */
+const makeAnonymousBypassedContext = async (
+  browser: Browser,
+  baseUrl: string,
+  bypassSecret: string | undefined
+): Promise<BrowserContext> => {
+  const context = await browser.newContext();
+  if (bypassSecret) {
+    const primed = await context.request.get(
+      new URL("/favicon.svg", baseUrl).toString(),
+      {
+        headers: {
+          "x-vercel-protection-bypass": bypassSecret,
+          "x-vercel-set-bypass-cookie": "true",
+        },
+        maxRedirects: 3,
+      }
+    );
+    await primed.dispose();
+  }
+  return context;
+};
+
+export type CustomerInvoiceAccessInput = {
+  readonly baseUrl: string;
+  readonly browser: Browser;
+  /** Vercel automation bypass for the protected preview; never a runtime bypass. */
+  readonly bypassSecret: string | undefined;
+  readonly fixture: WorkspaceE2ECustomerInvoiceFixture;
+  readonly page: Page;
+};
+
 /**
- * Verifies the customer invoice surface of the linked account: the billing
- * section renders the real invoice-history state, a guessed invoice id is an
- * indistinguishable not-found even for a signed-in account, and the CSV
- * export never answers an unauthenticated request. Finishes with the
- * allowlisted invoice-history review captures.
+ * Verifies the customer invoice surface of the linked account against a
+ * seeded issued invoice: the billing section renders the real invoice-history
+ * rows, the owner can download the PDF and CSV of their own invoice, every
+ * unowned or malformed invoice id is an indistinguishable private not-found,
+ * the anonymous bypassed context is denied the CSV export with the exact
+ * application 404. Finishes with the allowlist populated-billing review
+ * captures; revocation denial is asserted separately against the revoked
+ * fixture.
  */
 export const verifyCustomerInvoiceAccess = async (
-  page: Page,
-  baseUrl: string
+  input: CustomerInvoiceAccessInput
 ): Promise<void> => {
+  const { baseUrl, browser, bypassSecret, fixture, page } = input;
   const accountUrl = new URL("/en-US/account", baseUrl);
   await page.goto(accountUrl.toString(), {
     timeout: workspaceE2ETimeouts.browserNavigation,
@@ -35,14 +78,38 @@ export const verifyCustomerInvoiceAccess = async (
   await expect(historyHeading).toBeVisible({
     timeout: workspaceE2ETimeouts.uiTransition,
   });
-  // The synthetic lane customer has no issued invoices, so the closed state
-  // contract shows the localized empty copy and keeps the export disabled.
-  await expect(page.getByText(invoiceEmptyCopy)).toBeVisible({
+
+  // The seeded issued invoice renders as an owned ledger row; the empty
+  // state must be gone.
+  await expect(page.getByText(fixture.invoiceNumber).first()).toBeVisible({
     timeout: workspaceE2ETimeouts.uiTransition,
   });
+  await expect(page.getByText(invoiceEmptyCopy)).toHaveCount(0);
 
-  // A signed-in owner guessing an invoice id gets the same not-found as an
-  // anonymous request; the response is never a document.
+  // The owner downloads their own invoice as a PDF attachment.
+  const ownedPdf = await page.request.get(
+    new URL(fixture.pdfPath, baseUrl).toString()
+  );
+  expect(ownedPdf.status()).toBe(200);
+  expect(ownedPdf.headers()["content-type"]).toContain("application/pdf");
+  expect(ownedPdf.headers()["content-disposition"]).toContain("attachment");
+  expect(ownedPdf.headers()["cache-control"]).toBe(privateNoStore);
+  await ownedPdf.dispose();
+
+  // The CSV export contains the real seeded invoice facts.
+  const ownedCsv = await page.request.get(
+    new URL("/en-US/account/invoices/export", baseUrl).toString()
+  );
+  expect(ownedCsv.status()).toBe(200);
+  expect(ownedCsv.headers()["content-type"]).toContain("text/csv");
+  expect(ownedCsv.headers()["content-disposition"]).toContain("attachment");
+  expect(ownedCsv.headers()["cache-control"]).toBe(privateNoStore);
+  const csvBody = await ownedCsv.text();
+  expect(csvBody).toContain(fixture.invoiceNumber);
+  expect(csvBody).toContain("450");
+
+  // A guessed valid invoice id is an indistinguishable not-found; the
+  // response is never a document.
   const guessedInvoiceId = "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb00";
   const guessedPdf = await page.request.get(
     new URL(
@@ -52,19 +119,61 @@ export const verifyCustomerInvoiceAccess = async (
   );
   expect(guessedPdf.status()).toBe(404);
   expect(guessedPdf.headers()["content-type"]).not.toContain("application/pdf");
+  expect(guessedPdf.headers()["cache-control"]).toBe(privateNoStore);
+  const guessedBody = await guessedPdf.text();
+  await guessedPdf.dispose();
 
-  const anonymousContext = await page.context().browser()?.newContext();
-  expect(anonymousContext).toBeDefined();
+  // A malformed invoice id must land on the identical 404 path.
+  const malformedPdf = await page.request.get(
+    new URL("/en-US/account/invoices/not-a-uuid/pdf", baseUrl).toString()
+  );
+  expect(malformedPdf.status()).toBe(404);
+  expect(malformedPdf.headers()["cache-control"]).toBe(privateNoStore);
+  expect(await malformedPdf.text()).toBe(guessedBody);
+  await malformedPdf.dispose();
+
+  // An anonymous context that passes deployment protection but holds no
+  // Better Auth session gets the application's own 404, never the export;
+  // a protection rejection or server error fails the check.
+  const anonymousContext = await makeAnonymousBypassedContext(
+    browser,
+    baseUrl,
+    bypassSecret
+  );
   try {
-    const anonymousCsv = await anonymousContext?.request.get(
+    const anonymousCsv = await anonymousContext.request.get(
       new URL("/en-US/account/invoices/export", baseUrl).toString()
     );
-    expect(anonymousCsv?.status()).not.toBe(200);
-    expect(anonymousCsv?.headers()["content-type"]).not.toContain("text/csv");
+    expect(anonymousCsv.status()).toBe(404);
+    expect(anonymousCsv.headers()["content-type"]).not.toContain("text/csv");
+    await anonymousCsv.dispose();
   } finally {
-    await anonymousContext?.close();
+    await anonymousContext.close();
   }
 
-  await captureAccountReview(page, baseUrl, "linked-invoices-desktop");
-  await captureAccountReview(page, baseUrl, "linked-invoices-mobile");
+  await captureAccountReview(
+    page,
+    baseUrl,
+    "linked-invoices-populated-desktop"
+  );
+  await captureAccountReview(page, baseUrl, "linked-invoices-populated-mobile");
+};
+
+/**
+ * Asserts the download denial after the invoice fixture was revoked: the
+ * previously owned id answers with the same private not-found and never a
+ * document.
+ */
+export const verifyCustomerInvoiceRevoked = async (
+  baseUrl: string,
+  fixture: WorkspaceE2ECustomerInvoiceFixture,
+  page: Page
+): Promise<void> => {
+  const revokedPdf = await page.request.get(
+    new URL(fixture.pdfPath, baseUrl).toString()
+  );
+  expect(revokedPdf.status()).toBe(404);
+  expect(revokedPdf.headers()["content-type"]).not.toContain("application/pdf");
+  expect(revokedPdf.headers()["cache-control"]).toBe(privateNoStore);
+  await revokedPdf.dispose();
 };

@@ -6,9 +6,16 @@ import {
   makeCoworkInvoiceDocument,
   makeTestManualInvoiceDocument,
 } from "@/features/accounting/invoice.test-utils";
+import {
+  CENSORED_LOG_VALUE,
+  censorDatabaseQueryParams,
+} from "@/shared/backend/logging/censorship";
 import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
-import { AccountingSnapshotKeyService } from "./accounting-snapshot-key.service";
+import {
+  AccountingSnapshotKeyError,
+  AccountingSnapshotKeyService,
+} from "./accounting-snapshot-key.service";
 import { InvoiceRepository } from "./invoice.repository";
 
 mock.module("server-only", () => ({}) as never);
@@ -33,8 +40,15 @@ const makeHarness = async () => {
         id: "key-1" as never,
         secret: "synthetic-secret",
       }),
-      getById: () =>
-        Effect.succeed({ id: "key-1" as never, secret: "synthetic-secret" }),
+      getById: (keyId: string) =>
+        keyId === "key-1"
+          ? Effect.succeed({ id: "key-1" as never, secret: "synthetic-secret" })
+          : Effect.fail(
+              new AccountingSnapshotKeyError({
+                keyId,
+                message: "Synthetic key is unavailable.",
+              })
+            ),
     } as never)
   );
   const repository = await Effect.runPromise(
@@ -55,7 +69,6 @@ const makeHarness = async () => {
 
 // Canned rows are positional arrays in the selected column order.
 const metadataRow = (id: string) => [id, "key-1", issuedAtIso];
-
 describe("customer-scoped invoice repository", () => {
   test("filters the ledger by owner in SQL before any decryption", async () => {
     const { recording, repository } = await makeHarness();
@@ -130,14 +143,51 @@ describe("customer-scoped invoice repository", () => {
   test("fails closed when a listed document cannot be decrypted", async () => {
     const { recording, repository } = await makeHarness();
     recording.setRows([[metadataRow(invoiceUuid)]]);
-    recording.failNextQueriesWith(new Error("synthetic decrypt failure"), 1);
+    recording.failStatementsMatching(
+      /pgp_sym_decrypt/,
+      new Error("synthetic decrypt failure")
+    );
+
+    const outcome = await Effect.runPromise(
+      repository.listForCustomer(ownerId as never).pipe(Effect.result)
+    );
+
+    // The failure happens at the decryption query itself, after the metadata
+    // read and key lookup succeeded.
+    const decryptAttempt = recording.statements.find(({ sql }) =>
+      sql.includes("pgp_sym_decrypt")
+    );
+    expect(decryptAttempt?.failed).toBe(true);
+    expect(outcome.success).toBeUndefined();
+    expect(outcome.failure?._tag).toBe("InvoiceStorageError");
+    const serializedFailure = JSON.stringify(outcome);
+    expect(serializedFailure).not.toContain("synthetic-secret");
+    expect(serializedFailure).not.toContain("synthetic decrypt failure");
+    // The decryption secret stays marked sensitive in the recorded statement
+    // and the production query-log censor redacts it from the recorded params.
+    expect(decryptAttempt?.sql).toContain("deskohub:sensitive");
+    const censoredParams = decryptAttempt
+      ? censorDatabaseQueryParams(decryptAttempt.sql, decryptAttempt.params)
+      : [];
+    expect(JSON.stringify(censoredParams)).not.toContain("synthetic-secret");
+    expect(censoredParams[0]).toBe(CENSORED_LOG_VALUE);
+  });
+
+  test("fails closed when a listed invoice references a missing key", async () => {
+    const { recording, repository } = await makeHarness();
+    recording.setRows([[["key-missing", "key-missing", issuedAtIso]]]);
 
     const outcome = await Effect.runPromise(
       repository.listForCustomer(ownerId as never).pipe(Effect.result)
     );
 
     expect(outcome.success).toBeUndefined();
-    expect(JSON.stringify(outcome.failure)).not.toContain("synthetic-secret");
+    expect(outcome.failure?._tag).toBe("InvoiceStorageError");
+    // The key lookup fails before any decryption query runs.
+    expect(
+      recording.statements.some(({ sql }) => sql.includes("pgp_sym_decrypt"))
+    ).toBe(false);
+    expect(JSON.stringify(outcome)).not.toContain("synthetic-secret");
   });
 
   test("fails closed when a decrypted document fails schema decoding", async () => {
@@ -172,11 +222,23 @@ describe("customer-scoped invoice repository", () => {
     ).toBe(false);
   });
 
+  test("maps a malformed invoice id to the common not-found null", async () => {
+    const { recording, repository } = await makeHarness();
+    recording.setRows([[]]);
+
+    const invoice = await Effect.runPromise(
+      repository.findForCustomer(ownerId as never, "not-a-uuid")
+    );
+
+    expect(invoice).toBeNull();
+    expect(recording.statements).toEqual([]);
+  });
+
   test("decrypts an owned invoice only after the owner filter matched", async () => {
     const { recording, repository } = await makeHarness();
     const document = makeCoworkInvoiceDocument("en-US");
     recording.setRows([
-      [{ keyId: "key-1" }],
+      [["key-1"]],
       [
         [
           invoiceUuid,

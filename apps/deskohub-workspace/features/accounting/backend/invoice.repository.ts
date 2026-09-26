@@ -1,7 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, desc, eq, inArray, type SQL, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -885,17 +885,25 @@ export class InvoiceRepository extends Context.Service<
         }
       );
 
+      const decodeStoredInvoiceId = Schema.decodeUnknownOption(invoiceIdSchema);
+
       const findForCustomer = Effect.fn("InvoiceRepository.findForCustomer")(
-        (dotyposCustomerId: DotyposCustomerId, invoiceId: string) =>
-          loadInvoice({
+        (dotyposCustomerId: DotyposCustomerId, invoiceId: string) => {
+          // A malformed invoice id can never match a stored row; decode
+          // without throwing so it lands on the same not-found null as a
+          // missing or non-owned invoice.
+          const decodedInvoiceId = decodeStoredInvoiceId(invoiceId);
+          if (Option.isNone(decodedInvoiceId)) return Effect.succeed(null);
+          return loadInvoice({
             // The invoice id is only ever looked up together with the owning
             // Dotypos customer id; the owner filter is part of the SQL.
             where: and(
-              eq(invoices.id, invoiceIdSchema.make(invoiceId)),
+              eq(invoices.id, decodedInvoiceId.value),
               eq(invoices.dotyposCustomerId, dotyposCustomerId)
             ) as SQL,
             lookupId: invoiceId,
-          })
+          });
+        }
       );
 
       return {

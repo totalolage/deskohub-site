@@ -22,6 +22,8 @@ export type AccountReviewTarget =
   | "linked-billing-mobile"
   | "linked-invoices-desktop"
   | "linked-invoices-mobile"
+  | "linked-invoices-populated-desktop"
+  | "linked-invoices-populated-mobile"
   | "linked-legal-desktop"
   | "account-marketing-withdrawn-desktop"
   | "account-marketing-active-mobile"
@@ -115,6 +117,16 @@ const accountReviewTargetMetadata = {
   },
   "linked-invoices-mobile": {
     filename: "linked-invoices-mobile.png",
+    path: "/en-US/account",
+    viewport: { height: 900, width: 375 },
+  },
+  "linked-invoices-populated-desktop": {
+    filename: "linked-invoices-populated-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-invoices-populated-mobile": {
+    filename: "linked-invoices-populated-mobile.png",
     path: "/en-US/account",
     viewport: { height: 900, width: 375 },
   },

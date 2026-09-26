@@ -16,6 +16,9 @@ const config = getAccountE2EConfig(
   makeWorkspaceE2EEnvironment({
     ...validE2ERuntimeEnvironment,
     WORKSPACE_E2E_RESEND_API_KEY: "re_full-access-retrieval-key",
+    WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_ACTIVE_KEY_ID: "K202608",
+    WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_KEY_SECRET:
+      "synthetic-preview-branch-key-secret",
   }),
   Schema.decodeUnknownSync(workspaceE2ERunIdSchema)("1234567890-2")
 );

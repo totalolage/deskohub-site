@@ -25,6 +25,14 @@ import {
   workspaceE2EAccountMainRecipientLabel,
 } from "./config";
 import {
+  verifyCustomerInvoiceAccess,
+  verifyCustomerInvoiceRevoked,
+} from "./invoice-access";
+import {
+  type WorkspaceE2ECustomerInvoiceFixture,
+  withWorkspaceE2ECustomerInvoiceFixture,
+} from "./invoice-fixture";
+import {
   emptyWorkspaceE2EAccountJournal,
   type WorkspaceE2EAccountJournal,
   writeWorkspaceE2EAccountJournal,
@@ -32,7 +40,6 @@ import {
 import { verifyWorkspaceE2EMarketingPreferences } from "./marketing-preferences";
 import { verifyProfileNavigation } from "./profile-navigation";
 import { makeMagicLinkRateBudget } from "./rate-budget";
-import { verifyCustomerInvoiceAccess } from "./invoice-access";
 import { withWorkspaceE2EReservationHistoryFixture } from "./reservation-history-fixture";
 import {
   toWorkspaceE2EReservationHistoryFailure,
@@ -262,17 +269,47 @@ for (const caseId of workspaceE2EAccountCaseIds) {
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
           {
-            execute: Effect.tryPromise({
-              catch: () =>
-                workspaceE2EError(
-                  "verify customer invoice access failed",
-                  { operation: "verify customer invoice access" }
-                ),
-              try: () =>
-                verifyCustomerInvoiceAccess(
-                  getOwnedPage(),
-                  accountLane.config.baseUrl
-                ),
+            execute: Effect.gen(function* () {
+              const customerId = yield* readAccountReservationCustomerId();
+              yield* withWorkspaceE2ECustomerInvoiceFixture(
+                {
+                  customerId: DotyposCustomerIdSchema.make(customerId),
+                  snapshotKey: accountLane.config.accountingSnapshotKey,
+                },
+                Effect.fn("runCustomerInvoiceAccessVerification")(function* (
+                  fixture: WorkspaceE2ECustomerInvoiceFixture
+                ) {
+                  yield* Effect.tryPromise({
+                    catch: () =>
+                      workspaceE2EError(
+                        "verify customer invoice access failed",
+                        { operation: "verify customer invoice access" }
+                      ),
+                    try: () =>
+                      verifyCustomerInvoiceAccess({
+                        baseUrl: accountLane.config.baseUrl,
+                        browser,
+                        bypassSecret: accountLane.config.bypassSecret,
+                        fixture,
+                        page: getOwnedPage(),
+                      }),
+                  });
+                  yield* fixture.revoke();
+                  yield* Effect.tryPromise({
+                    catch: () =>
+                      workspaceE2EError(
+                        "verify customer invoice revocation failed",
+                        { operation: "verify customer invoice revocation" }
+                      ),
+                    try: () =>
+                      verifyCustomerInvoiceRevoked(
+                        accountLane.config.baseUrl,
+                        fixture,
+                        getOwnedPage()
+                      ),
+                  });
+                })
+              );
             }),
             id: "checks customer invoice access privacy",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
