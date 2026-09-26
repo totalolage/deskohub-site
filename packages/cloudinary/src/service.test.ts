@@ -259,13 +259,13 @@ describe("CloudinaryService", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("CloudinarySearchError");
-      expect(result.failure.message).toBe("undefined");
+      expect(result.failure.message).toBe("Cloudinary public ID lookup failed");
       expect(result.failure.httpCode).toBeUndefined();
     }
     expect(resourceAttempts).toBe(1);
   });
 
-  test("ignores malformed public ID lookup error fields", async () => {
+  test("ignores malformed public ID lookup error fields without echoing provider text", async () => {
     queuedResourceResults = [{ throw: { message: 123, http_code: "500" } }];
 
     const service = await makeService();
@@ -276,9 +276,7 @@ describe("CloudinaryService", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("CloudinarySearchError");
-      expect(result.failure.message).toBe(
-        JSON.stringify({ message: 123, http_code: "500" })
-      );
+      expect(result.failure.message).toBe("Cloudinary public ID lookup failed");
       expect(result.failure.httpCode).toBeUndefined();
     }
     expect(resourceAttempts).toBe(1);
@@ -758,5 +756,53 @@ describe("CloudinaryService avatar-path logging", () => {
     expect(serialized).toContain("Cloudinary asset rename started");
     expect(serialized).toContain("Cloudinary asset destroy started");
     expect(serialized).toContain("Cloudinary asset destroy completed");
+  });
+
+  test("never logs provider failure text containing asset identifiers on the avatar path", async () => {
+    // Each executor classifies the provider rejection internally; the
+    // synthetic provider text carries asset-id markers that must never leak
+    // into any log line, on success or failure paths.
+    const identifyingMessage =
+      "Cloudinary: resource acct-abc-1 under avatars/test-staging/acct-abc-1 not found";
+    queuedResourceResults = [
+      { throw: { http_code: 404, message: identifyingMessage } },
+    ];
+    queuedUploadResults = [
+      { throw: { http_code: 400, message: identifyingMessage } },
+    ];
+    queuedRenameResults = [
+      { throw: { http_code: 400, message: identifyingMessage } },
+    ];
+    queuedDestroyResults = [
+      { throw: { http_code: 401, message: identifyingMessage } },
+    ];
+
+    const captured = await captureLogs((service) =>
+      Effect.gen(function* () {
+        yield* service.getByPublicId(livePublicId).pipe(Effect.ignore);
+        yield* service
+          .uploadImage({
+            bytes: new Uint8Array([1]),
+            publicId: stagedPublicId,
+            folder: "avatars/test-staging/acct-abc-1",
+          })
+          .pipe(Effect.ignore);
+        yield* service
+          .renameAsset(stagedPublicId, livePublicId, { overwrite: true })
+          .pipe(Effect.ignore);
+        yield* service.destroyAsset(stagedPublicId).pipe(Effect.ignore);
+      })
+    );
+
+    const serialized = JSON.stringify(captured);
+    expect(serialized).not.toContain("acct-abc-1");
+    expect(serialized).not.toContain("avatars/test-staging");
+    expect(serialized).not.toContain(identifyingMessage);
+    expect(serialized).not.toContain("public_id");
+    // The fixed failure codes are still emitted for diagnostics.
+    expect(serialized).toContain("Cloudinary public ID lookup failed");
+    expect(serialized).toContain("Cloudinary image upload failed");
+    expect(serialized).toContain("Cloudinary asset rename failed");
+    expect(serialized).toContain("Cloudinary asset destroy failed");
   });
 });

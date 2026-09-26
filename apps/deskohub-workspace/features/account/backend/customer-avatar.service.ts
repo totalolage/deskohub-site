@@ -189,19 +189,8 @@ export class CustomerAvatarService extends Context.Service<
         onNone: () => Effect.fail(new CustomerAvatarUnavailableError({})),
       });
 
-      const livePublicId = (
-        namespace: string,
-        accountId: CustomerAccountId
-      ): CloudinaryPublicId =>
-        Schema.decodeSync(CloudinaryPublicIdSchema)(
-          `${namespace}/${accountId}`
-        );
-
       const destroyById = (publicId: CloudinaryPublicId) =>
-        cloudinary.destroyAsset(publicId).pipe(
-          Effect.asVoid,
-          Effect.mapError(() => new CustomerAvatarProviderError({}))
-        );
+        destroyAssetById(cloudinary, publicId);
 
       /**
        * Runs an avatar mutation under the account advisory lock after
@@ -209,6 +198,15 @@ export class CustomerAvatarService extends Context.Service<
        * deletion marker can only land before or after the whole mutation.
        * The lock's own SqlError maps to the shared account-unavailable
        * failure; the section's typed errors pass through unchanged.
+       *
+       * The whole media critical section — provider calls, reconciliation,
+       * and cleanup — is uninterruptible while the lock is held: a timed-out
+       * action (or any interruption) cannot release the lock while a
+       * provider rename, upload, or destroy is still in flight, so no late
+       * provider mutation can land after a concurrent deletion destroyed the
+       * avatar and removed the identity. Provider requests stay bounded well
+       * under the 45s action timeout by the package's transient-retry
+       * schedule (at most 2 retries with sub-second backoff).
        */
       const guarded = <A, E, R>(
         accountId: CustomerAccountId,
@@ -223,6 +221,7 @@ export class CustomerAvatarService extends Context.Service<
             accountId,
             requireAccountActivity(links, accountId).pipe(
               Effect.andThen(mutation),
+              Effect.uninterruptible,
               Effect.mapError((error) => new GuardedSectionError({ error }))
             )
           )
@@ -234,11 +233,23 @@ export class CustomerAvatarService extends Context.Service<
             )
           );
 
+      /**
+       * Bare asset destroy for the deletion hook: the live asset goes first,
+       * then any account-owned staging assets left behind by a previously
+       * failed promotion are removed so deletion leaves no recoverable
+       * copies. An uncertain live or staging outcome fails retryably so
+       * identity removal waits; missing assets are idempotent success.
+       * Uninterruptible so the outcome always settles before the caller's
+       * lock is released.
+       */
       const destroy: ICustomerAvatarService["destroy"] = (accountId) =>
         requireNamespace.pipe(
           Effect.andThen((namespace) =>
-            destroyById(livePublicId(namespace, accountId))
-          )
+            destroyById(livePublicIdFor(namespace, accountId)).pipe(
+              Effect.andThen(destroyStaging(cloudinary, namespace, accountId))
+            )
+          ),
+          Effect.uninterruptible
         );
 
       const remove: ICustomerAvatarService["remove"] = (accountId) =>
@@ -247,14 +258,17 @@ export class CustomerAvatarService extends Context.Service<
       const lookup: ICustomerAvatarService["lookup"] = (accountId) =>
         requireNamespace.pipe(
           Effect.andThen((namespace) =>
-            cloudinary.getByPublicId(livePublicId(namespace, accountId)).pipe(
-              Effect.map(toAvatar),
-              Effect.catch((error) =>
-                error._tag === "CloudinarySearchError" && error.httpCode === 404
-                  ? Effect.succeed(null)
-                  : Effect.fail(new CustomerAvatarProviderError({}))
+            cloudinary
+              .getByPublicId(livePublicIdFor(namespace, accountId))
+              .pipe(
+                Effect.map(toAvatar),
+                Effect.catch((error) =>
+                  error._tag === "CloudinarySearchError" &&
+                  error.httpCode === 404
+                    ? Effect.succeed(null)
+                    : Effect.fail(new CustomerAvatarProviderError({}))
+                )
               )
-            )
           )
         );
 
@@ -268,19 +282,32 @@ export class CustomerAvatarService extends Context.Service<
                   normalizeCustomerAvatar(input.bytes),
                   (normalized) =>
                     Effect.flatMap(
-                      stageUpload(cloudinary, namespace, accountId, normalized),
-                      (stagedId) =>
+                      recoverRetainedStaging(
+                        cloudinary,
+                        namespace,
+                        accountId
+                      ).pipe(Effect.ignore),
+                      () =>
                         Effect.flatMap(
-                          promoteStaged(
+                          stageUpload(
                             cloudinary,
-                            stagedId,
-                            livePublicId(namespace, accountId)
+                            namespace,
+                            accountId,
+                            normalized
                           ),
-                          (promoted) =>
-                            Effect.succeed({
-                              url: buildVersionedDeliveryUrl(promoted),
-                              version: promoted.version,
-                            })
+                          (stagedId) =>
+                            Effect.flatMap(
+                              promoteStaged(
+                                cloudinary,
+                                stagedId,
+                                livePublicIdFor(namespace, accountId)
+                              ),
+                              (promoted) =>
+                                Effect.succeed({
+                                  url: buildVersionedDeliveryUrl(promoted),
+                                  version: promoted.version,
+                                })
+                            )
                         )
                     )
                 )
@@ -351,6 +378,86 @@ const validateUploadInput = (
       );
 
 /**
+ * The deterministic per-account staging prefix inside the environment
+ * namespace. Every attempt still stages under a unique UUID suffix, but the
+ * prefix itself is computed, so retained staging assets stay discoverable
+ * for recovery and deletion without persisting any avatar state in Neon.
+ */
+const accountStagingFolder = (
+  namespace: string,
+  accountId: CustomerAccountId
+): string => `${namespace}-staging/${accountId}`;
+
+const livePublicIdFor = (
+  namespace: string,
+  accountId: CustomerAccountId
+): CloudinaryPublicId =>
+  Schema.decodeSync(CloudinaryPublicIdSchema)(`${namespace}/${accountId}`);
+
+const destroyAssetById = (
+  cloudinary: CloudinaryService["Service"],
+  publicId: CloudinaryPublicId
+): Effect.Effect<void, CustomerAvatarProviderError> =>
+  cloudinary.destroyAsset(publicId).pipe(
+    Effect.asVoid,
+    Effect.mapError(() => new CustomerAvatarProviderError({}))
+  );
+
+/** Bounded listing of one account's retained staging assets. */
+const listStagedAssets = (
+  cloudinary: CloudinaryService["Service"],
+  folder: string
+): Effect.Effect<readonly CloudinaryAsset[], CustomerAvatarProviderError> =>
+  cloudinary
+    .searchByFolder(folder, { maxResults: 8 })
+    .pipe(Effect.mapError(() => new CustomerAvatarProviderError({})));
+
+/**
+ * Recovers a staging asset retained by a previously failed promotion: if the
+ * account owns retained staging, the newest copy is promoted onto the live
+ * public ID before anything new is staged. Best-effort — a failed recovery
+ * never blocks the fresh upload, which promotes over the live ID anyway.
+ */
+const recoverRetainedStaging = (
+  cloudinary: CloudinaryService["Service"],
+  namespace: string,
+  accountId: CustomerAccountId
+): Effect.Effect<void, never> =>
+  listStagedAssets(cloudinary, accountStagingFolder(namespace, accountId)).pipe(
+    Effect.flatMap((staged) =>
+      staged.length === 0
+        ? Effect.void
+        : promoteStaged(
+            cloudinary,
+            staged[0]!.public_id,
+            livePublicIdFor(namespace, accountId)
+          ).pipe(Effect.asVoid)
+    ),
+    Effect.ignore
+  );
+
+/**
+ * Removes every account-owned staging asset after the live avatar destroy
+ * succeeded. A listing or destroy failure is retryable so the deletion
+ * caller can retry with the identity rows still intact.
+ */
+const destroyStaging = (
+  cloudinary: CloudinaryService["Service"],
+  namespace: string,
+  accountId: CustomerAccountId
+): Effect.Effect<void, CustomerAvatarProviderError> =>
+  listStagedAssets(cloudinary, accountStagingFolder(namespace, accountId)).pipe(
+    Effect.flatMap((staged) =>
+      Effect.forEach(
+        staged,
+        (asset) => destroyAssetById(cloudinary, asset.public_id),
+        { discard: true }
+      )
+    ),
+    Effect.asVoid
+  );
+
+/**
  * Stage upload under a unique temporary public ID. Replacement works
  * because promotion (below) renames onto the fixed live public ID with
  * overwrite; the live asset is never written directly.
@@ -368,7 +475,7 @@ const stageUpload = (
 ): Effect.Effect<CloudinaryPublicId, CustomerAvatarProviderError> =>
   Effect.sync(() => crypto.randomUUID()).pipe(
     Effect.flatMap((token) => {
-      const folder = `${namespace}-staging/${accountId}`;
+      const folder = accountStagingFolder(namespace, accountId);
       const stagedId = Schema.decodeSync(CloudinaryPublicIdSchema)(
         `${folder}/${token}`
       );

@@ -154,8 +154,17 @@ export function AvatarControl({
     ? pendingMessage
     : (serverError ?? settledMessage);
 
-  const openFilePicker = () => {
+  // Beginning any new mutation clears both stored action results so a
+  // previous action's serverError can never mask a later action's outcome,
+  // and resets the aria-live status for the new attempt.
+  const beginMutation = () => {
+    upload.reset();
+    remove.reset();
     setStatus({ kind: "idle" });
+  };
+
+  const openFilePicker = () => {
+    beginMutation();
     fileInputRef.current?.click();
   };
 
@@ -164,14 +173,14 @@ export function AvatarControl({
     // Keep the picker usable for a retry regardless of the outcome.
     event.target.value = "";
     if (!file) return;
-    setStatus({ kind: "idle" });
+    beginMutation();
     const formData = new FormData();
     formData.set("file", file);
     upload.execute(formData);
   };
 
   const handleRemove = () => {
-    setStatus({ kind: "idle" });
+    beginMutation();
     remove.execute(undefined);
   };
 
