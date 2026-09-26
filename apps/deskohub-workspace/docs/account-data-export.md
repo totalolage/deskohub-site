@@ -20,6 +20,7 @@ The export never contains invoice PDFs, provider email delivery logs, analytics 
 - The export is a UTF-8 JSON document with a versioned schema (`schemaVersion`).
 - The snapshot is generated fresh for every download request. It is not a stored archive.
 - The snapshot is assembled during the request from several systems (account authentication, the booking-system provider, and the consent store). It is therefore **not** an atomic cross-provider transaction: data that changes while the snapshot is being assembled may be captured in only one section.
+- The metadata section carries a fixed human-readable note stating exactly that: the snapshot is assembled during the request from different systems, is not an atomic cross-system transaction, and concurrent changes may appear in only some sections.
 - Sections describe themselves, and a section with no records says so explicitly instead of being omitted.
 
 ## Delivery and retention

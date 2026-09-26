@@ -125,13 +125,31 @@ describe("AccountDataExportService", () => {
     if (result.failure) throw result.failure;
 
     const snapshot = result.success;
-    expect(Object.keys(snapshot).sort()).toEqual([
-      "dotyposProfile",
+    // The document's own key order mirrors the contractual meta scope order
+    // (identity, dotyposProfile, reservations, marketingConsent) before meta.
+    expect(Object.keys(snapshot)).toEqual([
       "identity",
+      "dotyposProfile",
+      "reservations",
       "marketingConsent",
       "meta",
-      "reservations",
     ]);
+    expect(snapshot.meta.scope).toEqual([
+      "identity",
+      "dotyposProfile",
+      "reservations",
+      "marketingConsent",
+    ]);
+    expect(Object.keys(snapshot.meta)).toEqual([
+      "schemaVersion",
+      "generatedAt",
+      "scope",
+      "assembledDuringRequest",
+      "nonAtomicityNote",
+    ]);
+    expect(snapshot.meta.nonAtomicityNote).toBe(
+      "This snapshot was assembled during a single request from different systems. It is not an atomic cross-system transaction: data changed concurrently may appear in only some sections."
+    );
     expect(Object.keys(snapshot.identity!).sort()).toEqual(
       [
         "accountCreatedAt",
@@ -143,12 +161,6 @@ describe("AccountDataExportService", () => {
         "accountId",
       ].sort()
     );
-    expect(Object.keys(snapshot.meta!).sort()).toEqual([
-      "assembledDuringRequest",
-      "generatedAt",
-      "schemaVersion",
-      "scope",
-    ]);
 
     // No token, session identifier, credential, or document hash anywhere in
     // the serialized document.
@@ -162,6 +174,91 @@ describe("AccountDataExportService", () => {
       withdrawnAt: null,
       locale: "en-US",
     });
+  });
+
+  test("exposes exactly the literal keys for a populated profile, billing, and reservation variants", async () => {
+    const populatedProfile = {
+      firstName: "Ada",
+      lastName: "Lovelace",
+      phone: "+420000000000",
+      billing: {
+        kind: "business",
+        addressLine1: "Charles Square 1",
+        addressLine2: null,
+        city: "Prague",
+        zip: "12000",
+        country: "CZ",
+        companyName: "Ada Test s.r.o.",
+        companyId: "12345678",
+        vatId: "CZ12345678",
+      },
+    } as const;
+    const coworkReservation = {
+      id: "reservation-cowork",
+      workspaceReservationId: "wr-cowork",
+      product: { kind: "cowork", tier: "basic" },
+      startsAt: "2026-09-02T09:00:00.000Z",
+      endsAt: "2026-09-02T17:00:00.000Z",
+      seats: 1,
+      status: "confirmed",
+    } as const;
+    const undatedOfficeReservation = {
+      id: "reservation-office",
+      product: { kind: "office" },
+      startsAt: null,
+      endsAt: null,
+      seats: null,
+      status: "cancelled",
+    } as const;
+
+    const result = await buildExport(
+      makeLayers({
+        profile: populatedProfile,
+        historyGroups: {
+          current: [coworkReservation],
+          past: [],
+          unavailable: [undatedOfficeReservation],
+        },
+      })
+    );
+    if (result.failure) throw result.failure;
+    const snapshot = result.success;
+
+    // Literal key lists so a silently expanded fixture or a newly mapped
+    // provider field cannot widen the accepted output.
+    expect(Object.keys(snapshot.dotyposProfile!)).toEqual([
+      "firstName",
+      "lastName",
+      "phone",
+      "billing",
+    ]);
+    expect(Object.keys(snapshot.dotyposProfile!.billing!)).toEqual([
+      "kind",
+      "addressLine1",
+      "addressLine2",
+      "city",
+      "zip",
+      "country",
+      "companyName",
+      "companyId",
+      "vatId",
+    ]);
+    expect(snapshot.reservations.map((entry) => Object.keys(entry))).toEqual([
+      [
+        "id",
+        "workspaceReservationId",
+        "product",
+        "startsAt",
+        "endsAt",
+        "seats",
+        "status",
+      ],
+      ["id", "product", "startsAt", "endsAt", "seats", "status"],
+    ]);
+    expect(snapshot.reservations.map((entry) => entry.product)).toEqual([
+      { kind: "cowork", tier: "basic" },
+      { kind: "office" },
+    ]);
   });
 
   test("exports explicit nulls for a missing profile and missing consent", async () => {

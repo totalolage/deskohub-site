@@ -36,6 +36,14 @@ const accountDataExportScopes = [
  * session identifiers, and other customers' records; no raw provider row,
  * database model, or free-text field is ever serialized.
  */
+/**
+ * The fixed human-readable note carried in every export document. It states
+ * the snapshot's non-atomic assembly so the reader of the downloaded file
+ * cannot mistake it for a single consistent point-in-time copy.
+ */
+export const accountDataExportNonAtomicityNote =
+  "This snapshot was assembled during a single request from different systems. It is not an atomic cross-system transaction: data changed concurrently may appear in only some sections.";
+
 export type AccountDataExportSnapshot = {
   readonly identity: {
     readonly accountId: CustomerAccountId;
@@ -58,6 +66,7 @@ export type AccountDataExportSnapshot = {
     readonly generatedAt: string;
     readonly scope: readonly (typeof accountDataExportScopes)[number][];
     readonly assembledDuringRequest: boolean;
+    readonly nonAtomicityNote: typeof accountDataExportNonAtomicityNote;
   };
 };
 
@@ -163,6 +172,7 @@ export class AccountDataExportService extends Context.Service<
             generatedAt: Temporal.Now.instant().toString(),
             scope: accountDataExportScopes,
             assembledDuringRequest: true,
+            nonAtomicityNote: accountDataExportNonAtomicityNote,
           },
         } satisfies AccountDataExportSnapshot;
       });

@@ -1458,8 +1458,11 @@ export const makeWorkspaceE2EAccountCases = ({
               run,
               session,
               `(() => {
+                const requestUrl = ${JSON.stringify(
+                  `/${config.locale}${accountSuffix}/data-export`
+                )};
                 window[${JSON.stringify(exportProbeWindowKey)}] = null;
-                fetch(${JSON.stringify(`/${config.locale}${legalSuffix}/data-export`)}, {
+                fetch(requestUrl, {
                   headers: { accept: "application/json" },
                 })
                   .then((response) =>
@@ -1474,6 +1477,7 @@ export const makeWorkspaceE2EAccountCases = ({
                   .then((probe) => {
                     const document = probe.ok ? JSON.parse(probe.text) : null;
                     window[${JSON.stringify(exportProbeWindowKey)}] = {
+                      requestUrl,
                       cacheControl: probe.cacheControl,
                       contentDisposition: probe.contentDisposition,
                       contentType: probe.contentType,
@@ -1550,6 +1554,7 @@ export const makeWorkspaceE2EAccountCases = ({
                 }
                 return Effect.succeed(
                   JSON.parse(result.stdout) as {
+                    readonly requestUrl: string;
                     readonly cacheControl: string | null;
                     readonly contentDisposition: string | null;
                     readonly contentType: string | null;
@@ -1602,8 +1607,8 @@ export const makeWorkspaceE2EAccountCases = ({
               );
               assert(
                 snapshot.scope.join(",") ===
-                  "dotyposProfile,identity,marketingConsent,reservations",
-                "the export meta scope drifted from the allowlist"
+                  "identity,dotyposProfile,reservations,marketingConsent",
+                "the export meta scope drifted from the contractual section order"
               );
               assert(
                 Number.isFinite(Date.parse(snapshot.generatedAt)),
