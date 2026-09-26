@@ -36,6 +36,7 @@ const updateCustomerProfile = mock(() =>
 );
 
 mock.module("@/features/account/actions", () => ({
+  updatePreferredLanguage: () => Promise.resolve({ data: { status: "saved" } }),
   completeCustomerProfile,
   updateCustomerProfile,
 }));

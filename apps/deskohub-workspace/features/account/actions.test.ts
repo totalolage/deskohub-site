@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
+import { type Locale, m } from "@/features/i18n";
 import { CustomerAccountAccessError } from "./customer-account";
 
 const revalidatePath = mock((_path: string) => undefined);
@@ -133,6 +134,47 @@ mock.module("@/features/account/backend/customer-profile.service", () => ({
   CustomerProfileService: Profile,
 }));
 
+type PreferenceSave = {
+  readonly accountId: "@test/account-id";
+  readonly locale: "cs-CZ" | "en-US";
+};
+
+let preferenceSaveEffect: Effect.Effect<void, unknown> =
+  Effect.succeed(undefined);
+let preferenceSaveCalls: PreferenceSave[] = [];
+
+const PreferenceRepository = Context.Service<
+  PreferenceRepository,
+  {
+    readonly load: () => Effect.Effect<"cs-CZ" | "en-US" | undefined, unknown>;
+    readonly save: (
+      accountId: string,
+      locale: string
+    ) => typeof preferenceSaveEffect;
+  }
+>()("@test/ActionsCommunicationPreference");
+
+const PreferenceRepositoryLayer = Layer.succeed(PreferenceRepository, {
+  load: () => Effect.succeed(undefined),
+  save: (accountId, locale) => {
+    preferenceSaveCalls.push({
+      accountId: accountId as "@test/account-id",
+      locale: locale as "cs-CZ" | "en-US",
+    });
+    return preferenceSaveEffect;
+  },
+});
+Object.assign(PreferenceRepository, {
+  Default: PreferenceRepositoryLayer,
+  Live: PreferenceRepositoryLayer,
+});
+mock.module(
+  "@/features/account/backend/customer-communication-preference.repository",
+  () => ({
+    CustomerCommunicationPreferenceRepository: PreferenceRepository,
+  })
+);
+
 const activeSession = {
   accountId: "@test/account-id" as const,
   email: "ada@example.test",
@@ -151,6 +193,8 @@ describe("account actions", () => {
       dotyposCustomerId: "60111",
     });
     deleteUser = () => Promise.resolve({ success: true });
+    preferenceSaveEffect = Effect.succeed(undefined);
+    preferenceSaveCalls = [];
   });
 
   const importActions = () => import("./actions");
@@ -256,6 +300,72 @@ describe("account actions", () => {
     );
     expect(profileCalls).toHaveLength(0);
     expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
+  });
+
+  test("saves the preferred communication language for the verified account", async () => {
+    const { updatePreferredLanguage } = await importActions();
+
+    const result = await updatePreferredLanguage({ locale: "cs-CZ" });
+
+    expect(result).toEqual({ data: { status: "saved" } });
+    expect(preferenceSaveCalls).toEqual([
+      { accountId: "@test/account-id", locale: "cs-CZ" },
+    ]);
+    expect(profileCalls).toHaveLength(0);
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  test("rejects locales outside the selectable set", async () => {
+    const { updatePreferredLanguage } = await importActions();
+
+    const result = await updatePreferredLanguage({
+      locale: "de-DE",
+    } as never);
+
+    expect(result.validationErrors).toBeTruthy();
+    expect(preferenceSaveCalls).toHaveLength(0);
+  });
+
+  test("returns the session-expired error without saving when unauthenticated", async () => {
+    currentUser = Effect.succeed(null);
+    const { updatePreferredLanguage } = await importActions();
+
+    const result = await updatePreferredLanguage({ locale: "cs-CZ" });
+
+    expect(result.serverError).toBe(
+      m.accountSessionExpired({}, { locale: "en-US" })
+    );
+    expect(preferenceSaveCalls).toHaveLength(0);
+  });
+
+  test("returns the deletion-pending error when the account is being deleted", async () => {
+    preferenceSaveEffect = Effect.fail(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      })
+    );
+    const { updatePreferredLanguage } = await importActions();
+
+    const result = await updatePreferredLanguage({ locale: "en-US" });
+
+    expect(result.serverError).toBe(
+      m.accountDeletionPendingError({}, { locale: "en-US" })
+    );
+    expect(preferenceSaveCalls).toHaveLength(1);
+  });
+
+  test("returns the generic profile error without leaking the write failure", async () => {
+    preferenceSaveEffect = Effect.fail(
+      new CustomerAccountAccessError({ reason: "unavailable" })
+    );
+    const { updatePreferredLanguage } = await importActions();
+
+    const result = await updatePreferredLanguage({ locale: "en-US" });
+
+    expect(result.serverError).toBe(
+      m.accountProfileError({}, { locale: "en-US" })
+    );
   });
 
   test("deletes through the Better Auth endpoint and revalidates account and deleted paths", async () => {

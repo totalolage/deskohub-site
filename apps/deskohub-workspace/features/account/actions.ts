@@ -5,11 +5,13 @@ import { revalidatePath } from "next/cache";
 import { deleteCurrentAccountThroughAuthEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { CustomerCommunicationPreferenceRepository } from "@/features/account/backend/customer-communication-preference.repository";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import {
   type CustomerProfileInput,
   updateCustomerProfileStandardSchema,
 } from "@/features/account/contracts";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import { CustomerAccountAccessError } from "@/features/account/customer-account";
 import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import type { Locale } from "@/features/i18n";
@@ -19,6 +21,16 @@ import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
 const deleteCustomerAccountConfirmedSchema = Schema.toStandardSchemaV1(
   Schema.Struct({ confirmed: Schema.Literal(true) }),
+  { parseOptions: { errors: "all", onExcessProperty: "error" } }
+);
+
+/**
+ * The selectable preferred communication languages. Hardcoded to the two
+ * locales the account screen offers; the database CHECK derives from the
+ * same inlang locale list.
+ */
+const preferredLanguageSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({ locale: Schema.Literals(["cs-CZ", "en-US"]) }),
   { parseOptions: { errors: "all", onExcessProperty: "error" } }
 );
 
@@ -117,6 +129,17 @@ const saveCustomerProfile = Effect.fn(
     )
 );
 
+/**
+ * Saves the Workspace-owned preferred communication language for the
+ * verified account under the account lock. The action never touches the
+ * locale cookie, redirects, or the Dotypos profile: it only writes the
+ * durable preference row.
+ */
+const savePreferredLanguage = (accountId: CustomerAccountId, locale: Locale) =>
+  Effect.flatMap(CustomerCommunicationPreferenceRepository, (repository) =>
+    repository.save(accountId, locale)
+  ).pipe(Effect.provide(CustomerCommunicationPreferenceRepository.Live));
+
 const completeCustomerProfileAction = defineWorkspaceAction(
   {
     operation: "account.complete-profile",
@@ -144,6 +167,25 @@ const updateCustomerProfileAction = defineWorkspaceAction(
       Effect.as(saveCustomerProfile(input, locale), {
         status: "updated" as const,
       })
+    )
+);
+
+const updatePreferredLanguageAction = defineWorkspaceAction(
+  {
+    operation: "account.update-language",
+    schema: preferredLanguageSchema,
+    logInput: false,
+  },
+  (input, { locale }) =>
+    Effect.andThen(
+      requireAccountsEnabled(locale),
+      Effect.flatMap(requireVerifiedSession, (user) =>
+        savePreferredLanguage(user.accountId, input.locale)
+      ).pipe(
+        Effect.mapError(profileActionError(locale)),
+        Effect.provide(CustomerAuthentication.Default),
+        Effect.as({ status: "saved" as const })
+      )
     )
 );
 
@@ -218,6 +260,12 @@ export const updateCustomerProfile: typeof updateCustomerProfileAction = async (
   "use server";
   return await updateCustomerProfileAction(...args);
 };
+
+export const updatePreferredLanguage: typeof updatePreferredLanguageAction =
+  async (...args: Parameters<typeof updatePreferredLanguageAction>) => {
+    "use server";
+    return await updatePreferredLanguageAction(...args);
+  };
 
 export const deleteCustomerAccount: typeof deleteCustomerAccountAction = async (
   ...args: Parameters<typeof deleteCustomerAccountAction>

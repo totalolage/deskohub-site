@@ -69,6 +69,9 @@ const completeCustomerProfile = mock(
 const updateCustomerProfile = mock(
   (): Promise<ActionResult> => Promise.resolve({ data: { status: "updated" } })
 );
+const updatePreferredLanguage = mock(
+  (): Promise<ActionResult> => Promise.resolve({ data: { status: "saved" } })
+);
 const deleteCustomerAccount = mock(
   (): Promise<ActionResult> => Promise.resolve({ data: { status: "deleted" } })
 );
@@ -77,6 +80,7 @@ mock.module("@/features/account/actions", () => ({
   completeCustomerProfile,
   deleteCustomerAccount,
   updateCustomerProfile,
+  updatePreferredLanguage,
 }));
 
 type MarketingPreferenceSaveInput = {
@@ -168,6 +172,13 @@ const profileCopy = {
     },
     languageLabel: "Preferred communication language",
     languageUnavailableValue: "Not set",
+    languageSave: "Save",
+    languageSaving: "Saving…",
+    languageSaved: "Communication language saved.",
+    languageSaveFailed: "Saving the communication language failed. Try again.",
+    languageReadUnavailable: "Not available right now",
+    languageOptionCs: "Čeština",
+    languageOptionEn: "English (US)",
     memberFallback: "Workspace member",
     title: "Member profile and settings",
     verifiedEmail: "Verified login email",
@@ -182,6 +193,14 @@ const profileCopy = {
     },
     languageLabel: "Preferovaný komunikační jazyk",
     languageUnavailableValue: "Nenastaveno",
+    languageSave: "Uložit",
+    languageSaving: "Ukládání…",
+    languageSaved: "Komunikační jazyk byl uložen.",
+    languageSaveFailed:
+      "Ukládání komunikačního jazyka se nepodařilo. Zkuste to znovu.",
+    languageReadUnavailable: "Zrovna teď není k dispozici",
+    languageOptionCs: "Čeština",
+    languageOptionEn: "English (US)",
     memberFallback: "Člen Workspace",
     title: "Profil a nastavení",
     verifiedEmail: "Ověřený přihlašovací e-mail",
@@ -301,6 +320,7 @@ afterEach(() => {
   signInMagicLink.mockClear();
   signOut.mockClear();
   updateCustomerProfile.mockClear();
+  updatePreferredLanguage.mockClear();
 });
 
 afterAll(unregisterWorkspaceComponentTestEnv);
@@ -447,12 +467,6 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
     render: renderProfileScreen,
   },
   {
-    label: (locale) => profileCopy[locale].languageLabel,
-    name: "language control",
-    render: renderProfileScreen,
-    role: "combobox",
-  },
-  {
     label: (locale) => billingCopy[locale].syncAres,
     name: "ARES control",
     render: renderBillingScreen,
@@ -490,8 +504,8 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
 ];
 
 describe("account future-feature controls", () => {
-  test("keeps the future-feature inventory at nine controls", () => {
-    expect(futureFeatureTargets).toHaveLength(9);
+  test("keeps the future-feature inventory at eight controls", () => {
+    expect(futureFeatureTargets).toHaveLength(8);
   });
 
   for (const target of futureFeatureTargets) {

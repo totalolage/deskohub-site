@@ -64,6 +64,7 @@ mock.module("@/features/account/actions", () => ({
   completeCustomerProfile: () =>
     Promise.resolve({ data: { status: "completed" } }),
   updateCustomerProfile: () => Promise.resolve({ data: { status: "updated" } }),
+  updatePreferredLanguage: () => Promise.resolve({ data: { status: "saved" } }),
   deleteCustomerAccount: () => Promise.resolve({ data: { status: "deleted" } }),
 }));
 type MarketingPreferenceSaveInput = {

@@ -4,6 +4,7 @@ import { Effect, Result } from "effect";
 import { cache } from "react";
 import { resolveCurrentCustomerAccount } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { CustomerCommunicationPreferenceRepository } from "@/features/account/backend/customer-communication-preference.repository";
 import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
@@ -24,6 +25,7 @@ export type CustomerAccountPageState =
   | {
       readonly kind: "linked";
       readonly email: string;
+      readonly preferredLanguage: Locale | null | "read-failed";
       readonly profile: CustomerProfile;
       readonly history: CustomerReservationHistory;
     }
@@ -89,9 +91,33 @@ export const loadCustomerAccountPage = cache(
         })
       );
 
+      /**
+       * The durable communication-language preference is independent of the
+       * Dotypos profile. A missing row is `null`; a read failure becomes the
+       * explicit "read-failed" sentinel so it never blocks the rest of the
+       * page and never renders a restored value.
+       */
+      const preferredLanguage = await Effect.flatMap(
+        CustomerCommunicationPreferenceRepository,
+        (repository) => repository.load(account.success.accountId)
+      ).pipe(
+        Effect.provide(CustomerCommunicationPreferenceRepository.Live),
+        Effect.map((value) => value ?? null),
+        Effect.tapError((error) =>
+          Effect.logError("Account communication preference read failed", {
+            error,
+          })
+        ),
+        Effect.orElseSucceed(() => "read-failed" as const),
+        runWorkspaceEffect("account.communication-language.read", {
+          boundary: "page",
+        })
+      );
+
       return {
         kind: "linked",
         email: user.email,
+        preferredLanguage,
         profile: profile.success,
         history,
       };

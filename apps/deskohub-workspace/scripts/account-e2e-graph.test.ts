@@ -125,7 +125,7 @@ const budgetPlan = (): ReadonlyMap<string, "send" | "verify"> => {
       return { call, operation: operation as "send" | "verify" };
     }
   );
-  expect(wrappers).toHaveLength(8);
+  expect(wrappers).toHaveLength(12);
   const plan = new Map<string, "send" | "verify">();
   for (const wrapper of wrappers) {
     for (const stepCall of callsNamed(casesModule.ast, "step")) {
@@ -152,6 +152,13 @@ const BUDGETED_STEPS: readonly (readonly [string, "send" | "verify"])[] = [
     "verify",
   ],
   ["signs the same account back in", "verify"],
+  ["requests the fresh sign-in link", "send"],
+  ["signs in and opens the profile section", "verify"],
+  ["requests the restore sign-in link", "send"],
+  [
+    "signs in again and opens the profile section for the restore check",
+    "verify",
+  ],
 ];
 
 const UNBUDGETED_STEPS: readonly string[] = [
@@ -288,6 +295,7 @@ describe("workspace account e2e graph", () => {
       "account-session-lifecycle",
       "account-deletion-and-reactivation",
       "account-linking-variants",
+      "account-communication-language",
     ]);
 
     // The lane configures serial execution; the argument is an object, not
@@ -337,17 +345,17 @@ describe("workspace account e2e graph", () => {
     );
     expect(magicLinkOperationsPerWindow).toBeGreaterThan(0);
 
-    // The budget plan comes from the cases syntax tree: exactly eight
-    // wrappers, four sends and four verifies, each hugging its exact
+    // The budget plan comes from the cases syntax tree: exactly twelve
+    // wrappers, six sends and six verifies, each hugging its exact
     // semantic endpoint, and no direct reservation API anywhere.
     const plan = budgetPlan();
     expect(
       [...plan.values()].filter((operation) => operation === "send")
-    ).toHaveLength(4);
+    ).toHaveLength(6);
     expect(
       [...plan.values()].filter((operation) => operation === "verify")
-    ).toHaveLength(4);
-    expect(plan.size).toBe(8);
+    ).toHaveLength(6);
+    expect(plan.size).toBe(12);
     const caseIdentifiers = identifierNames(casesModule.ast);
     expect(caseIdentifiers.has("reserve")).toBe(false);
     expect(caseIdentifiers.has("tryReserve")).toBe(false);

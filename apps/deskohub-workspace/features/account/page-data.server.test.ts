@@ -152,6 +152,31 @@ mock.module(
     CustomerReservationHistoryService: History,
   })
 );
+
+let preferenceLoadEffect: Effect.Effect<
+  "cs-CZ" | "en-US" | undefined,
+  unknown
+> = Effect.succeed(undefined);
+
+const PreferenceRepository = Context.Service<
+  PreferenceRepository,
+  { readonly load: () => typeof preferenceLoadEffect }
+>()("@test/AccountCommunicationPreference");
+
+const PreferenceRepositoryLayer = Layer.succeed(PreferenceRepository, {
+  load: () => preferenceLoadEffect,
+});
+Object.assign(PreferenceRepository, {
+  Default: PreferenceRepositoryLayer,
+  Live: PreferenceRepositoryLayer,
+});
+
+mock.module(
+  "@/features/account/backend/customer-communication-preference.repository",
+  () => ({
+    CustomerCommunicationPreferenceRepository: PreferenceRepository,
+  })
+);
 mock.module("@/shared/backend/workspace-effect", () => ({
   runWorkspaceEffect:
     (_operation: string, _options: { readonly boundary: string }) =>
@@ -170,6 +195,7 @@ describe("loadCustomerAccountPage", () => {
       kind: "available",
       groups: { current: [], past: [], unavailable: [] },
     });
+    preferenceLoadEffect = Effect.succeed(undefined);
   });
 
   const loadPageState = async () => {
@@ -278,6 +304,28 @@ describe("loadCustomerAccountPage", () => {
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "linked",
       email: "ada@example.test",
+      preferredLanguage: null,
+      profile: { firstName: "Ada" },
+      history: { kind: "available" },
+    });
+  });
+
+  test("restores the saved communication preference in the linked state", async () => {
+    preferenceLoadEffect = Effect.succeed("cs-CZ");
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      preferredLanguage: "cs-CZ",
+    });
+  });
+
+  test("marks the linked state read-failed without blocking the page when the preference read fails", async () => {
+    preferenceLoadEffect = Effect.fail(new Error("preference read down"));
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      email: "ada@example.test",
+      preferredLanguage: "read-failed",
       profile: { firstName: "Ada" },
       history: { kind: "available" },
     });
@@ -289,6 +337,7 @@ describe("loadCustomerAccountPage", () => {
     await expect(loadPageState()).resolves.toEqual({
       kind: "linked",
       email: "ada@example.test",
+      preferredLanguage: null,
       profile: {
         firstName: "Ada",
         lastName: "Lovelace",

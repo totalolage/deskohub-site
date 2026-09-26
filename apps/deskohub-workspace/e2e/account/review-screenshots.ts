@@ -18,6 +18,7 @@ export type AccountReviewTarget =
   | "linked-reservations-desktop"
   | "linked-reservations-mobile"
   | "linked-profile-desktop"
+  | "linked-profile-language-desktop"
   | "linked-billing-desktop"
   | "linked-billing-mobile"
   | "linked-legal-desktop"
@@ -93,6 +94,11 @@ const accountReviewTargetMetadata = {
   },
   "linked-profile-desktop": {
     filename: "linked-profile-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-profile-language-desktop": {
+    filename: "linked-profile-language-desktop.png",
     path: "/en-US/account",
     viewport: { height: 1000, width: 1440 },
   },

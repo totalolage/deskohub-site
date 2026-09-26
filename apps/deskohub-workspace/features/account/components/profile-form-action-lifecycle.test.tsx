@@ -51,6 +51,7 @@ mock.module("next/navigation", () => ({
 }));
 
 mock.module("@/features/account/actions", () => ({
+  updatePreferredLanguage: () => Promise.resolve({ data: { status: "saved" } }),
   completeCustomerProfile,
   updateCustomerProfile,
 }));

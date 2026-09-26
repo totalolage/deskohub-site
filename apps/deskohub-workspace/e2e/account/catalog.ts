@@ -8,6 +8,7 @@ export const workspaceE2EAccountCaseIds = [
   "account-session-lifecycle",
   "account-deletion-and-reactivation",
   "account-linking-variants",
+  "account-communication-language",
 ] as const;
 
 export type WorkspaceE2EAccountCaseId =

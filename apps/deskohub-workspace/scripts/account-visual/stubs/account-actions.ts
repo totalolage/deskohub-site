@@ -43,6 +43,7 @@ const unavailable = async (): Promise<UnavailableActionResult> => {
 
 export const completeCustomerProfile = unavailable;
 export const updateCustomerProfile = unavailable;
+export const updatePreferredLanguage = unavailable;
 export const deleteCustomerAccount = unavailable;
 export const saveMarketingPreferencesAction = unavailable;
 export const confirmMarketingManagementAction = unavailable;

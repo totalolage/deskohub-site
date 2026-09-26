@@ -37,6 +37,19 @@ export function getAccountScreenCopy(locale: Locale) {
         {},
         { locale }
       ),
+      languageSave: m.accountProfileScreenLanguageSave({}, { locale }),
+      languageSaving: m.accountProfileScreenLanguageSaving({}, { locale }),
+      languageSaved: m.accountProfileScreenLanguageSaved({}, { locale }),
+      languageSaveFailed: m.accountProfileScreenLanguageSaveFailed(
+        {},
+        { locale }
+      ),
+      languageReadUnavailable: m.accountProfileScreenLanguageReadUnavailable(
+        {},
+        { locale }
+      ),
+      languageOptionCs: m.accountProfileScreenLanguageOptionCs({}, { locale }),
+      languageOptionEn: m.accountProfileScreenLanguageOptionEn({}, { locale }),
     } satisfies ProfileScreenCopy,
     billing: {
       title: m.accountSectionBilling({}, { locale }),

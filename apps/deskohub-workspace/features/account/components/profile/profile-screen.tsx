@@ -1,5 +1,9 @@
+"use client";
+
 import { Camera, Check, UserRound } from "lucide-react";
-import { type ReactNode, useId } from "react";
+import { useRouter } from "next/navigation";
+import { type ReactNode, useId, useState } from "react";
+import { updatePreferredLanguage } from "@/features/account/actions";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import type { Locale } from "@/features/i18n";
@@ -7,9 +11,12 @@ import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 import {
   Select,
+  SelectContent,
+  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import {
   EmailVerificationStatus,
   type EmailVerificationStatusCopy,
@@ -18,8 +25,18 @@ import {
 /*
  * Direction: extend the account's quiet Sculpin operate surface with a white
  * profile card. Identity is factual, while unavailable settings stay visibly
- * non-interactive and all editable fields remain caller-owned.
+ * non-interactive and all editable fields remain caller-owned. The preferred
+ * communication language is a Workspace-owned durable preference: it saves
+ * through its own server action, never through the surrounding Dotypos
+ * profile form.
  */
+
+/**
+ * The server-read state of the saved preference: `null` when no preference
+ * row exists, `"read-failed"` when the read could not be completed, and
+ * otherwise the persisted locale.
+ */
+export type PreferredLanguageState = Locale | null | "read-failed";
 
 export interface ProfileScreenCopy {
   readonly title: string;
@@ -31,6 +48,13 @@ export interface ProfileScreenCopy {
   readonly avatarUnavailableDescription: string;
   readonly languageLabel: string;
   readonly languageUnavailableValue: string;
+  readonly languageSave: string;
+  readonly languageSaving: string;
+  readonly languageSaved: string;
+  readonly languageSaveFailed: string;
+  readonly languageReadUnavailable: string;
+  readonly languageOptionCs: string;
+  readonly languageOptionEn: string;
 }
 
 export interface ProfileScreenProps {
@@ -39,9 +63,34 @@ export interface ProfileScreenProps {
   readonly email: string;
   readonly locale: Locale;
   readonly copy: ProfileScreenCopy;
+  readonly preferredLanguage?: PreferredLanguageState;
   readonly children: ReactNode;
   readonly footer?: ReactNode;
 }
+
+/**
+ * Resolves the announced save-status copy for the current action state:
+ * saving wins while executing, then the saved result, then the failure.
+ */
+const languageStatusCopy = (input: {
+  readonly copy: ProfileScreenCopy;
+  readonly isSaving: boolean;
+  readonly saved: boolean;
+  readonly serverError: string | null;
+}): string | null => {
+  if (input.isSaving) return input.copy.languageSaving;
+  if (input.saved) return input.copy.languageSaved;
+  if (input.serverError !== null) return input.copy.languageSaveFailed;
+  return null;
+};
+
+const languageOptions = [
+  { locale: "cs-CZ", label: "languageOptionCs" },
+  { locale: "en-US", label: "languageOptionEn" },
+] as const satisfies readonly {
+  locale: Locale;
+  label: keyof ProfileScreenCopy;
+}[];
 
 export function ProfileScreen({
   children,
@@ -51,10 +100,23 @@ export function ProfileScreen({
   footer,
   lastName,
   locale,
+  preferredLanguage = null,
 }: ProfileScreenProps) {
+  const router = useRouter();
   const titleId = useId();
   const languageId = useId();
   const avatarDescriptionId = `${languageId}-avatar-description`;
+  const [selectedLanguage, setSelectedLanguage] = useState<Locale | null>(null);
+  const {
+    execute: saveLanguage,
+    isExecuting: isSaving,
+    result,
+  } = useWorkspaceAction(updatePreferredLanguage, {
+    actionName: "account.update-language",
+    onSuccess: () => {
+      void router.refresh();
+    },
+  });
   const nameParts = [firstName, lastName ?? ""]
     .map((name) => name.trim())
     .filter((name) => name.length > 0);
@@ -63,6 +125,26 @@ export function ProfileScreen({
     .map((name) => Array.from(name)[0])
     .filter((initial): initial is string => initial !== undefined)
     .join("");
+
+  const hasSavedLanguage =
+    preferredLanguage !== null && preferredLanguage !== "read-failed";
+  const savedLanguage = hasSavedLanguage ? preferredLanguage : null;
+  const languageValue = selectedLanguage ?? savedLanguage;
+  const languagePlaceholder =
+    preferredLanguage === "read-failed"
+      ? copy.languageReadUnavailable
+      : copy.languageUnavailableValue;
+  const languageStatus = languageStatusCopy({
+    copy,
+    isSaving,
+    serverError: result.serverError ?? null,
+    saved: result.data != null,
+  });
+
+  const handleSaveLanguage = () => {
+    if (!selectedLanguage || isSaving) return;
+    saveLanguage({ locale: selectedLanguage });
+  };
 
   return (
     <AccountSectionPanel
@@ -148,16 +230,47 @@ export function ProfileScreen({
         >
           {copy.languageLabel}
         </Label>
-        <Select disabled value="unavailable">
-          <FutureFeatureTooltip className="w-full" locale={locale}>
-            <SelectTrigger
-              id={languageId}
-              className="mt-2 min-h-11 w-full rounded-2xl border border-[#cad3df] bg-[#f8fafc] px-3 py-2 text-base text-[#52647c] outline-none disabled:cursor-not-allowed disabled:opacity-70 focus-visible:ring-2 focus-visible:ring-burned-orange"
-            >
-              <SelectValue>{copy.languageUnavailableValue}</SelectValue>
-            </SelectTrigger>
-          </FutureFeatureTooltip>
+        <Select
+          disabled={isSaving}
+          onValueChange={(value) => setSelectedLanguage(value as Locale)}
+          value={languageValue ?? undefined}
+        >
+          <SelectTrigger
+            id={languageId}
+            className="mt-2 min-h-11 w-full rounded-2xl border border-[#cad3df] bg-[#f8fafc] px-3 py-2 text-base text-[#52647c] outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
+          >
+            <SelectValue placeholder={languagePlaceholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {languageOptions.map((option) => (
+              <SelectItem key={option.locale} value={option.locale}>
+                {copy[option.label]}
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
+        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+          <Button
+            className="rounded-xl bg-burned-orange px-4 text-xs uppercase tracking-[0.08em] hover:bg-burned-orange/90"
+            disabled={isSaving || selectedLanguage === null}
+            onClick={handleSaveLanguage}
+            size="sm"
+            type="button"
+          >
+            {isSaving ? copy.languageSaving : copy.languageSave}
+          </Button>
+          <div aria-live="polite" className="min-h-5 text-sm">
+            {languageStatus !== null ? (
+              <p
+                className={
+                  result.serverError ? "text-red-700" : "text-emerald-800"
+                }
+              >
+                {languageStatus}
+              </p>
+            ) : null}
+          </div>
+        </div>
       </div>
     </AccountSectionPanel>
   );

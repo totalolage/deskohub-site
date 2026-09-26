@@ -1415,5 +1415,150 @@ export const makeWorkspaceE2EAccountCases = ({
         );
       })
     ),
+    makeCase("account-communication-language", ({ runStep }) =>
+      Effect.gen(function* () {
+        const languageTriggerSelector = '[data-slot="select-trigger"]';
+        const languageSaveSelector = 'button[type="button"]:has-text("Save")';
+        const languageOptionEnSelector =
+          '[role="option"]:has-text("English (US)")';
+        const languageSavedCopy = "Communication language saved.";
+        const languageOptionEn = "English (US)";
+
+        yield* runStep(
+          step(
+            "signs out for a fresh language-preference sign-in",
+            signOutAndRequireAnonymous(),
+            navigationTimeout
+          )
+        );
+        const startedAt = new Date();
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the fresh sign-in link",
+              requestSignInLink(recipient),
+              navigationTimeout
+            )
+          )
+        );
+        const link = yield* runStep(
+          step(
+            "retrieves the fresh sign-in link",
+            retrieveSignInLink(recipient, [], startedAt),
+            authDeliveryTimeout
+          )
+        );
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "signs in and opens the profile section",
+              Effect.gen(function* () {
+                yield* openPage(link);
+                yield* waitDefaultReservations("freshly signed-in account");
+                yield* selectAccountSectionInRunner(run, session, "profile");
+              }),
+              providerTransition
+            )
+          )
+        );
+        yield* runStep(
+          step(
+            "saves English (US) as the preferred communication language",
+            Effect.gen(function* () {
+              yield* clickBrowserElement(
+                run,
+                session,
+                languageTriggerSelector,
+                { timeoutMs: browserTimeout }
+              );
+              yield* clickBrowserElement(
+                run,
+                session,
+                languageOptionEnSelector,
+                {
+                  timeoutMs: browserTimeout,
+                }
+              );
+              yield* clickBrowserElement(run, session, languageSaveSelector, {
+                timeoutMs: browserTimeout,
+              });
+              yield* waitText("language preference saved", languageSavedCopy);
+            }),
+            providerTransition
+          )
+        );
+        yield* runStep(
+          step(
+            "signs out before the restore check",
+            signOutAndRequireAnonymous(),
+            navigationTimeout
+          )
+        );
+        const restoreStartedAt = new Date();
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the restore sign-in link",
+              requestSignInLink(recipient),
+              navigationTimeout
+            )
+          )
+        );
+        const restoreLink = yield* runStep(
+          step(
+            "retrieves the restore sign-in link",
+            retrieveSignInLink(recipient, [], restoreStartedAt),
+            authDeliveryTimeout
+          )
+        );
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "signs in again and opens the profile section for the restore check",
+              Effect.gen(function* () {
+                yield* openPage(restoreLink);
+                yield* waitDefaultReservations(
+                  "restored-session account reservations"
+                );
+                yield* selectAccountSectionInRunner(run, session, "profile");
+              }),
+              providerTransition
+            )
+          )
+        );
+        yield* runStep(
+          step(
+            "restores English (US) as the saved communication language",
+            Effect.gen(function* () {
+              yield* clickBrowserElement(
+                run,
+                session,
+                languageTriggerSelector,
+                { timeoutMs: browserTimeout }
+              );
+              yield* waitForBrowserCondition(
+                run,
+                session,
+                "restored English (US) option selected",
+                `(() => {
+                    const selected = document.querySelector('[role="option"][aria-selected="true"]');
+                    return selected !== null &&
+                      selected.textContent?.includes(${JSON.stringify(languageOptionEn)}) === true;
+                  })()`,
+                { timeoutMs: uiTransition }
+              );
+              yield* pressBrowserKey(run, session, "Escape", {
+                timeoutMs: browserTimeout,
+              });
+            }),
+            uiTransition
+          )
+        );
+      })
+    ),
   ];
 };

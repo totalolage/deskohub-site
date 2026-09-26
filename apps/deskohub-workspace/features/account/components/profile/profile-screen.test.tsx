@@ -4,17 +4,105 @@ import {
   beforeAll,
   describe,
   expect,
+  mock,
   test,
 } from "bun:test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
+import { useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { type Locale, m } from "@/features/i18n";
 import { Input } from "@/shared/components/ui/input";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import type { ProfileScreenCopy, ProfileScreenProps } from "./profile-screen";
-import { ProfileScreen } from "./profile-screen";
+
+let ProfileScreen: (props: ProfileScreenProps) => React.ReactNode;
+
+type LanguageActionResult = {
+  readonly data?: { readonly status?: string };
+  readonly serverError?: string;
+};
+
+const updatePreferredLanguage = mock(
+  (_input: { locale: Locale }): Promise<LanguageActionResult> =>
+    Promise.resolve({ data: { status: "saved" } })
+);
+
+mock.module("@/features/account/actions", () => ({
+  updatePreferredLanguage,
+}));
+
+mock.module("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => undefined }),
+}));
+
+mock.module("@/shared/utils/use-workspace-action", () => ({
+  useWorkspaceAction: (
+    action: (input: { locale: string }) => Promise<LanguageActionResult>,
+    options?: {
+      readonly onSuccess?: (args: { readonly data?: unknown }) => void;
+    }
+  ) => {
+    const [result, setResult] = useState<LanguageActionResult>({});
+    const [isExecuting, setIsExecuting] = useState(false);
+
+    const execute = (input: { locale: string }) => {
+      setIsExecuting(true);
+      void action(input).then((nextResult) => {
+        setResult(nextResult);
+        setIsExecuting(false);
+        if (nextResult.data) {
+          options?.onSuccess?.({ data: nextResult.data });
+        }
+      });
+    };
+
+    return {
+      execute,
+      isExecuting,
+      reset: () => setResult({}),
+      result,
+    };
+  },
+}));
+
+registerWorkspaceComponentTestEnv();
+({ ProfileScreen } = await import("./profile-screen"));
+
+const languageCatalogCopy = {
+  "en-US": {
+    save: "Save",
+    saving: "Saving…",
+    saved: m.accountProfileScreenLanguageSaved({}, { locale: "en-US" }),
+    failed: m.accountProfileScreenLanguageSaveFailed({}, { locale: "en-US" }),
+    readUnavailable: m.accountProfileScreenLanguageReadUnavailable(
+      {},
+      { locale: "en-US" }
+    ),
+    optionCs: "Čeština",
+    optionEn: "English (US)",
+  },
+  "cs-CZ": {
+    save: "Uložit",
+    saving: "Ukládání…",
+    saved: m.accountProfileScreenLanguageSaved({}, { locale: "cs-CZ" }),
+    failed: m.accountProfileScreenLanguageSaveFailed({}, { locale: "cs-CZ" }),
+    readUnavailable: m.accountProfileScreenLanguageReadUnavailable(
+      {},
+      { locale: "cs-CZ" }
+    ),
+    optionCs: "Čeština",
+    optionEn: "English (US)",
+  },
+} as const;
 
 const englishCopy: ProfileScreenCopy = {
   avatarUnavailableDescription: "Profile photos are not available here.",
@@ -26,6 +114,13 @@ const englishCopy: ProfileScreenCopy = {
   },
   languageLabel: "Preferred communication language",
   languageUnavailableValue: "Not set",
+  languageSave: "Save",
+  languageSaving: "Saving…",
+  languageSaved: "Communication language saved.",
+  languageSaveFailed: "Saving the communication language failed. Try again.",
+  languageReadUnavailable: "Not available right now",
+  languageOptionCs: "Čeština",
+  languageOptionEn: "English (US)",
   memberFallback: "Workspace member",
   title: "Member profile and settings",
   verifiedEmail: "Verified login email",
@@ -41,10 +136,41 @@ const czechCopy: ProfileScreenCopy = {
   },
   languageLabel: "Preferovaný komunikační jazyk",
   languageUnavailableValue: "Nenastaveno",
+  languageSave: "Uložit",
+  languageSaving: "Ukládání…",
+  languageSaved: "Komunikační jazyk byl uložen.",
+  languageSaveFailed:
+    "Ukládání komunikačního jazyka se nepodařilo. Zkuste to znovu.",
+  languageReadUnavailable: "Zrovna teď není k dispozici",
+  languageOptionCs: "Čeština",
+  languageOptionEn: "English (US)",
   memberFallback: "Člen Workspace",
   title: "Profil a nastavení",
   verifiedEmail: "Ověřený přihlašovací e-mail",
 };
+
+test("keeps the compiled catalog copy in sync with the component copy fixtures", () => {
+  expect(languageCatalogCopy["en-US"].saved).toBe(englishCopy.languageSaved);
+  expect(languageCatalogCopy["en-US"].failed).toBe(
+    englishCopy.languageSaveFailed
+  );
+  expect(languageCatalogCopy["en-US"].readUnavailable).toBe(
+    englishCopy.languageReadUnavailable
+  );
+  expect(languageCatalogCopy["cs-CZ"].saved).toBe(czechCopy.languageSaved);
+  expect(languageCatalogCopy["cs-CZ"].failed).toBe(
+    czechCopy.languageSaveFailed
+  );
+  expect(languageCatalogCopy["cs-CZ"].readUnavailable).toBe(
+    czechCopy.languageReadUnavailable
+  );
+  expect(m.accountProfileScreenLanguageOptionCs({}, { locale: "cs-CZ" })).toBe(
+    czechCopy.languageOptionCs
+  );
+  expect(m.accountProfileScreenLanguageOptionEn({}, { locale: "cs-CZ" })).toBe(
+    czechCopy.languageOptionEn
+  );
+});
 
 const formerLanguageUnavailableDescriptions = {
   "en-US": "Language preferences are not saved yet.",
@@ -136,10 +262,6 @@ function renderProfile(overrides: Partial<ProfileScreenProps> = {}): string {
 }
 
 describe("ProfileScreen", () => {
-  beforeAll(() => {
-    registerWorkspaceComponentTestEnv();
-  });
-
   afterEach(cleanup);
 
   afterAll(() => {
@@ -296,11 +418,12 @@ describe("ProfileScreen", () => {
     expect(verificationButton).toContain("text-emerald-800");
   });
 
-  test("disables unavailable camera and language controls without a preference", () => {
+  test("keeps the avatar disabled with its future-feature tooltip while the language control is enabled", () => {
     const markup = renderProfile();
     const disabledButtons = markup.match(/<button\b[^>]*disabled=""/g) ?? [];
-    const options = markup.match(/<option\b/g) ?? [];
 
+    // The avatar button stays disabled and the language Save button starts
+    // disabled before any selection; the language combobox is enabled.
     expect(disabledButtons).toHaveLength(2);
     expect(markup).toContain('aria-label="Profile photo unavailable"');
     expect(markup).toContain('data-slot="select-trigger"');
@@ -309,82 +432,279 @@ describe("ProfileScreen", () => {
       /<select\b[^>]*aria-hidden="true"[^>]*tabindex="-1"/
     );
     expect(markup).not.toMatch(/<select\b[^>]*name=/);
-    expect(markup).not.toMatch(/<option\b/);
-    expect(options).toHaveLength(0);
     expect(markup).toContain("Not set");
     expect(markup).not.toContain(
       formerLanguageUnavailableDescriptions["en-US"]
     );
-    expect(markup).not.toContain("Czech");
   });
 
-  test("renders the unavailable language control as a disabled localized combobox", () => {
+  test("renders the Not set placeholder for a missing preference in both locales", () => {
     for (const [locale, copy] of [
       ["en-US", englishCopy],
       ["cs-CZ", czechCopy],
     ] as const) {
       const view = render(
-        <form data-testid="profile-form">
-          <ProfileScreen
-            copy={copy}
-            email="ada@example.test"
-            firstName="Ada"
-            footer={<button type="button">Save profile</button>}
-            lastName="Lovelace"
-            locale={locale}
-          >
-            {profileFields}
-          </ProfileScreen>
-        </form>
+        <ProfileScreen
+          copy={copy}
+          email="ada@example.test"
+          firstName="Ada"
+          lastName="Lovelace"
+          locale={locale}
+        >
+          {profileFields}
+        </ProfileScreen>
       );
-      const languageTrigger = view.getByRole("combobox", {
-        name: copy.languageLabel,
-      });
-      const languageIcon = languageTrigger.querySelector("svg");
-      const languageWrapper =
-        languageTrigger.closest<HTMLElement>('[role="group"]');
-      const nativeSelect = view.container.querySelector<HTMLSelectElement>(
-        'select[aria-hidden="true"]'
-      );
+      const trigger = view.getByRole("combobox", { name: copy.languageLabel });
 
-      for (const description of Object.values(
-        formerLanguageUnavailableDescriptions
-      )) {
-        expect(view.queryByText(description)).toBeNull();
-      }
-      expect(languageTrigger.getAttribute("data-slot")).toBe("select-trigger");
-      expect(languageTrigger.tagName).toBe("BUTTON");
-      expect((languageTrigger as HTMLButtonElement).disabled).toBe(true);
-      expect(languageWrapper).not.toBeNull();
-      expect(languageWrapper?.classList.contains("w-full")).toBe(true);
-      expect(languageTrigger.className).toContain("min-h-11");
-      expect(languageTrigger.className).toContain("w-full");
-      expect(languageTrigger.className).toContain("rounded-2xl");
-      expect(languageTrigger.className).toContain("px-3");
-      expect(languageIcon?.getAttribute("class")).toContain("h-4 w-4 shrink-0");
-      expect(languageTrigger.textContent).toContain(
-        copy.languageUnavailableValue
-      );
-      expect(view.getByLabelText(copy.languageLabel)).toBe(languageTrigger);
-      expect(languageTrigger.getAttribute("aria-describedby")).toBeNull();
-      expect(
-        view.getByRole("button", { name: copy.emailVerification.verified })
-      ).toBeTruthy();
-      expect(nativeSelect).not.toBeNull();
-      expect(nativeSelect?.disabled).toBe(true);
-
-      const form = view.getByTestId("profile-form") as HTMLFormElement;
-      expect([...new FormData(form).keys()]).not.toContain("language");
-
-      fireEvent.click(languageTrigger);
-      fireEvent.keyDown(languageTrigger, { key: "ArrowDown" });
-
-      expect(view.queryByRole("listbox")).toBeNull();
-      expect(languageTrigger.textContent).toContain(
-        copy.languageUnavailableValue
-      );
+      expect((trigger as HTMLButtonElement).disabled).toBe(false);
+      expect(trigger.textContent).toContain(copy.languageUnavailableValue);
+      expect(trigger.textContent).not.toContain(copy.languageReadUnavailable);
       cleanup();
     }
+  });
+
+  test("renders the saved preference as the restored selection", async () => {
+    const view = render(
+      <ProfileScreen
+        copy={englishCopy}
+        email="ada@example.test"
+        firstName="Ada"
+        lastName="Lovelace"
+        locale="en-US"
+        preferredLanguage="cs-CZ"
+      >
+        {profileFields}
+      </ProfileScreen>
+    );
+    const trigger = view.getByRole("combobox", {
+      name: englishCopy.languageLabel,
+    });
+
+    // Radix registers item text only once the content has mounted, so open
+    // the listbox before asserting the restored label.
+    await act(async () => {
+      fireEvent.keyDown(trigger, { key: "Enter" });
+    });
+    await view.findByRole("listbox");
+
+    expect(trigger.textContent).toContain("Čeština");
+    expect(trigger.textContent).not.toContain("Not set");
+    cleanup();
+  });
+
+  test("renders the read-unavailable placeholder instead of a restored locale when the read failed", () => {
+    for (const [locale, copy] of [
+      ["en-US", englishCopy],
+      ["cs-CZ", czechCopy],
+    ] as const) {
+      const view = render(
+        <ProfileScreen
+          copy={copy}
+          email="ada@example.test"
+          firstName="Ada"
+          lastName="Lovelace"
+          locale={locale}
+          preferredLanguage="read-failed"
+        >
+          {profileFields}
+        </ProfileScreen>
+      );
+      const trigger = view.getByRole("combobox", {
+        name: copy.languageLabel,
+      });
+
+      expect(trigger.textContent).toContain(copy.languageReadUnavailable);
+      expect(trigger.textContent).not.toContain(copy.languageUnavailableValue);
+      expect(trigger.textContent).not.toContain("Čeština");
+      expect(trigger.textContent).not.toContain("English (US)");
+      cleanup();
+    }
+  });
+
+  test("saves a keyboard-chosen option through the language action", async () => {
+    const view = render(
+      <ProfileScreen
+        copy={englishCopy}
+        email="ada@example.test"
+        firstName="Ada"
+        lastName="Lovelace"
+        locale="en-US"
+      >
+        {profileFields}
+      </ProfileScreen>
+    );
+    const trigger = view.getByRole("combobox", {
+      name: englishCopy.languageLabel,
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(trigger, { key: "Enter" });
+    });
+    const listbox = await view.findByRole("listbox");
+
+    const option = view.getByRole("option", { name: "Čeština" });
+    await act(async () => {
+      option.focus();
+    });
+    await act(async () => {
+      fireEvent.keyDown(option, { key: "Enter" });
+    });
+
+    expect(view.getByRole("combobox").textContent).toContain("Čeština");
+
+    const saveButton = view.getByRole("button", { name: "Save" });
+    expect(saveButton.getAttribute("type")).toBe("button");
+    await act(async () => {
+      // happy-dom does not synthesize a click from Enter, so press Enter and
+      // dispatch the resulting default activation explicitly.
+      fireEvent.keyDown(saveButton, { key: "Enter" });
+      fireEvent.click(saveButton);
+    });
+    await waitFor(() =>
+      expect(updatePreferredLanguage).toHaveBeenCalledWith({ locale: "cs-CZ" })
+    );
+    cleanup();
+  });
+
+  test("announces saving during execution and the localized result copy afterwards", async () => {
+    let resolveSave!: (result: LanguageActionResult) => void;
+    updatePreferredLanguage.mockImplementationOnce(
+      () =>
+        new Promise<LanguageActionResult>((resolve) => {
+          resolveSave = resolve;
+        })
+    );
+    const view = render(
+      <ProfileScreen
+        copy={englishCopy}
+        email="ada@example.test"
+        firstName="Ada"
+        lastName="Lovelace"
+        locale="en-US"
+      >
+        {profileFields}
+      </ProfileScreen>
+    );
+    const trigger = view.getByRole("combobox", {
+      name: englishCopy.languageLabel,
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(trigger, { key: "Enter" });
+    });
+    const listbox = await view.findByRole("listbox");
+    const option = view.getByRole("option", { name: "Čeština" });
+    await act(async () => {
+      option.focus();
+    });
+    await act(async () => {
+      fireEvent.keyDown(option, { key: "Enter" });
+    });
+
+    const saveButton = view.getByRole("button", { name: "Save" });
+    await act(async () => {
+      fireEvent.click(saveButton);
+    });
+
+    expect(view.getByRole("button", { name: "Saving…" })).toBeTruthy();
+    expect(view.getAllByText(englishCopy.languageSaving).length).toBe(2);
+
+    await act(async () => {
+      resolveSave({ data: { status: "saved" } });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(view.getByText(languageCatalogCopy["en-US"].saved)).toBeTruthy()
+    );
+
+    cleanup();
+  });
+
+  test("announces the localized failure copy when the save fails", async () => {
+    let resolveFailedSave!: (result: LanguageActionResult) => void;
+    updatePreferredLanguage.mockImplementationOnce(
+      () =>
+        new Promise<LanguageActionResult>((resolve) => {
+          resolveFailedSave = resolve;
+        })
+    );
+    const view = render(
+      <ProfileScreen
+        copy={czechCopy}
+        email="ada@example.test"
+        firstName="Ada"
+        lastName="Lovelace"
+        locale="cs-CZ"
+      >
+        {profileFields}
+      </ProfileScreen>
+    );
+    const trigger = view.getByRole("combobox", {
+      name: czechCopy.languageLabel,
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(trigger, { key: "Enter" });
+    });
+    const listbox = await view.findByRole("listbox");
+    const option = view.getByRole("option", { name: "Čeština" });
+    await act(async () => {
+      option.focus();
+    });
+    await act(async () => {
+      fireEvent.keyDown(option, { key: "Enter" });
+    });
+
+    const saveButton = view.getByRole("button", { name: "Uložit" });
+    await act(async () => {
+      fireEvent.click(saveButton);
+    });
+    await act(async () => {
+      resolveFailedSave({ serverError: "save rejected" });
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(view.getByText(languageCatalogCopy["cs-CZ"].failed)).toBeTruthy()
+    );
+    cleanup();
+  });
+
+  test("keeps the language save button out of the surrounding profile form submission", async () => {
+    updatePreferredLanguage.mockClear();
+    let submitted = 0;
+    const view = render(
+      <form
+        data-testid="profile-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submitted += 1;
+        }}
+      >
+        <ProfileScreen
+          copy={englishCopy}
+          email="ada@example.test"
+          firstName="Ada"
+          lastName="Lovelace"
+          locale="en-US"
+        >
+          {profileFields}
+        </ProfileScreen>
+      </form>
+    );
+    const form = view.getByTestId("profile-form") as HTMLFormElement;
+    const saveButton = view.getByRole("button", { name: "Save" });
+
+    expect(saveButton.getAttribute("type")).toBe("button");
+    expect([...new FormData(form).keys()]).not.toContain("language");
+
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+
+    expect(submitted).toBe(1);
+    expect(updatePreferredLanguage).not.toHaveBeenCalled();
+    cleanup();
   });
 
   test("keeps informational text and the verification indicator contrast-safe", () => {
@@ -446,7 +766,19 @@ describe("ProfileScreen", () => {
       locale: "cs-CZ",
     });
 
-    const { emailVerification, ...localizedStrings } = czechCopy;
+    const {
+      emailVerification,
+      // Transient save-status and read-failure copies only render in their
+      // announced states, never statically.
+      languageSaving: _languageSaving,
+      languageSaved: _languageSaved,
+      languageSaveFailed: _languageSaveFailed,
+      languageReadUnavailable: _languageReadUnavailable,
+      // Option labels render only inside the open listbox.
+      languageOptionCs: _languageOptionCs,
+      languageOptionEn: _languageOptionEn,
+      ...localizedStrings
+    } = czechCopy;
     const localizedValues = [
       ...Object.values(localizedStrings),
       emailVerification.verified,

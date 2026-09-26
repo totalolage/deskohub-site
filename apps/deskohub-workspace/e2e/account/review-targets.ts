@@ -34,4 +34,5 @@ export const accountReviewTargetByCaseId: Partial<
   "account-magic-link-delivery": "completion-mobile375x900",
   "account-session-lifecycle": "callback-failed-desktop",
   "account-linking-variants": "support-desktop",
+  "account-communication-language": "linked-profile-language-desktop",
 };
