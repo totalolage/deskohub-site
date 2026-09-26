@@ -376,6 +376,18 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   .for("update");
                 if (existing) return existing;
 
+                // Lock-order contract: reservation → order → payment
+                // attempts. Locking the authoritative row before the attempt
+                // keeps this writer deadlock-free against the reservation
+                // repository and the payment lifecycle writers.
+                const [reservation] = yield* tx
+                  .select()
+                  .from(workspaceReservations)
+                  .where(
+                    eq(workspaceReservations.id, input.workspaceReservationId)
+                  )
+                  .limit(1)
+                  .for("update");
                 const [attempt] = yield* tx
                   .select({ state: paymentAttempts.state })
                   .from(paymentAttempts)
@@ -392,14 +404,6 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                         "expired",
                       ])
                     )
-                  )
-                  .limit(1)
-                  .for("update");
-                const [reservation] = yield* tx
-                  .select()
-                  .from(workspaceReservations)
-                  .where(
-                    eq(workspaceReservations.id, input.workspaceReservationId)
                   )
                   .limit(1)
                   .for("update");

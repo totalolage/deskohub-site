@@ -663,6 +663,19 @@ export class PaymentLifecycleRepository extends Context.Service<
         }) {
           return yield* db.transaction(
             Effect.fn(function* (tx) {
+              // Lock-order contract: reservation → order → payment attempts.
+              // Taking the authoritative row first keeps this writer
+              // deadlock-free against updateReservationDetails and every
+              // other reservation-first writer under concurrent traffic.
+              const [locked] = yield* tx
+                .select()
+                .from(workspaceReservations)
+                .where(
+                  eq(workspaceReservations.id, input.workspaceReservationId)
+                )
+                .limit(1)
+                .for("update");
+
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
@@ -697,66 +710,60 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              const [reservation] = yield* tx
-                .update(workspaceReservations)
-                .set({
-                  paymentState: "paid",
-                  paidAt: input.paidAt,
-                  failureCode: null,
-                  updatedAt: input.paidAt,
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    eq(workspaceReservations.paymentState, "pending"),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
-                )
-                .returning();
+              // The row is transaction-locked, so these conditions cannot
+              // change underneath us between the check and the update.
+              if (
+                locked?.reservationState === "held" &&
+                locked.paymentState === "pending" &&
+                locked.activePaymentAttemptId === input.id
+              ) {
+                const [reservation] = yield* tx
+                  .update(workspaceReservations)
+                  .set({
+                    paymentState: "paid",
+                    paidAt: input.paidAt,
+                    failureCode: null,
+                    updatedAt: input.paidAt,
+                  })
+                  .where(eq(workspaceReservations.id, locked.id))
+                  .returning();
 
-              if (reservation) {
-                yield* ensureReservationOrder({ tx, reservation });
+                yield* ensureReservationOrder({
+                  tx,
+                  reservation: reservation!,
+                });
                 yield* redeemCodeClaim(tx, input.id, input.paidAt);
                 return {
                   attempt: toPaymentAttempt(attempt),
                   changed: true,
-                  timestamp: reservation.paidAt ?? input.paidAt,
+                  timestamp: reservation!.paidAt ?? input.paidAt,
                 };
               }
 
-              // Idempotent replay: lock the authoritative row so a missing or
-              // stale order mirror left by an old writer is repaired here too,
-              // before reporting that nothing changed.
-              const [consistent] = yield* tx
-                .select()
-                .from(workspaceReservations)
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.paymentState, "paid"),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
-                )
-                .limit(1)
-                .for("update");
+              // Idempotent replay: the locked authoritative row is also the
+              // repair point, so a missing or stale order mirror left by an
+              // old writer is repaired here too, before reporting that
+              // nothing changed.
+              if (
+                locked &&
+                locked.paymentState === "paid" &&
+                locked.activePaymentAttemptId === input.id
+              ) {
+                yield* ensureReservationOrder({ tx, reservation: locked });
 
-              if (!consistent) {
-                return yield* lifecycleStateError(
-                  "markPaid",
-                  { type: "paymentAttemptId", id: input.id },
-                  "Only the active pending attempt on a held reservation can mark payment paid."
-                );
+                yield* redeemCodeClaim(tx, input.id, input.paidAt);
+                return {
+                  attempt: toPaymentAttempt(attempt),
+                  changed: false,
+                  timestamp: locked.paidAt ?? input.paidAt,
+                };
               }
 
-              yield* ensureReservationOrder({ tx, reservation: consistent });
-
-              yield* redeemCodeClaim(tx, input.id, input.paidAt);
-              return {
-                attempt: toPaymentAttempt(attempt),
-                changed: false,
-                timestamp: consistent.paidAt ?? input.paidAt,
-              };
+              return yield* lifecycleStateError(
+                "markPaid",
+                { type: "paymentAttemptId", id: input.id },
+                "Only the active pending attempt on a held reservation can mark payment paid."
+              );
             })
           );
         }
@@ -776,6 +783,19 @@ export class PaymentLifecycleRepository extends Context.Service<
 
           return yield* db.transaction(
             Effect.fn(function* (tx) {
+              // Lock-order contract: reservation → order → payment attempts.
+              // Taking the authoritative row first keeps this writer
+              // deadlock-free against updateReservationDetails and every
+              // other reservation-first writer under concurrent traffic.
+              const [locked] = yield* tx
+                .select()
+                .from(workspaceReservations)
+                .where(
+                  eq(workspaceReservations.id, input.workspaceReservationId)
+                )
+                .limit(1)
+                .for("update");
+
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
@@ -810,25 +830,27 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              const [reservation] = yield* tx
-                .update(workspaceReservations)
-                .set({
-                  paymentState: input.state,
-                  failureCode: input.failureCode,
-                  updatedAt: terminalAt,
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    eq(workspaceReservations.paymentState, "pending"),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
-                )
-                .returning();
+              // The row is transaction-locked, so these conditions cannot
+              // change underneath us between the check and the update.
+              if (
+                locked?.reservationState === "held" &&
+                locked.paymentState === "pending" &&
+                locked.activePaymentAttemptId === input.id
+              ) {
+                const [reservation] = yield* tx
+                  .update(workspaceReservations)
+                  .set({
+                    paymentState: input.state,
+                    failureCode: input.failureCode,
+                    updatedAt: terminalAt,
+                  })
+                  .where(eq(workspaceReservations.id, locked.id))
+                  .returning();
 
-              if (reservation) {
-                yield* ensureReservationOrder({ tx, reservation });
+                yield* ensureReservationOrder({
+                  tx,
+                  reservation: reservation!,
+                });
                 yield* releaseCodeClaim(
                   tx,
                   input.id,
@@ -838,47 +860,39 @@ export class PaymentLifecycleRepository extends Context.Service<
                 return {
                   attempt: toPaymentAttempt(attempt),
                   changed: true,
-                  timestamp: reservation.updatedAt,
+                  timestamp: reservation!.updatedAt,
                 };
               }
 
-              // Idempotent replay: lock the authoritative row so a missing or
-              // stale order mirror left by an old writer is repaired here too,
-              // before reporting that nothing changed.
-              const [consistent] = yield* tx
-                .select()
-                .from(workspaceReservations)
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.paymentState, input.state),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
-                )
-                .limit(1)
-                .for("update");
+              // Idempotent replay: the locked authoritative row is also the
+              // repair point, so a missing or stale order mirror left by an
+              // old writer is repaired here too, before reporting that
+              // nothing changed.
+              if (
+                locked &&
+                locked.paymentState === input.state &&
+                locked.activePaymentAttemptId === input.id
+              ) {
+                yield* ensureReservationOrder({ tx, reservation: locked });
 
-              if (!consistent) {
-                return yield* lifecycleStateError(
-                  "markTerminal",
-                  { type: "paymentAttemptId", id: input.id },
-                  "Only the active pending attempt on a held reservation can mark payment terminal."
+                yield* releaseCodeClaim(
+                  tx,
+                  input.id,
+                  terminalAt,
+                  input.failureCode
                 );
+                return {
+                  attempt: toPaymentAttempt(attempt),
+                  changed: false,
+                  timestamp: locked.updatedAt,
+                };
               }
 
-              yield* ensureReservationOrder({ tx, reservation: consistent });
-
-              yield* releaseCodeClaim(
-                tx,
-                input.id,
-                terminalAt,
-                input.failureCode
+              return yield* lifecycleStateError(
+                "markTerminal",
+                { type: "paymentAttemptId", id: input.id },
+                "Only the active pending attempt on a held reservation can mark payment terminal."
               );
-              return {
-                attempt: toPaymentAttempt(attempt),
-                changed: false,
-                timestamp: consistent.updatedAt,
-              };
             })
           );
         }

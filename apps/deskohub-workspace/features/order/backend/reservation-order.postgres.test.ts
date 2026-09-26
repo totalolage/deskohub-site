@@ -8,6 +8,10 @@ import {
 import { eq, inArray } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { orders, paymentAttempts, workspaceReservations } from "@/db/schema";
+import {
+  type IPaymentLifecycleRepository,
+  PaymentLifecycleRepository,
+} from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import {
   type IWorkspaceReservationRepository,
@@ -634,5 +638,159 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
     // After fulfillment the mirror carries exactly the invoice-gate state.
     expect(fulfilledOrder[0]!.fulfillmentState).toBe("fulfilled");
     expect(fulfilledOrder[0]!.fulfilledAt).not.toBeNull();
+  });
+
+  test("survives the attempt-first interleaving without a lock-order abort", async () => {
+    const reservations = (await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* WorkspaceReservationRepository;
+      }).pipe(
+        Effect.provide(
+          WorkspaceReservationRepository.Default.pipe(
+            Layer.provide(postgres.layer)
+          )
+        )
+      )
+    )) as IWorkspaceReservationRepository;
+    const lifecycle = (await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* PaymentLifecycleRepository;
+      }).pipe(
+        Effect.provide(
+          PaymentLifecycleRepository.Default.pipe(Layer.provide(postgres.layer))
+        )
+      )
+    )) as IPaymentLifecycleRepository;
+
+    const id = await insertReservation({
+      reservationState: "held",
+      paymentState: "pending",
+    });
+    // Production always has the order from the reservation create path.
+    await Effect.runPromise(mirror(await loadReservation(id)));
+    const [attempt] = await Effect.runPromise(
+      postgres.db
+        .insert(paymentAttempts)
+        .values({
+          workspaceReservationId: id,
+          orderId: id as never,
+          provider: "nexi",
+          providerOrderId: `order-${crypto.randomUUID()}` as never,
+          state: "pending",
+          amountValue: 35_000,
+          amountExponent: 2,
+          currency: "CZK",
+        })
+        .returning()
+    );
+    await Effect.runPromise(
+      postgres.db
+        .update(workspaceReservations)
+        .set({ activePaymentAttemptId: attempt!.id })
+        .where(eq(workspaceReservations.id, id))
+    );
+
+    // Connection A plays the legacy writer: it grabs the payment attempt row
+    // first and pauses, exactly the interleaving that used to invert against
+    // reservation-first writers.
+    const latch = await postgres.pool.connect();
+    let markPaid:
+      | Promise<{
+          changed: boolean;
+          attempt: { id: string; state: string; orderId: string | null };
+        }>
+      | undefined;
+    try {
+      await latch.query("begin");
+      await latch.query(
+        "update payment_attempts set updated_at = updated_at where id = $1",
+        [attempt!.id]
+      );
+
+      // Connection B (updateReservationDetails) must complete while A still
+      // holds the attempt lock: it takes the reservation first and its mirror
+      // never needs the already-linked attempt row.
+      const details = await Effect.runPromise(
+        reservations.updateReservationDetails({
+          id,
+          reservationDetails: {
+            kind: "cowork",
+            entryTier: "basic",
+            coffee: true,
+          },
+          locale: "cs-CZ",
+        })
+      );
+      expect(details.locale).toBe("cs-CZ");
+
+      // markPaid starts under the latch. Deterministic regression: it must
+      // lock the reservation BEFORE waiting on the attempt row.
+      markPaid = Effect.runPromise(
+        lifecycle.markPaid({
+          id: attempt!.id as never,
+          workspaceReservationId: id,
+          providerStatus: "APPROVED",
+          paidAt: Temporal.Now.instant(),
+        })
+      );
+
+      // Wait until markPaid is blocked on the attempt row.
+      const deadline = Date.now() + 5_000;
+      let blocked = false;
+      while (Date.now() < deadline) {
+        const { rows } = await postgres.pool.query(
+          `select 1 from pg_stat_activity
+            where wait_event_type = 'Lock'
+              and query ilike '%update "payment_attempts"%' limit 1`
+        );
+        if (rows.length > 0) {
+          blocked = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(blocked).toBe(true);
+
+      // While blocked on the attempt, markPaid must already hold the
+      // reservation row lock — the reservation-first ordering. A writer that
+      // inverts (attempt first) would not hold it here.
+      await expect(
+        postgres.pool.query(
+          "select 1 from workspace_reservations where id = $1 for update nowait",
+          [id]
+        )
+      ).rejects.toThrow();
+
+      // Releasing the latch lets markPaid finish; no deadlock abort either
+      // way.
+      await latch.query("commit");
+    } finally {
+      await latch.query("rollback").catch(() => {});
+      latch.release();
+    }
+
+    const transition = await markPaid!;
+    expect(transition.changed).toBe(true);
+    expect(transition.attempt.state).toBe("paid");
+    expect(transition.attempt.orderId).toBe(id);
+
+    const [reservation, order] = await Promise.all([
+      loadReservation(id),
+      loadOrder(id),
+    ]);
+    expect(reservation.paymentState).toBe("paid");
+    expect(reservation.paidAt).not.toBeNull();
+    expect(order.paymentState).toBe("paid");
+    expect(order.paidAt).not.toBeNull();
+    expect(order.activePaymentAttemptId).toBe(attempt!.id);
+    // The interleaving left the persisted attempt linkage intact.
+    const [relinked] = await Effect.runPromise(
+      postgres.db
+        .select()
+        .from(paymentAttempts)
+        .where(eq(paymentAttempts.id, attempt!.id))
+        .limit(1)
+    );
+    expect(relinked!.orderId).toBe(id);
   });
 });
