@@ -1,6 +1,9 @@
 import "@/shared/testing/workspace-test-env";
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
-import { ExternalAPIError } from "@deskohub/dotypos";
+import {
+  DotyposReservationIdSchema,
+  ExternalAPIError,
+} from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { type SQL, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -1806,5 +1809,331 @@ describe("AdministrationService", () => {
       locale: "en-US",
       withdrawnAt: withdrawnAt.toString(),
     });
+  });
+});
+
+describe("AdministrationService customer date filter", () => {
+  const providerBookingId = (id: string) => DotyposReservationIdSchema.make(id);
+  const providerBooking = (id: string, startDate: string) => ({
+    _branchId: "branch",
+    _cloudId: "cloud",
+    _customerId: null,
+    endDate: startDate,
+    id: providerBookingId(id),
+    seats: "1",
+    startDate,
+    status: "NEW" as const,
+  });
+  const pragueHour = (date: string, hour: number) =>
+    Temporal.PlainDate.from(date)
+      .toZonedDateTime("Europe/Prague")
+      .add({ hours: hour })
+      .toInstant()
+      .toString();
+
+  const makeCustomersDatabase = (rowSets: readonly (readonly unknown[])[]) => {
+    const selects: (CapturedSelect & { readonly method: string })[] = [];
+    let call = 0;
+    const capture = (method: string) => (fields: Record<string, SQL>) => {
+      const captured = { fields, method, orderBy: [], where: [] };
+      selects.push(captured);
+      return makeCapturingQuery(rowSets[call++] ?? [], captured);
+    };
+    return {
+      database: {
+        select: capture("select"),
+        selectDistinct: capture("selectDistinct"),
+      } as never,
+      selects,
+    };
+  };
+
+  const compileSqlWithParams = (chunk: SQL) => {
+    const compiled = new PgDialect().sqlToQuery(sql`${chunk}`);
+    return { params: compiled.params, sql: compiled.sql };
+  };
+
+  const loadCustomers = (
+    input: AdministrationCustomerListInput,
+    database: never,
+    dotypos?: Parameters<typeof DotyposServiceMock>[0]
+  ) =>
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listCustomers(input);
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database })
+              ),
+              DotyposServiceMock({
+                getCustomer: (id: string) =>
+                  Effect.succeed({ firstName: "Test", id }),
+                getCustomers: () => Effect.succeed([]),
+                ...dotypos,
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+  test("does not query provider booking dates without a date range", async () => {
+    const instant = Temporal.Instant.from("2026-08-14T12:00:00Z");
+    const { database, selects } = makeCustomersDatabase([
+      [{ value: 7 }],
+      [
+        {
+          customerId: "customer-a",
+          reservationCount: 2,
+          lastActivityAt: instant,
+        },
+      ],
+    ]);
+    let listReservationsCalls = 0;
+
+    const result = await loadCustomers({}, database, {
+      listReservations: () =>
+        Effect.sync(() => {
+          listReservationsCalls += 1;
+          return [];
+        }),
+    });
+
+    expect(listReservationsCalls).toBe(0);
+    expect(result.dateFilterUnavailable).toBe(false);
+    expect(result.total).toBe(7);
+    expect(result.items[0]?.customerId).toBe("customer-a");
+    expect(selects).toHaveLength(2);
+    expect(selects[0]!.where).toHaveLength(0);
+    expect(selects[1]!.where).toHaveLength(0);
+  });
+
+  test("filters membership by live booking start dates with inclusive bounds", async () => {
+    const listInputs: {
+      readonly order?: string;
+      readonly startsAtOrAfter?: string;
+      readonly startsBefore?: string;
+    }[] = [];
+    // Provider keeps only bookings whose Prague start date is inside the range.
+    const inRangeBookings = [
+      providerBooking("booking-from", pragueHour("2026-08-10", 0)),
+      providerBooking("booking-to", pragueHour("2026-08-12", 23)),
+    ];
+    const excludedBookings = [
+      providerBooking("booking-before", pragueHour("2026-08-09", 23)),
+      providerBooking("booking-after", pragueHour("2026-08-13", 0)),
+    ];
+    const instant = Temporal.Instant.from("2026-08-14T12:00:00Z");
+    const { database, selects } = makeCustomersDatabase([
+      [{ customerId: "customer-a" }, { customerId: "customer-b" }],
+      [{ value: 2 }],
+      [
+        {
+          customerId: "customer-a",
+          reservationCount: 3,
+          lastActivityAt: instant,
+        },
+      ],
+    ]);
+
+    const result = await loadCustomers(
+      {
+        direction: "asc",
+        from: "2026-08-10",
+        sort: "reservations",
+        to: "2026-08-12",
+      },
+      database,
+      {
+        listReservations: (input) =>
+          Effect.sync(() => {
+            listInputs.push(input);
+            return [...inRangeBookings, ...excludedBookings].filter(
+              ({ startDate }) =>
+                startDate >= input.startsAtOrAfter &&
+                startDate < input.startsBefore
+            );
+          }),
+      }
+    );
+
+    expect(listInputs).toEqual([
+      {
+        order: "startDateAscending",
+        startsAtOrAfter: "2026-08-09T22:00:00Z",
+        startsBefore: "2026-08-12T22:00:00Z",
+      },
+    ]);
+    expect(result.dateFilterUnavailable).toBe(false);
+    expect(result.total).toBe(2);
+
+    const membershipSelect = selects[0]!;
+    const membership = compileSqlWithParams(membershipSelect.where[0]!);
+    expect(membership.sql).toContain('"dotypos_reservation_id" in');
+    expect(membership.params).toEqual(["booking-from", "booking-to"]);
+
+    const totalWhere = compileSql(selects[1]!.where[0]!);
+    expect(totalWhere).toContain('"dotypos_customer_id" in');
+    const totalWhereParams = compileSqlWithParams(selects[1]!.where[0]!);
+    expect(totalWhereParams.params).toEqual(["customer-a", "customer-b"]);
+
+    const aggregateSelect = selects[2]!;
+    const aggregateCount = compileSql(aggregateSelect.fields.reservationCount);
+    expect(aggregateCount).toContain("count(*) filter (where");
+    expect(aggregateCount).toContain(
+      `"workspace_reservations"."fulfillment_state" = 'fulfilled'`
+    );
+    expect(compileSql(aggregateSelect.fields.lastActivityAt)).toBe(
+      'max("workspace_reservations"."updated_at")'
+    );
+    expect(compileSql(aggregateSelect.where[0]!)).toContain(
+      '"dotypos_customer_id" in'
+    );
+    const orderSql = compileSql(aggregateSelect.orderBy[0]![0]!);
+    expect(orderSql).toContain("count(*) filter (where");
+  });
+
+  test("appears a multi-booking customer once", async () => {
+    const bookings = [
+      providerBooking("booking-1", pragueHour("2026-08-10", 9)),
+      providerBooking("booking-2", pragueHour("2026-08-11", 10)),
+      providerBooking("booking-3", pragueHour("2026-08-12", 11)),
+    ];
+    const { database, selects } = makeCustomersDatabase([
+      [{ customerId: "customer-a" }],
+      [{ value: 1 }],
+      [
+        {
+          customerId: "customer-a",
+          reservationCount: 3,
+          lastActivityAt: Temporal.Instant.from("2026-08-14T12:00:00Z"),
+        },
+      ],
+    ]);
+
+    const result = await loadCustomers(
+      { from: "2026-08-10", to: "2026-08-12" },
+      database,
+      { listReservations: () => Effect.succeed(bookings) }
+    );
+
+    expect(result.total).toBe(1);
+    expect(result.items.map(({ customerId }) => customerId)).toEqual([
+      "customer-a",
+    ]);
+    const membershipSelect = selects[0]!;
+    expect(membershipSelect.method).toBe("selectDistinct");
+    const membership = compileSqlWithParams(membershipSelect.where[0]!);
+    expect(membership.params).toEqual([
+      "booking-1",
+      "booking-2",
+      "booking-3",
+    ]);
+  });
+
+  test("pages by matching unique customers", async () => {
+    const bookings = [
+      providerBooking("booking-1", pragueHour("2026-08-10", 9)),
+      providerBooking("booking-2", pragueHour("2026-08-10", 10)),
+    ];
+    const matchingCustomers = Array.from({ length: 30 }, (_, index) => ({
+      customerId: `customer-${String(index).padStart(2, "0")}`,
+    }));
+    const { database } = makeCustomersDatabase([
+      matchingCustomers,
+      [{ value: 30 }],
+      [],
+    ]);
+
+    const result = await loadCustomers(
+      { from: "2026-08-10", to: "2026-08-10" },
+      database,
+      { listReservations: () => Effect.succeed(bookings) }
+    );
+
+    expect(result.total).toBe(30);
+    expect(result.page).toBe(1);
+    expect(result.pageCount).toBe(2);
+  });
+
+  test("reports booking dates unavailable when the provider fails", async () => {
+    const { database, selects } = makeCustomersDatabase([[{ value: 0 }], []]);
+
+    const result = await loadCustomers(
+      { from: "2026-08-10", to: "2026-08-12" },
+      database,
+      {
+        listReservations: () =>
+          Effect.fail(
+            new ExternalAPIError({
+              operation: "listReservations",
+              service: "Dotypos",
+              statusCode: 503,
+            })
+          ),
+      }
+    );
+
+    expect(result.dateFilterUnavailable).toBe(true);
+    expect(result.items).toEqual([]);
+    expect(result.total).toBe(0);
+    expect(selects).toHaveLength(2);
+    expect(compileSql(selects[0]!.where[0]!)).toBe("false");
+  });
+
+  test("treats an empty provider booking set as a genuine empty match", async () => {
+    const { database } = makeCustomersDatabase([[{ value: 0 }], []]);
+
+    const result = await loadCustomers(
+      { from: "2026-08-10", to: "2026-08-12" },
+      database,
+      { listReservations: () => Effect.succeed([]) }
+    );
+
+    expect(result.dateFilterUnavailable).toBe(false);
+    expect(result.items).toEqual([]);
+    expect(result.total).toBe(0);
+  });
+
+  test("normalizes the legacy date param into a single-day range", async () => {
+    const listInputs: {
+      readonly order?: string;
+      readonly startsAtOrAfter?: string;
+      readonly startsBefore?: string;
+    }[] = [];
+    const { database } = makeCustomersDatabase([
+      [{ customerId: "customer-a" }],
+      [{ value: 1 }],
+      [],
+    ]);
+
+    await loadCustomers({ date: "2026-08-10" }, database, {
+      listReservations: (input) =>
+        Effect.sync(() => {
+          listInputs.push(input);
+          return [];
+        }),
+    });
+
+    expect(listInputs).toEqual([
+      {
+        order: "startDateAscending",
+        startsAtOrAfter: "2026-08-09T22:00:00Z",
+        startsBefore: "2026-08-10T22:00:00Z",
+      },
+    ]);
   });
 });

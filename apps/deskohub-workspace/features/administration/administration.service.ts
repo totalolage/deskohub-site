@@ -155,9 +155,12 @@ type ReservationListInput = AdministrationReservationListInput & {
 };
 
 export type AdministrationCustomerListInput = {
+  readonly date?: string;
   readonly direction?: AdministrationSortDirection;
+  readonly from?: string;
   readonly page?: number;
   readonly sort?: AdministrationCustomerSort;
+  readonly to?: string;
 };
 
 export type AdministrationCustomerSort = "reservations" | "activity";
@@ -1293,6 +1296,7 @@ export class AdministrationService extends Context.Service<
       input: AdministrationCustomerListInput
     ) => Effect.Effect<
       {
+        readonly dateFilterUnavailable: boolean;
         readonly items: readonly AdministrationCustomerSummary[];
         readonly page: number;
         readonly pageCount: number;
@@ -2378,11 +2382,44 @@ export class AdministrationService extends Context.Service<
 
       const listCustomers = Effect.fn("AdministrationService.listCustomers")(
         function* (input: AdministrationCustomerListInput) {
-          const countRows = yield* db
-            .select({
-              value: countDistinct(workspaceReservations.dotyposCustomerId),
-            })
-            .from(workspaceReservations);
+          const dateRange = getAdministrationReservationDateRange(input);
+          const dateReservations = yield* loadReservationRangeMap(dateRange);
+          let matchingCustomerIdsCondition: SQL | undefined;
+          if (dateRange) {
+            if (!dateReservations || dateReservations.size === 0) {
+              matchingCustomerIdsCondition = sql`false`;
+            } else {
+              const matchingRows = yield* db
+                .selectDistinct({
+                  customerId: workspaceReservations.dotyposCustomerId,
+                })
+                .from(workspaceReservations)
+                .where(
+                  inArray(workspaceReservations.dotyposReservationId, [
+                    ...dateReservations.keys(),
+                  ])
+                );
+              matchingCustomerIdsCondition =
+                matchingRows.length > 0
+                  ? inArray(
+                      workspaceReservations.dotyposCustomerId,
+                      matchingRows.map(({ customerId }) => customerId)
+                    )
+                  : sql`false`;
+            }
+          }
+          const countRows = yield* (matchingCustomerIdsCondition
+            ? db
+                .select({
+                  value: countDistinct(workspaceReservations.dotyposCustomerId),
+                })
+                .from(workspaceReservations)
+                .where(matchingCustomerIdsCondition)
+            : db
+                .select({
+                  value: countDistinct(workspaceReservations.dotyposCustomerId),
+                })
+                .from(workspaceReservations));
           const total = Number(countRows[0]?.value ?? 0);
           const pagination = getAdministrationPagination({
             pageSize: customerPageSize,
@@ -2392,14 +2429,24 @@ export class AdministrationService extends Context.Service<
           const reservationCount = successfulReservationCount;
           const lastActivityAt = max(workspaceReservations.updatedAt);
           const order = input.direction === "asc" ? asc : desc;
-          const rows = yield* db
-            .select({
-              customerId: workspaceReservations.dotyposCustomerId,
-              reservationCount,
-              lastActivityAt,
-            })
-            .from(workspaceReservations)
-            .groupBy(workspaceReservations.dotyposCustomerId)
+          const rows = yield* (matchingCustomerIdsCondition
+            ? db
+                .select({
+                  customerId: workspaceReservations.dotyposCustomerId,
+                  reservationCount,
+                  lastActivityAt,
+                })
+                .from(workspaceReservations)
+                .where(matchingCustomerIdsCondition)
+                .groupBy(workspaceReservations.dotyposCustomerId)
+            : db
+                .select({
+                  customerId: workspaceReservations.dotyposCustomerId,
+                  reservationCount,
+                  lastActivityAt,
+                })
+                .from(workspaceReservations)
+                .groupBy(workspaceReservations.dotyposCustomerId))
             .orderBy(
               order(
                 input.sort === "reservations"
@@ -2425,6 +2472,7 @@ export class AdministrationService extends Context.Service<
             };
           });
           return {
+            dateFilterUnavailable: dateRange ? !dateReservations : false,
             items,
             page: pagination.page,
             pageCount: pagination.pageCount,
