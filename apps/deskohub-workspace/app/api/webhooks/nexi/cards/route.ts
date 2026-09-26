@@ -16,14 +16,20 @@ const parseFailedResponse = NextResponse.json(
   { status: 400 }
 );
 
-const processSavedCardWebhookRequest = Effect.fn(
+/** Exposed for route-level tests; the POST handler is the only caller. */
+export const processSavedCardWebhookRequest = Effect.fn(
   "processSavedCardWebhookRequest"
 )(function* (request: Request) {
-  const payload = yield* Effect.tryPromise({
-    try: () => request.json() as Promise<unknown>,
-    catch: () => "parse_failed" as const,
-  });
-  if (payload === "parse_failed") return parseFailedResponse;
+  // The parse failure lives in the error channel; route it to the fixed 400
+  // parse-failed response instead of the outer internal-error 500.
+  const parsed = yield* Effect.result(
+    Effect.tryPromise({
+      try: () => request.json() as Promise<unknown>,
+      catch: () => "parse_failed" as const,
+    })
+  );
+  if (Result.isFailure(parsed)) return parseFailedResponse;
+  const payload = parsed.success;
 
   const decoded = yield* Effect.result(decodeNexiWebhookNotification(payload));
   if (Result.isFailure(decoded)) return parseFailedResponse;

@@ -79,6 +79,14 @@ interface ISavedCardContractRepository {
     CustomerCardEnrollmentRow | null,
     SavedCardContractRepositoryError
   >;
+  /**
+   * Bumps `updatedAt` for a reconciliation attempt so bounded, oldest-first
+   * listing sweeps rotate through the unresolved set without starving rows.
+   */
+  readonly touchEnrollment: (input: {
+    readonly orderId: NexiOrderId;
+    readonly customerAccountId: CustomerAccountId;
+  }) => Effect.Effect<void, SavedCardContractRepositoryError>;
   readonly listActiveContracts: (
     customerAccountId: CustomerAccountId
   ) => Effect.Effect<
@@ -267,6 +275,27 @@ export class SavedCardContractRepository extends Context.Service<
         return row ?? null;
       });
 
+      const touchEnrollment = Effect.fn(
+        "SavedCardContractRepository.touchEnrollment"
+      )(function* (input: {
+        orderId: NexiOrderId;
+        customerAccountId: CustomerAccountId;
+      }) {
+        yield* db
+          .update(customerCardEnrollments)
+          .set({ updatedAt: Temporal.Now.instant() })
+          .where(
+            and(
+              eq(customerCardEnrollments.orderId, input.orderId),
+              eq(
+                customerCardEnrollments.customerAccountId,
+                input.customerAccountId
+              )
+            )
+          )
+          .pipe(Effect.asVoid);
+      });
+
       const listActiveContracts = Effect.fn(
         "SavedCardContractRepository.listActiveContracts"
       )(function* (customerAccountId: CustomerAccountId) {
@@ -372,6 +401,7 @@ export class SavedCardContractRepository extends Context.Service<
         refreshEnrollmentSecurityTokenDigest,
         transitionEnrollment,
         confirmEnrollmentFromAnyState,
+        touchEnrollment,
         listActiveContracts,
         findContract,
         upsertActiveContract,

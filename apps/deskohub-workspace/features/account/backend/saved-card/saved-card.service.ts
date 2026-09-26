@@ -12,6 +12,7 @@ import {
   NexiService,
 } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match } from "effect";
+import type { SqlError } from "effect/unstable/sql/SqlError";
 import type { CustomerCardEnrollmentRow } from "@/db/schema";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/checkout/vercel-preview-protection-bypass";
 import { getNexiCurrencyOverride } from "@/features/checkout/backend/payment/nexi-currency";
@@ -29,7 +30,12 @@ import type {
   CustomerAccountId,
   LinkedCustomerAccount,
 } from "../../customer-account";
-import { customerAccountIdSchema } from "../../customer-account";
+import {
+  type CustomerAccountAccessError,
+  customerAccountIdSchema,
+} from "../../customer-account";
+import { requireAccountActivity } from "../customer-account-activity";
+import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
 import {
   SavedCardContractRepository,
   type SavedCardContractRepositoryError,
@@ -39,7 +45,7 @@ import { getSavedCardCustomerReference } from "./saved-card-customer-reference";
 const enrollmentFreshness = Temporal.Duration.from({ minutes: 30 });
 
 /** Upper bound for provider reconciliations triggered by one listing. */
-const pendingReconciliationBound = 5;
+const pendingReconciliationBound = 8;
 
 const sha256Hex = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -79,12 +85,21 @@ export type SavedCardEnrollmentScope = {
 };
 
 interface ISavedCardService {
+  /**
+   * Creates an enrollment under the account advisory lock: an authoritative
+   * activity recheck, the provider session creation, and the enrollment row
+   * insert are one serialized unit against deletion's marker write, so an
+   * enrollment can never slip past a completed deletion.
+   */
   readonly startEnrollment: (
     account: LinkedCustomerAccount,
     locale: Locale
   ) => Effect.Effect<
     SavedCardEnrollmentStartResult,
-    SavedCardError | WorkspaceUrlConfigError | SavedCardContractRepositoryError
+    | SavedCardError
+    | WorkspaceUrlConfigError
+    | CustomerAccountAccessError
+    | SavedCardContractRepositoryError
   >;
   /**
    * Browser-return verification: session-authenticated (the route resolves the
@@ -185,7 +200,11 @@ export class SavedCardService extends Context.Service<
 
   static Live = this.Default.pipe(
     Layer.provide(
-      Layer.mergeAll(WorkspaceNexiLayer, SavedCardContractRepository.Live)
+      Layer.mergeAll(
+        WorkspaceNexiLayer,
+        CustomerAccountLinkRepository.Live,
+        SavedCardContractRepository.Live
+      )
     )
   );
 }
@@ -241,6 +260,16 @@ type ProviderOrderVerdict =
   | { readonly kind: "terminal"; readonly terminal: "cancelled" | "failed" }
   | { readonly kind: "indeterminate" };
 
+/**
+ * The provider-side resolution of an enrollment, deliberately distinct from
+ * the local row state: a locally cancelled or superseded enrollment whose
+ * provider session is still unresolved is NOT terminal, and deletion must
+ * treat it as blocking.
+ */
+/** Maps a lock-boundary SqlError onto the retryable saved-card error. */
+const toLockUnavailable = (cause: SqlError) =>
+  new SavedCardError({ code: "unavailable", cause });
+
 const evaluateProviderOrder = (order: NexiOrder): ProviderOrderVerdict => {
   const authorized = order.operations.find(
     (operation) =>
@@ -271,6 +300,7 @@ function makeSavedCardServiceLayer(service: typeof SavedCardService) {
     Effect.gen(function* () {
       const nexi = yield* NexiService;
       const repository = yield* SavedCardContractRepository;
+      const links = yield* CustomerAccountLinkRepository;
 
       const handleEnrollmentCreateFailure = Effect.fn(
         "SavedCardService.handleEnrollmentCreateFailure"
@@ -299,78 +329,106 @@ function makeSavedCardServiceLayer(service: typeof SavedCardService) {
             account.accountId
           );
 
-          // A stale pending enrollment from an abandoned session must not
-          // block a new attempt: it is superseded, a fresh one may reuse its
-          // slot. Supersession is a local intent only — provider-side
-          // reconciliation can still recover a late success.
-          const pending = yield* repository.findPendingEnrollment(
-            account.accountId
-          );
-          const reusable =
-            pending && isFreshEnrollment(asInstant(pending.createdAt))
-              ? pending
-              : null;
-          if (pending && !reusable) {
-            yield* repository.transitionEnrollment({
-              orderId: pending.orderId,
-              customerAccountId: account.accountId,
-              state: "failed",
-              failureCode: "enrollment.superseded",
-            });
-          }
+          // Serialization invariant against account deletion: the account
+          // advisory lock is held from an authoritative activity recheck
+          // through provider session creation and the enrollment row insert.
+          // Deletion's marker write takes the same lock, so exactly one
+          // ordering is possible: either the marker lands first and the
+          // recheck rejects the enrollment, or the whole enrollment (pending
+          // row included) lands first and deletion's sweep reconciles it —
+          // blocking while the session is provider-unresolved. A pending
+          // enrollment can therefore never orphan a contract on a deleted
+          // account. The lock transaction is deliberately write-free on its
+          // dedicated client, matching how checkout holds it across its
+          // provider call.
+          const createEnrollmentSession = Effect.fn(
+            "SavedCardService.createEnrollmentSession"
+          )(function* () {
+            // Authoritative recheck under the lock: a durable deletion
+            // marker (or a removed auth row) rejects the enrollment here.
+            yield* requireAccountActivity(links, account.accountId);
 
-          const orderId = reusable?.orderId ?? generateEnrollmentOrderId();
-          const contractId =
-            reusable?.providerContractId ?? generateEnrollmentContractId();
-          const correlationId = generateCorrelationId();
-
-          const { resultUrl, cancelUrl, notificationUrl } =
-            yield* getSavedCardEnrollmentUrls(locale, orderId);
-
-          const hostedPage = yield* nexi
-            .createHostedPaymentPage({
-              orderId,
-              correlationId,
-              amount: getVerificationAmount,
-              currency: getNexiCurrencyOverride() ?? "CZK",
-              locale: toNexiLocale(locale),
-              resultUrl,
-              cancelUrl,
-              notificationUrl,
-              // The enrollment is bound to this account's opaque provider
-              // customer reference, so the created contract is listable and
-              // deactivatable through the derived reference only.
-              customerReference: providerCustomerId,
-              contractEnrollment: { contractId, contractType: "CIT" },
-              actionType: "VERIFY",
-            })
-            .pipe(
-              Effect.catch((cause: ExternalAPIError | NetworkError) =>
-                handleEnrollmentCreateFailure(cause, orderId, account.accountId)
-              )
+            // A stale pending enrollment from an abandoned session must not
+            // block a new attempt: it is superseded, a fresh one may reuse
+            // its slot. Supersession is a local intent only — provider-side
+            // reconciliation can still recover a late success.
+            const pending = yield* repository.findPendingEnrollment(
+              account.accountId
             );
+            const reusable =
+              pending && isFreshEnrollment(asInstant(pending.createdAt))
+                ? pending
+                : null;
+            if (pending && !reusable) {
+              yield* repository.transitionEnrollment({
+                orderId: pending.orderId,
+                customerAccountId: account.accountId,
+                state: "failed",
+                failureCode: "enrollment.superseded",
+              });
+            }
 
-          const digest = sha256Hex(hostedPage.securityToken);
-          if (reusable) {
-            yield* repository.refreshEnrollmentSecurityTokenDigest({
-              orderId,
-              customerAccountId: account.accountId,
-              securityTokenDigest: digest,
-            });
-          } else {
-            yield* repository.createEnrollment({
-              customerAccountId: account.accountId,
-              orderId,
-              providerCustomerId,
-              providerContractId: contractId,
-              securityTokenDigest: digest,
-            });
-          }
+            const orderId = reusable?.orderId ?? generateEnrollmentOrderId();
+            const contractId =
+              reusable?.providerContractId ?? generateEnrollmentContractId();
+            const correlationId = generateCorrelationId();
 
-          return {
-            status: "redirect" as const,
-            hostedPage: hostedPage.hostedPage,
-          };
+            const { resultUrl, cancelUrl, notificationUrl } =
+              yield* getSavedCardEnrollmentUrls(locale, orderId);
+
+            const hostedPage = yield* nexi
+              .createHostedPaymentPage({
+                orderId,
+                correlationId,
+                amount: getVerificationAmount,
+                currency: getNexiCurrencyOverride() ?? "CZK",
+                locale: toNexiLocale(locale),
+                resultUrl,
+                cancelUrl,
+                notificationUrl,
+                // The enrollment is bound to this account's opaque provider
+                // customer reference, so the created contract is listable and
+                // deactivatable through the derived reference only.
+                customerReference: providerCustomerId,
+                contractEnrollment: { contractId, contractType: "CIT" },
+                actionType: "VERIFY",
+              })
+              .pipe(
+                Effect.catch((cause: ExternalAPIError | NetworkError) =>
+                  handleEnrollmentCreateFailure(
+                    cause,
+                    orderId,
+                    account.accountId
+                  )
+                )
+              );
+
+            const digest = sha256Hex(hostedPage.securityToken);
+            if (reusable) {
+              yield* repository.refreshEnrollmentSecurityTokenDigest({
+                orderId,
+                customerAccountId: account.accountId,
+                securityTokenDigest: digest,
+              });
+            } else {
+              yield* repository.createEnrollment({
+                customerAccountId: account.accountId,
+                orderId,
+                providerCustomerId,
+                providerContractId: contractId,
+                securityTokenDigest: digest,
+              });
+            }
+
+            return {
+              status: "redirect" as const,
+              hostedPage: hostedPage.hostedPage,
+            };
+          });
+
+          return yield* links
+            .withAccountLock(account.accountId, createEnrollmentSession())
+            .pipe(Effect.catchTag("SqlError", toLockUnavailable));
         }
       );
 
@@ -406,12 +464,16 @@ function makeSavedCardServiceLayer(service: typeof SavedCardService) {
           })
           .pipe(Effect.mapError(toSavedCardError));
 
-        if (order.orderId !== enrollment.orderId) return "not_found";
+        if (order.orderId !== enrollment.orderId) {
+          return { provider: "unresolved", outcome: "not_found" } as const;
+        }
 
         const localOutcome = outcomeForState(enrollment.state);
         const verdict = evaluateProviderOrder(order);
 
-        if (verdict.kind === "unknown") return "not_found";
+        if (verdict.kind === "unknown") {
+          return { provider: "unresolved", outcome: "not_found" } as const;
+        }
 
         if (verdict.kind === "authorized") {
           const contracts = yield* nexi
@@ -428,9 +490,12 @@ function makeSavedCardServiceLayer(service: typeof SavedCardService) {
               contract.contractType === "CIT"
           );
           // The provider list is the confirmation authority: without the CIT
-          // contract there, the enrollment keeps its local state and stays
-          // reconcilable.
-          if (!providerEntry) return localOutcome;
+          // contract there, the verification is provider-UNRESOLVED — even
+          // when the local row already reads cancelled, failed, or
+          // superseded.
+          if (!providerEntry) {
+            return { provider: "unresolved", outcome: localOutcome } as const;
+          }
 
           yield* repository.upsertActiveContract({
             customerAccountId: toAccountId(enrollment.customerAccountId),
@@ -443,22 +508,26 @@ function makeSavedCardServiceLayer(service: typeof SavedCardService) {
             orderId: enrollment.orderId,
             customerAccountId: toAccountId(enrollment.customerAccountId),
           });
-          return "confirmed";
+          return { provider: "confirmed", outcome: "confirmed" } as const;
         }
 
         if (verdict.kind === "terminal") {
-          // Provider-terminal cancellation keeps the enrollment terminal; a
+          // Provider-terminal outcomes can never create a contract; a
           // still-pending enrollment records the provider outcome.
           if (enrollment.state === "pending") {
-            return yield* failEnrollment(verdict.terminal)({
+            yield* failEnrollment(verdict.terminal)({
               orderId: enrollment.orderId,
               customerAccountId: toAccountId(enrollment.customerAccountId),
             });
+            return {
+              provider: "terminal",
+              outcome: verdict.terminal,
+            } as const;
           }
-          return localOutcome;
+          return { provider: "terminal", outcome: localOutcome } as const;
         }
 
-        return localOutcome;
+        return { provider: "unresolved", outcome: localOutcome } as const;
       });
 
       const verifyEnrollment = Effect.fn("SavedCardService.verifyEnrollment")(
@@ -472,7 +541,7 @@ function makeSavedCardServiceLayer(service: typeof SavedCardService) {
           if (!enrollment || enrollment.customerAccountId !== scope.accountId) {
             return "not_found";
           }
-          return yield* reconcileEnrollment(enrollment);
+          return (yield* reconcileEnrollment(enrollment)).outcome;
         }
       );
 
@@ -496,7 +565,7 @@ function makeSavedCardServiceLayer(service: typeof SavedCardService) {
         if (!enrollment || digest !== enrollment.securityTokenDigest) {
           return "not_found";
         }
-        return yield* reconcileEnrollment(enrollment);
+        return (yield* reconcileEnrollment(enrollment)).outcome;
       });
 
       const cancelEnrollment = Effect.fn("SavedCardService.cancelEnrollment")(
@@ -509,7 +578,10 @@ function makeSavedCardServiceLayer(service: typeof SavedCardService) {
           }
 
           const reconciled = yield* reconcileEnrollment(enrollment);
-          if (reconciled !== "pending") return reconciled;
+          if (reconciled.provider !== "unresolved") {
+            return reconciled.outcome;
+          }
+          if (reconciled.outcome !== "pending") return reconciled.outcome;
 
           // Local intent only: reconciliation can still flip this row to
           // confirmed if the provider later shows a completed verification.
@@ -549,16 +621,31 @@ function makeSavedCardServiceLayer(service: typeof SavedCardService) {
       const listCards = Effect.fn("SavedCardService.listCards")(function* (
         account: LinkedCustomerAccount
       ) {
-        // Pending enrollments reconcile first, so a provider flow that
-        // completed out-of-band (webhook lost, return visited before contract
-        // visibility) becomes visible on this reload.
-        const pendingEnrollments = (yield* repository.listEnrollments(
+        // Provider-unresolved enrollments reconcile first, so a flow that
+        // completed out-of-band (webhook lost, return visited before
+        // contract visibility) becomes visible on this reload. Every
+        // non-confirmed row is a candidate — cancelled, failed, and
+        // superseded rows can still complete late. Rotation invariant: the
+        // candidates are reconciled oldest-`updatedAt`-first, each attempt
+        // touches the row, and the sweep is bounded, so successive reloads
+        // rotate through the unresolved set without starving any row.
+        const unresolvedEnrollments = (yield* repository.listEnrollments(
           account.accountId
         ))
-          .filter((row) => row.state === "pending")
+          .filter((row) => row.state !== "confirmed")
+          .sort((a, b) =>
+            Temporal.Instant.compare(
+              asInstant(a.updatedAt),
+              asInstant(b.updatedAt)
+            )
+          )
           .slice(0, pendingReconciliationBound);
-        for (const enrollment of pendingEnrollments) {
+        for (const enrollment of unresolvedEnrollments) {
           yield* reconcileEnrollment(enrollment);
+          yield* repository.touchEnrollment({
+            orderId: enrollment.orderId,
+            customerAccountId: toAccountId(enrollment.customerAccountId),
+          });
         }
 
         const [localRows, providerContracts] = yield* Effect.all([
@@ -654,18 +741,20 @@ function makeSavedCardServiceLayer(service: typeof SavedCardService) {
       )(function* (accountId: CustomerAccountId) {
         // The durable deletion marker is already persisted when this runs, so
         // no new enrollment or listing activity can interleave. Enrollments
-        // that never confirmed must reconcile first: an in-flight provider
-        // verification that is still non-terminal blocks the deletion
-        // (retryably), while a late success registers its contract so the
-        // deactivation sweep below removes it.
+        // that have not provider-confirmed must reconcile first: ANY
+        // provider-unresolved enrollment blocks the deletion retryably —
+        // regardless of its local cancelled/failed/superseded state, because
+        // its hosted session can still complete and create a contract. A
+        // provider-terminal outcome can never create one, and a late success
+        // registers its contract so the deactivation sweep below removes it.
         const enrollments = yield* repository.listEnrollments(accountId);
         for (const enrollment of enrollments) {
           if (enrollment.state === "confirmed") continue;
-          const outcome = yield* reconcileEnrollment(enrollment);
-          if (outcome === "pending") {
+          const resolution = yield* reconcileEnrollment(enrollment);
+          if (resolution.provider === "unresolved") {
             return yield* new SavedCardError({
               code: "unavailable",
-              cause: "enrollment_still_in_flight",
+              cause: "enrollment_still_unresolved",
             });
           }
         }

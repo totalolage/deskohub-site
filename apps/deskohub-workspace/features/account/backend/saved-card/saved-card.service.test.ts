@@ -13,7 +13,9 @@ import {
   NexiService,
 } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
+import type { PostgresAdvisoryLockKey } from "@/db/postgres-advisory-lock";
 import { customerAccountIdSchema } from "../../customer-account";
+import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
 import { SavedCardService } from "./saved-card.service";
 import { SavedCardContractRepository } from "./saved-card-contract.repository";
 import { getSavedCardCustomerReference } from "./saved-card-customer-reference";
@@ -147,6 +149,15 @@ const makeRepositoryLayer = (state: RepoState) =>
         row.state = input.state;
         row.failureCode = input.failureCode ?? null;
         return row;
+      }),
+    touchEnrollment: (input: { orderId: string; customerAccountId: string }) =>
+      Effect.sync(() => {
+        const row = state.enrollments.find(
+          (candidate) =>
+            candidate.orderId === input.orderId &&
+            candidate.customerAccountId === input.customerAccountId
+        );
+        if (row) row.updatedAt = new Date();
       }),
     confirmEnrollmentFromAnyState: (input: {
       orderId: string;
@@ -309,10 +320,29 @@ const emptyCalls = (): NexiCalls => ({
   deactivations: [],
 });
 
+interface LinkState {
+  deletionRequested: boolean;
+}
+
+const makeLinksLayer = (linkState: LinkState) =>
+  Layer.mock(CustomerAccountLinkRepository, {
+    findActivityState: () =>
+      Effect.succeed(
+        linkState.deletionRequested
+          ? ({ kind: "active", deletionRequestedAt: new Date() } as const)
+          : ({ kind: "active", deletionRequestedAt: null } as const)
+      ),
+    withAccountLock: <A, E, R>(
+      _key: PostgresAdvisoryLockKey,
+      effect: Effect.Effect<A, E, R>
+    ) => effect,
+  } satisfies Partial<CustomerAccountLinkRepository["Service"]>);
+
 const makeService = (
   state: RepoState = makeState(),
   calls: NexiCalls = emptyCalls(),
-  config: NexiConfig = {}
+  config: NexiConfig = {},
+  linkState: LinkState = { deletionRequested: false }
 ) => ({
   run: <A>(
     effect: Effect.Effect<
@@ -328,7 +358,8 @@ const makeService = (
             Layer.provide(
               Layer.mergeAll(
                 makeNexiLayer(calls, config),
-                makeRepositoryLayer(state)
+                makeRepositoryLayer(state),
+                makeLinksLayer(linkState)
               )
             )
           )
@@ -1246,5 +1277,176 @@ describe("SavedCardService.deactivateAllForDeletion", () => {
       contractId("cit1"),
       contractId("mit1"),
     ]);
+  });
+});
+describe("enrollment/deletion interleaving", () => {
+  test("a durable deletion marker rejects enrollment start before any provider call", async () => {
+    const state = makeState();
+    const calls = emptyCalls();
+    const { run } = makeService(state, calls, {}, { deletionRequested: true });
+
+    await expect(
+      run(
+        Effect.flatMap(SavedCardService, (service) =>
+          service.startEnrollment(account, locale)
+        )
+      )
+    ).rejects.toMatchObject({
+      _tag: "CustomerAccountAccessError",
+      linkReason: "deletion-requested",
+    });
+
+    expect(calls.hpp).toHaveLength(0);
+    expect(state.enrollments).toHaveLength(0);
+  });
+
+  test("a pending enrollment inserted before deletion blocks the sweep, never orphaned", async () => {
+    const state = makeState();
+    seedEnrollment(state); // pending, provider-indeterminate
+    const { run } = makeService(
+      state,
+      undefined,
+      {},
+      {
+        deletionRequested: true,
+      }
+    );
+
+    await expect(
+      run(
+        Effect.flatMap(SavedCardService, (service) =>
+          service.deactivateAllForDeletion(accountId)
+        )
+      )
+    ).rejects.toMatchObject({ code: "unavailable" });
+    // The row is intact for a later reconciliation, not orphaned silently.
+    expect(state.enrollments[0].state).toBe("pending");
+  });
+});
+
+describe("deletion blocks on provider-unresolved enrollments", () => {
+  test("locally cancelled + provider-indeterminate blocks the deletion", async () => {
+    const state = makeState();
+    seedEnrollment(state, {
+      state: "cancelled",
+      failureCode: "enrollment.cancelled",
+    });
+    const calls = emptyCalls();
+    const { run } = makeService(state, calls);
+
+    await expect(
+      run(
+        Effect.flatMap(SavedCardService, (service) =>
+          service.deactivateAllForDeletion(accountId)
+        )
+      )
+    ).rejects.toMatchObject({ code: "unavailable" });
+    expect(calls.deactivations).toHaveLength(0);
+  });
+
+  test("superseded + authorized-but-contract-not-listed blocks the deletion", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state, {
+      state: "failed",
+      failureCode: "enrollment.superseded",
+    });
+    const calls = emptyCalls();
+    const { run } = makeService(state, calls, {
+      orders: authorizedVerificationOrder(enrollment.orderId),
+      contracts: { [providerCustomerId]: [] },
+    });
+
+    await expect(
+      run(
+        Effect.flatMap(SavedCardService, (service) =>
+          service.deactivateAllForDeletion(accountId)
+        )
+      )
+    ).rejects.toMatchObject({ code: "unavailable" });
+    expect(calls.deactivations).toHaveLength(0);
+  });
+
+  test("cancelled + provider-terminal proceeds with the deletion", async () => {
+    const state = makeState();
+    seedEnrollment(state, {
+      state: "cancelled",
+      failureCode: "enrollment.cancelled",
+    });
+    const calls = emptyCalls();
+    const { run } = makeService(state, calls, {
+      orders: cancelledVerificationOrder(orderId("seed1")),
+      contracts: { [providerCustomerId]: [] },
+    });
+
+    await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.deactivateAllForDeletion(accountId)
+      )
+    );
+
+    expect(state.enrollments[0].state).toBe("cancelled");
+    expect(calls.deactivations).toHaveLength(0);
+  });
+});
+
+describe("listCards rotation over unresolved enrollments", () => {
+  test("a cancelled enrollment completing late becomes visible on reload", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state, {
+      state: "cancelled",
+      failureCode: "enrollment.cancelled",
+    });
+    const { run } = makeService(state, undefined, {
+      orders: authorizedVerificationOrder(enrollment.orderId),
+      contracts: {
+        [providerCustomerId]: [
+          citCard(enrollment.providerContractId, { circuit: "VISA" }),
+        ],
+      },
+    });
+
+    const cards = await run(
+      Effect.flatMap(SavedCardService, (service) => service.listCards(account))
+    );
+
+    expect(cards).toEqual([
+      { contractId: enrollment.providerContractId, circuit: "VISA" },
+    ]);
+    expect(state.enrollments[0].state).toBe("confirmed");
+    expect(state.enrollments[0].failureCode).toBeNull();
+  });
+
+  test("unresolved rows rotate across reloads without starvation", async () => {
+    const state = makeState();
+    const ids: string[] = [];
+    for (let index = 0; index < 10; index += 1) {
+      const id = orderId(`rot${index}`);
+      ids.push(id);
+      const row = seedEnrollment(state, { orderId: id });
+      // Deterministic stagger into the past so the oldest-first order is
+      // the seed order, and a touch (now) definitively moves a row back.
+      row.updatedAt = new Date(Date.now() - (10 - index) * 1000);
+    }
+
+    const first = makeService(state);
+    await first.run(
+      Effect.flatMap(SavedCardService, (service) => service.listCards(account))
+    );
+    const firstBatch = first.calls.orders;
+    expect(firstBatch).toHaveLength(8);
+    expect(firstBatch).toEqual(ids.slice(0, 8));
+
+    const second = makeService(state);
+    await second.run(
+      Effect.flatMap(SavedCardService, (service) => service.listCards(account))
+    );
+    const secondBatch = second.calls.orders;
+    // The rows the first reload skipped are covered first.
+    expect(secondBatch.slice(0, ids.length - firstBatch.length)).toEqual(
+      ids.slice(firstBatch.length)
+    );
+    // Touched rows moved to the back of the rotation instead of starving
+    // them out: the union of both reloads covers every unresolved row.
+    expect(new Set([...firstBatch, ...secondBatch])).toEqual(new Set(ids));
   });
 });
