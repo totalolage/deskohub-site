@@ -266,7 +266,7 @@ describe.skipIf(!testDatabase)(
           )
         )
       );
-    const makeInvoiceServiceLayer = () =>
+    const makeInvoiceServiceLayer = (accountId: string) =>
       CustomerInvoiceService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
@@ -282,7 +282,7 @@ describe.skipIf(!testDatabase)(
               CustomerAccountResolver,
               CustomerAccountResolver.of({
                 resolve: Effect.succeed({
-                  accountId: customerAccountIdSchema.make("unused-account"),
+                  accountId: customerAccountIdSchema.make(accountId),
                   dotyposCustomerId: dotyposCustomerId as never,
                 }),
               } as never)
@@ -319,6 +319,42 @@ describe.skipIf(!testDatabase)(
       return rows.rows[0]?.ciphertext as string | undefined;
     };
 
+    /**
+     * Removes exactly the seeded fixture invoice row. The migrations make
+     * issued invoices immutable (`invoices_immutable` rejects DELETE with
+     * SQLSTATE 55000), so the disposable test database's trigger is
+     * temporarily disabled inside one transaction — the same synthetic
+     * fixture cleanup pattern the e2e invoice fixture uses — and always
+     * re-enabled, even when the delete fails.
+     */
+    const cleanupSeededInvoice = async () => {
+      const client = await testDatabase!.pool.connect();
+      try {
+        await client.query("begin");
+        await client.query(
+          `alter table invoices disable trigger invoices_immutable`
+        );
+        const removed = await client.query(
+          `delete from invoices where id = $1 returning id`,
+          [invoiceId]
+        );
+        await client.query(
+          `alter table invoices enable trigger invoices_immutable`
+        );
+        await client.query("commit");
+        if (removed.rows.length !== 1) {
+          throw new Error(
+            `Fixture invoice cleanup expected to remove exactly one row, removed ${removed.rows.length}`
+          );
+        }
+      } catch (error) {
+        await client.query("rollback").catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
+    };
+
     test("keeps the issued invoice row while the customer account access ends", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
@@ -326,75 +362,92 @@ describe.skipIf(!testDatabase)(
       await linkRow(account, dotyposCustomerId);
       await seedLinkedInvoice();
 
-      const ciphertextBefore = await readStoredInvoiceCiphertext();
+      try {
+        const ciphertextBefore = await readStoredInvoiceCiphertext();
 
-      // While the account is linked, the owner-scoped ledger lists the
-      // invoice and the row is retrievable under the owner filter.
-      const linked = await Effect.runPromise(
-        Effect.gen(function* () {
-          const invoices = yield* InvoiceRepository;
-          const summaries = yield* invoices.listForCustomer(
-            dotyposCustomerId as never
-          );
-          const invoice = yield* invoices.findForCustomer(
-            dotyposCustomerId as never,
-            invoiceId
-          );
-          return { summaries, invoice };
-        }).pipe(Effect.provide(makeInvoiceRepositoryLayer()))
-      );
-      expect(linked.summaries.map((summary) => summary.id)).toEqual([
-        invoiceId,
-      ]);
-      expect(linked.invoice?.dotyposCustomerId).toBe(dotyposCustomerId);
-
-      // The actual Better Auth identity deletion cascades the link away.
-      await testDatabase!.pool.query(`delete from auth."user" where id = $1`, [
-        account,
-      ]);
-
-      // The issued invoice row and its ciphertext survive unchanged.
-      expect(await readStoredInvoiceCiphertext()).toBe(ciphertextBefore);
-
-      // The link is gone, so the account activity state — the same guard the
-      // customer invoice service authorizes on every call — reports missing.
-      const activity = await Effect.runPromise(
-        Effect.gen(function* () {
-          const links = yield* CustomerAccountLinkRepository;
-          return yield* links.findActivityState(account);
-        }).pipe(Effect.provide(layer))
-      );
-      expect(activity).toEqual({ kind: "missing" });
-
-      // With the link gone the customer invoice service fails closed before
-      // any invoice storage is consulted, so neither the ledger listing nor
-      // a PDF download returns the surviving invoice.
-      const denial = await Effect.runPromise(
-        Effect.gen(function* () {
-          const service = yield* CustomerInvoiceService;
-          return {
-            list: yield* Effect.result(service.list),
-            pdf: yield* Effect.result(service.findPdf(invoiceId)),
-          };
-        }).pipe(Effect.provide(makeInvoiceServiceLayer()))
-      );
-      expect(denial.list._tag).toBe("Failure");
-      if (denial.list._tag === "Failure") {
-        expect(denial.list.failure._tag).toBe(
-          "CustomerInvoicesUnavailableError"
+        // While the account is linked, the owner-scoped ledger lists the
+        // invoice and the row is retrievable under the owner filter.
+        const linked = await Effect.runPromise(
+          Effect.gen(function* () {
+            const invoices = yield* InvoiceRepository;
+            const summaries = yield* invoices.listForCustomer(
+              dotyposCustomerId as never
+            );
+            const invoice = yield* invoices.findForCustomer(
+              dotyposCustomerId as never,
+              invoiceId
+            );
+            return { summaries, invoice };
+          }).pipe(Effect.provide(makeInvoiceRepositoryLayer()))
         );
-      }
-      expect(denial.pdf._tag).toBe("Failure");
-      if (denial.pdf._tag === "Failure") {
-        expect(denial.pdf.failure._tag).toBe(
-          "CustomerInvoicesUnavailableError"
-        );
-      }
+        expect(linked.summaries.map((summary) => summary.id)).toEqual([
+          invoiceId,
+        ]);
+        expect(linked.invoice?.dotyposCustomerId).toBe(dotyposCustomerId);
 
-      // Cleanup: the synthetic invoice row must not leak into other tests.
-      await testDatabase!.pool.query(`delete from invoices where id = $1`, [
-        invoiceId,
-      ]);
+        // The real service identity resolves this account, so while the
+        // account is linked the service authorizes and serves the invoice.
+        const authorized = await Effect.runPromise(
+          Effect.gen(function* () {
+            const service = yield* CustomerInvoiceService;
+            const pdf = yield* service.findPdf(invoiceId);
+            const list = yield* service.list;
+            return { list, pdf };
+          }).pipe(Effect.provide(makeInvoiceServiceLayer(account)))
+        );
+        expect(authorized.list.map((summary) => summary.id)).toEqual([
+          invoiceId,
+        ]);
+        expect(authorized.pdf.fileName).toBe(`${document.invoiceNumber}.pdf`);
+
+        // The actual Better Auth identity deletion cascades the link away.
+        await testDatabase!.pool.query(
+          `delete from auth."user" where id = $1`,
+          [account]
+        );
+
+        // The issued invoice row and its ciphertext survive unchanged.
+        expect(await readStoredInvoiceCiphertext()).toBe(ciphertextBefore);
+
+        // The link is gone, so the account activity state — the same guard
+        // the customer invoice service authorizes on every call — reports
+        // missing.
+        const activity = await Effect.runPromise(
+          Effect.gen(function* () {
+            const links = yield* CustomerAccountLinkRepository;
+            return yield* links.findActivityState(account);
+          }).pipe(Effect.provide(layer))
+        );
+        expect(activity).toEqual({ kind: "missing" });
+
+        // With the real auth user deleted, the service's activity guard
+        // fails closed before any invoice storage is consulted, so the same
+        // listing and PDF download that succeeded above are now denied even
+        // though the invoice row survives.
+        const denial = await Effect.runPromise(
+          Effect.gen(function* () {
+            const service = yield* CustomerInvoiceService;
+            return {
+              list: yield* Effect.result(service.list),
+              pdf: yield* Effect.result(service.findPdf(invoiceId)),
+            };
+          }).pipe(Effect.provide(makeInvoiceServiceLayer(account)))
+        );
+        expect(denial.list._tag).toBe("Failure");
+        if (denial.list._tag === "Failure") {
+          expect(denial.list.failure._tag).toBe(
+            "CustomerInvoicesUnavailableError"
+          );
+        }
+        expect(denial.pdf._tag).toBe("Failure");
+        if (denial.pdf._tag === "Failure") {
+          expect(denial.pdf.failure._tag).toBe(
+            "CustomerInvoicesUnavailableError"
+          );
+        }
+      } finally {
+        await cleanupSeededInvoice();
+      }
     });
   }
 );

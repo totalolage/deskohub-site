@@ -80,21 +80,53 @@ export const formatInvoiceMinorUnits = (
  * invoice's currency. The fraction digits of the stored decimal are pinned as
  * both the minimum and the maximum so localization never rounds or pads the
  * ledger amount; the CSV export keeps the plain decimal instead.
+ *
+ * The integer digits are formatted as a BigInt so manual invoices — exact
+ * BigDecimal arithmetic with bounded scale but unbounded magnitude — keep
+ * every digit even beyond the safe-integer range, where a JS number would
+ * round. The pinned fraction is appended with the locale's own decimal
+ * separator, which reproduces the pinned-fraction currency format exactly;
+ * for ordinary amounts the output is identical to number-based formatting.
  */
 export const formatInvoiceAmount = (
   total: string,
   currency: string,
   locale: Locale
 ): string => {
-  const fractionDigits = total.includes(".")
-    ? (total.split(".")[1]?.length ?? 0)
-    : 0;
-  return new Intl.NumberFormat(locale, {
+  const separatorIndex = total.indexOf(".");
+  const wholePart =
+    separatorIndex === -1 ? total : total.slice(0, separatorIndex);
+  const fractionPart =
+    separatorIndex === -1 ? undefined : total.slice(separatorIndex + 1);
+  const fractionDigits = fractionPart === undefined ? 0 : fractionPart.length;
+  const integerFormat = new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  }).format(Number(total));
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+  const wholeAmount = BigInt(wholePart);
+  if (fractionDigits === 0) return integerFormat.format(wholeAmount);
+
+  const decimalSeparator =
+    new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })
+      .formatToParts(1.5)
+      .find((part) => part.type === "decimal")?.value ?? ".";
+  const parts = integerFormat.formatToParts(wholeAmount);
+  let lastIntegerPart = -1;
+  parts.forEach((part, index) => {
+    if (part.type === "integer") lastIntegerPart = index;
+  });
+  parts.splice(
+    lastIntegerPart + 1,
+    0,
+    { type: "decimal", value: decimalSeparator },
+    { type: "fraction", value: fractionPart ?? "" }
+  );
+  return parts.map((part) => part.value).join("");
 };
 
 const escapeCsvField = (value: string) =>

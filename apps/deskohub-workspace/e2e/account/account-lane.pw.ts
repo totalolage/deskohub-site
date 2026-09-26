@@ -16,7 +16,7 @@ import { verifyAccountLayoutNavigation } from "./account-layout-navigation";
 import {
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
-  removeSyntheticAccountLink,
+  setDeletionRequestedAt,
 } from "./auth-rows";
 import { withCallbackHandoffReview } from "./callback-handoff";
 import { workspaceE2EAccountCaseIds } from "./catalog";
@@ -296,6 +296,37 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                         page: getOwnedPage(),
                       }),
                   });
+                  // Removing the account link cannot end authorization here:
+                  // the account resolver re-claims the link from the still
+                  // verified email on the next request. The genuine denial
+                  // is the deletion-pending marker instead — the same
+                  // reversible marker the deletion cases drive — set while
+                  // the issued invoice is still present, so the PDF 404
+                  // proves authorization denial rather than a missing row.
+                  // The marker is restored on release so the lane's later
+                  // linked-account steps keep working and restoration
+                  // happens even when an assertion fails.
+                  yield* Effect.acquireUseRelease(
+                    setDeletionRequestedAt(account.userId, new Date()),
+                    () =>
+                      Effect.tryPromise({
+                        catch: () =>
+                          workspaceE2EError(
+                            "verify customer invoice account denial failed",
+                            {
+                              operation:
+                                "verify customer invoice account denial",
+                            }
+                          ),
+                        try: () =>
+                          verifyCustomerInvoiceAccessDenied(
+                            accountLane.config.baseUrl,
+                            fixture,
+                            getOwnedPage()
+                          ),
+                      }),
+                    () => setDeletionRequestedAt(account.userId, null)
+                  );
                   yield* fixture.revoke();
                   yield* Effect.tryPromise({
                     catch: () =>
@@ -309,67 +340,6 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                         fixture,
                         getOwnedPage()
                       ),
-                  });
-                  // With only the invoice row gone the still linked account
-                  // keeps an authorized (possibly empty) CSV export; the
-                  // account link removal is what ends the authorization, so
-                  // it is revoked separately and both downloads must then be
-                  // denied.
-                  yield* removeSyntheticAccountLink(
-                    account.userId,
-                    account.customerId
-                  );
-                  yield* Effect.tryPromise({
-                    catch: () =>
-                      workspaceE2EError(
-                        "verify customer invoice account denial failed",
-                        { operation: "verify customer invoice account denial" }
-                      ),
-                    try: () =>
-                      verifyCustomerInvoiceAccessDenied(
-                        accountLane.config.baseUrl,
-                        fixture,
-                        getOwnedPage()
-                      ),
-                  });
-                  // The account resolver relinks on the next account visit
-                  // (same convergence the unlink cases rely on); the lane's
-                  // later linked-account checks need that link restored.
-                  yield* Effect.tryPromise({
-                    catch: () =>
-                      workspaceE2EError(
-                        "reopen account page after link revocation failed",
-                        {
-                          operation:
-                            "reopen account page after link revocation",
-                        }
-                      ),
-                    try: () =>
-                      getOwnedPage().goto(
-                        new URL(
-                          "/en-US/account",
-                          accountLane.config.baseUrl
-                        ).toString(),
-                        { timeout: workspaceE2ETimeouts.browserNavigation }
-                      ),
-                  });
-                  yield* Effect.gen(function* () {
-                    const pollDeadline = Date.now() + 60_000;
-                    while (Date.now() < pollDeadline) {
-                      const relinked = yield* findLinkedDotyposCustomerId(
-                        account.userId
-                      );
-                      if (relinked === account.customerId) return;
-                      yield* Effect.sleep("5 seconds");
-                    }
-                    return yield* workspaceE2EError(
-                      "The account link did not converge after revocation",
-                      {
-                        diagnosticCode:
-                          "postgres_account_fixture_convergence_failed",
-                        operation: "restore account link after revocation",
-                      }
-                    );
                   });
                 })
               );

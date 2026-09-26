@@ -190,9 +190,11 @@ export const verifyCustomerInvoiceRevoked = async (
 };
 
 /**
- * Asserts the download denial after the account's durable link was removed:
- * with the account authorization gone, both the PDF download and the CSV
- * export answer with the same indistinguishable private 404.
+ * Asserts the download denial for a deletion-pending account with the issued
+ * invoice still present: the activity guard stops the authorized download,
+ * so both the PDF download and the CSV export answer with the same
+ * indistinguishable private 404 — proving authorization denial, not a
+ * missing invoice row.
  */
 export const verifyCustomerInvoiceAccessDenied = async (
   baseUrl: string,

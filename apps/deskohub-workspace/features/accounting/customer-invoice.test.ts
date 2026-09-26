@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   type CustomerInvoiceSummary,
+  formatInvoiceAmount,
   formatInvoiceMinorUnits,
   getCustomerInvoiceSummary,
   renderCustomerInvoiceCsv,
@@ -100,6 +101,31 @@ describe("formatInvoiceMinorUnits", () => {
     expect(formatInvoiceMinorUnits(45000, 2)).toBe("450.00");
     expect(formatInvoiceMinorUnits(450, 0)).toBe("450");
     expect(formatInvoiceMinorUnits(-45050, 2)).toBe("-450.50");
+  });
+});
+
+describe("formatInvoiceAmount", () => {
+  test("formats ordinary amounts identically in both locales", () => {
+    expect(formatInvoiceAmount("450", "CZK", "cs-CZ")).toBe("450\u00a0Kč");
+    expect(formatInvoiceAmount("450.00", "CZK", "cs-CZ")).toBe(
+      "450,00\u00a0Kč"
+    );
+    expect(formatInvoiceAmount("450", "USD", "en-US")).toBe("$450");
+    expect(formatInvoiceAmount("450.00", "USD", "en-US")).toBe("$450.00");
+    expect(formatInvoiceAmount("1234.5", "USD", "en-US")).toBe("$1,234.5");
+    expect(formatInvoiceAmount("1234.5", "CZK", "cs-CZ")).toBe(
+      "1\u00a0234,5\u00a0Kč"
+    );
+  });
+
+  test("keeps exact digits for amounts beyond the safe-integer range", () => {
+    const beyondSafeInteger = "9007199254740993.25";
+    expect(formatInvoiceAmount(beyondSafeInteger, "USD", "en-US")).toBe(
+      "$9,007,199,254,740,993.25"
+    );
+    expect(formatInvoiceAmount(beyondSafeInteger, "CZK", "cs-CZ")).toBe(
+      "9\u00a0007\u00a0199\u00a0254\u00a0740\u00a0993,25\u00a0Kč"
+    );
   });
 });
 

@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { CustomerInvoiceService } from "@/features/account/backend/customer-invoice.service";
 import { invoiceIdSchema } from "@/features/accounting/manual-invoice";
 import { isLocale } from "@/features/i18n";
+import { censorLogValue } from "@/shared/backend/logging/censorship";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
@@ -63,6 +64,18 @@ const decodeRouteInvoiceId = Schema.decodeUnknownOption(invoiceIdSchema);
 const toRouteFailure = (publicMessage: string) => (cause: unknown) =>
   WorkspaceRouteFailure.internal(publicMessage)(cause);
 
+/**
+ * These routes answer expected failures locally, bypassing the shared
+ * recovery's logging, so unexpected failures are logged here with the same
+ * censored-value conventions: no decrypted documents, no raw provider or
+ * database payloads.
+ */
+const logPrivateDownloadFailure = (operation: string) => (cause: unknown) =>
+  Effect.logError("Customer invoice download failed unexpectedly", {
+    cause: censorLogValue(cause),
+    operation,
+  });
+
 export const makeCustomerInvoicePdfGet = (
   serviceLayer: Layer.Layer<
     CustomerInvoiceService,
@@ -102,9 +115,15 @@ export const makeCustomerInvoicePdfGet = (
               () => Effect.succeed(privateNotFoundResponse())
             ),
             Effect.catch((cause) =>
-              Effect.succeed(
-                privateFailureResponse(
-                  toRouteFailure("Customer invoice could not be loaded")(cause)
+              logPrivateDownloadFailure("account.invoice-pdf")(cause).pipe(
+                Effect.andThen(
+                  Effect.succeed(
+                    privateFailureResponse(
+                      toRouteFailure("Customer invoice could not be loaded")(
+                        cause
+                      )
+                    )
+                  )
                 )
               )
             )
@@ -145,10 +164,14 @@ export const makeCustomerInvoiceCsvGet = (
               Effect.succeed(privateNotFoundResponse())
             ),
             Effect.catch((cause) =>
-              Effect.succeed(
-                privateFailureResponse(
-                  toRouteFailure("Customer invoices could not be exported")(
-                    cause
+              logPrivateDownloadFailure("account.invoice-csv")(cause).pipe(
+                Effect.andThen(
+                  Effect.succeed(
+                    privateFailureResponse(
+                      toRouteFailure("Customer invoices could not be exported")(
+                        cause
+                      )
+                    )
                   )
                 )
               )
