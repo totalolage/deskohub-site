@@ -89,12 +89,12 @@ const meetingRoomQuote = {
     {
       type: "meeting-room" as const,
       duration: { unit: "hour" as const, amount: 1 as const },
-      amount: money(47_500),
+      amount: money(35_000),
     },
   ] as const,
   payment: {
-    expectedPrice: money(47_500),
-    undiscountedPrice: money(47_500),
+    expectedPrice: money(35_000),
+    undiscountedPrice: money(35_000),
     discounts: [],
   },
 };
@@ -797,8 +797,8 @@ describe("MeetingRoomReservationForm", () => {
     const discountedQuote = {
       ...advertisedPriceResponse.quote,
       payment: {
-        expectedPrice: money(23_750),
-        undiscountedPrice: money(47_500),
+        expectedPrice: money(17_500),
+        undiscountedPrice: money(35_000),
         discounts: [
           {
             discount: {
@@ -811,9 +811,9 @@ describe("MeetingRoomReservationForm", () => {
                 basisPoints: 5000,
               },
             },
-            subtotalBefore: money(47_500),
-            amount: money(23_750),
-            subtotalAfter: money(23_750),
+            subtotalBefore: money(35_000),
+            amount: money(17_500),
+            subtotalAfter: money(17_500),
           },
         ],
       },
@@ -834,9 +834,9 @@ describe("MeetingRoomReservationForm", () => {
     const view = renderForm();
 
     expect(
-      await view.findByText(/original price.*475/i, {}, { timeout: 3000 })
+      await view.findByText(/original price.*350/i, {}, { timeout: 3000 })
     ).toBeDefined();
-    expect(view.getByText(/discounted price.*237[.,]5/i)).toBeDefined();
+    expect(view.getByText(/discounted price.*175/i)).toBeDefined();
     expect(
       view.getByRole("button", { name: /discount.*meeting room.*1 hour/i })
     ).toBeDefined();
