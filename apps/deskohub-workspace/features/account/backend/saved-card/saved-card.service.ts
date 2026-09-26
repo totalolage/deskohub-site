@@ -11,7 +11,7 @@ import {
   NexiOrderIdSchema,
   NexiService,
 } from "@deskohub/nexi";
-import { Context, Data, Effect, Layer, Match } from "effect";
+import { Context, Data, Effect, Layer, Match, Result } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import type { CustomerCardEnrollmentRow } from "@/db/schema";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/checkout/vercel-preview-protection-bypass";
@@ -626,26 +626,39 @@ function makeSavedCardServiceLayer(service: typeof SavedCardService) {
         // contract visibility) becomes visible on this reload. Every
         // non-confirmed row is a candidate — cancelled, failed, and
         // superseded rows can still complete late. Rotation invariant: the
-        // candidates are reconciled oldest-`updatedAt`-first, each attempt
-        // touches the row, and the sweep is bounded, so successive reloads
-        // rotate through the unresolved set without starving any row.
+        // candidates are reconciled oldest-`updatedAt`-first (provider
+        // contract id as the deterministic tie-breaker), each attempt
+        // touches the row REGARDLESS of its outcome — a failing provider
+        // call still fails this request closed, but the recorded attempt
+        // makes the NEXT reload rotate past it — and the sweep is bounded,
+        // so successive reloads rotate through the unresolved set without
+        // starving any row.
         const unresolvedEnrollments = (yield* repository.listEnrollments(
           account.accountId
         ))
           .filter((row) => row.state !== "confirmed")
-          .sort((a, b) =>
-            Temporal.Instant.compare(
+          .sort((a, b) => {
+            const byUpdatedAt = Temporal.Instant.compare(
               asInstant(a.updatedAt),
               asInstant(b.updatedAt)
-            )
-          )
+            );
+            return (
+              byUpdatedAt ||
+              a.providerContractId.localeCompare(b.providerContractId)
+            );
+          })
           .slice(0, pendingReconciliationBound);
         for (const enrollment of unresolvedEnrollments) {
-          yield* reconcileEnrollment(enrollment);
+          const attempted = yield* Effect.result(
+            reconcileEnrollment(enrollment)
+          );
           yield* repository.touchEnrollment({
             orderId: enrollment.orderId,
             customerAccountId: toAccountId(enrollment.customerAccountId),
           });
+          if (Result.isFailure(attempted)) {
+            return yield* Effect.fail(attempted.failure);
+          }
         }
 
         const [localRows, providerContracts] = yield* Effect.all([

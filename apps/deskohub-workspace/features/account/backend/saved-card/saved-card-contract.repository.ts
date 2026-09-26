@@ -3,7 +3,7 @@ import type {
   NexiCustomerId,
   NexiOrderId,
 } from "@deskohub/nexi";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -155,6 +155,11 @@ export class SavedCardContractRepository extends Context.Service<
         return row ?? null;
       });
 
+      /**
+       * Deterministic reconciliation selection order: oldest attempt first,
+       * provider contract id as the tie-breaker, so a bounded sweep rotates
+       * predictably instead of starving rows with equal timestamps.
+       */
       const listEnrollments = Effect.fn(
         "SavedCardContractRepository.listEnrollments"
       )(function* (customerAccountId: CustomerAccountId) {
@@ -163,6 +168,10 @@ export class SavedCardContractRepository extends Context.Service<
           .from(customerCardEnrollments)
           .where(
             eq(customerCardEnrollments.customerAccountId, customerAccountId)
+          )
+          .orderBy(
+            asc(customerCardEnrollments.updatedAt),
+            asc(customerCardEnrollments.providerContractId)
           );
       });
 

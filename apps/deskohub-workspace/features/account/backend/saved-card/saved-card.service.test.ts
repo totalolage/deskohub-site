@@ -61,6 +61,7 @@ interface RepoState {
     state: "pending" | "confirmed" | "failed" | "cancelled";
     failureCode: string | null;
     createdAt: Date;
+    updatedAt: Date;
   }>;
   contracts: Array<{
     customerAccountId: string;
@@ -114,6 +115,7 @@ const makeRepositoryLayer = (state: RepoState) =>
           state: "pending" as const,
           failureCode: null,
           createdAt: new Date(),
+          updatedAt: new Date(),
         };
         state.enrollments.push(row);
         return row;
@@ -258,6 +260,8 @@ interface NexiConfig {
     }
   >;
   readonly orderError?: Error;
+  /** Per-order failures, checked before the blanket `orderError`. */
+  readonly orderErrors?: Record<string, Error>;
   readonly contracts?: Record<string, readonly NexiCardContract[]>;
   readonly contractsError?: Error;
   readonly deactivationError?: Error;
@@ -286,6 +290,7 @@ const makeNexiLayer = (calls: NexiCalls, config: NexiConfig) => {
     },
     getOrder: ({ orderId: id }: { orderId: string }) => {
       calls.orders.push(id);
+      if (config.orderErrors?.[id]) return Effect.fail(config.orderErrors[id]);
       if (config.orderError) return Effect.fail(config.orderError);
       const order = config.orders?.[id];
       return order
@@ -427,6 +432,7 @@ const seedEnrollment = (
     state: overrides.state ?? ("pending" as const),
     failureCode: overrides.failureCode ?? null,
     createdAt: new Date(),
+    updatedAt: new Date(),
   };
   state.enrollments.push(enrollment);
   return enrollment;
@@ -1448,5 +1454,67 @@ describe("listCards rotation over unresolved enrollments", () => {
     // Touched rows moved to the back of the rotation instead of starving
     // them out: the union of both reloads covers every unresolved row.
     expect(new Set([...firstBatch, ...secondBatch])).toEqual(new Set(ids));
+  });
+});
+
+describe("listCards rotation past failing rows", () => {
+  test("a failing oldest row is touched and the request stays fail-closed", async () => {
+    const state = makeState();
+    const stale = seedEnrollment(state, { orderId: orderId("stale1") });
+    stale.updatedAt = new Date(Date.now() - 10_000);
+    const staleTouchedBefore = stale.updatedAt.getTime();
+    seedEnrollment(state, { orderId: orderId("fresh1") });
+
+    const calls = emptyCalls();
+    const { run } = makeService(state, calls, {
+      orderErrors: { [orderId("stale1")]: networkError },
+    });
+
+    await expect(
+      run(
+        Effect.flatMap(SavedCardService, (service) =>
+          service.listCards(account)
+        )
+      )
+    ).rejects.toMatchObject({ code: "unavailable" });
+
+    // The attempt was persisted despite the failure.
+    expect(calls.orders).toEqual([orderId("stale1")]);
+    expect(state.enrollments[0].updatedAt.getTime()).toBeGreaterThan(
+      staleTouchedBefore
+    );
+  });
+
+  test("the reload after a failing row rotates to the later rows", async () => {
+    const state = makeState();
+    const stale = seedEnrollment(state, { orderId: orderId("stale1") });
+    stale.updatedAt = new Date(Date.now() - 10_000);
+    const later = seedEnrollment(state, { orderId: orderId("fresh1") });
+
+    const failing = makeService(state, undefined, {
+      orderErrors: { [orderId("stale1")]: networkError },
+    });
+    await expect(
+      failing.run(
+        Effect.flatMap(SavedCardService, (service) =>
+          service.listCards(account)
+        )
+      )
+    ).rejects.toMatchObject({ code: "unavailable" });
+
+    // Provider recovered: the reload now reaches the later row instead of
+    // re-selecting the same oldest failure.
+    const recovered = makeService(state);
+    await recovered.run(
+      Effect.flatMap(SavedCardService, (service) => service.listCards(account))
+    );
+
+    // The touched failing row moved to the back: the reload reaches the
+    // later row first instead of re-selecting the same oldest failure.
+    expect(recovered.calls.orders[0]).toBe(orderId("fresh1"));
+    expect(recovered.calls.orders).toContain(orderId("stale1"));
+    expect(state.enrollments.map((row) => row.orderId)).toContain(
+      later.orderId
+    );
   });
 });
