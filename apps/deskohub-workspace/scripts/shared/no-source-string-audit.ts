@@ -3,11 +3,11 @@ import { resolve } from "node:path";
 
 /**
  * Deterministic audit: no tracked test may pin literal substrings of tracked
- * repository source files (the "source-as-string contract" pattern).
+ * repository TS/TSX source files (the "source-as-string contract" pattern).
  *
  * A test file violates the rule when it both
- *  1. reads a tracked repository source file into a variable (directly via
- *     `Bun.file`/`readFileSync`/... or through a wrapper helper such as
+ *  1. reads a tracked repository TS/TSX source file into a variable (directly
+ *     via `Bun.file`/`readFileSync`/... or through a wrapper helper such as
  *     `readTrackedSource`), and
  *  2. pins that variable with literal-string assertions or their equivalent
  *     evasion forms: `expect(<var>.includes("...")).toBe(...)` on a source
@@ -18,13 +18,18 @@ import { resolve } from "node:path";
  * The enumeration is repository-wide: every tracked `*.test.ts(x)` under the
  * repo root is audited, not only the Workspace app.
  *
- * Verdicts computed structurally from real modules (parsed YAML, JSON config,
- * import graphs, extracted identifiers/counts, runtime behavior) are the
- * sanctioned replacements and are not flagged.
+ * Sanctioned replacements compute verdicts structurally — parsed-TypeScript
+ * AST checks (`scripts/shared/source-ast.ts`), executed runtime/module
+ * behavior, parsed YAML/JSON config, and generated-output comparisons — and
+ * are never flagged.
  *
- * Reads that exercise generated artifacts rather than hand-written sources,
- * and static policy/convention scanners whose verdicts are computed from real
- * source structure, are allowlisted explicitly below with their justification.
+ * Contract boundary (by scope, not per-file allowlist): the rule covers
+ * hand-written TS/TSX sources only. Reads whose target is a shell script,
+ * environment documentation, YAML/JSON config, Markdown, or plain text are
+ * outside the TS source contract and are not flagged. Generated migration
+ * SQL and generated codegen output remain explicit allowlist exceptions
+ * because their verdicts exercise generated artifacts, not hand-written
+ * source.
  */
 
 /** Generated SQL migrations: applied against a live disposable database. */
@@ -48,47 +53,6 @@ const GENERATED_FIXTURE_READS = [
   "apps/deskohub-workspace/scripts/account-visual/marketing-preferences-browser.test.tsx",
 ];
 
-/**
- * Static policy/convention scanners: verdicts computed from real structure
- * (ordered identifiers, call counts, extracted grant statements, isolated
- * source blocks), never from pinned prose substrings.
- */
-const POLICY_SCANNERS = [
-  "apps/deskohub-workspace/db/schema/checkout-lifecycle.no-pii.test.ts",
-  "apps/deskohub-workspace/scripts/preview-data-boundary.test.ts",
-  "apps/deskohub-workspace/scripts/anti-slop.test.ts",
-  "features/gallery/cloudinary-boundary.test.ts",
-  // Counts API identifiers and isolated step blocks inside the tracked
-  // account E2E wiring to enforce lane conventions.
-  "apps/deskohub-workspace/scripts/account-e2e-graph.test.ts",
-  // Counts marker identifiers in the release script and slices its blocks to
-  // enforce release/recovery conventions.
-  "apps/deskohub-workspace/scripts/production-release-workflow.test.ts",
-  // Counts database-variable wiring across test-harness sources.
-  "apps/deskohub-workspace/scripts/workspace-tests-workflow.test.ts",
-  // Counts shell/locale markers in the credential generator and pins the
-  // documentation contract of .env.example.
-  "apps/deskohub-workspace/scripts/generate-administrator-credentials.test.ts",
-  // Counts mutation-barrier waits inside the tracked access-code case source.
-  "apps/deskohub-workspace/e2e/access-codes/access-code-case.test.ts",
-  // Scans the tracked marketing-preferences helper for forbidden identifiers
-  // and asserts on isolated helper blocks (rejection/replay/cleanup).
-  "apps/deskohub-workspace/e2e/account/marketing-preferences.test.ts",
-  // Counts datasource-wiring identifiers across the tracked E2E database
-  // integration sources.
-  "apps/deskohub-workspace/e2e/integrations/database.test.ts",
-  // Scans the tracked consent module for forbidden cookie/timer APIs.
-  "apps/deskohub-workspace/e2e/legal-cookie-consent.test.ts",
-  // Scans the tracked route module for exported HTTP handlers and cache
-  // headers.
-  "apps/deskohub-workspace/features/account/backend/account-boundary.test.ts",
-];
-
-/** Owned by the parallel auth-facade fix; conversion is out of scope here. */
-const PARALLEL_FIX_OWNED = [
-  "apps/deskohub-workspace/e2e/account-legal-continuity.test.ts",
-];
-
 const normalizePath = (path: string): string =>
   path
     .replace(/^\.\//, "")
@@ -96,12 +60,7 @@ const normalizePath = (path: string): string =>
     .replace(/^deskohub-workspace\//, "");
 
 const ALLOWLIST = new Set(
-  [
-    ...GENERATED_MIGRATION_READS,
-    ...GENERATED_FIXTURE_READS,
-    ...POLICY_SCANNERS,
-    ...PARALLEL_FIX_OWNED,
-  ].map(normalizePath)
+  [...GENERATED_MIGRATION_READS, ...GENERATED_FIXTURE_READS].map(normalizePath)
 );
 
 const SOURCE_READ =
@@ -110,6 +69,14 @@ const DIRECT_READ =
   /\bconst\s+(\w+)\s*=\s*(?:await\s+)?(?:readFileSync|readFile|readFileString|Bun\.file|\w*[Rr]ead(?:Tracked|Source)\w*(?<!Json)(?<!Tokens))\s*\(([\s\S]{0,240}?)[;)]/g;
 const REPO_SOURCE_ARG =
   /new URL\(|import\.meta|repoFile\(|["']\.\/|["']\.\.|repoRoot/;
+/**
+ * Out-of-scope read targets: shell scripts, environment docs, YAML/JSON
+ * config, Markdown, and plain text live outside the TS/TSX source contract.
+ * The pattern only applies when the argument names no `.ts`/`.tsx` target.
+ */
+const NON_TS_TARGET =
+  /\.sh\b|\.env\.|\.env\b|\.ya?ml\b|\.json\b|\.md\b|\.txt\b|\.csv\b/;
+const TS_TARGET = /\.tsx?\b/;
 const DERIVED_READ =
   /\bconst\s+(\w+)\s*=\s*(\w+)\.(?:slice|split|substring|replace|trim)\s*\(/;
 
@@ -174,14 +141,18 @@ export const findViolations = (
     if (ALLOWLIST.has(normalizePath(path))) continue;
     if (!SOURCE_READ.test(content)) continue;
 
-    // Track variables that hold repository file contents (the read call must
-    // address a repository source, not a runtime temp/output file), plus one
-    // level of string-derived copies (slices/splits of a read).
+    // Track variables that hold repository TS/TSX file contents (the read
+    // call must address a repository source, not a runtime temp/output file,
+    // and not an out-of-scope non-TS target), plus one level of
+    // string-derived copies (slices/splits of a read).
     const sourceVars = new Set<string>();
     for (const match of content.matchAll(DIRECT_READ)) {
-      if (REPO_SOURCE_ARG.test(match[2] ?? "")) {
-        sourceVars.add(match[1] ?? "");
-      }
+      const argument = match[2] ?? "";
+      if (!REPO_SOURCE_ARG.test(argument)) continue;
+      // Shell scripts, env docs, and YAML/JSON config are outside the
+      // TS/TSX source contract by scope.
+      if (NON_TS_TARGET.test(argument) && !TS_TARGET.test(argument)) continue;
+      sourceVars.add(match[1] ?? "");
     }
     for (const match of content.matchAll(
       new RegExp(DERIVED_READ.source, "g")

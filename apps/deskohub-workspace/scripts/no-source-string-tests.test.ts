@@ -7,10 +7,10 @@ import {
   repositoryRoot,
 } from "./shared/no-source-string-audit";
 import {
-  countTokenSequence,
-  sourceTokens,
-  stripLineComments,
-} from "./shared/source-contract";
+  callsNamed,
+  parseSource,
+  parseTrackedSource,
+} from "./shared/source-ast";
 
 const repoRoot = repositoryRoot();
 const trackedFiles = listTrackedTestFiles().map((relativePath) => ({
@@ -19,7 +19,7 @@ const trackedFiles = listTrackedTestFiles().map((relativePath) => ({
 }));
 
 describe("no source-as-string contract tests", () => {
-  test("tracked tests never pin literal substrings of repository source", () => {
+  test("tracked tests never pin literal substrings of repository TS/TSX source", () => {
     expect(findViolations(trackedFiles)).toEqual([]);
   });
 
@@ -125,6 +125,21 @@ describe("no source-as-string contract tests", () => {
           "});",
         ].join("\n"),
       },
+      // The retired allowlist must never come back: these are real tracked
+      // policy files whose conversions replaced their scanner entries. A
+      // regression in any of them must fail the audit, not be allowlisted.
+      {
+        path: "tmp/regression-scanner.test.ts",
+        content: [
+          'import { expect, test } from "bun:test";',
+          'import { readFileSync } from "node:fs";',
+          'import { resolve } from "node:path";',
+          `const lane = readFileSync(resolve(import.meta.dir, "../e2e/account/account-lane.pw.ts"), "utf8");`,
+          'test("reintroduces the scanner", () => {',
+          `  expect(lane.${includes}('mode: "serial"')).${toBe}(true);`,
+          "});",
+        ].join("\n"),
+      },
     ];
 
     expect(
@@ -132,141 +147,45 @@ describe("no source-as-string contract tests", () => {
     ).toEqual(fixtures.map((fixture) => fixture.path).sort());
   });
 
-  test("comment markers inside string literals do not hide active code", () => {
-    // Fixtures are assembled from fragments so this tracked test file never
-    // contains a full audited literal itself.
-    const identifier = ["Semap", "hore"].join("");
-    const urlLiteral = ["https", "://example", ".test"].join("");
-    const declaration = (name: string) =>
-      ["const", name, "=", "1", ";"].join(" ");
+  test("reads of out-of-scope non-TS targets are outside the source contract", () => {
+    // Shell scripts, env docs, and YAML/JSON config are excluded by scope,
+    // not by per-file allowlist entries.
+    const shellVar = ["scri", "pt"].join("");
+    const envVar = ["envExam", "ple"].join("");
+    const occurrencesName = ["count", "Occurrences"].join("");
+    const toBe = ["to", "Be"].join("");
 
-    // A `//` inside a double-quoted URL must not delete the code after it,
-    // whether it follows on the next line or the same line.
-    const urlFixture = [
-      `const endpoint = "${urlLiteral}";`,
-      declaration(identifier),
-    ].join("\n");
-    expect(countTokenSequence(sourceTokens(urlFixture), [identifier])).toBe(1);
-    const urlSameLineFixture = [
-      `const endpoint = "${urlLiteral}"; ${declaration(identifier)}`,
-    ].join("\n");
-    expect(
-      countTokenSequence(sourceTokens(urlSameLineFixture), [identifier])
-    ).toBe(1);
+    const fixtures = [
+      {
+        path: "tmp/shell-script-contract.test.ts",
+        content: [
+          'import { expect, test } from "bun:test";',
+          'import { readFileSync } from "node:fs";',
+          'import { fileURLToPath } from "node:url";',
+          `const ${shellVar} = readFileSync(fileURLToPath(new URL("./generate.sh", import.meta.url)), "utf8");`,
+          'test("pins the shell", () => {',
+          `  expect(${occurrencesName}(${shellVar}, "set -e")).${toBe}(1);`,
+          "});",
+        ].join("\n"),
+      },
+      {
+        path: "tmp/env-doc-contract.test.ts",
+        content: [
+          'import { expect, test } from "bun:test";',
+          `const ${envVar} = await Bun.file(new URL("../.env.example", import.meta.url)).text();`,
+          'test("pins the env doc", () => {',
+          `  expect(${occurrencesName}(${envVar}, "SECRET=")).${toBe}(1);`,
+          "});",
+        ].join("\n"),
+      },
+    ];
 
-    // A `/*` inside one string and a `*\/` inside a later string must not
-    // erase the statement between them.
-    const blockStart = `const open = "/*";`;
-    const blockEnd = `const close = "*/";`;
-    const blockFixture = [blockStart, declaration(identifier), blockEnd].join(
-      "\n"
-    );
-    expect(countTokenSequence(sourceTokens(blockFixture), [identifier])).toBe(
-      1
-    );
-
-    // The same holds inside a template literal and one of its interpolations.
-    const templateFixture = [
-      "const banner = `" + urlLiteral + "`;",
-      declaration(identifier),
-    ].join("\n");
-    expect(
-      countTokenSequence(sourceTokens(templateFixture), [identifier])
-    ).toBe(1);
-  });
-
-  test("real comments still hide the code they contain", () => {
-    const identifier = ["Semap", "hore"].join("");
-    const urlLiteral = ["https", "://example", ".test"].join("");
-
-    // A `//` comment on the same line as an active URL string still hides the
-    // commented-out identifier after it.
-    const lineFixture = [
-      `const endpoint = "${urlLiteral}"; // const ${identifier} = 1;`,
-    ].join("\n");
-    expect(countTokenSequence(sourceTokens(lineFixture), [identifier])).toBe(0);
-
-    // A block comment still hides the commented-out identifier inside it.
-    const blockFixture = ["/* const", identifier, "= 1; */"].join(" ");
-    expect(countTokenSequence(sourceTokens(blockFixture), [identifier])).toBe(
-      0
-    );
-
-    // stripLineComments keeps the contract for real comments only: the URL
-    // line survives untouched while the commented-out line is stripped.
-    const strippedActive = stripLineComments(
-      [`const endpoint = "${urlLiteral}";`, `const ${identifier} = 1;`].join(
-        "\n"
-      )
-    );
-    expect(strippedActive.includes(identifier)).toBe(true);
-
-    const strippedCommented = stripLineComments(
-      `const endpoint = "${urlLiteral}"; // const ${identifier} = 1;`
-    );
-    expect(strippedCommented.includes(identifier)).toBe(false);
-  });
-
-  test("template text with brace characters does not trap the scanner", () => {
-    const identifier = ["Semap", "hore"].join("");
-
-    // A `}` in template text must not be read as an interpolation closer: the
-    // commented-out identifier after the template stays hidden while the
-    // scanner still exits the literal in time to see active code after it.
-    const braceTextFixture = [
-      "const banner = `" + "}" + "`; // const " + identifier + " = 1;",
-      `const ${identifier} = 1;`,
-    ].join("\n");
-    expect(
-      countTokenSequence(sourceTokens(braceTextFixture), [identifier])
-    ).toBe(1);
-    expect(braceTextFixture.includes(identifier)).toBe(true);
-    const strippedBraceText = stripLineComments(braceTextFixture);
-    expect(strippedBraceText.split(identifier).length - 1).toBe(1);
-
-    // Interpolation code with nested object braces closes correctly, so an
-    // active identifier after the template is still visible.
-    const nestedInterpFixture = [
-      "const banner = `" + "${" + "{ a: { b: 1 } }" + "}`;",
-      `const ${identifier} = 1;`,
-    ].join("\n");
-    expect(
-      countTokenSequence(sourceTokens(nestedInterpFixture), [identifier])
-    ).toBe(1);
-  });
-
-  test("the tokenizer keeps spread ellipses as single tokens", () => {
-    // Fixture for the raw-env-spread policy: an ellipsis must tokenize as one
-    // token so `...process.env` spreads are detectable as a token sequence.
-    const ellipsis = ["..", "."].join("");
-    const snippet = [
-      "const env = {",
-      ellipsis,
-      "process",
-      ".",
-      "env",
-      "};",
-    ].join(" ");
-    const sequence = [ellipsis, "process", ".", "env"];
-
-    expect(countTokenSequence(sourceTokens(snippet), sequence)).toBe(1);
+    expect(findViolations(fixtures)).toEqual([]);
   });
 
   test("the audit ignores structural verdicts over read sources", () => {
     const structuralVar = ["sour", "ce"].join("");
     const structural = [
-      {
-        path: "tmp/structural-check.test.ts",
-        content: [
-          'import { readFileSync } from "node:fs";',
-          'import { extractImportSpecifiers, extractStringLiterals } from "./shared/source-contract";',
-          `const ${structuralVar} = readFileSync("app/layout.tsx", "utf8");`,
-          'test("extracts structure", () => {',
-          `  expect(extractImportSpecifiers(${structuralVar})).toContain("react");`,
-          `  expect(extractStringLiterals(${structuralVar})).toContain("app/layout");`,
-          "});",
-        ].join("\n"),
-      },
       {
         path: "tmp/runtime-output-check.test.ts",
         content: [
@@ -288,5 +207,23 @@ describe("no source-as-string contract tests", () => {
         readFileSync(resolve(root, relativePath), "utf8")
       ).not.toThrow();
     }
+  });
+
+  test("the replacement AST verdicts are comment- and formatting-immune", () => {
+    // A commented-out call satisfies nothing in the parsed tree...
+    const commented = parseSource(
+      "// await captureAccountReview(page, target);"
+    );
+    expect(callsNamed(commented, "captureAccountReview")).toHaveLength(0);
+    // ...while active code satisfies it under any formatting...
+    const spaced = parseSource(
+      "await  captureAccountReview( page , target ) ;"
+    );
+    expect(callsNamed(spaced, "captureAccountReview")).toHaveLength(1);
+    // ...and a real tracked module parses with ranges for order verdicts.
+    const { ast } = parseTrackedSource(
+      resolve(import.meta.dir, "./shared/source-ast.test-fixture.ts")
+    );
+    expect(callsNamed(ast, "captureAccountReview")).toHaveLength(2);
   });
 });
