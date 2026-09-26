@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, type Schema } from "effect";
 import { NextResponse } from "next/server";
 import { AccountDataExportService } from "@/features/account/backend/account-data-export.service";
 import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
@@ -54,14 +54,13 @@ const exportRouteLayers: AccountDataExportRouteLayers = Layer.mergeAll(
  * capability layers. Production uses the defaults; provider-independent
  * tests supply fakes to prove the fail-closed controls.
  */
-export const buildAccountDataExportResponse = (
-  resolveAccount: Effect.Effect<
-    LinkedCustomerAccount,
-    CustomerAccountAccessError
-  > = resolveCurrentCustomerAccount,
-  layers: AccountDataExportRouteLayers = exportRouteLayers
-) =>
-  Effect.gen(function* () {
+const buildExportSnapshot = Effect.fn("buildAccountDataExportSnapshot")(
+  function* (
+    resolveAccount: Effect.Effect<
+      LinkedCustomerAccount,
+      CustomerAccountAccessError
+    >
+  ) {
     // 1. Fail closed on the accounts feature flag before touching identity data.
     const enabled = yield* Effect.flatMap(
       AccountFeatureFlagService,
@@ -91,10 +90,22 @@ export const buildAccountDataExportResponse = (
       status: 200,
       headers: exportResponseHeaders(new Date().toISOString().slice(0, 10)),
     });
-  }).pipe(
-    // Layers are wired before the failure mapping so a Layer or capability
-    // failure lands in the same closed failure path.
-    Effect.provide(layers),
+  }
+);
+
+export const buildAccountDataExportResponse = Effect.fn(
+  "buildAccountDataExportResponse"
+)(function* (
+  resolveAccount: Effect.Effect<
+    LinkedCustomerAccount,
+    CustomerAccountAccessError
+  > = resolveCurrentCustomerAccount,
+  layers: AccountDataExportRouteLayers = exportRouteLayers
+) {
+  return yield* Effect.provide(
+    buildExportSnapshot(resolveAccount),
+    layers
+  ).pipe(
     // Never log, trace, or serialize the snapshot body on failure; the fixed
     // diagnostic tag is the only fact that reaches telemetry.
     Effect.mapError(
@@ -106,6 +117,7 @@ export const buildAccountDataExportResponse = (
       }).pipe(Effect.as(exportFailureResponse(500)))
     )
   );
+});
 
 const buildExportResponse = buildAccountDataExportResponse();
 
