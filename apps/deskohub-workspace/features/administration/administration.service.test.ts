@@ -9,6 +9,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
   type AdministrationCustomerListInput,
+  type AdministrationReservationListInput,
   AdministrationService,
   getAdministrationReservationOverview,
 } from "./administration.service";
@@ -1806,5 +1807,186 @@ describe("AdministrationService", () => {
       locale: "en-US",
       withdrawnAt: withdrawnAt.toString(),
     });
+  });
+});
+
+describe("AdministrationService exportReservations", () => {
+  const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
+
+  const makeRow = (index: number) => ({
+    id: `workspace-reservation-${String(index).padStart(2, "0")}`,
+    dotyposCustomerId: "dotypos-customer",
+    dotyposReservationId: `dotypos-reservation-${String(index).padStart(2, "0")}`,
+    reservationState: "confirmed",
+    paymentState: "paid",
+    fulfillmentState: "fulfilled",
+    reservationPurpose: "business",
+    reservationDetails: { kind: "meeting-room" },
+    reservationCreatedAt: instant,
+    reservationConfirmedAt: instant,
+    reservationCancelledAt: null,
+    reservationHoldExpiredAt: null,
+    paidAt: instant,
+    fulfilledAt: instant,
+    fulfillmentFailedAt: null,
+    createdAt: instant,
+    updatedAt: instant,
+  });
+
+  const runExport = (
+    input: AdministrationReservationListInput,
+    options: {
+      readonly db: unknown;
+      readonly dotypos?: Parameters<typeof DotyposServiceMock>[0];
+    }
+  ) =>
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.exportReservations(input);
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: options.db } as never)
+              ),
+              DotyposServiceMock({
+                getCustomers: () =>
+                  Effect.succeed([{ id: "dotypos-customer" }]),
+                listReservations: () =>
+                  Effect.fail(
+                    new ExternalAPIError({
+                      operation: "listReservations",
+                      service: "Dotypos",
+                      statusCode: 503,
+                    })
+                  ),
+                ...options.dotypos,
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+  test("exports every matching reservation without pagination", async () => {
+    const rows = Array.from({ length: 30 }, (_, index) => makeRow(index));
+    let selectCall = 0;
+    const database = {
+      select: () => makeQuery(selectCall++ === 0 ? rows : []),
+    };
+
+    const result = await runExport({}, { db: database });
+
+    expect(result).toHaveLength(30);
+    expect(
+      result.every((item) => item.id.startsWith("workspace-reservation"))
+    ).toBe(true);
+  });
+
+  test("orders the export by provider date order across all rows", async () => {
+    const providerReservations = Array.from({ length: 26 }, (_, index) => ({
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: null,
+      id: `dotypos-reservation-${String(index).padStart(2, "0")}`,
+      startDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:00:00Z`,
+      endDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:30:00Z`,
+      seats: "1",
+      status: "NEW" as const,
+    }));
+    const rows = providerReservations.map((reservation, index) => ({
+      ...makeRow(index),
+      dotyposReservationId: reservation.id,
+    }));
+    const references = rows.map((row) => ({
+      id: row.id,
+      externalId: row.dotyposReservationId,
+    }));
+    let selectCall = 0;
+    const database = {
+      select: () => makeQuery(selectCall++ === 0 ? references : rows),
+    };
+
+    const result = await runExport(
+      { direction: "desc", from: "2026-08-10", sort: "date" },
+      {
+        db: database,
+        dotypos: {
+          listReservations: () => Effect.succeed(providerReservations),
+        },
+      }
+    );
+
+    expect(result).toHaveLength(26);
+    expect(result[0]?.id).toBe("workspace-reservation-25");
+    expect(result[25]?.id).toBe("workspace-reservation-00");
+  });
+
+  test("falls back to created ordering for date sort when provider order is unavailable", async () => {
+    const rows = [makeRow(0)];
+    let selectCall = 0;
+    const database = {
+      select: () => makeQuery(selectCall++ === 0 ? rows : []),
+    };
+
+    const result = await runExport(
+      { direction: "asc", sort: "date" },
+      {
+        db: database,
+        dotypos: {
+          listReservations: () =>
+            Effect.fail(
+              new ExternalAPIError({
+                operation: "listReservations",
+                service: "Dotypos",
+                statusCode: 503,
+              })
+            ),
+        },
+      }
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.purpose).toBe("business");
+  });
+
+  test("fails closed when the date filter provider map is unavailable", async () => {
+    const database = { select: () => makeQuery([]) };
+
+    const error = await runExport(
+      { from: "2026-08-06" },
+      {
+        db: database,
+        dotypos: {
+          listReservations: () =>
+            Effect.fail(
+              new ExternalAPIError({
+                operation: "listReservations",
+                service: "Dotypos",
+                statusCode: 503,
+              })
+            ),
+        },
+      }
+    ).then(
+      () => null,
+      (cause: unknown) => cause
+    );
+
+    expect(error).not.toBeNull();
+    expect((error as { _tag?: string })._tag).toBe(
+      "ReservationExportRangeUnavailableError"
+    );
   });
 });

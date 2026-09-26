@@ -8,11 +8,13 @@ import {
   AdministrationFilterSelect,
   AdministrationPage,
   AdministrationTableCount,
+  AdministrationTableExportAction,
   AdministrationTableToolbar,
   Pagination,
   ReservationTable,
 } from "@/features/administration/components";
 import {
+  AdministrationActionLoading,
   AdministrationCollectionLoading,
   AdministrationCountLoading,
   AdministrationFiltersLoading,
@@ -26,6 +28,7 @@ import {
   type AdministrationReservationDateRange,
   getAdministrationReservationDateShortcuts,
 } from "@/features/administration/reservation-date-range";
+import { getAdministrationReservationExportHref } from "@/features/administration/reservation-export";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { Button } from "@/shared/components/ui/button";
 
@@ -54,6 +57,11 @@ export default function ReservationsAdministrationPage({
         }
         itemLabel="reservation"
         search={<ReservationLookup variant="toolbar" />}
+        actions={
+          <Suspense fallback={<AdministrationActionLoading label="export" />}>
+            <ReservationExportAction input={input} />
+          </Suspense>
+        }
       />
       <Suspense
         fallback={
@@ -91,6 +99,19 @@ async function ReservationFiltersContent({
   return <ReservationFilters input={await input} />;
 }
 
+async function ReservationExportAction({
+  input,
+}: {
+  readonly input: Promise<ReservationsData["input"]>;
+}) {
+  return (
+    <AdministrationTableExportAction
+      href={getAdministrationReservationExportHref(await input)}
+      label="Export CSV"
+    />
+  );
+}
+
 async function ReservationResultsContent({
   input,
   result,
@@ -116,6 +137,12 @@ export async function ReservationsAdministrationContent({
         filters={<ReservationFilters input={input} />}
         itemLabel="reservation"
         search={<ReservationLookup variant="toolbar" />}
+        actions={
+          <AdministrationTableExportAction
+            href={getAdministrationReservationExportHref(input)}
+            label="Export CSV"
+          />
+        }
       />
       <ReservationResults input={input} result={result} />
     </>

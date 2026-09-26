@@ -1,7 +1,9 @@
 import { Predicate } from "effect";
 import type { ReactNode } from "react";
 import { Badge } from "@/shared/components/ui/badge";
+import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
+import { AdministrationLink as Link } from "./admin-link";
 
 export function AdministrationTableToolbar({
   actions,
@@ -41,6 +43,22 @@ export function AdministrationTableToolbar({
         </div>
       )}
     </section>
+  );
+}
+
+export function AdministrationTableExportAction({
+  href,
+  label,
+}: {
+  readonly href: string;
+  readonly label: string;
+}) {
+  return (
+    <Button asChild size="sm" variant="secondary">
+      <Link download href={href}>
+        {label}
+      </Link>
+    </Button>
   );
 }
 

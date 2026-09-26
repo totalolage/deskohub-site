@@ -70,6 +70,14 @@ Overview activity counts show completed Workspace reservations first, followed b
 
 Overview customer activity covers the seven Prague calendar days ending today. Unique customers are distinct customers on live Dotypos bookings that start in the period and link to a Workspace reservation. New customers are the subset of those unique customers whose Dotypos customer record was created in the period. Each metric shows up to three customer names. When the total exceeds three, it shows two names and the remaining count. If current booking dates or customer creation times are unavailable, the affected metric is unavailable rather than replaced with a local estimate.
 
+## Reservation exports
+
+From the reservations view, an administrator can download every reservation that matches the currently applied filters as a CSV file, not only the reservations shown on the current page. The download honors the same customer, business status, reservation family, and booking-date filters, plus the chosen sorting; the current page number does not limit the download.
+
+The file contains the same reservation details the table shows: the reservation identifier, booking date, business status, customer name, reservation family, creation time, and the latest payment state with its amount. Secrets, payment security values, and internal provider records are never included.
+
+The download is available only to authenticated administrators. If current booking dates are temporarily unavailable, a date-filtered or date-sorted export fails with a clear message instead of quietly exporting a different or broader set of reservations, and an invalid filter value is refused rather than silently ignored.
+
 ## History limitations
 
 The reservation timeline is an operational reconstruction, not an audit record. It may combine durable milestones with best-effort external or analytical observations, and those observations can be incomplete or unavailable.
