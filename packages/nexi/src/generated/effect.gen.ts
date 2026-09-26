@@ -10,28 +10,34 @@ import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse"
 // non-recursive definitions
 export type Amount = { readonly "amount": string, readonly "currency": string }
 export const Amount = Schema.Struct({ "amount": Schema.String.annotate({ "description": "Integer minor-unit/scaled amount string." }).check(Schema.isPattern(new RegExp("^[0-9]+$"))), "currency": Schema.String.check(Schema.isMinLength(3)).check(Schema.isMaxLength(3)) }).annotate({ "description": "Monetary amount as an integer minor-unit/scaled amount string, e.g. 5000 means 50.00 for currencies with two decimal places." })
-export type PaymentSession = { readonly "amount": string, readonly "language": "CZE" | "ENG", readonly "resultUrl"?: string, readonly "cancelUrl"?: string, readonly "notificationUrl": string, readonly "paymentService"?: "CARDS", readonly "captureType"?: "IMPLICIT", readonly "actionType"?: "PAY" | "VERIFY" | "PURCHASE" | "PREAUTH" }
-export const PaymentSession = Schema.Struct({ "amount": Schema.String.annotate({ "description": "Amount of the first payment in smallest currency unit." }).check(Schema.isPattern(new RegExp("^[0-9]+$"))), "language": Schema.Literals(["CZE", "ENG"]), "resultUrl": Schema.optionalKey(Schema.String.annotate({ "format": "uri" })), "cancelUrl": Schema.optionalKey(Schema.String.annotate({ "format": "uri" })), "notificationUrl": Schema.String.annotate({ "format": "uri" }), "paymentService": Schema.optionalKey(Schema.Literal("CARDS")), "captureType": Schema.optionalKey(Schema.Literal("IMPLICIT")), "actionType": Schema.optionalKey(Schema.Literals(["PAY", "VERIFY", "PURCHASE", "PREAUTH"])) }).annotate({ "description": "Nexi marks notificationUrl optional, but this wrapper requires it for server-authoritative fulfillment." })
 export type CustomerInfo = { readonly "cardHolderName": string, readonly "cardHolderEmail"?: string, readonly "mobilePhoneCountryCode"?: string, readonly "mobilePhone"?: string }
 export const CustomerInfo = Schema.Struct({ "cardHolderName": Schema.String.check(Schema.isMinLength(1)), "cardHolderEmail": Schema.optionalKey(Schema.String.annotate({ "format": "email" })), "mobilePhoneCountryCode": Schema.optionalKey(Schema.String.check(Schema.isMinLength(1))), "mobilePhone": Schema.optionalKey(Schema.String.check(Schema.isMinLength(1))) })
 export type CreateHostedPaymentPageResponse = { readonly "hostedPage": string, readonly "securityToken": string, readonly "orderId"?: string }
 export const CreateHostedPaymentPageResponse = Schema.Struct({ "hostedPage": Schema.String.annotate({ "format": "uri" }), "securityToken": Schema.String.check(Schema.isMinLength(1)), "orderId": Schema.optionalKey(Schema.String) })
 export type OrderStatusOrder = { readonly "orderId": string, readonly "amount": string, readonly "currency": string }
 export const OrderStatusOrder = Schema.Struct({ "orderId": Schema.String, "amount": Schema.String.check(Schema.isPattern(new RegExp("^[0-9]+$"))), "currency": Schema.String.check(Schema.isMinLength(3)).check(Schema.isMaxLength(3)) })
+export type Recurrence = { readonly "action": "NO_RECURRING" | "SUBSEQUENT_PAYMENT" | "CONTRACT_CREATION" | "CARD_SUBSTITUTION", readonly "contractId"?: string, readonly "contractType"?: "MIT_UNSCHEDULED" | "MIT_SCHEDULED" | "CIT", readonly "contractExpiryDate"?: string, readonly "contractFrequency"?: string }
+export const Recurrence = Schema.Struct({ "action": Schema.Literals(["NO_RECURRING", "SUBSEQUENT_PAYMENT", "CONTRACT_CREATION", "CARD_SUBSTITUTION"]), "contractId": Schema.optionalKey(Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(18))), "contractType": Schema.optionalKey(Schema.Literals(["MIT_UNSCHEDULED", "MIT_SCHEDULED", "CIT"])), "contractExpiryDate": Schema.optionalKey(Schema.String), "contractFrequency": Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4))) }).annotate({ "description": "Oneclick recurrence contract instructions for a payment session." })
+export type Contract = { readonly "contractId": string, readonly "contractType": "MIT_UNSCHEDULED" | "MIT_SCHEDULED" | "CIT", readonly "contractExpiryDate"?: string, readonly "contractFrequency"?: string, readonly "paymentMethod": "CARD" | "APM", readonly "paymentCircuit": string, readonly "paymentInstrumentInfo": string }
+export const Contract = Schema.Struct({ "contractId": Schema.String.check(Schema.isMinLength(1)).check(Schema.isMaxLength(18)), "contractType": Schema.Literals(["MIT_UNSCHEDULED", "MIT_SCHEDULED", "CIT"]), "contractExpiryDate": Schema.optionalKey(Schema.String), "contractFrequency": Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4))), "paymentMethod": Schema.Literals(["CARD", "APM"]), "paymentCircuit": Schema.String, "paymentInstrumentInfo": Schema.String.annotate({ "description": "Masked payment instrument, e.g. ***6152." }) })
 export type ErrorResponse = { readonly "errors"?: ReadonlyArray<{ readonly "code"?: string, readonly "description"?: string }>, readonly "error"?: string, readonly "message"?: string, readonly "status"?: number }
 export const ErrorResponse = Schema.Struct({ "errors": Schema.optionalKey(Schema.Array(Schema.Struct({ "code": Schema.optionalKey(Schema.String), "description": Schema.optionalKey(Schema.String) }))), "error": Schema.optionalKey(Schema.String), "message": Schema.optionalKey(Schema.String), "status": Schema.optionalKey(Schema.Number.check(Schema.isInt())) })
 export type Operation = { readonly "orderId"?: string, readonly "operationId"?: string, readonly "channel"?: string, readonly "operationType"?: string, readonly "operationResult"?: string, readonly "amount"?: Amount, readonly "operationAmount"?: string, readonly "operationCurrency"?: string, readonly "securityToken"?: string, readonly "operationTime"?: string, readonly "cancelledOperationId"?: string }
 export const Operation = Schema.Struct({ "orderId": Schema.optionalKey(Schema.String), "operationId": Schema.optionalKey(Schema.String), "channel": Schema.optionalKey(Schema.String), "operationType": Schema.optionalKey(Schema.String), "operationResult": Schema.optionalKey(Schema.String), "amount": Schema.optionalKey(Amount), "operationAmount": Schema.optionalKey(Schema.String.check(Schema.isPattern(new RegExp("^[0-9]+$")))), "operationCurrency": Schema.optionalKey(Schema.String.check(Schema.isMinLength(3)).check(Schema.isMaxLength(3))), "securityToken": Schema.optionalKey(Schema.String), "operationTime": Schema.optionalKey(Schema.String), "cancelledOperationId": Schema.optionalKey(Schema.String) })
-export type CreateHostedPaymentPageRequest = { readonly "order": { readonly "orderId": string, readonly "amount": string, readonly "currency"?: string, readonly "customerId"?: string, readonly "customerInfo"?: CustomerInfo }, readonly "paymentSession": PaymentSession, readonly "paymentService"?: "CARDS", readonly "captureType"?: "IMPLICIT" }
-export const CreateHostedPaymentPageRequest = Schema.Struct({ "order": Schema.Struct({ "orderId": Schema.String, "amount": Schema.String.annotate({ "description": "Transaction amount in smallest currency unit." }).check(Schema.isPattern(new RegExp("^[0-9]+$"))), "currency": Schema.optionalKey(Schema.String.check(Schema.isMinLength(3)).check(Schema.isMaxLength(3))), "customerId": Schema.optionalKey(Schema.String), "customerInfo": Schema.optionalKey(CustomerInfo) }), "paymentSession": PaymentSession, "paymentService": Schema.optionalKey(Schema.Literal("CARDS")), "captureType": Schema.optionalKey(Schema.Literal("IMPLICIT")) })
 export type OrderStatus = { readonly "authorizedAmount"?: string, readonly "capturedAmount"?: string, readonly "lastOperationTime"?: string, readonly "lastOperationType"?: string, readonly "order": OrderStatusOrder }
 export const OrderStatus = Schema.Struct({ "authorizedAmount": Schema.optionalKey(Schema.String), "capturedAmount": Schema.optionalKey(Schema.String), "lastOperationTime": Schema.optionalKey(Schema.String), "lastOperationType": Schema.optionalKey(Schema.String), "order": OrderStatusOrder })
+export type PaymentSession = { readonly "amount": string, readonly "language": "CZE" | "ENG", readonly "resultUrl"?: string, readonly "cancelUrl"?: string, readonly "notificationUrl": string, readonly "paymentService"?: "CARDS", readonly "captureType"?: "IMPLICIT", readonly "actionType"?: "PAY" | "VERIFY" | "PURCHASE" | "PREAUTH", readonly "recurrence"?: Recurrence }
+export const PaymentSession = Schema.Struct({ "amount": Schema.String.annotate({ "description": "Amount of the first payment in smallest currency unit." }).check(Schema.isPattern(new RegExp("^[0-9]+$"))), "language": Schema.Literals(["CZE", "ENG"]), "resultUrl": Schema.optionalKey(Schema.String.annotate({ "format": "uri" })), "cancelUrl": Schema.optionalKey(Schema.String.annotate({ "format": "uri" })), "notificationUrl": Schema.String.annotate({ "format": "uri" }), "paymentService": Schema.optionalKey(Schema.Literal("CARDS")), "captureType": Schema.optionalKey(Schema.Literal("IMPLICIT")), "actionType": Schema.optionalKey(Schema.Literals(["PAY", "VERIFY", "PURCHASE", "PREAUTH"])), "recurrence": Schema.optionalKey(Recurrence) }).annotate({ "description": "Nexi marks notificationUrl optional, but this wrapper requires it for server-authoritative fulfillment." })
+export type CustomerContractsResponse = { readonly "customerId": string, readonly "contracts": ReadonlyArray<Contract> }
+export const CustomerContractsResponse = Schema.Struct({ "customerId": Schema.String, "contracts": Schema.Array(Contract) })
 export type OperationListResponse = { readonly "operations"?: ReadonlyArray<Operation> }
 export const OperationListResponse = Schema.Struct({ "operations": Schema.optionalKey(Schema.Array(Operation)) })
 export type OrderResponse = { readonly "orderId"?: string, readonly "amount"?: Amount, readonly "securityToken"?: string, readonly "orderStatus"?: OrderStatus, readonly "operations"?: ReadonlyArray<Operation> }
 export const OrderResponse = Schema.Struct({ "orderId": Schema.optionalKey(Schema.String), "amount": Schema.optionalKey(Amount), "securityToken": Schema.optionalKey(Schema.String), "orderStatus": Schema.optionalKey(OrderStatus), "operations": Schema.optionalKey(Schema.Array(Operation)) })
 export type OrderListResponse = { readonly "orders"?: ReadonlyArray<OrderStatus> }
 export const OrderListResponse = Schema.Struct({ "orders": Schema.optionalKey(Schema.Array(OrderStatus)) })
+export type CreateHostedPaymentPageRequest = { readonly "order": { readonly "orderId": string, readonly "amount": string, readonly "currency"?: string, readonly "customerId"?: string, readonly "customerInfo"?: CustomerInfo }, readonly "paymentSession": PaymentSession, readonly "paymentService"?: "CARDS", readonly "captureType"?: "IMPLICIT" }
+export const CreateHostedPaymentPageRequest = Schema.Struct({ "order": Schema.Struct({ "orderId": Schema.String, "amount": Schema.String.annotate({ "description": "Transaction amount in smallest currency unit." }).check(Schema.isPattern(new RegExp("^[0-9]+$"))), "currency": Schema.optionalKey(Schema.String.check(Schema.isMinLength(3)).check(Schema.isMaxLength(3))), "customerId": Schema.optionalKey(Schema.String), "customerInfo": Schema.optionalKey(CustomerInfo) }), "paymentSession": PaymentSession, "paymentService": Schema.optionalKey(Schema.Literal("CARDS")), "captureType": Schema.optionalKey(Schema.Literal("IMPLICIT")) })
 // schemas
 export type ListOrdersParams = { readonly "fromTime"?: string, readonly "toTime"?: string, readonly "maxRecords"?: number, readonly "customField"?: string }
 export const ListOrdersParams = Schema.Struct({ "fromTime": Schema.optionalKey(Schema.String), "toTime": Schema.optionalKey(Schema.String), "maxRecords": Schema.optionalKey(Schema.Number.check(Schema.isInt())), "customField": Schema.optionalKey(Schema.String) })
@@ -59,6 +65,12 @@ export type GetOperation200 = Operation
 export const GetOperation200 = Operation
 export type GetOperationdefault = ErrorResponse
 export const GetOperationdefault = ErrorResponse
+export type ListCustomerContracts200 = CustomerContractsResponse
+export const ListCustomerContracts200 = CustomerContractsResponse
+export type ListCustomerContractsdefault = ErrorResponse
+export const ListCustomerContractsdefault = ErrorResponse
+export type DeactivateContractdefault = ErrorResponse
+export const DeactivateContractdefault = ErrorResponse
 
 export interface OperationConfig {
   /**
@@ -174,6 +186,20 @@ export const make = (
       "2xx": decodeSuccess(GetOperation200),
       orElse: unexpectedStatus
     }))
+  ),
+    "listCustomerContracts": (customerId, options) => HttpClientRequest.get(`/contracts/customers/${customerId}`).pipe(
+    withResponse(options?.config)(HttpClientResponse.matchStatus({
+      "2xx": decodeSuccess(ListCustomerContracts200),
+      "404": () => Effect.void,
+      orElse: unexpectedStatus
+    }))
+  ),
+    "deactivateContract": (contractId, options) => HttpClientRequest.post(`/contracts/${contractId}/deactivation`).pipe(
+    withResponse(options?.config)(HttpClientResponse.matchStatus({
+      "2xx": decodeSuccess(DeactivateContractdefault),
+      "200": () => Effect.void,
+      orElse: unexpectedStatus
+    }))
   )
   }
 }
@@ -200,6 +226,14 @@ readonly "listOperations": <Config extends OperationConfig>(options: { readonly 
 * Get one operation
 */
 readonly "getOperation": <Config extends OperationConfig>(operationId: string, options: { readonly config?: Config | undefined } | undefined) => Effect.Effect<WithOptionalResponse<typeof GetOperation200.Type, Config>, HttpClientError.HttpClientError | SchemaError>
+  /**
+* List contracts enrolled for a customer
+*/
+readonly "listCustomerContracts": <Config extends OperationConfig>(customerId: string, options: { readonly config?: Config | undefined } | undefined) => Effect.Effect<WithOptionalResponse<typeof ListCustomerContracts200.Type, Config>, HttpClientError.HttpClientError | SchemaError>
+  /**
+* Deactivate an enrolled contract
+*/
+readonly "deactivateContract": <Config extends OperationConfig>(contractId: string, options: { readonly config?: Config | undefined } | undefined) => Effect.Effect<WithOptionalResponse<typeof DeactivateContractdefault.Type, Config>, HttpClientError.HttpClientError | SchemaError>
 }
 
 export interface NexiClientError<Tag extends string, E> {

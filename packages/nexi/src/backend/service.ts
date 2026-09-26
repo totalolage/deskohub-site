@@ -18,23 +18,31 @@ import type {
 } from "../generated/effect.gen";
 import type {
   CreateHostedPaymentPageInput,
+  DeactivateNexiContractInput,
   GetNexiOperationInput,
   GetNexiOrderInput,
+  ListNexiCustomerContractsInput,
   ListNexiOperationsInput,
   ListNexiOrdersInput,
   Locale,
+  NexiCardContract,
   NexiOperation,
   NexiOrder,
   PaymentOutcomeStatus,
   PaymentVerificationResult,
   VerifyPaymentOutcomeInput,
 } from "../types";
-import { NexiOperationIdSchema, NexiOrderIdSchema } from "../types";
+import {
+  NexiOperationIdSchema,
+  NexiOrderIdSchema,
+  toNexiCardContract,
+} from "../types";
 import { NexiGeneratedClient } from "./api";
 
 const DEFAULT_PAYMENT_SERVICE = "CARDS";
 const DEFAULT_CAPTURE_TYPE = "IMPLICIT";
 const DEFAULT_ACTION_TYPE = "PAY";
+const ENROLLMENT_ACTION_TYPE = "VERIFY";
 const AUTHORIZATION_OPERATION_TYPE = "AUTHORIZATION";
 const CAPTURE_OPERATION_TYPE = "CAPTURE";
 const EXECUTED_OPERATION_RESULT = "EXECUTED";
@@ -126,6 +134,7 @@ const getHostedPaymentPageLogAnnotations = (
   hasCustomerId: Boolean(input.customer?.id),
   hasCustomerEmail: Boolean(input.customer?.email),
   hasCustomerPhone: Boolean(input.customer?.mobilePhone),
+  hasContractEnrollment: Boolean(input.contractEnrollment),
 });
 
 const makeNexiService = Effect.gen(function* () {
@@ -163,7 +172,16 @@ const makeNexiService = Effect.gen(function* () {
           notificationUrl: input.notificationUrl,
           paymentService: DEFAULT_PAYMENT_SERVICE,
           captureType: DEFAULT_CAPTURE_TYPE,
-          actionType: DEFAULT_ACTION_TYPE,
+          actionType: input.contractEnrollment
+            ? ENROLLMENT_ACTION_TYPE
+            : (input.actionType ?? DEFAULT_ACTION_TYPE),
+          ...(input.contractEnrollment && {
+            recurrence: {
+              action: "CONTRACT_CREATION" as const,
+              contractId: input.contractEnrollment.contractId,
+              contractType: input.contractEnrollment.contractType,
+            },
+          }),
         },
       };
 
@@ -414,10 +432,58 @@ const makeNexiService = Effect.gen(function* () {
       effect.pipe(Effect.annotateLogs({ correlationId: input.correlationId }))
   );
 
+  const listCustomerContracts = Effect.fn("NexiService.listCustomerContracts")(
+    function* (input: ListNexiCustomerContractsInput) {
+      const response = yield* nexiClient
+        .listCustomerContracts(input)
+        .pipe(Effect.retry(retryPolicy));
+      const contracts: NexiCardContract[] = [];
+      for (const contract of response.contracts) {
+        if (contract.paymentMethod !== "CARD") continue;
+        const cardContract = toNexiCardContract(contract);
+        if (!cardContract) {
+          yield* Effect.logWarning(
+            "Nexi returned a malformed card contract entry"
+          );
+          continue;
+        }
+        contracts.push(cardContract);
+      }
+      return contracts;
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.annotateLogs({
+          correlationId: input.correlationId,
+          customerId: input.customerId,
+        })
+      )
+  );
+
+  const deactivateContract = Effect.fn("NexiService.deactivateContract")(
+    function* (input: DeactivateNexiContractInput) {
+      yield* nexiClient
+        .deactivateContract(input)
+        .pipe(Effect.retry(retryPolicy));
+      yield* Effect.logInfo("Nexi contract deactivation completed", {
+        contractId: input.contractId,
+      });
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.annotateLogs({
+          correlationId: input.correlationId,
+          contractId: input.contractId,
+        })
+      )
+  );
+
   return {
     createHostedPaymentPage,
+    deactivateContract,
     getOperation,
     getOrder,
+    listCustomerContracts,
     listOperations,
     listOrders,
     verifyPaymentOutcome,

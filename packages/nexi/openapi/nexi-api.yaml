@@ -162,6 +162,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /contracts/customers/{customerId}:
+    get:
+      operationId: listCustomerContracts
+      summary: List contracts enrolled for a customer
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Contracts found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerContractsResponse"
+        "404":
+          description: Customer not found
+        default:
+          description: Nexi API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /contracts/{contractId}/deactivation:
+    post:
+      operationId: deactivateContract
+      summary: Deactivate an enrolled contract
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: contractId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Contract deactivated
+        default:
+          description: Nexi API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -225,6 +273,8 @@ components:
             - VERIFY
             - PURCHASE
             - PREAUTH
+        recurrence:
+          $ref: "#/components/schemas/Recurrence"
     CreateHostedPaymentPageRequest:
       type: object
       required:
@@ -380,6 +430,80 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Operation"
+    Recurrence:
+      type: object
+      description: Oneclick recurrence contract instructions for a payment session.
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          enum:
+            - NO_RECURRING
+            - SUBSEQUENT_PAYMENT
+            - CONTRACT_CREATION
+            - CARD_SUBSTITUTION
+        contractId:
+          type: string
+          minLength: 1
+          maxLength: 18
+        contractType:
+          type: string
+          enum:
+            - MIT_UNSCHEDULED
+            - MIT_SCHEDULED
+            - CIT
+        contractExpiryDate:
+          type: string
+        contractFrequency:
+          type: string
+          maxLength: 4
+    Contract:
+      type: object
+      required:
+        - contractId
+        - contractType
+        - paymentMethod
+        - paymentCircuit
+        - paymentInstrumentInfo
+      properties:
+        contractId:
+          type: string
+          minLength: 1
+          maxLength: 18
+        contractType:
+          type: string
+          enum:
+            - MIT_UNSCHEDULED
+            - MIT_SCHEDULED
+            - CIT
+        contractExpiryDate:
+          type: string
+        contractFrequency:
+          type: string
+          maxLength: 4
+        paymentMethod:
+          type: string
+          enum:
+            - CARD
+            - APM
+        paymentCircuit:
+          type: string
+        paymentInstrumentInfo:
+          type: string
+          description: Masked payment instrument, e.g. ***6152.
+    CustomerContractsResponse:
+      type: object
+      required:
+        - customerId
+        - contracts
+      properties:
+        customerId:
+          type: string
+        contracts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Contract"
     ErrorResponse:
       type: object
       properties:

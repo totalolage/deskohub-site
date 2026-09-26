@@ -4,10 +4,13 @@ import {
   checkNexiWebhookSecurityToken,
   decodeNexiWebhookNotification,
   deriveNexiWebhookEventIdentity,
+  getNexiMaskedInstrumentSuffix,
   NexiAmountSchema,
+  NexiContractIdSchema,
   NexiOperationIdSchema,
   NexiOrderIdSchema,
   NexiWebhookEventIdSchema,
+  normalizeNexiPaymentCircuit,
   normalizeNexiWebhookNotification,
 } from "./types";
 
@@ -121,5 +124,24 @@ describe("Nexi webhook types", () => {
         operationCurrency: undefined,
       },
     });
+  });
+});
+
+describe("Nexi card contract types", () => {
+  test("bounds contract identifiers and derives safe list fields", () => {
+    const nexiContractId = Schema.decodeUnknownSync(NexiContractIdSchema);
+    expect(String(nexiContractId("contract-1"))).toBe("contract-1");
+    expect(() => nexiContractId("")).toThrow();
+    expect(() => nexiContractId("x".repeat(19))).toThrow();
+    expect(String(nexiContractId("x".repeat(18)))).toBe("x".repeat(18));
+
+    expect(getNexiMaskedInstrumentSuffix("***6152")).toBe("6152");
+    expect(getNexiMaskedInstrumentSuffix(" *** 42 ")).toBe("42");
+    expect(getNexiMaskedInstrumentSuffix("12345")).toBeUndefined();
+    expect(getNexiMaskedInstrumentSuffix("card ending 1234")).toBeUndefined();
+
+    expect(normalizeNexiPaymentCircuit("visa")).toBe("VISA");
+    expect(normalizeNexiPaymentCircuit("MasterCard")).toBe("MC");
+    expect(normalizeNexiPaymentCircuit("SOME_OTHER_CIRCUIT")).toBeUndefined();
   });
 });
