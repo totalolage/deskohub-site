@@ -25,6 +25,7 @@ export const CloudinaryAssetSchema = Schema.Struct({
   height: Schema.Finite,
   format: Schema.String,
   resource_type: Schema.String,
+  version: Schema.optional(Schema.Finite),
   created_at: Schema.String,
   folder: Schema.optional(Schema.String),
   tags: Schema.optional(Schema.Array(Schema.String)),
@@ -63,3 +64,12 @@ export const SearchOptionsSchema = Schema.Struct({
 });
 
 export type SearchOptions = Schema.Schema.Type<typeof SearchOptionsSchema>;
+
+export const CloudinaryDestroyOutcomeSchema = Schema.Literals([
+  "destroyed",
+  "not-found",
+]);
+
+export type CloudinaryDestroyOutcome = Schema.Schema.Type<
+  typeof CloudinaryDestroyOutcomeSchema
+>;

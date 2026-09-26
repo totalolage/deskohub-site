@@ -3,17 +3,23 @@ import "server-only";
 import { v2 as cloudinary } from "cloudinary";
 import { Context, Duration, Effect, Layer, pipe, Schedule } from "effect";
 import * as Schema from "effect/Schema";
+import { decodeCloudinaryAsset } from "./asset-decoding";
 import {
   type CloudinaryConfig,
   CloudinaryRuntimeConfig,
   configureCloudinarySdk,
   validateCloudinaryRuntimeConfig,
 } from "./config";
-import { CloudinarySearchError } from "./errors";
+import {
+  CloudinaryDestroyError,
+  CloudinaryRenameError,
+  CloudinarySearchError,
+  CloudinaryUploadError,
+} from "./errors";
 import { type CnfExpression, cnfToCloudinaryExpression } from "./expression";
 import {
   type CloudinaryAsset,
-  CloudinaryAssetSchema,
+  type CloudinaryDestroyOutcome,
   type CloudinaryPublicId,
   type CloudinarySearchCursor,
   CloudinarySearchResponseSchema,
@@ -22,6 +28,16 @@ import {
 } from "./schema";
 
 export type { CloudinaryConfig } from "./config";
+
+/**
+ * Server-side image upload input. Trusted internal values, so the shape is a
+ * plain interface rather than a runtime-decoded schema.
+ */
+export interface CloudinaryImageUploadInput {
+  readonly bytes: Uint8Array;
+  readonly publicId: CloudinaryPublicId;
+  readonly folder: string;
+}
 
 export interface ICloudinaryService {
   readonly getByPublicId: (
@@ -46,6 +62,17 @@ export interface ICloudinaryService {
     tags: CnfExpression<Tag>,
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
+  readonly uploadImage: (
+    input: CloudinaryImageUploadInput
+  ) => Effect.Effect<CloudinaryAsset, CloudinaryUploadError>;
+  readonly destroyAsset: (
+    publicId: CloudinaryPublicId
+  ) => Effect.Effect<CloudinaryDestroyOutcome, CloudinaryDestroyError>;
+  readonly renameAsset: (
+    fromPublicId: CloudinaryPublicId,
+    toPublicId: CloudinaryPublicId,
+    options?: { readonly overwrite?: boolean }
+  ) => Effect.Effect<CloudinaryAsset, CloudinaryRenameError>;
 }
 
 export class CloudinaryService extends Context.Service<
@@ -66,6 +93,9 @@ export class CloudinaryService extends Context.Service<
 
       const executeSearch = createSearchExecutor(config);
       const getByPublicId = createPublicIdLookupExecutor();
+      const uploadImage = createUploadExecutor();
+      const destroyAsset = createDestroyExecutor();
+      const renameAsset = createRenameExecutor();
 
       const searchByTag: ICloudinaryService["searchByTag"] = (tag, options) =>
         executeSearch(`tags=${tag} AND resource_type:image`, options);
@@ -141,6 +171,9 @@ export class CloudinaryService extends Context.Service<
         searchAll,
         searchByExpression,
         searchWithTags,
+        uploadImage,
+        destroyAsset,
+        renameAsset,
       } satisfies ICloudinaryService;
     })
   );
@@ -167,7 +200,7 @@ type CloudinaryRejectedValue =
 
 function decodeAssetResponse(result: unknown, publicId: CloudinaryPublicId) {
   return pipe(
-    Schema.decodeUnknownEffect(CloudinaryAssetSchema)(result),
+    decodeCloudinaryAsset(result),
     Effect.mapError(
       () =>
         new CloudinarySearchError({
@@ -178,20 +211,34 @@ function decodeAssetResponse(result: unknown, publicId: CloudinaryPublicId) {
   );
 }
 
-const cloudinaryRetryPolicy = Schedule.exponential("100 millis").pipe(
-  Schedule.jittered,
-  Schedule.while<CloudinarySearchError, Duration.Duration>(
-    ({ input }) => input.httpCode !== undefined && input.httpCode >= 500
-  ),
-  Schedule.both(Schedule.recurs(2)),
-  Schedule.tapOutput(([delay, attempt]) =>
-    Effect.logWarning(`Cloudinary search retry attempt #${attempt + 1}`, {
-      attemptNumber: attempt + 1,
-      delayMs: Duration.toMillis(delay),
-      maxRetries: 2,
-    })
-  )
-);
+/**
+ * Retries only transient provider failures: 5xx-style HTTP codes. 4xx failures
+ * and errors without an HTTP code are definitive for the caller.
+ */
+function createTransientRetryPolicy<
+  E extends { readonly httpCode?: number | undefined },
+>(operation: string) {
+  return Schedule.exponential("100 millis").pipe(
+    Schedule.jittered,
+    Schedule.while<E, Duration.Duration>(
+      ({ input }) => input.httpCode !== undefined && input.httpCode >= 500
+    ),
+    Schedule.both(Schedule.recurs(2)),
+    Schedule.tapOutput(([delay, attempt]) =>
+      Effect.logWarning(
+        `Cloudinary ${operation} retry attempt #${attempt + 1}`,
+        {
+          attemptNumber: attempt + 1,
+          delayMs: Duration.toMillis(delay),
+          maxRetries: 2,
+        }
+      )
+    )
+  );
+}
+
+const cloudinaryRetryPolicy =
+  createTransientRetryPolicy<CloudinarySearchError>("search");
 
 function readCloudinaryHttpCode(
   error: CloudinaryProviderError
@@ -511,3 +558,343 @@ export const getGalleryImages = Effect.fn("getGalleryImages")(
   (effect, tags, options) =>
     effect.pipe(Effect.scoped, Effect.annotateLogs({ tags, options }))
 );
+
+function toUploadError(
+  error: CloudinaryRejectedValue,
+  publicId: CloudinaryPublicId
+) {
+  const httpCode =
+    typeof error === "object" && error !== null
+      ? readCloudinaryHttpCode(error)
+      : undefined;
+
+  return new CloudinaryUploadError({
+    message: "Cloudinary image upload failed",
+    publicId,
+    httpCode,
+  });
+}
+
+function createUploadExecutor() {
+  const uploadRetryPolicy =
+    createTransientRetryPolicy<CloudinaryUploadError>("image upload");
+
+  const performUpload = (input: CloudinaryImageUploadInput) =>
+    Effect.tryPromise({
+      try: () =>
+        new Promise<unknown>((resolveUpload, rejectUpload) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              public_id: input.publicId,
+              folder: input.folder,
+              resource_type: "image",
+            },
+            (error, result) => {
+              if (error) {
+                rejectUpload(error);
+                return;
+              }
+
+              if (!result) {
+                rejectUpload(
+                  new CloudinaryUploadError({
+                    message: "Cloudinary image upload returned no result",
+                    publicId: input.publicId,
+                  })
+                );
+                return;
+              }
+
+              resolveUpload(result);
+            }
+          );
+
+          stream.end(input.bytes);
+        }),
+      catch: (error) =>
+        error instanceof CloudinaryUploadError
+          ? error
+          : toUploadError(error as CloudinaryRejectedValue, input.publicId),
+    });
+
+  return Effect.fn("cloudinary.upload")(
+    function* (input: CloudinaryImageUploadInput) {
+      yield* Effect.annotateLogsScoped({
+        publicId: input.publicId,
+        folder: input.folder,
+      });
+      yield* Effect.logInfo("Cloudinary image upload started", {
+        publicId: input.publicId,
+        folder: input.folder,
+        byteLength: input.bytes.byteLength,
+      });
+
+      return yield* pipe(
+        performUpload(input),
+        Effect.flatMap((result) =>
+          pipe(
+            decodeCloudinaryAsset(result),
+            Effect.mapError(
+              () =>
+                new CloudinaryUploadError({
+                  message:
+                    "Cloudinary upload response did not match the asset schema",
+                  publicId: input.publicId,
+                })
+            )
+          )
+        ),
+        Effect.tap((asset) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ result: asset });
+            yield* Effect.logInfo("Cloudinary image upload completed", {
+              publicId: input.publicId,
+              version: asset.version,
+            });
+          })
+        ),
+        Effect.tapError((error) =>
+          Effect.logError("Cloudinary image upload failed", {
+            publicId: input.publicId,
+            errorMessage: error.message,
+            httpCode: error.httpCode,
+          })
+        ),
+        Effect.retry(uploadRetryPolicy)
+      );
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.scoped,
+        Effect.annotateLogs({ publicId: input.publicId, folder: input.folder })
+      )
+  );
+}
+
+function toDestroyOutcome(
+  result: string
+): CloudinaryDestroyOutcome | undefined {
+  if (result === "ok") {
+    return "destroyed";
+  }
+
+  if (result === "not found") {
+    return "not-found";
+  }
+
+  return undefined;
+}
+
+function createDestroyExecutor() {
+  const destroyRetryPolicy =
+    createTransientRetryPolicy<CloudinaryDestroyError>("asset destroy");
+
+  const performDestroy = (publicId: CloudinaryPublicId) =>
+    Effect.tryPromise({
+      try: () =>
+        cloudinary.uploader.destroy(publicId) as Promise<{ result?: unknown }>,
+      catch: (error) => {
+        const httpCode =
+          typeof error === "object" && error !== null
+            ? readCloudinaryHttpCode(error as CloudinaryProviderError)
+            : undefined;
+
+        return new CloudinaryDestroyError({
+          message: "Cloudinary asset destroy request failed",
+          publicId,
+          outcome:
+            httpCode !== undefined && httpCode < 500 ? "failed" : "uncertain",
+          httpCode,
+        });
+      },
+    });
+
+  return Effect.fn("cloudinary.destroy")(
+    function* (publicId: CloudinaryPublicId) {
+      yield* Effect.annotateLogsScoped({ publicId });
+      yield* Effect.logInfo("Cloudinary asset destroy started", { publicId });
+
+      return yield* pipe(
+        performDestroy(publicId),
+        Effect.flatMap((result) => {
+          const outcome =
+            typeof result.result === "string"
+              ? toDestroyOutcome(result.result)
+              : undefined;
+
+          if (outcome === undefined) {
+            return Effect.fail(
+              new CloudinaryDestroyError({
+                message:
+                  "Cloudinary asset destroy returned an unrecognized outcome",
+                publicId,
+                outcome: "uncertain",
+              })
+            );
+          }
+
+          return Effect.succeed(outcome);
+        }),
+        Effect.tap((outcome) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ outcome });
+            yield* Effect.logInfo("Cloudinary asset destroy completed", {
+              publicId,
+              outcome,
+            });
+          })
+        ),
+        Effect.tapError((error) =>
+          Effect.logError("Cloudinary asset destroy failed", {
+            publicId,
+            outcome: error.outcome,
+            errorMessage: error.message,
+            httpCode: error.httpCode,
+          })
+        ),
+        Effect.retry(destroyRetryPolicy)
+      );
+    },
+    (effect, publicId) =>
+      effect.pipe(Effect.scoped, Effect.annotateLogs({ publicId }))
+  );
+}
+
+function classifyRenameFailure(
+  error: CloudinaryRejectedValue,
+  fromPublicId: CloudinaryPublicId,
+  toPublicId: CloudinaryPublicId
+) {
+  const httpCode =
+    typeof error === "object" && error !== null
+      ? readCloudinaryHttpCode(error)
+      : undefined;
+
+  const rawMessage =
+    typeof error === "object" && error !== null
+      ? (error.message ?? error.error?.message)
+      : undefined;
+
+  const message =
+    typeof rawMessage === "string" ? rawMessage.toLowerCase() : "";
+
+  if (
+    httpCode === 409 ||
+    message.includes("already exists") ||
+    message.includes("already a file")
+  ) {
+    return new CloudinaryRenameError({
+      message: "Cloudinary rename target public ID already exists",
+      fromPublicId,
+      toPublicId,
+      reason: "target-exists",
+      httpCode,
+    });
+  }
+
+  if (httpCode === 404) {
+    return new CloudinaryRenameError({
+      message: "Cloudinary rename source public ID is missing",
+      fromPublicId,
+      toPublicId,
+      reason: "source-missing",
+      httpCode,
+    });
+  }
+
+  return new CloudinaryRenameError({
+    message: "Cloudinary asset rename failed",
+    fromPublicId,
+    toPublicId,
+    reason: "failed",
+    httpCode,
+  });
+}
+
+function createRenameExecutor() {
+  const renameRetryPolicy =
+    createTransientRetryPolicy<CloudinaryRenameError>("asset rename");
+
+  const performRename = (
+    fromPublicId: CloudinaryPublicId,
+    toPublicId: CloudinaryPublicId,
+    overwrite: boolean
+  ) =>
+    Effect.tryPromise({
+      try: () =>
+        cloudinary.uploader.rename(fromPublicId, toPublicId, {
+          overwrite,
+        }) as Promise<unknown>,
+      catch: (error) =>
+        classifyRenameFailure(
+          error as CloudinaryRejectedValue,
+          fromPublicId,
+          toPublicId
+        ),
+    });
+
+  return Effect.fn("cloudinary.rename")(
+    function* (
+      fromPublicId: CloudinaryPublicId,
+      toPublicId: CloudinaryPublicId,
+      options?: { readonly overwrite?: boolean }
+    ) {
+      const overwrite = options?.overwrite ?? false;
+
+      yield* Effect.annotateLogsScoped({ fromPublicId, toPublicId, overwrite });
+      yield* Effect.logInfo("Cloudinary asset rename started", {
+        fromPublicId,
+        toPublicId,
+        overwrite,
+      });
+
+      return yield* pipe(
+        performRename(fromPublicId, toPublicId, overwrite),
+        Effect.flatMap((result) =>
+          pipe(
+            decodeCloudinaryAsset(result),
+            Effect.mapError(
+              () =>
+                new CloudinaryRenameError({
+                  message:
+                    "Cloudinary rename response did not match the asset schema",
+                  fromPublicId,
+                  toPublicId,
+                  reason: "failed",
+                })
+            )
+          )
+        ),
+        Effect.tap((asset) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ result: asset });
+            yield* Effect.logInfo("Cloudinary asset rename completed", {
+              fromPublicId,
+              toPublicId,
+              version: asset.version,
+            });
+          })
+        ),
+        Effect.tapError((error) =>
+          Effect.logError("Cloudinary asset rename failed", {
+            fromPublicId,
+            toPublicId,
+            reason: error.reason,
+            errorMessage: error.message,
+            httpCode: error.httpCode,
+          })
+        ),
+        Effect.retry(renameRetryPolicy)
+      );
+    },
+    (effect, fromPublicId, toPublicId, options) =>
+      effect.pipe(
+        Effect.scoped,
+        Effect.annotateLogs({
+          fromPublicId,
+          toPublicId,
+          overwrite: options?.overwrite ?? false,
+        })
+      )
+  );
+}
