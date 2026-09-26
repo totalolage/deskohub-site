@@ -23,16 +23,6 @@ const resendSyntheticRecipientHost = "resend.dev";
 export const workspaceE2EAccountMainRecipientLabel = "main";
 
 export type WorkspaceE2EAccountConfig = {
-  /**
-   * The exact preview-branch accounting snapshot key the deployed app reads
-   * through ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID and its matching
-   * secret. The invoice fixture must encrypt with the same key material so
-   * the application can decrypt the synthetic document.
-   */
-  readonly accountingSnapshotKey: {
-    readonly id: string;
-    readonly secret: string;
-  };
   readonly baseUrl: string;
   /** Vercel automation bypass for the protected preview; never a runtime bypass. */
   readonly bypassSecret: string | undefined;
@@ -61,19 +51,7 @@ export const getAccountE2EConfig = (
       { operation: "configure workspace account e2e" }
     );
   }
-  const accountingSnapshotKeyId =
-    environment.WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_ACTIVE_KEY_ID;
-  const accountingSnapshotKeySecret =
-    environment.WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_KEY_SECRET;
-  if (!accountingSnapshotKeyId || !accountingSnapshotKeySecret) {
-    throw workspaceE2EError(
-      "WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_ACTIVE_KEY_ID and WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_KEY_SECRET are required for account e2e cases; provision them in the protected workspace-checkout-e2e GitHub environment with the same key id and secret the preview branch exposes to the app through ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID and its matching secret; account coverage fails closed instead of skipping",
-      { operation: "configure workspace account e2e" }
-    );
-  }
-
   addRedaction(resendApiKey);
-  addRedaction(accountingSnapshotKeySecret);
   const bypassSecret = environment.VERCEL_AUTOMATION_BYPASS_SECRET;
   addRedaction(bypassSecret);
   const { baseUrl, expectedHost } = parseWorkspaceE2EBaseUrl(
@@ -81,10 +59,6 @@ export const getAccountE2EConfig = (
   );
 
   return {
-    accountingSnapshotKey: {
-      id: accountingSnapshotKeyId,
-      secret: accountingSnapshotKeySecret,
-    },
     baseUrl,
     bypassSecret,
     expectedHost,

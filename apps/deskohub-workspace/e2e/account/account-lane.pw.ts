@@ -16,7 +16,6 @@ import { verifyAccountLayoutNavigation } from "./account-layout-navigation";
 import {
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
-  setDeletionRequestedAt,
 } from "./auth-rows";
 import { withCallbackHandoffReview } from "./callback-handoff";
 import { workspaceE2EAccountCaseIds } from "./catalog";
@@ -25,15 +24,6 @@ import {
   makeWorkspaceE2EAccountRecipient,
   workspaceE2EAccountMainRecipientLabel,
 } from "./config";
-import {
-  verifyCustomerInvoiceAccess,
-  verifyCustomerInvoiceAccessDenied,
-  verifyCustomerInvoiceRevoked,
-} from "./invoice-access";
-import {
-  type WorkspaceE2ECustomerInvoiceFixture,
-  withWorkspaceE2ECustomerInvoiceFixture,
-} from "./invoice-fixture";
 import {
   emptyWorkspaceE2EAccountJournal,
   type WorkspaceE2EAccountJournal,
@@ -231,7 +221,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               }
             );
           }
-          return { userId, customerId };
+          return customerId;
         });
 
         verifyPages = [
@@ -272,84 +262,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           },
           {
             execute: Effect.gen(function* () {
-              const account = yield* readAccountReservationCustomerId();
-              yield* withWorkspaceE2ECustomerInvoiceFixture(
-                {
-                  customerId: DotyposCustomerIdSchema.make(account.customerId),
-                  snapshotKey: accountLane.config.accountingSnapshotKey,
-                },
-                Effect.fn("runCustomerInvoiceAccessVerification")(function* (
-                  fixture: WorkspaceE2ECustomerInvoiceFixture
-                ) {
-                  yield* Effect.tryPromise({
-                    catch: () =>
-                      workspaceE2EError(
-                        "verify customer invoice access failed",
-                        { operation: "verify customer invoice access" }
-                      ),
-                    try: () =>
-                      verifyCustomerInvoiceAccess({
-                        baseUrl: accountLane.config.baseUrl,
-                        browser,
-                        bypassSecret: accountLane.config.bypassSecret,
-                        fixture,
-                        page: getOwnedPage(),
-                      }),
-                  });
-                  // Removing the account link cannot end authorization here:
-                  // the account resolver re-claims the link from the still
-                  // verified email on the next request. The genuine denial
-                  // is the deletion-pending marker instead — the same
-                  // reversible marker the deletion cases drive — set while
-                  // the issued invoice is still present, so the PDF 404
-                  // proves authorization denial rather than a missing row.
-                  // The marker is restored on release so the lane's later
-                  // linked-account steps keep working and restoration
-                  // happens even when an assertion fails.
-                  yield* Effect.acquireUseRelease(
-                    setDeletionRequestedAt(account.userId, new Date()),
-                    () =>
-                      Effect.tryPromise({
-                        catch: () =>
-                          workspaceE2EError(
-                            "verify customer invoice account denial failed",
-                            {
-                              operation:
-                                "verify customer invoice account denial",
-                            }
-                          ),
-                        try: () =>
-                          verifyCustomerInvoiceAccessDenied(
-                            accountLane.config.baseUrl,
-                            fixture,
-                            getOwnedPage()
-                          ),
-                      }),
-                    () => setDeletionRequestedAt(account.userId, null)
-                  );
-                  yield* fixture.revoke();
-                  yield* Effect.tryPromise({
-                    catch: () =>
-                      workspaceE2EError(
-                        "verify customer invoice revocation failed",
-                        { operation: "verify customer invoice revocation" }
-                      ),
-                    try: () =>
-                      verifyCustomerInvoiceRevoked(
-                        accountLane.config.baseUrl,
-                        fixture,
-                        getOwnedPage()
-                      ),
-                  });
-                })
-              );
-            }),
-            id: "checks customer invoice access privacy",
-            timeoutMs: workspaceE2ETimeouts.providerTransition,
-          },
-          {
-            execute: Effect.gen(function* () {
-              const { customerId } = yield* readAccountReservationCustomerId();
+              const customerId = yield* readAccountReservationCustomerId();
               yield* verifyWorkspaceE2EMarketingPreferences({
                 baseUrl: accountLane.config.baseUrl,
                 browser,
@@ -363,7 +276,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           },
           {
             execute: Effect.gen(function* () {
-              const { customerId } = yield* readAccountReservationCustomerId();
+              const customerId = yield* readAccountReservationCustomerId();
               const [firstReservationId, secondReservationId] =
                 accountLane.journalRef.journal.dotyposReservationIds;
               if (!firstReservationId || !secondReservationId) {

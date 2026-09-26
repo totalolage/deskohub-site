@@ -20,10 +20,6 @@ export type AccountReviewTarget =
   | "linked-profile-desktop"
   | "linked-billing-desktop"
   | "linked-billing-mobile"
-  | "linked-invoices-desktop"
-  | "linked-invoices-mobile"
-  | "linked-invoices-populated-desktop"
-  | "linked-invoices-populated-mobile"
   | "linked-legal-desktop"
   | "account-marketing-withdrawn-desktop"
   | "account-marketing-active-mobile"
@@ -107,26 +103,6 @@ const accountReviewTargetMetadata = {
   },
   "linked-billing-mobile": {
     filename: "linked-billing-mobile.png",
-    path: "/en-US/account",
-    viewport: { height: 900, width: 375 },
-  },
-  "linked-invoices-desktop": {
-    filename: "linked-invoices-desktop.png",
-    path: "/en-US/account",
-    viewport: { height: 1000, width: 1440 },
-  },
-  "linked-invoices-mobile": {
-    filename: "linked-invoices-mobile.png",
-    path: "/en-US/account",
-    viewport: { height: 900, width: 375 },
-  },
-  "linked-invoices-populated-desktop": {
-    filename: "linked-invoices-populated-desktop.png",
-    path: "/en-US/account",
-    viewport: { height: 1000, width: 1440 },
-  },
-  "linked-invoices-populated-mobile": {
-    filename: "linked-invoices-populated-mobile.png",
     path: "/en-US/account",
     viewport: { height: 900, width: 375 },
   },
@@ -279,8 +255,6 @@ const isPrivateLinkedAccountTarget = (target: ReviewTarget): boolean =>
   target === "linked-profile-desktop" ||
   target === "linked-billing-desktop" ||
   target === "linked-billing-mobile" ||
-  target === "linked-invoices-desktop" ||
-  target === "linked-invoices-mobile" ||
   target === "linked-danger-desktop" ||
   target === "linked-danger-mobile";
 

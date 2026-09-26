@@ -90,8 +90,6 @@ export const e2eEnvironmentSchema = Schema.Struct({
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalNonEmptyString,
   WORKSPACE_E2E_ADMIN_BASIC_AUTH: optionalAdminBasicAuthPair,
   WORKSPACE_E2E_RESEND_API_KEY: optionalNonEmptyString,
-  WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_ACTIVE_KEY_ID: optionalNonEmptyString,
-  WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_KEY_SECRET: optionalNonEmptyString,
   WORKSPACE_E2E_EXECUTION_CONTEXT: toEnvironmentSchema(
     Schema.optional(Schema.Literals(["ci", "manual"]))
   ),
@@ -148,10 +146,6 @@ export const makeE2EEnvironment = (
         runtimeEnvironment.WORKSPACE_E2E_ADMIN_BASIC_AUTH,
       WORKSPACE_E2E_RESEND_API_KEY:
         runtimeEnvironment.WORKSPACE_E2E_RESEND_API_KEY,
-      WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_ACTIVE_KEY_ID:
-        runtimeEnvironment.WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_ACTIVE_KEY_ID,
-      WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_KEY_SECRET:
-        runtimeEnvironment.WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_KEY_SECRET,
       WORKSPACE_E2E_BASE_URL: runtimeEnvironment.WORKSPACE_E2E_BASE_URL,
       WORKSPACE_E2E_ALLOCATION_SHARD:
         runtimeEnvironment.WORKSPACE_E2E_ALLOCATION_SHARD,

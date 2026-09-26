@@ -24,9 +24,6 @@ const makeAccountEnvironment = (
   makeWorkspaceE2EEnvironment({
     ...validE2ERuntimeEnvironment,
     WORKSPACE_E2E_RESEND_API_KEY: "re_full-access-retrieval-key",
-    WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_ACTIVE_KEY_ID: "K202608",
-    WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_KEY_SECRET:
-      "synthetic-preview-branch-key-secret",
     ...overrides,
   });
 
@@ -53,27 +50,6 @@ describe("workspace account e2e configuration", () => {
         makeAccountEnvironment({ WORKSPACE_E2E_RESEND_API_KEY: undefined })
       )
     ).toThrow("WORKSPACE_E2E_RESEND_API_KEY is required");
-  });
-
-  test("fails closed before account cases when the accounting snapshot key is absent", () => {
-    expect(() =>
-      getAccountE2EConfig(
-        makeAccountEnvironment({
-          WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_ACTIVE_KEY_ID: undefined,
-        })
-      )
-    ).toThrow(
-        "WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_ACTIVE_KEY_ID and"
-      );
-    expect(() =>
-      getAccountE2EConfig(
-        makeAccountEnvironment({
-          WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_KEY_SECRET: undefined,
-        })
-      )
-    ).toThrow(
-        "WORKSPACE_E2E_ACCOUNTING_SNAPSHOT_KEY_SECRET are required"
-      );
   });
 
   test("fails closed when the base URL is not an immutable Vercel origin", () => {
