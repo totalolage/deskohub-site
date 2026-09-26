@@ -143,20 +143,24 @@ const jsonResponse = (payload: FakeVercelPayload): Response =>
 /**
  * Runs `run` with `fetch` routed to fake Vercel API endpoints; returns the
  * requested URLs so callers can assert the real request pattern (for
- * example that alias pagination was actually followed).
+ * example that alias pagination was actually followed). `onRequest` fires
+ * in real time so callers can interleave fetches into one ordered event log
+ * alongside persist/rollback fake calls.
  */
 const withStubbedVercelApi = async (
   routes: readonly {
     readonly match: (url: string) => boolean;
     readonly respond: () => FakeVercelPayload;
   }[],
-  run: () => Promise<void>
+  run: () => Promise<void>,
+  onRequest?: (url: string) => void
 ): Promise<readonly string[]> => {
   const requestedUrls: string[] = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: URL | RequestInfo) => {
     const url = input instanceof URL ? input.href : input;
     requestedUrls.push(url);
+    onRequest?.(url);
     const route = routes.find((candidate) => candidate.match(url));
     if (!route) throw new Error(`Unexpected Vercel API request: ${url}`);
     return jsonResponse(route.respond());
@@ -480,9 +484,55 @@ describe("deploy-workspace-production workflow", () => {
     }
   });
 
+  /**
+   * Asserts the exact relative ordering the recovery contract guarantees:
+   * the baseline persist and the "possibly-started" state must both land
+   * before the remote promotion request, and "restored" must follow the
+   * completed rollback call.
+   */
+  const expectRecoveryEventOrder = (events: readonly string[]) => {
+    const eventIndex = (fragment: string): number => {
+      const index = events.findIndex((event) => event.includes(fragment));
+      expect(index).toBeGreaterThanOrEqual(0);
+      return index;
+    };
+    const baselinePersist = eventIndex("persist baseline_url=");
+    const possiblyStarted = eventIndex(
+      "persist promotion_state=possibly-started"
+    );
+    const promoteRequest = eventIndex("/v10/projects/project-1/promote/");
+    const rollback = eventIndex("rollback baseline-deployment.vercel.app");
+    const restored = eventIndex("persist promotion_state=restored");
+    expect(baselinePersist).toBeLessThan(promoteRequest);
+    expect(possiblyStarted).toBeLessThan(promoteRequest);
+    expect(restored).toBeGreaterThan(rollback);
+  };
+
+  test("the recovery ordering assertions fail when persistence or recovery is reordered", () => {
+    // Persistence moved after the remote promotion side effect.
+    expect(() =>
+      expectRecoveryEventOrder([
+        "request https://api.vercel.com/v10/projects/project-1/promote/staged-deployment-id",
+        "persist baseline_url=baseline-deployment.vercel.app",
+        "persist promotion_state=possibly-started",
+        "rollback baseline-deployment.vercel.app",
+        "persist promotion_state=restored",
+      ])
+    ).toThrow();
+    // "restored" recorded before the rollback completed.
+    expect(() =>
+      expectRecoveryEventOrder([
+        "persist baseline_url=baseline-deployment.vercel.app",
+        "persist promotion_state=possibly-started",
+        "request https://api.vercel.com/v10/projects/project-1/promote/staged-deployment-id",
+        "persist promotion_state=restored",
+        "rollback baseline-deployment.vercel.app",
+      ])
+    ).toThrow();
+  });
+
   test("persists the baseline before an ambiguous promotion and recovers through the rollback path", async () => {
-    const persistedOutputs: string[] = [];
-    const rollbackUrls: string[] = [];
+    const events: string[] = [];
     let pollTicks = 0;
 
     const requestedUrls = await withStubbedVercelApi(
@@ -516,10 +566,10 @@ describe("deploy-workspace-production workflow", () => {
             },
             {
               rollback: async (url) => {
-                rollbackUrls.push(url);
+                events.push(`rollback ${url}`);
               },
               persist: async (output) => {
-                persistedOutputs.push(output);
+                events.push(`persist ${output}`);
               },
               sleep: async () => {},
               now: () => (pollTicks += 1),
@@ -531,17 +581,20 @@ describe("deploy-workspace-production workflow", () => {
         // The ambiguous promotion surfaces as a failure after recovery.
         expect(rejection).toBeInstanceOf(Error);
         expect((rejection as Error).message).toContain("ambiguous");
+      },
+      (url) => {
+        events.push(`request ${url}`);
       }
     );
 
-    // The baseline is persisted before any side effect...
-    expect(persistedOutputs).toContain(
-      "baseline_url=baseline-deployment.vercel.app\nbaseline_id=baseline-deployment-id\n"
-    );
-    expect(persistedOutputs).toContain("promotion_state=possibly-started\n");
-    // ...the recovery executed against the baseline deployment...
-    expect(rollbackUrls).toEqual(["baseline-deployment.vercel.app"]);
-    expect(persistedOutputs).toContain("promotion_state=restored\n");
+    // One real-time log proves the ordering, not just membership: baseline
+    // and "possibly-started" persist before the promotion side effect, and
+    // "restored" only after the rollback completed against the baseline.
+    expectRecoveryEventOrder(events);
+    // The recovery executed against the baseline deployment...
+    expect(events.filter((event) => event.startsWith("rollback "))).toEqual([
+      "rollback baseline-deployment.vercel.app",
+    ]);
     // ...and both the staged-deployment lookup and alias polls were real.
     expect(requestedUrls.some((url) => url.includes("/v13/deployments/"))).toBe(
       true

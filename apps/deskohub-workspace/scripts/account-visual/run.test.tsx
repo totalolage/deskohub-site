@@ -1790,6 +1790,105 @@ test("help is available without a label", () => {
   expect(HELP_TEXT).toContain("Limitations:");
 });
 
+/**
+ * CSS-aware verdict helpers: the only CSS comment syntax is the slash-star
+ * pair, so strip comments first, then parse rule blocks so verdicts see
+ * ACTIVE declarations and selectors only — never raw stylesheet text.
+ */
+type ParsedCssRule = {
+  readonly selector: string;
+  readonly declarations: ReadonlyMap<string, string>;
+};
+
+const parseCssDeclarations = (block: string): ReadonlyMap<string, string> => {
+  const declarations = new Map<string, string>();
+  for (const part of block.split(";")) {
+    const colon = part.indexOf(":");
+    if (colon === -1) continue;
+    declarations.set(part.slice(0, colon).trim(), part.slice(colon + 1).trim());
+  }
+  return declarations;
+};
+
+const collectActiveCssRules = (source: string, rules: ParsedCssRule[]) => {
+  let cursor = 0;
+  let preludeStart = 0;
+  while (cursor < source.length) {
+    const open = source.indexOf("{", cursor);
+    if (open === -1) return;
+    const prelude = source.slice(preludeStart, open);
+    let depth = 1;
+    let scan = open + 1;
+    while (scan < source.length && depth > 0) {
+      const nextOpen = source.indexOf("{", scan);
+      const nextClose = source.indexOf("}", scan);
+      if (nextClose === -1) return;
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        depth += 1;
+        scan = nextOpen + 1;
+      } else {
+        depth -= 1;
+        scan = nextClose + 1;
+      }
+    }
+    const body = source.slice(open + 1, scan - 1);
+    if (prelude.trimStart().startsWith("@")) {
+      collectActiveCssRules(body, rules);
+    } else {
+      rules.push({
+        selector: prelude.trim(),
+        declarations: parseCssDeclarations(body),
+      });
+    }
+    cursor = scan;
+    preludeStart = scan;
+  }
+};
+
+const parseActiveCssRules = (css: string): readonly ParsedCssRule[] => {
+  // CSS only has /* */ comments; strip them so commented-out code is inert.
+  const rules: ParsedCssRule[] = [];
+  collectActiveCssRules(css.replace(/\/\*[\s\S]*?\*\//g, " "), rules);
+  return rules;
+};
+
+const activeCustomPropertyValue = (
+  css: string,
+  name: string
+): string | undefined => {
+  for (const { declarations } of parseActiveCssRules(css)) {
+    const value = declarations.get(name);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+};
+
+test("parsed CSS verdicts ignore commented-out declarations and selectors", () => {
+  const fixture = [
+    ":root {",
+    "  /* --site-header-height: 0px; */",
+    "  --site-header-height: 80px;",
+    "}",
+    '/* .stale-banner::after { content: ""; } */',
+    '.banner::after { content: ""; }',
+  ].join("\n");
+  // A commented-out declaration must not satisfy the verdict: the parsed
+  // active value is 80px, so asserting 0px here would fail.
+  expect(activeCustomPropertyValue(fixture, "--site-header-height")).toBe(
+    "80px"
+  );
+  expect(
+    parseActiveCssRules(fixture).some((rule) =>
+      rule.selector.includes("::after")
+    )
+  ).toBe(true);
+  expect(
+    parseActiveCssRules(fixture).some((rule) =>
+      rule.selector.includes(".stale-banner")
+    )
+  ).toBe(false);
+});
+
 test("desktop contract documents the chosen physical-pixel interpretation", async () => {
   expect(desktopCssHeightForReference(1419)).toBe(710);
   expect(desktopCssHeightForReference(2015)).toBe(1008);
@@ -1812,15 +1911,13 @@ test("desktop contract documents the chosen physical-pixel interpretation", asyn
     "utf8"
   );
   // Parsed-CSS verdicts, not raw-text pins on the tracked stylesheet.
-  const customPropertyValue = (css: string, name: string): string | undefined =>
-    css.match(new RegExp(`${name}\\s*:\\s*([^;}]+)`))?.[1]?.trim();
-  expect(customPropertyValue(rendererCss, "--site-header-height")).toBe("0px");
-  const ruleSelectors = (css: string): readonly string[] =>
-    [...css.matchAll(/(^|[}\n])\s*([^{}@]+)\{/g)].map(
-      (match) => match[2] ?? ""
-    );
+  expect(activeCustomPropertyValue(rendererCss, "--site-header-height")).toBe(
+    "0px"
+  );
   expect(
-    ruleSelectors(rendererCss).some((selector) => selector.includes("::after"))
+    parseActiveCssRules(rendererCss).some((rule) =>
+      rule.selector.includes("::after")
+    )
   ).toBe(false);
   expect(HELP_TEXT).toContain("layout-neutral-unavailable-annotation-v2");
   expect(HELP_TEXT).toContain("Historical baseline comparability is false");
