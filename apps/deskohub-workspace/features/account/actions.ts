@@ -2,12 +2,9 @@
 
 import { Effect, Layer, Match, Result, Schema } from "effect";
 import { revalidatePath } from "next/cache";
-import {
-  type AresBusinessBillingDraft,
-  type AresLookupFailure,
-  AresLookupService,
-  toAresBusinessBillingDraft,
-} from "@/features/account/backend/ares-lookup.service";
+import { type AresLookupFailure, AresLookupService } from "@deskohub/ares";
+import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
+import { toAresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import { deleteCurrentAccountThroughAuthEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";

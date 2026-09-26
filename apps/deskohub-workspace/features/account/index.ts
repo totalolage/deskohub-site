@@ -1,10 +1,11 @@
-export type {
-  AresBusinessBillingDraft,
-  AresCompany,
+export type { AresBusinessBillingDraft } from "./backend/ares-business-draft";
+export { toAresBusinessBillingDraft } from "./backend/ares-business-draft";
+export {
+  type AresCompany,
   AresLookupFailure,
-  AresSidlo,
-} from "./backend/ares-lookup.service";
-export { AresLookupService } from "./backend/ares-lookup.service";
+  AresLookupService,
+  type AresSidlo,
+} from "@deskohub/ares";
 export {
   OptionalAccountActivityGuard,
   requireAccountActivity,

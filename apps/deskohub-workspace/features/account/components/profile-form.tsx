@@ -15,7 +15,7 @@ import {
   lookupAresBusiness,
   updateCustomerProfile,
 } from "@/features/account/actions";
-import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-lookup.service";
+import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import type { CustomerProfileBilling } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { BillingScreen } from "@/features/account/components/billing/billing-screen";

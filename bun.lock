@@ -119,6 +119,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@better-auth/drizzle-adapter": "1.7.2",
+        "@deskohub/ares": "workspace:*",
         "@deskohub/cloudinary": "workspace:*",
         "@deskohub/cloudinary-image": "workspace:*",
         "@deskohub/dotypos": "workspace:*",

@@ -2,7 +2,6 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
-import { toAresBusinessBillingDraft } from "./backend/ares-lookup.service";
 import { CustomerAccountAccessError } from "./customer-account";
 
 const revalidatePath = mock((_path: string) => undefined);
@@ -134,8 +133,6 @@ mock.module("@/features/account/backend/customer-profile.service", () => ({
   CustomerProfileService: Profile,
 }));
 
-const realToAresBusinessBillingDraft = toAresBusinessBillingDraft;
-
 let lookupOutcome: Effect.Effect<
   typeof syntheticAresCompany,
   { readonly _tag: "InvalidIco" | "NotFound" | "Unavailable" }
@@ -160,9 +157,8 @@ Object.assign(AresLookup, {
     },
   }),
 });
-mock.module("@/features/account/backend/ares-lookup.service", () => ({
+mock.module("@deskohub/ares", () => ({
   AresLookupService: AresLookup,
-  toAresBusinessBillingDraft: realToAresBusinessBillingDraft,
 }));
 
 const syntheticAresCompany = {
