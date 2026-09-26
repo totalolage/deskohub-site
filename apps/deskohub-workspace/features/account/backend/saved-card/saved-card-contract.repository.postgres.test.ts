@@ -43,6 +43,9 @@ describe.skipIf(!testDatabase)(
       );
 
       const providerCustomerId = getSavedCardCustomerReference(firstAccount);
+      const enrollmentOrderId = NexiOrderIdSchema.make(
+        `dhcardpg${uniqueId().replaceAll("-", "").slice(0, 12)}`
+      );
       const contractId = NexiContractIdSchema.make(
         `dh${uniqueId().replaceAll("-", "").slice(0, 12)}`
       );
@@ -59,18 +62,17 @@ describe.skipIf(!testDatabase)(
 
           const created = yield* repository.createEnrollment({
             customerAccountId: firstAccount,
-            orderId: NexiOrderIdSchema.make("dhcardpgtest1"),
+            orderId: enrollmentOrderId,
             providerCustomerId,
             providerContractId: contractId,
             securityTokenDigest: "a".repeat(64),
           });
           expect(created.state).toBe("pending");
-          expect(created.orderId).toBe("dhcardpgtest1");
+          expect(created.orderId).toBe(enrollmentOrderId);
 
           // Order lookup finds the row; scoped transitions require the account.
-          const byOrder = yield* repository.findEnrollmentByOrderId(
-            "dhcardpgtest1" as never
-          );
+          const byOrder =
+            yield* repository.findEnrollmentByOrderId(enrollmentOrderId);
           expect(byOrder?.customerAccountId).toBe(firstAccount);
 
           yield* repository.upsertActiveContract({
@@ -97,12 +99,12 @@ describe.skipIf(!testDatabase)(
           expect(secondCards).toHaveLength(0);
 
           yield* repository.transitionEnrollment({
-            orderId: "dhcardpgtest1" as never,
+            orderId: enrollmentOrderId,
             customerAccountId: firstAccount,
             state: "confirmed",
           });
           const secondTransition = yield* repository.transitionEnrollment({
-            orderId: "dhcardpgtest1" as never,
+            orderId: enrollmentOrderId,
             customerAccountId: secondAccount,
             state: "failed",
             failureCode: "enrollment.failed",
