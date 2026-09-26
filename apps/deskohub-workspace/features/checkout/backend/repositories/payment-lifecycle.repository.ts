@@ -663,7 +663,7 @@ export class PaymentLifecycleRepository extends Context.Service<
         }) {
           return yield* db.transaction(
             Effect.fn(function* (tx) {
-              // Lock-order contract: reservation → order → payment attempts.
+              // Lock-order contract: reservation → payment attempts → order.
               // Taking the authoritative row first keeps this writer
               // deadlock-free against updateReservationDetails and every
               // other reservation-first writer under concurrent traffic.
@@ -783,7 +783,7 @@ export class PaymentLifecycleRepository extends Context.Service<
 
           return yield* db.transaction(
             Effect.fn(function* (tx) {
-              // Lock-order contract: reservation → order → payment attempts.
+              // Lock-order contract: reservation → payment attempts → order.
               // Taking the authoritative row first keeps this writer
               // deadlock-free against updateReservationDetails and every
               // other reservation-first writer under concurrent traffic.

@@ -54,8 +54,10 @@ export const ensureReservationOrder = Effect.fn(
 
   if (order) {
     // Old writers left their payment attempts without order linkage; repair
-    // it here so every caller of the mirror also restores the linkage, after
-    // the orders upsert so the lock order stays orders → payment attempts.
+    // it here so every caller of the mirror also restores the linkage. Callers
+    // hold the reservation lock first and may already hold the attempt lock
+    // (markPaid paths update the attempt before mirroring), so the global
+    // order stays reservation → payment attempts → order.
     yield* input.tx
       .update(paymentAttempts)
       .set({ orderId })
