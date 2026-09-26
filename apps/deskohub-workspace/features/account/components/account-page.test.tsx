@@ -66,6 +66,17 @@ mock.module("@/features/account/actions", () => ({
   updateCustomerProfile: () => Promise.resolve({ data: { status: "updated" } }),
   deleteCustomerAccount: () => Promise.resolve({ data: { status: "deleted" } }),
 }));
+
+mock.module("@/features/account/avatar-actions", () => ({
+  removeCustomerAvatar: () => Promise.resolve({ data: { status: "removed" } }),
+  uploadCustomerAvatar: () =>
+    Promise.resolve({
+      data: {
+        avatar: { url: "https://res.cloudinary.test/avatar.webp", version: 1 },
+        status: "uploaded",
+      },
+    }),
+}));
 type MarketingPreferenceSaveInput = {
   readonly confirmed: true;
   readonly context: string;
@@ -115,8 +126,6 @@ const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
     },
   },
   profile: {
-    avatarUnavailableDescription: "Profile photos are not available here.",
-    avatarUnavailableLabel: "Profile photo unavailable",
     emailLabel: "Email",
     emailVerification: {
       unverified: "This email still needs verification.",
