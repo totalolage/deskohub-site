@@ -1219,19 +1219,19 @@ describe("CheckoutService", () => {
     const requestedCode = canonicalCode("CAMPAIGN10");
     const meetingRoomApplication = {
       ...application,
-      subtotalBefore: money(155_000),
+      subtotalBefore: money(98_000),
       amount: money(10_000),
-      subtotalAfter: money(145_000),
+      subtotalAfter: money(88_000),
     };
     const acceptedDiscountQuote: DiscountQuote = {
       product: {
         kind: "meeting-room",
         duration: { unit: "hour", amount: 4 },
       },
-      discountableSubtotal: money(155_000),
+      discountableSubtotal: money(98_000),
       discounts: [meetingRoomApplication],
       totalDiscount: money(10_000),
-      discountedSubtotal: money(145_000),
+      discountedSubtotal: money(88_000),
     };
     const freshDiscountQuote: DiscountQuote = {
       ...acceptedDiscountQuote,
@@ -1239,11 +1239,11 @@ describe("CheckoutService", () => {
         {
           ...meetingRoomApplication,
           amount: money(20_000),
-          subtotalAfter: money(135_000),
+          subtotalAfter: money(78_000),
         },
       ],
       totalDiscount: money(20_000),
-      discountedSubtotal: money(135_000),
+      discountedSubtotal: money(78_000),
     };
     const affirm = mock(() =>
       Effect.succeed({
@@ -1418,7 +1418,7 @@ describe("CheckoutService", () => {
         securityToken: "active-security-token",
         providerRedirectUrl: "https://payments.example/existing",
       }),
-      amount: money(47_500),
+      amount: money(35_000),
     };
     const harness = await createCheckoutHarness({
       orderId,

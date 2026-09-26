@@ -1111,6 +1111,12 @@ describe("AdministrationService", () => {
       "cancelled-today",
       "new-today",
       "failed-today",
+      "held-today",
+      "cancelled-local-today",
+      "boundary-start-today",
+      "boundary-end-today",
+      "cancelled-only-today",
+      "today-two",
     ];
     const listInputs: {
       readonly order?: string;
@@ -1149,22 +1155,55 @@ describe("AdministrationService", () => {
         "customer-new-c",
         atTime(currentDate.subtract({ days: 30 }), 10).toString(),
       ],
+      [
+        "customer-boundary-start",
+        atTime(currentDate.subtract({ days: 6 }), 0).toString(),
+      ],
+      [
+        "customer-boundary-end",
+        atTime(currentDate.add({ days: 1 }), 0).toString(),
+      ],
     ]);
     const rowCustomerIds = {
       "last-week": "customer-returning",
-      today: "customer-new-a",
+      today: "customer-stale",
       upcoming: "customer-upcoming",
       "cancelled-today": "customer-new-a",
       "new-today": "customer-new-b",
       "failed-today": "customer-new-c",
+      "held-today": "customer-held",
+      "cancelled-local-today": "customer-cancelled-local",
+      "boundary-start-today": "customer-boundary-start",
+      "boundary-end-today": "customer-boundary-end",
+      "cancelled-only-today": "customer-cancelled-only",
+      "today-two": "customer-stale",
+    } as const;
+    const rowStates = {
+      "held-today": {
+        paymentState: "not_started",
+        fulfillmentState: "not_started",
+        reservationState: "held",
+      },
+      "cancelled-local-today": {
+        paymentState: "not_started",
+        fulfillmentState: "not_started",
+        reservationState: "cancelled",
+      },
     } as const;
     const rangeRows = linkedIds.map((id) => ({
       id,
       customerId: rowCustomerIds[id as keyof typeof rowCustomerIds],
       failureCode: id === "failed-today" ? "access_failed" : null,
-      fulfillmentState: id === "failed-today" ? "failed" : "fulfilled",
-      paymentState: "paid",
-      reservationState: "confirmed",
+      fulfillmentState:
+        id === "failed-today"
+          ? "failed"
+          : (rowStates[id as keyof typeof rowStates]?.fulfillmentState ??
+            "fulfilled"),
+      paymentState:
+        rowStates[id as keyof typeof rowStates]?.paymentState ?? "paid",
+      reservationState:
+        rowStates[id as keyof typeof rowStates]?.reservationState ??
+        "confirmed",
     }));
     const overviewReservations = [
       providerReservation(
@@ -1198,6 +1237,35 @@ describe("AdministrationService", () => {
         currentDate.add({ days: 1 })
       ),
       providerReservation("unlinked", "customer-unlinked", currentDate),
+      providerReservation("held-today", "customer-held", currentDate, 14),
+      providerReservation(
+        "cancelled-local-today",
+        "customer-cancelled-local",
+        currentDate,
+        15
+      ),
+      providerReservation(
+        "boundary-start-today",
+        "customer-boundary-start",
+        currentDate,
+        16
+      ),
+      providerReservation(
+        "boundary-end-today",
+        "customer-boundary-end",
+        currentDate,
+        17
+      ),
+      providerReservation("today-two", "customer-new-a", currentDate, 18),
+      {
+        ...providerReservation(
+          "cancelled-only-today",
+          "customer-cancelled-only",
+          currentDate,
+          19
+        ),
+        status: "CANCELLED" as const,
+      },
     ];
     const loadOverview = () =>
       Effect.gen(function* () {
@@ -1265,17 +1333,17 @@ describe("AdministrationService", () => {
     expect(customerListInputs).toEqual([
       {
         ids: [
-          "customer-reassigned",
-          "customer-new-b",
           "customer-new-a",
+          "customer-boundary-end",
+          "customer-boundary-start",
           "customer-returning",
         ],
       },
     ]);
     expect(result.today).toEqual({
-      completed: 1,
+      completed: 4,
       unavailable: false,
-      value: 4,
+      value: 10,
     });
     expect(result.upcoming).toEqual({
       completed: 1,
@@ -1283,30 +1351,12 @@ describe("AdministrationService", () => {
       value: 1,
     });
     expect(result.lastSevenDays).toEqual({
-      completed: 2,
+      completed: 5,
       unavailable: false,
-      value: 5,
+      value: 11,
     });
     expect(result.uniqueCustomers).toEqual({
       customers: [
-        {
-          customer: {
-            displayName: "reassigned",
-            email: null,
-            id: "customer-reassigned",
-            phone: null,
-          },
-          customerId: "customer-reassigned",
-        },
-        {
-          customer: {
-            displayName: "new-b",
-            email: null,
-            id: "customer-new-b",
-            phone: null,
-          },
-          customerId: "customer-new-b",
-        },
         {
           customer: {
             displayName: "new-a",
@@ -1315,6 +1365,24 @@ describe("AdministrationService", () => {
             phone: null,
           },
           customerId: "customer-new-a",
+        },
+        {
+          customer: {
+            displayName: "boundary-end",
+            email: null,
+            id: "customer-boundary-end",
+            phone: null,
+          },
+          customerId: "customer-boundary-end",
+        },
+        {
+          customer: {
+            displayName: "boundary-start",
+            email: null,
+            id: "customer-boundary-start",
+            phone: null,
+          },
+          customerId: "customer-boundary-start",
         },
       ],
       unavailable: false,
@@ -1327,24 +1395,6 @@ describe("AdministrationService", () => {
       customers: [
         {
           customer: {
-            displayName: "reassigned",
-            email: null,
-            id: "customer-reassigned",
-            phone: null,
-          },
-          customerId: "customer-reassigned",
-        },
-        {
-          customer: {
-            displayName: "new-b",
-            email: null,
-            id: "customer-new-b",
-            phone: null,
-          },
-          customerId: "customer-new-b",
-        },
-        {
-          customer: {
             displayName: "new-a",
             email: null,
             id: "customer-new-a",
@@ -1352,21 +1402,42 @@ describe("AdministrationService", () => {
           },
           customerId: "customer-new-a",
         },
+        {
+          customer: {
+            displayName: "boundary-start",
+            email: null,
+            id: "customer-boundary-start",
+            phone: null,
+          },
+          customerId: "customer-boundary-start",
+        },
       ],
       unavailable: false,
-      value: 3,
+      value: 2,
     });
 
     missingCustomerCreationTime = true;
-    expect((await loadOverview()).newCustomers).toEqual({
+    const missingCreationResult = await loadOverview();
+    expect(missingCreationResult.newCustomers).toEqual({
       customers: [],
       unavailable: true,
       value: 0,
     });
+    expect(missingCreationResult.uniqueCustomers).toEqual({
+      customers: result.uniqueCustomers.customers,
+      unavailable: false,
+      value: 4,
+    });
 
     missingCustomerCreationTime = false;
     reservationsUnavailable = true;
-    expect((await loadOverview()).newCustomers).toEqual({
+    const unavailableResult = await loadOverview();
+    expect(unavailableResult.uniqueCustomers).toEqual({
+      customers: [],
+      unavailable: true,
+      value: 0,
+    });
+    expect(unavailableResult.newCustomers).toEqual({
       customers: [],
       unavailable: true,
       value: 0,
@@ -1679,6 +1750,9 @@ describe("AdministrationService", () => {
         makeQuery([
           {
             id: "booking-one",
+            fulfillmentState: "fulfilled",
+            paymentState: "paid",
+            reservationState: "confirmed",
             reservationDetails: {
               kind: "cowork",
               entryTier: "basic",
@@ -1687,6 +1761,9 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-two",
+            fulfillmentState: "fulfilled",
+            paymentState: "paid",
+            reservationState: "confirmed",
             reservationDetails: {
               kind: "cowork",
               entryTier: "plus",
@@ -1695,6 +1772,9 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-profi",
+            fulfillmentState: "fulfilled",
+            paymentState: "paid",
+            reservationState: "confirmed",
             reservationDetails: {
               kind: "cowork",
               entryTier: "profi",
@@ -1704,14 +1784,23 @@ describe("AdministrationService", () => {
           },
           {
             id: "booking-meeting-room",
+            fulfillmentState: "fulfilled",
+            paymentState: "paid",
+            reservationState: "confirmed",
             reservationDetails: { kind: "meeting-room" },
           },
           {
             id: "booking-office",
+            fulfillmentState: "fulfilled",
+            paymentState: "paid",
+            reservationState: "confirmed",
             reservationDetails: { kind: "office" },
           },
           {
             id: "booking-today",
+            fulfillmentState: "fulfilled",
+            paymentState: "paid",
+            reservationState: "confirmed",
             reservationDetails: {
               kind: "cowork",
               entryTier: "plus",
@@ -1874,6 +1963,224 @@ describe("AdministrationService", () => {
     );
 
     expect(result.dates).toBeNull();
+  });
+
+  test("counts only completed reservations in customer reservation activity", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
+    const listInputs: unknown[] = [];
+    const completedRow = {
+      fulfillmentState: "fulfilled",
+      paymentState: "paid",
+      reservationState: "confirmed",
+    } as const;
+    const database = {
+      select: () =>
+        makeQuery([
+          {
+            id: "booking-pending",
+            ...completedRow,
+            fulfillmentState: "not_started",
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "basic",
+              coffee: false,
+            },
+          },
+          {
+            id: "booking-cancelled",
+            ...completedRow,
+            reservationState: "cancelled",
+            reservationDetails: { kind: "meeting-room" },
+          },
+          {
+            id: "booking-cancelling",
+            ...completedRow,
+            reservationState: "cancelling",
+            reservationDetails: { kind: "meeting-room" },
+          },
+          {
+            id: "booking-cancellation-failed",
+            ...completedRow,
+            reservationState: "cancellation_failed",
+            reservationDetails: { kind: "meeting-room" },
+          },
+          {
+            id: "booking-provider-cancelled",
+            ...completedRow,
+            reservationDetails: { kind: "office" },
+          },
+          {
+            id: "booking-provider-new",
+            ...completedRow,
+            reservationDetails: { kind: "office" },
+          },
+          {
+            id: "booking-today",
+            ...completedRow,
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "plus",
+              coffee: true,
+            },
+          },
+          {
+            id: "booking-mixed-cowork",
+            ...completedRow,
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "plus",
+              coffee: true,
+            },
+          },
+          {
+            id: "booking-mixed-meeting-room",
+            ...completedRow,
+            reservationDetails: { kind: "meeting-room" },
+          },
+          {
+            id: "booking-mixed-office",
+            ...completedRow,
+            reservationDetails: { kind: "office" },
+          },
+          {
+            id: "booking-baseline",
+            ...completedRow,
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "basic",
+              coffee: false,
+            },
+          },
+        ]),
+    };
+    const booking = {
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: "dotypos-customer",
+      endDate: "2026-08-10T23:00:00Z",
+      seats: "1",
+      status: "CONFIRMED" as const,
+    };
+    const providerBookings = [
+      { ...booking, id: "booking-pending", startDate: "2026-08-09T22:30:00Z" },
+      {
+        ...booking,
+        id: "booking-cancelled",
+        startDate: "2026-08-10T08:00:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-cancelling",
+        startDate: "2026-08-10T09:00:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-cancellation-failed",
+        startDate: "2026-08-10T10:00:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-provider-cancelled",
+        startDate: "2026-08-11T08:00:00Z",
+        status: "CANCELLED" as const,
+      },
+      {
+        ...booking,
+        id: "booking-provider-new",
+        startDate: "2026-08-11T09:00:00Z",
+        status: "NEW" as const,
+      },
+      {
+        ...booking,
+        id: "booking-today",
+        startDate: "2026-08-26T14:00:00Z",
+        endDate: "2026-08-26T15:00:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-mixed-cowork",
+        startDate: "2026-08-12T08:00:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-mixed-meeting-room",
+        startDate: "2026-08-12T12:00:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-mixed-office",
+        startDate: "2026-08-12T16:00:00Z",
+      },
+      {
+        ...booking,
+        id: "booking-baseline",
+        startDate: "2026-08-13T08:00:00Z",
+      },
+    ];
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadCustomerReservationActivity(
+        "dotypos-customer"
+      );
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({
+                listReservations: (input) =>
+                  Effect.sync(() => {
+                    listInputs.push(input);
+                    return providerBookings;
+                  }),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    const to = Temporal.Now.instant()
+      .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+      .toPlainDate();
+    expect(listInputs).toEqual([
+      {
+        customerId: "dotypos-customer",
+        startsAtOrAfter: to
+          .subtract({ days: 364 })
+          .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+          .toInstant()
+          .toString(),
+        startsBefore: to
+          .add({ days: 1 })
+          .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+          .toInstant()
+          .toString(),
+        order: "startDateAscending",
+      },
+    ]);
+    expect(result).toEqual({
+      from: to.subtract({ days: 364 }).toString(),
+      to: to.toString(),
+      dates: [
+        { category: "office", count: 3, date: "2026-08-12" },
+        { category: "cowork-basic", count: 1, date: "2026-08-13" },
+        { category: "cowork-plus", count: 1, date: "2026-08-26" },
+      ],
+    });
   });
 
   test("loads customer marketing consent without a reservation", async () => {
