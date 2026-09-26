@@ -8,25 +8,37 @@ import {
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { customerAccountIdSchema } from "../customer-account";
+import {
+  type CustomerAccountAccessError,
+  customerAccountIdSchema,
+} from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { CustomerCommunicationPreferenceRepository } from "./customer-communication-preference.repository";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
-const makeRepositoryLayer = () =>
-  CustomerCommunicationPreferenceRepository.Default.pipe(
+const makeRepositoryLayer = () => {
+  const testDatabaseLayer = Layer.succeed(
+    WorkspaceDatabase,
+    WorkspaceDatabase.of({ db: testDatabase!.db })
+  );
+
+  // The link repository must see the disposable test database and the test
+  // advisory-lock pool too: `CustomerAccountLinkRepository.Live` would drag
+  // in the application `WorkspaceDatabase.Default`/lock defaults instead.
+  const testLinkRepository = CustomerAccountLinkRepository.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.succeed(
-          WorkspaceDatabase,
-          WorkspaceDatabase.of({ db: testDatabase!.db })
-        ),
-        CustomerAccountLinkRepository.Live,
+        testDatabaseLayer,
         WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase!.pool)
       )
     )
   );
+
+  return CustomerCommunicationPreferenceRepository.Default.pipe(
+    Layer.provide(Layer.mergeAll(testDatabaseLayer, testLinkRepository))
+  );
+};
 
 const insertAuthUser = async (id: string, email: string) => {
   await testDatabase!.pool.query(
@@ -144,6 +156,41 @@ describe.skipIf(!testDatabase)(
         [account]
       );
       expect(after.rows).toHaveLength(0);
+    });
+
+    test("rejects reads and saves for a deletion-marked account under the real lock", async () => {
+      const layer = makeRepositoryLayer();
+      const account = customerAccountIdSchema.make(uniqueId());
+      await insertAuthUser(account, `pref-f-${account}@deskohub.test`);
+      await testDatabase!.pool.query(
+        `update auth."user" set deletion_requested_at = $2 where id = $1`,
+        [account, new Date("2026-09-01T00:00:00.000Z")]
+      );
+
+      const outcomes = await Effect.runPromise(
+        Effect.gen(function* () {
+          const preferences = yield* CustomerCommunicationPreferenceRepository;
+          const read = yield* Effect.result(preferences.load(account));
+          const write = yield* Effect.result(
+            preferences.save(account, "cs-CZ")
+          );
+          return { read, write };
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(outcomes.read._tag).toBe("Failure");
+      if (outcomes.read._tag === "Failure") {
+        const failure = outcomes.read.failure as CustomerAccountAccessError;
+        expect(failure.reason).toBe("link-required");
+        expect(failure.linkReason).toBe("deletion-requested");
+      }
+      expect(outcomes.write._tag).toBe("Failure");
+
+      const rows = await testDatabase!.pool.query(
+        `select locale from customer_communication_preferences where customer_account_id = $1`,
+        [account]
+      );
+      expect(rows.rows).toHaveLength(0);
     });
 
     test("serializes saves against an outer account lock holder", async () => {

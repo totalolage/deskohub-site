@@ -15,7 +15,8 @@ import { CustomerAccountLinkRepository } from "./customer-account-link.repositor
 
 export type CustomerCommunicationPreferenceReadError =
   | EffectDrizzleQueryError
-  | SqlError;
+  | SqlError
+  | CustomerAccountAccessError;
 
 /**
  * The durable, Workspace-owned preferred communication language of one
@@ -56,6 +57,11 @@ export class CustomerCommunicationPreferenceRepository extends Context.Service<
 
       const load = Effect.fn("CustomerCommunicationPreferenceRepository.load")(
         function* (accountId: CustomerAccountId) {
+          // The read guard mirrors the save's deletion-authority check but
+          // without the advisory lock: a read never needs mutual exclusion,
+          // and its access failure passes through unchanged instead of being
+          // folded into the write-failure mapping.
+          yield* requireAccountActivity(links, accountId);
           const [row] = yield* db
             .select({ locale: customerCommunicationPreferences.locale })
             .from(customerCommunicationPreferences)

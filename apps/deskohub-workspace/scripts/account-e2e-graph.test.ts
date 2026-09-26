@@ -294,9 +294,17 @@ describe("workspace account e2e graph", () => {
       "account-deletion-marker-reauth",
       "account-session-lifecycle",
       "account-deletion-and-reactivation",
-      "account-linking-variants",
       "account-communication-language",
+      "account-linking-variants",
     ]);
+    // The language case must run while the shared recipient account is still
+    // linkable: the linking-variants case leaves it deliberately unlinkable
+    // (support-required), so it can never follow linking-variants.
+    expect(
+      workspaceE2EAccountCaseIds.indexOf("account-communication-language")
+    ).toBeLessThan(
+      workspaceE2EAccountCaseIds.indexOf("account-linking-variants")
+    );
 
     // The lane configures serial execution; the argument is an object, not
     // prose, so the verdict survives any reformatting.

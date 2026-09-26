@@ -131,6 +131,29 @@ describe("CustomerCommunicationPreferenceRepository with mock layers", () => {
     expect(upserts).toHaveLength(0);
   });
 
+  test("fails the read with the deletion-pending access error and never returns a locale", async () => {
+    const { Repository } = makeTestLayers({
+      state: {
+        kind: "active",
+        deletionRequestedAt: new Date("2026-09-01T00:00:00.000Z"),
+      },
+      row: { locale: "en-US" },
+    });
+
+    const outcome = await Effect.runPromise(
+      Effect.flatMap(CustomerCommunicationPreferenceRepository, (repository) =>
+        repository.load(accountId)
+      ).pipe(Effect.result, Effect.provide(Repository))
+    );
+
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag === "Failure") {
+      const failure = outcome.failure as CustomerAccountAccessErrorLike;
+      expect(failure.reason).toBe("link-required");
+      expect(failure.linkReason).toBe("deletion-requested");
+    }
+  });
+
   test("maps a lock failure to the fixed unavailable access error without writing", async () => {
     const { Repository, upserts } = makeTestLayers({
       state: { kind: "active", deletionRequestedAt: null },
