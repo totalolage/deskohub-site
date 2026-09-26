@@ -16,6 +16,7 @@ import { verifyAccountLayoutNavigation } from "./account-layout-navigation";
 import {
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
+  removeSyntheticAccountLink,
 } from "./auth-rows";
 import { withCallbackHandoffReview } from "./callback-handoff";
 import { workspaceE2EAccountCaseIds } from "./catalog";
@@ -26,6 +27,7 @@ import {
 } from "./config";
 import {
   verifyCustomerInvoiceAccess,
+  verifyCustomerInvoiceAccessDenied,
   verifyCustomerInvoiceRevoked,
 } from "./invoice-access";
 import {
@@ -229,7 +231,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               }
             );
           }
-          return customerId;
+          return { userId, customerId };
         });
 
         verifyPages = [
@@ -270,10 +272,10 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           },
           {
             execute: Effect.gen(function* () {
-              const customerId = yield* readAccountReservationCustomerId();
+              const account = yield* readAccountReservationCustomerId();
               yield* withWorkspaceE2ECustomerInvoiceFixture(
                 {
-                  customerId: DotyposCustomerIdSchema.make(customerId),
+                  customerId: DotyposCustomerIdSchema.make(account.customerId),
                   snapshotKey: accountLane.config.accountingSnapshotKey,
                 },
                 Effect.fn("runCustomerInvoiceAccessVerification")(function* (
@@ -308,6 +310,67 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                         getOwnedPage()
                       ),
                   });
+                  // With only the invoice row gone the still linked account
+                  // keeps an authorized (possibly empty) CSV export; the
+                  // account link removal is what ends the authorization, so
+                  // it is revoked separately and both downloads must then be
+                  // denied.
+                  yield* removeSyntheticAccountLink(
+                    account.userId,
+                    account.customerId
+                  );
+                  yield* Effect.tryPromise({
+                    catch: () =>
+                      workspaceE2EError(
+                        "verify customer invoice account denial failed",
+                        { operation: "verify customer invoice account denial" }
+                      ),
+                    try: () =>
+                      verifyCustomerInvoiceAccessDenied(
+                        accountLane.config.baseUrl,
+                        fixture,
+                        getOwnedPage()
+                      ),
+                  });
+                  // The account resolver relinks on the next account visit
+                  // (same convergence the unlink cases rely on); the lane's
+                  // later linked-account checks need that link restored.
+                  yield* Effect.tryPromise({
+                    catch: () =>
+                      workspaceE2EError(
+                        "reopen account page after link revocation failed",
+                        {
+                          operation:
+                            "reopen account page after link revocation",
+                        }
+                      ),
+                    try: () =>
+                      getOwnedPage().goto(
+                        new URL(
+                          "/en-US/account",
+                          accountLane.config.baseUrl
+                        ).toString(),
+                        { timeout: workspaceE2ETimeouts.browserNavigation }
+                      ),
+                  });
+                  yield* Effect.gen(function* () {
+                    const pollDeadline = Date.now() + 60_000;
+                    while (Date.now() < pollDeadline) {
+                      const relinked = yield* findLinkedDotyposCustomerId(
+                        account.userId
+                      );
+                      if (relinked === account.customerId) return;
+                      yield* Effect.sleep("5 seconds");
+                    }
+                    return yield* workspaceE2EError(
+                      "The account link did not converge after revocation",
+                      {
+                        diagnosticCode:
+                          "postgres_account_fixture_convergence_failed",
+                        operation: "restore account link after revocation",
+                      }
+                    );
+                  });
                 })
               );
             }),
@@ -316,7 +379,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           },
           {
             execute: Effect.gen(function* () {
-              const customerId = yield* readAccountReservationCustomerId();
+              const { customerId } = yield* readAccountReservationCustomerId();
               yield* verifyWorkspaceE2EMarketingPreferences({
                 baseUrl: accountLane.config.baseUrl,
                 browser,
@@ -330,7 +393,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           },
           {
             execute: Effect.gen(function* () {
-              const customerId = yield* readAccountReservationCustomerId();
+              const { customerId } = yield* readAccountReservationCustomerId();
               const [firstReservationId, secondReservationId] =
                 accountLane.journalRef.journal.dotyposReservationIds;
               if (!firstReservationId || !secondReservationId) {

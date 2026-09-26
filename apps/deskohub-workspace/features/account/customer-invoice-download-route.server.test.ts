@@ -114,4 +114,70 @@ describe("customer invoice download routes", () => {
     );
     expect(valid.headers.get("cache-control")).toBe("private, no-store");
   });
+
+  test("unexpected pdf failures answer with a private no-store json error", async () => {
+    const failingLayer = Layer.succeed(
+      CustomerInvoiceService,
+      CustomerInvoiceService.of({
+        list: Effect.succeed([]),
+        findPdf: () =>
+          Effect.fail(
+            new (class extends Data.TaggedError("CustomerInvoicesLoadError") {
+              readonly message = "synthetic storage outage secret-detail";
+            })()
+          ),
+        buildCsv: () => Effect.succeed({ fileName: "x", content: "" }),
+      } as never)
+    );
+    const GET = makeCustomerInvoicePdfGet(failingLayer);
+
+    const response = await GET(new Request("https://workspace.test/x"), {
+      params: Promise.resolve({ invoiceId: ownedInvoiceId }),
+    });
+    if (!(response instanceof Response)) throw new Error("no response");
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("content-disposition")).toBeNull();
+    const body = await response.text();
+    expect(body).not.toContain("%PDF");
+    expect(body).not.toContain("synthetic storage outage secret-detail");
+  });
+
+  test("unexpected csv failures answer with a private no-store json error", async () => {
+    const failingLayer = Layer.succeed(
+      CustomerInvoiceService,
+      CustomerInvoiceService.of({
+        list: Effect.fail(
+          new (class extends Data.TaggedError("CustomerInvoicesLoadError") {
+            readonly message = "synthetic storage outage secret-detail";
+          })()
+        ),
+        findPdf: () =>
+          Effect.fail(
+            new TestCustomerInvoiceNotFoundError({ invoiceId: ownedInvoiceId })
+          ),
+        buildCsv: () =>
+          Effect.fail(
+            new (class extends Data.TaggedError("CustomerInvoicesLoadError") {
+              readonly message = "synthetic storage outage secret-detail";
+            })()
+          ),
+      } as never)
+    );
+    const GET = makeCustomerInvoiceCsvGet(failingLayer);
+
+    const response = await GET(new Request("https://workspace.test/x"), {
+      params: Promise.resolve({ locale: "en-US" }),
+    });
+    if (!(response instanceof Response)) throw new Error("no response");
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("content-disposition")).toBeNull();
+    const body = await response.text();
+    expect(body).not.toContain("synthetic storage outage secret-detail");
+  });
 });

@@ -44,7 +44,7 @@ const paidInvoice: CustomerInvoiceSummary = {
   id: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb99",
   invoiceNumber: "WS-FV-2026-000007",
   issuedAt: "2026-07-01T09:00:00.000Z",
-  total: "1200",
+  total: "1200.50",
   currency: "CZK",
   paymentStatus: "paid",
   dueDate: null,
@@ -131,6 +131,22 @@ describe("account billing invoice history", () => {
         cleanup();
       });
     }
+
+    test(`localizes fractional invoice amounts in ${locale}`, () => {
+      const view = renderBilling(locale, states.populated);
+      // 1200.50 CZK keeps its exact minor-unit precision in both locales;
+      // these are the actual Intl.NumberFormat outputs for each locale.
+      const expected =
+        locale === "cs-CZ" ? "1\u00a0200,50\u00a0Kč" : "CZK\u00a01,200.50";
+      const row = view
+        .getByText(paidInvoice.invoiceNumber)
+        .closest("li")?.textContent;
+      expect(row).toContain(expected);
+      // The raw stored decimal and bare currency code never render as-is.
+      expect(row).not.toContain("1200.50");
+      expect(row).not.toContain("1200.50 CZK");
+      cleanup();
+    });
 
     test(`keeps working invoice controls outside future-feature wrappers in ${locale}`, () => {
       const view = renderBilling(locale, states.populated);

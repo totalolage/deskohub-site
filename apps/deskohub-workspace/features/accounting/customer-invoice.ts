@@ -75,6 +75,28 @@ export const formatInvoiceMinorUnits = (
     : `${sign}${digits.slice(0, -exponent)}.${digits.slice(-exponent)}`;
 };
 
+/**
+ * Formats a stored decimal amount for display in the active locale with the
+ * invoice's currency. The fraction digits of the stored decimal are pinned as
+ * both the minimum and the maximum so localization never rounds or pads the
+ * ledger amount; the CSV export keeps the plain decimal instead.
+ */
+export const formatInvoiceAmount = (
+  total: string,
+  currency: string,
+  locale: Locale
+): string => {
+  const fractionDigits = total.includes(".")
+    ? (total.split(".")[1]?.length ?? 0)
+    : 0;
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(Number(total));
+};
+
 const escapeCsvField = (value: string) =>
   /[",\n\r]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 

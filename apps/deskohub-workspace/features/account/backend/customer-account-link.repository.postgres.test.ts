@@ -1,15 +1,28 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { Deferred, Effect, Fiber, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   WorkspaceDatabaseAdvisoryLock,
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
+import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
+import {
+  AccountingSnapshotKeyError,
+  AccountingSnapshotKeyService,
+} from "@/features/accounting/backend/accounting-snapshot-key.service";
+import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
+import { makeTestManualInvoiceDocument } from "@/features/accounting/invoice.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { customerAccountIdSchema } from "../customer-account";
+import { AccountFeatureFlagService } from "./account-feature-flag.service";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import { CustomerAccountResolver } from "./customer-account-resolver.service";
+
+mock.module("server-only", () => ({}) as never);
+
+const { CustomerInvoiceService } = await import("./customer-invoice.service");
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -200,6 +213,188 @@ describe.skipIf(!testDatabase)(
           expect(innerCompleted).toBe(true);
         }).pipe(Effect.provide(layer))
       );
+    });
+  }
+);
+
+describe.skipIf(!testDatabase)(
+  "customer invoice storage through identity deletion on disposable Postgres",
+  () => {
+    // Matches the invoice id and owner baked into the synthetic manual
+    // invoice document so the repository's stored-document validation holds.
+    const invoiceId = "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb23";
+    const dotyposCustomerId = "dotypos-customer-manual";
+    const keyId = "TEST_KEY_1";
+    const keySecret = "synthetic-snapshot-secret";
+    const issuedAt = "2026-08-12T12:34:56.789Z";
+    const document = makeTestManualInvoiceDocument("en-US");
+
+    const makeDbLayer = () =>
+      Layer.succeed(
+        WorkspaceDatabase,
+        WorkspaceDatabase.of({ db: testDatabase!.db })
+      );
+    const makeKeysLayer = () =>
+      Layer.succeed(
+        AccountingSnapshotKeyService,
+        AccountingSnapshotKeyService.of({
+          getActive: Effect.succeed({ id: keyId as never, secret: keySecret }),
+          getById: (requested: string) =>
+            requested === keyId
+              ? Effect.succeed({ id: keyId as never, secret: keySecret })
+              : Effect.fail(
+                  new AccountingSnapshotKeyError({
+                    keyId: requested,
+                    message: "Synthetic key is unavailable.",
+                  })
+                ),
+        } as never)
+      );
+    const makeInvoiceRepositoryLayer = () =>
+      InvoiceRepository.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            makeDbLayer(),
+            makeKeysLayer(),
+            Layer.succeed(
+              AccountingDocumentSnapshotRepository,
+              AccountingDocumentSnapshotRepository.of({
+                findByPaymentAttemptId: () =>
+                  Effect.die("unused in these tests"),
+              } as never)
+            )
+          )
+        )
+      );
+    const makeInvoiceServiceLayer = () =>
+      CustomerInvoiceService.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            makeRepositoryLayer(),
+            makeInvoiceRepositoryLayer(),
+            Layer.succeed(
+              AccountFeatureFlagService,
+              AccountFeatureFlagService.of({
+                isEnabled: Effect.succeed(true),
+              } as never)
+            ),
+            Layer.succeed(
+              CustomerAccountResolver,
+              CustomerAccountResolver.of({
+                resolve: Effect.succeed({
+                  accountId: customerAccountIdSchema.make("unused-account"),
+                  dotyposCustomerId: dotyposCustomerId as never,
+                }),
+              } as never)
+            )
+          )
+        )
+      );
+
+    const seedLinkedInvoice = async () => {
+      await testDatabase!.pool.query(
+        `insert into invoices (id, workspace_reservation_id, payment_attempt_id,
+           dotypos_customer_id, invoice_number, numbering_year, numbering_sequence,
+           key_id, encrypted_document, issued_at)
+         values ($1, null, null, $2, $3, 2026, 42, $4,
+           pgp_sym_encrypt($5, $6), $7::timestamptz)`,
+        [
+          invoiceId,
+          dotyposCustomerId,
+          document.invoiceNumber,
+          keyId,
+          JSON.stringify(document),
+          keySecret,
+          issuedAt,
+        ]
+      );
+    };
+
+    const readStoredInvoiceCiphertext = async () => {
+      const rows = await testDatabase!.pool.query(
+        `select encode(encrypted_document, 'hex') as ciphertext
+         from invoices where id = $1`,
+        [invoiceId]
+      );
+      return rows.rows[0]?.ciphertext as string | undefined;
+    };
+
+    test("keeps the issued invoice row while the customer account access ends", async () => {
+      const layer = makeRepositoryLayer();
+      const account = customerAccountIdSchema.make(uniqueId());
+      await insertAuthUser(account, `f-${account}@deskohub.test`);
+      await linkRow(account, dotyposCustomerId);
+      await seedLinkedInvoice();
+
+      const ciphertextBefore = await readStoredInvoiceCiphertext();
+
+      // While the account is linked, the owner-scoped ledger lists the
+      // invoice and the row is retrievable under the owner filter.
+      const linked = await Effect.runPromise(
+        Effect.gen(function* () {
+          const invoices = yield* InvoiceRepository;
+          const summaries = yield* invoices.listForCustomer(
+            dotyposCustomerId as never
+          );
+          const invoice = yield* invoices.findForCustomer(
+            dotyposCustomerId as never,
+            invoiceId
+          );
+          return { summaries, invoice };
+        }).pipe(Effect.provide(makeInvoiceRepositoryLayer()))
+      );
+      expect(linked.summaries.map((summary) => summary.id)).toEqual([
+        invoiceId,
+      ]);
+      expect(linked.invoice?.dotyposCustomerId).toBe(dotyposCustomerId);
+
+      // The actual Better Auth identity deletion cascades the link away.
+      await testDatabase!.pool.query(`delete from auth."user" where id = $1`, [
+        account,
+      ]);
+
+      // The issued invoice row and its ciphertext survive unchanged.
+      expect(await readStoredInvoiceCiphertext()).toBe(ciphertextBefore);
+
+      // The link is gone, so the account activity state — the same guard the
+      // customer invoice service authorizes on every call — reports missing.
+      const activity = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* links.findActivityState(account);
+        }).pipe(Effect.provide(layer))
+      );
+      expect(activity).toEqual({ kind: "missing" });
+
+      // With the link gone the customer invoice service fails closed before
+      // any invoice storage is consulted, so neither the ledger listing nor
+      // a PDF download returns the surviving invoice.
+      const denial = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* CustomerInvoiceService;
+          return {
+            list: yield* Effect.result(service.list),
+            pdf: yield* Effect.result(service.findPdf(invoiceId)),
+          };
+        }).pipe(Effect.provide(makeInvoiceServiceLayer()))
+      );
+      expect(denial.list._tag).toBe("Failure");
+      if (denial.list._tag === "Failure") {
+        expect(denial.list.failure._tag).toBe(
+          "CustomerInvoicesUnavailableError"
+        );
+      }
+      expect(denial.pdf._tag).toBe("Failure");
+      if (denial.pdf._tag === "Failure") {
+        expect(denial.pdf.failure._tag).toBe(
+          "CustomerInvoicesUnavailableError"
+        );
+      }
+
+      // Cleanup: the synthetic invoice row must not leak into other tests.
+      await testDatabase!.pool.query(`delete from invoices where id = $1`, [
+        invoiceId,
+      ]);
     });
   }
 );

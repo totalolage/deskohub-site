@@ -5,6 +5,7 @@ import { FutureFeatureTooltip } from "@/features/account/components/future-featu
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import type { CustomerInvoiceListState } from "@/features/account/contracts";
 import type { CustomerInvoiceSummary } from "@/features/accounting/customer-invoice";
+import { formatInvoiceAmount } from "@/features/accounting/customer-invoice";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { formatInstantDate } from "@/shared/utils/date-time-format";
@@ -187,8 +188,12 @@ export function BillingScreen({
                     </p>
                     <p className="min-w-0 break-words text-xs leading-5 text-[#51627c]">
                       {formatInvoiceListDate(invoice.issuedAt, locale)} ·{" "}
-                      {invoice.total} {invoice.currency} ·{" "}
-                      {getInvoiceStatusCopy(invoice, locale)}
+                      {formatInvoiceAmount(
+                        invoice.total,
+                        invoice.currency,
+                        locale
+                      )}{" "}
+                      · {getInvoiceStatusCopy(invoice, locale)}
                       {invoice.dueDate
                         ? ` · ${m.invoiceManualDueDate({}, { locale })} ${formatInvoiceListPlainDate(invoice.dueDate, locale)}`
                         : ""}

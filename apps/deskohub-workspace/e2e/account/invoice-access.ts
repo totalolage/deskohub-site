@@ -162,8 +162,8 @@ export const verifyCustomerInvoiceAccess = async (
 /**
  * Asserts the download denial after the invoice fixture was revoked: the
  * previously owned id answers with the same private not-found and never a
- * document, and the CSV export is denied with the same indistinguishable
- * semantics.
+ * document, while the CSV export stays an authorized 200 for the still
+ * linked account — the revoked invoice number is simply gone from the body.
  */
 export const verifyCustomerInvoiceRevoked = async (
   baseUrl: string,
@@ -178,11 +178,40 @@ export const verifyCustomerInvoiceRevoked = async (
   expect(revokedPdf.headers()["cache-control"]).toBe(privateNoStore);
   await revokedPdf.dispose();
 
-  const revokedCsv = await page.request.get(
+  const exportedCsv = await page.request.get(
     new URL("/en-US/account/invoices/export", baseUrl).toString()
   );
-  expect(revokedCsv.status()).toBe(404);
-  expect(revokedCsv.headers()["content-type"]).not.toContain("text/csv");
-  expect(revokedCsv.headers()["cache-control"]).toBe(privateNoStore);
-  await revokedCsv.dispose();
+  expect(exportedCsv.status()).toBe(200);
+  expect(exportedCsv.headers()["content-type"]).toContain("text/csv");
+  expect(exportedCsv.headers()["cache-control"]).toBe(privateNoStore);
+  const csvBody = await exportedCsv.text();
+  expect(csvBody).not.toContain(fixture.invoiceNumber);
+  await exportedCsv.dispose();
+};
+
+/**
+ * Asserts the download denial after the account's durable link was removed:
+ * with the account authorization gone, both the PDF download and the CSV
+ * export answer with the same indistinguishable private 404.
+ */
+export const verifyCustomerInvoiceAccessDenied = async (
+  baseUrl: string,
+  fixture: WorkspaceE2ECustomerInvoiceFixture,
+  page: Page
+): Promise<void> => {
+  const deniedPdf = await page.request.get(
+    new URL(fixture.pdfPath, baseUrl).toString()
+  );
+  expect(deniedPdf.status()).toBe(404);
+  expect(deniedPdf.headers()["content-type"]).not.toContain("application/pdf");
+  expect(deniedPdf.headers()["cache-control"]).toBe(privateNoStore);
+  await deniedPdf.dispose();
+
+  const deniedCsv = await page.request.get(
+    new URL("/en-US/account/invoices/export", baseUrl).toString()
+  );
+  expect(deniedCsv.status()).toBe(404);
+  expect(deniedCsv.headers()["content-type"]).not.toContain("text/csv");
+  expect(deniedCsv.headers()["cache-control"]).toBe(privateNoStore);
+  await deniedCsv.dispose();
 };

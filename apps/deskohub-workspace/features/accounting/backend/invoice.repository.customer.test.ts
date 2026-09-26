@@ -271,7 +271,7 @@ describe("customer-scoped invoice repository", () => {
     expect(recording.statements[metadataIndex]?.params).toContain(ownerId);
   });
 
-  test("keeps the stored invoice rows through the account deletion flow", async () => {
+  test("proves the deletion flow never touches invoice storage before the identity deletion", async () => {
     const { recording, repository } = await makeHarness();
     // The real link repository over the recording database executes the
     // actual deletion SQL; the provider call is the only external stub.

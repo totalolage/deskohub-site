@@ -44,6 +44,20 @@ const privateNotFoundResponse = () => {
   return response;
 };
 
+/**
+ * Unexpected route failures answer with the same private no-store cache
+ * contract as every other answer from these routes; the recovery is local so
+ * the shared default for other workspace routes stays untouched.
+ */
+const privateFailureResponse = (failure: WorkspaceRouteFailure) => {
+  const response = NextResponse.json(
+    { error: failure.publicMessage },
+    { status: failure.statusCode }
+  );
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
+};
+
 const decodeRouteInvoiceId = Schema.decodeUnknownOption(invoiceIdSchema);
 
 const toRouteFailure = (publicMessage: string) => (cause: unknown) =>
@@ -87,7 +101,13 @@ export const makeCustomerInvoicePdfGet = (
               ],
               () => Effect.succeed(privateNotFoundResponse())
             ),
-            Effect.catch(toRouteFailure("Customer invoice could not be loaded"))
+            Effect.catch((cause) =>
+              Effect.succeed(
+                privateFailureResponse(
+                  toRouteFailure("Customer invoice could not be loaded")(cause)
+                )
+              )
+            )
           );
         }
       )
@@ -124,8 +144,14 @@ export const makeCustomerInvoiceCsvGet = (
             Effect.catchTag("CustomerInvoicesUnavailableError", () =>
               Effect.succeed(privateNotFoundResponse())
             ),
-            Effect.catch(
-              toRouteFailure("Customer invoices could not be exported")
+            Effect.catch((cause) =>
+              Effect.succeed(
+                privateFailureResponse(
+                  toRouteFailure("Customer invoices could not be exported")(
+                    cause
+                  )
+                )
+              )
             )
           );
         }
