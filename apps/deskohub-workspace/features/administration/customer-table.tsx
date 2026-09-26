@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentProps, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { m } from "@/features/i18n";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
@@ -36,14 +36,13 @@ const consentBadge = (
 ): ReactNode => (
   <StatusBadge
     tone={
-      {
-        granted: "positive",
-        never: "neutral",
-        withdrawn: "attention",
-      } as const satisfies Record<
-        AdministrationCustomerConsentState,
-        ComponentProps<typeof StatusBadge>["tone"]
-      >
+      (
+        {
+          granted: "positive",
+          never: "neutral",
+          withdrawn: "attention",
+        } as const
+      )[consent]
     }
   >
     {consentLabel(consent)}
