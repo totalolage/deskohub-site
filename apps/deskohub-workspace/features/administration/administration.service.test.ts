@@ -990,6 +990,8 @@ describe("AdministrationService", () => {
       "cancelled-local-today",
       "boundary-start-today",
       "boundary-end-today",
+      "cancelled-only-today",
+      "today-two",
     ];
     const listInputs: {
       readonly order?: string;
@@ -1048,6 +1050,8 @@ describe("AdministrationService", () => {
       "cancelled-local-today": "customer-cancelled-local",
       "boundary-start-today": "customer-boundary-start",
       "boundary-end-today": "customer-boundary-end",
+      "cancelled-only-today": "customer-cancelled-only",
+      "today-two": "customer-stale",
     } as const;
     const rowStates = {
       "held-today": {
@@ -1127,6 +1131,16 @@ describe("AdministrationService", () => {
         currentDate,
         17
       ),
+      providerReservation("today-two", "customer-new-a", currentDate, 18),
+      {
+        ...providerReservation(
+          "cancelled-only-today",
+          "customer-cancelled-only",
+          currentDate,
+          19
+        ),
+        status: "CANCELLED" as const,
+      },
     ];
     const loadOverview = () =>
       Effect.gen(function* () {
@@ -1194,17 +1208,17 @@ describe("AdministrationService", () => {
     expect(customerListInputs).toEqual([
       {
         ids: [
+          "customer-new-a",
           "customer-boundary-end",
           "customer-boundary-start",
-          "customer-new-a",
           "customer-returning",
         ],
       },
     ]);
     expect(result.today).toEqual({
-      completed: 3,
+      completed: 4,
       unavailable: false,
-      value: 8,
+      value: 10,
     });
     expect(result.upcoming).toEqual({
       completed: 1,
@@ -1212,12 +1226,21 @@ describe("AdministrationService", () => {
       value: 1,
     });
     expect(result.lastSevenDays).toEqual({
-      completed: 4,
+      completed: 5,
       unavailable: false,
-      value: 9,
+      value: 11,
     });
     expect(result.uniqueCustomers).toEqual({
       customers: [
+        {
+          customer: {
+            displayName: "new-a",
+            email: null,
+            id: "customer-new-a",
+            phone: null,
+          },
+          customerId: "customer-new-a",
+        },
         {
           customer: {
             displayName: "boundary-end",
@@ -1235,15 +1258,6 @@ describe("AdministrationService", () => {
             phone: null,
           },
           customerId: "customer-boundary-start",
-        },
-        {
-          customer: {
-            displayName: "new-a",
-            email: null,
-            id: "customer-new-a",
-            phone: null,
-          },
-          customerId: "customer-new-a",
         },
       ],
       unavailable: false,
