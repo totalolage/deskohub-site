@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { m } from "@/features/i18n";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
@@ -31,20 +31,19 @@ const consentLabel = (consent: AdministrationCustomerConsentState) => {
   }
 };
 
+const consentTone = {
+  granted: "positive",
+  never: "neutral",
+  withdrawn: "attention",
+} as const satisfies Record<
+  AdministrationCustomerConsentState,
+  ComponentProps<typeof StatusBadge>["tone"]
+>;
+
 const consentBadge = (
   consent: AdministrationCustomerConsentState
 ): ReactNode => (
-  <StatusBadge
-    tone={
-      consent === "granted"
-        ? "positive"
-        : consent === "withdrawn"
-          ? "attention"
-          : "neutral"
-    }
-  >
-    {consentLabel(consent)}
-  </StatusBadge>
+  <StatusBadge tone={consentTone[consent]}>{consentLabel(consent)}</StatusBadge>
 );
 
 const columns: readonly AdministrationDataTableColumn<AdministrationCustomerSummary>[] =
@@ -167,7 +166,9 @@ export function AdministrationCustomerTable({
                   {item.reservationCount === 1 ? "reservation" : "reservations"}{" "}
                   · Updated {formatAdministrationDateTime(item.lastActivityAt)}
                 </p>
-                <div className="mt-2">{consentBadge(item.marketingConsent)}</div>
+                <div className="mt-2">
+                  {consentBadge(item.marketingConsent)}
+                </div>
               </Link>
             </li>
           ))}

@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { m } from "@/features/i18n";
 import {
   AdministrationCustomerTable,
   AdministrationFilterField,
@@ -21,6 +20,7 @@ import {
   loadAdministrationCustomersPage,
 } from "@/features/administration/page-data.server";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
+import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 
 export default function DiscountCustomersAdminPage({

@@ -8,6 +8,7 @@ import {
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
+import type { AdministrationCustomerListInput } from "@/features/administration/administration.service";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -27,7 +28,7 @@ type CustomerItem = {
   reservationCount: number;
 };
 
-let mockInput: Record<string, unknown>;
+let mockInput: AdministrationCustomerListInput;
 let mockItems: readonly CustomerItem[];
 
 const resetMocks = () => {
@@ -186,9 +187,7 @@ describe("DiscountCustomersAdminPage", () => {
       })
     );
 
-    expect(
-      view.getByText("No customers have reservations yet.")
-    ).toBeDefined();
+    expect(view.getByText("No customers have reservations yet.")).toBeDefined();
   });
 
   test("preserves the consent filter in pagination and sort links", async () => {

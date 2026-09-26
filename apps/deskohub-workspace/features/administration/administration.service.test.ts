@@ -855,9 +855,7 @@ describe("AdministrationService", () => {
         sort: "reservations",
       });
       expect(result.total).toBe(3);
-      expect(result.items[0]?.marketingConsent).toBe(
-        consentCase.expectedState
-      );
+      expect(result.items[0]?.marketingConsent).toBe(consentCase.expectedState);
 
       for (const select of selects) {
         expect(select.joins).toHaveLength(1);
