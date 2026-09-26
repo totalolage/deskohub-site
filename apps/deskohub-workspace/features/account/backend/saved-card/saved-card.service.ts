@@ -11,6 +11,10 @@ import {
   NexiOrderIdSchema,
   NexiService,
 } from "@deskohub/nexi";
+// Build-time module evaluation (Next "Collecting page data") runs before the
+// app instrumentation installs the global Temporal, so this module binds the
+// polyfill explicitly instead of relying on the global.
+import { Temporal as TemporalPolyfill } from "@js-temporal/polyfill";
 import { Context, Data, Effect, Layer, Match, Result } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import type { CustomerCardEnrollmentRow } from "@/db/schema";
@@ -42,7 +46,7 @@ import {
 } from "./saved-card-contract.repository";
 import { getSavedCardCustomerReference } from "./saved-card-customer-reference";
 
-const enrollmentFreshness = Temporal.Duration.from({ minutes: 30 });
+const enrollmentFreshness = TemporalPolyfill.Duration.from({ minutes: 30 });
 
 /** Upper bound for provider reconciliations triggered by one listing. */
 const pendingReconciliationBound = 8;
