@@ -112,17 +112,35 @@ export function AvatarControl({
     });
   };
 
+  // Server-side input validation and transport failures both surface in the
+  // aria-live status region while the previous image or initials stay put.
+  const reportFailure = (message: string) =>
+    setStatus({ kind: "failed", message });
+
   const upload = useWorkspaceAction(uploadCustomerAvatar, {
     actionName: "account.upload-avatar",
     onSuccess: ({ data }) => {
       if (data) handleOutcome(data);
     },
+    onError: ({ error }) => {
+      reportFailure(
+        error.validationErrors
+          ? m.accountProfileAvatarErrorFileMissing({}, { locale })
+          : m.accountProfileAvatarErrorGeneric({}, { locale })
+      );
+    },
+    onTransportError: () =>
+      reportFailure(m.accountProfileAvatarErrorGeneric({}, { locale })),
   });
   const remove = useWorkspaceAction(removeCustomerAvatar, {
     actionName: "account.remove-avatar",
     onSuccess: ({ data }) => {
       if (data) handleOutcome(data);
     },
+    onError: () =>
+      reportFailure(m.accountProfileAvatarErrorGeneric({}, { locale })),
+    onTransportError: () =>
+      reportFailure(m.accountProfileAvatarErrorGeneric({}, { locale })),
   });
 
   const isPending = upload.isExecuting || remove.isExecuting;

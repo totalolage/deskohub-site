@@ -21,6 +21,7 @@
   "accountProfileAvatarUpdated": "Profile photo updated.",
   "accountProfileAvatarRemoved": "Profile photo removed.",
   "accountProfileAvatarErrorRetryable": "We could not update your profile photo. Please try again.",
+  "accountProfileAvatarErrorGeneric": "We could not save your profile photo. Please check your connection and try again.",
   "accountProfileAvatarErrorFileMissing": "Choose an image to upload.",
   "accountProfileAvatarErrorFileTooLarge": "That image is larger than 2 MB. Choose a smaller file.",
   "accountProfileAvatarErrorUnsupportedFormat": "That file type is not supported. Use JPG, PNG or WebP.",
