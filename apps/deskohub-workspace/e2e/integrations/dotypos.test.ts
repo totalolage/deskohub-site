@@ -5,9 +5,12 @@ import {
 } from "@deskohub/dotypos";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Effect } from "effect";
+import type { DatasourceConfig } from "../config";
+import { workspaceE2ETimeouts } from "../timeouts";
 import {
   dotyposTimestampMatches,
   selectE2EDotyposDiscountGroup,
+  waitForCancelledDotyposReservations,
   waitForConfirmedDotyposReservation,
   waitForDotyposCancellationConvergence,
   waitForDotyposCustomerDiscountGroup,
@@ -89,16 +92,98 @@ test("waits for cancelled reservations to leave active inventory", async () => {
   expect(reads).toBe(3);
 });
 
-test("uses the active-overlap read model for cleanup convergence", async () => {
-  const source = await Bun.file(
-    new URL("./dotypos.ts", import.meta.url)
-  ).text();
+// The two fake-reader tests above only poll the supplied read effect; they
+// prove the polling wrapper, not which read model the cleanup adapter wires
+// in. The adapter-level test below executes waitForCancelledDotyposReservations
+// against a recording Dotypos API server to prove the overlapping-interval
+// read model is the one driving cleanup convergence.
 
-  expect(
-    source.match(/dotypos\.listActiveReservationsOverlapping\(interval\)/g)
-  ).toHaveLength(3);
-  expect(source).not.toContain("dotypos.listReservations(),");
-});
+test("the cleanup adapter polls the overlapping-interval read model to convergence", async () => {
+  const reservationId = DotyposReservationIdSchema.make("555000111");
+  const interval = {
+    startDate: new Date("2099-01-01T10:00:00.000Z"),
+    endDate: new Date("2099-01-01T12:00:00.000Z"),
+  };
+  const fakeReservation = (status: "CONFIRMED" | "CANCELLED") => ({
+    id: "555000111",
+    _branchId: "11111111",
+    _cloudId: "cloud-id",
+    startDate: "2099-01-01T11:00:00.000Z",
+    endDate: "2099-01-01T13:00:00.000Z",
+    seats: "2",
+    status,
+  });
+  const listCalls: URL[] = [];
+  const requestPaths: string[] = [];
+  let poll = 0;
+
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const url = new URL(request.url);
+      requestPaths.push(`${request.method} ${url.pathname}`);
+      if (url.pathname === "/signin/token") {
+        return Response.json({ accessToken: "access-token" });
+      }
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        poll += 1;
+        listCalls.push(url);
+        return Response.json({
+          data: [fakeReservation(poll === 1 ? "CONFIRMED" : "CANCELLED")],
+        });
+      }
+      return new Response("Not found", { status: 404 });
+    },
+  });
+
+  try {
+    const config: DatasourceConfig = {
+      databaseUrl: "postgres://localhost/fake",
+      databaseUrlUnpooled: "postgres://localhost/fake",
+      dotypos: {
+        apiTimeout: 1_000,
+        apiUrl: `http://127.0.0.1:${server.port}`,
+        branchId: "11111111",
+        clientId: "e2e-client",
+        clientSecret: "e2e-client-secret",
+        cloudId: "cloud-id",
+        employeeId: "22222222",
+        refreshToken: "e2e-refresh-token",
+      },
+      expectedCurrency: "CZK",
+      nexiApiOrigin: "https://xpaysandbox.nexigroup.com",
+      timeouts: workspaceE2ETimeouts,
+    };
+
+    await Effect.runPromise(
+      waitForCancelledDotyposReservations(config, [reservationId], interval)
+    );
+
+    // The adapter polled the active-overlap listing until the target left it.
+    expect(listCalls.length).toBeGreaterThanOrEqual(2);
+    for (const url of listCalls) {
+      expect(url.searchParams.get("filter")).toBe(
+        [
+          "status|in|NEW,CONFIRMED",
+          `startDate|lt|${interval.endDate.getTime()}`,
+          `endDate|gt|${interval.startDate.getTime()}`,
+        ].join(";")
+      );
+    }
+
+    // The broad reader is never used: no unfiltered reservation listing and
+    // no per-reservation reads — only the token endpoint and the overlap list.
+    expect(
+      requestPaths.every(
+        (path) =>
+          path === "POST /signin/token" ||
+          path === "GET /clouds/cloud-id/reservations"
+      )
+    ).toBe(true);
+  } finally {
+    server.stop(true);
+  }
+}, 20_000);
 
 test("waits for a customer discount-group change to become readable", async () => {
   let reads = 0;

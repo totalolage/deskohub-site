@@ -4,7 +4,12 @@ import {
   MultilineEmailText,
   renderBoardgameEmailHtml,
 } from "@/features/email/backend/email-rendering";
+import type { Locale } from "@/features/i18n";
+import { m } from "@/features/i18n/paraglide/messages";
 import { siteConstants } from "@/shared/utils/constants";
+
+// Business email copy is Czech regardless of the customer locale.
+const businessEmailLocale: Locale = "cs-CZ";
 
 const containerStyle = {
   fontFamily: "Arial, sans-serif",
@@ -50,45 +55,64 @@ export const renderBusinessContactEmailHtml = ({
 }) =>
   renderBoardgameEmailHtml(
     <ContactEmailContainer>
-      <h2 style={headingStyle}>Nová zpráva z kontaktního formuláře</h2>
+      <h2 style={headingStyle}>
+        {m["contact.email.businessHeading"](undefined, {
+          locale: businessEmailLocale,
+        })}
+      </h2>
 
-      <h3 style={subheadingStyle}>Kontaktní údaje:</h3>
+      <h3 style={subheadingStyle}>
+        {m["contact.email.contactDetailsHeading"](undefined, {
+          locale: businessEmailLocale,
+        })}
+      </h3>
       <table style={tableStyle}>
         <tbody>
           <BoardgameEmailRow
-            label="Jméno:"
+            label={m["contact.email.nameLabel"](undefined, {
+              locale: businessEmailLocale,
+            })}
             value={name}
             cellStyle={cellStyle}
           />
           <BoardgameEmailRow
-            label="Email:"
+            label={m["contact.email.emailLabel"](undefined, {
+              locale: businessEmailLocale,
+            })}
             value={email}
             cellStyle={cellStyle}
           />
           {phone ? (
             <BoardgameEmailRow
-              label="Telefon:"
+              label={m["contact.email.phoneLabel"](undefined, {
+                locale: businessEmailLocale,
+              })}
               value={phone}
               cellStyle={cellStyle}
             />
           ) : null}
           <BoardgameEmailRow
-            label="Datum a čas:"
+            label={m["contact.email.dateTimeLabel"](undefined, {
+              locale: businessEmailLocale,
+            })}
             value={formattedDate}
             cellStyle={cellStyle}
           />
         </tbody>
       </table>
 
-      <h3 style={{ ...subheadingStyle, marginTop: "20px" }}>Zpráva:</h3>
+      <h3 style={{ ...subheadingStyle, marginTop: "20px" }}>
+        {m["contact.email.messageHeading"](undefined, {
+          locale: businessEmailLocale,
+        })}
+      </h3>
       <div style={messageStyle}>
         <MultilineEmailText value={message} />
       </div>
 
       <hr style={hrStyle} />
       <p style={footerStyle}>
-        Tato zpráva byla automaticky vygenerována z kontaktního formuláře na
-        webu DeskoHub.
+        {m["contact.email.footer"](undefined, { locale: businessEmailLocale })}
       </p>
     </ContactEmailContainer>
   );
@@ -97,40 +121,45 @@ export const renderContactConfirmationEmailHtml = ({
   locale,
   message,
 }: {
-  readonly locale?: string;
+  readonly locale: Locale;
   readonly message: string;
-}) =>
-  renderBoardgameEmailHtml(
+}) => {
+  const contactLine = m["contact.email.confirmationContactLine"](
+    { contactEmail: siteConstants.contact.contactEmail },
+    { locale: locale }
+  );
+  return renderBoardgameEmailHtml(
     <ContactEmailContainer>
       <h2 style={headingStyle}>
-        {locale === "cs-CZ" ? "Potvrzení přijetí zprávy" : "Message Received"}
+        {m["contact.email.confirmationHeading"](undefined, {
+          locale: locale,
+        })}
       </h2>
       <p>
-        {locale === "cs-CZ"
-          ? "Děkujeme za vaši zprávu. Přijali jsme ji a brzy vás budeme kontaktovat."
-          : "Thank you for your message. We have received it and will contact you soon."}
+        {m["contact.email.confirmationThankYou"](undefined, {
+          locale: locale,
+        })}
       </p>
 
       <h3 style={subheadingStyle}>
-        {locale === "cs-CZ" ? "Shrnutí vaší zprávy:" : "Your Message Summary:"}
+        {m["contact.email.confirmationSummaryHeading"](undefined, {
+          locale: locale,
+        })}
       </h3>
       <div style={messageStyle}>
         <MultilineEmailText value={message} />
       </div>
 
-      <p style={{ marginTop: "20px" }}>
-        {locale === "cs-CZ"
-          ? `Pokud máte jakékoliv další dotazy, neváhejte nás kontaktovat na emailu ${siteConstants.contact.contactEmail}.`
-          : `If you have any other questions, please don't hesitate to contact us at ${siteConstants.contact.contactEmail}.`}
-      </p>
+      <p style={{ marginTop: "20px" }}>{contactLine}</p>
 
       <hr style={hrStyle} />
       <p style={footerStyle}>
         DeskoHub
         <br />
-        {locale === "cs-CZ"
-          ? "Váš prostor pro práci a kreativitu"
-          : "Your space for work and creativity"}
+        {m["contact.email.footerTagline"](undefined, {
+          locale: locale,
+        })}
       </p>
     </ContactEmailContainer>
   );
+};

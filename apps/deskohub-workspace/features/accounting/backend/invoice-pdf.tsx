@@ -22,6 +22,7 @@ import {
   type InvoicePresentation,
   type InvoicePresentationParty,
 } from "@/features/accounting/invoice-presentation";
+import { m } from "@/features/i18n";
 import {
   getInvoicePaymentRequest,
   type InvoicePaymentRequest,
@@ -180,22 +181,13 @@ const PaymentRequest = ({
   readonly payment: InvoicePaymentRequest;
   readonly locale: "cs-CZ" | "en-US";
 }): ReactElement => {
-  const labels =
-    locale === "cs-CZ"
-      ? {
-          heading: "Platební údaje",
-          account: "Účet",
-          iban: "IBAN",
-          variableSymbol: "Variabilní symbol",
-          dueDate: "Splatnost",
-        }
-      : {
-          heading: "Payment details",
-          account: "Account",
-          iban: "IBAN",
-          variableSymbol: "Variable symbol",
-          dueDate: "Due date",
-        };
+  const labels = {
+    heading: m.invoicePaymentRequestHeading({}, { locale }),
+    account: m.invoicePaymentRequestAccount({}, { locale }),
+    iban: m.invoicePaymentRequestIban({}, { locale }),
+    variableSymbol: m.invoicePaymentRequestVariableSymbol({}, { locale }),
+    dueDate: m.invoicePaymentRequestDueDate({}, { locale }),
+  };
   return (
     <View style={styles.paymentRequest} wrap={false}>
       <View style={styles.paymentDetails}>

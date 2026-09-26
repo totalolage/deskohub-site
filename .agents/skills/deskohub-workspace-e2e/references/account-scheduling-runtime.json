@@ -1,0 +1,551 @@
+{
+  "schemaVersion": 1,
+  "artifact": "account-scheduling-runtime",
+  "scope": {
+    "purpose": "Bounded evidence for the account lane dependency-phase change",
+    "deployedEvidence": true,
+    "syntheticEvidence": true,
+    "notAFullE2EReport": true
+  },
+  "source": {
+    "mode": "read-only",
+    "description": "gh run view job and filtered log metadata",
+    "metadataCommand": "gh run view <id> --attempt <n> --json headSha,jobs,status,conclusion"
+  },
+  "deployedRuns": [
+    {
+      "role": "base",
+      "headSha": "b87d48db5a47eb610aa3d656a0b3f2a232cffc4e",
+      "runId": "34444974359",
+      "attempt": 1,
+      "conclusion": "success",
+      "e2e": {
+        "timeWindowUtc": {
+          "start": "06:24:49",
+          "end": "06:53:56"
+        },
+        "durationSeconds": 1747,
+        "setupSeconds": 39,
+        "testJobSeconds": 1794,
+        "tests": {
+          "passed": 72,
+          "skipped": 1
+        }
+      }
+    },
+    {
+      "role": "earlier",
+      "headSha": "1458d852b11bb51a1bb853f114373aca43ae3830",
+      "runId": "34090903415",
+      "attempt": 1,
+      "e2e": {
+        "durationSeconds": 1686,
+        "setupSeconds": 31
+      }
+    },
+    {
+      "role": "earlier",
+      "headSha": "a9c8e323e5497198bca4728787ae246f8268f42e",
+      "runId": "34110280202",
+      "attempt": 2,
+      "e2e": {
+        "durationSeconds": 1681,
+        "setupSeconds": 34
+      }
+    },
+    {
+      "role": "main-comparison",
+      "headSha": "8a0db5e1b9678942c748325ab09da802819a49d9",
+      "runId": "34032339011",
+      "e2e": {
+        "durationSeconds": 441,
+        "tests": {
+          "passed": 61,
+          "skipped": 1
+        }
+      }
+    }
+  ],
+  "comparability": {
+    "notLikeForLike": true,
+    "reason": "The main comparison has no account cases; the base has the same 36 checkout cases plus 9 account cases and 2 other tests.",
+    "caseCounts": {
+      "mainCheckout": 36,
+      "mainAccount": 0,
+      "baseCheckout": 36,
+      "baseAccount": 9,
+      "baseOther": 2
+    }
+  },
+  "accountCaseDurations": {
+    "runId": "34444974359",
+    "reportedRounded": true,
+    "order": "workspaceE2EAccountCaseIds",
+    "cases": [
+      {
+        "id": "account-anonymous-redirect",
+        "duration": "2.3s"
+      },
+      {
+        "id": "account-sign-in-form",
+        "duration": "6.1s"
+      },
+      {
+        "id": "account-magic-link-delivery",
+        "duration": "9.1s"
+      },
+      {
+        "id": "account-profile-completion",
+        "duration": "13.5s"
+      },
+      {
+        "id": "account-reservation-transitions",
+        "duration": "38.6s"
+      },
+      {
+        "id": "account-deletion-marker-reauth",
+        "duration": "16.5s"
+      },
+      {
+        "id": "account-deletion-and-reactivation",
+        "duration": "10.2m",
+        "mandatoryQuiet": true
+      },
+      {
+        "id": "account-session-lifecycle",
+        "duration": "10.3m",
+        "mandatoryQuiet": true
+      },
+      {
+        "id": "account-linking-variants",
+        "duration": "26.2s"
+      }
+    ]
+  },
+  "phaseDurations": {
+    "runId": "34444974359",
+    "reportedRounded": true,
+    "readiness": "4.9s",
+    "fixtureSeeding": "9.4s",
+    "providerPreparation": "1.4s",
+    "invoicePersistence": "34.7s",
+    "availabilityPreparation": {
+      "cowork": "4.2s",
+      "meetingRoom": "4.1s",
+      "office": "1.9s"
+    },
+    "plan": "6ms",
+    "sharedFixture": "20.6s",
+    "cleanup": "12.5s"
+  },
+  "fixtureIsolation": {
+    "accountIdentities": "exact synthetic identities",
+    "accountFixtureOffsetDays": 120,
+    "checkoutFixtureWindowDays": {
+      "min": 14,
+      "max": 90
+    },
+    "setupDependencyRetainedTransitively": true,
+    "teardownWaitsForDescendants": true
+  },
+  "phaseBarrierChange": {
+    "playwrightVersion": "1.61",
+    "baselineAccountAuthDependency": ["checkout-setup"],
+    "candidateAccountAuthDependency": ["checkout-plan"],
+    "candidatePhasePeers": [
+      "checkout-non-payment",
+      "checkout-payment-1",
+      "checkout-payment-2",
+      "checkout-payment-3"
+    ]
+  },
+  "syntheticSchedulerEvidence": {
+    "deployed": false,
+    "interpretation": "Each row reports baseline to candidate values.",
+    "runs": [
+      {
+        "runId": "run-kUpJq2",
+        "baseline": {
+          "wallMs": 10535
+        },
+        "candidate": {
+          "wallMs": 8550
+        },
+        "overlapMs": 1912
+      },
+      {
+        "runId": "run-yFLkA3",
+        "baseline": {
+          "wallMs": 10572
+        },
+        "candidate": {
+          "wallMs": 8516
+        },
+        "overlapMs": 1906
+      }
+    ],
+    "interruption": {
+      "acquired": 13,
+      "finalized": 13,
+      "successful": 26,
+      "lateAdmissions": 0
+    }
+  },
+  "recoveryEvidence": {
+    "incident": "f96",
+    "packageRunnerFailure": {
+      "command": "bun run test scripts/workspace-e2e-scheduling.test.ts",
+      "invokesPreload": true,
+      "parallel": 1,
+      "isolatedBunVersion": "1.3.14",
+      "failure": "dynamic import TLA config default TDZ"
+    },
+    "controlledMatrix": {
+      "preloadAlone": "passes",
+      "parallelAlone": "fails"
+    },
+    "harnessRecovery": {
+      "freshBoundedBunProcess": true,
+      "importsRealConfig": true,
+      "validates": ["projects", "controls JSON"],
+      "actualSchedulerChanged": false
+    },
+    "verification": {
+      "packageCommandOwnerRuns": {
+        "command": "bun run test scripts/account-e2e-graph.test.ts scripts/workspace-e2e-workflow.test.ts e2e/account/rate-budget.test.ts scripts/workspace-e2e-scheduling.test.ts",
+        "runs": [
+          {
+            "run": 1,
+            "passed": 46,
+            "assertions": 431
+          },
+          {
+            "run": 2,
+            "passed": 46,
+            "assertions": 431
+          }
+        ]
+      },
+      "cleanBareRun": {
+        "command": "bun test scripts/workspace-e2e-scheduling.test.ts",
+        "passed": 1
+      },
+      "fullTurboRun": {
+        "command": "bun turbo test --filter=deskohub-workspace",
+        "generatedDependenciesPresent": true,
+        "passed": 2774,
+        "skipped": 123,
+        "failed": 1,
+        "errors": 1,
+        "assertions": 10832,
+        "tests": 2898,
+        "files": 385,
+        "unrelatedFailure": {
+          "file": "scripts/account-visual/run.test.ts",
+          "line": 1267,
+          "test": "controlled fixture header probe rejects a narrow single-word flex heading",
+          "timeoutSeconds": 120,
+          "inScope": false
+        }
+      },
+      "fullUnitNonGreen": {
+        "visualTimeout": "preserved",
+        "postgresqlSkips": "preserved"
+      },
+      "rootTypecheck": {
+        "command": "bun turbo typecheck --filter=deskohub-workspace",
+        "generatedDependenciesPresent": true,
+        "status": "passed",
+        "scope": "suggestions only",
+        "supersedes": "preliminary missing-generated type errors"
+      },
+      "earlierFullRunsValid": false,
+      "earlierFullRunsInvalidReason": "Generated dependencies were absent."
+    },
+    "recoveryReview": {
+      "status": "APPROVED",
+      "previousStatus": "AWAITING_REVIEW",
+      "reviewerProvenance": {
+        "sessionId": "ses_f759529fcffeYdhIDqjVbv6wIr",
+        "decision": "APPROVED",
+        "basis": "recoveryEvidence"
+      },
+      "doesNotOverwriteReleaseApproval": true,
+      "reason": "Recovery evidence approved by reviewer."
+    }
+  },
+  "failFastTeardown": {
+    "playwrightVersion": "1.61",
+    "baselineTeardownAdmitted": false,
+    "candidateTeardownAdmitted": false,
+    "unchanged": true,
+    "productionCleanupFollowUp": "Keep production cleanup as a parent follow-up; do not hide it in this scheduler artifact."
+  },
+  "parentOperationsEvidence": {
+    "workerId": "ses_f80052fd5ffeG5fp9lOkgBonLM",
+    "deployment": {
+      "deploymentId": "6365818018",
+      "actor": "vercel[bot]",
+      "status": "success",
+      "headSha": "b87d48db5a47eb610aa3d656a0b3f2a232cffc4e",
+      "immutableUrl": "https://deskohub-workspace-site-iq3riamvq-filip-kalny-projects.vercel.app",
+      "workflowRunId": "34444974359",
+      "attempt": 1,
+      "sameHeadSha": true,
+      "branchStatus": "completed",
+      "branchConclusion": "success"
+    },
+    "runtimeTransport": {
+      "service": "Preview",
+      "serviceVersion": "b87d48db5a47eb610aa3d656a0b3f2a232cffc4e",
+      "workflowRunId": "34444974359",
+      "attempt": 1,
+      "events": [
+        {
+          "event": "Using Console email provider",
+          "level": "info",
+          "count": 200
+        },
+        {
+          "event": "Using Resend email provider",
+          "count": 0
+        },
+        {
+          "event": "Resend-send",
+          "count": 0
+        }
+      ],
+      "transportBoundary": {
+        "reservationCheckout": "Console",
+        "auth": "direct Resend",
+        "authBoundary": "unchanged independent boundary"
+      },
+      "establishesTransportIsolation": true
+    },
+    "provenance": {
+      "sources": [
+        "GitHub API",
+        "PostHog CLI 0.8.4 logs-count",
+        "PostHog CLI 0.8.4 query-logs"
+      ],
+      "redaction": "No credentials, PII, or raw payloads."
+    }
+  },
+  "releaseApprovalGate": {
+    "status": "APPROVED",
+    "approved": true,
+    "evidenceSatisfied": true,
+    "evidenceSource": "parentOperationsEvidence",
+    "targetHeadSha": "b87d48db5a47eb610aa3d656a0b3f2a232cffc4e",
+    "effectiveEmailProvider": {
+      "reservationCheckout": "Console",
+      "auth": "direct Resend",
+      "authBoundary": "unchanged independent boundary"
+    },
+    "configurationFallback": "Resend when EMAIL_API_KEY is present; this fallback is not console-provider evidence",
+    "configurationFallbackIsNotConsoleEvidence": true,
+    "evidenceScope": {
+      "transport": "Exact immutable target transport only",
+      "targetHeadSha": "b87d48db5a47eb610aa3d656a0b3f2a232cffc4e",
+      "invalidatedBy": "Any subsequent transport configuration change",
+      "revalidationRequired": true
+    },
+    "requiredBeforeApproval": [],
+    "deployedPerformanceVerified": false,
+    "independentReview": {
+      "status": "APPROVED",
+      "previousStatus": "AWAITING_REVIEW",
+      "reviewerProvenance": {
+        "sessionId": "ses_f759529fcffeYdhIDqjVbv6wIr",
+        "decision": "APPROVED",
+        "basis": "parentOperationsEvidence"
+      },
+      "scope": "Transport evidence only",
+      "transportFinding": "closed",
+      "interruptionFinding": "closed"
+    },
+    "doNotReconcileEnvironmentGuidanceUntilConfirmed": false
+  },
+  "timingLimits": [
+    "Summary spans are rounded.",
+    "Buffered stdout cannot establish wall timestamps or sum concurrent durations.",
+    "Screenshot capture is not measurable because no APM tool was available."
+  ],
+  "reproduction": {
+    "cwd": "apps/deskohub-workspace",
+    "command": "bun run test scripts/workspace-e2e-scheduling.test.ts",
+    "scope": "Single scheduler test file",
+    "classification": "Synthetic scheduler harness only; not deployed runtime evidence."
+  },
+  "newCandidate": {
+    "recordType": "new-candidate",
+    "candidateId": "account-lane-quiet-window-removal",
+    "reviewStatus": "APPROVED",
+    "reviewScope": "CODE_COVERAGE_ONLY",
+    "benchmarkStatus": "PENDING_OPERATOR_BENCHMARK",
+    "runtimeClaimStatus": "NOT_CLAIMED",
+    "targetHeadSha": null,
+    "targetHeadShaStatus": "Not assigned until the candidate is committed.",
+    "independentReview": {
+      "status": "APPROVED",
+      "scope": "CODE_COVERAGE_ONLY",
+      "reviewerProvenance": {
+        "sessionId": "ses_f6f475f0cffemdkQldLsAf3ZnX",
+        "decision": "APPROVED",
+        "basis": "code coverage candidate"
+      },
+      "reviewedPatchRefs": {
+        "fixedParentHeadSha": "805d7f60dff07d9a0bedf88803f79cab31cdaf9f",
+        "trackedPatchPrefix": "2845fe",
+        "newTestPatchPrefix": "b290"
+      },
+      "runtimeBudgetApproval": false
+    },
+    "parentBaseline": {
+      "headSha": "805d7f60dff07d9a0bedf88803f79cab31cdaf9f",
+      "e2e": {
+        "runId": "34593791781",
+        "conclusion": "success",
+        "passed": 76,
+        "skipped": 1,
+        "testJobDuration": "27m18s",
+        "testJobDurationSeconds": 1638
+      },
+      "ci": {
+        "runId": "34593548635",
+        "status": "green",
+        "conclusion": "success",
+        "passed": 3033
+      }
+    },
+    "candidateChange": {
+      "removedMandatoryQuietWindows": 2,
+      "operationLedger": {
+        "parent": {
+          "send": 9,
+          "verify": 8
+        },
+        "candidate": {
+          "send": 4,
+          "verify": 4
+        }
+      },
+      "localRateBudget": {
+        "operationsPerWindow": 4,
+        "productionMaximum": 5,
+        "windowSeconds": 600,
+        "headroomOperations": 1
+      },
+      "productionLimitsChanged": false,
+      "headroomChanged": false,
+      "rateLimitStateCleared": false,
+      "resendConfigurationChanged": false
+    },
+    "coverageEquivalence": {
+      "firstAcceptedMainLinkReuse": {
+        "parentBehavior": "The delivery case issued another main-recipient sign-in link.",
+        "candidateBehavior": "The sign-in form sends the first accepted main-recipient link, records its timestamp in the worker lifecycle handoff, and the delivery case retrieves and consumes that link.",
+        "coveredBehaviors": [
+          "generic accepted response",
+          "single-use delivery retrieval",
+          "initial account verification"
+        ]
+      },
+      "staleReauthenticationReturningLogin": {
+        "candidateBehavior": "The deletion-marker case opens the stale-session reauthentication modal, issues the link, and hands it off; the session-lifecycle case signs out before consuming that same link, then verifies the returning login, deletion marker, and retained account link.",
+        "coveredBehaviors": [
+          "stale-session deletion gate",
+          "returning login",
+          "reauthentication link consumption"
+        ]
+      },
+      "deletionReplayAndFreshSignup": {
+        "candidateBehavior": "The session-lifecycle case completes deletion, proves anonymous access, and replays the consumed reauthentication link; the following deletion-and-reactivation case requests a fresh sign-in link, creates a new account identity, and reactivates the retained provider profile and reservation history.",
+        "coveredBehaviors": [
+          "destructive deletion",
+          "anonymous redirect after deletion",
+          "consumed-link replay rejection",
+          "fresh signup/reactivation"
+        ]
+      },
+      "linkingVariants": {
+        "candidateBehavior": "The same legitimate reactivated auth account and retained synthetic provider profile are reused through three exact unlink/relink transitions: active profile, expired profile with provider reactivation, and duplicate provider profile requiring support without claiming a link.",
+        "exactUnlinkCount": 3,
+        "providerStates": ["active", "expired", "duplicate/ambiguous"],
+        "extraAuthLinks": false,
+        "extraAuthIdentities": false
+      }
+    },
+    "screenshotCoverage": {
+      "target": "callback-failed-desktop",
+      "previousCaseId": "account-deletion-marker-reauth",
+      "candidateCaseId": "account-session-lifecycle",
+      "reason": "The callback review now observes consumption of the handed-off reauthentication link in the session case; the marker case only issues and stores the link."
+    },
+    "localExecutionEvidence": {
+      "command": "bun run test e2e/account/cases.test.ts",
+      "cwd": "apps/deskohub-workspace",
+      "testFile": "e2e/account/cases.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "assertions": 79,
+      "parallel": 1,
+      "execution": "The test builds each selected case with makeWorkspaceE2EAccountCases and invokes selected.execute; runStep returns the implementation Effect unchanged.",
+      "actualCaseBuilder": "makeWorkspaceE2EAccountCases",
+      "realRateBudget": "makeMagicLinkRateBudget",
+      "fakeExternalBoundary": "FakeAccountExternalState",
+      "fixedClock": "setSystemTime(fixedNow)",
+      "classification": "Synthetic case-factory execution only; not deployed runtime evidence."
+    },
+    "verificationEvidence": {
+      "scopedPackageTests": {
+        "command": "bun run test e2e/account scripts/account-e2e-graph.test.ts scripts/workspace-e2e-workflow.test.ts scripts/workspace-e2e-scheduling.test.ts",
+        "cwd": "apps/deskohub-workspace",
+        "status": "passed",
+        "passed": 190,
+        "assertions": 1394,
+        "files": 16,
+        "duration": "51.30s",
+        "durationSeconds": 51.3,
+        "evidenceSource": "caller-reported final scoped run"
+      },
+      "typecheck": {
+        "command": "bun run typecheck --incremental false",
+        "status": "passed",
+        "interpretation": "suggestions only",
+        "earlierIncrementalFailures": "stale tsconfig.tsbuildinfo, not source errors; source and generated exports were valid",
+        "codeFixRequired": false,
+        "evidenceSource": "caller-reported final scoped verification"
+      },
+      "fullRootTurboTest": {
+        "command": "bun turbo test --filter=deskohub-workspace --output-logs=errors-only",
+        "status": "incomplete_timeout",
+        "localToolTimeoutSeconds": 600,
+        "failureLinesCaptured": 0,
+        "testCountsClaimed": false,
+        "fullPassClaimed": false,
+        "candidateAuthNewCasesPassedInFullLog": true,
+        "note": "The local tool timed out before completion; do not claim a full pass or counts.",
+        "rerunForThisDocumentation": false,
+        "owner": "repository-root operator CI"
+      }
+    },
+    "benchmark": {
+      "status": "PENDING",
+      "requiredScope": ["setup", "protected suite", "cleanup"],
+      "maxDurationSeconds": 600,
+      "claimMet": false,
+      "pendingReason": "Awaiting the repository-root operator's CI benchmark of the exact committed candidate.",
+      "owner": "repository-root operator",
+      "mustDeployExactCommittedCandidate": true,
+      "automaticProviderWork": false,
+      "rerunRequiredForDocumentationUpdate": false
+    },
+    "preservation": {
+      "historicalEvidencePreserved": true,
+      "priorApprovedStatusesPreserved": true,
+      "priorFullSuiteFailuresDifferentCommitsRetained": true,
+      "note": "This record is additive; it does not overwrite the historical runs, recovery review, release approval, or transport approval above."
+    }
+  }
+}

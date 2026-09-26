@@ -184,24 +184,17 @@ const getManualInvoicePresentation = (
     BigDecimal.fromStringUnsafe(document.total)
   );
   const paymentRequested = payment.status === "due" && positiveTotal;
-  const manual =
-    document.locale === "cs-CZ"
-      ? {
-          issued: "Vystaveno",
-          unpaid: "K úhradě",
-          dueDate: "Datum splatnosti",
-          variableSymbol: "Variabilní symbol",
-          total: "Celkem",
-          totalDue: "Celkem k úhradě",
-        }
-      : {
-          issued: "Issued",
-          unpaid: "Payment due",
-          dueDate: "Due date",
-          variableSymbol: "Variable symbol",
-          total: "Total",
-          totalDue: "Amount due",
-        };
+  const manual = {
+    issued: m.invoiceManualIssued({}, { locale: document.locale }),
+    unpaid: m.invoiceManualUnpaid({}, { locale: document.locale }),
+    dueDate: m.invoiceManualDueDate({}, { locale: document.locale }),
+    variableSymbol: m.invoiceManualVariableSymbol(
+      {},
+      { locale: document.locale }
+    ),
+    total: m.invoiceManualTotal({}, { locale: document.locale }),
+    totalDue: m.invoiceManualTotalDue({}, { locale: document.locale }),
+  };
   const paymentPresentation = Match.value(payment).pipe(
     Match.discriminatorsExhaustive("status")({
       paid: ({ date }) => ({

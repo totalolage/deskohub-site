@@ -26,6 +26,7 @@ export const env = createEnv({
     DATABASE_URL: process.env.DATABASE_URL,
     DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
     ADMIN_BASIC_AUTH_CREDENTIALS: process.env.ADMIN_BASIC_AUTH_CREDENTIALS,
+    BETTER_AUTH_SECRETS: process.env.BETTER_AUTH_SECRETS,
     DOTYPOS_API_TIMEOUT: process.env.DOTYPOS_API_TIMEOUT,
     DOTYPOS_API_URL: process.env.DOTYPOS_API_URL,
     DOTYPOS_BRANCH_ID: process.env.DOTYPOS_BRANCH_ID,
@@ -72,6 +73,7 @@ export const env = createEnv({
       process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
     VERCEL_AUTOMATION_BYPASS_SECRET:
       process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+    VERCEL_BRANCH_URL: process.env.VERCEL_BRANCH_URL,
     VERCEL_ENV: process.env.VERCEL_ENV,
     VERCEL_GIT_COMMIT_SHA: process.env.VERCEL_GIT_COMMIT_SHA,
     VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
@@ -108,10 +110,31 @@ export const env = createEnv({
         };
       }
 
+      if (hasPath("BETTER_AUTH_SECRETS")) {
+        return {
+          ...issue,
+          message: "Invalid Better Auth secret configuration.",
+        };
+      }
+
       if (hasPath("IGLOOHOME_CLIENT_SECRET")) {
         return {
           ...issue,
           message: "Invalid Igloohome client credential configuration.",
+        };
+      }
+
+      if (hasPath("EMAIL_API_KEY")) {
+        return {
+          ...issue,
+          message: "Invalid production email delivery configuration.",
+        };
+      }
+
+      if (hasPath("CRON_SECRET")) {
+        return {
+          ...issue,
+          message: "Invalid production cron authentication configuration.",
         };
       }
 

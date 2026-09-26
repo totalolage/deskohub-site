@@ -1,48 +1,155 @@
 import { expect, test } from "bun:test";
+import * as PgClient from "@effect/sql-pg/PgClient";
+import { Effect, Layer } from "effect";
+import { provisionWorkspaceE2ECoordination } from "./workspace-e2e-coordination-provision";
 
-test("grants the runtime allocator only the pool access needed for row locking", async () => {
-  const provisioner = await Bun.file(
-    new URL("workspace-e2e-coordination-provision.ts", import.meta.url)
-  ).text();
+interface ExecutedStatement {
+  readonly text: string;
+}
 
-  expect(provisioner).toContain(
-    "grant select, update on workspace_e2e_coordination.allocation_pools"
-  );
-  expect(provisioner).not.toContain(
-    "grant all on workspace_e2e_coordination.allocation_pools"
-  );
-});
+const allocatorRole = "workspace_e2e_allocator";
+const providerPermitRole = "workspace_e2e_provider_permit";
 
-test("grants the provider permit role only database connectivity", async () => {
-  const provisioner = await Bun.file(
-    new URL("workspace-e2e-coordination-provision.ts", import.meta.url)
-  ).text();
+const providerPermitIsolationRow = {
+  canBypassRowSecurity: false,
+  canCreateDatabase: false,
+  canCreateRole: false,
+  canLogin: true,
+  hasMemberships: false,
+  isReplicationRole: false,
+  isSuperuser: false,
+};
 
-  expect(provisioner).toContain(
-    `revoke all privileges on database \${database} from \${providerPermitRole}`
+/**
+ * Recording fake for the PgClient service: captures every executed statement
+ * and answers the two reads the provisioner performs. The real provision
+ * program runs; only Postgres is fake.
+ */
+interface SqlFragment {
+  readonly __fragment: string;
+}
+
+interface SqlFragment {
+  readonly __fragment: string;
+}
+
+const render = (
+  strings: TemplateStringsArray,
+  values: readonly SqlFragment[]
+): string =>
+  strings
+    .map((part, index) => `${part}${values[index]?.__fragment ?? "?"}`)
+    .join("");
+
+const makeRecordingSqlClient = (
+  executed: ExecutedStatement[]
+): PgClient.PgClient => {
+  const run = (
+    strings: TemplateStringsArray,
+    values: readonly SqlFragment[]
+  ) => {
+    const text = render(strings, values);
+    executed.push({ text });
+    if (text.includes("current_database()")) {
+      return Effect.succeed([{ databaseName: "coordination" }]);
+    }
+    if (text.includes("from pg_roles role")) {
+      return Effect.succeed([providerPermitIsolationRow]);
+    }
+    return Effect.succeed([]);
+  };
+  const sql = ((
+    first: TemplateStringsArray | string,
+    ...values: readonly SqlFragment[]
+  ): unknown =>
+    Array.isArray(first)
+      ? run(first, values)
+      : { __fragment: first }) as PgClient.PgClient;
+  return Object.assign(sql, {
+    withTransaction: <A>(effect: A): A => effect,
+  });
+};
+
+test("provisions allocator and provider-permit privileges by executing the real provisioner", async () => {
+  const executed: ExecutedStatement[] = [];
+  const clientLayer = Layer.succeed(
+    PgClient.PgClient,
+    makeRecordingSqlClient(executed)
   );
-  expect(provisioner).toContain(
-    `revoke all on all tables in schema workspace_e2e_coordination from \${providerPermitRole}`
+
+  await Effect.runPromise(
+    provisionWorkspaceE2ECoordination.pipe(Effect.provide(clientLayer))
   );
-  expect(provisioner).toContain(
-    `revoke all on all sequences in schema workspace_e2e_coordination from \${providerPermitRole}`
+
+  const statements = executed.map(({ text }) => text);
+  const allocatorStatements = statements.filter((text) =>
+    text.includes(allocatorRole)
   );
-  expect(provisioner).toContain(
-    `grant connect on database \${database} to \${providerPermitRole}`
+  const providerStatements = statements.filter((text) =>
+    text.includes(providerPermitRole)
   );
-  expect(provisioner).not.toContain(
-    `grant usage on schema workspace_e2e_coordination to \${providerPermitRole}`
+
+  // The runtime allocator gets exactly the pool access needed for row
+  // locking, plus its request/sequence access, never the whole table.
+  expect(
+    statements.some((text) =>
+      text.includes(
+        "grant select, update on workspace_e2e_coordination.allocation_pools"
+      )
+    )
+  ).toBe(true);
+  expect(
+    statements.some((text) =>
+      text.includes("grant all on workspace_e2e_coordination.allocation_pools")
+    )
+  ).toBe(false);
+  expect(
+    allocatorStatements.some((text) =>
+      text.includes(
+        "grant select, insert, update, delete on workspace_e2e_coordination.allocation_requests"
+      )
+    )
+  ).toBe(true);
+  expect(
+    allocatorStatements.some((text) =>
+      text.includes(
+        "grant usage, select on sequence workspace_e2e_coordination.allocation_requests_queue_position_seq"
+      )
+    )
+  ).toBe(true);
+
+  // The provider permit role keeps connectivity only: database privileges
+  // are revoked, and no schema usage, table, sequence, or pool access is
+  // ever granted to it.
+  expect(
+    providerStatements.some((text) =>
+      text.includes("revoke all privileges on database")
+    )
+  ).toBe(true);
+  expect(
+    providerStatements.some((text) =>
+      text.includes("revoke all on all tables in schema")
+    )
+  ).toBe(true);
+  expect(
+    providerStatements.some((text) =>
+      text.includes("revoke all on all sequences in schema")
+    )
+  ).toBe(true);
+  expect(
+    providerStatements.some((text) =>
+      text.includes("grant connect on database")
+    )
+  ).toBe(true);
+  expect(
+    providerStatements.filter((text) => text.startsWith("grant "))
+  ).toEqual([expect.stringContaining("grant connect on database")]);
+
+  // The executed isolation probe really inspects role flags and membership.
+  const isolationProbe = statements.find((text) =>
+    text.includes("from pg_roles role")
   );
-  expect(provisioner).not.toContain(
-    `allocation_pools to \${providerPermitRole}`
-  );
-  expect(provisioner).not.toContain(
-    `allocation_requests to \${providerPermitRole}`
-  );
-  expect(provisioner).not.toContain(
-    `grant select, update on workspace_e2e_coordination.allocation_pools to \${providerPermitRole}`
-  );
-  expect(provisioner).toContain("The provider permit role is not isolated.");
-  expect(provisioner).toContain('as "hasMemberships"');
-  expect(provisioner).toContain('role.rolsuper as "isSuperuser"');
+  expect(isolationProbe).toBeDefined();
+  expect(isolationProbe).toContain("rolsuper");
+  expect(isolationProbe).toContain("pg_auth_members");
 });

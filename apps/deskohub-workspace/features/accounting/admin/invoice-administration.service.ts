@@ -484,6 +484,9 @@ const resolveCustomer = Effect.fn(
           )
     ),
     Match.tag("NotFound", () => dotypos.createCustomer(details)),
+    // Deleted profiles were invisible to lookups before; keep creating a
+    // fresh customer so this administrative flow stays compatible.
+    Match.tag("Deleted", () => dotypos.createCustomer(details)),
     Match.exhaustive
   );
 });

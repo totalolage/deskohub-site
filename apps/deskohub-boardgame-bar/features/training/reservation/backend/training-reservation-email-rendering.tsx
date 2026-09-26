@@ -4,7 +4,12 @@ import {
   MultilineEmailText,
   renderBoardgameEmailHtml,
 } from "@/features/email/backend/email-rendering";
+import type { Locale } from "@/features/i18n";
+import { m } from "@/features/i18n/paraglide/messages";
 import { siteConstants } from "@/shared/utils/constants";
+
+// Business email copy is Czech regardless of the customer locale.
+const businessEmailLocale: Locale = "cs-CZ";
 
 const containerStyle = {
   fontFamily: "Arial, sans-serif",
@@ -51,39 +56,57 @@ export const renderBusinessTrainingReservationEmailHtml = ({
 }) =>
   renderBoardgameEmailHtml(
     <TrainingEmailContainer>
-      <h2 style={headingStyle}>Nová rezervace školící místnosti</h2>
+      <h2 style={headingStyle}>
+        {m["trainingReservation.email.businessHeading"](undefined, {
+          locale: businessEmailLocale,
+        })}
+      </h2>
 
-      <h3 style={subheadingStyle}>Kontaktní údaje:</h3>
+      <h3 style={subheadingStyle}>
+        {m["trainingReservation.email.contactDetailsHeading"](undefined, {
+          locale: businessEmailLocale,
+        })}
+      </h3>
       <table style={tableStyle}>
         <tbody>
           {fullName ? (
             <BoardgameEmailRow
-              label="Jméno:"
+              label={m["trainingReservation.email.nameLabel"](undefined, {
+                locale: businessEmailLocale,
+              })}
               value={fullName}
               cellStyle={cellStyle}
             />
           ) : null}
           {company ? (
             <BoardgameEmailRow
-              label="Společnost:"
+              label={m["trainingReservation.email.companyLabel"](undefined, {
+                locale: businessEmailLocale,
+              })}
               value={company}
               cellStyle={cellStyle}
             />
           ) : null}
           {role ? (
             <BoardgameEmailRow
-              label="Pozice:"
+              label={m["trainingReservation.email.roleLabel"](undefined, {
+                locale: businessEmailLocale,
+              })}
               value={role}
               cellStyle={cellStyle}
             />
           ) : null}
           <BoardgameEmailRow
-            label="Email:"
+            label={m["trainingReservation.email.emailLabel"](undefined, {
+              locale: businessEmailLocale,
+            })}
             value={email}
             cellStyle={cellStyle}
           />
           <BoardgameEmailRow
-            label="Telefon:"
+            label={m["trainingReservation.email.phoneLabel"](undefined, {
+              locale: businessEmailLocale,
+            })}
             value={phone}
             cellStyle={cellStyle}
           />
@@ -91,22 +114,30 @@ export const renderBusinessTrainingReservationEmailHtml = ({
       </table>
 
       <h3 style={{ ...subheadingStyle, marginTop: "20px" }}>
-        Detaily rezervace:
+        {m["trainingReservation.email.reservationDetailsHeading"](undefined, {
+          locale: businessEmailLocale,
+        })}
       </h3>
       <table style={tableStyle}>
         <tbody>
           <BoardgameEmailRow
-            label="Datum:"
+            label={m["trainingReservation.email.dateLabel"](undefined, {
+              locale: businessEmailLocale,
+            })}
             value={formattedDate}
             cellStyle={cellStyle}
           />
           <BoardgameEmailRow
-            label="Čas:"
+            label={m["trainingReservation.email.timeLabel"](undefined, {
+              locale: businessEmailLocale,
+            })}
             value={formattedTime}
             cellStyle={cellStyle}
           />
           <BoardgameEmailRow
-            label="Doba trvání:"
+            label={m["trainingReservation.email.durationLabel"](undefined, {
+              locale: businessEmailLocale,
+            })}
             value={formattedDuration}
             cellStyle={cellStyle}
           />
@@ -116,7 +147,10 @@ export const renderBusinessTrainingReservationEmailHtml = ({
       {specialRequirements ? (
         <>
           <h3 style={{ ...subheadingStyle, marginTop: "20px" }}>
-            Speciální požadavky:
+            {m["trainingReservation.email.specialRequirementsHeading"](
+              undefined,
+              { locale: businessEmailLocale }
+            )}
           </h3>
           <p
             style={{
@@ -140,17 +174,30 @@ export const renderBusinessTrainingReservationEmailHtml = ({
           marginTop: "20px",
         }}
       >
-        <h3 style={{ color: "#856404", marginTop: 0 }}>⚠️ Požadovaná akce:</h3>
+        <h3 style={{ color: "#856404", marginTop: 0 }}>
+          {m["trainingReservation.email.actionHeading"](undefined, {
+            locale: businessEmailLocale,
+          })}
+        </h3>
         <p style={{ color: "#856404", margin: 0 }}>
-          <strong>Zavolejte zákazníkovi pro potvrzení rezervace!</strong>
+          <strong>
+            {m["trainingReservation.email.actionCall"](undefined, {
+              locale: businessEmailLocale,
+            })}
+          </strong>
           <br />
-          Telefon: <strong>{phone}</strong>
+          {m["trainingReservation.email.phoneLabel"](undefined, {
+            locale: businessEmailLocale,
+          })}{" "}
+          <strong>{phone}</strong>
         </p>
       </div>
 
       <hr style={hrStyle} />
       <p style={footerStyle}>
-        Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
+        {m["trainingReservation.email.footer"](undefined, {
+          locale: businessEmailLocale,
+        })}
       </p>
     </TrainingEmailContainer>
   );
@@ -165,18 +212,19 @@ export const renderTrainingReservationConfirmationEmailHtml = ({
   readonly formattedDate: string;
   readonly formattedTime: string;
   readonly formattedDuration: string;
-}) =>
-  renderBoardgameEmailHtml(
+}) => {
+  const messageLocale: Locale = locale === "cs-CZ" ? "cs-CZ" : "en-US";
+  return renderBoardgameEmailHtml(
     <TrainingEmailContainer>
       <h2 style={headingStyle}>
-        {locale === "cs-CZ"
-          ? "Potvrzení přijetí rezervace"
-          : "Reservation Received"}
+        {m["trainingReservation.email.confirmationHeading"](undefined, {
+          locale: messageLocale,
+        })}
       </h2>
       <p>
-        {locale === "cs-CZ"
-          ? "Děkujeme za Vaši rezervaci školící místnosti. Vaši žádost jsme úspěšně přijali a brzy Vás budeme telefonicky kontaktovat pro potvrzení všech detailů."
-          : "Thank you for your training room reservation. We have successfully received your request and will contact you by phone soon to confirm all details."}
+        {m["trainingReservation.email.confirmationThankYou"](undefined, {
+          locale: messageLocale,
+        })}
       </p>
 
       <div
@@ -190,32 +238,42 @@ export const renderTrainingReservationConfirmationEmailHtml = ({
       >
         <p style={{ color: "#2e7d32", margin: 0 }}>
           <strong>
-            {locale === "cs-CZ" ? "Co bude následovat:" : "What's next:"}
+            {m["trainingReservation.email.whatsNextHeading"](undefined, {
+              locale: messageLocale,
+            })}
           </strong>
           <br />
-          {locale === "cs-CZ"
-            ? "📞 Zavoláme Vám v nejbližší pracovní době pro potvrzení rezervace a zodpovězení případných dotazů."
-            : "📞 We will call you during the next business hours to confirm your reservation and answer any questions."}
+          {m["trainingReservation.email.whatsNextCall"](undefined, {
+            locale: messageLocale,
+          })}
         </p>
       </div>
 
       <h3 style={subheadingStyle}>
-        {locale === "cs-CZ" ? "Detaily rezervace:" : "Reservation Details:"}
+        {m["trainingReservation.email.confirmationDetailsHeading"](undefined, {
+          locale: messageLocale,
+        })}
       </h3>
       <table style={tableStyle}>
         <tbody>
           <BoardgameEmailRow
-            label={locale === "cs-CZ" ? "Datum:" : "Date:"}
+            label={m["trainingReservation.email.dateLabel"](undefined, {
+              locale: messageLocale,
+            })}
             value={formattedDate}
             cellStyle={cellStyle}
           />
           <BoardgameEmailRow
-            label={locale === "cs-CZ" ? "Čas:" : "Time:"}
+            label={m["trainingReservation.email.timeLabel"](undefined, {
+              locale: messageLocale,
+            })}
             value={formattedTime}
             cellStyle={cellStyle}
           />
           <BoardgameEmailRow
-            label={locale === "cs-CZ" ? "Doba trvání:" : "Duration:"}
+            label={m["trainingReservation.email.durationLabel"](undefined, {
+              locale: messageLocale,
+            })}
             value={formattedDuration}
             cellStyle={cellStyle}
           />
@@ -223,18 +281,20 @@ export const renderTrainingReservationConfirmationEmailHtml = ({
       </table>
 
       <p style={{ marginTop: "20px" }}>
-        {locale === "cs-CZ"
-          ? `Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu ${siteConstants.contact.reservationEmail}.`
-          : `If you have any questions, please don't hesitate to contact us at ${siteConstants.contact.reservationEmail}.`}
+        {m["trainingReservation.email.confirmationContactLine"](
+          { contactEmail: siteConstants.contact.reservationEmail },
+          { locale: messageLocale }
+        )}
       </p>
 
       <hr style={hrStyle} />
       <p style={footerStyle}>
         DeskoHub
         <br />
-        {locale === "cs-CZ"
-          ? "Váš prostor pro práci a kreativitu"
-          : "Your space for work and creativity"}
+        {m["trainingReservation.email.footerTagline"](undefined, {
+          locale: messageLocale,
+        })}
       </p>
     </TrainingEmailContainer>
   );
+};

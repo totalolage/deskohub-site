@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "./config";
 import {
+  assertPreviewAuthSessionReady,
   assertPreviewEndpointReady,
   assertPreviewEndpointsReady,
   assertPreviewHomepageTilesReady,
@@ -123,13 +124,19 @@ test("starts all preview readiness requests before any request completes", async
   });
   const fetchMock = mock(async (input: URL | RequestInfo) => {
     startedRequestCount += 1;
-    if (startedRequestCount === 4) releaseRequests();
+    if (startedRequestCount === 5) releaseRequests();
     await allRequestsStarted;
 
     if (String(input).endsWith(".jpeg")) {
       return new Response(Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]), {
         headers: { "content-type": "image/jpeg" },
         status: 200,
+      });
+    }
+    if (String(input).endsWith("/api/auth/get-session")) {
+      return new Response("null", {
+        status: 200,
+        headers: { "cache-control": "private, no-store" },
       });
     }
     return new Response(null, {
@@ -144,7 +151,84 @@ test("starts all preview readiness requests before any request completes", async
     )
   );
 
-  expect(startedRequestCount).toBe(4);
+  expect(startedRequestCount).toBe(5);
+});
+
+test("requires a healthy null auth session with private/no-store on the exact preview", async () => {
+  const requests: Array<{ headers: Headers; url: string }> = [];
+  const fetchMock = mock(
+    async (input: URL | RequestInfo, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push({ headers: request.headers, url: request.url });
+      return new Response("null", {
+        status: 200,
+        headers: { "cache-control": "private, no-store" },
+      });
+    }
+  );
+
+  await Effect.runPromise(
+    assertPreviewAuthSessionReady(makeConfig("test-protection-bypass")).pipe(
+      Effect.provide(makeFetchHttpClientLayer(fetchMock))
+    )
+  );
+
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.url).toBe(
+    "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/api/auth/get-session"
+  );
+  expect(requests[0]?.headers.get("x-vercel-protection-bypass")).toBe(
+    "test-protection-bypass"
+  );
+});
+
+test("rejects an auth session response without the private/no-store classification", async () => {
+  const fetchMock = mock(
+    async () =>
+      new Response("null", {
+        status: 200,
+        headers: { "cache-control": "no-store" },
+      })
+  );
+
+  await expect(
+    Effect.runPromise(
+      assertPreviewAuthSessionReady(makeConfig()).pipe(
+        Effect.provide(makeFetchHttpClientLayer(fetchMock))
+      )
+    )
+  ).rejects.toThrow("private, no-store");
+});
+
+test("rejects an authenticated-looking auth session response during readiness", async () => {
+  const fetchMock = mock(
+    async () =>
+      new Response('{"user":{"id":"someone"}}', {
+        status: 200,
+        headers: { "cache-control": "private, no-store" },
+      })
+  );
+
+  await expect(
+    Effect.runPromise(
+      assertPreviewAuthSessionReady(makeConfig()).pipe(
+        Effect.provide(makeFetchHttpClientLayer(fetchMock))
+      )
+    )
+  ).rejects.toThrow("null session");
+});
+
+test("rejects a failing auth session endpoint during readiness", async () => {
+  const fetchMock = mock(async () => new Response("null", { status: 500 }));
+
+  await expect(
+    Effect.runPromise(
+      assertPreviewAuthSessionReady(makeConfig()).pipe(
+        Effect.provide(makeFetchHttpClientLayer(fetchMock))
+      )
+    )
+  ).rejects.toThrow("failed with 500");
 });
 
 test("recognizes a rendered feature-gated preview page", async () => {

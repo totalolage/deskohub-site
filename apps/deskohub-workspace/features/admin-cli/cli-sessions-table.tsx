@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { AdministrationDataTable } from "@/features/administration/components";
 import { EmptyState } from "@/features/administration/empty-state";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
-import { AdministrationStatusBadge } from "@/features/administration/status-badge";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import type { CliSessionAdministrationItem } from "./cli-authentication.service";
 import { RenameCliSession } from "./rename-cli-session";
 import { RevokeCliSession } from "./revoke-cli-session";
@@ -68,11 +68,9 @@ export function CliSessionsTable({
         id: "status",
         header: "Status",
         cell: ({ row }) => (
-          <AdministrationStatusBadge
-            tone={row.original.revokedAt ? "neutral" : "positive"}
-          >
+          <StatusBadge tone={row.original.revokedAt ? "neutral" : "positive"}>
             {row.original.revokedAt ? "Revoked" : "Active"}
-          </AdministrationStatusBadge>
+          </StatusBadge>
         ),
       },
     ],

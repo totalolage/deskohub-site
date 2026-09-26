@@ -2,6 +2,7 @@
 
 import type { NexiOrderId } from "@deskohub/nexi";
 import { useMemo } from "react";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
 import type {
   AdministrationReservationSort,
@@ -19,7 +20,6 @@ import {
 } from "./formatters";
 import { NexiOrderLink } from "./nexi-order-link";
 import type { AdministrationReservationStatus } from "./reservation-status";
-import { AdministrationStatusBadge } from "./status-badge";
 import {
   type AdministrationTableSorting,
   getAdministrationTableSortHref,
@@ -31,7 +31,7 @@ export function ReservationStatusBadge({
   readonly status: AdministrationReservationStatus;
 }) {
   return (
-    <AdministrationStatusBadge
+    <StatusBadge
       tone={
         {
           attention: "attention",
@@ -42,7 +42,7 @@ export function ReservationStatusBadge({
       }
     >
       {status.label}
-    </AdministrationStatusBadge>
+    </StatusBadge>
   );
 }
 

@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parseWorkflow, workflowStepRuns } from "./shared/workflow-contract";
 import {
   assertValidMigrationCount,
   parseChangedMigrationPaths,
@@ -35,32 +38,32 @@ describe("assertValidMigrationCount", () => {
   });
 });
 
-test("regenerates Workspace migrations in CI before accepting them", async () => {
-  const [workflow, turbo] = await Promise.all([
-    Bun.file(
-      new URL("../../../.github/workflows/workspace-tests.yml", import.meta.url)
-    ).text(),
-    Bun.file(new URL("../turbo.json", import.meta.url)).json() as Promise<{
-      readonly tasks: {
-        readonly "db:generate": {
-          readonly dependsOn: readonly string[];
-          readonly env: readonly string[];
-        };
+test("regenerates Workspace migrations in CI before accepting them", () => {
+  const workflow = parseWorkflow(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-tests.yml")
+  );
+  const turbo = JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../turbo.json"), "utf8")
+  ) as {
+    readonly tasks: {
+      readonly "db:generate": {
+        readonly dependsOn: readonly string[];
+        readonly env: readonly string[];
       };
-    }>,
-  ]);
+    };
+  };
 
   expect(turbo.tasks["db:generate"].dependsOn).toContain("i18n:compile");
   expect(turbo.tasks["db:generate"].env).toEqual(
     expect.arrayContaining(["DATABASE_URL", "DATABASE_URL_UNPOOLED"])
   );
-  expect(workflow).toContain(
-    "bun turbo db:generate --filter=deskohub-workspace"
-  );
-  expect(workflow).toContain(
+
+  const runs = workflowStepRuns(workflow).join("\n");
+  expect(runs).toContain("bun turbo db:generate --filter=deskohub-workspace");
+  expect(runs).toContain(
     "git add --intent-to-add -- apps/deskohub-workspace/db/migrations"
   );
-  expect(workflow).toContain(
+  expect(runs).toContain(
     "git diff --exit-code -- apps/deskohub-workspace/db/migrations"
   );
 });

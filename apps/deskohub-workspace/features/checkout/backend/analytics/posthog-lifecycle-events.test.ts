@@ -57,6 +57,9 @@ describe("PostHog lifecycle events", () => {
     expect(captures[0]).toMatchObject({
       distinctId: reservationId,
       event: "payment completed",
+      properties: {
+        $process_person_profile: false,
+      },
       timestamp,
       uuid: `${attemptId}:payment completed`,
     });
@@ -110,6 +113,7 @@ describe("PostHog lifecycle events", () => {
     );
 
     expect(captures[0]?.properties).toEqual({
+      $process_person_profile: false,
       currency: "CZK",
       payment_attempt_id: attemptId,
       provider: "internal",
@@ -118,7 +122,7 @@ describe("PostHog lifecycle events", () => {
     });
   });
 
-  test("links synthetic browser acquisition to the durable lifecycle identity", async () => {
+  test("keeps browser request events separate from durable lifecycle identity", async () => {
     const {
       captureAvailabilityResult,
       capturePaymentCompleted,
@@ -126,6 +130,7 @@ describe("PostHog lifecycle events", () => {
       capturePrePaymentOutcome,
       captureReservationAbandoned,
       captureReservationCompleted,
+      captureReservationFulfilled,
       captureReservationStarted,
     } = await import("./posthog-lifecycle-events");
     const { PostHogEventService } = await import(
@@ -195,6 +200,14 @@ describe("PostHog lifecycle events", () => {
           },
           timestamp,
         });
+        yield* captureReservationFulfilled({
+          reservation: {
+            id: reservationId,
+            dotyposCustomerId: "synthetic-dotypos-customer-id",
+            dotyposReservationId: "synthetic-dotypos-reservation-id",
+          },
+          timestamp,
+        });
         yield* captureReservationAbandoned({
           reservation: {
             id: reservationId,
@@ -208,48 +221,71 @@ describe("PostHog lifecycle events", () => {
       )
     );
 
-    expect(aliases).toEqual([{ alias: reservationId, distinctId: browserId }]);
+    expect(aliases).toEqual([]);
     expect(operations).toEqual([
       `capture:$pageview:${browserId}`,
       `capture:availability result:${browserId}`,
       `capture:pre-payment outcome:${browserId}`,
       `capture:pre-payment outcome:${browserId}`,
-      `alias:${browserId}:${reservationId}`,
       `capture:reservation started:${reservationId}`,
       `capture:payment started:${reservationId}`,
       `capture:payment completed:${reservationId}`,
       `capture:reservation completed:${reservationId}`,
+      `capture:reservation fulfilled:${reservationId}`,
       `capture:reservation abandoned:${reservationId}`,
     ]);
     expect(captures.slice(0, 3)).toMatchObject([
       {
         distinctId: browserId,
         event: "availability result",
-        properties: { result: "available" },
+        properties: {
+          $process_person_profile: false,
+          $session_id: "synthetic-session-id",
+          result: "available",
+        },
         uuid: `${checkoutAttemptId}:availability result:available`,
       },
       {
         distinctId: browserId,
         event: "pre-payment outcome",
-        properties: { outcome: "transport_error" },
+        properties: {
+          $process_person_profile: false,
+          $session_id: "synthetic-session-id",
+          outcome: "transport_error",
+        },
         uuid: `${checkoutAttemptId}:pre-payment outcome:transport_error`,
       },
       {
         distinctId: browserId,
         event: "pre-payment outcome",
-        properties: { outcome: "prepared" },
+        properties: {
+          $process_person_profile: false,
+          $session_id: "synthetic-session-id",
+          outcome: "prepared",
+        },
         uuid: `${checkoutAttemptId}:pre-payment outcome:prepared`,
       },
     ]);
     expect(captures.slice(3).map(({ distinctId }) => distinctId)).toEqual(
-      Array(5).fill(reservationId)
+      Array(6).fill(reservationId)
+    );
+    for (const capture of captures.slice(3)) {
+      expect(capture.properties).toMatchObject({
+        $process_person_profile: false,
+      });
+    }
+    const fulfilledCapture = captures.find(
+      ({ event }) => event === "reservation fulfilled"
+    );
+    expect(fulfilledCapture).toBeDefined();
+    expect(fulfilledCapture?.properties).not.toHaveProperty(
+      "dotypos_customer_id"
     );
   });
 
-  test("does not link a browser identity without analytics consent context", async () => {
-    const { captureReservationStarted } = await import(
-      "./posthog-lifecycle-events"
-    );
+  test("skips request events without a consented browser identity", async () => {
+    const { captureAvailabilityResult, capturePrePaymentOutcome } =
+      await import("./posthog-lifecycle-events");
     const { PostHogEventService } = await import(
       "@/shared/backend/analytics/posthog-event.service"
     );
@@ -260,12 +296,17 @@ describe("PostHog lifecycle events", () => {
     });
 
     await Effect.runPromise(
-      captureReservationStarted({
-        reservation: {
-          id: "synthetic-no-consent-reservation-id",
-          dotyposReservationId: "synthetic-dotypos-reservation-id",
-        },
-        timestamp: Temporal.Instant.from("2099-06-17T12:00:00.000Z"),
+      Effect.gen(function* () {
+        yield* captureAvailabilityResult({
+          checkoutAttemptId: "synthetic-no-consent-checkout-attempt-id",
+          result: "available",
+          timestamp: Temporal.Instant.from("2099-06-17T12:00:00.000Z"),
+        });
+        yield* capturePrePaymentOutcome({
+          checkoutAttemptId: "synthetic-no-consent-checkout-attempt-id",
+          outcome: "prepared",
+          timestamp: Temporal.Instant.from("2099-06-17T12:00:00.000Z"),
+        });
       }).pipe(
         Effect.provide(
           Layer.succeed(PostHogEventService, {
@@ -284,6 +325,40 @@ describe("PostHog lifecycle events", () => {
     );
 
     expect(aliases).toEqual([]);
-    expect(captures[0]?.distinctId).toBe("synthetic-no-consent-reservation-id");
+    expect(captures).toEqual([]);
+  });
+
+  test("skips request events when the consented context has no browser identity", async () => {
+    const { captureAvailabilityResult } = await import(
+      "./posthog-lifecycle-events"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const captures: CapturePostHogEventInput[] = [];
+    const requestHeaders = new Headers({
+      cookie: consentCookie(["necessary", "analytics"]),
+    });
+
+    await Effect.runPromise(
+      captureAvailabilityResult({
+        checkoutAttemptId: "synthetic-no-browser-id-checkout-attempt-id",
+        result: "available",
+        timestamp: Temporal.Instant.from("2099-06-17T12:00:00.000Z"),
+      }).pipe(
+        Effect.provide(
+          Layer.succeed(PostHogEventService, {
+            alias: () => Effect.void,
+            capture: (input) =>
+              Effect.sync(() => {
+                captures.push(input);
+              }),
+          })
+        ),
+        withWorkspaceRequestContext(requestHeaders)
+      )
+    );
+
+    expect(captures).toEqual([]);
   });
 });

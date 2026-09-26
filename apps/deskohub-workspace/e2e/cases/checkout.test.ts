@@ -7,6 +7,10 @@ import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { formatReservationDisplayDateRange } from "@/features/reservation/reservation-date";
+import {
+  importSpecifiers,
+  parseTrackedSource,
+} from "../../scripts/shared/source-ast";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
@@ -50,13 +54,15 @@ const wholeDayData = {
 } as const;
 
 describe("whole-day meeting-room checkout proof", () => {
-  test("keeps the deployed runner independent of app-bound persistence decoders", async () => {
-    const source = await Bun.file(
-      fileURLToPath(new URL("./checkout.ts", import.meta.url))
-    ).text();
+  test("keeps the deployed runner independent of app-bound persistence decoders", () => {
+    const imports = importSpecifiers(
+      parseTrackedSource(
+        fileURLToPath(new URL("./checkout.ts", import.meta.url))
+      ).ast
+    );
 
-    expect(source).not.toContain("persistence-contracts");
-    expect(source).not.toContain("@/features/i18n");
+    expect(imports).not.toContain("persistence-contracts");
+    expect(imports).not.toContain("@/features/i18n");
   });
 
   test("renders both shared email detail projections from the confirmed DST calendar day", async () => {

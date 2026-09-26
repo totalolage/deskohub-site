@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Effect, Layer } from "effect";
+import type { Pool } from "pg";
 import {
   WorkspaceDatabase,
   type WorkspaceDatabaseClient,
@@ -12,6 +13,7 @@ import { databasePoolTimeouts } from "@/db/database-pool-timeouts";
 export interface WorkspacePostgresTestDatabase {
   readonly db: WorkspaceDatabaseClient;
   readonly layer: Layer.Layer<WorkspaceDatabase>;
+  readonly pool: Pool;
   readonly close: () => Promise<void>;
 }
 
@@ -58,6 +60,7 @@ const connectWorkspacePostgres =
     return {
       db,
       layer: Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.of({ db })),
+      pool,
       close: () => pool.end(),
     };
   };

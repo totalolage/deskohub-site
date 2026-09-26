@@ -6,6 +6,8 @@ import { DotyposService } from "@deskohub/dotypos";
 import { ExternalAPIError, NexiService } from "@deskohub/nexi";
 import { Data, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
+import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
+import { makeOptionalAccountActivityGuard } from "@/features/account/backend/customer-account-activity.test-utils";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
@@ -242,6 +244,7 @@ const buildMeetingRoomPayStateToken = (input: {
   readonly quote?: ReturnType<typeof buildMeetingRoomQuote>;
   readonly reservation?: typeof meetingRoomReservationData;
   readonly submittedCode?: CanonicalPromotionCode;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
 }) =>
   Effect.runSync(
     Effect.gen(function* () {
@@ -257,6 +260,7 @@ const buildMeetingRoomPayStateToken = (input: {
           submittedCode: input.submittedCode,
           submittedCodeDiscountId: application.discount.id,
         }),
+        requestedDiscountCode: input.requestedDiscountCode,
         ttlMilliseconds: 10 * 60 * 1000,
       });
       return yield* sealPayState(state);
@@ -439,6 +443,7 @@ type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
   readonly fulfillPaidOrder?: ReturnType<typeof mock>;
   readonly capture?: ReturnType<typeof mock>;
+  readonly accountAuthority?: OptionalAccountActivityFixture;
 };
 
 const createCheckoutHarness = async <ReservationOverrides extends object>(
@@ -583,6 +588,10 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
       }))
     );
 
+  const accountAuthority = makeOptionalAccountActivityGuard(
+    options.accountAuthority ?? { session: null }
+  );
+
   const effect = Effect.gen(function* () {
     const service = yield* CheckoutService;
     return yield* service.createHostedPaymentCheckout(
@@ -608,6 +617,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
       CheckoutService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
+            accountAuthority.layer,
             CheckoutPricingServiceMock({
               affirmForPayment: affirmForPayment as never,
             }),
@@ -636,6 +646,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
 
   return {
     effect,
+    guardEvents: accountAuthority.events,
     affirm,
     createPendingNexiAttempt,
     completeInternalPayment,
@@ -741,31 +752,35 @@ describe("CheckoutService", () => {
     ]);
   });
 
-  test("prepares fallible local provider inputs before committing an attempt", async () => {
-    const source = await Bun.file(
-      new URL("./checkout.service.ts", import.meta.url)
-    ).text();
-    const start = source.indexOf(
-      'const startProviderSession = Effect.fn("checkout.startProviderSession")'
-    );
-    const end = source.indexOf("    return CheckoutService.of({", start);
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start);
-    const startProviderSession = source.slice(start, end);
-    const createAttemptAt = startProviderSession.indexOf(
-      "paymentLifecycle.createPendingNexiAttempt"
-    );
+  test("creates the attempt before attaching the hosted payment page", async () => {
+    const events: string[] = [];
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-provider-inputs",
+      createHostedPaymentPage: mock(() => {
+        events.push("provider-created");
+        return Effect.succeed({
+          securityToken: "provider-security-token",
+          hostedPage: "https://payments.example/hosted",
+        });
+      }),
+    });
+    harness.createPendingNexiAttempt.mockImplementation((input) => {
+      events.push("attempt-created");
+      return Effect.succeed(
+        makeAttempt({
+          id: "attempt-reservation-provider-inputs",
+          orderId: input.workspaceReservationId,
+        })
+      );
+    });
 
-    expect(createAttemptAt).toBeGreaterThanOrEqual(0);
-    expect(startProviderSession.indexOf("toNexiAmount(")).toBeLessThan(
-      createAttemptAt
-    );
-    expect(
-      startProviderSession.indexOf("yield* getNotificationUrl")
-    ).toBeLessThan(createAttemptAt);
-    expect(
-      startProviderSession.indexOf("yield* getCheckoutPayReturnUrl(")
-    ).toBeLessThan(createAttemptAt);
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({
+      status: "redirect",
+      redirectUrl: "https://payments.example/hosted",
+    });
+    expect(events).toEqual(["attempt-created", "provider-created"]);
   });
 
   test("redirects a reusable active attempt before discount affirmation and note refresh", async () => {
@@ -1201,6 +1216,7 @@ describe("CheckoutService", () => {
 
   test("affirms meeting-room discounts and returns a fresh state when pricing changes", async () => {
     const submittedCode = canonicalCode("ROOM50");
+    const requestedCode = canonicalCode("CAMPAIGN10");
     const meetingRoomApplication = {
       ...application,
       subtotalBefore: money(155_000),
@@ -1245,6 +1261,7 @@ describe("CheckoutService", () => {
         checkoutSessionId,
         quote: acceptedQuote,
         submittedCode,
+        requestedDiscountCode: requestedCode,
       }),
       affirm,
       reservationOverrides: {
@@ -1283,6 +1300,7 @@ describe("CheckoutService", () => {
     expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.submittedCode).toBe(submittedCode);
     expect(freshState.submittedCodeDiscountId).toBe(application.discount.id);
+    expect(freshState.requestedDiscountCode).toBe(requestedCode);
   });
 
   test("allows payment for a started whole day before its end", async () => {
@@ -1812,6 +1830,7 @@ describe("CheckoutService", () => {
   });
 
   test("returns refreshed pricing when code claim admission loses a race", async () => {
+    const requestedCode = canonicalCode("CAMPAIGN10");
     const acceptedQuote = buildCoworkReservationQuote(reservationData, {
       discountQuote: discountedQuote,
     });
@@ -1840,6 +1859,8 @@ describe("CheckoutService", () => {
     const harness = await createCheckoutHarness({
       orderId: "reservation-code-claim-race",
       acceptedQuote,
+      requestedDiscountCode: requestedCode,
+      accountAuthority: { session: {}, activityState: "active" },
       affirm,
       createPendingNexiAttempt,
     });
@@ -1855,9 +1876,22 @@ describe("CheckoutService", () => {
     expect(affirm).toHaveBeenCalledTimes(2);
     expect(createPendingNexiAttempt).toHaveBeenCalledTimes(1);
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    expect(harness.guardEvents).toEqual([
+      "account-session",
+      "account-lock-acquired",
+      "account-activity",
+      "account-lock-released",
+    ]);
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    expect(freshState.requestedDiscountCode).toBe(requestedCode);
   });
 
   test("returns refreshed pricing when a zero-total code loses claim admission", async () => {
+    const requestedCode = canonicalCode("CAMPAIGN10");
     const acceptedQuote = buildCoworkReservationQuote(reservationData, {
       discountQuote: fullyDiscountedQuote,
     });
@@ -1886,6 +1920,7 @@ describe("CheckoutService", () => {
     const harness = await createCheckoutHarness({
       orderId: "reservation-zero-total-claim-race",
       acceptedQuote,
+      requestedDiscountCode: requestedCode,
       affirm,
       completeInternalPayment,
     });
@@ -1902,5 +1937,118 @@ describe("CheckoutService", () => {
     expect(completeInternalPayment).toHaveBeenCalledTimes(1);
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    expect(freshState.requestedDiscountCode).toBe(requestedCode);
+  });
+
+  test("keeps anonymous checkout flowing without consulting account activity", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-anonymous-account-activity",
+      accountAuthority: { session: null },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({ status: "redirect" });
+    expect(harness.updateReservationDetails).toHaveBeenCalledTimes(1);
+    expect(harness.updateReservation).toHaveBeenCalledTimes(1);
+    expect(harness.guardEvents).toEqual([]);
+  });
+
+  test("keeps an active authenticated account checkout flowing", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-active-account-activity",
+      accountAuthority: { session: {}, activityState: "active" },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({ status: "redirect" });
+    expect(harness.updateReservationDetails).toHaveBeenCalledTimes(1);
+    expect(harness.updateReservation).toHaveBeenCalledTimes(1);
+    expect(harness.guardEvents).toEqual([
+      "account-session",
+      "account-lock-acquired",
+      "account-activity",
+      "account-lock-released",
+    ]);
+  });
+
+  test("holds the account advisory lock across hosted checkout state creation", async () => {
+    const lockProbe = { held: false };
+    const lockSamples: boolean[] = [];
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-lock-held-checkout",
+      accountAuthority: { session: {}, activityState: "active", lockProbe },
+      createHostedPaymentPage: mock(() => {
+        lockSamples.push(lockProbe.held);
+        return Effect.succeed({
+          securityToken: "provider-security-token",
+          hostedPage: "https://payments.example/hosted",
+        });
+      }),
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({ status: "redirect" });
+    expect(lockSamples).toEqual([true]);
+  });
+
+  test("stops a deletion-marked account before updating the reservation or starting payment", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-deletion-marked-account-activity",
+      accountAuthority: {
+        session: { deletionRequested: true },
+        activityState: "deletion-requested",
+      },
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      code: "checkout_failed",
+    });
+    expect(harness.guardEvents).toEqual([
+      "account-session",
+      "account-lock-acquired",
+      "account-activity",
+      "account-lock-released",
+    ]);
+    expect(harness.updateReservationDetails).not.toHaveBeenCalled();
+    expect(harness.updateReservation).not.toHaveBeenCalled();
+    expect(harness.recordLegalEvidence).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.completeInternalPayment).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("stops checkout when the account row disappears during the authority window", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-removed-account-activity",
+      accountAuthority: { session: {}, activityState: "missing" },
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      code: "checkout_failed",
+    });
+    expect(harness.guardEvents).toEqual([
+      "account-session",
+      "account-lock-acquired",
+      "account-activity",
+      "account-lock-released",
+    ]);
+    expect(harness.updateReservationDetails).not.toHaveBeenCalled();
+    expect(harness.updateReservation).not.toHaveBeenCalled();
+    expect(harness.recordLegalEvidence).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
   });
 });

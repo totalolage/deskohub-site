@@ -1,0 +1,25 @@
+@font-face {
+  font-family: "Sculpin";
+  src: url("/__account-visual-fonts/sculpin-regular.woff2") format("woff2");
+  font-display: block;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Sculpin";
+  src: url("/__account-visual-fonts/sculpin-italic.woff2") format("woff2");
+  font-display: block;
+  font-style: italic;
+  font-weight: 400;
+}
+
+:root {
+  --font-sculpin: "Sculpin";
+  --site-header-height: 0px;
+}
+
+[data-account-visual-action-unavailable] {
+  cursor: not-allowed !important;
+  opacity: 0.5 !important;
+}

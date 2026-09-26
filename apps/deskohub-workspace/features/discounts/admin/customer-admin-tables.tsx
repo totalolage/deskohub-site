@@ -10,8 +10,8 @@ import {
   formatAdministrationMoney,
 } from "@/features/administration/formatters";
 import { NexiOrderLink } from "@/features/administration/nexi-order-link";
-import { AdministrationStatusBadge } from "@/features/administration/status-badge";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { CustomerCodeAction } from "./customer-admin-client";
 import type {
   AdminCustomerProfile,
@@ -107,11 +107,9 @@ export function CustomerCodeEligibilityTable({
         accessorKey: "enabled",
         header: "Status",
         cell: ({ row }) => (
-          <AdministrationStatusBadge
-            tone={row.original.enabled ? "positive" : "neutral"}
-          >
+          <StatusBadge tone={row.original.enabled ? "positive" : "neutral"}>
             {row.original.enabled ? "Enabled" : "Disabled"}
-          </AdministrationStatusBadge>
+          </StatusBadge>
         ),
       },
       {
@@ -223,13 +221,13 @@ export function CustomerTransactionHistoryTable({
         id: "status",
         header: "Status",
         cell: ({ row }) => (
-          <AdministrationStatusBadge
+          <StatusBadge
             tone={
               row.original.attempt.state === "paid" ? "positive" : "neutral"
             }
           >
             {row.original.attempt.stateLabel}
-          </AdministrationStatusBadge>
+          </StatusBadge>
         ),
       },
       {
@@ -319,12 +317,12 @@ export function ClaimHistoryTable({
         header: "State",
         cell: ({ row }) => (
           <>
-            <AdministrationStatusBadge
+            <StatusBadge
               tone={row.original.state === "released" ? "neutral" : "positive"}
             >
               {row.original.state[0]?.toUpperCase()}
               {row.original.state.slice(1)}
-            </AdministrationStatusBadge>
+            </StatusBadge>
             {row.original.releaseReason && (
               <p className="mt-1 max-w-48 text-xs text-navy-blue/65">
                 {row.original.releaseReason}

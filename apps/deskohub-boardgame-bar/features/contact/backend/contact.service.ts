@@ -1,5 +1,7 @@
 import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
 import { Context, Effect, Layer } from "effect";
+import type { Locale } from "@/features/i18n";
+import { m } from "@/features/i18n/paraglide/messages";
 import { BoardgameEmailLayer } from "@/shared/backend/config/email.config";
 import { StorageError } from "@/shared/backend/errors";
 import { siteConstants } from "@/shared/utils/constants";
@@ -8,19 +10,22 @@ import {
   renderContactConfirmationEmailHtml,
 } from "./contact-email-rendering";
 
+// Business email copy is Czech regardless of the customer locale.
+const businessEmailLocale: Locale = "cs-CZ";
+
 export interface ContactSubmission {
   name: string;
   email: string;
   phone?: string;
   message: string;
   submittedAt: string;
-  locale?: string;
+  locale: Locale;
 }
 
 interface IContactService {
   readonly submit: (
-    data: Omit<ContactSubmission, "submittedAt">,
-    locale?: string
+    data: Omit<ContactSubmission, "submittedAt" | "locale">,
+    locale: Locale
   ) => Effect.Effect<ContactSubmission, StorageError>;
 }
 
@@ -70,7 +75,10 @@ const contactServiceImplementation = Effect.gen(function* () {
 
         // Create email content for the business
         const businessEmailContent = {
-          subject: `Nová zpráva z kontaktního formuláře - ${data.name}`,
+          subject: m["contact.email.businessSubject"](
+            { name: data.name },
+            { locale: businessEmailLocale }
+          ),
           html: renderBusinessContactEmailHtml({
             name: data.name,
             email: data.email,
@@ -78,27 +86,32 @@ const contactServiceImplementation = Effect.gen(function* () {
             formattedDate,
             message: data.message,
           }),
-          text: `
-Nová zpráva z kontaktního formuláře
-
-Kontaktní údaje:
-- Jméno: ${data.name}
-- Email: ${data.email}${data.phone ? `\n- Telefon: ${data.phone}` : ""}
-- Datum a čas: ${formattedDate}
-
-Zpráva:
-${data.message}
-
----
-Tato zpráva byla automaticky vygenerována z kontaktního formuláře na webu DeskoHub.
-            `.trim(),
+          text: `${m["contact.email.businessText"](
+            {
+              name: data.name,
+              email: data.email,
+              phoneLine: data.phone
+                ? m["contact.email.businessPhoneLine"](
+                    { phone: data.phone },
+                    { locale: businessEmailLocale }
+                  )
+                : "",
+              dateTime: formattedDate,
+              message: data.message,
+            },
+            { locale: businessEmailLocale }
+          )}\n\n---\n${m["contact.email.footer"](undefined, {
+            locale: businessEmailLocale,
+          })}`,
         };
 
         // Create the email message for business
         const businessEmailMessage: EmailMessage = {
           from: {
             email: siteConstants.contact.fromEmail,
-            name: "Web Kontaktní Formulář",
+            name: m["contact.email.fromName"](undefined, {
+              locale: businessEmailLocale,
+            }),
           },
           to: {
             email: siteConstants.contact.contactEmail,
@@ -140,10 +153,9 @@ Tato zpráva byla automaticky vygenerována z kontaktního formuláře na webu D
           Effect.mapError(
             (error) =>
               new StorageError({
-                message:
-                  locale === "cs-CZ"
-                    ? "Nepodařilo se odeslat zprávu. Zkuste to prosím později."
-                    : "Failed to send message. Please try again later.",
+                message: m["contact.submitFailed"](undefined, {
+                  locale,
+                }),
                 operation: "contact.submit",
                 cause: error,
               })
@@ -160,45 +172,23 @@ Tato zpráva byla automaticky vygenerována z kontaktního formuláře na webu D
             email: data.email,
             name: data.name,
           },
-          subject:
-            locale === "cs-CZ"
-              ? "Potvrzení přijetí vaší zprávy - DeskoHub"
-              : "Message Received Confirmation - DeskoHub",
+          subject: m["contact.email.confirmationSubject"](undefined, {
+            locale: locale,
+          }),
           html: renderContactConfirmationEmailHtml({
             locale,
             message: data.message,
           }),
-          // biome-ignore format: Preserve plaintext email indentation.
-          text:
-              locale === "cs-CZ"
-                ? `
-Potvrzení přijetí zprávy
-
-Děkujeme za vaši zprávu. Přijali jsme ji a brzy vás budeme kontaktovat.
-
-Shrnutí vaší zprávy:
-${data.message}
-
-Pokud máte jakékoliv další dotazy, neváhejte nás kontaktovat na emailu ${siteConstants.contact.contactEmail}.
-
----
-DeskoHub
-Váš prostor pro práci a kreativitu
-                `.trim()
-                : `
-Message Received
-
-Thank you for your message. We have received it and will contact you soon.
-
-Your Message Summary:
-${data.message}
-
-If you have any other questions, please don't hesitate to contact us at ${siteConstants.contact.contactEmail}.
-
----
-DeskoHub
-Your space for work and creativity
-                `.trim(),
+          text: m["contact.email.confirmationText"](
+            {
+              message: data.message,
+              contactLine: m["contact.email.confirmationContactLine"](
+                { contactEmail: siteConstants.contact.contactEmail },
+                { locale }
+              ),
+            },
+            { locale }
+          ),
           tags: ["contact-confirmation"],
         };
         yield* Effect.annotateLogsScoped({ confirmationMessage });

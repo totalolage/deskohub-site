@@ -7857,7 +7857,7 @@ var require_pg_cursor = __commonJS(function(exports, module) {
 
 // scripts/workspace-e2e-allocation.ts
 import { appendFile } from "node:fs/promises";
-// ../../node_modules/.bun/@effect+platform-node@4.0.0-beta.85+2edc8a5f9182791f/node_modules/@effect/platform-node/dist/NodeRuntime.js
+// ../../node_modules/.bun/@effect+platform-node@4.0.0-beta.85+b7ec1a65732bfd14/node_modules/@effect/platform-node/dist/NodeRuntime.js
 var exports_NodeRuntime = {};
 __export(exports_NodeRuntime, {
   runMain: () => runMain2
@@ -15531,7 +15531,7 @@ var getErrorReported = (u) => {
   return true;
 };
 
-// ../../node_modules/.bun/@effect+platform-node-shared@4.0.0-rc.110+53b677943b444488/node_modules/@effect/platform-node-shared/dist/NodeRuntime.js
+// ../../node_modules/.bun/@effect+platform-node-shared@4.0.0-beta.85+53b677943b444488/node_modules/@effect/platform-node-shared/dist/NodeRuntime.js
 var runMain = /* @__PURE__ */ makeRunMain(({
   fiber: fiber3,
   teardown
@@ -15554,7 +15554,7 @@ var runMain = /* @__PURE__ */ makeRunMain(({
   process.on("SIGTERM", onSigint);
 });
 
-// ../../node_modules/.bun/@effect+platform-node@4.0.0-beta.85+2edc8a5f9182791f/node_modules/@effect/platform-node/dist/NodeRuntime.js
+// ../../node_modules/.bun/@effect+platform-node@4.0.0-beta.85+b7ec1a65732bfd14/node_modules/@effect/platform-node/dist/NodeRuntime.js
 var runMain2 = runMain;
 // ../../node_modules/.bun/effect@4.0.0-beta.85/node_modules/effect/dist/Chunk.js
 var TypeId14 = "~effect/collections/Chunk";
@@ -23387,6 +23387,7 @@ __export(exports_FastCheck, {
   __commitHash: () => __commitHash,
   __type: () => __type,
   __version: () => __version,
+  afterEach: () => afterEach,
   anything: () => anything,
   array: () => array3,
   assert: () => assert,
@@ -23396,6 +23397,7 @@ __export(exports_FastCheck, {
   asyncStringify: () => asyncStringify,
   asyncToStringMethod: () => asyncToStringMethod,
   base64String: () => base64String,
+  beforeEach: () => beforeEach,
   bigInt: () => bigInt2,
   bigInt64Array: () => bigInt64Array,
   bigUint64Array: () => bigUint64Array,
@@ -23431,11 +23433,14 @@ __export(exports_FastCheck, {
   hasCloneMethod: () => hasCloneMethod,
   hasToStringMethod: () => hasToStringMethod,
   hash: () => hash2,
+  ignoreEqualValues: () => ignoreEqualValues,
   infiniteStream: () => infiniteStream,
+  installGlobalPlugin: () => installGlobalPlugin,
   int16Array: () => int16Array,
   int32Array: () => int32Array,
   int8Array: () => int8Array,
   integer: () => integer,
+  interruptAfterTimeLimit: () => interruptAfterTimeLimit,
   ipV4: () => ipV4,
   ipV4Extended: () => ipV4Extended,
   ipV6: () => ipV6,
@@ -23468,6 +23473,7 @@ __export(exports_FastCheck, {
   schedulerFor: () => schedulerFor,
   set: () => set3,
   shuffledSubarray: () => shuffledSubarray,
+  skipEqualValues: () => skipEqualValues,
   sparseArray: () => sparseArray,
   statistics: () => statistics,
   stream: () => stream,
@@ -23475,6 +23481,7 @@ __export(exports_FastCheck, {
   stringMatching: () => stringMatching,
   stringify: () => stringify,
   subarray: () => subarray,
+  timeout: () => timeout3,
   toStringMethod: () => toStringMethod,
   tuple: () => tuple2,
   uint16Array: () => uint16Array,
@@ -23482,6 +23489,7 @@ __export(exports_FastCheck, {
   uint8Array: () => uint8Array,
   uint8ClampedArray: () => uint8ClampedArray,
   ulid: () => ulid,
+  unbiased: () => unbiased,
   uniqueArray: () => uniqueArray,
   uuid: () => uuid,
   webAuthority: () => webAuthority,
@@ -23905,7 +23913,7 @@ function uniformInt(rng, from, to) {
   return uniformLargeIntInternal(rng, from, to, rangeSize);
 }
 
-// ../../node_modules/.bun/fast-check@4.9.0/node_modules/fast-check/lib/fast-check.js
+// ../../node_modules/.bun/fast-check@4.10.2/node_modules/fast-check/lib/fast-check.js
 var SharedFootPrint = Symbol.for("fast-check/PreconditionFailure");
 var PreconditionFailure = class extends Error {
   constructor(interruptExecution = false) {
@@ -24267,7 +24275,7 @@ var SUint8ClampedArray = Uint8ClampedArray;
 var SUint16Array = Uint16Array;
 var SUint32Array = Uint32Array;
 var SencodeURIComponent = encodeURIComponent;
-var SMap$1 = Map;
+var SMap$2 = Map;
 var SSymbol = Symbol;
 var untouchedForEach = Array.prototype.forEach;
 var untouchedIndexOf = Array.prototype.indexOf;
@@ -25022,6 +25030,7 @@ var QualifiedParameters = class {
     this.reporter = p.reporter;
     this.asyncReporter = p.asyncReporter;
     this.includeErrorInReport = p.includeErrorInReport === true;
+    this.plugins = p.plugins !== undefined ? p.plugins : [];
   }
   toParameters() {
     return {
@@ -25043,7 +25052,8 @@ var QualifiedParameters = class {
       endOnFailure: this.endOnFailure,
       reporter: this.reporter,
       asyncReporter: this.asyncReporter,
-      includeErrorInReport: this.includeErrorInReport
+      includeErrorInReport: this.includeErrorInReport,
+      plugins: this.plugins
     };
   }
 };
@@ -25166,7 +25176,7 @@ var SkipAfterProperty = class {
     return this.property.runAfterEach();
   }
 };
-var timeoutAfter = (timeMs, setTimeoutSafe, clearTimeoutSafe) => {
+var timeoutAfter$1 = (timeMs, setTimeoutSafe, clearTimeoutSafe) => {
   let timeoutHandle = null;
   return {
     clear: () => clearTimeoutSafe(timeoutHandle),
@@ -25194,7 +25204,7 @@ var TimeoutProperty = class {
     return this.property.shrink(value3);
   }
   async run(v) {
-    const t = timeoutAfter(this.timeMs, this.setTimeoutSafe, this.clearTimeoutSafe);
+    const t = timeoutAfter$1(this.timeMs, this.setTimeoutSafe, this.clearTimeoutSafe);
     const propRun = Promise.race([this.property.run(v), t.promise]);
     propRun.then(t.clear, t.clear);
     return propRun;
@@ -25410,7 +25420,7 @@ function stringify(value3) {
 function possiblyAsyncStringify(value3) {
   const stillPendingMarker = SSymbol();
   const pendingPromisesForCache = [];
-  const cache = new SMap$1;
+  const cache = new SMap$2;
   function createDelay0() {
     let handleId = null;
     const cancel = () => {
@@ -25474,13 +25484,13 @@ async function asyncStringify(value3) {
 function fromSyncCached(cachedValue) {
   return cachedValue === null ? new PreconditionFailure : cachedValue;
 }
-function fromCached(...data) {
+function fromCached$1(...data) {
   if (data[1])
     return data[0].then(fromSyncCached);
   return fromSyncCached(data[0]);
 }
 function fromCachedUnsafe(cachedValue, isAsync) {
-  return fromCached(cachedValue, isAsync);
+  return fromCached$1(cachedValue, isAsync);
 }
 var IgnoreEqualValuesProperty = class {
   constructor(property2, skipRuns) {
@@ -25517,18 +25527,18 @@ var IgnoreEqualValuesProperty = class {
   }
 };
 var safeDateNow = Date.now;
-var safeSetTimeout = setTimeout;
-var safeClearTimeout = clearTimeout;
+var safeSetTimeout$2 = setTimeout;
+var safeClearTimeout$2 = clearTimeout;
 function decorateProperty(rawProperty, qParams) {
   let prop = rawProperty;
   if (rawProperty.isAsync() && qParams.timeout !== undefined)
-    prop = new TimeoutProperty(prop, qParams.timeout, safeSetTimeout, safeClearTimeout);
+    prop = new TimeoutProperty(prop, qParams.timeout, safeSetTimeout$2, safeClearTimeout$2);
   if (qParams.unbiased)
     prop = new UnbiasedProperty(prop);
   if (qParams.skipAllAfterTimeLimit !== undefined)
-    prop = new SkipAfterProperty(prop, safeDateNow, qParams.skipAllAfterTimeLimit, false, safeSetTimeout, safeClearTimeout);
+    prop = new SkipAfterProperty(prop, safeDateNow, qParams.skipAllAfterTimeLimit, false, safeSetTimeout$2, safeClearTimeout$2);
   if (qParams.interruptAfterTimeLimit !== undefined)
-    prop = new SkipAfterProperty(prop, safeDateNow, qParams.interruptAfterTimeLimit, true, safeSetTimeout, safeClearTimeout);
+    prop = new SkipAfterProperty(prop, safeDateNow, qParams.interruptAfterTimeLimit, true, safeSetTimeout$2, safeClearTimeout$2);
   if (qParams.skipEqualValues)
     prop = new IgnoreEqualValuesProperty(prop, true);
   if (qParams.ignoreEqualValues)
@@ -25687,13 +25697,13 @@ var RunnerIterator = class {
       this.runExecution.fail(this.currentValue.value_, this.currentIdx, result3);
       this.currentIdx = -1;
       this.nextValues = this.shrink(this.currentValue);
-    } else if (result3 !== null)
+    } else if (result3 !== null) {
       if (!result3.interruptExecution) {
         this.runExecution.skip(this.currentValue.value_);
         this.sourceValues.skippedOne();
       } else
         this.runExecution.interrupt();
-    else
+    } else
       this.runExecution.success(this.currentValue.value_);
   }
 };
@@ -25936,7 +25946,7 @@ async function asyncDefaultReportMessage(out) {
   const firstTryMessage = defaultReportMessageInternal(out, stringifyOne);
   if (pendingStringifieds.length === 0)
     return firstTryMessage;
-  const registeredValues = new SMap$1(await Promise.all(pendingStringifieds));
+  const registeredValues = new SMap$2(await Promise.all(pendingStringifieds));
   function stringifySecond(value3) {
     const asyncStringifiedIfRegistered = safeMapGet(registeredValues, value3);
     if (asyncStringifiedIfRegistered !== undefined)
@@ -25979,25 +25989,104 @@ async function asyncReportRunDetails(out) {
   else
     return asyncThrowIfFailed(out);
 }
-function runIt(property2, shrink, sourceValues, verbose, interruptedAsFailure) {
+var globalPlugins = [];
+function installGlobalPlugin(plugin) {
+  globalPlugins.push(plugin);
+}
+function readInstalledGlobalPlugins() {
+  return globalPlugins;
+}
+var SMap$1 = Map;
+function runIt(run2, shrink, sourceValues, verbose, interruptedAsFailure) {
   const runner = new RunnerIterator(sourceValues, shrink, verbose, interruptedAsFailure);
   for (const v of runner) {
-    property2.runBeforeEach();
-    const out = property2.run(v);
-    property2.runAfterEach();
+    const out = run2(v);
     runner.handleResult(out);
   }
   return runner.runExecution;
 }
-async function asyncRunIt(property2, shrink, sourceValues, verbose, interruptedAsFailure) {
+function propertyExecution(property2, v) {
+  property2.runBeforeEach();
+  const out = property2.run(v);
+  property2.runAfterEach();
+  return out;
+}
+async function asyncRunIt(run2, shrink, sourceValues, verbose, interruptedAsFailure) {
   const runner = new RunnerIterator(sourceValues, shrink, verbose, interruptedAsFailure);
   for (const v of runner) {
-    await property2.runBeforeEach();
-    const out = await property2.run(v);
-    await property2.runAfterEach();
+    const out = await run2(v);
     runner.handleResult(out);
   }
   return runner.runExecution;
+}
+async function asyncPropertyExecution(property2, v) {
+  await property2.runBeforeEach();
+  const out = await property2.run(v);
+  await property2.runAfterEach();
+  return out;
+}
+function runPluginCompletionHooksSync(pluginInstances, runDetails) {
+  let interceptedOnce = false;
+  let interceptedError = undefined;
+  for (let index2 = 0;index2 !== pluginInstances.length; ++index2) {
+    const instance = pluginInstances[index2];
+    if (instance.onAllRunsComplete !== undefined)
+      try {
+        instance.onAllRunsComplete(runDetails);
+      } catch (error) {
+        if (!interceptedOnce) {
+          interceptedOnce = true;
+          interceptedError = error;
+        }
+      }
+  }
+  for (let index2 = pluginInstances.length - 1;index2 >= 0; --index2) {
+    const instance = pluginInstances[index2];
+    if (instance.afterAll !== undefined)
+      try {
+        instance.afterAll();
+      } catch (error) {
+        if (!interceptedOnce) {
+          interceptedOnce = true;
+          interceptedError = error;
+        }
+      }
+  }
+  if (interceptedOnce)
+    throw interceptedError;
+}
+function runPluginCompletionHooks(pluginInstances, runDetailsPromise) {
+  const followUps = [];
+  for (let index2 = 0;index2 !== pluginInstances.length; ++index2) {
+    const instance = pluginInstances[index2];
+    if (instance.onAllRunsComplete !== undefined)
+      followUps.push((runDetails) => instance.onAllRunsComplete(runDetails));
+  }
+  for (let index2 = pluginInstances.length - 1;index2 >= 0; --index2) {
+    const instance = pluginInstances[index2];
+    if (instance.afterAll !== undefined)
+      followUps.push(() => instance.afterAll());
+  }
+  if (followUps.length === 0)
+    return runDetailsPromise;
+  return runDetailsPromise.then(async (details) => {
+    let interceptedOnce = false;
+    let interceptedError = undefined;
+    for (const followUp of followUps)
+      try {
+        const out = followUp(details);
+        if (out !== undefined)
+          await out;
+      } catch (error) {
+        if (!interceptedOnce) {
+          interceptedOnce = true;
+          interceptedError = error;
+        }
+      }
+    if (interceptedOnce)
+      throw interceptedError;
+    return details;
+  });
 }
 function check(rawProperty, params) {
   if (rawProperty === null || rawProperty === undefined || rawProperty.generate === null || rawProperty.generate === undefined)
@@ -26013,12 +26102,37 @@ function check(rawProperty, params) {
   if (qParams.asyncReporter !== undefined && !rawProperty.isAsync())
     throw new Error("Invalid parameters encountered, only asyncProperty can be used when asyncReporter specified");
   const property2 = decorateProperty(rawProperty, qParams);
+  const globalPlugins2 = readInstalledGlobalPlugins();
+  const localPlugins = qParams.plugins;
+  const pluginStore = new SMap$1;
+  const pluginInstances = [];
+  for (let index2 = 0;index2 !== globalPlugins2.length; ++index2)
+    pluginInstances.push(globalPlugins2[index2](index2, pluginStore));
+  for (let index2 = 0;index2 !== localPlugins.length; ++index2)
+    pluginInstances.push(localPlugins[index2](globalPlugins2.length + index2, pluginStore));
+  let surchargedGenerate = undefined;
+  let run2 = property2.isAsync() ? async (v) => asyncPropertyExecution(property2, v) : (v) => propertyExecution(property2, v);
+  for (let index2 = pluginInstances.length - 1;index2 >= 0; --index2) {
+    const pluginInstance = pluginInstances[index2];
+    if (pluginInstance.decorateGenerate !== undefined) {
+      if (surchargedGenerate === undefined)
+        surchargedGenerate = (mrng, runId) => property2.generate(mrng, runId);
+      surchargedGenerate = pluginInstance.decorateGenerate(surchargedGenerate);
+    }
+    if (pluginInstance.decorateRun !== undefined)
+      run2 = pluginInstance.decorateRun(run2);
+  }
+  const generator = surchargedGenerate === undefined ? property2 : { generate: surchargedGenerate };
   const maxInitialIterations = qParams.path.length === 0 || qParams.path.indexOf(":") === -1 ? qParams.numRuns : -1;
   const maxSkips = qParams.numRuns * qParams.maxSkipsPerRun;
   const shrink = (...args2) => property2.shrink(...args2);
-  const sourceValues = new SourceValuesIterator(qParams.path.length === 0 ? toss(property2, qParams.seed, qParams.randomType, qParams.examples) : pathWalk(qParams.path, stream(lazyToss(property2, qParams.seed, qParams.randomType, qParams.examples)), shrink), maxInitialIterations, maxSkips);
+  const sourceValues = new SourceValuesIterator(qParams.path.length === 0 ? toss(generator, qParams.seed, qParams.randomType, qParams.examples) : pathWalk(qParams.path, stream(lazyToss(generator, qParams.seed, qParams.randomType, qParams.examples)), shrink), maxInitialIterations, maxSkips);
   const finalShrink = !qParams.endOnFailure ? shrink : Stream.nil;
-  return property2.isAsync() ? asyncRunIt(property2, finalShrink, sourceValues, qParams.verbose, qParams.markInterruptAsFailure).then((e) => e.toRunDetails(qParams.seed, qParams.path, maxSkips, qParams)) : runIt(property2, finalShrink, sourceValues, qParams.verbose, qParams.markInterruptAsFailure).toRunDetails(qParams.seed, qParams.path, maxSkips, qParams);
+  if (property2.isAsync())
+    return runPluginCompletionHooks(pluginInstances, asyncRunIt(run2, finalShrink, sourceValues, qParams.verbose, qParams.markInterruptAsFailure).then((e) => e.toRunDetails(qParams.seed, qParams.path, maxSkips, qParams)));
+  const out = runIt(run2, finalShrink, sourceValues, qParams.verbose, qParams.markInterruptAsFailure).toRunDetails(qParams.seed, qParams.path, maxSkips, qParams);
+  runPluginCompletionHooksSync(pluginInstances, out);
+  return out;
 }
 function assert(property2, params) {
   const out = check(property2, params);
@@ -26120,7 +26234,7 @@ var safeArrayIsArray$3 = Array.isArray;
 var safeObjectKeys$4 = Object.keys;
 var safeObjectIs$7 = Object.is;
 function buildStableArbitraryGeneratorCache(isEqual2) {
-  const previousCallsPerBuilder = new SMap$1;
+  const previousCallsPerBuilder = new SMap$2;
   return function stableArbitraryGeneratorCache(builder, args2) {
     const entriesForBuilder = safeMapGet(previousCallsPerBuilder, builder);
     if (entriesForBuilder === undefined) {
@@ -26782,9 +26896,8 @@ var BigIntArbitrary = class BigIntArbitrary2 extends Arbitrary {
   }
 };
 function buildCompleteBigIntConstraints(constraints) {
-  const DefaultPow = 256;
-  const DefaultMin = SBigInt2(-1) << SBigInt2(DefaultPow - 1);
-  const DefaultMax = (SBigInt2(1) << SBigInt2(DefaultPow - 1)) - SBigInt2(1);
+  const DefaultMin = SBigInt2(-1) << SBigInt2(255);
+  const DefaultMax = (SBigInt2(1) << SBigInt2(255)) - SBigInt2(1);
   const min5 = constraints.min;
   const max5 = constraints.max;
   return {
@@ -27515,7 +27628,7 @@ function indexToMappedConstantMapperFor(entries3) {
 }
 function buildReverseMapping(entries3) {
   const reverseMapping = {
-    mapping: new SMap$1,
+    mapping: new SMap$2,
     negativeZeroIndex: undefined
   };
   let choiceIndex = 0;
@@ -29937,7 +30050,7 @@ var LazyArbitrary = class extends Arbitrary {
 };
 var safeGetOwnPropertyNames = Object.getOwnPropertyNames;
 function createLazyArbsPool() {
-  const lazyArbsPool = new SMap$1;
+  const lazyArbsPool = new SMap$2;
   const getLazyFromPool = (key) => {
     let lazyArb = safeMapGet(lazyArbsPool, key);
     if (lazyArb !== undefined)
@@ -30029,7 +30142,7 @@ function unlinkedToLinkedEntitiesMapper(unlinkedEntities, producedLinks) {
 }
 function buildInversedRelationsMapping(relations) {
   let foundInversedRelations = 0;
-  const requestedInversedRelations = new SMap$1;
+  const requestedInversedRelations = new SMap$2;
   for (const name in relations) {
     const relationsForName = relations[name];
     for (const fieldName in relationsForName) {
@@ -30038,7 +30151,7 @@ function buildInversedRelationsMapping(relations) {
         continue;
       let existingOnes = safeMapGet(requestedInversedRelations, relation.type);
       if (existingOnes === undefined) {
-        existingOnes = new SMap$1;
+        existingOnes = new SMap$2;
         safeMapSet(requestedInversedRelations, relation.type, existingOnes);
       }
       if (safeMapHas(existingOnes, relation.forwardRelationship))
@@ -30050,7 +30163,7 @@ function buildInversedRelationsMapping(relations) {
       foundInversedRelations += 1;
     }
   }
-  const inversedRelations = new SMap$1;
+  const inversedRelations = new SMap$2;
   if (foundInversedRelations === 0)
     return inversedRelations;
   for (const name in relations) {
@@ -31138,7 +31251,7 @@ function base64String(constraints = {}) {
 }
 var safeObjectIs = Object.is;
 function isSubarrayOf(source, small) {
-  const countMap = new SMap$1;
+  const countMap = new SMap$2;
   let countMinusZero = 0;
   for (const sourceEntry of source)
     if (safeObjectIs(sourceEntry, -0))
@@ -31719,8 +31832,10 @@ var CommandsArbitrary = class extends Arbitrary {
   generate(mrng) {
     const sizeValue = this.lengthArb.generate(mrng, undefined).value;
     const items2 = Array(sizeValue);
-    for (let idx = 0;idx !== sizeValue; ++idx)
-      items2[idx] = this.oneCommandArb.generate(mrng, undefined);
+    for (let idx = 0;idx !== sizeValue; ++idx) {
+      const item = this.oneCommandArb.generate(mrng, undefined);
+      items2[idx] = item;
+    }
     this.replayPathPosition = 0;
     return this.buildValueFor(items2, false);
   }
@@ -33237,7 +33352,7 @@ function pushTokens(tokens, regexSource, unicodeMode, groups) {
       case "(": {
         const blockContent = block.substring(1, block.length - 1);
         const subTokens = [];
-        if (blockContent[0] === "?")
+        if (blockContent[0] === "?") {
           if (blockContent[1] === ":") {
             pushTokens(subTokens, blockContent.substring(2), unicodeMode, groups);
             tokens.push({
@@ -33278,7 +33393,7 @@ function pushTokens(tokens, regexSource, unicodeMode, groups) {
               expression: toSingleToken(subTokens)
             });
           }
-        else {
+        } else {
           const groupIndex = ++groups.lastIndex;
           pushTokens(subTokens, blockContent, unicodeMode, groups);
           tokens.push({
@@ -33323,7 +33438,6 @@ function pushTokens(tokens, regexSource, unicodeMode, groups) {
           });
         } else
           tokens.push(blockToCharToken(block));
-        break;
     }
   }
   if (disjunctions !== null) {
@@ -33536,7 +33650,7 @@ function toMatchingArbitrary(astNode, constraints, flags) {
     }
     case "Assertion":
       if (astNode.kind === "^" || astNode.kind === "$") {
-        if (flags.multiline)
+        if (flags.multiline) {
           if (astNode.kind === "^")
             return oneof(constant2(""), tuple2(string3({ unit: defaultChar() }), constantFrom(...newLineChars)).map((t) => `${t[0]}${t[1]}`, (value3) => {
               if (typeof value3 !== "string" || value3.length === 0)
@@ -33549,6 +33663,7 @@ function toMatchingArbitrary(astNode, constraints, flags) {
                 throw new SError("Invalid type");
               return [value3[0], safeSubstring(value3, 1)];
             }));
+        }
         return constant2("");
       }
       throw new SError(`Assertions of kind ${astNode.kind} not implemented yet!`);
@@ -33649,9 +33764,296 @@ var LimitedShrinkArbitrary = class extends Arbitrary {
 function limitShrink(arbitrary, maxShrinks) {
   return new LimitedShrinkArbitrary(arbitrary, maxShrinks);
 }
+var LifeCyclePluginSymbol = Symbol.for("fast-check/plugin/life-cycle");
+function computeResultingAfterHooks(teardownFunctions, hooks) {
+  if (teardownFunctions.length === 0)
+    return hooks.afterHooks;
+  if (hooks.afterHooks.length === 0)
+    return teardownFunctions.map((details) => details.fn);
+  const afterAndPluginIndices = [];
+  for (const value3 of teardownFunctions) {
+    const { index: index2, fn: fn3 } = value3;
+    afterAndPluginIndices.push({
+      index: hooks.beforeHooksIndices[index2],
+      fn: fn3
+    });
+  }
+  for (let index2 = 0;index2 !== hooks.afterHooks.length; ++index2)
+    afterAndPluginIndices.push({
+      index: hooks.afterHooksIndices[index2],
+      fn: hooks.afterHooks[index2]
+    });
+  afterAndPluginIndices.sort((a, b) => a.index - b.index);
+  return afterAndPluginIndices.map((details) => details.fn);
+}
+function lifeCycleHooksRunner(hooks, nestedRun, value3) {
+  let wrappedRunOutput = null;
+  let wrappedRunContinuation = undefined;
+  const teardownFunctions = [];
+  if (hooks.beforeHooks.length !== 0)
+    try {
+      for (let index2 = 0;index2 !== hooks.beforeHooks.length; ++index2) {
+        const before = hooks.beforeHooks[index2];
+        if (wrappedRunContinuation === undefined) {
+          const out = before();
+          if (typeof out === "function")
+            teardownFunctions.push({
+              index: index2,
+              fn: out
+            });
+          if (typeof out === "object")
+            wrappedRunContinuation = out.then((beforeOut) => {
+              if (beforeOut !== undefined)
+                teardownFunctions.push({
+                  index: index2,
+                  fn: beforeOut
+                });
+              return null;
+            });
+        } else
+          wrappedRunContinuation = wrappedRunContinuation.then(() => {
+            const beforeOut = before();
+            if (beforeOut === undefined)
+              return null;
+            if (typeof beforeOut === "function") {
+              teardownFunctions.push({
+                index: index2,
+                fn: beforeOut
+              });
+              return null;
+            }
+            return beforeOut.then((beforeOutNested) => {
+              if (beforeOutNested !== undefined)
+                teardownFunctions.push({
+                  index: index2,
+                  fn: beforeOutNested
+                });
+              return null;
+            });
+          });
+      }
+    } catch (error) {
+      wrappedRunOutput = { error };
+    }
+  if (wrappedRunOutput === null) {
+    if (wrappedRunContinuation === undefined) {
+      const out = nestedRun(value3);
+      if (out !== null && "then" in out)
+        wrappedRunContinuation = out;
+      else
+        wrappedRunOutput = out;
+    } else
+      wrappedRunContinuation = wrappedRunContinuation.then(() => nestedRun(value3), (error) => ({ error }));
+  }
+  if (wrappedRunContinuation === undefined) {
+    const resultingAfterHooks = computeResultingAfterHooks(teardownFunctions, hooks);
+    for (let index2 = resultingAfterHooks.length - 1;index2 >= 0; --index2) {
+      const after = resultingAfterHooks[index2];
+      if (wrappedRunContinuation === undefined)
+        try {
+          const out = after();
+          if (typeof out === "object")
+            wrappedRunContinuation = out.then(() => wrappedRunOutput, (error) => wrappedRunOutput || { error });
+        } catch (error) {
+          wrappedRunOutput = { error };
+        }
+      else
+        wrappedRunContinuation = wrappedRunContinuation.then((previous) => {
+          try {
+            const out = after();
+            if (typeof out === "object")
+              return out.then(() => previous, (error) => previous || { error });
+            return previous;
+          } catch (error) {
+            return previous || { error };
+          }
+        });
+    }
+  } else
+    wrappedRunContinuation = wrappedRunContinuation.then((previousBeforeAfters) => {
+      const resultingAfterHooks = computeResultingAfterHooks(teardownFunctions, hooks);
+      if (resultingAfterHooks.length === 0)
+        return previousBeforeAfters;
+      let afterContinuation = Promise.resolve(previousBeforeAfters);
+      for (let index2 = resultingAfterHooks.length - 1;index2 >= 0; --index2) {
+        const after = resultingAfterHooks[index2];
+        afterContinuation = afterContinuation.then((previous) => {
+          try {
+            const out = after();
+            return out === undefined ? previous : out.then(() => previous, (error) => previous || { error });
+          } catch (error) {
+            return previous || { error };
+          }
+        });
+      }
+      return afterContinuation;
+    });
+  return wrappedRunContinuation === undefined ? wrappedRunOutput : wrappedRunContinuation;
+}
+function beforeEach(fn3) {
+  return (pluginIndex, pluginStore) => {
+    let lifeCycleHooks = pluginStore.get(LifeCyclePluginSymbol);
+    if (lifeCycleHooks !== undefined && lifeCycleHooks.lastPluginIndex === pluginIndex - 1) {
+      lifeCycleHooks.lastPluginIndex = pluginIndex;
+      lifeCycleHooks.beforeHooks.push(fn3);
+      lifeCycleHooks.beforeHooksIndices.push(pluginIndex);
+      return {};
+    }
+    lifeCycleHooks = {
+      lastPluginIndex: pluginIndex,
+      beforeHooks: [fn3],
+      beforeHooksIndices: [pluginIndex],
+      afterHooks: [],
+      afterHooksIndices: []
+    };
+    pluginStore.set(LifeCyclePluginSymbol, lifeCycleHooks);
+    return { decorateRun: (nestedRun) => (value3) => lifeCycleHooksRunner(lifeCycleHooks, nestedRun, value3) };
+  };
+}
+function afterEach(fn3) {
+  return (pluginIndex, pluginStore) => {
+    let lifeCycleHooks = pluginStore.get(LifeCyclePluginSymbol);
+    if (lifeCycleHooks !== undefined && lifeCycleHooks.lastPluginIndex === pluginIndex - 1) {
+      lifeCycleHooks.lastPluginIndex = pluginIndex;
+      lifeCycleHooks.afterHooks.push(fn3);
+      lifeCycleHooks.afterHooksIndices.push(pluginIndex);
+      return {};
+    }
+    lifeCycleHooks = {
+      lastPluginIndex: pluginIndex,
+      beforeHooks: [],
+      beforeHooksIndices: [],
+      afterHooks: [fn3],
+      afterHooksIndices: [pluginIndex]
+    };
+    pluginStore.set(LifeCyclePluginSymbol, lifeCycleHooks);
+    return { decorateRun: (nestedRun) => (value3) => lifeCycleHooksRunner(lifeCycleHooks, nestedRun, value3) };
+  };
+}
+function unbiased() {
+  return () => {
+    return { decorateGenerate: (nestedGenerate) => (mrng, _runId) => nestedGenerate(mrng, undefined) };
+  };
+}
+function fromSyncCachedForAsyncPath(cachedValue) {
+  return cachedValue === null ? new PreconditionFailure : cachedValue;
+}
+function fromCached(cachedValue) {
+  if (cachedValue !== null) {
+    if ("then" in cachedValue)
+      return cachedValue.then(fromSyncCachedForAsyncPath);
+    else
+      return cachedValue;
+  }
+  return new PreconditionFailure;
+}
+function equalValuesRunner(coveredCases, nestedRun, value3, skipRuns) {
+  const stringifiedValue = stringify(value3);
+  if (coveredCases.has(stringifiedValue)) {
+    const lastOutput = coveredCases.get(stringifiedValue);
+    return skipRuns ? fromCached(lastOutput) : lastOutput;
+  }
+  const out = nestedRun(value3);
+  coveredCases.set(stringifiedValue, out);
+  return out;
+}
+function ignoreEqualValues() {
+  return () => {
+    const coveredCases = /* @__PURE__ */ new Map;
+    return { decorateRun: (nestedRun) => (value3) => equalValuesRunner(coveredCases, nestedRun, value3, false) };
+  };
+}
+function skipEqualValues() {
+  return () => {
+    const coveredCases = /* @__PURE__ */ new Map;
+    return { decorateRun: (nestedRun) => (value3) => equalValuesRunner(coveredCases, nestedRun, value3, true) };
+  };
+}
+var safeSetTimeout$1 = setTimeout;
+var safeClearTimeout$1 = clearTimeout;
+var safePerformanceNow = typeof performance !== "undefined" ? performance.now.bind(performance) : Date.now.bind(Date);
+function interruptAfterDelay(timeMs, probe) {
+  const limitTime = safePerformanceNow() + timeMs;
+  let timeoutHandle = undefined;
+  return {
+    expired: () => safePerformanceNow() >= limitTime,
+    clear: () => safeClearTimeout$1(timeoutHandle),
+    promise: new Promise((resolve2) => {
+      timeoutHandle = safeSetTimeout$1(() => {
+        if (probe.running)
+          probe.interruptedWhileRunning = true;
+        resolve2(new PreconditionFailure(true));
+      }, timeMs);
+    })
+  };
+}
+function timeLimitRunner(interrupt5, nestedRun, value3, probe) {
+  probe.running = true;
+  if (interrupt5.expired()) {
+    probe.interruptedWhileRunning = true;
+    probe.running = false;
+    return new PreconditionFailure(true);
+  }
+  const runOut = nestedRun(value3);
+  if (runOut === null || !("then" in runOut)) {
+    probe.running = false;
+    return runOut;
+  }
+  runOut.finally(() => probe.running = false);
+  return Promise.race([runOut, interrupt5.promise]);
+}
+function interruptAfterTimeLimit(timeLimitMs, options = {}) {
+  return () => {
+    const probe = {
+      interruptedWhileRunning: false,
+      running: false
+    };
+    const interrupt5 = interruptAfterDelay(timeLimitMs, probe);
+    return {
+      decorateRun: (nestedRun) => (value3) => timeLimitRunner(interrupt5, nestedRun, value3, probe),
+      onAllRunsComplete: (runDetails) => {
+        interrupt5.clear();
+        if (options.failOnInterrupt && !runDetails.failed && runDetails.interrupted && probe.interruptedWhileRunning)
+          return reportRunDetails({
+            ...runDetails,
+            failed: true
+          });
+      }
+    };
+  };
+}
+var safeSetTimeout = setTimeout;
+var safeClearTimeout = clearTimeout;
+function timeoutAfter(timeMs) {
+  let timeoutHandle = undefined;
+  return {
+    clear: () => safeClearTimeout(timeoutHandle),
+    promise: new Promise((resolve2) => {
+      timeoutHandle = safeSetTimeout(() => {
+        resolve2({ error: new SError(`Property timeout: exceeded limit of ${timeMs} milliseconds`) });
+      }, timeMs);
+    })
+  };
+}
+function timeoutRunner(timeMs, nestedRun, value3) {
+  const t = timeoutAfter(timeMs);
+  const runOut = nestedRun(value3);
+  if (runOut === null || !("then" in runOut)) {
+    t.clear();
+    return runOut;
+  }
+  const propRun = Promise.race([runOut, t.promise]);
+  propRun.then(t.clear, t.clear);
+  return propRun;
+}
+function timeout3(timeMs) {
+  return () => {
+    return { decorateRun: (nestedRun) => (value3) => timeoutRunner(timeMs, nestedRun, value3) };
+  };
+}
 var __type = "module";
-var __version = "4.9.0";
-var __commitHash = "0d3c2547dce556f72413607849377530d18ea283";
+var __version = "4.10.2";
+var __commitHash = "c77afa8277a67250d798c52e61343b8ed5fd268b";
 // ../../node_modules/.bun/effect@4.0.0-beta.85/node_modules/effect/dist/Schema.js
 var TypeId27 = TypeId26;
 function declareConstructor() {
@@ -37925,24 +38327,29 @@ var fromPool = /* @__PURE__ */ fnUntraced2(function* (options) {
     if (client !== undefined) {
       return callback2((resume) => {
         f(client, resume);
-        return makeCancel(pool, client);
+        return sync3(() => destroyLease(client));
       });
     }
     return callback2((resume) => {
       let done4 = false;
-      let cancel = undefined;
       let client2 = undefined;
       function onError4(cause) {
-        cleanup(cause);
+        settle(cause);
         resume(fail5(new SqlError({
           reason: classifyError(cause, "Connection error", "acquireConnection")
         })));
       }
-      function cleanup(cause) {
-        if (!done4)
-          client2?.release(cause);
+      function settle(cause) {
+        if (done4)
+          return;
         done4 = true;
         client2?.off("error", onError4);
+        const victim = client2;
+        if (victim === undefined)
+          return;
+        if (victim.__effectSqlLeaseDestroyed)
+          return;
+        victim.release(cause);
       }
       pool.connect((cause, client_) => {
         if (cause) {
@@ -37963,18 +38370,14 @@ var fromPool = /* @__PURE__ */ fnUntraced2(function* (options) {
         }
         client2 = client_;
         client2.once("error", onError4);
-        cancel = makeCancel(pool, client2);
         f(client2, (eff) => {
-          cleanup();
+          settle();
           resume(eff);
         });
       });
-      return suspend3(() => {
-        if (!cancel) {
-          cleanup();
-          return void_3;
-        }
-        return ensuring2(cancel, sync3(cleanup));
+      return sync3(() => {
+        destroyLease(client2);
+        settle();
       });
     });
   }, client ? succeed6(client) : reserveRaw);
@@ -38002,6 +38405,8 @@ var fromPool = /* @__PURE__ */ fnUntraced2(function* (options) {
       client.on("error", onError4);
       resume(as2(addFinalizer2(scope3, sync3(() => {
         client.off("error", onError4);
+        if (client.__effectSqlLeaseDestroyed)
+          return;
         release(cause);
       })), client));
     });
@@ -38109,6 +38514,8 @@ class ConnectionImpl {
     return this.runWithClient((client, resume) => {
       client.query(query, params, (err, result3) => {
         if (err) {
+          if (!isServerSqlState(err.code))
+            destroyLease(client);
           resume(fail5(new SqlError({
             reason: classifyError(err, "Failed to execute statement", "execute")
           })));
@@ -38125,6 +38532,8 @@ class ConnectionImpl {
     return this.runWithClient((client, resume) => {
       client.query(sql, params, (err, result3) => {
         if (err) {
+          if (!isServerSqlState(err.code))
+            destroyLease(client);
           resume(fail5(new SqlError({
             reason: classifyError(err, "Failed to execute statement", "execute")
           })));
@@ -38145,6 +38554,8 @@ class ConnectionImpl {
         values: params
       }, (err, result3) => {
         if (err) {
+          if (!isServerSqlState(err.code))
+            destroyLease(client);
           resume(fail5(new SqlError({
             reason: classifyError(err, "Failed to execute statement", "execute")
           })));
@@ -38179,21 +38590,14 @@ class ConnectionImpl {
     })));
   }
 }
-var cancelEffects = /* @__PURE__ */ new WeakMap;
-var makeCancel = (pool, client) => {
-  if (cancelEffects.has(client)) {
-    return cancelEffects.get(client);
-  }
-  const processId = client.processID;
-  const eff = processId !== undefined ? callback2((resume) => {
-    if (pool.ending)
-      return resume(void_3);
-    pool.query(`SELECT pg_cancel_backend(${processId})`, () => {
-      resume(void_3);
-    });
-  }).pipe(interruptible2, timeoutOption2(5000)) : undefined;
-  cancelEffects.set(client, eff);
-  return eff;
+var isServerSqlState = (code) => typeof code === "string" && /^[0-9A-Z]{5}$/.test(code);
+var destroyLease = (client) => {
+  if (client === undefined || client.__effectSqlLeaseDestroyed)
+    return;
+  client.__effectSqlLeaseDestroyed = true;
+  try {
+    client.release(new Error("effect-sql-pg: statement lease destroyed"));
+  } catch {}
 };
 var layerFrom = (acquire) => effectContext(map9(acquire, (client) => make5(PgClient, client).pipe(add(SqlClient, client)))).pipe(provide2(layer));
 var layer2 = (config) => layerFrom(make29(config));

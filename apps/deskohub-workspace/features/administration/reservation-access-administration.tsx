@@ -5,14 +5,11 @@ import { useState } from "react";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { isReservationAccessProvisioningStale } from "@/features/reservation-access/reservation-access";
 import { Button, buttonVariants } from "@/shared/components/ui/button";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateReservationAccess } from "./actions";
 import type { AdministrationReservationAccessGrant } from "./administration.service";
-import {
-  AdministrationDetailSection,
-  AdministrationFact,
-  AdministrationStatusBadge,
-} from "./components";
+import { AdministrationDetailSection, AdministrationFact } from "./components";
 import { formatAdministrationDateTime } from "./formatters";
 
 export function ReservationAccessAdministration({
@@ -71,9 +68,7 @@ export function ReservationAccessAdministration({
   return (
     <AdministrationDetailSection title="Door access">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <AdministrationStatusBadge tone={status.tone}>
-          {status.label}
-        </AdministrationStatusBadge>
+        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
         {grant.state === "failed" && (
           <Button
             disabled={isExecuting}

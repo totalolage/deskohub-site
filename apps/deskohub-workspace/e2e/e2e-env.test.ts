@@ -42,6 +42,30 @@ describe("Workspace E2E environment", () => {
     ).toBeUndefined();
   });
 
+  test("decodes the GitHub-only Resend retrieval key when present", () => {
+    const environment = makeTestE2EEnvironment({
+      WORKSPACE_E2E_RESEND_API_KEY: "re_e2e-retrieval-key",
+    });
+
+    expect(environment.WORKSPACE_E2E_RESEND_API_KEY).toBe(
+      "re_e2e-retrieval-key"
+    );
+  });
+
+  test("treats a missing Resend retrieval key as absent instead of failing checkout cases", () => {
+    expect(
+      makeTestE2EEnvironment().WORKSPACE_E2E_RESEND_API_KEY
+    ).toBeUndefined();
+  });
+
+  test("never exposes application mail authority through the E2E boundary", () => {
+    const environment = makeTestE2EEnvironment({
+      EMAIL_API_KEY: "deployed-send-only-key",
+    });
+
+    expect(environment).not.toHaveProperty("EMAIL_API_KEY");
+  });
+
   test("does not expose application-only environment variables", () => {
     const environment = makeTestE2EEnvironment({
       NEXI_API_KEY: "app-only-key",

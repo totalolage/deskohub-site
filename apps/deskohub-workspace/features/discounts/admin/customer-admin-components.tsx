@@ -12,7 +12,6 @@ import {
   AdministrationNoticeBanner,
   AdministrationPage,
   AdministrationPageHeader,
-  AdministrationStatusBadge,
   CustomerReservationActivity,
   EmptyState,
   formatAdministrationDateTime,
@@ -21,6 +20,7 @@ import {
 } from "@/features/administration/components";
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
 import { Button } from "@/shared/components/ui/button";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { VoucherEditor } from "./admin-tables";
 import {
   AddCodeCustomerForm,
@@ -612,11 +612,9 @@ function CustomerConsent({
       <dd className="text-sm text-navy-blue/65 sm:text-right">
         {consent ? (
           <>
-            <AdministrationStatusBadge
-              tone={withdrawnAt ? "attention" : "positive"}
-            >
+            <StatusBadge tone={withdrawnAt ? "attention" : "positive"}>
               {withdrawnAt ? "Withdrawn" : "Granted"}
-            </AdministrationStatusBadge>{" "}
+            </StatusBadge>{" "}
             · {formatAdministrationDateTime(withdrawnAt ?? consent.grantedAt)}
             <span className="mt-0.5 block break-all text-xs">
               {withdrawnAt && (

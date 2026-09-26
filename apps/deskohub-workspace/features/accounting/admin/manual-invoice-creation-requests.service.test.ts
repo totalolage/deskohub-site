@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { AdministrationInvoiceCreateInput } from "@deskohub/workspace-admin-api";
 import { getTableColumns } from "drizzle-orm";
-import { Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { manualInvoiceCreationRequests } from "@/db/schema";
+import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
+import { AccountingSnapshotKeyService } from "../backend/accounting-snapshot-key.service";
 import { getManualInvoiceCreationRequestJson } from "./invoice-administration.service";
-import { getManualInvoiceCreationRequestDigest } from "./manual-invoice-creation-requests.service";
+import {
+  getManualInvoiceCreationRequestDigest,
+  ManualInvoiceCreationRequests,
+} from "./manual-invoice-creation-requests.service";
 
 const decodeInput = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput, {
   onExcessProperty: "error",
@@ -129,17 +134,36 @@ describe("manual invoice creation request claims", () => {
   });
 
   test("holds a namespaced transaction advisory lock around creation", async () => {
-    const source = await Bun.file(
-      `${import.meta.dir}/manual-invoice-creation-requests.service.ts`
-    ).text();
-    const withLock = source.slice(source.indexOf("const withLock"));
+    const recording = await makeRecordingWorkspaceDatabase();
+    const requests = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* ManualInvoiceCreationRequests;
+      }).pipe(
+        Effect.provide(
+          ManualInvoiceCreationRequests.Default.pipe(
+            Layer.provide(recording.layer),
+            Layer.provide(
+              Layer.succeed(
+                AccountingSnapshotKeyService,
+                AccountingSnapshotKeyService.of({
+                  getActive: Effect.die("unused"),
+                  getById: () => Effect.die("unused"),
+                } as never)
+              )
+            )
+          )
+        )
+      )
+    );
 
-    expect(withLock).toContain("db.transaction");
-    expect(withLock).toContain(
-      "pg_advisory_xact_lock(hashtext('manual-invoice-creation'), hashtext("
+    await Effect.runPromise(
+      requests.withLock("manual-invoice-1", () => Effect.succeed("inside"))
     );
-    expect(withLock.indexOf("pg_advisory_xact_lock(")).toBeLessThan(
-      withLock.indexOf("Effect.andThen(effect)")
-    );
+
+    const sqlTexts = recording.statements.map(({ sql }) => sql);
+    expect(sqlTexts[0].toLowerCase()).toBe("begin");
+    expect(sqlTexts[1]).toContain("pg_advisory_xact_lock");
+    expect(sqlTexts[1]).toContain("hashtext('manual-invoice-creation')");
+    expect(sqlTexts.at(-1)?.toLowerCase()).toBe("commit");
   });
 });

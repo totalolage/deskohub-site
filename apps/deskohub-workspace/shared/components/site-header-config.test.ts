@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const isMeetingRoomPageEnabled = mock();
 const isOfficePageEnabled = mock();
+const areAccountsEnabled = mock();
+
+mock.module("@/features/account/server/account-feature-flag.server", () => ({
+  areAccountsEnabled,
+}));
 
 mock.module(
   "@/features/meeting-room/backend/meeting-room-page-feature-flag",
@@ -16,8 +21,10 @@ mock.module(
 
 describe("getSiteHeaderConfig", () => {
   beforeEach(() => {
+    areAccountsEnabled.mockReset();
     isMeetingRoomPageEnabled.mockReset();
     isOfficePageEnabled.mockReset();
+    areAccountsEnabled.mockResolvedValue(true);
     isMeetingRoomPageEnabled.mockResolvedValue(false);
     isOfficePageEnabled.mockResolvedValue(false);
   });
@@ -95,5 +102,27 @@ describe("getSiteHeaderConfig", () => {
     expect(config.links).toContainEqual(
       expect.objectContaining({ href: "/en-US/reservation/office" })
     );
+  });
+
+  test("points the account entry at the localized account page in both locales", async () => {
+    const { getSiteHeaderConfig } = await import("./site-header-config");
+
+    const en = await getSiteHeaderConfig("en-US");
+    expect(en.accountHref).toBe("/en-US/account");
+    expect(en.accountLabel).toBe("Account");
+
+    const cs = await getSiteHeaderConfig("cs-CZ");
+    expect(cs.accountHref).toBe("/cs-CZ/account");
+    expect(cs.accountLabel).toBe("Účet");
+  });
+
+  test("omits the account entry when its release flag is disabled", async () => {
+    const { getSiteHeaderConfig } = await import("./site-header-config");
+    areAccountsEnabled.mockResolvedValue(false);
+
+    const config = await getSiteHeaderConfig("en-US");
+
+    expect(config).not.toHaveProperty("accountHref");
+    expect(config).not.toHaveProperty("accountLabel");
   });
 });

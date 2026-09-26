@@ -69,6 +69,53 @@ const sentResult = (id: string): EmailSendResult => ({
   timestamp: new Date(),
 });
 
+const extractEmailUrls = (body: string) => {
+  const hrefs = [...body.matchAll(/\bhref\s*=\s*(['"])(https?:\/\/.*?)\1/gi)]
+    .map((match) => match[2])
+    .filter((value): value is string => Boolean(value));
+  const textUrls = body.match(/https?:\/\/[^\s"'<>]+/gi) ?? [];
+
+  return [
+    ...new Set(
+      [...hrefs, ...textUrls].map((value) =>
+        value
+          .replaceAll("&amp;", "&")
+          .replaceAll("&quot;", '"')
+          .replaceAll("&#39;", "'")
+      )
+    ),
+  ];
+};
+
+const extractReservationEmailUrl = (
+  message: EmailMessage,
+  pathname: string
+) => {
+  const candidates = extractEmailUrls(
+    `${message.text ?? ""}\n${message.html ?? ""}`
+  )
+    .map((value) => {
+      try {
+        return new URL(value);
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((value): value is URL => Boolean(value))
+    .filter((value) => value.pathname === pathname);
+
+  if (candidates.length !== 1) {
+    throw new Error("customer email must contain one matching reservation URL");
+  }
+
+  const [candidate] = candidates;
+  if (!candidate) {
+    throw new Error("matching reservation URL is missing");
+  }
+
+  return candidate;
+};
+
 describe("createCustomerEmailInitialIdempotencyKey", () => {
   test("derives the stable provider reservation-and-category key", async () => {
     const {
@@ -540,5 +587,232 @@ describe("sendPaidReservationEmails idempotent retry stability", () => {
       "https://workspace.deskohub.cz/workspace-location-map.jpeg"
     );
     expect(staticMapImageCalls).toHaveLength(0);
+  });
+});
+
+describe("sendPaidReservationEmails reservation access capability", () => {
+  test("captures real signed access and invoice links for both locales and exchanges the access link", async () => {
+    const { EmailConfigTag, EmailServiceTag } = await import(
+      "@deskohub/email/backend/service"
+    );
+    const { NextRequest } = await import("next/server");
+    const { WorkspaceReservationEmailService } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const { WorkspaceCheckoutNetworkDetailsService } = await import(
+      "./network-details.service"
+    );
+    const { proxy } = await import("@/proxy");
+    const { getReservationAccessCookieName } = await import(
+      "@/features/reservation/backend/reservation-access-cookie"
+    );
+    const { openReservationAccessToken: openSignedReservationAccessToken } =
+      await import("@/features/reservation/backend/reservation-access-token");
+    const { reservationAccessTokenQueryParam, reservationAccessTokenSchema } =
+      await import("@/features/reservation/reservation-access-token");
+    const { workspaceReservationIdSchema } = await import(
+      "@/features/reservation/persistence-contracts"
+    );
+
+    // Keep the service and its token signer real; only the email transport is captured.
+    const reservations = (["en-US", "cs-CZ"] as const).map((locale, index) =>
+      makeReservation({
+        id: workspaceReservationIdSchema.make(`captured-email-${index + 1}`),
+        locale,
+      })
+    );
+    const sentMessages: EmailMessage[] = [];
+    const emailService: EmailService = {
+      send: mock((message: EmailMessage) => {
+        sentMessages.push(message);
+        return Effect.succeed(
+          sentResult(`captured-email-${sentMessages.length}`)
+        );
+      }),
+      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
+      verify: Effect.succeed(true),
+    };
+    const emailConfig: EmailProviderConfig = {
+      provider: "console",
+      defaultFrom: {
+        email: "reservations@workspace.deskohub.cz",
+        name: "Deskohub Workspace",
+      },
+    };
+
+    await Effect.gen(function* () {
+      const service = yield* WorkspaceReservationEmailService;
+      for (const reservation of reservations) {
+        yield* service.sendPaidReservationEmails({ reservation });
+      }
+    }).pipe(
+      Effect.provide(
+        WorkspaceReservationEmailService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(EmailServiceTag, emailService),
+              Layer.succeed(EmailConfigTag, emailConfig),
+              WorkspaceCheckoutNetworkDetailsService.Default
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    const customerMessages = sentMessages.filter((message) =>
+      message.tags?.includes("workspace-paid-reservation-access")
+    );
+    expect(sentMessages.length).toBe(reservations.length * 2);
+    expect(customerMessages.length).toBe(reservations.length);
+
+    for (const reservation of reservations) {
+      const customerMessage = customerMessages.find(
+        (message) => message.metadata?.workspaceReservationId === reservation.id
+      );
+      if (!customerMessage) {
+        throw new Error("captured customer reservation email is missing");
+      }
+
+      const accessUrl = extractReservationEmailUrl(
+        customerMessage,
+        `/${reservation.locale}/reservation/access/${reservation.id}`
+      );
+      const invoiceUrl = extractReservationEmailUrl(
+        customerMessage,
+        `/${reservation.locale}/reservation/invoice/${reservation.id}`
+      );
+      const accessTokenValue = accessUrl.searchParams.get(
+        reservationAccessTokenQueryParam
+      );
+      const invoiceTokenValue = invoiceUrl.searchParams.get(
+        reservationAccessTokenQueryParam
+      );
+
+      expect(accessUrl.hash === "").toBe(true);
+      expect(invoiceUrl.hash === "").toBe(true);
+      expect(
+        accessUrl.searchParams.getAll(reservationAccessTokenQueryParam).length
+      ).toBe(1);
+      expect(
+        invoiceUrl.searchParams.getAll(reservationAccessTokenQueryParam).length
+      ).toBe(1);
+      expect(
+        accessTokenValue !== null &&
+          accessTokenValue.length > 0 &&
+          accessTokenValue.split(".").length === 2
+      ).toBe(true);
+      expect(
+        invoiceTokenValue !== null && invoiceTokenValue === accessTokenValue
+      ).toBe(true);
+
+      if (accessTokenValue === null) {
+        throw new Error("captured reservation access token is missing");
+      }
+      const accessToken = reservationAccessTokenSchema.make(accessTokenValue);
+      const claims = await Effect.runPromise(
+        openSignedReservationAccessToken({
+          token: accessToken,
+          orderId: reservation.id,
+          locale: reservation.locale,
+        })
+      );
+      expect({
+        orderMatches: claims.orderId === reservation.id,
+        localeMatches: claims.locale === reservation.locale,
+        purposeMatches: claims.purpose === "reservation-access",
+      }).toEqual({
+        orderMatches: true,
+        localeMatches: true,
+        purposeMatches: true,
+      });
+
+      const otherLocale = reservation.locale === "en-US" ? "cs-CZ" : "en-US";
+      const otherOrderId = workspaceReservationIdSchema.make(
+        "captured-email-other"
+      );
+      const [encodedClaims, encodedSignature] = accessTokenValue.split(".");
+      if (!encodedClaims || !encodedSignature) {
+        throw new Error("captured reservation access token shape is invalid");
+      }
+      const tamperedToken = reservationAccessTokenSchema.make(
+        `${encodedClaims}.${encodedSignature[0] === "A" ? "B" : "A"}${encodedSignature.slice(1)}`
+      );
+      const invalidInputs = [
+        {
+          token: tamperedToken,
+          orderId: reservation.id,
+          locale: reservation.locale,
+        },
+        {
+          token: accessToken,
+          orderId: otherOrderId,
+          locale: reservation.locale,
+        },
+        {
+          token: accessToken,
+          orderId: reservation.id,
+          locale: otherLocale,
+        },
+      ] as const;
+      for (const invalidInput of invalidInputs) {
+        const invalidOutcome = await Effect.runPromise(
+          Effect.flip(openSignedReservationAccessToken(invalidInput))
+        ).then(
+          (error) => error.code,
+          () => "unexpected-success"
+        );
+        expect(invalidOutcome === "invalid-token").toBe(true);
+      }
+
+      const response = await proxy(new NextRequest(accessUrl));
+      expect(response.status).toBe(307);
+      expect(
+        response.headers.get("cache-control") === "private, no-store"
+      ).toBe(true);
+      expect(response.headers.get("referrer-policy") === "no-referrer").toBe(
+        true
+      );
+
+      const location = response.headers.get("location");
+      if (!location) {
+        throw new Error("reservation access exchange redirect is missing");
+      }
+      let cleanUrl: URL;
+      try {
+        cleanUrl = new URL(location);
+      } catch {
+        throw new Error("reservation access exchange redirect is invalid");
+      }
+      expect(cleanUrl.origin === accessUrl.origin).toBe(true);
+      expect(cleanUrl.pathname === accessUrl.pathname).toBe(true);
+      expect(cleanUrl.search === "" && cleanUrl.hash === "").toBe(true);
+
+      const cookieName = getReservationAccessCookieName(reservation.id);
+      const setCookie = response.headers.get("set-cookie") ?? "";
+      const cookieHeaderStart = setCookie.indexOf(`${cookieName}=`);
+      const cookieHeader =
+        cookieHeaderStart === -1 ? "" : setCookie.slice(cookieHeaderStart);
+      const hasCookieAttribute = (attribute: string) =>
+        new RegExp(`;\\s*${attribute}(?:;|,|$)`, "i").test(cookieHeader);
+      const maxAge = Number(/Max-Age=(\d+)/i.exec(cookieHeader)?.[1]);
+      expect({
+        namedCookie: cookieHeaderStart !== -1,
+        signedValue: Boolean(response.cookies.get(cookieName)?.value),
+        path: hasCookieAttribute("Path=/"),
+        secure: hasCookieAttribute("Secure"),
+        httpOnly: hasCookieAttribute("HttpOnly"),
+        sameSite: hasCookieAttribute("SameSite=Lax"),
+        maxAge: Number.isInteger(maxAge) && maxAge > 0 && maxAge <= 86400,
+      }).toEqual({
+        namedCookie: true,
+        signedValue: true,
+        path: true,
+        secure: true,
+        httpOnly: true,
+        sameSite: true,
+        maxAge: true,
+      });
+    }
   });
 });

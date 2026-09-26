@@ -1,13 +1,13 @@
 "use client";
 
+import { useRef, useState } from "react";
 import {
   type ConsentCategory,
   useCookieConsent,
 } from "@/features/cookie-consent";
-import { getLocale, m } from "@/features/i18n";
-import { Container } from "@/shared/components/container";
-import { Button } from "@/shared/components/ui/button";
-import { Checkbox } from "@/shared/components/ui/checkbox";
+import { type Locale, m } from "@/features/i18n";
+import { PreferenceRow } from "@/shared/components/ui/preference-row";
+import { Switch } from "@/shared/components/ui/switch";
 
 const consentCategories: ConsentCategory[] = [
   "necessary",
@@ -35,125 +35,112 @@ const categoryMessageGetters = {
   },
 } as const;
 
-export function CookieSettingsPage() {
-  const locale = getLocale();
-  const { acceptAll, rejectAll, acceptCategory, rejectCategory, isAccepted } =
-    useCookieConsent();
+export interface CookieSettingsProps {
+  readonly locale: Locale;
+}
+
+export function CookieSettings({ locale }: CookieSettingsProps) {
+  const { acceptCategory, rejectCategory, isAccepted } = useCookieConsent();
   const preferences = {
     necessary: true,
     analytics: isAccepted("analytics"),
     marketing: isAccepted("marketing"),
     preferences: isAccepted("preferences"),
   } satisfies Record<ConsentCategory, boolean>;
+  const [pendingCategories, setPendingCategories] = useState<
+    ReadonlySet<ConsentCategory>
+  >(() => new Set<ConsentCategory>());
+  const [erroredCategory, setErroredCategory] =
+    useState<ConsentCategory | null>(null);
+  const pendingCategoriesRef = useRef(new Set<ConsentCategory>());
 
-  const handleToggle = (category: ConsentCategory) => {
+  const handleToggle = (category: ConsentCategory, nextChecked: boolean) => {
     if (category === "necessary") return;
+    if (pendingCategoriesRef.current.has(category)) return;
 
-    const nextValue = !preferences[category];
-
-    if (nextValue) {
-      acceptCategory(category);
-      return;
-    }
-
-    rejectCategory(category);
+    setErroredCategory(null);
+    pendingCategoriesRef.current.add(category);
+    setPendingCategories(new Set(pendingCategoriesRef.current));
+    void Promise.resolve().then(async () => {
+      try {
+        await (nextChecked
+          ? acceptCategory(category)
+          : rejectCategory(category));
+      } catch {
+        setErroredCategory(category);
+      } finally {
+        pendingCategoriesRef.current.delete(category);
+        setPendingCategories(new Set(pendingCategoriesRef.current));
+      }
+    });
   };
 
+  // The four category rows only: composing them into a preference-row group
+  // is the owning screen's presentation decision, not this feature's.
   return (
-    <main className="min-h-screen overflow-x-clip bg-[#f4f1ea] text-navy-blue">
-      <section className="relative isolate overflow-hidden pb-20 pt-28 sm:pb-24 sm:pt-36">
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(236,164,35,0.18),transparent_28%),radial-gradient(circle_at_right,rgba(0,223,153,0.1),transparent_26%),linear-gradient(180deg,#08154a_0%,#10205a_30%,#f4f1ea_30%,#f4f1ea_100%)]" />
-
-        <Container>
-          <div className="mx-auto max-w-4xl rounded-[2rem] border border-white/60 bg-white/92 p-8 shadow-[0_40px_120px_-52px_rgba(0,2,79,0.55)] backdrop-blur-sm sm:p-12">
-            <div className="mt-6 space-y-4">
-              <h1 className="text-balance text-4xl leading-none sm:text-5xl">
-                {m.cookieSettingsTitle({}, { locale })}
-              </h1>
-              <p className="max-w-3xl text-base leading-7 text-navy-blue/72 sm:text-lg">
-                {m.cookieSettingsDescription({}, { locale })}
-              </p>
-            </div>
-
-            <div className="mt-10 space-y-4">
-              {consentCategories.map((category) => (
-                <CookieCategoryCard
-                  key={category}
-                  category={category}
-                  locale={locale}
-                  checked={preferences[category]}
-                  onToggle={() => handleToggle(category)}
-                />
-              ))}
-            </div>
-
-            <div className="mt-10 flex flex-wrap gap-4">
-              <Button
-                onClick={acceptAll}
-                className="h-12 px-6 text-xs uppercase tracking-[0.16em]"
-              >
-                {m.cookieSettingsAcceptAll({}, { locale })}
-              </Button>
-              <Button
-                onClick={rejectAll}
-                variant="secondary"
-                className="h-12 px-6 text-xs uppercase tracking-[0.16em]"
-              >
-                {m.cookieSettingsRejectAll({}, { locale })}
-              </Button>
-            </div>
-          </div>
-        </Container>
-      </section>
-    </main>
+    <>
+      {consentCategories.map((category) => (
+        <CookieCategoryRow
+          key={category}
+          category={category}
+          locale={locale}
+          checked={preferences[category]}
+          pending={pendingCategories.has(category)}
+          errored={erroredCategory === category}
+          onToggle={(nextChecked) => handleToggle(category, nextChecked)}
+        />
+      ))}
+    </>
   );
 }
 
-type CookieCategoryCardProps = {
+type CookieCategoryRowProps = {
   category: ConsentCategory;
-  locale: ReturnType<typeof getLocale>;
+  locale: Locale;
   checked: boolean;
-  onToggle: () => void;
+  pending: boolean;
+  errored: boolean;
+  onToggle: (checked: boolean) => void;
 };
 
-function CookieCategoryCard({
+function CookieCategoryRow({
   category,
   locale,
   checked,
+  pending,
+  errored,
   onToggle,
-}: CookieCategoryCardProps) {
+}: CookieCategoryRowProps) {
   const messages = categoryMessageGetters[category];
-  const checkboxId = `cookie-category-${category}`;
-  const descriptionId = `${checkboxId}-description`;
-  const stateId = `${checkboxId}-state`;
-  const titleId = `${checkboxId}-title`;
+  const switchId = `cookie-category-${category}`;
+  const descriptionId = `${switchId}-description`;
+  const titleId = `${switchId}-title`;
 
   return (
-    <article className="flex flex-col gap-5 rounded-[1.5rem] border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
-      <div className="max-w-2xl space-y-2">
-        <h2 id={titleId} className="text-2xl leading-tight">
-          {messages.title({}, { locale })}
-        </h2>
-        <p id={descriptionId} className="text-base leading-7 text-navy-blue/70">
-          {messages.description({}, { locale })}
-        </p>
-      </div>
-
-      <div className="inline-flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue">
-        <Checkbox
-          id={checkboxId}
+    <PreferenceRow
+      control={
+        <Switch
+          id={switchId}
           checked={checked}
           onCheckedChange={onToggle}
-          disabled={category === "necessary"}
+          disabled={category === "necessary" || pending}
+          aria-labelledby={titleId}
           aria-describedby={descriptionId}
-          aria-labelledby={`${titleId} ${stateId}`}
         />
-        <label id={stateId} htmlFor={checkboxId} className="cursor-pointer">
-          {checked
-            ? m.cookieSettingsToggleEnabled({}, { locale })
-            : m.cookieSettingsToggleDisabled({}, { locale })}
-        </label>
-      </div>
-    </article>
+      }
+      description={messages.description({}, { locale })}
+      descriptionId={descriptionId}
+      title={messages.title({}, { locale })}
+      titleId={titleId}
+    >
+      {errored && (
+        <p
+          role="alert"
+          className="text-sm font-semibold leading-6 text-red-700"
+        >
+          {m.errorPageTitle({}, { locale })}
+        </p>
+      )}
+    </PreferenceRow>
   );
 }

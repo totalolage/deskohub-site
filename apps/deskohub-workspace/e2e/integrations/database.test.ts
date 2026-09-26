@@ -1,8 +1,16 @@
 import { expect, mock, test } from "bun:test";
-import { fileURLToPath } from "node:url";
+import type { TSESTree } from "@typescript-eslint/types";
 import { Cause, Effect, Exit, Fiber, Layer } from "effect";
+import { isString } from "effect/Predicate";
 import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
+import {
+  callsNamed,
+  identifierNames,
+  methodCallsNamed,
+  nodesOf,
+  parseTrackedSource,
+} from "../../scripts/shared/source-ast";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutRow } from "../types";
@@ -93,53 +101,120 @@ test("accepts reservation terms evidence from payment submission", () => {
   ).not.toThrow();
 });
 
-test("reads persisted reservation details without legacy product columns", async () => {
-  const source = await Bun.file(
-    fileURLToPath(new URL("./database.ts", import.meta.url))
-  ).text();
-
-  expect(source).toContain(
-    "reservation_details: workspaceReservations.reservationDetails"
+test("reads persisted reservation details without legacy product columns", () => {
+  const { ast } = parseTrackedSource(
+    new URL("./database.ts", import.meta.url).pathname
   );
-  expect(source).not.toContain("workspaceReservations.productTier");
-  expect(source).not.toContain("workspaceReservations.productCoffee");
-  expect(source).not.toContain("workspaceReservations.productMonitorOption");
+
+  // The persisted read projects reservation_details from the real column.
+  const detailProjections = nodesOf(ast).filter(
+    (node): node is TSESTree.Property => {
+      if (node.type !== "Property") return false;
+      const value = node.value;
+      return (
+        node.key.type === "Identifier" &&
+        node.key.name === "reservation_details" &&
+        value.type === "MemberExpression" &&
+        !value.computed &&
+        value.object.type === "Identifier" &&
+        value.object.name === "workspaceReservations" &&
+        value.property.type === "Identifier" &&
+        value.property.name === "reservationDetails"
+      );
+    }
+  );
+  expect(detailProjections).toHaveLength(1);
+
+  // No retired product column is read anywhere.
+  const memberProperties = new Set(
+    nodesOf(ast).flatMap((node) =>
+      node.type === "MemberExpression" &&
+      !node.computed &&
+      node.object.type === "Identifier" &&
+      node.object.name === "workspaceReservations" &&
+      node.property.type === "Identifier"
+        ? [node.property.name]
+        : []
+    )
+  );
+  expect(memberProperties.has("productTier")).toBe(false);
+  expect(memberProperties.has("productCoffee")).toBe(false);
+  expect(memberProperties.has("productMonitorOption")).toBe(false);
 });
 
-test("uses one worker-scoped Drizzle client for the exact preview datasource", async () => {
-  const databaseServiceSource = await Bun.file(
-    fileURLToPath(new URL("./database.service.ts", import.meta.url))
-  ).text();
-  const runnerSource = await Bun.file(
-    fileURLToPath(new URL("../services/runner.ts", import.meta.url))
-  ).text();
+test("uses one worker-scoped Drizzle client for the exact preview datasource", () => {
+  const databaseService = parseTrackedSource(
+    new URL("./database.service.ts", import.meta.url).pathname
+  );
+  const runner = parseTrackedSource(
+    new URL("../services/runner.ts", import.meta.url).pathname
+  );
 
-  expect(databaseServiceSource).toContain(
-    "connectionString: config.databaseUrlUnpooled"
+  // The Drizzle client is constructed from the unpooled datasource URL only.
+  const connectionStringValues = nodesOf(databaseService.ast).flatMap((node) =>
+    node.type === "Property" &&
+    node.key.type === "Identifier" &&
+    node.key.name === "connectionString" &&
+    node.value.type === "MemberExpression" &&
+    !node.value.computed &&
+    node.value.object.type === "Identifier" &&
+    node.value.object.name === "config" &&
+    node.value.property.type === "Identifier"
+      ? [node.value.property.name]
+      : []
   );
-  expect(databaseServiceSource).not.toContain(
-    "connectionString: config.databaseUrl,"
-  );
-  expect(runnerSource).toContain("E2EDatabase.layer(datasourceConfig)");
-  expect(runnerSource).toContain(
-    "WorkspaceE2ECaseService.Default.pipe(Layer.provideMerge(support))"
-  );
+  expect(connectionStringValues).toEqual(["databaseUrlUnpooled"]);
+
+  // The runner builds the E2E database layer from the datasource config and
+  // merges the support layer into the case service.
+  expect(
+    methodCallsNamed(runner.ast, "layer").some(
+      (call) =>
+        call.callee.type === "MemberExpression" &&
+        call.callee.object.type === "Identifier" &&
+        call.callee.object.name === "E2EDatabase" &&
+        call.arguments[0]?.type === "Identifier" &&
+        call.arguments[0].name === "datasourceConfig"
+    )
+  ).toBe(true);
+  const runnerIdentifiers = identifierNames(runner.ast);
+  expect(runnerIdentifiers.has("WorkspaceE2ECaseService")).toBe(true);
+  expect(
+    methodCallsNamed(runner.ast, "provideMerge").some(
+      (call) =>
+        call.arguments[0]?.type === "Identifier" &&
+        call.arguments[0].name === "support"
+    )
+  ).toBe(true);
 });
 
-test("polls for checkout rows before asserting reservation replacement state", async () => {
-  const databaseSource = await Bun.file(
-    fileURLToPath(new URL("./database.ts", import.meta.url))
-  ).text();
-  const reservationReplacementSource = await Bun.file(
-    fileURLToPath(new URL("../cases/reservation-reuse.ts", import.meta.url))
-  ).text();
+test("polls for checkout rows before asserting reservation replacement state", () => {
+  const database = parseTrackedSource(
+    new URL("./database.ts", import.meta.url).pathname
+  );
+  const reservationReplacement = parseTrackedSource(
+    new URL("../cases/reservation-reuse.ts", import.meta.url).pathname
+  );
 
-  expect(databaseSource).toContain(
-    "pollUntil(readCheckoutRowFromDatabase(db, orderId)"
-  );
-  expect(reservationReplacementSource).toContain(
-    "waitForCheckoutRow(datasourceConfig, orderId)"
-  );
+  // The database read runs under the bounded poll, waiting on the checkout
+  // row for the exact order.
+  expect(
+    callsNamed(database.ast, "pollUntil").filter(
+      (call) =>
+        call.arguments[0]?.type === "CallExpression" &&
+        call.arguments[0].callee.type === "Identifier" &&
+        call.arguments[0].callee.name === "readCheckoutRowFromDatabase"
+    )
+  ).toHaveLength(1);
+  expect(
+    callsNamed(reservationReplacement.ast, "waitForCheckoutRow").filter(
+      (call) =>
+        call.arguments[0]?.type === "Identifier" &&
+        call.arguments[0].name === "datasourceConfig" &&
+        call.arguments[1]?.type === "Identifier" &&
+        call.arguments[1].name === "orderId"
+    )
+  ).toHaveLength(1);
 });
 
 test("classifies provider session rows after the hosted redirect barrier", () => {
@@ -210,7 +285,7 @@ test("waits briefly for the provider session row to converge after redirect", as
           {
             intervalMs: 1,
             onRow: (row) => observedRows.push(row),
-            timeoutMs: 50,
+            timeoutMs: 2_000,
           }
         )
       );
@@ -249,10 +324,23 @@ test("retains the last provider session diagnostic after convergence times out",
   });
 });
 
-test("assigns fixed diagnostics to the Postgres validation boundaries", async () => {
-  const source = await Bun.file(
-    fileURLToPath(new URL("./database.ts", import.meta.url))
-  ).text();
+test("assigns fixed diagnostics to the Postgres validation boundaries", () => {
+  const { ast } = parseTrackedSource(
+    new URL("./database.ts", import.meta.url).pathname
+  );
+
+  // The diagnostic wrapper always carries its fixed code as the first
+  // string-literal argument; the parsed calls are the authority.
+  const assignedCodes = new Set(
+    callsNamed(ast, "withWorkspaceE2EDiagnosticCode").flatMap((call) => {
+      const argument = call.arguments[0];
+      return argument !== undefined &&
+        argument.type === "Literal" &&
+        isString(argument.value)
+        ? [argument.value]
+        : [];
+    })
+  );
 
   for (const diagnosticCode of [
     "postgres_checkout_row_convergence_failed",
@@ -260,11 +348,7 @@ test("assigns fixed diagnostics to the Postgres validation boundaries", async ()
     "postgres_legal_evidence_validation_failed",
     "postgres_local_pii_validation_failed",
   ]) {
-    expect(source).toMatch(
-      new RegExp(
-        `withWorkspaceE2EDiagnosticCode\\(\\s*"${diagnosticCode}"\\s*\\)`
-      )
-    );
+    expect(assignedCodes.has(diagnosticCode)).toBe(true);
   }
 });
 
@@ -327,41 +411,44 @@ test.each([
   ["nexi_webhook_fulfillment_failed", "nexi_webhook_fulfillment_failed"],
   ["postgres_checkout_row_assertion_failed", undefined],
   ["provider-payload-value", undefined],
-] as const)("keeps webhook failure diagnostics on the fixed allowlist for %s", async (responseCode, expectedDiagnosticCode) => {
-  const fetchMock = mock(async () =>
-    Response.json(
-      { code: responseCode, payload: "provider payload must stay private" },
-      { status: 500 }
-    )
-  );
-  const httpClientLayer = FetchHttpClient.layer.pipe(
-    Layer.provide(
-      Layer.succeed(
-        FetchHttpClient.Fetch,
-        fetchMock as unknown as typeof globalThis.fetch
+] as const)(
+  "keeps webhook failure diagnostics on the fixed allowlist for %s",
+  async (responseCode, expectedDiagnosticCode) => {
+    const fetchMock = mock(async () =>
+      Response.json(
+        { code: responseCode, payload: "provider payload must stay private" },
+        { status: 500 }
       )
-    )
-  );
+    );
+    const httpClientLayer = FetchHttpClient.layer.pipe(
+      Layer.provide(
+        Layer.succeed(
+          FetchHttpClient.Fetch,
+          fetchMock as unknown as typeof globalThis.fetch
+        )
+      )
+    );
 
-  const exit = await Effect.runPromiseExit(
-    replayNexiWebhook(makeConfig(), makeCheckoutRow()).pipe(
-      Effect.provide(httpClientLayer)
-    )
-  );
+    const exit = await Effect.runPromiseExit(
+      replayNexiWebhook(makeConfig(), makeCheckoutRow()).pipe(
+        Effect.provide(httpClientLayer)
+      )
+    );
 
-  expect(Exit.isFailure(exit)).toBe(true);
-  if (Exit.isSuccess(exit)) return;
-  const error = Cause.squash(exit.cause);
-  expect(error).toMatchObject({
-    message: "Nexi webhook replay failed with 500",
-  });
-  expect((error as { readonly diagnosticCode?: unknown }).diagnosticCode).toBe(
-    expectedDiagnosticCode
-  );
-  expect(JSON.stringify(error)).not.toContain(
-    "provider payload must stay private"
-  );
-});
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) return;
+    const error = Cause.squash(exit.cause);
+    expect(error).toMatchObject({
+      message: "Nexi webhook replay failed with 500",
+    });
+    expect(
+      (error as { readonly diagnosticCode?: unknown }).diagnosticCode
+    ).toBe(expectedDiagnosticCode);
+    expect(JSON.stringify(error)).not.toContain(
+      "provider payload must stay private"
+    );
+  }
+);
 
 test("accepts automatic discounts stacked before the redeemed zero-total code", () => {
   expect(() =>

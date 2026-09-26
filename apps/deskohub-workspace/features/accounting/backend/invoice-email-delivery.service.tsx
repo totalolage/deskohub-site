@@ -105,10 +105,15 @@ export class InvoiceEmailDeliveryService extends Context.Service<
               BigDecimal.isPositive(
                 BigDecimal.fromStringUnsafe(manualDocument?.total ?? "0")
               );
-            const manualBody =
-              locale === "cs-CZ"
-                ? `V příloze posíláme fakturu ${input.invoice.invoiceNumber}${asksForPayment ? " s platebními údaji" : ""}.`
-                : `Invoice ${input.invoice.invoiceNumber}${asksForPayment ? " with payment details" : ""} is attached.`;
+            const manualBody = asksForPayment
+              ? m.invoiceManualEmailBodyPaymentDetails(
+                  { invoiceNumber: input.invoice.invoiceNumber },
+                  { locale }
+                )
+              : m.invoiceManualEmailBody(
+                  { invoiceNumber: input.invoice.invoiceNumber },
+                  { locale }
+                );
             return {
               body: manualDocument
                 ? manualBody
@@ -133,7 +138,10 @@ export class InvoiceEmailDeliveryService extends Context.Service<
             }
             return {
               body: manualDocument
-                ? `Kopie vystavené faktury ${input.invoice.invoiceNumber} je v příloze.`
+                ? m.invoiceManualEmailInternalBody(
+                    { invoiceNumber: input.invoice.invoiceNumber },
+                    { locale }
+                  )
                 : m.invoiceEmailInternalBody(
                     {
                       invoiceNumber: input.invoice.invoiceNumber,

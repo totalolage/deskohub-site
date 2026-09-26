@@ -1,5 +1,6 @@
 "use client";
 
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
 import type {
   AdministrationBookingSort,
@@ -11,7 +12,6 @@ import {
 } from "./data-table";
 import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
-import { AdministrationStatusBadge } from "./status-badge";
 import {
   type AdministrationTableSorting,
   getAdministrationTableSortHref,
@@ -26,7 +26,7 @@ export function BookingStatusBadge({
   >;
 }) {
   return (
-    <AdministrationStatusBadge
+    <StatusBadge
       tone={
         {
           CANCELLED: "neutral",
@@ -36,7 +36,7 @@ export function BookingStatusBadge({
       }
     >
       {booking.statusLabel}
-    </AdministrationStatusBadge>
+    </StatusBadge>
   );
 }
 

@@ -31,23 +31,11 @@ describe("customer marketing consent persistence", () => {
     ]);
   });
 
-  test("only reactivates a previously withdrawn consent", async () => {
-    const source = await Bun.file(
-      new URL(
-        "../../features/legal/backend/customer-marketing-consent.repository.ts",
-        import.meta.url
-      )
-    ).text();
-
-    expect(source).toContain(
-      "target: customerMarketingConsents.dotyposCustomerId"
-    );
-    expect(source).toContain(
-      "setWhere: isNotNull(customerMarketingConsents.withdrawnAt)"
-    );
-    expect(source).toContain("withdrawnAt: null");
-    expect(source).not.toContain("onConflictDoNothing");
-  });
+  // Initial-grant idempotency and explicit-grant reactivation are covered
+  // behaviorally against a real disposable Postgres by
+  // features/legal/backend/customer-marketing-consent.repository.postgres.test.ts
+  // (grantInitial/grant with conflict behavior asserted on persisted rows),
+  // so no recording-SQL source contract is kept here.
 
   test("creates the customer table without a historical backfill", async () => {
     const migration = await Bun.file(
