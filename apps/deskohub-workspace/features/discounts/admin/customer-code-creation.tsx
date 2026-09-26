@@ -173,22 +173,6 @@ export function DiscountCodeCreationForm({
       </fieldset>
 
       <div className="mt-6">
-        {discountKind === "existing" && (
-          <Label className="grid gap-2">
-            <span>Discount</span>
-            <select
-              className="flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20"
-              name="discountId"
-              required
-            >
-              {discounts.map((discount) => (
-                <option key={discount.id} value={discount.id}>
-                  {discount.labels["en-US"]}
-                </option>
-              ))}
-            </select>
-          </Label>
-        )}
         {discountKind === "new" && <DiscountDefinitionFields />}
       </div>
 
@@ -198,7 +182,26 @@ export function DiscountCodeCreationForm({
         <p className="mb-4 mt-1 text-sm text-navy-blue/65">
           Set the code and its availability window.
         </p>
-        <DiscountCodeConfigurationFields />
+        <DiscountCodeConfigurationFields
+          discountField={
+            discountKind === "existing" && (
+              <Label className="grid gap-2">
+                <span>Discount</span>
+                <select
+                  className="flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20"
+                  name="discountId"
+                  required
+                >
+                  {discounts.map((discount) => (
+                    <option key={discount.id} value={discount.id}>
+                      {discount.labels["en-US"]}
+                    </option>
+                  ))}
+                </select>
+              </Label>
+            )
+          }
+        />
       </div>
 
       {error && (

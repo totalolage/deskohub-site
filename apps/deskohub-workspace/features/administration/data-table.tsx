@@ -187,7 +187,9 @@ export function AdministrationDataTable<T>({
                       row.getVisibleCells().length + (renderActions ? 1 : 0)
                     }
                   >
-                    {renderExpanded(row.original)}
+                    <div className="min-w-0 w-full max-w-[calc(100cqw-2.5rem)]">
+                      {renderExpanded(row.original)}
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
@@ -201,5 +203,9 @@ export function AdministrationDataTable<T>({
   if (mobile) {
     return <AdministrationResponsiveTable desktop={desktop} mobile={mobile} />;
   }
-  return <AdministrationTableFrame>{desktop}</AdministrationTableFrame>;
+  return (
+    <AdministrationTableFrame className="@container">
+      {desktop}
+    </AdministrationTableFrame>
+  );
 }

@@ -38,4 +38,25 @@ describe("AdministrationDataTable", () => {
     expect(sort.closest("th")?.getAttribute("aria-sort")).toBe("ascending");
     expect(within(table).getAllByRole("row")[1]?.textContent).toBe("Alpha");
   });
+
+  test("contains expanded rows in a capped container-query wrapper", () => {
+    const view = render(
+      <AdministrationDataTable
+        ariaLabel="Expandable"
+        columns={[{ accessorKey: "name", header: "Name" }]}
+        data={[{ id: "a", name: "Alpha" }]}
+        expandedId="a"
+        getRowId={(item) => item.id}
+        renderExpanded={(item) => <output>Details for {item.name}</output>}
+      />
+    );
+    const frame = view.container.firstElementChild as HTMLElement;
+    expect(frame.className).toContain("@container");
+
+    const expandedCell = view.container.querySelector("output")!.parentElement!;
+    expect(expandedCell.className).toContain("min-w-0");
+    expect(expandedCell.className).toContain("w-full");
+    expect(expandedCell.className).toContain("max-w-[calc(100cqw-2.5rem)]");
+    expect(frame.contains(expandedCell)).toBe(true);
+  });
 });

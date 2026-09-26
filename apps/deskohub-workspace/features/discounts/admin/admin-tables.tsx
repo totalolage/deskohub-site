@@ -3,6 +3,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   ArrowUpRight,
+  Info,
   Pencil,
   Plus,
   RefreshCw,
@@ -33,9 +34,16 @@ import type {
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import { generatePromotionCode } from "@/features/discounts/promotion-code";
+import { TemporalInput } from "@/shared/components/temporal-input";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/shared/components/ui/tooltip";
 import {
   defaultWorkspaceCurrency,
   findWorkspaceCurrencyDefinition,
@@ -1049,103 +1057,158 @@ function DiscountCodeFields({
   readonly discounts: readonly DiscountTableItem[];
 }) {
   return (
-    <div className="grid gap-5">
-      <FormField label="Discount">
-        <select
-          className={selectClassName}
-          defaultValue={code?.discountId ?? undefined}
-          id={fieldId("discountId", code?.id)}
-          name="discountId"
-          required
-        >
-          {discounts.map((discount) => (
-            <option key={discount.id} value={discount.id}>
-              {discount.labels["en-US"]}
-            </option>
-          ))}
-        </select>
-      </FormField>
-      <DiscountCodeConfigurationFields code={code} />
-    </div>
+    <DiscountCodeConfigurationFields
+      code={code}
+      discountField={
+        <FormField label="Discount">
+          <select
+            className={selectClassName}
+            defaultValue={code?.discountId ?? undefined}
+            id={fieldId("discountId", code?.id)}
+            name="discountId"
+            required
+          >
+            {discounts.map((discount) => (
+              <option key={discount.id} value={discount.id}>
+                {discount.labels["en-US"]}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      }
+    />
   );
 }
 
 export function DiscountCodeConfigurationFields({
   code,
+  discountField,
   showMaxUses = true,
 }: {
   readonly code?: DiscountCodeTableItem | VoucherTableItem;
+  readonly discountField?: ReactNode;
   readonly showMaxUses?: boolean;
 }) {
   const [codeValue, setCodeValue] = useState(code?.code ?? "");
   const codeInputId = fieldId("code", code?.id);
 
   return (
-    <div className="grid gap-5">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="grid gap-2">
-          <Label htmlFor={codeInputId}>Code</Label>
-          <div
-            className={
-              code ? undefined : "grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
-            }
-          >
-            <Input
-              autoCapitalize="characters"
-              className="font-mono uppercase"
-              id={codeInputId}
-              maxLength={64}
-              minLength={3}
-              name="code"
-              onChange={(event) => setCodeValue(event.currentTarget.value)}
-              required
-              spellCheck={false}
-              value={codeValue}
-            />
-            {!code && (
-              <Button
-                className="h-12 rounded-[1.1rem] px-5"
-                onClick={() => setCodeValue(generatePromotionCode())}
-                type="button"
-                variant="secondary"
-              >
-                <RefreshCw aria-hidden className="size-4" />
-                Generate code
-              </Button>
-            )}
-          </div>
-        </div>
-        <label className="flex min-h-12 cursor-pointer items-center gap-3 self-end rounded-[1.1rem] bg-navy-blue/[0.045] px-4 py-3 text-sm font-semibold">
-          <input
-            className="size-4 accent-[var(--brand-burned-orange)]"
-            defaultChecked={code?.enabled ?? true}
-            name="enabled"
-            type="checkbox"
-          />
-          Enabled
-        </label>
-      </div>
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      {discountField && (
+        <div className="col-span-2 min-w-0">{discountField}</div>
+      )}
       <div
-        className={`grid gap-4 ${showMaxUses ? "md:grid-cols-4" : "md:grid-cols-2"}`}
+        className={`grid min-w-0 gap-2 ${discountField ? "" : "md:col-span-2"}`}
       >
-        <FormField label="Valid from">
+        <Label htmlFor={codeInputId}>Code</Label>
+        <div className={code ? "min-w-0" : "flex min-w-0 flex-wrap gap-2"}>
           <Input
+            autoCapitalize="characters"
+            className="min-w-0 flex-1 basis-56 font-mono uppercase"
+            id={codeInputId}
+            maxLength={64}
+            minLength={3}
+            name="code"
+            onChange={(event) => setCodeValue(event.currentTarget.value)}
+            required
+            spellCheck={false}
+            value={codeValue}
+          />
+          {!code && (
+            <Button
+              className="h-12 shrink-0 rounded-[1.1rem] px-5"
+              onClick={() => setCodeValue(generatePromotionCode())}
+              type="button"
+              variant="secondary"
+            >
+              <RefreshCw aria-hidden className="size-4" />
+              Generate code
+            </Button>
+          )}
+        </div>
+      </div>
+      <label
+        className={`flex min-h-12 min-w-0 cursor-pointer items-center gap-3 self-end rounded-[1.1rem] bg-navy-blue/[0.045] px-4 py-3 text-sm font-semibold ${discountField ? "" : "md:col-span-2"}`}
+      >
+        <input
+          className="size-4 accent-[var(--brand-burned-orange)]"
+          defaultChecked={code?.enabled ?? true}
+          name="enabled"
+          type="checkbox"
+        />
+        Enabled
+      </label>
+      <div className={`min-w-0 ${showMaxUses ? "" : "md:col-span-2"}`}>
+        <FormField
+          description={redemptionHintText}
+          htmlFor={fieldId("validFrom", code?.id)}
+          label="Valid from"
+        >
+          <TemporalInput
             defaultValue={toDateTimeInputValue(code?.validFrom)}
             id={fieldId("validFrom", code?.id)}
+            label="Valid from"
             name="validFrom"
             type="datetime-local"
           />
         </FormField>
-        <FormField label="Valid until">
-          <Input
+      </div>
+      <div className={`min-w-0 ${showMaxUses ? "" : "md:col-span-2"}`}>
+        <FormField
+          description={redemptionHintText}
+          htmlFor={fieldId("validUntil", code?.id)}
+          label="Valid until"
+        >
+          <TemporalInput
             defaultValue={toDateTimeInputValue(code?.validUntil)}
             id={fieldId("validUntil", code?.id)}
+            label="Valid until"
             name="validUntil"
             type="datetime-local"
           />
         </FormField>
-        {showMaxUses && (
-          <>
+      </div>
+      {showMaxUses && (
+        <>
+          <div className="min-w-0">
+            <FormField
+              description={serviceDateHintText}
+              htmlFor={fieldId("serviceDateFrom", code?.id)}
+              label="Service date from (inclusive)"
+            >
+              <TemporalInput
+                defaultValue={
+                  code && "serviceDateFrom" in code
+                    ? (code.serviceDateFrom ?? "")
+                    : ""
+                }
+                id={fieldId("serviceDateFrom", code?.id)}
+                label="Service date from (inclusive)"
+                name="serviceDateFrom"
+                type="date"
+              />
+            </FormField>
+          </div>
+          <div className="min-w-0">
+            <FormField
+              description={serviceDateHintText}
+              htmlFor={fieldId("serviceDateUntil", code?.id)}
+              label="Service date until (exclusive)"
+            >
+              <TemporalInput
+                defaultValue={
+                  code && "serviceDateUntil" in code
+                    ? (code.serviceDateUntil ?? "")
+                    : ""
+                }
+                id={fieldId("serviceDateUntil", code?.id)}
+                label="Service date until (exclusive)"
+                name="serviceDateUntil"
+                type="date"
+              />
+            </FormField>
+          </div>
+          <div className="min-w-0 md:col-span-2">
             <FormField label="Maximum uses">
               <Input
                 defaultValue={
@@ -1158,6 +1221,8 @@ export function DiscountCodeConfigurationFields({
                 type="number"
               />
             </FormField>
+          </div>
+          <div className="min-w-0 md:col-span-2">
             <FormField label="Maximum uses per customer">
               <Input
                 defaultValue={
@@ -1172,51 +1237,8 @@ export function DiscountCodeConfigurationFields({
                 type="number"
               />
             </FormField>
-          </>
-        )}
-      </div>
-      <p className="text-xs leading-5 text-navy-blue/70">
-        Redemption times use the Workspace’s Prague time zone. Both bounds are
-        optional; “valid until” is exclusive.
-      </p>
-      {showMaxUses && (
-        <fieldset className="grid gap-3">
-          <legend className="mb-3 text-sm font-semibold">
-            Reservation start dates
-          </legend>
-          <div className="grid gap-4 md:grid-cols-2">
-            <FormField label="Service date from (inclusive)">
-              <Input
-                defaultValue={
-                  code && "serviceDateFrom" in code
-                    ? (code.serviceDateFrom ?? "")
-                    : ""
-                }
-                id={fieldId("serviceDateFrom", code?.id)}
-                name="serviceDateFrom"
-                type="date"
-              />
-            </FormField>
-            <FormField label="Service date until (exclusive)">
-              <Input
-                defaultValue={
-                  code && "serviceDateUntil" in code
-                    ? (code.serviceDateUntil ?? "")
-                    : ""
-                }
-                id={fieldId("serviceDateUntil", code?.id)}
-                name="serviceDateUntil"
-                type="date"
-              />
-            </FormField>
           </div>
-          <p className="text-xs leading-5 text-navy-blue/70">
-            Set both dates or leave both blank for unrestricted service dates.
-            Only the reservation’s start date in Prague matters, even when it
-            ends on a later day. For a single day, set the end to the following
-            date.
-          </p>
-        </fieldset>
+        </>
       )}
     </div>
   );
@@ -1266,13 +1288,50 @@ export function VoucherCreditFields({
 
 function FormField({
   children,
+  description,
+  htmlFor,
   label,
 }: {
   readonly children: ReactNode;
+  readonly description?: ReactNode;
+  readonly htmlFor?: string;
   readonly label: string;
 }) {
+  if (description) {
+    return (
+      <div className="grid min-w-0 grid-cols-1 gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Label className="min-w-0" htmlFor={htmlFor}>
+            {label}
+          </Label>
+          <TooltipProvider>
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label={`About ${label}`}
+                  className="size-6 shrink-0 rounded-full p-0 text-navy-blue/55 hover:text-navy-blue"
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Info aria-hidden="true" className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent
+                collisionPadding={16}
+                className="w-[min(20rem,calc(100vw-2rem))]"
+              >
+                {description}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        {children}
+      </div>
+    );
+  }
   return (
-    <Label className="grid gap-2">
+    <Label className="grid min-w-0 grid-cols-1 gap-2">
       <span>{label}</span>
       {children}
     </Label>
@@ -1300,6 +1359,12 @@ const fieldId = (name: string, id?: string) => (id ? `${name}-${id}` : name);
 
 const selectClassName =
   "min-h-12 w-full rounded-[1.1rem] border border-navy-blue/12 bg-white px-4 py-3 text-base outline-none focus-visible:border-burned-orange focus-visible:ring-4 focus-visible:ring-burned-orange/10";
+
+const redemptionHintText =
+  "Redemption times use the Workspace’s Prague time zone. Both bounds are optional; “valid until” is exclusive.";
+
+const serviceDateHintText =
+  "Set both dates or leave both blank for unrestricted service dates. Only the reservation’s start date in Prague matters, even when it ends on a later day. For a single day, set the end to the following date.";
 
 const productOptions = [
   { key: "cowork", label: "Cowork" },
