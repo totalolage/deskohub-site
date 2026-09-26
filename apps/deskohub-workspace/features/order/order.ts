@@ -30,7 +30,11 @@ export const orderFulfillmentStates = [
 
 export type OrderFulfillmentState = (typeof orderFulfillmentStates)[number];
 
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const orderIdSchema = Schema.NonEmptyString.pipe(
+  Schema.check(Schema.isPattern(uuidPattern)),
   Schema.brand("OrderId")
 ).annotate({
   identifier: "OrderId",

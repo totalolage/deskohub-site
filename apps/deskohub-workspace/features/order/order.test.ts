@@ -9,8 +9,11 @@ import {
 } from "./order";
 
 describe("order domain", () => {
-  test("defines the reservation-only kind and shared lifecycle vocabularies", () => {
+  test("defines exactly the reservation-only kind", () => {
     expect(orderKinds).toEqual(["reservation"]);
+  });
+
+  test("defines exactly the six payment states of the reservation domain", () => {
     expect(orderPaymentStates).toEqual([
       "not_started",
       "pending",
@@ -19,6 +22,9 @@ describe("order domain", () => {
       "cancelled",
       "expired",
     ]);
+  });
+
+  test("defines exactly the five fulfillment states incl. awaiting delivery", () => {
     expect(orderFulfillmentStates).toEqual([
       "not_started",
       "processing",
@@ -28,39 +34,22 @@ describe("order domain", () => {
     ]);
   });
 
-  test("represents every mandated lifecycle value through the schemas", () => {
+  test("decodes only the mandated lifecycle values through the schemas", () => {
     const decodeKind = Schema.decodeUnknownSync(orderKindSchema);
 
     expect(decodeKind("reservation")).toBe("reservation");
     expect(() => decodeKind("goods")).toThrow();
     expect(() => decodeKind("")).toThrow();
-
-    for (const state of orderPaymentStates) {
-      expect(orderPaymentStates).toContain(state);
-    }
-    for (const state of orderFulfillmentStates) {
-      expect(orderFulfillmentStates).toContain(state);
-    }
-    expect(orderFulfillmentStates).toContain("awaiting_delivery");
   });
 
-  test("rejects empty persisted identifiers", () => {
+  test("branded order id decodes uuids and rejects everything else", () => {
     const decodeOrderId = Schema.decodeUnknownSync(orderIdSchema);
+    const encodeOrderId = Schema.encodeSync(orderIdSchema);
+    const orderId = decodeOrderId("0198c1a2-3b4c-7d5e-8f90-1a2b3c4d5e6f");
 
+    expect(encodeOrderId(orderId)).toBe("0198c1a2-3b4c-7d5e-8f90-1a2b3c4d5e6f");
+    expect(() => decodeOrderId("order-id")).toThrow();
     expect(() => decodeOrderId("")).toThrow();
-    expect(decodeOrderId("order-id")).toBe("order-id");
-  });
-
-  test("carries no personally identifying or sensitive fields", () => {
-    const vocabularyJson = JSON.stringify([
-      ...orderKinds,
-      ...orderPaymentStates,
-      ...orderFulfillmentStates,
-    ]);
-
-    expect(vocabularyJson).not.toMatch(
-      /email|phone|customer_name|token|password/i
-    );
-    expect(Object.keys(orderKinds)).not.toContain("goods");
+    expect(() => decodeOrderId(42)).toThrow();
   });
 });
