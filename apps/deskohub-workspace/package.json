@@ -77,6 +77,7 @@
     "@radix-ui/react-tooltip": "^1.2.12",
     "@react-pdf/renderer": "^4.3.0",
     "@samasante/liquid-glass": "^0.1.1",
+    "sharp": "0.35.3",
     "@standard-schema/spec": "^1.1.0",
     "@t3-oss/env-core": "^0.13.8",
     "@t3-oss/env-nextjs": "^0.13.8",

@@ -152,6 +152,29 @@ mock.module(
     CustomerReservationHistoryService: History,
   })
 );
+
+let avatarLookupEffect: Effect.Effect<
+  { readonly url: string; readonly version?: number } | null,
+  unknown
+>;
+
+const Avatar = Context.Service<
+  Avatar,
+  {
+    readonly lookup: (
+      accountId: CustomerAccountId
+    ) => typeof avatarLookupEffect;
+  }
+>()("@test/AccountAvatar");
+
+const AvatarLayer = Layer.succeed(Avatar, {
+  lookup: () => avatarLookupEffect,
+});
+Object.assign(Avatar, { Live: AvatarLayer });
+
+mock.module("@/features/account/backend/customer-avatar.service", () => ({
+  CustomerAvatarService: Avatar,
+}));
 mock.module("@/shared/backend/workspace-effect", () => ({
   runWorkspaceEffect:
     (_operation: string, _options: { readonly boundary: string }) =>
@@ -166,6 +189,7 @@ describe("loadCustomerAccountPage", () => {
     resolverCalls = 0;
     profileLoadCalls = 0;
     historyLoadCalls = 0;
+    avatarLookupEffect = Effect.succeed(null);
     historyEffect = Effect.succeed({
       kind: "available",
       groups: { current: [], past: [], unavailable: [] },
@@ -279,6 +303,7 @@ describe("loadCustomerAccountPage", () => {
       kind: "linked",
       email: "ada@example.test",
       profile: { firstName: "Ada" },
+      avatar: null,
       history: { kind: "available" },
     });
   });
@@ -295,7 +320,32 @@ describe("loadCustomerAccountPage", () => {
         phone: null,
         billing: null,
       },
+      avatar: null,
       history: { kind: "unavailable", reason: "provider-unavailable" },
+    });
+  });
+
+  test("includes the versioned avatar when the account has one", async () => {
+    avatarLookupEffect = Effect.succeed({
+      url: "https://res.cloudinary.test/avatar.webp",
+      version: 1735689600,
+    });
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      avatar: {
+        url: "https://res.cloudinary.test/avatar.webp",
+        version: 1735689600,
+      },
+    });
+  });
+
+  test("falls back to no avatar when the avatar read fails", async () => {
+    avatarLookupEffect = Effect.fail(new Error("media outage"));
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      avatar: null,
     });
   });
 
