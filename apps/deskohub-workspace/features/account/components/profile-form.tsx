@@ -75,6 +75,14 @@ type AresLookupUi = {
   readonly onDismiss: () => void;
 };
 
+type AresLookupUiState = {
+  status: AresLookupStatus;
+  review?: AresBusinessBillingDraft;
+  message?: string;
+  /** Invalidation generation at which this state was installed. */
+  generation?: number;
+};
+
 const aresDraftFields = [
   "companyName",
   "companyId",
@@ -170,11 +178,14 @@ export function ProfileForm({
   const [hasCompletedInitialProfile, setHasCompletedInitialProfile] =
     useState(false);
   const [isRefreshPending, startRefreshTransition] = useTransition();
-  const [aresLookup, setAresLookup] = useState<{
-    status: AresLookupStatus;
-    review?: AresBusinessBillingDraft;
-    message?: string;
-  }>({ status: "idle" });
+  const [aresLookup, setAresLookup] = useState<AresLookupUiState>({
+    status: "idle",
+  });
+  // Any IČO edit or billing-kind change bumps the generation; a pending
+  // lookup is tagged with the generation at its start, so a response that
+  // resolves after an edit is discarded and can never be applied.
+  const aresGenerationRef = useRef(0);
+  const pendingAresRequestGenerationRef = useRef(0);
 
   const isComplete = mode === "complete";
   const isInitialCompletion = isComplete && !hasCompletedInitialProfile;
@@ -182,14 +193,14 @@ export function ProfileForm({
 
   const updateBillingValue = (field: keyof BillingValues, value: string) => {
     if (field === "companyId") {
-      // Any IČO edit invalidates a shown lookup result; the review dismisses
-      // itself so a stale company can never be applied.
+      aresGenerationRef.current += 1;
       setAresLookup({ status: "idle" });
     }
     setBillingValues((current) => ({ ...current, [field]: value }));
   };
 
   const handleBillingKindChange = (kind: BillingKind) => {
+    aresGenerationRef.current += 1;
     setAresLookup({ status: "idle" });
     setBillingKind(kind);
   };
@@ -203,6 +214,10 @@ export function ProfileForm({
     onSuccess: ({ data }) => {
       const lookupResult = data as AresBusinessLookupResult | undefined;
       if (!lookupResult) return;
+      // A response that resolves after the IČO or the billing kind changed
+      // mid-flight is superseded and must not overwrite newer UI state.
+      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
+        return;
       if (lookupResult.status === "found") {
         setAresLookup({
           status: "found",
@@ -215,11 +230,20 @@ export function ProfileForm({
         });
       }
     },
+    onTransportError: () => {
+      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
+        return;
+      setAresLookup({
+        status: "unavailable",
+        message: m.accountAresLookupActionError({}, { locale }),
+      });
+    },
   });
 
   const handleAresLookup = () => {
     if (lookupAres.isExecuting) return;
     setAresLookup({ status: "idle" });
+    pendingAresRequestGenerationRef.current = aresGenerationRef.current;
     lookupAres.execute({ ico: billingValues.companyId });
   };
 

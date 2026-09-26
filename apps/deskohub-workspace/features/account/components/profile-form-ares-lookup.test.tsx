@@ -109,23 +109,31 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
     action: (input: never) => Promise<unknown>,
     options?: {
       readonly onSuccess?: (args: { readonly data?: unknown }) => void;
+      readonly onTransportError?: (args: {
+        readonly error: unknown;
+      }) => void;
     }
   ) => {
     const [result, setResult] = React.useState<ActionResult>({});
     const [isExecuting, setExecuting] = React.useState(false);
     const execute = (input: never) => {
       setExecuting(true);
-      void action(input).then((outcome) => {
-        setExecuting(false);
-        setResult((outcome ?? {}) as ActionResult);
-        const serverError = (outcome as { serverError?: string })?.serverError;
-        const validationErrors = (outcome as { validationErrors?: unknown })
-          ?.validationErrors;
-        if (serverError || validationErrors) return;
-        options?.onSuccess?.({
-          data: (outcome as { data?: unknown })?.data,
+      void action(input)
+        .then((outcome) => {
+          setExecuting(false);
+          setResult((outcome ?? {}) as ActionResult);
+          const serverError = (outcome as { serverError?: string })?.serverError;
+          const validationErrors = (outcome as { validationErrors?: unknown })
+            ?.validationErrors;
+          if (serverError || validationErrors) return;
+          options?.onSuccess?.({
+            data: (outcome as { data?: unknown })?.data,
+          });
+        })
+        .catch((error) => {
+          setExecuting(false);
+          options?.onTransportError?.({ error });
         });
-      });
     };
     return {
       result,
@@ -439,6 +447,75 @@ describe("ProfileForm ARES business lookup", () => {
     expect(
       (view.getByLabelText("Company name") as HTMLInputElement).value
     ).toBe(foundCompany.companyName);
+  });
+
+  test("discards a late lookup response when the company ID changes while it is pending", async () => {
+    const view = renderForm();
+    let resolveLookup!: (outcome: LookupOutcome) => void;
+    lookupAresBusiness.mockImplementationOnce(
+      () =>
+        new Promise<LookupOutcome>((resolve) => {
+          resolveLookup = resolve;
+        })
+    );
+
+    fireEvent.input(companyIdInput(view), {
+      target: { value: "27121043" },
+    });
+    await act(async () => {
+      fireEvent.click(lookupButton(view));
+      await Promise.resolve();
+    });
+
+    // The customer keeps typing while the lookup is in flight: the pending
+    // response is now superseded and must never surface.
+    await act(async () => {
+      fireEvent.input(companyIdInput(view), {
+        target: { value: "27082440" },
+      });
+      resolveLookup({ data: { status: "found", company: { ...foundCompany } } });
+      await Promise.resolve();
+    });
+
+    expect(
+      view.queryByText(m.accountAresLookupReviewTitle({}, { locale: "en-US" }))
+    ).toBeNull();
+    expect(statusRegion(view).textContent).toBe("");
+    expect(
+      view.container.querySelector<HTMLInputElement>(
+        "#account-profile-billing-company-name"
+      )!.value
+    ).toBe("Original Company");
+    expect(
+      view.queryByRole("button", {
+        name: m.accountAresLookupApply({}, { locale: "en-US" }),
+      })
+    ).toBeNull();
+  });
+
+  test("surfaces the localized action error in the live region when the lookup execution fails", async () => {
+    const view = renderForm();
+    lookupAresBusiness.mockImplementationOnce(() =>
+      Promise.reject(new TypeError("network down"))
+    );
+
+    await act(async () => {
+      fireEvent.input(companyIdInput(view), {
+        target: { value: "27121043" },
+      });
+      fireEvent.click(lookupButton(view));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const actionErrorMessage = m.accountAresLookupActionError(
+      {},
+      { locale: "en-US" }
+    );
+    expect(statusRegion(view).textContent).toContain(actionErrorMessage);
+    expect(
+      view.queryByText(m.accountAresLookupReviewTitle({}, { locale: "en-US" }))
+    ).toBeNull();
   });
 
   test("dismisses the review when the company ID input changes", async () => {

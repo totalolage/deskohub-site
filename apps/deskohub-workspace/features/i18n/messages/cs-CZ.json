@@ -821,6 +821,7 @@
   "accountAresLookupInvalidIco": "Zadejte platné IČO: přesně osm číslic se správným kontrolním číslem.",
   "accountAresLookupNotFound": "K tomuto IČO nebyla nalezena žádná firma.",
   "accountAresLookupUnavailable": "Registr firem je dočasně nedostupný. Zkuste to prosím za chvíli znovu.",
+  "accountAresLookupActionError": "Vyhledání firmy se nepodařilo dokončit. Zkuste to prosím za chvíli znovu.",
   "accountAresLookupReviewTitle": "Firma byla nalezena v registru firem. Před použitím do návrhu si údaje zkontrolujte.",
   "accountAresLookupApply": "Použít v návrhu",
   "accountAresLookupApplied": "Údaje firmy byly zkopírovány do návrhu fakturace. Pro jejich uložení stiskněte Uložit.",

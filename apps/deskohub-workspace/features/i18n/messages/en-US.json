@@ -814,6 +814,7 @@
   "accountAresLookupInvalidIco": "Enter a valid company ID (IČO): exactly eight digits with a valid check digit.",
   "accountAresLookupNotFound": "No company was found for this company ID (IČO).",
   "accountAresLookupUnavailable": "The business registry is temporarily unavailable. Please try again in a moment.",
+  "accountAresLookupActionError": "The company lookup could not be completed. Please try again in a moment.",
   "accountAresLookupReviewTitle": "Company found in the business registry. Review the details before applying them to the draft.",
   "accountAresLookupApply": "Apply to draft",
   "accountAresLookupApplied": "Company details were copied into the billing draft. Press Save to keep them.",
