@@ -259,6 +259,7 @@ const isPrivateLinkedAccountTarget = (target: ReviewTarget): boolean =>
   target === "linked-reservations-desktop" ||
   target === "linked-reservations-mobile" ||
   target === "linked-profile-desktop" ||
+  target === "linked-profile-language-desktop" ||
   target === "linked-billing-desktop" ||
   target === "linked-billing-mobile" ||
   target === "linked-danger-desktop" ||

@@ -6,12 +6,16 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { customerCommunicationPreferences } from "@/db/schema";
 import type { Locale } from "@/features/i18n";
 import {
-  type CustomerAccountAccessError,
+  CustomerAccountAccessError,
   type CustomerAccountId,
   mapCustomerAccountFailure,
 } from "../customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import {
+  type CustomerAccountSession,
+  CustomerAuthentication,
+} from "./customer-authentication.service";
 
 export type CustomerCommunicationPreferenceReadError =
   | EffectDrizzleQueryError
@@ -39,11 +43,35 @@ export interface ICustomerCommunicationPreferenceRepository {
 /**
  * Folds every non-access failure of the guarded save — the advisory lock
  * itself and the upsert — into one fixed, non-PII write cause. Access
- * failures raised by the deletion-authority recheck pass through unchanged.
+ * failures raised by the under-lock session recheck and the
+ * deletion-authority recheck pass through unchanged.
  */
 const mapPreferenceSaveFailure = mapCustomerAccountFailure(
   "account-communication-preference.write"
 );
+
+/**
+ * Fails the save unless the authoritative verified session read under the
+ * account lock still belongs to the locked account. A missing session or a
+ * session for another account maps to the fixed non-PII `unauthenticated`
+ * access error, matching the action's pre-lock session guard.
+ */
+const requireSessionForAccount = (
+  authentication: {
+    readonly currentUser: Effect.Effect<
+      CustomerAccountSession | null,
+      CustomerAccountAccessError
+    >;
+  },
+  accountId: CustomerAccountId
+): Effect.Effect<CustomerAccountSession, CustomerAccountAccessError> =>
+  Effect.flatMap(authentication.currentUser, (session) =>
+    session?.accountId === accountId
+      ? Effect.succeed(session)
+      : Effect.fail(
+          new CustomerAccountAccessError({ reason: "unauthenticated" })
+        )
+  );
 
 export class CustomerCommunicationPreferenceRepository extends Context.Service<
   CustomerCommunicationPreferenceRepository,
@@ -54,6 +82,7 @@ export class CustomerCommunicationPreferenceRepository extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
       const links = yield* CustomerAccountLinkRepository;
+      const authentication = yield* CustomerAuthentication;
 
       const load = Effect.fn("CustomerCommunicationPreferenceRepository.load")(
         function* (accountId: CustomerAccountId) {
@@ -77,15 +106,24 @@ export class CustomerCommunicationPreferenceRepository extends Context.Service<
         links
           .withAccountLock(
             accountId,
-            requireAccountActivity(links, accountId).pipe(
-              Effect.andThen(
-                db
-                  .insert(customerCommunicationPreferences)
-                  .values({ customerAccountId: accountId, locale })
-                  .onConflictDoUpdate({
-                    target: customerCommunicationPreferences.customerAccountId,
-                    set: { locale, updatedAt: sql`now()` },
-                  })
+            // The session is re-read only after the lock is held, so a
+            // session that expires or is revoked while the saver waits can
+            // never write. Verified email and session liveness are enforced
+            // by the authoritative read itself.
+            requireSessionForAccount(authentication, accountId).pipe(
+              Effect.andThen(() =>
+                requireAccountActivity(links, accountId).pipe(
+                  Effect.andThen(
+                    db
+                      .insert(customerCommunicationPreferences)
+                      .values({ customerAccountId: accountId, locale })
+                      .onConflictDoUpdate({
+                        target:
+                          customerCommunicationPreferences.customerAccountId,
+                        set: { locale, updatedAt: sql`now()` },
+                      })
+                  )
+                )
               )
             )
           )
@@ -102,7 +140,8 @@ export class CustomerCommunicationPreferenceRepository extends Context.Service<
     Layer.provide(
       Layer.mergeAll(
         WorkspaceDatabase.Default,
-        CustomerAccountLinkRepository.Live
+        CustomerAccountLinkRepository.Live,
+        CustomerAuthentication.Default
       )
     )
   );

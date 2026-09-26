@@ -5,6 +5,10 @@ import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { CustomerAccountId } from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import {
+  type CustomerAccountSession,
+  CustomerAuthentication,
+} from "./customer-authentication.service";
 import { CustomerCommunicationPreferenceRepository } from "./customer-communication-preference.repository";
 
 type ActivityState =
@@ -22,11 +26,14 @@ const makeTestLayers = (options: {
   readonly state: ActivityState;
   readonly row?: PreferenceRow;
   readonly lockFails?: boolean;
+  readonly holdLock?: Promise<void>;
 }) => {
   const upserts: {
     readonly accountId: CustomerAccountId;
     readonly locale: "cs-CZ" | "en-US";
   }[] = [];
+  let sessionAccountId: CustomerAccountId | null = accountId;
+  let authReads = 0;
 
   const linksFindActivityState = (accountId: CustomerAccountId) =>
     Effect.succeed(options.state);
@@ -38,10 +45,28 @@ const makeTestLayers = (options: {
       withAccountLock: <A, E, R>(
         _accountId: CustomerAccountId,
         effect: Effect.Effect<A, E, R>
-      ) =>
-        (options.lockFails
-          ? Effect.fail("lock-failure" as never)
-          : Effect.suspend(() => effect)) as Effect.Effect<A, E, R>,
+      ) => {
+        if (options.lockFails)
+          return Effect.fail("lock-failure" as never) as Effect.Effect<A, E, R>;
+        if (options.holdLock)
+          return Effect.flatMap(
+            Effect.promise(() => options.holdLock),
+            () => effect
+          ) as Effect.Effect<A, E, R>;
+        return Effect.suspend(() => effect) as Effect.Effect<A, E, R>;
+      },
+    })
+  );
+
+  const AuthenticationLayer = Layer.succeed(
+    CustomerAuthentication,
+    CustomerAuthentication.of({
+      currentUser: Effect.suspend(() => {
+        authReads += 1;
+        const session: CustomerAccountSession | null =
+          sessionAccountId === null ? null : makeSession(sessionAccountId);
+        return Effect.succeed(session);
+      }),
     })
   );
 
@@ -75,11 +100,24 @@ const makeTestLayers = (options: {
   );
 
   const Repository = CustomerCommunicationPreferenceRepository.Default.pipe(
-    Layer.provide(Layer.mergeAll(DbLayer, LinksLayer))
+    Layer.provide(Layer.mergeAll(DbLayer, LinksLayer, AuthenticationLayer))
   );
 
-  return { Repository, upserts };
+  return {
+    Repository,
+    upserts,
+    revokeSession: () => {
+      sessionAccountId = null;
+    },
+    authReads: () => authReads,
+  };
 };
+
+const makeSession = (accountId: CustomerAccountId): CustomerAccountSession => ({
+  accountId,
+  email: `pref-${accountId}@deskohub.test`,
+  deletionRequested: false,
+});
 
 const accountId = "pref-account-1" as CustomerAccountId;
 
@@ -186,6 +224,40 @@ describe("CustomerCommunicationPreferenceRepository with mock layers", () => {
     );
 
     expect(upserts).toEqual([{ accountId, locale: "en-US" }]);
+  });
+
+  test("rechecks the session under the lock and never writes for a revoked session", async () => {
+    let releaseLock!: () => void;
+    const lockGate = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    const { Repository, upserts, revokeSession, authReads } = makeTestLayers({
+      state: { kind: "active", deletionRequestedAt: null },
+      holdLock: lockGate,
+    });
+
+    const pendingSave = Effect.runPromise(
+      Effect.flatMap(CustomerCommunicationPreferenceRepository, (repository) =>
+        repository.save(accountId, "en-US")
+      ).pipe(Effect.result, Effect.provide(Repository))
+    );
+
+    // The saver is parked on the lock gate. Revoke the session before the
+    // lock is released so only the under-lock recheck can observe it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(upserts).toHaveLength(0);
+    revokeSession();
+    releaseLock();
+
+    const outcome = await pendingSave;
+
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag === "Failure") {
+      const failure = outcome.failure as CustomerAccountAccessErrorLike;
+      expect(failure.reason).toBe("unauthenticated");
+    }
+    expect(authReads()).toBe(1);
+    expect(upserts).toHaveLength(0);
   });
 });
 

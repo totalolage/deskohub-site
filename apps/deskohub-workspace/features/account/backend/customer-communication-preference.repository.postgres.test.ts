@@ -13,9 +13,19 @@ import {
   customerAccountIdSchema,
 } from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import {
+  type CustomerAccountSession,
+  CustomerAuthentication,
+} from "./customer-authentication.service";
 import { CustomerCommunicationPreferenceRepository } from "./customer-communication-preference.repository";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
+
+/**
+ * The under-lock session recheck sees this mutable holder, so each test
+ * points the authoritative session at the account it saves for.
+ */
+let currentTestSession: CustomerAccountSession | null = null;
 
 const makeRepositoryLayer = () => {
   const testDatabaseLayer = Layer.succeed(
@@ -35,9 +45,36 @@ const makeRepositoryLayer = () => {
     )
   );
 
-  return CustomerCommunicationPreferenceRepository.Default.pipe(
-    Layer.provide(Layer.mergeAll(testDatabaseLayer, testLinkRepository))
+  const testAuthenticationLayer = Layer.succeed(
+    CustomerAuthentication,
+    CustomerAuthentication.of({
+      currentUser: Effect.suspend(
+        (): Effect.Effect<CustomerAccountSession | null, never> =>
+          Effect.succeed(currentTestSession)
+      ),
+    })
   );
+
+  const setSessionAccount = (accountId: string) => {
+    currentTestSession = {
+      accountId: customerAccountIdSchema.make(accountId),
+      email: `pref-${accountId}@deskohub.test`,
+      deletionRequested: false,
+    };
+  };
+
+  return {
+    layer: CustomerCommunicationPreferenceRepository.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          testDatabaseLayer,
+          testLinkRepository,
+          testAuthenticationLayer
+        )
+      )
+    ),
+    setSessionAccount,
+  };
 };
 
 const insertAuthUser = async (id: string, email: string) => {
@@ -53,9 +90,10 @@ describe.skipIf(!testDatabase)(
   "CustomerCommunicationPreferenceRepository on disposable Postgres",
   () => {
     test("round-trips a saved preference and upserts on re-save", async () => {
-      const layer = makeRepositoryLayer();
+      const { layer, setSessionAccount } = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
       await insertAuthUser(account, `pref-${account}@deskohub.test`);
+      setSessionAccount(account);
 
       const outcomes = await Effect.runPromise(
         Effect.gen(function* () {
@@ -82,13 +120,14 @@ describe.skipIf(!testDatabase)(
     });
 
     test("scopes preferences by account so a second account never sees the first row", async () => {
-      const layer = makeRepositoryLayer();
+      const { layer, setSessionAccount } = makeRepositoryLayer();
       const firstAccount = customerAccountIdSchema.make(uniqueId());
       const secondAccount = customerAccountIdSchema.make(uniqueId());
       await insertAuthUser(
         firstAccount,
         `pref-a-${firstAccount}@deskohub.test`
       );
+      setSessionAccount(firstAccount);
       await insertAuthUser(
         secondAccount,
         `pref-b-${secondAccount}@deskohub.test`
@@ -130,9 +169,10 @@ describe.skipIf(!testDatabase)(
     });
 
     test("cascades the preference row away with the auth user", async () => {
-      const layer = makeRepositoryLayer();
+      const { layer, setSessionAccount } = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
       await insertAuthUser(account, `pref-d-${account}@deskohub.test`);
+      setSessionAccount(account);
 
       await Effect.runPromise(
         Effect.gen(function* () {
@@ -159,9 +199,10 @@ describe.skipIf(!testDatabase)(
     });
 
     test("rejects reads and saves for a deletion-marked account under the real lock", async () => {
-      const layer = makeRepositoryLayer();
+      const { layer, setSessionAccount } = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
       await insertAuthUser(account, `pref-f-${account}@deskohub.test`);
+      setSessionAccount(account);
       await testDatabase!.pool.query(
         `update auth."user" set deletion_requested_at = $2 where id = $1`,
         [account, new Date("2026-09-01T00:00:00.000Z")]
@@ -196,9 +237,10 @@ describe.skipIf(!testDatabase)(
     test("serializes saves against an outer account lock holder", async () => {
       const { Fiber } = await import("effect");
       const { Deferred } = await import("effect");
-      const layer = makeRepositoryLayer();
+      const { layer, setSessionAccount } = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
       await insertAuthUser(account, `pref-e-${account}@deskohub.test`);
+      setSessionAccount(account);
 
       let innerCompleted = false;
 

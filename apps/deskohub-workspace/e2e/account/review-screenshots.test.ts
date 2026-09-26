@@ -108,6 +108,15 @@ const validTargets = [
     fullPage: true,
   },
   {
+    filename: "linked-profile-language-desktop.png",
+    path: "/en-US/account",
+    query: "",
+    queries: privateLinkedAccountQueries,
+    target: "linked-profile-language-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
     filename: "linked-billing-desktop.png",
     path: "/en-US/account",
     query: "",
@@ -711,6 +720,26 @@ describe("account review screenshot capture", () => {
       name: "linked legal with a private section query",
       target: "linked-legal-desktop",
       url: `${baseUrl}/en-US/account/legal?section=profile`,
+    },
+    {
+      name: "a language capture with an extra query parameter",
+      target: "linked-profile-language-desktop",
+      url: `${baseUrl}/en-US/account?section=profile&view=private`,
+    },
+    {
+      name: "a language capture with a credential query",
+      target: "linked-profile-language-desktop",
+      url: `${baseUrl}/en-US/account?section=profile&token=synthetic-secret-token`,
+    },
+    {
+      name: "a language capture with an unknown section query",
+      target: "linked-profile-language-desktop",
+      url: `${baseUrl}/en-US/account?section=unknown`,
+    },
+    {
+      name: "a language capture with a hash",
+      target: "linked-profile-language-desktop",
+      url: `${baseUrl}/en-US/account#review-state`,
     },
     {
       name: "linked account with an extra query parameter",
