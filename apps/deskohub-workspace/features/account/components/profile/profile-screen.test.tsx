@@ -49,6 +49,10 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
     action: (input: { locale: string }) => Promise<LanguageActionResult>,
     options?: {
       readonly onSuccess?: (args: { readonly data?: unknown }) => void;
+      readonly onTransportError?: (args: {
+        readonly error: unknown;
+        readonly input: { locale: string };
+      }) => void;
     }
   ) => {
     const [result, setResult] = useState<LanguageActionResult>({});
@@ -56,13 +60,18 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
 
     const execute = (input: { locale: string }) => {
       setIsExecuting(true);
-      void action(input).then((nextResult) => {
-        setResult(nextResult);
-        setIsExecuting(false);
-        if (nextResult.data) {
-          options?.onSuccess?.({ data: nextResult.data });
-        }
-      });
+      void action(input)
+        .then((nextResult) => {
+          setResult(nextResult);
+          setIsExecuting(false);
+          if (nextResult.data) {
+            options?.onSuccess?.({ data: nextResult.data });
+          }
+        })
+        .catch((error) => {
+          setIsExecuting(false);
+          options?.onTransportError?.({ error, input });
+        });
     };
 
     return {
@@ -667,6 +676,54 @@ describe("ProfileScreen", () => {
     await waitFor(() =>
       expect(view.getByText(languageCatalogCopy["cs-CZ"].failed)).toBeTruthy()
     );
+    cleanup();
+  });
+
+  test("announces the failure copy in red when the save transport fails", async () => {
+    updatePreferredLanguage.mockImplementationOnce(() =>
+      Promise.reject(new Error("network unreachable"))
+    );
+    const view = render(
+      <ProfileScreen
+        copy={englishCopy}
+        email="ada@example.test"
+        firstName="Ada"
+        lastName="Lovelace"
+        locale="en-US"
+      >
+        {profileFields}
+      </ProfileScreen>
+    );
+    const trigger = view.getByRole("combobox", {
+      name: englishCopy.languageLabel,
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(trigger, { key: "Enter" });
+    });
+    const listbox = await view.findByRole("listbox");
+    const option = view.getByRole("option", { name: "Čeština" });
+    await act(async () => {
+      option.focus();
+    });
+    await act(async () => {
+      fireEvent.keyDown(option, { key: "Enter" });
+    });
+
+    const saveButton = view.getByRole("button", { name: "Save" });
+    await act(async () => {
+      fireEvent.click(saveButton);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const announced = view.getByText(
+      "Saving the communication language failed. Try again."
+    );
+    expect(announced.className).toContain("text-red-700");
+    expect(announced.className).not.toContain("text-emerald-800");
     cleanup();
   });
 

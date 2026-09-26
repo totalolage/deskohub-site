@@ -9,6 +9,11 @@ import type { CustomerProfile } from "@/features/account/backend/customer-dotypo
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
 import type { CustomerReservationHistory } from "@/features/account/contracts";
+import {
+  type CustomerAccountAccessError,
+  type CustomerAccountFailureCode,
+  mapCustomerAccountFailure,
+} from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
@@ -33,6 +38,15 @@ export type CustomerAccountPageState =
   | { readonly kind: "deletion-pending"; readonly email: string };
 
 const unavailable = (): CustomerAccountPageState => ({ kind: "unavailable" });
+
+/**
+ * The log-safe diagnostic for a failed preference read: only the fixed,
+ * non-PII failure code of the sanitized access error ever reaches telemetry.
+ */
+const preferenceReadFailureCode = (
+  error: CustomerAccountAccessError
+): CustomerAccountFailureCode =>
+  error.cause?.code ?? "account-communication-preference.read";
 
 export const loadCustomerAccountPage = cache(
   async (_locale: Locale): Promise<CustomerAccountPageState> => {
@@ -103,9 +117,15 @@ export const loadCustomerAccountPage = cache(
       ).pipe(
         Effect.provide(CustomerCommunicationPreferenceRepository.Live),
         Effect.map((value) => value ?? null),
+        // The raw repository failure never reaches the log: fold it into the
+        // fixed non-PII read-failure cause first, matching the other account
+        // page reads.
+        Effect.mapError(
+          mapCustomerAccountFailure("account-communication-preference.read")
+        ),
         Effect.tapError((error) =>
           Effect.logError("Account communication preference read failed", {
-            error,
+            code: preferenceReadFailureCode(error),
           })
         ),
         Effect.orElseSucceed(() => "read-failed" as const),

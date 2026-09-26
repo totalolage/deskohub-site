@@ -76,11 +76,11 @@ const languageStatusCopy = (input: {
   readonly copy: ProfileScreenCopy;
   readonly isSaving: boolean;
   readonly saved: boolean;
-  readonly serverError: string | null;
+  readonly failed: boolean;
 }): string | null => {
   if (input.isSaving) return input.copy.languageSaving;
   if (input.saved) return input.copy.languageSaved;
-  if (input.serverError !== null) return input.copy.languageSaveFailed;
+  if (input.failed) return input.copy.languageSaveFailed;
   return null;
 };
 
@@ -107,14 +107,19 @@ export function ProfileScreen({
   const languageId = useId();
   const avatarDescriptionId = `${languageId}-avatar-description`;
   const [selectedLanguage, setSelectedLanguage] = useState<Locale | null>(null);
+  const [transportFailed, setTransportFailed] = useState(false);
   const {
     execute: saveLanguage,
     isExecuting: isSaving,
     result,
+    reset: resetLanguageResult,
   } = useWorkspaceAction(updatePreferredLanguage, {
     actionName: "account.update-language",
     onSuccess: () => {
       void router.refresh();
+    },
+    onTransportError: () => {
+      setTransportFailed(true);
     },
   });
   const nameParts = [firstName, lastName ?? ""]
@@ -134,15 +139,31 @@ export function ProfileScreen({
     preferredLanguage === "read-failed"
       ? copy.languageReadUnavailable
       : copy.languageUnavailableValue;
+  const saveFailed = transportFailed || result.serverError != null;
   const languageStatus = languageStatusCopy({
     copy,
     isSaving,
-    serverError: result.serverError ?? null,
     saved: result.data != null,
+    failed: saveFailed,
   });
+
+  /**
+   * Clears the announced save outcome so a stale "saved" or failure message
+   * never survives next to a different, not-yet-saved selection.
+   */
+  const clearLanguageFeedback = () => {
+    resetLanguageResult();
+    setTransportFailed(false);
+  };
+
+  const handleLanguageChange = (value: string) => {
+    setSelectedLanguage(value as Locale);
+    clearLanguageFeedback();
+  };
 
   const handleSaveLanguage = () => {
     if (!selectedLanguage || isSaving) return;
+    clearLanguageFeedback();
     saveLanguage({ locale: selectedLanguage });
   };
 
@@ -232,7 +253,7 @@ export function ProfileScreen({
         </Label>
         <Select
           disabled={isSaving}
-          onValueChange={(value) => setSelectedLanguage(value as Locale)}
+          onValueChange={handleLanguageChange}
           value={languageValue ?? undefined}
         >
           <SelectTrigger
@@ -261,11 +282,7 @@ export function ProfileScreen({
           </Button>
           <div aria-live="polite" className="min-h-5 text-sm">
             {languageStatus !== null ? (
-              <p
-                className={
-                  result.serverError ? "text-red-700" : "text-emerald-800"
-                }
-              >
+              <p className={saveFailed ? "text-red-700" : "text-emerald-800"}>
                 {languageStatus}
               </p>
             ) : null}
