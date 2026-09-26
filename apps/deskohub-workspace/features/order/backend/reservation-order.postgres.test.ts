@@ -351,12 +351,7 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
     expect(invoiceEligible(mirroredProcessing[0]!)).toBe(false);
   });
 
-  // KNOWN GAP: `markFulfilled` (and the other fulfillment transitions) update
-  // the reservation without calling `ensureReservationOrder`, so the order
-  // mirror never reaches the invoice-eligible state. This test documents the
-  // intended contract from the reservation-only order bridge: once the
-  // fulfillment transitions mirror their state, turn this into a regular test.
-  test.failing("mirrors fulfilled + fulfilledAt so the invoice gate can open", async () => {
+  test("mirrors fulfilled + fulfilledAt so the invoice gate can open", async () => {
     const reservations = (await Effect.runPromise(
       Effect.gen(function* () {
         return yield* WorkspaceReservationRepository;

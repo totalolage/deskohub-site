@@ -66,6 +66,14 @@ const sqlTextsOf = (
   recording: Awaited<ReturnType<typeof makeRecordingWorkspaceDatabase>>
 ) => recording.statements.map(({ sql }) => sql);
 
+/** Transactional transitions record BEGIN/COMMIT first; grab the update. */
+const reservationUpdateOf = (
+  recording: Awaited<ReturnType<typeof makeRecordingWorkspaceDatabase>>
+) =>
+  recording.statements.find(({ sql }) =>
+    sql.startsWith('update "workspace_reservations"')
+  ) ?? recording.statements[0]!;
+
 /**
  * The order mirror upsert returns the mirrored order row; canned rows must be
  * complete because the orders table decodes every column positionally.
@@ -142,7 +150,7 @@ describe("WorkspaceReservationRepository", () => {
     );
 
     expect(claimed).toBeNull();
-    const { sql, params } = recording.statements[0];
+    const { sql, params } = reservationUpdateOf(recording);
     expect(sql).toContain('"fulfillment_state" = $');
     expect(params).toContain("processing");
     expect(params).toContain("paid");
@@ -334,7 +342,7 @@ describe("WorkspaceReservationRepository", () => {
     );
 
     expect(recovered).toBeNull();
-    const { sql, params } = recording.statements[0];
+    const { sql, params } = reservationUpdateOf(recording);
     expect(params).toContain("paid");
     expect(params).toContain("failed");
     expect(sql).toContain('"fulfillment_failed_at" is not null');
@@ -357,7 +365,7 @@ describe("WorkspaceReservationRepository", () => {
     );
 
     expect(failed).toBeNull();
-    const { sql, params } = recording.statements[0];
+    const { sql, params } = reservationUpdateOf(recording);
     expect(params).toContain("failed");
     expect(params).toContain("fulfillment_email_failed");
     expect(sql).toContain('"fulfilled_at" is not null');
@@ -381,11 +389,12 @@ describe("WorkspaceReservationRepository", () => {
     );
 
     expect(error).toBeInstanceOf(WorkspaceReservationStateError);
-    const { sql, params } = recording.statements[0];
-    expect(sql).toContain('"fulfillment_state" = $');
+    const { sql, params } = reservationUpdateOf(recording);
+    const setClause = sql.slice(0, sql.toLowerCase().indexOf(" where "));
+    expect(setClause).toContain('"fulfillment_state" = $');
     expect(params).toContain("processing");
     expect(params).not.toContain("failed");
-    expect(sql).not.toContain('"fulfillment_failure_code"');
+    expect(setClause).not.toContain('"fulfillment_failure_code"');
   });
 
   test("selects expired local Dotypos holds for availability filtering", async () => {

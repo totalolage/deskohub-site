@@ -502,6 +502,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                   )
                 );
 
+              // Repair a missing order row before the attempt insert so the
+              // attempt's order foreign key cannot fail on legacy rows.
+              yield* ensureReservationOrder({ tx, reservation });
+
               const [attemptRow] = yield* tx
                 .insert(paymentAttempts)
                 .values({

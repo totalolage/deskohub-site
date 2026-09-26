@@ -47,9 +47,7 @@ describe.skipIf(!postgresDatabase)(
       readonly activeCustomerEmailDeliveryId?: EmailDeliveryId;
     }) =>
       Effect.gen(function* () {
-        const id = workspaceReservationIdSchema.make(
-          `reservation-${crypto.randomUUID()}`
-        );
+        const id = workspaceReservationIdSchema.make(crypto.randomUUID());
         yield* postgres.db.insert(workspaceReservations).values({
           id,
           checkoutAttemptKey: checkoutAttemptKeySchema.make(
