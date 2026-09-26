@@ -5,6 +5,7 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
+import { readFile } from "node:fs/promises";
 import { WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import type { E2EDatabase } from "../integrations/database.service";
@@ -51,6 +52,22 @@ import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
 
 const accountReviewCaptureFailureMessage =
   "Account review screenshot capture failed";
+
+/**
+ * The attachment filename the export route announces through
+ * Content-Disposition and the component forwards to the browser download.
+ * Only the date stamp varies, so the shape pins the contract.
+ */
+const accountDataExportFilenamePattern =
+  /^deskohub-account-data-\d{4}-\d{2}-\d{2}\.json$/;
+
+/** The exact allowlisted top-level section set of the export document. */
+const accountDataExportExpectedKeys =
+  "dotyposProfile,identity,marketingConsent,meta,reservations";
+
+/** The contractual section order declared by meta.scope. */
+const accountDataExportExpectedScope =
+  "identity,dotyposProfile,reservations,marketingConsent";
 
 type WorkspaceE2EAccountLane = {
   readonly config: ReturnType<typeof getAccountE2EConfig>;
@@ -386,6 +403,12 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               },
               { times: 1 }
             );
+            // The delivered state must end in a real browser download, not
+            // only a status message. The wait attaches before the click so
+            // the event cannot slip past while the response is still delayed.
+            const downloadPromise = page.waitForEvent("download", {
+              timeout: workspaceE2ETimeouts.browserAction,
+            });
             await exportButton.click({
               timeout: workspaceE2ETimeouts.browserAction,
             });
@@ -413,6 +436,68 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               baseUrl,
               "legal-export-delivered-desktop"
             );
+
+            // The browser download itself must complete with the expected
+            // attachment name and an allowlisted document. Only structural
+            // facts are asserted; the snapshot body never reaches this output.
+            const download = await downloadPromise;
+            await download.path();
+            if ((await download.failure()) !== null) {
+              throw new Error("the account data download did not complete");
+            }
+            if (!accountDataExportFilenamePattern.test(download.suggestedFilename())) {
+              throw new Error(
+                "the account data download carried an unexpected filename"
+              );
+            }
+            const snapshot = JSON.parse(
+              await readFile(await download.path(), "utf8")
+            ) as {
+              readonly identity: {
+                readonly accountId: string;
+                readonly email: string;
+              };
+              readonly meta: {
+                readonly schemaVersion: number;
+                readonly scope: readonly string[];
+              };
+            };
+            if (snapshot.meta.schemaVersion !== 1) {
+              throw new Error(
+                "the downloaded export used an unexpected schema version"
+              );
+            }
+            if (snapshot.meta.scope.join(",") !== accountDataExportExpectedScope) {
+              throw new Error(
+                "the downloaded export scope drifted from the contractual sections"
+              );
+            }
+            const recipient = makeWorkspaceE2EAccountRecipient(
+              accountLane.config,
+              workspaceE2EAccountMainRecipientLabel
+            );
+            if (snapshot.identity.email !== recipient) {
+              throw new Error(
+                "the downloaded export identity did not match the synthetic recipient"
+              );
+            }
+            if (
+              !accountLane.journalRef.journal.authUserIds.includes(
+                snapshot.identity.accountId
+              )
+            ) {
+              throw new Error(
+                "the downloaded export identity was not the journaled synthetic account"
+              );
+            }
+            if (
+              Object.keys(snapshot).sort().join(",") !==
+              accountDataExportExpectedKeys
+            ) {
+              throw new Error(
+                "the downloaded export exposed sections outside the allowlist"
+              );
+            }
 
             // The error state must recover into a retryable idle control.
             await page.route(
