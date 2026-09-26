@@ -1,7 +1,11 @@
 "use client";
 
+import type { ReactNode } from "react";
+import { m } from "@/features/i18n";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
 import type {
+  AdministrationCustomerConsentState,
   AdministrationCustomerSort,
   AdministrationCustomerSummary,
 } from "./administration.service";
@@ -15,6 +19,33 @@ import {
   type AdministrationTableSorting,
   getAdministrationTableSortHref,
 } from "./table-sort";
+
+const consentLabel = (consent: AdministrationCustomerConsentState) => {
+  switch (consent) {
+    case "granted":
+      return m.adminCustomersFilterConsentGranted({});
+    case "never":
+      return m.adminCustomersFilterConsentNeverGranted({});
+    case "withdrawn":
+      return m.adminCustomersFilterConsentWithdrawn({});
+  }
+};
+
+const consentBadge = (
+  consent: AdministrationCustomerConsentState
+): ReactNode => (
+  <StatusBadge
+    tone={
+      consent === "granted"
+        ? "positive"
+        : consent === "withdrawn"
+          ? "attention"
+          : "neutral"
+    }
+  >
+    {consentLabel(consent)}
+  </StatusBadge>
+);
 
 const columns: readonly AdministrationDataTableColumn<AdministrationCustomerSummary>[] =
   [
@@ -47,6 +78,13 @@ const columns: readonly AdministrationDataTableColumn<AdministrationCustomerSumm
       meta: { cellClassName: "text-navy-blue/68" },
     },
     {
+      accessorFn: (item) => consentLabel(item.marketingConsent),
+      cell: ({ row }) => consentBadge(row.original.marketingConsent),
+      enableSorting: false,
+      header: m.adminCustomersFilterConsentLabel({}),
+      id: "marketing-consent",
+    },
+    {
       accessorKey: "reservationCount",
       cell: ({ row }) => (
         <>
@@ -72,14 +110,24 @@ const columns: readonly AdministrationDataTableColumn<AdministrationCustomerSumm
   ];
 
 export function AdministrationCustomerTable({
+  consent,
   customers,
   sorting,
 }: {
+  readonly consent?: AdministrationCustomerConsentState;
   readonly customers: readonly AdministrationCustomerSummary[];
   readonly sorting?: AdministrationTableSorting<AdministrationCustomerSort>;
 }) {
   if (customers.length === 0) {
-    return <EmptyState message="No customers have reservations yet." />;
+    return (
+      <EmptyState
+        message={
+          consent
+            ? m.adminCustomersEmptyConsentFiltered({})
+            : "No customers have reservations yet."
+        }
+      />
+    );
   }
   return (
     <AdministrationDataTable
@@ -119,6 +167,7 @@ export function AdministrationCustomerTable({
                   {item.reservationCount === 1 ? "reservation" : "reservations"}{" "}
                   · Updated {formatAdministrationDateTime(item.lastActivityAt)}
                 </p>
+                <div className="mt-2">{consentBadge(item.marketingConsent)}</div>
               </Link>
             </li>
           ))}

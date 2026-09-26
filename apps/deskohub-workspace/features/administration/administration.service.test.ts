@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { ExternalAPIError } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
-import { type SQL, sql } from "drizzle-orm";
+import { getTableName, type SQL, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { Cause, Deferred, Effect, Fiber, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -21,6 +21,7 @@ const makeQuery = <A>(rows: readonly A[]) => {
     from: () => typeof query;
     groupBy: () => typeof query;
     innerJoin: () => typeof query;
+    leftJoin: () => typeof query;
     limit: () => typeof query;
     offset: () => typeof query;
     orderBy: () => typeof query;
@@ -29,6 +30,7 @@ const makeQuery = <A>(rows: readonly A[]) => {
   query.from = () => query;
   query.groupBy = () => query;
   query.innerJoin = () => query;
+  query.leftJoin = () => query;
   query.limit = () => query;
   query.offset = () => query;
   query.orderBy = () => query;
@@ -38,6 +40,7 @@ const makeQuery = <A>(rows: readonly A[]) => {
 
 type CapturedSelect = {
   readonly fields: Record<string, SQL>;
+  readonly joins: readonly { readonly on: string; readonly table: string }[];
   readonly orderBy: SQL[][];
   readonly where: (SQL | undefined)[];
 };
@@ -53,6 +56,10 @@ const makeCapturingQuery = <A>(
     from: () => typeof query;
     groupBy: () => typeof query;
     innerJoin: () => typeof query;
+    leftJoin: (
+      table: Parameters<typeof getTableName>[0],
+      on: SQL
+    ) => typeof query;
     limit: () => typeof query;
     offset: () => typeof query;
     orderBy: (...args: SQL[]) => typeof query;
@@ -61,6 +68,13 @@ const makeCapturingQuery = <A>(
   query.from = () => query;
   query.groupBy = () => query;
   query.innerJoin = () => query;
+  query.leftJoin = (table, on) => {
+    captured.joins.push({
+      on: compileSql(on),
+      table: getTableName(table),
+    });
+    return query;
+  };
   query.limit = () => query;
   query.offset = () => query;
   query.orderBy = (...args) => {
@@ -686,6 +700,7 @@ describe("AdministrationService", () => {
                       select: (fields: Record<string, SQL>) => {
                         const captured: CapturedSelect = {
                           fields,
+                          joins: [],
                           orderBy: [],
                           where: [],
                         };
@@ -725,7 +740,7 @@ describe("AdministrationService", () => {
     expect(compileSql(totalSelect.fields.value)).toBe(
       'count(distinct "workspace_reservations"."dotypos_customer_id")'
     );
-    expect(totalSelect.where).toHaveLength(0);
+    expect(totalSelect.where.filter(Boolean)).toHaveLength(0);
 
     const countSql = compileSql(pageSelect.fields.reservationCount);
     expect(countSql).toContain("count(*) filter (where");
@@ -738,7 +753,7 @@ describe("AdministrationService", () => {
     expect(compileSql(pageSelect.fields.lastActivityAt)).toBe(
       'max("workspace_reservations"."updated_at")'
     );
-    expect(pageSelect.where).toHaveLength(0);
+    expect(pageSelect.where.filter(Boolean)).toHaveLength(0);
 
     selects.length = 0;
     await loadCustomers({ sort: "reservations" });
@@ -751,6 +766,116 @@ describe("AdministrationService", () => {
       `"workspace_reservations"."reservation_state" not in ('cancelled', 'cancelling', 'cancellation_failed')`
     );
   });
+
+  for (const consentCase of [
+    {
+      consent: "granted",
+      expectedState: "granted",
+      expectedPredicate:
+        '("customer_marketing_consents"."withdrawn_at" is null)',
+    },
+    {
+      consent: "withdrawn",
+      expectedState: "withdrawn",
+      expectedPredicate:
+        '("customer_marketing_consents"."withdrawn_at" is not null)',
+    },
+    {
+      consent: "never",
+      expectedState: "never",
+      expectedPredicate:
+        '("customer_marketing_consents"."dotypos_customer_id" is null)',
+    },
+  ] as const) {
+    test(`filters the customer set by marketing consent ${consentCase.consent}`, async () => {
+      const instant = Temporal.Instant.from("2026-08-14T12:00:00Z");
+      const rows = [
+        [{ value: 3 }],
+        [
+          {
+            customerId: "customer-a",
+            marketingConsent: consentCase.expectedState,
+            reservationCount: 2,
+            lastActivityAt: instant,
+          },
+        ],
+      ] as const;
+      const selects: CapturedSelect[] = [];
+
+      const loadCustomers = (input: AdministrationCustomerListInput) =>
+        Effect.gen(function* () {
+          const administration = yield* AdministrationService;
+          return yield* administration.listCustomers(input);
+        }).pipe(
+          Effect.provide(
+            AdministrationService.Default.pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  Layer.succeed(
+                    WorkspaceDatabase,
+                    WorkspaceDatabase.of({
+                      db: {
+                        select: (fields: Record<string, SQL>) => {
+                          const captured: CapturedSelect = {
+                            fields,
+                            joins: [],
+                            orderBy: [],
+                            where: [],
+                          };
+                          selects.push(captured);
+                          return makeCapturingQuery(
+                            rows[selects.length - 1] ?? [],
+                            captured
+                          );
+                        },
+                      } as never,
+                    })
+                  ),
+                  DotyposServiceMock({
+                    getCustomer: (id: string) => Effect.succeed({ id }),
+                    getCustomers: () => Effect.succeed([]),
+                  }),
+                  Layer.succeed(
+                    PostHogReservationHistory,
+                    PostHogReservationHistory.of({
+                      load: () =>
+                        Effect.succeed({ kind: "unavailable" } as const),
+                    })
+                  ),
+                  PaymentAdministrationServiceMock({})
+                )
+              )
+            )
+          ),
+          Effect.runPromise
+        );
+
+      const result = await loadCustomers({
+        marketingConsent: consentCase.consent,
+        sort: "reservations",
+      });
+      expect(result.total).toBe(3);
+      expect(result.items[0]?.marketingConsent).toBe(
+        consentCase.expectedState
+      );
+
+      for (const select of selects) {
+        expect(select.joins).toHaveLength(1);
+        expect(select.joins[0]?.table).toBe("customer_marketing_consents");
+        expect(select.joins[0]?.on).toBe(
+          '"customer_marketing_consents"."dotypos_customer_id" = "workspace_reservations"."dotypos_customer_id"'
+        );
+        expect(compileSql(select.where[0]!)).toBe(
+          consentCase.expectedPredicate
+        );
+      }
+
+      const tieSortSql = compileSql(selects[1]!.orderBy[0]![1]!);
+      expect(tieSortSql).toBe(
+        '"workspace_reservations"."dotypos_customer_id" asc'
+      );
+    });
+  }
 
   test("counts only successful reservations in customer activity stats", async () => {
     const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
@@ -796,6 +921,7 @@ describe("AdministrationService", () => {
                     select: (fields: Record<string, SQL>) => {
                       const captured: CapturedSelect = {
                         fields,
+                        joins: [],
                         orderBy: [],
                         where: [],
                       };
@@ -876,6 +1002,7 @@ describe("AdministrationService", () => {
                     select: (fields: Record<string, SQL>) => {
                       const captured: CapturedSelect = {
                         fields,
+                        joins: [],
                         orderBy: [],
                         where: [],
                       };

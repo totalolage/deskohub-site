@@ -27,6 +27,8 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
+  isNull,
   max,
   notInArray,
   or,
@@ -154,13 +156,36 @@ type ReservationListInput = AdministrationReservationListInput & {
   readonly pageSize?: number;
 };
 
+export type AdministrationCustomerConsentState =
+  | "granted"
+  | "never"
+  | "withdrawn";
+
 export type AdministrationCustomerListInput = {
   readonly direction?: AdministrationSortDirection;
+  readonly marketingConsent?: AdministrationCustomerConsentState;
   readonly page?: number;
   readonly sort?: AdministrationCustomerSort;
 };
 
 export type AdministrationCustomerSort = "reservations" | "activity";
+
+const getMarketingConsentPredicate = (
+  filter: AdministrationCustomerConsentState | undefined
+): SQL | undefined => {
+  switch (filter) {
+    case "granted":
+      return isNull(customerMarketingConsents.withdrawnAt);
+    case "withdrawn":
+      return isNotNull(customerMarketingConsents.withdrawnAt);
+    case "never":
+      // No consent row exists: the left join leaves the consent primary key
+      // null. A withdrawn grant never counts as granted.
+      return isNull(customerMarketingConsents.dotyposCustomerId);
+    default:
+      return undefined;
+  }
+};
 
 export type AdministrationBookingListInput = {
   readonly date: string;
@@ -388,6 +413,7 @@ export type AdministrationReservationAccessGrant = {
 export type AdministrationCustomerSummary = {
   readonly customer: AdministrationCustomer | null;
   readonly customerId: DotyposCustomerId;
+  readonly marketingConsent: AdministrationCustomerConsentState;
   readonly reservationCount: number;
   readonly lastActivityAt: string;
 };
@@ -2378,11 +2404,27 @@ export class AdministrationService extends Context.Service<
 
       const listCustomers = Effect.fn("AdministrationService.listCustomers")(
         function* (input: AdministrationCustomerListInput) {
+          // Customer-set predicates compose here: an additional predicate
+          // (e.g. a reservation-date window, issue #434) joins this
+          // conjunction and is carried by both the count and page queries
+          // before paging happens.
+          const customerSetPredicates: (SQL | undefined)[] = [
+            getMarketingConsentPredicate(input.marketingConsent),
+          ];
+          const customerSetWhere = and(...customerSetPredicates);
           const countRows = yield* db
             .select({
               value: countDistinct(workspaceReservations.dotyposCustomerId),
             })
-            .from(workspaceReservations);
+            .from(workspaceReservations)
+            .leftJoin(
+              customerMarketingConsents,
+              eq(
+                customerMarketingConsents.dotyposCustomerId,
+                workspaceReservations.dotyposCustomerId
+              )
+            )
+            .where(customerSetWhere);
           const total = Number(countRows[0]?.value ?? 0);
           const pagination = getAdministrationPagination({
             pageSize: customerPageSize,
@@ -2391,14 +2433,28 @@ export class AdministrationService extends Context.Service<
           });
           const reservationCount = successfulReservationCount;
           const lastActivityAt = max(workspaceReservations.updatedAt);
+          const marketingConsentState = sql<AdministrationCustomerConsentState>`case
+            when ${customerMarketingConsents.dotyposCustomerId} is null then 'never'
+            when ${customerMarketingConsents.withdrawnAt} is null then 'granted'
+            else 'withdrawn'
+          end`;
           const order = input.direction === "asc" ? asc : desc;
           const rows = yield* db
             .select({
               customerId: workspaceReservations.dotyposCustomerId,
+              marketingConsent: marketingConsentState,
               reservationCount,
               lastActivityAt,
             })
             .from(workspaceReservations)
+            .leftJoin(
+              customerMarketingConsents,
+              eq(
+                customerMarketingConsents.dotyposCustomerId,
+                workspaceReservations.dotyposCustomerId
+              )
+            )
+            .where(customerSetWhere)
             .groupBy(workspaceReservations.dotyposCustomerId)
             .orderBy(
               order(
@@ -2418,6 +2474,7 @@ export class AdministrationService extends Context.Service<
             return {
               customer: customer ? toCustomer(customer, row.customerId) : null,
               customerId: row.customerId,
+              marketingConsent: row.marketingConsent,
               reservationCount: Number(row.reservationCount),
               lastActivityAt: row.lastActivityAt
                 ? toIsoString(row.lastActivityAt)
