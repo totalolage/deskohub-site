@@ -46,6 +46,12 @@ interface ISavedCardContractRepository {
     CustomerCardEnrollmentRow | null,
     SavedCardContractRepositoryError
   >;
+  readonly listEnrollments: (
+    customerAccountId: CustomerAccountId
+  ) => Effect.Effect<
+    readonly CustomerCardEnrollmentRow[],
+    SavedCardContractRepositoryError
+  >;
   readonly createEnrollment: (
     input: NewSavedCardEnrollment
   ) => Effect.Effect<
@@ -62,6 +68,13 @@ interface ISavedCardContractRepository {
     readonly customerAccountId: CustomerAccountId;
     readonly state: CustomerCardEnrollmentState;
     readonly failureCode?: string;
+  }) => Effect.Effect<
+    CustomerCardEnrollmentRow | null,
+    SavedCardContractRepositoryError
+  >;
+  readonly confirmEnrollmentFromAnyState: (input: {
+    readonly orderId: NexiOrderId;
+    readonly customerAccountId: CustomerAccountId;
   }) => Effect.Effect<
     CustomerCardEnrollmentRow | null,
     SavedCardContractRepositoryError
@@ -132,6 +145,17 @@ export class SavedCardContractRepository extends Context.Service<
           .where(eq(customerCardEnrollments.orderId, orderId))
           .limit(1);
         return row ?? null;
+      });
+
+      const listEnrollments = Effect.fn(
+        "SavedCardContractRepository.listEnrollments"
+      )(function* (customerAccountId: CustomerAccountId) {
+        return yield* db
+          .select()
+          .from(customerCardEnrollments)
+          .where(
+            eq(customerCardEnrollments.customerAccountId, customerAccountId)
+          );
       });
 
       const createEnrollment = Effect.fn(
@@ -205,6 +229,38 @@ export class SavedCardContractRepository extends Context.Service<
                 input.customerAccountId
               ),
               eq(customerCardEnrollments.state, "pending")
+            )
+          )
+          .returning();
+        return row ?? null;
+      });
+
+      /**
+       * Late-success reconciliation move: a provider-confirmed enrollment is
+       * marked confirmed regardless of its current local state, so cancelled,
+       * failed, or superseded rows recover when the provider shows the
+       * verification actually succeeded.
+       */
+      const confirmEnrollmentFromAnyState = Effect.fn(
+        "SavedCardContractRepository.confirmEnrollmentFromAnyState"
+      )(function* (input: {
+        orderId: NexiOrderId;
+        customerAccountId: CustomerAccountId;
+      }) {
+        const [row] = yield* db
+          .update(customerCardEnrollments)
+          .set({
+            state: "confirmed",
+            failureCode: null,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(customerCardEnrollments.orderId, input.orderId),
+              eq(
+                customerCardEnrollments.customerAccountId,
+                input.customerAccountId
+              )
             )
           )
           .returning();
@@ -311,9 +367,11 @@ export class SavedCardContractRepository extends Context.Service<
       return {
         findPendingEnrollment,
         findEnrollmentByOrderId,
+        listEnrollments,
         createEnrollment,
         refreshEnrollmentSecurityTokenDigest,
         transitionEnrollment,
+        confirmEnrollmentFromAnyState,
         listActiveContracts,
         findContract,
         upsertActiveContract,

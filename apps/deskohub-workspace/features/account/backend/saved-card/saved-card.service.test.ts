@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
+  type CreateHostedPaymentPageInput,
   ExternalAPIError,
   NetworkError,
   type NexiCardContract,
@@ -14,10 +15,7 @@ import {
 import { Effect, Layer } from "effect";
 import { customerAccountIdSchema } from "../../customer-account";
 import { SavedCardService } from "./saved-card.service";
-import {
-  type NewSavedCardEnrollment,
-  SavedCardContractRepository,
-} from "./saved-card-contract.repository";
+import { SavedCardContractRepository } from "./saved-card-contract.repository";
 import { getSavedCardCustomerReference } from "./saved-card-customer-reference";
 
 const sha256Hex = (value: string) =>
@@ -36,6 +34,20 @@ const providerCustomerId = getSavedCardCustomerReference(accountId);
 const otherProviderCustomerId = getSavedCardCustomerReference(otherAccountId);
 const contractId = (suffix: string) => `dh${suffix}` as NexiContractId;
 const orderId = (suffix: string) => `dhcard${suffix}` as NexiOrderId;
+
+const citCard = (
+  id: NexiContractId,
+  extra: Partial<NexiCardContract> = {}
+): NexiCardContract => ({
+  contractId: id,
+  contractType: "CIT",
+  ...extra,
+});
+
+const mitCard = (id: NexiContractId): NexiCardContract => ({
+  contractId: id,
+  contractType: "MIT_UNSCHEDULED",
+});
 
 interface RepoState {
   enrollments: Array<{
@@ -77,7 +89,19 @@ const makeRepositoryLayer = (state: RepoState) =>
       Effect.succeed(
         state.enrollments.find((row) => row.orderId === id) ?? null
       ),
-    createEnrollment: (input: NewSavedCardEnrollment) =>
+    listEnrollments: (customerAccountId: string) =>
+      Effect.succeed(
+        state.enrollments.filter(
+          (row) => row.customerAccountId === customerAccountId
+        )
+      ),
+    createEnrollment: (input: {
+      customerAccountId: string;
+      orderId: string;
+      providerCustomerId: string;
+      providerContractId: string;
+      securityTokenDigest: string;
+    }) =>
       Effect.sync(() => {
         const row = {
           customerAccountId: input.customerAccountId,
@@ -122,6 +146,21 @@ const makeRepositoryLayer = (state: RepoState) =>
         if (!row) return null;
         row.state = input.state;
         row.failureCode = input.failureCode ?? null;
+        return row;
+      }),
+    confirmEnrollmentFromAnyState: (input: {
+      orderId: string;
+      customerAccountId: string;
+    }) =>
+      Effect.sync(() => {
+        const row = state.enrollments.find(
+          (candidate) =>
+            candidate.orderId === input.orderId &&
+            candidate.customerAccountId === input.customerAccountId
+        );
+        if (!row) return null;
+        row.state = "confirmed";
+        row.failureCode = null;
         return row;
       }),
     listActiveContracts: (customerAccountId: string) =>
@@ -211,10 +250,20 @@ interface NexiConfig {
   readonly contracts?: Record<string, readonly NexiCardContract[]>;
   readonly contractsError?: Error;
   readonly deactivationError?: Error;
+  /** Simulates a deactivation that succeeds without list convergence. */
+  readonly deactivationKeepsContract?: boolean;
 }
 
-const makeNexiLayer = (calls: NexiCalls, config: NexiConfig) =>
-  Layer.mock(NexiService, {
+const makeNexiLayer = (calls: NexiCalls, config: NexiConfig) => {
+  // Mutable provider state: a successful deactivation removes the contract,
+  // mirroring the provider's list-after-deactivation behavior.
+  const providerLists: Record<string, NexiCardContract[]> = Object.fromEntries(
+    Object.entries(config.contracts ?? {}).map(([customerId, contracts]) => [
+      customerId,
+      [...contracts],
+    ])
+  );
+  return Layer.mock(NexiService, {
     createHostedPaymentPage: (input: CreateHostedPaymentPageInput) => {
       calls.hpp.push(input);
       if (config.hppError) return Effect.fail(config.hppError);
@@ -235,24 +284,34 @@ const makeNexiLayer = (calls: NexiCalls, config: NexiConfig) =>
     listCustomerContracts: ({ customerId }: { customerId: NexiCustomerId }) => {
       calls.lists.push(customerId);
       if (config.contractsError) return Effect.fail(config.contractsError);
-      return Effect.succeed(config.contracts?.[customerId] ?? []);
+      return Effect.succeed(providerLists[customerId] ?? []);
     },
     deactivateContract: ({ contractId: id }: { contractId: string }) => {
       calls.deactivations.push(id);
       if (config.deactivationError)
         return Effect.fail(config.deactivationError);
+      if (config.deactivationKeepsContract) return Effect.void;
+      for (const contracts of Object.values(providerLists)) {
+        const index = contracts.findIndex(
+          (contract) => contract.contractId === id
+        );
+        if (index >= 0) contracts.splice(index, 1);
+      }
       return Effect.void;
     },
   } satisfies Partial<NexiService["Service"]>);
+};
+
+const emptyCalls = (): NexiCalls => ({
+  hpp: [],
+  orders: [],
+  lists: [],
+  deactivations: [],
+});
 
 const makeService = (
-  state = makeState(),
-  calls: NexiCalls = {
-    hpp: [],
-    orders: [],
-    lists: [],
-    deactivations: [],
-  },
+  state: RepoState = makeState(),
+  calls: NexiCalls = emptyCalls(),
   config: NexiConfig = {}
 ) => ({
   run: <A>(
@@ -301,31 +360,49 @@ const authorizedVerificationOrder = (id: string) => ({
   },
 });
 
-const seedConfirmedEnrollment = (
+const cancelledVerificationOrder = (id: string) => ({
+  [id]: {
+    operations: [
+      {
+        orderId: id,
+        operationType: "CARD_VERIFICATION",
+        operationResult: "CANCELED",
+        amount: "0",
+      },
+    ],
+  },
+});
+
+const seedEnrollment = (
   state: RepoState,
   overrides: Partial<{
     customerAccountId: string;
     orderId: string;
     providerContractId: string;
+    state: "pending" | "confirmed" | "failed" | "cancelled";
+    failureCode: string | null;
   }> = {}
 ) => {
   const enrollment = {
     customerAccountId: overrides.customerAccountId ?? accountId,
     orderId: overrides.orderId ?? orderId("seed1"),
-    providerCustomerId,
+    providerCustomerId:
+      overrides.customerAccountId === otherAccountId
+        ? otherProviderCustomerId
+        : providerCustomerId,
     providerContractId:
       overrides.providerContractId ?? contractId("seedcontract1"),
     securityTokenDigest: sha256Hex("token-1"),
-    state: "pending" as const,
-    failureCode: null,
+    state: overrides.state ?? ("pending" as const),
+    failureCode: overrides.failureCode ?? null,
     createdAt: new Date(),
   };
   state.enrollments.push(enrollment);
   return enrollment;
 };
 
-describe("SavedCardService", () => {
-  test("startEnrollment creates a VERIFY session and stores the digest only", async () => {
+describe("SavedCardService.startEnrollment", () => {
+  test("binds the account-scoped customer reference and stores the digest only", async () => {
     const { run, state, calls } = makeService(makeState(), undefined, {
       hppResult: { securityToken: "secret-token" },
     });
@@ -342,12 +419,12 @@ describe("SavedCardService", () => {
     const hppCall = calls.hpp[0];
     expect(hppCall.amount).toBe("0");
     expect(hppCall.actionType).toBe("VERIFY");
+    expect(hppCall.customerReference).toBe(providerCustomerId);
     expect(hppCall.contractEnrollment).toEqual({
       contractId: expect.any(String),
       contractType: "CIT",
     });
-    const contract = (hppCall.contractEnrollment as { contractId: string })
-      .contractId;
+    const contract = hppCall.contractEnrollment?.contractId ?? "";
     expect(contract.startsWith("dh")).toBe(true);
     expect(contract.length).toBeLessThanOrEqual(18);
     expect(hppCall.orderId.startsWith("dhcard")).toBe(true);
@@ -357,13 +434,14 @@ describe("SavedCardService", () => {
     const enrollment = state.enrollments[0];
     expect(enrollment.state).toBe("pending");
     expect(enrollment.customerAccountId).toBe(accountId);
+    expect(enrollment.providerCustomerId).toBe(providerCustomerId);
     expect(enrollment.securityTokenDigest).toBe(sha256Hex("secret-token"));
     expect(JSON.stringify(state)).not.toContain("secret-token");
   });
 
-  test("startEnrollment supersedes a stale pending enrollment", async () => {
+  test("supersedes a stale pending enrollment", async () => {
     const state = makeState();
-    const stale = seedConfirmedEnrollment(state);
+    const stale = seedEnrollment(state);
     stale.createdAt = new Date(Date.now() - 61 * 60 * 1000);
 
     const { run } = makeService(state);
@@ -385,9 +463,9 @@ describe("SavedCardService", () => {
     ).toHaveLength(1);
   });
 
-  test("startEnrollment reuses a fresh pending enrollment", async () => {
+  test("reuses a fresh pending enrollment", async () => {
     const state = makeState();
-    const fresh = seedConfirmedEnrollment(state);
+    const fresh = seedEnrollment(state);
 
     const { run } = makeService(state);
     await run(
@@ -400,10 +478,12 @@ describe("SavedCardService", () => {
     expect(state.enrollments[0].orderId).toBe(fresh.orderId);
     expect(state.enrollments[0].securityTokenDigest).toBe(sha256Hex("token-1"));
   });
+});
 
-  test("verification confirms on authorized CARD_VERIFICATION plus provider contract", async () => {
+describe("SavedCardService.verifyEnrollment", () => {
+  test("confirms on authorized CARD_VERIFICATION plus provider CIT contract", async () => {
     const state = makeState();
-    const enrollment = seedConfirmedEnrollment(state, {
+    const enrollment = seedEnrollment(state, {
       orderId: orderId("verify1"),
       providerContractId: contractId("verifycontract"),
     });
@@ -411,18 +491,17 @@ describe("SavedCardService", () => {
       orders: authorizedVerificationOrder(enrollment.orderId),
       contracts: {
         [providerCustomerId]: [
-          {
-            contractId: enrollment.providerContractId,
+          citCard(contractId("verifycontract"), {
             circuit: "VISA",
             maskedInstrumentSuffix: "6152",
-          },
+          }),
         ],
       },
     });
 
     const outcome = await run(
       Effect.flatMap(SavedCardService, (service) =>
-        service.verifyEnrollment(enrollment.orderId)
+        service.verifyEnrollment({ accountId, orderId: enrollment.orderId })
       )
     );
     expect(outcome).toBe("confirmed");
@@ -441,25 +520,58 @@ describe("SavedCardService", () => {
     expect(calls.lists).toContain(providerCustomerId);
   });
 
-  test("verification rejects a mismatched presented security token", async () => {
+  test("a MIT provider entry never confirms: verification stays pending", async () => {
     const state = makeState();
-    const enrollment = seedConfirmedEnrollment(state);
-    const { run, calls } = makeService(state);
+    const enrollment = seedEnrollment(state);
+    const { run } = makeService(state, undefined, {
+      orders: authorizedVerificationOrder(enrollment.orderId),
+      contracts: {
+        [providerCustomerId]: [mitCard(enrollment.providerContractId)],
+      },
+    });
 
     const outcome = await run(
       Effect.flatMap(SavedCardService, (service) =>
-        service.verifyEnrollment(enrollment.orderId, "wrong-token")
+        service.verifyEnrollment({ accountId, orderId: enrollment.orderId })
+      )
+    );
+
+    expect(outcome).toBe("pending");
+    expect(state.contracts).toHaveLength(0);
+    expect(state.enrollments[0].state).toBe("pending");
+  });
+
+  test("rejects another account's orderId without info leak or state change", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state); // owned by account A
+    const otherCalls = emptyCalls();
+    const { run } = makeService(state, otherCalls, {
+      orders: authorizedVerificationOrder(enrollment.orderId),
+      contracts: {
+        [providerCustomerId]: [citCard(enrollment.providerContractId)],
+      },
+    });
+
+    const outcome = await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.verifyEnrollment({
+          accountId: otherAccountId,
+          orderId: enrollment.orderId,
+        })
       )
     );
 
     expect(outcome).toBe("not_found");
-    expect(calls.orders).toHaveLength(0);
+    // No provider lookups, no state change, no contract registration.
+    expect(otherCalls.orders).toHaveLength(0);
+    expect(otherCalls.lists).toHaveLength(0);
     expect(state.enrollments[0].state).toBe("pending");
+    expect(state.contracts).toHaveLength(0);
   });
 
-  test("verification marks a declined order failed with a fixed code", async () => {
+  test("marks a declined order failed with a fixed code", async () => {
     const state = makeState();
-    const enrollment = seedConfirmedEnrollment(state);
+    const enrollment = seedEnrollment(state);
     const { run } = makeService(state, undefined, {
       orders: {
         [enrollment.orderId]: {
@@ -477,7 +589,7 @@ describe("SavedCardService", () => {
 
     const outcome = await run(
       Effect.flatMap(SavedCardService, (service) =>
-        service.verifyEnrollment(enrollment.orderId)
+        service.verifyEnrollment({ accountId, orderId: enrollment.orderId })
       )
     );
 
@@ -486,43 +598,15 @@ describe("SavedCardService", () => {
     expect(state.enrollments[0].failureCode).toBe("enrollment.failed");
   });
 
-  test("verification marks a cancelled order cancelled", async () => {
-    const state = makeState();
-    const enrollment = seedConfirmedEnrollment(state);
-    const { run } = makeService(state, undefined, {
-      orders: {
-        [enrollment.orderId]: {
-          operations: [
-            {
-              orderId: enrollment.orderId,
-              operationType: "CARD_VERIFICATION",
-              operationResult: "CANCELED",
-              amount: "0",
-            },
-          ],
-        },
-      },
-    });
-
-    const outcome = await run(
-      Effect.flatMap(SavedCardService, (service) =>
-        service.verifyEnrollment(enrollment.orderId)
-      )
-    );
-
-    expect(outcome).toBe("cancelled");
-    expect(state.enrollments[0].failureCode).toBe("enrollment.cancelled");
-  });
-
   test("a retryable provider failure leaves the enrollment pending", async () => {
     const state = makeState();
-    const enrollment = seedConfirmedEnrollment(state);
+    const enrollment = seedEnrollment(state);
     const { run } = makeService(state, undefined, { orderError: networkError });
 
     await expect(
       run(
         Effect.flatMap(SavedCardService, (service) =>
-          service.verifyEnrollment(enrollment.orderId)
+          service.verifyEnrollment({ accountId, orderId: enrollment.orderId })
         )
       )
     ).rejects.toMatchObject({ code: "unavailable" });
@@ -530,33 +614,184 @@ describe("SavedCardService", () => {
     expect(state.enrollments[0].state).toBe("pending");
   });
 
-  test("verification without the provider contract stays pending", async () => {
+  test("late success recovers a cancelled enrollment", async () => {
     const state = makeState();
-    const enrollment = seedConfirmedEnrollment(state);
+    const enrollment = seedEnrollment(state, {
+      state: "cancelled",
+      failureCode: "enrollment.cancelled",
+    });
+    state.contracts.push({
+      customerAccountId: accountId,
+      providerCustomerId,
+      providerContractId: enrollment.providerContractId,
+      state: "removed",
+      displayCircuit: null,
+      displaySuffix: null,
+    });
     const { run } = makeService(state, undefined, {
       orders: authorizedVerificationOrder(enrollment.orderId),
-      contracts: { [providerCustomerId]: [] },
+      contracts: {
+        [providerCustomerId]: [
+          citCard(enrollment.providerContractId, { circuit: "MC" }),
+        ],
+      },
     });
 
     const outcome = await run(
       Effect.flatMap(SavedCardService, (service) =>
-        service.verifyEnrollment(enrollment.orderId)
+        service.verifyEnrollment({ accountId, orderId: enrollment.orderId })
       )
     );
 
-    expect(outcome).toBe("pending");
+    expect(outcome).toBe("confirmed");
+    expect(state.enrollments[0].state).toBe("confirmed");
+    expect(state.enrollments[0].failureCode).toBeNull();
+    expect(state.contracts[0].state).toBe("active");
+  });
+
+  test("late success recovers a superseded enrollment", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state, {
+      state: "failed",
+      failureCode: "enrollment.superseded",
+    });
+    const { run } = makeService(state, undefined, {
+      orders: authorizedVerificationOrder(enrollment.orderId),
+      contracts: {
+        [providerCustomerId]: [citCard(enrollment.providerContractId)],
+      },
+    });
+
+    const outcome = await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.verifyEnrollment({ accountId, orderId: enrollment.orderId })
+      )
+    );
+
+    expect(outcome).toBe("confirmed");
+    expect(state.enrollments[0].state).toBe("confirmed");
+    expect(state.enrollments[0].failureCode).toBeNull();
+  });
+
+  test("provider-terminal outcome keeps a cancelled enrollment terminal", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state, {
+      state: "cancelled",
+      failureCode: "enrollment.cancelled",
+    });
+    const { run } = makeService(state, undefined, {
+      orders: cancelledVerificationOrder(enrollment.orderId),
+    });
+
+    const outcome = await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.verifyEnrollment({ accountId, orderId: enrollment.orderId })
+      )
+    );
+
+    expect(outcome).toBe("cancelled");
+    expect(state.enrollments[0].state).toBe("cancelled");
+    expect(state.enrollments[0].failureCode).toBe("enrollment.cancelled");
+  });
+});
+
+describe("SavedCardService.reconcileEnrollmentByOrderId (webhook)", () => {
+  test("absent token rejects without mutations or provider calls", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state);
+    const calls = emptyCalls();
+    const { run } = makeService(state, calls, {
+      orders: authorizedVerificationOrder(enrollment.orderId),
+      contracts: {
+        [providerCustomerId]: [citCard(enrollment.providerContractId)],
+      },
+    });
+
+    const outcome = await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.reconcileEnrollmentByOrderId(enrollment.orderId, undefined)
+      )
+    );
+
+    expect(outcome).toBe("not_found");
+    expect(calls.orders).toHaveLength(0);
+    expect(calls.lists).toHaveLength(0);
+    expect(state.enrollments[0].state).toBe("pending");
     expect(state.contracts).toHaveLength(0);
+  });
+
+  test("wrong token rejects without mutations or provider calls", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state);
+    const calls = emptyCalls();
+    const { run } = makeService(state, calls);
+
+    const outcome = await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.reconcileEnrollmentByOrderId(enrollment.orderId, "wrong-token")
+      )
+    );
+
+    expect(outcome).toBe("not_found");
+    expect(calls.orders).toHaveLength(0);
+    expect(calls.lists).toHaveLength(0);
     expect(state.enrollments[0].state).toBe("pending");
   });
 
-  test("cancelEnrollment cancels a still-pending enrollment", async () => {
+  test("terminal enrollment with a wrong token is still rejected", async () => {
     const state = makeState();
-    const enrollment = seedConfirmedEnrollment(state);
+    const enrollment = seedEnrollment(state, {
+      state: "cancelled",
+      failureCode: "enrollment.cancelled",
+    });
+    const calls = emptyCalls();
+    const { run } = makeService(state, calls);
+
+    const outcome = await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.reconcileEnrollmentByOrderId(enrollment.orderId, "wrong-token")
+      )
+    );
+
+    expect(outcome).toBe("not_found");
+    expect(calls.orders).toHaveLength(0);
+    expect(state.enrollments[0].state).toBe("cancelled");
+  });
+
+  test("terminal enrollment with the correct token reconciles", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state, {
+      state: "cancelled",
+      failureCode: "enrollment.cancelled",
+    });
+    const { run, calls } = makeService(state, undefined, {
+      orders: authorizedVerificationOrder(enrollment.orderId),
+      contracts: {
+        [providerCustomerId]: [citCard(enrollment.providerContractId)],
+      },
+    });
+
+    const outcome = await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.reconcileEnrollmentByOrderId(enrollment.orderId, "token-1")
+      )
+    );
+
+    expect(outcome).toBe("confirmed");
+    expect(calls.orders).toContain(enrollment.orderId);
+    expect(state.enrollments[0].state).toBe("confirmed");
+  });
+});
+
+describe("SavedCardService.cancelEnrollment", () => {
+  test("cancels a still-pending enrollment for the owning account", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state);
     const { run } = makeService(state);
 
     const outcome = await run(
       Effect.flatMap(SavedCardService, (service) =>
-        service.cancelEnrollment(enrollment.orderId)
+        service.cancelEnrollment({ accountId, orderId: enrollment.orderId })
       )
     );
 
@@ -564,9 +799,48 @@ describe("SavedCardService", () => {
     expect(state.enrollments[0].failureCode).toBe("enrollment.cancelled");
   });
 
-  test("listCards shows only the provider ∩ local intersection and drops stale rows", async () => {
+  test("another account's orderId yields not_found without mutation", async () => {
     const state = makeState();
-    seedConfirmedEnrollment(state); // stale: provider will not list it
+    const enrollment = seedEnrollment(state); // account A's row
+    const { run } = makeService(state);
+
+    const outcome = await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.cancelEnrollment({
+          accountId: otherAccountId,
+          orderId: enrollment.orderId,
+        })
+      )
+    );
+
+    expect(outcome).toBe("not_found");
+    expect(state.enrollments[0].state).toBe("pending");
+  });
+
+  test("provider success beats a local cancellation", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state);
+    const { run } = makeService(state, undefined, {
+      orders: authorizedVerificationOrder(enrollment.orderId),
+      contracts: {
+        [providerCustomerId]: [citCard(enrollment.providerContractId)],
+      },
+    });
+
+    const outcome = await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.cancelEnrollment({ accountId, orderId: enrollment.orderId })
+      )
+    );
+
+    expect(outcome).toBe("confirmed");
+    expect(state.enrollments[0].state).toBe("confirmed");
+  });
+});
+
+describe("SavedCardService.listCards", () => {
+  test("shows only the provider ∩ local intersection and drops stale rows", async () => {
+    const state = makeState();
     state.contracts.push({
       customerAccountId: accountId,
       providerCustomerId,
@@ -595,12 +869,11 @@ describe("SavedCardService", () => {
     const { run } = makeService(state, undefined, {
       contracts: {
         [providerCustomerId]: [
-          {
-            contractId: contractId("zzz"),
+          citCard(contractId("zzz"), {
             circuit: "MC",
             maskedInstrumentSuffix: "1111",
-          },
-          { contractId: contractId("aaa") },
+          }),
+          citCard(contractId("aaa")),
         ],
       },
     });
@@ -620,7 +893,62 @@ describe("SavedCardService", () => {
     ).toBe("removed");
   });
 
-  test("listCards fails closed on a retryable provider failure", async () => {
+  test("a MIT contract is never displayed", async () => {
+    const state = makeState();
+    state.contracts.push({
+      customerAccountId: accountId,
+      providerCustomerId,
+      providerContractId: contractId("mitrow"),
+      state: "active",
+      displayCircuit: null,
+      displaySuffix: null,
+    });
+
+    const { run } = makeService(state, undefined, {
+      contracts: {
+        [providerCustomerId]: [mitCard(contractId("mitrow"))],
+      },
+    });
+
+    const cards = await run(
+      Effect.flatMap(SavedCardService, (service) => service.listCards(account))
+    );
+
+    expect(cards).toEqual([]);
+    expect(state.contracts[0].state).toBe("removed");
+  });
+
+  test("reconciles a pending enrollment whose provider flow already completed", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state);
+    const { run } = makeService(state, undefined, {
+      orders: authorizedVerificationOrder(enrollment.orderId),
+      contracts: {
+        [providerCustomerId]: [
+          citCard(enrollment.providerContractId, {
+            circuit: "VISA",
+            maskedInstrumentSuffix: "4242",
+          }),
+        ],
+      },
+    });
+
+    const cards = await run(
+      Effect.flatMap(SavedCardService, (service) => service.listCards(account))
+    );
+
+    expect(cards).toEqual([
+      {
+        contractId: enrollment.providerContractId,
+        circuit: "VISA",
+        suffix: "4242",
+      },
+    ]);
+    expect(state.enrollments[0].state).toBe("confirmed");
+    expect(state.contracts[0].state).toBe("active");
+  });
+
+  test("fails closed on a retryable provider failure", async () => {
     const state = makeState();
     state.contracts.push({
       customerAccountId: accountId,
@@ -642,16 +970,18 @@ describe("SavedCardService", () => {
       )
     ).rejects.toMatchObject({ code: "unavailable" });
   });
+});
 
+describe("SavedCardService.removeCard", () => {
   test("one account cannot list or remove another account's card", async () => {
     const state = makeState();
-    seedConfirmedEnrollment(state, {
+    seedEnrollment(state, {
       customerAccountId: otherAccountId,
       providerContractId: contractId("ofa"),
     });
     state.contracts.push({
       customerAccountId: otherAccountId,
-      providerCustomerId,
+      providerCustomerId: otherProviderCustomerId,
       providerContractId: contractId("ofa"),
       state: "active",
       displayCircuit: "VISA",
@@ -661,7 +991,7 @@ describe("SavedCardService", () => {
     const { run, calls } = makeService(state, undefined, {
       contracts: {
         [otherProviderCustomerId]: [
-          { contractId: contractId("ofa"), circuit: "VISA" },
+          citCard(contractId("ofa"), { circuit: "VISA" }),
         ],
       },
     });
@@ -684,7 +1014,7 @@ describe("SavedCardService", () => {
     expect(state.contracts[0].customerAccountId).toBe(otherAccountId);
   });
 
-  test("removeCard treats a provider-missing contract as already removed", async () => {
+  test("treats a provider-missing contract as already removed", async () => {
     const state = makeState();
     state.contracts.push({
       customerAccountId: accountId,
@@ -709,7 +1039,7 @@ describe("SavedCardService", () => {
     expect(state.contracts[0].state).toBe("removed");
   });
 
-  test("removeCard tolerates a deactivation 404 and marks the row removed", async () => {
+  test("tolerates a deactivation 404 and marks the row removed", async () => {
     const state = makeState();
     state.contracts.push({
       customerAccountId: accountId,
@@ -721,7 +1051,7 @@ describe("SavedCardService", () => {
     });
     const { run } = makeService(state, undefined, {
       contracts: {
-        [providerCustomerId]: [{ contractId: contractId("nf") }],
+        [providerCustomerId]: [citCard(contractId("nf"))],
       },
       deactivationError: new ExternalAPIError({
         service: "Nexi",
@@ -753,7 +1083,7 @@ describe("SavedCardService", () => {
     });
     const { run } = makeService(state, undefined, {
       contracts: {
-        [providerCustomerId]: [{ contractId: contractId("stuck") }],
+        [providerCustomerId]: [citCard(contractId("stuck"))],
       },
       deactivationError: networkError,
     });
@@ -767,8 +1097,50 @@ describe("SavedCardService", () => {
     ).rejects.toMatchObject({ code: "unavailable" });
     expect(state.contracts[0].state).toBe("active");
   });
+});
 
-  test("deactivateAllForDeletion blocks on retryable failure and resumes afterwards", async () => {
+describe("SavedCardService.deactivateAllForDeletion", () => {
+  test("an in-flight pending enrollment blocks the deletion retryably", async () => {
+    const state = makeState();
+    seedEnrollment(state); // pending, provider indeterminate
+    const calls = emptyCalls();
+    const { run } = makeService(state, calls);
+
+    await expect(
+      run(
+        Effect.flatMap(SavedCardService, (service) =>
+          service.deactivateAllForDeletion(accountId)
+        )
+      )
+    ).rejects.toMatchObject({ code: "unavailable" });
+    expect(calls.deactivations).toHaveLength(0);
+  });
+
+  test("late-success reconciliation registers the contract and deactivates it", async () => {
+    const state = makeState();
+    const enrollment = seedEnrollment(state, {
+      state: "cancelled",
+      failureCode: "enrollment.cancelled",
+    });
+    const { run, calls } = makeService(state, undefined, {
+      orders: authorizedVerificationOrder(enrollment.orderId),
+      contracts: {
+        [providerCustomerId]: [citCard(enrollment.providerContractId)],
+      },
+    });
+
+    await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.deactivateAllForDeletion(accountId)
+      )
+    );
+
+    expect(state.enrollments[0].state).toBe("confirmed");
+    expect(state.contracts[0].state).toBe("removed");
+    expect(calls.deactivations).toEqual([enrollment.providerContractId]);
+  });
+
+  test("blocks on retryable failure and resumes afterwards", async () => {
     const state = makeState();
     state.contracts.push({
       customerAccountId: accountId,
@@ -815,7 +1187,7 @@ describe("SavedCardService", () => {
     ).toBe(true);
   });
 
-  test("deactivateAllForDeletion confirms success only when the provider list is empty", async () => {
+  test("confirms success only when the provider list is empty", async () => {
     const state = makeState();
     state.contracts.push({
       customerAccountId: accountId,
@@ -830,8 +1202,9 @@ describe("SavedCardService", () => {
     // contract: the deletion must stay blocked.
     const stuck = makeService(state, undefined, {
       contracts: {
-        [providerCustomerId]: [{ contractId: contractId("del9") }],
+        [providerCustomerId]: [citCard(contractId("del9"))],
       },
+      deactivationKeepsContract: true,
     });
     await expect(
       stuck.run(
@@ -850,5 +1223,28 @@ describe("SavedCardService", () => {
       )
     );
     expect(cleared.state.contracts[0].state).toBe("removed");
+  });
+
+  test("deactivates MIT contracts during deletion", async () => {
+    const state = makeState();
+    const { run, calls } = makeService(state, undefined, {
+      contracts: {
+        [providerCustomerId]: [
+          mitCard(contractId("mit1")),
+          citCard(contractId("cit1")),
+        ],
+      },
+    });
+
+    await run(
+      Effect.flatMap(SavedCardService, (service) =>
+        service.deactivateAllForDeletion(accountId)
+      )
+    );
+
+    expect(calls.deactivations).toEqual([
+      contractId("cit1"),
+      contractId("mit1"),
+    ]);
   });
 });

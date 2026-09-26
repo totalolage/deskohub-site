@@ -29,8 +29,26 @@ const processSavedCardWebhookRequest = Effect.fn(
   if (Result.isFailure(decoded)) return parseFailedResponse;
   const envelope = decoded.success;
 
+  // A notification without a security token cannot be authenticated: it is
+  // ignored with zero mutations and zero provider calls.
+  if (!envelope.securityToken) {
+    yield* Effect.logWarning("Saved card webhook omitted its security token", {
+      code: "nexi_cards_webhook_missing_security_token",
+    });
+    return NextResponse.json(
+      {
+        error: "Webhook processing failed",
+        code: "nexi_cards_webhook_missing_security_token",
+      },
+      { status: 202 }
+    );
+  }
+
   const outcome = yield* Effect.flatMap(SavedCardService, (service) =>
-    service.verifyEnrollment(envelope.operation.orderId, envelope.securityToken)
+    service.reconcileEnrollmentByOrderId(
+      envelope.operation.orderId,
+      envelope.securityToken
+    )
   ).pipe(
     Effect.map((outcome) => ({ kind: "outcome" as const, outcome })),
     Effect.catchTag("SavedCardError", (error) =>

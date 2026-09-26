@@ -97,8 +97,8 @@ const makeSavedCardReturnHandler = (
 
     const outcome = yield* Effect.flatMap(SavedCardService, (service) =>
       kind === "return"
-        ? service.verifyEnrollment(orderId)
-        : service.cancelEnrollment(orderId)
+        ? service.verifyEnrollment({ accountId, orderId })
+        : service.cancelEnrollment({ accountId, orderId })
     ).pipe(
       Effect.provide(serviceLayer),
       // Browser-triggered returns never fail the redirect: an unavailable

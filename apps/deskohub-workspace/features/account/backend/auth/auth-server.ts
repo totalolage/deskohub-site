@@ -12,8 +12,7 @@ import { makeAuthDatabase } from "@/db/auth-database-client";
 import { workspaceDatabasePool } from "@/db/database-provider.server";
 import { drizzleAuthTables } from "@/db/schema/auth";
 import { env } from "@/env";
-import { CustomerAccountDeletionService } from "@/features/account/backend/customer-account-deletion";
-import { SavedCardService } from "@/features/account/backend/saved-card/saved-card.service";
+import { makeWorkspaceSavedCardDeletionReconciliation } from "@/features/account/backend/auth/workspace-deletion-reconciliation";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -238,31 +237,17 @@ export const workspaceBeforeDeleteUser = (accountId: CustomerAccountId) =>
   runWorkspaceEffect("account.deletion.provider-expiration", {
     boundary: "task",
   })(
-    // Saved-card contracts must be deactivated before identity removal, and a
-    // retryable provider failure must keep the deletion retryable by
-    // rejecting it: already-deactivated contracts vanish from the provider
-    // list, so a retry naturally proceeds with the remainder.
-    Effect.flatMap(SavedCardService, (savedCards) =>
-      savedCards.deactivateAllForDeletion(accountId)
-    ).pipe(
-      Effect.provide(SavedCardService.Live),
+    // Order under the account lock: the durable deletion marker first (it
+    // blocks new saved-card activity), then provider reconciliation and
+    // deactivation, then the unchanged Dotypos expiration. A retryable
+    // provider failure must keep the deletion retryable by rejecting it:
+    // already-deactivated contracts vanish from the provider list, so a
+    // retry naturally proceeds with the remainder.
+    makeWorkspaceSavedCardDeletionReconciliation(accountId).pipe(
       Effect.tapError(() =>
         Effect.logWarning(
-          "Customer account deletion: saved card deactivation failed; deletion stays retryable.",
-          { code: "account.deletion.saved-cards.retryable" }
-        )
-      ),
-      Effect.andThen(
-        Effect.flatMap(CustomerAccountDeletionService, (service) =>
-          service.requestDeletion(accountId)
-        ).pipe(
-          Effect.provide(CustomerAccountDeletionService.Live),
-          Effect.tapError(() =>
-            Effect.logWarning(
-              "Customer account deletion: Dotypos expiration failed; deletion stays retryable.",
-              { code: "account.deletion.retryable" }
-            )
-          )
+          "Customer account deletion: provider cleanup failed; deletion stays retryable.",
+          { code: "account.deletion.retryable" }
         )
       )
     )
