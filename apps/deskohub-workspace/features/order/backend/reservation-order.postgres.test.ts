@@ -561,7 +561,7 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
     );
   });
 
-  test("relinks legacy payment attempts left unlinked by old writers", async () => {
+  test("never touches payment attempts; a NULL order_id attempt stays unlinked", async () => {
     const id = await insertReservation();
     const [attempt] = await Effect.runPromise(
       postgres.db
@@ -579,17 +579,19 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
     );
     expect(attempt!.orderId).toBeNull();
 
+    // The reservation-only mirror must leave the attempt row untouched: the
+    // legacy relink belongs to the attempt-first payment writers, which hold
+    // the attempt lock before the reservation lock.
     await Effect.runPromise(mirror(await loadReservation(id)));
 
-    const [relattempt] = await Effect.runPromise(
+    const [afterMirror] = await Effect.runPromise(
       postgres.db
         .select()
         .from(paymentAttempts)
         .where(eq(paymentAttempts.id, attempt!.id))
         .limit(1)
     );
-    // The persisted linkage equals the reservation id, not a synthesized one.
-    expect(relattempt!.orderId).toBe(id);
+    expect(afterMirror!.orderId).toBeNull();
   });
 
   test("mirrors fulfilled + fulfilledAt so the invoice gate can open", async () => {
@@ -640,7 +642,7 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
     expect(fulfilledOrder[0]!.fulfilledAt).not.toBeNull();
   });
 
-  test("survives the attempt-first interleaving without a lock-order abort", async () => {
+  test("markPaid anchors on the attempt row and repairs its linkage without a lock-order abort", async () => {
     const reservations = (await Effect.runPromise(
       Effect.gen(function* () {
         return yield* WorkspaceReservationRepository;
@@ -668,12 +670,13 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
     });
     // Production always has the order from the reservation create path.
     await Effect.runPromise(mirror(await loadReservation(id)));
+    // Legacy old-writer shape: the attempt carries no order linkage yet; the
+    // payment path itself must repair it.
     const [attempt] = await Effect.runPromise(
       postgres.db
         .insert(paymentAttempts)
         .values({
           workspaceReservationId: id,
-          orderId: id as never,
           provider: "nexi",
           providerOrderId: `order-${crypto.randomUUID()}` as never,
           state: "pending",
@@ -689,10 +692,11 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
         .set({ activePaymentAttemptId: attempt!.id })
         .where(eq(workspaceReservations.id, id))
     );
+    expect(attempt!.orderId).toBeNull();
 
     // Connection A plays the legacy writer: it grabs the payment attempt row
-    // first and pauses, exactly the interleaving that used to invert against
-    // reservation-first writers.
+    // first and pauses, exactly the interleaving the new attempt-first anchor
+    // must serialize against.
     const latch = await postgres.pool.connect();
     let markPaid:
       | Promise<{
@@ -708,8 +712,8 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
       );
 
       // Connection B (updateReservationDetails) must complete while A still
-      // holds the attempt lock: it takes the reservation first and its mirror
-      // never needs the already-linked attempt row.
+      // holds the attempt lock: the mirror is reservation → order only and
+      // never needs the locked attempt row.
       const details = await Effect.runPromise(
         reservations.updateReservationDetails({
           id,
@@ -724,7 +728,7 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
       expect(details.locale).toBe("cs-CZ");
 
       // markPaid starts under the latch. Deterministic regression: it must
-      // lock the reservation BEFORE waiting on the attempt row.
+      // anchor on the payment attempt row first and WAIT here.
       markPaid = Effect.runPromise(
         lifecycle.markPaid({
           id: attempt!.id as never,
@@ -751,15 +755,15 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
       }
       expect(blocked).toBe(true);
 
-      // While blocked on the attempt, markPaid must already hold the
-      // reservation row lock — the reservation-first ordering. A writer that
-      // inverts (attempt first) would not hold it here.
-      await expect(
-        postgres.pool.query(
-          "select 1 from workspace_reservations where id = $1 for update nowait",
-          [id]
-        )
-      ).rejects.toThrow();
+      // While blocked on the attempt, markPaid must NOT hold the reservation
+      // row — the attempt-first anchor. A writer that inverted (reservation
+      // first, as in the old-vs-new deadlock) would already own it and this
+      // nowait probe would fail.
+      const reservationProbe = await postgres.pool.query(
+        "select 1 from workspace_reservations where id = $1 for update nowait",
+        [id]
+      );
+      expect(reservationProbe.rowCount).toBe(1);
 
       // Releasing the latch lets markPaid finish; no deadlock abort either
       // way.

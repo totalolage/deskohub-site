@@ -1,11 +1,7 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
-import {
-  orders,
-  paymentAttempts,
-  type WorkspaceReservation,
-} from "@/db/schema";
+import { orders, type WorkspaceReservation } from "@/db/schema";
 import { orderIdSchema } from "../order";
 
 type TransactionClient = Parameters<
@@ -52,25 +48,18 @@ export const ensureReservationOrder = Effect.fn(
     })
     .returning();
 
-  if (order) {
-    // Old writers left their payment attempts without order linkage; repair
-    // it here so every caller of the mirror also restores the linkage. Callers
-    // hold the reservation lock first and may already hold the attempt lock
-    // (markPaid paths update the attempt before mirroring), so the global
-    // order stays reservation → payment attempts → order.
-    yield* input.tx
-      .update(paymentAttempts)
-      .set({ orderId })
-      .where(
-        and(
-          eq(paymentAttempts.workspaceReservationId, input.reservation.id),
-          isNull(paymentAttempts.orderId)
-        )
-      );
-    return order;
+  // Lock-order contract: this mirror is reservation → order only. It must
+  // never touch payment_attempts: reservation-first writers may run while a
+  // payment writer holds the attempt row lock (the attempt-first anchor
+  // matches the deployed old writers), and any attempt access here would
+  // invert that order into a rolling-deploy deadlock. Legacy attempt relink
+  // (order_id NULL → reservation id) belongs to the attempt-first payment
+  // writers, which already hold the attempt row lock.
+  if (!order) {
+    return yield* Effect.die(
+      `Order ${orderId} already exists with a non-reservation kind.`
+    );
   }
 
-  return yield* Effect.die(
-    `Order ${orderId} already exists with a non-reservation kind.`
-  );
+  return order;
 });

@@ -10,6 +10,12 @@ test("mirrors reservation facts into the reservation-kind order upsert", async (
   expect(source).toContain('setWhere: eq(orders.kind, "reservation")');
   expect(source).toContain('kind: "reservation" as const');
   expect(source).toContain("orderIdSchema.make(input.reservation.id)");
+  // Lock-order contract: the mirror is reservation → order only. It must
+  // never touch payment_attempts (attempt relink belongs to the
+  // attempt-first payment writers), or reservation-first callers would
+  // invert the rolling-deploy lock order.
+  expect(source).not.toContain("paymentAttempts");
+  expect(source).not.toContain("isNull");
   for (const field of [
     "correlationId",
     "dotyposCustomerId",

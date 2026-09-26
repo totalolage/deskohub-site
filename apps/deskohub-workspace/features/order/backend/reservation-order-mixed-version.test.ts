@@ -310,14 +310,16 @@ describe.skipIf(!pgBin)(
         kind: "reservation",
         payment_state: "pending",
       });
-      // The repair also restores persisted attempt linkage, not just the
-      // projected order id.
+      // The reservation-only mirror restores the order row, but it must
+      // never touch payment attempts: the legacy attempt relink happens on
+      // the attempt-first payment path (markPaid below), which holds the
+      // attempt lock before the reservation lock.
       const { rows: attemptRows } = await pool.query(
         "select order_id from payment_attempts where workspace_reservation_id = $1",
         [id]
       );
       expect(attemptRows).toHaveLength(1);
-      expect(attemptRows[0]!.order_id).toBe(id);
+      expect(attemptRows[0]!.order_id).toBeNull();
     });
 
     test("the webhook-complete path runs on repaired data without rejected writes", async () => {
@@ -657,8 +659,50 @@ describe.skipIf(!pgBin)(
       expect(Number(before.rows[0]!.n)).toBeGreaterThan(0);
       expect(after.rows).toHaveLength(1);
 
-      // The forward repair also relinks the old writer's unlinked attempt in
-      // the persisted row, so the read model no longer needs to synthesize.
+      // The reservation-only mirror must not have relinked the old writer's
+      // unlinked attempt; the persisted linkage is repaired by the
+      // attempt-first payment path instead.
+      const { rows: unrepaired } = await pool.query(
+        "select order_id from payment_attempts where workspace_reservation_id = $1",
+        [id]
+      );
+      expect(unrepaired[0]!.order_id).toBeNull();
+
+      const layer = Layer.succeed(
+        WorkspaceDatabase,
+        WorkspaceDatabase.of({ db })
+      );
+      const { PaymentLifecycleRepository } = await import(
+        "@/features/checkout/backend/repositories/payment-lifecycle.repository"
+      );
+      const repository = await Effect.runPromise(
+        Effect.gen(function* () {
+          return yield* PaymentLifecycleRepository;
+        }).pipe(
+          Effect.provide(
+            PaymentLifecycleRepository.Default.pipe(Layer.provide(layer))
+          )
+        )
+      );
+      const attemptId = (
+        await pool.query(
+          "select id from payment_attempts where workspace_reservation_id = $1 limit 1",
+          [id]
+        )
+      ).rows[0]!.id as string;
+      await Effect.runPromise(
+        repository.markPaid({
+          id: attemptId as never,
+          workspaceReservationId: workspaceReservationIdSchema.make(
+            id as string
+          ),
+          providerStatus: "APPROVED",
+          paidAt: Temporal.Now.instant(),
+        })
+      );
+
+      // The payment path relinked the old writer's unlinked attempt in the
+      // persisted row, so the read model no longer needs to synthesize.
       const { rows: attemptRows } = await pool.query(
         `select id,
                 order_id as "orderId",

@@ -1,6 +1,6 @@
 import type { DotyposReservationId } from "@deskohub/dotypos";
 import type { NexiOperationId, NexiWebhookEventId } from "@deskohub/nexi";
-import { and, eq, gt, inArray, lte, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -13,6 +13,7 @@ import {
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
+import { orderIdSchema } from "@/features/order";
 import { ensureReservationOrder } from "@/features/order/backend/reservation-order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { redeemCodeClaim } from "./payment-lifecycle.repository";
@@ -149,6 +150,26 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   "Only a processing late-payment recovery can settle."
                 );
               }
+
+              // Lock-order contract: payment attempt → reservation → order.
+              // The attempt-first anchor matches the payment lifecycle
+              // writers and the deployed old writers, so overlapping writers
+              // serialize instead of inverting into a deadlock. The attempt
+              // UPDATE below re-touches this already-locked row.
+              yield* tx
+                .select({ state: paymentAttempts.state })
+                .from(paymentAttempts)
+                .where(
+                  and(
+                    eq(paymentAttempts.id, input.paymentAttemptId),
+                    eq(
+                      paymentAttempts.workspaceReservationId,
+                      input.workspaceReservationId
+                    )
+                  )
+                )
+                .limit(1)
+                .for("update");
 
               const [reservation] = yield* tx
                 .select()
@@ -376,18 +397,11 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   .for("update");
                 if (existing) return existing;
 
-                // Lock-order contract: reservation → order → payment
-                // attempts. Locking the authoritative row before the attempt
-                // keeps this writer deadlock-free against the reservation
-                // repository and the payment lifecycle writers.
-                const [reservation] = yield* tx
-                  .select()
-                  .from(workspaceReservations)
-                  .where(
-                    eq(workspaceReservations.id, input.workspaceReservationId)
-                  )
-                  .limit(1)
-                  .for("update");
+                // Lock-order contract: payment attempt → reservation →
+                // order. The attempt-first anchor matches the deployed old
+                // writers and the payment lifecycle writers, so old-new
+                // overlap during a rolling deploy serializes instead of
+                // inverting into a deadlock.
                 const [attempt] = yield* tx
                   .select({ state: paymentAttempts.state })
                   .from(paymentAttempts)
@@ -407,6 +421,14 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   )
                   .limit(1)
                   .for("update");
+                const [reservation] = yield* tx
+                  .select()
+                  .from(workspaceReservations)
+                  .where(
+                    eq(workspaceReservations.id, input.workspaceReservationId)
+                  )
+                  .limit(1)
+                  .for("update");
                 if (!(attempt && reservation?.dotyposReservationId)) {
                   return yield* recoveryStateError(
                     "start",
@@ -414,7 +436,26 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     "Late-payment recovery requires a terminal attempt and its Dotypos reservation."
                   );
                 }
+
                 yield* ensureReservationOrder({ tx, reservation });
+
+                // Old writers left their attempts without order linkage;
+                // repair it now that the order row exists, while the attempt
+                // row is still locked from the anchor above. The reservation
+                // id is the order id, so the persisted linkage is exact.
+                yield* tx
+                  .update(paymentAttempts)
+                  .set({
+                    orderId: orderIdSchema.make(
+                      input.workspaceReservationId
+                    ) as never,
+                  })
+                  .where(
+                    and(
+                      eq(paymentAttempts.id, input.paymentAttemptId),
+                      isNull(paymentAttempts.orderId)
+                    )
+                  );
 
                 const [recovery] = yield* tx
                   .insert(latePaymentRecoveries)

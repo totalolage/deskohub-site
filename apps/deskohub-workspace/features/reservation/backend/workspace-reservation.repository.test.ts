@@ -169,9 +169,9 @@ describe("WorkspaceReservationRepository", () => {
     const { recording, repository } = await makeRepository();
     const claimedAt = Temporal.Instant.from("2026-01-01T10:00:00.000Z");
     recording.setRows([
+      [["attempt-1"]], // attempt-first anchor: locked paid Nexi attempts
       [reservationRow()], // fenced cancellation update
       [orderRow()], // order mirror upsert
-      [], // legacy attempt linkage repair
       [], // refund-required attempt update
     ]);
 
@@ -203,19 +203,13 @@ describe("WorkspaceReservationRepository", () => {
         String(param).startsWith("2026-01-01T10:00:00")
       )
     ).toBe(true);
-    // The order mirror and its legacy attempt-linkage repair ran first.
+    // The order mirror ran after the reservation update; it is
+    // reservation → order only and never touches payment attempts.
     expect(
       recording.statements.some(
         ({ sql }) =>
           sql.startsWith('insert into "orders"') &&
           sql.includes('on conflict ("id")')
-      )
-    ).toBe(true);
-    expect(
-      recording.statements.some(
-        ({ sql }) =>
-          sql.startsWith('update "payment_attempts"') &&
-          sql.includes('"order_id" = $')
       )
     ).toBe(true);
     expect(attemptUpdate?.sql).toContain('"refund_state" = $');
@@ -278,9 +272,9 @@ describe("WorkspaceReservationRepository", () => {
     const { recording, repository } = await makeRepository();
     recording.setRows([
       [], // access grant lookup
+      [["attempt-1"]], // attempt-first anchor before the reservation update
       [reservationRow()], // claimed reservation row
       [orderRow()], // order mirror upsert
-      [], // legacy attempt linkage repair
       [["attempt-1"]], // cancelled payment attempt
       [], // discount claim lookup for release
       [], // voucher claim lookup for release
@@ -330,11 +324,11 @@ describe("WorkspaceReservationRepository", () => {
           "2026-01-01T09:59:00.000Z",
         ],
       ],
+      [["attempt-1"]], // attempt-first anchor before the reservation update
       [reservationRow()],
       [orderRow()], // order mirror upsert
-      [], // legacy attempt linkage repair
-      [["attempt-1"]],
-      [],
+      [["attempt-1"]], // cancelled payment attempt
+      [], // discount claim lookup for release
       [],
       [["grant-1"]],
     ]);

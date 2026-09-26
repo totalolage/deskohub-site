@@ -103,8 +103,8 @@ const issueFlowRows = (
   attemptState: string = "paid"
 ) => [
   [], // no invoice issued yet for the attempt
+  [[attemptState]], // attempt-first anchor: the locked payment attempt row
   [locked], // locked reservation row
-  [[attemptState]], // locked payment attempt row
   [], // no existing reservation invoice
   [[3]], // counter allocation returns sequence 3
   [], // invoice insert
@@ -128,12 +128,13 @@ describe("invoice repository persistence contract", () => {
     ).catch(() => undefined);
 
     const sqlTexts = recording.statements.map(({ sql }) => sql);
-    // Reservation-first lock order: the reservation row is locked before the
-    // payment attempt row, matching the global reservation → attempt order.
+    // Attempt-first lock order: the payment attempt row is locked before the
+    // reservation row, matching the deployed old writers so old-new overlap
+    // during a rolling deploy serializes instead of deadlocking.
     const forUpdate = sqlTexts.filter((sql) => sql.includes("for update"));
     expect(forUpdate.length).toBeGreaterThanOrEqual(2);
-    expect(forUpdate[0]).toContain('from "workspace_reservations"');
-    expect(forUpdate[1]).toContain('from "payment_attempts"');
+    expect(forUpdate[0]).toContain('from "payment_attempts"');
+    expect(forUpdate[1]).toContain('from "workspace_reservations"');
     const existingIndex = sqlTexts.findIndex(
       (sql) =>
         sql.includes('from "invoices"') &&
@@ -170,9 +171,7 @@ describe("invoice repository persistence contract", () => {
 
   test("refuses to invoice before the attempt, reservation, and delivery are all paid", async () => {
     const { recording, repository } = await makeHarness();
-    recording.setRows(
-      issueFlowRows(lockedRow(), "failed")
-    );
+    recording.setRows(issueFlowRows(lockedRow(), "failed"));
 
     const error = await Effect.runPromise(
       Effect.flip(
@@ -195,8 +194,8 @@ describe("invoice repository persistence contract", () => {
     // already invoiced from another payment attempt.
     recording.setRows([
       [],
+      [["paid"]], // attempt-first anchor: the locked payment attempt row
       [lockedRow()], // locked reservation row
-      [["paid"]], // locked payment attempt row
       [["invoice-1", "payment-attempt-9"]],
     ]);
 

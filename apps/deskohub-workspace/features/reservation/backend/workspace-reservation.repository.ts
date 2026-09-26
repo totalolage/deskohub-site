@@ -758,6 +758,30 @@ export class WorkspaceReservationRepository extends Context.Service<
                 return null;
               }
 
+              // Lock-order contract: payment attempt → reservation → order.
+              // When this cancellation will also cancel the pending payment
+              // attempt, the attempt row must be locked BEFORE the
+              // reservation row: attempt-mutating payment writers (and the
+              // deployed old writers) anchor on the attempt first, and any
+              // reservation-first attempt access would invert that order into
+              // a deadlock.
+              if (input.pendingPaymentCancellation) {
+                yield* tx
+                  .select({ id: paymentAttempts.id })
+                  .from(paymentAttempts)
+                  .where(
+                    and(
+                      eq(
+                        paymentAttempts.id,
+                        input.pendingPaymentCancellation.paymentAttemptId
+                      ),
+                      eq(paymentAttempts.workspaceReservationId, input.id)
+                    )
+                  )
+                  .limit(1)
+                  .for("update");
+              }
+
               const [claimed] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -903,6 +927,23 @@ export class WorkspaceReservationRepository extends Context.Service<
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
               const updatedAt = Temporal.Now.instant();
+              // Lock-order contract: payment attempt → reservation → order.
+              // The refund-required attempt update below must never wait on
+              // the attempt rows while already holding the reservation row:
+              // attempt-mutating payment writers anchor on the attempt first,
+              // and that inversion is a deadlock. Lock the paid attempts
+              // before the reservation row.
+              yield* tx
+                .select({ id: paymentAttempts.id })
+                .from(paymentAttempts)
+                .where(
+                  and(
+                    eq(paymentAttempts.workspaceReservationId, input.id),
+                    eq(paymentAttempts.provider, "nexi"),
+                    eq(paymentAttempts.state, "paid")
+                  )
+                )
+                .for("update");
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({

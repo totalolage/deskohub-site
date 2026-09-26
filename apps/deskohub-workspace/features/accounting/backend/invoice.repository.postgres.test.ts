@@ -268,6 +268,8 @@ describe.skipIf(!postgresDatabase)(
 
       // Connection A plays the markPaid replay's first step: it holds the
       // reservation row lock and pauses before the replay continues.
+      // (Issuance itself holds the attempt row under the attempt-first
+      // order, so the two writers serialize on the reservation.)
       const latch = await postgres.pool.connect();
       let issuance:
         | Promise<{
@@ -282,9 +284,10 @@ describe.skipIf(!postgresDatabase)(
           [fixture.id]
         );
 
-        // Issuance must block on the reservation lock, not proceed to the
-        // attempt row. Deterministic regression for the deadlock against
-        // reservation-first writers such as markPaid replay.
+        // Issuance must anchor on the payment attempt row: it locks the
+        // attempt first and only then waits on the reservation. Deterministic
+        // regression for the attempt-first lock order shared with markPaid
+        // and the deployed old writers.
         issuance = Effect.runPromise(
           repository.issue({
             paymentAttemptId: fixture.attemptId,
@@ -311,14 +314,16 @@ describe.skipIf(!postgresDatabase)(
         }
         expect(blocked).toBe(true);
 
-        // While blocked, issuance must not hold the attempt row: an
-        // attempt-first writer would already own it and this nowait probe
-        // would fail.
-        const attemptProbe = await postgres.pool.query(
-          "select 1 from payment_attempts where id = $1 for update nowait",
-          [fixture.attemptId]
-        );
-        expect(attemptProbe.rowCount).toBe(1);
+        // While blocked on the reservation, issuance must already hold the
+        // attempt row: an attempt-first writer owns it and this nowait probe
+        // must fail. A reservation-first issuance would not hold it here and
+        // would invert against attempt-first writers.
+        await expect(
+          postgres.pool.query(
+            "select 1 from payment_attempts where id = $1 for update nowait",
+            [fixture.attemptId]
+          )
+        ).rejects.toThrow();
 
         // Releasing the reservation lets the already-paid markPaid replay
         // race the resuming issuance; both must finish without an abort.

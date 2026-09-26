@@ -330,10 +330,28 @@ export class InvoiceRepository extends Context.Service<
 
         const outcome = yield* db.transaction(
           Effect.fn(function* (tx) {
-            // Lock-order contract: reservation → payment attempt. Locking the
-            // authoritative reservation row first keeps issuance deadlock-free
-            // against markPaid replay and every other reservation-first
-            // writer; the attempt lock follows.
+            // Lock-order contract: payment attempt → reservation. The
+            // attempt-first anchor matches the deployed old writers, so
+            // old-new overlap during a rolling deploy serializes instead of
+            // inverting into a deadlock; new markPaid replays take the same
+            // anchor and therefore serialize with issuance too.
+            const [lockedAttempt] = yield* tx
+              .select({
+                state: paymentAttempts.state,
+                workspaceReservationId: paymentAttempts.workspaceReservationId,
+              })
+              .from(paymentAttempts)
+              .where(eq(paymentAttempts.id, paymentAttemptId))
+              .limit(1)
+              .for("update");
+
+            if (!lockedAttempt) {
+              return yield* wrapInvoiceEligibilityError(
+                paymentAttemptId,
+                "The payment attempt does not exist."
+              );
+            }
+
             const [lockedReservation] = yield* tx
               .select({
                 reservationId: workspaceReservations.id,
@@ -349,30 +367,15 @@ export class InvoiceRepository extends Context.Service<
               })
               .from(workspaceReservations)
               .where(
-                sql`${workspaceReservations.id} = (
-                  select ${paymentAttempts.workspaceReservationId}
-                  from ${paymentAttempts}
-                  where ${paymentAttempts.id} = ${paymentAttemptId}
-                )`
+                eq(
+                  workspaceReservations.id,
+                  lockedAttempt.workspaceReservationId
+                )
               )
               .limit(1)
               .for("update");
 
             if (!lockedReservation) {
-              return yield* wrapInvoiceEligibilityError(
-                paymentAttemptId,
-                "The payment attempt does not exist."
-              );
-            }
-
-            const [lockedAttempt] = yield* tx
-              .select({ state: paymentAttempts.state })
-              .from(paymentAttempts)
-              .where(eq(paymentAttempts.id, paymentAttemptId))
-              .limit(1)
-              .for("update");
-
-            if (!lockedAttempt) {
               return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
                 "The payment attempt does not exist."

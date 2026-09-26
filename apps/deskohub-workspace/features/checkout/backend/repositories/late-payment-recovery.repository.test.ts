@@ -95,16 +95,15 @@ const settleSuccessRows = (
   reservation: Partial<typeof reservationRowDefaults>
 ) => [
   [processingRecoveryRow()],
+  [["paid"]], // attempt-first anchor: the locked attempt state read
   [reservationRow(reservation)],
   [orderRow()], // order mirror upsert after the locked reservation
-  [], // legacy attempt linkage repair
   [], // supersession recheck
   [["attempt-1"]],
   [],
   [],
   [reservationRow({ ...reservation })],
   [orderRow()], // order mirror upsert after the settled reservation
-  [], // legacy attempt linkage repair
   [],
 ];
 
@@ -134,6 +133,7 @@ describe("LatePaymentRecoveryRepository", () => {
     const { recording, repository } = await makeRepository();
     recording.setRows([
       [processingRecoveryRow()],
+      [["paid"]], // attempt-first anchor: the locked attempt state read
       [reservationRow()],
       [orderRow()], // order mirror upsert after the locked reservation
       [["00000000-0000-4000-8000-000000000002"]],
@@ -156,20 +156,13 @@ describe("LatePaymentRecoveryRepository", () => {
       sql.includes('"created_at" > ')
     );
     expect(supersessionStatement).toBeDefined();
-    // No settlement write reaches the attempt; the only payment_attempts
-    // statement is the mirror's legacy linkage repair.
+    // No settlement write reaches the attempt; the mirror is reservation →
+    // order only, so no payment_attempts statement runs at all on this path.
     expect(
       recording.statements
         .map(({ sql }) => sql)
         .filter((sql) => sql.includes('update "payment_attempts"'))
-    ).toHaveLength(1);
-    expect(
-      recording.statements.find(
-        ({ sql }) =>
-          sql.includes('update "payment_attempts"') &&
-          !sql.includes('"order_id" = $')
-      )
-    ).toBeUndefined();
+    ).toHaveLength(0);
   });
 
   test("allows a replacement to settle after the original reservation was cancelled", async () => {
@@ -208,9 +201,9 @@ describe("LatePaymentRecoveryRepository", () => {
     const { recording, repository } = await makeRepository();
     recording.setRows([
       [processingRecoveryRow()],
+      [["paid"]], // attempt-first anchor: the locked attempt state read
       [reservationRow({ activePaymentAttemptId: "attempt-2" })],
       [orderRow()], // order mirror upsert after the locked reservation
-      [], // legacy attempt linkage repair
       [["attempt-1"]],
       [],
     ]);

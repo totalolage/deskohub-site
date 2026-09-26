@@ -7,7 +7,7 @@ import type {
   NexiOrderId,
   NexiWebhookEventId,
 } from "@deskohub/nexi";
-import { and, count, eq, inArray, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -652,6 +652,34 @@ export class PaymentLifecycleRepository extends Context.Service<
         return toPaymentAttempt(attempt);
       });
 
+      // Old writers left their payment attempts without order linkage.
+      // Repair it here, while the caller already holds the attempt row lock
+      // and ensureReservationOrder has guaranteed the order row exists. The
+      // reservation id is the order id, so the persisted linkage is exact.
+      const relinkLegacyAttemptOrder = Effect.fn(
+        "PaymentLifecycleRepository.relinkLegacyAttemptOrder"
+      )(function* (
+        tx: Parameters<
+          Parameters<WorkspaceDatabaseClient["transaction"]>[0]
+        >[0],
+        input: {
+          readonly id: PaymentAttemptId;
+          readonly workspaceReservationId: WorkspaceReservationId;
+        }
+      ) {
+        yield* tx
+          .update(paymentAttempts)
+          .set({
+            orderId: orderIdSchema.make(input.workspaceReservationId) as never,
+          })
+          .where(
+            and(
+              eq(paymentAttempts.id, input.id),
+              isNull(paymentAttempts.orderId)
+            )
+          );
+      });
+
       const markPaid = Effect.fn("PaymentLifecycleRepository.markPaid")(
         function* (input: {
           readonly id: PaymentAttemptId;
@@ -663,18 +691,10 @@ export class PaymentLifecycleRepository extends Context.Service<
         }) {
           return yield* db.transaction(
             Effect.fn(function* (tx) {
-              // Lock-order contract: reservation → payment attempts → order.
-              // Taking the authoritative row first keeps this writer
-              // deadlock-free against updateReservationDetails and every
-              // other reservation-first writer under concurrent traffic.
-              const [locked] = yield* tx
-                .select()
-                .from(workspaceReservations)
-                .where(
-                  eq(workspaceReservations.id, input.workspaceReservationId)
-                )
-                .limit(1)
-                .for("update");
+              // Lock-order contract: payment attempt → reservation → order.
+              // The attempt-first anchor matches the deployed old writers, so
+              // old-new overlap during a rolling deploy serializes instead of
+              // inverting into a deadlock.
 
               const [attempt] = yield* tx
                 .update(paymentAttempts)
@@ -710,6 +730,17 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
+              // The attempt row is locked, so these conditions cannot change
+              // underneath us between the check and the update.
+              const [locked] = yield* tx
+                .select()
+                .from(workspaceReservations)
+                .where(
+                  eq(workspaceReservations.id, input.workspaceReservationId)
+                )
+                .limit(1)
+                .for("update");
+
               // The row is transaction-locked, so these conditions cannot
               // change underneath us between the check and the update.
               if (
@@ -732,6 +763,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                   tx,
                   reservation: reservation!,
                 });
+                yield* relinkLegacyAttemptOrder(tx, {
+                  id: input.id,
+                  workspaceReservationId: input.workspaceReservationId,
+                });
                 yield* redeemCodeClaim(tx, input.id, input.paidAt);
                 return {
                   attempt: toPaymentAttempt(attempt),
@@ -750,6 +785,11 @@ export class PaymentLifecycleRepository extends Context.Service<
                 locked.activePaymentAttemptId === input.id
               ) {
                 yield* ensureReservationOrder({ tx, reservation: locked });
+
+                yield* relinkLegacyAttemptOrder(tx, {
+                  id: input.id,
+                  workspaceReservationId: input.workspaceReservationId,
+                });
 
                 yield* redeemCodeClaim(tx, input.id, input.paidAt);
                 return {
@@ -783,18 +823,10 @@ export class PaymentLifecycleRepository extends Context.Service<
 
           return yield* db.transaction(
             Effect.fn(function* (tx) {
-              // Lock-order contract: reservation → payment attempts → order.
-              // Taking the authoritative row first keeps this writer
-              // deadlock-free against updateReservationDetails and every
-              // other reservation-first writer under concurrent traffic.
-              const [locked] = yield* tx
-                .select()
-                .from(workspaceReservations)
-                .where(
-                  eq(workspaceReservations.id, input.workspaceReservationId)
-                )
-                .limit(1)
-                .for("update");
+              // Lock-order contract: payment attempt → reservation → order.
+              // The attempt-first anchor matches the deployed old writers, so
+              // old-new overlap during a rolling deploy serializes instead of
+              // inverting into a deadlock.
 
               const [attempt] = yield* tx
                 .update(paymentAttempts)
@@ -830,6 +862,17 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
+              // The attempt row is locked, so these conditions cannot change
+              // underneath us between the check and the update.
+              const [locked] = yield* tx
+                .select()
+                .from(workspaceReservations)
+                .where(
+                  eq(workspaceReservations.id, input.workspaceReservationId)
+                )
+                .limit(1)
+                .for("update");
+
               // The row is transaction-locked, so these conditions cannot
               // change underneath us between the check and the update.
               if (
@@ -850,6 +893,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                 yield* ensureReservationOrder({
                   tx,
                   reservation: reservation!,
+                });
+                yield* relinkLegacyAttemptOrder(tx, {
+                  id: input.id,
+                  workspaceReservationId: input.workspaceReservationId,
                 });
                 yield* releaseCodeClaim(
                   tx,
@@ -874,6 +921,11 @@ export class PaymentLifecycleRepository extends Context.Service<
                 locked.activePaymentAttemptId === input.id
               ) {
                 yield* ensureReservationOrder({ tx, reservation: locked });
+
+                yield* relinkLegacyAttemptOrder(tx, {
+                  id: input.id,
+                  workspaceReservationId: input.workspaceReservationId,
+                });
 
                 yield* releaseCodeClaim(
                   tx,
