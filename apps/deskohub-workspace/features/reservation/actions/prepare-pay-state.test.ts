@@ -857,11 +857,11 @@ describe("prepareWorkspacePayState", () => {
         {
           type: "meeting-room",
           duration: { unit: "hour", amount: 4 },
-          amount: { value: 155_000, exponent: 2, currency: "CZK" },
+          amount: { value: 98_000, exponent: 2, currency: "CZK" },
         },
       ],
       payment: {
-        expectedPrice: { value: 155_000, exponent: 2, currency: "CZK" },
+        expectedPrice: { value: 98_000, exponent: 2, currency: "CZK" },
       },
     });
   });

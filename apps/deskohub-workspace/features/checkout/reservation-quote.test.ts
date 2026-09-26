@@ -311,11 +311,11 @@ describe("reservation quotes", () => {
       {
         type: "meeting-room",
         duration: { unit: "hour", amount: 1 },
-        amount: { value: 47_500, exponent: 2, currency: "CZK" },
+        amount: { value: 35_000, exponent: 2, currency: "CZK" },
       },
     ]);
-    expect(fourHours.payment.expectedPrice.value).toBe(155_000);
-    expect(fullDay.payment.expectedPrice.value).toBe(232_000);
+    expect(fourHours.payment.expectedPrice.value).toBe(98_000);
+    expect(fullDay.payment.expectedPrice.value).toBe(182_000);
   });
 
   test("applies discounts to meeting-room reservations", () => {
@@ -325,8 +325,8 @@ describe("reservation quotes", () => {
       "2099-06-10T11:00:00Z"
     );
     const application = discountApplication(10_000, {
-      subtotalBefore: money(155_000),
-      subtotalAfter: money(145_000),
+      subtotalBefore: money(98_000),
+      subtotalAfter: money(88_000),
     });
     const quote = buildQuote(reservation, {
       discountQuote: {
@@ -334,15 +334,15 @@ describe("reservation quotes", () => {
           kind: "meeting-room",
           duration: { unit: "hour", amount: 4 },
         },
-        discountableSubtotal: money(155_000),
+        discountableSubtotal: money(98_000),
         discounts: [application],
         totalDiscount: money(10_000),
-        discountedSubtotal: money(145_000),
+        discountedSubtotal: money(88_000),
       },
     });
 
-    expect(quote.payment.expectedPrice).toEqual(money(145_000));
-    expect(quote.payment.undiscountedPrice).toEqual(money(155_000));
+    expect(quote.payment.expectedPrice).toEqual(money(88_000));
+    expect(quote.payment.undiscountedPrice).toEqual(money(98_000));
     expect(quote.payment.discounts).toEqual([application]);
   });
 
@@ -360,7 +360,7 @@ describe("reservation quotes", () => {
       {
         type: "meeting-room",
         duration: { unit: "day", amount: 1 },
-        amount: money(232_000),
+        amount: money(182_000),
       },
     ]);
   });
