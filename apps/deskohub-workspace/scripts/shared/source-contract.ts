@@ -31,15 +31,17 @@ const stripComments = (
   const stripBlock = options.block ?? true;
   let output = "";
   let index = 0;
-  // 0 = code, 1 = '...', 2 = "...", 3 = `...`
+  // 0 = code, 1 = '...', 2 = "..."
   let literalState = 0;
-  // Brace depth inside template-literal `${ ... }` interpolations.
-  const interpolationDepths: number[] = [];
+  // Stack for template literals: each template (including templates nested
+  // inside interpolations) pushes a frame. `text` is template character data;
+  // `interp` is code between `${` and its matching `}`.
+  type TemplateFrame = { mode: "text" | "interp"; braceDepth: number };
+  const templateStack: TemplateFrame[] = [];
   let lineComment = false;
   let blockComment = false;
 
-  const inTemplateInterpolation = () =>
-    literalState === 3 && interpolationDepths.length > 0;
+  const topTemplateFrame = () => templateStack[templateStack.length - 1];
 
   while (index < source.length) {
     const char = source[index] ?? "";
@@ -64,46 +66,34 @@ const stripComments = (
       continue;
     }
 
-    if (inTemplateInterpolation()) {
-      if (char === "}") {
-        interpolationDepths.pop();
-        output += char;
-        index += 1;
-        continue;
-      }
-    }
-
-    if (literalState === 0) {
-      if (char === "/" && next === "/") {
-        lineComment = true;
+    const textFrame = topTemplateFrame();
+    if (textFrame?.mode === "text") {
+      // Template character data: everything here, including `}`, `//`, and
+      // `/*`, is ordinary text until the closing backtick or a `${`.
+      if (char === "\\") {
+        output += char + next;
         index += 2;
-        continue;
-      }
-      if (stripBlock && char === "/" && next === "*") {
-        blockComment = true;
-        index += 2;
-        continue;
-      }
-      if (char === "'") {
-        literalState = 1;
-        output += char;
-        index += 1;
-        continue;
-      }
-      if (char === '"') {
-        literalState = 2;
-        output += char;
-        index += 1;
         continue;
       }
       if (char === "`") {
-        literalState = 3;
-        interpolationDepths.push(0);
+        templateStack.pop();
         output += char;
         index += 1;
         continue;
       }
-    } else {
+      if (char === "$" && next === "{") {
+        textFrame.mode = "interp";
+        textFrame.braceDepth = 0;
+        output += char + next;
+        index += 2;
+        continue;
+      }
+      output += char;
+      index += 1;
+      continue;
+    }
+
+    if (literalState === 1 || literalState === 2) {
       if (char === "\\") {
         output += char + next;
         index += 2;
@@ -111,28 +101,55 @@ const stripComments = (
       }
       if (
         (literalState === 1 && char === "'") ||
-        (literalState === 2 && char === '"') ||
-        (literalState === 3 && char === "`" && interpolationDepths.length === 1)
+        (literalState === 2 && char === '"')
       ) {
         literalState = 0;
-        if (char === "`") interpolationDepths.pop();
-        output += char;
-        index += 1;
-        continue;
       }
-      if (literalState === 3 && char === "$" && next === "{") {
-        interpolationDepths.push(0);
-        output += char + next;
-        index += 2;
-        continue;
-      }
+      output += char;
+      index += 1;
+      continue;
     }
 
-    if (interpolationDepths.length > 1) {
-      const top = interpolationDepths.pop() ?? 0;
-      if (char === "{") interpolationDepths.push(top + 1);
-      else if (char === "}") interpolationDepths.push(top - 1);
-      else interpolationDepths.push(top);
+    // Code states: outside any literal, or inside a template interpolation.
+    if (char === "/" && next === "/") {
+      lineComment = true;
+      index += 2;
+      continue;
+    }
+    if (stripBlock && char === "/" && next === "*") {
+      blockComment = true;
+      index += 2;
+      continue;
+    }
+    if (char === "'") {
+      literalState = 1;
+      output += char;
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      literalState = 2;
+      output += char;
+      index += 1;
+      continue;
+    }
+    if (char === "`") {
+      templateStack.push({ mode: "text", braceDepth: 0 });
+      output += char;
+      index += 1;
+      continue;
+    }
+    const interpFrame = topTemplateFrame();
+    if (interpFrame?.mode === "interp") {
+      if (char === "{") {
+        interpFrame.braceDepth += 1;
+      } else if (char === "}") {
+        if (interpFrame.braceDepth === 0) {
+          interpFrame.mode = "text";
+        } else {
+          interpFrame.braceDepth -= 1;
+        }
+      }
     }
 
     output += char;

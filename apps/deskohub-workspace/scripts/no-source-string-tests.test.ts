@@ -207,6 +207,34 @@ describe("no source-as-string contract tests", () => {
     expect(strippedCommented.includes(identifier)).toBe(false);
   });
 
+  test("template text with brace characters does not trap the scanner", () => {
+    const identifier = ["Semap", "hore"].join("");
+
+    // A `}` in template text must not be read as an interpolation closer: the
+    // commented-out identifier after the template stays hidden while the
+    // scanner still exits the literal in time to see active code after it.
+    const braceTextFixture = [
+      "const banner = `" + "}" + "`; // const " + identifier + " = 1;",
+      `const ${identifier} = 1;`,
+    ].join("\n");
+    expect(
+      countTokenSequence(sourceTokens(braceTextFixture), [identifier])
+    ).toBe(1);
+    expect(braceTextFixture.includes(identifier)).toBe(true);
+    const strippedBraceText = stripLineComments(braceTextFixture);
+    expect(strippedBraceText.split(identifier).length - 1).toBe(1);
+
+    // Interpolation code with nested object braces closes correctly, so an
+    // active identifier after the template is still visible.
+    const nestedInterpFixture = [
+      "const banner = `" + "${" + "{ a: { b: 1 } }" + "}`;",
+      `const ${identifier} = 1;`,
+    ].join("\n");
+    expect(
+      countTokenSequence(sourceTokens(nestedInterpFixture), [identifier])
+    ).toBe(1);
+  });
+
   test("the tokenizer keeps spread ellipses as single tokens", () => {
     // Fixture for the raw-env-spread policy: an ellipsis must tokenize as one
     // token so `...process.env` spreads are detectable as a token sequence.
