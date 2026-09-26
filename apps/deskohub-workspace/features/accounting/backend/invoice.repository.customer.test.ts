@@ -2,6 +2,9 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
+import { expireLinkedDotyposProfile } from "@/features/account/backend/customer-account-deletion";
+import { CustomerAccountLinkRepository } from "@/features/account/backend/customer-account-link.repository";
 import {
   makeCoworkInvoiceDocument,
   makeTestManualInvoiceDocument,
@@ -266,5 +269,57 @@ describe("customer-scoped invoice repository", () => {
     expect(metadataIndex).toBeGreaterThan(-1);
     expect(decryptIndex).toBeGreaterThan(metadataIndex);
     expect(recording.statements[metadataIndex]?.params).toContain(ownerId);
+  });
+
+  test("keeps the stored invoice rows through the account deletion flow", async () => {
+    const { recording, repository } = await makeHarness();
+    // The real link repository over the recording database executes the
+    // actual deletion SQL; the provider call is the only external stub.
+    const links = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* CustomerAccountLinkRepository;
+      }).pipe(
+        Effect.provide(
+          CustomerAccountLinkRepository.Default.pipe(
+            Layer.provide(recording.layer),
+            Layer.provide(
+              Layer.succeed(
+                WorkspaceDatabaseAdvisoryLock,
+                WorkspaceDatabaseAdvisoryLock.of({
+                  withLock: (_key, effect) => effect,
+                } as never)
+              )
+            )
+          )
+        )
+      )
+    );
+    recording.setRows([[ownerId]]);
+    await Effect.runPromise(
+      expireLinkedDotyposProfile({
+        markDeletionRequested: links.markDeletionRequested,
+        findLink: links.find,
+        expireCustomer: () => Effect.void as never,
+        withAccountLock: links.withAccountLock,
+      })(ownerId as never)
+    );
+
+    // Deletion only writes the auth marker and expires the provider
+    // profile; no statement may read, update, or delete invoice storage.
+    expect(
+      recording.statements.some(
+        ({ sql }) => /delete/i.test(sql) || /invoice/i.test(sql)
+      )
+    ).toBe(false);
+
+    // The invoice rows survive: the ledger still lists the same invoice.
+    recording.setRows([
+      [metadataRow(invoiceUuid)],
+      [[invoiceUuid, JSON.stringify(makeCoworkInvoiceDocument("en-US"))]],
+    ]);
+    const summaries = await Effect.runPromise(
+      repository.listForCustomer(ownerId as never)
+    );
+    expect(summaries.map((summary) => summary.id)).toEqual([invoiceUuid]);
   });
 });

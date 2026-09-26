@@ -80,11 +80,12 @@ export const makeCustomerInvoicePdfGet = (
             });
           }).pipe(
             Effect.provide(serviceLayer),
-            Effect.catchTag("CustomerInvoiceNotFoundError", () =>
-              Effect.succeed(privateNotFoundResponse())
-            ),
-            Effect.catchTag("CustomerInvoicesUnavailableError", () =>
-              Effect.succeed(privateNotFoundResponse())
+            Effect.catchTag(
+              [
+                "CustomerInvoiceNotFoundError",
+                "CustomerInvoicesUnavailableError",
+              ],
+              () => Effect.succeed(privateNotFoundResponse())
             ),
             Effect.catch(toRouteFailure("Customer invoice could not be loaded"))
           );

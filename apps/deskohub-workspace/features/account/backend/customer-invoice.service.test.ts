@@ -218,6 +218,20 @@ describe("customer invoice service authorization", () => {
     );
   });
 
+  // The invoices themselves survive account deletion in storage; only the
+  // access ends, so a deletion-pending account is denied the PDF too.
+  test("denies deletion-pending accounts the invoice PDF", async () => {
+    const harness = makeHarness({ deletionRequestedAt: "2026-09-01T00:00Z" });
+    const outcome = await harness.run(
+      Effect.flatMap(CustomerInvoiceService, (service) =>
+        service.findPdf(summary.id)
+      ).pipe(Effect.result)
+    );
+    expect((outcome as { failure?: { _tag?: string } }).failure?._tag).toBe(
+      "CustomerInvoicesUnavailableError"
+    );
+  });
+
   test("maps database failures to the load error without document data", async () => {
     const harness = makeHarness({
       listOutcome: Effect.fail(new Error("synthetic database failure")),

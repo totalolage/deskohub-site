@@ -162,7 +162,8 @@ export const verifyCustomerInvoiceAccess = async (
 /**
  * Asserts the download denial after the invoice fixture was revoked: the
  * previously owned id answers with the same private not-found and never a
- * document.
+ * document, and the CSV export is denied with the same indistinguishable
+ * semantics.
  */
 export const verifyCustomerInvoiceRevoked = async (
   baseUrl: string,
@@ -176,4 +177,12 @@ export const verifyCustomerInvoiceRevoked = async (
   expect(revokedPdf.headers()["content-type"]).not.toContain("application/pdf");
   expect(revokedPdf.headers()["cache-control"]).toBe(privateNoStore);
   await revokedPdf.dispose();
+
+  const revokedCsv = await page.request.get(
+    new URL("/en-US/account/invoices/export", baseUrl).toString()
+  );
+  expect(revokedCsv.status()).toBe(404);
+  expect(revokedCsv.headers()["content-type"]).not.toContain("text/csv");
+  expect(revokedCsv.headers()["cache-control"]).toBe(privateNoStore);
+  await revokedCsv.dispose();
 };
