@@ -2723,6 +2723,9 @@ export class AdministrationService extends Context.Service<
                 .select({
                   id: workspaceReservations.dotyposReservationId,
                   reservationDetails: workspaceReservations.reservationDetails,
+                  fulfillmentState: workspaceReservations.fulfillmentState,
+                  paymentState: workspaceReservations.paymentState,
+                  reservationState: workspaceReservations.reservationState,
                 })
                 .from(workspaceReservations)
                 .where(
@@ -2735,8 +2738,8 @@ export class AdministrationService extends Context.Service<
                   )
                 );
         const linkedReservations = new Map(
-          linkedRows.flatMap(({ id, reservationDetails }) =>
-            id ? ([[id, reservationDetails]] as const) : []
+          linkedRows.flatMap(({ id, ...row }) =>
+            id ? ([[id, row]] as const) : []
           )
         );
         const activityByDate = new Map<
@@ -2747,15 +2750,20 @@ export class AdministrationService extends Context.Service<
           }
         >();
         for (const reservation of reservations) {
+          if (reservation.status !== "CONFIRMED") {
+            continue;
+          }
           const id = Option.getOrUndefined(
             decodeDotyposReservationId(reservation.id)
           );
-          const reservationDetails = id
-            ? linkedReservations.get(id)
-            : undefined;
-          if (!reservationDetails) {
+          const row = id ? linkedReservations.get(id) : undefined;
+          if (
+            !row ||
+            getAdministrationReservationStatus(row).group !== "complete"
+          ) {
             continue;
           }
+          const reservationDetails = row.reservationDetails;
           const date = getReservationDate(reservation.startDate);
           const category =
             reservationDetails.kind === "cowork"
