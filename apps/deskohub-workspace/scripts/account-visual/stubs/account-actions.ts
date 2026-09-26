@@ -1,6 +1,12 @@
 const unavailableMessage =
   "Unavailable in component renderer: backend action was not executed.";
 
+export const unavailableActionMessage = unavailableMessage;
+
+export const recordUnavailableActionInvocation = () => {
+  actionTracker.recordInvocation();
+};
+
 type AccountVisualActionTracker = {
   readonly invocationCount: number;
   readonly recordInvocation: () => void;

@@ -7,7 +7,11 @@ import { CustomerAuthentication } from "@/features/account/backend/customer-auth
 import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
-import type { CustomerReservationHistory } from "@/features/account/contracts";
+import { loadSavedCards } from "@/features/account/backend/saved-card/saved-card-page.server";
+import type {
+  CustomerReservationHistory,
+  SavedCardsPageState,
+} from "@/features/account/contracts";
 import type { Locale } from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
@@ -26,6 +30,7 @@ export type CustomerAccountPageState =
       readonly email: string;
       readonly profile: CustomerProfile;
       readonly history: CustomerReservationHistory;
+      readonly savedCards: SavedCardsPageState;
     }
   | { readonly kind: "support-required"; readonly email: string }
   | { readonly kind: "deletion-pending"; readonly email: string };
@@ -89,11 +94,20 @@ export const loadCustomerAccountPage = cache(
         })
       );
 
+      // Fail-closed: a saved-card listing failure renders as an explicit
+      // "unavailable" state, never as an empty card list.
+      const savedCards = await loadSavedCards(account.success);
+      const savedCardsState: SavedCardsPageState =
+        savedCards === "unavailable"
+          ? { kind: "unavailable" }
+          : { kind: "loaded", cards: savedCards };
+
       return {
         kind: "linked",
         email: user.email,
         profile: profile.success,
         history,
+        savedCards: savedCardsState,
       };
     }
 

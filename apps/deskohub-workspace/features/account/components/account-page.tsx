@@ -5,6 +5,7 @@ import { DeleteAccountCard } from "@/features/account/components/delete-account-
 import { LinkedAccount } from "@/features/account/components/linked-account";
 import { ProfileForm } from "@/features/account/components/profile-form";
 import { SessionRefresh } from "@/features/account/components/session-refresh";
+import type { SavedCardFlowFeedback } from "@/features/account/contracts";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
 import { type Locale, m } from "@/features/i18n";
 import { Card, CardContent } from "@/shared/components/ui/card";
@@ -13,9 +14,11 @@ const cardClassName =
   "rounded-3xl border-white/70 bg-white/92 shadow-[0_26px_80px_-48px_rgba(0,2,79,0.55)]";
 
 export function AccountPage({
+  cardFlow,
   locale,
   state,
 }: {
+  readonly cardFlow?: SavedCardFlowFeedback;
   readonly locale: Locale;
   readonly state: CustomerAccountPageState;
 }) {
@@ -27,10 +30,12 @@ export function AccountPage({
       <>
         <SessionRefresh />
         <LinkedAccount
+          cardFlow={cardFlow}
           email={state.email}
           history={state.history}
           locale={locale}
           profile={state.profile}
+          savedCards={state.savedCards}
         />
       </>
     );

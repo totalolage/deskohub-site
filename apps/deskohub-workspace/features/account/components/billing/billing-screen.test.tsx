@@ -1,8 +1,23 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Locale } from "@/features/i18n";
+import type { SavedCardsPageState } from "../contracts";
 import type { BillingScreenCopy } from "./billing-screen";
-import { BillingScreen } from "./billing-screen";
+
+mock.module("next/navigation", () => ({
+  usePathname: () => "/en-US/account",
+  useRouter: () => ({ refresh: () => undefined }),
+  unstable_rethrow: (cause: unknown) => {
+    throw cause;
+  },
+}));
+
+mock.module("@/features/account/saved-card-actions", () => ({
+  startSavedCardEnrollment: () => Promise.resolve({ serverError: "x" }),
+  removeSavedCard: () => Promise.resolve({ serverError: "x" }),
+}));
+
+const { BillingScreen } = await import("./billing-screen");
 
 const englishCopy = {
   title: "Billing & invoices",
@@ -38,6 +53,8 @@ const czechCopy = {
   exportInvoices: "Exportovat vše",
 } satisfies BillingScreenCopy;
 
+const emptyCards: SavedCardsPageState = { kind: "loaded", cards: [] };
+
 const countOccurrences = (value: string, needle: string) =>
   value.split(needle).length - 1;
 
@@ -49,9 +66,13 @@ const escapeHtml = (value: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#x27;");
 
-const renderScreen = (copy: BillingScreenCopy, locale: Locale) =>
+const renderScreen = (
+  copy: BillingScreenCopy,
+  locale: Locale,
+  cards: SavedCardsPageState = emptyCards
+) =>
   renderToStaticMarkup(
-    <BillingScreen copy={copy} locale={locale}>
+    <BillingScreen cards={cards} copy={copy} locale={locale}>
       <div data-child-marker="billing-fields">Caller-owned billing fields</div>
     </BillingScreen>
   );
@@ -76,6 +97,7 @@ describe("BillingScreen", () => {
   test("renders children and the optional footer exactly once without owning a form or input", () => {
     const markup = renderToStaticMarkup(
       <BillingScreen
+        cards={emptyCards}
         copy={englishCopy}
         footer={<span data-footer-marker="billing-footer">Save billing</span>}
         locale="en-US"
@@ -99,6 +121,7 @@ describe("BillingScreen", () => {
   test("keeps a provided footer in one sticky, opaque, safe-area wrapper", () => {
     const markup = renderToStaticMarkup(
       <BillingScreen
+        cards={emptyCards}
         copy={englishCopy}
         footer={<span data-footer-marker="billing-footer">Save billing</span>}
         locale="en-US"
@@ -163,6 +186,7 @@ describe("BillingScreen", () => {
     const markup = renderToStaticMarkup(
       <form id="account-profile-form">
         <BillingScreen
+          cards={emptyCards}
           copy={englishCopy}
           footer={<button type="submit">Save billing</button>}
           locale="en-US"
@@ -188,22 +212,31 @@ describe("BillingScreen", () => {
     expect(markup).toContain("Save billing");
   });
 
-  test("keeps every unsupported action disabled and native button-shaped", () => {
+  test("keeps the future-feature actions disabled and native button-shaped while Add stays functional", () => {
     const markup = renderScreen(englishCopy, "en-US");
     const buttons = markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
 
     expect(buttons).toHaveLength(4);
     for (const button of buttons) {
       expect(button).toMatch(/\btype="button"/);
-      expect(button).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
     }
+    const disabledButtons = buttons.filter((button) =>
+      /\bdisabled(?:="")?(?:\s|>)/.test(button)
+    );
+    expect(disabledButtons).toHaveLength(3);
+    const enabledAddButton = buttons.find((button) =>
+      button.includes(escapeHtml(englishCopy.addPaymentCard))
+    );
+    expect(enabledAddButton).toBeDefined();
+    expect(enabledAddButton).not.toMatch(/\bdisabled(?:="")?(?:\s|>)/);
+    expect(enabledAddButton).not.toMatch(/tabindex="0"/);
   });
 
   test.each([
     ["English", "en-US", englishCopy],
     ["Czech", "cs-CZ", czechCopy],
   ] as const)(
-    "renders only the saved payment heading and disabled Add action for %s",
+    "renders the saved payment heading, quiet empty state, and enabled Add action for %s",
     (_language, locale, copy) => {
       const savedSection = getSavedPaymentMethodsMarkup(
         renderScreen(copy, locale)
@@ -216,14 +249,34 @@ describe("BillingScreen", () => {
         escapeHtml(copy.paymentMethodsUnavailable)
       );
       expect(savedSection).not.toContain(escapeHtml(copy.removePaymentCard));
-      expect(savedSection).not.toContain("payment-methods-unavailable");
       expect(buttons).toHaveLength(1);
       expect(buttons[0]).toContain(escapeHtml(copy.addPaymentCard));
       expect(buttons[0]).toMatch(/\btype="button"/);
-      expect(buttons[0]).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
+      expect(buttons[0]).not.toMatch(/\bdisabled(?:="")?(?:\s|>)/);
       expect(buttons[0]).not.toMatch(/\baria-describedby=/);
     }
   );
+
+  test("renders one card row per saved card with a remove control and no invented data", () => {
+    const markup = renderScreen(englishCopy, "en-US", {
+      kind: "loaded",
+      cards: [
+        { contractId: "contract-a", circuit: "Visa", suffix: "6152" },
+        { contractId: "contract-b" },
+      ],
+    });
+    const savedSection = getSavedPaymentMethodsMarkup(markup);
+    const removeButtons =
+      savedSection.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
+
+    expect(savedSection).toContain(escapeHtml("Visa"));
+    expect(savedSection).toContain(escapeHtml("6152"));
+    expect(
+      countOccurrences(savedSection, escapeHtml(englishCopy.removePaymentCard))
+    ).toBe(2);
+    expect(removeButtons.length).toBeGreaterThanOrEqual(2);
+    expect(savedSection).not.toMatch(/4242|••••/);
+  });
 
   test.each([
     ["English", "en-US", englishCopy],
@@ -255,10 +308,10 @@ describe("BillingScreen", () => {
   test("keeps labels and description references unique across two instances", () => {
     const markup = renderToStaticMarkup(
       <div>
-        <BillingScreen copy={englishCopy} locale="en-US">
+        <BillingScreen cards={emptyCards} copy={englishCopy} locale="en-US">
           <div>First billing fields</div>
         </BillingScreen>
-        <BillingScreen copy={czechCopy} locale="cs-CZ">
+        <BillingScreen cards={emptyCards} copy={czechCopy} locale="cs-CZ">
           <div>Second billing fields</div>
         </BillingScreen>
       </div>

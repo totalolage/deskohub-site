@@ -85,6 +85,13 @@ const populatedFixture = {
       unavailable: [],
     },
   },
+  savedCards: {
+    kind: "loaded",
+    cards: [
+      { contractId: "account-visual-visa", circuit: "Visa", suffix: "6152" },
+      { contractId: "account-visual-mastercard" },
+    ],
+  },
 } as const satisfies CustomerAccountPageState;
 
 export const accountVisualFixture = populatedFixture;
