@@ -16,15 +16,28 @@ export async function generateMetadata(): Promise<Metadata> {
   }));
 }
 
-export default async function CustomerSignInPage() {
+export default async function CustomerSignInPage({
+  searchParams,
+}: {
+  readonly searchParams?: Promise<
+    Record<string, string | string[] | undefined>
+  >;
+} = {}) {
   await connection();
   if (!(await areAccountsEnabled())) notFound();
+
+  const params = searchParams ? await searchParams : undefined;
+  const cardFlowParam = params?.cardFlow;
+  // Only the session-expiry flag is surfaced here; every other value is ignored.
+  const sessionNotice =
+    (Array.isArray(cardFlowParam) ? cardFlowParam[0] : cardFlowParam) ===
+    "session";
 
   return runWithRequestLocale((locale) => (
     <main className="relative min-h-[calc(100vh-var(--site-header-height))] overflow-hidden bg-[#f4f3ef] px-4 pb-20 pt-[calc(var(--site-header-height)+4rem)] sm:px-6">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(236,164,35,0.22),transparent_34%),radial-gradient(circle_at_85%_75%,rgba(0,223,153,0.12),transparent_30%)]" />
       <div className="relative mx-auto flex max-w-lg justify-center">
-        <SignInCard locale={locale} />
+        <SignInCard locale={locale} sessionNotice={sessionNotice} />
       </div>
     </main>
   ));

@@ -99,8 +99,10 @@ export function BillingScreen({
         }
         setActionNotice(m.accountSavedCardGenericError({}, { locale }));
       },
-      onError: () => {
-        setActionNotice(m.accountSavedCardGenericError({}, { locale }));
+      onError: ({ error }) => {
+        setActionNotice(
+          error.serverError ?? m.accountSavedCardGenericError({}, { locale })
+        );
       },
     });
 
@@ -120,9 +122,11 @@ export function BillingScreen({
         }
         setActionNotice(m.accountSavedCardRemovalFailed({}, { locale }));
       },
-      onError: () => {
+      onError: ({ error }) => {
         setPendingRemoval(null);
-        setActionNotice(m.accountSavedCardRemovalFailed({}, { locale }));
+        setActionNotice(
+          error.serverError ?? m.accountSavedCardRemovalFailed({}, { locale })
+        );
       },
     });
 

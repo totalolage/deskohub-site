@@ -12,9 +12,11 @@ import { Label } from "@/shared/components/ui/label";
 
 type SignInCardProps = {
   readonly locale: Locale;
+  /** True when the saved-card return redirected here with `cardFlow=session`. */
+  readonly sessionNotice?: boolean;
 };
 
-export function SignInCard({ locale }: SignInCardProps) {
+export function SignInCard({ locale, sessionNotice }: SignInCardProps) {
   const [requested, setRequested] = useState(false);
   const [failed, setFailed] = useState(false);
   const authReturn = useMemo(
@@ -69,6 +71,15 @@ export function SignInCard({ locale }: SignInCardProps) {
   return (
     <Card className="rounded-3xl border-white/70 bg-white/94 shadow-[0_32px_100px_-48px_rgba(0,2,79,0.55)]">
       <CardContent className="p-8 sm:p-10">
+        {sessionNotice ? (
+          <p
+            aria-live="polite"
+            className="mb-6 min-w-0 break-words rounded-2xl border border-[#e0e6ee] bg-[#fbfcfd] px-4 py-3 text-sm leading-6 text-navy-blue/78"
+            role="status"
+          >
+            {m.accountSessionExpired({}, { locale })}
+          </p>
+        ) : null}
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-burned-orange">
           {m.accountSignInEyebrow({}, { locale })}
         </p>

@@ -85,11 +85,12 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
       readonly onSuccess?: (args: {
         readonly data?: SavedCardActionResult["data"];
       }) => void;
-      readonly onError?: () => void;
+      readonly onError?: (args: {
+        readonly error: { readonly serverError?: string };
+      }) => void;
     }
   ) => {
     const [isExecuting, setIsExecuting] = useState(false);
-    const [hasError, setHasError] = useState(false);
 
     const execute = (input: never) => {
       setIsExecuting(true);
@@ -97,23 +98,20 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
         .then((nextResult) => {
           setIsExecuting(false);
           if (nextResult.serverError) {
-            setHasError(true);
-            options?.onError?.();
+            options?.onError?.({
+              error: { serverError: nextResult.serverError },
+            });
             return;
           }
           options?.onSuccess?.({ data: nextResult.data });
         })
         .catch(() => {
           setIsExecuting(false);
-          options?.onError?.();
+          options?.onError?.({ error: {} });
         });
     };
 
-    return {
-      execute,
-      isExecuting,
-      result: hasError ? { serverError: "x" } : {},
-    };
+    return { execute, isExecuting, result: {} };
   },
 }));
 
@@ -251,10 +249,25 @@ describe("billing saved cards", () => {
     expect(windowAssign).toHaveBeenCalledWith("https://hosted.example.test");
   });
 
-  test("add surfaces generic feedback on an unexpected result", async () => {
+  test("add surfaces the action serverError feedback on failure", async () => {
     startSavedCardEnrollment.mockImplementationOnce(() =>
-      Promise.resolve({ serverError: "unavailable" })
+      Promise.resolve({ serverError: "Session expired notice" })
     );
+    const view = renderBilling();
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", { name: billingCopy("en-US").addPaymentCard })
+      );
+      await Promise.resolve();
+    });
+    expect(view.getByRole("status").textContent).toBe("Session expired notice");
+    expect(
+      view.queryByText(m.accountSavedCardGenericError({}, { locale: "en-US" }))
+    ).toBeNull();
+  });
+
+  test("add surfaces generic feedback on an unexpected result", async () => {
+    startSavedCardEnrollment.mockImplementationOnce(() => Promise.resolve({}));
     const view = renderBilling();
     await act(async () => {
       fireEvent.click(
@@ -336,6 +349,61 @@ describe("billing saved cards", () => {
       view.getByText(m.accountSavedCardRemovalRetry({}, { locale: "en-US" }))
     ).toBeTruthy();
     expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  test("remove surfaces the action serverError feedback on failure", async () => {
+    removeSavedCard.mockImplementationOnce(() =>
+      Promise.resolve({ serverError: "Deletion pending notice" })
+    );
+    const view = renderBilling({
+      cards: { kind: "loaded", cards: [card({ suffix: "6152" })] },
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: billingCopy("en-US").removePaymentCard,
+        })
+      );
+    });
+    const confirm = view.baseElement.querySelector(
+      "#remove-saved-card-confirm"
+    );
+    if (!confirm) throw new Error("Remove confirmation button missing");
+    await act(async () => {
+      fireEvent.click(confirm);
+      await Promise.resolve();
+    });
+    expect(view.getByRole("status").textContent).toBe(
+      "Deletion pending notice"
+    );
+    expect(
+      view.queryByText(m.accountSavedCardRemovalFailed({}, { locale: "en-US" }))
+    ).toBeNull();
+  });
+
+  test("remove surfaces generic failure feedback without a serverError", async () => {
+    removeSavedCard.mockImplementationOnce(() => Promise.resolve({}));
+    const view = renderBilling({
+      cards: { kind: "loaded", cards: [card({ suffix: "6152" })] },
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: billingCopy("en-US").removePaymentCard,
+        })
+      );
+    });
+    const confirm = view.baseElement.querySelector(
+      "#remove-saved-card-confirm"
+    );
+    if (!confirm) throw new Error("Remove confirmation button missing");
+    await act(async () => {
+      fireEvent.click(confirm);
+      await Promise.resolve();
+    });
+    expect(
+      view.getByText(m.accountSavedCardRemovalFailed({}, { locale: "en-US" }))
+    ).toBeTruthy();
   });
 
   test.each([
