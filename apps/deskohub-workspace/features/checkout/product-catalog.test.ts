@@ -62,21 +62,21 @@ describe("workspace product catalog", () => {
     expect(
       getWorkspaceMeetingRoomPriceForDuration({ unit: "hour", amount: 1 })
     ).toEqual({
-      value: 47_500,
+      value: 35_000,
       exponent: 2,
       currency: "CZK",
     });
     expect(
       getWorkspaceMeetingRoomPriceForDuration({ unit: "hour", amount: 4 })
     ).toEqual({
-      value: 155_000,
+      value: 98_000,
       exponent: 2,
       currency: "CZK",
     });
     expect(
       getWorkspaceMeetingRoomPriceForDuration({ unit: "day", amount: 1 })
     ).toEqual({
-      value: 232_000,
+      value: 182_000,
       exponent: 2,
       currency: "CZK",
     });
