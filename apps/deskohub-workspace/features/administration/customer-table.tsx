@@ -31,19 +31,23 @@ const consentLabel = (consent: AdministrationCustomerConsentState) => {
   }
 };
 
-const consentTone = {
-  granted: "positive",
-  never: "neutral",
-  withdrawn: "attention",
-} as const satisfies Record<
-  AdministrationCustomerConsentState,
-  ComponentProps<typeof StatusBadge>["tone"]
->;
-
 const consentBadge = (
   consent: AdministrationCustomerConsentState
 ): ReactNode => (
-  <StatusBadge tone={consentTone[consent]}>{consentLabel(consent)}</StatusBadge>
+  <StatusBadge
+    tone={
+      {
+        granted: "positive",
+        never: "neutral",
+        withdrawn: "attention",
+      } as const satisfies Record<
+        AdministrationCustomerConsentState,
+        ComponentProps<typeof StatusBadge>["tone"]
+      >
+    }
+  >
+    {consentLabel(consent)}
+  </StatusBadge>
 );
 
 const columns: readonly AdministrationDataTableColumn<AdministrationCustomerSummary>[] =

@@ -772,7 +772,7 @@ describe("AdministrationService", () => {
       consent: "granted",
       expectedState: "granted",
       expectedPredicate:
-        '("customer_marketing_consents"."withdrawn_at" is null)',
+        '((("customer_marketing_consents"."dotypos_customer_id" is not null)) and (("customer_marketing_consents"."withdrawn_at" is null)))',
     },
     {
       consent: "withdrawn",

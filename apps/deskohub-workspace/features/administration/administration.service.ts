@@ -175,7 +175,14 @@ const getMarketingConsentPredicate = (
 ): SQL | undefined => {
   switch (filter) {
     case "granted":
-      return isNull(customerMarketingConsents.withdrawnAt);
+      // The consent primary key guard excludes customers with no consent
+      // row: a left join would otherwise yield NULLs that isNull(withdrawnAt)
+      // wrongly counts as an active grant. A withdrawn grant never counts
+      // as granted.
+      return and(
+        isNotNull(customerMarketingConsents.dotyposCustomerId),
+        isNull(customerMarketingConsents.withdrawnAt)
+      );
     case "withdrawn":
       return isNotNull(customerMarketingConsents.withdrawnAt);
     case "never":
@@ -2455,7 +2462,14 @@ export class AdministrationService extends Context.Service<
               )
             )
             .where(customerSetWhere)
-            .groupBy(workspaceReservations.dotyposCustomerId)
+            .groupBy(
+              workspaceReservations.dotyposCustomerId,
+              // Grouping by the consent primary key keeps one group per
+              // customer; the withdrawn timestamp must be grouped so the
+              // consent-state case expression is legal under GROUP BY.
+              customerMarketingConsents.dotyposCustomerId,
+              customerMarketingConsents.withdrawnAt
+            )
             .orderBy(
               order(
                 input.sort === "reservations"
