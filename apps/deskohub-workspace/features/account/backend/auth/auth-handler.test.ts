@@ -29,6 +29,7 @@ import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace
 import type { CustomerAccountId } from "../customer-account";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
 import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
+import { CustomerAvatarService } from "../customer-avatar.service";
 import { CustomerDotyposAdapter } from "../customer-dotypos-adapter.service";
 import type { MagicLinkSendFunction, WorkspaceAuthConfig } from "./auth-server";
 
@@ -253,7 +254,8 @@ const makeTestDeletionLayers = (
             )
           )
         ),
-        Layer.mock(CustomerDotyposAdapter, { expireCustomer })
+        Layer.mock(CustomerDotyposAdapter, { expireCustomer }),
+        Layer.mock(CustomerAvatarService, { destroy: () => Effect.void })
       )
     )
   );

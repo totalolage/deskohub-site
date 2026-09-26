@@ -23,6 +23,7 @@ const populatedFixture = {
       country: "CZ",
     },
   },
+  avatar: null,
   history: {
     kind: "available",
     groups: {

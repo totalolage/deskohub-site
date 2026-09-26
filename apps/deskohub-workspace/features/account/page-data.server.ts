@@ -4,6 +4,10 @@ import { Effect, Result } from "effect";
 import { cache } from "react";
 import { resolveCurrentCustomerAccount } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import {
+  type CustomerAvatar,
+  CustomerAvatarService,
+} from "@/features/account/backend/customer-avatar.service";
 import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
@@ -25,6 +29,7 @@ export type CustomerAccountPageState =
       readonly kind: "linked";
       readonly email: string;
       readonly profile: CustomerProfile;
+      readonly avatar: CustomerAvatar | null;
       readonly history: CustomerReservationHistory;
     }
   | { readonly kind: "support-required"; readonly email: string }
@@ -89,10 +94,21 @@ export const loadCustomerAccountPage = cache(
         })
       );
 
+      // A media outage never blocks the account page: an avatar read failure
+      // degrades to the initials fallback.
+      const avatar = await Effect.flatMap(CustomerAvatarService, (service) =>
+        service.lookup(account.success.accountId)
+      ).pipe(
+        Effect.provide(CustomerAvatarService.Live),
+        Effect.orElseSucceed(() => null),
+        runWorkspaceEffect("account.avatar", { boundary: "page" })
+      );
+
       return {
         kind: "linked",
         email: user.email,
         profile: profile.success,
+        avatar,
         history,
       };
     }

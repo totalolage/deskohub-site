@@ -7,6 +7,7 @@ const cloudinaryServerModule = "@deskohub/cloudinary" + "/server";
 
 const allowedServerImports = new Set([
   "app/api/webhooks/cloudinary/route.ts",
+  "features/account/backend/customer-avatar.service.ts",
   "features/gallery/actions/get-cloudinary-images.ts",
   "features/gallery/backend/cloudinary.service.ts",
 ]);
