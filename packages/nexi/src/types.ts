@@ -291,11 +291,26 @@ export const getNexiMaskedInstrumentSuffix = (
   return match?.[1];
 };
 
+export const nexiContractTypes = [
+  "MIT_UNSCHEDULED",
+  "MIT_SCHEDULED",
+  "CIT",
+] as const;
+
+export type NexiContractType = (typeof nexiContractTypes)[number];
+
+const isNexiContractType = (
+  contractType: string
+): contractType is NexiContractType =>
+  (nexiContractTypes as readonly string[]).includes(contractType);
+
 export const toNexiCardContract = (contract: {
   readonly contractId: string;
+  readonly contractType: string;
   readonly paymentCircuit: string;
   readonly paymentInstrumentInfo: string;
 }): NexiCardContract | undefined => {
+  if (!isNexiContractType(contract.contractType)) return undefined;
   let contractId: NexiContractId;
   try {
     contractId = decodeNexiContractId(contract.contractId.trim());
@@ -308,6 +323,7 @@ export const toNexiCardContract = (contract: {
   );
   return {
     contractId,
+    contractType: contract.contractType,
     ...(circuit && { circuit }),
     ...(maskedInstrumentSuffix && { maskedInstrumentSuffix }),
   };
@@ -315,6 +331,7 @@ export const toNexiCardContract = (contract: {
 
 export interface NexiCardContract {
   readonly contractId: NexiContractId;
+  readonly contractType: NexiContractType;
   /** Normalized known circuit (uppercase), e.g. VISA or MC. */
   readonly circuit?: string;
   /** Trailing digits of a safely masked instrument, e.g. "6152" for ***6152. */
@@ -347,6 +364,12 @@ export interface CreateHostedPaymentPageInput {
   readonly cancelUrl: string;
   readonly notificationUrl: string;
   readonly customer?: HostedPaymentCustomer;
+  /**
+   * Opaque customer reference to bind a saved-card enrollment to when no
+   * full profile is available. `customer.id` takes precedence when both are
+   * set; in practice they are mutually exclusive.
+   */
+  readonly customerReference?: NexiCustomerId;
   /** Requests saved-card contract enrollment (oneclick) during the session. */
   readonly contractEnrollment?: NexiContractEnrollment;
   readonly actionType?: "PAY" | "VERIFY";

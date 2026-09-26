@@ -151,8 +151,12 @@ const makeNexiService = Effect.gen(function* () {
           orderId: input.orderId,
           amount: input.amount,
           currency: input.currency,
+          // `customer.id` (full profile) takes precedence over the bare
+          // enrollment `customerReference`; in practice they are exclusive.
+          ...((input.customer?.id ?? input.customerReference) && {
+            customerId: input.customer?.id ?? input.customerReference,
+          }),
           ...(input.customer && {
-            customerId: input.customer.id,
             customerInfo: {
               cardHolderName: input.customer.name,
               cardHolderEmail: input.customer.email,

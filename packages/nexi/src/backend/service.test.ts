@@ -742,6 +742,7 @@ describe("NexiService contract enrollment", () => {
           resultUrl: "https://example.test/result",
           cancelUrl: "https://example.test/cancel",
           notificationUrl: "https://example.test/webhook",
+          customerReference: nexiCustomerId("customer-id"),
           actionType: "VERIFY",
           contractEnrollment: {
             contractId: nexiContractId("contract-1"),
@@ -754,6 +755,8 @@ describe("NexiService contract enrollment", () => {
 
     expect(result.hostedPage).toBe("https://pay.example.test");
     const body = await readJsonBody(fetchMock.mock.calls[0] as FetchCall);
+    expect(body.order.customerId).toBe("customer-id");
+    expect(body.order.customerInfo).toBeUndefined();
     expect(body.paymentSession.actionType).toBe("VERIFY");
     expect(body.paymentSession.recurrence).toEqual({
       action: "CONTRACT_CREATION",
@@ -846,15 +849,20 @@ describe("NexiService customer contracts", () => {
     expect(result).toEqual([
       {
         contractId: nexiContractId("contract-visa"),
+        contractType: "CIT",
         circuit: "VISA",
         maskedInstrumentSuffix: "6152",
       },
       {
         contractId: nexiContractId("contract-mc"),
+        contractType: "MIT_UNSCHEDULED",
         circuit: "MC",
         maskedInstrumentSuffix: "42",
       },
-      { contractId: nexiContractId("contract-raw") },
+      {
+        contractId: nexiContractId("contract-raw"),
+        contractType: "MIT_SCHEDULED",
+      },
     ]);
     expect(JSON.stringify(result)).not.toContain("paymentInstrumentInfo");
     expect(JSON.stringify(result)).not.toContain("6152***");

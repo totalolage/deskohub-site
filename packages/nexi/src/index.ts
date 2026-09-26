@@ -15,6 +15,7 @@ export type {
   NexiAmount,
   NexiCardContract,
   NexiContractId,
+  NexiContractType,
   NexiCorrelationId,
   NexiCurrency,
   NexiCustomerId,
