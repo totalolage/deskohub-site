@@ -1,4 +1,4 @@
-import { Download, FileDown, Plus, RefreshCw } from "lucide-react";
+import { Download, FileDown, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId } from "react";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
@@ -26,7 +26,6 @@ export interface BillingScreenCopy {
   readonly addPaymentCard: string;
   readonly removePaymentCard: string;
   readonly billingDetailsTitle: string;
-  readonly syncAres: string;
   readonly invoiceHistoryTitle: string;
   readonly invoiceHistoryUnavailable: string;
   readonly downloadInvoice: string;
@@ -90,28 +89,12 @@ export function BillingScreen({
       <hr className="my-7 h-px border-0 bg-[#e6ebf1]" />
 
       <section aria-labelledby={billingDetailsTitleId} className="min-w-0">
-        <div className="flex min-w-0 flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:justify-between">
-          <div className="min-w-0 flex-1">
-            <h3
-              id={billingDetailsTitleId}
-              className="min-w-0 break-words text-lg font-semibold text-[#344258]"
-            >
-              {copy.billingDetailsTitle}
-            </h3>
-          </div>
-          <FutureFeatureTooltip locale={locale}>
-            <Button
-              className="h-auto max-w-full shrink-0 whitespace-normal text-left text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
-              disabled
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <RefreshCw aria-hidden="true" className="size-4 shrink-0" />
-              <span className="min-w-0 break-words">{copy.syncAres}</span>
-            </Button>
-          </FutureFeatureTooltip>
-        </div>
+        <h3
+          id={billingDetailsTitleId}
+          className="min-w-0 break-words text-lg font-semibold text-[#344258]"
+        >
+          {copy.billingDetailsTitle}
+        </h3>
         <div className="mt-6 min-w-0">{children}</div>
       </section>
 

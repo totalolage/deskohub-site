@@ -51,6 +51,8 @@ mock.module("next/navigation", () => ({
 }));
 
 mock.module("@/features/account/actions", () => ({
+  lookupAresBusiness: () =>
+    Promise.resolve({ data: { status: "not-found", message: "" } }),
   completeCustomerProfile,
   updateCustomerProfile,
 }));
@@ -408,7 +410,7 @@ describe("ProfileForm action lifecycle", () => {
       fireEvent.input(view.getByLabelText("Company name"), {
         target: { value: "Draft Company" },
       });
-      fireEvent.input(view.getByLabelText("Company ID"), {
+      fireEvent.input(view.getByLabelText("Company ID (IČO)"), {
         target: { value: "87654321" },
       });
       fireEvent.input(view.getByLabelText("Street and number"), {
