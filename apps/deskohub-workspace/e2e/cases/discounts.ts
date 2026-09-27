@@ -2,8 +2,8 @@ import type { DotyposDiscountGroupId } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
-import { discountCodeQueryParam } from "@/features/discounts/promotion-code";
 import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
+import { discountCodeQueryParam } from "@/features/discounts/promotion-code";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
   evalBrowserScript,
@@ -162,8 +162,8 @@ export const makeDiscountE2ECases = ({
         allocation,
         excludedDates,
         maximumReservationsPerDate:
-          workspaceE2EMaximumSameDateCoworkReservations.basic,
-        selectionLabel: "tier:basic",
+          workspaceE2EMaximumSameDateCoworkReservations["open-space"],
+        selectionLabel: "open-space",
       }
     );
     const calendarCheckoutDates = yield* selectCoworkDates(
@@ -172,7 +172,7 @@ export const makeDiscountE2ECases = ({
       {
         allocation,
         excludedDates: new Set([...excludedDates, ...checkoutDates]),
-        selectionLabel: "tier:plus",
+        selectionLabel: "open-space (calendar sale)",
       }
     );
     const transientCalendarDates = yield* selectCoworkDates(
@@ -185,7 +185,7 @@ export const makeDiscountE2ECases = ({
           ...checkoutDates,
           ...calendarCheckoutDates,
         ]),
-        selectionLabel: "tier:profi with monitor:2x27-qhd",
+        selectionLabel: "reserved-desk with monitor:2x27-qhd",
       }
     );
     const cases: WorkspaceE2ECase[] = [];

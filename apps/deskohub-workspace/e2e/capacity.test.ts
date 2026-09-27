@@ -1,12 +1,18 @@
 import { expect, test } from "bun:test";
 import type { Reservation } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
-import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
+import {
+  workspaceProductMonitorOptions,
+  workspaceProductMonitorOptionTableTags,
+} from "@/features/checkout/product-catalog";
 import {
   getWorkspaceE2ECapacityFailures,
   getWorkspaceE2ECapacityInterval,
   getWorkspaceE2EDateInterval,
   makeWorkspaceE2ECapacityReport,
+  makeWorkspaceE2ELegacyTierCleanupCapacityReport,
+  workspaceE2ELegacyTierCleanupCapacityGroups,
+  workspaceE2EMaximumSameDateCoworkReservations,
 } from "./capacity";
 
 test("covers whole Prague dates at both candidate-range boundaries", () => {
@@ -30,25 +36,42 @@ test("builds an owned-date interval across Prague's DST boundary", () => {
   });
 });
 
-test("reports only aggregate capacity for every workspace table pool", () => {
+test("keeps the case-plan per-date reservation maximums for the two offers", () => {
+  expect(workspaceE2EMaximumSameDateCoworkReservations["open-space"]).toBe(4);
+  expect(workspaceE2EMaximumSameDateCoworkReservations["reserved-desk"]).toBe(
+    1
+  );
+});
+
+test("reports only aggregate capacity for every saleable offer pool", () => {
+  const openSpaceMaximum =
+    workspaceE2EMaximumSameDateCoworkReservations["open-space"];
+  const reservedDeskMaximum =
+    workspaceE2EMaximumSameDateCoworkReservations["reserved-desk"];
   const tables: Table[] = [
-    makeTable("basic-table", ["tier:basic"], 16),
-    makeTable("plus-table", ["tier:plus"], 4),
+    makeTable("open-space-table", ["cowork:open-space"], openSpaceMaximum * 8),
     ...Object.entries(workspaceProductMonitorOptionTableTags).map(
       ([monitorOption, tags], index) =>
-        makeTable(`profi-${monitorOption}`, ["tier:profi", ...tags], 4 + index)
+        makeTable(
+          `reserved-desk-${monitorOption}`,
+          ["cowork:reserved-desk", ...tags],
+          4 + index
+        )
     ),
+    makeTable("reserved-desk-table", ["cowork:reserved-desk"], 4),
     makeTable("provider-room-id", ["reservation:meeting-room"], 1),
     makeTable("provider-room-2", ["reservation:meeting-room"], 1),
     makeTable("provider-room-3", ["reservation:meeting-room"], 1),
     makeTable("provider-room-headroom", ["reservation:meeting-room"], 1),
     makeTable("provider-office", ["reservation:office"], 8),
-    makeTable("hidden-basic", ["tier:basic"], 100, { display: false }),
+    makeTable("hidden-open-space", ["cowork:open-space"], 100, {
+      display: false,
+    }),
   ];
   const reservations: Reservation[] = [
-    makeReservation("basic-table", 2),
+    makeReservation("open-space-table", 2),
     makeReservation("provider-room-id", 1),
-    makeReservation("plus-table", 1, { status: "CANCELLED" }),
+    makeReservation("reserved-desk-table", 1, { status: "CANCELLED" }),
   ];
   const report = makeWorkspaceE2ECapacityReport({
     from: new Date("2099-08-01T00:00:00.000Z"),
@@ -57,26 +80,65 @@ test("reports only aggregate capacity for every workspace table pool", () => {
     to: new Date("2099-09-01T00:00:00.000Z"),
   });
 
+  expect(
+    report.groups
+      .map(({ id }) => id)
+      .toSorted((left, right) => left.localeCompare(right))
+  ).toEqual(
+    [
+      "open-space",
+      "reserved-desk",
+      ...workspaceProductMonitorOptions.map(
+        (monitorOption) => `reserved-desk/monitor:${monitorOption}`
+      ),
+      "reservation:meeting-room",
+      "reservation:office",
+    ].toSorted((left, right) => left.localeCompare(right))
+  );
   expect(report.meetsRequiredCapacity).toBe(true);
   expect(report.supportedConcurrentRuns).toBe(3);
   expect(report.provisionedRunCapacity).toBe(4);
-  expect(report.groups.find(({ id }) => id === "tier:basic")).toEqual({
+  expect(report.groups.find(({ id }) => id === "open-space")).toEqual({
     activeReservationCount: 1,
     activeReservationSeatCount: 2,
     activeVisibleTableCount: 1,
     assignableTableCount: 1,
-    availableSeatCount: 14,
+    availableSeatCount: openSpaceMaximum * 8 - 2,
     availableTableCount: 0,
-    id: "tier:basic",
+    id: "open-space",
     meetsRequiredCapacity: true,
     peakActiveReservationSeatCount: 2,
     peakActiveReservationTableCount: 1,
-    requiredAvailableSeatCount: 8,
-    requiredSeatCount: 16,
-    requiredTags: ["tier:basic"],
-    seatCounts: [16],
-    totalSeatCount: 16,
+    requiredAvailableSeatCount: openSpaceMaximum * 2,
+    requiredSeatCount: openSpaceMaximum * 4,
+    requiredTags: ["cowork:open-space"],
+    seatCounts: [openSpaceMaximum * 8],
+    totalSeatCount: openSpaceMaximum * 8,
   });
+  expect(report.groups.find(({ id }) => id === "reserved-desk")).toMatchObject({
+    activeVisibleTableCount: 1,
+    assignableTableCount: 1,
+    meetsRequiredCapacity: true,
+    requiredAvailableSeatCount: reservedDeskMaximum * 2,
+    requiredSeatCount: reservedDeskMaximum * 4,
+    requiredTags: ["cowork:reserved-desk"],
+    totalSeatCount: 4,
+  });
+  for (const monitorOption of workspaceProductMonitorOptions) {
+    expect(
+      report.groups.find(
+        ({ id }) => id === `reserved-desk/monitor:${monitorOption}`
+      )
+    ).toMatchObject({
+      assignableTableCount: 1,
+      meetsRequiredCapacity: true,
+      requiredAvailableSeatCount: reservedDeskMaximum * 2,
+      requiredTags: [
+        "cowork:reserved-desk",
+        ...workspaceProductMonitorOptionTableTags[monitorOption],
+      ],
+    });
+  }
   expect(
     report.groups.find(({ id }) => id === "reservation:office")
   ).toMatchObject({
@@ -87,7 +149,8 @@ test("reports only aggregate capacity for every workspace table pool", () => {
     seatCounts: [8],
   });
   const serialized = JSON.stringify(report);
-  expect(serialized).not.toContain("basic-table");
+  expect(serialized).not.toContain("open-space-table");
+  expect(serialized).not.toContain("reserved-desk-table");
   expect(serialized).not.toContain("provider-room-id");
   expect(serialized).not.toContain("provider-room-2");
   expect(serialized).not.toContain("provider-room-3");
@@ -95,59 +158,122 @@ test("reports only aggregate capacity for every workspace table pool", () => {
   expect(serialized).not.toContain("provider-office");
 });
 
-test("fails the aggregate contract when a monitor-specific pool is short", () => {
+test("fails closed when tables carry only legacy tier tags", () => {
   const report = makeWorkspaceE2ECapacityReport({
     from: new Date("2099-08-01T00:00:00.000Z"),
     reservations: [],
     tables: [
-      makeTable("generic-profi", ["tier:profi"], 100),
-      makeTable(
-        "specific-profi",
-        ["tier:profi", ...workspaceProductMonitorOptionTableTags["2x27-qhd"]],
-        3
-      ),
+      makeTable("legacy-basic", ["tier:basic"], 100),
+      makeTable("legacy-profi", ["tier:profi"], 100),
     ],
     to: new Date("2099-09-01T00:00:00.000Z"),
   });
 
   expect(report.meetsRequiredCapacity).toBe(false);
-  expect(
-    report.groups.find(({ id }) => id === "tier:profi/monitor:2x27-qhd")
-  ).toMatchObject({
-    meetsRequiredCapacity: false,
-    requiredSeatCount: 4,
-    totalSeatCount: 3,
-  });
-  expect(getWorkspaceE2ECapacityFailures(report)).toContainEqual({
-    activeReservationCount: 0,
-    activeVisibleTableCount: 1,
-    assignableTableCount: 1,
-    availableSeatCount: 3,
-    availableTableCount: 1,
-    id: "tier:profi/monitor:2x27-qhd",
-    peakActiveReservationSeatCount: 0,
-    peakActiveReservationTableCount: 0,
-    requiredAvailableSeatCount: 2,
-    requiredAvailableTableCount: undefined,
-    requiredSeatCount: 4,
-    requiredTableCount: undefined,
-    totalSeatCount: 3,
-  });
+  for (const groupId of ["open-space", "reserved-desk"]) {
+    expect(report.groups.find(({ id }) => id === groupId)).toMatchObject({
+      assignableTableCount: 0,
+      meetsRequiredCapacity: false,
+    });
+  }
 });
 
-test("fails when peak active reservations consume run and cleanup headroom", () => {
+test("excludes open-space tables carrying stray monitor tags", () => {
   const report = makeWorkspaceE2ECapacityReport({
     from: new Date("2099-08-01T00:00:00.000Z"),
-    reservations: [makeReservation("basic-table", 9)],
-    tables: [makeTable("basic-table", ["tier:basic"], 16)],
+    reservations: [],
+    tables: [
+      makeTable("open-space-monitor", [
+        "cowork:open-space",
+        ...workspaceProductMonitorOptionTableTags["2x27-qhd"],
+      ]),
+    ],
     to: new Date("2099-09-01T00:00:00.000Z"),
   });
 
-  expect(report.groups.find(({ id }) => id === "tier:basic")).toMatchObject({
+  expect(report.meetsRequiredCapacity).toBe(false);
+  expect(report.groups.find(({ id }) => id === "open-space")).toMatchObject({
+    assignableTableCount: 0,
+    meetsRequiredCapacity: false,
+  });
+});
+
+test("reserved-desk without addon rejects any monitor tag", () => {
+  const partialConfig = workspaceProductMonitorOptionTableTags[
+    "2x27-qhd"
+  ].slice(0, 1);
+  for (const tags of [
+    [...partialConfig],
+    [...workspaceProductMonitorOptionTableTags["2x27-qhd"]],
+    ["monitor:unknown"],
+  ]) {
+    const report = makeWorkspaceE2ECapacityReport({
+      from: new Date("2099-08-01T00:00:00.000Z"),
+      reservations: [],
+      tables: [
+        makeTable("reserved-desk-tagged", ["cowork:reserved-desk", ...tags], 8),
+      ],
+      to: new Date("2099-09-01T00:00:00.000Z"),
+    });
+
+    expect(
+      report.groups.find(({ id }) => id === "reserved-desk")
+    ).toMatchObject({
+      assignableTableCount: 0,
+      meetsRequiredCapacity: false,
+    });
+  }
+});
+
+test("configured monitor queries reject partial, unknown, and wrong-size configs", () => {
+  const configured = workspaceProductMonitorOptionTableTags["2x27-qhd"];
+  const otherConfig = workspaceProductMonitorOptions
+    .filter((option) => option !== "2x27-qhd")
+    .flatMap((option) => workspaceProductMonitorOptionTableTags[option]);
+  for (const tags of [
+    [...configured.slice(0, configured.length - 1)],
+    [...configured, "monitor:unknown"],
+    [...otherConfig],
+  ]) {
+    const report = makeWorkspaceE2ECapacityReport({
+      from: new Date("2099-08-01T00:00:00.000Z"),
+      reservations: [],
+      tables: [
+        makeTable("configured-desk", ["cowork:reserved-desk", ...tags], 8),
+      ],
+      to: new Date("2099-09-01T00:00:00.000Z"),
+    });
+
+    expect(
+      report.groups.find(({ id }) => id === "reserved-desk/monitor:2x27-qhd")
+    ).toMatchObject({
+      assignableTableCount: 0,
+      meetsRequiredCapacity: false,
+    });
+  }
+});
+
+test("fails when peak active reservations consume run and cleanup headroom", () => {
+  const requiredAvailableSeatCount =
+    (1 + 1) * workspaceE2EMaximumSameDateCoworkReservations["open-space"];
+  const report = makeWorkspaceE2ECapacityReport({
+    from: new Date("2099-08-01T00:00:00.000Z"),
+    reservations: [makeReservation("open-space-table", 10)],
+    tables: [
+      makeTable(
+        "open-space-table",
+        ["cowork:open-space"],
+        requiredAvailableSeatCount + 9
+      ),
+    ],
+    to: new Date("2099-09-01T00:00:00.000Z"),
+  });
+
+  expect(report.groups.find(({ id }) => id === "open-space")).toMatchObject({
     availableSeatCount: 7,
     meetsRequiredCapacity: false,
-    peakActiveReservationSeatCount: 9,
-    requiredAvailableSeatCount: 8,
+    peakActiveReservationSeatCount: 10,
+    requiredAvailableSeatCount,
   });
 });
 
@@ -155,22 +281,72 @@ test("does not add reservation usage from non-overlapping dates", () => {
   const report = makeWorkspaceE2ECapacityReport({
     from: new Date("2099-08-01T00:00:00.000Z"),
     reservations: [
-      makeReservation("basic-table", 5),
-      makeReservation("basic-table", 5, {
+      makeReservation("open-space-table", 5),
+      makeReservation("open-space-table", 5, {
         endDate: "2099-08-05T18:00:00+00:00",
         startDate: "2099-08-05T08:00:00+00:00",
       }),
     ],
-    tables: [makeTable("basic-table", ["tier:basic"], 16)],
+    tables: [makeTable("open-space-table", ["cowork:open-space"], 32)],
     to: new Date("2099-09-01T00:00:00.000Z"),
   });
 
-  expect(report.groups.find(({ id }) => id === "tier:basic")).toMatchObject({
+  expect(report.groups.find(({ id }) => id === "open-space")).toMatchObject({
     activeReservationSeatCount: 10,
-    availableSeatCount: 11,
+    availableSeatCount: 27,
     meetsRequiredCapacity: true,
     peakActiveReservationSeatCount: 5,
   });
+});
+
+test("ignores cancelled reservations in capacity accounting", () => {
+  const report = makeWorkspaceE2ECapacityReport({
+    from: new Date("2099-08-01T00:00:00.000Z"),
+    reservations: [
+      makeReservation("open-space-table", 32, { status: "CANCELLED" }),
+    ],
+    tables: [makeTable("open-space-table", ["cowork:open-space"], 32)],
+    to: new Date("2099-09-01T00:00:00.000Z"),
+  });
+
+  expect(report.groups.find(({ id }) => id === "open-space")).toMatchObject({
+    activeReservationCount: 0,
+    availableSeatCount: 32,
+    meetsRequiredCapacity: true,
+    peakActiveReservationSeatCount: 0,
+  });
+});
+
+test("legacy tier pools stay visible without required counts", () => {
+  const report = makeWorkspaceE2ELegacyTierCleanupCapacityReport({
+    from: new Date("2099-08-01T00:00:00.000Z"),
+    reservations: [],
+    tables: [
+      makeTable("legacy-basic", ["tier:basic"], 16),
+      makeTable("legacy-profi", ["tier:profi"], 100),
+    ],
+    to: new Date("2099-09-01T00:00:00.000Z"),
+  });
+
+  expect(
+    workspaceE2ELegacyTierCleanupCapacityGroups.every(
+      (group) =>
+        group.requiredSeatCount === undefined &&
+        group.requiredTableCount === undefined &&
+        group.requiredAvailableSeatCount === undefined &&
+        group.requiredAvailableTableCount === undefined
+    )
+  ).toBe(true);
+  expect(report.groups.find(({ id }) => id === "tier:basic")).toMatchObject({
+    assignableTableCount: 1,
+    requiredTags: ["tier:basic"],
+    totalSeatCount: 16,
+  });
+  expect(
+    report.groups.find(({ id }) => id === "tier:basic")?.requiredSeatCount
+  ).toBeUndefined();
+  expect(report.meetsRequiredCapacity).toBe(true);
+  expect(getWorkspaceE2ECapacityFailures(report)).toEqual([]);
 });
 
 const makeTable = (
