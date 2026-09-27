@@ -34,8 +34,8 @@ describe("invoice presentation", () => {
   });
 
   test.each([
-    ["cs-CZ", "Faktura", "Basic Day Pass", "11. 8. 2026"],
-    ["en-US", "Invoice", "Basic Day Pass", "Aug 11, 2026"],
+    ["cs-CZ", "Faktura", "Sdílené místo", "11. 8. 2026"],
+    ["en-US", "Invoice", "Open Space", "Aug 11, 2026"],
   ] as const)(
     "projects a %s cowork invoice",
     (locale, title, itemDescription, serviceDate) => {
@@ -56,7 +56,7 @@ describe("invoice presentation", () => {
         locale === "cs-CZ" ? "Káva" : "Coffee",
       ]);
       expect(normalize(presentation.total)).toBe(
-        locale === "cs-CZ" ? "400 Kč" : "CZK 400"
+        locale === "cs-CZ" ? "340 Kč" : "CZK 340"
       );
     }
   );
