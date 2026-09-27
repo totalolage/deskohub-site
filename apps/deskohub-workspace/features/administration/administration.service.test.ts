@@ -598,9 +598,9 @@ describe("AdministrationService", () => {
   test("falls back to item customer reads when a batch omits a customer", async () => {
     const customerId = "dotypos-customer";
     const rows = [
-      [{ value: 1 }],
       [
         {
+          matchingCustomerCount: 1,
           customerId,
           reservationCount: 2,
           lastActivityAt: Temporal.Instant.from("2026-08-14T12:00:00Z"),
@@ -662,12 +662,21 @@ describe("AdministrationService", () => {
 
     const result = await loadCustomers();
     expect(result.items[0]?.customer?.displayName).toBe("Ada");
+    expect(result.total).toBe(1);
+    expect(result.page).toBe(1);
+    expect(result.pageCount).toBe(1);
+    expect(selectCall).toBe(1);
     expect(itemCalls).toEqual([customerId]);
 
     batchFails = true;
     selectCall = 0;
     itemCalls.length = 0;
-    expect((await loadCustomers()).items[0]?.customer?.displayName).toBe("Ada");
+    const fallbackResult = await loadCustomers();
+    expect(fallbackResult.items[0]?.customer?.displayName).toBe("Ada");
+    expect(fallbackResult.total).toBe(1);
+    expect(fallbackResult.page).toBe(1);
+    expect(fallbackResult.pageCount).toBe(1);
+    expect(selectCall).toBe(1);
     expect(itemCalls).toEqual([customerId]);
   });
 
@@ -932,9 +941,9 @@ describe("AdministrationService", () => {
   test("rethrows Next prerender interruptions instead of returning unavailable details", async () => {
     const customerId = "dotypos-customer";
     const rows = [
-      [{ value: 1 }],
       [
         {
+          matchingCustomerCount: 1,
           customerId,
           reservationCount: 1,
           lastActivityAt: Temporal.Instant.from("2026-08-14T12:00:00Z"),
@@ -986,6 +995,7 @@ describe("AdministrationService", () => {
     );
 
     expect(Cause.squash(exit.cause)).toBe(interruption);
+    expect(selectCall).toBe(1);
   });
 
   test("loads reservation and customer overview activity", async () => {
@@ -2011,8 +2021,10 @@ describe("AdministrationService customer date filter", () => {
     expect(membership.sql).toContain(
       '"workspace_reservations"."dotypos_customer_id" in (select distinct "workspace_reservations"."dotypos_customer_id"'
     );
-    expect(membership.sql).toContain('"dotypos_reservation_id" in ($1, $2))');
-    expect(membership.params).toEqual(["booking-from", "booking-to"]);
+    expect(membership.sql).toContain(
+      '"dotypos_reservation_id" = any($1::text[]))'
+    );
+    expect(membership.params).toEqual([["booking-from", "booking-to"]]);
     expect(compileSql(aggregateSelect.fields.matchingCustomerCount!)).toBe(
       "count(*) over ()"
     );
@@ -2063,7 +2075,7 @@ describe("AdministrationService customer date filter", () => {
     expect(membershipSelect.method).toBe("select");
     const membership = compileSqlWithParams(membershipSelect.where[0]!);
     expect(membership.sql).toContain("select distinct");
-    expect(membership.params).toEqual(["booking-1", "booking-2"]);
+    expect(membership.params).toEqual([["booking-1", "booking-2"]]);
   });
 
   test("pages by matching unique customers", async () => {
@@ -2109,7 +2121,42 @@ describe("AdministrationService customer date filter", () => {
     expect(compileSql(selects[0]!.fields.matchingCustomerCount!)).toBe(
       "count(*) over ()"
     );
-    expect(compileSqlWithParams(selects[0]!.where[0]!).params).toHaveLength(31);
+    const matchingReservationIds = compileSqlWithParams(
+      selects[0]!.where[0]!
+    ).params;
+    expect(matchingReservationIds).toHaveLength(1);
+    expect(matchingReservationIds[0]).toHaveLength(31);
+  });
+
+  test("keeps large date-range membership within PostgreSQL bind limits", async () => {
+    const reservationCount = 65_536;
+    const bookings = Array.from({ length: reservationCount }, (_, index) =>
+      providerBooking(`booking-${index}`, pragueHour("2026-08-10", 9))
+    );
+    const { database, selects } = makeCustomersDatabase([
+      [
+        {
+          matchingCustomerCount: 1,
+          customerId: "customer-a",
+          reservationCount: 3,
+          lastActivityAt: Temporal.Instant.from("2026-08-14T12:00:00Z"),
+        },
+      ],
+    ]);
+
+    await loadCustomers({ from: "2026-08-10" }, database, {
+      listReservations: () => Effect.succeed(bookings),
+    });
+
+    const membership = compileSqlWithParams(selects[0]!.where[0]!);
+    expect(membership.sql).toContain(
+      '"dotypos_reservation_id" = any($1::text[])'
+    );
+    expect(membership.params).toHaveLength(1);
+    const reservationIds = membership.params[0] as readonly string[];
+    expect(reservationIds).toHaveLength(reservationCount);
+    expect(reservationIds[0]).toBe("booking-0");
+    expect(reservationIds.at(-1)).toBe(`booking-${reservationCount - 1}`);
   });
 
   test("reports booking dates unavailable when the provider fails", async () => {

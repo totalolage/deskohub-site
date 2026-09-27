@@ -2389,14 +2389,12 @@ export class AdministrationService extends Context.Service<
             if (!dateReservations || dateReservations.size === 0) {
               matchingCustomerIdsCondition = sql`false`;
             } else {
+              const reservationIds = [...dateReservations.keys()];
               matchingCustomerIdsCondition = inArray(
                 workspaceReservations.dotyposCustomerId,
                 sql`(select distinct ${workspaceReservations.dotyposCustomerId}
                     from ${workspaceReservations}
-                    where ${inArray(
-                      workspaceReservations.dotyposReservationId,
-                      [...dateReservations.keys()]
-                    )})`
+                    where ${workspaceReservations.dotyposReservationId} = any(${sql.param(reservationIds)}::text[]))`
               );
             }
           }
