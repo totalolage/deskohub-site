@@ -1,5 +1,6 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
+import Link from "next/link";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToString } from "react-dom/server";
 import {
@@ -9,6 +10,7 @@ import {
   normalizedReservedDeskCoworkReservationOrderSchema,
 } from "@/features/reservation/cowork-reservation";
 import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
+import { Button } from "@/shared/components/ui/button";
 import type { CoworkReservationForm } from "./cowork-reservation-form";
 
 mock.module("next/root-params", () => ({
@@ -56,17 +58,40 @@ const decodeReservedDeskReservation = Schema.decodeUnknownSync(
   normalizedReservedDeskCoworkReservationOrderSchema
 );
 
-const findAnchorElement = (node: ReactNode): boolean => {
+/**
+ * Locates the restart Button and returns its direct-child anchor's href.
+ * A `next/link` `legacyBehavior` anchor wrapped inside the Button does not
+ * count: only a plain document anchor as the Button's immediate child proves
+ * document navigation.
+ */
+const getRestartButtonDirectChildAnchorHref = (
+  node: ReactNode
+): string | undefined => {
   if (Array.isArray(node)) {
-    return node.some((child) => findAnchorElement(child));
+    for (const child of node) {
+      const href = getRestartButtonDirectChildAnchorHref(child);
+      if (href !== undefined) {
+        return href;
+      }
+    }
+    return undefined;
   }
   if (!isValidElement<{ children?: ReactNode }>(node)) {
-    return false;
+    return undefined;
   }
-  if (node.type === "a") {
-    return true;
+  if (node.type === Button) {
+    const { children } = node.props;
+    const anchor = Array.isArray(children) ? children[0] : children;
+    if (
+      isValidElement<{ href?: string }>(anchor) &&
+      anchor.type === "a" &&
+      anchor.props.href !== undefined
+    ) {
+      return anchor.props.href;
+    }
+    return undefined;
   }
-  return findAnchorElement(node.props.children);
+  return getRestartButtonDirectChildAnchorHref(node.props.children);
 };
 
 test("preloads only the default selected cowork offer", async () =>
@@ -192,9 +217,11 @@ test("offers the restart state for a legacy basic reservation in en-US", async (
     "This cowork offer is no longer available. Please start a new reservation with the current offers."
   );
   expect(markup).toContain(`<a href="/en-US/reservation/cowork"`);
-  expect(findAnchorElement(CoworkOfferReplaced({ locale: "en-US" }))).toBe(
-    true
-  );
+  expect(
+    getRestartButtonDirectChildAnchorHref(
+      CoworkOfferReplaced({ locale: "en-US" })
+    )
+  ).toBe("/en-US/reservation/cowork");
 });
 
 test("offers the restart state for a legacy basic reservation in cs-CZ", async () => {
@@ -222,9 +249,25 @@ test("offers the restart state for a legacy basic reservation in cs-CZ", async (
     "Tato cowork nabídka už není dostupná. Začněte prosím novou rezervaci s aktuální nabídkou."
   );
   expect(markup).toContain(`<a href="/cs-CZ/reservation/cowork"`);
-  expect(findAnchorElement(CoworkOfferReplaced({ locale: "cs-CZ" }))).toBe(
-    true
+  expect(
+    getRestartButtonDirectChildAnchorHref(
+      CoworkOfferReplaced({ locale: "cs-CZ" })
+    )
+  ).toBe("/cs-CZ/reservation/cowork");
+});
+
+test("rejects a Link legacyBehavior wrapped anchor as restart navigation", () => {
+  const linkWrappedRestartButton = (
+    <Button asChild>
+      <Link legacyBehavior href="/en-US/reservation/cowork">
+        <a href="/en-US/reservation/cowork">Restart</a>
+      </Link>
+    </Button>
   );
+
+  expect(
+    getRestartButtonDirectChildAnchorHref(linkWrappedRestartButton)
+  ).toBeUndefined();
 });
 
 test("restores a signed current-tier open-space reservation into the form", async () => {
