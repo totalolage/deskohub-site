@@ -41,6 +41,7 @@ const addressLine1 = billingDraftField("addressLine1");
 const addressLine2 = billingDraftField("addressLine2");
 const city = billingDraftField("city");
 const zip = billingDraftField("zip");
+const seatCountry = billingDraftField("country");
 
 /**
  * The only seat-country code the draft fills in. The ARES OpenAPI contract
@@ -112,7 +113,13 @@ export const toAresBusinessBillingDraft = (
     addressLine2: addressLine2(sidlo?.nazevCastiObce),
     city: city(sidlo?.nazevObce),
     zip: zip(sidlo?.psc === undefined ? undefined : String(sidlo.psc)),
+    // The raw generated record keeps registry whitespace on kodStatu (for
+    // example " CZ "), so the seat code is normalized through the shared
+    // country field schema before the exact-CZ comparison. Absent, blank,
+    // unknown, or invalid codes never produce a country.
     country:
-      sidlo?.kodStatu === czechSeatStateCode ? czechSeatStateCode : undefined,
+      seatCountry(sidlo?.kodStatu) === czechSeatStateCode
+        ? czechSeatStateCode
+        : undefined,
   };
 };

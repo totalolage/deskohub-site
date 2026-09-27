@@ -132,6 +132,48 @@ describe("ARES company mapping to billing draft fields", () => {
     expect(toAresBusinessBillingDraft(foreign).country).toBeUndefined();
   });
 
+  test("normalizes a padded seat-country code to Czechia", () => {
+    const paddedSeat: EkonomickySubjekt = {
+      ico: "27082440",
+      obchodniJmeno: "Synthetická odsazená organizace",
+      sidlo: { nazevObce: "Praha", kodStatu: " CZ " },
+    };
+    const draft = toAresBusinessBillingDraft(paddedSeat);
+    expect(draft.country).toBe("CZ");
+    expect(draft.city).toBe("Praha");
+  });
+
+  test("maps a raw generated registry record with a padded seat code to Czechia", () => {
+    // The package's generated client decodes the raw ARES payload without
+    // normalizing sidlo.kodStatu, and the service's transport (unexported
+    // makeAresClient over the injected HttpClient) cannot be constructed at
+    // this app boundary without provider access. This record is therefore
+    // shaped exactly like the service's decoded generated output — including
+    // the registry's whitespace-padded seat code — and is mapped without any
+    // provider call, proving the raw-to-draft boundary keeps Czechia.
+    const rawGeneratedRecord: EkonomickySubjekt = {
+      ico: "27082440",
+      obchodniJmeno: "  Synthetická testovací s.r.o.  ",
+      dic: "   ",
+      sidlo: {
+        kodStatu: " CZ ",
+        nazevUlice: "  ",
+        cisloDomovni: 123,
+        cisloOrientacni: 4,
+        cisloOrientacniPismeno: "a",
+        nazevObce: " Praha ",
+      },
+    };
+    const draft = toAresBusinessBillingDraft(rawGeneratedRecord);
+    expect(draft.country).toBe("CZ");
+    expect(draft.companyName).toBe("Synthetická testovací s.r.o.");
+    // The whitespace-only street name decodes to an absent street, so the
+    // line keeps only the formatted house number.
+    expect(draft.addressLine1).toBe("123/4a");
+    expect(draft.city).toBe("Praha");
+    expect(draft.vatId).toBeUndefined();
+  });
+
   test("omits a blank seat-country code instead of defaulting to Czechia", () => {
     const blankSeat: EkonomickySubjekt = {
       ico: "27082440",
