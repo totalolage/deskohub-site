@@ -49,9 +49,9 @@ const meetingRoomProduct = <
 
 export const workspaceMeetingRoomProductsByDurationKey =
   defineMeetingRoomProducts({
-    "hour:1": meetingRoomProduct("hour", 1, currencyCZK(47_500)),
-    "hour:4": meetingRoomProduct("hour", 4, currencyCZK(155_000)),
-    "day:1": meetingRoomProduct("day", 1, currencyCZK(232_000)),
+    "hour:1": meetingRoomProduct("hour", 1, currencyCZK(35_000)),
+    "hour:4": meetingRoomProduct("hour", 4, currencyCZK(98_000)),
+    "day:1": meetingRoomProduct("day", 1, currencyCZK(182_000)),
   });
 
 export type WorkspaceMeetingRoomDurationKey =
