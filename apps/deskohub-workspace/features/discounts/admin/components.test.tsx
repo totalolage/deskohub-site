@@ -1579,6 +1579,59 @@ describe("discount administration pages", () => {
     );
   });
 
+  test("keeps a reverted in-flight edit dirty instead of absorbing it into the snapshot", async () => {
+    const captured = captureWorkspaceActions(/^updateDiscount\./);
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+
+    const labelEn = () =>
+      view.container.querySelector(
+        "#labelEn-019c91dd-c560-7e55-b9d8-c95065efd51d"
+      ) as HTMLInputElement;
+    const saveButton = () =>
+      view.getByRole("button", { name: "Save discount" });
+
+    // Submit value A.
+    fireEvent.input(labelEn(), { target: { value: "Submitted label" } });
+    fireEvent.submit(saveButton().closest("form")!);
+    const { execute, options } = captured(
+      "updateDiscount.019c91dd-c560-7e55-b9d8-c95065efd51d"
+    );
+    await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+
+    // Revert to the original value O while the request is still in flight.
+    fireEvent.input(labelEn(), { target: { value: "Summer discount" } });
+
+    act(() => options.onSuccess({ data: { notice: "Discount saved." } }));
+
+    // O is not overwritten by the snapshot A: it stays visible, the form
+    // counts as dirty against the new defaults, and save stays enabled.
+    await waitFor(() => {
+      expect(labelEn().value).toBe("Summer discount");
+      expect(saveButton()).toHaveProperty("disabled", false);
+    });
+
+    // The follow-up save submits O, not the saved snapshot A.
+    fireEvent.submit(saveButton().closest("form")!);
+    await waitFor(() =>
+      expect(execute).toHaveBeenLastCalledWith({
+        kind: "update-discount",
+        discount: {
+          id: "019c91dd-c560-7e55-b9d8-c95065efd51d",
+          labels: {
+            "cs-CZ": "Letní sleva",
+            "en-US": "Summer discount",
+          },
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+          products: [{ kind: "cowork" }],
+        },
+      })
+    );
+  });
+
   test("registers product and enabled checkboxes in the update payloads", async () => {
     const captured = captureWorkspaceActions(
       /^(updateDiscount|updateDiscountCode)\./

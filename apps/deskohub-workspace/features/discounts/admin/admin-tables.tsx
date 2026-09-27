@@ -778,11 +778,14 @@ function MutationForm<Input extends FieldValues, Values = Input>({
     actionName,
     onSuccess: ({ data }) => {
       if (!data) return;
+      // Rebase the defaults onto the submitted snapshot while retaining every
+      // current value, so dirty state recomputes against the snapshot and an
+      // in-flight edit that reverted a field to its original value survives.
       form.reset(
         resetOnSuccessTo === "submitted"
           ? (submittedValuesRef.current ?? undefined)
           : undefined,
-        resetOnSuccessTo === "submitted" ? { keepDirtyValues: true } : undefined
+        resetOnSuccessTo === "submitted" ? { keepValues: true } : undefined
       );
       const message = data.createdDiscountId
         ? `${data.notice} Calendar ID: ${data.createdDiscountId}`
