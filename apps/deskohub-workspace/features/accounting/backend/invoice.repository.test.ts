@@ -131,10 +131,17 @@ describe("invoice repository persistence contract", () => {
     // Attempt-first lock order: the payment attempt row is locked before the
     // reservation row, matching the deployed old writers so old-new overlap
     // during a rolling deploy serializes instead of deadlocking.
+    const attemptAnchor = sqlTexts.find((sql) =>
+      sql.includes('from "payment_attempts"')
+    );
+    // The anchor is FOR NO KEY UPDATE: issuance never writes attempt key
+    // columns, and NO KEY UPDATE — unlike FOR UPDATE — is compatible with
+    // the FOR KEY SHARE the order mirror's FK check takes, so mixed-version
+    // mirrors cannot deadlock against issuance.
+    expect(attemptAnchor).toContain("for no key update");
     const forUpdate = sqlTexts.filter((sql) => sql.includes("for update"));
-    expect(forUpdate.length).toBeGreaterThanOrEqual(2);
-    expect(forUpdate[0]).toContain('from "payment_attempts"');
-    expect(forUpdate[1]).toContain('from "workspace_reservations"');
+    expect(forUpdate.length).toBeGreaterThanOrEqual(1);
+    expect(forUpdate[0]).toContain('from "workspace_reservations"');
     const existingIndex = sqlTexts.findIndex(
       (sql) =>
         sql.includes('from "invoices"') &&

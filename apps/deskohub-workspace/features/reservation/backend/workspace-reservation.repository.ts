@@ -766,6 +766,14 @@ export class WorkspaceReservationRepository extends Context.Service<
               // reservation-first attempt access would invert that order into
               // a deadlock.
               if (input.pendingPaymentCancellation) {
+                // Lock mode: FOR NO KEY UPDATE — the attempt UPDATE below
+                // writes only non-key columns (state, failure_code,
+                // updated_at), so this is the weakest mode that still
+                // conflicts with old writers' plain UPDATE row locks and new
+                // writers' NO KEY anchors, and it stays compatible with the
+                // FOR KEY SHARE of the orders → payment_attempts FK check a
+                // concurrent reservation-only mirror performs (FOR UPDATE
+                // would conflict with KEY SHARE and deadlock against it).
                 yield* tx
                   .select({ id: paymentAttempts.id })
                   .from(paymentAttempts)
@@ -779,7 +787,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                     )
                   )
                   .limit(1)
-                  .for("update");
+                  .for("no key update");
               }
 
               const [claimed] = yield* tx
@@ -933,6 +941,14 @@ export class WorkspaceReservationRepository extends Context.Service<
               // attempt-mutating payment writers anchor on the attempt first,
               // and that inversion is a deadlock. Lock the paid attempts
               // before the reservation row.
+              // Lock mode: FOR NO KEY UPDATE — the refund-state UPDATE below
+              // writes only non-key columns (refund_state, updated_at), so
+              // this is the weakest mode that still conflicts with old
+              // writers' plain UPDATE row locks and new writers' NO KEY
+              // anchors, and it is compatible with the FOR KEY SHARE of the
+              // orders → payment_attempts FK check performed by a concurrent
+              // reservation-only mirror (FOR UPDATE would conflict with
+              // KEY SHARE and deadlock against it).
               yield* tx
                 .select({ id: paymentAttempts.id })
                 .from(paymentAttempts)
@@ -943,7 +959,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                     eq(paymentAttempts.state, "paid")
                   )
                 )
-                .for("update");
+                .for("no key update");
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({

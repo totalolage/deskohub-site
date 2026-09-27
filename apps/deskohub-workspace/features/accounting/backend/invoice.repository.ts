@@ -335,6 +335,17 @@ export class InvoiceRepository extends Context.Service<
             // old-new overlap during a rolling deploy serializes instead of
             // inverting into a deadlock; new markPaid replays take the same
             // anchor and therefore serialize with issuance too.
+            // Lock mode: FOR NO KEY UPDATE. Issuance never writes attempt key
+            // columns (it only reads state here and inserts invoice rows), so
+            // NO KEY UPDATE is the weakest mode that still serializes against
+            // old writers' plain UPDATE row locks and new writers' leading
+            // attempt UPDATEs — both acquire NO KEY UPDATE-strength locks,
+            // which conflict with this anchor. Unlike FOR UPDATE, it is also
+            // compatible with the FOR KEY SHARE the orders → payment_attempts
+            // FK check takes when a reservation-only writer mirrors a missing
+            // or stale order, so mixed-version mirrors cannot deadlock
+            // against issuance (FOR UPDATE conflicts with KEY SHARE; NO KEY
+            // UPDATE does not).
             const [lockedAttempt] = yield* tx
               .select({
                 state: paymentAttempts.state,
@@ -343,7 +354,7 @@ export class InvoiceRepository extends Context.Service<
               .from(paymentAttempts)
               .where(eq(paymentAttempts.id, paymentAttemptId))
               .limit(1)
-              .for("update");
+              .for("no key update");
 
             if (!lockedAttempt) {
               return yield* wrapInvoiceEligibilityError(

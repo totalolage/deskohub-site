@@ -7,7 +7,16 @@ import {
 } from "@deskohub/dotypos";
 import { eq, inArray } from "drizzle-orm";
 import { Effect, Layer } from "effect";
-import { orders, paymentAttempts, workspaceReservations } from "@/db/schema";
+import {
+  latePaymentRecoveries,
+  orders,
+  paymentAttempts,
+  workspaceReservations,
+} from "@/db/schema";
+import {
+  type ILatePaymentRecoveryRepository,
+  LatePaymentRecoveryRepository,
+} from "@/features/checkout/backend/repositories/late-payment-recovery.repository";
 import {
   type IPaymentLifecycleRepository,
   PaymentLifecycleRepository,
@@ -121,6 +130,24 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
     if (fixtureReservationIds.length === 0) return;
     const ids = [...fixtureReservationIds];
     fixtureReservationIds.length = 0;
+    await Effect.runPromise(
+      postgres.db
+        .delete(latePaymentRecoveries)
+        .where(inArray(latePaymentRecoveries.workspaceReservationId, ids))
+    );
+    await postgres.pool.query(
+      "update orders set active_payment_attempt_id = null where id = any($1::text[])",
+      [ids]
+    );
+    await postgres.pool.query(
+      "update payment_attempts set order_id = null where workspace_reservation_id = any($1::text[])",
+      [ids]
+    );
+    await Effect.runPromise(
+      postgres.db
+        .delete(paymentAttempts)
+        .where(inArray(paymentAttempts.workspaceReservationId, ids))
+    );
     await Effect.runPromise(
       postgres.db
         .delete(orders)
@@ -561,7 +588,7 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
     );
   });
 
-  test("never touches payment attempts; a NULL order_id attempt stays unlinked", async () => {
+  test("never touches payment attempts; an explicitly locked attempt only delays the FK check", async () => {
     const id = await insertReservation();
     const [attempt] = await Effect.runPromise(
       postgres.db
@@ -578,12 +605,55 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
         .returning()
     );
     expect(attempt!.orderId).toBeNull();
+    await Effect.runPromise(
+      postgres.db
+        .update(workspaceReservations)
+        .set({ activePaymentAttemptId: attempt!.id })
+        .where(eq(workspaceReservations.id, id))
+    );
 
-    // The reservation-only mirror must leave the attempt row untouched: the
-    // legacy relink belongs to the attempt-first payment writers, which hold
-    // the attempt lock before the reservation lock.
-    await Effect.runPromise(mirror(await loadReservation(id)));
+    // Hold the attempt row with FOR UPDATE while the reservation-only mirror
+    // runs. The mirror's order FK check requests KEY SHARE, which FOR UPDATE
+    // blocks. The mirror must wait for the anchor to release and then
+    // complete without mutating the attempt; legacy relinking belongs to
+    // attempt-first payment writers.
+    const latch = await postgres.pool.connect();
+    let mirrored: Promise<unknown>;
+    let blockedOnAttempt = false;
+    try {
+      await latch.query("begin");
+      await latch.query(
+        "select state from payment_attempts where id = $1 for update",
+        [attempt!.id]
+      );
 
+      mirrored = Effect.runPromise(mirror(await loadReservation(id)));
+
+      // Observe the exact blocked orders upsert, not unrelated pooled activity.
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const { rows } = await postgres.pool.query(
+          `select 1 from pg_stat_activity
+            where pid <> pg_backend_pid()
+              and wait_event_type = 'Lock'
+              and query ilike '%insert into "orders"%'
+            limit 1`
+        );
+        if (rows.length > 0) {
+          blockedOnAttempt = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+
+      await latch.query("commit");
+    } finally {
+      await latch.query("rollback").catch(() => {});
+      latch.release();
+    }
+
+    expect(blockedOnAttempt).toBe(true);
+    await mirrored;
     const [afterMirror] = await Effect.runPromise(
       postgres.db
         .select()
@@ -592,6 +662,205 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
         .limit(1)
     );
     expect(afterMirror!.orderId).toBeNull();
+  });
+
+  test("reservation-only mirrors complete with late-payment recovery holding the attempt first", async () => {
+    const reservations = (await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* WorkspaceReservationRepository;
+      }).pipe(
+        Effect.provide(
+          WorkspaceReservationRepository.Default.pipe(
+            Layer.provide(postgres.layer)
+          )
+        )
+      )
+    )) as IWorkspaceReservationRepository;
+    const recovery = (await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* LatePaymentRecoveryRepository;
+      }).pipe(
+        Effect.provide(
+          LatePaymentRecoveryRepository.Default.pipe(
+            Layer.provide(postgres.layer)
+          )
+        )
+      )
+    )) as ILatePaymentRecoveryRepository;
+
+    // Mixed-version legacy shape: an old writer left the attempt unlinked
+    // and pointed the reservation's active attempt at it.
+    const legacyFixture = async () => {
+      const id = await insertReservation({
+        paymentState: "failed",
+        failureCode: "provider_declined",
+      });
+      const [attempt] = await Effect.runPromise(
+        postgres.db
+          .insert(paymentAttempts)
+          .values({
+            workspaceReservationId: id,
+            provider: "nexi",
+            providerOrderId: `order-${crypto.randomUUID()}` as never,
+            state: "failed",
+            failureCode: "provider_declined",
+            amountValue: 35_000,
+            amountExponent: 2,
+            currency: "CZK",
+          })
+          .returning()
+      );
+      await Effect.runPromise(
+        postgres.db
+          .update(workspaceReservations)
+          .set({ activePaymentAttemptId: attempt!.id })
+          .where(eq(workspaceReservations.id, id))
+      );
+      return { id, attempt: attempt! };
+    };
+
+    // Variant 1: the Order row is entirely missing; the mirror INSERT sets
+    // active_payment_attempt_id, so the orders FK check takes FOR KEY SHARE
+    // on the attempt row.
+    const missing = await legacyFixture();
+
+    // Variant 2: the Order row exists but its active attempt is stale; the
+    // mirror's ON CONFLICT DO UPDATE rewrites it, hitting the same FK check.
+    const stale = await legacyFixture();
+    await Effect.runPromise(mirror(await loadReservation(stale.id)));
+    await postgres.pool.query(
+      "update orders set active_payment_attempt_id = null where id = $1",
+      [stale.id]
+    );
+
+    const waitForLockWait = async (queryPattern: string) => {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const { rows } = await postgres.pool.query(
+          `select 1 from pg_stat_activity
+            where pid <> pg_backend_pid()
+              and wait_event_type = 'Lock'
+              and query ilike $1
+            limit 1`,
+          [queryPattern]
+        );
+        if (rows.length > 0) return true;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return false;
+    };
+
+    await postgres.pool.query(`
+      create or replace function workspace_test_pause_order_mirror()
+      returns trigger language plpgsql as $$
+      begin
+        perform pg_advisory_xact_lock(hashtext(new.id), 247385);
+        return new;
+      end;
+      $$
+    `);
+    await postgres.pool.query(
+      "drop trigger if exists workspace_test_pause_order_mirror on orders"
+    );
+    await postgres.pool.query(`
+      create trigger workspace_test_pause_order_mirror
+      before insert or update on orders
+      for each row execute function workspace_test_pause_order_mirror()
+    `);
+
+    try {
+      for (const fixture of [missing, stale]) {
+        const latch = await postgres.pool.connect();
+        const pending: Promise<unknown>[] = [];
+        try {
+          // Pause the mirror after it owns the reservation row but immediately
+          // before the order write performs its active-attempt FK check.
+          await latch.query("select pg_advisory_lock(hashtext($1), 247385)", [
+            fixture.id,
+          ]);
+          const mirrored = Effect.runPromise(
+            reservations.updateReservationDetails({
+              id: fixture.id,
+              reservationDetails: {
+                kind: "cowork",
+                entryTier: "basic",
+                coffee: true,
+              },
+              locale: "cs-CZ",
+            })
+          );
+          pending.push(mirrored);
+          expect(await waitForLockWait('%insert into "orders"%')).toBe(true);
+
+          // Recovery takes the attempt anchor first and then waits for the
+          // reservation held by the mirror. This recreates the exact
+          // mixed-version inversion when that anchor is FOR UPDATE.
+          const recoveryStart = Effect.runPromise(
+            recovery.start({
+              paymentAttemptId: fixture.attempt.id,
+              workspaceReservationId: fixture.id,
+              webhookEventId: `event-${crypto.randomUUID()}` as never,
+              providerStatus: "APPROVED",
+              verifiedPaidAt: Temporal.Now.instant(),
+            })
+          );
+          pending.push(recoveryStart);
+          expect(
+            await waitForLockWait('%from "workspace_reservations"%for update%')
+          ).toBe(true);
+
+          // FOR NO KEY UPDATE stays compatible with the mirror's FK KEY
+          // SHARE. The mirror commits, then recovery obtains the reservation
+          // and persists its legacy order_id relink.
+          await latch.query("select pg_advisory_unlock(hashtext($1), 247385)", [
+            fixture.id,
+          ]);
+          const [details, started] = await Promise.all([
+            mirrored,
+            recoveryStart,
+          ]);
+          expect(details).toMatchObject({ locale: "cs-CZ" });
+          expect(started.state).toBe("pending");
+        } finally {
+          await latch
+            .query("select pg_advisory_unlock(hashtext($1), 247385)", [
+              fixture.id,
+            ])
+            .catch(() => {});
+          await Promise.allSettled(pending);
+          latch.release();
+        }
+
+        const [attempt] = await Effect.runPromise(
+          postgres.db
+            .select()
+            .from(paymentAttempts)
+            .where(eq(paymentAttempts.id, fixture.attempt.id))
+            .limit(1)
+        );
+        expect(attempt!.state).toBe("failed");
+        expect(attempt!.orderId).toBe(fixture.id);
+
+        const [reservation, order, recoveryRow] = await Promise.all([
+          loadReservation(fixture.id),
+          loadOrder(fixture.id),
+          Effect.runPromise(
+            recovery.findByPaymentAttemptId(fixture.attempt.id)
+          ),
+        ]);
+        expect(reservation.locale).toBe("cs-CZ");
+        expect(order.activePaymentAttemptId).toBe(fixture.attempt.id);
+        expectOrderMirrors(order, reservation);
+        expect(recoveryRow?.state).toBe("pending");
+      }
+    } finally {
+      await postgres.pool.query(
+        "drop trigger if exists workspace_test_pause_order_mirror on orders"
+      );
+      await postgres.pool.query(
+        "drop function if exists workspace_test_pause_order_mirror()"
+      );
+    }
   });
 
   test("mirrors fulfilled + fulfilledAt so the invoice gate can open", async () => {
@@ -628,18 +897,160 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
         staleProcessingBefore: Temporal.Now.instant(),
       })
     );
+    const customerEmailDeliveryId = `delivery-${crypto.randomUUID()}` as never;
+    await Effect.runPromise(
+      reservations.markAwaitingCustomerEmailDelivery({
+        id,
+        customerEmailDeliveryId,
+      })
+    );
+    const [awaitingReservation, awaitingOrder] = await Promise.all([
+      loadReservation(id),
+      loadOrder(id),
+    ]);
+    expect(awaitingReservation.fulfillmentState).toBe("awaiting_delivery");
+    expect(awaitingReservation.fulfilledAt).toBeNull();
+    expectOrderMirrors(awaitingOrder, awaitingReservation);
+
     const markFulfilledAt = Temporal.Now.instant();
     await Effect.runPromise(
-      reservations.markFulfilled({ id, fulfilledAt: markFulfilledAt })
+      reservations.markCustomerEmailDeliveryFulfilled({
+        customerEmailDeliveryId,
+        fulfilledAt: markFulfilledAt,
+      })
     );
 
-    const fulfilledOrder = await Effect.runPromise(
-      postgres.db.select().from(orders).where(eq(orders.id, id))
+    const [fulfilledReservation, fulfilledOrder] = await Promise.all([
+      loadReservation(id),
+      loadOrder(id),
+    ]);
+    expect(fulfilledReservation.fulfillmentState).toBe("fulfilled");
+    expect(
+      fulfilledReservation.fulfilledAt?.toString({
+        smallestUnit: "microsecond",
+      })
+    ).toBe(markFulfilledAt.toString({ smallestUnit: "microsecond" }));
+    expectOrderMirrors(fulfilledOrder, fulfilledReservation);
+  });
+
+  test("rolls back payment state, attempt linkage, and the Order together", async () => {
+    const lifecycle = (await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* PaymentLifecycleRepository;
+      }).pipe(
+        Effect.provide(
+          PaymentLifecycleRepository.Default.pipe(Layer.provide(postgres.layer))
+        )
+      )
+    )) as IPaymentLifecycleRepository;
+
+    const id = await insertReservation();
+    const [attempt] = await Effect.runPromise(
+      postgres.db
+        .insert(paymentAttempts)
+        .values({
+          workspaceReservationId: id,
+          provider: "nexi",
+          providerOrderId: `order-${crypto.randomUUID()}` as never,
+          state: "pending",
+          amountValue: 35_000,
+          amountExponent: 2,
+          currency: "CZK",
+        })
+        .returning()
     );
-    expect(fulfilledOrder).toHaveLength(1);
-    // After fulfillment the mirror carries exactly the invoice-gate state.
-    expect(fulfilledOrder[0]!.fulfillmentState).toBe("fulfilled");
-    expect(fulfilledOrder[0]!.fulfilledAt).not.toBeNull();
+    await Effect.runPromise(
+      postgres.db
+        .update(workspaceReservations)
+        .set({ paymentState: "pending", activePaymentAttemptId: attempt!.id })
+        .where(eq(workspaceReservations.id, id))
+    );
+    await Effect.runPromise(mirror(await loadReservation(id)));
+
+    await postgres.pool.query(`
+      create or replace function workspace_test_reject_order_mirror()
+      returns trigger language plpgsql as $$
+      begin
+        raise exception 'workspace test rejected order mirror';
+      end;
+      $$
+    `);
+    await postgres.pool.query(`
+      create trigger workspace_test_reject_order_mirror
+      before insert or update on orders
+      for each row execute function workspace_test_reject_order_mirror()
+    `);
+
+    try {
+      let rejected = false;
+      try {
+        await Effect.runPromise(
+          lifecycle.markPaid({
+            id: attempt!.id,
+            workspaceReservationId: id,
+            providerStatus: "APPROVED",
+            paidAt: Temporal.Now.instant(),
+          })
+        );
+      } catch {
+        rejected = true;
+      }
+      expect(rejected).toBe(true);
+    } finally {
+      await postgres.pool.query(
+        "drop trigger if exists workspace_test_reject_order_mirror on orders"
+      );
+      await postgres.pool.query(
+        "drop function if exists workspace_test_reject_order_mirror()"
+      );
+    }
+
+    const [reservationAfterRollback, attemptAfterRollback, orderAfterRollback] =
+      await Promise.all([
+        loadReservation(id),
+        Effect.runPromise(
+          postgres.db
+            .select()
+            .from(paymentAttempts)
+            .where(eq(paymentAttempts.id, attempt!.id))
+            .limit(1)
+        ).then(([row]) => row!),
+        loadOrder(id),
+      ]);
+    expect(reservationAfterRollback.paymentState).toBe("pending");
+    expect(attemptAfterRollback.state).toBe("pending");
+    expect(attemptAfterRollback.orderId).toBeNull();
+    expect(orderAfterRollback.paymentState).toBe("pending");
+
+    const replay = await Effect.runPromise(
+      lifecycle.markPaid({
+        id: attempt!.id,
+        workspaceReservationId: id,
+        providerStatus: "APPROVED",
+        paidAt: Temporal.Now.instant(),
+      })
+    );
+    expect(replay.changed).toBe(true);
+
+    const [reservation, order, attemptAfterReplay] = await Promise.all([
+      loadReservation(id),
+      loadOrder(id),
+      Effect.runPromise(
+        postgres.db
+          .select()
+          .from(paymentAttempts)
+          .where(eq(paymentAttempts.id, attempt!.id))
+          .limit(1)
+      ).then(([row]) => row!),
+    ]);
+    expect(reservation.paymentState).toBe("paid");
+    expect(order.paymentState).toBe("paid");
+    expect(attemptAfterReplay.orderId).toBe(id);
+    expect(
+      await Effect.runPromise(
+        postgres.db.select().from(orders).where(eq(orders.id, id))
+      )
+    ).toHaveLength(1);
   });
 
   test("markPaid anchors on the attempt row and repairs its linkage without a lock-order abort", async () => {

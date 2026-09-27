@@ -656,6 +656,15 @@ export class PaymentLifecycleRepository extends Context.Service<
       // Repair it here, while the caller already holds the attempt row lock
       // and ensureReservationOrder has guaranteed the order row exists. The
       // reservation id is the order id, so the persisted linkage is exact.
+      // Lock note: order_id is a key (FK-referenced) column, so when this
+      // UPDATE fires it takes an exclusive row lock on the attempt. That is
+      // safe against a concurrent reservation-only mirror holding FOR KEY
+      // SHARE: the mirror acquired its key share after the reservation lock
+      // it already owns and needs nothing further from this transaction, so
+      // the upgrade can wait without cycling. Callers reach this update only
+      // after anchoring the attempt at NO KEY UPDATE strength (compatible
+      // with KEY SHARE), which is what keeps the mixed-version mirror
+      // deadlock-free.
       const relinkLegacyAttemptOrder = Effect.fn(
         "PaymentLifecycleRepository.relinkLegacyAttemptOrder"
       )(function* (
@@ -695,7 +704,14 @@ export class PaymentLifecycleRepository extends Context.Service<
               // The attempt-first anchor matches the deployed old writers, so
               // old-new overlap during a rolling deploy serializes instead of
               // inverting into a deadlock.
-
+              // Lock mode: this leading UPDATE only writes non-key attempt
+              // columns (state, failure_code, webhook/provider bookkeeping),
+              // so Postgres takes a NO KEY UPDATE-strength row lock: it
+              // conflicts with old writers' plain UPDATE row locks and other
+              // new writers' anchors, yet stays compatible with the FOR KEY
+              // SHARE of the orders → payment_attempts FK check a concurrent
+              // reservation-only mirror performs, so the mirror cannot
+              // deadlock against this writer.
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
@@ -827,7 +843,11 @@ export class PaymentLifecycleRepository extends Context.Service<
               // The attempt-first anchor matches the deployed old writers, so
               // old-new overlap during a rolling deploy serializes instead of
               // inverting into a deadlock.
-
+              // Lock mode: same as markPaid — the leading UPDATE writes only
+              // non-key attempt columns, so Postgres takes a NO KEY
+              // UPDATE-strength row lock: serializing against old and new
+              // writers while staying compatible with the FOR KEY SHARE of a
+              // concurrent reservation-only order mirror.
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({

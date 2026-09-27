@@ -24,6 +24,7 @@ import {
   PaymentLifecycleRepository,
 } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
@@ -92,7 +93,11 @@ describe.skipIf(!postgresDatabase)(
     const fixtureReservationIds: WorkspaceReservationId[] = [];
 
     /** Fixture with a real accounting snapshot row for the paid attempt. */
-    const insertPaidFulfilledReservation = async () => {
+    const insertPaidFulfilledReservation = async (
+      input: {
+        readonly fulfillmentState?: "awaiting_delivery" | "fulfilled";
+      } = {}
+    ) => {
       const id = workspaceReservationIdSchema.make(crypto.randomUUID());
       const attemptId = crypto.randomUUID();
       const dotyposCustomerId = DotyposCustomerIdSchema.make(
@@ -101,6 +106,9 @@ describe.skipIf(!postgresDatabase)(
       const dotyposReservationId = DotyposReservationIdSchema.make(
         `dotypos-reservation-${crypto.randomUUID()}`
       );
+      const fulfillmentState = input.fulfillmentState ?? "fulfilled";
+      const customerEmailDeliveryId =
+        `delivery-${crypto.randomUUID()}` as never;
       const paidAt = Temporal.Now.instant();
       await Effect.runPromise(
         postgres.db.insert(workspaceReservations).values({
@@ -113,8 +121,12 @@ describe.skipIf(!postgresDatabase)(
           reservationState: "held",
           paymentState: "paid",
           paidAt,
-          fulfillmentState: "fulfilled",
-          fulfilledAt: paidAt,
+          fulfillmentState,
+          activeCustomerEmailDeliveryId:
+            fulfillmentState === "awaiting_delivery"
+              ? customerEmailDeliveryId
+              : null,
+          fulfilledAt: fulfillmentState === "fulfilled" ? paidAt : null,
           activePaymentAttemptId: attemptId as never,
           reservationDetails: {
             kind: "cowork",
@@ -153,7 +165,14 @@ describe.skipIf(!postgresDatabase)(
             sql`pgp_sym_encrypt(${JSON.stringify(source)}, ${"synthetic-secret"}, ${"cipher-algo=aes256,compress-algo=1,unicode-mode=1"})` as never,
         })
       );
-      return { id, attemptId, dotyposCustomerId, dotyposReservationId, source };
+      return {
+        id,
+        attemptId,
+        customerEmailDeliveryId,
+        dotyposCustomerId,
+        dotyposReservationId,
+        source,
+      };
     };
 
     const makeInvoiceRepository = () =>
@@ -376,6 +395,198 @@ describe.skipIf(!postgresDatabase)(
           .limit(1)
       );
       expect(issuedInvoice!.workspaceReservationId).toBe(fixture.id);
+    });
+
+    test("keeps invoice issuance closed until the matching delivery completes", async () => {
+      const fixture = await insertPaidFulfilledReservation({
+        fulfillmentState: "awaiting_delivery",
+      });
+      const repository = await makeInvoiceRepository();
+      const invoiceNumbersBefore = await postgres.pool.query(
+        "select count(*)::int as count from invoice_number_counters"
+      );
+
+      const eligibilityError = await Effect.runPromise(
+        Effect.flip(
+          repository.issue({
+            paymentAttemptId: fixture.attemptId,
+            buyer,
+          })
+        )
+      );
+      expect(eligibilityError).toMatchObject({
+        _tag: "InvoiceEligibilityError",
+      });
+      const invoicesBeforeDelivery = await postgres.pool.query(
+        "select payment_attempt_id from invoices where workspace_reservation_id = $1",
+        [fixture.id]
+      );
+      expect(invoicesBeforeDelivery.rows).toHaveLength(0);
+      expect(
+        (
+          await postgres.pool.query(
+            "select count(*)::int as count from invoice_number_counters"
+          )
+        ).rows[0]!.count
+      ).toBe(invoiceNumbersBefore.rows[0]!.count);
+
+      const reservations = await Effect.runPromise(
+        Effect.gen(function* () {
+          return yield* WorkspaceReservationRepository;
+        }).pipe(
+          Effect.provide(
+            WorkspaceReservationRepository.Default.pipe(
+              Layer.provide(postgres.layer)
+            )
+          )
+        )
+      );
+      const fulfilledAt = Temporal.Now.instant();
+      await Effect.runPromise(
+        reservations.markCustomerEmailDeliveryFulfilled({
+          customerEmailDeliveryId: fixture.customerEmailDeliveryId,
+          fulfilledAt,
+        })
+      );
+
+      const [reservation] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, fixture.id))
+          .limit(1)
+      );
+      expect(reservation!.fulfillmentState).toBe("fulfilled");
+      expect(
+        reservation!.fulfilledAt?.toString({ smallestUnit: "microsecond" })
+      ).toBe(fulfilledAt.toString({ smallestUnit: "microsecond" }));
+
+      const issued = await Effect.runPromise(
+        repository.issue({
+          paymentAttemptId: fixture.attemptId,
+          buyer,
+        })
+      );
+      expect(issued.changed).toBe(true);
+      expect(issued.invoice.workspaceReservationId).toBe(fixture.id);
+    });
+
+    test("invoice issuance and a reservation-only mirror avoid the FK lock cycle", async () => {
+      const fixture = await insertPaidFulfilledReservation();
+      const repository = await makeInvoiceRepository();
+      const reservations = await Effect.runPromise(
+        Effect.gen(function* () {
+          return yield* WorkspaceReservationRepository;
+        }).pipe(
+          Effect.provide(
+            WorkspaceReservationRepository.Default.pipe(
+              Layer.provide(postgres.layer)
+            )
+          )
+        )
+      );
+
+      await postgres.pool.query(`
+        create or replace function workspace_test_pause_invoice_order_mirror()
+        returns trigger language plpgsql as $$
+        begin
+          perform pg_advisory_xact_lock(hashtext(new.id), 247385);
+          return new;
+        end;
+        $$
+      `);
+      await postgres.pool.query(`
+        create trigger workspace_test_pause_invoice_order_mirror
+        before insert or update on orders
+        for each row execute function workspace_test_pause_invoice_order_mirror()
+      `);
+
+      const waitForLockWait = async (queryPattern: string) => {
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline) {
+          const { rows } = await postgres.pool.query(
+            `select 1 from pg_stat_activity
+              where pid <> pg_backend_pid()
+                and wait_event_type = 'Lock'
+                and query ilike $1
+              limit 1`,
+            [queryPattern]
+          );
+          if (rows.length > 0) return true;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        return false;
+      };
+
+      const latch = await postgres.pool.connect();
+      const pending: Promise<unknown>[] = [];
+      try {
+        await latch.query("select pg_advisory_lock(hashtext($1), 247385)", [
+          fixture.id,
+        ]);
+
+        const mirrored = Effect.runPromise(
+          reservations.updateReservationDetails({
+            id: fixture.id,
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "basic",
+              coffee: true,
+            },
+            locale: "cs-CZ",
+          })
+        );
+        pending.push(mirrored);
+        expect(await waitForLockWait('%insert into "orders"%')).toBe(true);
+
+        const issuance = Effect.runPromise(
+          repository.issue({
+            paymentAttemptId: fixture.attemptId,
+            buyer,
+          })
+        );
+        pending.push(issuance);
+        expect(
+          await waitForLockWait('%from "workspace_reservations"%for update%')
+        ).toBe(true);
+
+        await latch.query("select pg_advisory_unlock(hashtext($1), 247385)", [
+          fixture.id,
+        ]);
+        const [details, issued] = await Promise.all([mirrored, issuance]);
+        expect(details.locale).toBe("cs-CZ");
+        expect(issued.changed).toBe(true);
+      } finally {
+        await latch
+          .query("select pg_advisory_unlock(hashtext($1), 247385)", [
+            fixture.id,
+          ])
+          .catch(() => {});
+        await Promise.allSettled(pending);
+        latch.release();
+        await postgres.pool.query(
+          "drop trigger if exists workspace_test_pause_invoice_order_mirror on orders"
+        );
+        await postgres.pool.query(
+          "drop function if exists workspace_test_pause_invoice_order_mirror()"
+        );
+      }
+
+      const [order] = await Effect.runPromise(
+        postgres.db.select().from(orders).where(eq(orders.id, fixture.id))
+      );
+      expect(order).toBeDefined();
+      expect(order!.activePaymentAttemptId).toBe(fixture.attemptId);
+      expect(order!.fulfillmentState).toBe("fulfilled");
+      expect(order!.fulfilledAt).not.toBeNull();
+      expect(
+        await Effect.runPromise(
+          postgres.db
+            .select()
+            .from(invoices)
+            .where(eq(invoices.workspaceReservationId, fixture.id))
+        )
+      ).toHaveLength(1);
     });
   }
 );

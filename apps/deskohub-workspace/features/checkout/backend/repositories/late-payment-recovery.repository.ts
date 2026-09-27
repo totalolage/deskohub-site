@@ -156,6 +156,15 @@ export class LatePaymentRecoveryRepository extends Context.Service<
               // writers and the deployed old writers, so overlapping writers
               // serialize instead of inverting into a deadlock. The attempt
               // UPDATE below re-touches this already-locked row.
+              // Lock mode: FOR NO KEY UPDATE — the settle UPDATE below only
+              // writes non-key attempt columns (state, refund_state,
+              // webhook/provider bookkeeping), so it is the weakest mode that
+              // still conflicts with old writers' plain UPDATE row locks and
+              // new writers' NO KEY anchors. It stays compatible with the
+              // FOR KEY SHARE taken by the orders → payment_attempts FK
+              // check when a reservation-only mirror repairs a missing or
+              // stale order, so the mirror cannot deadlock against settle
+              // (FOR UPDATE would conflict with KEY SHARE).
               yield* tx
                 .select({ state: paymentAttempts.state })
                 .from(paymentAttempts)
@@ -169,7 +178,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   )
                 )
                 .limit(1)
-                .for("update");
+                .for("no key update");
 
               const [reservation] = yield* tx
                 .select()
@@ -402,6 +411,21 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 // writers and the payment lifecycle writers, so old-new
                 // overlap during a rolling deploy serializes instead of
                 // inverting into a deadlock.
+                // Lock mode: FOR NO KEY UPDATE — this statement only reads
+                // attempt state and everything this flow writes to the
+                // attempt (the legacy order_id relink below) runs after the
+                // reservation row is already locked, so no attempt key write
+                // ever waits on the anchor. NO KEY UPDATE still conflicts
+                // with old writers' plain UPDATE row locks and new writers'
+                // NO KEY anchors, keeping old-new serialization, while it is
+                // compatible with the FOR KEY SHARE of the orders →
+                // payment_attempts FK check performed by a concurrent
+                // reservation-only mirror (FOR UPDATE would conflict and
+                // deadlock against it). Should the relink fire while a
+                // mirror holds KEY SHARE on this row, this transaction
+                // waits for that mirror — never a cycle, because the mirror
+                // took its key share after the reservation lock it already
+                // owns and needs nothing else from this transaction.
                 const [attempt] = yield* tx
                   .select({ state: paymentAttempts.state })
                   .from(paymentAttempts)
@@ -420,7 +444,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     )
                   )
                   .limit(1)
-                  .for("update");
+                  .for("no key update");
                 const [reservation] = yield* tx
                   .select()
                   .from(workspaceReservations)
