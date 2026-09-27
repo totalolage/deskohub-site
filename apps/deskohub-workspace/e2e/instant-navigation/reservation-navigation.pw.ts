@@ -1,5 +1,6 @@
 import { instant } from "@next/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import { workspaceE2ETimeouts } from "../timeouts";
 import {
   enablePreviewAccess,
   hasLoadedResource,
@@ -149,15 +150,26 @@ test.describe("client navigation", () => {
       await page.goto(navigation.sourcePath);
 
       // The route announcer mounts once the App Router has hydrated; the
-      // SSR reservation link is replaced by the hydrated re-render.
+      // SSR reservation link is replaced by the hydrated re-render. The
+      // replacement can land after the SSR link first reports visible, so
+      // each retry attempt re-resolves the link and redoes the side-effect-
+      // free preparation; detachment inside an attempt fails that attempt
+      // and a fresh attempt re-resolves the hydrated link.
       await page.locator("next-route-announcer").waitFor({ state: "attached" });
-
-      const reservationLink = page
+      let reservationLink = page
         .getByRole("link", { name: navigation.linkName })
         .first();
-      await expect(reservationLink).toBeVisible();
-      await reservationLink.scrollIntoViewIfNeeded();
-      await reservationLink.hover();
+      await expect(async () => {
+        // Re-resolve on every attempt: the hydrated re-render can detach the
+        // SSR link mid-preparation, failing that attempt so the next one
+        // binds to the replacement link.
+        reservationLink = page
+          .getByRole("link", { name: navigation.linkName })
+          .first();
+        await expect(reservationLink).toBeVisible();
+        await reservationLink.scrollIntoViewIfNeeded();
+        await reservationLink.hover();
+      }).toPass({ timeout: workspaceE2ETimeouts.browserAction });
       await expect
         .poll(() => hasLoadedResource(page, navigation.destinationPath))
         .toBe(true);
