@@ -102,10 +102,12 @@ const requireEnv = (name: string) => {
 
 const vercelApiGet = async (
   pathWithQuery: string,
-  token: string
+  token: string,
+  signal?: AbortSignal
 ): Promise<unknown> => {
   const response = await fetch(`${vercelApiOrigin}${pathWithQuery}`, {
     headers: { authorization: `Bearer ${token}` },
+    signal,
   });
   if (!response.ok) {
     throw new Error(
@@ -458,38 +460,65 @@ export const assertLiveProjectCrons = async (
   let lastCondition = "the live cron configuration has not converged";
 
   while (now() < deadline) {
-    let payload: Schema.Schema.Type<typeof liveProjectCronsResponse>;
-    try {
-      payload = Schema.decodeUnknownSync(liveProjectCronsResponse)(
-        await vercelApiGet(
-          `/v9/projects/${encodeURIComponent(input.projectId)}${vercelApiQuery({
-            teamId: input.teamId,
-          })}`,
-          input.token
-        )
+    const remaining = deadline - now();
+    const abortController = new AbortController();
+    const deadlineTimer = (dependencies.deadlineTimer ?? createDeadlineTimer)(
+      remaining
+    );
+    const request = vercelApiGet(
+      `/v9/projects/${encodeURIComponent(input.projectId)}${vercelApiQuery({
+        teamId: input.teamId,
+      })}`,
+      input.token,
+      abortController.signal
+    )
+      .then((response) =>
+        Schema.decodeUnknownSync(liveProjectCronsResponse)(response)
+      )
+      .then(
+        (payload) => ({ kind: "response", payload }) as const,
+        () => ({ kind: "unavailable" }) as const
       );
-    } catch {
+    const attempt = await Promise.race([
+      request,
+      deadlineTimer.promise.then(() => ({ kind: "deadline" }) as const),
+    ]).finally(() => deadlineTimer.cancel());
+
+    if (attempt.kind === "deadline") {
+      abortController.abort();
+      lastCondition =
+        "the Vercel project cron response did not complete before the deadline";
+      break;
+    }
+    if (now() >= deadline) {
+      abortController.abort();
+      lastCondition =
+        "the Vercel project cron response completed after the deadline";
+      break;
+    }
+    if (attempt.kind === "unavailable") {
       lastCondition = "the Vercel project cron response was unavailable";
-      await sleep(interval);
-      continue;
-    }
-
-    if (payload.id !== input.projectId) {
-      throw new Error(
-        `Live cron verification returned a different Vercel project (${payload.id} instead of ${input.projectId})`
-      );
-    }
-
-    const crons = payload.crons ?? undefined;
-    if (crons?.deploymentId !== promotedDeploymentId) {
-      lastCondition = `the live cron configuration still identifies deployment ${crons?.deploymentId ?? "unknown"}`;
     } else {
-      const missing = missingCronDefinition(crons.definitions);
-      if (!missing) return;
-      lastCondition = `the live cron configuration is missing ${missing.path} (${missing.schedule})`;
+      const payload = attempt.payload;
+      if (payload.id !== input.projectId) {
+        throw new Error(
+          `Live cron verification returned a different Vercel project (${payload.id} instead of ${input.projectId})`
+        );
+      }
+
+      const crons = payload.crons ?? undefined;
+      if (crons?.deploymentId !== promotedDeploymentId) {
+        lastCondition = `the live cron configuration still identifies deployment ${crons?.deploymentId ?? "unknown"}`;
+      } else {
+        const missing = missingCronDefinition(crons.definitions);
+        if (!missing) return;
+        lastCondition = `the live cron configuration is missing ${missing.path} (${missing.schedule})`;
+      }
     }
 
-    await sleep(interval);
+    const remainingAfterRequest = deadline - now();
+    if (remainingAfterRequest <= 0) break;
+    await sleep(Math.min(interval, remainingAfterRequest));
   }
 
   throw new Error(
@@ -536,6 +565,20 @@ export type PollingOptions = {
 export type PollingDependencies = {
   readonly sleep?: (ms: number) => Promise<void>;
   readonly now?: () => number;
+  readonly deadlineTimer?: (ms: number) => PollingDeadlineTimer;
+};
+
+export type PollingDeadlineTimer = {
+  readonly promise: Promise<void>;
+  readonly cancel: () => void;
+};
+
+const createDeadlineTimer = (milliseconds: number): PollingDeadlineTimer => {
+  let timer: ReturnType<typeof setTimeout>;
+  const promise = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, milliseconds);
+  });
+  return { promise, cancel: () => clearTimeout(timer) };
 };
 
 const makePolling = ({ sleep, now }: PollingDependencies = {}) => ({

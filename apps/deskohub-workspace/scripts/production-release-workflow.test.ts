@@ -359,12 +359,34 @@ describe("deploy-workspace-production workflow", () => {
     expect(restoreIf).toContain(
       "steps.promote.outputs.promotion_state == 'recovery-needed'"
     );
-    expect(restoreIf).toContain(
-      "(steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome != 'success')"
-    );
+    expect(restoreIf).toContain("steps.promote.outputs.promoted == 'true' &&");
+    expect(restoreIf).toContain("steps.canonical-smoke.outcome != 'success'");
+    expect(restoreIf).toContain("cancelled()");
 
     const failStep = stepByName("Fail the release after rollback");
-    expect(failStep.if).toBe("always() && failure()");
+    expect(failStep.if).toBe("always() && (failure() || cancelled())");
+  });
+
+  test("recovers and fails when cancellation follows promotion but smoke succeeds", () => {
+    const restoreIf =
+      stepByName("Restore the pre-request production baseline").if ?? "";
+    const failIf = stepByName("Fail the release after rollback").if ?? "";
+    const promoted = "true";
+    const smokeOutcome = "success";
+    const workflowCancelled = true;
+
+    expect(restoreIf).toContain("cancelled()");
+    expect(failIf).toBe("always() && (failure() || cancelled())");
+
+    const recoveryRuns =
+      promoted === "true" &&
+      (smokeOutcome !== "success" ||
+        (workflowCancelled && restoreIf.includes("cancelled()")));
+    const finalJobFails =
+      workflowCancelled && failIf.includes("cancelled()") && recoveryRuns;
+
+    expect(recoveryRuns).toBe(true);
+    expect(finalJobFails).toBe(true);
   });
 
   test("recovers whenever the canonical smoke does not succeed, including cancellation", () => {
@@ -377,13 +399,18 @@ describe("deploy-workspace-production workflow", () => {
     expect(restoreIf.includes("steps.canonical-smoke.outcome ==")).toBe(false);
 
     // Mirrors the GitHub expression literals from the restore condition.
-    const recovers = (promoted: string, smokeOutcome: string) =>
-      promoted === "true" && smokeOutcome !== "success";
+    const recovers = (
+      promoted: string,
+      smokeOutcome: string,
+      workflowCancelled = false
+    ) =>
+      promoted === "true" && (smokeOutcome !== "success" || workflowCancelled);
 
     expect(recovers("true", "success")).toBe(false);
     expect(recovers("true", "failure")).toBe(true);
     expect(recovers("true", "cancelled")).toBe(true);
     expect(recovers("true", "skipped")).toBe(true);
+    expect(recovers("true", "success", true)).toBe(true);
     expect(recovers("false", "failure")).toBe(false);
     expect(recovers("false", "")).toBe(false);
   });
@@ -477,9 +504,9 @@ describe("deploy-workspace-production workflow", () => {
 
     expect(canonicalStep.run).toContain("verify-canonical --id");
     expect(scriptIdentifiers.has("assertLiveProjectCrons")).toBe(true);
-    expect(restoreIf).toContain(
-      "steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome != 'success'"
-    );
+    expect(restoreIf).toContain("steps.promote.outputs.promoted == 'true' &&");
+    expect(restoreIf).toContain("steps.canonical-smoke.outcome != 'success'");
+    expect(restoreIf).toContain("cancelled()");
 
     const mustRestore = (outcome: string) => outcome !== "success";
     expect(mustRestore("failure")).toBe(true);
@@ -492,8 +519,9 @@ describe("deploy-workspace-production workflow", () => {
       JSON.stringify(deployJob).includes("steps.promote.outputs.promoted")
     ).toBe(true);
     expect(
-      JSON.stringify(deployJob).includes("if: always() && failure()") ||
-        allSteps.some((step) => step.if === "always() && failure()")
+      allSteps.some(
+        (step) => step.if === "always() && (failure() || cancelled())"
+      )
     ).toBe(true);
     expect(
       JSON.stringify(deployJob).includes(
