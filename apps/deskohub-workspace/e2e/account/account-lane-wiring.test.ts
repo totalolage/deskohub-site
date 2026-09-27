@@ -109,14 +109,14 @@ test("wires mobile linked-section captures after the desktop captures", () => {
 });
 
 test("pins the five-entry mobile review mapping to the linked sections", () => {
-  // Only reservations, billing, and danger gain a mobile capture; profile
-  // and legal stay desktop-only. Verdicts come from the shared runtime data
-  // the lane itself consumes.
+  // Reservations, billing, danger, and the profile language view gain a
+  // mobile capture; legal stays desktop-only. Verdicts come from the shared
+  // runtime data the lane itself consumes.
   expect(mobileAccountReviewTargetBySection).toEqual({
     reservations: "linked-reservations-mobile",
     billing: "linked-billing-mobile",
     danger: "linked-danger-mobile",
-    profile: undefined,
+    profile: "linked-profile-language-mobile",
     legal: undefined,
   });
   expect(Object.keys(mobileAccountReviewTargetBySection).sort()).toEqual(

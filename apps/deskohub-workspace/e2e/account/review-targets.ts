@@ -5,8 +5,9 @@ import type { AccountReviewTarget } from "./review-screenshots";
 /**
  * The deployed review-capture targets of the serial account lane, shared
  * data for the lane runtime and its wiring contract tests. The desktop map
- * covers every section; only reservations, billing, and danger gain a
- * mobile capture, so the mobile map stays explicitly undefined elsewhere.
+ * covers every section; reservations, billing, danger, and the profile
+ * language view gain a mobile capture, so the mobile map stays explicitly
+ * undefined elsewhere.
  */
 export const accountReviewTargetBySection = {
   reservations: "linked-reservations-desktop",
@@ -22,7 +23,7 @@ export const mobileAccountReviewTargetBySection: Readonly<
   reservations: "linked-reservations-mobile",
   billing: "linked-billing-mobile",
   danger: "linked-danger-mobile",
-  profile: undefined,
+  profile: "linked-profile-language-mobile",
   legal: undefined,
 };
 
