@@ -100,6 +100,7 @@ const settleSuccessRows = (
   [orderRow()], // order mirror upsert after the locked reservation
   [], // supersession recheck
   [["attempt-1"]],
+  [], // repair legacy payment_attempts.order_id
   [],
   [],
   [reservationRow({ ...reservation })],
@@ -205,7 +206,8 @@ describe("LatePaymentRecoveryRepository", () => {
       [reservationRow({ activePaymentAttemptId: "attempt-2" })],
       [orderRow()], // order mirror upsert after the locked reservation
       [["attempt-1"]],
-      [],
+      [], // repair legacy payment_attempts.order_id
+      [], // settle recovery row
     ]);
 
     await Effect.runPromise(

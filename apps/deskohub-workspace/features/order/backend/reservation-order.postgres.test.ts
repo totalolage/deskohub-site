@@ -792,9 +792,8 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
           pending.push(mirrored);
           expect(await waitForLockWait('%insert into "orders"%')).toBe(true);
 
-          // Recovery takes the attempt anchor first and then waits for the
-          // reservation held by the mirror. This recreates the exact
-          // mixed-version inversion when that anchor is FOR UPDATE.
+          // Recovery takes the same attempt anchor before it may wait for the
+          // reservation, so it serializes behind the new reservation mirror.
           const recoveryStart = Effect.runPromise(
             recovery.start({
               paymentAttemptId: fixture.attempt.id,
@@ -806,12 +805,11 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
           );
           pending.push(recoveryStart);
           expect(
-            await waitForLockWait('%from "workspace_reservations"%for update%')
+            await waitForLockWait('%from "payment_attempts"%for no key update%')
           ).toBe(true);
 
-          // FOR NO KEY UPDATE stays compatible with the mirror's FK KEY
-          // SHARE. The mirror commits, then recovery obtains the reservation
-          // and persists its legacy order_id relink.
+          // Releasing the mirror lets its transaction commit; recovery then
+          // obtains the reservation and persists its legacy order_id relink.
           await latch.query("select pg_advisory_unlock(hashtext($1), 247385)", [
             fixture.id,
           ]);
@@ -1115,6 +1113,21 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
           attempt: { id: string; state: string; orderId: string | null };
         }>
       | undefined;
+    let details: Promise<{ readonly locale: string }> | undefined;
+    const waitForLockWait = async (queryPattern: string) => {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const { rows } = await postgres.pool.query(
+          `select 1 from pg_stat_activity
+            where wait_event_type = 'Lock'
+              and query ilike $1 limit 1`,
+          [queryPattern]
+        );
+        if (rows.length > 0) return true;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return false;
+    };
     try {
       await latch.query("begin");
       await latch.query(
@@ -1122,10 +1135,10 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
         [attempt!.id]
       );
 
-      // Connection B (updateReservationDetails) must complete while A still
-      // holds the attempt lock: the mirror is reservation → order only and
-      // never needs the locked attempt row.
-      const details = await Effect.runPromise(
+      // A reservation-only mirror now takes a compatible attempt anchor
+      // before the reservation. It waits here instead of holding the
+      // reservation while the order FK checks the active attempt.
+      details = Effect.runPromise(
         reservations.updateReservationDetails({
           id,
           reservationDetails: {
@@ -1136,10 +1149,17 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
           locale: "cs-CZ",
         })
       );
-      expect(details.locale).toBe("cs-CZ");
+      expect(
+        await waitForLockWait('%from "payment_attempts"%for no key update%')
+      ).toBe(true);
+      const reservationProbe = await postgres.pool.query(
+        "select 1 from workspace_reservations where id = $1 for update nowait",
+        [id]
+      );
+      expect(reservationProbe.rowCount).toBe(1);
 
-      // markPaid starts under the latch. Deterministic regression: it must
-      // anchor on the payment attempt row first and WAIT here.
+      // markPaid shares that attempt-first order and waits without reserving
+      // the reservation row.
       markPaid = Effect.runPromise(
         lifecycle.markPaid({
           id: attempt!.id as never,
@@ -1149,42 +1169,28 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
         })
       );
 
-      // Wait until markPaid is blocked on the attempt row.
-      const deadline = Date.now() + 5_000;
-      let blocked = false;
-      while (Date.now() < deadline) {
-        const { rows } = await postgres.pool.query(
-          `select 1 from pg_stat_activity
-            where wait_event_type = 'Lock'
-              and query ilike '%update "payment_attempts"%' limit 1`
-        );
-        if (rows.length > 0) {
-          blocked = true;
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      expect(blocked).toBe(true);
+      expect(await waitForLockWait('%update "payment_attempts"%')).toBe(true);
 
-      // While blocked on the attempt, markPaid must NOT hold the reservation
-      // row — the attempt-first anchor. A writer that inverted (reservation
-      // first, as in the old-vs-new deadlock) would already own it and this
-      // nowait probe would fail.
-      const reservationProbe = await postgres.pool.query(
+      // Neither waiting writer may own the reservation row yet.
+      const secondReservationProbe = await postgres.pool.query(
         "select 1 from workspace_reservations where id = $1 for update nowait",
         [id]
       );
-      expect(reservationProbe.rowCount).toBe(1);
+      expect(secondReservationProbe.rowCount).toBe(1);
 
-      // Releasing the latch lets markPaid finish; no deadlock abort either
-      // way.
+      // Releasing the legacy writer lets both new writers proceed without a
+      // deadlock abort.
       await latch.query("commit");
     } finally {
       await latch.query("rollback").catch(() => {});
       latch.release();
     }
 
-    const transition = await markPaid!;
+    const [transition, detailsResult] = await Promise.all([
+      markPaid!,
+      details!,
+    ]);
+    expect(detailsResult.locale).toBe("cs-CZ");
     expect(transition.changed).toBe(true);
     expect(transition.attempt.state).toBe("paid");
     expect(transition.attempt.orderId).toBe(id);

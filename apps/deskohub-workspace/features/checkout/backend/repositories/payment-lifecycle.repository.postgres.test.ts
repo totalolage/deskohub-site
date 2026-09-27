@@ -349,28 +349,30 @@ describe.skipIf(!postgresDatabase)(
         delivery: { email: "synthetic@example.test" },
       });
 
-      const first = await Effect.runPromise(
-        repository.completeInternalPayment({
-          workspaceReservationId: fixture.id,
-          amount: zero,
-          commitment: makeDiscountCommitment({
-            product: { kind: "cowork", tier: "basic" },
-            applications: [
-              {
-                application: snapshot.quote.payment.discounts[0]!,
-                candidate: {
-                  provenance: {
-                    providerNamespace: "test",
-                    providerReference: "test",
+      const complete = () =>
+        Effect.runPromise(
+          repository.completeInternalPayment({
+            workspaceReservationId: fixture.id,
+            amount: zero,
+            commitment: makeDiscountCommitment({
+              product: { kind: "cowork", tier: "basic" },
+              applications: [
+                {
+                  application: snapshot.quote.payment.discounts[0]!,
+                  candidate: {
+                    provenance: {
+                      providerNamespace: "test",
+                      providerReference: "test",
+                    },
                   },
                 },
-              },
-            ],
-          }),
-          locale: "en-US",
-          accountingSnapshot: snapshot,
-        })
-      );
+              ],
+            }),
+            locale: "en-US",
+            accountingSnapshot: snapshot,
+          })
+        );
+      const first = await complete();
       expect(first.changed).toBe(true);
       expect(first.attempt.provider).toBe("internal");
       expect(first.attempt.orderId).toBe(fixture.id);
@@ -379,43 +381,48 @@ describe.skipIf(!postgresDatabase)(
       expect(order.paymentState).toBe("paid");
       expect(order.paidAt).not.toBeNull();
 
-      // Replay must not duplicate the attempt or the order.
-      const replay = await Effect.runPromise(
-        repository.completeInternalPayment({
-          workspaceReservationId: fixture.id,
-          amount: zero,
-          commitment: makeDiscountCommitment({
-            product: { kind: "cowork", tier: "basic" },
-            applications: [
-              {
-                application: snapshot.quote.payment.discounts[0]!,
-                candidate: {
-                  provenance: {
-                    providerNamespace: "test",
-                    providerReference: "test",
-                  },
-                },
-              },
-            ],
-          }),
-          locale: "en-US",
-          accountingSnapshot: snapshot,
-        })
+      // An old zero-total writer may have inserted its attempt after the
+      // bridge backfill without persisting order_id. Replaying repairs the
+      // database linkage without creating another order or attempt.
+      await Effect.runPromise(
+        postgres.db
+          .update(paymentAttempts)
+          .set({ orderId: null })
+          .where(eq(paymentAttempts.id, first.attempt.id))
       );
+
+      const replay = await complete();
       expect(replay.changed).toBe(false);
       expect(replay.attempt.id).toBe(first.attempt.id);
+      const replayAgain = await complete();
+      expect(replayAgain.changed).toBe(false);
+      expect(replayAgain.attempt.id).toBe(first.attempt.id);
 
       const attemptRows = await Effect.runPromise(
         postgres.db
           .select()
           .from(paymentAttempts)
-          .where(eq(paymentAttempts.workspaceReservationId, fixture.id))
+          .where(eq(paymentAttempts.id, first.attempt.id))
       );
       expect(attemptRows).toHaveLength(1);
+      expect(attemptRows[0]).toMatchObject({
+        id: first.attempt.id,
+        orderId: fixture.id,
+        workspaceReservationId: fixture.id,
+        provider: "internal",
+        state: "paid",
+        amountValue: 0,
+        amountExponent: zero.exponent,
+        currency: zero.currency,
+      });
       const orderRows = await Effect.runPromise(
         postgres.db.select().from(orders).where(eq(orders.id, fixture.id))
       );
       expect(orderRows).toHaveLength(1);
+      expect(orderRows[0]).toMatchObject({
+        id: fixture.id,
+        paymentState: "paid",
+      });
     });
   }
 );

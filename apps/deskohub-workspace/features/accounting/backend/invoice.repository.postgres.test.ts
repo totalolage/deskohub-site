@@ -547,7 +547,7 @@ describe.skipIf(!postgresDatabase)(
         );
         pending.push(issuance);
         expect(
-          await waitForLockWait('%from "workspace_reservations"%for update%')
+          await waitForLockWait('%from "payment_attempts"%for no key update%')
         ).toBe(true);
 
         await latch.query("select pg_advisory_unlock(hashtext($1), 247385)", [

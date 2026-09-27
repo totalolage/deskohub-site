@@ -36,7 +36,10 @@ import type {
   PaymentAttemptId,
 } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
-import { ensureReservationOrder } from "@/features/order/backend/reservation-order";
+import {
+  ensureReservationOrder,
+  lockReservationActivePaymentAttempt,
+} from "@/features/order/backend/reservation-order";
 import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
@@ -396,8 +399,8 @@ export class WorkspaceReservationRepository extends Context.Service<
                   return inserted;
                 }
 
-                const [existingAttempt] = yield* tx
-                  .select()
+                const [existingAttemptId] = yield* tx
+                  .select({ id: workspaceReservations.id })
                   .from(workspaceReservations)
                   .where(
                     eq(
@@ -405,19 +408,31 @@ export class WorkspaceReservationRepository extends Context.Service<
                       input.checkoutAttemptKey
                     )
                   )
-                  .limit(1)
-                  .for("update");
+                  .limit(1);
 
-                if (existingAttempt) {
-                  yield* ensureReservationOrder({
+                if (existingAttemptId) {
+                  yield* lockReservationActivePaymentAttempt({
                     tx,
-                    reservation: existingAttempt,
+                    reservationId: existingAttemptId.id,
                   });
-                  return existingAttempt;
+                  const [existingAttempt] = yield* tx
+                    .select()
+                    .from(workspaceReservations)
+                    .where(eq(workspaceReservations.id, existingAttemptId.id))
+                    .limit(1)
+                    .for("update");
+
+                  if (existingAttempt) {
+                    yield* ensureReservationOrder({
+                      tx,
+                      reservation: existingAttempt,
+                    });
+                    return existingAttempt;
+                  }
                 }
 
-                const [currentAttempt] = yield* tx
-                  .select()
+                const [currentAttemptId] = yield* tx
+                  .select({ id: workspaceReservations.id })
                   .from(workspaceReservations)
                   .where(
                     and(
@@ -429,9 +444,30 @@ export class WorkspaceReservationRepository extends Context.Service<
                     )
                   )
                   .orderBy(desc(workspaceReservations.createdAt))
+                  .limit(1);
+
+                if (!currentAttemptId) {
+                  return yield* Effect.die(
+                    "Workspace reservation insert returned no row."
+                  );
+                }
+
+                yield* lockReservationActivePaymentAttempt({
+                  tx,
+                  reservationId: currentAttemptId.id,
+                });
+
+                const [currentAttempt] = yield* tx
+                  .select()
+                  .from(workspaceReservations)
+                  .where(
+                    and(
+                      eq(workspaceReservations.id, currentAttemptId.id),
+                      sql`${workspaceReservations.reservationState} <> 'cancelled'`
+                    )
+                  )
                   .limit(1)
                   .for("update");
-
                 if (!currentAttempt) {
                   return yield* Effect.die(
                     "Workspace reservation insert returned no row."
@@ -499,6 +535,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -534,6 +574,10 @@ export class WorkspaceReservationRepository extends Context.Service<
           function* (id) {
             const transaction = db.transaction(
               Effect.fn(function* (tx) {
+                yield* lockReservationActivePaymentAttempt({
+                  tx,
+                  reservationId: id,
+                });
                 const [updated] = yield* tx
                   .update(workspaceReservations)
                   .set({
@@ -562,6 +606,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (id) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: id,
+              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -591,6 +639,10 @@ export class WorkspaceReservationRepository extends Context.Service<
           function* (input) {
             const transaction = db.transaction(
               Effect.fn(function* (tx) {
+                yield* lockReservationActivePaymentAttempt({
+                  tx,
+                  reservationId: input.id,
+                });
                 const [updated] = yield* tx
                   .update(workspaceReservations)
                   .set({
@@ -627,6 +679,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -658,6 +714,10 @@ export class WorkspaceReservationRepository extends Context.Service<
           function* (id) {
             const transaction = db.transaction(
               Effect.fn(function* (tx) {
+                yield* lockReservationActivePaymentAttempt({
+                  tx,
+                  reservationId: id,
+                });
                 const [claimed] = yield* tx
                   .update(workspaceReservations)
                   .set({
@@ -690,6 +750,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (id) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: id,
+              });
               const [claimed] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -719,6 +783,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const now = Temporal.Now.instant();
               const [grant] = yield* tx
                 .select({
@@ -900,6 +968,10 @@ export class WorkspaceReservationRepository extends Context.Service<
           function* (input) {
             const transaction = db.transaction(
               Effect.fn(function* (tx) {
+                yield* lockReservationActivePaymentAttempt({
+                  tx,
+                  reservationId: input.id,
+                });
                 const [updated] = yield* tx
                   .update(workspaceReservations)
                   .set({
@@ -934,6 +1006,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const updatedAt = Temporal.Now.instant();
               // Lock-order contract: payment attempt → reservation → order.
               // The refund-required attempt update below must never wait on
@@ -1002,6 +1078,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.cancelledReservationId,
+              });
               const [cancelled] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1073,6 +1153,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1104,6 +1188,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1135,6 +1223,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1170,6 +1262,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const [claimed] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1255,6 +1351,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1298,6 +1398,22 @@ export class WorkspaceReservationRepository extends Context.Service<
           );
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              const [reservation] = yield* tx
+                .select({ id: workspaceReservations.id })
+                .from(workspaceReservations)
+                .where(
+                  eq(
+                    workspaceReservations.activeCustomerEmailDeliveryId,
+                    input.customerEmailDeliveryId
+                  )
+                )
+                .limit(1);
+              if (reservation) {
+                yield* lockReservationActivePaymentAttempt({
+                  tx,
+                  reservationId: reservation.id,
+                });
+              }
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1347,6 +1463,22 @@ export class WorkspaceReservationRepository extends Context.Service<
           );
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              const [reservation] = yield* tx
+                .select({ id: workspaceReservations.id })
+                .from(workspaceReservations)
+                .where(
+                  eq(
+                    workspaceReservations.activeCustomerEmailDeliveryId,
+                    input.customerEmailDeliveryId
+                  )
+                )
+                .limit(1);
+              if (reservation) {
+                yield* lockReservationActivePaymentAttempt({
+                  tx,
+                  reservationId: reservation.id,
+                });
+              }
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1378,6 +1510,10 @@ export class WorkspaceReservationRepository extends Context.Service<
           function* (input) {
             const transaction = db.transaction(
               Effect.fn(function* (tx) {
+                yield* lockReservationActivePaymentAttempt({
+                  tx,
+                  reservationId: input.id,
+                });
                 const [updated] = yield* tx
                   .update(workspaceReservations)
                   .set({
@@ -1410,6 +1546,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1459,6 +1599,10 @@ export class WorkspaceReservationRepository extends Context.Service<
           );
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const [failed] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1488,6 +1632,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const [recovered] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1526,6 +1674,10 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
+              yield* lockReservationActivePaymentAttempt({
+                tx,
+                reservationId: input.id,
+              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({

@@ -4,6 +4,9 @@ test("mirrors reservation facts into the reservation-kind order upsert", async (
   const source = await Bun.file(
     new URL("./reservation-order.ts", import.meta.url)
   ).text();
+  const mirror = source.slice(
+    source.indexOf("export const ensureReservationOrder")
+  );
 
   expect(source).toContain(".onConflictDoUpdate({");
   expect(source).toContain("target: orders.id");
@@ -14,8 +17,8 @@ test("mirrors reservation facts into the reservation-kind order upsert", async (
   // never touch payment_attempts (attempt relink belongs to the
   // attempt-first payment writers), or reservation-first callers would
   // invert the rolling-deploy lock order.
-  expect(source).not.toContain("paymentAttempts");
-  expect(source).not.toContain("isNull");
+  expect(mirror).not.toContain("paymentAttempts");
+  expect(mirror).not.toContain("isNull");
   for (const field of [
     "correlationId",
     "dotyposCustomerId",

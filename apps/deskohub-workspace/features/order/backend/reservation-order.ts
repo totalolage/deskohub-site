@@ -1,12 +1,48 @@
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
-import { orders, type WorkspaceReservation } from "@/db/schema";
+import {
+  orders,
+  paymentAttempts,
+  type WorkspaceReservation,
+  workspaceReservations,
+} from "@/db/schema";
 import { orderIdSchema } from "../order";
 
 type TransactionClient = Parameters<
   Parameters<WorkspaceDatabaseClient["transaction"]>[0]
 >[0];
+
+/**
+ * Anchors a reservation-only write on its current payment attempt before the
+ * caller locks or updates the reservation. Deployed recovery writers may hold
+ * that attempt FOR UPDATE before waiting on the reservation; taking this
+ * NO KEY UPDATE lock first makes the writers serialize without a cycle, while
+ * remaining compatible with the order FK's KEY SHARE check.
+ */
+export const lockReservationActivePaymentAttempt = Effect.fn(
+  "orders.lockReservationActivePaymentAttempt"
+)(function* (input: {
+  readonly tx: TransactionClient;
+  readonly reservationId: WorkspaceReservation["id"];
+}) {
+  const [reservation] = yield* input.tx
+    .select({
+      activePaymentAttemptId: workspaceReservations.activePaymentAttemptId,
+    })
+    .from(workspaceReservations)
+    .where(eq(workspaceReservations.id, input.reservationId))
+    .limit(1);
+
+  if (!reservation?.activePaymentAttemptId) return;
+
+  yield* input.tx
+    .select({ id: paymentAttempts.id })
+    .from(paymentAttempts)
+    .where(eq(paymentAttempts.id, reservation.activePaymentAttemptId))
+    .limit(1)
+    .for("no key update");
+});
 
 /**
  * Mirrors the authoritative reservation row into its reservation-kind order

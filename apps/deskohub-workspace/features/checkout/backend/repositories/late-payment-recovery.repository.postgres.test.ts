@@ -8,7 +8,12 @@ import {
 import { NexiWebhookEventIdSchema } from "@deskohub/nexi";
 import { eq, inArray } from "drizzle-orm";
 import { Effect, Layer } from "effect";
-import { orders, paymentAttempts, workspaceReservations } from "@/db/schema";
+import {
+  latePaymentRecoveries,
+  orders,
+  paymentAttempts,
+  workspaceReservations,
+} from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import { ensureReservationOrder } from "@/features/order/backend/reservation-order";
 import {
@@ -52,11 +57,16 @@ describe.skipIf(!postgresDatabase)(
      * confirmed the money, and the order mirror already exists from the
      * reservation create path (production precondition).
      */
-    const insertLatePaymentFixture = async (): Promise<{
+    const insertLatePaymentFixture = async (
+      options: { readonly legacyAfterBackfill?: boolean } = {}
+    ): Promise<{
       id: WorkspaceReservationId;
       attemptId: string;
     }> => {
       const id = workspaceReservationIdSchema.make(crypto.randomUUID());
+      const dotyposReservationId = DotyposReservationIdSchema.make(
+        `dotypos-reservation-${crypto.randomUUID()}`
+      );
       await Effect.runPromise(
         postgres.db.insert(workspaceReservations).values({
           id,
@@ -66,9 +76,7 @@ describe.skipIf(!postgresDatabase)(
           dotyposCustomerId: DotyposCustomerIdSchema.make(
             `customer-${crypto.randomUUID()}`
           ),
-          dotyposReservationId: DotyposReservationIdSchema.make(
-            `dotypos-reservation-${crypto.randomUUID()}`
-          ),
+          dotyposReservationId,
           reservationState: "held",
           paymentState: "failed",
           fulfillmentState: "not_started",
@@ -84,26 +92,28 @@ describe.skipIf(!postgresDatabase)(
           ),
         })
       );
-      // Production precondition: the mirrored order exists (from the create
-      // path or the migration backfill) before any attempt is written.
-      await Effect.runPromise(
-        postgres.db.transaction((tx) =>
-          Effect.gen(function* () {
-            const [reservation] = yield* tx
-              .select()
-              .from(workspaceReservations)
-              .where(eq(workspaceReservations.id, id))
-              .limit(1);
-            if (!reservation) return yield* Effect.die("fixture missing");
-            yield* ensureReservationOrder({ tx, reservation });
-          })
-        )
-      );
+      if (!options.legacyAfterBackfill) {
+        // Production precondition: the mirrored order exists (from the create
+        // path or the migration backfill) before any attempt is written.
+        await Effect.runPromise(
+          postgres.db.transaction((tx) =>
+            Effect.gen(function* () {
+              const [reservation] = yield* tx
+                .select()
+                .from(workspaceReservations)
+                .where(eq(workspaceReservations.id, id))
+                .limit(1);
+              if (!reservation) return yield* Effect.die("fixture missing");
+              yield* ensureReservationOrder({ tx, reservation });
+            })
+          )
+        );
+      }
       const [attempt] = await Effect.runPromise(
         postgres.db
           .insert(paymentAttempts)
           .values({
-            orderId: id,
+            ...(!options.legacyAfterBackfill && { orderId: id }),
             workspaceReservationId: id,
             provider: "nexi",
             providerOrderId: `order-${crypto.randomUUID()}` as never,
@@ -121,6 +131,21 @@ describe.skipIf(!postgresDatabase)(
           .set({ activePaymentAttemptId: attempt!.id })
           .where(eq(workspaceReservations.id, id))
       );
+      if (options.legacyAfterBackfill) {
+        await Effect.runPromise(
+          postgres.db.insert(latePaymentRecoveries).values({
+            paymentAttemptId: attempt!.id,
+            workspaceReservationId: id,
+            webhookEventId: NexiWebhookEventIdSchema.make(
+              `event-${crypto.randomUUID()}`
+            ),
+            providerStatus: "APPROVED",
+            state: "pending",
+            originalDotyposReservationId: dotyposReservationId,
+            verifiedPaidAt: Temporal.Now.instant(),
+          })
+        );
+      }
       fixtureReservationIds.push(id);
       return { id, attemptId: attempt!.id };
     };
@@ -302,6 +327,100 @@ describe.skipIf(!postgresDatabase)(
           .where(inArray(paymentAttempts.workspaceReservationId, [id]))
       );
       expect(attemptRows).toHaveLength(1);
+    });
+
+    test("resuming a post-backfill old recovery persists attempt order linkage", async () => {
+      const { id, attemptId } = await insertLatePaymentFixture({
+        legacyAfterBackfill: true,
+      });
+      const startInput = {
+        paymentAttemptId: attemptId as never,
+        workspaceReservationId: id,
+        webhookEventId: NexiWebhookEventIdSchema.make(
+          `event-${crypto.randomUUID()}`
+        ),
+        providerStatus: "APPROVED",
+        verifiedPaidAt: Temporal.Now.instant(),
+      };
+
+      const resumed = await Effect.runPromise(repository.start(startInput));
+      expect(resumed.state).toBe("pending");
+
+      const [linkedOnResume] = await Effect.runPromise(
+        postgres.db
+          .select({ orderId: paymentAttempts.orderId })
+          .from(paymentAttempts)
+          .where(eq(paymentAttempts.id, attemptId as never))
+      );
+      expect(linkedOnResume!.orderId).toBe(id);
+
+      const claimed = await Effect.runPromise(
+        repository.claim({
+          paymentAttemptId: attemptId as never,
+          staleProcessingBefore: Temporal.Now.instant(),
+        })
+      );
+      expect(claimed?.state).toBe("processing");
+
+      const completedAt = Temporal.Now.instant();
+      const completeInput = {
+        paymentAttemptId: attemptId as never,
+        workspaceReservationId: id,
+        reservationState: "confirmed" as const,
+        completedAt,
+      };
+      await Effect.runPromise(
+        repository.completeUsingOriginalReservation(completeInput)
+      );
+
+      const orderRows = await Effect.runPromise(
+        postgres.db.select().from(orders).where(eq(orders.id, id))
+      );
+      expect(orderRows).toHaveLength(1);
+      expect(orderRows[0]!.paymentState).toBe("paid");
+
+      // Replay both public recovery entry points after restoring the old
+      // missing-link state. The assertion reads payment_attempts.order_id
+      // directly; it cannot be satisfied by a projected reservation ID.
+      await postgres.pool.query(
+        "update payment_attempts set order_id = null where id = $1",
+        [attemptId]
+      );
+      const replayedRecovery = await Effect.runPromise(
+        repository.start(startInput)
+      );
+      expect(replayedRecovery.state).toBe("recovered");
+
+      const [linkedOnResumeReplay] = await Effect.runPromise(
+        postgres.db
+          .select({ orderId: paymentAttempts.orderId })
+          .from(paymentAttempts)
+          .where(eq(paymentAttempts.id, attemptId as never))
+      );
+      expect(linkedOnResumeReplay!.orderId).toBe(id);
+
+      await postgres.pool.query(
+        "update payment_attempts set order_id = null where id = $1",
+        [attemptId]
+      );
+      await Effect.runPromise(
+        repository.completeUsingOriginalReservation(completeInput)
+      );
+
+      const attempts = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(paymentAttempts)
+          .where(eq(paymentAttempts.workspaceReservationId, id))
+      );
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0]!.state).toBe("paid");
+      expect(attempts[0]!.orderId).toBe(id);
+
+      const ordersForReservation = await Effect.runPromise(
+        postgres.db.select().from(orders).where(eq(orders.id, id))
+      );
+      expect(ordersForReservation).toHaveLength(1);
     });
   }
 );

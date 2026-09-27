@@ -4,7 +4,10 @@ import { and, eq, gt, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
-import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
 import {
   type LatePaymentRecovery,
   latePaymentRecoveries,
@@ -37,6 +40,10 @@ type RecoverySettlementInput = {
   readonly paymentAttemptId: PaymentAttemptId;
   readonly workspaceReservationId: WorkspaceReservationId;
 };
+
+type TransactionClient = Parameters<
+  Parameters<WorkspaceDatabaseClient["transaction"]>[0]
+>[0];
 
 type LatePaymentRecoveryRepositoryError =
   | DiscountClaimError
@@ -105,6 +112,26 @@ export class LatePaymentRecoveryRepository extends Context.Service<
         return recovery ?? null;
       });
 
+      const relinkLegacyAttemptOrder = Effect.fn(
+        "LatePaymentRecoveryRepository.relinkLegacyAttemptOrder"
+      )(function* (input: {
+        readonly tx: TransactionClient;
+        readonly paymentAttemptId: PaymentAttemptId;
+        readonly workspaceReservationId: WorkspaceReservationId;
+      }) {
+        yield* input.tx
+          .update(paymentAttempts)
+          .set({
+            orderId: orderIdSchema.make(input.workspaceReservationId) as never,
+          })
+          .where(
+            and(
+              eq(paymentAttempts.id, input.paymentAttemptId),
+              isNull(paymentAttempts.orderId)
+            )
+          );
+      });
+
       const settle = Effect.fn("LatePaymentRecoveryRepository.settle")(
         function* (
           input: RecoverySettlementInput & {
@@ -142,8 +169,8 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   "Late-payment recovery was not found."
                 );
               }
-              if (recovery.state === input.state) return;
-              if (recovery.state !== "processing") {
+              const alreadySettled = recovery.state === input.state;
+              if (!alreadySettled && recovery.state !== "processing") {
                 return yield* recoveryStateError(
                   "settle",
                   input.paymentAttemptId,
@@ -152,21 +179,13 @@ export class LatePaymentRecoveryRepository extends Context.Service<
               }
 
               // Lock-order contract: payment attempt → reservation → order.
-              // The attempt-first anchor matches the payment lifecycle
-              // writers and the deployed old writers, so overlapping writers
-              // serialize instead of inverting into a deadlock. The attempt
-              // UPDATE below re-touches this already-locked row.
-              // Lock mode: FOR NO KEY UPDATE — the settle UPDATE below only
-              // writes non-key attempt columns (state, refund_state,
-              // webhook/provider bookkeeping), so it is the weakest mode that
-              // still conflicts with old writers' plain UPDATE row locks and
-              // new writers' NO KEY anchors. It stays compatible with the
-              // FOR KEY SHARE taken by the orders → payment_attempts FK
-              // check when a reservation-only mirror repairs a missing or
-              // stale order, so the mirror cannot deadlock against settle
-              // (FOR UPDATE would conflict with KEY SHARE).
-              yield* tx
-                .select({ state: paymentAttempts.state })
+              // The NO KEY UPDATE anchor serializes with deployed FOR UPDATE
+              // recovery writers and new reservation mirrors while remaining
+              // compatible with orders.active_payment_attempt_id's FK
+              // KEY SHARE check. The later order_id relink upgrades this
+              // already-held lock only after the reservation mirror exists.
+              const [attemptAnchor] = yield* tx
+                .select({ id: paymentAttempts.id })
                 .from(paymentAttempts)
                 .where(
                   and(
@@ -179,6 +198,13 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 )
                 .limit(1)
                 .for("no key update");
+              if (!attemptAnchor) {
+                return yield* recoveryStateError(
+                  "settle",
+                  input.paymentAttemptId,
+                  "Late-payment attempt was not found."
+                );
+              }
 
               const [reservation] = yield* tx
                 .select()
@@ -196,6 +222,15 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 );
               }
               yield* ensureReservationOrder({ tx, reservation });
+              if (alreadySettled) {
+                yield* relinkLegacyAttemptOrder({
+                  tx,
+                  paymentAttemptId: input.paymentAttemptId,
+                  workspaceReservationId: input.workspaceReservationId,
+                });
+                return;
+              }
+
               const isActiveAttempt =
                 reservation.activePaymentAttemptId === input.paymentAttemptId;
               if (!isActiveAttempt && input.state !== "refund_required") {
@@ -293,6 +328,11 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   "Only a terminal late payment can settle as paid."
                 );
               }
+              yield* relinkLegacyAttemptOrder({
+                tx,
+                paymentAttemptId: input.paymentAttemptId,
+                workspaceReservationId: input.workspaceReservationId,
+              });
 
               if (input.state === "recovered") {
                 yield* redeemCodeClaim(
@@ -404,30 +444,70 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   )
                   .limit(1)
                   .for("update");
-                if (existing) return existing;
+                if (existing) {
+                  if (
+                    existing.workspaceReservationId !==
+                    input.workspaceReservationId
+                  ) {
+                    return yield* recoveryStateError(
+                      "start",
+                      input.paymentAttemptId,
+                      "Late-payment recovery belongs to a different reservation."
+                    );
+                  }
+
+                  const [attempt] = yield* tx
+                    .select({ id: paymentAttempts.id })
+                    .from(paymentAttempts)
+                    .where(
+                      and(
+                        eq(paymentAttempts.id, input.paymentAttemptId),
+                        eq(
+                          paymentAttempts.workspaceReservationId,
+                          input.workspaceReservationId
+                        )
+                      )
+                    )
+                    .limit(1)
+                    .for("no key update");
+                  const [reservation] = yield* tx
+                    .select()
+                    .from(workspaceReservations)
+                    .where(
+                      eq(workspaceReservations.id, input.workspaceReservationId)
+                    )
+                    .limit(1)
+                    .for("update");
+                  if (!attempt || !reservation) {
+                    return yield* recoveryStateError(
+                      "start",
+                      input.paymentAttemptId,
+                      "Late-payment recovery requires its attempt and reservation."
+                    );
+                  }
+
+                  yield* ensureReservationOrder({ tx, reservation });
+                  yield* relinkLegacyAttemptOrder({
+                    tx,
+                    paymentAttemptId: input.paymentAttemptId,
+                    workspaceReservationId: input.workspaceReservationId,
+                  });
+                  return existing;
+                }
 
                 // Lock-order contract: payment attempt → reservation →
                 // order. The attempt-first anchor matches the deployed old
                 // writers and the payment lifecycle writers, so old-new
                 // overlap during a rolling deploy serializes instead of
                 // inverting into a deadlock.
-                // Lock mode: FOR NO KEY UPDATE — this statement only reads
-                // attempt state and everything this flow writes to the
-                // attempt (the legacy order_id relink below) runs after the
-                // reservation row is already locked, so no attempt key write
-                // ever waits on the anchor. NO KEY UPDATE still conflicts
-                // with old writers' plain UPDATE row locks and new writers'
-                // NO KEY anchors, keeping old-new serialization, while it is
-                // compatible with the FOR KEY SHARE of the orders →
-                // payment_attempts FK check performed by a concurrent
-                // reservation-only mirror (FOR UPDATE would conflict and
-                // deadlock against it). Should the relink fire while a
-                // mirror holds KEY SHARE on this row, this transaction
-                // waits for that mirror — never a cycle, because the mirror
-                // took its key share after the reservation lock it already
-                // owns and needs nothing else from this transaction.
+                // Lock mode: FOR NO KEY UPDATE. It conflicts with old
+                // recovery FOR UPDATE locks and the new reservation-mirror
+                // anchors, but remains compatible with the order FK's KEY
+                // SHARE check. Reservation-only writers take their attempt
+                // anchor before the reservation, so the order_id relink can
+                // safely upgrade this lock without forming a cycle.
                 const [attempt] = yield* tx
-                  .select({ state: paymentAttempts.state })
+                  .select({ id: paymentAttempts.id })
                   .from(paymentAttempts)
                   .where(
                     and(
@@ -462,24 +542,11 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 }
 
                 yield* ensureReservationOrder({ tx, reservation });
-
-                // Old writers left their attempts without order linkage;
-                // repair it now that the order row exists, while the attempt
-                // row is still locked from the anchor above. The reservation
-                // id is the order id, so the persisted linkage is exact.
-                yield* tx
-                  .update(paymentAttempts)
-                  .set({
-                    orderId: orderIdSchema.make(
-                      input.workspaceReservationId
-                    ) as never,
-                  })
-                  .where(
-                    and(
-                      eq(paymentAttempts.id, input.paymentAttemptId),
-                      isNull(paymentAttempts.orderId)
-                    )
-                  );
+                yield* relinkLegacyAttemptOrder({
+                  tx,
+                  paymentAttemptId: input.paymentAttemptId,
+                  workspaceReservationId: input.workspaceReservationId,
+                });
 
                 const [recovery] = yield* tx
                   .insert(latePaymentRecoveries)

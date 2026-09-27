@@ -405,6 +405,42 @@ export class PaymentLifecycleRepository extends Context.Service<
         return yield* db
           .transaction(
             Effect.fn(function* (tx) {
+              const [current] = yield* tx
+                .select({
+                  activePaymentAttemptId:
+                    workspaceReservations.activePaymentAttemptId,
+                  paymentState: workspaceReservations.paymentState,
+                })
+                .from(workspaceReservations)
+                .where(
+                  eq(workspaceReservations.id, input.workspaceReservationId)
+                )
+                .limit(1);
+
+              if (
+                current?.paymentState === "paid" &&
+                current.activePaymentAttemptId
+              ) {
+                // Internal-payment replay may need to restore the legacy
+                // order_id key. Anchor the active attempt before locking the
+                // reservation so invoice issuance and old recovery writers
+                // cannot wait on it while holding the reservation.
+                yield* tx
+                  .select({ id: paymentAttempts.id })
+                  .from(paymentAttempts)
+                  .where(
+                    and(
+                      eq(paymentAttempts.id, current.activePaymentAttemptId),
+                      eq(
+                        paymentAttempts.workspaceReservationId,
+                        input.workspaceReservationId
+                      )
+                    )
+                  )
+                  .limit(1)
+                  .for("no key update");
+              }
+
               const [reservation] = yield* tx
                 .select()
                 .from(workspaceReservations)
@@ -447,6 +483,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                     input.amount
                   )
                 ) {
+                  yield* relinkLegacyAttemptOrder(tx, {
+                    id: existingAttempt.id,
+                    workspaceReservationId: input.workspaceReservationId,
+                  });
                   return {
                     attempt: toPaymentAttempt(existingAttempt),
                     changed: false,

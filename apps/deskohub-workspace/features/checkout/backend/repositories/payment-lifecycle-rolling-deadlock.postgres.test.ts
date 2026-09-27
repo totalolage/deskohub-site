@@ -399,6 +399,7 @@ describe.skipIf(!postgresDatabase)(
     const runOldWriterOverlap = async <T>(options: {
       readonly attemptId: string;
       readonly reservationId: WorkspaceReservationId;
+      readonly oldAttemptLock?: "update" | "for update";
       readonly writer: () => Promise<T>;
     }) => {
       const old = await postgres.pool.connect();
@@ -408,10 +409,17 @@ describe.skipIf(!postgresDatabase)(
       let result: T;
       try {
         await old.query("begin");
-        await old.query(
-          "update payment_attempts set updated_at = updated_at where id = $1",
-          [options.attemptId]
-        );
+        if (options.oldAttemptLock === "for update") {
+          await old.query(
+            "select id from payment_attempts where id = $1 for update",
+            [options.attemptId]
+          );
+        } else {
+          await old.query(
+            "update payment_attempts set updated_at = updated_at where id = $1",
+            [options.attemptId]
+          );
+        }
 
         const pending = options.writer();
         expect(await waitUntilBlockedOnAttempts()).toBe(true);
@@ -563,13 +571,14 @@ describe.skipIf(!postgresDatabase)(
       expect(order!.paidAt).not.toBeNull();
     });
 
-    test("old markPaid overlap completes new invoice issue without a lock abort", async () => {
+    test("old recovery FOR UPDATE overlap completes new invoice issue without a lock abort", async () => {
       const { id, attemptId } = await insertPaidFulfilledFixture();
       const invoiceRepository = await makeInvoiceRepository();
 
       const run = await runOldWriterOverlap({
         attemptId,
         reservationId: id,
+        oldAttemptLock: "for update",
         writer: () =>
           Effect.runPromise(
             invoiceRepository.issue({
