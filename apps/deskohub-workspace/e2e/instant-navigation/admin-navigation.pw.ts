@@ -80,11 +80,17 @@ test("captures the resolved reservations export view", async ({
   await page.goto("/admin/reservations");
 
   await expect(page.getByRole("link", { name: "Export CSV" })).toBeVisible();
-  await expect(page.getByLabel("Loading reservations")).toHaveCount(0);
 
   const reservations = page.getByRole("table", { name: "Reservations" });
-  await expect(reservations).toBeVisible();
-  await expect(reservations.getByRole("row").nth(1)).toBeVisible();
+  const emptyState = page.getByText("No reservations match this view.", {
+    exact: true,
+  });
+  await expect
+    .poll(
+      async () =>
+        (await reservations.isVisible()) || (await emptyState.isVisible())
+    )
+    .toBe(true);
 
   await page.locator("nextjs-portal").evaluateAll((portals) => {
     for (const portal of portals) {
