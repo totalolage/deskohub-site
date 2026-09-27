@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { zipSync } from "fflate";
 
 import {
   classifyWorkspaceE2EExportEmailDivergence,
@@ -44,9 +45,9 @@ describe("classifyWorkspaceE2EExportIdentityMatch", () => {
 });
 
 describe("exportIdentityVerdictFailureMessage", () => {
-    test("never names a verdict-specific fact for a match", () => {
-      expect(() => exportIdentityVerdictFailureMessage("match")).not.toThrow();
-    });
+  test("never names a verdict-specific fact for a match", () => {
+    expect(() => exportIdentityVerdictFailureMessage("match")).not.toThrow();
+  });
 
   test("carries the discriminating fact for each divergence verdict", () => {
     expect(exportIdentityVerdictFailureMessage("account-mismatch")).toContain(
@@ -163,16 +164,48 @@ describe("workspaceE2EExportPageProbeScript", () => {
     recipientEmail: "delivered+run-main@example.test",
     profileEmailSelector: "#account-profile-email",
   };
-  const snapshotText = JSON.stringify({
-    identity: {
-      accountId: "00000000-0000-0000-0000-000000000000",
-      email: "delivered+run-main@example.test",
-    },
-    dotyposProfile: null,
-    reservations: [],
-    marketingConsent: null,
-    meta: { generatedAt: "2026-01-01T00:00:00Z", schemaVersion: 1, scope: [] },
-  });
+  const identityEntry = {
+    accountId: "00000000-0000-0000-0000-000000000000",
+    email: "delivered+run-main@example.test",
+  };
+  const archiveBytes = () =>
+    zipSync(
+      {
+        "manifest.json": Buffer.from(
+          JSON.stringify({
+            generatedAt: "2026-01-01T00:00:00Z",
+            schemaVersion: 2,
+            sections: [{ path: "identity.json", description: "d" }],
+          })
+        ),
+        "identity.json": Buffer.from(JSON.stringify(identityEntry)),
+        "dotypos-profile.json": Buffer.from(
+          JSON.stringify({
+            firstName: "Ada",
+            lastName: null,
+            phone: null,
+            billing: null,
+          })
+        ),
+        "reservation-history.json": Buffer.from(JSON.stringify([])),
+        "workspace-reservations.json": Buffer.from(JSON.stringify([])),
+        "payments.json": Buffer.from(
+          JSON.stringify({ payments: [], latePaymentRecoveries: [] })
+        ),
+        "discount-applications.json": Buffer.from(JSON.stringify([])),
+        "invoices.json": Buffer.from(
+          JSON.stringify({ invoices: [], customerEmailDeliveries: [] })
+        ),
+        "consents.json": Buffer.from(
+          JSON.stringify({ marketingConsent: null, legalEvidenceEvents: [] })
+        ),
+        "access-grants.json": Buffer.from(JSON.stringify({ accessGrants: [] })),
+      },
+      // Stored entries keep the fixture independent of the environment's
+      // DecompressionStream; the production archive deflates and the browser
+      // inflates through the same probe code path.
+      { level: 0 }
+    );
 
   const compile = () => {
     const script = workspaceE2EExportPageProbeScript(probeInput);
@@ -182,6 +215,15 @@ describe("workspaceE2EExportPageProbeScript", () => {
       `"use strict"; return (${script});`
     ) as (document: unknown, fetch: unknown) => Promise<string>;
   };
+
+  const zipResponse = () => ({
+    ok: true,
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === "content-type" ? "application/zip" : null,
+    },
+    arrayBuffer: async () => archiveBytes().buffer,
+  });
 
   const pageWithDisplayedEmail = (value: string | null) => {
     // The probe guards `instanceof HTMLInputElement` because the page script
@@ -199,39 +241,59 @@ describe("workspaceE2EExportPageProbeScript", () => {
 
   test("resolves with a well-formed payload when the displayed email input is missing entirely", async () => {
     const run = compile();
-    const raw = await run(pageWithDisplayedEmail(null), async () => ({
-      ok: true,
-      headers: { get: () => "application/json" },
-      text: async () => snapshotText,
-    }));
+    const raw = await run(pageWithDisplayedEmail(null), async () =>
+      zipResponse()
+    );
     const payload = JSON.parse(raw) as {
       ok: boolean;
       document: {
         emailDivergence: Record<string, boolean>;
         accountIdMatches: boolean;
+        entryNames: readonly string[];
+        schemaVersion: number;
+        manifestSectionPaths: readonly string[];
+        reservationsCount: number;
+        consentKeys: readonly string[] | null;
+        dotyposProfileKeys: readonly string[] | null;
       } | null;
     };
     expect(payload.ok).toBe(true);
     expect(payload.document?.accountIdMatches).toBe(true);
+    expect(payload.document?.entryNames.sort()).toEqual([
+      "access-grants.json",
+      "consents.json",
+      "discount-applications.json",
+      "dotypos-profile.json",
+      "identity.json",
+      "invoices.json",
+      "manifest.json",
+      "payments.json",
+      "reservation-history.json",
+      "workspace-reservations.json",
+    ]);
+    expect(payload.document?.schemaVersion).toBe(2);
+    expect(payload.document?.manifestSectionPaths).toEqual(["identity.json"]);
+    expect(payload.document?.reservationsCount).toBe(0);
+    expect(payload.document?.consentKeys).toBeNull();
+    expect(payload.document?.dotyposProfileKeys).toEqual([
+      "billing",
+      "firstName",
+      "lastName",
+      "phone",
+    ]);
     // No throw, and the displayed-email booleans degrade to false rather
     // than being silently skipped or crashing the probe.
     expect(
       payload.document?.emailDivergence.displayedEmailMatchesDocument
     ).toBe(false);
-    expect(
-      payload.document?.emailDivergence.exactEqual
-    ).toBe(true);
+    expect(payload.document?.emailDivergence.exactEqual).toBe(true);
   });
 
   test("compares the displayed email live when the profile input is present in the same document", async () => {
     const run = compile();
     const raw = await run(
       pageWithDisplayedEmail("delivered+run-main@example.test"),
-      async () => ({
-        ok: true,
-        headers: { get: () => "application/json" },
-        text: async () => snapshotText,
-      })
+      async () => zipResponse()
     );
     const payload = JSON.parse(raw) as {
       document: { emailDivergence: Record<string, boolean> } | null;
@@ -242,6 +304,21 @@ describe("workspaceE2EExportPageProbeScript", () => {
     expect(
       payload.document?.emailDivergence.displayedEmailTrimmedMatchesDocument
     ).toBe(true);
+  });
+
+  test("reports a non-ZIP response as ok=false with a null document", async () => {
+    const run = compile();
+    const raw = await run(pageWithDisplayedEmail(null), async () => ({
+      ok: true,
+      headers: {
+        get: (name: string) =>
+          name.toLowerCase() === "content-type" ? "application/json" : null,
+      },
+      arrayBuffer: async () => new ArrayBuffer(0),
+    }));
+    const payload = JSON.parse(raw) as { ok: boolean; document: unknown };
+    expect(payload.ok).toBe(false);
+    expect(payload.document).toBeNull();
   });
 
   test("reports a failed fetch as ok=false with a null document instead of throwing", async () => {

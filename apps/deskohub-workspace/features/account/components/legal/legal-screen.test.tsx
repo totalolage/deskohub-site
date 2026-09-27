@@ -11,11 +11,42 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import type { ComponentPropsWithoutRef, Ref } from "react";
 import { useState } from "react";
 import { accountSectionLandmarks } from "@/e2e/account/account-sections";
+import { accountDataExportSections } from "@/features/account/account-data-export-sections";
 import { type Locale, m } from "@/features/i18n";
+import { buildZipArchive } from "@/shared/backend/utils/zip-archive";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+
+/**
+ * Mirrors the component's path-to-message mapping so the test asserts the
+ * real catalog copy for every archive section.
+ */
+const sectionTestName = (path: string, locale: Locale): string => {
+  switch (path) {
+    case "identity.json":
+      return m.legalScreenExportSectionIdentity({}, { locale });
+    case "dotypos-profile.json":
+      return m.legalScreenExportSectionDotyposProfile({}, { locale });
+    case "reservation-history.json":
+      return m.legalScreenExportSectionReservationHistory({}, { locale });
+    case "workspace-reservations.json":
+      return m.legalScreenExportSectionWorkspaceReservations({}, { locale });
+    case "payments.json":
+      return m.legalScreenExportSectionPayments({}, { locale });
+    case "discount-applications.json":
+      return m.legalScreenExportSectionDiscountApplications({}, { locale });
+    case "invoices.json":
+      return m.legalScreenExportSectionInvoices({}, { locale });
+    case "consents.json":
+      return m.legalScreenExportSectionConsents({}, { locale });
+    case "access-grants.json":
+      return m.legalScreenExportSectionAccessGrants({}, { locale });
+    default:
+      return path;
+  }
+};
 
 type MockNextLinkProps = ComponentPropsWithoutRef<"a"> & {
   readonly href: string;
@@ -192,6 +223,27 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
     expect(
       view.getByText(m.legalScreenExportNotStatutory({}, { locale }))
     ).toBeTruthy();
+
+    // The archive contents are visible before the download: the section list
+    // matches the shared catalog order exactly, plus the manifest entry.
+    expect(
+      view.getByText(
+        m.legalScreenExportSectionsLabel(
+          { count: accountDataExportSections.length },
+          { locale }
+        )
+      )
+    ).toBeTruthy();
+    const sectionNames = [
+      ...accountDataExportSections.map((section) =>
+        sectionTestName(section.path, locale)
+      ),
+      m.legalScreenExportSectionManifest({}, { locale }),
+    ];
+    const listedItems = Array.from(
+      view.container.querySelectorAll("ul li")
+    ).map((item) => item.textContent);
+    expect(listedItems).toEqual(sectionNames);
     const exportAction = view.getByRole("button", {
       name: m.legalScreenExportAction({}, { locale }),
     });
@@ -266,13 +318,24 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
       );
 
       resolveFetch(
-        new Response(JSON.stringify({ meta: { schemaVersion: 1 } }), {
-          headers: {
-            "Content-Type": "application/json; charset=utf-8",
-            "Content-Disposition":
-              'attachment; filename="deskohub-account-data-2026-09-26.json"',
-          },
-        })
+        new Response(
+          Buffer.from(
+            buildZipArchive([
+              {
+                path: "manifest.json",
+                content: JSON.stringify({ schemaVersion: 2 }),
+              },
+              { path: "identity.json", content: "{}" },
+            ])
+          ),
+          {
+            headers: {
+              "Content-Type": "application/zip",
+              "Content-Disposition":
+                'attachment; filename="deskohub-account-data-2026-09-26.zip"',
+            },
+          }
+        )
       );
       await waitFor(() =>
         expect(view.getByRole("status").textContent).toContain(

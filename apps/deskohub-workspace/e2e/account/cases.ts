@@ -48,6 +48,13 @@ import {
   workspaceE2EAccountMainRecipientLabel,
 } from "./config";
 import {
+  classifyWorkspaceE2EExportIdentityMatch,
+  exportEmailDivergenceMessage,
+  exportIdentityVerdictFailureMessage,
+  type WorkspaceE2EExportProbePayload,
+  workspaceE2EExportPageProbeScript,
+} from "./export-identity";
+import {
   assertNoSyntheticCustomerProfile,
   cancelSyntheticReservation,
   createSyntheticCustomerProfile,
@@ -55,13 +62,6 @@ import {
   expireSyntheticCustomerProfile,
   readSyntheticCustomerProfile,
 } from "./fixtures";
-import {
-  classifyWorkspaceE2EExportIdentityMatch,
-  exportEmailDivergenceMessage,
-  exportIdentityVerdictFailureMessage,
-  workspaceE2EExportPageProbeScript,
-  type WorkspaceE2EExportProbePayload,
-} from "./export-identity";
 import type { MagicLinkRateBudget } from "./rate-budget";
 import {
   listSyntheticMessageIds,
@@ -1657,9 +1657,7 @@ export const makeWorkspaceE2EAccountCases = ({
                       // page against the exact journaled row email; the
                       // fixed message carries booleans and the length
                       // relation only.
-                      exportEmailDivergenceMessage(
-                        snapshot.emailDivergence
-                      )
+                      exportEmailDivergenceMessage(snapshot.emailDivergence)
                     : exportIdentityVerdictFailureMessage(verdict),
                   { operation: "assert account data export document" }
                 );
@@ -1670,22 +1668,57 @@ export const makeWorkspaceE2EAccountCases = ({
                 "the export identity email did not match the synthetic recipient"
               );
               assert(
-                snapshot.keys.join(",") ===
-                  "dotyposProfile,identity,marketingConsent,meta,reservations",
-                "the export document exposed sections outside the allowlist"
+                snapshot.entryNames.join(",") ===
+                  [
+                    "manifest.json",
+                    "identity.json",
+                    "dotypos-profile.json",
+                    "reservation-history.json",
+                    "workspace-reservations.json",
+                    "payments.json",
+                    "discount-applications.json",
+                    "invoices.json",
+                    "consents.json",
+                    "access-grants.json",
+                  ].join(","),
+                "the export archive exposed entries outside the manifest allowlist"
               );
               assert(
-                snapshot.schemaVersion === 1,
-                "the export document used an unexpected schema version"
+                snapshot.schemaVersion === 2,
+                "the export archive used an unexpected schema version"
               );
               assert(
-                snapshot.scope.join(",") ===
-                  "identity,dotyposProfile,reservations,marketingConsent",
-                "the export meta scope drifted from the contractual section order"
+                snapshot.manifestSectionPaths.join(",") ===
+                  "identity.json,dotypos-profile.json,reservation-history.json,workspace-reservations.json,payments.json,discount-applications.json,invoices.json,consents.json,access-grants.json",
+                "the export manifest section order drifted from the contractual section order"
               );
               assert(
                 Number.isFinite(Date.parse(snapshot.generatedAt)),
-                "the export document did not carry a parseable generation time"
+                "the export archive did not carry a parseable generation time"
+              );
+              assert(
+                snapshot.workspaceReservationsCount >= 0 &&
+                  snapshot.paymentsCount >= 0 &&
+                  snapshot.discountApplicationsCount >= 0 &&
+                  snapshot.invoicesCount >= 0 &&
+                  snapshot.legalEvidenceCount >= 0 &&
+                  snapshot.accessGrantsCount >= 0,
+                "the export archive carried a missing or malformed customer-records section"
+              );
+              assert(
+                (probePayload.contentType ?? "").startsWith("application/zip"),
+                "the export response was not served as a ZIP archive"
+              );
+              assert(
+                (probePayload.cacheControl ?? "").replace(/\s+/g, "") ===
+                  "private,no-store",
+                "the export response was not private and no-store"
+              );
+              assert(
+                (probePayload.contentDisposition ?? "").startsWith(
+                  "attachment"
+                ) && (probePayload.contentDisposition ?? "").includes(".zip"),
+                "the export response was not delivered as a ZIP attachment"
               );
               assert(
                 snapshot.dotyposProfileKeys !== null &&
@@ -1702,24 +1735,6 @@ export const makeWorkspaceE2EAccountCases = ({
               assert(
                 snapshot.reservationsCount >= 0,
                 "the export reservations section was not an array"
-              );
-              assert(
-                (probePayload.contentType ?? "").startsWith("application/json") &&
-                  (probePayload.contentType ?? "").includes("charset=utf-8"),
-                "the export response was not served as UTF-8 JSON"
-              );
-              assert(
-                (probePayload.cacheControl ?? "").replace(/\s+/g, "") ===
-                  "private,no-store",
-                "the export response was not private and no-store"
-              );
-              assert(
-                (probePayload.contentDisposition ?? "").startsWith("attachment"),
-                "the export response was not delivered as a JSON attachment"
-              );
-              assert(
-                snapshot.dotyposProfileKeys !== null,
-                "the export profile section was missing for a linked provider profile"
               );
             }),
             datasourceTimeout

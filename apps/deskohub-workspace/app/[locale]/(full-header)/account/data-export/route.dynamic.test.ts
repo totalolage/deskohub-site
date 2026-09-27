@@ -13,7 +13,7 @@ import { Effect } from "effect";
 // unresolved pending the classifier verdict; nothing here claims to repair
 // it.
 let connectionInvocations = 0;
-let releaseConnection: (() => void) | undefined = undefined;
+let releaseConnection: (() => void) | undefined;
 let globalFlagReads = 0;
 const connectionGate = new Promise<void>((resolve) => {
   releaseConnection = resolve;

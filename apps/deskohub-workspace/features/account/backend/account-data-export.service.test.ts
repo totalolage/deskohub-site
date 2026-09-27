@@ -1,8 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import {
+  accountDataExportManifestPath,
+  accountDataExportSchemaVersion,
+  accountDataExportSections,
+} from "../account-data-export-sections";
 import { customerAccountIdSchema } from "../customer-account";
 import { AccountDataExportService } from "./account-data-export.service";
+import {
+  AccountDataExportRecordsRepository,
+  type CustomerExportRecords,
+  type ExportedAccessGrant,
+  type ExportedInvoice,
+  type ExportedInvoiceDelivery,
+  type ExportedLatePaymentRecovery,
+  type ExportedLegalEvidenceEvent,
+  type ExportedPaymentAttempt,
+  type ExportedWorkspaceReservation,
+} from "./account-data-export-records.repository";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 import { CustomerReservationHistoryService } from "./customer-reservation-history.service";
@@ -39,6 +55,107 @@ const summary = {
   status: "confirmed",
 } as const;
 
+const emptyRecords: CustomerExportRecords = {
+  reservations: [],
+  payments: [],
+  discountApplications: [],
+  invoices: [],
+  invoiceDeliveries: [],
+  legalEvidenceEvents: [],
+  accessGrants: [],
+  latePaymentRecoveries: [],
+};
+
+const populatedRecords: CustomerExportRecords = {
+  reservations: [
+    {
+      workspaceReservationId: "wr-1",
+      dotyposReservationId: "dotypos-1",
+      reservationPurpose: null,
+      reservationState: "confirmed",
+      paymentState: "paid",
+      fulfillmentState: "fulfilled",
+      locale: "en-US",
+      reservationCreatedAt: "2026-08-01T00:00:00.000Z",
+      reservationConfirmedAt: "2026-08-01T00:05:00.000Z",
+      reservationCancelledAt: null,
+      paidAt: "2026-08-01T00:06:00.000Z",
+      fulfilledAt: "2026-08-01T00:07:00.000Z",
+    },
+  ],
+  payments: [
+    {
+      workspaceReservationId: "wr-1",
+      provider: "nexi",
+      state: "paid",
+      refundState: "not_required",
+      amountValue: 12000,
+      amountExponent: 2,
+      currency: "CZK",
+      createdAt: "2026-08-01T00:05:30.000Z",
+      updatedAt: "2026-08-01T00:06:00.000Z",
+    },
+  ],
+  discountApplications: [
+    {
+      workspaceReservationId: "wr-1",
+      sequence: 0,
+      publicDiscountId: "discount-1",
+      label: "Opening discount",
+      subtotalBeforeValue: 12000,
+      subtotalBeforeExponent: 2,
+      subtotalBeforeCurrency: "CZK",
+      appliedAmountValue: 1000,
+      appliedAmountExponent: 2,
+      appliedAmountCurrency: "CZK",
+      subtotalAfterValue: 11000,
+      subtotalAfterExponent: 2,
+      subtotalAfterCurrency: "CZK",
+      createdAt: "2026-08-01T00:05:31.000Z",
+    },
+  ],
+  invoices: [
+    {
+      invoiceNumber: "2026001",
+      issuedAt: "2026-08-02T00:00:00.000Z",
+      numberingYear: 2026,
+      numberingSequence: 1,
+      workspaceReservationId: "wr-1",
+      paymentAttemptId: "attempt-1",
+      documentSnapshotRecordedAt: "2026-08-02T00:01:00.000Z",
+    },
+  ],
+  invoiceDeliveries: [
+    {
+      invoiceNumber: "2026001",
+      state: "accepted",
+      createdAt: "2026-08-02T00:02:00.000Z",
+      acceptedAt: "2026-08-02T00:02:10.000Z",
+    },
+  ],
+  legalEvidenceEvents: [
+    {
+      workspaceReservationId: "wr-1",
+      documentKey: "terms",
+      accepted: true,
+      acceptedAt: "2026-08-01T00:04:00.000Z",
+      locale: "en-US",
+      source: "checkout",
+    },
+  ],
+  accessGrants: [
+    {
+      workspaceReservationId: "wr-1",
+      state: "issued",
+      scheduledAccessStartsAt: "2026-09-01T09:00:00.000Z",
+      accessStartsAt: "2026-09-01T08:45:00.000Z",
+      accessEndsAt: "2026-09-01T11:15:00.000Z",
+      issuedAt: "2026-08-30T00:00:00.000Z",
+    },
+  ],
+  latePaymentRecoveries: [],
+};
+
 const makeLayers = (fakes: {
   readonly accountState?: typeof activeState | { kind: "missing" };
   readonly profile?: typeof profile | null;
@@ -57,6 +174,8 @@ const makeLayers = (fakes: {
     readonly dotyposCustomerId: string;
   } | null;
   readonly consentFailure?: Error;
+  readonly records?: CustomerExportRecords;
+  readonly recordsFailure?: Error;
 }) => {
   const state =
     fakes.accountState ??
@@ -94,8 +213,17 @@ const makeLayers = (fakes: {
         : Effect.succeed(fakes.consent ?? null),
   } satisfies Partial<CustomerMarketingConsentRepository["Service"]>);
 
+  const exportRecords = Layer.mock(AccountDataExportRecordsRepository, {
+    loadCustomerRecords: () =>
+      fakes.recordsFailure
+        ? Effect.fail(fakes.recordsFailure)
+        : Effect.succeed(fakes.records ?? emptyRecords),
+  } satisfies Partial<AccountDataExportRecordsRepository["Service"]>);
+
   return AccountDataExportService.Default.pipe(
-    Layer.provide(Layer.mergeAll(links, dotypos, history, consents))
+    Layer.provide(
+      Layer.mergeAll(links, dotypos, history, consents, exportRecords)
+    )
   );
 };
 
@@ -107,12 +235,62 @@ const buildExport = (layer: Layer.Layer<AccountDataExportService>) =>
   );
 
 const forbiddenKeyPattern =
-  /token|secret|pin|password|session|hash|credential|cookie/i;
+  /token|secret|pin|password|session|hash|credential|cookie|securitytoken|redirect|accesscode/i;
 
 describe("AccountDataExportService", () => {
-  test("exports only allowlisted sections and fields", async () => {
+  test("produces exactly the manifest plus the allowlisted sections in order", async () => {
     const result = await buildExport(
       makeLayers({
+        consent: {
+          grantedAt: Temporal.Instant.from("2026-03-01T00:00:00Z"),
+          withdrawnAt: null,
+          locale: "en-US",
+          documentHash: "synthetic-document-hash",
+          dotyposCustomerId: account.dotyposCustomerId,
+        },
+        records: populatedRecords,
+      })
+    );
+    if (result.failure) throw result.failure;
+
+    const { entries } = result.success;
+    const expectedPaths = [
+      accountDataExportManifestPath,
+      ...accountDataExportSections.map((section) => section.path),
+    ];
+    expect(entries.map((entry) => entry.path)).toEqual(expectedPaths);
+
+    const manifest = entries[0]?.content as {
+      schemaVersion: number;
+      generatedAt: string;
+      sections: readonly { path: string; description: string }[];
+      assembledDuringRequest: boolean;
+      nonAtomicityNote: string;
+      completenessNote: string;
+    };
+    expect(manifest.schemaVersion).toBe(accountDataExportSchemaVersion);
+    expect(Number.isFinite(Date.parse(manifest.generatedAt))).toBe(true);
+    expect(manifest.assembledDuringRequest).toBe(true);
+    expect(manifest.sections.map((section) => section.path)).toEqual(
+      accountDataExportSections.map((section) => section.path)
+    );
+    for (const [index, section] of manifest.sections.entries()) {
+      expect(section.description).toBe(
+        accountDataExportSections[index]?.manifestDescription
+      );
+    }
+    expect(manifest.nonAtomicityNote).toBe(
+      "This archive was assembled during a single request from different systems. It is not an atomic cross-system transaction: data changed concurrently may appear in only some entries."
+    );
+    expect(manifest.completenessNote).toContain(
+      "not a complete copy of every record"
+    );
+  });
+
+  test("carries the customer-scoped first-party records with literal section keys", async () => {
+    const result = await buildExport(
+      makeLayers({
+        records: populatedRecords,
         consent: {
           grantedAt: Temporal.Instant.from("2026-03-01T00:00:00Z"),
           withdrawnAt: null,
@@ -123,154 +301,137 @@ describe("AccountDataExportService", () => {
       })
     );
     if (result.failure) throw result.failure;
-
-    const snapshot = result.success;
-    // The document's own key order mirrors the contractual meta scope order
-    // (identity, dotyposProfile, reservations, marketingConsent) before meta.
-    expect(Object.keys(snapshot)).toEqual([
-      "identity",
-      "dotyposProfile",
-      "reservations",
-      "marketingConsent",
-      "meta",
-    ]);
-    expect(snapshot.meta.scope).toEqual([
-      "identity",
-      "dotyposProfile",
-      "reservations",
-      "marketingConsent",
-    ]);
-    expect(Object.keys(snapshot.meta)).toEqual([
-      "schemaVersion",
-      "generatedAt",
-      "scope",
-      "assembledDuringRequest",
-      "nonAtomicityNote",
-    ]);
-    expect(snapshot.meta.nonAtomicityNote).toBe(
-      "This snapshot was assembled during a single request from different systems. It is not an atomic cross-system transaction: data changed concurrently may appear in only some sections."
-    );
-    expect(Object.keys(snapshot.identity!).sort()).toEqual(
-      [
-        "accountCreatedAt",
-        "accountUpdatedAt",
-        "deletionRequested",
-        "email",
-        "emailVerified",
-        "name",
-        "accountId",
-      ].sort()
+    const contentByPath = new Map(
+      result.success.entries.map((entry) => [entry.path, entry.content])
     );
 
-    // No token, session identifier, credential, or document hash anywhere in
-    // the serialized document.
-    const serialized = JSON.stringify(snapshot);
-    expect(forbiddenKeyPattern.test(serialized)).toBe(false);
+    const workspaceReservations = contentByPath.get(
+      "workspace-reservations.json"
+    ) as readonly ExportedWorkspaceReservation[];
+    expect(Object.keys(workspaceReservations[0]!)).toEqual([
+      "workspaceReservationId",
+      "dotyposReservationId",
+      "reservationPurpose",
+      "reservationState",
+      "paymentState",
+      "fulfillmentState",
+      "locale",
+      "reservationCreatedAt",
+      "reservationConfirmedAt",
+      "reservationCancelledAt",
+      "paidAt",
+      "fulfilledAt",
+    ]);
 
-    expect(snapshot.dotyposProfile).toEqual(profile);
-    expect(snapshot.reservations).toEqual([summary]);
-    expect(snapshot.marketingConsent).toEqual({
+    const payments = contentByPath.get("payments.json") as {
+      payments: readonly ExportedPaymentAttempt[];
+      latePaymentRecoveries: readonly ExportedLatePaymentRecovery[];
+    };
+    expect(Object.keys(payments.payments[0]!)).toEqual([
+      "workspaceReservationId",
+      "provider",
+      "state",
+      "refundState",
+      "amountValue",
+      "amountExponent",
+      "currency",
+      "createdAt",
+      "updatedAt",
+    ]);
+    expect(payments.latePaymentRecoveries).toEqual([]);
+
+    const invoices = contentByPath.get("invoices.json") as {
+      invoices: readonly ExportedInvoice[];
+      customerEmailDeliveries: readonly ExportedInvoiceDelivery[];
+    };
+    expect(Object.keys(invoices.invoices[0]!)).toEqual([
+      "invoiceNumber",
+      "issuedAt",
+      "numberingYear",
+      "numberingSequence",
+      "workspaceReservationId",
+      "paymentAttemptId",
+      "documentSnapshotRecordedAt",
+    ]);
+    expect(Object.keys(invoices.customerEmailDeliveries[0]!)).toEqual([
+      "invoiceNumber",
+      "state",
+      "createdAt",
+      "acceptedAt",
+    ]);
+
+    const consents = contentByPath.get("consents.json") as {
+      marketingConsent: { grantedAt: string } | null;
+      legalEvidenceEvents: readonly ExportedLegalEvidenceEvent[];
+    };
+    expect(consents.marketingConsent).toEqual({
       grantedAt: "2026-03-01T00:00:00Z",
       withdrawnAt: null,
       locale: "en-US",
     });
+    expect(Object.keys(consents.legalEvidenceEvents[0]!)).toEqual([
+      "workspaceReservationId",
+      "documentKey",
+      "accepted",
+      "acceptedAt",
+      "locale",
+      "source",
+    ]);
+
+    const accessGrants = contentByPath.get("access-grants.json") as {
+      accessGrants: readonly ExportedAccessGrant[];
+    };
+    expect(Object.keys(accessGrants.accessGrants[0]!)).toEqual([
+      "workspaceReservationId",
+      "state",
+      "scheduledAccessStartsAt",
+      "accessStartsAt",
+      "accessEndsAt",
+      "issuedAt",
+    ]);
   });
 
-  test("exposes exactly the literal keys for a populated profile, billing, and reservation variants", async () => {
-    const populatedProfile = {
-      firstName: "Ada",
-      lastName: "Lovelace",
-      phone: "+420000000000",
-      billing: {
-        kind: "business",
-        addressLine1: "Charles Square 1",
-        addressLine2: null,
-        city: "Prague",
-        zip: "12000",
-        country: "CZ",
-        companyName: "Ada Test s.r.o.",
-        companyId: "12345678",
-        vatId: "CZ12345678",
-      },
-    } as const;
-    const coworkReservation = {
-      id: "reservation-cowork",
-      workspaceReservationId: "wr-cowork",
-      product: { kind: "cowork", tier: "basic" },
-      startsAt: "2026-09-02T09:00:00.000Z",
-      endsAt: "2026-09-02T17:00:00.000Z",
-      seats: 1,
-      status: "confirmed",
-    } as const;
-    const undatedOfficeReservation = {
-      id: "reservation-office",
-      product: { kind: "office" },
-      startsAt: null,
-      endsAt: null,
-      seats: null,
-      status: "cancelled",
-    } as const;
-
-    const result = await buildExport(
-      makeLayers({
-        profile: populatedProfile,
-        historyGroups: {
-          current: [coworkReservation],
-          past: [],
-          unavailable: [undatedOfficeReservation],
-        },
-      })
-    );
+  test("serializes no secret-shaped key anywhere in the archive", async () => {
+    const result = await buildExport(makeLayers({ records: populatedRecords }));
     if (result.failure) throw result.failure;
-    const snapshot = result.success;
-
-    // Literal key lists so a silently expanded fixture or a newly mapped
-    // provider field cannot widen the accepted output.
-    expect(Object.keys(snapshot.dotyposProfile!)).toEqual([
-      "firstName",
-      "lastName",
-      "phone",
-      "billing",
-    ]);
-    expect(Object.keys(snapshot.dotyposProfile!.billing!)).toEqual([
-      "kind",
-      "addressLine1",
-      "addressLine2",
-      "city",
-      "zip",
-      "country",
-      "companyName",
-      "companyId",
-      "vatId",
-    ]);
-    expect(snapshot.reservations.map((entry) => Object.keys(entry))).toEqual([
-      [
-        "id",
-        "workspaceReservationId",
-        "product",
-        "startsAt",
-        "endsAt",
-        "seats",
-        "status",
-      ],
-      ["id", "product", "startsAt", "endsAt", "seats", "status"],
-    ]);
-    expect(snapshot.reservations.map((entry) => entry.product)).toEqual([
-      { kind: "cowork", tier: "basic" },
-      { kind: "office" },
-    ]);
+    // The pattern is applied to every serialized object KEY in the archive
+    // (prose in the manifest legitimately names what is excluded), plus the
+    // exact stored secret values must never survive as values.
+    const serialized = JSON.stringify(result.success.entries);
+    const keys = Array.from(
+      new Set(
+        Array.from(serialized.matchAll(/"([A-Za-z][A-Za-z0-9_]*)":/g)).map(
+          (match) => match[1] ?? ""
+        )
+      )
+    );
+    expect(keys.length).toBeGreaterThan(20);
+    for (const key of keys) {
+      expect(forbiddenKeyPattern.test(key)).toBe(false);
+    }
+    expect(serialized).not.toContain("synthetic-document-hash");
   });
 
-  test("exports explicit nulls for a missing profile and missing consent", async () => {
+  test("exports explicit nulls for a missing profile and missing consent, with empty record lists", async () => {
     const result = await buildExport(makeLayers({ profile: null }));
     if (result.failure) throw result.failure;
-    expect(result.success.dotyposProfile).toBeNull();
-    expect(result.success.marketingConsent).toBeNull();
-    expect(result.success.identity.email).toBe("ada@example.test");
-    expect(result.success.identity.emailVerified).toBe(true);
-    expect(result.success.identity.deletionRequested).toBe(false);
-    expect(result.success.meta.schemaVersion).toBe(1);
-    expect(result.success.meta.assembledDuringRequest).toBe(true);
+    const contentByPath = new Map(
+      result.success.entries.map((entry) => [entry.path, entry.content])
+    );
+    expect(contentByPath.get("dotypos-profile.json")).toBeNull();
+    expect(contentByPath.get("reservation-history.json")).toEqual([summary]);
+    const consents = contentByPath.get("consents.json") as {
+      marketingConsent: unknown;
+    };
+    expect(consents.marketingConsent).toBeNull();
+    const identity = contentByPath.get("identity.json") as {
+      email: string;
+      emailVerified: boolean;
+      deletionRequested: boolean;
+    };
+    expect(identity.email).toBe("ada@example.test");
+    expect(identity.emailVerified).toBe(true);
+    expect(identity.deletionRequested).toBe(false);
   });
 
   test("fails the whole export when the profile provider fails", async () => {
@@ -292,6 +453,14 @@ describe("AccountDataExportService", () => {
   test("fails the whole export when the consent store fails", async () => {
     const result = await buildExport(
       makeLayers({ consentFailure: new Error("db down") })
+    );
+    if (!result.failure) throw new Error("expected the export to fail");
+    expect(result.failure.reason).toBe("unavailable");
+  });
+
+  test("fails the whole export when the first-party records repository fails", async () => {
+    const result = await buildExport(
+      makeLayers({ recordsFailure: new Error("db down") })
     );
     if (!result.failure) throw new Error("expected the export to fail");
     expect(result.failure.reason).toBe("unavailable");

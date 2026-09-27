@@ -1,11 +1,12 @@
 import "../../shared/polyfills/temporal";
 
+import { readFile } from "node:fs/promises";
 import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
-import { readFile } from "node:fs/promises";
+import { unzipSync } from "fflate";
 import { WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import type { E2EDatabase } from "../integrations/database.service";
@@ -59,23 +60,20 @@ const accountReviewCaptureFailureMessage =
  * Only the date stamp varies, so the shape pins the contract.
  */
 const accountDataExportFilenamePattern =
-  /^deskohub-account-data-\d{4}-\d{2}-\d{2}\.json$/;
+  /^deskohub-account-data-\d{4}-\d{2}-\d{2}\.zip$/;
 
-/** The exact allowlisted top-level section set of the export document. */
-const accountDataExportExpectedKeys = [
-  "dotyposProfile",
-  "identity",
-  "marketingConsent",
-  "meta",
-  "reservations",
-] as const;
-
-/** The contractual section order declared by meta.scope. */
-const accountDataExportExpectedScope = [
-  "identity",
-  "dotyposProfile",
-  "reservations",
-  "marketingConsent",
+/** The exact allowlisted entry set of the export archive, in catalog order. */
+const accountDataExportExpectedEntries = [
+  "manifest.json",
+  "identity.json",
+  "dotypos-profile.json",
+  "reservation-history.json",
+  "workspace-reservations.json",
+  "payments.json",
+  "discount-applications.json",
+  "invoices.json",
+  "consents.json",
+  "access-grants.json",
 ] as const;
 
 /**
@@ -398,9 +396,12 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         await accountTest.step(
           "capture account data export pending, delivered, and error states",
           async () => {
-            await page.goto(new URL("/en-US/account/legal", baseUrl).toString(), {
-              timeout: workspaceE2ETimeouts.browserNavigation,
-            });
+            await page.goto(
+              new URL("/en-US/account/legal", baseUrl).toString(),
+              {
+                timeout: workspaceE2ETimeouts.browserNavigation,
+              }
+            );
             const exportButton = page.getByRole("button", {
               exact: true,
               name: "Download your account data",
@@ -440,7 +441,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               "legal-export-pending-desktop"
             );
             await page
-              .getByText("Your account data download has started.", {
+              .getByText("Your account data archive download has started.", {
                 exact: true,
               })
               .waitFor({
@@ -454,13 +455,17 @@ for (const caseId of workspaceE2EAccountCaseIds) {
             );
 
             // The browser download itself must complete with the expected
-            // attachment name and an allowlisted document. Only structural
-            // facts are asserted; the snapshot body never reaches this output.
+            // attachment name and an allowlisted archive. Only structural
+            // facts are asserted; the archive entries never reach this output.
             const download = await downloadPromise;
             if ((await download.failure()) !== null) {
               throw new Error("the account data download did not complete");
             }
-            if (!accountDataExportFilenamePattern.test(download.suggestedFilename())) {
+            if (
+              !accountDataExportFilenamePattern.test(
+                download.suggestedFilename()
+              )
+            ) {
               throw new Error(
                 "the account data download carried an unexpected filename"
               );
@@ -472,66 +477,73 @@ for (const caseId of workspaceE2EAccountCaseIds) {
             // Parsing and every derived value stay inside this guard so a
             // malformed body can only raise the fixed malformed-download
             // error; a native parse error or an accidental TypeError would
-            // otherwise leak a document excerpt to the reporter.
-            let snapshot: {
-              readonly identity: {
-                readonly accountId: string;
-                readonly email: string;
-              };
-              readonly meta: {
-                readonly schemaVersion: number;
-                readonly scope: readonly string[];
-              };
-            };
+            // otherwise leak an archive excerpt to the reporter.
             try {
-              snapshot = JSON.parse(
-                await readFile(await download.path(), "utf8")
-              ) as typeof snapshot;
-              if (snapshot.meta.schemaVersion !== 1) {
+              const archive = unzipSync(
+                new Uint8Array(await readFile(await download.path()))
+              );
+              const entryNames = Object.keys(archive).sort();
+              if (
+                entryNames.length !== accountDataExportExpectedEntries.length ||
+                !accountDataExportExpectedEntries.every((entry) =>
+                  entryNames.includes(entry)
+                )
+              ) {
+                throw new AccountDataExportLaneAssertion(
+                  "the downloaded export exposed entries outside the allowlist"
+                );
+              }
+              const manifest = JSON.parse(
+                new TextDecoder().decode(archive["manifest.json"]!)
+              ) as {
+                readonly schemaVersion: number;
+                readonly sections: readonly { readonly path: string }[];
+              };
+              if (manifest.schemaVersion !== 2) {
                 throw new AccountDataExportLaneAssertion(
                   "the downloaded export used an unexpected schema version"
                 );
               }
+              const sectionPaths = manifest.sections.map(
+                (section) => section.path
+              );
               if (
-                snapshot.meta.scope.length !==
-                  accountDataExportExpectedScope.length ||
-                !accountDataExportExpectedScope.every(
-                  (section, index) => snapshot.meta.scope[index] === section
-                )
+                sectionPaths.length !==
+                  accountDataExportExpectedEntries.filter(
+                    (entry) => entry !== "manifest.json"
+                  ).length ||
+                !accountDataExportExpectedEntries
+                  .filter((entry) => entry !== "manifest.json")
+                  .every((entry, index) => sectionPaths[index] === entry)
               ) {
                 throw new AccountDataExportLaneAssertion(
-                  "the downloaded export scope drifted from the contractual sections"
+                  "the downloaded export manifest drifted from the contractual sections"
                 );
               }
-              if (snapshot.identity.email !== recipient) {
+              const identity = JSON.parse(
+                new TextDecoder().decode(archive["identity.json"]!)
+              ) as {
+                readonly accountId: string;
+                readonly email: string;
+              };
+              if (identity.email !== recipient) {
                 throw new AccountDataExportLaneAssertion(
                   "the downloaded export identity did not match the synthetic recipient"
                 );
               }
               if (
                 !accountLane.journalRef.journal.authUserIds.includes(
-                  snapshot.identity.accountId
+                  identity.accountId
                 )
               ) {
                 throw new AccountDataExportLaneAssertion(
                   "the downloaded export identity was not the journaled synthetic account"
                 );
               }
-              const snapshotKeys = Object.keys(snapshot).sort();
-              if (
-                snapshotKeys.length !== accountDataExportExpectedKeys.length ||
-                !accountDataExportExpectedKeys.every(
-                  (section, index) => snapshotKeys[index] === section
-                )
-              ) {
-                throw new AccountDataExportLaneAssertion(
-                  "the downloaded export exposed sections outside the allowlist"
-                );
-              }
             } catch (error) {
               if (error instanceof AccountDataExportLaneAssertion) throw error;
               throw new Error(
-                "the account data download was not the expected JSON document"
+                "the account data download was not the expected ZIP archive"
               );
             }
 

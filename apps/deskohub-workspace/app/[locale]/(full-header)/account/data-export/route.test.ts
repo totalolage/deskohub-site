@@ -2,6 +2,11 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { unzipSync } from "fflate";
+import {
+  accountDataExportManifestPath,
+  accountDataExportSections,
+} from "@/features/account/account-data-export-sections";
 import { AccountDataExportService } from "@/features/account/backend/account-data-export.service";
 import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
 import type { CustomerAccountSession } from "@/features/account/backend/customer-authentication.service";
@@ -26,32 +31,37 @@ const account = {
   dotyposCustomerId: "60411",
 } as const;
 
-const snapshotFixture = {
-  identity: {
-    accountId: session.accountId,
-    email: session.email,
-    emailVerified: true,
-    name: session.displayName,
-    accountCreatedAt: "2026-01-02T03:04:05.000Z",
-    accountUpdatedAt: "2026-02-03T04:05:06.000Z",
-    deletionRequested: false,
-  },
-  dotyposProfile: null,
-  reservations: [],
-  marketingConsent: null,
-  meta: {
-    schemaVersion: 1,
-    generatedAt: "2026-09-26T00:00:00.000Z",
-    scope: ["identity", "dotyposProfile", "reservations", "marketingConsent"],
-    assembledDuringRequest: true,
-    nonAtomicityNote: "note",
-  },
+const archiveFixture = {
+  entries: [
+    {
+      path: accountDataExportManifestPath,
+      content: {
+        schemaVersion: 2,
+        generatedAt: "2026-09-26T00:00:00.000Z",
+        sections: accountDataExportSections.map((section) => ({
+          path: section.path,
+          description: section.manifestDescription,
+        })),
+        assembledDuringRequest: true,
+        nonAtomicityNote: "note",
+        completenessNote: "note",
+      },
+    },
+    ...accountDataExportSections.map((section) => ({
+      path: section.path,
+      content: {},
+    })),
+  ],
 } as const;
 
 type RouteFakes = {
   readonly flagEnabled?: boolean | Error;
   readonly session?: CustomerAccountSession | null | Error;
   readonly build?: Error;
+  readonly archiveEntries?: {
+    readonly path: string;
+    readonly content: unknown;
+  }[];
 };
 
 const makeLayers = (fakes: RouteFakes) => {
@@ -77,16 +87,19 @@ const makeLayers = (fakes: RouteFakes) => {
     build: ({ session: buildSession }: { session: CustomerAccountSession }) =>
       Effect.suspend(() => {
         buildInvocations += 1;
-        return fakes.build
-          ? Effect.fail(fakes.build)
-          : Effect.succeed({
-              ...snapshotFixture,
-              identity: {
-                ...snapshotFixture.identity,
-                accountId: buildSession.accountId,
-                email: buildSession.email,
-              },
-            });
+        if (fakes.build) return Effect.fail(fakes.build);
+        const identityEntry = {
+          path: "identity.json",
+          content: { email: buildSession.email },
+        };
+        const entries = fakes.archiveEntries
+          ? fakes.archiveEntries
+          : archiveFixture.entries.map((entry) =>
+              entry.path === "identity.json"
+                ? identityEntry
+                : (entry as { path: string; content: unknown })
+            );
+        return Effect.succeed({ entries });
       }),
   } satisfies Partial<AccountDataExportService["Service"]>);
 
@@ -128,22 +141,39 @@ const resolverFailure = (
   );
 
 describe("account data export route", () => {
-  test("serves the allowlisted snapshot as a private JSON attachment", async () => {
+  test("serves the allowlisted archive as a private ZIP attachment whose entries match the manifest", async () => {
     const { response, buildWasInvoked } = await runRoute({});
     expect(response.status).toBe(200);
     expect(buildWasInvoked()).toBe(true);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(response.headers.get("content-type")).toBe(
-      "application/json; charset=utf-8"
+    expect(response.headers.get("content-type")).toBe("application/zip");
+    const disposition = response.headers.get("content-disposition");
+    expect(disposition?.startsWith("attachment;")).toBe(true);
+    expect(disposition).toContain(".zip");
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const unzipped = unzipSync(bytes);
+    const entryPaths = Object.keys(unzipped).sort();
+    expect(entryPaths).toEqual(
+      [
+        accountDataExportManifestPath,
+        ...accountDataExportSections.map((section) => section.path),
+      ].sort()
     );
-    expect(
-      response.headers.get("content-disposition")?.startsWith("attachment;")
-    ).toBe(true);
-    const body = (await response.json()) as {
-      readonly identity: { readonly email: string };
-    };
-    expect(body.identity.email).toBe(session.email);
+    // The ZIP carries exactly the manifest entries and nothing else, and the
+    // manifest itself lists the same section set.
+    const manifest = JSON.parse(
+      new TextDecoder().decode(unzipped[accountDataExportManifestPath]!)
+    ) as { sections: readonly { path: string }[] };
+    expect(manifest.sections.map((section) => section.path)).toEqual(
+      accountDataExportSections.map((section) => section.path)
+    );
+    // The delivered identity section is bound to the requesting session.
+    const identity = JSON.parse(
+      new TextDecoder().decode(unzipped["identity.json"]!)
+    ) as { email: string };
+    expect(identity.email).toBe(session.email);
   });
 
   test("serves each request from the session read at request time", async () => {
@@ -171,12 +201,18 @@ describe("account data export route", () => {
     fakes.session = secondSession;
     const second = await run();
 
-    expect(
-      ((await first.json()) as { identity: { email: string } }).identity.email
-    ).toBe(session.email);
-    expect(
-      ((await second.json()) as { identity: { email: string } }).identity.email
-    ).toBe(secondSession.email);
+    const firstIdentity = JSON.parse(
+      new TextDecoder().decode(
+        unzipSync(new Uint8Array(await first.arrayBuffer()))["identity.json"]!
+      )
+    ) as { email: string };
+    const secondIdentity = JSON.parse(
+      new TextDecoder().decode(
+        unzipSync(new Uint8Array(await second.arrayBuffer()))["identity.json"]!
+      )
+    ) as { email: string };
+    expect(firstIdentity.email).toBe(session.email);
+    expect(secondIdentity.email).toBe(secondSession.email);
   });
 
   test("fails closed with 404 and never builds a snapshot when the flag is disabled", async () => {
@@ -237,5 +273,34 @@ describe("account data export route", () => {
     const body = await response.text();
     expect(body).toBe(unavailableBody);
     expect(body).not.toContain("identity");
+  });
+
+  test("fails closed with 500 and serves no archive when the archive exceeds the size bound", async () => {
+    const { response } = await runRoute({
+      archiveEntries: [
+        {
+          path: accountDataExportManifestPath,
+          content: { oversized: true },
+        },
+        {
+          path: "workspace-reservations.json",
+          content: { filler: "x".repeat(9 * 1024 * 1024) },
+        },
+      ],
+    });
+    expect(response.status).toBe(500);
+    const body = await response.text();
+    expect(body).toBe(unavailableBody);
+    expect(response.headers.get("content-type")).toBe(
+      "application/json; charset=utf-8"
+    );
+  });
+
+  test("fails closed with 500 when an entry path is outside the fixed archive names", async () => {
+    const { response } = await runRoute({
+      archiveEntries: [{ path: "/absolute-escape.json", content: {} }],
+    });
+    expect(response.status).toBe(500);
+    expect(await response.text()).toBe(unavailableBody);
   });
 });
