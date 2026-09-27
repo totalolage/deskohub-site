@@ -871,154 +871,180 @@ export class PaymentLifecycleRepository extends Context.Service<
         }) {
           const terminalAt = Temporal.Now.instant();
 
-          return yield* db.transaction(
-            Effect.fn(function* (tx) {
-              // Terminal-replay serialization: a deployed late-payment
-              // settlement locks recovery row → reservation → attempt. A
-              // matching-terminal replay that locked the attempt first would
-              // invert that order into a mixed-version deadlock, so anchor on
-              // any recovery row for this attempt BEFORE the attempt lock.
-              // With no recovery row this select locks nothing and the
-              // attempt-first payment order below is unchanged.
-              // Lock mode: FOR NO KEY UPDATE — the replay never writes the
-              // recovery row, so this is the weakest mode that still
-              // serializes against the settlement's FOR UPDATE.
-              yield* tx
-                .select({
-                  paymentAttemptId: latePaymentRecoveries.paymentAttemptId,
-                })
-                .from(latePaymentRecoveries)
-                .where(eq(latePaymentRecoveries.paymentAttemptId, input.id))
-                .limit(1)
-                .for("no key update");
+          while (true) {
+            const result = yield* db.transaction(
+              Effect.fn(function* (tx) {
+                // Terminal-replay serialization: a deployed late-payment
+                // settlement locks recovery row → reservation → attempt. A
+                // matching-terminal replay that locked the attempt first would
+                // invert that order into a mixed-version deadlock, so anchor on
+                // any recovery row for this attempt BEFORE the attempt lock.
+                // With no recovery row this select locks nothing and the
+                // attempt-first payment order below is unchanged.
+                // Lock mode: FOR NO KEY UPDATE — the replay never writes the
+                // recovery row, so this is the weakest mode that still
+                // serializes against the settlement's FOR UPDATE.
+                const [recoveryAnchor] = yield* tx
+                  .select({
+                    paymentAttemptId: latePaymentRecoveries.paymentAttemptId,
+                  })
+                  .from(latePaymentRecoveries)
+                  .where(eq(latePaymentRecoveries.paymentAttemptId, input.id))
+                  .limit(1)
+                  .for("no key update");
 
-              // Lock-order contract: payment attempt → reservation → order.
-              // The attempt-first anchor matches the deployed old writers, so
-              // old-new overlap during a rolling deploy serializes instead of
-              // inverting into a deadlock.
-              // Lock mode: same as markPaid — the leading UPDATE writes only
-              // non-key attempt columns, so Postgres takes a NO KEY
-              // UPDATE-strength row lock and serializes against old and new
-              // payment writers before the reservation lock.
-              const [attempt] = yield* tx
-                .update(paymentAttempts)
-                .set({
-                  state: input.state,
-                  failureCode: input.failureCode,
-                  lastWebhookEventId: input.webhookEventId,
-                  lastProviderOperationId: input.providerOperationId,
-                  lastProviderStatus: input.providerStatus,
-                  updatedAt: terminalAt,
-                })
-                .where(
-                  and(
-                    eq(paymentAttempts.id, input.id),
-                    eq(
-                      paymentAttempts.workspaceReservationId,
-                      input.workspaceReservationId
-                    ),
-                    inArray(paymentAttempts.state, [
-                      "created",
-                      "pending",
-                      input.state,
-                    ])
+                // Lock-order contract: payment attempt → reservation → order.
+                // The attempt-first anchor matches the deployed old writers, so
+                // old-new overlap during a rolling deploy serializes instead of
+                // inverting into a deadlock.
+                // Lock mode: same as markPaid — the leading UPDATE writes only
+                // non-key attempt columns, so Postgres takes a NO KEY
+                // UPDATE-strength row lock and serializes against old and new
+                // payment writers before the reservation lock.
+                const [attempt] = yield* tx
+                  .update(paymentAttempts)
+                  .set({
+                    state: input.state,
+                    failureCode: input.failureCode,
+                    lastWebhookEventId: input.webhookEventId,
+                    lastProviderOperationId: input.providerOperationId,
+                    lastProviderStatus: input.providerStatus,
+                    updatedAt: terminalAt,
+                  })
+                  .where(
+                    and(
+                      eq(paymentAttempts.id, input.id),
+                      eq(
+                        paymentAttempts.workspaceReservationId,
+                        input.workspaceReservationId
+                      ),
+                      inArray(paymentAttempts.state, [
+                        "created",
+                        "pending",
+                        input.state,
+                      ])
+                    )
                   )
-                )
-                .returning();
+                  .returning();
 
-              if (!attempt) {
+                if (!attempt) {
+                  return yield* lifecycleStateError(
+                    "markTerminal",
+                    { type: "paymentAttemptId", id: input.id },
+                    "Only a non-terminal or matching terminal attempt can mark a reservation terminal."
+                  );
+                }
+
+                // Insert race: when the anchor above found no recovery row, a
+                // recovery start could still have committed between the anchor
+                // and the attempt lock we now hold. Recheck WITHOUT taking a
+                // recovery lock while holding the attempt: if a row appeared,
+                // roll back and restart so the next iteration's anchor acquires
+                // the recovery lock first (same retry shape as
+                // completeInternalPayment). With the recovery row anchored, the
+                // reservation work below serializes after old settlement
+                // instead of inverting into a deadlock.
+                if (!recoveryAnchor) {
+                  const [appeared] = yield* tx
+                    .select({
+                      paymentAttemptId: latePaymentRecoveries.paymentAttemptId,
+                    })
+                    .from(latePaymentRecoveries)
+                    .where(eq(latePaymentRecoveries.paymentAttemptId, input.id))
+                    .limit(1);
+                  if (appeared) {
+                    return { retry: true as const };
+                  }
+                }
+
+                // The attempt row is locked, so these conditions cannot change
+                // underneath us between the check and the update.
+                const [locked] = yield* tx
+                  .select()
+                  .from(workspaceReservations)
+                  .where(
+                    eq(workspaceReservations.id, input.workspaceReservationId)
+                  )
+                  .limit(1)
+                  .for("update");
+
+                // The row is transaction-locked, so these conditions cannot
+                // change underneath us between the check and the update.
+                if (
+                  locked?.reservationState === "held" &&
+                  locked.paymentState === "pending" &&
+                  locked.activePaymentAttemptId === input.id
+                ) {
+                  const [reservation] = yield* tx
+                    .update(workspaceReservations)
+                    .set({
+                      paymentState: input.state,
+                      failureCode: input.failureCode,
+                      updatedAt: terminalAt,
+                    })
+                    .where(eq(workspaceReservations.id, locked.id))
+                    .returning();
+
+                  yield* ensureReservationOrder({
+                    tx,
+                    reservation: reservation!,
+                  });
+                  yield* relinkLegacyAttemptOrder(tx, {
+                    id: input.id,
+                    workspaceReservationId: input.workspaceReservationId,
+                  });
+                  yield* releaseCodeClaim(
+                    tx,
+                    input.id,
+                    terminalAt,
+                    input.failureCode
+                  );
+                  return {
+                    attempt: toPaymentAttempt(attempt),
+                    changed: true,
+                    timestamp: reservation!.updatedAt,
+                  };
+                }
+
+                // Idempotent replay: the locked authoritative row is also the
+                // repair point, so a missing or stale order mirror left by an
+                // old writer is repaired here too, before reporting that
+                // nothing changed.
+                if (
+                  locked &&
+                  locked.paymentState === input.state &&
+                  locked.activePaymentAttemptId === input.id
+                ) {
+                  yield* ensureReservationOrder({ tx, reservation: locked });
+
+                  yield* relinkLegacyAttemptOrder(tx, {
+                    id: input.id,
+                    workspaceReservationId: input.workspaceReservationId,
+                  });
+
+                  yield* releaseCodeClaim(
+                    tx,
+                    input.id,
+                    terminalAt,
+                    input.failureCode
+                  );
+                  return {
+                    attempt: toPaymentAttempt(attempt),
+                    changed: false,
+                    timestamp: locked.updatedAt,
+                  };
+                }
+
                 return yield* lifecycleStateError(
                   "markTerminal",
                   { type: "paymentAttemptId", id: input.id },
-                  "Only a non-terminal or matching terminal attempt can mark a reservation terminal."
+                  "Only the active pending attempt on a held reservation can mark payment terminal."
                 );
-              }
-
-              // The attempt row is locked, so these conditions cannot change
-              // underneath us between the check and the update.
-              const [locked] = yield* tx
-                .select()
-                .from(workspaceReservations)
-                .where(
-                  eq(workspaceReservations.id, input.workspaceReservationId)
-                )
-                .limit(1)
-                .for("update");
-
-              // The row is transaction-locked, so these conditions cannot
-              // change underneath us between the check and the update.
-              if (
-                locked?.reservationState === "held" &&
-                locked.paymentState === "pending" &&
-                locked.activePaymentAttemptId === input.id
-              ) {
-                const [reservation] = yield* tx
-                  .update(workspaceReservations)
-                  .set({
-                    paymentState: input.state,
-                    failureCode: input.failureCode,
-                    updatedAt: terminalAt,
-                  })
-                  .where(eq(workspaceReservations.id, locked.id))
-                  .returning();
-
-                yield* ensureReservationOrder({
-                  tx,
-                  reservation: reservation!,
-                });
-                yield* relinkLegacyAttemptOrder(tx, {
-                  id: input.id,
-                  workspaceReservationId: input.workspaceReservationId,
-                });
-                yield* releaseCodeClaim(
-                  tx,
-                  input.id,
-                  terminalAt,
-                  input.failureCode
-                );
-                return {
-                  attempt: toPaymentAttempt(attempt),
-                  changed: true,
-                  timestamp: reservation!.updatedAt,
-                };
-              }
-
-              // Idempotent replay: the locked authoritative row is also the
-              // repair point, so a missing or stale order mirror left by an
-              // old writer is repaired here too, before reporting that
-              // nothing changed.
-              if (
-                locked &&
-                locked.paymentState === input.state &&
-                locked.activePaymentAttemptId === input.id
-              ) {
-                yield* ensureReservationOrder({ tx, reservation: locked });
-
-                yield* relinkLegacyAttemptOrder(tx, {
-                  id: input.id,
-                  workspaceReservationId: input.workspaceReservationId,
-                });
-
-                yield* releaseCodeClaim(
-                  tx,
-                  input.id,
-                  terminalAt,
-                  input.failureCode
-                );
-                return {
-                  attempt: toPaymentAttempt(attempt),
-                  changed: false,
-                  timestamp: locked.updatedAt,
-                };
-              }
-
-              return yield* lifecycleStateError(
-                "markTerminal",
-                { type: "paymentAttemptId", id: input.id },
-                "Only the active pending attempt on a held reservation can mark payment terminal."
-              );
-            })
-          );
+              })
+            );
+            if ("retry" in result) continue;
+            return result;
+          }
         }
       );
 

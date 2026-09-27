@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { inspect } from "node:util";
 import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
@@ -1198,7 +1199,9 @@ describe.skipIf(!postgresDatabase)(
 
         // The replay can no longer terminal a paid attempt; it must fail its
         // state guard instead of the whole settlement deadlocking.
+        console.error("CHK awaiting-replay", Date.now());
         const [replayResult] = await Promise.allSettled([replay]);
+        console.error("CHK replay", replayResult.status, Date.now());
         expect(replayResult.status).toBe("rejected");
       } finally {
         await old.query("rollback").catch(() => {});
@@ -1237,5 +1240,211 @@ describe.skipIf(!postgresDatabase)(
       expect(attempt!.state).toBe("paid");
       expect(recovery!.state).toBe("recovered");
     });
+
+    test("terminal replay retries when a recovery row appears before its attempt lock", async () => {
+      const fixture = await insertLegacyTerminalWithoutOrder();
+      const lifecycle = await makeLifecycleRepository();
+      const verifiedPaidAt = Temporal.Now.instant();
+
+      // An EXCLUSIVE table lock parks the replay's attempt UPDATE at
+      // statement start — before any row lock and before the recheck —
+      // widening the anchor-to-attempt-lock window so the race is
+      // deterministic. EXCLUSIVE (not SHARE) also keeps old settlement's
+      // attempt FOR UPDATE queued behind the replay, mirroring production
+      // where the replay's UPDATE wins the tuple before the paused
+      // settlement resumes. A plain lock cannot pause a statement, so the
+      // anchor really has run with no recovery row visible.
+      const gate = await postgres.pool.connect();
+      const old = await postgres.pool.connect();
+      let replay: Promise<unknown> | undefined;
+      let settlementError: unknown;
+      try {
+        await gate.query("begin");
+        await gate.query("lock table payment_attempts in exclusive mode");
+
+        replay = Effect.runPromise(
+          lifecycle.markTerminal({
+            id: fixture.attemptId as never,
+            workspaceReservationId: fixture.id,
+            state: "failed",
+            failureCode: "provider_declined",
+          })
+        );
+
+        const updateDeadline = Date.now() + 5_000;
+        let replayParked = false;
+        while (Date.now() < updateDeadline) {
+          const { rows } = await postgres.pool.query(
+            `select 1 from pg_stat_activity
+              where pid <> pg_backend_pid()
+                and wait_event_type = 'Lock'
+                and query ilike 'update "payment_attempts"%'
+              limit 1`
+          );
+          if (rows.length > 0) {
+            replayParked = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        expect(replayParked).toBe(true);
+
+        // The replay's empty anchor lookup has committed its snapshot. A
+        // recovery start now publishes and claims its row (the committed
+        // effect of start on this attempt), entirely inside the widened
+        // window. The row is committed by a separate connection because a
+        // table lock that parks the replay's UPDATE necessarily also parks
+        // start's own relink UPDATE; the real start() path is exercised end
+        // to end in the late-payment-recovery suites. The FK check is
+        // skipped on this session so the insert does not need a KEY SHARE
+        // on the exclusively locked payment_attempts row.
+        const publisher = await postgres.pool.connect();
+        try {
+          await publisher.query("set session_replication_role = replica");
+          await publisher.query(
+            `insert into late_payment_recoveries
+               (payment_attempt_id, workspace_reservation_id, webhook_event_id,
+                provider_status, state, original_dotypos_reservation_id,
+                verified_paid_at, claimed_at)
+             values ($1, $2, $3, 'APPROVED', 'processing', $4, $5, $5)`,
+            [
+              fixture.attemptId,
+              fixture.id,
+              `event-${crypto.randomUUID()}`,
+              fixture.dotyposReservationId,
+              verifiedPaidAt.toString(),
+            ]
+          );
+        } finally {
+          publisher.release();
+        }
+
+        // Deployed old settlement: recovery row → reservation, paused
+        // before its attempt FOR UPDATE.
+        await old.query("begin");
+        await old.query(
+          "select payment_attempt_id from late_payment_recoveries where payment_attempt_id = $1 for update",
+          [fixture.attemptId]
+        );
+        await old.query(
+          "select id from workspace_reservations where id = $1 for update",
+          [fixture.id]
+        );
+
+        // Resume the replay. Fixed code: the attempt UPDATE matches, the
+        // recheck sees the committed recovery row, the transaction retries,
+        // and the second anchor waits on old settlement's recovery-row
+        // lock. Unfixed code: the replay keeps the attempt tuple and waits
+        // for the reservation old settlement holds — a deadlock old
+        // settlement's attempt lock then completes. Wait for whichever
+        // parked wait appears so the next statement is issued only after
+        // the replay has committed to its path.
+        await gate.query("commit");
+
+        const parkedDeadline = Date.now() + 5_000;
+        let replayParkedOnLock = false;
+        while (Date.now() < parkedDeadline) {
+          const { rows } = await postgres.pool.query(
+            `select 1 from pg_stat_activity
+              where pid <> pg_backend_pid()
+                and wait_event_type = 'Lock'
+                and (
+                  query ilike 'update "payment_attempts"%'
+                  or query ilike '%from "workspace_reservations"%for update%'
+                  or query ilike '%from "late_payment_recoveries"%'
+                )
+              limit 1`
+          );
+          if (rows.length > 0) {
+            replayParkedOnLock = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        expect(replayParkedOnLock).toBe(true);
+
+        try {
+          await old.query(
+            "select id from payment_attempts where id = $1 for update",
+            [fixture.attemptId]
+          );
+          await old.query(
+            "update payment_attempts set state = 'paid', failure_code = null, updated_at = $2 where id = $1",
+            [fixture.attemptId, verifiedPaidAt]
+          );
+          await old.query(
+            "update workspace_reservations set payment_state = 'paid', paid_at = $2, failure_code = null, updated_at = $2 where id = $1",
+            [fixture.id, verifiedPaidAt]
+          );
+          await old.query(
+            `update late_payment_recoveries
+                set state = 'recovered',
+                    recovered_dotypos_reservation_id = original_dotypos_reservation_id,
+                    completed_at = $2,
+                    updated_at = $2
+              where payment_attempt_id = $1`,
+            [fixture.attemptId, verifiedPaidAt]
+          );
+          await old.query("commit");
+        } catch (cause) {
+          settlementError = cause;
+        }
+
+        const [replayResult] = await Promise.allSettled([replay]);
+        // Neither side of the deploy may lose its write to a deadlock abort.
+        expect(settlementError).toBeUndefined();
+        const renderedSettlement =
+          settlementError === undefined
+            ? ""
+            : inspect(settlementError, { depth: 8 });
+        expect(/40P01|deadlock/i.test(renderedSettlement)).toBe(false);
+
+        // The settled paid attempt refuses the terminal replay through its
+        // state guard.
+        expect(replayResult.status).toBe("rejected");
+        if (replayResult.status === "rejected") {
+          const rendered = inspect(replayResult.reason, { depth: 8 });
+          expect(/40P01|deadlock/i.test(rendered)).toBe(false);
+          expect(rendered).toContain("non-terminal");
+        }
+      } finally {
+        await gate.query("rollback").catch(() => {});
+        await old.query("rollback").catch(() => {});
+        old.release();
+        gate.release();
+        if (replay) await Promise.allSettled([replay]);
+      }
+
+      const [reservation] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, fixture.id))
+          .limit(1)
+      );
+      const [attempt] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(paymentAttempts)
+          .where(eq(paymentAttempts.id, fixture.attemptId as never))
+          .limit(1)
+      );
+      const [recoveryRow] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(latePaymentRecoveries)
+          .where(
+            eq(
+              latePaymentRecoveries.paymentAttemptId,
+              fixture.attemptId as never
+            )
+          )
+          .limit(1)
+      );
+      expect(reservation!.paymentState).toBe("paid");
+      expect(reservation!.paidAt).not.toBeNull();
+      expect(attempt!.state).toBe("paid");
+      expect(recoveryRow!.state).toBe("recovered");
+    }, 30_000);
   }
 );
