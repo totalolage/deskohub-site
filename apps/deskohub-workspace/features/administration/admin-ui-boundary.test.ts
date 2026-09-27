@@ -195,11 +195,19 @@ describe("administration UI boundaries", () => {
 
   test("renders the reusable export action on both reservation variants", async () => {
     const page = await readWorkspaceFile("app/admin/reservations/page.tsx");
+    const exportAction = await readWorkspaceFile(
+      "features/administration/reservation-export-action.tsx"
+    );
 
-    expect(
-      (page.match(/AdministrationTableExportAction/g) ?? []).length
-    ).toBeGreaterThanOrEqual(2);
-    expect(page).toContain("getAdministrationReservationExportHref");
+    expect(page).toContain("AdministrationStreamedReservationExportAction");
+    expect(page).toContain(
+      "<AdministrationStreamedReservationExportAction input={input} />"
+    );
+    expect(page).toContain(
+      "<AdministrationReservationExportAction input={input} />"
+    );
+    expect(exportAction).toContain("AdministrationTableExportAction");
+    expect(exportAction).toContain("getAdministrationReservationExportHref");
 
     const exportHrefBuilder = await readWorkspaceFile(
       "features/administration/reservation-export.ts"

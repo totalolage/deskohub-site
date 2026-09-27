@@ -12,6 +12,7 @@ import {
   type AdministrationReservationListInput,
   AdministrationService,
   getAdministrationReservationOverview,
+  ReservationExportDataUnavailableError,
 } from "./administration.service";
 import { PaymentAdministrationServiceMock } from "./payment-administration.service.mock";
 import { PostHogReservationHistory } from "./posthog-reservation-history";
@@ -1811,9 +1812,9 @@ describe("AdministrationService", () => {
 });
 
 describe("AdministrationService exportReservations", () => {
-  const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
+  const baseInstant = Temporal.Instant.from("2026-08-10T08:00:00Z");
 
-  const makeRow = (index: number) => ({
+  const makeRow = (index: number, createdAt = baseInstant) => ({
     id: `workspace-reservation-${String(index).padStart(2, "0")}`,
     dotyposCustomerId: "dotypos-customer",
     dotyposReservationId: `dotypos-reservation-${String(index).padStart(2, "0")}`,
@@ -1822,16 +1823,24 @@ describe("AdministrationService exportReservations", () => {
     fulfillmentState: "fulfilled",
     reservationPurpose: "business",
     reservationDetails: { kind: "meeting-room" },
-    reservationCreatedAt: instant,
-    reservationConfirmedAt: instant,
+    reservationCreatedAt: createdAt,
+    reservationConfirmedAt: createdAt,
     reservationCancelledAt: null,
     reservationHoldExpiredAt: null,
-    paidAt: instant,
-    fulfilledAt: instant,
+    paidAt: createdAt,
+    fulfilledAt: createdAt,
     fulfillmentFailedAt: null,
-    createdAt: instant,
-    updatedAt: instant,
+    createdAt,
+    updatedAt: createdAt,
   });
+
+  const providerFailure = (
+    error = new ExternalAPIError({
+      operation: "listReservations",
+      service: "Dotypos",
+      statusCode: 503,
+    })
+  ) => Effect.fail(error);
 
   const runExport = (
     input: AdministrationReservationListInput,
@@ -1855,14 +1864,7 @@ describe("AdministrationService exportReservations", () => {
               DotyposServiceMock({
                 getCustomers: () =>
                   Effect.succeed([{ id: "dotypos-customer" }]),
-                listReservations: () =>
-                  Effect.fail(
-                    new ExternalAPIError({
-                      operation: "listReservations",
-                      service: "Dotypos",
-                      statusCode: 503,
-                    })
-                  ),
+                listReservations: () => Effect.succeed([]),
                 ...options.dotypos,
               }),
               Layer.succeed(
@@ -1879,6 +1881,12 @@ describe("AdministrationService exportReservations", () => {
       Effect.runPromise
     );
 
+  const rejectionOf = (promise: Promise<unknown>) =>
+    promise.then(
+      () => null,
+      (cause: unknown) => cause
+    );
+
   test("exports every matching reservation without pagination", async () => {
     const rows = Array.from({ length: 30 }, (_, index) => makeRow(index));
     let selectCall = 0;
@@ -1892,6 +1900,51 @@ describe("AdministrationService exportReservations", () => {
     expect(
       result.every((item) => item.id.startsWith("workspace-reservation"))
     ).toBe(true);
+  });
+
+  test("exports all filtered rows without applying the requested page", async () => {
+    const rows = Array.from({ length: 30 }, (_, index) => makeRow(index));
+    const providerReservations = rows.map((row) => ({
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: "dotypos-customer",
+      id: row.dotyposReservationId,
+      startDate: "2026-08-10T09:00:00Z",
+      endDate: "2026-08-10T09:30:00Z",
+      seats: "1",
+      status: "NEW" as const,
+    }));
+    const captured: CapturedSelect = { fields: {}, orderBy: [], where: [] };
+    const database = {
+      select: () => makeCapturingQuery(rows, captured),
+    };
+
+    const result = await runExport(
+      {
+        customerId: "dotypos-customer",
+        direction: "asc",
+        from: "2026-08-10",
+        page: 7,
+        sort: "status",
+        status: "complete",
+        to: "2026-08-10",
+        type: "meeting-room",
+      },
+      {
+        db: database,
+        dotypos: {
+          listReservations: () => Effect.succeed(providerReservations),
+        },
+      }
+    );
+
+    expect(result).toHaveLength(30);
+    expect(result[0]?.id).toBe("workspace-reservation-00");
+    const where = compileSql(captured.where[0]!);
+    expect(where).toContain("dotypos_customer_id");
+    expect(where).toContain("reservation_details");
+    expect(where).toContain("dotypos_reservation_id");
+    expect(where).toContain("fulfilled");
   });
 
   test("orders the export by provider date order across all rows", async () => {
@@ -1934,59 +1987,273 @@ describe("AdministrationService exportReservations", () => {
   });
 
   test("falls back to created ordering for date sort when provider order is unavailable", async () => {
-    const rows = [makeRow(0)];
+    const rows = [makeRow(1), makeRow(0), makeRow(2)];
+    const captured: CapturedSelect = { fields: {}, orderBy: [], where: [] };
     let selectCall = 0;
     const database = {
-      select: () => makeQuery(selectCall++ === 0 ? rows : []),
+      select: () => {
+        const query = makeCapturingQuery(
+          selectCall === 0 ? rows : [],
+          captured
+        );
+        selectCall += 1;
+        return query;
+      },
     };
 
     const result = await runExport(
-      { direction: "asc", sort: "date" },
+      { direction: "desc", sort: "date" },
       {
         db: database,
         dotypos: {
-          listReservations: () =>
-            Effect.fail(
-              new ExternalAPIError({
-                operation: "listReservations",
-                service: "Dotypos",
-                statusCode: 503,
-              })
-            ),
+          listReservations: (input) =>
+            "ids" in input ? Effect.succeed([]) : providerFailure(),
         },
       }
     );
 
-    expect(result).toHaveLength(1);
-    expect(result[0]?.purpose).toBe("business");
+    expect(result).toHaveLength(3);
+    expect(captured.orderBy.length).toBeGreaterThanOrEqual(1);
+    const [primaryOrder, tieBreakerOrder] = captured.orderBy[0] ?? [];
+    expect(compileSql(primaryOrder!)).toContain("created_at");
+    expect(compileSql(primaryOrder!)).toContain("desc");
+    expect(compileSql(tieBreakerOrder!)).toContain("id");
+    expect(compileSql(tieBreakerOrder!)).toContain("desc");
+  });
+
+  test("falls back to ascending created ordering for ascending date sort", async () => {
+    const rows = [makeRow(0)];
+    const captured: CapturedSelect = { fields: {}, orderBy: [], where: [] };
+    let selectCall = 0;
+    const database = {
+      select: () => {
+        const query = makeCapturingQuery(
+          selectCall === 0 ? rows : [],
+          captured
+        );
+        selectCall += 1;
+        return query;
+      },
+    };
+
+    await runExport(
+      { direction: "asc", sort: "date" },
+      {
+        db: database,
+        dotypos: {
+          listReservations: (input) =>
+            "ids" in input ? Effect.succeed([]) : providerFailure(),
+        },
+      }
+    );
+
+    expect(compileSql(captured.orderBy[0]![0]!)).toContain(" asc");
   });
 
   test("fails closed when the date filter provider map is unavailable", async () => {
     const database = { select: () => makeQuery([]) };
 
-    const error = await runExport(
-      { from: "2026-08-06" },
-      {
-        db: database,
-        dotypos: {
-          listReservations: () =>
-            Effect.fail(
-              new ExternalAPIError({
-                operation: "listReservations",
-                service: "Dotypos",
-                statusCode: 503,
-              })
-            ),
-        },
-      }
-    ).then(
-      () => null,
-      (cause: unknown) => cause
+    const error = await rejectionOf(
+      runExport(
+        { from: "2026-08-06" },
+        {
+          db: database,
+          dotypos: { listReservations: () => providerFailure() },
+        }
+      )
     );
 
-    expect(error).not.toBeNull();
-    expect((error as { _tag?: string })._tag).toBe(
+    expect(error).toHaveProperty(
+      "_tag",
       "ReservationExportRangeUnavailableError"
     );
+  });
+
+  test("fails closed when live booking details fail during export", async () => {
+    const rows = [makeRow(0)];
+    const providerError = new ExternalAPIError({
+      operation: "listReservations",
+      service: "Dotypos",
+      statusCode: 503,
+    });
+    let selectCall = 0;
+    const database = {
+      select: () => makeQuery(selectCall++ === 0 ? rows : []),
+    };
+
+    const error = await rejectionOf(
+      runExport(
+        {},
+        {
+          db: database,
+          dotypos: {
+            listReservations: (input) =>
+              "ids" in input
+                ? providerFailure(providerError)
+                : Effect.succeed([]),
+          },
+        }
+      )
+    );
+
+    expect(error).toBeInstanceOf(ReservationExportDataUnavailableError);
+    expect((error as ReservationExportDataUnavailableError).cause).toBe(
+      providerError
+    );
+  });
+
+  test("fails closed and preserves the cause when batch customer details fail during export", async () => {
+    const rows = [makeRow(0)];
+    const providerError = new ExternalAPIError({
+      operation: "getCustomers",
+      service: "Dotypos",
+      statusCode: 503,
+    });
+    let selectCall = 0;
+    const database = {
+      select: () => makeQuery(selectCall++ === 0 ? rows : []),
+    };
+
+    const error = await rejectionOf(
+      runExport(
+        {},
+        {
+          db: database,
+          dotypos: {
+            getCustomers: () => providerFailure(providerError),
+          },
+        }
+      )
+    );
+
+    expect(error).toBeInstanceOf(ReservationExportDataUnavailableError);
+    expect((error as ReservationExportDataUnavailableError).cause).toBe(
+      providerError
+    );
+  });
+
+  test("fails closed and preserves the cause when an individual customer lookup fails during export", async () => {
+    const rows = [makeRow(0)];
+    const providerError = new ExternalAPIError({
+      operation: "getCustomer",
+      service: "Dotypos",
+      statusCode: 503,
+    });
+    let selectCall = 0;
+    const database = {
+      select: () => makeQuery(selectCall++ === 0 ? rows : []),
+    };
+
+    const error = await rejectionOf(
+      runExport(
+        {},
+        {
+          db: database,
+          dotypos: {
+            getCustomers: () => Effect.succeed([]),
+            getCustomer: () => providerFailure(providerError),
+          },
+        }
+      )
+    );
+
+    expect(error).toBeInstanceOf(ReservationExportDataUnavailableError);
+    expect((error as ReservationExportDataUnavailableError).cause).toBe(
+      providerError
+    );
+  });
+
+  test("keeps the list best-effort when live booking details fail", async () => {
+    const rows = [makeRow(0)];
+    let selectCall = 0;
+    const database = {
+      select: () => {
+        const call = selectCall++;
+        if (call === 0) return makeQuery([{ value: 1 }]);
+        if (call === 1) return makeQuery(rows);
+        return makeQuery([]);
+      },
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations({ sort: "created" });
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({
+                getCustomers: () =>
+                  Effect.succeed([{ id: "dotypos-customer" }]),
+                listReservations: (input) =>
+                  "ids" in input ? providerFailure() : Effect.succeed([]),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result.items).toHaveLength(1);
+    expect(result.dateFilterUnavailable).toBe(false);
+  });
+
+  test("keeps the list best-effort when live customer details fail", async () => {
+    const rows = [makeRow(0)];
+    let selectCall = 0;
+    const database = {
+      select: () => {
+        const call = selectCall++;
+        if (call === 0) return makeQuery([{ value: 1 }]);
+        if (call === 1) return makeQuery(rows);
+        return makeQuery([]);
+      },
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations({ sort: "created" });
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({
+                getCustomers: () => providerFailure(),
+                getCustomer: () => providerFailure(),
+                listReservations: () => Effect.succeed([]),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result.items).toHaveLength(1);
   });
 });

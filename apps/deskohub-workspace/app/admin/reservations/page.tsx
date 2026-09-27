@@ -8,7 +8,6 @@ import {
   AdministrationFilterSelect,
   AdministrationPage,
   AdministrationTableCount,
-  AdministrationTableExportAction,
   AdministrationTableToolbar,
   Pagination,
   ReservationTable,
@@ -28,7 +27,10 @@ import {
   type AdministrationReservationDateRange,
   getAdministrationReservationDateShortcuts,
 } from "@/features/administration/reservation-date-range";
-import { getAdministrationReservationExportHref } from "@/features/administration/reservation-export";
+import {
+  AdministrationReservationExportAction,
+  AdministrationStreamedReservationExportAction,
+} from "@/features/administration/reservation-export-action";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { Button } from "@/shared/components/ui/button";
 
@@ -104,12 +106,7 @@ async function ReservationExportAction({
 }: {
   readonly input: Promise<ReservationsData["input"]>;
 }) {
-  return (
-    <AdministrationTableExportAction
-      href={getAdministrationReservationExportHref(await input)}
-      label="Export CSV"
-    />
-  );
+  return <AdministrationStreamedReservationExportAction input={input} />;
 }
 
 async function ReservationResultsContent({
@@ -137,12 +134,7 @@ export async function ReservationsAdministrationContent({
         filters={<ReservationFilters input={input} />}
         itemLabel="reservation"
         search={<ReservationLookup variant="toolbar" />}
-        actions={
-          <AdministrationTableExportAction
-            href={getAdministrationReservationExportHref(input)}
-            label="Export CSV"
-          />
-        }
+        actions={<AdministrationReservationExportAction input={input} />}
       />
       <ReservationResults input={input} result={result} />
     </>

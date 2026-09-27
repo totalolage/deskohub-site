@@ -76,7 +76,7 @@ From the reservations view, an administrator can download every reservation that
 
 The file contains the same reservation details the table shows: the reservation identifier, booking date, business status, customer name, reservation family, creation time, and the latest payment state with its amount. Secrets, payment security values, and internal provider records are never included.
 
-The download is available only to authenticated administrators. If current booking dates are temporarily unavailable, a date-filtered or date-sorted export fails with a clear message instead of quietly exporting a different or broader set of reservations, and an invalid filter value is refused rather than silently ignored.
+The download is available only to authenticated administrators. If current booking dates are temporarily unavailable, a date-filtered export fails with a clear message instead of quietly exporting a different or broader set of reservations; an export that only sorts by booking date falls back to creation-time ordering. An invalid filter value is refused rather than silently ignored.
 
 ## History limitations
 
