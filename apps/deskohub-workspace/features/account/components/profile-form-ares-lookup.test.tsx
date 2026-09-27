@@ -24,7 +24,11 @@ const completeCustomerProfile = mock(() =>
 const updateCustomerProfile = mock(() =>
   Promise.resolve({ data: { status: "updated" } })
 );
-type LookupOutcome = { readonly data?: AresBusinessLookupResult };
+type LookupOutcome = {
+  readonly data?: AresBusinessLookupResult;
+  readonly serverError?: string;
+  readonly validationErrors?: unknown;
+};
 
 const lookupAresBusiness = mock(
   (): Promise<LookupOutcome> =>
@@ -502,10 +506,9 @@ describe("ProfileForm ARES business lookup", () => {
     "surfaces the resolved server error in the live region for %s",
     async (locale) => {
       const view = renderForm({ locale });
+      const serverErrorMessage = m.accountSessionExpired({}, { locale });
       lookupAresBusiness.mockImplementationOnce(() =>
-        Promise.resolve({
-          serverError: "Your session has expired. Please sign in again.",
-        })
+        Promise.resolve({ serverError: serverErrorMessage })
       );
 
       await act(async () => {
@@ -517,9 +520,7 @@ describe("ProfileForm ARES business lookup", () => {
         await Promise.resolve();
       });
 
-      expect(statusRegion(view).textContent).toBe(
-        "Your session has expired. Please sign in again."
-      );
+      expect(statusRegion(view).textContent).toBe(serverErrorMessage);
       expect(
         view.queryByRole("button", {
           name: m.accountAresLookupRetry({}, { locale }),
@@ -530,9 +531,7 @@ describe("ProfileForm ARES business lookup", () => {
 
   test("does not surface a superseded server error after the company ID changes mid-flight", async () => {
     const view = renderForm();
-    let resolveLookup!: (
-      outcome: LookupOutcome | { serverError: string }
-    ) => void;
+    let resolveLookup!: (outcome: LookupOutcome) => void;
     lookupAresBusiness.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
