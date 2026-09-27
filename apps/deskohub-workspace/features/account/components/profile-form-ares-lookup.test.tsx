@@ -109,9 +109,8 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
     action: (input: never) => Promise<unknown>,
     options?: {
       readonly onSuccess?: (args: { readonly data?: unknown }) => void;
-      readonly onTransportError?: (args: {
-        readonly error: unknown;
-      }) => void;
+      readonly onError?: (args: { readonly error: unknown }) => void;
+      readonly onTransportError?: (args: { readonly error: unknown }) => void;
     }
   ) => {
     const [result, setResult] = React.useState<ActionResult>({});
@@ -122,10 +121,14 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
         .then((outcome) => {
           setExecuting(false);
           setResult((outcome ?? {}) as ActionResult);
-          const serverError = (outcome as { serverError?: string })?.serverError;
+          const serverError = (outcome as { serverError?: string })
+            ?.serverError;
           const validationErrors = (outcome as { validationErrors?: unknown })
             ?.validationErrors;
-          if (serverError || validationErrors) return;
+          if (serverError || validationErrors) {
+            options?.onError?.({ error: outcome });
+            return;
+          }
           options?.onSuccess?.({
             data: (outcome as { data?: unknown })?.data,
           });
@@ -473,7 +476,9 @@ describe("ProfileForm ARES business lookup", () => {
       fireEvent.input(companyIdInput(view), {
         target: { value: "27082440" },
       });
-      resolveLookup({ data: { status: "found", company: { ...foundCompany } } });
+      resolveLookup({
+        data: { status: "found", company: { ...foundCompany } },
+      });
       await Promise.resolve();
     });
 
@@ -492,6 +497,109 @@ describe("ProfileForm ARES business lookup", () => {
       })
     ).toBeNull();
   });
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "surfaces the resolved server error in the live region for %s",
+    async (locale) => {
+      const view = renderForm({ locale });
+      lookupAresBusiness.mockImplementationOnce(() =>
+        Promise.resolve({
+          serverError: "Your session has expired. Please sign in again.",
+        })
+      );
+
+      await act(async () => {
+        fireEvent.input(companyIdInput(view, locale), {
+          target: { value: "27121043" },
+        });
+        fireEvent.click(lookupButton(view, locale));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(statusRegion(view).textContent).toBe(
+        "Your session has expired. Please sign in again."
+      );
+      expect(
+        view.queryByRole("button", {
+          name: m.accountAresLookupRetry({}, { locale }),
+        })
+      ).toBeTruthy();
+    }
+  );
+
+  test("does not surface a superseded server error after the company ID changes mid-flight", async () => {
+    const view = renderForm();
+    let resolveLookup!: (
+      outcome: LookupOutcome | { serverError: string }
+    ) => void;
+    lookupAresBusiness.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveLookup = resolve;
+        })
+    );
+
+    fireEvent.input(companyIdInput(view), { target: { value: "27121043" } });
+    await act(async () => {
+      fireEvent.click(lookupButton(view));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.input(companyIdInput(view), {
+        target: { value: "27082440" },
+      });
+      resolveLookup({
+        serverError: "Your session has expired. Please sign in again.",
+      });
+      await Promise.resolve();
+    });
+
+    expect(statusRegion(view).textContent).toBe("");
+  });
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "announces the pending lookup and the found review in the live region for %s",
+    async (locale) => {
+      const view = renderForm({ locale });
+      let resolveLookup!: (outcome: LookupOutcome) => void;
+      lookupAresBusiness.mockImplementationOnce(
+        () =>
+          new Promise<LookupOutcome>((resolve) => {
+            resolveLookup = resolve;
+          })
+      );
+
+      fireEvent.input(companyIdInput(view, locale), {
+        target: { value: "27121043" },
+      });
+      await act(async () => {
+        fireEvent.click(lookupButton(view, locale));
+        await Promise.resolve();
+      });
+
+      expect(statusRegion(view).textContent).toBe(
+        m.accountAresLookupLoading({}, { locale })
+      );
+
+      await act(async () => {
+        resolveLookup({
+          data: { status: "found", company: { ...foundCompany } },
+        });
+        await Promise.resolve();
+      });
+
+      expect(statusRegion(view).textContent).toBe(
+        m.accountAresLookupReviewReady({}, { locale })
+      );
+      expect(
+        view.queryByRole("button", {
+          name: m.accountAresLookupApply({}, { locale }),
+        })
+      ).toBeTruthy();
+    }
+  );
 
   test("surfaces the localized action error in the live region when the lookup execution fails", async () => {
     const view = renderForm();

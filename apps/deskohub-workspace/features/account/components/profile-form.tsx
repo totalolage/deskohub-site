@@ -230,6 +230,18 @@ export function ProfileForm({
         });
       }
     },
+    onError: ({ error }) => {
+      // A resolved failure (expired session, pending deletion, disabled
+      // accounts, …) must surface in the lookup status instead of silently
+      // resetting the region, and must be discarded when superseded.
+      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
+        return;
+      setAresLookup({
+        status: "unavailable",
+        message:
+          error.serverError || m.accountAresLookupActionError({}, { locale }),
+      });
+    },
     onTransportError: () => {
       if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
         return;
@@ -743,6 +755,38 @@ function BillingFields({
     return m.accountAresLookupSubmit({}, { locale });
   })();
 
+  // The live region announces pending, found-for-review, and terminal
+  // outcomes; the review panel itself stays outside the region so nothing
+  // steals focus from manual entry.
+  const aresStatusContent = (() => {
+    if (ares.isPending) {
+      return <span>{m.accountAresLookupLoading({}, { locale })}</span>;
+    }
+    if (ares.status === "found") {
+      return (
+        <span className="text-emerald-800">
+          {m.accountAresLookupReviewReady({}, { locale })}
+        </span>
+      );
+    }
+    if (ares.message) {
+      return (
+        <span
+          className={
+            ares.status === "invalid-ico" ||
+            ares.status === "not-found" ||
+            ares.status === "unavailable"
+              ? "text-red-700"
+              : "text-emerald-800"
+          }
+        >
+          {ares.message}
+        </span>
+      );
+    }
+    return null;
+  })();
+
   return (
     <>
       <div className="space-y-2 sm:col-span-2">
@@ -853,23 +897,11 @@ function BillingFields({
                   aria-live="polite"
                   className="min-h-5 text-sm"
                 >
-                  {ares.message ? (
-                    <span
-                      className={
-                        ares.status === "invalid-ico" ||
-                        ares.status === "not-found" ||
-                        ares.status === "unavailable"
-                          ? "text-red-700"
-                          : "text-emerald-800"
-                      }
-                    >
-                      {ares.message}
-                    </span>
-                  ) : null}
+                  {aresStatusContent}
                 </p>
-                {ares.review && ares.status === "found" ? (
+                {Boolean(ares.review && ares.status === "found") && (
                   <AresReviewPanel ares={ares} locale={locale} />
-                ) : null}
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="account-profile-billing-vat-id">

@@ -810,6 +810,7 @@
   "accountAresLookupIcoLabel": "Company ID (IČO)",
   "accountAresLookupSubmit": "Look up company",
   "accountAresLookupLoading": "Looking up…",
+  "accountAresLookupReviewReady": "Company details were found. Review them below before applying them to the draft.",
   "accountAresLookupRetry": "Try again",
   "accountAresLookupInvalidIco": "Enter a valid company ID (IČO): exactly eight digits with a valid check digit.",
   "accountAresLookupNotFound": "No company was found for this company ID (IČO).",

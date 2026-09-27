@@ -817,6 +817,7 @@
   "accountAresLookupIcoLabel": "IČO",
   "accountAresLookupSubmit": "Vyhledat firmu",
   "accountAresLookupLoading": "Vyhledávám…",
+  "accountAresLookupReviewReady": "Údaje firmy byly nalezeny. Zkontrolujte je níže, než je použijete v návrhu.",
   "accountAresLookupRetry": "Zkusit znovu",
   "accountAresLookupInvalidIco": "Zadejte platné IČO: přesně osm číslic se správným kontrolním číslem.",
   "accountAresLookupNotFound": "K tomuto IČO nebyla nalezena žádná firma.",
