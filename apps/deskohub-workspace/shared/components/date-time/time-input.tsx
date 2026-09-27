@@ -31,6 +31,15 @@ export type TimeInputProps = {
   readonly onBlur?: () => void;
   readonly onChange?: (value: string | undefined) => void;
   readonly required?: boolean;
+  /**
+   * Time-of-day anchor for the step sequence, separate from the lower
+   * bound. Native steps anchor at the `min` attribute, but a composite
+   * owner may drop the same-day bound on later dates while its canonical
+   * datetime field keeps anchoring at the minimum's time; this keeps the
+   * editor on the same sequence. Defaults to the minimum (midnight when
+   * unset).
+   */
+  readonly stepAnchor?: TemporalTimeBoundInput;
   readonly timeStepMinutes?: number;
   readonly value?: string;
 };
@@ -55,20 +64,25 @@ export function TimeInput({
   onBlur,
   onChange,
   required = false,
+  stepAnchor,
   timeStepMinutes = 1,
   value,
 }: TimeInputProps) {
   const fieldRef = useRef<HTMLInputElement>(null);
   // Boundary props decode against the canonical local-time schema:
   // malformed or non-canonical values (seconds precision, out of range)
-  // decode to empty instead of being re-shaped silently.
+  // decode to empty instead of being re-shaped silently. An explicit
+  // controlled empty stays controlled: the decoded empty is preserved as
+  // "" so emptiness never switches ownership back to internal state.
   const decodeCanonicalTime = (raw: string | undefined) =>
     parseLocalTime(raw)?.toString({ smallestUnit: "minute" });
-  const [selectedTime, setSelectedTime] = useControllableState({
-    defaultValue: decodeCanonicalTime(defaultValue),
-    onChange,
-    value: decodeCanonicalTime(value),
-  });
+  const [selectedTime, setSelectedTime, isControlledTime] =
+    useControllableState({
+      defaultValue: decodeCanonicalTime(defaultValue),
+      onChange,
+      value:
+        value === undefined ? undefined : (decodeCanonicalTime(value) ?? ""),
+    });
   const handleReset = useCallback(
     (next: string) => setSelectedTime(next || undefined),
     [setSelectedTime]
@@ -89,9 +103,13 @@ export function TimeInput({
     if (!parsed) return false;
     const resolvedMinimum = resolveTimeBound(minimum);
     const resolvedMaximum = resolveTimeBound(maximum);
-    // Native time steps anchor at the `min` attribute (midnight when
-    // unset), so the editor anchors at the same bound.
-    const anchorMinutes = minutesOfDay(resolvedMinimum ?? "00:00") ?? 0;
+    // The step sequence anchors at the explicit step anchor when the owner
+    // provides one, otherwise at the `min` bound (midnight when unset),
+    // matching the native anchoring of the canonical field.
+    const anchorMinutes =
+      minutesOfDay(
+        resolveTimeBound(stepAnchor) ?? resolvedMinimum ?? "00:00"
+      ) ?? 0;
     const offset =
       (((parsed.hour * 60 + parsed.minute - anchorMinutes) % 1440) + 1440) %
       1440;
@@ -113,8 +131,12 @@ export function TimeInput({
       event.stopPropagation();
       return;
     }
+    const restoreControlledEditor = () => {
+      if (isControlledTime) editor.value = selectedTime ?? "";
+    };
     if (editor.value === "") {
       setSelectedTime(undefined);
+      restoreControlledEditor();
       return;
     }
     if (!isTimeAccepted(editor.value)) {
@@ -123,6 +145,11 @@ export function TimeInput({
       return;
     }
     setSelectedTime(editor.value);
+    // In controlled mode the owner may reject the reported edit, in which
+    // case no rerender restores the display: put the committed value back
+    // on screen now. An accepting owner rerenders with the new value
+    // immediately after.
+    restoreControlledEditor();
   };
 
   const handleEditorBlur = (event: FocusEvent<HTMLInputElement>) => {
@@ -137,7 +164,9 @@ export function TimeInput({
   return (
     <div className={cn("relative", className)}>
       {/* The canonical field validates even when unnamed; only a named
-          control contributes its value to form submission. */}
+          control contributes its value to form submission. When an explicit
+          step anchor diverges from the min bound (composite owners), the
+          owner's canonical field validates the step sequence instead. */}
       <input
         aria-hidden="true"
         className="sr-only pointer-events-none"
@@ -149,7 +178,7 @@ export function TimeInput({
         onChange={() => undefined}
         ref={fieldRef}
         required={required}
-        step={resolvedStepSeconds}
+        step={stepAnchor === undefined ? resolvedStepSeconds : undefined}
         tabIndex={-1}
         type="time"
         value={selectedTime ?? ""}

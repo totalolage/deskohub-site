@@ -133,6 +133,19 @@ export function ReservationDateTimeInput({
     // Clearing or rejecting the clock keeps the previously committed
     // reservation start; the shared editor restores its own display.
     if (!nextTime || nextTime === selectedTime) return;
+    if (selectedDate) {
+      // The complete candidate is validated against the freshly resolved
+      // minimum: a bound advanced past the selected date without a rerender
+      // rejects the clock change instead of emitting a stale-date datetime.
+      const minimumDateTime = resolveMinimumDateTime(minimum);
+      const candidate = `${selectedDate}T${nextTime}`;
+      if (
+        minimumDateTime &&
+        candidate < formatMinuteDateTime(minimumDateTime)
+      ) {
+        return;
+      }
+    }
     setPendingTime(nextTime);
     if (selectedDate) onChange?.(`${selectedDate}T${nextTime}`);
   };

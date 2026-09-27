@@ -4,11 +4,12 @@ import { useCallback, useRef, useState } from "react";
 
 /**
  * Shared controlled/uncontrolled value state for the date-time controls.
- * A control is controlled once the parent asserts a non-empty `value` and
- * stays controlled: `undefined` and `""` are CONTROLLED-EMPTY states, not a
- * switch back to uncontrolled mode, so a parent can always reset to empty
- * and the user can still construct a value from it. In both modes `onChange`
- * reports accepted edits, including explicit clears as `undefined`.
+ * A control is controlled once the parent asserts any `value`, including an
+ * explicit empty string: control ownership is independent of emptiness, so
+ * a parent holding `value=""` stays authoritative even when it rejects an
+ * edit. `undefined` starts uncontrolled and stays that way. In both modes
+ * `onChange` reports accepted edits, including explicit clears as
+ * `undefined`.
  */
 export const useControllableState = ({
   defaultValue,
@@ -18,9 +19,13 @@ export const useControllableState = ({
   readonly defaultValue?: string;
   readonly onChange?: (value: string | undefined) => void;
   readonly value?: string;
-}): readonly [string | undefined, (next: string | undefined) => void] => {
+}): readonly [
+  string | undefined,
+  (next: string | undefined) => void,
+  boolean,
+] => {
   const everControlledRef = useRef(false);
-  if (value !== undefined && value !== "") everControlledRef.current = true;
+  if (value !== undefined) everControlledRef.current = true;
   const isControlled = everControlledRef.current;
   const [internal, setInternal] = useState<string | undefined>(defaultValue);
   const state = isControlled ? value : internal;
@@ -33,5 +38,5 @@ export const useControllableState = ({
     [isControlled, onChange]
   );
 
-  return [state, setState] as const;
+  return [state, setState, isControlled] as const;
 };

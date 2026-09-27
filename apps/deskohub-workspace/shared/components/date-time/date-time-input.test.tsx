@@ -311,6 +311,71 @@ describe("DateTimeInput", () => {
       "Pick a date"
     );
   });
+
+  test("treats seconds-bearing values as empty instead of truncating to minutes", () => {
+    const { form, readHidden, view } = renderDateTimeInput({
+      props: { defaultValue: "2099-06-10T16:00:30" },
+    });
+
+    expect(new FormData(form).get("startsAt")).toBe("");
+    expect(readHidden()[0]!.value).toBe("");
+    expect((view.getByLabelText("Start time") as HTMLInputElement).value).toBe(
+      ""
+    );
+  });
+
+  test("anchors editor and canonical step sequence at the minimum across dates", async () => {
+    const minimumDay = dayInCurrentMonth(10);
+    const minimum = `${minimumDay.toString()}T09:30`;
+    const { form, onChange, readHidden, view } = renderDateTimeInput({
+      props: {
+        defaultValue: minimum,
+        minimum,
+        timeStepMinutes: 60,
+      },
+    });
+
+    await pickDate(view, "11");
+    const laterDay = dayInCurrentMonth(11);
+    // The complete date move emits on-sequence 09:30 for the later day.
+    expect(onChange).toHaveBeenLastCalledWith(`${laterDay.toString()}T09:30`);
+    const timeInput = view.getByLabelText("Start time");
+
+    // Off-sequence relative to the 09:30 minimum anchor: the editor and the
+    // canonical field must agree that 10:00 is a step mismatch even though
+    // the same-day lower bound dropped out for the later date.
+    onChange.mockClear();
+    fireEvent.input(timeInput, { target: { value: "10:00" } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect((timeInput as HTMLInputElement).value).toBe("09:30");
+    expect(readHidden()[0]!.value).toBe(`${laterDay.toString()}T09:30`);
+
+    // On-sequence: accepted by the editor and valid on the canonical field.
+    fireEvent.input(timeInput, { target: { value: "10:30" } });
+    expect(onChange).toHaveBeenLastCalledWith(`${laterDay.toString()}T10:30`);
+    expect(readHidden()[0]!.value).toBe(`${laterDay.toString()}T10:30`);
+    expect(form.checkValidity()).toBe(true);
+  });
+
+  test("rejects a time edit whose draft date a dynamic minimum moved past without a rerender", () => {
+    let minimum = "2099-06-10T09:30";
+    const { onChange, readHidden, view } = renderDateTimeInput({
+      props: {
+        defaultValue: "2099-06-10T16:00",
+        minimum: () => minimum,
+      },
+    });
+    const timeInput = view.getByLabelText("Start time");
+
+    // The minimum advances to the next day while the selected date stays
+    // June 10: the clock change would emit a stale-date datetime.
+    minimum = "2099-06-11T09:30";
+    fireEvent.input(timeInput, { target: { value: "18:00" } });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect((timeInput as HTMLInputElement).value).toBe("16:00");
+    expect(readHidden()[0]!.value).toBe("2099-06-10T16:00");
+  });
   test("renders exactly one named submit field and both controls", () => {
     const { readHidden, view } = renderDateTimeInput({
       props: { defaultValue: "2099-06-10T16:00" },
@@ -458,6 +523,41 @@ describe("DateTimeInput", () => {
 
     expect(readHidden()[0].value).toBe("");
     expect(onChange).not.toHaveBeenCalled();
+    expect((view.getByLabelText("Start time") as HTMLInputElement).value).toBe(
+      ""
+    );
+  });
+
+  test("keeps a controlled-empty parent authoritative across an edit", async () => {
+    const target = dayInCurrentMonth(15);
+    // The parent holds value="" and rejects the edit by never adopting the
+    // reported change.
+    const { form, onChange, readHidden, view } = renderDateTimeInput({
+      props: { value: "" },
+    });
+
+    await pickDate(view, "15");
+    fireEvent.input(view.getByLabelText("Start time"), {
+      target: { value: "10:30" },
+    });
+
+    expect(onChange).toHaveBeenCalledWith(`${target.toString()}T10:30`);
+    // The parent never adopted the edit: the submit field and internal
+    // committed state keep the controlled empty value.
+    expect(new FormData(form).get("startsAt")).toBe("");
+    expect(readHidden()[0]!.value).toBe("");
+  });
+
+  test("explicit empty controlled value overrides a non-empty default", () => {
+    const { form, readHidden, view } = renderDateTimeInput({
+      props: { defaultValue: "2099-06-10T16:00", value: "" },
+    });
+
+    expect(new FormData(form).get("startsAt")).toBe("");
+    expect(readHidden()[0]!.value).toBe("");
+    expect(view.getByRole("button", { name: "Start date" }).textContent).toBe(
+      "Pick a date"
+    );
     expect((view.getByLabelText("Start time") as HTMLInputElement).value).toBe(
       ""
     );

@@ -30,9 +30,22 @@ export const parseLocalTime = (value: string | undefined) =>
     Option.getOrUndefined
   );
 
+/**
+ * Control-boundary precision gate: the shared domain schema also admits
+ * second-precision values for other callers, but the controls format to
+ * minutes, so a seconds-bearing value would silently truncate. The controls
+ * reject it instead of re-shaping it.
+ */
+const isMinutePrecision = (dateTime: Temporal.PlainDateTime) =>
+  dateTime.second === 0 &&
+  dateTime.millisecond === 0 &&
+  dateTime.microsecond === 0 &&
+  dateTime.nanosecond === 0;
+
 export const parsePlainDateTime = (value: string | undefined) =>
   decodeLocalDateTime(value).pipe(
     Option.map((dateTime) => Temporal.PlainDateTime.from(dateTime)),
+    Option.filter(isMinutePrecision),
     Option.getOrUndefined
   );
 

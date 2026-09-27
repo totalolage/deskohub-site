@@ -262,6 +262,30 @@ describe("CreateStandaloneAccessCodeForm", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  test("references the field error message from the date-time controls", async () => {
+    const view = await renderForm();
+
+    await submitForm(view);
+
+    const startMessage = view.getByText("Choose a start time.");
+    const startMessageId = startMessage.id;
+    expect(startMessageId).not.toBe("");
+    const startDateTrigger = view.getByRole("button", { name: "Starts date" });
+    expect(startDateTrigger.getAttribute("aria-describedby")).toBe(
+      startMessageId
+    );
+    expect(startDateTrigger.getAttribute("aria-invalid")).toBe("true");
+    const startsTime = view.getByLabelText("Starts time");
+    expect(startsTime.getAttribute("aria-describedby")).toBe(startMessageId);
+    expect(startsTime.getAttribute("aria-invalid")).toBe("true");
+
+    const endMessage = view.getByText("Choose an end time.");
+    const endDateTrigger = view.getByRole("button", { name: "Ends date" });
+    expect(endDateTrigger.getAttribute("aria-describedby")).toBe(endMessage.id);
+    const endsTime = view.getByLabelText("Ends time");
+    expect(endsTime.getAttribute("aria-describedby")).toBe(endMessage.id);
+  });
+
   test("binds one stable attempt id to the unchanged form intent", async () => {
     withActionOptions();
     const view = await renderForm();

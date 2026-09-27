@@ -378,12 +378,11 @@ export function CreateStandaloneAccessCodeForm() {
                 control={form.control}
                 name="startsAt"
                 rules={{ deps: ["endsAt"] }}
-                render={({ field: { onChange, onBlur, ref }, fieldState }) => (
+                render={({ field: { onChange, onBlur, ref } }) => (
                   <FormItem>
                     <FormLabel>Starts</FormLabel>
                     <FormControl>
                       <DateTimeInput
-                        ariaInvalid={Boolean(fieldState.error)}
                         dateLabel="Starts date"
                         defaultValue={windowSeed.values.startsAt || undefined}
                         key={`startsAt-${windowSeed.key}`}
@@ -403,12 +402,11 @@ export function CreateStandaloneAccessCodeForm() {
               <FormField
                 control={form.control}
                 name="endsAt"
-                render={({ field: { onChange, onBlur, ref }, fieldState }) => (
+                render={({ field: { onChange, onBlur, ref } }) => (
                   <FormItem>
                     <FormLabel>Ends</FormLabel>
                     <FormControl>
                       <DateTimeInput
-                        ariaInvalid={Boolean(fieldState.error)}
                         dateLabel="Ends date"
                         defaultValue={windowSeed.values.endsAt || undefined}
                         key={`endsAt-${windowSeed.key}`}

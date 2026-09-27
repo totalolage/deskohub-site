@@ -19,8 +19,15 @@ import { useFormReset } from "./use-form-reset";
  * are assignable without casts.
  */
 export type DateTimeInputProps = {
-  readonly ariaDescribedBy?: string;
-  readonly ariaInvalid?: boolean;
+  /**
+   * Standard ARIA attributes so the form-control slot's error wiring
+   * (described-by, invalid) reaches the interactive controls. The slot's
+   * labelled-by is intentionally not forwarded: the controls carry an
+   * explicit aria-label, and a labelled-by would override it with the
+   * visible field label.
+   */
+  readonly "aria-describedby"?: string;
+  readonly "aria-invalid"?: boolean;
   readonly className?: string;
   readonly dateLabel: string;
   readonly defaultValue?: string;
@@ -69,8 +76,8 @@ const canonicalize = (parts: DateTimeParts) =>
   isComplete(parts) ? `${parts.date}T${parts.time}` : "";
 
 export function DateTimeInput({
-  ariaDescribedBy,
-  ariaInvalid = false,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid = false,
   className,
   dateLabel,
   defaultValue,
@@ -95,12 +102,12 @@ export function DateTimeInput({
   // state through onChange after this owner has restored the canonical
   // draft; swallow those echoes for the duration of the reset.
   const resettingRef = useRef(false);
-  // Controlled-empty values (undefined or "") stay controlled once the
-  // parent has asserted a value: the parent remains authoritative, while
-  // the editable draft lives here so a value can always be constructed
-  // from empty.
+  // Controlled ownership is independent of emptiness: any asserted `value`
+  // (including an explicit empty string) keeps the parent authoritative,
+  // while the editable draft lives here so a value can always be
+  // constructed from empty.
   const everControlledRef = useRef(false);
-  if (value !== undefined && value !== "") everControlledRef.current = true;
+  if (value !== undefined) everControlledRef.current = true;
   const isControlled = everControlledRef.current;
   const [internalCommitted, setInternalCommitted] = useState<DateTimeParts>(
     () => parseParts(defaultValue)
@@ -116,25 +123,60 @@ export function DateTimeInput({
     if (isControlled) setDraft(parseParts(value));
   }, [isControlled, value]);
 
+  // Dynamic bounds stay resolvable at event time: the raw prop is forwarded
+  // to the date control and re-resolved here for same-day time bounds, the
+  // step anchor, and whole-candidate validation, so a bound advanced
+  // without an owning rerender is still honored.
+  const resolveMinimumDateTime = useCallback(
+    () => resolvePlainDateTimeBound(minimum),
+    [minimum]
+  );
+  const resolveMaximumDateTime = useCallback(
+    () => resolvePlainDateTimeBound(maximum),
+    [maximum]
+  );
+
   const commitDraft = useCallback(
     (next: DateTimeParts) => {
       if (resettingRef.current) return;
-      setDraft(next);
       // A canonical local datetime exists only when both parts are complete;
       // an explicit full clear reports an explicitly emptied value, and a
       // partial draft keeps the prior committed value canonical while it
       // blocks submission.
       if (isComplete(next)) {
+        const candidate = canonicalize(next);
+        // The complete candidate is validated against freshly resolved
+        // bounds so a dynamic minimum or maximum that advanced past the
+        // draft date or time rejects the whole edit instead of emitting a
+        // stale datetime, even without an owning rerender.
+        const minimumDateTime = resolveMinimumDateTime();
+        const maximumDateTime = resolveMaximumDateTime();
+        if (
+          (minimumDateTime &&
+            candidate < formatMinuteDateTime(minimumDateTime)) ||
+          (maximumDateTime && candidate > formatMinuteDateTime(maximumDateTime))
+        ) {
+          setDraft({ ...committed });
+          return;
+        }
         if (!isControlled) setInternalCommitted(next);
-        onChange?.(canonicalize(next));
+        onChange?.(candidate);
+        setDraft(next);
         return;
       }
       if (isEmpty(next)) {
         if (!isControlled) setInternalCommitted(next);
         onChange?.(undefined);
       }
+      setDraft(next);
     },
-    [isControlled, onChange]
+    [
+      committed,
+      isControlled,
+      onChange,
+      resolveMaximumDateTime,
+      resolveMinimumDateTime,
+    ]
   );
 
   const handleReset = useCallback((next: string) => {
@@ -152,17 +194,28 @@ export function DateTimeInput({
     onReset: handleReset,
   });
 
-  const minimumDateTime = resolvePlainDateTimeBound(minimum);
-  const maximumDateTime = resolvePlainDateTimeBound(maximum);
+  const minimumDateTime = resolveMinimumDateTime();
+  const maximumDateTime = resolveMaximumDateTime();
   const selectedDate = parsePlainDate(draft.date);
-  const minimumTime = getSameDayTimeBound({
-    date: selectedDate,
-    dateTimeBound: minimumDateTime,
-  });
-  const maximumTime = getSameDayTimeBound({
-    date: selectedDate,
-    dateTimeBound: maximumDateTime,
-  });
+  const minimumTime = () =>
+    getSameDayTimeBound({
+      date: selectedDate,
+      dateTimeBound: minimumDateTime,
+    });
+  const maximumTime = () =>
+    getSameDayTimeBound({
+      date: selectedDate,
+      dateTimeBound: maximumDateTime,
+    });
+  // The step sequence anchors at the minimum's time-of-day (midnight when
+  // unset) so the editor shares the canonical field's sequence even on
+  // later dates where the same-day lower bound drops out.
+  const stepAnchor = () => {
+    const bound = minimumDateTime;
+    return bound
+      ? bound.toPlainTime().toString({ smallestUnit: "minute" })
+      : "00:00";
+  };
 
   // A partial draft (date without time, or time without date) never carries
   // a submittable value: the canonical field empties and reports missing so
@@ -208,14 +261,14 @@ export function DateTimeInput({
           id={id}
           isDateDisabled={isDateDisabled}
           locale={locale}
-          maximum={maximumDateTime?.toPlainDate().toString()}
-          minimum={minimumDateTime?.toPlainDate().toString()}
+          maximum={maximum}
+          minimum={minimum}
           onBlur={onBlur}
           onChange={(nextDate) => commitDraft({ ...draft, date: nextDate })}
           placeholder={placeholder}
           ref={ref}
           required={required}
-          value={draft.date}
+          value={draft.date ?? ""}
         />
         <TimeInput
           ariaDescribedBy={ariaDescribedBy}
@@ -228,8 +281,9 @@ export function DateTimeInput({
           onBlur={onBlur}
           onChange={(nextTime) => commitDraft({ ...draft, time: nextTime })}
           required={required}
+          stepAnchor={stepAnchor}
           timeStepMinutes={timeStepMinutes}
-          value={draft.time}
+          value={draft.time ?? ""}
         />
       </div>
     </div>

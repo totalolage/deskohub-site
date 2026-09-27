@@ -351,6 +351,35 @@ describe("ReservationDateTimeInput", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  test("rejects a clock change that would emit a date the advanced minimum moved past", () => {
+    let minimum = "2099-06-10T15:00";
+    const onChange = mock(() => undefined);
+    const view = render(
+      <Harness
+        dateLabel="Start date"
+        locale="en-US"
+        minimum={() => minimum}
+        onChange={onChange}
+        timeLabel="Start time"
+        value="2099-06-10T16:00"
+      />
+    );
+    const timeInput = view.getByLabelText(/Start time/) as HTMLInputElement;
+
+    // The minimum advances past the selected date without a rerender: the
+    // same-day time bound disappears, so the composite itself must reject
+    // the candidate instead of emitting a stale-date datetime.
+    minimum = "2099-06-11T09:00";
+    fireEvent.input(timeInput, { target: { value: "18:00" } });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(timeInput.value).toBe("16:00");
+    expect(
+      view.container.querySelector<HTMLInputElement>('[name="startDateTime"]')!
+        .value
+    ).toBe("2099-06-10T16:00");
+  });
+
   test("clamps the pending clock to the same-day minimum when the date moves", async () => {
     const today = Temporal.Now.plainDateISO();
     const otherDay = today.add({ days: 2 });
