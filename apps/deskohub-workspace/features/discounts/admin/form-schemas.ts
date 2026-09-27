@@ -23,7 +23,8 @@ const minorUnitsField = Schema.String.check(
 const optionalCountField = Schema.String.check(
   Schema.makeFilter(
     (value) =>
-      value === "" || (Number.isSafeInteger(Number(value)) && Number(value) >= 1),
+      value === "" ||
+      (Number.isSafeInteger(Number(value)) && Number(value) >= 1),
     { message: "Enter a whole number of uses." }
   )
 );
@@ -62,7 +63,10 @@ const discountDefinitionFields = {
   labelCs: Schema.String.check(
     Schema.isNonEmpty({ message: "Enter a Czech label." })
   ),
-  adjustmentKind: Schema.Literal("percentage", "fixed"),
+  adjustmentKind: Schema.Union([
+    Schema.Literal("percentage"),
+    Schema.Literal("fixed"),
+  ]),
   percentage: percentageField,
   fixedAmountValue: minorUnitsField,
   fixedAmountCurrency: currencyField,
@@ -112,7 +116,7 @@ export const voucherFormSchema = Schema.toStandardSchemaV1(
   { parseOptions: { errors: "all" } }
 );
 
-type DiscountCodeCreationFormShape = {
+type DiscountCodeCreationFormCheckInput = {
   readonly discountKind: "existing" | "new";
   readonly discountId: string;
   readonly labelEn: string;
@@ -121,12 +125,15 @@ type DiscountCodeCreationFormShape = {
 
 export const discountCodeCreationFormSchema = Schema.toStandardSchemaV1(
   Schema.Struct({
-    discountKind: Schema.Literal("existing", "new"),
+    discountKind: Schema.Union([
+      Schema.Literal("existing"),
+      Schema.Literal("new"),
+    ]),
     discountId: Schema.String,
     ...discountDefinitionFields,
     ...discountCodeConfigurationFields,
   }).check(
-    Schema.makeFilter<DiscountCodeCreationFormShape>(
+    Schema.makeFilter<DiscountCodeCreationFormCheckInput>(
       (values) =>
         values.discountKind !== "existing" ||
         values.discountId.trim().length > 0 || {
@@ -134,7 +141,7 @@ export const discountCodeCreationFormSchema = Schema.toStandardSchemaV1(
           issue: "Choose a discount.",
         }
     ),
-    Schema.makeFilter<DiscountCodeCreationFormShape>(
+    Schema.makeFilter<DiscountCodeCreationFormCheckInput>(
       (values) =>
         values.discountKind !== "new" ||
         values.labelEn.trim().length > 0 || {
@@ -142,7 +149,7 @@ export const discountCodeCreationFormSchema = Schema.toStandardSchemaV1(
           issue: "Enter an English label.",
         }
     ),
-    Schema.makeFilter<DiscountCodeCreationFormShape>(
+    Schema.makeFilter<DiscountCodeCreationFormCheckInput>(
       (values) =>
         values.discountKind !== "new" ||
         values.labelCs.trim().length > 0 || {

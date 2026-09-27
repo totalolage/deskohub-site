@@ -1,16 +1,9 @@
 "use client";
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import type { ColumnDef } from "@tanstack/react-table";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import {
-  ArrowUpRight,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Save,
-  Trash2,
-} from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { ArrowUpRight, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
@@ -34,7 +27,6 @@ import type {
   VoucherId,
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
-import { generatePromotionCode } from "@/features/discounts/promotion-code";
 import { Button } from "@/shared/components/ui/button";
 import {
   Form,
@@ -63,7 +55,6 @@ import { getDiscountAdminValidationMessage } from "./form-feedback";
 import {
   toCreateDiscountCodeInput,
   toCreateDiscountInput,
-  toDiscountCodeConfigurationInput,
   toVoucherConfigurationInput,
   toVoucherCreditInput,
 } from "./form-input";
@@ -71,9 +62,9 @@ import {
   type DiscountCodeConfigurationFormValues,
   type DiscountCodeFormValues,
   type DiscountDefinitionFormValues,
-  type VoucherFormValues,
   discountCodeFormSchema,
   discountDefinitionFormSchema,
+  type VoucherFormValues,
   voucherFormSchema,
 } from "./form-schemas";
 
@@ -726,10 +717,7 @@ function DiscountCodeEditor({
   );
 }
 
-function MutationForm<
-  Input extends FieldValues,
-  Values = Input,
->({
+function MutationForm<Input extends FieldValues, Values = Input>({
   actionName,
   buildMutation,
   children,
@@ -1123,7 +1111,7 @@ function DiscountCodeFields({
       <FormField
         control={control}
         name="discountId"
-        render={({ field, fieldState }) => (
+        render={({ field }) => (
           <FormItem>
             <FormLabel htmlFor={fieldId("discountId", code?.id)}>
               Discount
@@ -1158,7 +1146,7 @@ export function DiscountCodeConfigurationFields({
   readonly code?: DiscountCodeTableItem | VoucherTableItem;
   readonly showMaxUses?: boolean;
 }) {
-  const { control, register, setValue } =
+  const { control, register } =
     useFormContext<DiscountCodeConfigurationFormValues>();
   const codeInputId = fieldId("code", code?.id);
 
@@ -1298,9 +1286,7 @@ export function DiscountCodeConfigurationFields({
   );
 }
 
-export function VoucherCreditFields({
-  credit,
-}: {
+export function VoucherCreditFields(_props: {
   readonly credit?: WorkspaceMoney | null;
 }) {
   const { control } = useFormContext<VoucherFormValues>();
@@ -1408,7 +1394,9 @@ const discountCodeConfigurationFormDefaults = (
       : "",
 });
 
-const voucherFormDefaults = (voucher?: VoucherTableItem): VoucherFormValues => ({
+const voucherFormDefaults = (
+  voucher?: VoucherTableItem
+): VoucherFormValues => ({
   voucherValue: voucher ? String(voucher.issuedCredit.value) : "10000",
   voucherCurrency:
     voucher?.issuedCredit.currency ?? defaultWorkspaceCurrency.code,
