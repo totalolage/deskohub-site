@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
@@ -121,12 +121,15 @@ export class AresLookupService extends Context.Service<
           .vratEkonomickySubjekt(encodeURIComponent(ico), undefined)
           .pipe(
             Effect.timeout(aresLookupTimeout),
-            Effect.catch((failure): Effect.Effect<never, AresLookupFailure> => {
-              if (isNotFoundResponse(failure)) {
-                return Effect.fail(AresLookupFailure.NotFound());
-              }
-              return reportUnavailable;
-            })
+            Effect.catch(
+              (failure): Effect.Effect<never, AresLookupFailure> =>
+                Match.value(failure).pipe(
+                  Match.when(isNotFoundResponse, () =>
+                    Effect.fail(AresLookupFailure.NotFound())
+                  ),
+                  Match.orElse(() => reportUnavailable)
+                )
+            )
           );
 
         if (!Schema.is(verifiedSubject(ico))(subject)) {
