@@ -3,71 +3,46 @@ import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { CustomerMarketingConsent } from "@/db/schema/customer-marketing-consents";
 import type { Locale } from "@/features/i18n";
-import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository"; /**
- * The version of the exported document shape. Increase it whenever an
- * exported section's meaning changes, never to flag data freshness.
- */
-import type { CustomerReservationSummary } from "../contracts";
+import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import {
+  accountDataExportCompletenessNote,
+  accountDataExportManifestPath,
+  accountDataExportNonAtomicityNote,
+  accountDataExportSchemaVersion,
+  accountDataExportSections,
+} from "../account-data-export-sections";
 import {
   type CustomerAccountAccessError,
   type CustomerAccountId,
   mapCustomerAccountFailure,
 } from "../customer-account";
+import {
+  AccountDataExportRecordsRepository,
+  type CustomerExportRecords,
+} from "./account-data-export-records.repository";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import type { CustomerAccountSession } from "./customer-authentication.service";
-import {
-  CustomerDotyposAdapter,
-  type CustomerProfile,
-} from "./customer-dotypos-adapter.service";
+import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 import { CustomerReservationHistoryService } from "./customer-reservation-history.service";
-export const accountDataExportSchemaVersion = 1;
-
-const accountDataExportScopes = [
-  "identity",
-  "dotyposProfile",
-  "reservations",
-  "marketingConsent",
-] as const;
 
 /**
- * The allowlisted export sections. Every value originates in a domain
- * projection that already excludes provider internals, credentials, tokens,
- * session identifiers, and other customers' records; no raw provider row,
- * database model, or free-text field is ever serialized.
+ * One archive entry: a fixed allowlisted file path and its JSON-ready
+ * payload. The payload is always a domain projection, never a raw database
+ * or provider row.
  */
-/**
- * The fixed human-readable note carried in every export document. It states
- * the snapshot's non-atomic assembly so the reader of the downloaded file
- * cannot mistake it for a single consistent point-in-time copy.
- */
-export const accountDataExportNonAtomicityNote =
-  "This snapshot was assembled during a single request from different systems. It is not an atomic cross-system transaction: data changed concurrently may appear in only some sections.";
+export type AccountDataExportEntry = {
+  readonly path: string;
+  readonly content: unknown;
+};
 
-export type AccountDataExportSnapshot = {
-  readonly identity: {
-    readonly accountId: CustomerAccountId;
-    readonly email: string;
-    readonly emailVerified: boolean;
-    readonly name: string | null;
-    readonly accountCreatedAt: string | null;
-    readonly accountUpdatedAt: string | null;
-    readonly deletionRequested: boolean;
-  };
-  readonly dotyposProfile: CustomerProfile | null;
-  readonly reservations: readonly CustomerReservationSummary[];
-  readonly marketingConsent: {
-    readonly grantedAt: string;
-    readonly withdrawnAt: string | null;
-    readonly locale: Locale;
-  } | null;
-  readonly meta: {
-    readonly schemaVersion: typeof accountDataExportSchemaVersion;
-    readonly generatedAt: string;
-    readonly scope: readonly (typeof accountDataExportScopes)[number][];
-    readonly assembledDuringRequest: boolean;
-    readonly nonAtomicityNote: typeof accountDataExportNonAtomicityNote;
-  };
+/**
+ * The complete archive content: the manifest entry followed by exactly the
+ * allowlisted sections in their fixed order. Assembly happens per request
+ * in memory; nothing is stored.
+ */
+export type AccountDataExportArchive = {
+  readonly entries: readonly AccountDataExportEntry[];
 };
 
 export type AccountDataExportInput = {
@@ -85,7 +60,11 @@ const instantOf = (value: Temporal.Instant | Date | null | undefined) => {
 
 const toConsentSection = (
   consent: CustomerMarketingConsent
-): AccountDataExportSnapshot["marketingConsent"] => ({
+): {
+  grantedAt: string;
+  withdrawnAt: string | null;
+  locale: Locale;
+} => ({
   grantedAt: consent.grantedAt.toString(),
   withdrawnAt: instantOf(consent.withdrawnAt),
   locale: consent.locale,
@@ -94,14 +73,18 @@ const toConsentSection = (
 interface IAccountDataExportService {
   readonly build: (
     input: AccountDataExportInput
-  ) => Effect.Effect<AccountDataExportSnapshot, CustomerAccountAccessError>;
+  ) => Effect.Effect<AccountDataExportArchive, CustomerAccountAccessError>;
 }
 
 /**
- * Builds the self-service account data snapshot described in
- * docs/account-data-export.md. The whole snapshot is assembled during the
+ * Builds the self-service account data archive described in
+ * docs/account-data-export.md. The whole archive is assembled during the
  * request: any provider or database failure fails the entire export, so a
- * partial document can never leave the server.
+ * partial archive can never leave the server. Every entry originates in an
+ * allowlisted projection that excludes credentials, tokens, provider
+ * internals, and other customers' records; records that cannot be
+ * attributed to the verified customer are excluded and routed to the full
+ * manual access path.
  */
 export class AccountDataExportService extends Context.Service<
   AccountDataExportService,
@@ -114,6 +97,7 @@ export class AccountDataExportService extends Context.Service<
       const dotypos = yield* CustomerDotyposAdapter;
       const history = yield* CustomerReservationHistoryService;
       const consents = yield* CustomerMarketingConsentRepository;
+      const records = yield* AccountDataExportRecordsRepository;
 
       const build = Effect.fn("AccountDataExportService.build")(function* ({
         account,
@@ -150,8 +134,14 @@ export class AccountDataExportService extends Context.Service<
             Effect.mapError(mapCustomerAccountFailure("account.data-export"))
           );
 
-        return {
-          identity: {
+        const customerRecords: CustomerExportRecords = yield* records
+          .loadCustomerRecords(account.dotyposCustomerId)
+          .pipe(
+            Effect.mapError(mapCustomerAccountFailure("account.data-export"))
+          );
+
+        const sectionPayloads: readonly unknown[] = [
+          {
             accountId: session.accountId,
             email: session.email,
             emailVerified: true,
@@ -160,21 +150,53 @@ export class AccountDataExportService extends Context.Service<
             accountUpdatedAt: instantOf(session.accountUpdatedAt),
             deletionRequested: session.deletionRequested,
           },
-          dotyposProfile: profile,
-          reservations: [
+          profile,
+          [
             ...reservationGroups.current,
             ...reservationGroups.past,
             ...reservationGroups.unavailable,
           ],
-          marketingConsent: consent ? toConsentSection(consent) : null,
-          meta: {
-            schemaVersion: accountDataExportSchemaVersion,
-            generatedAt: Temporal.Now.instant().toString(),
-            scope: accountDataExportScopes,
-            assembledDuringRequest: true,
-            nonAtomicityNote: accountDataExportNonAtomicityNote,
+          customerRecords.reservations,
+          {
+            payments: customerRecords.payments,
+            latePaymentRecoveries: customerRecords.latePaymentRecoveries,
           },
-        } satisfies AccountDataExportSnapshot;
+          customerRecords.discountApplications,
+          {
+            invoices: customerRecords.invoices,
+            customerEmailDeliveries: customerRecords.invoiceDeliveries,
+          },
+          {
+            marketingConsent: consent ? toConsentSection(consent) : null,
+            legalEvidenceEvents: customerRecords.legalEvidenceEvents,
+          },
+          { accessGrants: customerRecords.accessGrants },
+        ];
+
+        const generatedAt = Temporal.Now.instant().toString();
+
+        const entries: AccountDataExportEntry[] = [
+          {
+            path: accountDataExportManifestPath,
+            content: {
+              schemaVersion: accountDataExportSchemaVersion,
+              generatedAt,
+              sections: accountDataExportSections.map((section) => ({
+                path: section.path,
+                description: section.manifestDescription,
+              })),
+              assembledDuringRequest: true,
+              nonAtomicityNote: accountDataExportNonAtomicityNote,
+              completenessNote: accountDataExportCompletenessNote,
+            },
+          },
+          ...accountDataExportSections.map((section, index) => ({
+            path: section.path,
+            content: sectionPayloads[index],
+          })),
+        ];
+
+        return { entries } satisfies AccountDataExportArchive;
       });
 
       return { build } satisfies IAccountDataExportService;
@@ -188,6 +210,9 @@ export class AccountDataExportService extends Context.Service<
         CustomerDotyposAdapter.Live,
         CustomerReservationHistoryService.Live,
         CustomerMarketingConsentRepository.Default.pipe(
+          Layer.provide(WorkspaceDatabase.Default)
+        ),
+        AccountDataExportRecordsRepository.Default.pipe(
           Layer.provide(WorkspaceDatabase.Default)
         )
       )

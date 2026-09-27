@@ -8,6 +8,7 @@ import type {
   CustomerAccountAccessError,
   LinkedCustomerAccount,
 } from "@/features/account/customer-account";
+import { buildZipArchive } from "@/shared/backend/utils/zip-archive";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
@@ -15,7 +16,7 @@ import {
 
 /**
  * The single fixed public failure body. It never contains error details,
- * provider data, or any part of a partially assembled snapshot.
+ * provider data, or any part of a partially assembled archive.
  */
 const exportUnavailableBody = JSON.stringify({
   error: "Account data export is unavailable.",
@@ -32,10 +33,10 @@ const exportFailureResponse = (statusCode: 404 | 500) =>
   });
 
 const exportResponseHeaders = (generatedOn: string) => ({
-  "Content-Type": "application/json; charset=utf-8",
+  "Content-Type": "application/zip",
   "Cache-Control": "private, no-store",
   "X-Content-Type-Options": "nosniff",
-  "Content-Disposition": `attachment; filename="deskohub-account-data-${generatedOn}.json"`,
+  "Content-Disposition": `attachment; filename="deskohub-account-data-${generatedOn}.zip"`,
 });
 
 export type AccountDataExportRouteLayers = Layer.Layer<
@@ -80,13 +81,26 @@ const buildExportSnapshot = Effect.fn("buildAccountDataExportSnapshot")(
     //    deletion marker, an ambiguous match, or an unverified email.
     const account = yield* resolveAccount;
 
-    // 4. The allowlisted snapshot. Any section failure fails the whole export.
-    const snapshot = yield* Effect.flatMap(
-      AccountDataExportService,
-      (service) => service.build({ account, session })
+    // 4. The allowlisted archive entries. Any section failure fails the
+    //    whole export.
+    const archive = yield* Effect.flatMap(AccountDataExportService, (service) =>
+      service.build({ account, session })
     );
 
-    return new NextResponse(JSON.stringify(snapshot, null, 2), {
+    // 5. In-memory ZIP assembly with hard size and entry bounds. A bound
+    //    violation or any assembly error fails the whole request: no
+    //    truncated or partial archive is ever served, and no archive is
+    //    persisted anywhere.
+    const zipBytes = yield* Effect.try(() =>
+      buildZipArchive(
+        archive.entries.map((entry) => ({
+          path: entry.path,
+          content: JSON.stringify(entry.content),
+        }))
+      )
+    );
+
+    return new NextResponse(Buffer.from(zipBytes), {
       status: 200,
       headers: exportResponseHeaders(new Date().toISOString().slice(0, 10)),
     });
@@ -106,7 +120,7 @@ export const buildAccountDataExportResponse = Effect.fn(
     buildExportSnapshot(resolveAccount),
     layers
   ).pipe(
-    // Never log, trace, or serialize the snapshot body on failure; the fixed
+    // Never log, trace, or serialize the archive body on failure; the fixed
     // diagnostic tag is the only fact that reaches telemetry.
     Effect.mapError(
       WorkspaceRouteFailure.internal("Account data export is unavailable.")
