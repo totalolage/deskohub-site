@@ -169,3 +169,67 @@ test("keeps the disposable test database out of runtime configuration", async ()
   );
   expect(connectWorkspacePostgresTestDatabase).toBeDefined();
 });
+
+test("connects the customers filter navigation e2e only when locally eligible", async () => {
+  // The instant-navigation helper must never route the disposable test
+  // database through runtime configuration and must never connect at module
+  // import: importing it in a remote or unconfigured run may not touch any
+  // database. The disposable test URL configures the runtime, never the
+  // reverse.
+  const helper = parseTrackedSource(
+    resolve(
+      import.meta.dir,
+      "../e2e/instant-navigation/customers-filter-navigation.test-utils.ts"
+    )
+  );
+  expect(identifierNames(helper.ast).has("DATABASE_URL")).toBe(false);
+  expect(
+    identifierNames(helper.ast).has("connectWorkspacePostgresTestDatabase")
+  ).toBe(false);
+
+  // The eligibility gate runs before any connection and refuses a runtime
+  // DATABASE_URL fallback, a remote base URL, and a missing disposable URL.
+  const { customersFilterNavigationEligibility } = await import(
+    "../e2e/instant-navigation/customers-filter-navigation-eligibility"
+  );
+  const previousValues = {
+    WORKSPACE_E2E_BASE_URL: process.env.WORKSPACE_E2E_BASE_URL,
+    WORKSPACE_TEST_DATABASE_URL: process.env.WORKSPACE_TEST_DATABASE_URL,
+    DATABASE_URL: process.env.DATABASE_URL,
+  };
+  try {
+    delete process.env.WORKSPACE_E2E_BASE_URL;
+    delete process.env.WORKSPACE_TEST_DATABASE_URL;
+    process.env.DATABASE_URL =
+      "postgresql://workspace:workspace@127.0.0.1:5432/workspace";
+    // A runtime DATABASE_URL alone never makes the suite eligible.
+    expect(customersFilterNavigationEligibility().skip).toBe(true);
+
+    // A remote preview target skips even with a disposable URL configured.
+    process.env.WORKSPACE_TEST_DATABASE_URL = "postgresql://disposable/test";
+    process.env.WORKSPACE_E2E_BASE_URL = "https://preview.example";
+    expect(customersFilterNavigationEligibility().skip).toBe(true);
+
+    // Locally, only an explicit disposable URL is eligible.
+    delete process.env.WORKSPACE_E2E_BASE_URL;
+    expect(customersFilterNavigationEligibility().skip).toBe(false);
+  } finally {
+    if (previousValues.WORKSPACE_E2E_BASE_URL === undefined) {
+      delete process.env.WORKSPACE_E2E_BASE_URL;
+    } else {
+      process.env.WORKSPACE_E2E_BASE_URL =
+        previousValues.WORKSPACE_E2E_BASE_URL;
+    }
+    if (previousValues.WORKSPACE_TEST_DATABASE_URL === undefined) {
+      delete process.env.WORKSPACE_TEST_DATABASE_URL;
+    } else {
+      process.env.WORKSPACE_TEST_DATABASE_URL =
+        previousValues.WORKSPACE_TEST_DATABASE_URL;
+    }
+    if (previousValues.DATABASE_URL === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = previousValues.DATABASE_URL;
+    }
+  }
+});

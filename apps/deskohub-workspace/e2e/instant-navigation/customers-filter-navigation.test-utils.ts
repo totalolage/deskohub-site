@@ -13,20 +13,10 @@ import { Effect, Schema } from "effect";
 import { customerMarketingConsents } from "@/db/schema/customer-marketing-consents";
 import { workspaceReservations } from "@/db/schema/workspace-reservations";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import {
-  connectWorkspacePostgresTestDatabase,
-  type WorkspacePostgresTestDatabase,
-} from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import type { WorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const decodeCustomerId = Schema.decodeSync(DotyposCustomerIdSchema);
 const decodeReservationId = Schema.decodeSync(workspaceReservationIdSchema);
-
-// The delayed-response soft-navigation lifecycle can only be proven against a
-// locally controlled server and a disposable database, so reuse the app's
-// database URL resolution chain for the disposable Postgres.
-process.env.WORKSPACE_TEST_DATABASE_URL ??= process.env.DATABASE_URL;
-export const customersFilterNavigationPostgres =
-  await connectWorkspacePostgresTestDatabase();
 
 const grantedAt = Temporal.Instant.from("2026-08-01T09:00:00Z");
 

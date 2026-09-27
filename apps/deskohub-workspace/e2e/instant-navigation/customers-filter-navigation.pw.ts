@@ -1,28 +1,49 @@
 import "@/shared/testing/workspace-test-environment";
 
 import { expect, type Page, test } from "@playwright/test";
-import type { WorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  connectWorkspacePostgresTestDatabase,
+  type WorkspacePostgresTestDatabase,
+} from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { workspaceTestAdminCredentials } from "@/shared/testing/workspace-test-environment";
 import { resolveInstantNavigationAdminCredentials } from "../admin-basic-auth";
 import {
   countDistinctCustomers,
-  customersFilterNavigationPostgres,
   deleteSyntheticData,
   noJavaScriptCustomerIds,
   seedCustomers,
   softNavigationCustomerIds,
 } from "./customers-filter-navigation.test-utils";
+import { customersFilterNavigationEligibility } from "./customers-filter-navigation-eligibility";
 
 // The delayed-response soft-navigation lifecycle can only be proven against a
-// locally controlled server and a disposable database. Remote preview runs keep
-// the existing instant-navigation coverage.
-const remoteBaseUrl = process.env.WORKSPACE_E2E_BASE_URL;
-const postgres = customersFilterNavigationPostgres;
+// locally controlled server and a disposable database. Eligibility and the
+// explicit disposable URL are decided before any connection is attempted, and
+// the connection (which runs migrations) happens in the setup hook below, not
+// at module import.
+const eligibility = customersFilterNavigationEligibility();
 
-test.skip(
-  remoteBaseUrl !== undefined || postgres === null,
-  "requires a local server and the disposable Postgres test database"
-);
+test.skip(eligibility.skip, eligibility.reason);
+
+let postgres: WorkspacePostgresTestDatabase | undefined;
+
+test.beforeAll(async () => {
+  if (eligibility.skip) return;
+  const connected = await connectWorkspacePostgresTestDatabase();
+  if (!connected) {
+    throw new Error(
+      "WORKSPACE_TEST_DATABASE_URL is configured but the disposable Postgres test database did not connect."
+    );
+  }
+  postgres = connected;
+});
+
+test.afterAll(async () => {
+  if (postgres) {
+    await postgres.close();
+    postgres = undefined;
+  }
+});
 
 // Local dev compilation of the administration route can exceed the project's
 // production-navigation timeout on a cold server.
@@ -45,10 +66,20 @@ test.describe("admin customers filter navigation", () => {
     page,
   }) => {
     const store = postgres as WorkspacePostgresTestDatabase;
-    const status = page
+    // Both the toolbar count badge (a div role="status") and the table-local
+    // overlay (a p role="status") show the pending label; assert them
+    // independently so either one alone cannot satisfy the lifecycle.
+    const pendingStatuses = page
       .getByRole("status")
-      .filter({ hasText: "Loading customers" })
-      .first();
+      .filter({ hasText: "Loading customers" });
+    const toolbarPendingCount = page
+      .locator(
+        "section[aria-label='customer table controls'] div[role='status']"
+      )
+      .filter({ hasText: "Loading customers" });
+    const tablePendingStatus = page
+      .locator("p[role='status']")
+      .filter({ hasText: "Loading customers" });
     await deleteSyntheticData(store, softNavigationCustomerIds);
     await seedCustomers(store, softNavigationCustomerIds, 26);
     const grantedTotal = await countDistinctCustomers(store, "granted");
@@ -118,7 +149,10 @@ test.describe("admin customers filter navigation", () => {
       // The soft navigation is pending: the RSC response is gated above.
       // The Next.js router abandons RSC fetches held roughly fifteen seconds,
       // so the pending assertions use tight timeouts and release promptly.
-      await expect(status).toBeVisible({ timeout: 5_000 });
+      await expect(toolbarPendingCount).toBeVisible({ timeout: 5_000 });
+      // The toolbar's old numeric count is gone while the pending badge shows.
+      await expect(page.getByLabel(`${allTotal} customers`)).toHaveCount(0);
+      await expect(tablePendingStatus).toBeVisible({ timeout: 8_000 });
 
       // Stale results are occluded and inert rather than removed.
       await expect(page.locator("[aria-busy='true'][inert]")).toBeAttached({
@@ -150,7 +184,7 @@ test.describe("admin customers filter navigation", () => {
       await expect(page).toHaveURL(
         /consent=granted&sort=activity&direction=asc/
       );
-      await expect(status).toHaveCount(0);
+      await expect(pendingStatuses).toHaveCount(0);
       await expect(page.getByLabel(`${grantedTotal} customers`)).toBeVisible();
       await expect(staleRow).toBeVisible();
       // Customer 26 is the newest granted customer but sorts onto page 2
@@ -172,6 +206,11 @@ test.describe("admin customers filter navigation", () => {
       await expect(
         page.locator('a[href="/admin/customers/e2e-soft-customer-01"]').first()
       ).toBeVisible();
+      // The soft navigation completed without a full document reload: the
+      // pre-navigation probe marker survived releaseAll().
+      expect(
+        await page.getAttribute("html", "data-soft-navigation-probe")
+      ).toBe("same-document");
 
       // A new filter submission resets pagination to the first page.
       await page.goto("/admin/customers?page=2&sort=activity&direction=asc");
@@ -180,17 +219,24 @@ test.describe("admin customers filter navigation", () => {
           .locator('a[href="/admin/customers/e2e-soft-customer-withdrawn"]')
           .first()
       ).toBeVisible();
+      await page.evaluate(() => {
+        document.documentElement.dataset.softNavigationProbe = "same-document";
+      });
       await page.locator("#customer-consent").selectOption("granted");
       armGate();
       await page.getByRole("button", { name: "Apply filters" }).click();
-      await expect(status).toBeVisible();
+      await expect(toolbarPendingCount).toBeVisible();
+      await expect(tablePendingStatus).toBeVisible();
       releaseAll();
-      await expect(status).toHaveCount(0);
+      await expect(pendingStatuses).toHaveCount(0);
       expect(new URL(page.url()).searchParams.get("page")).toBeNull();
       await expect(page.getByLabel(`${grantedTotal} customers`)).toBeVisible();
       await expect(
         page.locator('a[href="/admin/customers/e2e-soft-customer-01"]').first()
       ).toBeVisible();
+      expect(
+        await page.getAttribute("html", "data-soft-navigation-probe")
+      ).toBe("same-document");
 
       // Browser Back restores the previous unfiltered view.
       await page.goBack();
@@ -201,6 +247,9 @@ test.describe("admin customers filter navigation", () => {
           .locator('a[href="/admin/customers/e2e-soft-customer-withdrawn"]')
           .first()
       ).toBeVisible();
+      expect(
+        await page.getAttribute("html", "data-soft-navigation-probe")
+      ).toBe("same-document");
     } finally {
       releaseAll();
       await page.unroute("**/admin/customers**");
