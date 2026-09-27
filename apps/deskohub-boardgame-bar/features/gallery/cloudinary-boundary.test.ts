@@ -12,6 +12,11 @@ const expectedCallers = [
   "features/home/components/about-section.tsx",
   "shared/components/hero.tsx",
 ];
+const lookupModule =
+  "features/gallery/backend/get-cloudinary-image-by-public-id.server.ts";
+const lookupSpecifier =
+  "@/features/gallery/backend/get-cloudinary-image-by-public-id.server";
+const expectedLookupCallers = ["app/[locale]/event/palmovcon/2026/page.tsx"];
 
 test("Cloudinary gallery searches stay inside a server-only query", async () => {
   const searchSource = await readAppSource(searchModule);
@@ -24,6 +29,8 @@ test("Cloudinary gallery searches stay inside a server-only query", async () => 
 
   const callers: string[] = [];
   const providerSearches: string[] = [];
+  const lookupCallers: string[] = [];
+  const providerLookups: string[] = [];
 
   for (const filePath of await listSourceFiles(appRoot)) {
     const relativePath = relative(appRoot, filePath);
@@ -40,13 +47,31 @@ test("Cloudinary gallery searches stay inside a server-only query", async () => 
       expect(contents).not.toMatch(/(^|\n)\s*["']use client["'];?/);
       expect(contents).not.toMatch(/(^|\n)\s*["']use server["'];?/);
     }
+    if (contents.includes(lookupSpecifier)) {
+      lookupCallers.push(relativePath);
+      expect(contents).not.toMatch(/(^|\n)\s*["']use client["'];?/);
+      expect(contents).not.toMatch(/(^|\n)\s*["']use server["'];?/);
+    }
     if (/\bgetGalleryImages\s*\(/.test(contents)) {
       providerSearches.push(relativePath);
+    }
+    if (/\bgetByPublicId\s*\(/.test(contents)) {
+      providerLookups.push(relativePath);
     }
   }
 
   expect(callers.sort()).toEqual(expectedCallers);
   expect(providerSearches).toEqual([searchModule]);
+  expect(lookupCallers.sort()).toEqual(expectedLookupCallers);
+  expect(providerLookups).toEqual([lookupModule]);
+
+  const lookupSource = await readAppSource(lookupModule);
+  expect(lookupSource).toContain('import "server-only";');
+  expect(lookupSource).not.toMatch(/(^|\n)\s*["']use server["'];?/);
+  expect(lookupSource).toContain('"use cache";');
+  expect(lookupSource).toMatch(
+    /applyCacheTags\(\s*cloudinaryTags\.all\(\),\s*cloudinaryTags\.image\(decodedPublicId\)\s*\)/
+  );
 });
 
 async function readAppSource(relativePath: string): Promise<string> {

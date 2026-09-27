@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 import {
   type CloudinaryAsset,
@@ -7,7 +7,7 @@ import {
 import { CloudinaryService } from "@deskohub/cloudinary/server";
 import { Effect, Schema } from "effect";
 import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
-import { GalleryCloudinaryLayer } from "../backend/cloudinary.service";
+import { GalleryCloudinaryLayer } from "./cloudinary.service";
 
 export async function getCloudinaryImageByPublicId(
   publicId: string
