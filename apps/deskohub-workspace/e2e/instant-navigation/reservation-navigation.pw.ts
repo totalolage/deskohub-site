@@ -148,9 +148,14 @@ test.describe("client navigation", () => {
     }) => {
       await page.goto(navigation.sourcePath);
 
+      // The route announcer mounts once the App Router has hydrated; the
+      // SSR reservation link is replaced by the hydrated re-render.
+      await page.locator("next-route-announcer").waitFor({ state: "attached" });
+
       const reservationLink = page
         .getByRole("link", { name: navigation.linkName })
         .first();
+      await expect(reservationLink).toBeVisible();
       await reservationLink.scrollIntoViewIfNeeded();
       await reservationLink.hover();
       await expect
