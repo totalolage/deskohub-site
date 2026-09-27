@@ -2,12 +2,25 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import type { CloudinaryPublicId } from "@deskohub/cloudinary/schema";
-import { Context, Deferred, Effect, Fiber, Layer, Option } from "effect";
+import {
+  Context,
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Schema,
+} from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
+import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { customerAccountIdSchema } from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import {
+  type CustomerAccountSession,
+  CustomerAuthentication,
+} from "./customer-authentication.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -36,6 +49,9 @@ const Cloudinary = Context.Service<
     readonly destroyAsset: (
       publicId: CloudinaryPublicId
     ) => Effect.Effect<unknown, { _tag: string }>;
+    readonly deleteResourcesByPublicIdPrefix: (
+      prefix: CloudinaryPublicId
+    ) => Effect.Effect<void, { _tag: string }>;
     readonly renameAsset: (
       from: CloudinaryPublicId,
       to: CloudinaryPublicId,
@@ -46,8 +62,18 @@ const Cloudinary = Context.Service<
 
 /** Stored media: public ID → immutable provider asset identity. */
 let stored: Map<string, string> = new Map();
+let providerCalls: string[] = [];
 let uploadEntered: Deferred.Deferred<never, void> | null = null;
 let releaseUpload: Deferred.Deferred<never, void> | null = null;
+let currentSession: CustomerAccountSession | null = null;
+
+const makeSession = (account: string): CustomerAccountSession => ({
+  accountId: customerAccountIdSchema.make(account),
+  email: Schema.decodeSync(reservationCustomerEmailSchema)(
+    "avatar@example.test"
+  ),
+  deletionRequested: false,
+});
 
 const makeAsset = (publicId: string, assetId?: string) => ({
   public_id: publicId,
@@ -64,20 +90,23 @@ const makeAsset = (publicId: string, assetId?: string) => ({
 
 const CloudinaryLayer = Layer.succeed(Cloudinary, {
   getByPublicId: (publicId) =>
-    Effect.suspend(() =>
-      stored.has(publicId)
+    Effect.suspend(() => {
+      providerCalls.push("get");
+      return stored.has(publicId)
         ? Effect.succeed(makeAsset(publicId, stored.get(publicId)))
-        : Effect.fail({ _tag: "CloudinarySearchError", httpCode: 404 })
-    ),
+        : Effect.fail({ _tag: "CloudinarySearchError", httpCode: 404 });
+    }),
   listFolderAssets: (folder, options) =>
-    Effect.succeed(
-      [...stored.keys()]
+    Effect.sync(() => {
+      providerCalls.push("search");
+      return [...stored.keys()]
         .filter((id) => id.startsWith(`${folder}/`))
         .slice(0, options?.maxResults ?? 100)
-        .map((id) => makeAsset(id, stored.get(id)))
-    ),
+        .map((id) => makeAsset(id, stored.get(id)));
+    }),
   uploadImage: (input) =>
     Effect.suspend(() => {
+      providerCalls.push("upload");
       const fullId = `${input.folder}/${input.publicId}`;
       const entered = uploadEntered;
       const release = releaseUpload;
@@ -95,11 +124,20 @@ const CloudinaryLayer = Layer.succeed(Cloudinary, {
     }),
   destroyAsset: (publicId) =>
     Effect.sync(() => {
+      providerCalls.push("destroy");
       stored.delete(publicId);
       return "destroyed";
     }),
+  deleteResourcesByPublicIdPrefix: (prefix) =>
+    Effect.sync(() => {
+      providerCalls.push("delete-prefix");
+      for (const publicId of stored.keys()) {
+        if (publicId.startsWith(prefix)) stored.delete(publicId);
+      }
+    }),
   renameAsset: (from, to) =>
     Effect.suspend(() => {
+      providerCalls.push("rename");
       const assetId = stored.get(from);
       stored.delete(from);
       if (assetId !== undefined) {
@@ -145,6 +183,27 @@ const insertLink = async (account: string, dotyposCustomerId: string) => {
   );
 };
 
+const waitForAccountAdvisoryLockWait = async (account: string) => {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const waiting = await testDatabase!.pool.query(
+      `
+        select 1
+        from pg_locks
+        where locktype = 'advisory'
+          and not granted
+          and classid::bigint = (hashtext($1)::bigint & 4294967295)
+          and objid::bigint = (hashtext($2)::bigint & 4294967295)
+          and objsubid = 2
+      `,
+      ["customer-account", account]
+    );
+    if (waiting.rows.length > 0) return;
+    await Bun.sleep(10);
+  }
+  throw new Error("Timed out waiting for the account advisory lock waiter.");
+};
+
 const makeLayer = () =>
   testDatabase &&
   Layer.mergeAll(
@@ -163,6 +222,13 @@ const makeLayer = () =>
               )
             )
           ),
+          Layer.succeed(CustomerAuthentication, {
+            currentUser: Effect.suspend(() =>
+              currentSession === null
+                ? Effect.succeed(null)
+                : Effect.succeed(currentSession)
+            ),
+          }),
           Layer.succeed(CustomerAvatarSettings, {
             namespace: Option.some("avatars/test"),
           })
@@ -202,7 +268,11 @@ describe.skipIf(!testDatabase)(
   () => {
     test("serializes upload racing upload into exactly one live avatar with no staging left", async () => {
       stored = new Map();
+      providerCalls = [];
+      uploadEntered = null;
+      releaseUpload = null;
       const account = customerAccountIdSchema.make(uniqueId());
+      currentSession = makeSession(account);
       await insertAuthUser(account, `race-${account}@deskohub.test`);
       await insertLink(account, uniqueDotyposCustomerId());
       const bytes = await pngBytes();
@@ -210,18 +280,35 @@ describe.skipIf(!testDatabase)(
       await Effect.runPromise(
         Effect.gen(function* () {
           const avatars = yield* CustomerAvatarService;
-          const outcomes = yield* Effect.all([
-            avatars.upload(account, {
-              bytes,
-              declaredSize: bytes.byteLength,
-              declaredMediaType: "image/png",
-            }),
-            avatars.upload(account, {
-              bytes,
-              declaredSize: bytes.byteLength,
-              declaredMediaType: "image/png",
-            }),
-          ]);
+          uploadEntered = yield* Deferred.make<void>();
+          releaseUpload = yield* Deferred.make<void>();
+          const uploadFiber = yield* Effect.forkChild(
+            Effect.all(
+              [
+                avatars.upload(account, {
+                  bytes,
+                  declaredSize: bytes.byteLength,
+                  declaredMediaType: "image/png",
+                }),
+                avatars.upload(account, {
+                  bytes,
+                  declaredSize: bytes.byteLength,
+                  declaredMediaType: "image/png",
+                }),
+              ],
+              { concurrency: "unbounded" }
+            )
+          );
+
+          // The first provider upload holds the account lock while the other
+          // upload reaches Postgres and waits for that same advisory lock.
+          yield* Deferred.await(uploadEntered);
+          yield* Effect.promise(() => waitForAccountAdvisoryLockWait(account));
+          expect(
+            providerCalls.filter((call) => call === "upload")
+          ).toHaveLength(1);
+          yield* Deferred.succeed(releaseUpload, undefined);
+          const outcomes = yield* Fiber.join(uploadFiber);
           expect(outcomes).toHaveLength(2);
           for (const outcome of outcomes) {
             expect(outcome.url).toContain(`avatars/test/${account}`);
@@ -229,6 +316,17 @@ describe.skipIf(!testDatabase)(
         }).pipe(Effect.provide(makeLayer()))
       );
 
+      const uploads = providerCalls.flatMap((call, index) =>
+        call === "upload" ? [index] : []
+      );
+      const renames = providerCalls.flatMap((call, index) =>
+        call === "rename" ? [index] : []
+      );
+      expect(uploads).toHaveLength(2);
+      expect(renames).toHaveLength(2);
+      expect(uploads[0]).toBeLessThan(renames[0]!);
+      expect(renames[0]).toBeLessThan(uploads[1]!);
+      expect(uploads[1]).toBeLessThan(renames[1]!);
       expect([...stored.keys()]).toEqual([`avatars/test/${account}`]);
       const authImage = await testDatabase!.pool.query(
         `select image from auth."user" where id = $1`,
@@ -237,9 +335,118 @@ describe.skipIf(!testDatabase)(
       expect(authImage.rows[0]?.image).toBeNull();
     });
 
+    test("rejects upload when the verified session is revoked while it waits for the account lock", async () => {
+      stored = new Map();
+      providerCalls = [];
+      const account = customerAccountIdSchema.make(uniqueId());
+      currentSession = makeSession(account);
+      await insertAuthUser(account, `race-${account}@deskohub.test`);
+      await insertLink(account, uniqueDotyposCustomerId());
+      const bytes = await pngBytes();
+
+      const outcome = await Effect.runPromise(
+        Effect.gen(function* () {
+          const avatars = yield* CustomerAvatarService;
+          const links = yield* CustomerAccountLinkRepository;
+          const lockAcquired = yield* Deferred.make<void>();
+          const releaseLock = yield* Deferred.make<void>();
+          const lockOwner = yield* Effect.forkChild(
+            links
+              .withAccountLock(
+                account,
+                Deferred.succeed(lockAcquired, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseLock))
+                )
+              )
+              .pipe(Effect.orDie)
+          );
+          yield* Deferred.await(lockAcquired);
+
+          const upload = yield* Effect.forkChild(
+            avatars
+              .upload(account, {
+                bytes,
+                declaredSize: bytes.byteLength,
+                declaredMediaType: "image/png",
+              })
+              .pipe(Effect.result)
+          );
+          yield* Effect.promise(() => waitForAccountAdvisoryLockWait(account));
+
+          currentSession = null;
+          yield* Deferred.succeed(releaseLock, undefined);
+          const result = yield* Fiber.join(upload);
+          yield* Fiber.join(lockOwner);
+          return result;
+        }).pipe(Effect.provide(makeLayer()))
+      );
+
+      expect(outcome).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "CustomerAccountAccessError",
+          reason: "unauthenticated",
+        },
+      });
+      expect(providerCalls).toEqual([]);
+    });
+
+    test("rejects remove when the verified session is revoked while it waits for the account lock", async () => {
+      stored = new Map();
+      providerCalls = [];
+      const account = customerAccountIdSchema.make(uniqueId());
+      currentSession = makeSession(account);
+      await insertAuthUser(account, `race-${account}@deskohub.test`);
+      await insertLink(account, uniqueDotyposCustomerId());
+      stored.set(`avatars/test/${account}`, "asset-before-remove");
+
+      const outcome = await Effect.runPromise(
+        Effect.gen(function* () {
+          const avatars = yield* CustomerAvatarService;
+          const links = yield* CustomerAccountLinkRepository;
+          const lockAcquired = yield* Deferred.make<void>();
+          const releaseLock = yield* Deferred.make<void>();
+          const lockOwner = yield* Effect.forkChild(
+            links
+              .withAccountLock(
+                account,
+                Deferred.succeed(lockAcquired, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseLock))
+                )
+              )
+              .pipe(Effect.orDie)
+          );
+          yield* Deferred.await(lockAcquired);
+
+          const remove = yield* Effect.forkChild(
+            avatars.remove(account).pipe(Effect.result)
+          );
+          yield* Effect.promise(() => waitForAccountAdvisoryLockWait(account));
+
+          currentSession = null;
+          yield* Deferred.succeed(releaseLock, undefined);
+          const result = yield* Fiber.join(remove);
+          yield* Fiber.join(lockOwner);
+          return result;
+        }).pipe(Effect.provide(makeLayer()))
+      );
+
+      expect(outcome).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "CustomerAccountAccessError",
+          reason: "unauthenticated",
+        },
+      });
+      expect(providerCalls).toEqual([]);
+      expect(stored.has(`avatars/test/${account}`)).toBe(true);
+    });
+
     test("serializes upload racing remove so no staging survives and remove lands last", async () => {
       stored = new Map();
+      providerCalls = [];
       const account = customerAccountIdSchema.make(uniqueId());
+      currentSession = makeSession(account);
       await insertAuthUser(account, `race-${account}@deskohub.test`);
       await insertLink(account, uniqueDotyposCustomerId());
       const bytes = await pngBytes();
@@ -267,7 +474,7 @@ describe.skipIf(!testDatabase)(
           const removeFiber = yield* Effect.forkChild(
             avatars.remove(account).pipe(Effect.orDie)
           );
-          yield* Effect.sleep("150 millis");
+          yield* Effect.promise(() => waitForAccountAdvisoryLockWait(account));
 
           yield* Deferred.succeed(releaseUpload, undefined);
           yield* Fiber.join(uploadFiber);
@@ -284,7 +491,9 @@ describe.skipIf(!testDatabase)(
 
     test("serializes upload racing account deletion so deletion ends with no media and the marker set", async () => {
       stored = new Map();
+      providerCalls = [];
       const account = customerAccountIdSchema.make(uniqueId());
+      currentSession = makeSession(account);
       await insertAuthUser(account, `race-${account}@deskohub.test`);
       await insertLink(account, uniqueDotyposCustomerId());
       const bytes = await pngBytes();
@@ -321,7 +530,7 @@ describe.skipIf(!testDatabase)(
               )
               .pipe(Effect.orDie)
           );
-          yield* Effect.sleep("150 millis");
+          yield* Effect.promise(() => waitForAccountAdvisoryLockWait(account));
 
           yield* Deferred.succeed(releaseUpload, undefined);
           yield* Fiber.join(uploadFiber);

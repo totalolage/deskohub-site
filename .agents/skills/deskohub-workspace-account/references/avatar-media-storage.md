@@ -8,21 +8,31 @@ how the code honors it.
 ## Package boundary
 
 - All provider calls go through `@deskohub/cloudinary`. The package exposes
-  `uploadImage`, `destroyAsset`, `renameAsset`, and the sanitized
-  `listFolderAssets` on `CloudinaryService` alongside
-  the existing search capability. They share one service class because they
-  share the configured SDK, the runtime config layer, and the transient-retry
-  policy; a sibling service would duplicate that wiring without a distinct
-  contract. Avatar paths only ever use the sanitized executors
-  (`getByPublicId`, `listFolderAssets`, `uploadImage`, `destroyAsset`,
-  `renameAsset`), which emit fixed identifier-free log messages.
-- Error contract: `CloudinaryUploadError`, `CloudinaryDestroyError` (with an
-  `uncertain`/`failed` outcome), and `CloudinaryRenameError` (with a
-  `target-exists`/`source-missing`/`failed` reason). Retry policy retries only
-  5xx-style failures; 4xx failures are definitive and never retried.
-- `destroyAsset` returns `destroyed` or `not-found` as a closed outcome union;
+  `uploadImage`, `destroyAsset`, `deleteResourcesByPublicIdPrefix`,
+  `renameAsset`, and the sanitized `listFolderAssets` on `CloudinaryService`
+  alongside the existing search capability. They share one service class
+  because they share the configured SDK, the runtime config layer, and the
+  transient-retry policy. A sibling service would duplicate that wiring
+  without a distinct contract. Avatar paths use only executors that emit fixed
+  identifier-free log messages: `getByPublicId`, `listFolderAssets`,
+  `uploadImage`, `destroyAsset`, `deleteResourcesByPublicIdPrefix`, and
+  `renameAsset`.
+- Error contract: `CloudinaryUploadError`, `CloudinaryDestroyError`,
+  `CloudinaryPrefixDeleteError`, and `CloudinaryRenameError`. Destroy and
+  prefix-delete errors carry an `uncertain` or `failed` outcome. Rename errors
+  carry a `target-exists`, `source-missing`, or `failed` reason. Retry policy
+  retries only 5xx-style failures; 4xx failures are definitive and never
+  retried.
+- `destroyAsset` sets Cloudinary's `invalidate` option and returns `destroyed`
+  or `not-found` as a closed outcome union;
   an unrecognized provider response or an exhausted retry sequence surfaces as
   an `uncertain` error so callers can fail retryably and honestly.
+- `deleteResourcesByPublicIdPrefix` deletes only image uploads whose public IDs
+  start with the supplied prefix. It validates each response, follows the
+  provider's `next_cursor`, rejects repeated cursors, and fails after 25 pages
+  if the provider still reports a partial delete. Prefixes do not enter logs or
+  errors. Cloudinary documents a maximum of 1,000 original resources per
+  request but does not document list or delete consistency guarantees.
 - Normalization (sharp, WebP, 512x512, metadata stripping, pixel-bomb cap)
   belongs to the Workspace application boundary, not the package. The package
   transports bytes; it never interprets image content.
@@ -70,28 +80,33 @@ within the production namespace from a preview.
   so staging is cleaned and the operation fails retryably. "Any asset at the
   live ID" is never proof of promotion, because the non-atomic rename contract
   cannot distinguish the new upload from the previous live image.
-- Deletion destroys the live asset first, then drains the account's
-  staging folder completely: the sweep lists bounded batches
-  (`maxResults: 8`) and destroys them, looping until a listing verifies
-  the folder is empty (bounded by an internal iteration cap). Deletion
-  must never succeed with staged customer images left stored: any listing
-  or destroy failure — or exhausting the iteration cap — fails retryably
-  BEFORE identity removal, so the durable deletion marker persists and the
-  deletion can be retried. The live destroy is the authoritative media
-  step, but it is not a license to leave recoverable staging behind.
-  `searchByFolder`-style listing ordering is provider-defined; the code
-  does not rely on any particular order. Staging listing goes through the
-  sanitized folder-listing call, which never logs the account-bearing
-  folder, asset identities, URLs, raw provider responses, or provider
-  failure text.
+- Deletion destroys the live asset first, then calls
+  `deleteResourcesByPublicIdPrefix` with the account's staging prefix ending
+  in `/`. The Cloudinary SDK sends the prefix and each returned cursor to the
+  Admin API. Deletion fails retryably before identity removal if a response is
+  malformed, any result is not `deleted` or `not found`, a request fails, a
+  cursor repeats, or the 25-page limit is reached. An empty Search response is
+  not evidence that the staging prefix is empty. Cloudinary Search reflects
+  changes within a few seconds but documents no hard upper bound or snapshot
+  guarantee. The code makes no consistency claim about prefix deletion or
+  resource listing.
+- Staging upload IDs remain unique under the exact account prefix
+  `${namespace}-staging/${accountId}/`. The trailing slash prevents a prefix
+  delete from matching another account with a similar ID.
 - Avatar mutations (upload, remove, destroy) run the whole media critical
   section — provider calls, reconciliation, and cleanup — under the account
-  advisory lock and uninterruptibly: an interruption cannot release the lock
-  while a provider rename, upload, or destroy is still in flight, so no late
-  provider mutation can land after a concurrent deletion destroyed the
-  avatar and removed the identity. There is no late rename after deletion.
+  advisory lock and uninterruptibly. Upload and remove also re-read the
+  authoritative verified session inside the lock and require its account ID to
+  match. An interruption cannot release the lock while a provider rename,
+  upload, or destroy is still in flight, so no late provider mutation can land
+  after a concurrent deletion destroyed the avatar and removed the identity.
+  There is no late rename after deletion.
 - Deletion removes the Cloudinary asset before Better Auth identity removal,
   fails retryably on `uncertain`, and accepts `not-found` as done.
+- A destroy request asks Cloudinary to invalidate cached copies. Cloudinary
+  documents propagation that usually takes seconds to minutes. Versioned URLs
+  make the account page request a new asset version after promotion, but
+  invalidation is not instant and deletion has no replacement versioned URL.
 
 ## Storage prohibition
 
@@ -102,6 +117,6 @@ account-ID-derived public ID is computed, so there is nothing to persist.
 ## Testing boundary
 
 Package tests mock the Cloudinary SDK module; they verify Effect wiring,
-classification, and retry behavior, not provider integration. Avatar E2E
-coverage belongs to the workspace protected-preview lane once the feature
-stage lands.
+prefix-delete pagination, invalidation options, classification, and retry
+behavior, not provider integration. Avatar E2E coverage belongs to the
+workspace protected-preview lane once the feature stage lands.

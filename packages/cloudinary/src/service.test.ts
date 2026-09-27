@@ -19,11 +19,16 @@ type ResourceCall = {
 
 const searchCalls: SearchCall[] = [];
 const resourceCalls: ResourceCall[] = [];
+const prefixDeleteCalls: {
+  prefix: string;
+  options: Record<string, unknown>;
+}[] = [];
 const uploadCalls: {
   options: Record<string, unknown>;
   byteLength: number;
 }[] = [];
 const destroyCalls: string[] = [];
+const destroyOptions: Record<string, unknown>[] = [];
 const renameCalls: {
   fromPublicId: string;
   toPublicId: string;
@@ -31,6 +36,7 @@ const renameCalls: {
 }[] = [];
 let queuedResults: unknown[] = [];
 let queuedResourceResults: unknown[] = [];
+let queuedPrefixDeleteResults: unknown[] = [];
 let queuedUploadResults: unknown[] = [];
 let queuedDestroyResults: unknown[] = [];
 let queuedRenameResults: unknown[] = [];
@@ -48,6 +54,17 @@ const cloudinary = {
         resourceCalls.push({ publicId, options });
         resourceAttempts += 1;
         const next = queuedResourceResults.shift();
+        if (next instanceof Error) throw next;
+        if (next && typeof next === "object" && "throw" in next) {
+          throw next.throw;
+        }
+        return next;
+      }
+    ),
+    delete_resources_by_prefix: mock(
+      async (prefix: string, options: Record<string, unknown>) => {
+        prefixDeleteCalls.push({ prefix, options });
+        const next = queuedPrefixDeleteResults.shift();
         if (next instanceof Error) throw next;
         if (next && typeof next === "object" && "throw" in next) {
           throw next.throw;
@@ -78,15 +95,18 @@ const cloudinary = {
         },
       })
     ),
-    destroy: mock(async (publicId: string) => {
-      destroyCalls.push(publicId);
-      destroyAttempts += 1;
-      const next = queuedDestroyResults.shift();
-      if (next && typeof next === "object" && "throw" in next) {
-        throw next.throw;
+    destroy: mock(
+      async (publicId: string, options: Record<string, unknown>) => {
+        destroyCalls.push(publicId);
+        destroyOptions.push(options);
+        destroyAttempts += 1;
+        const next = queuedDestroyResults.shift();
+        if (next && typeof next === "object" && "throw" in next) {
+          throw next.throw;
+        }
+        return next;
       }
-      return next;
-    }),
+    ),
     rename: mock(
       async (
         fromPublicId: string,
@@ -178,11 +198,14 @@ const asset = createAsset("gallery/image");
 beforeEach(() => {
   searchCalls.length = 0;
   resourceCalls.length = 0;
+  prefixDeleteCalls.length = 0;
   uploadCalls.length = 0;
   destroyCalls.length = 0;
+  destroyOptions.length = 0;
   renameCalls.length = 0;
   queuedResults = [];
   queuedResourceResults = [];
+  queuedPrefixDeleteResults = [];
   queuedUploadResults = [];
   queuedDestroyResults = [];
   queuedRenameResults = [];
@@ -531,6 +554,7 @@ describe("CloudinaryService destroys", () => {
       expect(result.success).toBe("destroyed");
     }
     expect(destroyCalls).toEqual(["gallery/image"]);
+    expect(destroyOptions).toEqual([{ invalidate: true }]);
   });
 
   test("classifies a missing asset as not-found", async () => {
@@ -591,6 +615,121 @@ describe("CloudinaryService destroys", () => {
       expect(result.failure.httpCode).toBe(401);
     }
     expect(destroyAttempts).toBe(1);
+  });
+
+  test("deletes resources by an exact image upload prefix", async () => {
+    queuedPrefixDeleteResults = [
+      { deleted: { "avatars/staging/account/one": "deleted" }, partial: false },
+    ];
+
+    const service = await makeService();
+    await Effect.runPromise(
+      service.deleteResourcesByPublicIdPrefix(
+        cloudinaryPublicId("avatars/staging/account/")
+      )
+    );
+
+    expect(prefixDeleteCalls).toEqual([
+      {
+        prefix: "avatars/staging/account/",
+        options: { resource_type: "image", type: "upload" },
+      },
+    ]);
+  });
+
+  test("follows delete-by-prefix cursors and keeps the same account prefix", async () => {
+    queuedPrefixDeleteResults = [
+      {
+        deleted: { "avatars/staging/account/one": "deleted" },
+        partial: true,
+        next_cursor: "cursor-2",
+      },
+      {
+        deleted: { "avatars/staging/account/two": "deleted" },
+        partial: false,
+      },
+    ];
+
+    const service = await makeService();
+    await Effect.runPromise(
+      service.deleteResourcesByPublicIdPrefix(
+        cloudinaryPublicId("avatars/staging/account/")
+      )
+    );
+
+    expect(prefixDeleteCalls).toEqual([
+      {
+        prefix: "avatars/staging/account/",
+        options: { resource_type: "image", type: "upload" },
+      },
+      {
+        prefix: "avatars/staging/account/",
+        options: {
+          resource_type: "image",
+          type: "upload",
+          next_cursor: "cursor-2",
+        },
+      },
+    ]);
+  });
+
+  test("fails on incomplete prefix-delete responses or a cursor that repeats", async () => {
+    const service = await makeService();
+
+    queuedPrefixDeleteResults = [
+      { deleted: {}, partial: false, next_cursor: "unexpected" },
+    ];
+    const invalidCursor = await Effect.runPromise(
+      service
+        .deleteResourcesByPublicIdPrefix(
+          cloudinaryPublicId("avatars/staging/account/")
+        )
+        .pipe(Effect.result)
+    );
+    expect(invalidCursor._tag).toBe("Failure");
+    if (invalidCursor._tag === "Failure") {
+      expect(invalidCursor.failure._tag).toBe("CloudinaryPrefixDeleteError");
+      expect(invalidCursor.failure.outcome).toBe("uncertain");
+    }
+
+    queuedPrefixDeleteResults = [
+      { deleted: {}, partial: true, next_cursor: "cursor-1" },
+      { deleted: {}, partial: true, next_cursor: "cursor-1" },
+    ];
+    prefixDeleteCalls.length = 0;
+    const repeatedCursor = await Effect.runPromise(
+      service
+        .deleteResourcesByPublicIdPrefix(
+          cloudinaryPublicId("avatars/staging/account/")
+        )
+        .pipe(Effect.result)
+    );
+    expect(repeatedCursor._tag).toBe("Failure");
+    expect(prefixDeleteCalls).toHaveLength(2);
+  });
+
+  test("bounds large prefix deletions and leaves a partial sweep uncertain", async () => {
+    queuedPrefixDeleteResults = Array.from({ length: 25 }, (_, index) => ({
+      deleted: {},
+      partial: true,
+      next_cursor: `cursor-${index + 1}`,
+    }));
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service
+        .deleteResourcesByPublicIdPrefix(
+          cloudinaryPublicId("avatars/staging/account/")
+        )
+        .pipe(Effect.result)
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("CloudinaryPrefixDeleteError");
+      expect(result.failure.outcome).toBe("uncertain");
+    }
+    expect(prefixDeleteCalls).toHaveLength(25);
   });
 });
 

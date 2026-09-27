@@ -24,6 +24,7 @@ The normalized image, not the customer's original bytes, is what reaches storage
 
 - Avatar assets are stored in Cloudinary through signed, server-side uploads only. Upload credentials never reach the browser.
 - Each account has exactly one fixed, account-ID-derived public ID. There is no per-upload public ID stored anywhere.
+- Each upload uses a unique UUID under an account-specific staging prefix. The prefix ends in `/` so it cannot match a similarly named account.
 - Environments use distinct folder-prefix namespaces (production, preview, development). A preview deployment writes only to its immutable commit/deployment-scoped namespace when one is available; if that identity is missing or blank, the avatar feature fails closed. It never falls back to the production namespace.
 - Preview media uses synthetic accounts and images only; production avatar media is never copied into preview.
 - No avatar bytes, URLs, or public IDs are stored in Neon. The Better Auth `auth.user.image` column stays unfilled, and no workspace table mirrors avatar state.
@@ -48,18 +49,21 @@ Cloudinary does not document rename/overwrite as atomic. The reconciliation appr
 
 ## Delivery
 
-- The account page renders the versioned delivery URL taken from the current asset lookup or upload response, never a cached unversioned URL. This avoids stale CDN copies after a promotion.
+- The account page uses the versioned delivery URL from the current asset lookup or upload response. A replacement asset has a new version and URL, so the page requests the new version instead of reusing the previous version's cached response.
+- Single-asset destroy requests set Cloudinary's `invalidate` option. Cloudinary says invalidation usually takes seconds to minutes to propagate, so a cached copy may still be served during that delay. Without invalidation, Cloudinary says cached copies can remain for up to 30 days. Removal has no replacement versioned URL, and invalidation is not instant.
 - The account page loads only the current account's asset.
 - When no avatar exists, or the read fails, the page falls back to the customer's initials. A media outage never blocks the account page.
 
 ## Authorization and concurrency
 
 - Upload and remove require a verified linked account resolved from the authoritative Better Auth session. The client supplies only the image file; account IDs and avatar URLs are never accepted as authority.
-- Recheck account activity under the account advisory lock before mutation. The deletion marker prevents new avatar changes, and upload, remove, and account deletion serialize their complete media operations under that lock.
+- Recheck the authoritative verified session for the same account and the account activity state under the account advisory lock before mutation. The deletion marker prevents new avatar changes, and upload, remove, and account deletion serialize their complete media operations under that lock.
 
 ## Deletion
 
 - The Cloudinary live asset and retained staging media are removed before the Better Auth identity is removed.
+- Delete staging through the Cloudinary Admin API's account-specific public-ID prefix operation, then follow every `next_cursor`. Cloudinary limits each request to 1,000 original resources. The application stops after 25 pages and fails retryably if a request, response, cursor, or page limit leaves the sweep uncertain.
+- Do not use an empty Cloudinary Search result as proof that staging is empty. Search results reflect changes within a few seconds, but Cloudinary documents no hard upper bound or snapshot guarantee. Cloudinary also documents no consistency guarantee for prefix deletion or resource listing. The deletion flow makes no consistency claim beyond checking the explicit delete responses and their cursors.
 - An uncertain provider deletion outcome fails retryably; deletion of the identity does not proceed on an uncertain media state.
 - Deletion is idempotent when the asset is already missing.
 - The existing Dotypos-first deletion marker and the advisory-lock race invariants of account deletion are unchanged.
