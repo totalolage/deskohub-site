@@ -332,6 +332,7 @@ export function VoucherEditor({
           },
         })}
         defaultValues={voucherFormDefaults(voucher)}
+        resetOnSuccessTo="submitted"
         deleteControl={
           deletable ? (
             <DeleteButton
@@ -664,6 +665,7 @@ function DiscountEditor({
           },
         })}
         defaultValues={discountDefinitionFormDefaults(discount)}
+        resetOnSuccessTo="submitted"
         deleteControl={
           deletable ? (
             <DeleteButton
@@ -707,6 +709,7 @@ function DiscountCodeEditor({
           },
         })}
         defaultValues={discountCodeFormDefaults(code)}
+        resetOnSuccessTo="submitted"
         requireDirty
         schema={discountCodeFormSchema}
         submitLabel="Save code"
@@ -724,6 +727,7 @@ function MutationForm<Input extends FieldValues, Values = Input>({
   children,
   defaultValues,
   deleteControl,
+  resetOnSuccessTo = "initial",
   requireDirty = false,
   schema,
   submitIcon,
@@ -735,6 +739,11 @@ function MutationForm<Input extends FieldValues, Values = Input>({
   readonly children: ReactNode;
   readonly defaultValues: DefaultValues<Input>;
   readonly deleteControl?: ReactNode;
+  /**
+   * Edit forms rebase onto the submitted values so a follow-up edit submits
+   * the saved state plus the new change; create forms clear back to defaults.
+   */
+  readonly resetOnSuccessTo?: "initial" | "submitted";
   readonly requireDirty?: boolean;
   readonly schema: StandardSchemaV1<Input, Values>;
   readonly submitIcon: ReactNode;
@@ -763,7 +772,11 @@ function MutationForm<Input extends FieldValues, Values = Input>({
     actionName,
     onSuccess: ({ data }) => {
       if (!data) return;
-      form.reset();
+      form.reset(
+        resetOnSuccessTo === "submitted"
+          ? (form.getValues() as Input)
+          : undefined
+      );
       const message = data.createdDiscountId
         ? `${data.notice} Calendar ID: ${data.createdDiscountId}`
         : data.notice;

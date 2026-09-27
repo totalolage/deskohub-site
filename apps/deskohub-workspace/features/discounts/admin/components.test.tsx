@@ -1456,7 +1456,7 @@ describe("discount administration pages", () => {
     expect(view.getByRole("button", { name: "Create discount" })).toBeDefined();
   });
 
-  test("marks the discount editor dirty, submits its payload, and resets after success", async () => {
+  test("rebases the discount editor onto submitted values after success", async () => {
     const captured = captureWorkspaceActions(/^updateDiscount\./);
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
@@ -1498,10 +1498,32 @@ describe("discount administration pages", () => {
       "#labelEn-019c91dd-c560-7e55-b9d8-c95065efd51d"
     ) as HTMLInputElement;
     await waitFor(() => {
-      expect(labelEn.value).toBe("Summer discount");
+      expect(labelEn.value).toBe("Updated summer discount");
       expect(save).toHaveProperty("disabled", true);
     });
     expect(view.getByRole("status").textContent).toContain("Discount saved.");
+
+    // A follow-up edit submits the saved values plus the new change instead
+    // of resurrecting the stale pre-save defaults.
+    fireEvent.input(labelEn, {
+      target: { value: "Twice-updated summer discount" },
+    });
+    expect(save).toHaveProperty("disabled", false);
+    fireEvent.submit(save.closest("form")!);
+    await waitFor(() =>
+      expect(execute).toHaveBeenLastCalledWith({
+        kind: "update-discount",
+        discount: {
+          id: "019c91dd-c560-7e55-b9d8-c95065efd51d",
+          labels: {
+            "cs-CZ": "Letní sleva",
+            "en-US": "Twice-updated summer discount",
+          },
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+          products: [{ kind: "cowork" }],
+        },
+      })
+    );
   });
 
   test("registers product and enabled checkboxes in the update payloads", async () => {
@@ -1898,5 +1920,166 @@ describe("discount administration pages", () => {
         },
       })
     );
+  });
+
+  test("ignores inactive adjustment fields when switching kinds", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { CreateDiscountForm } = await import("./admin-tables");
+    const view = render(<CreateDiscountForm />);
+    const form = view
+      .getByRole("button", { name: "Create discount" })
+      .closest("form")!;
+
+    fireEvent.input(view.getByRole("textbox", { name: "English (en-US)" }), {
+      target: { value: "Fixed promo" },
+    });
+    fireEvent.input(view.getByRole("textbox", { name: "Czech (cs-CZ)" }), {
+      target: { value: "Pevná sleva" },
+    });
+    fireEvent.input(view.getByRole("spinbutton", { name: "Percentage" }), {
+      target: { value: "" },
+    });
+    fireEvent.change(view.getByRole("combobox", { name: "Type" }), {
+      target: { value: "fixed" },
+    });
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "create-discount",
+        discount: {
+          labels: { "cs-CZ": "Pevná sleva", "en-US": "Fixed promo" },
+          adjustment: {
+            kind: "fixed",
+            amount: { value: 10000, exponent: 2, currency: "CZK" },
+          },
+          products: [],
+        },
+      })
+    );
+
+    execute.mockClear();
+    fireEvent.input(view.getByRole("spinbutton", { name: "Fixed value" }), {
+      target: { value: "" },
+    });
+    fireEvent.change(view.getByRole("combobox", { name: "Type" }), {
+      target: { value: "percentage" },
+    });
+    fireEvent.input(view.getByRole("spinbutton", { name: "Percentage" }), {
+      target: { value: "10" },
+    });
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "create-discount",
+        discount: {
+          labels: { "cs-CZ": "Pevná sleva", "en-US": "Fixed promo" },
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+          products: [],
+        },
+      })
+    );
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    // Flush the deferred form-state update so it does not run after the DOM
+    // test environment is torn down.
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
+  });
+
+  test("skips new-discount definition checks after switching to an existing discount", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { DiscountCodeCreationForm } = await import(
+      "./customer-code-creation"
+    );
+    const view = render(
+      <DiscountCodeCreationForm discounts={dashboard.discounts} />
+    );
+    const form = view.getByRole("form", { name: "Create discount code" });
+
+    fireEvent.click(view.getByRole("radio", { name: "Create a new discount" }));
+    fireEvent.input(view.getByRole("textbox", { name: "English (en-US)" }), {
+      target: { value: "Half-defined discount" },
+    });
+    fireEvent.input(view.getByRole("spinbutton", { name: "Percentage" }), {
+      target: { value: "" },
+    });
+    fireEvent.click(
+      view.getByRole("radio", { name: "Use an existing discount" })
+    );
+    fireEvent.change(view.getByRole("textbox", { name: "Code" }), {
+      target: { value: "personal10" },
+    });
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "create-code",
+        code: {
+          code: "PERSONAL10",
+          enabled: true,
+          validFrom: null,
+          validUntil: null,
+          maxUses: null,
+          maxUsesPerCustomer: null,
+        },
+        discount: {
+          kind: "existing",
+          discountId: dashboard.discounts[0].id,
+        },
+      })
+    );
+
+    // Flush the deferred form-state update so it does not run after the DOM
+    // test environment is torn down.
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
+  });
+
+  test("shows validation errors without mutating on empty audience inputs", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { AddCodeCustomerForm, AddVoucherCustomerForm } = await import(
+      "./customer-admin-client"
+    );
+
+    const codeView = render(
+      <AddCodeCustomerForm codeId="019c91dd-c560-7e55-b9d8-c95065efd52d" />
+    );
+    fireEvent.submit(
+      codeView.getByRole("button", { name: "Add customer" }).closest("form")!
+    );
+    await waitFor(() =>
+      expect(codeView.getByText("Enter a Dotypos customer ID.")).toBeDefined()
+    );
+    expect(execute).not.toHaveBeenCalled();
+    cleanup();
+
+    const voucherView = render(
+      <AddVoucherCustomerForm voucherId="019c91dd-c560-7e55-b9d8-c95065efd53d" />
+    );
+    fireEvent.submit(
+      voucherView.getByRole("button", { name: "Add customer" }).closest("form")!
+    );
+    await waitFor(() =>
+      expect(
+        voucherView.getByText("Enter a Dotypos customer ID.")
+      ).toBeDefined()
+    );
+    expect(execute).not.toHaveBeenCalled();
+
+    // Flush the deferred form-state update so it does not run after the DOM
+    // test environment is torn down.
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
   });
 });
