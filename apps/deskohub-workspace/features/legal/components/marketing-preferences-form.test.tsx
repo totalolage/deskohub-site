@@ -162,6 +162,39 @@ function getArticle(view: ReturnType<typeof render>) {
   return article;
 }
 
+// Resolves as a MutationObserver microtask as soon as the committed DOM
+// satisfies `check`. Unlike RTL's act-wrapped waitFor, it does not flush
+// React's post-paint passive effects first, so it observes the exact window
+// a real user (or the CI runner) can hit: the UI looks interactive, but
+// post-paint cleanup work has not run yet.
+function waitForDomState(
+  view: ReturnType<typeof render>,
+  check: () => boolean
+) {
+  return new Promise<void>((resolve, reject) => {
+    if (check()) {
+      resolve();
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      if (check()) {
+        observer.disconnect();
+        resolve();
+      }
+    });
+    observer.observe(view.container, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+    const timeout = setTimeout(() => {
+      observer.disconnect();
+      reject(new Error("Expected DOM state was never observed"));
+    }, 5000);
+    timeout.unref?.();
+  });
+}
+
 test("renders every localized preference state", () => {
   for (const locale of ["en-US", "cs-CZ"] as const) {
     const states = [
@@ -485,6 +518,53 @@ test("announces a rejected save request with localized copy and allows a success
         m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
       ).getAttribute("aria-checked")
     ).toBe("true");
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+  });
+  expect(
+    view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
+  ).toBeTruthy();
+});
+
+test("accepts a retry click as soon as the error feedback and the enabled switch are visible", async () => {
+  const context = "synthetic-retry-window-context";
+  saveMarketingPreferencesAction.mockImplementationOnce(() =>
+    Promise.reject(new Error("Synthetic transport failure"))
+  );
+  const view = renderForm({
+    context,
+    source: "account",
+    status: "absent",
+  });
+  const title = m.marketingPreferencesFormRowTitle({}, { locale: "en-US" });
+
+  fireEvent.click(getSwitch(view, title));
+
+  // Observe the interactive state the user sees: the error feedback and the
+  // enabled switch. waitForDomState resolves on the DOM mutation that makes
+  // both observable, without letting React's post-paint effect flush run
+  // first — the same stale window a fast click (or the CI runner) hits.
+  await waitForDomState(view, () => {
+    try {
+      expect(view.getByRole("alert").textContent).toBe(
+        m.marketingPreferencesFormSaveError({}, { locale: "en-US" })
+      );
+      expect(getSwitch(view, title).hasAttribute("disabled")).toBe(false);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  fireEvent.click(getSwitch(view, title));
+  await waitFor(() => {
+    expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
+      confirmed: true,
+      context,
+      granted: true,
+      locale: "en-US",
+      source: "account",
+    });
+    expect(getSwitch(view, title).getAttribute("aria-checked")).toBe("true");
     expect(routerRefresh).toHaveBeenCalledTimes(1);
   });
   expect(
