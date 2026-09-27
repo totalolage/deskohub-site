@@ -8,7 +8,11 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { AccountDataExportRecordsRepository } from "./account-data-export-records.repository";
+import {
+  type AccountDataExportRecordBoundExceededError,
+  AccountDataExportRecordsRepository,
+  accountDataExportRecordBounds,
+} from "./account-data-export-records.repository";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -99,8 +103,10 @@ const insertInvoice = async (input: {
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly workspaceReservationId: WorkspaceReservationId | null;
   readonly paymentAttemptId: string | null;
+  readonly numberingSequence?: number;
 }) => {
-  const sequence = Math.floor(Math.random() * 9000000) + 1000000;
+  const sequence =
+    input.numberingSequence ?? Math.floor(Math.random() * 9000000) + 1000000;
   const invoiceNumber = `INV-${uniqueId()}`;
   const result = await testDatabase!.pool.query<{ id: string }>(
     `insert into invoices
@@ -380,6 +386,70 @@ describe.skipIf(!testDatabase)(
       expect(records.legalEvidenceEvents).toEqual([]);
       expect(records.accessGrants).toEqual([]);
       expect(records.latePaymentRecoveries).toEqual([]);
+    });
+
+    test("loads exactly the invoice bound before the sentinel trips", async () => {
+      const customerId = uniqueDotyposId();
+      const bound = accountDataExportRecordBounds.invoices;
+      for (let index = 0; index < bound; index += 1) {
+        await insertInvoice({
+          dotyposCustomerId: customerId,
+          workspaceReservationId: null,
+          paymentAttemptId: null,
+          // A distinct numbering sequence per row: (year, sequence) is
+          // unique per invoice.
+          numberingSequence: 2000000 + index,
+        });
+      }
+
+      const records = await Effect.runPromise(
+        Effect.gen(function* () {
+          const repository = yield* AccountDataExportRecordsRepository;
+          return yield* repository.loadCustomerRecords(customerId);
+        }).pipe(
+          Effect.provide(
+            AccountDataExportRecordsRepository.Default.pipe(
+              Layer.provide(testDatabase!.layer)
+            )
+          )
+        )
+      );
+      expect(records.invoices).toHaveLength(bound);
+    });
+
+    test("one sentinel row past the bound fails the whole load closed with no records", async () => {
+      const customerId = uniqueDotyposId();
+      const bound = accountDataExportRecordBounds.invoices;
+      for (let index = 0; index <= bound; index += 1) {
+        await insertInvoice({
+          dotyposCustomerId: customerId,
+          workspaceReservationId: null,
+          paymentAttemptId: null,
+          numberingSequence: 3000000 + index,
+        });
+      }
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const repository = yield* AccountDataExportRecordsRepository;
+          return yield* repository.loadCustomerRecords(customerId);
+        }).pipe(
+          Effect.provide(
+            AccountDataExportRecordsRepository.Default.pipe(
+              Layer.provide(testDatabase!.layer)
+            )
+          ),
+          Effect.result
+        )
+      );
+
+      // The load fails closed as one unit: no section payload — not even the
+      // sections below their own bounds — escapes the repository, so no
+      // partial archive can ever be assembled downstream.
+      const error = result.failure as AccountDataExportRecordBoundExceededError;
+      expect(error._tag).toBe("AccountDataExportRecordBoundExceededError");
+      expect(error.section).toBe("invoices.json");
+      expect(error.bound).toBe(bound);
     });
   }
 );

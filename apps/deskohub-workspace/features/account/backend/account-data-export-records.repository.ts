@@ -1,7 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -155,7 +155,55 @@ export type CustomerExportRecords = {
 const instantText = (value: Temporal.Instant | null) =>
   value == null ? null : value.toString();
 
-export type AccountDataExportRecordsError = EffectDrizzleQueryError | SqlError;
+export type AccountDataExportRecordsError =
+  | EffectDrizzleQueryError
+  | SqlError
+  | AccountDataExportRecordBoundExceededError;
+
+/**
+ * One per-customer read exceeded its documented upper bound. The load fails
+ * closed before any archive section is assembled — the same outcome as an
+ * over-limit archive — and the customer is routed to the full manual access
+ * path. Bounds are per-customer-scope guards, never a substitute for the
+ * customer-scoping `where` clause.
+ */
+export class AccountDataExportRecordBoundExceededError extends Data.TaggedError(
+  "AccountDataExportRecordBoundExceededError"
+)<{
+  readonly section: string;
+  readonly bound: number;
+}> {}
+
+/**
+ * The documented per-customer upper bound for each export read. Every bound
+ * sits far above any realistic data shape for one customer (reservations,
+ * payment attempts per reservation, acceptance events per reservation), so
+ * the sentinel can only trip on anomalous or corrupted data — it never
+ * truncates a legitimately bounded dataset. Each query fetches at most
+ * `bound + 1` rows; the extra sentinel row proves an overflow and fails the
+ * whole export closed instead of silently dropping records.
+ */
+export const accountDataExportRecordBounds = {
+  reservations: 500,
+  payments: 2000,
+  discountApplications: 2000,
+  invoices: 500,
+  invoiceDeliveries: 500,
+  legalEvidenceEvents: 2000,
+  accessGrants: 500,
+  latePaymentRecoveries: 500,
+} as const;
+
+const boundedOrFail = <Row>(
+  section: string,
+  bound: number,
+  rows: readonly Row[]
+): Effect.Effect<readonly Row[], AccountDataExportRecordBoundExceededError> =>
+  rows.length > bound
+    ? Effect.fail(
+        new AccountDataExportRecordBoundExceededError({ bound, section })
+      )
+    : Effect.succeed(rows.slice(0, bound));
 
 interface IAccountDataExportRecordsRepository {
   readonly loadCustomerRecords: (
@@ -182,7 +230,7 @@ export class AccountDataExportRecordsRepository extends Context.Service<
       const loadCustomerRecords = Effect.fn(
         "AccountDataExportRecordsRepository.loadCustomerRecords"
       )(function* (dotyposCustomerId: DotyposCustomerId) {
-        const reservationRows = yield* db
+        const reservationRowsSentinel = yield* db
           .select({
             workspaceReservationId: workspaceReservations.id,
             dotyposReservationId: workspaceReservations.dotyposReservationId,
@@ -201,9 +249,19 @@ export class AccountDataExportRecordsRepository extends Context.Service<
           })
           .from(workspaceReservations)
           .where(eq(workspaceReservations.dotyposCustomerId, dotyposCustomerId))
-          .orderBy(workspaceReservations.reservationCreatedAt);
+          .orderBy(workspaceReservations.reservationCreatedAt)
+          .limit(accountDataExportRecordBounds.reservations + 1);
 
-        const paymentRows = yield* db
+        // A sentinel row past the documented bound means the customer-scoped
+        // dataset is anomalous; fail the whole export closed instead of
+        // reading or truncating it.
+        const reservationRows = yield* boundedOrFail(
+          "workspace-reservations.json",
+          accountDataExportRecordBounds.reservations,
+          reservationRowsSentinel
+        );
+
+        const paymentRowsSentinel = yield* db
           .select({
             workspaceReservationId: paymentAttempts.workspaceReservationId,
             provider: paymentAttempts.provider,
@@ -221,9 +279,19 @@ export class AccountDataExportRecordsRepository extends Context.Service<
             eq(paymentAttempts.workspaceReservationId, workspaceReservations.id)
           )
           .where(eq(workspaceReservations.dotyposCustomerId, dotyposCustomerId))
-          .orderBy(paymentAttempts.createdAt);
+          .orderBy(paymentAttempts.createdAt)
+          .limit(accountDataExportRecordBounds.payments + 1);
 
-        const discountRows = yield* db
+        // A sentinel row past the documented bound means the customer-scoped
+        // dataset is anomalous; fail the whole export closed instead of
+        // reading or truncating it.
+        const paymentRows = yield* boundedOrFail(
+          "payments.json",
+          accountDataExportRecordBounds.payments,
+          paymentRowsSentinel
+        );
+
+        const discountRowsSentinel = yield* db
           .select({
             workspaceReservationId: discountApplications.workspaceReservationId,
             sequence: discountApplications.sequence,
@@ -249,14 +317,24 @@ export class AccountDataExportRecordsRepository extends Context.Service<
             )
           )
           .where(eq(workspaceReservations.dotyposCustomerId, dotyposCustomerId))
-          .orderBy(discountApplications.createdAt);
+          .orderBy(discountApplications.createdAt)
+          .limit(accountDataExportRecordBounds.discountApplications + 1);
+
+        // A sentinel row past the documented bound means the customer-scoped
+        // dataset is anomalous; fail the whole export closed instead of
+        // reading or truncating it.
+        const discountRows = yield* boundedOrFail(
+          "discount-applications.json",
+          accountDataExportRecordBounds.discountApplications,
+          discountRowsSentinel
+        );
 
         // An invoice carries its own `dotyposCustomerId` column, so the
         // metadata is provably the customer's. The optional accounting
         // document snapshot is joined through the invoice's payment attempt,
         // which itself must belong to one of the customer's reservations;
         // only its recording time is exported, never the encrypted bytes.
-        const invoiceRows = yield* db
+        const invoiceRowsSentinel = yield* db
           .select({
             invoiceNumber: invoices.invoiceNumber,
             issuedAt: invoices.issuedAt,
@@ -275,9 +353,19 @@ export class AccountDataExportRecordsRepository extends Context.Service<
             )
           )
           .where(eq(invoices.dotyposCustomerId, dotyposCustomerId))
-          .orderBy(invoices.issuedAt);
+          .orderBy(invoices.issuedAt)
+          .limit(accountDataExportRecordBounds.invoices + 1);
 
-        const deliveryRows = yield* db
+        // A sentinel row past the documented bound means the customer-scoped
+        // dataset is anomalous; fail the whole export closed instead of
+        // reading or truncating it.
+        const invoiceRows = yield* boundedOrFail(
+          "invoices.json",
+          accountDataExportRecordBounds.invoices,
+          invoiceRowsSentinel
+        );
+
+        const deliveryRowsSentinel = yield* db
           .select({
             invoiceNumber: invoices.invoiceNumber,
             state: invoiceEmailDeliveries.state,
@@ -297,9 +385,19 @@ export class AccountDataExportRecordsRepository extends Context.Service<
               eq(invoiceEmailDeliveries.audience, "customer")
             )
           )
-          .orderBy(invoiceEmailDeliveries.createdAt);
+          .orderBy(invoiceEmailDeliveries.createdAt)
+          .limit(accountDataExportRecordBounds.invoiceDeliveries + 1);
 
-        const legalEvidenceRows = yield* db
+        // A sentinel row past the documented bound means the customer-scoped
+        // dataset is anomalous; fail the whole export closed instead of
+        // reading or truncating it.
+        const deliveryRows = yield* boundedOrFail(
+          "invoices.json",
+          accountDataExportRecordBounds.invoiceDeliveries,
+          deliveryRowsSentinel
+        );
+
+        const legalEvidenceRowsSentinel = yield* db
           .select({
             workspaceReservationId: legalEvidenceEvents.workspaceReservationId,
             documentKey: legalEvidenceEvents.documentKey,
@@ -317,9 +415,19 @@ export class AccountDataExportRecordsRepository extends Context.Service<
             )
           )
           .where(eq(workspaceReservations.dotyposCustomerId, dotyposCustomerId))
-          .orderBy(legalEvidenceEvents.acceptedAt);
+          .orderBy(legalEvidenceEvents.acceptedAt)
+          .limit(accountDataExportRecordBounds.legalEvidenceEvents + 1);
 
-        const grantRows = yield* db
+        // A sentinel row past the documented bound means the customer-scoped
+        // dataset is anomalous; fail the whole export closed instead of
+        // reading or truncating it.
+        const legalEvidenceRows = yield* boundedOrFail(
+          "consents.json",
+          accountDataExportRecordBounds.legalEvidenceEvents,
+          legalEvidenceRowsSentinel
+        );
+
+        const grantRowsSentinel = yield* db
           .select({
             workspaceReservationId:
               reservationAccessGrants.workspaceReservationId,
@@ -339,9 +447,19 @@ export class AccountDataExportRecordsRepository extends Context.Service<
             )
           )
           .where(eq(workspaceReservations.dotyposCustomerId, dotyposCustomerId))
-          .orderBy(reservationAccessGrants.accessStartsAt);
+          .orderBy(reservationAccessGrants.accessStartsAt)
+          .limit(accountDataExportRecordBounds.accessGrants + 1);
 
-        const recoveryRows = yield* db
+        // A sentinel row past the documented bound means the customer-scoped
+        // dataset is anomalous; fail the whole export closed instead of
+        // reading or truncating it.
+        const grantRows = yield* boundedOrFail(
+          "access-grants.json",
+          accountDataExportRecordBounds.accessGrants,
+          grantRowsSentinel
+        );
+
+        const recoveryRowsSentinel = yield* db
           .select({
             workspaceReservationId:
               latePaymentRecoveries.workspaceReservationId,
@@ -358,7 +476,17 @@ export class AccountDataExportRecordsRepository extends Context.Service<
             )
           )
           .where(eq(workspaceReservations.dotyposCustomerId, dotyposCustomerId))
-          .orderBy(latePaymentRecoveries.verifiedPaidAt);
+          .orderBy(latePaymentRecoveries.verifiedPaidAt)
+          .limit(accountDataExportRecordBounds.latePaymentRecoveries + 1);
+
+        // A sentinel row past the documented bound means the customer-scoped
+        // dataset is anomalous; fail the whole export closed instead of
+        // reading or truncating it.
+        const recoveryRows = yield* boundedOrFail(
+          "payments.json",
+          accountDataExportRecordBounds.latePaymentRecoveries,
+          recoveryRowsSentinel
+        );
 
         return {
           reservations: reservationRows.map((row) => ({

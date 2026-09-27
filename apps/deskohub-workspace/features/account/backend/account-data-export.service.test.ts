@@ -9,7 +9,9 @@ import {
 import { customerAccountIdSchema } from "../customer-account";
 import { AccountDataExportService } from "./account-data-export.service";
 import {
+  AccountDataExportRecordBoundExceededError,
   AccountDataExportRecordsRepository,
+  accountDataExportRecordBounds,
   type CustomerExportRecords,
   type ExportedAccessGrant,
   type ExportedInvoice,
@@ -464,6 +466,22 @@ describe("AccountDataExportService", () => {
     );
     if (!result.failure) throw new Error("expected the export to fail");
     expect(result.failure.reason).toBe("unavailable");
+  });
+
+  test("fails the whole export closed when a record bound sentinel trips", async () => {
+    const result = await buildExport(
+      makeLayers({
+        recordsFailure: new AccountDataExportRecordBoundExceededError({
+          bound: accountDataExportRecordBounds.invoices,
+          section: "invoices.json",
+        }),
+      })
+    );
+    if (!result.failure) throw new Error("expected the export to fail");
+    // Same fail-closed shape as any other data failure: a generic unavailable
+    // error, no archive, and no bound details carried to the response.
+    expect(result.failure.reason).toBe("unavailable");
+    expect(result.success).toBeUndefined();
   });
 
   test("fails closed on a deletion marker", async () => {
