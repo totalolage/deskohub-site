@@ -86,19 +86,11 @@ describe("payment attempt order ledger", () => {
   });
 
   test("expands the payment ledger with a lossless reservation backfill", async () => {
-    const migrationDirUrl = new URL("../migrations/", import.meta.url);
-    const migrationDir = migrationDirUrl.pathname;
-    const migrationFolders = (
-      await Array.fromAsync(
-        new Bun.Glob("*/migration.sql").scan({ cwd: migrationDir })
-      )
-    )
-      .sort()
-      .map((path) => path.replace("/migration.sql", ""));
-    const latest = migrationFolders.at(-1);
-    expect(latest).toBeDefined();
     const migration = await Bun.file(
-      new URL(`${latest}/migration.sql`, migrationDirUrl)
+      new URL(
+        "../migrations/20260926154904_loud_genesis/migration.sql",
+        import.meta.url
+      )
     ).text();
 
     expect(migration).toContain('ADD COLUMN "order_id" text');
