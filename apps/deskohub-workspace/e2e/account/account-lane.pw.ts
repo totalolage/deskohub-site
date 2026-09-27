@@ -27,6 +27,10 @@ import {
   workspaceE2EAccountMainRecipientLabel,
 } from "./config";
 import {
+  accountDataExportActionMessage,
+  accountDataExportDeliveredStatusMessage,
+} from "./export-status";
+import {
   emptyWorkspaceE2EAccountJournal,
   type WorkspaceE2EAccountJournal,
   writeWorkspaceE2EAccountJournal,
@@ -404,7 +408,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
             );
             const exportButton = page.getByRole("button", {
               exact: true,
-              name: "Download your account data",
+              name: accountDataExportActionMessage(),
             });
             await exportButton.waitFor({
               state: "visible",
@@ -441,7 +445,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               "legal-export-pending-desktop"
             );
             await page
-              .getByText("Your account data archive download has started.", {
+              .getByText(accountDataExportDeliveredStatusMessage(), {
                 exact: true,
               })
               .waitFor({

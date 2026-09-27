@@ -73,6 +73,25 @@ import type {
   WorkspaceE2EAccountLifecycleHandoff,
 } from "./types";
 
+/**
+ * The exact allowlisted archive entry set, alphabetically sorted to match
+ * the probe output (`Array.from(entries.keys()).sort()`), so the archive
+ * comparison never depends on the probe's iteration order. The manifest
+ * section-order assertion below stays the only order-sensitive check.
+ */
+export const workspaceE2EExportArchiveEntryAllowlist = [
+  "access-grants.json",
+  "consents.json",
+  "discount-applications.json",
+  "dotypos-profile.json",
+  "identity.json",
+  "invoices.json",
+  "manifest.json",
+  "payments.json",
+  "reservation-history.json",
+  "workspace-reservations.json",
+] as const;
+
 const acceptedTitle = "Check your inbox";
 const acceptedBody =
   "If the address can receive mail, a single-use link will arrive shortly. The link works once and expires in 10 minutes.";
@@ -1669,18 +1688,7 @@ export const makeWorkspaceE2EAccountCases = ({
               );
               assert(
                 snapshot.entryNames.join(",") ===
-                  [
-                    "manifest.json",
-                    "identity.json",
-                    "dotypos-profile.json",
-                    "reservation-history.json",
-                    "workspace-reservations.json",
-                    "payments.json",
-                    "discount-applications.json",
-                    "invoices.json",
-                    "consents.json",
-                    "access-grants.json",
-                  ].join(","),
+                  workspaceE2EExportArchiveEntryAllowlist.join(","),
                 "the export archive exposed entries outside the manifest allowlist"
               );
               assert(
