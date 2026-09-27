@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import type { Reservation } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import {
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
 } from "@/features/checkout/product-catalog";
+import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import {
   getWorkspaceE2ECapacityFailures,
   getWorkspaceE2ECapacityInterval,
@@ -15,7 +17,13 @@ import {
   workspaceE2ELegacyTierCleanupCapacityGroups,
   workspaceE2EMaximumSameDateCoworkReservations,
 } from "./capacity";
+import { makeWorkspaceE2ECases, type WorkspaceE2EPreparation } from "./cases";
+import { meetingRoomE2EDurations } from "./cases/meeting-room";
 import { selectCoworkDates } from "./checkout/data";
+import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
+import type { E2EDotyposDiscountGroup } from "./integrations/dotypos";
+import type { Runner } from "./runtime";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 test("covers whole Prague dates at both candidate-range boundaries", () => {
   expect(
@@ -88,6 +96,84 @@ test("caps the produced date plan at the case-plan per-date maximums", async () 
       )
     )
   ).toBe(reservedDeskMaximum);
+});
+
+test("wires the case-plan per-date maximums through the real case builders", async () => {
+  // makeWorkspaceE2ECases composes makeDiscountE2ECases internally, so this
+  // single construction proves the limit wiring of both builders: the bulk
+  // open-space selection in ./cases/index.ts and the discount open-space plus
+  // reserved-desk+monitor selections in ./cases/discounts.ts.
+  const openSpaceMaximum =
+    workspaceE2EMaximumSameDateCoworkReservations["open-space"];
+  const reservedDeskMaximum =
+    workspaceE2EMaximumSameDateCoworkReservations["reserved-desk"];
+  const openSpaceDates = Array.from(
+    { length: 10 },
+    (_, index) => `2099-08-${String(index + 1).padStart(2, "0")}`
+  );
+  const openSpaceDateSet = new Set(openSpaceDates);
+  const reservedDeskDates = ["2099-08-24", "2099-08-25"];
+  const reservedDeskDateSet = new Set(reservedDeskDates);
+  const preparation: WorkspaceE2EPreparation = {
+    customerDiscountGroup: {
+      basisPoints: 1000,
+      id: "e2e-discount-group",
+    } as E2EDotyposDiscountGroup,
+    discounts: {
+      availableBasicDates: openSpaceDates,
+      availablePlusDates: [
+        "2099-08-20",
+        "2099-08-21",
+        "2099-08-22",
+        "2099-08-23",
+      ],
+      availableProfiDates: reservedDeskDates,
+    },
+    meetingRoom: { slots: makeTestMeetingRoomSlots() },
+    office: undefined,
+  };
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(FetchHttpClient.Fetch, (() =>
+        Promise.reject(
+          new Error("provider HTTP must not run in a construction test")
+        )) as typeof globalThis.fetch)
+    )
+  );
+
+  const cases = await Effect.runPromise(
+    makeWorkspaceE2ECases({
+      allocation: {
+        fromOffsetDays: 0,
+        shardCount: 1,
+        shardIndex: 0,
+        toOffsetDays: 0,
+      },
+      config: makeConstructionTestConfig(),
+      datasourceConfig: {} as DatasourceConfig,
+      flowStates: [],
+      preparation,
+      run: makeStubRunner(),
+      traceConstruction: false,
+    }).pipe(Effect.provide(httpClientLayer))
+  );
+
+  expect(cases.length).toBeGreaterThan(0);
+  expect(cases.some(({ id }) => id === "checkout-discount-code")).toBe(true);
+  const plannedDates = cases.flatMap(({ checkoutStates }) =>
+    checkoutStates.map(({ data }) => data.date)
+  );
+  const maximumPerDate = (pool: ReadonlySet<string>) =>
+    Math.max(
+      ...[
+        ...Map.groupBy(
+          plannedDates.filter((date) => pool.has(date)),
+          (date) => date
+        ).values(),
+      ].map(({ length }) => length)
+    );
+  expect(maximumPerDate(openSpaceDateSet)).toBe(openSpaceMaximum);
+  expect(maximumPerDate(reservedDeskDateSet)).toBe(reservedDeskMaximum);
 });
 
 test("reports only aggregate capacity for every saleable offer pool", () => {
@@ -459,6 +545,28 @@ test("legacy tier pools stay visible without required counts", () => {
   ).toBeUndefined();
   expect(report.meetsRequiredCapacity).toBe(true);
   expect(getWorkspaceE2ECapacityFailures(report)).toEqual([]);
+});
+
+const makeTestMeetingRoomSlots = () =>
+  meetingRoomE2EDurations.map((duration, index) => {
+    const date = `2099-09-${String(index + 1).padStart(2, "0")}`;
+    const startDateTime = `${date}T10:00`;
+    const interval = getMeetingRoomReservationInterval(startDateTime, duration);
+    if (!interval) throw new Error("meeting-room test interval is invalid");
+    return { date, duration, startDateTime, ...interval };
+  });
+
+const makeConstructionTestConfig = (): WorkspaceE2EConfig => ({
+  baseUrl: "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
+  bypassSecret: undefined,
+  expectedHost: "deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
+  timeouts: workspaceE2ETimeouts,
+});
+
+const makeStubRunner = (): Runner => async () => ({
+  exitCode: 0,
+  stderr: "",
+  stdout: "",
 });
 
 const makeTable = (
