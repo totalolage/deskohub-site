@@ -130,6 +130,24 @@ describe("cowork reservation schema", () => {
     }
   });
 
+  test("rejects historical tiers on the public form issuance boundary", () => {
+    for (const entryTier of ["basic", "plus", "profi"] as const) {
+      expect(
+        Result.isFailure(
+          safeParseCoworkReservation({
+            entryTier,
+            date: "2099-06-10",
+            coffee: true,
+            name: "Ada Lovelace",
+            email: "ada@example.com",
+            phone: "+420777777777",
+            marketingConsent: false,
+          })
+        )
+      ).toBe(true);
+    }
+  });
+
   test("applies the Open Space same-day 17:00 cutoff only to today", () => {
     const now = Temporal.PlainDate.from("2099-06-10")
       .toZonedDateTime("Europe/Prague")
