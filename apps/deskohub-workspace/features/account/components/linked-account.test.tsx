@@ -62,6 +62,8 @@ let legalScreenMountCount = 0;
 
 mock.module("@/features/account/actions", () => ({
   updatePreferredLanguage: () => Promise.resolve({ data: { status: "saved" } }),
+  lookupAresBusiness: () =>
+    Promise.resolve({ data: { status: "not-found", message: "" } }),
   completeCustomerProfile: () =>
     Promise.resolve({ data: { status: "completed" } }),
   deleteCustomerAccount: () => Promise.resolve({ data: { status: "deleted" } }),
@@ -115,7 +117,6 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
       paymentMethodsUnavailable:
         "Saved payment methods are not available in this account.",
       removePaymentCard: "Remove payment card",
-      syncAres: "Sync with ARES Registry",
       title: "Billing & invoices",
     },
 

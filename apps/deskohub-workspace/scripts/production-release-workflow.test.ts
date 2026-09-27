@@ -9,6 +9,7 @@ import {
   verifyCanonicalAliasServes,
 } from "./production-release";
 import {
+  callsNamed,
   identifierNames,
   importSpecifiers,
   nodesOf,
@@ -125,8 +126,32 @@ const baselineAliasListing = () =>
 
 const stagedDeploymentPayload = () => ({
   id: "staged-deployment-id",
+  projectId: "project-1",
+  target: "production",
   readyState: "READY",
+  url: "staged-deployment.vercel.app",
+  crons: [
+    {
+      path: "/api/cron/workspace/reservation-holds",
+      schedule: "0 0 * * *",
+    },
+    {
+      path: "/api/cron/workspace/auth-cleanup",
+      schedule: "17 3 * * *",
+    },
+  ],
 });
+
+const requiredWorkspaceCronDefinitions = [
+  {
+    path: "/api/cron/workspace/reservation-holds",
+    schedule: "0 0 * * *",
+  },
+  {
+    path: "/api/cron/workspace/auth-cleanup",
+    schedule: "17 3 * * *",
+  },
+] as const;
 
 type FakeVercelPayload = ReturnType<
   | typeof canonicalAliasPayload
@@ -194,7 +219,7 @@ describe("deploy-workspace-production workflow", () => {
     const probeIndex = stepIndexOfName(
       "Probe staged deployment auth readiness"
     );
-    const cronsIndex = stepIndexOfName("Verify registered workspace crons");
+    const cronsIndex = stepIndexOfName("Verify staged workspace crons");
     const promoteIndex = stepIndexOfName("Promote production deployment");
 
     expect(probeIndex).toBeGreaterThan(migrationIndex);
@@ -204,8 +229,30 @@ describe("deploy-workspace-production workflow", () => {
     expect(stepByName("Probe staged deployment auth readiness").run).toContain(
       "bun scripts/production-release.ts probe --url"
     );
-    expect(stepByName("Verify registered workspace crons").run).toBe(
-      "bun scripts/production-release.ts verify-crons"
+    expect(stepByName("Verify staged workspace crons").run).toBe(
+      `bun scripts/production-release.ts verify-staged-crons --url "\${{ steps.deploy.outputs.url }}"`
+    );
+  });
+
+  test("keeps the release cron contract aligned with checked-in Vercel definitions", async () => {
+    const config = await Bun.file(
+      new URL("../vercel.json", import.meta.url)
+    ).json();
+
+    expect(config.crons).toEqual(
+      expect.arrayContaining(requiredWorkspaceCronDefinitions)
+    );
+    expect(scriptTexts().some((text) => text.includes("/v1/projects/"))).toBe(
+      false
+    );
+    expect(scriptTexts().some((text) => text.includes("verify-crons"))).toBe(
+      false
+    );
+    expect(
+      scriptTexts().some((text) => text.includes("/v13/deployments/"))
+    ).toBe(true);
+    expect(scriptTexts().some((text) => text.includes("/v9/projects/"))).toBe(
+      true
     );
   });
 
@@ -237,7 +284,7 @@ describe("deploy-workspace-production workflow", () => {
   test("promotes through the script so a failed promotion request cannot skip recovery", () => {
     const promoteIndex = stepIndexOfName("Promote production deployment");
     const smokeIndex = stepIndexOfName(
-      "Probe canonical production after promotion"
+      "Verify canonical production smoke and cron convergence"
     );
 
     expect(promoteIndex).toBeGreaterThan(-1);
@@ -291,7 +338,7 @@ describe("deploy-workspace-production workflow", () => {
 
   test("runs an always() finalizer while promotion is possibly started but unresolved", () => {
     const smokeIndex = stepIndexOfName(
-      "Probe canonical production after promotion"
+      "Verify canonical production smoke and cron convergence"
     );
     const restoreIndex = stepIndexOfName(
       "Restore the pre-request production baseline"
@@ -312,12 +359,34 @@ describe("deploy-workspace-production workflow", () => {
     expect(restoreIf).toContain(
       "steps.promote.outputs.promotion_state == 'recovery-needed'"
     );
-    expect(restoreIf).toContain(
-      "(steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome != 'success')"
-    );
+    expect(restoreIf).toContain("steps.promote.outputs.promoted == 'true' &&");
+    expect(restoreIf).toContain("steps.canonical-smoke.outcome != 'success'");
+    expect(restoreIf).toContain("cancelled()");
 
     const failStep = stepByName("Fail the release after rollback");
-    expect(failStep.if).toBe("always() && failure()");
+    expect(failStep.if).toBe("always() && (failure() || cancelled())");
+  });
+
+  test("recovers and fails when cancellation follows promotion but smoke succeeds", () => {
+    const restoreIf =
+      stepByName("Restore the pre-request production baseline").if ?? "";
+    const failIf = stepByName("Fail the release after rollback").if ?? "";
+    const promoted = "true";
+    const smokeOutcome = "success";
+    const workflowCancelled = true;
+
+    expect(restoreIf).toContain("cancelled()");
+    expect(failIf).toBe("always() && (failure() || cancelled())");
+
+    const recoveryRuns =
+      promoted === "true" &&
+      (smokeOutcome !== "success" ||
+        (workflowCancelled && restoreIf.includes("cancelled()")));
+    const finalJobFails =
+      workflowCancelled && failIf.includes("cancelled()") && recoveryRuns;
+
+    expect(recoveryRuns).toBe(true);
+    expect(finalJobFails).toBe(true);
   });
 
   test("recovers whenever the canonical smoke does not succeed, including cancellation", () => {
@@ -330,13 +399,18 @@ describe("deploy-workspace-production workflow", () => {
     expect(restoreIf.includes("steps.canonical-smoke.outcome ==")).toBe(false);
 
     // Mirrors the GitHub expression literals from the restore condition.
-    const recovers = (promoted: string, smokeOutcome: string) =>
-      promoted === "true" && smokeOutcome !== "success";
+    const recovers = (
+      promoted: string,
+      smokeOutcome: string,
+      workflowCancelled = false
+    ) =>
+      promoted === "true" && (smokeOutcome !== "success" || workflowCancelled);
 
     expect(recovers("true", "success")).toBe(false);
     expect(recovers("true", "failure")).toBe(true);
     expect(recovers("true", "cancelled")).toBe(true);
     expect(recovers("true", "skipped")).toBe(true);
+    expect(recovers("true", "success", true)).toBe(true);
     expect(recovers("false", "failure")).toBe(false);
     expect(recovers("false", "")).toBe(false);
   });
@@ -387,7 +461,8 @@ describe("deploy-workspace-production workflow", () => {
     // finalizer rollback plus its verification — each rollback bounded by
     // the CLI timeout and each verification by the poll deadline.
     const recoveryWorstCaseMinutes =
-      pollDeadlineMinutes + 2 * (rollbackTimeoutMinutes + pollDeadlineMinutes);
+      2 * pollDeadlineMinutes +
+      2 * (rollbackTimeoutMinutes + pollDeadlineMinutes);
     // Checkout, dependency install, build, migration, and probes keep their
     // own bounded headroom inside the job budget.
     const setupAndBuildHeadroomMinutes = 25;
@@ -398,15 +473,24 @@ describe("deploy-workspace-production workflow", () => {
 
   test("smokes the customer-facing production host only after a confirmed promotion", async () => {
     const canonicalStep = stepByName(
-      "Probe canonical production after promotion"
+      "Verify canonical production smoke and cron convergence"
     );
     expect(canonicalStep.if).toBe(
       "always() && steps.promote.outputs.promoted == 'true'"
     );
     expect(canonicalStep.run).toBe(
-      "bun scripts/production-release.ts verify-canonical"
+      `bun scripts/production-release.ts verify-canonical --id "\${{ steps.promote.outputs.promoted_id }}"`
     );
     expect(scriptIdentifiers.has("customerFacingProductionDomain")).toBe(true);
+    expect(scriptIdentifiers.has("assertCanonicalLandingReady")).toBe(true);
+    expect(scriptIdentifiers.has("assertCanonicalSignInReady")).toBe(false);
+    expect(scriptIdentifiers.has("assertLiveProjectCrons")).toBe(true);
+    expect(
+      callsNamed(releaseScript.ast, "assertCanonicalLandingReady")
+    ).toHaveLength(1);
+    expect(
+      callsNamed(releaseScript.ast, "assertLiveProjectCrons")
+    ).toHaveLength(1);
     expect(scriptImportModules).toContain("@/shared/utils/site-constants");
     // The domain comes from the real site-constants module at runtime, not
     // from any pinned declaration text.
@@ -416,13 +500,33 @@ describe("deploy-workspace-production workflow", () => {
     expect(workspaceSiteConstants.brand.domain).toBe("workspace.deskohub.cz");
   });
 
+  test("routes live cron verification failures and cancellation through the canonical smoke rollback guard", () => {
+    const canonicalStep = stepByName(
+      "Verify canonical production smoke and cron convergence"
+    );
+    const restoreIf =
+      stepByName("Restore the pre-request production baseline").if ?? "";
+
+    expect(canonicalStep.run).toContain("verify-canonical --id");
+    expect(scriptIdentifiers.has("assertLiveProjectCrons")).toBe(true);
+    expect(restoreIf).toContain("steps.promote.outputs.promoted == 'true' &&");
+    expect(restoreIf).toContain("steps.canonical-smoke.outcome != 'success'");
+    expect(restoreIf).toContain("cancelled()");
+
+    const mustRestore = (outcome: string) => outcome !== "success";
+    expect(mustRestore("failure")).toBe(true);
+    expect(mustRestore("cancelled")).toBe(true);
+    expect(mustRestore("success")).toBe(false);
+  });
+
   test("never leaves a possibly promoted release untested or unrestored", () => {
     expect(
       JSON.stringify(deployJob).includes("steps.promote.outputs.promoted")
     ).toBe(true);
     expect(
-      JSON.stringify(deployJob).includes("if: always() && failure()") ||
-        allSteps.some((step) => step.if === "always() && failure()")
+      allSteps.some(
+        (step) => step.if === "always() && (failure() || cancelled())"
+      )
     ).toBe(true);
     expect(
       JSON.stringify(deployJob).includes(

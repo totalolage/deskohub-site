@@ -1,7 +1,10 @@
 "use server";
 
-import { Effect, Layer, Result, Schema } from "effect";
+import { type AresLookupFailure, AresLookupService } from "@deskohub/ares";
+import { Effect, Layer, Match, Result, Schema } from "effect";
 import { revalidatePath } from "next/cache";
+import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
+import { toAresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import { deleteCurrentAccountThroughAuthEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
@@ -247,6 +250,104 @@ const deleteCustomerAccountAction = defineWorkspaceAction(
     return { status: "failed" } as const;
   })
 );
+
+const aresLookupStandardSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({ ico: Schema.String }),
+  { parseOptions: { errors: "all", onExcessProperty: "error" } }
+);
+
+export type AresBusinessLookupResult =
+  | {
+      readonly status: "found";
+      readonly company: AresBusinessBillingDraft;
+    }
+  | { readonly status: "invalid-ico"; readonly message: string }
+  | { readonly status: "not-found"; readonly message: string }
+  | { readonly status: "unavailable"; readonly message: string };
+
+const aresLookupFailureResult = (
+  failure: AresLookupFailure,
+  locale: Locale
+): AresBusinessLookupResult =>
+  Match.value(failure).pipe(
+    Match.discriminatorsExhaustive("reason")({
+      InvalidIco: () => ({
+        status: "invalid-ico" as const,
+        message: m.accountAresLookupInvalidIco({}, { locale }),
+      }),
+      NotFound: () => ({
+        status: "not-found" as const,
+        message: m.accountAresLookupNotFound({}, { locale }),
+      }),
+      Unavailable: () => ({
+        status: "unavailable" as const,
+        message: m.accountAresLookupUnavailable({}, { locale }),
+      }),
+    })
+  );
+
+const lookupAresBusinessWorkflow = Effect.fn(function* (
+  input: { ico: string },
+  locale: Locale
+) {
+  const user = yield* requireVerifiedSession;
+  if (user.deletionRequested) {
+    // The read-only lookup never resolves the customer account: resolution
+    // may reactivate and claim an expired provider profile, which is a
+    // provider write, and it rejects accounts whose profile link is not
+    // settled. The durable deletion marker on the verified session is the
+    // same authority the activity guard consults, checked here explicitly.
+    return yield* Effect.fail(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      })
+    );
+  }
+
+  const ares = yield* AresLookupService;
+  const lookup = yield* Effect.result(ares.lookup(input.ico.trim()));
+
+  if (Result.isFailure(lookup)) {
+    return aresLookupFailureResult(lookup.failure, locale);
+  }
+  return {
+    status: "found" as const,
+    company: toAresBusinessBillingDraft(lookup.success),
+  };
+});
+
+/**
+ * Looks up one Czech company in the public ARES registry for the business
+ * billing form. Runs behind the account-wide gate, the verified session, and
+ * the durable deletion marker, and performs exactly one provider request per
+ * invocation without any retry loop and without any customer classify,
+ * reactivate, claim, create, update, or other provider write.
+ */
+const lookupAresBusinessAction = defineWorkspaceAction(
+  {
+    operation: "account.ares-lookup",
+    schema: aresLookupStandardSchema,
+    logInput: false,
+  },
+  (input, { locale }) =>
+    Effect.andThen(
+      requireAccountsEnabled(locale),
+      lookupAresBusinessWorkflow(input, locale).pipe(
+        Effect.mapError(profileActionError(locale)),
+        Effect.provide(
+          Layer.mergeAll(CustomerAuthentication.Default, AresLookupService.Live)
+        )
+      )
+    )
+);
+
+export const lookupAresBusiness: typeof lookupAresBusinessAction = async (
+  ...args: Parameters<typeof lookupAresBusinessAction>
+) => {
+  "use server";
+  return await lookupAresBusinessAction(...args);
+};
 
 export const completeCustomerProfile: typeof completeCustomerProfileAction =
   async (...args: Parameters<typeof completeCustomerProfileAction>) => {

@@ -62,7 +62,6 @@ export function getAccountScreenCopy(locale: Locale) {
       addPaymentCard: m.accountBillingAddPaymentCard({}, { locale }),
       removePaymentCard: m.accountBillingRemovePaymentCard({}, { locale }),
       billingDetailsTitle: m.accountBillingDetailsTitle({}, { locale }),
-      syncAres: m.accountBillingSyncAres({}, { locale }),
       invoiceHistoryTitle: m.accountBillingInvoiceHistoryTitle({}, { locale }),
       invoiceHistoryUnavailable: m.accountBillingInvoiceHistoryUnavailable(
         {},

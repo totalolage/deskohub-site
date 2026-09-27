@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { AresLookupFailure } from "@deskohub/ares";
 import { Context, Effect, Layer } from "effect";
 import { m } from "@/features/i18n";
 import { CustomerAccountAccessError } from "./customer-account";
@@ -174,6 +175,46 @@ mock.module(
     CustomerCommunicationPreferenceRepository: PreferenceRepository,
   })
 );
+
+let lookupOutcome: Effect.Effect<
+  typeof syntheticAresCompany,
+  AresLookupFailure
+>;
+let lookupCalls: string[];
+const AresLookup = Context.Service<
+  AresLookup,
+  {
+    readonly lookup: (
+      ico: string
+    ) => Effect.Effect<typeof syntheticAresCompany, AresLookupFailure>;
+  }
+>()("@test/ActionsAresLookup");
+Object.assign(AresLookup, {
+  Live: Layer.succeed(AresLookup, {
+    lookup: (ico: string) => {
+      lookupCalls.push(ico);
+      return lookupOutcome;
+    },
+  }),
+});
+mock.module("@deskohub/ares", () => ({
+  AresLookupFailure,
+  AresLookupService: AresLookup,
+}));
+
+const syntheticAresCompany = {
+  ico: "27082440",
+  obchodniJmeno: "Synthetická testovací s.r.o.",
+  dic: "CZ27082440",
+  sidlo: {
+    nazevUlice: "Testovací ulice",
+    cisloDomovni: 123,
+    cisloOrientacni: 4,
+    nazevObce: "Praha",
+    psc: 11000,
+    kodStatu: "CZ",
+  },
+};
 
 const activeSession = {
   accountId: "@test/account-id" as const,
@@ -461,5 +502,174 @@ describe("account actions", () => {
     expect(result).toEqual({ data: { status: "failed" } });
     expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
     expect(revalidatePath).toHaveBeenCalledWith("/en-US/account/deleted");
+  });
+});
+
+describe("account ARES business lookup action", () => {
+  beforeEach(() => {
+    profileCalls.length = 0;
+    revalidatePath.mockClear();
+    areAccountsEnabled.mockReset();
+    areAccountsEnabled.mockResolvedValue(true);
+    currentUser = Effect.succeed(activeSession);
+    resolve = Effect.succeed({
+      accountId: "@test/account-id",
+      dotyposCustomerId: "60111",
+    });
+    lookupCalls = [];
+    lookupOutcome = Effect.succeed(syntheticAresCompany);
+  });
+
+  const importActions = () => import("./actions");
+
+  test("returns the mapped billing draft for a found company with one provider call", async () => {
+    const { lookupAresBusiness } = await importActions();
+
+    const result = await lookupAresBusiness({ ico: " 27082440 " });
+
+    expect(result).toEqual({
+      data: {
+        status: "found",
+        company: {
+          companyName: "Synthetická testovací s.r.o.",
+          companyId: "27082440",
+          vatId: "CZ27082440",
+          addressLine1: "Testovací ulice 123/4",
+          city: "Praha",
+          zip: "11000",
+          country: "CZ",
+        },
+      },
+    });
+    expect(lookupCalls).toEqual(["27082440"]);
+    expect(profileCalls).toHaveLength(0);
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  test("reports an invalid company ID without touching the registry", async () => {
+    lookupOutcome = Effect.fail(
+      new AresLookupFailure({ reason: "InvalidIco" })
+    );
+    const { lookupAresBusiness } = await importActions();
+
+    const result = await lookupAresBusiness({ ico: "1234567a" });
+
+    expect(result).toEqual({
+      data: {
+        status: "invalid-ico",
+        message:
+          "Enter a valid company ID (IČO): exactly eight digits with a valid check digit.",
+      },
+    });
+    expect(lookupCalls).toEqual(["1234567a"]);
+  });
+
+  test("reports a missing company as not found", async () => {
+    lookupOutcome = Effect.fail(new AresLookupFailure({ reason: "NotFound" }));
+    const { lookupAresBusiness } = await importActions();
+
+    const result = await lookupAresBusiness({ ico: "27082440" });
+
+    expect(result).toEqual({
+      data: {
+        status: "not-found",
+        message: "No company was found for this company ID (IČO).",
+      },
+    });
+  });
+
+  test("reports an unavailable registry as retryable", async () => {
+    lookupOutcome = Effect.fail(
+      new AresLookupFailure({ reason: "Unavailable" })
+    );
+    const { lookupAresBusiness } = await importActions();
+
+    const result = await lookupAresBusiness({ ico: "27082440" });
+
+    expect(result).toEqual({
+      data: {
+        status: "unavailable",
+        message:
+          "The business registry is temporarily unavailable. Please try again in a moment.",
+      },
+    });
+  });
+
+  test("never looks up a company without a verified session", async () => {
+    currentUser = Effect.succeed(null);
+    const { lookupAresBusiness } = await importActions();
+
+    const result = await lookupAresBusiness({ ico: "27082440" });
+
+    expect(result.serverError).toBe(
+      "Your session has expired. Please sign in again."
+    );
+    expect(lookupCalls).toHaveLength(0);
+  });
+
+  test("succeeds for a verified unlinked account without resolving the customer", async () => {
+    let resolverRuns = 0;
+    resolve = Effect.suspend(() => {
+      resolverRuns += 1;
+      return Effect.fail(
+        new CustomerAccountAccessError({
+          reason: "link-required",
+          linkReason: "not-found",
+        })
+      );
+    });
+    const { lookupAresBusiness } = await importActions();
+
+    const result = await lookupAresBusiness({ ico: "27082440" });
+
+    expect(result).toEqual({
+      data: {
+        status: "found",
+        company: {
+          companyName: "Synthetická testovací s.r.o.",
+          companyId: "27082440",
+          vatId: "CZ27082440",
+          addressLine1: "Testovací ulice 123/4",
+          city: "Praha",
+          zip: "11000",
+          country: "CZ",
+        },
+      },
+    });
+    expect(lookupCalls).toEqual(["27082440"]);
+    // The read-only lookup must not run any resolver-owned write seam:
+    // no resolution (which can reactivate and claim), no profile
+    // classification, create, update, or patch.
+    expect(resolverRuns).toBe(0);
+    expect(profileCalls).toHaveLength(0);
+  });
+
+  test("never looks up a company while deletion is pending", async () => {
+    currentUser = Effect.succeed({
+      ...activeSession,
+      deletionRequested: true,
+    });
+    const { lookupAresBusiness } = await importActions();
+
+    const result = await lookupAresBusiness({ ico: "27082440" });
+
+    expect(result.serverError).toBe(
+      "Your account is already being deleted, so the profile cannot be changed."
+    );
+    expect(lookupCalls).toHaveLength(0);
+    expect(profileCalls).toHaveLength(0);
+  });
+
+  test("never looks up a company when accounts are disabled", async () => {
+    areAccountsEnabled.mockResolvedValue(false);
+    const { lookupAresBusiness } = await importActions();
+
+    const result = await lookupAresBusiness({ ico: "27082440" });
+
+    expect(result.serverError).toBe(
+      "We cannot reach your account right now. Reservations can still be made without an account."
+    );
+    expect(lookupCalls).toHaveLength(0);
+    expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
   });
 });
