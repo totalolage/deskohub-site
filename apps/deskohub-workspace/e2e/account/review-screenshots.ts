@@ -877,6 +877,7 @@ export const withLanguagePreferenceReview = async (
 
   let savingHandlerPromise: Promise<void> | undefined;
   let savingRouteMatched = false;
+  let abortRouteConsumed = false;
   let abortRouteCleanupOwed = false;
   let reviewFailed = false;
   let runCaseFailed = false;
@@ -897,12 +898,16 @@ export const withLanguagePreferenceReview = async (
    * other account POSTs never carry this pair: sign-out is a Better Auth
    * request without a Next-Action header, the profile save serializes name
    * and phone fields, and account deletion serializes { confirmed: true }.
+   * The matcher also requires the preview origin so a cross-origin request
+   * with an identical path, query, header, and payload is never intercepted.
    */
   const languagePreferenceLocales = ["cs-CZ", "en-US"] as const;
   const languagePreferencePayloadPattern = new RegExp(
     `"locale"\\s*:\\s*"(?:${languagePreferenceLocales.join("|")})"`
   );
+  const previewOrigin = new URL(baseUrl).origin;
   const languageSaveRouteMatcher = (url: URL): boolean =>
+    url.origin === previewOrigin &&
     url.pathname === "/en-US/account" &&
     isAllowedPrivateLinkedAccountQuery(url.search);
   const isLanguagePreferenceSaveRequest = (
@@ -916,19 +921,21 @@ export const withLanguagePreferenceReview = async (
     route,
     request
   ) => {
+    // Consume exactly one matching preference save: the flag is checked and
+    // set synchronously before any await, so a second matching request
+    // during the capture window falls through instead of overwriting the
+    // in-flight capture or the saved handler promise.
+    if (savingRouteMatched || !isLanguagePreferenceSaveRequest(request)) {
+      // Leave every unrelated request and every later matching request
+      // untouched.
+      void route.fallback().catch(() => {
+        reviewFailed = true;
+      });
+      return;
+    }
+    savingRouteMatched = true;
     const deadline = Date.now() + browserActionTimeout();
     const handlerPromise = (async () => {
-      if (!isLanguagePreferenceSaveRequest(request)) {
-        // Leave every unrelated request untouched and keep the gate armed
-        // for the intended preference save POST.
-        try {
-          await route.fallback();
-        } catch {
-          reviewFailed = true;
-        }
-        return;
-      }
-      savingRouteMatched = true;
       try {
         await page.locator(languageSavingButtonSelector).waitFor({
           state: "visible",
@@ -973,12 +980,15 @@ export const withLanguagePreferenceReview = async (
     route,
     request
   ) => {
-    if (!isLanguagePreferenceSaveRequest(request)) {
+    // Abort exactly one matching preference save; any further matching
+    // request while this gate is still registered falls through untouched.
+    if (abortRouteConsumed || !isLanguagePreferenceSaveRequest(request)) {
       void route.fallback().catch(() => {
         reviewFailed = true;
       });
       return;
     }
+    abortRouteConsumed = true;
     void route.abort().catch(() => {
       reviewFailed = true;
     });

@@ -1928,6 +1928,11 @@ describe("language preference review wrapper", () => {
         routeMatcher(new URL(`${baseUrl}/en-US/account?section=profile`))
       ).toBe(true);
       expect(routeMatcher(new URL(`${baseUrl}/api/auth/sign-out`))).toBe(false);
+      // A foreign origin is never matched, even with the identical path and
+      // permitted query.
+      expect(
+        routeMatcher(new URL("https://attacker.example/en-US/account?section=profile"))
+      ).toBe(false);
 
       // The case's navigation to the profile section is a document request
       // at the gated URL; it falls through without consuming the route.
@@ -1951,6 +1956,30 @@ describe("language preference review wrapper", () => {
         })
       ).toEqual(["fallback"]);
 
+      // The ordinary profile save serializes name and phone fields without
+      // the locale argument, so it falls through too.
+      expect(
+        fakePage.sendRequest({
+          headers: () => ({ "next-action": "synthetic-profile-action" }),
+          method: () => "POST",
+          postData: () => `[{"name":"Ada Lovelace","phone":"+420 555 010 203"}]`,
+          url: () => `${baseUrl}/en-US/account?section=profile`,
+        })
+      ).toEqual(["fallback"]);
+
+      // A foreign origin with the identical pathname, permitted query,
+      // action header, and locale payload never matches the route, so the
+      // handler is not even invoked — the request is neither intercepted
+      // nor aborted.
+      expect(
+        fakePage.sendRequest({
+          headers: () => ({ "next-action": "synthetic-action-id" }),
+          method: () => "POST",
+          postData: () => `[{"locale":"cs-CZ"}]`,
+          url: () => `https://attacker.example/en-US/account?section=profile`,
+        })
+      ).toEqual([]);
+
       // The case's own language save is the only captured request.
       await fakePage.saveLanguage("en-US");
       await fakePage.settleRouteHandlers();
@@ -1965,6 +1994,44 @@ describe("language preference review wrapper", () => {
     // The wrapper's three save-button clicks (saved, failed, restore); the
     // runCase save above bypasses the button locator.
     expect(fakePage.clickedButtonNames).toEqual(["Save", "Save", "Save"]);
+    expect(writeFileNames()).toEqual([
+      "linked-profile-language-saving-desktop.png",
+      "linked-profile-language-saved-desktop.png",
+      "linked-profile-language-failed-desktop.png",
+      "linked-profile-language-desktop-cs.png",
+      "linked-profile-language-mobile.png",
+    ]);
+  });
+
+  test("captures and aborts exactly one matching save request per gate", async () => {
+    const fakePage = makeLanguageReviewFakePage();
+    const matchingRequest = {
+      headers: () => ({ "next-action": "synthetic-action-id" }),
+      method: () => "POST",
+      postData: () => `[{"locale":"en-US"}]`,
+      url: () => `${baseUrl}/en-US/account?section=profile`,
+    };
+
+    await withLanguagePreferenceReview(fakePage.page, baseUrl, async () => {
+      // Two overlapping matching requests before the first handler settles:
+      // only the first is captured, the second falls through.
+      const firstOutcomes = fakePage.sendRequest(matchingRequest);
+      expect(fakePage.sendRequest(matchingRequest)).toEqual(["fallback"]);
+      expect(fakePage.abortedUrls).toEqual([]);
+      await fakePage.settleRouteHandlers();
+      expect(firstOutcomes).toEqual(["continue"]);
+    });
+
+    // The failure path aborts exactly one matching request, and the saving
+    // capture wrote its PNG exactly once despite the overlapping dispatch.
+    expect(fakePage.abortedUrls).toEqual([
+      `${baseUrl}/en-US/account?section=profile`,
+    ]);
+    expect(
+      writeFileNames().filter(
+        (name) => name === "linked-profile-language-saving-desktop.png"
+      )
+    ).toHaveLength(1);
     expect(writeFileNames()).toEqual([
       "linked-profile-language-saving-desktop.png",
       "linked-profile-language-saved-desktop.png",
