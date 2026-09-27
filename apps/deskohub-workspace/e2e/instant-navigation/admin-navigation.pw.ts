@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { workspaceTestAdminCredentials } from "@/shared/testing/workspace-test-environment";
 import { resolveInstantNavigationAdminCredentials } from "../admin-basic-auth";
 import { enablePreviewAccess, requireBaseUrl } from "./navigation-test-helpers";
+import { evaluateReservationExportRowCount } from "./reservation-export-row-count";
 
 const remoteBaseUrl = process.env.WORKSPACE_E2E_BASE_URL;
 // Fail closed at collection time when a remote preview is targeted without the
@@ -177,16 +178,15 @@ test("downloads the reservations export as CSV", async ({ page, context }) => {
 
   const countBadge = toolbar.getByLabel(/^\d+ reservations?$/);
   await expect(countBadge).toBeVisible();
-  const countLabel = await countBadge.getAttribute("aria-label");
-  expect(countLabel).toMatch(/^\d+ reservations?$/);
+  const countLabelBefore = await countBadge.getAttribute("aria-label");
+  expect(countLabelBefore).toMatch(/^\d+ reservations?$/);
   // The export covers every match for the applied filters, so the rendered
-  // total is the expected data-row count when the shared preview data is
-  // stable. Other parallel projects may mutate reservations between the page
-  // render and this export request, so this is a bounded sanity reference,
-  // not an exact-match assertion.
-  const renderedTotal = Number.parseInt(countLabel ?? "", 10);
-  expect(Number.isInteger(renderedTotal)).toBe(true);
-  expect(renderedTotal).toBeGreaterThanOrEqual(0);
+  // total is the expected data-row count while the shared preview data is
+  // stable. Mutating projects may run in parallel; the count is re-read after
+  // the download so the parity verdict can bracket legitimate movement.
+  const countBefore = Number.parseInt(countLabelBefore ?? "", 10);
+  expect(Number.isInteger(countBefore)).toBe(true);
+  expect(countBefore).toBeGreaterThanOrEqual(0);
 
   // Chromium download responses are not surfaced as page "response" events and
   // the Download API (Playwright 1.61) exposes no request/response objects, so
@@ -250,13 +250,32 @@ test("downloads the reservations export as CSV", async ({ page, context }) => {
     "CSV header must match the approved columns"
   ).toBe(true);
   const dataRowCount = lines.slice(1).filter((line) => line !== "").length;
-  // Exact row-count matching is not deterministic in this fully parallel
-  // project because the preview database is shared with mutating checkout
-  // projects; assert the bounded structure contract instead.
-  expect(dataRowCount).toBeGreaterThanOrEqual(0);
-  expect(dataRowCount).toBeLessThanOrEqual(
-    Math.max(renderedTotal * 2 + 100, 1000)
-  );
+
+  // Re-read the count with a plain read-only navigation; the download click
+  // above stayed native. The verdict is exact parity when the count is stable
+  // and an inclusive two-count bracket when shared preview data moved; a
+  // result outside the bracket is failed evidence, with no slack.
+  await page.goto("/admin/reservations");
+  const refreshedBadge = page
+    .getByRole("region", { name: "reservation table controls" })
+    .getByLabel(/^\d+ reservations?$/);
+  await expect(refreshedBadge).toBeVisible();
+  const countLabelAfter = await refreshedBadge.getAttribute("aria-label");
+  expect(countLabelAfter).toMatch(/^\d+ reservations?$/);
+  const countAfter = Number.parseInt(countLabelAfter ?? "", 10);
+  expect(Number.isInteger(countAfter)).toBe(true);
+  expect(countAfter).toBeGreaterThanOrEqual(0);
+
+  const verdict = evaluateReservationExportRowCount({
+    countBefore,
+    countAfter,
+    dataRowCount,
+  });
+  // Counts are plain numbers and safe to print; no CSV content can appear.
+  const verdictMessage = `reservation export row count verdict: ${
+    verdict.ok ? verdict.evidence : verdict.reason
+  } (countBefore=${countBefore}, countAfter=${countAfter}, dataRowCount=${dataRowCount})`;
+  expect(verdict.ok, verdictMessage).toBe(true);
 
   await download.delete();
 });
