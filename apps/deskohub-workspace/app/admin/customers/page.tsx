@@ -16,8 +16,8 @@ import {
   loadAdministrationCustomersPage,
 } from "@/features/administration/page-data.server";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
-import { CustomerCountPending } from "./customer-count-pending";
 import { CustomerConsentFilterForm } from "./customer-consent-filter-form";
+import { CustomerCountPending } from "./customer-count-pending";
 import { CustomerFilterNavigationProvider } from "./customer-filter-navigation";
 import { CustomerResultsPendingOverlay } from "./customer-results-pending-overlay";
 
@@ -35,7 +35,9 @@ export default function DiscountCustomersAdminPage({
         <AdministrationTableToolbar
           count={
             <CustomerCountPending>
-              <Suspense fallback={<AdministrationCountLoading label="customer" />}>
+              <Suspense
+                fallback={<AdministrationCountLoading label="customer" />}
+              >
                 <CustomerCount result={result} />
               </Suspense>
             </CustomerCountPending>

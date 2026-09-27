@@ -2,9 +2,9 @@
 
 import {
   createContext,
+  type ReactNode,
   useContext,
   useTransition,
-  type ReactNode,
 } from "react";
 
 export type CustomerFilterNavigationState = {
@@ -18,9 +18,7 @@ const defaultCustomerFilterNavigation: CustomerFilterNavigationState = {
 };
 
 export const CustomerFilterNavigationContext =
-  createContext<CustomerFilterNavigationState>(
-    defaultCustomerFilterNavigation
-  );
+  createContext<CustomerFilterNavigationState>(defaultCustomerFilterNavigation);
 
 export function useCustomerFilterNavigation() {
   return useContext(CustomerFilterNavigationContext);

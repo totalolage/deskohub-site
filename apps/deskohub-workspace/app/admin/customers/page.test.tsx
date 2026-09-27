@@ -347,10 +347,8 @@ describe("CustomerFilterNavigation pending state", () => {
   });
 
   test("engages the pending flag while the deferred navigation runs", async () => {
-    const {
-      CustomerFilterNavigationProvider,
-      useCustomerFilterNavigation,
-    } = await import("./customer-filter-navigation");
+    const { CustomerFilterNavigationProvider, useCustomerFilterNavigation } =
+      await import("./customer-filter-navigation");
 
     const pendingValues: boolean[] = [];
     let trigger: ((navigate: () => void) => void) | null = null;
@@ -419,9 +417,64 @@ describe("CustomerFilterNavigation pending state", () => {
 
     const status = view.getByRole("status");
     expect(status.textContent).toBe("Loading customers…");
-    expect(
-      view.getByText("Customer 101").closest("[aria-busy='true']")
-    ).not.toBeNull();
+    const busyWrapper = view
+      .getByText("Customer 101")
+      .closest("[aria-busy='true']");
+    expect(busyWrapper).not.toBeNull();
+    expect(busyWrapper?.hasAttribute("inert")).toBe(true);
+    // The status announcement must not sit under the busy ancestor, or
+    // assistive tech would defer it.
+    expect(busyWrapper?.contains(status)).toBe(false);
+    // The stale child stays in the DOM (occluded visually) but inert.
+    expect(view.getByText("Customer 101")).toBeDefined();
+  });
+
+  test("blocks focus on stale results while pending and restores it when settled", async () => {
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+    const { CustomerResultsPendingOverlay } = await import(
+      "./customer-results-pending-overlay"
+    );
+
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: true,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerResultsPendingOverlay>
+          <a href="/admin/customers/101">Customer 101</a>
+        </CustomerResultsPendingOverlay>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    const link = view.getByText("Customer 101") as HTMLAnchorElement;
+    link.focus();
+    // happy-dom may not enforce inert focus blocking; the inert attribute is
+    // the enforcement mechanism browsers use to keep the link unfocusable.
+    if (document.activeElement === link) {
+      expect(link.closest("[inert]")).not.toBeNull();
+    } else {
+      expect(document.activeElement).not.toBe(link);
+    }
+
+    view.rerender(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: false,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerResultsPendingOverlay>
+          <a href="/admin/customers/101">Customer 101</a>
+        </CustomerResultsPendingOverlay>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    link.focus();
+    expect(document.activeElement).toBe(link);
   });
 
   test("renders the results children unchanged when navigation is not pending", async () => {
@@ -446,6 +499,8 @@ describe("CustomerFilterNavigation pending state", () => {
     );
 
     expect(view.queryByRole("status")).toBeNull();
+    expect(view.container.querySelector("[inert]")).toBeNull();
+    expect(view.container.querySelector("[aria-busy]")).toBeNull();
     expect(view.getByText("Customer 101")).toBeDefined();
   });
 
@@ -453,9 +508,7 @@ describe("CustomerFilterNavigation pending state", () => {
     const { CustomerFilterNavigationContext } = await import(
       "./customer-filter-navigation"
     );
-    const { CustomerCountPending } = await import(
-      "./customer-count-pending"
-    );
+    const { CustomerCountPending } = await import("./customer-count-pending");
 
     const view = render(
       <CustomerFilterNavigationContext.Provider
@@ -479,9 +532,7 @@ describe("CustomerFilterNavigation pending state", () => {
     const { CustomerFilterNavigationContext } = await import(
       "./customer-filter-navigation"
     );
-    const { CustomerCountPending } = await import(
-      "./customer-count-pending"
-    );
+    const { CustomerCountPending } = await import("./customer-count-pending");
 
     const view = render(
       <CustomerFilterNavigationContext.Provider
