@@ -1,87 +1,118 @@
-import type { AresCompany, AresSidlo } from "@deskohub/ares";
+import type { EkonomickySubjekt } from "@deskohub/ares";
+import { Option, Schema } from "effect";
+import { customerProfileBusinessBillingFields } from "@/features/account/contracts";
+
+type BusinessBillingFields = typeof customerProfileBusinessBillingFields;
 
 /**
- * Maximum lengths of the business billing fields in the account profile
- * contract. A verified registry value that does not fit is omitted, never
- * truncated, so a saved profile can never silently distort public registry
- * data.
+ * The business billing fields a verified ARES company can fill in. Every
+ * field is optional because the registry only omits what it cannot verify.
  */
-const billingFieldMaximums = {
-  companyName: 200,
-  companyId: 32,
-  vatId: 32,
-  addressLine1: 200,
-  addressLine2: 200,
-  city: 100,
-  zip: 20,
-  country: 2,
-} as const;
-
-const fitWithin = (value: string | undefined, maximumLength: number) =>
-  value !== undefined && value.length <= maximumLength ? value : undefined;
-
 export type AresBusinessBillingDraft = {
-  readonly [Key in keyof typeof billingFieldMaximums]?: string;
+  readonly [Key in keyof BusinessBillingFields]?: Extract<
+    BusinessBillingFields[Key]["Type"],
+    string
+  >;
 };
 
 /**
+ * Decodes one registry value through its billing field schema, so trimming
+ * and maximum-length enforcement come from the shared profile contract. A
+ * value that is absent, blank, or fails the schema (for example overlength)
+ * is omitted, never truncated, so a saved profile can never silently distort
+ * public registry data.
+ */
+const billingDraftField = <Key extends keyof BusinessBillingFields>(
+  key: Key
+): ((value: string | undefined) => string | undefined) => {
+  const decode = Schema.decodeUnknownOption(
+    customerProfileBusinessBillingFields[key]
+  );
+  return (value) => {
+    const decoded = Option.getOrUndefined(decode(value));
+    return decoded === "" ? undefined : decoded;
+  };
+};
+
+const companyName = billingDraftField("companyName");
+const companyId = billingDraftField("companyId");
+const vatId = billingDraftField("vatId");
+const addressLine1 = billingDraftField("addressLine1");
+const addressLine2 = billingDraftField("addressLine2");
+const city = billingDraftField("city");
+const zip = billingDraftField("zip");
+
+/**
  * The only seat-country code the draft fills in. The ARES OpenAPI contract
- * types `Adresa.kodStatu` as a string over the `Stat` codelist
+ * types the seat's `kodStatu` as a string over the `Stat` codelist
  * (ciselnikKod: Stat), whose documented Czechia entry is the code `"CZ"`.
  * Any other value — including an absent or unknown one — leaves the country
  * to the customer instead of silently defaulting to Czechia.
  */
 const czechSeatStateCode = "CZ";
 
-const nonEmptyText = (value: string): string | undefined => {
-  const text = value.trim();
-  return text ? text : undefined;
+const formatHouseNumber = (
+  sidlo: EkonomickySubjekt["sidlo"]
+): string | undefined => {
+  const houseNumber = sidlo?.cisloDomovni;
+  const orientationNumber = sidlo?.cisloOrientacni;
+  let number: string | undefined;
+  if (houseNumber === undefined) {
+    number =
+      orientationNumber === undefined ? undefined : String(orientationNumber);
+  } else if (orientationNumber === undefined) {
+    number = String(houseNumber);
+  } else {
+    number = `${houseNumber}/${orientationNumber}`;
+  }
+  if (number === undefined) return undefined;
+  const orientationLetter = sidlo?.cisloOrientacniPismeno;
+  return orientationLetter === undefined
+    ? number
+    : `${number}${orientationLetter}`;
 };
 
-const joinAddressLine1 = (sidlo: AresSidlo): string | undefined => {
-  if (sidlo.ulice === undefined) return formatHouseNumber(sidlo);
+const decodeStreetName = Schema.decodeUnknownOption(
+  customerProfileBusinessBillingFields.addressLine1
+);
+
+const joinAddressLine1 = (
+  sidlo: EkonomickySubjekt["sidlo"]
+): string | undefined => {
   const houseNumber = formatHouseNumber(sidlo);
+  const rawStreetName = sidlo?.nazevUlice;
+  if (rawStreetName === undefined) return houseNumber;
+  // Normalize the street through the shared field schema BEFORE joining, so
+  // padded registry whitespace cannot survive inside the joined line. An
+  // overlength street can only fail here, so it omits the whole line; a
+  // blank street counts as absent and leaves just the house number.
+  const streetName = Option.getOrUndefined(decodeStreetName(rawStreetName));
+  if (streetName === undefined) return undefined;
+  if (streetName === "") return houseNumber;
   return houseNumber === undefined
-    ? sidlo.ulice
-    : `${sidlo.ulice} ${houseNumber}`;
-};
-
-const formatHouseNumber = (sidlo: AresSidlo): string | undefined => {
-  if (sidlo.cisloDomovni === undefined) return sidlo.cisloOrientacni;
-  return sidlo.cisloOrientacni === undefined
-    ? sidlo.cisloDomovni
-    : `${sidlo.cisloDomovni}/${sidlo.cisloOrientacni}`;
+    ? streetName
+    : `${streetName} ${houseNumber}`;
 };
 
 /**
  * Maps a verified ARES company onto the existing business billing profile
  * fields. Only billing fields are filled; identity and personal fields are
- * never auto-completed.
+ * never auto-completed, and the service already guarantees a nonblank
+ * identity and company name.
  */
 export const toAresBusinessBillingDraft = (
-  company: AresCompany
+  company: EkonomickySubjekt
 ): AresBusinessBillingDraft => {
   const sidlo = company.sidlo;
-  const addressLine1 =
-    sidlo === undefined ? undefined : joinAddressLine1(sidlo);
   return {
-    companyName: fitWithin(
-      nonEmptyText(company.obchodniJmeno),
-      billingFieldMaximums.companyName
-    ),
-    companyId: fitWithin(
-      nonEmptyText(company.ico),
-      billingFieldMaximums.companyId
-    ),
-    vatId: fitWithin(
-      company.dic === undefined ? undefined : nonEmptyText(company.dic),
-      billingFieldMaximums.vatId
-    ),
-    addressLine1: fitWithin(addressLine1, billingFieldMaximums.addressLine1),
-    addressLine2: fitWithin(sidlo?.castObce, billingFieldMaximums.addressLine2),
-    city: fitWithin(sidlo?.obec, billingFieldMaximums.city),
-    zip: fitWithin(sidlo?.psc, billingFieldMaximums.zip),
+    companyName: companyName(company.obchodniJmeno),
+    companyId: companyId(company.ico),
+    vatId: vatId(company.dic),
+    addressLine1: addressLine1(joinAddressLine1(sidlo)),
+    addressLine2: addressLine2(sidlo?.nazevCastiObce),
+    city: city(sidlo?.nazevObce),
+    zip: zip(sidlo?.psc === undefined ? undefined : String(sidlo.psc)),
     country:
-      sidlo?.statKod === czechSeatStateCode ? czechSeatStateCode : undefined,
+      sidlo?.kodStatu === czechSeatStateCode ? czechSeatStateCode : undefined,
   };
 };

@@ -1,20 +1,21 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import type { AresCompany } from "@deskohub/ares";
+import type { EkonomickySubjekt } from "@deskohub/ares";
 import { toAresBusinessBillingDraft } from "./ares-business-draft";
 
-const syntheticCompany: AresCompany = {
+const syntheticCompany: EkonomickySubjekt = {
   ico: "27082440",
   obchodniJmeno: "Synthetická testovací s.r.o.",
   dic: "CZ27082440",
   sidlo: {
-    ulice: "Testovací ulice",
-    cisloDomovni: "123",
-    cisloOrientacni: "4",
-    obec: "Praha",
-    psc: "11000",
-    statKod: "CZ",
+    nazevUlice: "Testovací ulice",
+    cisloDomovni: 123,
+    cisloOrientacni: 4,
+    nazevCastiObce: "Staré Město",
+    nazevObce: "Praha",
+    psc: 11000,
+    kodStatu: "CZ",
   },
 };
 
@@ -25,14 +26,44 @@ describe("ARES company mapping to billing draft fields", () => {
       companyId: "27082440",
       vatId: "CZ27082440",
       addressLine1: "Testovací ulice 123/4",
+      addressLine2: "Staré Město",
       city: "Praha",
       zip: "11000",
       country: "CZ",
     });
   });
 
+  test("renders the numeric postal code as a zip string", () => {
+    expect(toAresBusinessBillingDraft(syntheticCompany).zip).toBe("11000");
+  });
+
+  test("appends the orientation letter to the house number", () => {
+    const withLetter: EkonomickySubjekt = {
+      ...syntheticCompany,
+      sidlo: {
+        ...syntheticCompany.sidlo,
+        cisloOrientacniPismeno: "a",
+      },
+    };
+    expect(toAresBusinessBillingDraft(withLetter).addressLine1).toBe(
+      "Testovací ulice 123/4a"
+    );
+  });
+
+  test("normalizes registry whitespace through the shared billing schemas", () => {
+    const padded: EkonomickySubjekt = {
+      ico: " 27082440 ",
+      obchodniJmeno: "  Synthetická testovací s.r.o.  ",
+      sidlo: { ...syntheticCompany.sidlo, nazevObce: "  Praha  " },
+    };
+    const draft = toAresBusinessBillingDraft(padded);
+    expect(draft.companyName).toBe("Synthetická testovací s.r.o.");
+    expect(draft.companyId).toBe("27082440");
+    expect(draft.city).toBe("Praha");
+  });
+
   test("omits absent optional values instead of returning empty strings", () => {
-    const minimal: AresCompany = {
+    const minimal: EkonomickySubjekt = {
       ico: "00000019",
       obchodniJmeno: "Synthetická minimalní organizace",
     };
@@ -43,12 +74,25 @@ describe("ARES company mapping to billing draft fields", () => {
   });
 
   test("builds the house number without an orientation number", () => {
-    const withoutOrientation: AresCompany = {
+    const withoutOrientation: EkonomickySubjekt = {
       ...syntheticCompany,
       sidlo: { ...syntheticCompany.sidlo, cisloOrientacni: undefined },
     };
     expect(toAresBusinessBillingDraft(withoutOrientation).addressLine1).toBe(
       "Testovací ulice 123"
+    );
+  });
+
+  test("normalizes a padded street before joining it with the house number", () => {
+    const paddedStreet: EkonomickySubjekt = {
+      ...syntheticCompany,
+      sidlo: {
+        ...syntheticCompany.sidlo,
+        nazevUlice: "  Testovací ulice  ",
+      },
+    };
+    expect(toAresBusinessBillingDraft(paddedStreet).addressLine1).toBe(
+      "Testovací ulice 123/4"
     );
   });
 
@@ -60,19 +104,18 @@ describe("ARES company mapping to billing draft fields", () => {
         obchodniJmeno: overlong(201),
         dic: overlong(33),
         sidlo: {
-          ulice: overlong(201),
-          obec: overlong(101),
-          psc: overlong(21),
+          nazevUlice: overlong(201),
+          nazevObce: overlong(101),
         },
       })
     ).toEqual({ companyId: "27082440" });
   });
 
   test("omits an undetermined seat country instead of defaulting to Czechia", () => {
-    const unknownSeat: AresCompany = {
+    const unknownSeat: EkonomickySubjekt = {
       ico: "27082440",
       obchodniJmeno: "Synthetická neurčitá organizace",
-      sidlo: { obec: "Praha" },
+      sidlo: { nazevObce: "Praha" },
     };
     const draft = toAresBusinessBillingDraft(unknownSeat);
     expect(draft.country).toBeUndefined();
@@ -81,19 +124,19 @@ describe("ARES company mapping to billing draft fields", () => {
   });
 
   test("maps a non-Czech seat to no country code", () => {
-    const foreign: AresCompany = {
+    const foreign: EkonomickySubjekt = {
       ico: "27082440",
       obchodniJmeno: "Synthetická zahraniční organizace",
-      sidlo: { obec: "Bratislava", statKod: "SK" },
+      sidlo: { nazevObce: "Bratislava", kodStatu: "SK" },
     };
     expect(toAresBusinessBillingDraft(foreign).country).toBeUndefined();
   });
 
   test("omits a blank seat-country code instead of defaulting to Czechia", () => {
-    const blankSeat: AresCompany = {
+    const blankSeat: EkonomickySubjekt = {
       ico: "27082440",
       obchodniJmeno: "Synthetická prázdná organizace",
-      sidlo: { obec: "Praha", statKod: "  " },
+      sidlo: { nazevObce: "Praha", kodStatu: "  " },
     };
     expect(toAresBusinessBillingDraft(blankSeat).country).toBeUndefined();
   });

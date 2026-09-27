@@ -166,12 +166,12 @@ const syntheticAresCompany = {
   obchodniJmeno: "Synthetická testovací s.r.o.",
   dic: "CZ27082440",
   sidlo: {
-    ulice: "Testovací ulice",
-    cisloDomovni: "123",
-    cisloOrientacni: "4",
-    obec: "Praha",
-    psc: "11000",
-    statKod: "CZ",
+    nazevUlice: "Testovací ulice",
+    cisloDomovni: 123,
+    cisloOrientacni: 4,
+    nazevObce: "Praha",
+    psc: 11000,
+    kodStatu: "CZ",
   },
 };
 

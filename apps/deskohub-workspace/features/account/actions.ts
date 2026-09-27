@@ -263,19 +263,16 @@ const lookupAresBusinessWorkflow = Effect.fn(function* (
     );
   }
 
-  return yield* Effect.flatMap(AresLookupService, (ares) =>
-    ares.lookup(input.ico.trim())
-  ).pipe(
-    Effect.map(
-      (company): AresBusinessLookupResult => ({
-        status: "found",
-        company: toAresBusinessBillingDraft(company),
-      })
-    ),
-    Effect.catch((failure) =>
-      Effect.succeed(aresLookupFailureResult(failure, locale))
-    )
-  );
+  const ares = yield* AresLookupService;
+  const lookup = yield* Effect.result(ares.lookup(input.ico.trim()));
+
+  if (Result.isFailure(lookup)) {
+    return aresLookupFailureResult(lookup.failure, locale);
+  }
+  return {
+    status: "found" as const,
+    company: toAresBusinessBillingDraft(lookup.success),
+  };
 });
 
 /**
