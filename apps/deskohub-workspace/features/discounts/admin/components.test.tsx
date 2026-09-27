@@ -40,9 +40,9 @@ const pickDateFieldDay = async (
 ) => {
   fireEvent.click(view.getByRole("button", { name: label }));
   const grid = await view.findByRole("grid");
-  const dayButton = [
-    ...grid.querySelectorAll("button"),
-  ].find((button) => button.textContent === day && !button.disabled);
+  const dayButton = [...grid.querySelectorAll("button")].find(
+    (button) => button.textContent === day && !button.disabled
+  );
   if (!dayButton) throw new Error(`Day ${day} not offered for ${label}`);
   fireEvent.click(dayButton);
 };
@@ -604,14 +604,14 @@ describe("discount administration pages", () => {
       [...grid.querySelectorAll("input, select")]
         .filter((control) => control.getAttribute("name") !== null)
         .map((control) => {
-        let item: HTMLElement = control;
-        while (item.parentElement !== grid) {
-          const parent = item.parentElement;
-          if (!parent) throw new Error("Control is outside the config grid");
-          item = parent;
-        }
-        return [...item.classList];
-      });
+          let item: HTMLElement = control;
+          while (item.parentElement !== grid) {
+            const parent = item.parentElement;
+            if (!parent) throw new Error("Control is outside the config grid");
+            item = parent;
+          }
+          return [...item.classList];
+        });
     const readConfigurationGrid = (
       view: Pick<ReturnType<typeof render>, "getByLabelText">
     ) => findConfigurationGrid(view.getByLabelText("Valid from"));

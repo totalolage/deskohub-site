@@ -95,11 +95,7 @@ async function OperationResultsContent({
 function OperationFilters({ input, range }: OperationCriteria) {
   return (
     <AdministrationFilterForm variant="standalone">
-      <FilterField
-        defaultValue={range.from}
-        label="From"
-        name="from"
-      />
+      <FilterField defaultValue={range.from} label="From" name="from" />
       <FilterField defaultValue={range.to} label="To" name="to" />
       <SelectField
         defaultValue={input.channel}

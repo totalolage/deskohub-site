@@ -1370,6 +1370,7 @@ function DirtyEventSlot({
   readonly value: string;
 }) {
   const slotRef = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Re-emit the dirty event whenever the committed value changes, even though the effect body only touches the slot element.
   useEffect(() => {
     slotRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
   }, [value]);

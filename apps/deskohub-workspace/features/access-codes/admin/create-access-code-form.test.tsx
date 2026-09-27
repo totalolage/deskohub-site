@@ -48,9 +48,9 @@ const pickWindowDay = async (
 ) => {
   fireEvent.click(view.getByRole("button", { name: label }));
   const grid = await view.findByRole("grid");
-  const dayButton = [
-    ...grid.querySelectorAll("button"),
-  ].find((button) => button.textContent === day && !button.disabled);
+  const dayButton = [...grid.querySelectorAll("button")].find(
+    (button) => button.textContent === day && !button.disabled
+  );
   if (!dayButton) throw new Error(`Day ${day} not offered for ${label}`);
   fireEvent.click(dayButton);
 };
@@ -199,9 +199,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     ) as HTMLInputElement;
     expect(canonicalStart.type).toBe("datetime-local");
     expect(canonicalStart.step).toBe("3600");
-    expect(
-      (view.getByLabelText("Starts time") as HTMLInputElement).type
-    ).toBe("time");
+    expect((view.getByLabelText("Starts time") as HTMLInputElement).type).toBe(
+      "time"
+    );
     const canonicalEnd = view.container.querySelector(
       "input[name='endsAt']"
     ) as HTMLInputElement;
