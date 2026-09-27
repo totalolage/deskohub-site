@@ -1420,6 +1420,115 @@ export const makeWorkspaceE2EAccountCases = ({
     ),
     makeCase("account-data-export", ({ journalRef, runStep }) =>
       Effect.gen(function* () {
+        // The serial lane shares one browser session across every case, and
+        // the database fixture steps below never read the session. Align the
+        // session to the verified synthetic main recipient first so the
+        // exported identity cannot belong to an earlier identity chain.
+        yield* runStep(
+          step(
+            "requires an anonymous browser session before the export sign-in",
+            Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* waitForBrowserCondition(
+                run,
+                session,
+                "anonymous sign-in redirect or signed-in account shell",
+                `(() => location.href.includes(${JSON.stringify(signInSuffix)}) || document.querySelector(${JSON.stringify(signOutSelector)}) !== null)()`,
+                { timeoutMs: uiTransition }
+              );
+              const url = yield* readBrowserUrl(run, session);
+              if (url !== undefined && url.includes(signInSuffix)) {
+                yield* waitSignInForm();
+              } else {
+                yield* signOutAndRequireAnonymous();
+              }
+            }),
+            navigationTimeout
+          )
+        );
+
+        const exportStartedAt = new Date();
+        const exportObservedMessageIds = yield* runStep(
+          step(
+            "records the delivered message baseline before the export sign-in",
+            observeDeliveredMessageIds(recipient),
+            providerTransition
+          )
+        );
+
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the export sign-in link",
+              requestSignInLink(recipient),
+              navigationTimeout
+            )
+          )
+        );
+
+        const exportLink = yield* runStep(
+          step(
+            "retrieves the delivered export sign-in link",
+            retrieveSignInLink(
+              recipient,
+              exportObservedMessageIds,
+              exportStartedAt
+            ),
+            authDeliveryTimeout
+          )
+        );
+
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "consumes the export sign-in link as the synthetic main recipient",
+              Effect.gen(function* () {
+                yield* openPage(exportLink);
+                yield* waitDefaultReservations(
+                  "export session account reservations"
+                );
+                const userId = yield* requireAuthUserId(recipient);
+                yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
+              }),
+              providerTransition
+            )
+          )
+        );
+
+        yield* runStep(
+          step(
+            "asserts the export session is the synthetic main recipient",
+            Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* waitDefaultReservations(
+                "export identity account reservations"
+              );
+              yield* selectAccountSectionInRunner(run, session, "profile");
+              const result = yield* evalBrowserScript(
+                "assert the export session identity is the synthetic main recipient",
+                run,
+                session,
+                `(() => {
+                    const profile = document.querySelector(${JSON.stringify(accountSectionLandmarks.profile)});
+                    return JSON.stringify({
+                      matches: profile instanceof HTMLElement &&
+                        profile.textContent?.includes(${JSON.stringify(recipient)}) === true,
+                    });
+                  })()`,
+                { logOutput: false, timeoutMs: browserTimeout }
+              ).pipe(Effect.map((command) => command.stdout));
+              const parsed = JSON.parse(result) as { matches: boolean };
+              assert(
+                parsed.matches,
+                "the export session identity did not match the synthetic main recipient"
+              );
+            }),
+            accountPageLoadTimeout
+          )
+        );
+
         const identity = yield* runStep(
           step(
             "reads the signed-in identity for the export assertions",
