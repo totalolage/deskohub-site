@@ -12,7 +12,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   assertAuthSessionReady,
-  assertCanonicalSignInReady,
+  assertCanonicalLandingReady,
   assertLiveProjectCrons,
   assertStagedDeploymentCrons,
   emitRollbackTarget,
@@ -148,13 +148,13 @@ describe("workspace production release checks", () => {
     process.env.VERCEL_AUTOMATION_BYPASS_SECRET = bypassSecret;
 
     try {
-      await assertCanonicalSignInReady(async (input, init) => {
+      await assertCanonicalLandingReady(async (input, init) => {
         requests.push(init ?? {});
         const url = new URL(input.toString());
         if (url.pathname === "/api/auth/get-session") {
           return nullSessionResponse();
         }
-        return new Response('<form id="account-sign-in-form"></form>', {
+        return new Response('<h1 id="landing-page-heading">Workspace</h1>', {
           status: 200,
         });
       });
@@ -256,37 +256,39 @@ describe("workspace production release checks", () => {
     ).rejects.toThrow("failed with 503");
   });
 
-  test("probes the customer-facing production host for the session endpoint and sign-in page", async () => {
-    const requests: URL[] = [];
-    await assertCanonicalSignInReady(async (input) => {
+  test("probes the customer-facing production host for the session endpoint and landing page", async () => {
+    const requests: Array<{ readonly init?: RequestInit; readonly url: URL }> =
+      [];
+    await assertCanonicalLandingReady(async (input, init) => {
       const url = new URL(input.toString());
-      requests.push(url);
+      requests.push({ init, url });
       if (url.pathname === "/api/auth/get-session") {
         return nullSessionResponse();
       }
-      return new Response('<form id="account-sign-in-form"></form>', {
+      return new Response('<h1 id="landing-page-heading">Workspace</h1>', {
         status: 200,
       });
     });
 
-    expect(requests.map((request) => request.host)).toEqual([
+    expect(requests.map(({ url }) => url.host)).toEqual([
       "workspace.deskohub.cz",
       "workspace.deskohub.cz",
     ]);
-    expect(requests.map((request) => request.pathname)).toEqual([
+    expect(requests.map(({ url }) => url.pathname)).toEqual([
       "/api/auth/get-session",
-      "/en-US/auth/sign-in",
+      "/en-US",
     ]);
+    expect(requests[1]?.init?.redirect).toBe("error");
   });
 
   test("never sends a production magic link as a release probe", async () => {
     const methods: string[] = [];
-    await assertCanonicalSignInReady(async (input, init) => {
+    await assertCanonicalLandingReady(async (input, init) => {
       const url = new URL(input.toString());
       methods.push(`${(init?.method ?? "GET").toUpperCase()} ${url.pathname}`);
       if (url.pathname === "/api/auth/get-session")
         return nullSessionResponse();
-      return new Response('<form id="account-sign-in-form"></form>', {
+      return new Response('<h1 id="landing-page-heading">Workspace</h1>', {
         status: 200,
       });
     });
@@ -297,16 +299,85 @@ describe("workspace production release checks", () => {
     );
   });
 
-  test("rejects a sign-in page without the magic-link form on the customer-facing host", async () => {
+  test("rejects a landing page without its stable heading marker on the customer-facing host", async () => {
     await expect(
-      assertCanonicalSignInReady(async (input) => {
+      assertCanonicalLandingReady(async (input) => {
         const url = new URL(input.toString());
         if (url.pathname === "/api/auth/get-session") {
           return nullSessionResponse();
         }
         return new Response("<main>unexpected</main>", { status: 200 });
       })
-    ).rejects.toThrow("magic-link form");
+    ).rejects.toThrow("landing-page heading");
+  });
+
+  test("rejects a landing page with the wrong heading marker", async () => {
+    await expect(
+      assertCanonicalLandingReady(async (input) => {
+        const url = new URL(input.toString());
+        if (url.pathname === "/api/auth/get-session") {
+          return nullSessionResponse();
+        }
+        return new Response('<h1 id="some-other-heading">Workspace</h1>', {
+          status: 200,
+        });
+      })
+    ).rejects.toThrow("landing-page heading");
+  });
+
+  test("rejects a non-200 landing response", async () => {
+    await expect(
+      assertCanonicalLandingReady(async (input) => {
+        const url = new URL(input.toString());
+        if (url.pathname === "/api/auth/get-session") {
+          return nullSessionResponse();
+        }
+        return new Response("not found", { status: 404 });
+      })
+    ).rejects.toThrow("failed with 404");
+  });
+
+  test("rejects landing redirects without following them", async () => {
+    const requests: Array<{ readonly init?: RequestInit; readonly url: URL }> =
+      [];
+
+    await expect(
+      assertCanonicalLandingReady(async (input, init) => {
+        const url = new URL(input.toString());
+        requests.push({ init, url });
+        if (url.pathname === "/api/auth/get-session") {
+          return nullSessionResponse();
+        }
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://other.example/" },
+        });
+      })
+    ).rejects.toThrow("failed with 302");
+
+    expect(requests[1]?.url.pathname).toBe("/en-US");
+    expect(requests[1]?.init?.redirect).toBe("error");
+  });
+
+  test("rejects an unhealthy canonical anonymous session before probing the landing page", async () => {
+    const requests: URL[] = [];
+
+    await expect(
+      assertCanonicalLandingReady(async (input) => {
+        const url = new URL(input.toString());
+        requests.push(url);
+        if (url.pathname === "/api/auth/get-session") {
+          return new Response("unavailable", { status: 503 });
+        }
+        return new Response('<h1 id="landing-page-heading">Workspace</h1>', {
+          status: 200,
+        });
+      })
+    ).rejects.toThrow("failed with 503");
+
+    expect(requests.map((url) => url.pathname)).toEqual([
+      "/api/auth/get-session",
+    ]);
   });
 
   test("targets the deployment the canonical production alias serves, not the newest promoted deployment", async () => {
