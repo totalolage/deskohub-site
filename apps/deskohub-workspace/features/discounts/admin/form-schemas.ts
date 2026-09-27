@@ -1,17 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
 
-const percentageField = Schema.String.check(
-  Schema.isNonEmpty({ message: "Enter a percentage." }),
-  Schema.makeFilter(
-    (value) => {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) && parsed >= 0.01 && parsed <= 100;
-    },
-    { message: "Enter a percentage between 0.01 and 100." }
-  )
-);
-
 const minorUnitsField = Schema.String.check(
   Schema.isNonEmpty({ message: "Enter a value in minor units." }),
   Schema.makeFilter(
@@ -56,20 +45,101 @@ const discountIdField = Schema.String.check(
   Schema.isNonEmpty({ message: "Choose a discount." })
 );
 
-const discountDefinitionFields = {
-  labelEn: Schema.String.check(
-    Schema.isNonEmpty({ message: "Enter an English label." })
-  ),
-  labelCs: Schema.String.check(
-    Schema.isNonEmpty({ message: "Enter a Czech label." })
-  ),
+type DiscountDefinitionCheckValues = {
+  readonly adjustmentKind: "percentage" | "fixed";
+  readonly labelEn: string;
+  readonly labelCs: string;
+  readonly percentage: string;
+  readonly fixedAmountValue: string;
+  readonly fixedAmountCurrency: string;
+};
+
+// The inactive adjustment branch keeps its permissive string value, so only
+// the checks for the active branch (and, for creation forms, only when the
+// "new discount" branch applies) produce issues. Every check is its own
+// filter so all failing fields report their message at once.
+const definitionFilters = <Values extends DiscountDefinitionCheckValues>(
+  applies: (values: Values) => boolean
+) =>
+  [
+    Schema.makeFilter<Values>(
+      (values) =>
+        !applies(values) ||
+        values.labelEn.trim().length > 0 || {
+          path: ["labelEn"],
+          issue: "Enter an English label.",
+        }
+    ),
+    Schema.makeFilter<Values>(
+      (values) =>
+        !applies(values) ||
+        values.labelCs.trim().length > 0 || {
+          path: ["labelCs"],
+          issue: "Enter a Czech label.",
+        }
+    ),
+    Schema.makeFilter<Values>(
+      (values) =>
+        !applies(values) ||
+        values.adjustmentKind !== "percentage" ||
+        values.percentage.length > 0 || {
+          path: ["percentage"],
+          issue: "Enter a percentage.",
+        }
+    ),
+    Schema.makeFilter<Values>((values) => {
+      if (!applies(values) || values.adjustmentKind !== "percentage")
+        return true;
+      const parsed = Number(values.percentage);
+      return (
+        (Number.isFinite(parsed) && parsed >= 0.01 && parsed <= 100) || {
+          path: ["percentage"],
+          issue: "Enter a percentage between 0.01 and 100.",
+        }
+      );
+    }),
+    Schema.makeFilter<Values>(
+      (values) =>
+        !applies(values) ||
+        values.adjustmentKind !== "fixed" ||
+        values.fixedAmountValue.length > 0 || {
+          path: ["fixedAmountValue"],
+          issue: "Enter a value in minor units.",
+        }
+    ),
+    Schema.makeFilter<Values>((values) => {
+      if (!applies(values) || values.adjustmentKind !== "fixed") return true;
+      const parsed = Number(values.fixedAmountValue);
+      return (
+        (Number.isSafeInteger(parsed) && parsed >= 1) || {
+          path: ["fixedAmountValue"],
+          issue: "Enter a whole number of minor units of at least 1.",
+        }
+      );
+    }),
+    Schema.makeFilter<Values>(
+      (values) =>
+        !applies(values) ||
+        values.adjustmentKind !== "fixed" ||
+        values.fixedAmountCurrency.length > 0 || {
+          path: ["fixedAmountCurrency"],
+          issue: "Choose a currency.",
+        }
+    ),
+  ] as const;
+
+// Fields stay permissive strings so the form-value shape is stable while a
+// different adjustment kind or discount branch is selected.
+const permissiveDiscountDefinitionFields = {
+  labelEn: Schema.String,
+  labelCs: Schema.String,
   adjustmentKind: Schema.Union([
     Schema.Literal("percentage"),
     Schema.Literal("fixed"),
   ]),
-  percentage: percentageField,
-  fixedAmountValue: minorUnitsField,
-  fixedAmountCurrency: currencyField,
+  percentage: Schema.String,
+  fixedAmountValue: Schema.String,
+  fixedAmountCurrency: Schema.String,
   products: Schema.Array(Schema.String),
 };
 
@@ -88,7 +158,9 @@ const voucherCreditFields = {
 };
 
 export const discountDefinitionFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct(discountDefinitionFields),
+  Schema.Struct(permissiveDiscountDefinitionFields).check(
+    ...definitionFilters<DiscountDefinitionCheckValues>(() => true)
+  ),
   { parseOptions: { errors: "all" } }
 );
 
@@ -116,11 +188,9 @@ export const voucherFormSchema = Schema.toStandardSchemaV1(
   { parseOptions: { errors: "all" } }
 );
 
-type DiscountCodeCreationFormCheckInput = {
+type DiscountCodeCreationFormCheckInput = DiscountDefinitionCheckValues & {
   readonly discountKind: "existing" | "new";
   readonly discountId: string;
-  readonly labelEn: string;
-  readonly labelCs: string;
 };
 
 export const discountCodeCreationFormSchema = Schema.toStandardSchemaV1(
@@ -130,12 +200,7 @@ export const discountCodeCreationFormSchema = Schema.toStandardSchemaV1(
       Schema.Literal("new"),
     ]),
     discountId: Schema.String,
-    ...discountDefinitionFields,
-    // Labels are only required while creating a new discount, so the
-    // unconditional definition-field checks are replaced by the conditional
-    // checks below.
-    labelEn: Schema.String,
-    labelCs: Schema.String,
+    ...permissiveDiscountDefinitionFields,
     ...discountCodeConfigurationFields,
   }).check(
     Schema.makeFilter<DiscountCodeCreationFormCheckInput>(
@@ -146,21 +211,11 @@ export const discountCodeCreationFormSchema = Schema.toStandardSchemaV1(
           issue: "Choose a discount.",
         }
     ),
-    Schema.makeFilter<DiscountCodeCreationFormCheckInput>(
-      (values) =>
-        values.discountKind !== "new" ||
-        values.labelEn.trim().length > 0 || {
-          path: ["labelEn"],
-          issue: "Enter an English label.",
-        }
-    ),
-    Schema.makeFilter<DiscountCodeCreationFormCheckInput>(
-      (values) =>
-        values.discountKind !== "new" ||
-        values.labelCs.trim().length > 0 || {
-          path: ["labelCs"],
-          issue: "Enter a Czech label.",
-        }
+    // Definition, label, and adjustment checks only apply while creating a
+    // new discount; the existing-discount branch pairs the code with an
+    // already valid discount.
+    ...definitionFilters<DiscountCodeCreationFormCheckInput>(
+      (values) => values.discountKind === "new"
     )
   )
 );

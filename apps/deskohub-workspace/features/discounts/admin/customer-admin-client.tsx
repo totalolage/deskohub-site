@@ -227,18 +227,28 @@ export function AddCodeCustomerForm({
       schema={customerCodeAudienceFormSchema}
       submitLabel="Add customer"
     >
-      {({ register }) => (
-        <div className="grid gap-1.5">
-          <Label htmlFor={`audience-customer-${codeId}`}>
-            Dotypos customer ID
-          </Label>
-          <Input
-            autoComplete="off"
-            id={`audience-customer-${codeId}`}
-            required
-            {...register("customerId")}
-          />
-        </div>
+      {({ control }) => (
+        <FormField
+          control={control}
+          name="customerId"
+          render={({ field, fieldState }) => (
+            <FormItem className="grid gap-1.5">
+              <FormLabel htmlFor={`audience-customer-${codeId}`}>
+                Dotypos customer ID
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  autoComplete="off"
+                  id={`audience-customer-${codeId}`}
+                  required
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
       )}
     </AdminMutationForm>
   );
@@ -260,18 +270,28 @@ export function AddVoucherCustomerForm({
       schema={customerCodeAudienceFormSchema}
       submitLabel="Add customer"
     >
-      {({ register }) => (
-        <div className="grid gap-1.5">
-          <Label htmlFor={`voucher-audience-customer-${voucherId}`}>
-            Dotypos customer ID
-          </Label>
-          <Input
-            autoComplete="off"
-            id={`voucher-audience-customer-${voucherId}`}
-            required
-            {...register("customerId")}
-          />
-        </div>
+      {({ control }) => (
+        <FormField
+          control={control}
+          name="customerId"
+          render={({ field, fieldState }) => (
+            <FormItem className="grid gap-1.5">
+              <FormLabel htmlFor={`voucher-audience-customer-${voucherId}`}>
+                Dotypos customer ID
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  autoComplete="off"
+                  id={`voucher-audience-customer-${voucherId}`}
+                  required
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
       )}
     </AdminMutationForm>
   );
@@ -301,6 +321,7 @@ export function CustomerDiscountGroupForm({
             : decodeDotyposDiscountGroupId(values.discountGroupId),
       })}
       defaultValues={{ discountGroupId: currentGroupId ?? "" }}
+      resetOnSuccessTo="submitted"
       schema={customerDiscountGroupFormSchema}
       submitLabel="Save group"
     >
@@ -536,16 +557,25 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
   buildMutation,
   children,
   defaultValues,
+  resetOnSuccessTo = "initial",
   schema,
   submitLabel,
 }: {
   readonly buildMutation: (values: Values) => DiscountAdminMutation;
   readonly children: (api: {
+    readonly control: ReturnType<
+      typeof useForm<Input, unknown, Values>
+    >["control"];
     readonly register: ReturnType<
       typeof useForm<Input, unknown, Values>
     >["register"];
   }) => ReactNode;
   readonly defaultValues: DefaultValues<Input>;
+  /**
+   * Edit forms rebase onto the submitted values so a follow-up edit submits
+   * the saved state plus the new change; audience-add forms clear.
+   */
+  readonly resetOnSuccessTo?: "initial" | "submitted";
   readonly schema: StandardSchemaV1<Input, Values>;
   readonly submitLabel: string;
 }) {
@@ -565,7 +595,11 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
     onSuccess: ({ data }) => {
       if (!data) return;
       setFeedback({ kind: "success", message: data.notice });
-      form.reset();
+      form.reset(
+        resetOnSuccessTo === "submitted"
+          ? (form.getValues() as Input)
+          : undefined
+      );
       router.refresh();
     },
     onError: ({ error }) =>
@@ -590,7 +624,7 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
           execute(buildMutation(values));
         })}
       >
-        {children({ register: form.register })}
+        {children({ control: form.control, register: form.register })}
         {feedback && (
           <p
             className={
