@@ -17,9 +17,8 @@ class TestCustomerInvoiceNotFoundError extends Data.TaggedError(
 const { makeCustomerInvoiceCsvGet, makeCustomerInvoicePdfGet } = await import(
   "@/features/account/customer-invoice-download-route.server"
 );
-const { CustomerInvoiceService } = await import(
-  "@/features/account/backend/customer-invoice.service"
-);
+const { CustomerInvoiceService, CustomerInvoicesUnavailableError } =
+  await import("@/features/account/backend/customer-invoice.service");
 
 const serviceLayer = Layer.succeed(
   CustomerInvoiceService,
@@ -35,6 +34,29 @@ const serviceLayer = Layer.succeed(
         fileName: "deskohub-invoices.csv",
         content: "Invoice number,Total\r\nWS-FV-2026-000042,450\r\n",
       }),
+  } as never)
+);
+
+const unavailableServiceLayer = Layer.succeed(
+  CustomerInvoiceService,
+  CustomerInvoiceService.of({
+    list: Effect.fail(
+      new CustomerInvoicesUnavailableError({
+        message: "Customer invoices are unavailable for this account.",
+      })
+    ),
+    findPdf: () =>
+      Effect.fail(
+        new CustomerInvoicesUnavailableError({
+          message: "Customer invoices are unavailable for this account.",
+        })
+      ),
+    buildCsv: () =>
+      Effect.fail(
+        new CustomerInvoicesUnavailableError({
+          message: "Customer invoices are unavailable for this account.",
+        })
+      ),
   } as never)
 );
 
@@ -62,6 +84,38 @@ describe("customer invoice download routes", () => {
     }
     expect(await malformed?.text()).toBe(await missing?.text());
     expect(await missing?.text()).toBe(await nonOwned?.text());
+  });
+
+  test("maps unavailable PDF authorization to the missing and non-owned 404", async () => {
+    const unauthorizedGet = makeCustomerInvoicePdfGet(unavailableServiceLayer);
+    const missingGet = makeCustomerInvoicePdfGet(serviceLayer);
+    const [unavailable, malformed, missing, nonOwned] = await Promise.all([
+      unauthorizedGet(new Request("https://workspace.test/x"), {
+        params: Promise.resolve({ invoiceId: ownedInvoiceId }),
+      }),
+      missingGet(new Request("https://workspace.test/x"), {
+        params: Promise.resolve({ invoiceId: "not-a-uuid" }),
+      }),
+      missingGet(new Request("https://workspace.test/x"), {
+        params: Promise.resolve({ invoiceId: ownedInvoiceId }),
+      }),
+      missingGet(new Request("https://workspace.test/x"), {
+        params: Promise.resolve({ invoiceId: otherOwnerId }),
+      }),
+    ]);
+    const responses = [unavailable, malformed, missing, nonOwned];
+    for (const response of responses) {
+      if (!(response instanceof Response)) throw new Error("no response");
+      expect(response.status).toBe(404);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("content-disposition")).toBeNull();
+      expect(response.headers.get("content-type")).not.toBe("application/pdf");
+    }
+    const bodies = await Promise.all(
+      responses.map((response) => response.text())
+    );
+    expect(new Set(bodies).size).toBe(1);
+    expect(bodies[0]).not.toContain("%PDF");
   });
 
   test("serves an owned invoice as a private pdf attachment", async () => {
@@ -113,6 +167,41 @@ describe("customer invoice download routes", () => {
       `attachment; filename="deskohub-invoices.csv"`
     );
     expect(valid.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  test("maps unavailable CSV authorization to the invalid-locale 404 for safe locales", async () => {
+    const unauthorizedGet = makeCustomerInvoiceCsvGet(unavailableServiceLayer);
+    const invalidLocaleGet = makeCustomerInvoiceCsvGet(serviceLayer);
+    const safeLocales = ["en-US", "cs-CZ"] as const;
+    const deniedResponses = await Promise.all(
+      safeLocales.map((locale) =>
+        unauthorizedGet(new Request("https://workspace.test/x"), {
+          params: Promise.resolve({ locale }),
+        })
+      )
+    );
+    const invalidLocale = await invalidLocaleGet(
+      new Request("https://workspace.test/x"),
+      { params: Promise.resolve({ locale: "not-a-locale" }) }
+    );
+    if (!(invalidLocale instanceof Response)) {
+      throw new Error("no invalid-locale response");
+    }
+
+    for (const response of [...deniedResponses, invalidLocale]) {
+      if (!(response instanceof Response)) throw new Error("no response");
+      expect(response.status).toBe(404);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("content-disposition")).toBeNull();
+      expect(response.headers.get("content-type") ?? "").not.toContain(
+        "text/csv"
+      );
+    }
+    const bodies = await Promise.all(
+      [...deniedResponses, invalidLocale].map((response) => response.text())
+    );
+    expect(new Set(bodies).size).toBe(1);
+    expect(bodies[0]).not.toContain("WS-FV-2026-000042");
   });
 
   test("unexpected pdf failures answer with a private no-store json error", async () => {

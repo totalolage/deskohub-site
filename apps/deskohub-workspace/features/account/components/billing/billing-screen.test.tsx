@@ -1,51 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { ComponentPropsWithoutRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Locale } from "@/features/i18n";
-import type { BillingScreenCopy } from "./billing-screen";
+import type { CustomerInvoiceListState } from "@/features/account/contracts";
+import { type Locale, m } from "@/features/i18n";
 import { BillingScreen } from "./billing-screen";
-
-const englishCopy = {
-  title: "Billing & invoices",
-  currency: "Currency: CZK (Kč)",
-  paymentMethodsTitle: "Saved payment methods",
-  paymentMethodsUnavailable:
-    "Saved payment methods are not available in this account.",
-  addPaymentCard: "Add payment card",
-  removePaymentCard: "Remove payment card",
-  billingDetailsTitle: "Billing details",
-  syncAres: "Sync with ARES Registry",
-  invoiceHistoryTitle: "Invoice history",
-  invoiceEmpty:
-    "You have no invoices yet. Invoices appear here after your first invoiced visit.",
-  invoiceFailed: "Invoices could not be loaded. Please try again later.",
-  invoiceLoading: "Loading invoices…",
-  invoiceUnavailable:
-    "Invoices are temporarily unavailable. Please try again later.",
-  downloadInvoice: "Download PDF",
-  exportInvoices: "Export CSV",
-} satisfies BillingScreenCopy;
-
-const czechCopy = {
-  title: "Fakturace a faktury",
-  currency: "Měna: CZK (Kč)",
-  paymentMethodsTitle: "Uložené platební metody",
-  paymentMethodsUnavailable:
-    "Uložené platební metody nejsou pro tento účet dostupné.",
-  addPaymentCard: "Přidat platební kartu",
-  removePaymentCard: "Odebrat platební kartu",
-  billingDetailsTitle: "Fakturační údaje",
-  syncAres: "Synchronizovat s registrem ARES",
-  invoiceHistoryTitle: "Historie faktur",
-  invoiceEmpty:
-    "Zatím nemáte žádné faktury. Zobrazí se zde po vaší první fakturované návštěvě.",
-  invoiceFailed: "Faktury se nepodařilo načíst. Zkuste to prosím později.",
-  invoiceLoading: "Načítání faktur…",
-  invoiceUnavailable:
-    "Faktury jsou dočasně nedostupné. Zkuste to prosím později.",
-  downloadInvoice: "Stáhnout PDF",
-  exportInvoices: "Exportovat CSV",
-} satisfies BillingScreenCopy;
 
 const countOccurrences = (value: string, needle: string) =>
   value.split(needle).length - 1;
@@ -59,14 +17,13 @@ const escapeHtml = (value: string) =>
     .replaceAll("'", "&#x27;");
 
 const renderScreen = (
-  copy: BillingScreenCopy,
   locale: Locale,
   invoices: ComponentPropsWithoutRef<typeof BillingScreen>["invoices"] = {
     kind: "empty",
   }
 ) =>
   renderToStaticMarkup(
-    <BillingScreen copy={copy} invoices={invoices} locale={locale}>
+    <BillingScreen invoices={invoices} locale={locale}>
       <div data-child-marker="billing-fields">Caller-owned billing fields</div>
     </BillingScreen>
   );
@@ -83,7 +40,7 @@ const getSavedPaymentMethodsMarkup = (markup: string) =>
 
 describe("BillingScreen", () => {
   test("renders inside the shared account section panel", () => {
-    const markup = renderScreen(englishCopy, "en-US");
+    const markup = renderScreen("en-US");
 
     expect(markup).toContain('data-slot="account-section-panel"');
   });
@@ -91,7 +48,6 @@ describe("BillingScreen", () => {
   test("renders children and the optional footer exactly once without owning a form or input", () => {
     const markup = renderToStaticMarkup(
       <BillingScreen
-        copy={englishCopy}
         invoices={{ kind: "empty" }}
         footer={<span data-footer-marker="billing-footer">Save billing</span>}
         locale="en-US"
@@ -115,7 +71,6 @@ describe("BillingScreen", () => {
   test("keeps a provided footer in one sticky, opaque, safe-area wrapper", () => {
     const markup = renderToStaticMarkup(
       <BillingScreen
-        copy={englishCopy}
         invoices={{ kind: "empty" }}
         footer={<span data-footer-marker="billing-footer">Save billing</span>}
         locale="en-US"
@@ -158,21 +113,22 @@ describe("BillingScreen", () => {
   });
 
   test("renders safely without an optional footer", () => {
-    const markup = renderScreen(englishCopy, "en-US");
+    const markup = renderScreen("en-US");
 
     expect(markup).not.toContain("data-footer-marker");
   });
 
-  test.each([
-    ["English", "en-US", englishCopy],
-    ["Czech", "cs-CZ", czechCopy],
-  ] as const)(
-    "keeps the %s billing title without rendering currency copy",
-    (_language, locale, copy) => {
-      const markup = renderScreen(copy, locale);
+  test.each(["en-US", "cs-CZ"] as const)(
+    "keeps the localized billing title without rendering currency copy in %s",
+    (locale) => {
+      const markup = renderScreen(locale);
 
-      expect(markup).toContain(escapeHtml(copy.title));
-      expect(markup).not.toContain(escapeHtml(copy.currency));
+      expect(markup).toContain(
+        escapeHtml(m.accountSectionBilling({}, { locale }))
+      );
+      expect(markup).not.toContain(
+        escapeHtml(m.accountBillingCurrency({}, { locale }))
+      );
     }
   );
 
@@ -180,7 +136,6 @@ describe("BillingScreen", () => {
     const markup = renderToStaticMarkup(
       <form id="account-profile-form">
         <BillingScreen
-          copy={englishCopy}
           invoices={{ kind: "empty" }}
           footer={<button type="submit">Save billing</button>}
           locale="en-US"
@@ -207,7 +162,7 @@ describe("BillingScreen", () => {
   });
 
   test("keeps every unsupported action disabled and native button-shaped", () => {
-    const markup = renderScreen(englishCopy, "en-US");
+    const markup = renderScreen("en-US");
     const buttons = markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
 
     expect(buttons).toHaveLength(3);
@@ -217,41 +172,37 @@ describe("BillingScreen", () => {
     }
   });
 
-  test.each([
-    ["English", "en-US", englishCopy],
-    ["Czech", "cs-CZ", czechCopy],
-  ] as const)(
-    "renders only the saved payment heading and disabled Add action for %s",
-    (_language, locale, copy) => {
-      const savedSection = getSavedPaymentMethodsMarkup(
-        renderScreen(copy, locale)
-      );
+  test.each(["en-US", "cs-CZ"] as const)(
+    "renders only the saved payment heading and disabled Add action in %s",
+    (locale) => {
+      const savedSection = getSavedPaymentMethodsMarkup(renderScreen(locale));
       const buttons =
         savedSection.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
 
-      expect(savedSection).toContain(escapeHtml(copy.paymentMethodsTitle));
-      expect(savedSection).not.toContain(
-        escapeHtml(copy.paymentMethodsUnavailable)
+      expect(savedSection).toContain(
+        escapeHtml(m.accountBillingPaymentMethodsTitle({}, { locale }))
       );
-      expect(savedSection).not.toContain(escapeHtml(copy.removePaymentCard));
+      expect(savedSection).not.toContain(
+        escapeHtml(m.accountBillingPaymentMethodsUnavailable({}, { locale }))
+      );
+      expect(savedSection).not.toContain(
+        escapeHtml(m.accountBillingRemovePaymentCard({}, { locale }))
+      );
       expect(savedSection).not.toContain("payment-methods-unavailable");
       expect(buttons).toHaveLength(1);
-      expect(buttons[0]).toContain(escapeHtml(copy.addPaymentCard));
+      expect(buttons[0]).toContain(
+        escapeHtml(m.accountBillingAddPaymentCard({}, { locale }))
+      );
       expect(buttons[0]).toMatch(/\btype="button"/);
       expect(buttons[0]).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
       expect(buttons[0]).not.toMatch(/\baria-describedby=/);
     }
   );
 
-  test.each([
-    ["English", "en-US", englishCopy],
-    ["Czech", "cs-CZ", czechCopy],
-  ] as const)(
-    "renders every supplied %s string without invented billing data",
-    (_language, locale, copy) => {
-      // Each invoice list state is rendered so every supplied string must
-      // appear in at least one state's markup.
-      const markup = [
+  test.each(["en-US", "cs-CZ"] as const)(
+    "renders billing catalog copy without invented billing data in %s",
+    (locale) => {
+      const invoiceStates: CustomerInvoiceListState[] = [
         { kind: "empty" },
         { kind: "loading" },
         { kind: "unavailable" },
@@ -260,32 +211,48 @@ describe("BillingScreen", () => {
           invoices: [
             {
               currency: "CZK",
-              dueDate: null,
               id: "billing-screen-test-invoice",
               invoiceNumber: "WS-FV-2026-000001",
               issuedAt: "2026-09-01T08:00:00.000Z",
-              paymentStatus: "paid",
+              paymentStatus: "due",
               total: "100",
+              dueDate: "2026-10-02",
             },
           ],
           kind: "populated",
         },
-      ]
-        .map((invoices) => renderScreen(copy, locale, invoices as never))
+      ];
+      const markup = invoiceStates
+        .map((invoices) => renderScreen(locale, invoices))
         .join("\n");
-      const {
-        currency,
-        paymentMethodsUnavailable,
-        removePaymentCard,
-        ...renderedCopy
-      } = copy;
 
-      for (const value of Object.values(renderedCopy)) {
+      for (const value of [
+        m.accountSectionBilling({}, { locale }),
+        m.accountBillingPaymentMethodsTitle({}, { locale }),
+        m.accountBillingAddPaymentCard({}, { locale }),
+        m.accountBillingDetailsTitle({}, { locale }),
+        m.accountBillingSyncAres({}, { locale }),
+        m.accountBillingInvoiceHistoryTitle({}, { locale }),
+        m.accountBillingInvoiceEmpty({}, { locale }),
+        m.accountBillingInvoiceLoading({}, { locale }),
+        m.accountBillingInvoiceUnavailable({}, { locale }),
+        m.accountBillingInvoiceFailed({}, { locale }),
+        m.accountBillingDownloadInvoice({}, { locale }),
+        m.accountBillingExportInvoices({}, { locale }),
+        m.invoiceManualUnpaid({}, { locale }),
+        m.invoiceManualDueDate({}, { locale }),
+      ]) {
         expect(markup).toContain(escapeHtml(value));
       }
-      expect(markup).not.toContain(escapeHtml(currency));
-      expect(markup).not.toContain(escapeHtml(paymentMethodsUnavailable));
-      expect(markup).not.toContain(escapeHtml(removePaymentCard));
+      expect(markup).not.toContain(
+        escapeHtml(m.accountBillingCurrency({}, { locale }))
+      );
+      expect(markup).not.toContain(
+        escapeHtml(m.accountBillingPaymentMethodsUnavailable({}, { locale }))
+      );
+      expect(markup).not.toContain(
+        escapeHtml(m.accountBillingRemovePaymentCard({}, { locale }))
+      );
       expect(markup).not.toMatch(
         /Visa|Mastercard|American Express|Stripe|4242|••••|Issued:/i
       );
@@ -296,18 +263,10 @@ describe("BillingScreen", () => {
   test("keeps labels and description references unique across two instances", () => {
     const markup = renderToStaticMarkup(
       <div>
-        <BillingScreen
-          copy={englishCopy}
-          invoices={{ kind: "empty" }}
-          locale="en-US"
-        >
+        <BillingScreen invoices={{ kind: "empty" }} locale="en-US">
           <div>First billing fields</div>
         </BillingScreen>
-        <BillingScreen
-          copy={czechCopy}
-          invoices={{ kind: "empty" }}
-          locale="cs-CZ"
-        >
+        <BillingScreen invoices={{ kind: "empty" }} locale="cs-CZ">
           <div>Second billing fields</div>
         </BillingScreen>
       </div>

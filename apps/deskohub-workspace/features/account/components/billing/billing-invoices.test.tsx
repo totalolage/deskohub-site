@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, describe, expect, mock, test } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import type { ComponentPropsWithoutRef } from "react";
+import { type ComponentPropsWithoutRef, act as reactAct } from "react";
 import type { CustomerInvoiceListState } from "@/features/account/contracts";
 import type { CustomerInvoiceSummary } from "@/features/accounting/customer-invoice";
 import { type Locale, m } from "@/features/i18n";
@@ -10,7 +10,6 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { getAccountScreenCopy } from "../account-screen-copy";
 import { BillingScreen } from "./billing-screen";
 
 type MockNextLinkProps = ComponentPropsWithoutRef<"a"> & {
@@ -62,37 +61,107 @@ const states = {
 } satisfies Record<CustomerInvoiceListState["kind"], CustomerInvoiceListState>;
 
 const stateCopy = (locale: Locale, kind: CustomerInvoiceListState["kind"]) => {
-  const copy = getAccountScreenCopy(locale).billing;
   switch (kind) {
     case "populated":
       return null;
     case "empty":
-      return copy.invoiceEmpty;
+      return m.accountBillingInvoiceEmpty({}, { locale });
     case "loading":
-      return copy.invoiceLoading;
+      return m.accountBillingInvoiceLoading({}, { locale });
     case "unavailable":
-      return copy.invoiceUnavailable;
+      return m.accountBillingInvoiceUnavailable({}, { locale });
     case "failed":
-      return copy.invoiceFailed;
+      return m.accountBillingInvoiceFailed({}, { locale });
   }
 };
 
 function renderBilling(
   locale: Locale,
-  invoices: CustomerInvoiceListState
+  invoices: CustomerInvoiceListState | Promise<CustomerInvoiceListState>
 ): ReturnType<typeof render> {
   return render(
-    <BillingScreen
-      copy={getAccountScreenCopy(locale).billing}
-      invoices={invoices}
-      locale={locale}
-    >
+    <BillingScreen invoices={invoices} locale={locale}>
       <div>Caller-owned billing fields</div>
     </BillingScreen>
   );
 }
 
 describe("account billing invoice history", () => {
+  for (const locale of ["en-US", "cs-CZ"] as const) {
+    test(`shows a localized pending state before rendering invoices in ${locale}`, async () => {
+      let resolveInvoices!: (state: CustomerInvoiceListState) => void;
+      const pendingInvoices = new Promise<CustomerInvoiceListState>(
+        (resolve) => {
+          resolveInvoices = resolve;
+        }
+      );
+      const loadingCopy = m.accountBillingInvoiceLoading({}, { locale });
+      const actEnvironment = Object.getOwnPropertyDescriptor(
+        globalThis,
+        "IS_REACT_ACT_ENVIRONMENT"
+      );
+      Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+        configurable: true,
+        value: true,
+        writable: true,
+      });
+      let view: ReturnType<typeof render> | undefined;
+
+      try {
+        await reactAct(async () => {
+          view = renderBilling(locale, pendingInvoices);
+        });
+        const rendered = view;
+        if (!rendered) throw new Error("Billing screen was not rendered");
+        expect(rendered.getByText(loadingCopy)).toBeTruthy();
+        expect(
+          rendered.getByRole("heading", {
+            name: m.accountSectionBilling({}, { locale }),
+          })
+        ).toBeTruthy();
+        const invoiceHistory = rendered.getByRole("region", {
+          name: m.accountBillingInvoiceHistoryTitle({}, { locale }),
+        });
+        const invoiceState = invoiceHistory.querySelector("p");
+        if (!invoiceState) throw new Error("Invoice state was not rendered");
+        expect(invoiceState.textContent).toBe(loadingCopy);
+        const exportButton = rendered.getByRole("button", {
+          name: m.accountBillingExportInvoices({}, { locale }),
+        });
+        expect(exportButton.getAttribute("aria-describedby")).toBe(
+          invoiceState.id
+        );
+
+        await reactAct(async () => {
+          resolveInvoices(states.populated);
+          await pendingInvoices;
+        });
+
+        expect(
+          await rendered.findByRole("link", {
+            name: m.accountBillingInvoiceDownloadAriaLabel(
+              { invoiceNumber: dueInvoice.invoiceNumber },
+              { locale }
+            ),
+          })
+        ).toBeTruthy();
+        expect(rendered.queryByText(loadingCopy)).toBeNull();
+      } finally {
+        resolveInvoices(states.populated);
+        cleanup();
+        if (actEnvironment) {
+          Object.defineProperty(
+            globalThis,
+            "IS_REACT_ACT_ENVIRONMENT",
+            actEnvironment
+          );
+        } else {
+          Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+        }
+      }
+    });
+  }
+
   for (const locale of ["en-US", "cs-CZ"] as const) {
     for (const kind of [
       "populated",
@@ -121,7 +190,7 @@ describe("account billing invoice history", () => {
             .getAllByRole("button")
             .find((button) =>
               button.textContent?.includes(
-                getAccountScreenCopy(locale).billing.exportInvoices
+                m.accountBillingExportInvoices({}, { locale })
               )
             );
           expect(exportButton).toBeTruthy();
@@ -158,7 +227,7 @@ describe("account billing invoice history", () => {
       });
       expect(download.closest("[tabindex='0']")).toBeNull();
       const exportLink = view.getByRole("link", {
-        name: getAccountScreenCopy(locale).billing.exportInvoices,
+        name: m.accountBillingExportInvoices({}, { locale }),
       });
       expect(exportLink.closest("[tabindex='0']")).toBeNull();
       cleanup();
@@ -177,7 +246,7 @@ describe("account billing invoice history", () => {
       );
       expect(download.tagName).toBe("A");
       const exportLink = view.getByRole("link", {
-        name: getAccountScreenCopy(locale).billing.exportInvoices,
+        name: m.accountBillingExportInvoices({}, { locale }),
       }) as HTMLAnchorElement;
       expect(exportLink.getAttribute("href")).toBe(
         `/${locale}/account/invoices/export`
@@ -222,8 +291,10 @@ describe("account billing invoice history", () => {
 
     test(`keeps payment and ARES controls as disabled future features in ${locale}`, () => {
       const view = renderBilling(locale, states.populated);
-      const copy = getAccountScreenCopy(locale).billing;
-      for (const label of [copy.addPaymentCard, copy.syncAres]) {
+      for (const label of [
+        m.accountBillingAddPaymentCard({}, { locale }),
+        m.accountBillingSyncAres({}, { locale }),
+      ]) {
         const control = view
           .getAllByRole("button")
           .find((button) => button.textContent?.includes(label));

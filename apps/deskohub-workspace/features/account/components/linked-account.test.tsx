@@ -101,23 +101,6 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
       title: "Profile & identity",
       verifiedEmail: "Verified login email",
     },
-    billing: {
-      addPaymentCard: "Add payment card",
-      billingDetailsTitle: "Billing details",
-      currency: "Currency: CZK (Kč)",
-      downloadInvoice: "Download PDF",
-      exportInvoices: "Export all",
-      invoiceHistoryTitle: "Invoice history",
-      invoiceHistoryUnavailable:
-        "Invoice history and downloads are not available in this account.",
-      paymentMethodsTitle: "Saved payment methods",
-      paymentMethodsUnavailable:
-        "Saved payment methods are not available in this account.",
-      removePaymentCard: "Remove payment card",
-      syncAres: "Sync with ARES Registry",
-      title: "Billing & invoices",
-    },
-
     reservations: {
       assignedDesk: "Assigned desk",
       checkIn: "Check in",

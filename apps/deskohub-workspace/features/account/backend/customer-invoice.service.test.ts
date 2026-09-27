@@ -71,6 +71,7 @@ type HarnessOverrides = {
 const makeHarness = (overrides: HarnessOverrides = {}) => {
   let authorizations = 0;
   let activityChecks = 0;
+  let invoiceRepositoryCalls = 0;
   const flagEnabled = overrides.flagEnabled ?? true;
   const resolution =
     overrides.resolution ??
@@ -125,12 +126,19 @@ const makeHarness = (overrides: HarnessOverrides = {}) => {
         Layer.succeed(
           InvoiceRepository,
           InvoiceRepository.of({
-            listForCustomer: (dotyposCustomerId: string) =>
-              overrides.listOutcome ??
-              Effect.succeed(
-                dotyposCustomerId === account.dotyposCustomerId ? [summary] : []
-              ),
+            listForCustomer: (dotyposCustomerId: string) => {
+              invoiceRepositoryCalls += 1;
+              return (
+                overrides.listOutcome ??
+                Effect.succeed(
+                  dotyposCustomerId === account.dotyposCustomerId
+                    ? [summary]
+                    : []
+                )
+              );
+            },
             findForCustomer: (dotyposCustomerId: string, invoiceId: string) => {
+              invoiceRepositoryCalls += 1;
               overrides.probes?.push([dotyposCustomerId, invoiceId]);
               return Effect.succeed(
                 dotyposCustomerId === account.dotyposCustomerId
@@ -155,6 +163,7 @@ const makeHarness = (overrides: HarnessOverrides = {}) => {
     run,
     authorizationCount: () => authorizations,
     activityCheckCount: () => activityChecks,
+    invoiceRepositoryCallCount: () => invoiceRepositoryCalls,
   };
 };
 
@@ -204,6 +213,55 @@ describe("customer invoice service authorization", () => {
     expect((outcome as { failure?: { _tag?: string } }).failure?._tag).toBe(
       "CustomerInvoicesUnavailableError"
     );
+  });
+
+  test("denies PDF and CSV requests before invoice reads or PDF rendering when authorization fails", async () => {
+    const probes: unknown[][] = [];
+    const harnesses = [
+      makeHarness({
+        resolution: Effect.fail(
+          new CustomerAccountAccessError({ reason: "unauthenticated" })
+        ),
+        probes,
+      }),
+      makeHarness({
+        resolution: Effect.fail(
+          new CustomerAccountAccessError({ reason: "unverified-email" })
+        ),
+        probes,
+      }),
+      makeHarness({
+        deletionRequestedAt: "2026-09-01T00:00Z",
+        probes,
+      }),
+    ];
+    const previous = renderInvoicePdfImpl;
+    let renderCalls = 0;
+    renderInvoicePdfImpl = () => {
+      renderCalls += 1;
+      return Effect.succeed(Buffer.from("%PDF-1.4 synthetic"));
+    };
+    try {
+      for (const harness of harnesses) {
+        for (const operation of ["pdf", "csv"] as const) {
+          const outcome = await harness.run(
+            Effect.flatMap(CustomerInvoiceService, (service) =>
+              operation === "pdf"
+                ? service.findPdf(summary.id)
+                : service.buildCsv("en-US")
+            ).pipe(Effect.result)
+          );
+          expect(
+            (outcome as { failure?: { _tag?: string } }).failure?._tag
+          ).toBe("CustomerInvoicesUnavailableError");
+          expect(harness.invoiceRepositoryCallCount()).toBe(0);
+          expect(probes).toEqual([]);
+          expect(renderCalls).toBe(0);
+        }
+      }
+    } finally {
+      renderInvoicePdfImpl = previous;
+    }
   });
 
   test("denies deletion-pending accounts the invoice list", async () => {

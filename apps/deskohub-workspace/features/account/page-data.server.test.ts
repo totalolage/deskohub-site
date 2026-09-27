@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
+import type { CustomerInvoiceListState } from "@/features/account/contracts";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 
 let currentUserEffect: Effect.Effect<
@@ -47,6 +48,7 @@ let resolveEffect: Effect.Effect<
 let resolverCalls = 0;
 let profileLoadCalls = 0;
 let historyLoadCalls = 0;
+let invoiceListCalls = 0;
 
 const Resolver = Context.Service<
   Resolver,
@@ -164,6 +166,7 @@ const Invoices = Context.Service<
 
 const InvoicesLayer = Layer.succeed(Invoices, {
   get list() {
+    invoiceListCalls += 1;
     return invoicesEffect;
   },
 });
@@ -186,6 +189,7 @@ describe("loadCustomerAccountPage", () => {
     resolverCalls = 0;
     profileLoadCalls = 0;
     historyLoadCalls = 0;
+    invoiceListCalls = 0;
     historyEffect = Effect.succeed({
       kind: "available",
       groups: { current: [], past: [], unavailable: [] },
@@ -207,6 +211,7 @@ describe("loadCustomerAccountPage", () => {
     expect(resolverCalls).toBe(0);
     expect(profileLoadCalls).toBe(0);
     expect(historyLoadCalls).toBe(0);
+    expect(invoiceListCalls).toBe(0);
   });
 
   test("returns unauthenticated without customer data when resolution reports no session", async () => {
@@ -221,6 +226,7 @@ describe("loadCustomerAccountPage", () => {
     expect(resolverCalls).toBe(1);
     expect(profileLoadCalls).toBe(0);
     expect(historyLoadCalls).toBe(0);
+    expect(invoiceListCalls).toBe(0);
   });
 
   test("renders the unavailable state when the authoritative session read fails", async () => {
@@ -240,6 +246,7 @@ describe("loadCustomerAccountPage", () => {
       kind: "completion-required",
       email: "ada@example.test",
     });
+    expect(invoiceListCalls).toBe(0);
   });
 
   test("renders the support state for ambiguous, unusable, claimed, and unverified outcomes", async () => {
@@ -293,6 +300,7 @@ describe("loadCustomerAccountPage", () => {
       kind: "deletion-pending",
       email: "ada@example.test",
     });
+    expect(invoiceListCalls).toBe(0);
   });
 
   test("renders the linked account with profile and grouped history", async () => {
@@ -304,10 +312,88 @@ describe("loadCustomerAccountPage", () => {
     });
   });
 
+  test("returns linked page data while invoices are pending", async () => {
+    const assertPageReturnsBeforeInvoices = async (
+      invoiceRows: readonly unknown[],
+      expectedInvoices: CustomerInvoiceListState
+    ) => {
+      invoiceListCalls = 0;
+      let invoiceResolved = false;
+      let settleInvoiceRows!: (rows: readonly unknown[]) => void;
+      let notifyInvoiceStarted!: () => void;
+      const invoiceStarted = new Promise<void>((resolve) => {
+        notifyInvoiceStarted = resolve;
+      });
+      const pendingInvoiceRows = new Promise<readonly unknown[]>((resolve) => {
+        settleInvoiceRows = resolve;
+      });
+      const resolveInvoiceRows = () => {
+        invoiceResolved = true;
+        settleInvoiceRows(invoiceRows);
+      };
+      invoicesEffect = Effect.promise(() => {
+        notifyInvoiceStarted();
+        return pendingInvoiceRows;
+      });
+
+      const pagePromise = loadPageState();
+      try {
+        await invoiceStarted;
+        const pageOutcome = await new Promise<
+          | {
+              readonly kind: "returned";
+              readonly state: Awaited<typeof pagePromise>;
+            }
+          | { readonly kind: "pending" }
+        >((resolve) => {
+          const timeout = setTimeout(() => resolve({ kind: "pending" }), 500);
+          void pagePromise.then((state) => {
+            clearTimeout(timeout);
+            resolve({ kind: "returned", state });
+          });
+        });
+
+        if (pageOutcome.kind === "pending") {
+          throw new Error("linked account page waited for invoice lookup");
+        }
+        if (pageOutcome.state.kind !== "linked") {
+          throw new Error("expected linked account page state");
+        }
+        expect(invoiceListCalls).toBe(1);
+        expect(invoiceResolved).toBe(false);
+
+        resolveInvoiceRows();
+        await expect(pageOutcome.state.invoices).resolves.toEqual(
+          expectedInvoices
+        );
+      } finally {
+        resolveInvoiceRows();
+        await pagePromise.catch(() => undefined);
+      }
+    };
+
+    const invoice = {
+      id: "invoice-1",
+      invoiceNumber: "WS-FV-2026-000042",
+      issuedAt: "2026-08-12T12:34:56.789Z",
+      total: "450",
+      currency: "CZK",
+      paymentStatus: "paid",
+      dueDate: null,
+    };
+
+    await assertPageReturnsBeforeInvoices([invoice], {
+      kind: "populated",
+      invoices: [invoice],
+    });
+    await assertPageReturnsBeforeInvoices([], { kind: "empty" });
+  });
+
   test("keeps the profile available and marks history unavailable when the provider fails", async () => {
     historyEffect = Effect.fail(new Error("dotypos down"));
 
-    await expect(loadPageState()).resolves.toEqual({
+    const state = await loadPageState();
+    expect(state).toMatchObject({
       kind: "linked",
       email: "ada@example.test",
       profile: {
@@ -317,8 +403,9 @@ describe("loadCustomerAccountPage", () => {
         billing: null,
       },
       history: { kind: "unavailable", reason: "provider-unavailable" },
-      invoices: { kind: "empty" },
     });
+    if (state.kind !== "linked") throw new Error("expected linked state");
+    await expect(state.invoices).resolves.toEqual({ kind: "empty" });
   });
 
   test("renders the populated invoice list when issued invoices exist", async () => {
@@ -334,19 +421,21 @@ describe("loadCustomerAccountPage", () => {
       },
     ]);
 
-    await expect(loadPageState()).resolves.toMatchObject({
-      kind: "linked",
-      invoices: { kind: "populated" },
+    const state = await loadPageState();
+    expect(state.kind).toBe("linked");
+    if (state.kind !== "linked") throw new Error("expected linked state");
+    await expect(state.invoices).resolves.toMatchObject({
+      kind: "populated",
     });
   });
 
   test("degrades to the failed invoice state when the ledger read fails", async () => {
     invoicesEffect = Effect.fail({ _tag: "CustomerInvoicesLoadError" });
 
-    await expect(loadPageState()).resolves.toMatchObject({
-      kind: "linked",
-      invoices: { kind: "failed" },
-    });
+    const state = await loadPageState();
+    expect(state.kind).toBe("linked");
+    if (state.kind !== "linked") throw new Error("expected linked state");
+    await expect(state.invoices).resolves.toEqual({ kind: "failed" });
   });
 
   test("renders the authenticated unavailable state when the profile read fails after a successful link", async () => {
@@ -359,6 +448,7 @@ describe("loadCustomerAccountPage", () => {
       kind: "authenticated-unavailable",
       email: "ada@example.test",
     });
+    expect(invoiceListCalls).toBe(0);
 
     Object.assign(Profile, { Live: ProfileLayer });
   });

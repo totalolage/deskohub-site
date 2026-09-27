@@ -9,6 +9,7 @@ import {
 } from "bun:test";
 import React, { Activity, type ComponentPropsWithoutRef } from "react";
 import type { CustomerProfileInput } from "@/features/account/contracts";
+import { m } from "@/features/i18n";
 import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -40,7 +41,7 @@ mock.module("@/features/account/actions", () => ({
   updateCustomerProfile,
 }));
 mock.module("@/features/account/components/account-screen-copy", () => ({
-  getAccountScreenCopy: (locale: "en-US" | "cs-CZ") => ({
+  getAccountScreenCopy: () => ({
     shell: {
       mobileSection: "Account section",
       navigation: "Account navigation",
@@ -66,24 +67,6 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
       title: "Profile & identity",
       verifiedEmail: "Verified login email",
     },
-    billing: {
-      addPaymentCard: "Add payment card",
-      billingDetailsTitle:
-        locale === "cs-CZ" ? "Fakturační údaje" : "Billing details",
-      currency: "Currency: CZK (Kč)",
-      downloadInvoice: "Download PDF",
-      exportInvoices: "Export all",
-      invoiceHistoryTitle: "Invoice history",
-      invoiceHistoryUnavailable:
-        "Invoice history and downloads are not available in this account.",
-      paymentMethodsTitle: "Saved payment methods",
-      paymentMethodsUnavailable:
-        "Saved payment methods are not available in this account.",
-      removePaymentCard: "Remove payment card",
-      syncAres: "Sync with ARES Registry",
-      title: "Billing & invoices",
-    },
-
     reservations: {
       assignedDesk: "Assigned desk",
       checkIn: "Check in",
@@ -516,8 +499,9 @@ describe("ProfileForm", () => {
     expect(view.getByTestId("active-section").textContent).toBe("billing");
     expect(companyName.validity.valid).toBe(false);
     expect(
-      view.getByRole("region", { name: "Billing & invoices" }).parentElement
-        ?.hidden
+      view.getByRole("region", {
+        name: m.accountSectionBilling({}, { locale: "en-US" }),
+      }).parentElement?.hidden
     ).toBe(false);
   });
 

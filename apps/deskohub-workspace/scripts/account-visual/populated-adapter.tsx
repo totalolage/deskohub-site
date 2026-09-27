@@ -1,4 +1,5 @@
 import { AccountLayoutShell } from "@/features/account/components/account-layout-shell";
+import type { CustomerInvoiceListState } from "@/features/account/contracts";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { AccountVisualRoute } from "./account-route";
@@ -85,7 +86,7 @@ const populatedFixture = {
       unavailable: [],
     },
   },
-  invoices: {
+  invoices: Promise.resolve<CustomerInvoiceListState>({
     kind: "populated",
     invoices: [
       {
@@ -107,7 +108,7 @@ const populatedFixture = {
         dueDate: "2026-10-02",
       },
     ],
-  },
+  }),
 } as const satisfies CustomerAccountPageState;
 
 export const accountVisualFixture = populatedFixture;

@@ -102,7 +102,7 @@ mock.module("@/features/legal/actions", () => ({
   confirmMarketingManagementAction,
   saveMarketingPreferencesAction,
 }));
-const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
+const accountScreenCopy = () => ({
   shell: {
     mobileSection: "Account section",
     navigation: "Account navigation",
@@ -127,23 +127,6 @@ const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
     memberFallback: "Workspace member",
     title: "Profile & identity",
     verifiedEmail: "Verified login email",
-  },
-  billing: {
-    addPaymentCard: "Add payment card",
-    billingDetailsTitle:
-      locale === "cs-CZ" ? "Fakturační údaje" : "Billing details",
-    currency: "Currency: CZK (Kč)",
-    downloadInvoice: "Download PDF",
-    exportInvoices: "Export all",
-    invoiceHistoryTitle: "Invoice history",
-    invoiceHistoryUnavailable:
-      "Invoice history and downloads are not available in this account.",
-    paymentMethodsTitle: "Saved payment methods",
-    paymentMethodsUnavailable:
-      "Saved payment methods are not available in this account.",
-    removePaymentCard: "Remove payment card",
-    syncAres: "Sync with ARES Registry",
-    title: "Billing & invoices",
   },
   reservations: {
     assignedDesk: "Assigned desk",

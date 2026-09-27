@@ -1,4 +1,3 @@
-import type { BillingScreenCopy } from "@/features/account/components/billing/billing-screen";
 import type { ProfileScreenCopy } from "@/features/account/components/profile/profile-screen";
 import type { ReservationHistoryCopy } from "@/features/account/components/reservation-history";
 import type { AccountShellProps } from "@/features/account/components/shell/account-shell";
@@ -38,26 +37,6 @@ export function getAccountScreenCopy(locale: Locale) {
         { locale }
       ),
     } satisfies ProfileScreenCopy,
-    billing: {
-      title: m.accountSectionBilling({}, { locale }),
-      currency: m.accountBillingCurrency({}, { locale }),
-      paymentMethodsTitle: m.accountBillingPaymentMethodsTitle({}, { locale }),
-      paymentMethodsUnavailable: m.accountBillingPaymentMethodsUnavailable(
-        {},
-        { locale }
-      ),
-      addPaymentCard: m.accountBillingAddPaymentCard({}, { locale }),
-      removePaymentCard: m.accountBillingRemovePaymentCard({}, { locale }),
-      billingDetailsTitle: m.accountBillingDetailsTitle({}, { locale }),
-      syncAres: m.accountBillingSyncAres({}, { locale }),
-      invoiceHistoryTitle: m.accountBillingInvoiceHistoryTitle({}, { locale }),
-      invoiceEmpty: m.accountBillingInvoiceEmpty({}, { locale }),
-      invoiceFailed: m.accountBillingInvoiceFailed({}, { locale }),
-      invoiceLoading: m.accountBillingInvoiceLoading({}, { locale }),
-      invoiceUnavailable: m.accountBillingInvoiceUnavailable({}, { locale }),
-      downloadInvoice: m.accountBillingDownloadInvoice({}, { locale }),
-      exportInvoices: m.accountBillingExportInvoices({}, { locale }),
-    } satisfies BillingScreenCopy,
     reservations: {
       assignedDesk: m.accountReservationAssignedDesk({}, { locale }),
       checkIn: m.accountReservationCheckIn({}, { locale }),

@@ -18,7 +18,7 @@ import type { Locale } from "@/features/i18n";
 type LinkedAccountProps = {
   readonly email: string;
   readonly history: CustomerReservationHistory;
-  readonly invoices: CustomerInvoiceListState;
+  readonly invoices: Promise<CustomerInvoiceListState>;
   readonly locale: Locale;
   readonly profile: CustomerProfile;
 };

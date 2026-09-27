@@ -30,7 +30,7 @@ export type CustomerAccountPageState =
       readonly email: string;
       readonly profile: CustomerProfile;
       readonly history: CustomerReservationHistory;
-      readonly invoices: CustomerInvoiceListState;
+      readonly invoices: Promise<CustomerInvoiceListState>;
     }
   | { readonly kind: "support-required"; readonly email: string }
   | { readonly kind: "deletion-pending"; readonly email: string };
@@ -108,21 +108,21 @@ export const loadCustomerAccountPage = cache(
         return { kind: "authenticated-unavailable", email: user.email };
       }
 
-      const [history, invoices] = await Promise.all([
-        Effect.flatMap(CustomerReservationHistoryService, (service) =>
-          service.load(account.success)
-        ).pipe(
-          Effect.provide(CustomerReservationHistoryService.Live),
-          Effect.orElseSucceed(
-            () =>
-              ({ kind: "unavailable", reason: "provider-unavailable" }) as const
-          ),
-          runWorkspaceEffect("account.reservation-history", {
-            boundary: "page",
-          })
+      const historyPromise = Effect.flatMap(
+        CustomerReservationHistoryService,
+        (service) => service.load(account.success)
+      ).pipe(
+        Effect.provide(CustomerReservationHistoryService.Live),
+        Effect.orElseSucceed(
+          () =>
+            ({ kind: "unavailable", reason: "provider-unavailable" }) as const
         ),
-        loadCustomerInvoiceList(),
-      ]);
+        runWorkspaceEffect("account.reservation-history", {
+          boundary: "page",
+        })
+      );
+      const invoices = loadCustomerInvoiceList();
+      const history = await historyPromise;
 
       return {
         kind: "linked",

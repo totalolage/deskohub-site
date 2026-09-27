@@ -1,4 +1,5 @@
 import { AccountLayoutShell } from "@/features/account/components/account-layout-shell";
+import type { CustomerInvoiceListState } from "@/features/account/contracts";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
 import { AccountVisualRoute } from "./account-route";
 import {
@@ -19,7 +20,7 @@ const linkedFixture = {
     kind: "available",
     groups: { current: [], past: [], unavailable: [] },
   },
-  invoices: { kind: "empty" },
+  invoices: Promise.resolve<CustomerInvoiceListState>({ kind: "empty" }),
 } as const satisfies CustomerAccountPageState;
 
 export const accountVisualFixture = linkedFixture;

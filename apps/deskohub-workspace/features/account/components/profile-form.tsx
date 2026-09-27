@@ -35,7 +35,9 @@ type ProfileFormProps = {
   readonly locale: Locale;
   readonly mode: CustomerProfileFormMode;
   readonly onSectionChange?: (section: "profile" | "billing") => void;
-  readonly invoices?: CustomerInvoiceListState;
+  readonly invoices?:
+    | CustomerInvoiceListState
+    | Promise<CustomerInvoiceListState>;
   readonly profile?: {
     readonly firstName: string;
     readonly lastName: string | null;
@@ -457,7 +459,6 @@ export function ProfileForm({
             </div>
             <div hidden={section !== "billing"}>
               <BillingScreen
-                copy={screenCopy.billing}
                 footer={section === "billing" ? formFooter : undefined}
                 invoices={invoices}
                 locale={locale}
