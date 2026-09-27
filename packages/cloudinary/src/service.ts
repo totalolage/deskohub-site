@@ -314,37 +314,31 @@ function readCloudinaryHttpCode(
   return typeof httpCode === "number" ? httpCode : undefined;
 }
 
-function stringifyCloudinaryError(error: CloudinaryProviderError): string {
-  const message = error.message ?? error.error?.message;
-
-  if (typeof message === "string") {
-    return message;
-  }
-
-  try {
-    return JSON.stringify(error) ?? String(error);
-  } catch {
-    return String(error);
-  }
-}
-
-function toCloudinarySearchError(
-  error: CloudinaryRejectedValue,
-  expression: string
-) {
-  if (typeof error !== "object" || error === null) {
-    return new CloudinarySearchError({
-      message: String(error),
-      expression,
-    });
-  }
+function toCloudinarySearchError(error: CloudinaryRejectedValue) {
+  // Provider rejection text and the caller-supplied expression never enter
+  // the typed error: both can carry identifiers or secrets that propagate
+  // verbatim into framework error reporting. Only the numeric HTTP code is
+  // retained, so 5xx retry and avatar 404 handling keep working, and the raw
+  // rejection is never attached as a cause or payload.
+  const httpCode =
+    typeof error === "object" && error !== null
+      ? readCloudinaryHttpCode(error)
+      : undefined;
 
   return new CloudinarySearchError({
-    message: stringifyCloudinaryError(error),
-    expression,
-    httpCode: readCloudinaryHttpCode(error),
+    message: searchFailureMessage,
+    expression: searchExpressionLabel,
+    httpCode,
   });
 }
+
+/**
+ * Fixed, identifier-free failure values for the generic search path. Provider
+ * rejection text and the caller-supplied expression can carry identifiers or
+ * secrets, so errors carry only these fixed labels plus the numeric HTTP code.
+ */
+const searchFailureMessage = "Cloudinary search failed";
+const searchExpressionLabel = "gallery search";
 
 /**
  * Fixed, identifier-free failure label for the sanitized folder-listing
@@ -369,7 +363,7 @@ function toSanitizedFolderListingError(error: CloudinaryRejectedValue) {
   });
 }
 
-function decodeSearchResponse(result: unknown, expression: string) {
+function decodeSearchResponse(result: unknown) {
   return pipe(
     Schema.decodeUnknownEffect(CloudinarySearchResponseSchema)(result),
     Effect.mapError(
@@ -377,20 +371,20 @@ function decodeSearchResponse(result: unknown, expression: string) {
         new CloudinarySearchError({
           message:
             "Cloudinary response did not match the gallery search schema",
-          expression,
+          expression: searchExpressionLabel,
         })
     )
   );
 }
 
-function decodeSearchOptions(options: unknown, expression: string) {
+function decodeSearchOptions(options: unknown) {
   return pipe(
     Schema.decodeUnknownEffect(SearchOptionsSchema)(options ?? {}),
     Effect.mapError(
       () =>
         new CloudinarySearchError({
           message: "Cloudinary search options did not match the schema",
-          expression,
+          expression: searchExpressionLabel,
         })
     )
   );
@@ -401,11 +395,12 @@ function createSearchExecutor(config: CloudinaryConfig, sanitized = false) {
 
   // In sanitized mode the real expression still drives the provider call,
   // while errors and logs use fixed labels instead of the expression or
-  // provider response data.
-  const toSearchError = (error: CloudinaryRejectedValue, expression: string) =>
+  // provider response data. The generic path sanitizes provider rejection
+  // text and the expression the same way; both errors carry fixed labels.
+  const toSearchError = (error: CloudinaryRejectedValue) =>
     sanitized
       ? toSanitizedFolderListingError(error)
-      : toCloudinarySearchError(error, expression);
+      : toCloudinarySearchError(error);
 
   const buildSearchExpression = (
     expression: string,
@@ -444,15 +439,9 @@ function createSearchExecutor(config: CloudinaryConfig, sanitized = false) {
             pageSize,
             nextCursor
           ).execute(),
-        catch: (error) =>
-          toSearchError(error as CloudinaryRejectedValue, expression),
+        catch: (error) => toSearchError(error as CloudinaryRejectedValue),
       }),
-      Effect.flatMap((result) =>
-        decodeSearchResponse(
-          result,
-          sanitized ? folderListingExpressionLabel : expression
-        )
-      ),
+      Effect.flatMap((result) => decodeSearchResponse(result)),
       Effect.tapError(() =>
         sanitized
           ? Effect.logError(folderListingFailureMessage)
@@ -467,10 +456,7 @@ function createSearchExecutor(config: CloudinaryConfig, sanitized = false) {
         ? Effect.logInfo("Cloudinary folder listing page started")
         : Effect.logInfo("Cloudinary search started");
 
-      const decodedOptions = yield* decodeSearchOptions(
-        options,
-        sanitized ? folderListingExpressionLabel : expression
-      );
+      const decodedOptions = yield* decodeSearchOptions(options);
       const assets: CloudinaryAsset[] = [];
       let nextCursor: CloudinarySearchCursor | undefined;
       let remainingResults = decodedOptions.maxResults;

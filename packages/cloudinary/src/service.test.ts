@@ -1006,6 +1006,88 @@ describe("CloudinaryService avatar-path logging", () => {
     expect(serialized).toContain("Cloudinary folder listing failed");
   });
 
+  test("sanitizes provider failure text and dynamic expressions in search errors", async () => {
+    const providerMessage =
+      "provider failure for cloudinary-account-id-sentinel " +
+      "with api_secret=synthetic-cloudinary-secret-sentinel";
+    queuedResults = [{ throw: { http_code: 401, message: providerMessage } }];
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service
+        .searchByExpression("public_id=cloudinary-account-id-sentinel")
+        .pipe(Effect.result)
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      const failure = result.failure;
+      expect(failure._tag).toBe("CloudinarySearchError");
+      expect(failure.message).not.toContain("cloudinary-account-id-sentinel");
+      expect(failure.message).not.toContain(
+        "synthetic-cloudinary-secret-sentinel"
+      );
+      expect(failure.expression).not.toContain(
+        "cloudinary-account-id-sentinel"
+      );
+      expect(failure.expression).not.toContain("public_id=");
+      expect(failure.httpCode).toBe(401);
+      expect(failure.cause).toBeUndefined();
+      const stringified = `${String(failure)} ${JSON.stringify(
+        failure,
+        (key, value) =>
+          key === "toJSON" && typeof value === "function" ? undefined : value
+      )}`;
+      expect(stringified).not.toContain("cloudinary-account-id-sentinel");
+      expect(stringified).not.toContain("synthetic-cloudinary-secret-sentinel");
+    }
+    expect(executeAttempts).toBe(1);
+  });
+
+  test("keeps the 5xx retry behavior on sanitized search failures", async () => {
+    const providerMessage = "provider failure for secret-sentinel-value";
+    queuedResults = [
+      { throw: { error: { http_code: 500, message: providerMessage } } },
+      { throw: { error: { http_code: 500, message: providerMessage } } },
+      { resources: [asset] },
+    ];
+
+    const service = await makeService();
+    const result = await Effect.runPromise(service.searchAll());
+
+    expect(result).toEqual([asset]);
+    expect(executeAttempts).toBe(3);
+  });
+
+  test("fails primitive and malformed search rejections without echoing provider data", async () => {
+    queuedResults = [
+      { throw: "raw provider string sentinel-search-rejection" },
+      { throw: { message: 123, http_code: "401" } },
+    ];
+
+    const service = await makeService();
+
+    const primitive = await Effect.runPromise(
+      service.searchAll().pipe(Effect.result)
+    );
+    expect(primitive._tag).toBe("Failure");
+    if (primitive._tag === "Failure") {
+      expect(primitive.failure.message).not.toContain(
+        "sentinel-search-rejection"
+      );
+      expect(primitive.failure.httpCode).toBeUndefined();
+    }
+
+    const malformed = await Effect.runPromise(
+      service.searchAll().pipe(Effect.result)
+    );
+    expect(malformed._tag).toBe("Failure");
+    if (malformed._tag === "Failure") {
+      expect(malformed.failure.httpCode).toBeUndefined();
+    }
+    expect(executeAttempts).toBe(2);
+  });
+
   test("search failure logs exclude provider text, identifiers, and query values", async () => {
     const identifier = "cloudinary-account-id-sentinel";
     const providerMessage =
@@ -1025,7 +1107,9 @@ describe("CloudinaryService avatar-path logging", () => {
         expect(folderFailure._tag).toBe("Failure");
         if (folderFailure._tag === "Failure") {
           expect(folderFailure.failure._tag).toBe("CloudinarySearchError");
-          expect(folderFailure.failure.message).toBe(providerMessage);
+          expect(folderFailure.failure.message).not.toContain(providerMessage);
+          expect(folderFailure.failure.expression).not.toContain(identifier);
+          expect(folderFailure.failure.expression).not.toContain("folder=");
         }
 
         yield* getGalleryImages([[identifier]], { maxResults: 2 }).pipe(
