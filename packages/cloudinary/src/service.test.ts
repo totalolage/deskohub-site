@@ -167,7 +167,7 @@ const { makeCloudinaryRuntimeConfigLayer } = await import("./config");
 const { CloudinaryAssetSchema, CloudinaryPublicIdSchema } = await import(
   "./schema"
 );
-const { CloudinaryService } = await import("./service");
+const { CloudinaryService, getGalleryImages } = await import("./service");
 
 const cloudinaryPublicId = Schema.decodeUnknownSync(CloudinaryPublicIdSchema);
 const galleryImagePublicId = cloudinaryPublicId("gallery/image");
@@ -915,6 +915,11 @@ describe("CloudinaryService avatar-path logging", () => {
     queuedDestroyResults = [
       { throw: { http_code: 401, message: identifyingMessage } },
     ];
+    const prefixFailureMessage =
+      "Cloudinary delete failed for avatars/staging/account/acct-abc-1/ with cursor sentinel";
+    queuedPrefixDeleteResults = [
+      { throw: { http_code: 401, message: prefixFailureMessage } },
+    ];
 
     const captured = await captureLogs((service) =>
       Effect.gen(function* () {
@@ -930,6 +935,11 @@ describe("CloudinaryService avatar-path logging", () => {
           .renameAsset(stagedPublicId, livePublicId, { overwrite: true })
           .pipe(Effect.ignore);
         yield* service.destroyAsset(stagedPublicId).pipe(Effect.ignore);
+        yield* service
+          .deleteResourcesByPublicIdPrefix(
+            cloudinaryPublicId("avatars/staging/account/acct-abc-1/")
+          )
+          .pipe(Effect.ignore);
       })
     );
 
@@ -937,12 +947,15 @@ describe("CloudinaryService avatar-path logging", () => {
     expect(serialized).not.toContain("acct-abc-1");
     expect(serialized).not.toContain("avatars/test-staging");
     expect(serialized).not.toContain(identifyingMessage);
+    expect(serialized).not.toContain(prefixFailureMessage);
     expect(serialized).not.toContain("public_id");
+    expect(serialized).not.toContain("avatars/staging/account");
     // The fixed failure codes are still emitted for diagnostics.
     expect(serialized).toContain("Cloudinary public ID lookup failed");
     expect(serialized).toContain("Cloudinary image upload failed");
     expect(serialized).toContain("Cloudinary asset rename failed");
     expect(serialized).toContain("Cloudinary asset destroy failed");
+    expect(serialized).toContain("Cloudinary asset prefix delete failed");
   });
 
   test("lists folder assets on the sanitized path without logging identifiers on success", async () => {
@@ -991,5 +1004,51 @@ describe("CloudinaryService avatar-path logging", () => {
     expect(serialized).not.toContain("folder=");
     // The fixed failure code is still emitted for diagnostics.
     expect(serialized).toContain("Cloudinary folder listing failed");
+  });
+
+  test("search failure logs exclude provider text, identifiers, and query values", async () => {
+    const identifier = "cloudinary-account-id-sentinel";
+    const providerMessage =
+      `provider failure for ${identifier} at https://cloudinary.test/${identifier} ` +
+      "with api_secret=synthetic-cloudinary-secret-sentinel";
+    queuedResults = [
+      { throw: { http_code: 401, message: providerMessage } },
+      { throw: { error: { http_code: 401, message: providerMessage } } },
+      { throw: { http_code: 401, message: providerMessage } },
+    ];
+
+    const captured = await captureLogs((service) =>
+      Effect.gen(function* () {
+        const folderFailure = yield* service
+          .searchByFolder(`${identifier}/folder`)
+          .pipe(Effect.result);
+        expect(folderFailure._tag).toBe("Failure");
+        if (folderFailure._tag === "Failure") {
+          expect(folderFailure.failure._tag).toBe("CloudinarySearchError");
+          expect(folderFailure.failure.message).toBe(providerMessage);
+        }
+
+        yield* getGalleryImages([[identifier]], { maxResults: 2 }).pipe(
+          Effect.provideService(CloudinaryService, service),
+          Effect.ignore
+        );
+        yield* service
+          .searchByExpression(`public_id=${identifier}`)
+          .pipe(Effect.ignore);
+      })
+    );
+
+    const serialized = JSON.stringify(captured);
+    expect(serialized).not.toContain(providerMessage);
+    expect(serialized).not.toContain(identifier);
+    expect(serialized).not.toContain("https://cloudinary.test");
+    expect(serialized).not.toContain("synthetic-cloudinary-secret-sentinel");
+    expect(serialized).not.toContain("api_secret");
+    expect(serialized).not.toContain("401");
+    expect(serialized).not.toContain("public_id=");
+    expect(serialized).not.toContain("folder=");
+    expect(serialized).toContain("Cloudinary search page failed");
+    expect(serialized).toContain("Cloudinary search failed");
+    expect(serialized).toContain("Cloudinary gallery images lookup failed");
   });
 });

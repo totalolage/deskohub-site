@@ -80,10 +80,7 @@ function readRequiredCloudinaryHeaders(request: Request) {
   if (!Number.isFinite(timestamp) || !Number.isInteger(timestamp)) {
     return Effect.gen(function* () {
       yield* Effect.logWarning(
-        "Cloudinary webhook auth rejected: invalid timestamp",
-        {
-          timestampHeader,
-        }
+        "Cloudinary webhook auth rejected: invalid timestamp"
       );
       return yield* new CloudinaryWebhookAuthError({
         message: "Invalid timestamp",
@@ -105,13 +102,7 @@ function validateCloudinaryTimestampFreshness(
   if (timestampSkewMagnitudeSeconds > timestampToleranceSeconds) {
     return Effect.gen(function* () {
       yield* Effect.logWarning(
-        "Cloudinary webhook auth rejected: stale timestamp",
-        {
-          timestamp,
-          timestampToleranceSeconds,
-          timestampSkewSeconds,
-          timestampSkewMagnitudeSeconds,
-        }
+        "Cloudinary webhook auth rejected: stale timestamp"
       );
       return yield* new CloudinaryWebhookAuthError({
         message: "Webhook timestamp is outside the allowed freshness window",
@@ -147,11 +138,7 @@ function verifyCloudinarySignature(
   ) {
     return Effect.gen(function* () {
       yield* Effect.logWarning(
-        "Cloudinary webhook auth rejected: invalid signature",
-        {
-          timestamp,
-          signature,
-        }
+        "Cloudinary webhook auth rejected: invalid signature"
       );
       return yield* new CloudinaryWebhookAuthError({
         message: "Invalid signature",
@@ -181,68 +168,40 @@ function verifyCloudinaryWebhookRequestWithConfig(
   CloudinaryWebhookAuthError | CloudinaryWebhookValidationError
 > {
   return Effect.gen(function* () {
-    yield* Effect.annotateLogsScoped({ config });
-    yield* Effect.logInfo("Cloudinary webhook verification started", {
-      serviceName: config.serviceName,
-      cloudName: config.cloudName,
-    });
+    yield* Effect.logInfo("Cloudinary webhook verification started");
 
     const { signature, timestamp } =
       yield* readRequiredCloudinaryHeaders(request);
-    yield* Effect.annotateLogsScoped({ signature, timestamp });
-    yield* Effect.logDebug("Cloudinary webhook headers validated", {
-      timestamp,
-    });
+    yield* Effect.logDebug("Cloudinary webhook headers validated");
 
     yield* validateCloudinaryTimestampFreshness(
       timestamp,
       config.timestampToleranceSeconds
     );
-    yield* Effect.logDebug("Cloudinary webhook timestamp validated", {
-      timestamp,
-      timestampToleranceSeconds: config.timestampToleranceSeconds,
-    });
+    yield* Effect.logDebug("Cloudinary webhook timestamp validated");
 
     const bodyText = yield* readCloudinaryWebhookBody(request);
-    yield* Effect.annotateLogsScoped({ bodyText });
-    yield* Effect.logDebug("Cloudinary webhook body read", {
-      bodyLength: bodyText.length,
-    });
+    yield* Effect.logDebug("Cloudinary webhook body read");
 
     yield* verifyCloudinarySignature(bodyText, timestamp, signature);
-    yield* Effect.logInfo("Cloudinary webhook signature verified", {
-      timestamp,
-    });
+    yield* Effect.logInfo("Cloudinary webhook signature verified");
 
     const payload = yield* parseCloudinaryWebhookPayload(bodyText);
-    yield* Effect.annotateLogsScoped({ payload });
 
     const result = {
       payload,
       timestamp,
     } satisfies VerifiedCloudinaryWebhook;
 
-    yield* Effect.annotateLogsScoped({ result });
-    yield* Effect.logDebug("Cloudinary webhook verified", {
-      serviceName: config.serviceName,
-      cloudName: config.cloudName,
-      timestamp,
-    });
-    yield* Effect.logInfo("Cloudinary webhook verification succeeded", {
-      serviceName: config.serviceName,
-      cloudName: config.cloudName,
-      timestamp,
-    });
+    yield* Effect.logDebug("Cloudinary webhook verified");
+    yield* Effect.logInfo("Cloudinary webhook verification succeeded");
 
     return result;
   }).pipe(
     Effect.scoped,
     Effect.tapError((error) =>
       Effect.logWarning("Cloudinary webhook verification failed", {
-        serviceName: config.serviceName,
-        cloudName: config.cloudName,
         errorType: error._tag,
-        errorMessage: error.message,
       })
     )
   );
