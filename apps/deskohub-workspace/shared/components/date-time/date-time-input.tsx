@@ -161,7 +161,11 @@ export function DateTimeInput({
         }
         if (!isControlled) setInternalCommitted(next);
         onChange?.(candidate);
-        setDraft(next);
+        // A controlled parent stays authoritative: unless it adopts the
+        // reported value (the sync effect then follows the new value), the
+        // draft reverts to the committed parts instead of leaving entered
+        // parts on the interactive controls. Partial drafts stay editable.
+        setDraft(isControlled ? { ...committed } : next);
         return;
       }
       if (isEmpty(next)) {
@@ -197,25 +201,39 @@ export function DateTimeInput({
   const minimumDateTime = resolveMinimumDateTime();
   const maximumDateTime = resolveMaximumDateTime();
   const selectedDate = parsePlainDate(draft.date);
+  // The time bounds and step anchor re-resolve the datetime bound at event
+  // time so a callback minimum or maximum advanced without a rerender still
+  // governs the same-day clamps and the step sequence.
   const minimumTime = () =>
     getSameDayTimeBound({
       date: selectedDate,
-      dateTimeBound: minimumDateTime,
+      dateTimeBound: resolveMinimumDateTime(),
     });
   const maximumTime = () =>
     getSameDayTimeBound({
       date: selectedDate,
-      dateTimeBound: maximumDateTime,
+      dateTimeBound: resolveMaximumDateTime(),
     });
   // The step sequence anchors at the minimum's time-of-day (midnight when
   // unset) so the editor shares the canonical field's sequence even on
   // later dates where the same-day lower bound drops out.
   const stepAnchor = () => {
-    const bound = minimumDateTime;
+    const bound = resolveMinimumDateTime();
     return bound
       ? bound.toPlainTime().toString({ smallestUnit: "minute" })
       : "00:00";
   };
+  // The date control consumes plain dates; extract them from the freshly
+  // resolved datetime bounds so datetime-shaped static and callback bounds
+  // disable out-of-range calendar days.
+  const minimumDate = useCallback(
+    () => resolveMinimumDateTime()?.toPlainDate().toString(),
+    [resolveMinimumDateTime]
+  );
+  const maximumDate = useCallback(
+    () => resolveMaximumDateTime()?.toPlainDate().toString(),
+    [resolveMaximumDateTime]
+  );
 
   // A partial draft (date without time, or time without date) never carries
   // a submittable value: the canonical field empties and reports missing so
@@ -225,7 +243,7 @@ export function DateTimeInput({
   const canonicalValue = partialDraft ? "" : canonicalize(committed);
 
   return (
-    <div className={className}>
+    <div className={className ? `min-w-0 ${className}` : "min-w-0"}>
       {/* The canonical field validates even when unnamed; only a named
           control contributes its value to form submission. */}
       <input
@@ -261,8 +279,8 @@ export function DateTimeInput({
           id={id}
           isDateDisabled={isDateDisabled}
           locale={locale}
-          maximum={maximum}
-          minimum={minimum}
+          maximum={maximumDate}
+          minimum={minimumDate}
           onBlur={onBlur}
           onChange={(nextDate) => commitDraft({ ...draft, date: nextDate })}
           placeholder={placeholder}

@@ -1134,44 +1134,40 @@ export function DiscountCodeConfigurationFields({
         />
         Enabled
       </label>
-      <DirtyEventSlot
-        className={`min-w-0 ${showMaxUses ? "" : "md:col-span-2"}`}
-        value={validFrom}
-      >
-        <FormField
-          description={redemptionHintText}
-          htmlFor={fieldId("validFrom", code?.id)}
-          label="Valid from"
-        >
-          <DateTimeInput
-            dateLabel="Valid from"
-            defaultValue={initialValidFrom}
-            id={fieldId("validFrom", code?.id)}
-            name="validFrom"
-            onChange={(next) => setValidFrom(next ?? "")}
-            timeLabel="Valid from time"
-          />
-        </FormField>
-      </DirtyEventSlot>
-      <DirtyEventSlot
-        className={`min-w-0 ${showMaxUses ? "" : "md:col-span-2"}`}
-        value={validUntil}
-      >
-        <FormField
-          description={redemptionHintText}
-          htmlFor={fieldId("validUntil", code?.id)}
-          label="Valid until"
-        >
-          <DateTimeInput
-            dateLabel="Valid until"
-            defaultValue={initialValidUntil}
-            id={fieldId("validUntil", code?.id)}
-            name="validUntil"
-            onChange={(next) => setValidUntil(next ?? "")}
-            timeLabel="Valid until time"
-          />
-        </FormField>
-      </DirtyEventSlot>
+      <div className="col-span-2 grid min-w-0 grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
+        <DirtyEventSlot className="min-w-0" value={validFrom}>
+          <FormField
+            description={redemptionHintText}
+            htmlFor={fieldId("validFrom", code?.id)}
+            label="Valid from"
+          >
+            <DateTimeInput
+              dateLabel="Valid from"
+              defaultValue={initialValidFrom}
+              id={fieldId("validFrom", code?.id)}
+              name="validFrom"
+              onChange={(next) => setValidFrom(next ?? "")}
+              timeLabel="Valid from time"
+            />
+          </FormField>
+        </DirtyEventSlot>
+        <DirtyEventSlot className="min-w-0" value={validUntil}>
+          <FormField
+            description={redemptionHintText}
+            htmlFor={fieldId("validUntil", code?.id)}
+            label="Valid until"
+          >
+            <DateTimeInput
+              dateLabel="Valid until"
+              defaultValue={initialValidUntil}
+              id={fieldId("validUntil", code?.id)}
+              name="validUntil"
+              onChange={(next) => setValidUntil(next ?? "")}
+              timeLabel="Valid until time"
+            />
+          </FormField>
+        </DirtyEventSlot>
+      </div>
       {showMaxUses && (
         <>
           <DirtyEventSlot className="min-w-0" value={serviceDateFrom}>

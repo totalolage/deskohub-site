@@ -696,7 +696,18 @@ describe("discount administration pages", () => {
     expect(editItems[7]).not.toContain("col-span-2");
     expect(editItems[8]).toContain("md:col-span-2");
     expect(editItems[8]).not.toContain("col-span-2");
-    for (const item of editItems.slice(1, 7)) {
+    // The paired valid-from/valid-until datetime fields share one
+    // full-width group on the narrow two-column grid and split into two
+    // compact columns on the wide four-column grid.
+    for (const item of [editItems[3], editItems[4]]) {
+      expect(item).toContain("col-span-2");
+      expect(item).toContain("md:col-span-2");
+      expect(item).toContain("md:grid-cols-2");
+    }
+    for (const item of [editItems[1], editItems[2]]) {
+      expect(item).not.toContain("col-span-2");
+    }
+    for (const item of [editItems[5], editItems[6]]) {
       expect(item).not.toContain("col-span-2");
     }
     expect(editorView.queryByText("Reservation start dates")).toBeNull();
@@ -725,6 +736,11 @@ describe("discount administration pages", () => {
     expect(createItems[0]).not.toContain("md:col-span-2");
     expect(createItems[1]).not.toContain("col-span-2");
     expect(createItems[2]).not.toContain("col-span-2");
+    for (const item of [createItems[3], createItems[4]]) {
+      expect(item).toContain("col-span-2");
+      expect(item).toContain("md:col-span-2");
+      expect(item).toContain("md:grid-cols-2");
+    }
     expect(createItems.at(-2)).toContain("md:col-span-2");
     expect(createItems.at(-1)).toContain("md:col-span-2");
     expect(createView.queryByText("Reservation start dates")).toBeNull();
@@ -778,10 +794,11 @@ describe("discount administration pages", () => {
     const voucherItems = readGridItems(voucherGrid);
     expect(voucherItems[0]).toContain("md:col-span-2");
     expect(voucherItems[1]).toContain("md:col-span-2");
-    expect(voucherItems[2]).toContain("md:col-span-2");
-    expect(voucherItems[2]).not.toContain("col-span-2");
-    expect(voucherItems[3]).toContain("md:col-span-2");
-    expect(voucherItems[3]).not.toContain("col-span-2");
+    for (const item of [voucherItems[2], voucherItems[3]]) {
+      expect(item).toContain("md:col-span-2");
+      expect(item).toContain("col-span-2");
+      expect(item).toContain("md:grid-cols-2");
+    }
   });
 
   test("links codes to audience management and shows live capacity", async () => {
