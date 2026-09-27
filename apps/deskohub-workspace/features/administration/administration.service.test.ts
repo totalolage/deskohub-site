@@ -22,10 +22,10 @@ import { getAdministrationOverviewDateRanges } from "./reservation-date-range";
 const makeQuery = <A>(rows: readonly A[]) => {
   const query = Effect.succeed(rows) as Effect.Effect<readonly A[]> & {
     from: () => typeof query;
-    groupBy: () => typeof query;
+    groupBy: (...args: SQL[]) => typeof query;
     innerJoin: () => typeof query;
-    limit: () => typeof query;
-    offset: () => typeof query;
+    limit: (...args: number[]) => typeof query;
+    offset: (...args: number[]) => typeof query;
     orderBy: () => typeof query;
     where: () => typeof query;
   };
@@ -41,6 +41,9 @@ const makeQuery = <A>(rows: readonly A[]) => {
 
 type CapturedSelect = {
   readonly fields: Record<string, SQL>;
+  readonly groupBy?: SQL[][];
+  readonly limit?: number[];
+  readonly offset?: number[];
   readonly orderBy: SQL[][];
   readonly where: (SQL | undefined)[];
 };
@@ -54,18 +57,27 @@ const makeCapturingQuery = <A>(
 ) => {
   const query = Effect.succeed(rows) as Effect.Effect<readonly A[]> & {
     from: () => typeof query;
-    groupBy: () => typeof query;
+    groupBy: (...args: SQL[]) => typeof query;
     innerJoin: () => typeof query;
-    limit: () => typeof query;
-    offset: () => typeof query;
+    limit: (...args: number[]) => typeof query;
+    offset: (...args: number[]) => typeof query;
     orderBy: (...args: SQL[]) => typeof query;
     where: (condition: SQL | undefined) => typeof query;
   };
   query.from = () => query;
-  query.groupBy = () => query;
+  query.groupBy = (...args) => {
+    captured.groupBy?.push(args);
+    return query;
+  };
   query.innerJoin = () => query;
-  query.limit = () => query;
-  query.offset = () => query;
+  query.limit = (...args) => {
+    captured.limit?.push(...args);
+    return query;
+  };
+  query.offset = (...args) => {
+    captured.offset?.push(...args);
+    return query;
+  };
   query.orderBy = (...args) => {
     captured.orderBy.push(args);
     return query;
@@ -662,14 +674,12 @@ describe("AdministrationService", () => {
   test("aggregates and sorts customer reservation counts over successful reservations only", async () => {
     const instant = Temporal.Instant.from("2026-08-14T12:00:00Z");
     const rows = [
-      [{ value: 7 }],
-      [
-        {
-          customerId: "customer-a",
-          reservationCount: 2,
-          lastActivityAt: instant,
-        },
-      ],
+      {
+        matchingCustomerCount: 7,
+        customerId: "customer-a",
+        reservationCount: 2,
+        lastActivityAt: instant,
+      },
     ] as const;
     const selects: CapturedSelect[] = [];
 
@@ -689,14 +699,12 @@ describe("AdministrationService", () => {
                       select: (fields: Record<string, SQL>) => {
                         const captured: CapturedSelect = {
                           fields,
+                          groupBy: [],
                           orderBy: [],
                           where: [],
                         };
                         selects.push(captured);
-                        return makeCapturingQuery(
-                          rows[selects.length - 1] ?? [],
-                          captured
-                        );
+                        return makeCapturingQuery(rows, captured);
                       },
                     } as never,
                   })
@@ -723,14 +731,13 @@ describe("AdministrationService", () => {
     expect(result.total).toBe(7);
     expect(result.items[0]?.reservationCount).toBe(2);
 
-    const totalSelect = selects[0]!;
-    const pageSelect = selects[1]!;
-    expect(compileSql(totalSelect.fields.value)).toBe(
-      'count(distinct "workspace_reservations"."dotypos_customer_id")'
+    expect(selects).toHaveLength(1);
+    const customerSelect = selects[0]!;
+    expect(compileSql(customerSelect.fields.matchingCustomerCount!)).toBe(
+      "count(*) over ()"
     );
-    expect(totalSelect.where).toHaveLength(0);
 
-    const countSql = compileSql(pageSelect.fields.reservationCount);
+    const countSql = compileSql(customerSelect.fields.reservationCount);
     expect(countSql).toContain("count(*) filter (where");
     expect(countSql).toContain(
       `"workspace_reservations"."fulfillment_state" = 'fulfilled'`
@@ -738,14 +745,17 @@ describe("AdministrationService", () => {
     expect(countSql).toContain(
       `"workspace_reservations"."reservation_state" not in ('cancelled', 'cancelling', 'cancellation_failed')`
     );
-    expect(compileSql(pageSelect.fields.lastActivityAt)).toBe(
+    expect(compileSql(customerSelect.fields.lastActivityAt)).toBe(
       'max("workspace_reservations"."updated_at")'
     );
-    expect(pageSelect.where).toHaveLength(0);
+    expect(customerSelect.where).toEqual([undefined]);
+    expect(compileSql(customerSelect.groupBy![0]![0]!)).toBe(
+      '"workspace_reservations"."dotypos_customer_id"'
+    );
 
     selects.length = 0;
     await loadCustomers({ sort: "reservations" });
-    const sortedOrderSql = compileSql(selects[1]!.orderBy[0]![0]!);
+    const sortedOrderSql = compileSql(selects[0]!.orderBy[0]![0]!);
     expect(sortedOrderSql).toContain("count(*) filter (where");
     expect(sortedOrderSql).toContain(
       `"workspace_reservations"."fulfillment_state" = 'fulfilled'`
@@ -1835,7 +1845,15 @@ describe("AdministrationService customer date filter", () => {
     const selects: (CapturedSelect & { readonly method: string })[] = [];
     let call = 0;
     const capture = (method: string) => (fields: Record<string, SQL>) => {
-      const captured = { fields, method, orderBy: [], where: [] };
+      const captured = {
+        fields,
+        groupBy: [],
+        limit: [],
+        method,
+        offset: [],
+        orderBy: [],
+        where: [],
+      };
       selects.push(captured);
       return makeCapturingQuery(rowSets[call++] ?? [], captured);
     };
@@ -1893,9 +1911,9 @@ describe("AdministrationService customer date filter", () => {
   test("does not query provider booking dates without a date range", async () => {
     const instant = Temporal.Instant.from("2026-08-14T12:00:00Z");
     const { database, selects } = makeCustomersDatabase([
-      [{ value: 7 }],
       [
         {
+          matchingCustomerCount: 7,
           customerId: "customer-a",
           reservationCount: 2,
           lastActivityAt: instant,
@@ -1916,9 +1934,11 @@ describe("AdministrationService customer date filter", () => {
     expect(result.dateFilterUnavailable).toBe(false);
     expect(result.total).toBe(7);
     expect(result.items[0]?.customerId).toBe("customer-a");
-    expect(selects).toHaveLength(2);
-    expect(selects[0]!.where).toHaveLength(0);
-    expect(selects[1]!.where).toHaveLength(0);
+    expect(selects).toHaveLength(1);
+    expect(selects[0]!.where).toEqual([undefined]);
+    expect(compileSql(selects[0]!.fields.matchingCustomerCount!)).toBe(
+      "count(*) over ()"
+    );
   });
 
   test("filters membership by live booking start dates with inclusive bounds", async () => {
@@ -1938,12 +1958,17 @@ describe("AdministrationService customer date filter", () => {
     ];
     const instant = Temporal.Instant.from("2026-08-14T12:00:00Z");
     const { database, selects } = makeCustomersDatabase([
-      [{ customerId: "customer-a" }, { customerId: "customer-b" }],
-      [{ value: 2 }],
       [
         {
+          matchingCustomerCount: 2,
           customerId: "customer-a",
           reservationCount: 3,
+          lastActivityAt: instant,
+        },
+        {
+          matchingCustomerCount: 2,
+          customerId: "customer-b",
+          reservationCount: 1,
           lastActivityAt: instant,
         },
       ],
@@ -1980,17 +2005,20 @@ describe("AdministrationService customer date filter", () => {
     expect(result.dateFilterUnavailable).toBe(false);
     expect(result.total).toBe(2);
 
-    const membershipSelect = selects[0]!;
-    const membership = compileSqlWithParams(membershipSelect.where[0]!);
-    expect(membership.sql).toContain('"dotypos_reservation_id" in');
+    expect(selects).toHaveLength(1);
+    const aggregateSelect = selects[0]!;
+    const membership = compileSqlWithParams(aggregateSelect.where[0]!);
+    expect(membership.sql).toContain(
+      '"workspace_reservations"."dotypos_customer_id" in (select distinct "workspace_reservations"."dotypos_customer_id"'
+    );
+    expect(membership.sql).toContain('"dotypos_reservation_id" in ($1, $2))');
     expect(membership.params).toEqual(["booking-from", "booking-to"]);
-
-    const totalWhere = compileSql(selects[1]!.where[0]!);
-    expect(totalWhere).toContain('"dotypos_customer_id" in');
-    const totalWhereParams = compileSqlWithParams(selects[1]!.where[0]!);
-    expect(totalWhereParams.params).toEqual(["customer-a", "customer-b"]);
-
-    const aggregateSelect = selects[2]!;
+    expect(compileSql(aggregateSelect.fields.matchingCustomerCount!)).toBe(
+      "count(*) over ()"
+    );
+    expect(compileSql(aggregateSelect.groupBy![0]![0]!)).toBe(
+      '"workspace_reservations"."dotypos_customer_id"'
+    );
     const aggregateCount = compileSql(aggregateSelect.fields.reservationCount);
     expect(aggregateCount).toContain("count(*) filter (where");
     expect(aggregateCount).toContain(
@@ -1998,9 +2026,6 @@ describe("AdministrationService customer date filter", () => {
     );
     expect(compileSql(aggregateSelect.fields.lastActivityAt)).toBe(
       'max("workspace_reservations"."updated_at")'
-    );
-    expect(compileSql(aggregateSelect.where[0]!)).toContain(
-      '"dotypos_customer_id" in'
     );
     const orderSql = compileSql(aggregateSelect.orderBy[0]![0]!);
     expect(orderSql).toContain("count(*) filter (where");
@@ -2010,15 +2035,13 @@ describe("AdministrationService customer date filter", () => {
     const bookings = [
       providerBooking("booking-1", pragueHour("2026-08-10", 9)),
       providerBooking("booking-2", pragueHour("2026-08-11", 10)),
-      providerBooking("booking-3", pragueHour("2026-08-12", 11)),
     ];
     const { database, selects } = makeCustomersDatabase([
-      [{ customerId: "customer-a" }],
-      [{ value: 1 }],
       [
         {
+          matchingCustomerCount: 1,
           customerId: "customer-a",
-          reservationCount: 3,
+          reservationCount: 5,
           lastActivityAt: Temporal.Instant.from("2026-08-14T12:00:00Z"),
         },
       ],
@@ -2034,43 +2057,63 @@ describe("AdministrationService customer date filter", () => {
     expect(result.items.map(({ customerId }) => customerId)).toEqual([
       "customer-a",
     ]);
+    expect(result.items[0]?.reservationCount).toBe(5);
+    expect(selects).toHaveLength(1);
     const membershipSelect = selects[0]!;
-    expect(membershipSelect.method).toBe("selectDistinct");
+    expect(membershipSelect.method).toBe("select");
     const membership = compileSqlWithParams(membershipSelect.where[0]!);
-    expect(membership.params).toEqual([
-      "booking-1",
-      "booking-2",
-      "booking-3",
-    ]);
+    expect(membership.sql).toContain("select distinct");
+    expect(membership.params).toEqual(["booking-1", "booking-2"]);
   });
 
   test("pages by matching unique customers", async () => {
-    const bookings = [
-      providerBooking("booking-1", pragueHour("2026-08-10", 9)),
-      providerBooking("booking-2", pragueHour("2026-08-10", 10)),
-    ];
-    const matchingCustomers = Array.from({ length: 30 }, (_, index) => ({
-      customerId: `customer-${String(index).padStart(2, "0")}`,
+    const customerIds = Array.from(
+      { length: 30 },
+      (_, index) => `customer-${String(index).padStart(2, "0")}`
+    );
+    const bookings = customerIds.flatMap((_, index) => [
+      providerBooking(
+        `booking-${String(index).padStart(2, "0")}`,
+        pragueHour("2026-08-10", 9)
+      ),
+      ...(index === 0
+        ? [providerBooking("booking-00-second", pragueHour("2026-08-10", 10))]
+        : []),
+    ]);
+    const matchingCustomers = customerIds.map((customerId) => ({
+      matchingCustomerCount: 30,
+      customerId,
+      reservationCount: customerId === "customer-29" ? 4 : 1,
+      lastActivityAt: Temporal.Instant.from("2026-08-14T12:00:00Z"),
     }));
-    const { database } = makeCustomersDatabase([
-      matchingCustomers,
-      [{ value: 30 }],
-      [],
+    const { database, selects } = makeCustomersDatabase([
+      matchingCustomers.slice(24),
     ]);
 
     const result = await loadCustomers(
-      { from: "2026-08-10", to: "2026-08-10" },
+      { from: "2026-08-10", page: 2, to: "2026-08-10" },
       database,
       { listReservations: () => Effect.succeed(bookings) }
     );
 
     expect(result.total).toBe(30);
-    expect(result.page).toBe(1);
+    expect(result.page).toBe(2);
     expect(result.pageCount).toBe(2);
+    expect(result.items.map(({ customerId }) => customerId)).toEqual(
+      customerIds.slice(24)
+    );
+    expect(result.items[5]?.reservationCount).toBe(4);
+    expect(selects).toHaveLength(1);
+    expect(selects[0]!.limit).toEqual([24]);
+    expect(selects[0]!.offset).toEqual([24]);
+    expect(compileSql(selects[0]!.fields.matchingCustomerCount!)).toBe(
+      "count(*) over ()"
+    );
+    expect(compileSqlWithParams(selects[0]!.where[0]!).params).toHaveLength(31);
   });
 
   test("reports booking dates unavailable when the provider fails", async () => {
-    const { database, selects } = makeCustomersDatabase([[{ value: 0 }], []]);
+    const { database, selects } = makeCustomersDatabase([[], [{ value: 0 }]]);
 
     const result = await loadCustomers(
       { from: "2026-08-10", to: "2026-08-12" },
@@ -2092,10 +2135,11 @@ describe("AdministrationService customer date filter", () => {
     expect(result.total).toBe(0);
     expect(selects).toHaveLength(2);
     expect(compileSql(selects[0]!.where[0]!)).toBe("false");
+    expect(compileSql(selects[1]!.where[0]!)).toBe("false");
   });
 
   test("treats an empty provider booking set as a genuine empty match", async () => {
-    const { database } = makeCustomersDatabase([[{ value: 0 }], []]);
+    const { database } = makeCustomersDatabase([[], [{ value: 0 }]]);
 
     const result = await loadCustomers(
       { from: "2026-08-10", to: "2026-08-12" },
@@ -2114,11 +2158,7 @@ describe("AdministrationService customer date filter", () => {
       readonly startsAtOrAfter?: string;
       readonly startsBefore?: string;
     }[] = [];
-    const { database } = makeCustomersDatabase([
-      [{ customerId: "customer-a" }],
-      [{ value: 1 }],
-      [],
-    ]);
+    const { database } = makeCustomersDatabase([[], [{ value: 0 }]]);
 
     await loadCustomers({ date: "2026-08-10" }, database, {
       listReservations: (input) =>

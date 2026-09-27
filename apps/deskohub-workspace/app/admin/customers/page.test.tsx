@@ -8,7 +8,14 @@ import {
   test,
 } from "bun:test";
 import { cleanup, render, within } from "@testing-library/react";
+import {
+  Children,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import type { AdministrationCustomerListInput } from "@/features/administration/administration.service";
+import { AdministrationTableToolbar } from "@/features/administration/components";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -166,7 +173,7 @@ describe("DiscountCustomersAdminPage", () => {
     );
   });
 
-  test("explains the fallback when booking dates are unavailable", async () => {
+  test("keeps an unavailable date filter distinct from a genuine empty result", async () => {
     customerPage = {
       input: { from: "2026-08-04", to: "2026-08-10" },
       result: {
@@ -187,7 +194,112 @@ describe("DiscountCustomersAdminPage", () => {
         "Booking dates are temporarily unavailable. Try this date range again shortly."
       )
     ).toBeDefined();
+    expect(view.queryByLabelText("0 customers")).toBeNull();
+    expect(view.queryByText("No customers have reservations yet.")).toBeNull();
+    expect(view.queryByRole("table", { name: "Customers" })).toBeNull();
+    expect(view.getByLabelText("Start date from").getAttribute("value")).toBe(
+      "2026-08-04"
+    );
+    expect(view.getByLabelText("Start date to").getAttribute("value")).toBe(
+      "2026-08-10"
+    );
+    expect(view.getByRole("button", { name: "Apply filters" })).toBeDefined();
+    expect(view.getByRole("link", { name: "Clear" })).toBeDefined();
+    expect(
+      within(
+        view.getByRole("navigation", { name: "Customer date shortcuts" })
+      ).getAllByRole("link")
+    ).toHaveLength(3);
+  });
+
+  test("keeps a genuine empty date match as the ordinary empty state", async () => {
+    customerPage = {
+      input: { from: "2026-08-04", to: "2026-08-10" },
+      result: {
+        ...defaultCustomersPage.result,
+        dateFilterUnavailable: false,
+        total: 0,
+      },
+    };
+    const { CustomersAdministrationContent } = await import("./page");
+    const view = render(
+      await CustomersAdministrationContent({
+        searchParams: Promise.resolve({}),
+      })
+    );
+
+    expect(view.getByLabelText("0 customers").textContent).toBe("0");
     expect(view.getByText("No customers have reservations yet.")).toBeDefined();
+    expect(
+      view.queryByText(
+        "Booking dates are temporarily unavailable. Try this date range again shortly."
+      )
+    ).toBeNull();
+  });
+
+  test("the streamed customer collection does not turn provider failure into an empty list", async () => {
+    const { CustomersTable } = await import("./page");
+    const collection = await CustomersTable({
+      input: Promise.resolve({
+        direction: "desc",
+        from: "2026-08-04",
+        page: 1,
+        sort: "activity",
+        to: "2026-08-10",
+      }),
+      result: Promise.resolve({
+        ...defaultCustomersPage.result,
+        dateFilterUnavailable: true,
+        total: 0,
+      }),
+    });
+    const view = render(collection);
+
+    expect(
+      view.getByText(
+        "Booking dates are temporarily unavailable. Try this date range again shortly."
+      )
+    ).toBeDefined();
+    expect(view.queryByText("No customers have reservations yet.")).toBeNull();
+    expect(view.queryByRole("table", { name: "Customers" })).toBeNull();
+    expect(view.queryByRole("link", { name: "Next" })).toBeNull();
+  });
+
+  test("the streamed customer count is absent when booking dates are unavailable", async () => {
+    customerPage = {
+      input: { from: "2026-08-04", to: "2026-08-10" },
+      result: {
+        ...defaultCustomersPage.result,
+        dateFilterUnavailable: true,
+        total: 0,
+      },
+    };
+    const { default: DiscountCustomersAdminPage } = await import("./page");
+    const page = DiscountCustomersAdminPage({
+      searchParams: Promise.resolve({}),
+    }) as ReactElement<{ readonly children: ReactNode }>;
+    const toolbar = Children.toArray(page.props.children).find(
+      (child): child is ReactElement<{ readonly count: ReactNode }> =>
+        isValidElement(child) && child.type === AdministrationTableToolbar
+    );
+    expect(toolbar).toBeDefined();
+
+    const countSuspense = toolbar!.props.count as ReactElement<{
+      readonly children: ReactNode;
+    }>;
+    const countComponent = Children.only(
+      countSuspense.props.children
+    ) as ReactElement<{
+      readonly result: Promise<LoadedCustomersPage["result"]>;
+    }>;
+    const countContent = await (
+      countComponent.type as (
+        props: typeof countComponent.props
+      ) => Promise<ReactNode>
+    )(countComponent.props);
+    const view = render(countContent);
+
+    expect(view.queryByLabelText("0 customers")).toBeNull();
   });
 
   test("preserves the date range on pagination and sort links", async () => {

@@ -2389,74 +2389,67 @@ export class AdministrationService extends Context.Service<
             if (!dateReservations || dateReservations.size === 0) {
               matchingCustomerIdsCondition = sql`false`;
             } else {
-              const matchingRows = yield* db
-                .selectDistinct({
-                  customerId: workspaceReservations.dotyposCustomerId,
-                })
-                .from(workspaceReservations)
-                .where(
-                  inArray(workspaceReservations.dotyposReservationId, [
-                    ...dateReservations.keys(),
-                  ])
-                );
-              matchingCustomerIdsCondition =
-                matchingRows.length > 0
-                  ? inArray(
-                      workspaceReservations.dotyposCustomerId,
-                      matchingRows.map(({ customerId }) => customerId)
-                    )
-                  : sql`false`;
+              matchingCustomerIdsCondition = inArray(
+                workspaceReservations.dotyposCustomerId,
+                sql`(select distinct ${workspaceReservations.dotyposCustomerId}
+                    from ${workspaceReservations}
+                    where ${inArray(
+                      workspaceReservations.dotyposReservationId,
+                      [...dateReservations.keys()]
+                    )})`
+              );
             }
           }
-          const countRows = yield* (matchingCustomerIdsCondition
-            ? db
-                .select({
-                  value: countDistinct(workspaceReservations.dotyposCustomerId),
-                })
-                .from(workspaceReservations)
-                .where(matchingCustomerIdsCondition)
-            : db
-                .select({
-                  value: countDistinct(workspaceReservations.dotyposCustomerId),
-                })
-                .from(workspaceReservations));
-          const total = Number(countRows[0]?.value ?? 0);
+          const reservationCount = successfulReservationCount;
+          const lastActivityAt = max(workspaceReservations.updatedAt);
+          const order = input.direction === "asc" ? asc : desc;
+          const selectCustomerRows = (offset: number) => {
+            const selected = {
+              matchingCustomerCount: sql<number>`count(*) over ()`,
+              customerId: workspaceReservations.dotyposCustomerId,
+              reservationCount,
+              lastActivityAt,
+            };
+            return db
+              .select(selected)
+              .from(workspaceReservations)
+              .where(matchingCustomerIdsCondition)
+              .groupBy(workspaceReservations.dotyposCustomerId)
+              .orderBy(
+                order(
+                  input.sort === "reservations"
+                    ? reservationCount
+                    : lastActivityAt
+                ),
+                asc(workspaceReservations.dotyposCustomerId)
+              )
+              .limit(customerPageSize)
+              .offset(offset);
+          };
+          const requestedOffset =
+            (Math.max(input.page ?? 1, 1) - 1) * customerPageSize;
+          let rows = yield* selectCustomerRows(requestedOffset);
+          let total: number;
+          const firstRow = rows[0];
+          if (firstRow) {
+            total = Number(firstRow.matchingCustomerCount);
+          } else {
+            const countRows = yield* db
+              .select({
+                value: countDistinct(workspaceReservations.dotyposCustomerId),
+              })
+              .from(workspaceReservations)
+              .where(matchingCustomerIdsCondition);
+            total = Number(countRows[0]?.value ?? 0);
+          }
           const pagination = getAdministrationPagination({
             pageSize: customerPageSize,
             requestedPage: input.page,
             total,
           });
-          const reservationCount = successfulReservationCount;
-          const lastActivityAt = max(workspaceReservations.updatedAt);
-          const order = input.direction === "asc" ? asc : desc;
-          const rows = yield* (matchingCustomerIdsCondition
-            ? db
-                .select({
-                  customerId: workspaceReservations.dotyposCustomerId,
-                  reservationCount,
-                  lastActivityAt,
-                })
-                .from(workspaceReservations)
-                .where(matchingCustomerIdsCondition)
-                .groupBy(workspaceReservations.dotyposCustomerId)
-            : db
-                .select({
-                  customerId: workspaceReservations.dotyposCustomerId,
-                  reservationCount,
-                  lastActivityAt,
-                })
-                .from(workspaceReservations)
-                .groupBy(workspaceReservations.dotyposCustomerId))
-            .orderBy(
-              order(
-                input.sort === "reservations"
-                  ? reservationCount
-                  : lastActivityAt
-              ),
-              asc(workspaceReservations.dotyposCustomerId)
-            )
-            .limit(customerPageSize)
-            .offset(pagination.offset);
+          if (pagination.offset !== requestedOffset) {
+            rows = yield* selectCustomerRows(pagination.offset);
+          }
           const customersById = yield* loadCustomers(
             rows.map(({ customerId }) => customerId)
           );
