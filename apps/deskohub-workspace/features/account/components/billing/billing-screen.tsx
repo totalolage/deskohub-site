@@ -189,14 +189,14 @@ export function BillingScreen({
           {cards.kind === "loaded" && cards.cards.length > 0
             ? cards.cards.map((card) => (
                 <li
-                  className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e0e6ee] bg-[#fbfcfd] px-4 py-3"
+                  className="flex min-w-0 flex-col items-stretch gap-3 rounded-2xl border border-[#e0e6ee] bg-[#fbfcfd] px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
                   key={card.contractId}
                 >
-                  <p className="min-w-0 flex-1 break-words text-sm leading-6 text-[#344258]">
+                  <p className="min-w-0 w-full break-words text-sm leading-6 text-[#344258] sm:w-auto sm:flex-1">
                     {cardSentence(card)}
                   </p>
                   <Button
-                    className="h-auto max-w-full shrink-0 whitespace-normal text-left text-[#53657f]"
+                    className="h-auto min-h-11 max-w-full shrink-0 self-end whitespace-normal text-left text-[#53657f] sm:min-h-8 sm:self-auto"
                     disabled={isRemoving}
                     onClick={() => setPendingRemoval(card)}
                     size="sm"
