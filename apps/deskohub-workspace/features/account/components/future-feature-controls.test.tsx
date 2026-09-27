@@ -490,8 +490,8 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
 ];
 
 describe("account future-feature controls", () => {
-  test("keeps the future-feature inventory at eight controls", () => {
-    expect(futureFeatureTargets).toHaveLength(8);
+  test("keeps the future-feature inventory at seven controls", () => {
+    expect(futureFeatureTargets).toHaveLength(7);
   });
 
   for (const target of futureFeatureTargets) {

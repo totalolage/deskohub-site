@@ -43,6 +43,11 @@ mock.module("@/features/account/actions", () => ({
   updateCustomerProfile,
 }));
 
+mock.module("@/features/account/avatar-actions", () => ({
+  removeCustomerAvatar: () => Promise.resolve({ data: null }),
+  uploadCustomerAvatar: () => Promise.resolve({ data: null }),
+}));
+
 mock.module("@/features/account/components/account-screen-copy", () => ({
   getAccountScreenCopy: (locale: "en-US" | "cs-CZ") => ({
     shell: {
