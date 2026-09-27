@@ -7,6 +7,11 @@
  * date-trigger text from overflowing. It also captures evidence screenshots
  * at 390/768/1280 for both dialog variants and locales.
  *
+ * The metrics regression covers every locale × dialog combination (4
+ * scenarios), and a built-in negative self-check tampering the DOM to remove
+ * the valid-until date trigger once, proving the assertions fail closed when
+ * the trigger is absent.
+ *
  * Usage:
  *   bun apps/deskohub-workspace/scripts/discounts-admin-narrow-pair/run.ts \
  *     --out /tmp/opencode/pr427-date-inputs-evidence/round6
@@ -109,12 +114,23 @@ const pairMetricsScript = (): PairMetrics => {
     const container = fieldContainer(inputName);
     const rect = container.getBoundingClientRect();
     const trigger = container.querySelector('button[aria-haspopup="dialog"]');
-    const triggerRect = trigger ? trigger.getBoundingClientRect() : null;
+    const triggerRect =
+      trigger === null ? null : trigger.getBoundingClientRect();
+    const triggerStyle = trigger === null ? null : getComputedStyle(trigger);
+    const triggerPresent =
+      trigger !== null &&
+      triggerRect !== null &&
+      triggerRect.width > 0 &&
+      triggerRect.height > 0 &&
+      triggerStyle !== null &&
+      triggerStyle.visibility !== "hidden" &&
+      triggerStyle.display !== "none";
     return {
       name: inputName,
       top: rect.top,
       width: rect.width,
       right: rect.right,
+      triggerPresent,
       triggerTextOverflow:
         trigger === null ? null : trigger.scrollWidth - trigger.clientWidth,
       triggerText: trigger === null ? null : (trigger.textContent ?? "").trim(),
@@ -150,6 +166,7 @@ type FieldMetrics = {
   readonly top: number;
   readonly width: number;
   readonly right: number;
+  readonly triggerPresent: boolean;
   readonly triggerRight: number | null;
   readonly triggerWidth: number | null;
   readonly containerRight: number;
@@ -197,6 +214,12 @@ const checkPair = (pair: PairMetrics): readonly string[] => {
       failures.push(
         `${field.name}: right edge ${field.right.toFixed(1)}px exceeds wrapper right ${pair.wrapperRight.toFixed(1)}px`
       );
+    }
+    if (!field.triggerPresent) {
+      failures.push(
+        `${field.name}: date trigger button[aria-haspopup="dialog"] missing, hidden, or zero-size`
+      );
+      continue;
     }
     if (field.triggerTextOverflow !== null && field.triggerTextOverflow > 1) {
       failures.push(
@@ -316,6 +339,11 @@ export const updateDiscountCodeAdminForm = () => { throw new Error("renderer stu
   });
   const failures: string[] = [];
   const metricsByScenario: Record<string, PairMetrics> = {};
+  let negativeCheck: {
+    readonly scenario: string;
+    readonly detected: boolean;
+    readonly failures: readonly string[];
+  } | null = null;
 
   try {
     for (const locale of locales) {
@@ -353,17 +381,50 @@ export const updateDiscountCodeAdminForm = () => { throw new Error("renderer stu
             fullPage: true,
           });
         }
-        if (dialog === "code" || locale === "en-US") {
-          // Metrics regressions run for both dialogs at the narrow width.
-          await page.setViewportSize(narrowViewport);
-          await page.waitForTimeout(150);
-          const pairMetrics = (await page.evaluate(
+        // Metrics regressions run for every locale × dialog combination.
+        await page.setViewportSize(narrowViewport);
+        await page.waitForTimeout(150);
+        const pairMetrics = (await page.evaluate(
+          pairMetricsScript
+        )) as PairMetrics;
+        metricsByScenario[`${suffix}-390`] = pairMetrics;
+        const scenarioFailures = checkPair(pairMetrics);
+        if (scenarioFailures.length > 0) {
+          failures.push(`${suffix}-390: ${scenarioFailures.join("; ")}`);
+        }
+        if (negativeCheck === null) {
+          // Negative self-check: tamper the valid-until trigger out of the
+          // live dialog once and prove the assertions fail closed. The dialog
+          // is discarded right after, so later scenarios are unaffected.
+          await page.evaluate(() => {
+            const input = document.querySelector<HTMLInputElement>(
+              'input[name="validUntil"]'
+            );
+            let element: Element | null = input;
+            while (
+              element &&
+              !element.querySelector('button[aria-haspopup="dialog"]')
+            ) {
+              element = element.parentElement;
+            }
+            element?.querySelector('button[aria-haspopup="dialog"]')?.remove();
+          });
+          const tamperedMetrics = (await page.evaluate(
             pairMetricsScript
           )) as PairMetrics;
-          metricsByScenario[`${suffix}-390`] = pairMetrics;
-          const scenarioFailures = checkPair(pairMetrics);
-          if (scenarioFailures.length > 0) {
-            failures.push(`${suffix}-390: ${scenarioFailures.join("; ")}`);
+          const tamperedFailures = checkPair(tamperedMetrics);
+          const detected = tamperedFailures.some((failure) =>
+            failure.includes("date trigger")
+          );
+          negativeCheck = {
+            scenario: `${suffix}-390`,
+            detected,
+            failures: tamperedFailures,
+          };
+          if (!detected) {
+            failures.push(
+              "negative self-check: missing valid-until date trigger was NOT detected"
+            );
           }
         }
         await closeDialog(page);
@@ -380,16 +441,25 @@ export const updateDiscountCodeAdminForm = () => { throw new Error("renderer stu
     JSON.stringify(metricsByScenario, null, 2),
     "utf8"
   );
+  await writeFile(
+    join(outputRoot, "negative-check.json"),
+    JSON.stringify(negativeCheck, null, 2),
+    "utf8"
+  );
 
   if (failures.length > 0) {
     // biome-ignore lint/suspicious/noConsole: CLI diagnostic output
     console.error("NARROW PAIR METRICS FAILED");
     // biome-ignore lint/suspicious/noConsole: CLI diagnostic output
     for (const failure of failures) console.error(`- ${failure}`);
+    // biome-ignore lint/suspicious/noConsole: CLI diagnostic output
+    console.error(`negative self-check: ${JSON.stringify(negativeCheck)}`);
     process.exit(1);
   }
   // biome-ignore lint/suspicious/noConsole: CLI diagnostic output
   console.log("NARROW PAIR METRICS PASSED");
+  // biome-ignore lint/suspicious/noConsole: CLI diagnostic output
+  console.log(`negative self-check: ${JSON.stringify(negativeCheck)}`);
   for (const [scenario, pair] of Object.entries(metricsByScenario)) {
     if ("error" in pair) continue;
     // biome-ignore lint/suspicious/noConsole: CLI diagnostic output
