@@ -70,11 +70,11 @@ async function CustomerCount({
 }: {
   readonly result: Promise<CustomersData["result"]>;
 }) {
+  const customers = await result;
+  if (customers.dateFilterUnavailable) return null;
+
   return (
-    <AdministrationTableCount
-      count={(await result).total}
-      itemLabel="customer"
-    />
+    <AdministrationTableCount count={customers.total} itemLabel="customer" />
   );
 }
 
@@ -175,38 +175,52 @@ export async function CustomersTable({
 }) {
   const [resolvedInput, resolvedResult] = await Promise.all([input, result]);
 
+  return <CustomerResults input={resolvedInput} result={resolvedResult} />;
+}
+
+function CustomerResults({
+  input,
+  result,
+}: {
+  readonly input: CustomersData["input"];
+  readonly result: CustomersData["result"];
+}) {
   return (
     <section className="mt-7">
-      {resolvedResult.dateFilterUnavailable && (
+      {result.dateFilterUnavailable && (
         <AdministrationAlert className="mb-4" status="warning">
           Booking dates are temporarily unavailable. Try this date range again
           shortly.
         </AdministrationAlert>
       )}
-      <AdministrationCustomerTable
-        customers={resolvedResult.items}
-        sorting={{
-          direction: resolvedInput.direction ?? "desc",
-          field: resolvedInput.sort ?? "activity",
-          params: {
-            direction: resolvedInput.direction,
-            from: resolvedInput.from,
-            sort: resolvedInput.sort,
-            to: resolvedInput.to,
-          },
-        }}
-      />
-      <Pagination
-        basePath="/admin/customers"
-        page={resolvedResult.page}
-        pageCount={resolvedResult.pageCount}
-        params={{
-          direction: resolvedInput.direction,
-          from: resolvedInput.from,
-          sort: resolvedInput.sort,
-          to: resolvedInput.to,
-        }}
-      />
+      {!result.dateFilterUnavailable && (
+        <>
+          <AdministrationCustomerTable
+            customers={result.items}
+            sorting={{
+              direction: input.direction ?? "desc",
+              field: input.sort ?? "activity",
+              params: {
+                direction: input.direction,
+                from: input.from,
+                sort: input.sort,
+                to: input.to,
+              },
+            }}
+          />
+          <Pagination
+            basePath="/admin/customers"
+            page={result.page}
+            pageCount={result.pageCount}
+            params={{
+              direction: input.direction,
+              from: input.from,
+              sort: input.sort,
+              to: input.to,
+            }}
+          />
+        </>
+      )}
     </section>
   );
 }
@@ -222,43 +236,12 @@ export async function CustomersAdministrationContent({
     <AdministrationPage>
       <h1 className="sr-only">Customers</h1>
       <AdministrationTableToolbar
-        count={result.total}
+        count={result.dateFilterUnavailable ? null : result.total}
         filters={<CustomerFilters input={input} />}
         itemLabel="customer"
         search={<CustomerSearch variant="toolbar" />}
       />
-      <section className="mt-7">
-        {result.dateFilterUnavailable && (
-          <AdministrationAlert className="mb-4" status="warning">
-            Booking dates are temporarily unavailable. Try this date range again
-            shortly.
-          </AdministrationAlert>
-        )}
-        <AdministrationCustomerTable
-          customers={result.items}
-          sorting={{
-            direction: input.direction ?? "desc",
-            field: input.sort ?? "activity",
-            params: {
-              direction: input.direction,
-              from: input.from,
-              sort: input.sort,
-              to: input.to,
-            },
-          }}
-        />
-        <Pagination
-          basePath="/admin/customers"
-          page={result.page}
-          pageCount={result.pageCount}
-          params={{
-            direction: input.direction,
-            from: input.from,
-            sort: input.sort,
-            to: input.to,
-          }}
-        />
-      </section>
+      <CustomerResults input={input} result={result} />
     </AdministrationPage>
   );
 }
