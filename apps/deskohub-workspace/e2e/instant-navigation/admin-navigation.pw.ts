@@ -156,6 +156,84 @@ test("captures the resolved reservations export view", async ({
   });
 });
 
+/**
+ * The export header row is emitted by the module-private
+ * `reservationExportHeader` in
+ * `features/administration/reservation-export.server.ts`, which is marked
+ * `server-only` and therefore cannot be imported by this browser test. Keep
+ * this copy aligned with that constant; there is no shared export to import.
+ */
+const reservationExportHeader =
+  "Reservation ID,Booking date,Status,Customer,Reservation type,Created,Payment";
+
+test("downloads the reservations export as CSV", async ({ page }) => {
+  await page.goto("/admin/reservations");
+
+  const toolbar = page.getByRole("region", {
+    name: "reservation table controls",
+  });
+  const exportLink = toolbar.getByRole("link", { name: "Export CSV" });
+  await expect(exportLink).toBeVisible();
+
+  const countBadge = toolbar.getByLabel(/^\d+ reservations?$/);
+  await expect(countBadge).toBeVisible();
+  const countLabel = await countBadge.getAttribute("aria-label");
+  expect(countLabel).toMatch(/^\d+ reservations?$/);
+  // The export covers every match for the applied filters, so the rendered
+  // total is the expected data-row count when the shared preview data is
+  // stable. Other parallel projects may mutate reservations between the page
+  // render and this export request, so this is a bounded sanity reference,
+  // not an exact-match assertion.
+  const renderedTotal = Number.parseInt(countLabel ?? "", 10);
+  expect(Number.isInteger(renderedTotal)).toBe(true);
+  expect(renderedTotal).toBeGreaterThanOrEqual(0);
+
+  const exportResponsePromise = page.waitForEvent("response", (response) => {
+    try {
+      return new URL(response.url()).pathname === "/admin/reservations/export.csv";
+    } catch {
+      return false;
+    }
+  });
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    exportLink.click(),
+  ]);
+  const exportResponse = await exportResponsePromise;
+
+  expect(exportResponse.status()).toBe(200);
+  expect(exportResponse.headers()["content-type"]).toBe(
+    "text/csv; charset=utf-8"
+  );
+  expect(exportResponse.headers()["content-disposition"]).toBe(
+    'attachment; filename="reservations-export.csv"'
+  );
+  expect(exportResponse.headers()["cache-control"]).toBe("private, no-store");
+  expect(download.suggestedFilename()).toBe("reservations-export.csv");
+
+  // Read the CSV body in memory only; the body carries customer data and must
+  // never be logged, attached, or persisted as an artifact.
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(chunk as Buffer);
+  }
+  const csvText = Buffer.concat(chunks).toString("utf-8");
+
+  const lines = csvText.split("\r\n");
+  expect(lines[0]).toBe(reservationExportHeader);
+  const dataRowCount = lines.slice(1).filter((line) => line !== "").length;
+  // Exact row-count matching is not deterministic in this fully parallel
+  // project because the preview database is shared with mutating checkout
+  // projects; assert the bounded structure contract instead.
+  expect(dataRowCount).toBeGreaterThanOrEqual(0);
+  expect(dataRowCount).toBeLessThanOrEqual(
+    Math.max(renderedTotal * 2 + 100, 1000)
+  );
+
+  await download.delete();
+});
+
 test("captures the customer activity section after hydration", async ({
   page,
 }, testInfo) => {
