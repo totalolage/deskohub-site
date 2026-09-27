@@ -157,6 +157,12 @@ export class ReservationExportRangeUnavailableError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
+export class ReservationExportDataUnavailableError extends Data.TaggedError(
+  "ReservationExportDataUnavailableError"
+)<{
+  readonly message: string;
+}> {}
+
 type ReservationListInput = AdministrationReservationListInput & {
   readonly pageSize?: number;
 };
@@ -1373,7 +1379,11 @@ export class AdministrationService extends Context.Service<
       });
 
       const loadCustomers = Effect.fn("AdministrationService.loadCustomers")(
-        function* (ids: readonly DotyposCustomerId[]) {
+        function* (
+          ids: readonly DotyposCustomerId[],
+          options?: { readonly strict?: boolean }
+        ) {
+          const strict = options?.strict ?? false;
           const uniqueIds = [...new Set(ids)];
           yield* Effect.annotateCurrentSpan({
             uniqueCustomerCount: uniqueIds.length,
@@ -1388,15 +1398,22 @@ export class AdministrationService extends Context.Service<
                   })),
                   Effect.catch((cause) => {
                     unstable_rethrow(cause);
-                    return Effect.logWarning(
-                      "Batch customer details unavailable",
-                      { cause }
-                    ).pipe(
-                      Effect.as({
-                        customers: [] as const,
-                        ids: batchIds,
-                      })
-                    );
+                    return strict
+                      ? Effect.fail(
+                          new ReservationExportDataUnavailableError({
+                            message:
+                              "Reservation export customer details are unavailable.",
+                          })
+                        )
+                      : Effect.logWarning(
+                          "Batch customer details unavailable",
+                          { cause }
+                        ).pipe(
+                          Effect.as({
+                            customers: [] as const,
+                            ids: batchIds,
+                          })
+                        );
                   })
                 )
             ),
@@ -1414,7 +1431,14 @@ export class AdministrationService extends Context.Service<
                   Effect.map((customer) => [id, customer] as const),
                   Effect.catch((cause) => {
                     unstable_rethrow(cause);
-                    return Effect.succeed(null);
+                    return strict
+                      ? Effect.fail(
+                          new ReservationExportDataUnavailableError({
+                            message:
+                              "Reservation export customer details are unavailable.",
+                          })
+                        )
+                      : Effect.succeed(null);
                   })
                 )
               ),
@@ -1434,8 +1458,10 @@ export class AdministrationService extends Context.Service<
         knownReservations?: ReadonlyMap<
           DotyposReservationId,
           DotyposReservation
-        >
+        >,
+        options?: { readonly strict?: boolean }
       ) {
+        const strict = options?.strict ?? false;
         const missingReservationIds = rows.flatMap((row) =>
           row.dotyposReservationId &&
           !knownReservations?.has(row.dotyposReservationId)
@@ -1447,9 +1473,16 @@ export class AdministrationService extends Context.Service<
           .pipe(
             Effect.catch((cause) => {
               unstable_rethrow(cause);
-              return Effect.logWarning("Live booking details unavailable", {
-                cause,
-              }).pipe(Effect.as([] as const));
+              return strict
+                ? Effect.fail(
+                    new ReservationExportDataUnavailableError({
+                      message:
+                        "Reservation export booking details are unavailable.",
+                    })
+                  )
+                : Effect.logWarning("Live booking details unavailable", {
+                    cause,
+                  }).pipe(Effect.as([] as const));
             })
           );
         const reservationsById = new Map(knownReservations);
@@ -1473,7 +1506,7 @@ export class AdministrationService extends Context.Service<
             })
           ),
         ];
-        const customersById = yield* loadCustomers(customerIds);
+        const customersById = yield* loadCustomers(customerIds, { strict });
 
         return rows.map((row) => {
           const reservation = row.dotyposReservationId
@@ -1499,7 +1532,8 @@ export class AdministrationService extends Context.Service<
           knownReservations?: ReadonlyMap<
             DotyposReservationId,
             DotyposReservation
-          >
+          >,
+          options?: { readonly strict?: boolean }
         ) {
           if (rows.length === 0) return [];
           const { attemptRows, latePaymentRows, liveRows, recoveryRows } =
@@ -1533,7 +1567,11 @@ export class AdministrationService extends Context.Service<
                     )
                   )
                   .orderBy(asc(latePaymentRecoveries.createdAt)),
-                liveRows: loadLiveReservations(rows, knownReservations),
+                liveRows: loadLiveReservations(
+                  rows,
+                  knownReservations,
+                  options
+                ),
               },
               { concurrency: 3 }
             );
@@ -1818,7 +1856,9 @@ export class AdministrationService extends Context.Service<
           );
         }
         const { rows } = yield* selectReservationRows(input, filters);
-        return yield* enrichRows(rows, filters.dateReservations ?? undefined);
+        return yield* enrichRows(rows, filters.dateReservations ?? undefined, {
+          strict: true,
+        });
       });
 
       const loadReservation = Effect.fn(
