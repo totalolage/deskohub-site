@@ -102,11 +102,61 @@ const unavailable = async (): Promise<UnavailableActionResult> => {
   return { serverError: unavailableMessage };
 };
 
+/**
+ * Controlled outcome for the synthetic avatar mutation stubs. The capture flow
+ * sets it on the page before driving the real AvatarControl interactions;
+ * "unavailable" is the safe fallback when no outcome was requested. A pending
+ * outcome returns a promise that never resolves, so `isExecuting` — and the
+ * pending aria-live state — holds for the page's lifetime.
+ */
+type AccountVisualAvatarOutcome =
+  | "pending-upload"
+  | "pending-remove"
+  | "uploaded"
+  | "removed"
+  | "unavailable";
+
+const globalScopeWithAvatar = globalThis as typeof globalThis & {
+  __accountVisualAvatarOutcome?: AccountVisualAvatarOutcome;
+};
+
+/**
+ * Entirely synthetic 96x96 two-tone PNG (data URL). Never a real customer
+ * photo; it only proves the real <img> renders instead of initials.
+ */
+const syntheticAvatarDataUrl =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAAACXBIWXMAAAPoAAAD6AG1e1JrAAABp0lEQVR4nO3SQRUDMBACUd4a3ANOarSSWhmTBA4Y+IO+H/86YwYqvjn82Qb4kvgNYBa/AcziN4BZ/AYwi98AZvEbwCx+A5jFbwCz+A1gFr8BzOI3gFn8BjCL3wBm8RvALH4DmMVvALP4DWAWvwHM4jeAWfwGMIvfAGbxG8AsfgOYxW8As/gNYBa/AcziN4BZ/AYwi98AZvEbwCx+egDR+MkBRMMnBxCNnhxANHhyANHYyQFEQycHEI2cHEA0cHIA0bjJAUTDJgcQjZocQDRocgDRmMkBREMmBxCNmBxANGByANF4yQFEwyUHEI2WHEA0WHIA0VjJAURDJQcQjZQcQDRQcgDROMkBRMMkBxCNkhxANEhyANEYyQFEQyQHEI2QHEA0AL3ib2YA/HlzyIq/WQHwx81hK/5mBMCfNoeu+Pt2APxhc/iKv28GwJ81l6z4+1YA/FFz2Yq/bwTAnzSXrvh7dwD8QXP5ir93BsCfM4+s+HtXAPwx89iKv3cEwJ8yj674e3YA/CHz+Iq/ZwbAnzEhK/6eFQB/xISt+HtGAPwJE7riLxrgDxvcNqv5Gx4sAAAAAElFTkSuQmCC";
+
+const avatarOutcome = (): AccountVisualAvatarOutcome =>
+  globalScopeWithAvatar.__accountVisualAvatarOutcome ?? "unavailable";
+
+/**
+ * Resolves with the real `CustomerAvatarMutationResult` success payloads
+ * wrapped in the next-safe-action transport envelope the component consumes.
+ */
+export const uploadCustomerAvatar = async (): Promise<unknown> => {
+  actionTracker.recordInvocation();
+  const outcome = avatarOutcome();
+  if (outcome === "pending-upload") return new Promise<never>(() => {});
+  if (outcome === "uploaded") {
+    return {
+      data: { status: "uploaded", avatar: { url: syntheticAvatarDataUrl } },
+    };
+  }
+  return unavailable();
+};
+
+export const removeCustomerAvatar = async (): Promise<unknown> => {
+  actionTracker.recordInvocation();
+  const outcome = avatarOutcome();
+  if (outcome === "pending-remove") return new Promise<never>(() => {});
+  if (outcome === "removed") return { data: { status: "removed" } };
+  return unavailable();
+};
+
 export const completeCustomerProfile = unavailable;
 export const updateCustomerProfile = unavailable;
 export const deleteCustomerAccount = unavailable;
 export const saveMarketingPreferencesAction = unavailable;
 export const confirmMarketingManagementAction = unavailable;
 export const clearMarketingManagementAction = unavailable;
-export const uploadCustomerAvatar = unavailable;
-export const removeCustomerAvatar = unavailable;

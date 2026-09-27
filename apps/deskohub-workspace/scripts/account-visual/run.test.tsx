@@ -134,6 +134,7 @@ const expectedOwnedSourcePaths = [
   "apps/deskohub-workspace/scripts/account-visual/account-route.tsx",
   "apps/deskohub-workspace/scripts/account-visual/browser-entry.tsx",
   "apps/deskohub-workspace/scripts/account-visual/capture-ares-states.ts",
+  "apps/deskohub-workspace/scripts/account-visual/capture-avatar-states.ts",
   "apps/deskohub-workspace/scripts/account-visual/create-account-visual-verification.ts",
   "apps/deskohub-workspace/scripts/account-visual/default-adapter.tsx",
   "apps/deskohub-workspace/scripts/account-visual/marketing-preferences-adapter.tsx",
