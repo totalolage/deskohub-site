@@ -8,14 +8,6 @@ import {
   mock,
   test,
 } from "bun:test";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-  within,
-} from "@testing-library/react";
 import { Profiler, StrictMode } from "react";
 import { AdministrationTableToolbar } from "@/features/administration/components";
 import { loadFixtureReservations } from "@/features/administration/fixtures";
@@ -28,6 +20,15 @@ import type {
   AdminCustomerProfile,
   DiscountAdminDashboard,
 } from "./discount-administration.service";
+
+// react-dom decides how to synthesize change events while it is evaluated, so
+// the DOM environment must exist before @testing-library/react loads. Static
+// imports always evaluate first, which is why the renderer is imported
+// dynamically after the happy-dom registration instead.
+registerWorkspaceComponentTestEnv();
+const { act, cleanup, fireEvent, render, waitFor, within } = await import(
+  "@testing-library/react"
+);
 
 const refresh = mock();
 const back = mock();
@@ -56,6 +57,68 @@ mock.module("./actions", () => ({
   updateDiscountAdminForm: mock(),
   updateDiscountCodeAdminForm: mock(),
 }));
+
+type DiscountAdminActionResult = {
+  readonly data?: {
+    readonly notice: string;
+    readonly createdDiscountId?: string;
+  };
+};
+type DiscountAdminActionError = {
+  readonly error: {
+    readonly serverError?: string;
+    readonly validationErrors?: unknown;
+  };
+};
+type CapturedWorkspaceAction = {
+  readonly execute: ReturnType<typeof mock>;
+  readonly options: {
+    readonly onSuccess: (result: DiscountAdminActionResult) => void;
+    readonly onError: (result: DiscountAdminActionError) => void;
+    readonly onTransportError: () => void;
+  };
+};
+
+// The execute identity must stay stable across component re-renders, so each
+// action name is captured once and reused for every subsequent call.
+const captureWorkspaceActions = (pattern: RegExp) => {
+  const capturedActions = new Map<string, CapturedWorkspaceAction>();
+  workspaceUseAction.mockImplementation((_action, options) => {
+    const candidate = options as {
+      actionName?: string;
+      onSuccess?: CapturedWorkspaceAction["options"]["onSuccess"];
+      onError?: CapturedWorkspaceAction["options"]["onError"];
+      onTransportError?: CapturedWorkspaceAction["options"]["onTransportError"];
+    };
+    if (candidate?.actionName && pattern.test(candidate.actionName)) {
+      let captured = capturedActions.get(candidate.actionName);
+      if (!captured) {
+        captured = {
+          execute: mock(),
+          options: {
+            onSuccess: candidate.onSuccess!,
+            onError: candidate.onError!,
+            onTransportError: candidate.onTransportError!,
+          },
+        };
+        capturedActions.set(candidate.actionName, captured);
+      } else {
+        captured.options = {
+          onSuccess: candidate.onSuccess!,
+          onError: candidate.onError!,
+          onTransportError: candidate.onTransportError!,
+        };
+      }
+      return { execute: captured.execute, isExecuting: false, result: {} };
+    }
+    return { execute: mock(), isExecuting: false, result: {} };
+  });
+  return (actionName: string): CapturedWorkspaceAction => {
+    const captured = capturedActions.get(actionName);
+    expect(captured).toBeDefined();
+    return captured!;
+  };
+};
 
 const dashboard: DiscountAdminDashboard = {
   discounts: [
@@ -386,17 +449,19 @@ describe("discount administration pages", () => {
     fireEvent.submit(
       view.getByRole("button", { name: "Save voucher" }).closest("form")!
     );
-    expect(execute).toHaveBeenCalledWith({
-      kind: "update-voucher",
-      voucher: {
-        id: voucher.id,
-        code: "GIFT100",
-        credit: { value: 15_000, exponent: 2, currency: "CZK" },
-        enabled: true,
-        validFrom: null,
-        validUntil: null,
-      },
-    });
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "update-voucher",
+        voucher: {
+          id: voucher.id,
+          code: "GIFT100",
+          credit: { value: 15_000, exponent: 2, currency: "CZK" },
+          enabled: true,
+          validFrom: null,
+          validUntil: null,
+        },
+      })
+    );
   });
 
   test("creates vouchers through their own administration dialog", async () => {
@@ -411,8 +476,7 @@ describe("discount administration pages", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Create a voucher" }));
     expect(
-      view.getByLabelText("Valid from").closest("label")?.parentElement
-        ?.className
+      view.getByLabelText("Valid from").closest("div.grid")?.className
     ).toContain("md:grid-cols-2");
     fireEvent.change(view.getByRole("textbox", { name: "Code" }), {
       target: { value: "gift100" },
@@ -421,16 +485,18 @@ describe("discount administration pages", () => {
       view.getByRole("button", { name: "Create voucher" }).closest("form")!
     );
 
-    expect(execute).toHaveBeenCalledWith({
-      kind: "create-voucher",
-      voucher: {
-        code: "GIFT100",
-        credit: { value: 10_000, exponent: 2, currency: "CZK" },
-        enabled: true,
-        validFrom: null,
-        validUntil: null,
-      },
-    });
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "create-voucher",
+        voucher: {
+          code: "GIFT100",
+          credit: { value: 10_000, exponent: 2, currency: "CZK" },
+          enabled: true,
+          validFrom: null,
+          validUntil: null,
+        },
+      })
+    );
   });
 
   test("links codes to audience management and shows live capacity", async () => {
@@ -1151,22 +1217,24 @@ describe("discount administration pages", () => {
       target: { value: "personal10" },
     });
     fireEvent.submit(view.getByRole("form", { name: "Create discount code" }));
-    expect(execute).toHaveBeenCalledWith({
-      kind: "create-customer-code",
-      customerId: "dotypos-customer",
-      code: {
-        code: "PERSONAL10",
-        enabled: true,
-        validFrom: null,
-        validUntil: null,
-        maxUses: null,
-        maxUsesPerCustomer: null,
-      },
-      discount: {
-        kind: "existing",
-        discountId: dashboard.discounts[0].id,
-      },
-    });
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "create-customer-code",
+        customerId: "dotypos-customer",
+        code: {
+          code: "PERSONAL10",
+          enabled: true,
+          validFrom: null,
+          validUntil: null,
+          maxUses: null,
+          maxUsesPerCustomer: null,
+        },
+        discount: {
+          kind: "existing",
+          discountId: dashboard.discounts[0].id,
+        },
+      })
+    );
 
     fireEvent.click(view.getByRole("radio", { name: "Create a new discount" }));
     expect(
@@ -1386,5 +1454,449 @@ describe("discount administration pages", () => {
       view.getByRole("button", { name: "Create another discount" })
     );
     expect(view.getByRole("button", { name: "Create discount" })).toBeDefined();
+  });
+
+  test("marks the discount editor dirty, submits its payload, and resets after success", async () => {
+    const captured = captureWorkspaceActions(/^updateDiscount\./);
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+
+    const save = view.getByRole("button", { name: "Save discount" });
+    expect(save).toHaveProperty("disabled", true);
+    fireEvent.input(
+      view.container.querySelector(
+        "#labelEn-019c91dd-c560-7e55-b9d8-c95065efd51d"
+      ) as HTMLInputElement,
+      { target: { value: "Updated summer discount" } }
+    );
+    expect(save).toHaveProperty("disabled", false);
+
+    const { execute, options } = captured(
+      "updateDiscount.019c91dd-c560-7e55-b9d8-c95065efd51d"
+    );
+    fireEvent.submit(save.closest("form")!);
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "update-discount",
+        discount: {
+          id: "019c91dd-c560-7e55-b9d8-c95065efd51d",
+          labels: {
+            "cs-CZ": "Letní sleva",
+            "en-US": "Updated summer discount",
+          },
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+          products: [{ kind: "cowork" }],
+        },
+      })
+    );
+
+    act(() => options.onSuccess({ data: { notice: "Discount saved." } }));
+    const labelEn = view.container.querySelector(
+      "#labelEn-019c91dd-c560-7e55-b9d8-c95065efd51d"
+    ) as HTMLInputElement;
+    await waitFor(() => {
+      expect(labelEn.value).toBe("Summer discount");
+      expect(save).toHaveProperty("disabled", true);
+    });
+    expect(view.getByRole("status").textContent).toContain("Discount saved.");
+  });
+
+  test("registers product and enabled checkboxes in the update payloads", async () => {
+    const captured = captureWorkspaceActions(
+      /^(updateDiscount|updateDiscountCode)\./
+    );
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+
+    const discountForm = view
+      .getByRole("button", { name: "Save discount" })
+      .closest("form")!;
+    const meetingRoom = within(discountForm)
+      .getAllByRole("checkbox")
+      .find(
+        (checkbox) =>
+          checkbox.closest("label")?.textContent?.trim() === "Meeting room"
+      );
+    expect(meetingRoom).toBeDefined();
+    fireEvent.click(meetingRoom!);
+    fireEvent.submit(discountForm);
+    const { execute: discountExecute } = captured(
+      "updateDiscount.019c91dd-c560-7e55-b9d8-c95065efd51d"
+    );
+    await waitFor(() =>
+      expect(discountExecute).toHaveBeenCalledWith({
+        kind: "update-discount",
+        discount: {
+          id: "019c91dd-c560-7e55-b9d8-c95065efd51d",
+          labels: {
+            "cs-CZ": "Letní sleva",
+            "en-US": "Summer discount",
+          },
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+          products: [{ kind: "cowork" }, { kind: "meeting-room" }],
+        },
+      })
+    );
+
+    const codeForm = view
+      .getByRole("button", { name: "Save code" })
+      .closest("form")!;
+    fireEvent.input(
+      codeForm.querySelector("#code-019c91dd-c560-7e55-b9d8-c95065efd52d")!,
+      { target: { value: "summer11" } }
+    );
+    fireEvent.submit(codeForm);
+    const { execute: codeExecute } = captured(
+      "updateDiscountCode.019c91dd-c560-7e55-b9d8-c95065efd52d"
+    );
+    await waitFor(() =>
+      expect(codeExecute).toHaveBeenCalledWith({
+        kind: "update-code",
+        code: {
+          id: "019c91dd-c560-7e55-b9d8-c95065efd52d",
+          discountId: "019c91dd-c560-7e55-b9d8-c95065efd51d",
+          code: "SUMMER11",
+          enabled: true,
+          validFrom: "2026-08-01T08:00:00Z",
+          validUntil: "2026-09-01T08:00:00Z",
+          maxUses: 100,
+          maxUsesPerCustomer: 2,
+        },
+      })
+    );
+  });
+
+  test("renders server, validation, and transport errors in the code editor", async () => {
+    const captured = captureWorkspaceActions(/^updateDiscountCode\./);
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const { options } = captured(
+      "updateDiscountCode.019c91dd-c560-7e55-b9d8-c95065efd52d"
+    );
+
+    act(() =>
+      options.onError({
+        error: {
+          serverError: "A code with this value already exists.",
+        },
+      })
+    );
+    await waitFor(() =>
+      expect(view.getByRole("alert").textContent).toContain(
+        "A code with this value already exists."
+      )
+    );
+
+    act(() =>
+      options.onError({
+        error: {
+          validationErrors: {
+            fieldErrors: { code: ["Invalid code prefix."] },
+          },
+        },
+      })
+    );
+    await waitFor(() =>
+      expect(view.getByRole("alert").textContent).toContain(
+        "Invalid code prefix."
+      )
+    );
+
+    act(() => options.onTransportError());
+    await waitFor(() =>
+      expect(view.getByRole("alert").textContent).toContain(
+        "The change could not be saved. Try again."
+      )
+    );
+  });
+
+  test("blocks discount submission with client-side validation messages", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { CreateDiscountForm } = await import("./admin-tables");
+    const view = render(<CreateDiscountForm />);
+    const form = view
+      .getByRole("button", { name: "Create discount" })
+      .closest("form")!;
+
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(view.getByText("Enter an English label.")).toBeDefined()
+    );
+    expect(view.getByText("Enter a Czech label.")).toBeDefined();
+    expect(execute).not.toHaveBeenCalled();
+
+    fireEvent.input(view.getByRole("spinbutton", { name: "Percentage" }), {
+      target: { value: "200" },
+    });
+    await waitFor(() =>
+      expect(
+        view.getByText("Enter a percentage between 0.01 and 100.")
+      ).toBeDefined()
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test("blocks code submission with client-side validation messages", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const codeForm = view
+      .getByRole("button", { name: "Save code" })
+      .closest("form")!;
+    const codeInput = codeForm.querySelector(
+      "#code-019c91dd-c560-7e55-b9d8-c95065efd52d"
+    ) as HTMLInputElement;
+
+    fireEvent.input(codeInput, { target: { value: "SU" } });
+    fireEvent.submit(codeForm);
+    await waitFor(() =>
+      expect(
+        view.getByText("Use 3 to 64 characters for the code.")
+      ).toBeDefined()
+    );
+    expect(execute).not.toHaveBeenCalled();
+
+    fireEvent.input(codeInput, { target: { value: "" } });
+    fireEvent.submit(codeForm);
+    await waitFor(() =>
+      expect(view.getByText("Enter a discount code.")).toBeDefined()
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test("searches customers with a trimmed query and renders results and errors", async () => {
+    let searchOptions:
+      | {
+          onSuccess: (result: DiscountAdminActionResult) => void;
+          onError: (result: DiscountAdminActionError) => void;
+        }
+      | undefined;
+    const execute = mock();
+    workspaceUseAction.mockImplementation((_action, options) => {
+      const candidate = options as {
+        actionName?: string;
+        onSuccess?: (result: DiscountAdminActionResult) => void;
+        onError?: (result: DiscountAdminActionError) => void;
+      };
+      if (candidate.actionName === "searchDiscountAdminCustomers") {
+        searchOptions = {
+          onSuccess: candidate.onSuccess!,
+          onError: candidate.onError!,
+        };
+      }
+      return { execute, isExecuting: false, result: {} };
+    });
+    const { CustomerSearch } = await import("./customer-admin-client");
+    const view = render(<CustomerSearch />);
+    const form = view
+      .getByRole("button", { name: "Find customer" })
+      .closest("form")!;
+    const input = view.getByRole("searchbox", {
+      name: "Customer name or email",
+    });
+
+    fireEvent.input(input, { target: { value: "   " } });
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(view.getByText("Enter at least 2 characters.")).toBeDefined()
+    );
+    expect(execute).not.toHaveBeenCalled();
+
+    fireEvent.input(input, { target: { value: "  Alex Novák  " } });
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({ query: "Alex Novák" })
+    );
+
+    act(() =>
+      searchOptions?.onSuccess({
+        data: {
+          kind: "matched",
+          customers: [
+            {
+              id: "dotypos-customer",
+              displayName: "Test Customer",
+              email: "test@example.com",
+              phone: null,
+              discountGroupId: null,
+            },
+          ],
+        },
+      } as DiscountAdminActionResult)
+    );
+    await waitFor(() => expect(view.getByText("Test Customer")).toBeDefined());
+    expect(
+      view.getByRole("link", { name: "Open customer" }).getAttribute("href")
+    ).toBe("/admin/customers/dotypos-customer");
+
+    act(() =>
+      searchOptions?.onError({
+        error: { serverError: "Search failed." },
+      })
+    );
+    await waitFor(() =>
+      expect(view.getByRole("alert").textContent).toContain("Search failed.")
+    );
+  });
+
+  test("adds a code customer and resets the form after success", async () => {
+    const captured = captureWorkspaceActions(/^Add customer$/);
+    const { AddCodeCustomerForm } = await import("./customer-admin-client");
+    const view = render(
+      <AddCodeCustomerForm codeId="019c91dd-c560-7e55-b9d8-c95065efd52d" />
+    );
+    const input = view.getByLabelText("Dotypos customer ID");
+    fireEvent.input(input, { target: { value: "  dotypos-customer  " } });
+    fireEvent.submit(
+      view.getByRole("button", { name: "Add customer" }).closest("form")!
+    );
+
+    const { execute, options } = captured("Add customer");
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "add-code-customer",
+        codeId: "019c91dd-c560-7e55-b9d8-c95065efd52d",
+        customerId: "dotypos-customer",
+      })
+    );
+
+    act(() => options.onSuccess({ data: { notice: "Customer added." } }));
+    await waitFor(() =>
+      expect(view.getByRole("status").textContent).toContain("Customer added.")
+    );
+    expect(input).toHaveProperty("value", "");
+  });
+
+  test("sets and clears a customer discount group", async () => {
+    const captured = captureWorkspaceActions(/^Save group$/);
+    const { CustomerDiscountGroupForm } = await import(
+      "./customer-admin-client"
+    );
+    const view = render(
+      <CustomerDiscountGroupForm
+        customerId="dotypos-customer"
+        currentGroupId={null}
+        discountGroups={[{ id: "group-1", name: "Gold", basisPoints: 1000 }]}
+      />
+    );
+    const form = view
+      .getByRole("button", { name: "Save group" })
+      .closest("form")!;
+    const select = view.getByLabelText("Discount group");
+
+    fireEvent.change(select, { target: { value: "group-1" } });
+    fireEvent.submit(form);
+    const { execute } = captured("Save group");
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "set-customer-discount-group",
+        customerId: "dotypos-customer",
+        discountGroupId: "group-1",
+      })
+    );
+
+    execute.mockClear();
+    fireEvent.change(select, { target: { value: "" } });
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "set-customer-discount-group",
+        customerId: "dotypos-customer",
+        discountGroupId: null,
+      })
+    );
+  });
+
+  test("creates general codes for both existing and new discounts", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { DiscountCodeCreationForm } = await import(
+      "./customer-code-creation"
+    );
+    const view = render(
+      <DiscountCodeCreationForm discounts={dashboard.discounts} />
+    );
+    const form = view.getByRole("form", { name: "Create discount code" });
+    const expectedCode = {
+      code: "PERSONAL10",
+      enabled: true,
+      validFrom: null,
+      validUntil: null,
+      maxUses: null,
+      maxUsesPerCustomer: null,
+    };
+
+    fireEvent.change(view.getByRole("textbox", { name: "Code" }), {
+      target: { value: "personal10" },
+    });
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "create-code",
+        code: expectedCode,
+        discount: {
+          kind: "existing",
+          discountId: dashboard.discounts[0].id,
+        },
+      })
+    );
+
+    execute.mockClear();
+    fireEvent.click(view.getByRole("radio", { name: "Create a new discount" }));
+    fireEvent.input(view.getByRole("textbox", { name: "English (en-US)" }), {
+      target: { value: "Winter discount" },
+    });
+    fireEvent.input(view.getByRole("textbox", { name: "Czech (cs-CZ)" }), {
+      target: { value: "Zimní sleva" },
+    });
+    const cowork = within(form)
+      .getAllByRole("checkbox")
+      .find(
+        (checkbox) =>
+          checkbox.closest("label")?.textContent?.trim() === "Cowork"
+      );
+    expect(cowork).toBeDefined();
+    fireEvent.click(cowork!);
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        kind: "create-code",
+        code: expectedCode,
+        discount: {
+          kind: "new",
+          discount: {
+            labels: { "cs-CZ": "Zimní sleva", "en-US": "Winter discount" },
+            adjustment: { kind: "percentage", basisPoints: 1000 },
+            products: [{ kind: "cowork" }],
+          },
+        },
+      })
+    );
   });
 });

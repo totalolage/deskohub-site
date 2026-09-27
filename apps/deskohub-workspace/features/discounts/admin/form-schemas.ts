@@ -131,6 +131,11 @@ export const discountCodeCreationFormSchema = Schema.toStandardSchemaV1(
     ]),
     discountId: Schema.String,
     ...discountDefinitionFields,
+    // Labels are only required while creating a new discount, so the
+    // unconditional definition-field checks are replaced by the conditional
+    // checks below.
+    labelEn: Schema.String,
+    labelCs: Schema.String,
     ...discountCodeConfigurationFields,
   }).check(
     Schema.makeFilter<DiscountCodeCreationFormCheckInput>(
