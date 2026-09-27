@@ -93,6 +93,26 @@ describe("Customer account deletion", () => {
     ]);
   });
 
+  test("blocks account identity deletion when avatar removal has an unknown provider outcome", async () => {
+    const { dependencies, calls } = makeDependencies({
+      avatarOutcome: Effect.fail(new Error("media provider unavailable")),
+    });
+
+    const outcome = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.result)
+    );
+
+    expect(outcome._tag).toBe("Failure");
+    expect(calls).toEqual([
+      "lock-acquire",
+      "marker",
+      "find-link",
+      "expire",
+      "destroy-avatar",
+      "lock-release",
+    ]);
+  });
+
   test("tolerates a definitively missing provider profile", async () => {
     const { dependencies, calls } = makeDependencies({
       expireOutcome: Effect.fail(

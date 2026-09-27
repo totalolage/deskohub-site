@@ -2093,26 +2093,109 @@ describe("ProfileForm", () => {
       ).toBe("https://res.cloudinary.test/upload/v2/avatars/live");
     });
 
-    test("keeps dirty profile fields untouched by a successful avatar upload", async () => {
-      const view = await renderEditProfile({ avatar: null });
-      const firstName = view.getByLabelText("First name") as HTMLInputElement;
-      const lastName = view.getByLabelText("Last name") as HTMLInputElement;
+    test("keeps dirty identity and billing drafts when refreshed server props arrive after an avatar upload", async () => {
+      const { ProfileForm: ProfileFormComponent } = await import(
+        "./profile-form"
+      );
+      const refreshedAvatar = {
+        url: "https://res.cloudinary.test/upload/v2/avatars/live",
+        version: 2,
+      };
 
+      function RefreshHarness() {
+        const [profile, setProfile] = React.useState(businessProfile);
+        const [avatar, setAvatar] = React.useState<{
+          url: string;
+          version: number;
+        } | null>(null);
+        const [section, setSection] = React.useState<"profile" | "billing">(
+          "profile"
+        );
+        return (
+          <>
+            <button type="button" onClick={() => setSection("profile")}>
+              Identity section
+            </button>
+            <button type="button" onClick={() => setSection("billing")}>
+              Billing section
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                // The router refresh re-renders the form with fresh server
+                // data while the customer's drafts are dirty.
+                setProfile({
+                  ...businessProfile,
+                  firstName: "Server",
+                  lastName: "Refreshed",
+                });
+                setAvatar(refreshedAvatar);
+              }}
+            >
+              Apply server refresh
+            </button>
+            <ProfileFormComponent
+              email="ada@example.test"
+              locale="en-US"
+              mode="edit"
+              profile={profile}
+              avatar={avatar}
+              section={section}
+              onSectionChange={setSection}
+            />
+          </>
+        );
+      }
+
+      const view = render(<RefreshHarness />);
+
+      // Dirty the identity drafts.
       await act(async () => {
-        fireEvent.input(firstName, { target: { value: "Grace" } });
-        fireEvent.input(lastName, { target: { value: "Byron" } });
+        fireEvent.input(view.getByLabelText("First name"), {
+          target: { value: "Grace" },
+        });
+        fireEvent.input(view.getByLabelText("Last name"), {
+          target: { value: "Byron" },
+        });
       });
+      // Dirty the billing drafts too.
+      fireEvent.click(view.getByRole("button", { name: "Billing section" }));
+      await act(async () => {
+        fireEvent.input(view.getByLabelText("Company name"), {
+          target: { value: "Draft Company" },
+        });
+      });
+
+      // Upload the avatar from the identity section.
+      fireEvent.click(view.getByRole("button", { name: "Identity section" }));
       pickAvatarFile(view);
       await view.findByText("Profile photo updated.");
 
+      // The successful upload refreshes server data: the form re-renders
+      // with new profile and avatar props while both drafts are dirty.
+      fireEvent.click(
+        view.getByRole("button", { name: "Apply server refresh" })
+      );
+
       expect(updateCustomerProfile).not.toHaveBeenCalled();
       expect(completeCustomerProfile).not.toHaveBeenCalled();
-      expect(firstName.value).toBe("Grace");
-      expect(lastName.value).toBe("Byron");
-      expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
+      // The refreshed avatar prop is applied…
       expect(
         (view.getByAltText("Your profile picture") as HTMLImageElement).src
-      ).toBe("https://res.cloudinary.test/upload/v2/avatars/live");
+      ).toBe(refreshedAvatar.url);
+      // …but neither draft is clobbered by the refreshed server values.
+      fireEvent.click(view.getByRole("button", { name: "Billing section" }));
+      expect(
+        (view.getByLabelText("Company name") as HTMLInputElement).value
+      ).toBe("Draft Company");
+      fireEvent.click(view.getByRole("button", { name: "Identity section" }));
+      expect(
+        (view.getByLabelText("First name") as HTMLInputElement).value
+      ).toBe("Grace");
+      expect((view.getByLabelText("Last name") as HTMLInputElement).value).toBe(
+        "Byron"
+      );
+      expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
     });
 
     test("keeps the previous image and the usable picker on a validation rejection", async () => {

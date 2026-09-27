@@ -11,7 +11,7 @@ import {
   CloudinaryService,
   makeCloudinaryRuntimeConfigLayer,
 } from "@deskohub/cloudinary/server";
-import { Context, Data, Effect, Layer, Option, Schedule, Schema } from "effect";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { env } from "@/env";
 import {
   type CustomerAccountAccessError,
@@ -80,10 +80,12 @@ export const deriveCustomerAvatarNamespace = (deployment: {
     case "development":
       return Option.some("avatars/development");
     case "preview":
-      return Option.map(
-        deployment.deploymentId,
-        (id) => `avatars/preview/${id}`
-      );
+      return Option.flatMap(deployment.deploymentId, (id) => {
+        const immutablePreviewId = id.trim();
+        return immutablePreviewId.length > 0
+          ? Option.some(`avatars/preview/${immutablePreviewId}`)
+          : Option.none();
+      });
     default:
       return Option.none();
   }
@@ -295,11 +297,11 @@ export class CustomerAvatarService extends Context.Service<
                             accountId,
                             normalized
                           ),
-                          (stagedId) =>
+                          (staged) =>
                             Effect.flatMap(
                               promoteStaged(
                                 cloudinary,
-                                stagedId,
+                                staged,
                                 livePublicIdFor(namespace, accountId)
                               ),
                               (promoted) =>
@@ -403,76 +405,125 @@ const destroyAssetById = (
     Effect.mapError(() => new CustomerAvatarProviderError({}))
   );
 
-/** Bounded listing of one account's retained staging assets. */
+/**
+ * Bounded listing of one account's retained staging assets. The listing goes
+ * through the sanitized folder-listing call, which never logs the
+ * account-bearing folder or any returned asset identity.
+ */
+const stagingSweepBatchSize = 8;
+
 const listStagedAssets = (
   cloudinary: CloudinaryService["Service"],
   folder: string
 ): Effect.Effect<readonly CloudinaryAsset[], CustomerAvatarProviderError> =>
   cloudinary
-    .searchByFolder(folder, { maxResults: 8 })
+    .listFolderAssets(folder, { maxResults: stagingSweepBatchSize })
     .pipe(Effect.mapError(() => new CustomerAvatarProviderError({})));
 
 /**
- * Recovers a staging asset retained by a previously failed promotion: if the
- * account owns retained staging, the newest copy is promoted onto the live
- * public ID before anything new is staged. Best-effort — a failed recovery
- * never blocks the fresh upload, which promotes over the live ID anyway.
+ * Recovers a staging asset retained by a previously failed promotion — but
+ * only when the live lookup definitively reports that no live avatar
+ * exists. A live asset means recovery would overwrite a newer image with an
+ * older retained one, so it is skipped; a lookup failure is also skipped
+ * (the stale staging simply becomes cleanup material for deletion). A
+ * recovery failure never blocks the fresh upload, which promotes over the
+ * live ID anyway.
  */
 const recoverRetainedStaging = (
   cloudinary: CloudinaryService["Service"],
   namespace: string,
   accountId: CustomerAccountId
 ): Effect.Effect<void, never> =>
-  listStagedAssets(cloudinary, accountStagingFolder(namespace, accountId)).pipe(
-    Effect.flatMap((staged) =>
-      staged.length === 0
+  cloudinary.getByPublicId(livePublicIdFor(namespace, accountId)).pipe(
+    Effect.catch((error) =>
+      error._tag === "CloudinarySearchError" && error.httpCode === 404
+        ? Effect.succeed(null)
+        : Effect.fail(new CustomerAvatarProviderError({}))
+    ),
+    Effect.flatMap((liveAsset) =>
+      liveAsset
         ? Effect.void
-        : promoteStaged(
+        : listStagedAssets(
             cloudinary,
-            staged[0]!.public_id,
-            livePublicIdFor(namespace, accountId)
-          ).pipe(Effect.asVoid)
+            accountStagingFolder(namespace, accountId)
+          ).pipe(
+            Effect.flatMap((staged) =>
+              staged.length === 0
+                ? Effect.void
+                : promoteStaged(
+                    cloudinary,
+                    staged[0]!,
+                    livePublicIdFor(namespace, accountId)
+                  ).pipe(Effect.asVoid)
+            )
+          )
     ),
     Effect.ignore
   );
 
 /**
+ * The sweep iteration cap for draining staging. Each iteration destroys one
+ * bounded batch, so per-call provider work stays finite while the folder is
+ * still drained completely across iterations.
+ */
+const stagingSweepMaxIterations = 25;
+
+/**
  * Removes every account-owned staging asset after the live avatar destroy
- * succeeded. A listing or destroy failure is retryable so the deletion
- * caller can retry with the identity rows still intact.
+ * succeeded. The sweep loops bounded batches until a listing verifies the
+ * folder is empty; deletion must never succeed with staged customer images
+ * left stored. Any listing or destroy failure — or exhausting the iteration
+ * cap — is a retryable failure so the deletion caller can retry with the
+ * identity rows still intact and the deletion marker in place.
  */
 const destroyStaging = (
   cloudinary: CloudinaryService["Service"],
   namespace: string,
   accountId: CustomerAccountId
-): Effect.Effect<void, CustomerAvatarProviderError> =>
-  listStagedAssets(cloudinary, accountStagingFolder(namespace, accountId)).pipe(
-    Effect.flatMap((staged) =>
-      Effect.forEach(
-        staged,
-        (asset) => destroyAssetById(cloudinary, asset.public_id),
-        { discard: true }
+): Effect.Effect<void, CustomerAvatarProviderError> => {
+  const sweepOnce = () =>
+    listStagedAssets(
+      cloudinary,
+      accountStagingFolder(namespace, accountId)
+    ).pipe(
+      Effect.flatMap((staged) =>
+        Effect.forEach(
+          staged,
+          (asset) => destroyAssetById(cloudinary, asset.public_id),
+          { discard: true }
+        ).pipe(Effect.as(staged.length))
       )
-    ),
-    Effect.asVoid
-  );
+    );
+
+  const drain = (
+    remainingIterations: number
+  ): Effect.Effect<void, CustomerAvatarProviderError> =>
+    remainingIterations <= 0
+      ? Effect.fail(new CustomerAvatarProviderError({}))
+      : Effect.flatMap(sweepOnce(), (destroyedCount) =>
+          destroyedCount === 0 ? Effect.void : drain(remainingIterations - 1)
+        );
+
+  return drain(stagingSweepMaxIterations);
+};
 
 /**
  * Stage upload under a unique temporary public ID. Replacement works
  * because promotion (below) renames onto the fixed live public ID with
  * overwrite; the live asset is never written directly.
  *
- * The staging ID is owned across the whole upload lifecycle: the provider
- * can accept the bytes and still fail the call (lost or undecodable
- * response), so a failed upload destroys the known staging ID best-effort
- * instead of leaving an orphan.
+ * The staged asset — including the provider's immutable `asset_id` — is
+ * owned across the whole upload lifecycle: the provider can accept the
+ * bytes and still fail the call (lost or undecodable response), so a failed
+ * upload destroys the known staging ID best-effort instead of leaving an
+ * orphan, and the identity is what reconciles an ambiguous promotion.
  */
 const stageUpload = (
   cloudinary: CloudinaryService["Service"],
   namespace: string,
   accountId: CustomerAccountId,
   bytes: Uint8Array
-): Effect.Effect<CloudinaryPublicId, CustomerAvatarProviderError> =>
+): Effect.Effect<CloudinaryAsset, CustomerAvatarProviderError> =>
   Effect.sync(() => crypto.randomUUID()).pipe(
     Effect.flatMap((token) => {
       const folder = accountStagingFolder(namespace, accountId);
@@ -494,7 +545,6 @@ const stageUpload = (
                 Effect.andThen(Effect.fail(new CustomerAvatarProviderError({})))
               )
           ),
-          Effect.as(stagedId),
           Effect.mapError(() => new CustomerAvatarProviderError({}))
         );
     })
@@ -522,68 +572,112 @@ const destroyStagedBestEffort = (
  * the live public ID before anything is destroyed — the staged asset may
  * be the only recoverable copy of the customer's upload.
  *
- * - A committed rename is reported as success with the live asset's
- *   versioned identity; staging is cleaned up best-effort.
- * - An uncommitted rename retries the promotion once; if the previous live
- *   avatar is intact, staging is safely cleaned and a retryable failure is
- *   reported; if there is no live asset, staging is retained because it is
- *   the only recoverable image.
+ * Reconciliation is identity-checked: the staged asset's immutable
+ * `asset_id` survives the rename, so an asset found at the live ID counts
+ * as the promoted upload only when its identity matches. The previous live
+ * image may still be the asset at the live ID, and "any asset present" is
+ * never treated as proof of promotion.
+ *
+ * - An identity match reports success with the live asset's versioned
+ *   identity; staging is cleaned up best-effort.
+ * - On source-missing reconciliation, an identity mismatch, missing identity,
+ *   or lookup failure remains unknown: nothing is destroyed and a retryable
+ *   failure is reported. After an ambiguous retry, a different known live
+ *   identity proves the previous avatar remains, so staging is cleaned and
+ *   the operation fails retryably.
+ * - A definitive provider rejection cleans up staging without changing the
+ *   prior live asset. An ambiguous rename is retried once and then reconciled
+ *   by immutable asset identity; if no live asset can be identity-confirmed,
+ *   staging is retained as the recoverable copy.
  */
 const promoteStaged = (
   cloudinary: CloudinaryService["Service"],
-  stagedId: CloudinaryPublicId,
+  staged: CloudinaryAsset,
   liveId: CloudinaryPublicId
 ): Effect.Effect<CloudinaryAsset, CustomerAvatarProviderError> => {
+  const stagedId = staged.public_id;
+  const stagedAssetId = staged.asset_id;
   const attemptRename = () =>
     cloudinary.renameAsset(stagedId, liveId, { overwrite: true });
+  const isKnownRenameFailure = (error: {
+    readonly reason?: string;
+    readonly httpCode?: number;
+  }) =>
+    error.reason === "target-exists" ||
+    (error.reason === "failed" &&
+      error.httpCode !== undefined &&
+      error.httpCode >= 400 &&
+      error.httpCode < 500);
+  const failAfterKnownFailure = () =>
+    Effect.andThen(
+      destroyStagedBestEffort(cloudinary, stagedId),
+      Effect.fail(new CustomerAvatarProviderError({}))
+    );
+
+  /**
+   * The staged source is gone after a `source-missing` outcome. The asset
+   * at the live ID is this upload only when its immutable identity matches
+   * the staged upload's; anything else (the previous avatar, an unknown
+   * asset, no identity to compare, or a failed lookup) stays uncertain.
+   */
+  const reconcileSourceMissing = (): Effect.Effect<
+    CloudinaryAsset,
+    CustomerAvatarProviderError
+  > =>
+    lookupAssetOrNone(cloudinary, liveId).pipe(
+      Effect.flatMap((liveAsset) =>
+        liveAsset?.asset_id !== undefined &&
+        liveAsset.asset_id === stagedAssetId
+          ? Effect.as(destroyStagedBestEffort(cloudinary, stagedId), liveAsset)
+          : Effect.fail(new CustomerAvatarProviderError({}))
+      )
+    );
 
   const reconcile = (error: {
     readonly reason?: string;
-  }): Effect.Effect<CloudinaryAsset, CustomerAvatarProviderError> =>
-    error.reason === "source-missing"
-      ? // The staged source is gone: the rename committed but its response
-        // was lost. The live asset is the promoted avatar.
-        lookupAssetOrNone(cloudinary, liveId).pipe(
-          Effect.flatMap((liveAsset) =>
-            liveAsset
-              ? Effect.as(
-                  destroyStagedBestEffort(cloudinary, stagedId),
-                  liveAsset
-                )
-              : Effect.fail(new CustomerAvatarProviderError({}))
-          )
-        )
-      : // The outcome is uncertain: the live avatar may still be the
-        // previous one. Retry the promotion once, then reconcile again.
-        attemptRename().pipe(
-          Effect.catch((retryError) =>
-            lookupAssetOrNone(cloudinary, liveId).pipe(
-              Effect.flatMap((liveAsset) => {
-                if (liveAsset && retryError.reason === "source-missing") {
-                  // Committed on the retry; only the response was lost.
-                  return Effect.as(
-                    destroyStagedBestEffort(cloudinary, stagedId),
-                    liveAsset
-                  );
-                }
-                if (liveAsset) {
-                  // Never committed: the previous avatar is intact and the
-                  // customer can retry with a fresh staging upload.
-                  return Effect.andThen(
-                    destroyStagedBestEffort(cloudinary, stagedId),
-                    Effect.fail(new CustomerAvatarProviderError({}))
-                  );
-                }
-                // No live asset exists: staging is the only recoverable
-                // copy, so it is retained for the retryable failure.
-                return Effect.fail(new CustomerAvatarProviderError({}));
-              })
-            )
-          )
+    readonly httpCode?: number;
+  }): Effect.Effect<CloudinaryAsset, CustomerAvatarProviderError> => {
+    if (error.reason === "source-missing") return reconcileSourceMissing();
+    if (isKnownRenameFailure(error)) {
+      // A definitive provider rejection did not promote this staged asset.
+      // Clean it up while leaving the prior live asset untouched.
+      return failAfterKnownFailure();
+    }
+
+    // The outcome is uncertain: retry promotion once, then reconcile against
+    // the immutable provider identity before cleanup.
+    return attemptRename().pipe(
+      Effect.catch((retryError) => {
+        if (retryError.reason === "source-missing") {
+          return reconcileSourceMissing();
+        }
+
+        return lookupAssetOrNone(cloudinary, liveId).pipe(
+          Effect.flatMap((liveAsset) => {
+            if (
+              liveAsset?.asset_id !== undefined &&
+              liveAsset.asset_id === stagedAssetId
+            ) {
+              return Effect.as(
+                destroyStagedBestEffort(cloudinary, stagedId),
+                liveAsset
+              );
+            }
+            if (liveAsset?.asset_id !== undefined) {
+              // The old live identity is still present, so neither rename
+              // promoted this staged asset.
+              return failAfterKnownFailure();
+            }
+            // With no identity-confirmed live asset, the outcome remains
+            // unknown. Keep staging as the recoverable copy and fail.
+            return Effect.fail(new CustomerAvatarProviderError({}));
+          })
         );
+      })
+    );
+  };
 
   return attemptRename().pipe(
-    Effect.retry(Schedule.recurs(1)),
     Effect.catch(reconcile),
     Effect.mapError(() => new CustomerAvatarProviderError({}))
   );

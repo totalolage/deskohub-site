@@ -46,7 +46,7 @@ mock.module("@/features/account/avatar-actions", () => ({
 let AvatarControlForTest: typeof import("./avatar-control")["AvatarControl"];
 const { m } = await import("@/features/i18n");
 
-const renderControl = () =>
+const renderControl = (locale: "en-US" | "cs-CZ" = "en-US") =>
   render(
     <AvatarControlForTest
       avatar={{
@@ -55,7 +55,7 @@ const renderControl = () =>
       }}
       firstName="Ada"
       lastName="Lovelace"
-      locale="en-US"
+      locale={locale}
     />
   );
 
@@ -273,6 +273,89 @@ describe("AvatarControl failure feedback", () => {
     ) as HTMLImageElement;
     expect(image.getAttribute("src")).toBe(
       "https://res.cloudinary.test/upload/v2/avatars/next"
+    );
+  });
+
+  test("exposes the Czech upload, pending, success, and remove controls accessibly", async () => {
+    let settleUpload: ((result: ActionResult) => void) | undefined;
+    uploadResult = () =>
+      new Promise((resolve) => {
+        settleUpload = resolve;
+      });
+
+    const view = renderControl("cs-CZ");
+    const changeButton = view.getByRole("button", {
+      name: m.accountProfileAvatarChange({}, { locale: "cs-CZ" }),
+    });
+    const fileInput = view.container.querySelector('input[type="file"]')!;
+
+    expect(changeButton.getAttribute("type")).toBe("button");
+    expect(fileInput.getAttribute("accept")).toBe(".jpg,.jpeg,.png,.webp");
+    expect(view.getByRole("status").textContent).toBe("");
+
+    await act(async () => {
+      chooseFile(
+        view,
+        new File(["image-bytes"], "photo.png", { type: "image/png" })
+      );
+    });
+
+    expect(view.getByRole("status").textContent).toBe(
+      m.accountProfileAvatarUploading({}, { locale: "cs-CZ" })
+    );
+    expect(settleUpload).toBeDefined();
+
+    await act(async () => {
+      settleUpload!({
+        data: {
+          status: "uploaded",
+          avatar: {
+            url: "https://res.cloudinary.test/upload/v2/avatars/next",
+            version: 2,
+          },
+        },
+      });
+    });
+
+    expect(view.getByRole("status").textContent).toBe(
+      m.accountProfileAvatarUpdated({}, { locale: "cs-CZ" })
+    );
+    const removeButton = view.getByRole("button", {
+      name: m.accountProfileAvatarRemove({}, { locale: "cs-CZ" }),
+    });
+    let settleRemove: ((result: ActionResult) => void) | undefined;
+    removeResult = () =>
+      new Promise((resolve) => {
+        settleRemove = resolve;
+      });
+    await act(async () => {
+      fireEvent.click(removeButton);
+    });
+    expect(view.getByRole("status").textContent).toBe(
+      m.accountProfileAvatarRemoving({}, { locale: "cs-CZ" })
+    );
+    expect(settleRemove).toBeDefined();
+    await act(async () => {
+      settleRemove!({ data: { status: "removed" } });
+    });
+    await waitFor(() =>
+      expect(view.getByRole("status").textContent).toBe(
+        m.accountProfileAvatarRemoved({}, { locale: "cs-CZ" })
+      )
+    );
+
+    uploadResult = () =>
+      Promise.reject(new Error("provider details stay private"));
+    await act(async () => {
+      chooseFile(
+        view,
+        new File(["image-bytes"], "retry.png", { type: "image/png" })
+      );
+    });
+    await waitFor(() =>
+      expect(view.getByRole("status").textContent).toBe(
+        m.accountProfileAvatarErrorGeneric({}, { locale: "cs-CZ" })
+      )
     );
   });
 });
