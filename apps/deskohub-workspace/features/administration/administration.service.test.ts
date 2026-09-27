@@ -41,6 +41,8 @@ const makeQuery = <A>(rows: readonly A[]) => {
 type CapturedSelect = {
   readonly fields: Record<string, SQL>;
   readonly joins: readonly { readonly on: string; readonly table: string }[];
+  limit?: number;
+  offset?: number;
   readonly orderBy: SQL[][];
   readonly where: (SQL | undefined)[];
 };
@@ -60,8 +62,8 @@ const makeCapturingQuery = <A>(
       table: Parameters<typeof getTableName>[0],
       on: SQL
     ) => typeof query;
-    limit: () => typeof query;
-    offset: () => typeof query;
+    limit: (limit: number) => typeof query;
+    offset: (offset: number) => typeof query;
     orderBy: (...args: SQL[]) => typeof query;
     where: (condition: SQL | undefined) => typeof query;
   };
@@ -75,8 +77,14 @@ const makeCapturingQuery = <A>(
     });
     return query;
   };
-  query.limit = () => query;
-  query.offset = () => query;
+  query.limit = (limit) => {
+    captured.limit = limit;
+    return query;
+  };
+  query.offset = (offset) => {
+    captured.offset = offset;
+    return query;
+  };
   query.orderBy = (...args) => {
     captured.orderBy.push(args);
     return query;
@@ -790,7 +798,7 @@ describe("AdministrationService", () => {
     test(`filters the customer set by marketing consent ${consentCase.consent}`, async () => {
       const instant = Temporal.Instant.from("2026-08-14T12:00:00Z");
       const rows = [
-        [{ value: 3 }],
+        [{ value: 49 }],
         [
           {
             customerId: "customer-a",
@@ -852,12 +860,18 @@ describe("AdministrationService", () => {
 
       const result = await loadCustomers({
         marketingConsent: consentCase.consent,
+        direction: "asc",
+        page: 2,
         sort: "reservations",
       });
-      expect(result.total).toBe(3);
+      expect(result.total).toBe(49);
+      expect(result.page).toBe(2);
+      expect(result.pageCount).toBe(3);
       expect(result.items[0]?.marketingConsent).toBe(consentCase.expectedState);
 
-      for (const select of selects) {
+      const totalSelect = selects[0]!;
+      const pageSelect = selects[1]!;
+      for (const select of [totalSelect, pageSelect]) {
         expect(select.joins).toHaveLength(1);
         expect(select.joins[0]?.table).toBe("customer_marketing_consents");
         expect(select.joins[0]?.on).toBe(
@@ -867,8 +881,28 @@ describe("AdministrationService", () => {
           consentCase.expectedPredicate
         );
       }
+      expect(compileSql(totalSelect.where[0]!)).toBe(
+        compileSql(pageSelect.where[0]!)
+      );
 
-      const tieSortSql = compileSql(selects[1]!.orderBy[0]![1]!);
+      expect(pageSelect.limit).toBe(24);
+      expect(pageSelect.offset).toBe(24);
+
+      const successfulReservationCountSql = compileSql(
+        pageSelect.fields.reservationCount
+      );
+      const primarySortSql = compileSql(pageSelect.orderBy[0]![0]!);
+      expect(successfulReservationCountSql).toContain("count(*) filter (where");
+      expect(successfulReservationCountSql).toContain(
+        `"workspace_reservations"."fulfillment_state" = 'fulfilled'`
+      );
+      expect(successfulReservationCountSql).toContain(
+        `"workspace_reservations"."reservation_state" not in ('cancelled', 'cancelling', 'cancellation_failed')`
+      );
+      expect(primarySortSql).toContain(successfulReservationCountSql);
+      expect(primarySortSql.endsWith(" asc")).toBe(true);
+
+      const tieSortSql = compileSql(pageSelect.orderBy[0]![1]!);
       expect(tieSortSql).toBe(
         '"workspace_reservations"."dotypos_customer_id" asc'
       );

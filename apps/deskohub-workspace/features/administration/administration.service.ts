@@ -2411,14 +2411,9 @@ export class AdministrationService extends Context.Service<
 
       const listCustomers = Effect.fn("AdministrationService.listCustomers")(
         function* (input: AdministrationCustomerListInput) {
-          // Customer-set predicates compose here: an additional predicate
-          // (e.g. a reservation-date window, issue #434) joins this
-          // conjunction and is carried by both the count and page queries
-          // before paging happens.
-          const customerSetPredicates: (SQL | undefined)[] = [
-            getMarketingConsentPredicate(input.marketingConsent),
-          ];
-          const customerSetWhere = and(...customerSetPredicates);
+          const customerSetWhere = getMarketingConsentPredicate(
+            input.marketingConsent
+          );
           const countRows = yield* db
             .select({
               value: countDistinct(workspaceReservations.dotyposCustomerId),
