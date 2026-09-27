@@ -14,12 +14,13 @@ import {
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { env } from "@/env";
 import {
-  type CustomerAccountAccessError,
+  CustomerAccountAccessError,
   type CustomerAccountId,
   customerAccountUnavailable,
 } from "../customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
+import { CustomerAuthentication } from "./customer-authentication.service";
 import {
   CustomerAvatarRejectedError,
   customerAvatarAllowedMediaTypes,
@@ -128,7 +129,8 @@ interface ICustomerAvatarService {
   /**
    * Normalizes and stores the upload as the account's single avatar. The
    * previous avatar stays live until the provider confirms the promotion.
-   * Runs under the account advisory lock and re-checks the deletion marker.
+   * Runs under the account advisory lock and re-checks the verified session
+   * for this account and the deletion marker.
    */
   readonly upload: (
     accountId: CustomerAccountId,
@@ -181,6 +183,7 @@ export class CustomerAvatarService extends Context.Service<
     Effect.gen(function* () {
       const cloudinary = yield* CloudinaryService;
       const links = yield* CustomerAccountLinkRepository;
+      const authentication = yield* CustomerAuthentication;
       const settings = yield* CustomerAvatarSettings;
 
       const requireNamespace: Effect.Effect<
@@ -194,10 +197,23 @@ export class CustomerAvatarService extends Context.Service<
       const destroyById = (publicId: CloudinaryPublicId) =>
         destroyAssetById(cloudinary, publicId);
 
+      const requireSameVerifiedAccount = (accountId: CustomerAccountId) =>
+        authentication.currentUser.pipe(
+          Effect.flatMap((session) =>
+            session?.accountId === accountId
+              ? Effect.void
+              : Effect.fail(
+                  new CustomerAccountAccessError({ reason: "unauthenticated" })
+                )
+          )
+        );
+
       /**
        * Runs an avatar mutation under the account advisory lock after
-       * re-reading the authoritative activity state, so a concurrent
-       * deletion marker can only land before or after the whole mutation.
+       * re-reading the verified session and authoritative activity state, so
+       * a concurrent revocation or deletion marker stops provider work.
+       * A concurrent deletion marker can only land before or after the whole
+       * mutation.
        * The lock's own SqlError maps to the shared account-unavailable
        * failure; the section's typed errors pass through unchanged.
        *
@@ -222,6 +238,7 @@ export class CustomerAvatarService extends Context.Service<
           .withAccountLock(
             accountId,
             requireAccountActivity(links, accountId).pipe(
+              Effect.andThen(requireSameVerifiedAccount(accountId)),
               Effect.andThen(mutation),
               Effect.uninterruptible,
               Effect.mapError((error) => new GuardedSectionError({ error }))
@@ -331,6 +348,7 @@ export class CustomerAvatarService extends Context.Service<
     Layer.provide(
       Layer.mergeAll(
         CustomerAvatarSettings.Live,
+        CustomerAuthentication.Default,
         CustomerAccountLinkRepository.Live,
         WorkspaceCloudinaryLayer
       )
@@ -410,14 +428,14 @@ const destroyAssetById = (
  * through the sanitized folder-listing call, which never logs the
  * account-bearing folder or any returned asset identity.
  */
-const stagingSweepBatchSize = 8;
+const stagingRecoveryBatchSize = 8;
 
 const listStagedAssets = (
   cloudinary: CloudinaryService["Service"],
   folder: string
 ): Effect.Effect<readonly CloudinaryAsset[], CustomerAvatarProviderError> =>
   cloudinary
-    .listFolderAssets(folder, { maxResults: stagingSweepBatchSize })
+    .listFolderAssets(folder, { maxResults: stagingRecoveryBatchSize })
     .pipe(Effect.mapError(() => new CustomerAvatarProviderError({})));
 
 /**
@@ -462,50 +480,24 @@ const recoverRetainedStaging = (
   );
 
 /**
- * The sweep iteration cap for draining staging. Each iteration destroys one
- * bounded batch, so per-call provider work stays finite while the folder is
- * still drained completely across iterations.
- */
-const stagingSweepMaxIterations = 25;
-
-/**
- * Removes every account-owned staging asset after the live avatar destroy
- * succeeded. The sweep loops bounded batches until a listing verifies the
- * folder is empty; deletion must never succeed with staged customer images
- * left stored. Any listing or destroy failure — or exhausting the iteration
- * cap — is a retryable failure so the deletion caller can retry with the
- * identity rows still intact and the deletion marker in place.
+ * Deletes all account-owned staging assets through Cloudinary's explicit
+ * delete-by-public-ID-prefix API. Search is eventually consistent and cannot
+ * prove that the folder is empty. The provider package follows deletion
+ * cursors with a bounded page limit; malformed, failed, or incomplete
+ * results keep account deletion retryable.
  */
 const destroyStaging = (
   cloudinary: CloudinaryService["Service"],
   namespace: string,
   accountId: CustomerAccountId
-): Effect.Effect<void, CustomerAvatarProviderError> => {
-  const sweepOnce = () =>
-    listStagedAssets(
-      cloudinary,
-      accountStagingFolder(namespace, accountId)
-    ).pipe(
-      Effect.flatMap((staged) =>
-        Effect.forEach(
-          staged,
-          (asset) => destroyAssetById(cloudinary, asset.public_id),
-          { discard: true }
-        ).pipe(Effect.as(staged.length))
+): Effect.Effect<void, CustomerAvatarProviderError> =>
+  cloudinary
+    .deleteResourcesByPublicIdPrefix(
+      Schema.decodeSync(CloudinaryPublicIdSchema)(
+        `${accountStagingFolder(namespace, accountId)}/`
       )
-    );
-
-  const drain = (
-    remainingIterations: number
-  ): Effect.Effect<void, CustomerAvatarProviderError> =>
-    remainingIterations <= 0
-      ? Effect.fail(new CustomerAvatarProviderError({}))
-      : Effect.flatMap(sweepOnce(), (destroyedCount) =>
-          destroyedCount === 0 ? Effect.void : drain(remainingIterations - 1)
-        );
-
-  return drain(stagingSweepMaxIterations);
-};
+    )
+    .pipe(Effect.mapError(() => new CustomerAvatarProviderError({})));
 
 /**
  * Stage upload under a unique temporary public ID. Replacement works

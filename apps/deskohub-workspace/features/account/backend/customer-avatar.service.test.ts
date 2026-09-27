@@ -6,9 +6,22 @@ import {
   type CloudinaryPublicId,
   CloudinaryPublicIdSchema,
 } from "@deskohub/cloudinary/schema";
-import { Context, Deferred, Effect, Fiber, Layer, Option } from "effect";
+import {
+  Context,
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Schema,
+} from "effect";
 import sharp from "sharp";
+import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { customerAccountIdSchema } from "../customer-account";
+import {
+  type CustomerAccountSession,
+  CustomerAuthentication,
+} from "./customer-authentication.service";
 
 const accountId = customerAccountIdSchema.make("acct-avatar-1");
 
@@ -25,6 +38,7 @@ type CloudinaryCall =
       readonly overwrite: boolean;
     }
   | { readonly op: "destroy"; readonly publicId: string }
+  | { readonly op: "delete-prefix"; readonly prefix: string }
   | { readonly op: "search"; readonly folder: string }
   | { readonly op: "get"; readonly publicId: string };
 
@@ -35,16 +49,30 @@ let renameFailureHttpCode: number | undefined;
 let commitButLoseRenameResponse = false;
 let renameReportsSourceMissingWithoutCommit = false;
 let uploadStoreThenFail = false;
-let listingNeverEmpties = false;
+let hideStagingFromSearch = false;
+let prefixDeleteFails = false;
 let destroyOutcome: "destroyed" | "not-found" | "uncertain" = "destroyed";
 let uncertainDestroyTargets: readonly string[] = [];
 let renameGateMillis = 0;
 let renameStarted = false;
 let renameSettledDeferred: Deferred.Deferred<never, void> | null = null;
+let accountLockGate: {
+  readonly entered: Deferred.Deferred<never, void>;
+  readonly release: Deferred.Deferred<never, void>;
+} | null = null;
 let storedAssets: Set<string> = new Set();
 /** Immutable provider asset identities keyed by public ID. */
 let assetIdByPublicId: Map<string, string> = new Map();
 let lastUploadedBytes: Uint8Array | null = null;
+let currentSession: CustomerAccountSession | null = null;
+
+const makeSession = (account: string): CustomerAccountSession => ({
+  accountId: customerAccountIdSchema.make(account),
+  email: Schema.decodeSync(reservationCustomerEmailSchema)(
+    "avatar@example.test"
+  ),
+  deletionRequested: false,
+});
 
 const makeAsset = (publicId: string, version: number, assetId?: string) => ({
   public_id: publicId,
@@ -77,6 +105,9 @@ const Cloudinary = Context.Service<
     readonly destroyAsset: (
       publicId: CloudinaryPublicId
     ) => Effect.Effect<unknown, { _tag: string }>;
+    readonly deleteResourcesByPublicIdPrefix: (
+      prefix: CloudinaryPublicId
+    ) => Effect.Effect<void, { _tag: string }>;
     readonly renameAsset: (
       from: CloudinaryPublicId,
       to: CloudinaryPublicId,
@@ -102,8 +133,8 @@ const CloudinaryLayer = Layer.succeed(Cloudinary, {
       let matches = [...storedAssets].filter((id) =>
         id.startsWith(`${folder}/`)
       );
-      if (listingNeverEmpties && matches.length === 0) {
-        matches = [`${folder}/phantom`];
+      if (hideStagingFromSearch) {
+        matches = [];
       }
       return Effect.succeed(
         matches
@@ -144,6 +175,20 @@ const CloudinaryLayer = Layer.succeed(Cloudinary, {
       return Effect.succeed(
         destroyOutcome === "destroyed" ? "destroyed" : "not-found"
       );
+    }),
+  deleteResourcesByPublicIdPrefix: (prefix) =>
+    Effect.suspend(() => {
+      calls.push({ op: "delete-prefix", prefix });
+      if (prefixDeleteFails) {
+        return Effect.fail({ _tag: "CloudinaryPrefixDeleteError" });
+      }
+      for (const publicId of storedAssets) {
+        if (publicId.startsWith(prefix)) {
+          storedAssets.delete(publicId);
+          assetIdByPublicId.delete(publicId);
+        }
+      }
+      return Effect.void;
     }),
   renameAsset: (from, to, options) =>
     Effect.suspend(() => {
@@ -251,7 +296,16 @@ const LinksLayer = Layer.succeed(Links, {
             deletionRequestedAt: deletionRequestedAt ?? new Date(),
           }
     ),
-  withAccountLock: (_accountId, effect) => effect,
+  withAccountLock: (_accountId, effect) =>
+    Effect.suspend(() => {
+      const gate = accountLockGate;
+      return gate === null
+        ? effect
+        : Deferred.succeed(gate.entered, undefined).pipe(
+            Effect.andThen(Deferred.await(gate.release)),
+            Effect.andThen(effect)
+          );
+    }),
 });
 
 mock.module("./customer-account-link.repository", () => ({
@@ -270,6 +324,13 @@ const makeLayer = (namespace: Option.Option<string>) =>
       Layer.mergeAll(
         CloudinaryLayer,
         LinksLayer,
+        Layer.succeed(CustomerAuthentication, {
+          currentUser: Effect.suspend(() =>
+            currentSession === null
+              ? Effect.succeed(null)
+              : Effect.succeed(currentSession)
+          ),
+        }),
         Layer.succeed(CustomerAvatarSettings, { namespace })
       )
     )
@@ -313,17 +374,20 @@ const resetFakes = () => {
   commitButLoseRenameResponse = false;
   renameReportsSourceMissingWithoutCommit = false;
   uploadStoreThenFail = false;
-  listingNeverEmpties = false;
+  hideStagingFromSearch = false;
+  prefixDeleteFails = false;
   destroyOutcome = "destroyed";
   uncertainDestroyTargets = [];
   renameGateMillis = 0;
   renameStarted = false;
   renameSettledDeferred = null;
+  accountLockGate = null;
   storedAssets = new Set();
   assetIdByPublicId = new Map();
   lastUploadedBytes = null;
   linkActivity = "active";
   deletionRequestedAt = null;
+  currentSession = makeSession(accountId);
 };
 
 describe("customer avatar namespaces", () => {
@@ -743,34 +807,38 @@ describe("CustomerAvatarService", () => {
     );
 
     expect(outcome._tag).toBe("Success");
-    expect(calls.map(({ op }) => op)).toEqual([
-      "destroy",
-      "search",
-      "destroy",
-      "search",
-    ]);
+    expect(calls.map(({ op }) => op)).toEqual(["destroy", "delete-prefix"]);
     const destroys = calls.filter(
       (call): call is Extract<CloudinaryCall, { op: "destroy" }> =>
         call.op === "destroy"
     );
     expect(destroys[0]!.publicId).toBe("avatars/test/acct-avatar-1");
-    expect(destroys[1]!.publicId).toBe(retainedStagedId);
+    expect(calls[1]).toEqual({
+      op: "delete-prefix",
+      prefix: "avatars/test-staging/acct-avatar-1/",
+    });
+    expect(storedAssets.has(retainedStagedId)).toBe(false);
     // Nothing recoverable survives deletion.
     expect(storedAssets.size).toBe(0);
   });
 
-  test("drains a staging folder holding more assets than one sweep batch before deletion succeeds", async () => {
+  test("deletes staged assets when Search returns empty while an account staging asset exists", async () => {
     resetFakes();
     storedAssets.add("avatars/test/acct-avatar-1");
-    // Seed more retained staging assets than the maxResults: 8 batch bound.
-    const stagingIds = Array.from(
-      { length: 10 },
-      (_, index) => `avatars/test-staging/acct-avatar-1/overflow-${index}`
+    const stagedId = "avatars/test-staging/acct-avatar-1/retained";
+    storedAssets.add(stagedId);
+    hideStagingFromSearch = true;
+
+    const searchResult = await Effect.runPromise(
+      Effect.flatMap(Cloudinary, (cloudinary) =>
+        cloudinary.listFolderAssets("avatars/test-staging/acct-avatar-1", {
+          maxResults: 8,
+        })
+      ).pipe(Effect.provide(CloudinaryLayer))
     );
-    for (const [index, id] of stagingIds.entries()) {
-      storedAssets.add(id);
-      assetIdByPublicId.set(id, `asset-overflow-${index}`);
-    }
+    expect(searchResult).toEqual([]);
+    expect(storedAssets.has(stagedId)).toBe(true);
+    clearCalls();
 
     const outcome = await runWith(
       Effect.flatMap(CustomerAvatarService, (avatars) =>
@@ -778,29 +846,21 @@ describe("CustomerAvatarService", () => {
       )
     );
 
-    // Deletion succeeds only after the folder is verifiably empty: the
-    // sweep loops bounded batches across iterations.
     expect(outcome._tag).toBe("Success");
-    const destroys = calls.filter((call) => call.op === "destroy");
-    // One for the live asset plus every staged asset across sweeps.
-    expect(destroys).toHaveLength(11);
-    expect(destroys[0]).toMatchObject({
-      publicId: "avatars/test/acct-avatar-1",
+    expect(calls.map(({ op }) => op)).toEqual(["destroy", "delete-prefix"]);
+    expect(calls[1]).toEqual({
+      op: "delete-prefix",
+      prefix: "avatars/test-staging/acct-avatar-1/",
     });
-    const searches = calls.filter((call) => call.op === "search");
-    expect(searches.length).toBe(3);
-    for (const id of stagingIds) {
-      expect(storedAssets.has(id)).toBe(false);
-    }
     expect(storedAssets.size).toBe(0);
   });
 
-  test("fails deletion retryably when the staging sweep cannot verify an empty folder", async () => {
+  test("keeps deletion retryable when account-prefix staging deletion fails", async () => {
     resetFakes();
     storedAssets.add("avatars/test/acct-avatar-1");
-    // The listing keeps reporting a phantom staging asset, so the folder is
-    // never verifiably empty within the iteration cap.
-    listingNeverEmpties = true;
+    const stagedId = "avatars/test-staging/acct-avatar-1/retained";
+    storedAssets.add(stagedId);
+    prefixDeleteFails = true;
 
     const outcome = await runWith(
       Effect.flatMap(CustomerAvatarService, (avatars) =>
@@ -808,12 +868,32 @@ describe("CustomerAvatarService", () => {
       )
     );
 
-    // Deletion never reports success with staging possibly remaining.
     expect(outcome).toMatchObject({
       failure: { _tag: "CustomerAvatarProviderError" },
     });
-    const searches = calls.filter((call) => call.op === "search");
-    expect(searches.length).toBeGreaterThan(1);
+    expect(calls.map(({ op }) => op)).toEqual(["destroy", "delete-prefix"]);
+    expect(storedAssets.has(stagedId)).toBe(true);
+  });
+
+  test("uses a trailing account prefix so deletion cannot match another account ID", async () => {
+    resetFakes();
+    const ownStagedId = "avatars/test-staging/acct-avatar-1/own";
+    const neighboringStagedId = "avatars/test-staging/acct-avatar-10/other";
+    storedAssets.add(ownStagedId);
+    storedAssets.add(neighboringStagedId);
+
+    await runWith(
+      Effect.flatMap(CustomerAvatarService, (avatars) =>
+        avatars.destroy(accountId)
+      )
+    );
+
+    expect(storedAssets.has(ownStagedId)).toBe(false);
+    expect(storedAssets.has(neighboringStagedId)).toBe(true);
+    expect(calls[1]).toEqual({
+      op: "delete-prefix",
+      prefix: "avatars/test-staging/acct-avatar-1/",
+    });
   });
 
   test("skips staging recovery when a live avatar exists, keeps it intact, and fails the fresh upload retryably", async () => {
@@ -856,7 +936,7 @@ describe("CustomerAvatarService", () => {
   test("an uncertain staging destroy during deletion fails retryably", async () => {
     resetFakes();
     const retainedStagedId = await retainStaging();
-    uncertainDestroyTargets = [retainedStagedId];
+    prefixDeleteFails = true;
 
     const outcome = await runWith(
       Effect.flatMap(CustomerAvatarService, (avatars) =>
@@ -1050,6 +1130,74 @@ describe("CustomerAvatarService", () => {
     expect(calls).toHaveLength(0);
   });
 
+  test("rechecks the verified session before upload after waiting for the account lock", async () => {
+    resetFakes();
+    const bytes = await pngBytes(50, 50);
+
+    const outcome = await runWith(
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        accountLockGate = { entered, release };
+        const avatars = yield* CustomerAvatarService;
+        const upload = yield* Effect.forkChild(
+          avatars.upload(accountId, uploadInput(bytes)).pipe(Effect.result)
+        );
+
+        yield* Deferred.await(entered);
+        currentSession = null;
+        yield* Deferred.succeed(release, undefined);
+        const result = yield* Fiber.join(upload);
+        accountLockGate = null;
+        return result;
+      })
+    );
+
+    expect(outcome).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "CustomerAccountAccessError",
+        reason: "unauthenticated",
+      },
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  test("rechecks the verified session before remove after waiting for the account lock", async () => {
+    resetFakes();
+    const liveId = "avatars/test/acct-avatar-1";
+    storedAssets.add(liveId);
+
+    const outcome = await runWith(
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        accountLockGate = { entered, release };
+        const avatars = yield* CustomerAvatarService;
+        const remove = yield* Effect.forkChild(
+          avatars.remove(accountId).pipe(Effect.result)
+        );
+
+        yield* Deferred.await(entered);
+        currentSession = null;
+        yield* Deferred.succeed(release, undefined);
+        const result = yield* Fiber.join(remove);
+        accountLockGate = null;
+        return result;
+      })
+    );
+
+    expect(outcome).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "CustomerAccountAccessError",
+        reason: "unauthenticated",
+      },
+    });
+    expect(calls).toHaveLength(0);
+    expect(storedAssets.has(liveId)).toBe(true);
+  });
+
   test("fails closed with an unavailable error when the namespace cannot be determined", async () => {
     resetFakes();
     const bytes = await pngBytes(50, 50);
@@ -1077,7 +1225,7 @@ describe("CustomerAvatarService", () => {
       )
     );
     expect(removed).toBeUndefined();
-    expect(calls.map(({ op }) => op)).toEqual(["destroy", "search"]);
+    expect(calls.map(({ op }) => op)).toEqual(["destroy", "delete-prefix"]);
 
     clearCalls();
     const missing = await runWith(

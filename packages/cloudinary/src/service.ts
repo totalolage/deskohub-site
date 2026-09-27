@@ -13,6 +13,7 @@ import {
 } from "./config";
 import {
   CloudinaryDestroyError,
+  CloudinaryPrefixDeleteError,
   CloudinaryRenameError,
   CloudinarySearchError,
   CloudinaryUploadError,
@@ -79,6 +80,9 @@ export interface ICloudinaryService {
   readonly destroyAsset: (
     publicId: CloudinaryPublicId
   ) => Effect.Effect<CloudinaryDestroyOutcome, CloudinaryDestroyError>;
+  readonly deleteResourcesByPublicIdPrefix: (
+    prefix: CloudinaryPublicId
+  ) => Effect.Effect<void, CloudinaryPrefixDeleteError>;
   readonly renameAsset: (
     fromPublicId: CloudinaryPublicId,
     toPublicId: CloudinaryPublicId,
@@ -107,6 +111,7 @@ export class CloudinaryService extends Context.Service<
       const getByPublicId = createPublicIdLookupExecutor();
       const uploadImage = createUploadExecutor();
       const destroyAsset = createDestroyExecutor();
+      const deleteResourcesByPublicIdPrefix = createPrefixDeleteExecutor();
       const renameAsset = createRenameExecutor();
 
       const searchByTag: ICloudinaryService["searchByTag"] = (tag, options) =>
@@ -219,6 +224,7 @@ export class CloudinaryService extends Context.Service<
         searchWithTags,
         uploadImage,
         destroyAsset,
+        deleteResourcesByPublicIdPrefix,
         renameAsset,
       } satisfies ICloudinaryService;
     })
@@ -810,7 +816,9 @@ function createDestroyExecutor() {
   const performDestroy = (publicId: CloudinaryPublicId) =>
     Effect.tryPromise({
       try: () =>
-        cloudinary.uploader.destroy(publicId) as Promise<{ result?: unknown }>,
+        cloudinary.uploader.destroy(publicId, {
+          invalidate: true,
+        }) as Promise<{ result?: unknown }>,
       catch: (error) => {
         const httpCode =
           typeof error === "object" && error !== null
@@ -867,6 +875,153 @@ function createDestroyExecutor() {
         ),
         Effect.retry(destroyRetryPolicy)
       );
+    },
+    (effect) => Effect.scoped(effect)
+  );
+}
+
+const prefixDeletePageLimit = 25;
+
+type PrefixDeletePage = {
+  readonly nextCursor?: string;
+};
+
+function decodePrefixDeletePage(
+  result: unknown
+): Effect.Effect<PrefixDeletePage, CloudinaryPrefixDeleteError> {
+  if (typeof result !== "object" || result === null || Array.isArray(result)) {
+    return Effect.fail(
+      new CloudinaryPrefixDeleteError({
+        message: "Cloudinary prefix delete returned an invalid response",
+        outcome: "uncertain",
+      })
+    );
+  }
+
+  const response = result as {
+    readonly deleted?: unknown;
+    readonly partial?: unknown;
+    readonly next_cursor?: unknown;
+  };
+  if (
+    typeof response.deleted !== "object" ||
+    response.deleted === null ||
+    Array.isArray(response.deleted) ||
+    typeof response.partial !== "boolean"
+  ) {
+    return Effect.fail(
+      new CloudinaryPrefixDeleteError({
+        message: "Cloudinary prefix delete returned an invalid response",
+        outcome: "uncertain",
+      })
+    );
+  }
+
+  const statuses = Object.values(response.deleted);
+  if (
+    statuses.some((status) => status !== "deleted" && status !== "not found")
+  ) {
+    return Effect.fail(
+      new CloudinaryPrefixDeleteError({
+        message: "Cloudinary prefix delete returned an incomplete result",
+        outcome: "uncertain",
+      })
+    );
+  }
+
+  if (response.partial) {
+    return typeof response.next_cursor === "string" &&
+      response.next_cursor.length > 0
+      ? Effect.succeed({
+          nextCursor: response.next_cursor,
+        } satisfies PrefixDeletePage)
+      : Effect.fail(
+          new CloudinaryPrefixDeleteError({
+            message: "Cloudinary prefix delete returned an invalid cursor",
+            outcome: "uncertain",
+          })
+        );
+  }
+
+  return response.next_cursor === undefined
+    ? Effect.succeed({} satisfies PrefixDeletePage)
+    : Effect.fail(
+        new CloudinaryPrefixDeleteError({
+          message: "Cloudinary prefix delete returned an invalid cursor",
+          outcome: "uncertain",
+        })
+      );
+}
+
+function toPrefixDeleteError(error: CloudinaryRejectedValue) {
+  const httpCode =
+    typeof error === "object" && error !== null
+      ? readCloudinaryHttpCode(error)
+      : undefined;
+
+  return new CloudinaryPrefixDeleteError({
+    message: "Cloudinary asset prefix delete failed",
+    outcome: httpCode !== undefined && httpCode < 500 ? "failed" : "uncertain",
+    httpCode,
+  });
+}
+
+function createPrefixDeleteExecutor() {
+  const retryPolicy = createTransientRetryPolicy<CloudinaryPrefixDeleteError>(
+    "asset prefix delete"
+  );
+
+  const deletePage = (prefix: CloudinaryPublicId, nextCursor?: string) =>
+    Effect.tryPromise({
+      try: () =>
+        cloudinary.api.delete_resources_by_prefix(prefix, {
+          resource_type: "image",
+          type: "upload",
+          ...(nextCursor === undefined ? {} : { next_cursor: nextCursor }),
+        }),
+      catch: (error) => toPrefixDeleteError(error as CloudinaryRejectedValue),
+    }).pipe(
+      Effect.flatMap(decodePrefixDeletePage),
+      Effect.tapError((error) =>
+        Effect.logError("Cloudinary asset prefix delete failed", {
+          outcome: error.outcome,
+          httpCode: error.httpCode,
+        })
+      ),
+      Effect.retry(retryPolicy)
+    );
+
+  return Effect.fn("cloudinary.api.delete_resources_by_prefix")(
+    function* (prefix: CloudinaryPublicId) {
+      const seenCursors = new Set<string>();
+      let nextCursor: string | undefined;
+
+      for (
+        let pageNumber = 0;
+        pageNumber < prefixDeletePageLimit;
+        pageNumber += 1
+      ) {
+        const page = yield* deletePage(prefix, nextCursor);
+        yield* Effect.logInfo("Cloudinary asset prefix delete page completed", {
+          pageNumber: pageNumber + 1,
+        });
+
+        if (page.nextCursor === undefined) return;
+        if (seenCursors.has(page.nextCursor)) {
+          return yield* new CloudinaryPrefixDeleteError({
+            message: "Cloudinary prefix delete cursor repeated",
+            outcome: "uncertain",
+          });
+        }
+
+        seenCursors.add(page.nextCursor);
+        nextCursor = page.nextCursor;
+      }
+
+      return yield* new CloudinaryPrefixDeleteError({
+        message: "Cloudinary prefix delete exceeded its page limit",
+        outcome: "uncertain",
+      });
     },
     (effect) => Effect.scoped(effect)
   );

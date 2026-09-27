@@ -36,6 +36,15 @@ export class CloudinaryDestroyError extends Schema.TaggedErrorClass<CloudinaryDe
   }
 ) {}
 
+export class CloudinaryPrefixDeleteError extends Schema.TaggedErrorClass<CloudinaryPrefixDeleteError>()(
+  "CloudinaryPrefixDeleteError",
+  {
+    message: Schema.String,
+    outcome: Schema.Literals(["uncertain", "failed"]),
+    httpCode: Schema.optional(Schema.Finite),
+  }
+) {}
+
 export class CloudinaryRenameError extends Schema.TaggedErrorClass<CloudinaryRenameError>()(
   "CloudinaryRenameError",
   {
