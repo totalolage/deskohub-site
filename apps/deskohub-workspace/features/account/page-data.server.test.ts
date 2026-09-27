@@ -4,6 +4,14 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 
+const loadSavedCardsMock = mock((): readonly unknown[] | "unavailable" => []);
+mock.module(
+  "@/features/account/backend/saved-card/saved-card-page.server",
+  () => ({
+    loadSavedCards: () => loadSavedCardsMock(),
+  })
+);
+
 let currentUserEffect: Effect.Effect<
   {
     readonly accountId: CustomerAccountId;
@@ -296,6 +304,7 @@ describe("loadCustomerAccountPage", () => {
         billing: null,
       },
       history: { kind: "unavailable", reason: "provider-unavailable" },
+      savedCards: { kind: "loaded", cards: [] },
     });
   });
 

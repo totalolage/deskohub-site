@@ -27,6 +27,11 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import type { CustomerAccountPageState } from "../page-data.server";
 
+mock.module("@/features/account/saved-card-actions", () => ({
+  startSavedCardEnrollment: () => Promise.resolve({ serverError: "x" }),
+  removeSavedCard: () => Promise.resolve({ serverError: "x" }),
+}));
+
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
 const getSession = mock(() => Promise.resolve({ data: null, error: null }));
 const beginAnalyticsAccountTransition = mock(() => undefined);
@@ -203,6 +208,7 @@ const linkedState = {
     kind: "available",
     groups: { current: [], past: [], unavailable: [] },
   },
+  savedCards: { kind: "loaded", cards: [] },
 } as const;
 
 describe("AccountPage states", () => {

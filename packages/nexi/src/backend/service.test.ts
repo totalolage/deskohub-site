@@ -5,7 +5,9 @@ import { NexiRuntimeConfig } from "../config";
 import type { OrderResponse } from "../generated/effect.gen";
 import {
   getNexiPaymentMetadata,
+  NexiContractIdSchema,
   NexiCorrelationIdSchema,
+  NexiCustomerIdSchema,
   NexiCustomerReferenceSchema,
   NexiOperationIdSchema,
   NexiOrderIdSchema,
@@ -27,6 +29,8 @@ const nexiCorrelationId = Schema.decodeUnknownSync(NexiCorrelationIdSchema);
 const nexiCustomerReference = Schema.decodeUnknownSync(
   NexiCustomerReferenceSchema
 );
+const nexiContractId = Schema.decodeUnknownSync(NexiContractIdSchema);
+const nexiCustomerId = Schema.decodeUnknownSync(NexiCustomerIdSchema);
 
 const runWithService = <A, E>(
   effect: Effect.Effect<A, E, NexiService>,
@@ -714,5 +718,290 @@ describe("NexiService administration reads", () => {
       },
     ]);
     expect(JSON.stringify(result)).not.toContain("customerInfo");
+  });
+});
+
+describe("NexiService contract enrollment", () => {
+  test("requests VERIFY contract creation when contractEnrollment is present", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        hostedPage: "https://pay.example.test",
+        securityToken: "security-token",
+      })
+    );
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.createHostedPaymentPage({
+          orderId: nexiOrderId("order-id"),
+          correlationId: nexiCorrelationId("correlation-id"),
+          amount: "5000",
+          currency: "CZK",
+          locale: "en-US",
+          resultUrl: "https://example.test/result",
+          cancelUrl: "https://example.test/cancel",
+          notificationUrl: "https://example.test/webhook",
+          customerReference: nexiCustomerId("customer-id"),
+          actionType: "VERIFY",
+          contractEnrollment: {
+            contractId: nexiContractId("contract-1"),
+            contractType: "CIT",
+          },
+        });
+      }),
+      fetchMock
+    );
+
+    expect(result.hostedPage).toBe("https://pay.example.test");
+    const body = await readJsonBody(fetchMock.mock.calls[0] as FetchCall);
+    expect(body.order.customerId).toBe("customer-id");
+    expect(body.order.customerInfo).toBeUndefined();
+    expect(body.paymentSession.actionType).toBe("VERIFY");
+    expect(body.paymentSession.recurrence).toEqual({
+      action: "CONTRACT_CREATION",
+      contractId: nexiContractId("contract-1"),
+      contractType: "CIT",
+    });
+    expect(body.order.amount).toBe("5000");
+  });
+
+  test("keeps plain PAY sessions free of recurrence and VERIFY", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        hostedPage: "https://pay.example.test",
+        securityToken: "security-token",
+      })
+    );
+
+    await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.createHostedPaymentPage({
+          orderId: nexiOrderId("order-id"),
+          correlationId: nexiCorrelationId("correlation-id"),
+          amount: "5000",
+          currency: "CZK",
+          locale: "en-US",
+          resultUrl: "https://example.test/result",
+          cancelUrl: "https://example.test/cancel",
+          notificationUrl: "https://example.test/webhook",
+        });
+      }),
+      fetchMock
+    );
+
+    const body = await readJsonBody(fetchMock.mock.calls[0] as FetchCall);
+    expect(body.paymentSession.actionType).toBe("PAY");
+    expect(body.paymentSession.recurrence).toBeUndefined();
+  });
+});
+
+describe("NexiService customer contracts", () => {
+  test("keeps only CARD contracts with normalized circuit and safe suffix", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        customerId: "customer-id",
+        contracts: [
+          {
+            contractId: nexiContractId("contract-visa"),
+            contractType: "CIT",
+            paymentMethod: "CARD",
+            paymentCircuit: "visa",
+            paymentInstrumentInfo: "***6152",
+          },
+          {
+            contractId: nexiContractId("contract-mc"),
+            contractType: "MIT_UNSCHEDULED",
+            paymentMethod: "CARD",
+            paymentCircuit: "MasterCard",
+            paymentInstrumentInfo: "***42",
+          },
+          {
+            contractId: nexiContractId("contract-apm"),
+            contractType: "CIT",
+            paymentMethod: "APM",
+            paymentCircuit: "BANCOMAT_PAY",
+            paymentInstrumentInfo: "***9999",
+          },
+          {
+            contractId: nexiContractId("contract-raw"),
+            contractType: "MIT_SCHEDULED",
+            paymentMethod: "CARD",
+            paymentCircuit: "SOME_OTHER_CIRCUIT",
+            paymentInstrumentInfo: "card ending 1234",
+          },
+        ],
+      })
+    );
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.listCustomerContracts({
+          customerId: nexiCustomerId("customer-id"),
+          correlationId: nexiCorrelationId("correlation-id"),
+        });
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([
+      {
+        contractId: nexiContractId("contract-visa"),
+        contractType: "CIT",
+        circuit: "VISA",
+        maskedInstrumentSuffix: "6152",
+      },
+      {
+        contractId: nexiContractId("contract-mc"),
+        contractType: "MIT_UNSCHEDULED",
+        circuit: "MC",
+        maskedInstrumentSuffix: "42",
+      },
+      {
+        contractId: nexiContractId("contract-raw"),
+        contractType: "MIT_SCHEDULED",
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("paymentInstrumentInfo");
+    expect(JSON.stringify(result)).not.toContain("6152***");
+    const call = fetchMock.mock.calls[0] as FetchCall;
+    expect(getUrl(call)).toBe(
+      "https://nexi.example.test/api/phoenix-0.0/psp/api/v1/contracts/customers/customer-id"
+    );
+    expect(getHeader(call, "Correlation-Id")).toBe("correlation-id");
+  });
+
+  test("treats a customer-only empty response as an empty contract list", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({ customerId: "customer-id" })
+    );
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.listCustomerContracts({
+          customerId: nexiCustomerId("customer-id"),
+          correlationId: nexiCorrelationId("correlation-id"),
+        });
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  test("skips entries with blank contract identifiers", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        customerId: "customer-id",
+        contracts: [
+          {
+            contractId: "   ",
+            contractType: "CIT",
+            paymentMethod: "CARD",
+            paymentCircuit: "VISA",
+            paymentInstrumentInfo: "***6152",
+          },
+        ],
+      })
+    );
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.listCustomerContracts({
+          customerId: nexiCustomerId("customer-id"),
+          correlationId: nexiCorrelationId("correlation-id"),
+        });
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  test("fails closed on a malformed response envelope", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        customerId: "customer-id",
+        contracts: [
+          {
+            contractId: nexiContractId("contract-id"),
+            contractType: "NOT_A_TYPE",
+            paymentMethod: "CARD",
+            paymentCircuit: "VISA",
+            paymentInstrumentInfo: "***6152",
+          },
+        ],
+      })
+    );
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi
+          .listCustomerContracts({
+            customerId: nexiCustomerId("customer-id"),
+            correlationId: nexiCorrelationId("correlation-id"),
+          })
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(Predicate.isTagged(result, "Failure")).toBe(true);
+    if (Predicate.isTagged(result, "Failure")) {
+      expect(Predicate.isTagged(result.failure, "ExternalAPIError")).toBe(true);
+      expect(result.failure.message).toContain("invalid response");
+    }
+  });
+
+  test("maps a 404 customer lookup to ExternalAPIError", async () => {
+    const fetchMock = mockNexiFetch(new Response(null, { status: 404 }));
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi
+          .listCustomerContracts({
+            customerId: nexiCustomerId("customer-id"),
+            correlationId: nexiCorrelationId("correlation-id"),
+          })
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(Predicate.isTagged(result, "Failure")).toBe(true);
+    if (Predicate.isTagged(result, "Failure")) {
+      expect(Predicate.isTagged(result.failure, "ExternalAPIError")).toBe(true);
+      if (Predicate.isTagged(result.failure, "ExternalAPIError")) {
+        expect(result.failure.statusCode).toBe(404);
+      }
+    }
+  });
+
+  test("deactivates a contract and tolerates an empty success body", async () => {
+    const fetchMock = mockNexiFetch(new Response("", { status: 200 }));
+
+    await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.deactivateContract({
+          contractId: nexiContractId("contract#1"),
+          correlationId: nexiCorrelationId("correlation-id"),
+        });
+      }),
+      fetchMock
+    );
+
+    const call = fetchMock.mock.calls[0] as FetchCall;
+    expect(getUrl(call)).toBe(
+      "https://nexi.example.test/api/phoenix-0.0/psp/api/v1/contracts/contract%231/deactivation"
+    );
+    expect(getMethod(call)).toBe("POST");
+    expect(getHeader(call, "Correlation-Id")).toBe("correlation-id");
   });
 });

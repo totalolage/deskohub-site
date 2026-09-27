@@ -79,6 +79,18 @@ mock.module("@/features/account/actions", () => ({
   updateCustomerProfile,
 }));
 
+const startSavedCardEnrollment = mock(
+  (): Promise<ActionResult> => Promise.resolve({ serverError: "Unavailable" })
+);
+const removeSavedCard = mock((_input: { readonly contractId: string }) =>
+  Promise.resolve({ serverError: "Unavailable" })
+);
+
+mock.module("@/features/account/saved-card-actions", () => ({
+  removeSavedCard,
+  startSavedCardEnrollment,
+}));
+
 type MarketingPreferenceSaveInput = {
   readonly confirmed: true;
   readonly context: string;
@@ -298,8 +310,10 @@ afterEach(() => {
   completeCustomerProfile.mockClear();
   deleteCustomerAccount.mockClear();
   routerRefresh.mockClear();
+  removeSavedCard.mockClear();
   signInMagicLink.mockClear();
   signOut.mockClear();
+  startSavedCardEnrollment.mockClear();
   updateCustomerProfile.mockClear();
 });
 
@@ -357,7 +371,12 @@ function renderProfileScreen(locale: Locale): ScreenView {
 
 function renderBillingScreen(locale: Locale): ScreenView {
   return render(
-    <BillingScreen copy={billingCopy[locale]} locale={locale}>
+    <BillingScreen
+      cardFlow={undefined}
+      cards={{ kind: "loaded", cards: [] }}
+      copy={billingCopy[locale]}
+      locale={locale}
+    >
       <div>Caller-owned billing fields</div>
     </BillingScreen>
   );
@@ -458,11 +477,6 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
     render: renderBillingScreen,
   },
   {
-    label: (locale) => billingCopy[locale].addPaymentCard,
-    name: "add payment card control",
-    render: renderBillingScreen,
-  },
-  {
     label: (locale) => billingCopy[locale].downloadInvoice,
     name: "download invoice control",
     render: renderBillingScreen,
@@ -490,8 +504,8 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
 ];
 
 describe("account future-feature controls", () => {
-  test("keeps the future-feature inventory at nine controls", () => {
-    expect(futureFeatureTargets).toHaveLength(9);
+  test("keeps the future-feature inventory at eight controls", () => {
+    expect(futureFeatureTargets).toHaveLength(8);
   });
 
   for (const target of futureFeatureTargets) {

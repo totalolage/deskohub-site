@@ -73,7 +73,9 @@ describe("customer account route boundary", () => {
   test("checks the account gate after connection and before loading private account data", async () => {
     const { default: CustomerAccountPageRoute } = await import("./page");
 
-    const route = (await CustomerAccountPageRoute()) as ReactElement<{
+    const route = (await CustomerAccountPageRoute({
+      searchParams: Promise.resolve({}),
+    })) as ReactElement<{
       readonly children: ReactElement<{ readonly locale: "en-US" }>;
       readonly fallback: ReactElement<{ readonly locale: "en-US" }>;
     }>;
@@ -105,7 +107,9 @@ describe("customer account route boundary", () => {
       return false;
     });
     const { default: CustomerAccountPageRoute } = await import("./page");
-    const route = await CustomerAccountPageRoute();
+    const route = await CustomerAccountPageRoute({
+      searchParams: Promise.resolve({}),
+    });
     const content = route.props.children;
     const Content = content.type as (props: {
       readonly locale: "en-US";

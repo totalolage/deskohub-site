@@ -47,12 +47,21 @@ const updateCustomerProfile = mock(
 );
 
 mock.module("next/navigation", () => ({
+  usePathname: () => "/en-US/account",
   useRouter: () => ({ refresh: routerRefresh }),
+  unstable_rethrow: (cause: unknown) => {
+    throw cause;
+  },
 }));
 
 mock.module("@/features/account/actions", () => ({
   completeCustomerProfile,
   updateCustomerProfile,
+}));
+
+mock.module("@/features/account/saved-card-actions", () => ({
+  startSavedCardEnrollment: () => Promise.resolve({ serverError: "x" }),
+  removeSavedCard: () => Promise.resolve({ serverError: "x" }),
 }));
 
 const businessProfile = {

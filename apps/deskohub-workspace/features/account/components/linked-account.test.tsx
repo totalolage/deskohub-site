@@ -67,6 +67,11 @@ mock.module("@/features/account/actions", () => ({
   updateCustomerProfile,
 }));
 
+mock.module("@/features/account/saved-card-actions", () => ({
+  startSavedCardEnrollment: () => Promise.resolve({ serverError: "x" }),
+  removeSavedCard: () => Promise.resolve({ serverError: "x" }),
+}));
+
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
     signIn: { magicLink: () => Promise.resolve({ error: null }) },

@@ -14,6 +14,8 @@ export type {
 } from "./backend/customer-dotypos-adapter.service";
 export { CustomerProfileService } from "./backend/customer-profile.service";
 export { CustomerReservationHistoryService } from "./backend/customer-reservation-history.service";
+export { SavedCardService } from "./backend/saved-card/saved-card.service";
+export { loadSavedCards } from "./backend/saved-card/saved-card-page.server";
 export type {
   CustomerProfileBillingInput,
   CustomerProfileInput,
@@ -22,6 +24,8 @@ export type {
   CustomerReservationProduct,
   CustomerReservationStatus,
   CustomerReservationSummary,
+  SavedCardEnrollmentOutcome,
+  SavedCardView,
 } from "./contracts";
 export {
   updateCustomerProfileSchema,

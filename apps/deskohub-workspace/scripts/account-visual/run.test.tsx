@@ -151,6 +151,7 @@ const expectedOwnedSourcePaths = [
   "apps/deskohub-workspace/scripts/account-visual/stubs/auth-client.ts",
   "apps/deskohub-workspace/scripts/account-visual/stubs/next-link.tsx",
   "apps/deskohub-workspace/scripts/account-visual/stubs/next-navigation.ts",
+  "apps/deskohub-workspace/scripts/account-visual/stubs/saved-card-actions.ts",
   "apps/deskohub-workspace/scripts/account-visual/stubs/server-only-fail-closed.ts",
   "apps/deskohub-workspace/scripts/account-visual/types.ts",
 ] as const;

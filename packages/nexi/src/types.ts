@@ -241,6 +241,118 @@ export const getNexiPaymentMetadata = (
     (verification.provider.captureExecuted ? "capture_executed" : undefined),
 });
 
+export const NexiContractIdSchema = Schema.NonEmptyString.check(
+  Schema.isMaxLength(18)
+)
+  .pipe(Schema.brand("NexiContractId"))
+  .annotate({
+    identifier: "NexiContractId",
+    description: "Nexi oneclick contract identifier for a saved instrument.",
+  });
+export type NexiContractId = typeof NexiContractIdSchema.Type;
+
+export const NexiCustomerIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("NexiCustomerId")
+).annotate({
+  identifier: "NexiCustomerId",
+  description: "Opaque customer reference used for Nexi contract lookups.",
+});
+export type NexiCustomerId = typeof NexiCustomerIdSchema.Type;
+
+const decodeNexiContractId = Schema.decodeUnknownSync(NexiContractIdSchema);
+
+const nexiContractCircuits = new Set([
+  "VISA",
+  "MC",
+  "MASTERCARD",
+  "DINERS",
+  "MAESTRO",
+  "BANCOMAT_PAY",
+  "GOOGLE_PAY",
+  "APPLE_PAY",
+]);
+
+const maskedInstrumentSuffixPattern = /^\*+\s*(\d{1,4})$/;
+
+export const normalizeNexiPaymentCircuit = (
+  paymentCircuit: string
+): string | undefined => {
+  const circuit = paymentCircuit.trim().toUpperCase();
+  if (circuit === "MASTERCARD") return "MC";
+  return nexiContractCircuits.has(circuit) ? circuit : undefined;
+};
+
+export const getNexiMaskedInstrumentSuffix = (
+  paymentInstrumentInfo: string
+): string | undefined => {
+  const match = maskedInstrumentSuffixPattern.exec(
+    paymentInstrumentInfo.trim()
+  );
+  return match?.[1];
+};
+
+export const nexiContractTypes = [
+  "MIT_UNSCHEDULED",
+  "MIT_SCHEDULED",
+  "CIT",
+] as const;
+
+export type NexiContractType = (typeof nexiContractTypes)[number];
+
+const isNexiContractType = (
+  contractType: string
+): contractType is NexiContractType =>
+  (nexiContractTypes as readonly string[]).includes(contractType);
+
+export const toNexiCardContract = (contract: {
+  readonly contractId: string;
+  readonly contractType: string;
+  readonly paymentCircuit: string;
+  readonly paymentInstrumentInfo: string;
+}): NexiCardContract | undefined => {
+  if (!isNexiContractType(contract.contractType)) return undefined;
+  let contractId: NexiContractId;
+  try {
+    contractId = decodeNexiContractId(contract.contractId.trim());
+  } catch {
+    return undefined;
+  }
+  const circuit = normalizeNexiPaymentCircuit(contract.paymentCircuit);
+  const maskedInstrumentSuffix = getNexiMaskedInstrumentSuffix(
+    contract.paymentInstrumentInfo
+  );
+  return {
+    contractId,
+    contractType: contract.contractType,
+    ...(circuit && { circuit }),
+    ...(maskedInstrumentSuffix && { maskedInstrumentSuffix }),
+  };
+};
+
+export interface NexiCardContract {
+  readonly contractId: NexiContractId;
+  readonly contractType: NexiContractType;
+  /** Normalized known circuit (uppercase), e.g. VISA or MC. */
+  readonly circuit?: string;
+  /** Trailing digits of a safely masked instrument, e.g. "6152" for ***6152. */
+  readonly maskedInstrumentSuffix?: string;
+}
+
+export interface ListNexiCustomerContractsInput {
+  readonly customerId: NexiCustomerId;
+  readonly correlationId: NexiCorrelationId;
+}
+
+export interface DeactivateNexiContractInput {
+  readonly contractId: NexiContractId;
+  readonly correlationId: NexiCorrelationId;
+}
+
+export interface NexiContractEnrollment {
+  readonly contractId: NexiContractId;
+  readonly contractType: "CIT";
+}
+
 export interface CreateHostedPaymentPageInput {
   readonly orderId: NexiOrderId;
   readonly correlationId: NexiCorrelationId;
@@ -252,6 +364,15 @@ export interface CreateHostedPaymentPageInput {
   readonly cancelUrl: string;
   readonly notificationUrl: string;
   readonly customer?: HostedPaymentCustomer;
+  /**
+   * Opaque customer reference to bind a saved-card enrollment to when no
+   * full profile is available. `customer.id` takes precedence when both are
+   * set; in practice they are mutually exclusive.
+   */
+  readonly customerReference?: NexiCustomerId;
+  /** Requests saved-card contract enrollment (oneclick) during the session. */
+  readonly contractEnrollment?: NexiContractEnrollment;
+  readonly actionType?: "PAY" | "VERIFY";
 }
 
 export interface HostedPaymentCustomer {

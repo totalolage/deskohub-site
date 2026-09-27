@@ -17,7 +17,11 @@ import type { CustomerProfileBilling } from "@/features/account/backend/customer
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { BillingScreen } from "@/features/account/components/billing/billing-screen";
 import { ProfileScreen } from "@/features/account/components/profile/profile-screen";
-import type { CustomerProfileInput } from "@/features/account/contracts";
+import type {
+  CustomerProfileInput,
+  SavedCardFlowFeedback,
+  SavedCardsPageState,
+} from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -28,6 +32,7 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 export type CustomerProfileFormMode = "complete" | "edit";
 
 type ProfileFormProps = {
+  readonly cardFlow?: SavedCardFlowFeedback;
   readonly email: string;
   readonly locale: Locale;
   readonly mode: CustomerProfileFormMode;
@@ -38,8 +43,12 @@ type ProfileFormProps = {
     readonly phone: string | null;
     readonly billing: CustomerProfileBilling | null;
   };
+  readonly savedCards?: SavedCardsPageState;
   readonly section?: "profile" | "billing";
 };
+
+/** Quiet default so internal callers without billing data still render. */
+const emptySavedCards: SavedCardsPageState = { kind: "loaded", cards: [] };
 
 type BillingKind = "hidden" | "personal" | "business";
 
@@ -104,11 +113,13 @@ const formSnapshot = (form: HTMLFormElement) =>
   JSON.stringify([...new FormData(form).entries()]);
 
 export function ProfileForm({
+  cardFlow,
   email,
   locale,
   mode,
   onSectionChange,
   profile,
+  savedCards = emptySavedCards,
   section = "profile",
 }: ProfileFormProps) {
   const router = useRouter();
@@ -452,6 +463,8 @@ export function ProfileForm({
             </div>
             <div hidden={section !== "billing"}>
               <BillingScreen
+                cardFlow={cardFlow}
+                cards={savedCards}
                 copy={screenCopy.billing}
                 footer={section === "billing" ? formFooter : undefined}
                 locale={locale}

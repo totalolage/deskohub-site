@@ -118,6 +118,58 @@ export type CustomerReservationHistory =
         | "provider-unavailable";
     };
 
+/**
+ * Saved payment card as shown in the account billing section. Only the
+ * provider contract reference and masked display facts are exposed; no
+ * provider implementation types cross this boundary.
+ */
+export type SavedCardView = {
+  readonly contractId: string;
+  readonly circuit?: string;
+  readonly suffix?: string;
+};
+
+/**
+ * Closed set of one-time card-flow feedback flags carried to the account page
+ * through the `cardFlow` search param. The session variant reuses the
+ * session-expired copy; anything outside this set is ignored.
+ */
+export const savedCardFlowFeedbackValues = [
+  "confirmed",
+  "cancelled",
+  "failed",
+  "pending",
+  "session",
+] as const;
+
+export type SavedCardFlowFeedback =
+  (typeof savedCardFlowFeedbackValues)[number];
+
+export const parseSavedCardFlowFeedback = (
+  value: string | undefined
+): SavedCardFlowFeedback | undefined =>
+  (savedCardFlowFeedbackValues as readonly (string | undefined)[]).includes(
+    value
+  )
+    ? (value as SavedCardFlowFeedback)
+    : undefined;
+
+/**
+ * Page-level saved-card list state. "unavailable" is fail-closed: a provider
+ * or database failure never renders as an empty card list.
+ */
+export type SavedCardsPageState =
+  | { readonly kind: "loaded"; readonly cards: readonly SavedCardView[] }
+  | { readonly kind: "unavailable" };
+
+/** Closed outcome of the server-authoritative enrollment verification. */
+export type SavedCardEnrollmentOutcome =
+  | "confirmed"
+  | "cancelled"
+  | "failed"
+  | "pending"
+  | "not_found";
+
 const toInstantOrNull = (value: string): Temporal.Instant | null => {
   try {
     return Temporal.Instant.from(value);

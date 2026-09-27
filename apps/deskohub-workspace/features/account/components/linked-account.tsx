@@ -9,21 +9,29 @@ import { DeleteAccountCard } from "@/features/account/components/delete-account-
 import { LegalScreen } from "@/features/account/components/legal/legal-screen";
 import { ProfileForm } from "@/features/account/components/profile-form";
 import { ReservationHistory } from "@/features/account/components/reservation-history";
-import type { CustomerReservationHistory } from "@/features/account/contracts";
+import type {
+  CustomerReservationHistory,
+  SavedCardFlowFeedback,
+  SavedCardsPageState,
+} from "@/features/account/contracts";
 import type { Locale } from "@/features/i18n";
 
 type LinkedAccountProps = {
+  readonly cardFlow?: SavedCardFlowFeedback;
   readonly email: string;
   readonly history: CustomerReservationHistory;
   readonly locale: Locale;
   readonly profile: CustomerProfile;
+  readonly savedCards: SavedCardsPageState;
 };
 
 export function LinkedAccount({
+  cardFlow,
   email,
   history,
   locale,
   profile,
+  savedCards,
 }: LinkedAccountProps) {
   const pathname = usePathname();
   const { activeSection, changeSection, setReservationCount } =
@@ -53,11 +61,13 @@ export function LinkedAccount({
 
       <div hidden={activeSection !== "profile" && activeSection !== "billing"}>
         <ProfileForm
+          cardFlow={cardFlow}
           email={email}
           locale={locale}
           mode="edit"
           onSectionChange={changeSection}
           profile={profile}
+          savedCards={savedCards}
           section={profileSection}
         />
       </div>

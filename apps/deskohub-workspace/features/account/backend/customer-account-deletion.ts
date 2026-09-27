@@ -68,6 +68,15 @@ export const expireLinkedDotyposProfile = (
   );
 
 interface ICustomerAccountDeletionService {
+  /**
+   * Persists only the durable deletion marker, under the account lock. The
+   * account activity guard reads this marker, so marking first blocks new
+   * enrollment, listing, and profile activity before any provider cleanup
+   * runs; a later retryable failure leaves the marker in place.
+   */
+  readonly markDeletionRequested: (
+    accountId: CustomerAccountId
+  ) => Effect.Effect<void, CustomerAccountLinkError>;
   readonly requestDeletion: (
     accountId: CustomerAccountId
   ) => Effect.Effect<void, CustomerAccountDeletionError>;
@@ -83,6 +92,12 @@ export class CustomerAccountDeletionService extends Context.Service<
       const links = yield* CustomerAccountLinkRepository;
       const dotypos = yield* CustomerDotyposAdapter;
 
+      const markDeletionRequested = (accountId: CustomerAccountId) =>
+        links.withAccountLock(
+          accountId,
+          links.markDeletionRequested(accountId, new Date())
+        );
+
       const requestDeletion = expireLinkedDotyposProfile({
         markDeletionRequested: links.markDeletionRequested,
         findLink: links.find,
@@ -90,7 +105,10 @@ export class CustomerAccountDeletionService extends Context.Service<
         withAccountLock: links.withAccountLock,
       });
 
-      return { requestDeletion } satisfies ICustomerAccountDeletionService;
+      return {
+        markDeletionRequested,
+        requestDeletion,
+      } satisfies ICustomerAccountDeletionService;
     })
   );
 

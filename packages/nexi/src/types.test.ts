@@ -4,16 +4,21 @@ import {
   checkNexiWebhookSecurityToken,
   decodeNexiWebhookNotification,
   deriveNexiWebhookEventIdentity,
+  getNexiMaskedInstrumentSuffix,
   NexiAmountSchema,
+  NexiContractIdSchema,
   NexiOperationIdSchema,
   NexiOrderIdSchema,
   NexiWebhookEventIdSchema,
+  normalizeNexiPaymentCircuit,
   normalizeNexiWebhookNotification,
+  toNexiCardContract,
 } from "./types";
 
 const nexiOrderId = Schema.decodeUnknownSync(NexiOrderIdSchema);
 const nexiOperationId = Schema.decodeUnknownSync(NexiOperationIdSchema);
 const nexiWebhookEventId = Schema.decodeUnknownSync(NexiWebhookEventIdSchema);
+const nexiContractId = Schema.decodeUnknownSync(NexiContractIdSchema);
 
 describe("Nexi webhook types", () => {
   test("normalizes webhook payloads and derives identity", async () => {
@@ -121,5 +126,61 @@ describe("Nexi webhook types", () => {
         operationCurrency: undefined,
       },
     });
+  });
+});
+
+describe("Nexi card contract types", () => {
+  test("bounds contract identifiers and derives safe list fields", () => {
+    const nexiContractId = Schema.decodeUnknownSync(NexiContractIdSchema);
+    expect(String(nexiContractId("contract-1"))).toBe("contract-1");
+    expect(() => nexiContractId("")).toThrow();
+    expect(() => nexiContractId("x".repeat(19))).toThrow();
+    expect(String(nexiContractId("x".repeat(18)))).toBe("x".repeat(18));
+
+    expect(getNexiMaskedInstrumentSuffix("***6152")).toBe("6152");
+    expect(getNexiMaskedInstrumentSuffix(" *** 42 ")).toBe("42");
+    expect(getNexiMaskedInstrumentSuffix("12345")).toBeUndefined();
+    expect(getNexiMaskedInstrumentSuffix("card ending 1234")).toBeUndefined();
+
+    expect(normalizeNexiPaymentCircuit("visa")).toBe("VISA");
+    expect(normalizeNexiPaymentCircuit("MasterCard")).toBe("MC");
+    expect(normalizeNexiPaymentCircuit("SOME_OTHER_CIRCUIT")).toBeUndefined();
+  });
+});
+
+describe("toNexiCardContract", () => {
+  const base = {
+    contractId: "contract-1",
+    paymentCircuit: "VISA",
+    paymentInstrumentInfo: "***6152",
+  };
+
+  test("preserves the provider contract type", () => {
+    expect(toNexiCardContract({ ...base, contractType: "CIT" })).toEqual({
+      contractId: nexiContractId("contract-1"),
+      contractType: "CIT",
+      circuit: "VISA",
+      maskedInstrumentSuffix: "6152",
+    });
+    expect(
+      toNexiCardContract({ ...base, contractType: "MIT_UNSCHEDULED" })
+        ?.contractType
+    ).toBe("MIT_UNSCHEDULED");
+    expect(
+      toNexiCardContract({ ...base, contractType: "MIT_SCHEDULED" })
+        ?.contractType
+    ).toBe("MIT_SCHEDULED");
+  });
+
+  test("skips entries with a missing or invalid contract type", () => {
+    expect(
+      toNexiCardContract({
+        ...base,
+        contractType: "NOT_A_TYPE" as never,
+      })
+    ).toBeUndefined();
+    expect(
+      toNexiCardContract({ ...base, contractType: "" as never })
+    ).toBeUndefined();
   });
 });

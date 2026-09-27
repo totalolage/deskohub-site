@@ -112,6 +112,7 @@ const defaultFixtureReport = {
     kind: "available",
     groups: { current: [], past: [], unavailable: [] },
   },
+  savedCards: { kind: "unavailable" },
 } as const;
 
 const nativeSyntheticInteractionDrafts = {
@@ -1228,6 +1229,10 @@ const accountActionsStubPath = join(
   import.meta.dir,
   "stubs/account-actions.ts"
 );
+const savedCardActionsStubPath = join(
+  import.meta.dir,
+  "stubs/saved-card-actions.ts"
+);
 const authClientStubPath = join(import.meta.dir, "stubs/auth-client.ts");
 const analyticsIdentityStubPath = join(
   import.meta.dir,
@@ -1249,6 +1254,7 @@ const createBuildPlugin = (): Bun.BunPlugin => ({
   setup(build) {
     const exactAliases = new Map([
       ["@/features/account/actions", accountActionsStubPath],
+      ["@/features/account/saved-card-actions", savedCardActionsStubPath],
       ["@/features/legal/actions", accountActionsStubPath],
       ["@/features/account/analytics-identity", analyticsIdentityStubPath],
       ["@/features/account/auth.client", authClientStubPath],

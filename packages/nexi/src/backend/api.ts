@@ -10,6 +10,7 @@ import { ExternalAPIError, NetworkError } from "../errors";
 import {
   type CreateHostedPaymentPageRequest,
   type CreateHostedPaymentPageResponse,
+  type CustomerContractsResponse,
   ErrorResponse,
   make,
   type NexiClient,
@@ -18,7 +19,13 @@ import {
   type OrderListResponse,
   type OrderResponse,
 } from "../generated/effect.gen";
-import type { NexiCorrelationId, NexiOperationId, NexiOrderId } from "../types";
+import type {
+  DeactivateNexiContractInput,
+  ListNexiCustomerContractsInput,
+  NexiCorrelationId,
+  NexiOperationId,
+  NexiOrderId,
+} from "../types";
 
 const NEXI_API_PATH = "/api/phoenix-0.0/psp/api/v1";
 
@@ -80,6 +87,15 @@ interface INexiGeneratedClient {
     readonly channel?: string;
     readonly operationType?: string;
   }) => Effect.Effect<OperationListResponse, ExternalAPIError | NetworkError>;
+  readonly listCustomerContracts: (
+    input: ListNexiCustomerContractsInput
+  ) => Effect.Effect<
+    CustomerContractsResponse,
+    ExternalAPIError | NetworkError
+  >;
+  readonly deactivateContract: (
+    input: DeactivateNexiContractInput
+  ) => Effect.Effect<void, ExternalAPIError | NetworkError>;
 }
 
 type GeneratedClientError = {
@@ -146,6 +162,36 @@ const makeNexiGeneratedClient = Effect.gen(function* () {
       runNexiRequest(
         clientFor(correlationId).listOperations({ params: options }),
         "List operations"
+      ),
+    listCustomerContracts: ({ correlationId, customerId }) =>
+      runNexiRequest(
+        clientFor(correlationId).listCustomerContracts(
+          encodeURIComponent(customerId),
+          { config: { includeResponse: true } }
+        ),
+        "List customer contracts"
+      ).pipe(
+        Effect.flatMap(([contracts, response]) =>
+          response.status === 404
+            ? Effect.fail(
+                new ExternalAPIError({
+                  service: "Nexi",
+                  operation: "List customer contracts",
+                  statusCode: 404,
+                })
+              )
+            : Effect.succeed(contracts)
+        )
+      ),
+    deactivateContract: ({ correlationId, contractId }) =>
+      runNexiRequest(
+        Effect.asVoid(
+          clientFor(correlationId).deactivateContract(
+            encodeURIComponent(contractId),
+            { config: { includeResponse: true } }
+          )
+        ),
+        "Deactivate contract"
       ),
   } satisfies INexiGeneratedClient;
 });
