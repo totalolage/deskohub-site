@@ -1174,6 +1174,107 @@ test("prepares a multi-day office reservation with selected seats", async () => 
   }
 });
 
+test("asserts restored cowork switches for both current offers", async () => {
+  const restoredDate = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "full",
+    timeZone: "Europe/Prague",
+  }).format(new Date("2099-09-01T12:00:00Z"));
+  const runCoworkPrefill = (
+    data: ReturnType<typeof makeCoworkCheckoutData>
+  ) => {
+    const script = getAssertPrefilledReservationScript(data);
+    const run = new Function(
+      "document",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      `return (${script})`
+    );
+    return () =>
+      run(document, HTMLButtonElement, HTMLInputElement, HTMLTextAreaElement);
+  };
+  const renderCoworkPrefill = (
+    data: ReturnType<typeof makeCoworkCheckoutData>,
+    switchHtml: string,
+    monitorHtml: string
+  ) => {
+    document.body.innerHTML = `
+      <input checked name="entryTier" type="radio" value="${data.expectedReservationDetails.entryTier}" />
+      <button aria-haspopup="dialog" type="button">${restoredDate}</button>
+      ${switchHtml}
+      <input name="email" value="${data.email}" />
+      <input name="phone" value="${data.phone}" />
+      <input name="name" value="${data.name}" />
+      <textarea name="message">${data.message}</textarea>
+      ${monitorHtml}
+      <button id="reservation-marketing-consent" aria-checked="false"></button>
+    `;
+  };
+
+  const openSpace = makeCoworkCheckoutData(
+    "https://workspace.example.test",
+    "2099-09-01",
+    "cowork-prefill-open-space",
+    { coffee: true }
+  );
+  const openSpaceSwitch = (coffeeChecked: boolean) => `
+      <label id="reservation-coffee-label">Coffee
+        <button aria-checked="${coffeeChecked}" aria-labelledby="reservation-coffee-label" role="switch"></button>
+      </label>
+    `;
+
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/cowork",
+  });
+  try {
+    renderCoworkPrefill(openSpace, openSpaceSwitch(true), "");
+    expect(runCoworkPrefill(openSpace)()).toBe(true);
+
+    renderCoworkPrefill(openSpace, openSpaceSwitch(false), "");
+    expect(runCoworkPrefill(openSpace)).toThrow(/coffee switch/);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+
+  const reservedDesk = makeCoworkCheckoutData(
+    "https://workspace.example.test",
+    "2099-09-01",
+    "cowork-prefill-reserved-desk",
+    { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
+  );
+  const workstationSwitch = (workstationChecked: boolean) => `
+      <label id="reservation-workstation-label">Monitor workstation
+        <button aria-checked="${workstationChecked}" aria-labelledby="reservation-workstation-label" role="switch"></button>
+      </label>
+    `;
+  const reservedDeskMonitor = `
+      <input checked name="monitorOption" type="radio" value="2x27-qhd" />
+    `;
+
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/cowork",
+  });
+  try {
+    renderCoworkPrefill(
+      reservedDesk,
+      workstationSwitch(true),
+      reservedDeskMonitor
+    );
+    expect(runCoworkPrefill(reservedDesk)()).toBe(true);
+
+    renderCoworkPrefill(
+      reservedDesk,
+      workstationSwitch(false),
+      reservedDeskMonitor
+    );
+    expect(runCoworkPrefill(reservedDesk)).toThrow(/workstation switch/);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
 test("asserts restored office range, seats, and reset marketing consent", async () => {
   const data = makeOfficeCheckoutData(
     "https://workspace.example.test",
