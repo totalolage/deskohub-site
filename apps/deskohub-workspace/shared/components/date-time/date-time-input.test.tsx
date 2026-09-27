@@ -101,15 +101,23 @@ const StatefulHarness = ({
   readonly onValueChange?: (value: string | undefined) => void;
 }) => {
   const [value, setValue] = useState<string | undefined>(valueProp);
-  // Follow the asserted prop via React's render-adjust pattern instead of a
-  // synchronous setState effect.
-  if (value !== valueProp) setValue(valueProp);
+  // Track the previous PROP with its own render-adjust state pair: only an
+  // asserted prop change resets the editable state, so adoption through
+  // onChange sticks (the owned value is not compared against the original
+  // prop on every render).
+  const [previousProp, setPreviousProp] = useState(valueProp);
+  if (previousProp !== valueProp) {
+    setPreviousProp(valueProp);
+    setValue(valueProp);
+  }
   return (
     <DateTimeInput
       {...props}
       onChange={(next) => {
         onValueChange?.(next);
-        setValue(next);
+        // A real owning form maps explicit clears to a controlled empty so
+        // control ownership stays with the parent.
+        setValue(next ?? "");
       }}
       value={value}
     />
@@ -153,7 +161,9 @@ const renderStateful = (
 describe("DateTimeInput", () => {
   test("constructs a value from a controlled-empty state and reports explicit clears", async () => {
     const target = dayInCurrentMonth(15);
-    const { form, onValueChange, view } = renderStateful();
+    // The parent owns a controlled empty and adopts every emitted value, so
+    // construction from empty exercises the controlled adoption path.
+    const { form, onValueChange, view } = renderStateful({ value: "" });
 
     // Controlled-empty: selecting a date is a visible partial draft that
     // submits nothing and keeps the form blocked.
@@ -162,7 +172,9 @@ describe("DateTimeInput", () => {
     expect(new FormData(form).get("startsAt")).toBe("");
     expect(form.checkValidity()).toBe(false);
 
-    // Completing the draft emits the canonical value and unblocks the form.
+    // Completing the draft emits the canonical value; the parent adopts it,
+    // and both the canonical FormData value and the visible controls follow
+    // the adopted controlled value.
     fireEvent.input(view.getByLabelText("Start time"), {
       target: { value: "10:30" },
     });
@@ -170,12 +182,26 @@ describe("DateTimeInput", () => {
     expect(onValueChange).toHaveBeenLastCalledWith(complete);
     expect(new FormData(form).get("startsAt")).toBe(complete);
     expect(form.checkValidity()).toBe(true);
+    expect((view.getByLabelText("Start time") as HTMLInputElement).value).toBe(
+      "10:30"
+    );
+    expect(
+      (
+        view.getByRole("button", { name: "Start date" }).textContent ?? ""
+      ).trim()
+    ).not.toBe("Pick a date");
 
-    // Clearing the time then the date reports an explicit clear.
+    // Clearing the time leaves a date-only partial draft that reports
+    // nothing while it blocks submission. Clearing the date then reports an
+    // explicit clear, which the parent maps back to a controlled empty.
     fireEvent.input(view.getByLabelText("Start time"), {
       target: { value: "" },
     });
-    expect(onValueChange).toHaveBeenCalledTimes(1);
+    expect(onValueChange).toHaveBeenLastCalledWith(complete);
+    expect(new FormData(form).get("startsAt")).toBe("");
+    expect((view.getByLabelText("Start time") as HTMLInputElement).value).toBe(
+      ""
+    );
     expect(form.checkValidity()).toBe(false);
     fireEvent.click(view.getByRole("button", { name: "Start date" }));
     fireEvent.click(
@@ -189,6 +215,7 @@ describe("DateTimeInput", () => {
     fireEvent.input(view.getByLabelText("Start time"), {
       target: { value: "10:30" },
     });
+    expect(onValueChange).toHaveBeenLastCalledWith(complete);
     expect(new FormData(form).get("startsAt")).toBe(complete);
   });
 
