@@ -71,7 +71,7 @@ export function AccountDataExport({ locale }: { readonly locale: Locale }) {
       <Button
         aria-busy={pending}
         aria-controls={statusId}
-        className="h-auto min-w-0 max-w-full whitespace-normal px-4 py-2 text-left leading-5"
+        className="h-auto w-fit whitespace-normal px-4 py-2 text-center leading-5"
         disabled={pending}
         id="account-data-export"
         onClick={() => {

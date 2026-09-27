@@ -53,22 +53,22 @@ export function LegalScreen({
 
       {accountsEnabled && (
         <div className="mt-8 border-t border-[#e5e9ef] pt-6">
-          <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <h3 className="break-words text-[18px] font-semibold leading-6 text-[#1f2d43]">
-                {m.legalScreenExportTitle({}, { locale })}
-              </h3>
-              <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
-                {m.legalScreenExportDescription({}, { locale })}
-              </p>
-              <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
-                {m.legalScreenExportNotStatutory({}, { locale })}{" "}
-                <PolicyLink
-                  href={`${localePath}/privacy-policy`}
-                  label={m.legalScreenExportStatutoryLink({}, { locale })}
-                />
-              </p>
-            </div>
+          <div className="min-w-0">
+            <h3 className="break-words text-[18px] font-semibold leading-6 text-[#1f2d43]">
+              {m.legalScreenExportTitle({}, { locale })}
+            </h3>
+            <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
+              {m.legalScreenExportDescription({}, { locale })}
+            </p>
+            <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
+              {m.legalScreenExportNotStatutory({}, { locale })}{" "}
+              <PolicyLink
+                href={`${localePath}/privacy-policy`}
+                label={m.legalScreenExportStatutoryLink({}, { locale })}
+              />
+            </p>
+          </div>
+          <div className="mt-4 min-w-0">
             <AccountDataExport locale={locale} />
           </div>
         </div>

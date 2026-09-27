@@ -202,6 +202,47 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
 }
 
 for (const locale of ["en-US", "cs-CZ"] as const) {
+  test(`${locale} stacks the export action in its own row below the explanatory text`, () => {
+    const view = renderLegalScreen(locale);
+    const exportAction = view.getByRole("button", {
+      name: m.legalScreenExportAction({}, { locale }),
+    });
+
+    // Structural placement: the action follows the title and both supporting
+    // paragraphs in DOM order, stacked vertically instead of sharing a
+    // flex row with the long localized prose.
+    const exportTitle = view.getByRole("heading", {
+      level: 3,
+      name: m.legalScreenExportTitle({}, { locale }),
+    });
+    const description = view.getByText(
+      m.legalScreenExportDescription({}, { locale })
+    );
+    const notStatutory = view.getByText(
+      m.legalScreenExportNotStatutory({}, { locale })
+    );
+    for (const preceding of [exportTitle, description, notStatutory]) {
+      expect(
+        preceding.compareDocumentPosition(exportAction) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    }
+
+    // No oval-inducing flex-shrink fighters on the action: it sizes to its
+    // content and may wrap naturally only at extreme narrow widths.
+    expect(exportAction.className).not.toContain("min-w-0");
+    expect(exportAction.closest(".lg\\:flex-row")).toBeNull();
+
+    // The pending/delivered/error status region stays announced politely.
+    const statusRegion = view.container.querySelector('[aria-live="polite"]');
+    expect(statusRegion?.getAttribute("role")).toBe("status");
+    expect(exportAction.getAttribute("aria-controls")).toBe(
+      statusRegion?.getAttribute("id")
+    );
+  });
+}
+
+for (const locale of ["en-US", "cs-CZ"] as const) {
   test(`${locale} export control reports pending, delivered, and error states accessibly`, async () => {
     let resolveFetch!: (response: Response) => void;
     const pendingFetch = new Promise<Response>((resolve) => {
