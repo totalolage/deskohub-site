@@ -3,6 +3,7 @@ import { EmailServiceTag } from "@deskohub/email/backend/service";
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { env } from "@/env";
+import { CustomerEmailLocaleService } from "@/features/account";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
 import {
@@ -457,8 +458,11 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
       Layer.provideMerge(
         WorkspaceReservationEmailService.Default,
         Layer.provideMerge(
-          Layer.provideMerge(EmailServiceTag.Live, EmailConfigLayer),
-          WorkspaceCheckoutNetworkDetailsService.Default
+          Layer.provideMerge(
+            Layer.provideMerge(EmailServiceTag.Live, EmailConfigLayer),
+            WorkspaceCheckoutNetworkDetailsService.Default
+          ),
+          CustomerEmailLocaleService.Live
         )
       )
     ),

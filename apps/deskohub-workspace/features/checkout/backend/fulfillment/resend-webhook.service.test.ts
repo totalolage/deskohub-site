@@ -10,6 +10,7 @@ import {
 import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
 import { Effect, Layer, Logger } from "effect";
+import { CustomerEmailLocaleService } from "@/features/account";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { m } from "@/features/i18n";
 import type { IWorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -1131,7 +1132,15 @@ describe("ResendWebhookService", () => {
             Layer.mergeAll(
               Layer.mock(EmailServiceTag, emailService),
               Layer.mock(EmailConfigTag, emailConfig),
-              WorkspaceCheckoutNetworkDetailsService.Default
+              WorkspaceCheckoutNetworkDetailsService.Default,
+              Layer.succeed(
+                CustomerEmailLocaleService,
+                CustomerEmailLocaleService.of({
+                  // Webhook recovery exercises the guest path: the email
+                  // keeps the reservation locale.
+                  byDotyposCustomer: () => Effect.succeed({ kind: "guest" }),
+                })
+              )
             )
           )
         )

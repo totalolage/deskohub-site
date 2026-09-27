@@ -10,10 +10,62 @@ import {
   type EmailSendResult,
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
-import { Effect, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
+import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 
 mock.module("server-only", () => ({}));
+
+/**
+ * The test double for the account-owned customer email locale resolver: each
+ * send resolves one locale outcome for the reservation's Dotypos customer.
+ */
+type TestCustomerEmailLocale =
+  | { readonly kind: "guest" }
+  | { readonly kind: "account"; readonly locale: Locale };
+
+let customerEmailLocaleOutcome:
+  | TestCustomerEmailLocale
+  | { readonly kind: "read-error"; readonly code: string } = { kind: "guest" };
+const customerEmailLocaleReads: string[] = [];
+
+const TestCustomerEmailLocaleService = Context.Service<
+  TestCustomerEmailLocaleService,
+  {
+    readonly byDotyposCustomer: (dotyposCustomerId: string) => Effect.Effect<
+      TestCustomerEmailLocale,
+      {
+        readonly code:
+          | "customer-email-locale.read"
+          | "customer-email-locale.missing";
+      }
+    >;
+  }
+>()("@test/CustomerEmailLocaleService");
+interface TestCustomerEmailLocaleService {
+  readonly _: never;
+}
+Object.assign(TestCustomerEmailLocaleService, {
+  Default: Layer.succeed(TestCustomerEmailLocaleService, {
+    byDotyposCustomer: (dotyposCustomerId) => {
+      customerEmailLocaleReads.push(dotyposCustomerId);
+      const outcome = customerEmailLocaleOutcome;
+      return outcome.kind === "read-error"
+        ? Effect.fail({
+            code: outcome.code as
+              | "customer-email-locale.read"
+              | "customer-email-locale.missing",
+          })
+        : Effect.succeed(outcome);
+    },
+  }),
+  Live: Layer.succeed(TestCustomerEmailLocaleService, {
+    byDotyposCustomer: () => Effect.succeed({ kind: "guest" }),
+  }),
+});
+mock.module("@/features/account", () => ({
+  CustomerEmailLocaleService: TestCustomerEmailLocaleService,
+}));
 
 // The paid-fulfillment send path must never fetch the location map: fresh
 // attachment bytes per attempt would break same-key idempotent retries. Track
@@ -343,7 +395,8 @@ describe("workspace reservation email details", () => {
               Layer.mergeAll(
                 Layer.succeed(EmailServiceTag, emailService),
                 Layer.succeed(EmailConfigTag, emailConfig),
-                WorkspaceCheckoutNetworkDetailsService.Default
+                WorkspaceCheckoutNetworkDetailsService.Default,
+                TestCustomerEmailLocaleService.Default
               )
             )
           )
@@ -459,7 +512,8 @@ describe("sendPaidReservationEmails idempotency", () => {
               Layer.mergeAll(
                 Layer.succeed(EmailServiceTag, emailService),
                 Layer.succeed(EmailConfigTag, emailConfig),
-                WorkspaceCheckoutNetworkDetailsService.Default
+                WorkspaceCheckoutNetworkDetailsService.Default,
+                TestCustomerEmailLocaleService.Default
               )
             )
           )
@@ -541,7 +595,8 @@ describe("sendPaidReservationEmails idempotent retry stability", () => {
                 Layer.mergeAll(
                   Layer.succeed(EmailServiceTag, emailService),
                   Layer.succeed(EmailConfigTag, emailConfig),
-                  WorkspaceCheckoutNetworkDetailsService.Default
+                  WorkspaceCheckoutNetworkDetailsService.Default,
+                  TestCustomerEmailLocaleService.Default
                 )
               )
             )
@@ -652,7 +707,8 @@ describe("sendPaidReservationEmails reservation access capability", () => {
             Layer.mergeAll(
               Layer.succeed(EmailServiceTag, emailService),
               Layer.succeed(EmailConfigTag, emailConfig),
-              WorkspaceCheckoutNetworkDetailsService.Default
+              WorkspaceCheckoutNetworkDetailsService.Default,
+              TestCustomerEmailLocaleService.Default
             )
           )
         )
@@ -814,5 +870,145 @@ describe("sendPaidReservationEmails reservation access capability", () => {
         maxAge: true,
       });
     }
+  });
+});
+
+describe("reservation customer email language", () => {
+  type ScenarioMode = "both" | "paid";
+
+  const runScenario = async (
+    outcome: typeof customerEmailLocaleOutcome,
+    reservation: WorkspaceReservationDetails,
+    mode: ScenarioMode
+  ) => {
+    customerEmailLocaleOutcome = outcome;
+    customerEmailLocaleReads.length = 0;
+    const { WorkspaceReservationEmailService } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const { EmailConfigTag, EmailServiceTag } = await import(
+      "@deskohub/email/backend/service"
+    );
+    const { WorkspaceCheckoutNetworkDetailsService } = await import(
+      "./network-details.service"
+    );
+
+    const sentMessages: EmailMessage[] = [];
+    const emailService: EmailService = {
+      send: mock((message: EmailMessage) => {
+        sentMessages.push(message);
+        return Effect.succeed(sentResult(`email-${sentMessages.length}`));
+      }),
+      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
+      verify: Effect.succeed(true),
+    };
+    const emailConfig: EmailProviderConfig = {
+      provider: "console",
+      defaultFrom: {
+        email: "reservations@workspace.deskohub.cz",
+        name: "Deskohub Workspace",
+      },
+    };
+
+    const { env } = await import("@/env");
+    const previousPreviewBypassSecret = env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    Object.assign(env, {
+      VERCEL_AUTOMATION_BYPASS_SECRET: "synthetic-preview-bypass",
+    });
+    try {
+      const exit = await Effect.runPromiseExit(
+        Effect.gen(function* () {
+          const service = yield* WorkspaceReservationEmailService;
+          yield* service.sendPaidReservationEmails({ reservation });
+          if (mode === "both") {
+            yield* service.sendCancellationEmail({ reservation });
+          }
+        }).pipe(
+          Effect.as(undefined),
+          Effect.provide(
+            WorkspaceReservationEmailService.Default.pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  Layer.succeed(EmailServiceTag, emailService),
+                  Layer.succeed(EmailConfigTag, emailConfig),
+                  WorkspaceCheckoutNetworkDetailsService.Default,
+                  TestCustomerEmailLocaleService.Default
+                )
+              )
+            )
+          )
+        )
+      );
+      return { exit, sentMessages, reads: customerEmailLocaleReads };
+    } finally {
+      Object.assign(env, {
+        VERCEL_AUTOMATION_BYPASS_SECRET: previousPreviewBypassSecret,
+      });
+    }
+  };
+
+  test("uses the linked account's saved preference for paid confirmation and cancellation emails", async () => {
+    const { m } = await import("@/features/i18n");
+    const reservation = makeReservation({ locale: "en-US" });
+
+    const { exit, sentMessages, reads } = await runScenario(
+      { kind: "account", locale: "cs-CZ" },
+      reservation,
+      "both"
+    );
+
+    expect(exit._tag).toBe("Success");
+    expect(reads).toEqual([
+      reservation.dotyposCustomerId,
+      reservation.dotyposCustomerId,
+    ]);
+    const [customerMessage, internalMessage, cancellationMessage] =
+      sentMessages;
+    expect(customerMessage?.subject).toBe(
+      m.checkoutEmailCustomerAccessSubject({}, { locale: "cs-CZ" })
+    );
+    expect(customerMessage?.html).toContain("/cs-CZ/reservation/access/");
+    // Internal operator copies stay in the operator locale.
+    expect(internalMessage?.html).not.toContain("/cs-CZ/");
+    expect(cancellationMessage?.subject).toBe(
+      m.reservationCancellationEmailSubject({}, { locale: "cs-CZ" })
+    );
+  });
+
+  test("keeps the reservation locale for an unlinked guest reservation", async () => {
+    const { m } = await import("@/features/i18n");
+    const reservation = makeReservation({ locale: "en-US" });
+
+    const { sentMessages, reads } = await runScenario(
+      { kind: "guest" },
+      reservation,
+      "both"
+    );
+
+    expect(reads).toEqual([
+      reservation.dotyposCustomerId,
+      reservation.dotyposCustomerId,
+    ]);
+    const [customerMessage, , cancellationMessage] = sentMessages;
+    expect(customerMessage?.subject).toBe(
+      m.checkoutEmailCustomerAccessSubject({}, { locale: "en-US" })
+    );
+    expect(customerMessage?.html).toContain("/en-US/reservation/access/");
+    expect(cancellationMessage?.subject).toBe(
+      m.reservationCancellationEmailSubject({}, { locale: "en-US" })
+    );
+  });
+
+  test("fails the send instead of guessing a language when the preference read fails", async () => {
+    const reservation = makeReservation({ locale: "en-US" });
+
+    const { exit, sentMessages } = await runScenario(
+      { kind: "read-error", code: "customer-email-locale.read" },
+      reservation,
+      "paid"
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(sentMessages).toHaveLength(0);
   });
 });
