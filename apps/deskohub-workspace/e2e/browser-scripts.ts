@@ -83,7 +83,7 @@ export const getAssertRepeatReservationScript = (data: CheckoutData) => {
     if (value('input[name="dayCount"]', 'day count') !== String(expected.dayCount)) fail('day count');
     const seats = document.querySelector('input[name="seats"]:checked');
     if (!(seats instanceof HTMLInputElement) || seats.value !== String(expected.seats)) fail('seats');
-  } else if (value('input[name="startDateTime"]', 'start date') === expected.oldDate) {
+  } else if (value('input[name="startDateTime"]', 'start date').split('T')[0] === expected.oldDate) {
     fail('fresh meeting-room date');
   }
 
@@ -191,7 +191,7 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
     return element.value;
   };
 
-  if (value('input[name="startDateTime"]', 'start date') !== expected.date) fail('start date');
+  if (value('input[name="startDateTime"]', 'start date').split('T')[0] !== expected.date) fail('start date');
   // The start-time control is matched by type, not by its localized aria label,
   // so the same predicate asserts en-US and cs-CZ reservation pages.
   const time = document.querySelector('input[type="time"]');
@@ -576,11 +576,13 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     throw new Error('meeting-room date was not found in the calendar');
   }
   dateButton.click();
+  // The composite's canonical field is a datetime-local input, so its value
+  // carries the picked time after the date part.
   await waitUntil(() => {
     const hiddenStart = document.querySelector('input[name="startDateTime"]');
     return (
       hiddenStart instanceof HTMLInputElement &&
-      hiddenStart.value === expected.date
+      hiddenStart.value.split('T')[0] === expected.date
     );
   }, 'meeting-room date did not update');
 
@@ -616,7 +618,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     }
     return (
       hiddenStart instanceof HTMLInputElement &&
-      hiddenStart.value === expected.date &&
+      hiddenStart.value.split('T')[0] === expected.date &&
       (expected.wholeDay
         ? time === null
         : time instanceof HTMLInputElement && time.value === expected.time) &&
