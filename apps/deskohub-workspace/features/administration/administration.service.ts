@@ -2840,6 +2840,9 @@ export class AdministrationService extends Context.Service<
                 .select({
                   id: workspaceReservations.dotyposReservationId,
                   reservationDetails: workspaceReservations.reservationDetails,
+                  fulfillmentState: workspaceReservations.fulfillmentState,
+                  paymentState: workspaceReservations.paymentState,
+                  reservationState: workspaceReservations.reservationState,
                 })
                 .from(workspaceReservations)
                 .where(
@@ -2852,8 +2855,8 @@ export class AdministrationService extends Context.Service<
                   )
                 );
         const linkedReservations = new Map(
-          linkedRows.flatMap(({ id, reservationDetails }) =>
-            id ? ([[id, reservationDetails]] as const) : []
+          linkedRows.flatMap(({ id, ...row }) =>
+            id ? ([[id, row]] as const) : []
           )
         );
         const activityByDate = new Map<
@@ -2864,15 +2867,20 @@ export class AdministrationService extends Context.Service<
           }
         >();
         for (const reservation of reservations) {
+          if (reservation.status !== "CONFIRMED") {
+            continue;
+          }
           const id = Option.getOrUndefined(
             decodeDotyposReservationId(reservation.id)
           );
-          const reservationDetails = id
-            ? linkedReservations.get(id)
-            : undefined;
-          if (!reservationDetails) {
+          const row = id ? linkedReservations.get(id) : undefined;
+          if (
+            !row ||
+            getAdministrationReservationStatus(row).group !== "complete"
+          ) {
             continue;
           }
+          const reservationDetails = row.reservationDetails;
           const date = getReservationDate(reservation.startDate);
           const category =
             reservationDetails.kind === "cowork"
@@ -2996,10 +3004,12 @@ export class AdministrationService extends Context.Service<
           const customerActivityEndsBefore = Temporal.Instant.from(
             customerActivityBounds.startsBefore
           );
+          const qualifyingReservationIds = getCompletedReservationIds(rows);
           const uniqueCustomerIds =
             reservations.kind === "available"
               ? getUniqueCustomerIds({
                   customerIdsByReservationId,
+                  qualifyingReservationIds,
                   range: ranges.lastSevenDays,
                   reservations: reservations.items,
                 })
@@ -3087,6 +3097,17 @@ export class AdministrationService extends Context.Service<
   );
 }
 
+const getCompletedReservationIds = (
+  rows: readonly AdministrationOverviewRow[]
+) =>
+  new Set(
+    rows.flatMap((row) =>
+      row.id && getAdministrationReservationStatus(row).group === "complete"
+        ? [row.id]
+        : []
+    )
+  );
+
 export function getAdministrationReservationOverview({
   ranges,
   reservations,
@@ -3109,13 +3130,7 @@ export function getAdministrationReservationOverview({
   const linkedReservationIds = new Set(
     rows.flatMap(({ id }) => (id ? [id] : []))
   );
-  const completedReservationIds = new Set(
-    rows.flatMap((row) =>
-      row.id && getAdministrationReservationStatus(row).group === "complete"
-        ? [row.id]
-        : []
-    )
-  );
+  const completedReservationIds = getCompletedReservationIds(rows);
   const getMetric = (range: AdministrationReservationDateRange) => ({
     completed: countLinkedReservations({
       linkedReservationIds: completedReservationIds,
@@ -3143,6 +3158,7 @@ function getUniqueCustomerIds(input: {
     DotyposReservationId,
     DotyposCustomerId
   >;
+  readonly qualifyingReservationIds: ReadonlySet<DotyposReservationId>;
   readonly range: AdministrationReservationDateRange;
   readonly reservations: readonly DotyposReservation[];
 }) {
@@ -3157,7 +3173,13 @@ function getUniqueCustomerIds(input: {
     const fallbackCustomerId = reservationId
       ? input.customerIdsByReservationId.get(reservationId)
       : undefined;
-    if (!fallbackCustomerId || !isReservationInRange(reservation, input.range))
+    if (
+      !reservationId ||
+      !fallbackCustomerId ||
+      reservation.status !== "CONFIRMED" ||
+      !input.qualifyingReservationIds.has(reservationId) ||
+      !isReservationInRange(reservation, input.range)
+    )
       continue;
 
     const customerId =
