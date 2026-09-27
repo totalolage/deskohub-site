@@ -7,14 +7,6 @@ import {
   mock,
   test,
 } from "bun:test";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-  within,
-} from "@testing-library/react";
 import React, { Activity } from "react";
 import type { CustomerProfileInput } from "@/features/account/contracts";
 import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
@@ -24,6 +16,11 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 registerWorkspaceComponentTestEnv();
+// @testing-library/react must load after the happy-dom registration, or
+// React's synthetic change events never fire against controlled inputs.
+const { act, cleanup, fireEvent, render, waitFor, within } = await import(
+  "@testing-library/react"
+);
 
 type ActionResult = {
   readonly data?: { readonly status?: string };
