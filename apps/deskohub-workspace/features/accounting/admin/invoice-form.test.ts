@@ -53,8 +53,8 @@ const formValues = ({
   customer: {
     customerType: "person",
     email: "billing@example.test",
-    firstName: "",
-    lastName: "",
+    firstName: "Synthetic",
+    lastName: "Customer",
     companyName: "",
     companyId: "",
     vatId: "",
@@ -79,6 +79,15 @@ const formValues = ({
 
 const validateFormSchema = (values: InvoiceFormOutput) =>
   invoiceFormSchema["~standard"].validate(values);
+
+const expectRejectedAtPath = async (
+  values: InvoiceFormOutput,
+  path: string
+) => {
+  const result = await validateFormSchema(values);
+  const issues = "issues" in result ? result.issues : undefined;
+  expect(issues && JSON.stringify(issues)).toContain(path);
+};
 
 test("calculates the immutable review total without losing precision", () => {
   expect(
@@ -125,15 +134,39 @@ test("omits blank optional business contact names", () => {
 });
 
 test("rejects values beyond the server-mirrored boundary lengths", async () => {
-  const longPhone = await validateFormSchema(
-    formValues({ customer: { phone: "1".repeat(21) } })
+  await expectRejectedAtPath(
+    formValues({ customer: { phone: "1".repeat(21) } }),
+    '"phone"'
   );
-  expect("issues" in longPhone && Boolean(longPhone.issues)).toBe(true);
-
-  const longEmail = await validateFormSchema(
-    formValues({ customer: { email: `${"a".repeat(250)}@example.test` } })
+  await expectRejectedAtPath(
+    formValues({ customer: { email: `${"a".repeat(250)}@example.test` } }),
+    '"email"'
   );
-  expect("issues" in longEmail && Boolean(longEmail.issues)).toBe(true);
+  await expectRejectedAtPath(
+    formValues({ customer: { line2: "2".repeat(181) } }),
+    '"line2"'
+  );
+  await expectRejectedAtPath(
+    formValues({
+      customer: {
+        customerType: "business",
+        firstName: "",
+        lastName: "",
+        vatId: "CZ".concat("1".repeat(254)),
+      },
+    }),
+    '"vatId"'
+  );
+  await expectRejectedAtPath(
+    formValues({
+      customer: {
+        customerType: "business",
+        firstName: "S".repeat(101),
+        lastName: "",
+      },
+    }),
+    '"firstName"'
+  );
 
   const valid = await validateFormSchema(formValues());
   expect("value" in valid).toBe(true);
@@ -198,8 +231,7 @@ const fillInput = (
   return input;
 };
 
-const fillValidPersonInvoice = (view: InvoiceFormView) => {
-  fireEvent.click(view.getByRole("button", { name: "New" }));
+const fillPersonRequiredFields = (view: InvoiceFormView) => {
   fillInput(view, "Invoice email", "billing@example.test");
   fillInput(view, "First name", "Synthetic");
   fillInput(view, "Last name", "Customer");
@@ -210,6 +242,11 @@ const fillValidPersonInvoice = (view: InvoiceFormView) => {
   fireEvent.change(view.getByLabelText("Price"), {
     target: { value: "1000" },
   });
+};
+
+const fillValidPersonInvoice = (view: InvoiceFormView) => {
+  fireEvent.click(view.getByRole("button", { name: "New" }));
+  fillPersonRequiredFields(view);
 };
 
 const mockPreviewAction = () => {
@@ -453,6 +490,31 @@ test("previews the suggested variable symbol after restoring the default", async
   );
 });
 
+test("accepts retained business values after switching to an individual", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fireEvent.click(view.getByRole("button", { name: "New" }));
+  fireEvent.change(view.getByLabelText("Customer type"), {
+    target: { value: "business" },
+  });
+  fillInput(view, "Company name", "C".repeat(200));
+  fireEvent.change(view.getByLabelText("Customer type"), {
+    target: { value: "person" },
+  });
+  fillPersonRequiredFields(view);
+
+  submitInvoiceForm(view);
+  await view.findByText("This action creates and sends the invoice");
+  expect(preview).toHaveBeenCalledWith(
+    expect.objectContaining({
+      customer: {
+        kind: "new",
+        details: expect.objectContaining({ kind: "person" }),
+      },
+    })
+  );
+});
+
 test("previews an edited variable symbol unchanged", async () => {
   const preview = mockPreviewAction();
   const view = renderInvoiceCreationForm();
@@ -492,7 +554,7 @@ test("ignores a blank hidden due date once already paid is selected", async () =
   fillInput(view, "Due date", "");
 
   submitInvoiceForm(view);
-  expect(view.getByText("This field is required.")).toBeTruthy();
+  await view.findByText("This field is required.");
   expect(preview).not.toHaveBeenCalled();
 
   fireEvent.click(view.getByRole("checkbox", { name: "Already paid" }));
