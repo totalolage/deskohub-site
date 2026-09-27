@@ -4,11 +4,24 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { Effect, Layer } from "effect";
+import { env, getAccountingDocumentSnapshotSecret } from "@/env";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
 mock.module("server-only", () => ({}));
+
+// Bun module mocks are process-wide across files in a multi-file run, and the
+// production acceptance test pins "@/env" to VERCEL_ENV "production". Pin it
+// back here so this file always exercises the non-production fulfillment
+// branch regardless of test-file ordering.
+mock.module("@/env", () => ({
+  env: new Proxy(env, {
+    get: (target, key) =>
+      key === "VERCEL_ENV" ? undefined : Reflect.get(target, key),
+  }),
+  getAccountingDocumentSnapshotSecret,
+}));
 
 const { WorkspaceCheckoutAccessCodeService } = await import(
   "@/features/checkout/backend/reservation/access-code.service"
