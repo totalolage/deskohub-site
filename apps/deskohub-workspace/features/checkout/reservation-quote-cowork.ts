@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect";
 import {
-  type WorkspaceCoworkProductTier,
-  type WorkspaceProductMonitorOption,
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
+  type WorkspaceCoworkProductTier,
+  type WorkspaceProductMonitorOption,
   workspaceCoworkProductTiers,
   workspaceProductWorkstationAddonPrice,
 } from "@/features/checkout/product-catalog";

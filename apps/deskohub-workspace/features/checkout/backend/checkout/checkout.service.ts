@@ -16,9 +16,6 @@ import {
   type AccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,
 } from "@/features/accounting/accounting-document-snapshot";
-import {
-  isWorkspaceCoworkSaleableProductTier,
-} from "@/features/checkout/product-catalog";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   type CheckoutSummary,
@@ -32,6 +29,7 @@ import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
+import { isWorkspaceCoworkSaleableProductTier } from "@/features/checkout/product-catalog";
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
 import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
 import { getOfficeCheckoutDetails } from "@/features/checkout/schemas/checkout-details-office";
@@ -49,10 +47,8 @@ import {
 import { isEarlyPerformanceRequestRequired } from "@/features/legal/early-performance";
 import type { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { isCoworkOpenSpaceDayCutoffReached } from "@/features/reservation/cowork-reservation";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
-import {
-  isCoworkOpenSpaceDayCutoffReached,
-} from "@/features/reservation/cowork-reservation";
 import { hasOfficeReservationEnded } from "@/features/reservation/office-reservation";
 import {
   getStoredWorkspaceReservationDetails,
@@ -139,10 +135,13 @@ const ensureReservationHasNotEnded = Effect.fn(
         // in-flight legacy checkouts get no grace path and must restart with
         // the current offers instead of creating a payment attempt at old
         // amounts.
-        if (!isWorkspaceCoworkSaleableProductTier(coworkReservation.entryTier)) {
+        if (
+          !isWorkspaceCoworkSaleableProductTier(coworkReservation.entryTier)
+        ) {
           return new CheckoutError({
             code: "cowork_offer_replaced",
-            message: "This cowork offer is no longer available. Please start a new reservation with the current offers.",
+            message:
+              "This cowork offer is no longer available. Please start a new reservation with the current offers.",
           });
         }
         // Same-day cutoff: a new payment attempt for an Open Space day fails

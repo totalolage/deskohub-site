@@ -63,7 +63,7 @@ mock.module("next/headers", () => ({
 
 const reservation = {
   kind: "cowork" as const,
-  entryTier: "basic" as const,
+  entryTier: "open-space" as const,
   date: "2026-07-01",
   coffee: false,
   name: "Ada Lovelace",
@@ -192,12 +192,12 @@ const makeAdvertisementQuote = (
   basisPoints?: number,
   label = "Summer sale"
 ): DiscountAdvertisementQuote => {
-  const discountableSubtotal = basicMoney(35_000);
+  const discountableSubtotal = basicMoney(29_000);
   const amount = basisPoints
     ? Math.round((discountableSubtotal.value * basisPoints) / 10_000)
     : 0;
   return discountAdvertisementQuoteCodec.make({
-    product: { kind: "cowork", tier: "basic" },
+    product: { kind: "cowork", tier: "open-space" },
     discountableSubtotal,
     discounts: basisPoints
       ? [
@@ -267,7 +267,7 @@ const makeReusableReservation = (
     productMonitorOption: null,
     reservationDetails: {
       kind: "cowork",
-      entryTier: "basic",
+      entryTier: "open-space",
       coffee: false,
     },
     locale: "en-US",
@@ -1059,7 +1059,7 @@ describe("prepareWorkspacePayState", () => {
     expect(claimHoldCreation).toHaveBeenCalledWith("reservation-id");
     expect(assignTableId).toHaveBeenCalledWith({
       kind: "cowork",
-      entryTier: "basic",
+      entryTier: "open-space",
       date: reservation.date,
       coffee: false,
     });
@@ -1121,7 +1121,7 @@ describe("prepareWorkspacePayState", () => {
       id: existingReservation.id,
       reservationDetails: {
         kind: "cowork",
-        entryTier: "basic",
+        entryTier: "open-space",
         coffee: false,
       },
       locale: "en-US",
@@ -1770,7 +1770,7 @@ describe("prepareWorkspacePayState", () => {
 
     expect(result.result).toMatchObject({
       status: "pricing_changed",
-      affectedProductKeys: ["product:cowork:basic"],
+      affectedProductKeys: ["product:cowork:open-space"],
     });
     if (result.result.status !== "pricing_changed") {
       throw new Error("Expected pricing_changed result");
@@ -1780,7 +1780,7 @@ describe("prepareWorkspacePayState", () => {
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
     const state = Effect.runSync(openPayState(token ?? ""));
-    expect(state.changedKeys?.itemKeys).toContain("product:cowork:basic");
+    expect(state.changedKeys?.itemKeys).toContain("product:cowork:open-space");
     expect(state.quote.payment.discounts).toEqual([]);
   });
 

@@ -57,13 +57,14 @@ const makeReservation = (input: {
 });
 
 const defaultTables = [
-  makeTable({ id: "basic-1", tags: ["tier:basic"] }),
-  makeTable({ id: "basic-2", tags: ["tier:basic"] }),
+  makeTable({ id: "basic-1", tags: ["tier:basic", "cowork:open-space"] }),
+  makeTable({ id: "basic-2", tags: ["tier:basic", "cowork:open-space"] }),
   makeTable({ id: "plus-1", tags: ["tier:plus"] }),
   makeTable({
     id: "profi-27-qhd",
     tags: [
       "tier:profi",
+      "cowork:reserved-desk",
       "monitor:count:2",
       "monitor:size:27",
       "monitor:resolution:qhd",
@@ -73,6 +74,7 @@ const defaultTables = [
     id: "profi-32-qhd",
     tags: [
       "tier:profi",
+      "cowork:reserved-desk",
       "monitor:count:2",
       "monitor:size:32",
       "monitor:resolution:qhd",
@@ -82,6 +84,7 @@ const defaultTables = [
     id: "profi-27-4k",
     tags: [
       "tier:profi",
+      "cowork:reserved-desk",
       "monitor:count:2",
       "monitor:size:27",
       "monitor:resolution:4k",
@@ -91,6 +94,7 @@ const defaultTables = [
     id: "profi-32-4k",
     tags: [
       "tier:profi",
+      "cowork:reserved-desk",
       "monitor:count:2",
       "monitor:size:32",
       "monitor:resolution:4k",
@@ -166,7 +170,7 @@ const getAvailability = (input: {
   readonly to?: string;
   readonly kind?: "cowork" | "meeting-room" | "office";
   readonly seats?: number;
-  readonly entryTier?: "basic" | "plus" | "profi";
+  readonly entryTier?: "open-space" | "reserved-desk";
   readonly monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
   readonly tables?: readonly Table[];
   readonly reservations?: readonly Reservation[];
@@ -241,7 +245,7 @@ const getReplacementAvailability = (input: {
           from: testDate,
           to: testDate,
           date: testDate,
-          entryTier: "basic",
+          entryTier: "open-space",
         },
         occupancyExclusion: {
           dotyposReservationId: input.excludedDotyposReservationId,
@@ -256,11 +260,11 @@ describe("WorkspaceAvailabilityService", () => {
     await expect(
       getAvailability({
         date: testDate,
-        entryTier: "basic",
+        entryTier: "open-space",
         tables: [
           makeTable({
             id: "invalid-basic",
-            tags: ["tier:basic"],
+            tags: ["tier:basic", "cowork:open-space"],
             seats: "not-a-number",
           }),
         ],
@@ -285,7 +289,7 @@ describe("WorkspaceAvailabilityService", () => {
 
   test("counts NEW reservations as occupied for selected monitor setup dates", async () => {
     const availability = await getAvailability({
-      entryTier: "profi",
+      entryTier: "reserved-desk",
       monitorOption: "2x27-qhd",
       reservations: [
         makeReservation({ tableId: "profi-27-qhd", status: "NEW" }),
@@ -310,7 +314,7 @@ describe("WorkspaceAvailabilityService", () => {
   test("ignores CANCELLED reservations", async () => {
     const availability = await getAvailability({
       date: testDate,
-      entryTier: "profi",
+      entryTier: "reserved-desk",
       monitorOption: "2x27-qhd",
       reservations: [
         makeReservation({ tableId: "profi-27-qhd", status: "CANCELLED" }),
@@ -324,7 +328,7 @@ describe("WorkspaceAvailabilityService", () => {
   test("ignores expired local holds that Dotypos still reports", async () => {
     const availability = await getAvailability({
       date: testDate,
-      entryTier: "profi",
+      entryTier: "reserved-desk",
       monitorOption: "2x27-qhd",
       reservations: [
         makeReservation({
@@ -346,7 +350,9 @@ describe("WorkspaceAvailabilityService", () => {
       tableId: "basic-1",
       status: "NEW",
     });
-    const tables = [makeTable({ id: "basic-1", tags: ["tier:basic"] })];
+    const tables = [
+      makeTable({ id: "basic-1", tags: ["tier:basic", "cowork:open-space"] }),
+    ];
 
     const onlyOwnHold = await getReplacementAvailability({
       excludedDotyposReservationId: "own-dotypos-reservation-id",
@@ -355,7 +361,7 @@ describe("WorkspaceAvailabilityService", () => {
     });
 
     expect(onlyOwnHold.unavailableDates).not.toContain(testDate);
-    expect(onlyOwnHold.unavailableCoworkTiers).not.toContain("basic");
+    expect(onlyOwnHold.unavailableCoworkTiers).not.toContain("open-space");
 
     const anotherHoldRemains = await getReplacementAvailability({
       excludedDotyposReservationId: "own-dotypos-reservation-id",
@@ -371,7 +377,7 @@ describe("WorkspaceAvailabilityService", () => {
     });
 
     expect(anotherHoldRemains.unavailableDates).toContain(testDate);
-    expect(anotherHoldRemains.unavailableCoworkTiers).toContain("basic");
+    expect(anotherHoldRemains.unavailableCoworkTiers).toContain("open-space");
   });
 
   test("does not exclude a replacement reservation that is no longer pending", async () => {
@@ -384,17 +390,19 @@ describe("WorkspaceAvailabilityService", () => {
           status: "CONFIRMED",
         }),
       ],
-      tables: [makeTable({ id: "basic-1", tags: ["tier:basic"] })],
+      tables: [
+        makeTable({ id: "basic-1", tags: ["tier:basic", "cowork:open-space"] }),
+      ],
     });
 
     expect(availability.unavailableDates).toContain(testDate);
-    expect(availability.unavailableCoworkTiers).toContain("basic");
+    expect(availability.unavailableCoworkTiers).toContain("open-space");
   });
 
   test("falls back when expired local hold filtering fails", async () => {
     const availability = await getAvailability({
       date: testDate,
-      entryTier: "profi",
+      entryTier: "reserved-desk",
       monitorOption: "2x27-qhd",
       reservations: [
         makeReservation({
@@ -416,7 +424,7 @@ describe("WorkspaceAvailabilityService", () => {
       reservations: [makeReservation({ tableId: "basic-1", status: "NEW" })],
     });
 
-    expect(oneBasicOccupied.unavailableCoworkTiers).not.toContain("basic");
+    expect(oneBasicOccupied.unavailableCoworkTiers).not.toContain("open-space");
 
     const allBasicOccupied = await getAvailability({
       date: testDate,
@@ -426,26 +434,40 @@ describe("WorkspaceAvailabilityService", () => {
       ],
     });
 
-    expect(allBasicOccupied.unavailableCoworkTiers).toContain("basic");
+    expect(allBasicOccupied.unavailableCoworkTiers).toContain("open-space");
   });
 
   test("keeps a table available until overlapping reservation seats reach capacity", async () => {
     const partiallyOccupied = await getAvailability({
       date: testDate,
-      entryTier: "basic",
-      tables: [makeTable({ id: "basic-1", tags: ["tier:basic"], seats: "2" })],
+      entryTier: "open-space",
+      tables: [
+        makeTable({
+          id: "basic-1",
+          tags: ["tier:basic", "cowork:open-space"],
+          seats: "2",
+        }),
+      ],
       reservations: [
         makeReservation({ tableId: "basic-1", status: "NEW", seats: "1" }),
       ],
     });
 
     expect(partiallyOccupied.unavailableDates).not.toContain(testDate);
-    expect(partiallyOccupied.unavailableCoworkTiers).not.toContain("basic");
+    expect(partiallyOccupied.unavailableCoworkTiers).not.toContain(
+      "open-space"
+    );
 
     const fullyOccupied = await getAvailability({
       date: testDate,
-      entryTier: "basic",
-      tables: [makeTable({ id: "basic-1", tags: ["tier:basic"], seats: "2" })],
+      entryTier: "open-space",
+      tables: [
+        makeTable({
+          id: "basic-1",
+          tags: ["tier:basic", "cowork:open-space"],
+          seats: "2",
+        }),
+      ],
       reservations: [
         makeReservation({ tableId: "basic-1", status: "NEW", seats: "1" }),
         makeReservation({
@@ -457,7 +479,7 @@ describe("WorkspaceAvailabilityService", () => {
     });
 
     expect(fullyOccupied.unavailableDates).toContain(testDate);
-    expect(fullyOccupied.unavailableCoworkTiers).toContain("basic");
+    expect(fullyOccupied.unavailableCoworkTiers).toContain("open-space");
   });
 
   test("marks an office unavailable after any overlapping occupancy", async () => {
@@ -542,8 +564,10 @@ describe("WorkspaceAvailabilityService", () => {
     const availability = await getAvailability({
       date: testDate,
       to: nextTestDate,
-      entryTier: "basic",
-      tables: [makeTable({ id: "basic-1", tags: ["tier:basic"] })],
+      entryTier: "open-space",
+      tables: [
+        makeTable({ id: "basic-1", tags: ["tier:basic", "cowork:open-space"] }),
+      ],
       reservations: [
         makeReservation({
           tableId: "basic-1",
@@ -600,13 +624,21 @@ describe("WorkspaceAvailabilityService", () => {
     const availability = await getAvailability({
       date: testDate,
       tables: [
-        makeTable({ id: "hidden", tags: ["tier:basic"], display: false }),
-        makeTable({ id: "disabled", tags: ["tier:basic"], enabled: false }),
+        makeTable({
+          id: "hidden",
+          tags: ["tier:basic", "cowork:open-space"],
+          display: false,
+        }),
+        makeTable({
+          id: "disabled",
+          tags: ["tier:basic", "cowork:open-space"],
+          enabled: false,
+        }),
         makeTable({ id: "online", tags: [] }),
       ],
     });
 
-    expect(availability.unavailableCoworkTiers).toContain("basic");
+    expect(availability.unavailableCoworkTiers).toContain("open-space");
   });
 
   test("marks calendar fully occupied dates unavailable", async () => {
@@ -660,7 +692,7 @@ describe("WorkspaceAvailabilityService", () => {
           return yield* service.ensureAvailable({
             kind: "cowork",
             date: testDate,
-            entryTier: "profi",
+            entryTier: "reserved-desk",
             monitorOption: "2x27-qhd",
           });
         })
@@ -677,7 +709,7 @@ describe("WorkspaceAvailabilityService", () => {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
       expect(result.failure.reservation).toEqual({
         kind: "cowork",
-        entryTier: "profi",
+        entryTier: "reserved-desk",
         monitorOption: "2x27-qhd",
       });
     }
@@ -729,7 +761,7 @@ describe("WorkspaceAvailabilityService", () => {
           return yield* service.ensureAvailable({
             kind: "cowork",
             date: testDate,
-            entryTier: "basic",
+            entryTier: "open-space",
           });
         })
       ),
@@ -748,7 +780,7 @@ describe("WorkspaceAvailabilityService", () => {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
       expect(result.failure.reservation).toEqual({
         kind: "cowork",
-        entryTier: "basic",
+        entryTier: "open-space",
       });
     }
   });

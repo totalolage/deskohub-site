@@ -25,7 +25,10 @@ import {
 } from "@/features/discounts/contracts";
 import { DiscountClaimError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
-import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
+import {
+  type NormalizedCoworkReservationOrder,
+  normalizedCoworkReservationOrderSchema,
+} from "@/features/reservation/cowork-reservation";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
@@ -70,7 +73,7 @@ const reservationData = Schema.decodeUnknownSync(
   normalizedCoworkReservationOrderSchema
 )({
   kind: "cowork",
-  entryTier: "profi",
+  entryTier: "reserved-desk",
   date: "2099-06-20",
   coffee: true,
   monitorOption: "2x27-qhd",
@@ -110,25 +113,25 @@ const application = {
     label: "Letni sleva 50 %",
     adjustment: { kind: "percentage" as const, basisPoints: 5000 },
   },
-  subtotalBefore: money(55_000),
-  amount: money(27_500),
-  subtotalAfter: money(27_500),
+  subtotalBefore: money(41_000),
+  amount: money(20_500),
+  subtotalAfter: money(20_500),
 };
 
 const undiscountedQuote: DiscountQuote = {
-  product: { kind: "cowork", tier: "profi" },
-  discountableSubtotal: money(55_000),
+  product: { kind: "cowork", tier: "reserved-desk" },
+  discountableSubtotal: money(41_000),
   discounts: [],
   totalDiscount: money(0),
-  discountedSubtotal: money(55_000),
+  discountedSubtotal: money(41_000),
 };
 
 const discountedQuote: DiscountQuote = {
-  product: { kind: "cowork", tier: "profi" },
-  discountableSubtotal: money(55_000),
+  product: { kind: "cowork", tier: "reserved-desk" },
+  discountableSubtotal: money(41_000),
   discounts: [application],
-  totalDiscount: money(27_500),
-  discountedSubtotal: money(27_500),
+  totalDiscount: money(20_500),
+  discountedSubtotal: money(20_500),
 };
 
 const fullyDiscountedApplication = {
@@ -137,15 +140,45 @@ const fullyDiscountedApplication = {
     ...application.discount,
     adjustment: { kind: "percentage" as const, basisPoints: 10_000 },
   },
-  amount: money(55_000),
+  amount: money(41_000),
   subtotalAfter: money(0),
 };
 
 const fullyDiscountedQuote: DiscountQuote = {
-  product: { kind: "cowork", tier: "profi" },
-  discountableSubtotal: money(55_000),
+  product: { kind: "cowork", tier: "reserved-desk" },
+  discountableSubtotal: money(41_000),
   discounts: [fullyDiscountedApplication],
-  totalDiscount: money(55_000),
+  totalDiscount: money(41_000),
+  discountedSubtotal: money(0),
+};
+
+const zeroTotalReservation = Schema.decodeUnknownSync(
+  normalizedCoworkReservationOrderSchema
+)({
+  kind: "cowork",
+  entryTier: "open-space",
+  date: "2099-06-20",
+  coffee: false,
+  name: "Ada Lovelace",
+  email: "ada@example.com",
+  phone: "+420 777 777 777",
+});
+
+const zeroTotalQuote: DiscountQuote = {
+  product: { kind: "cowork", tier: "open-space" },
+  discountableSubtotal: money(29_000),
+  discounts: [
+    {
+      discount: {
+        ...application.discount,
+        adjustment: { kind: "percentage" as const, basisPoints: 10_000 },
+      },
+      amount: money(29_000),
+      subtotalBefore: money(29_000),
+      subtotalAfter: money(0),
+    },
+  ],
+  totalDiscount: money(29_000),
   discountedSubtotal: money(0),
 };
 
@@ -191,7 +224,7 @@ const fullyDiscountedCommitment = makeDiscountCommitment({
 const buildPayStateToken = (input: {
   readonly orderId: string;
   readonly locale?: Locale;
-  readonly reservation?: typeof reservationData;
+  readonly reservation?: NormalizedCoworkReservationOrder;
   readonly quote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalPromotionCode;
@@ -369,7 +402,7 @@ const makeAttempt = (input: {
   provider: "nexi" as const,
   providerOrderId: input.id,
   state: input.state ?? ("created" as const),
-  amount: money(55_000),
+  amount: money(53_000),
   securityToken: input.securityToken ?? null,
   providerRedirectUrl: input.providerRedirectUrl ?? null,
   lastWebhookEventId: null,
@@ -797,7 +830,7 @@ describe("CheckoutService", () => {
       activeAttempt,
       changedKeys: {
         sectionKeys: ["order", "total"],
-        itemKeys: ["product:cowork:profi"],
+        itemKeys: ["product:cowork:reserved-desk"],
       },
       reservationOverrides: { activePaymentAttemptId: activeAttempt.id },
     });
@@ -854,7 +887,7 @@ describe("CheckoutService", () => {
         securityToken: "active-security-token",
         providerRedirectUrl: "https://payments.example/existing",
       }),
-      amount: money(55_000, "EUR"),
+      amount: money(53_000, "EUR"),
     };
     const harness = await createCheckoutHarness({
       orderId,
@@ -876,7 +909,7 @@ describe("CheckoutService", () => {
       orderId: "reservation-review-required",
       changedKeys: {
         sectionKeys: ["order", "total"],
-        itemKeys: ["product:cowork:profi"],
+        itemKeys: ["product:cowork:reserved-desk"],
       },
     });
 
@@ -886,7 +919,7 @@ describe("CheckoutService", () => {
       status: "pricing_changed",
       changedKeys: {
         sectionKeys: ["order", "total"],
-        itemKeys: ["product:cowork:profi"],
+        itemKeys: ["product:cowork:reserved-desk"],
       },
       freshSummary: expect.any(Object),
       freshPayUrl: expect.stringContaining("/en-US/checkout/pay?payState="),
@@ -938,13 +971,13 @@ describe("CheckoutService", () => {
     );
     expect(harness.createPendingNexiAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
-        amount: money(55_000),
+        amount: money(53_000),
         commitment: emptyCommitment,
       })
     );
     expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
       expect.objectContaining({
-        amount: "55000",
+        amount: "53000",
         currency: "EUR",
         customer: {
           id: "stored-dotypos-customer-id",
@@ -989,8 +1022,8 @@ describe("CheckoutService", () => {
   });
 
   test("completes a zero-total checkout internally without preparing Nexi", async () => {
-    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
-      discountQuote: fullyDiscountedQuote,
+    const acceptedQuote = buildCoworkReservationQuote(zeroTotalReservation, {
+      discountQuote: zeroTotalQuote,
     });
     const affirm = mock(() =>
       Effect.succeed({
@@ -1090,8 +1123,8 @@ describe("CheckoutService", () => {
   });
 
   test("keeps an internal payment completed when fulfillment fails", async () => {
-    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
-      discountQuote: fullyDiscountedQuote,
+    const acceptedQuote = buildCoworkReservationQuote(zeroTotalReservation, {
+      discountQuote: zeroTotalQuote,
     });
     const affirm = mock(() =>
       Effect.succeed({
@@ -1584,7 +1617,7 @@ describe("CheckoutService", () => {
     }
     expect(result.changedKeys).toEqual({
       sectionKeys: [],
-      itemKeys: ["product:cowork:profi"],
+      itemKeys: ["product:cowork:reserved-desk"],
     });
     const freshToken = new URL(
       result.freshPayUrl,
@@ -1752,7 +1785,7 @@ describe("CheckoutService", () => {
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
     const note = harness.updateReservation.mock.calls[0]?.[0]?.note;
     expect(note).toContain("Discount: Letni sleva 50 % (");
-    expect(note).toContain("-CZK\u00a0275");
+    expect(note).toContain("-CZK\u00a0205");
     expect(note).not.toContain("public-summer-sale");
     expect(note).not.toContain("private-provider-namespace");
     expect(note).not.toContain("private-provider-reference");
@@ -1870,7 +1903,7 @@ describe("CheckoutService", () => {
     expect(result).toMatchObject({
       status: "pricing_changed",
       freshSummary: {
-        total: money(55_000),
+        total: money(53_000),
       },
     });
     expect(affirm).toHaveBeenCalledTimes(2);
@@ -1892,8 +1925,8 @@ describe("CheckoutService", () => {
 
   test("returns refreshed pricing when a zero-total code loses claim admission", async () => {
     const requestedCode = canonicalCode("CAMPAIGN10");
-    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
-      discountQuote: fullyDiscountedQuote,
+    const acceptedQuote = buildCoworkReservationQuote(zeroTotalReservation, {
+      discountQuote: zeroTotalQuote,
     });
     const affirm = mock()
       .mockImplementationOnce(() =>
@@ -1930,7 +1963,7 @@ describe("CheckoutService", () => {
     expect(result).toMatchObject({
       status: "pricing_changed",
       freshSummary: {
-        total: money(55_000),
+        total: money(53_000),
       },
     });
     expect(affirm).toHaveBeenCalledTimes(2);

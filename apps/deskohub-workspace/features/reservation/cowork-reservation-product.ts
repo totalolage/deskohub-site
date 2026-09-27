@@ -6,7 +6,6 @@ import {
   type WorkspaceCoworkSaleableTier,
   type WorkspaceProductMonitorOption,
   workspaceCoworkProductTiers,
-  workspaceCoworkSaleableTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
@@ -23,7 +22,7 @@ const coworkReservationMonitorOptionInputSchema = Schema.optional(
 );
 
 export const coworkReservationProductInputSchema = Schema.Struct({
-  entryTier: Schema.Literals(workspaceCoworkSaleableTiers),
+  entryTier: Schema.Literals(workspaceCoworkProductTiers),
   coffee: Schema.Boolean,
   monitorOption: coworkReservationMonitorOptionInputSchema,
 });
@@ -243,6 +242,26 @@ export const normalizeCoworkReservationProduct = (
         monitorOption: normalizeMonitorOption(data.monitorOption),
       })
     ),
+    // Historical tiers keep their original normalization for total decodability.
+    Match.when("basic", () =>
+      normalizedBasicCoworkReservationProductSchema.make({
+        entryTier: "basic",
+        coffee: data.coffee,
+      })
+    ),
+    Match.when("plus", () =>
+      normalizedPlusCoworkReservationProductSchema.make({
+        entryTier: "plus",
+        coffee: true,
+      })
+    ),
+    Match.when("profi", () =>
+      normalizedProfiCoworkReservationProductSchema.make({
+        entryTier: "profi",
+        coffee: true,
+        monitorOption: normalizeMonitorOption(data.monitorOption)!,
+      })
+    ),
     Match.exhaustive
   );
 
@@ -357,4 +376,8 @@ export const coworkReservationProductSchema =
         "Cowork product selection validated and normalized by entry tier.",
     });
 
-export type { WorkspaceCoworkProductTier, WorkspaceCoworkSaleableTier, WorkspaceProductMonitorOption };
+export type {
+  WorkspaceCoworkProductTier,
+  WorkspaceCoworkSaleableTier,
+  WorkspaceProductMonitorOption,
+};

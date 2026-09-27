@@ -17,16 +17,16 @@ import {
   hasAvailableWorkspaceTableCandidate,
   hasAvailableWorkspaceTableCandidateByPredicate,
   isWorkspaceCoworkTableCandidate,
+  type WorkspaceCoworkTableCandidateQuery,
   workspaceBookingSeatCount,
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,
-  type WorkspaceCoworkTableCandidateQuery,
 } from "@/features/checkout/backend/reservation";
 import {
   isWorkspaceCoworkSaleableProductTier,
+  type WorkspaceCoworkProductTier,
   workspaceCoworkSaleableTiers,
   workspaceProductMonitorOptions,
-  type WorkspaceCoworkProductTier,
 } from "@/features/checkout/product-catalog";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
 import {

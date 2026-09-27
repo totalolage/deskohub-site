@@ -10,11 +10,13 @@ import {
   coworkCheckoutSummaryDiscountedProductItemSchema,
   coworkCheckoutSummaryProductItemSchema,
 } from "@/features/checkout/checkout-summary-cowork-item";
-import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
+import type {
+  WorkspaceCoworkProductTier,
+  WorkspaceProductMonitorOption,
+} from "@/features/checkout/product-catalog";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
-import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 
 type CoworkReservationSummaryInput = {
   readonly entryTier: WorkspaceCoworkProductTier;

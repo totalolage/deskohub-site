@@ -51,7 +51,8 @@ export const isWorkspaceCoworkTableCandidate = (
 ) => {
   if (query.entryTier === "open-space") {
     return (
-      tableTags.has(workspaceCoworkOpenSpaceTableTag) && hasNoMonitorTag(tableTags)
+      tableTags.has(workspaceCoworkOpenSpaceTableTag) &&
+      hasNoMonitorTag(tableTags)
     );
   }
 

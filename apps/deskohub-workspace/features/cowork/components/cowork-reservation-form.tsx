@@ -56,7 +56,6 @@ import {
   type CoworkReservationInput,
   coworkReservationSchema,
   getAllowedMonitorOptionsForCoworkTier,
-  getCoworkReservationOrder,
   getCoworkSaleableReservationOrder,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
@@ -185,7 +184,7 @@ export function CoworkReservationForm({
     });
   const showCoffeeAddon = selectedTier === "open-space";
   const showWorkstationAddon = selectedTier === "reserved-desk";
-  const workstationSelected = selectedMonitorOption !== undefined;
+  const _workstationSelected = selectedMonitorOption !== undefined;
   const allowedMonitorOptions =
     getAllowedMonitorOptionsForCoworkTier(selectedTier);
   const availabilityQuery = useMemo(
@@ -194,7 +193,7 @@ export function CoworkReservationForm({
         date: selectedDate,
         from: initialAvailabilityQuery.from,
         monitorOption: selectedMonitorOption,
-        tier: selectedTier,
+        tier: selectedTier as WorkspaceCoworkSaleableTier,
         to: initialAvailabilityQuery.to,
       }),
     [
@@ -222,12 +221,20 @@ export function CoworkReservationForm({
         {
           entryTier: "reserved-desk",
           coffee: true,
-          ...(selectedMonitorOption && { monitorOption: selectedMonitorOption }),
+          ...(selectedMonitorOption && {
+            monitorOption: selectedMonitorOption,
+          }),
         },
       ],
       submittedCode,
     });
-  }, [locale, selectedCoffee, selectedDate, selectedMonitorOption, submittedCode]);
+  }, [
+    locale,
+    selectedCoffee,
+    selectedDate,
+    selectedMonitorOption,
+    submittedCode,
+  ]);
   const advertisedPriceQueryResults = useAdvertisedPrices(
     advertisedPriceRequests,
     initialAdvertisedPrices
@@ -635,9 +642,7 @@ function CoworkWorkstationField({
                 checked={field.value !== undefined}
                 onBlur={field.onBlur}
                 onCheckedChange={(checked) =>
-                  field.onChange(
-                    checked ? allowedMonitorOptions[0] : undefined
-                  )
+                  field.onChange(checked ? allowedMonitorOptions[0] : undefined)
                 }
               />
             </FormControl>

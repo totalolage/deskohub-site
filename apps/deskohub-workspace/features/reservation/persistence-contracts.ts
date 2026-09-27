@@ -1,4 +1,5 @@
 import { Match, Schema } from "effect";
+import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
 import {
   getStoredCoworkReservationDetails,
   storedCoworkReservationDetailsSchema,
@@ -11,7 +12,6 @@ import {
   getStoredOfficeReservationDetails,
   storedOfficeReservationDetailsSchema,
 } from "@/features/reservation/office-reservation";
-import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
 export const storedWorkspaceReservationDetailsSchema = Schema.Union([

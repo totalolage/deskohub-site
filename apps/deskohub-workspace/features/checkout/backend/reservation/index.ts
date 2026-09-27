@@ -6,6 +6,7 @@ export {
   getWorkspaceTableOccupancyById,
   workspaceBookingSeatCount,
 } from "./workspace-table-occupancy";
+export type { WorkspaceCoworkTableCandidateQuery } from "./workspace-table-selection";
 export {
   getWorkspaceTableCandidates,
   getWorkspaceTableCandidatesByPredicate,
@@ -21,4 +22,3 @@ export {
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,
 } from "./workspace-table-selection";
-export type { WorkspaceCoworkTableCandidateQuery } from "./workspace-table-selection";

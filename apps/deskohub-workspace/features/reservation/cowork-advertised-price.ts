@@ -2,11 +2,13 @@ import type {
   AdvertisedPriceRequest,
   CoworkAdvertisedPriceRequest,
 } from "@/features/checkout/advertised-price";
-import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
+import type {
+  WorkspaceCoworkSaleableTier,
+  WorkspaceProductMonitorOption,
+} from "@/features/checkout/product-catalog";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
-import type { WorkspaceCoworkSaleableTier } from "@/features/checkout/product-catalog";
 
 export type CoworkAdvertisedPriceOfferSelection = {
   readonly entryTier: WorkspaceCoworkSaleableTier;

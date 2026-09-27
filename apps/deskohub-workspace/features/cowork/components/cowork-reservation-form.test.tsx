@@ -64,14 +64,14 @@ const money = (value: number) => ({
 
 const basicDiscountedQuote = buildCoworkReservationQuote(
   {
-    entryTier: "basic",
+    entryTier: "open-space",
     coffee: true,
     date: "2099-07-30",
   },
   {
     discountQuote: {
-      product: { kind: "cowork", tier: "basic" },
-      discountableSubtotal: money(35_000),
+      product: { kind: "cowork", tier: "open-space" },
+      discountableSubtotal: money(29_000),
       discounts: [
         {
           discount: {
@@ -79,13 +79,13 @@ const basicDiscountedQuote = buildCoworkReservationQuote(
             label: "Summer sale",
             adjustment: { kind: "percentage", basisPoints: 5000 },
           },
-          subtotalBefore: money(35_000),
-          amount: money(17_500),
-          subtotalAfter: money(17_500),
+          subtotalBefore: money(29_000),
+          amount: money(14_500),
+          subtotalAfter: money(14_500),
         },
       ],
-      totalDiscount: money(17_500),
-      discountedSubtotal: money(17_500),
+      totalDiscount: money(14_500),
+      discountedSubtotal: money(14_500),
     },
   }
 );
@@ -107,17 +107,17 @@ const advertisedPriceResponse = {
   quote: basicDiscountedQuote,
   summary: buildCoworkCheckoutSummary(
     {
-      entryTier: "basic",
+      entryTier: "open-space",
       coffee: true,
       date: "2099-07-30",
     },
     {
       discountQuote: {
-        product: { kind: "cowork", tier: "basic" },
-        discountableSubtotal: money(35_000),
+        product: { kind: "cowork", tier: "open-space" },
+        discountableSubtotal: money(29_000),
         discounts: basicDiscountedQuote.payment.discounts,
-        totalDiscount: money(17_500),
-        discountedSubtotal: money(17_500),
+        totalDiscount: money(14_500),
+        discountedSubtotal: money(14_500),
       },
     }
   ),
@@ -137,14 +137,16 @@ function advertisedPricesResult(
   };
 }
 
-const plusPrice = getWorkspaceProductByTier("plus").price;
-const plusDiscountAmount = money(Math.round(plusPrice.value * 0.2));
-const plusDiscountedSubtotal = money(
-  plusPrice.value - plusDiscountAmount.value
+const reservedDeskPrice = getWorkspaceProductByTier("reserved-desk").price;
+const reservedDeskDiscountAmount = money(
+  Math.round(reservedDeskPrice.value * 0.2)
 );
-const plusDiscountQuote = {
-  product: { kind: "cowork" as const, tier: "plus" as const },
-  discountableSubtotal: plusPrice,
+const reservedDeskDiscountedSubtotal = money(
+  reservedDeskPrice.value - reservedDeskDiscountAmount.value
+);
+const reservedDeskDiscountQuote = {
+  product: { kind: "cowork" as const, tier: "reserved-desk" as const },
+  discountableSubtotal: reservedDeskPrice,
   discounts: [
     {
       discount: {
@@ -152,49 +154,49 @@ const plusDiscountQuote = {
         label: "Launch sale",
         adjustment: { kind: "percentage" as const, basisPoints: 2000 },
       },
-      subtotalBefore: plusPrice,
-      amount: plusDiscountAmount,
-      subtotalAfter: plusDiscountedSubtotal,
+      subtotalBefore: reservedDeskPrice,
+      amount: reservedDeskDiscountAmount,
+      subtotalAfter: reservedDeskDiscountedSubtotal,
     },
   ],
-  totalDiscount: plusDiscountAmount,
-  discountedSubtotal: plusDiscountedSubtotal,
+  totalDiscount: reservedDeskDiscountAmount,
+  discountedSubtotal: reservedDeskDiscountedSubtotal,
 };
-const plusAdvertisedPriceResponse = {
+const reservedDeskAdvertisedPriceResponse = {
   kind: "cowork" as const,
   quote: buildCoworkReservationQuote(
     {
-      entryTier: "plus",
+      entryTier: "reserved-desk",
       coffee: true,
       date: "2099-07-30",
     },
-    { discountQuote: plusDiscountQuote }
+    { discountQuote: reservedDeskDiscountQuote }
   ),
   summary: buildCoworkCheckoutSummary(
     {
-      entryTier: "plus",
+      entryTier: "reserved-desk",
       coffee: true,
       date: "2099-07-30",
     },
-    { discountQuote: plusDiscountQuote }
+    { discountQuote: reservedDeskDiscountQuote }
   ),
-  advertisedPriceToken: "sealed-plus-advertised-price",
+  advertisedPriceToken: "sealed-reserved-desk-advertised-price",
 };
-const profiAdvertisedPriceResponse = {
+const _reservedDeskNoAddonAdvertisedPriceResponse = {
   kind: "cowork" as const,
   quote: buildCoworkReservationQuote({
-    entryTier: "profi",
+    entryTier: "reserved-desk",
     coffee: true,
     date: "2099-07-30",
     monitorOption: "2x27-qhd",
   }),
   summary: buildCoworkCheckoutSummary({
-    entryTier: "profi",
+    entryTier: "reserved-desk",
     coffee: true,
     date: "2099-07-30",
     monitorOption: "2x27-qhd",
   }),
-  advertisedPriceToken: "sealed-profi-advertised-price",
+  advertisedPriceToken: "sealed-reserved-desk-workstation-advertised-price",
 };
 
 const jsonResponse = <T,>(body: T, status = 200) =>
@@ -227,7 +229,7 @@ describe("CoworkReservationForm advertised pricing", () => {
   beforeEach(() => {
     workspaceUseSearchParams.mockReturnValue(
       new URLSearchParams(
-        "entryTier=basic&date=2099-07-30&coffee=true&name=Ada%20Lovelace&email=ada%40example.test&phone=%2B420777777777"
+        "entryTier=open-space&date=2099-07-30&coffee=true&name=Ada%20Lovelace&email=ada%40example.test&phone=%2B420777777777"
       )
     );
     workspaceUseAction.mockReturnValue({
@@ -255,14 +257,16 @@ describe("CoworkReservationForm advertised pricing", () => {
     workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
     getAdvertisedPrices.mockImplementation(() => new Promise(() => undefined));
     const advertisedPrices = {
-      basic: advertisedPriceResponse,
-      plus: plusAdvertisedPriceResponse,
-      profi: profiAdvertisedPriceResponse,
+      "open-space": advertisedPriceResponse,
+      "reserved-desk": reservedDeskAdvertisedPriceResponse,
     } as const;
     const requests = getCoworkTierAdvertisedPriceRequests({
-      coffee: true,
       date: "2099-07-30",
       locale: "en-US",
+      offers: [
+        { entryTier: "open-space", coffee: true },
+        { entryTier: "reserved-desk", coffee: true },
+      ],
     });
 
     expect(requests.every((request) => !("submittedCode" in request))).toBe(
@@ -282,7 +286,7 @@ describe("CoworkReservationForm advertised pricing", () => {
       })),
     });
 
-    expect(view.getByText(/discounted price.*175/i)).toBeDefined();
+    expect(view.getByText(/discounted price.*145/i)).toBeDefined();
     const coffeePrice = view.container.querySelector(
       "[data-reservation-coffee-price]"
     );
@@ -294,7 +298,7 @@ describe("CoworkReservationForm advertised pricing", () => {
 
   test("shows validation messages when required customer fields are empty", async () => {
     workspaceUseSearchParams.mockReturnValue(
-      new URLSearchParams("entryTier=basic&date=2099-07-30&coffee=true")
+      new URLSearchParams("entryTier=open-space&date=2099-07-30&coffee=true")
     );
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
@@ -323,7 +327,7 @@ describe("CoworkReservationForm advertised pricing", () => {
 
   test("shows billing validation without errors for empty optional fields", async () => {
     workspaceUseSearchParams.mockReturnValue(
-      new URLSearchParams("entryTier=basic&date=2099-07-30&coffee=true")
+      new URLSearchParams("entryTier=open-space&date=2099-07-30&coffee=true")
     );
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
@@ -353,7 +357,7 @@ describe("CoworkReservationForm advertised pricing", () => {
 
   test("does not render catalog prices before a backend quote is available", () => {
     workspaceUseSearchParams.mockReturnValue(
-      new URLSearchParams("entryTier=basic")
+      new URLSearchParams("entryTier=open-space")
     );
     getAdvertisedPrices.mockImplementation(() => new Promise(() => undefined));
 
@@ -362,7 +366,7 @@ describe("CoworkReservationForm advertised pricing", () => {
       view.container.querySelectorAll("[data-reservation-type-price]")
     );
 
-    expect(priceRows).toHaveLength(3);
+    expect(priceRows).toHaveLength(2);
     expect(
       priceRows.every(
         (price) =>
@@ -385,20 +389,20 @@ describe("CoworkReservationForm advertised pricing", () => {
 
   test("renders discounts accessibly and blocks checkout while the selected tier price loads", async () => {
     const advertisedRequests: AdvertisedPriceRequest[] = [];
-    let plusBatchCount = 0;
-    let resolvePlusRequest:
+    let reservedDeskBatchCount = 0;
+    let resolveReservedDeskRequest:
       | ((response: ReturnType<typeof advertisedPricesResult>) => void)
       | undefined;
     getAdvertisedPrices.mockImplementation((requests) => {
       advertisedRequests.push(...requests);
-      const includesPlus = requests.some(
+      const includesReservedDesk = requests.some(
         ({ reservation }) =>
           reservation.kind === "cowork" &&
-          reservation.details.entryTier === "plus"
+          reservation.details.entryTier === "reserved-desk"
       );
-      if (includesPlus && plusBatchCount++ > 0) {
+      if (includesReservedDesk && reservedDeskBatchCount++ > 0) {
         return new Promise((resolve) => {
-          resolvePlusRequest = resolve;
+          resolveReservedDeskRequest = resolve;
         });
       }
       return Promise.resolve(
@@ -406,7 +410,7 @@ describe("CoworkReservationForm advertised pricing", () => {
           requests.filter(
             ({ reservation }) =>
               reservation.kind !== "cowork" ||
-              reservation.details.entryTier !== "plus"
+              reservation.details.entryTier !== "reserved-desk"
           )
         )
       );
@@ -422,29 +426,29 @@ describe("CoworkReservationForm advertised pricing", () => {
     const view = renderForm();
 
     expect(
-      await view.findByText(/original price.*350/i, {}, { timeout: 5000 })
+      await view.findByText(/original price.*290/i, {}, { timeout: 5000 })
     ).toBeDefined();
-    expect(view.getByText(/discounted price.*175/i)).toBeDefined();
+    expect(view.getByText(/discounted price.*145/i)).toBeDefined();
     expect(
-      view.getByRole("button", { name: /discount.*basic/i })
+      view.getByRole("button", { name: /discount.*Open Space/i })
     ).toBeDefined();
-    const basicPrice = view.container.querySelector(
-      '[data-reservation-type-price="basic"]'
+    const openSpacePrice = view.container.querySelector(
+      '[data-reservation-type-price="open-space"]'
     );
-    expect(basicPrice?.className).toContain("flex-col");
-    expect(basicPrice?.querySelector("del")?.className).toContain(
+    expect(openSpacePrice?.className).toContain("flex-col");
+    expect(openSpacePrice?.querySelector("del")?.className).toContain(
       "text-navy-blue/45"
     );
     expect(
-      Array.from(basicPrice?.querySelectorAll("span") ?? []).some((element) =>
-        element.className.includes("text-aquamarine-ink")
+      Array.from(openSpacePrice?.querySelectorAll("span") ?? []).some(
+        (element) => element.className.includes("text-aquamarine-ink")
       )
     ).toBe(true);
 
     await act(async () => {
       fireEvent.click(
         view.container.querySelector(
-          "#reservation-entry-tier-plus"
+          "#reservation-entry-tier-reserved-desk"
         ) as HTMLElement
       );
     });
@@ -453,14 +457,14 @@ describe("CoworkReservationForm advertised pricing", () => {
       expect(
         (
           view.container.querySelector(
-            "#reservation-entry-tier-plus"
+            "#reservation-entry-tier-reserved-desk"
           ) as HTMLInputElement
         ).checked
       ).toBe(true);
       expect(advertisedRequests).toContainEqual(
         expect.objectContaining({
           reservation: expect.objectContaining({
-            details: expect.objectContaining({ entryTier: "plus" }),
+            details: expect.objectContaining({ entryTier: "reserved-desk" }),
           }),
         })
       );
@@ -468,19 +472,22 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(
       view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
     ).toBe(true);
-    expect(view.getByText(/discounted price.*175/i)).toBeDefined();
+    expect(view.getByText(/discounted price.*145/i)).toBeDefined();
 
     await act(async () => {
-      const plusRequest = advertisedRequests.find(
+      const reservedDeskRequest = advertisedRequests.find(
         ({ reservation }) =>
           reservation.kind === "cowork" &&
-          reservation.details.entryTier === "plus"
+          reservation.details.entryTier === "reserved-desk"
       );
-      if (!plusRequest) {
-        throw new Error("Expected the Plus advertised-price request");
+      if (!reservedDeskRequest) {
+        throw new Error("Expected the Reserved Desk advertised-price request");
       }
-      resolvePlusRequest?.(
-        advertisedPricesResult([plusRequest], () => plusAdvertisedPriceResponse)
+      resolveReservedDeskRequest?.(
+        advertisedPricesResult(
+          [reservedDeskRequest],
+          () => reservedDeskAdvertisedPriceResponse
+        )
       );
     });
     await waitFor(() => {
@@ -488,7 +495,7 @@ describe("CoworkReservationForm advertised pricing", () => {
         view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
       ).toBe(false);
     });
-    expect(view.getByText(/discounted price.*392/i)).toBeDefined();
+    expect(view.getByText(/discounted price.*328/i)).toBeDefined();
   });
 
   test("presents the selected advertised sale around the whole form", async () => {
@@ -496,8 +503,8 @@ describe("CoworkReservationForm advertised pricing", () => {
       Promise.resolve(
         advertisedPricesResult(requests, ({ reservation }) =>
           reservation.kind === "cowork" &&
-          reservation.details.entryTier === "plus"
-            ? plusAdvertisedPriceResponse
+          reservation.details.entryTier === "reserved-desk"
+            ? reservedDeskAdvertisedPriceResponse
             : advertisedPriceResponse
         )
       )
@@ -524,10 +531,10 @@ describe("CoworkReservationForm advertised pricing", () => {
         ?.textContent
     ).toContain("Summer sale");
     expect(
-      view.getByRole("button", { name: /discount.*applied to.*basic/i })
+      view.getByRole("button", { name: /discount.*applied to.*Open Space/i })
     ).toBeDefined();
 
-    for (const tier of ["basic", "plus", "profi"]) {
+    for (const tier of ["open-space", "reserved-desk"]) {
       const option = view.container.querySelector(
         `[data-reservation-type-option="${tier}"]`
       );
@@ -540,11 +547,11 @@ describe("CoworkReservationForm advertised pricing", () => {
 
     expect(
       view.container
-        .querySelector('[data-reservation-type-price="plus"]')
+        .querySelector('[data-reservation-type-price="reserved-desk"]')
         ?.querySelector("del")
     ).not.toBeNull();
     fireEvent.click(
-      view.container.querySelector("#reservation-entry-tier-plus")!
+      view.container.querySelector("#reservation-entry-tier-reserved-desk")!
     );
     await waitFor(() => {
       expect(
@@ -554,7 +561,7 @@ describe("CoworkReservationForm advertised pricing", () => {
       ).toContain("Launch sale");
     });
     expect(
-      view.getByRole("button", { name: /discount.*applied to.*plus/i })
+      view.getByRole("button", { name: /discount.*applied to.*Reserved Desk/i })
     ).toBeDefined();
   });
 
@@ -595,7 +602,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
   });
 
-  test("does not refetch the advertised price when the monitor changes", async () => {
+  test("prices the workstation addon when the Reserved Desk toggle selects a configuration", async () => {
     const advertisedRequests: AdvertisedPriceRequest[] = [];
     const availabilityRequests: string[] = [];
     getAdvertisedPrices.mockImplementation((requests) => {
@@ -612,12 +619,12 @@ describe("CoworkReservationForm advertised pricing", () => {
     }) as typeof fetch;
 
     const view = renderForm();
-    await view.findByText(/original price.*350/i, {}, { timeout: 3000 });
+    await view.findByText(/original price.*290/i, {}, { timeout: 3000 });
 
     await act(async () => {
       fireEvent.click(
         view.container.querySelector(
-          "#reservation-entry-tier-profi"
+          "#reservation-entry-tier-reserved-desk"
         ) as HTMLElement
       );
     });
@@ -625,7 +632,38 @@ describe("CoworkReservationForm advertised pricing", () => {
       expect(advertisedRequests.at(-1)).toMatchObject({
         reservation: {
           details: {
-            entryTier: "profi",
+            entryTier: "reserved-desk",
+            workstation: false,
+          },
+        },
+      });
+    });
+    const baseRequestCount = advertisedRequests.length;
+
+    // Selecting a monitor configuration changes the priced workstation
+    // presence, so the advertised quote is refreshed for the new price.
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("switch", { name: /Monitor workstation/i })
+      );
+    });
+    await waitFor(() => {
+      expect(
+        view.container.querySelector('input[value="2x27-qhd"]')
+      ).not.toBeNull();
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector('input[value="2x27-qhd"]') as HTMLElement
+      );
+    });
+    await waitFor(() => {
+      expect(advertisedRequests.length).toBeGreaterThan(baseRequestCount);
+      expect(advertisedRequests.at(-1)).toMatchObject({
+        reservation: {
+          details: {
+            entryTier: "reserved-desk",
+            workstation: true,
           },
         },
       });
@@ -633,24 +671,6 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(advertisedRequests.at(-1)).not.toHaveProperty(
       "reservation.details.monitorOption"
     );
-    const requestCount = advertisedRequests.length;
-
-    await act(async () => {
-      fireEvent.click(
-        view.container.querySelector('input[value="2x27-qhd"]') as HTMLElement
-      );
-    });
-    await waitFor(() => {
-      expect(
-        (
-          view.container.querySelector(
-            'input[value="2x27-qhd"]'
-          ) as HTMLInputElement
-        ).checked
-      ).toBe(true);
-    });
-
-    expect(advertisedRequests).toHaveLength(requestCount);
     await waitFor(() => {
       expect(availabilityRequests.at(-1)).toContain("monitorOption=2x27-qhd");
     });

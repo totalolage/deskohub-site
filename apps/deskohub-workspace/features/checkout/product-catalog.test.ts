@@ -5,8 +5,11 @@ import {
   getWorkspaceOfficePrice,
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
+  isWorkspaceCoworkSaleableProductTier,
   isWorkspaceProductTier,
+  workspaceCoworkCatalog,
   workspaceCoworkProductCatalog,
+  workspaceCoworkSaleableCatalog,
   workspaceMeetingRoomCatalog,
   workspaceMeetingRoomProductsByDurationKey,
   workspaceProductCoffeePrice,
@@ -45,10 +48,20 @@ describe("workspace product catalog", () => {
 
   test("keeps cowork-only catalog consumers separate from meeting room", () => {
     expect(
-      workspaceCoworkProductCatalog.map((product) => product.tier)
-    ).toEqual(["basic", "plus", "profi"]);
+      workspaceCoworkSaleableCatalog.map((product) => product.tier)
+    ).toEqual(["open-space", "reserved-desk"]);
+    expect(workspaceCoworkCatalog.map((product) => product.tier)).toEqual([
+      "basic",
+      "plus",
+      "profi",
+      "open-space",
+      "reserved-desk",
+    ]);
     expect(isWorkspaceProductTier("basic")).toBe(true);
+    expect(isWorkspaceProductTier("open-space")).toBe(true);
     expect(isWorkspaceProductTier("toString")).toBe(false);
+    expect(isWorkspaceCoworkSaleableProductTier("basic")).toBe(false);
+    expect(isWorkspaceCoworkSaleableProductTier("reserved-desk")).toBe(true);
   });
 
   test("exposes approved meeting room duration prices", () => {

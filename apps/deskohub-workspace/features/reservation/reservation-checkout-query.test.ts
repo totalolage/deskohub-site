@@ -27,13 +27,13 @@ describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
     const query = getWorkspaceAvailabilityQueryFromReservationSearchParams({
       date: "2099-06-10",
       monitorOption: "2x27-qhd",
-      tier: "profi",
+      tier: "reserved-desk",
     });
 
     expect(query).toMatchObject({
       kind: "cowork",
       date: "2099-06-10",
-      entryTier: "profi",
+      entryTier: "reserved-desk",
       monitorOption: "2x27-qhd",
     });
   });
@@ -47,21 +47,21 @@ describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
     expect(query).toMatchObject({
       kind: "cowork",
       date: "2099-06-10",
-      entryTier: "basic",
+      entryTier: "open-space",
     });
   });
 
   test("drops monitor options for tiers that do not use monitors", () => {
     const query = getWorkspaceAvailabilityQueryFromReservationSearchParams({
       date: "2099-06-10",
-      entryTier: "basic",
+      entryTier: "open-space",
       monitorOption: "2x27-qhd",
     });
 
     expect(query).toMatchObject({
       kind: "cowork",
       date: "2099-06-10",
-      entryTier: "basic",
+      entryTier: "open-space",
     });
     expect(query.monitorOption).toBeUndefined();
   });
@@ -76,7 +76,7 @@ describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
     expect(query).toEqual({
       kind: "cowork",
       date: "2099-06-10",
-      entryTier: "basic",
+      entryTier: "open-space",
       from: expect.any(String),
       to: expect.any(String),
     });
@@ -91,7 +91,7 @@ describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
     expect(query).toEqual({
       kind: "cowork",
       date: "2099-06-10",
-      entryTier: "basic",
+      entryTier: "open-space",
       from: expect.any(String),
       to: expect.any(String),
     });
@@ -375,7 +375,7 @@ describe("getReservationDefaultValuesFromPayState", () => {
       normalizedCoworkReservationOrderSchema
     )({
       kind: "cowork",
-      entryTier: "profi",
+      entryTier: "reserved-desk",
       date: "2099-06-10",
       coffee: true,
       monitorOption: "2x27-qhd",
@@ -386,7 +386,7 @@ describe("getReservationDefaultValuesFromPayState", () => {
     });
 
     expect(getReservationDefaultValuesFromPayState(reservation)).toEqual({
-      entryTier: "profi",
+      entryTier: "reserved-desk",
       date: "2099-06-10",
       coffee: true,
       monitorOption: "2x27-qhd",

@@ -11,7 +11,6 @@ import {
   coworkReservationDefaultValues,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
-import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
 import {
   type MeetingRoomReservationInput,
   meetingRoomReservationDefaultValues,

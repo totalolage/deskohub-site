@@ -173,9 +173,7 @@ export function isWorkspaceCoworkSaleableProductTier(
 ): value is WorkspaceCoworkSaleableTier {
   return (
     value !== undefined &&
-    workspaceCoworkSaleableTiers.includes(
-      value as WorkspaceCoworkSaleableTier
-    )
+    workspaceCoworkSaleableTiers.includes(value as WorkspaceCoworkSaleableTier)
   );
 }
 

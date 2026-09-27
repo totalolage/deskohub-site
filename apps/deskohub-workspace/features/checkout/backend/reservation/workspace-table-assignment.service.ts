@@ -1,8 +1,8 @@
 import {
   type DotyposReservationId,
   type DotyposReservationInterval,
-  type DotyposTable,
   DotyposService,
+  type DotyposTable,
   type DotyposTableId,
   type ExternalAPIError,
   type NetworkError,
@@ -10,6 +10,7 @@ import {
 } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
 import { Context, Effect, Layer, Match } from "effect";
+import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   type CoworkReservationDetails,
@@ -43,7 +44,6 @@ import {
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,
 } from "./workspace-table-selection";
-import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
 
 type CoworkTableAssignmentReservation = StoredCoworkReservationDetails &
   Pick<CoworkReservationDetails, "date">;
@@ -64,7 +64,8 @@ const getRequiredTagsAssignment = (
   requireEmptyTable: boolean
 ): WorkspaceTableAssignment => ({
   requiredTags,
-  isCandidateTable: (tableTags: ReadonlySet<string>) => requiredTags.every((tag) => tableTags.has(tag)),
+  isCandidateTable: (tableTags: ReadonlySet<string>) =>
+    requiredTags.every((tag) => tableTags.has(tag)),
   requireEmptyTable,
 });
 

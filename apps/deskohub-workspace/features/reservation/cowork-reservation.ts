@@ -93,23 +93,24 @@ export const isCoworkOpenSpaceDayCutoffReached = (input: {
   const today = getCurrentWorkspaceDate(now);
   if (input.date !== today.toString()) return false;
 
-  const cutoff = today.toZonedDateTime(
-    workspaceSiteConstants.location.timeZone
-  ).with({
-    hour: openSpaceExclusiveEndHour,
-    minute: 0,
-    second: 0,
-    millisecond: 0,
-    microsecond: 0,
-    nanosecond: 0,
-  });
+  const cutoff = today
+    .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+    .with({
+      hour: openSpaceExclusiveEndHour,
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+      microsecond: 0,
+      nanosecond: 0,
+    });
 
   return Temporal.Instant.compare(now, cutoff.toInstant()) >= 0;
 };
 
-const getCoworkReservationDateIssues = (
-  data: { readonly entryTier: WorkspaceCoworkProductTier; readonly date: string }
-): readonly Schema.FilterIssue[] =>
+const getCoworkReservationDateIssues = (data: {
+  readonly entryTier: WorkspaceCoworkProductTier;
+  readonly date: string;
+}): readonly Schema.FilterIssue[] =>
   isCoworkOpenSpaceDayCutoffReached(data)
     ? [
         {
@@ -564,7 +565,7 @@ export const coworkSaleableReservationOrderSchema =
           (data) =>
             normalizeCoworkReservationOrder(
               data
-            ) as NormalizedSaleableCoworkReservationOrder,
+            ) as NormalizedSaleableCoworkReservationOrder
         ),
         encode: SchemaGetter.transform(decodeCoworkReservationOrder),
       })
@@ -574,12 +575,15 @@ export const normalizeCoworkReservationForm = (
   data: CoworkReservationFormInput
 ): NormalizedSaleableCoworkReservationForm =>
   // Issuance input can only produce the saleable offers.
-  normalizeCoworkReservationOrder(
-    data
-  ) as NormalizedSaleableCoworkReservationForm;
+  ({
+    ...normalizeCoworkReservationOrder(data),
+    marketingConsent: data.marketingConsent,
+  }) as NormalizedSaleableCoworkReservationForm;
 
 export const getCoworkReservationOrder = (
-  form: NormalizedCoworkReservationForm | NormalizedSaleableCoworkReservationForm
+  form:
+    | NormalizedCoworkReservationForm
+    | NormalizedSaleableCoworkReservationForm
 ): NormalizedCoworkReservationOrder =>
   Match.value(form).pipe(
     Match.discriminatorsExhaustive("entryTier")({
@@ -640,14 +644,14 @@ export const coworkReservationDefaultValues: CoworkReservationInput = {
   marketingConsent: false,
 };
 
+export {
+  getCoworkTierIncludesCourtesyCoffee,
+  getCoworkTierRequiresMonitorOption,
+  getCoworkTierWorkstationAddon,
+} from "@/features/checkout/product-catalog";
 export type { WorkspaceCoworkProductTier, WorkspaceCoworkSaleableTier };
 export {
   getAllowedMonitorOptionsForCoworkTier,
   getCoworkReservationProductCoffee,
   getCoworkReservationProductMonitorOption,
 };
-export {
-  getCoworkTierIncludesCourtesyCoffee,
-  getCoworkTierRequiresMonitorOption,
-  getCoworkTierWorkstationAddon,
-} from "@/features/checkout/product-catalog";
