@@ -1,4 +1,4 @@
-"use server";
+import "server-only";
 
 import {
   normalizeExpression,
@@ -11,13 +11,13 @@ import { cacheTag } from "next/cache";
 import { env } from "@/env";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
+import type { CloudinaryTag } from "../types/cloudinary-tag";
 import {
   type CloudinaryAsset,
   WorkspaceCloudinaryLayer,
-} from "../backend/cloudinary.service";
-import type { CloudinaryTag } from "../types/cloudinary-tag";
+} from "./cloudinary.service";
 
-export interface GetCloudinaryImagesOptions extends SearchOptions {
+interface GetCloudinaryImagesOptions extends SearchOptions {
   tags: UnnormalizedLogicalExpression<CloudinaryTag>;
 }
 
@@ -28,9 +28,18 @@ export async function getCloudinaryImages({
   sortDirection,
 }: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
   "use cache";
+  const expression = normalizeExpression(tags);
+  // Empty or negative-only groups let Cloudinary search the whole cloud.
+  if (
+    expression.length === 0 ||
+    expression.some((group) => !group.some((tag) => !tag.startsWith("!")))
+  ) {
+    return [];
+  }
+
   cacheTag(cloudinaryTags.all(), cloudinaryTags.search(tags, maxResults ?? 50));
 
-  return getGalleryImages(normalizeExpression(tags), {
+  return getGalleryImages(expression, {
     maxResults,
     sortBy,
     sortDirection,
@@ -42,9 +51,6 @@ export async function getCloudinaryImages({
         "Workspace Cloudinary gallery search skipped in development"
       ).pipe(Effect.as([] as readonly CloudinaryAsset[]));
     }),
-    Effect.tapError((error) =>
-      Effect.logError("Workspace Cloudinary gallery search failed", error)
-    ),
     Effect.provide(WorkspaceCloudinaryLayer),
     runWorkspaceEffect("gallery.images.load")
   );
