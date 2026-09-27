@@ -184,7 +184,6 @@ export function CoworkReservationForm({
     });
   const showCoffeeAddon = selectedTier === "open-space";
   const showWorkstationAddon = selectedTier === "reserved-desk";
-  const _workstationSelected = selectedMonitorOption !== undefined;
   const allowedMonitorOptions =
     getAllowedMonitorOptionsForCoworkTier(selectedTier);
   const availabilityQuery = useMemo(
@@ -213,28 +212,26 @@ export function CoworkReservationForm({
       return [];
     }
 
+    // Both Reserved Desk advertised variants are requested so the paid
+    // workstation addon price is visible before the toggle is flipped. The
+    // canonical monitor option is display-only: workstation presence, not the
+    // chosen configuration, determines the advertised amount, so the request
+    // fingerprint never changes with the selected monitor option.
     return getCoworkTierAdvertisedPriceRequests({
       date: selectedDate,
       locale,
       offers: [
         { entryTier: "open-space", coffee: Boolean(selectedCoffee) },
+        { entryTier: "reserved-desk", coffee: true },
         {
           entryTier: "reserved-desk",
           coffee: true,
-          ...(selectedMonitorOption && {
-            monitorOption: selectedMonitorOption,
-          }),
+          monitorOption: workspaceProductMonitorOptions[0],
         },
       ],
       submittedCode,
     });
-  }, [
-    locale,
-    selectedCoffee,
-    selectedDate,
-    selectedMonitorOption,
-    submittedCode,
-  ]);
+  }, [locale, selectedCoffee, selectedDate, submittedCode]);
   const advertisedPriceQueryResults = useAdvertisedPrices(
     advertisedPriceRequests,
     initialAdvertisedPrices
@@ -279,12 +276,36 @@ export function CoworkReservationForm({
       queryResult.data &&
       isCoworkAdvertisedPrice(queryResult.data)
     ) {
-      advertisedPricesByTier.set(
-        request.reservation.details.entryTier,
-        queryResult.data
-      );
+      const { entryTier } = request.reservation.details;
+      // Both Reserved Desk variants share the tier key; the tier card shows
+      // the base product price, identical across the workstation variants.
+      if (!advertisedPricesByTier.has(entryTier)) {
+        advertisedPricesByTier.set(entryTier, queryResult.data);
+      }
     }
   }
+
+  const workstationAdvertisedPriceQueryResult =
+    advertisedPriceQueryResults[
+      advertisedPriceRequests.findIndex(
+        ({ reservation }) =>
+          reservation.kind === "cowork" &&
+          reservation.details.entryTier === "reserved-desk" &&
+          reservation.details.workstation === true
+      )
+    ];
+  const workstationAdvertisedPrice =
+    workstationAdvertisedPriceQueryResult?.data &&
+    !workstationAdvertisedPriceQueryResult.isError &&
+    isCoworkAdvertisedPrice(workstationAdvertisedPriceQueryResult.data)
+      ? workstationAdvertisedPriceQueryResult.data
+      : undefined;
+  const workstationPrice = workstationAdvertisedPrice?.quote.items.find(
+    ({ type }) => type === "workstation"
+  )?.amount;
+  const workstationPriceLabel = workstationPrice
+    ? formatWorkspaceMoney(workstationPrice, locale)
+    : undefined;
 
   const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
     ({ reservation }) => {
@@ -302,7 +323,13 @@ export function CoworkReservationForm({
   );
   const advertisedPriceQueryResult =
     advertisedPriceQueryResults[selectedAdvertisedPriceIndex];
-  const advertisedPrice = advertisedPricesByTier.get(selectedTier) ?? null;
+  const selectedAdvertisedPrice =
+    advertisedPriceQueryResult?.data &&
+    !advertisedPriceQueryResult.isError &&
+    isCoworkAdvertisedPrice(advertisedPriceQueryResult.data)
+      ? advertisedPriceQueryResult.data
+      : undefined;
+  const advertisedPrice = selectedAdvertisedPrice ?? null;
   const { availability } = availabilityQueryResult;
   const unavailableDates = useMemo(
     () => new Set(availability?.unavailableDates ?? []),
@@ -374,6 +401,7 @@ export function CoworkReservationForm({
             allowedMonitorOptions={allowedMonitorOptions}
             control={form.control}
             locale={locale}
+            priceLabel={workstationPriceLabel}
             unavailableMonitorOptions={unavailableMonitorOptions}
           />
         )
@@ -615,6 +643,7 @@ function CoworkWorkstationField({
   allowedMonitorOptions,
   control,
   locale,
+  priceLabel,
   unavailableMonitorOptions,
 }: {
   readonly allowedMonitorOptions: ReadonlyArray<WorkspaceProductMonitorOption>;
@@ -624,6 +653,7 @@ function CoworkWorkstationField({
     CoworkReservationData
   >;
   readonly locale: Locale;
+  readonly priceLabel?: string;
   readonly unavailableMonitorOptions: ReadonlySet<WorkspaceProductMonitorOption>;
 }) {
   return (
@@ -633,10 +663,21 @@ function CoworkWorkstationField({
       render={({ field }) => (
         <FormItem className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
           <div className="flex items-center justify-between gap-3">
-            <FormLabel className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-aquamarine-ink">
-              <Monitor className="h-4 w-4 text-aquamarine-ink" />
-              {m.reservationWorkstationLabel({}, { locale })}
-            </FormLabel>
+            <div className="flex items-center gap-3">
+              <FormLabel className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-aquamarine-ink">
+                <Monitor className="h-4 w-4 text-aquamarine-ink" />
+                {m.reservationWorkstationLabel({}, { locale })}
+              </FormLabel>
+              <span data-reservation-workstation-price="">
+                {priceLabel ? (
+                  <span className="text-sm font-semibold text-navy-blue before:content-['+']">
+                    {priceLabel}
+                  </span>
+                ) : (
+                  <ReservationSkeletonBlock className="h-4 w-14 bg-aquamarine-green/25" />
+                )}
+              </span>
+            </div>
             <FormControl>
               <Switch
                 checked={field.value !== undefined}

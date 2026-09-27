@@ -516,6 +516,7 @@
   "checkoutSummaryOriginalPrice": "Původní cena: {price}",
   "checkoutSummaryDiscountedPrice": "Cena po slevě: {price}",
   "checkoutSummaryItemCoffee": "Káva",
+  "checkoutSummaryItemWorkstation": "Pracovní stanice s monitory",
   "checkoutSummaryItemMeetingRoom": "Zasedací místnost - {duration}",
   "checkoutSummaryItemOfficeAccess": [
     {
