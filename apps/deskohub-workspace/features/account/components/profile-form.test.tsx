@@ -236,6 +236,15 @@ describe("ProfileForm", () => {
     cleanup();
     completeCustomerProfile.mockClear();
     updateCustomerProfile.mockClear();
+    // Client validation can now reject invalid input before the action runs,
+    // so queued mockImplementationOnce results from a previous test would
+    // otherwise leak into the next action call.
+    completeCustomerProfile.mockImplementation(() =>
+      Promise.resolve({ data: { status: "completed" } })
+    );
+    updateCustomerProfile.mockImplementation(() =>
+      Promise.resolve({ data: { status: "updated" } })
+    );
     workspaceRouterRefresh.mockClear();
   });
 
@@ -788,16 +797,6 @@ describe("ProfileForm", () => {
   });
 
   test("forces phone correction instead of saving when the phone fails validation", async () => {
-    updateCustomerProfile.mockImplementationOnce(() =>
-      Promise.resolve({
-        validationErrors: {
-          formErrors: [],
-          fieldErrors: {
-            phone: ["Enter a valid phone number or clear the field."],
-          },
-        },
-      })
-    );
     const { ProfileForm } = await import("./profile-form");
 
     const view = render(
@@ -813,6 +812,9 @@ describe("ProfileForm", () => {
       fireEvent.submit(view.container.querySelector("#account-profile-form")!);
     });
 
+    // The shared contract schema rejects the unparseable phone on the client,
+    // so the save never leaves the form.
+    expect(updateCustomerProfile).not.toHaveBeenCalled();
     const phone = view.getByLabelText("Phone");
     expect(phone.getAttribute("aria-invalid")).toBe("true");
     expect(phone.getAttribute("aria-describedby")).toBe(
@@ -1460,46 +1462,40 @@ describe("ProfileForm", () => {
       [
         "Company name",
         "account-profile-billing-company-name",
-        "billingCompanyName",
+        "companyName",
         "Original Company",
       ],
       [
         "Company ID (IČO)",
         "account-profile-billing-company-id",
-        "billingCompanyId",
+        "companyId",
         "12345678",
       ],
-      ["VAT ID", "account-profile-billing-vat-id", "billingVatId", ""],
+      ["VAT ID", "account-profile-billing-vat-id", "vatId", ""],
       [
         "Street and number",
         "account-profile-billing-address-line1",
-        "billingAddressLine1",
+        "addressLine1",
         "Original Street 1",
       ],
       [
         "Apartment, suite",
         "account-profile-billing-address-line2",
-        "billingAddressLine2",
+        "addressLine2",
         "",
       ],
-      ["City", "account-profile-billing-city", "billingCity", "Prague"],
-      ["Postal code", "account-profile-billing-zip", "billingZip", "11000"],
-      [
-        "Country code",
-        "account-profile-billing-country",
-        "billingCountry",
-        "CZ",
-      ],
+      ["City", "account-profile-billing-city", "city", "Prague"],
+      ["Postal code", "account-profile-billing-zip", "zip", "11000"],
+      ["Country code", "account-profile-billing-country", "country", "CZ"],
     ] as const;
 
-    expect(
-      Array.from(
-        view.container.querySelectorAll<HTMLInputElement>(
-          "input[name^='billing']"
-        ),
-        (input) => input.name
-      )
-    ).toEqual(fields.map(([, , name]) => name));
+    const billingInputs = fields
+      .map(([, id]) => view.container.querySelector<HTMLInputElement>(`#${id}`))
+      .filter((input) => input !== null);
+    expect(billingInputs).toHaveLength(fields.length);
+    expect(billingInputs.map((input) => input.name)).toEqual(
+      fields.map(([, , name]) => name)
+    );
 
     for (const [label, id, name, value] of fields) {
       const input = view.getByLabelText(label) as HTMLInputElement;
@@ -1517,20 +1513,17 @@ describe("ProfileForm", () => {
       )
     ).toBe("country");
 
-    const addressLine1 = view.getByLabelText(
-      "Street and number"
-    ) as HTMLInputElement;
-    const addressLine2 = view.getByLabelText(
-      "Apartment, suite"
-    ) as HTMLInputElement;
-    const city = view.getByLabelText("City") as HTMLInputElement;
-    const zip = view.getByLabelText("Postal code") as HTMLInputElement;
-    const country = view.getByLabelText("Country code") as HTMLInputElement;
-    const addressLine1Wrapper = addressLine1.parentElement!;
-    const addressLine2Wrapper = addressLine2.parentElement!;
-    const cityWrapper = city.parentElement!;
-    const zipWrapper = zip.parentElement!;
-    const countryWrapper = country.parentElement!;
+    const fieldWrapper = (id: string) =>
+      view.container.querySelector(`#${id}`)!.parentElement!;
+    const addressLine1Wrapper = fieldWrapper(
+      "account-profile-billing-address-line1"
+    );
+    const addressLine2Wrapper = fieldWrapper(
+      "account-profile-billing-address-line2"
+    );
+    const cityWrapper = fieldWrapper("account-profile-billing-city");
+    const zipWrapper = fieldWrapper("account-profile-billing-zip");
+    const countryWrapper = fieldWrapper("account-profile-billing-country");
     const outerGrid = addressLine1Wrapper.parentElement!;
     const zipCountryGrid = zipWrapper.parentElement!;
 
@@ -1553,6 +1546,124 @@ describe("ProfileForm", () => {
     expect(zipCountryGrid.classList.contains("grid-cols-2")).toBe(false);
     expect(zipWrapper.parentElement).toBe(zipCountryGrid);
     expect(countryWrapper.parentElement).toBe(zipCountryGrid);
+  });
+
+  test("keeps edits typed after submission and stays guarded when the save succeeds", async () => {
+    let resolveUpdate!: (result: ActionResult) => void;
+    const pendingUpdate = new Promise<ActionResult>((resolve) => {
+      resolveUpdate = resolve;
+    });
+    updateCustomerProfile.mockImplementationOnce(() => pendingUpdate);
+
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.location.href = "http://localhost/account";
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <ProfileForm
+            mode="edit"
+            locale="en-US"
+            email="ada@example.test"
+            profile={editProfile}
+          />
+          <GuardedLink href="/next">Next</GuardedLink>
+        </UnsavedChangesProvider>
+      );
+      const firstName = view.getByLabelText("First name") as HTMLInputElement;
+
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Grace" } });
+        fireEvent.submit(
+          view.container.querySelector("#account-profile-form")!
+        );
+      });
+      expect(updateCustomerProfile).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Augusta" } });
+        resolveUpdate({ data: { status: "updated" } });
+        await pendingUpdate;
+      });
+
+      // The in-flight edit survives the success and keeps the guard on.
+      expect(firstName.value).toBe("Augusta");
+      expect(view.getByText("Profile updated.")).toBeTruthy();
+      const link = view.getByRole("link", { name: "Next" });
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(confirm).toHaveBeenCalledWith(
+        "You have unsaved profile changes. Leave this page?"
+      );
+
+      // Returning to the submitted value clears the guard again.
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Grace" } });
+      });
+      const secondEvent = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      view.getByRole("link", { name: "Next" }).dispatchEvent(secondEvent);
+      expect(secondEvent.defaultPrevented).toBe(false);
+      expect(confirm).toHaveBeenCalledTimes(1);
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("moves to the billing section when client validation rejects a hidden billing field", async () => {
+    const { ProfileForm } = await import("./profile-form");
+
+    function SectionHarness() {
+      const [section, setSection] = React.useState<"profile" | "billing">(
+        "profile"
+      );
+      return (
+        <>
+          <output data-testid="active-section">{section}</output>
+          <ProfileForm
+            email="ada@example.test"
+            locale="en-US"
+            mode="edit"
+            onSectionChange={setSection}
+            profile={businessProfile}
+            section={section}
+          />
+        </>
+      );
+    }
+
+    const view = render(<SectionHarness />);
+    // Whitespace passes the native required check but fails the shared
+    // contract schema's trimmed non-empty rule.
+    fireEvent.input(view.getByLabelText("Company name"), {
+      target: { value: "   " },
+    });
+
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+
+    expect(updateCustomerProfile).not.toHaveBeenCalled();
+    expect(view.getByTestId("active-section").textContent).toBe("billing");
+    const companyName = view.getByLabelText("Company name") as HTMLInputElement;
+    expect(companyName.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      view.getByText("Please review the highlighted fields and try again.")
+    ).toBeTruthy();
   });
 
   test("blocks internal navigation after changing the profile", async () => {
