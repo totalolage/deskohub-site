@@ -1267,7 +1267,13 @@ describe.skipIf(!postgresDatabase)(
             id: fixture.attemptId as never,
             workspaceReservationId: fixture.id,
             state: "failed",
-            failureCode: "provider_declined",
+            failureCode: "provider_declined_late_probe",
+            // Distinct webhook metadata: if the retried iteration-1
+            // transaction committed instead of rolling back, these fields
+            // would persist on the attempt even though old settlement never
+            // writes them.
+            webhookEventId: `event-late-probe-${crypto.randomUUID()}` as never,
+            providerStatus: "FAILED_LATE_PROBE",
           })
         );
 
@@ -1297,10 +1303,13 @@ describe.skipIf(!postgresDatabase)(
         // start's own relink UPDATE; the real start() path is exercised end
         // to end in the late-payment-recovery suites. The FK check is
         // skipped on this session so the insert does not need a KEY SHARE
-        // on the exclusively locked payment_attempts row.
+        // on the exclusively locked payment_attempts row, and the role
+        // switch is transaction-scoped (SET LOCAL) so the pooled connection
+        // is restored — triggers and FK enforcement included — at commit.
         const publisher = await postgres.pool.connect();
         try {
-          await publisher.query("set session_replication_role = replica");
+          await publisher.query("begin");
+          await publisher.query("set local session_replication_role = replica");
           await publisher.query(
             `insert into late_payment_recoveries
                (payment_attempt_id, workspace_reservation_id, webhook_event_id,
@@ -1315,6 +1324,10 @@ describe.skipIf(!postgresDatabase)(
               verifiedPaidAt.toString(),
             ]
           );
+          await publisher.query("commit");
+        } catch (cause) {
+          await publisher.query("rollback").catch(() => {});
+          throw cause;
         } finally {
           publisher.release();
         }
@@ -1445,6 +1458,11 @@ describe.skipIf(!postgresDatabase)(
       expect(reservation!.paidAt).not.toBeNull();
       expect(attempt!.state).toBe("paid");
       expect(recoveryRow!.state).toBe("recovered");
+      // No-committed-mutation proof: the retried iteration rolled back, so
+      // the replay's distinct webhook metadata never reached the row (old
+      // settlement's paid update does not write these fields).
+      expect(attempt!.lastProviderStatus).toBeNull();
+      expect(attempt!.lastWebhookEventId).toBeNull();
     }, 30_000);
   }
 );
