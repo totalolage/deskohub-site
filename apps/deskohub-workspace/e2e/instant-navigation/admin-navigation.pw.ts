@@ -73,3 +73,24 @@ test("serves the administration shell and granular loading regions", async ({
     { baseURL: requireBaseUrl(baseURL) }
   );
 });
+
+test("captures the customer activity section after hydration", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/admin");
+
+  const customerActivity = page.getByRole("region", {
+    name: "Customer activity",
+  });
+  await expect(customerActivity.getByText("Unique customers")).toBeVisible();
+  await expect(customerActivity.getByText("New customers")).toBeVisible();
+
+  const screenshotPath =
+    "e2e-artifacts/account-review/admin-overview-customer-activity.png";
+  await page.screenshot({ fullPage: true, path: screenshotPath });
+  await testInfo.attach("admin-overview-customer-activity", {
+    contentType: "image/png",
+    path: screenshotPath,
+  });
+  await page.close();
+});
