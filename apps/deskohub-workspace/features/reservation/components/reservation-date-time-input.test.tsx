@@ -23,8 +23,8 @@ type DateTimeInputProps = Parameters<typeof ReservationDateTimeInput>[0];
  * back through `onChange`, so the named submit field reflects committed
  * edits exactly like the reservation forms do.
  */
-const Harness = (props: DateTimeInputProps) => {
-  const [value, setValue] = useState<string | undefined>(props.value);
+const Harness = (harnessProps: Partial<DateTimeInputProps>) => {
+  const [value, setValue] = useState<string | undefined>(harnessProps.value);
 
   return (
     <ReservationDateTimeInput
@@ -32,9 +32,9 @@ const Harness = (props: DateTimeInputProps) => {
       locale="en-US"
       name="startDateTime"
       timeLabel="Start time"
-      {...props}
+      {...harnessProps}
       onChange={(next) => {
-        props.onChange?.(next);
+        harnessProps.onChange?.(next);
         setValue(next);
       }}
       value={value}
@@ -84,13 +84,90 @@ const pickEnabledGridDay = async (
 };
 
 describe("ReservationDateTimeInput", () => {
+  test("validates required, bounds, and step on the canonical field", () => {
+    const onChange = mock(() => undefined);
+    const view = render(
+      <form aria-label="Reservation form">
+        <ReservationDateTimeInput
+          dateLabel="Start date"
+          locale="en-US"
+          minimum="2099-06-10T15:00"
+          name="startDateTime"
+          onChange={onChange}
+          required
+          timeLabel="Start time"
+          timeStepMinutes={60}
+        />
+      </form>
+    );
+    const form = view.getByRole("form", {
+      name: "Reservation form",
+    }) as HTMLFormElement;
+    const canonical = view.container.querySelector<HTMLInputElement>(
+      '[name="startDateTime"]'
+    )!;
+
+    // An empty required date is validated even though the field is hidden.
+    expect(canonical.getAttribute("type")).toBe("datetime-local");
+    expect(canonical.required).toBe(true);
+    expect(canonical.getAttribute("min")).toBe("2099-06-10T15:00");
+    expect(canonical.getAttribute("step")).toBe("3600");
+    expect(form.checkValidity()).toBe(false);
+
+    fireEvent.input(view.getByLabelText(/Start time/), {
+      target: { value: "17:00" },
+    });
+    expect(canonical.value).toBe("");
+    expect(form.checkValidity()).toBe(false);
+  });
+
+  test("rejects a date that a dynamic minimum moved past without a rerender", async () => {
+    const today = Temporal.Now.plainDateISO();
+    const nearDay = today.add({ days: 1 });
+    const farDay = today.add({ days: 10 });
+    let minimum = `${today.toString()}T15:00`;
+    const onChange = mock(() => undefined);
+    const view = render(
+      <Harness
+        dateLabel="Start date"
+        locale="en-US"
+        minimum={() => minimum}
+        onChange={onChange}
+        timeLabel="Start time"
+        value={`${nearDay.toString()}T16:00`}
+      />
+    );
+    const readHidden = () =>
+      view.container.querySelector<HTMLInputElement>('[name="startDateTime"]')!;
+
+    // The bound advances across a day boundary while the calendar is open,
+    // without a parent rerender; the previously valid near day is now stale
+    // and must be rejected whole.
+    await openCalendar(view);
+    minimum = `${farDay.toString()}T09:00`;
+    const staleDayButton = [
+      ...view.baseElement.querySelectorAll<HTMLButtonElement>(
+        '[role="grid"] button'
+      ),
+    ].find(
+      (button) =>
+        button.textContent === nearDay.day.toString() && !button.disabled
+    );
+    expect(staleDayButton).toBeDefined();
+    fireEvent.click(staleDayButton!);
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(readHidden().value).toBe(`${nearDay.toString()}T16:00`);
+  });
+
   test("submits the complete canonical datetime under the field name", () => {
     const { readHidden, view } = renderDateTimeInput({
-      props: { value: "2099-06-10T16:00" },
+      props: { required: true, value: "2099-06-10T16:00" },
     });
 
     expect(readHidden().value).toBe("2099-06-10T16:00");
-    expect(readHidden().getAttribute("type")).toBe("hidden");
+    expect(readHidden().getAttribute("type")).toBe("datetime-local");
+    expect(readHidden().required).toBe(true);
     expect(
       view.container.querySelectorAll('[name="startDateTime"]')
     ).toHaveLength(1);
@@ -156,9 +233,59 @@ describe("ReservationDateTimeInput", () => {
     expect(onChange).not.toHaveBeenCalled();
     expect((timeInput as HTMLInputElement).value).toBe("17:00");
 
+    // The shared editor owns its draft: an emptied segmented edit keeps the
+    // draft on screen without touching committed reservation state, and the
+    // committed clock is restored on blur without a remount.
     fireEvent.input(timeInput, { target: { value: "" } });
     expect(onChange).not.toHaveBeenCalled();
+    expect((timeInput as HTMLInputElement).value).toBe("");
+    fireEvent.blur(timeInput);
     expect((timeInput as HTMLInputElement).value).toBe("17:00");
+    expect(view.container.querySelector('[name="startDateTime"]')!.value).toBe(
+      "2099-06-10T17:00"
+    );
+  });
+
+  test("preserves focus and incomplete edits through rejected and blurred edits", () => {
+    const onChange = mock(() => undefined);
+    const view = render(
+      <Harness
+        dateLabel="Start date"
+        locale="en-US"
+        onChange={onChange}
+        timeLabel="Start time"
+        timeStepMinutes={60}
+        value="2099-06-10T16:00"
+      />
+    );
+    const timeInput = view.getByLabelText(/Start time/) as HTMLInputElement;
+    timeInput.focus();
+    expect(view.container.ownerDocument.activeElement).toBe(timeInput);
+
+    // A partial segmented edit (invalid editor state) keeps the editor's
+    // draft without touching committed reservation state or focus.
+    Object.defineProperty(timeInput, "validity", {
+      configurable: true,
+      value: { valid: false, badInput: true },
+    });
+    fireEvent.input(timeInput);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(view.container.ownerDocument.activeElement).toBe(timeInput);
+    expect(view.container.querySelector('[name="startDateTime"]')!.value).toBe(
+      "2099-06-10T16:00"
+    );
+    // Restore the real validity getter for the rejected-edit assertions.
+    Reflect.deleteProperty(timeInput, "validity");
+
+    // A rejected whole edit reverts the editor without a remount.
+    fireEvent.input(timeInput, { target: { value: "17:30" } });
+    expect(timeInput.value).toBe("16:00");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(view.container.ownerDocument.activeElement).toBe(timeInput);
+
+    // Blur keeps the committed clock.
+    fireEvent.blur(timeInput);
+    expect(timeInput.value).toBe("16:00");
   });
 
   test("shows only the selected date in the date control", () => {

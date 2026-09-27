@@ -360,8 +360,10 @@ describe("CreateStandaloneAccessCodeForm", () => {
       target: { value: "Booth A" },
     });
     await submitForm(view);
+    // The RHF ref lands on the interactive date trigger instead of a
+    // non-labelable wrapper div, so keyboard focus reaches the control.
     expect(document.activeElement).toBe(
-      view.container.querySelector('[data-field="startsAt"]')
+      view.getByRole("button", { name: "Starts date" })
     );
   });
 

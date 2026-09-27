@@ -1,8 +1,9 @@
 "use client";
 
-import { type SyntheticEvent, useReducer, useState } from "react";
+import { useState } from "react";
 import { DateInput } from "@/shared/components/date-time/date-input";
 import {
+  formatMinuteDateTime,
   getSameDayTimeBound,
   parsePlainDate,
   resolvePlainDateTimeBound,
@@ -47,12 +48,16 @@ const splitDateTime = (value: string | undefined) => {
   return { date: dateSegment || undefined, time: timeSegment || undefined };
 };
 
+const resolveMinimumDateTime = (minimum: TemporalBoundInput | undefined) =>
+  resolvePlainDateTimeBound(minimum);
+
 /**
  * Reservation-family date-time field built on the shared date-time controls.
  * It owns the reservation-side policies the shared controls deliberately
  * omit: the default start time applied when a date is picked without a
  * time, the same-day minimum-time clamp when the date moves, and the
- * optional time-only (whole-day) presentation.
+ * optional time-only (whole-day) presentation. Dynamic minimum bounds are
+ * always resolved at event time, never frozen at render.
  */
 export function ReservationDateTimeInput({
   ariaDescribedBy,
@@ -78,18 +83,15 @@ export function ReservationDateTimeInput({
   // The pending clock survives without a selected date and while the time
   // control is hidden, so a later date choice reuses the last chosen time.
   const [pendingTime, setPendingTime] = useState<string>(defaultStartTime);
-  // Re-render the shared controls with the reasserted controlled value when
-  // an edit is rejected against a freshly resolved dynamic bound.
-  const [rejectedEdits, bumpRejectedEdits] = useReducer(
-    (count: number) => count + 1,
-    0
-  );
   const selectedTime = committedTime ?? pendingTime;
-  const minimumDateTime = resolvePlainDateTimeBound(minimum);
-  const minimumTimeForSelectedDate = getSameDayTimeBound({
-    date: parsePlainDate(selectedDate),
-    dateTimeBound: minimumDateTime,
-  });
+
+  const minimumDate = () =>
+    resolveMinimumDateTime(minimum)?.toPlainDate().toString();
+  const minimumTimeForSelectedDate = () =>
+    getSameDayTimeBound({
+      date: parsePlainDate(selectedDate),
+      dateTimeBound: resolveMinimumDateTime(minimum),
+    });
 
   const handleDateChange = (nextDate: string | undefined) => {
     if (!nextDate) {
@@ -98,11 +100,24 @@ export function ReservationDateTimeInput({
       return;
     }
 
-    // Dynamic minimum bounds are resolved at event time, never frozen at mount.
+    // Validate the whole selected date against the freshly resolved bound:
+    // a dynamic minimum may have advanced past the picked day without the
+    // owning form re-rendering.
+    const minimumDateTime = resolveMinimumDateTime(minimum);
+    const nextPlainDate = parsePlainDate(nextDate);
+    if (
+      minimumDateTime &&
+      nextPlainDate &&
+      Temporal.PlainDate.compare(nextPlainDate, minimumDateTime.toPlainDate()) <
+        0
+    ) {
+      return;
+    }
+
     const minimumTimeForNextDate = showTime
       ? getSameDayTimeBound({
-          date: parsePlainDate(nextDate),
-          dateTimeBound: resolvePlainDateTimeBound(minimum),
+          date: nextPlainDate,
+          dateTimeBound: minimumDateTime,
         })
       : undefined;
     const nextTime =
@@ -115,36 +130,11 @@ export function ReservationDateTimeInput({
   };
 
   const handleTimeChange = (nextTime: string | undefined) => {
-    // Clearing the time keeps the previously committed reservation start;
-    // an incomplete canonical datetime never reaches the form.
-    if (!nextTime) {
-      bumpRejectedEdits();
-      return;
-    }
-    const freshMinimumTimeForSelectedDate = getSameDayTimeBound({
-      date: parsePlainDate(selectedDate),
-      dateTimeBound: resolvePlainDateTimeBound(minimum),
-    });
-    if (
-      freshMinimumTimeForSelectedDate !== undefined &&
-      nextTime < freshMinimumTimeForSelectedDate
-    ) {
-      bumpRejectedEdits();
-      return;
-    }
-    // Re-typing the displayed clock is a no-op, not a new reservation start.
-    if (nextTime === selectedTime) return;
+    // Clearing or rejecting the clock keeps the previously committed
+    // reservation start; the shared editor restores its own display.
+    if (!nextTime || nextTime === selectedTime) return;
     setPendingTime(nextTime);
     if (selectedDate) onChange?.(`${selectedDate}T${nextTime}`);
-  };
-
-  // The shared time control keeps committed values for incomplete segmented
-  // edits without resetting its editor; restore the reservation clock here so
-  // the visible control never shows a cleared or partial start.
-  const handleTimeInputCapture = (event: SyntheticEvent) => {
-    const editor = event.target as HTMLInputElement;
-    if (editor.type !== "time") return;
-    if (!editor.validity.valid && selectedTime) editor.value = selectedTime;
   };
 
   return (
@@ -161,45 +151,57 @@ export function ReservationDateTimeInput({
         id={id}
         isDateDisabled={isDateDisabled}
         locale={locale}
-        minimum={minimumDateTime?.toPlainDate().toString()}
+        minimum={minimumDate}
+        onBlur={onBlur}
         onChange={handleDateChange}
         placeholder={placeholder}
         required={required}
         value={selectedDate}
       />
       {showTime && (
-        <div onInputCapture={handleTimeInputCapture}>
-          <TimeInput
-            key={rejectedEdits}
-            ariaDescribedBy={ariaDescribedBy}
-            ariaInvalid={ariaInvalid}
-            ariaLabel={getReservationAccessibleLabel({
-              ariaLabel: timeLabel,
-              locale,
-              required,
-            })}
-            disabled={disabled}
-            id={id ? `${id}-time` : undefined}
-            minimum={minimumTimeForSelectedDate}
-            onBlur={onBlur}
-            onChange={handleTimeChange}
-            required={required}
-            timeStepMinutes={timeStepMinutes}
-            value={selectedTime}
-          />
-        </div>
-      )}
-      {name && (
-        <input
-          name={name}
-          type="hidden"
-          value={
-            selectedDate && selectedTime
-              ? `${selectedDate}T${selectedTime}`
-              : ""
-          }
+        <TimeInput
+          ariaDescribedBy={ariaDescribedBy}
+          ariaInvalid={ariaInvalid}
+          ariaLabel={getReservationAccessibleLabel({
+            ariaLabel: timeLabel,
+            locale,
+            required,
+          })}
+          disabled={disabled}
+          id={id ? `${id}-time` : undefined}
+          minimum={minimumTimeForSelectedDate}
+          onBlur={onBlur}
+          onChange={handleTimeChange}
+          required={required}
+          timeStepMinutes={timeStepMinutes}
+          value={selectedTime}
         />
       )}
+      {/* The canonical reservation field validates required, bounds, and
+          step even though it submits under the field name only. */}
+      <input
+        aria-hidden="true"
+        className="sr-only pointer-events-none"
+        disabled={disabled}
+        id={id ? `${id}-canonical` : undefined}
+        min={(() => {
+          const bound = resolveMinimumDateTime(minimum);
+          return bound ? formatMinuteDateTime(bound) : undefined;
+        })()}
+        name={name}
+        onChange={() => undefined}
+        required={required}
+        step={
+          timeStepMinutes
+            ? Math.max(1, Math.trunc(timeStepMinutes)) * 60
+            : undefined
+        }
+        tabIndex={-1}
+        type="datetime-local"
+        value={
+          selectedDate && selectedTime ? `${selectedDate}T${selectedTime}` : ""
+        }
+      />
     </div>
   );
 }

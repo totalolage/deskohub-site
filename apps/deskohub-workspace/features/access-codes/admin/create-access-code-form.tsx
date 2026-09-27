@@ -382,20 +382,19 @@ export function CreateStandaloneAccessCodeForm() {
                   <FormItem>
                     <FormLabel>Starts</FormLabel>
                     <FormControl>
-                      <div data-field="startsAt" ref={ref} tabIndex={-1}>
-                        <DateTimeInput
-                          ariaInvalid={Boolean(fieldState.error)}
-                          dateLabel="Starts date"
-                          defaultValue={windowSeed.values.startsAt || undefined}
-                          key={`startsAt-${windowSeed.key}`}
-                          name="startsAt"
-                          onBlur={onBlur}
-                          onChange={(value) => onChange(value ?? "")}
-                          required
-                          timeLabel="Starts time"
-                          timeStepMinutes={60}
-                        />
-                      </div>
+                      <DateTimeInput
+                        ariaInvalid={Boolean(fieldState.error)}
+                        dateLabel="Starts date"
+                        defaultValue={windowSeed.values.startsAt || undefined}
+                        key={`startsAt-${windowSeed.key}`}
+                        name="startsAt"
+                        onBlur={onBlur}
+                        onChange={(value) => onChange(value ?? "")}
+                        ref={ref}
+                        required
+                        timeLabel="Starts time"
+                        timeStepMinutes={60}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -408,22 +407,21 @@ export function CreateStandaloneAccessCodeForm() {
                   <FormItem>
                     <FormLabel>Ends</FormLabel>
                     <FormControl>
-                      <div data-field="endsAt" ref={ref} tabIndex={-1}>
-                        <DateTimeInput
-                          ariaInvalid={Boolean(fieldState.error)}
-                          dateLabel="Ends date"
-                          defaultValue={windowSeed.values.endsAt || undefined}
-                          key={`endsAt-${windowSeed.key}`}
-                          maximum={endMax}
-                          minimum={endMin}
-                          name="endsAt"
-                          onBlur={onBlur}
-                          onChange={(value) => onChange(value ?? "")}
-                          required
-                          timeLabel="Ends time"
-                          timeStepMinutes={60}
-                        />
-                      </div>
+                      <DateTimeInput
+                        ariaInvalid={Boolean(fieldState.error)}
+                        dateLabel="Ends date"
+                        defaultValue={windowSeed.values.endsAt || undefined}
+                        key={`endsAt-${windowSeed.key}`}
+                        maximum={endMax}
+                        minimum={endMin}
+                        name="endsAt"
+                        onBlur={onBlur}
+                        onChange={(value) => onChange(value ?? "")}
+                        ref={ref}
+                        required
+                        timeLabel="Ends time"
+                        timeStepMinutes={60}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

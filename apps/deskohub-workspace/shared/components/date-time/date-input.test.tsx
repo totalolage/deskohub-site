@@ -34,7 +34,6 @@ const renderDateInput = ({
     <form aria-label="Bound form">
       <DateInput
         ariaLabel="Start date"
-        ariaRequired={props?.required}
         defaultValue={props?.defaultValue}
         disabled={props?.disabled}
         id="startDate"
@@ -116,6 +115,108 @@ describe("DateInput", () => {
     expect(
       view.getByRole("button", { name: "Start date" }).textContent
     ).toContain("15");
+  });
+
+  test("validates an unnamed required control without naming it", async () => {
+    const { form, view } = renderDateInput({
+      props: { required: true },
+      withName: false,
+    });
+    const canonical =
+      form.querySelector<HTMLInputElement>('input[type="date"]')!;
+
+    expect(canonical.name).toBe("");
+    expect(canonical.required).toBe(true);
+    expect(form.checkValidity()).toBe(false);
+    expect(new FormData(form).get("startDate")).toBeNull();
+
+    await openCalendar(view);
+    clickDay(view, "15");
+    expect(form.checkValidity()).toBe(true);
+    expect(new FormData(form).get("startDate")).toBeNull();
+  });
+
+  test("re-checks dynamic bounds at selection time", async () => {
+    let minimum = dayInCurrentMonth(1).toString();
+    const { view } = renderDateInput({
+      props: { minimum: () => minimum },
+    });
+
+    // The calendar opens under the old bound; the bound then advances past
+    // the enabled day without a rerender and the fresh event-time bound
+    // rejects the selection.
+    await openCalendar(view);
+    minimum = dayInCurrentMonth(20).toString();
+    clickDay(view, "15");
+
+    expect(
+      view.getByRole("button", { name: "Start date" }).textContent
+    ).toContain("Pick a date");
+  });
+
+  test("treats malformed and non-canonical prop values as empty", () => {
+    const { readHidden, view } = renderDateInput({
+      props: { value: "2099-06-10T16:00" },
+    });
+
+    expect(readHidden()[0].value).toBe("");
+    expect(view.getByRole("button", { name: "Start date" }).textContent).toBe(
+      "Pick a date"
+    );
+
+    view.rerender(
+      <form aria-label="Bound form">
+        <DateInput
+          ariaLabel="Start date"
+          locale="en-US"
+          name="startDate"
+          value="June 10th, 2099"
+        />
+      </form>
+    );
+    expect(readHidden()[0].value).toBe("");
+  });
+
+  test("exposes a ref, blur, and label association on the date trigger", () => {
+    let triggerRef: HTMLButtonElement | null = null;
+    const onBlur = mock(() => undefined);
+    const view = render(
+      <form aria-label="Bound form">
+        <label htmlFor="startDate">Start date label</label>
+        <DateInput
+          ariaLabel="Start date"
+          id="startDate"
+          locale="en-US"
+          onBlur={onBlur}
+          ref={(node) => {
+            triggerRef = node;
+          }}
+        />
+      </form>
+    );
+    const trigger = view.getByLabelText(
+      "Start date label"
+    ) as HTMLButtonElement;
+
+    // The label targets the interactive trigger, and the ref exposes it.
+    expect(trigger).toBeInstanceOf(HTMLButtonElement);
+    expect(triggerRef).toBeInstanceOf(HTMLButtonElement);
+    expect(triggerRef!.id).toBe("startDate");
+
+    trigger.focus();
+    expect(view.container.ownerDocument.activeElement).toBe(trigger);
+    fireEvent.blur(trigger);
+    expect(onBlur).toHaveBeenCalled();
+  });
+
+  test("wraps long localized dates instead of truncating", () => {
+    const { view } = renderDateInput({
+      props: { value: "2099-06-10" },
+    });
+    const trigger = view.getByRole("button", { name: "Start date" });
+
+    expect(trigger.className).toContain("whitespace-normal");
+    expect(trigger.textContent).toContain("June 10, 2099");
   });
 
   test("clears back to an empty canonical value", async () => {

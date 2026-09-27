@@ -496,6 +496,62 @@ describe("discount administration pages", () => {
     );
   });
 
+  test("enables Save and submits a cleared bound when only one service date is cleared", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const form = view
+      .getByRole("button", { name: "Save code" })
+      .closest("form") as HTMLFormElement;
+    expect(form).not.toBeNull();
+    if (!form) return;
+
+    await pickDateFieldDay(view, "Service date from (inclusive)");
+    fireEvent.click(
+      view.getByRole("button", { name: "Service date from (inclusive)" })
+    );
+    fireEvent.click(
+      await view.findByRole("button", {
+        name: "Clear Service date from (inclusive)",
+      })
+    );
+
+    expect(readHiddenTemporalValue(view.container, "serviceDateFrom")).toBe("");
+    expect(readHiddenTemporalValue(view.container, "serviceDateUntil")).toBe(
+      "2026-08-11"
+    );
+    await waitFor(() =>
+      expect(view.getByRole("button", { name: "Save code" })).toHaveProperty(
+        "disabled",
+        false
+      )
+    );
+    await act(async () => {
+      fireEvent.submit(form);
+      await Promise.resolve();
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "update-code",
+        code: expect.objectContaining({
+          id: dashboard.codes[0]!.id,
+          serviceDateFrom: null,
+          serviceDateUntil: "2026-08-11",
+        }),
+      })
+    );
+  });
+
   test("lists and updates voucher credit without discount or use fields", async () => {
     const execute = mock();
     workspaceUseAction.mockReturnValue({

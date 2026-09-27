@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { useEffect, useState } from "react";
 import "@/shared/polyfills/temporal";
 import {
   registerWorkspaceComponentTestEnv,
@@ -66,7 +67,250 @@ const pickDate = async (
   fireEvent.click(dayButton!);
 };
 
+type DateTimeInputProps = Parameters<typeof DateTimeInput>[0];
+
+/**
+ * Stateful harness mirroring an owning form: the canonical value flows back
+ * through onChange into controlled state, so the named submit field tracks
+ * committed edits exactly like a real parent.
+ */
+const StatefulHarness = ({
+  onValueChange,
+  value: valueProp,
+  ...props
+}: Omit<DateTimeInputProps, "onChange"> & {
+  readonly onValueChange?: (value: string | undefined) => void;
+}) => {
+  const [value, setValue] = useState<string | undefined>(valueProp);
+  useEffect(() => {
+    setValue(valueProp);
+  }, [valueProp]);
+  return (
+    <DateTimeInput
+      {...props}
+      onChange={(next) => {
+        onValueChange?.(next);
+        setValue(next);
+      }}
+      value={value}
+    />
+  );
+};
+
+const renderStateful = (
+  props: Partial<Parameters<typeof StatefulHarness>[0]> = {}
+) => {
+  const onValueChange = mock(() => undefined);
+  const baseProps = {
+    dateLabel: "Start date",
+    id: "startsAt",
+    locale: "en-US",
+    name: "startsAt",
+    onValueChange,
+    timeLabel: "Start time",
+    ...props,
+  } as Parameters<typeof StatefulHarness>[0];
+  const view = render(
+    <form aria-label="Bound form">
+      <StatefulHarness {...baseProps} />
+    </form>
+  );
+  const form = view.getByRole("form", {
+    name: "Bound form",
+  }) as HTMLFormElement;
+  const readHidden = () =>
+    form.querySelector<HTMLInputElement>('[name="startsAt"]')!;
+  const rerender = (
+    nextProps: Partial<Parameters<typeof StatefulHarness>[0]> = {}
+  ) =>
+    view.rerender(
+      <form aria-label="Bound form">
+        <StatefulHarness {...baseProps} {...nextProps} />
+      </form>
+    );
+  return { form, onValueChange, readHidden, rerender, view };
+};
+
 describe("DateTimeInput", () => {
+  test("constructs a value from a controlled-empty state and reports explicit clears", async () => {
+    const target = dayInCurrentMonth(15);
+    const { form, onValueChange, view } = renderStateful();
+
+    // Controlled-empty: selecting a date is a visible partial draft that
+    // submits nothing and keeps the form blocked.
+    await pickDate(view, "15");
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(new FormData(form).get("startsAt")).toBe("");
+    expect(form.checkValidity()).toBe(false);
+
+    // Completing the draft emits the canonical value and unblocks the form.
+    fireEvent.input(view.getByLabelText("Start time"), {
+      target: { value: "10:30" },
+    });
+    const complete = `${target.toString()}T10:30`;
+    expect(onValueChange).toHaveBeenLastCalledWith(complete);
+    expect(new FormData(form).get("startsAt")).toBe(complete);
+    expect(form.checkValidity()).toBe(true);
+
+    // Clearing the time then the date reports an explicit clear.
+    fireEvent.input(view.getByLabelText("Start time"), {
+      target: { value: "" },
+    });
+    expect(onValueChange).toHaveBeenCalledTimes(1);
+    expect(form.checkValidity()).toBe(false);
+    fireEvent.click(view.getByRole("button", { name: "Start date" }));
+    fireEvent.click(
+      await view.findByRole("button", { name: "Clear Start date" })
+    );
+    expect(onValueChange).toHaveBeenLastCalledWith(undefined);
+    expect(new FormData(form).get("startsAt")).toBe("");
+
+    // Re-entering a full value works from the cleared controlled state.
+    await pickDate(view, "15");
+    fireEvent.input(view.getByLabelText("Start time"), {
+      target: { value: "10:30" },
+    });
+    expect(new FormData(form).get("startsAt")).toBe(complete);
+  });
+
+  test("follows the parent resetting the controlled value", async () => {
+    const target = dayInCurrentMonth(15);
+    const { onValueChange, readHidden, rerender, view } = renderStateful();
+
+    await pickDate(view, "15");
+    fireEvent.input(view.getByLabelText("Start time"), {
+      target: { value: "10:30" },
+    });
+    expect(readHidden().value).toBe(`${target.toString()}T10:30`);
+
+    rerender({ value: "2099-06-10T16:00" });
+    expect(readHidden().value).toBe("2099-06-10T16:00");
+    expect((view.getByLabelText("Start time") as HTMLInputElement).value).toBe(
+      "16:00"
+    );
+
+    // The parent clearing back to empty keeps the control constructible.
+    rerender({ value: undefined });
+    expect(readHidden().value).toBe("");
+    await pickDate(view, "15");
+    fireEvent.input(view.getByLabelText("Start time"), {
+      target: { value: "10:30" },
+    });
+    expect(onValueChange).toHaveBeenLastCalledWith(
+      `${target.toString()}T10:30`
+    );
+  });
+
+  test("blocks optional submission while a date-only draft remains", async () => {
+    const { form, onValueChange, view } = renderStateful();
+
+    await pickDate(view, "15");
+
+    expect(new FormData(form).get("startsAt")).toBe("");
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(form.checkValidity()).toBe(false);
+  });
+
+  test("blocks optional submission while a time-only draft remains", () => {
+    const { form, onValueChange, view } = renderStateful();
+
+    fireEvent.input(view.getByLabelText("Start time"), {
+      target: { value: "10:30" },
+    });
+
+    expect(new FormData(form).get("startsAt")).toBe("");
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(form.checkValidity()).toBe(false);
+  });
+
+  test("keeps the prior committed draft visible while a partial draft blocks submission", async () => {
+    const { form, onValueChange, readHidden, view } = renderStateful({
+      defaultValue: "2099-06-10T16:00",
+    });
+
+    // Clearing only the date leaves a time-only draft: the untouched clock
+    // keeps the committed time while the canonical field is emptied and
+    // blocked; nothing partial can be saved.
+    fireEvent.click(view.getByRole("button", { name: "Start date" }));
+    fireEvent.click(
+      await view.findByRole("button", { name: "Clear Start date" })
+    );
+
+    expect((view.getByLabelText("Start time") as HTMLInputElement).value).toBe(
+      "16:00"
+    );
+    expect(new FormData(form).get("startsAt")).toBe("");
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(form.checkValidity()).toBe(false);
+    expect(readHidden().required).toBe(true);
+  });
+
+  test("validates unnamed required controls without naming them", () => {
+    const view = render(
+      <form aria-label="Bound form">
+        <DateTimeInput
+          dateLabel="Start date"
+          id="startsAt"
+          locale="en-US"
+          required
+          timeLabel="Start time"
+        />
+      </form>
+    );
+    const form = view.getByRole("form", {
+      name: "Bound form",
+    }) as HTMLFormElement;
+    const canonical = form.querySelector<HTMLInputElement>(
+      'input[type="datetime-local"]'
+    )!;
+
+    expect(canonical.name).toBe("");
+    expect(canonical.required).toBe(true);
+    expect(form.checkValidity()).toBe(false);
+    expect(new FormData(form).get("startsAt")).toBeNull();
+
+    // A valid time without a date still blocks an unnamed required control.
+    fireEvent.input(view.getByLabelText("Start time"), {
+      target: { value: "10:30" },
+    });
+    expect(form.checkValidity()).toBe(false);
+  });
+
+  test("treats malformed and non-canonical prop values as empty", () => {
+    const { form, view } = renderDateTimeInput({
+      props: { value: "not-a-datetime" },
+    });
+    expect(new FormData(form).get("startsAt")).toBe("");
+
+    view.rerender(
+      <form aria-label="Bound form">
+        <DateTimeInput
+          dateLabel="Start date"
+          locale="en-US"
+          name="startsAt"
+          timeLabel="Start time"
+          value="2099-06-10T16:00:00"
+        />
+      </form>
+    );
+    expect(new FormData(form).get("startsAt")).toBe("");
+
+    view.rerender(
+      <form aria-label="Bound form">
+        <DateTimeInput
+          dateLabel="Start date"
+          locale="en-US"
+          name="startsAt"
+          timeLabel="Start time"
+          value="2099-06-10T99:99"
+        />
+      </form>
+    );
+    expect(new FormData(form).get("startsAt")).toBe("");
+    expect(view.getByRole("button", { name: "Start date" }).textContent).toBe(
+      "Pick a date"
+    );
+  });
   test("renders exactly one named submit field and both controls", () => {
     const { readHidden, view } = renderDateTimeInput({
       props: { defaultValue: "2099-06-10T16:00" },
@@ -78,7 +322,9 @@ describe("DateTimeInput", () => {
     expect(view.getByRole("button", { name: "Start date" })).toBeDefined();
     expect(view.getByLabelText("Start time")).toBeDefined();
     expect(
-      view.baseElement.querySelectorAll('input[type="time"]')
+      view.baseElement.querySelectorAll(
+        'input[type="time"]:not([aria-hidden="true"])'
+      )
     ).toHaveLength(1);
   });
 

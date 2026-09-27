@@ -13,6 +13,7 @@ export type ReservationFormDateInputProps = {
   readonly maximum?: string | (() => string);
   readonly minimum?: string | (() => string);
   readonly name?: string;
+  readonly onBlur?: () => void;
   readonly onChange?: (value: string | undefined) => void;
   readonly placeholder?: string;
   readonly value?: string;
@@ -41,6 +42,7 @@ export const getReservationAccessibleLabel = ({
 export function ReservationFormDateInput({
   ariaLabel,
   locale,
+  onBlur,
   ...dateInputProps
 }: ReservationFormDateInputProps) {
   const { error, formItemId, formMessageId } = useFormField();
@@ -57,6 +59,7 @@ export function ReservationFormDateInput({
       })}
       id={formItemId}
       locale={locale}
+      onBlur={onBlur}
       required
     />
   );

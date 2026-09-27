@@ -25,7 +25,6 @@ const renderTimeInput = ({
     <form aria-label="Bound form">
       <TimeInput
         ariaLabel="Start time"
-        ariaRequired={props?.required}
         defaultValue={props?.defaultValue}
         disabled={props?.disabled}
         id="startTime"
@@ -52,6 +51,96 @@ const renderTimeInput = ({
 };
 
 describe("TimeInput", () => {
+  test("anchors steps at a non-midnight-aligned minimum like the native field", () => {
+    const { form, onChange, readEditor } = renderTimeInput({
+      props: { minimum: "09:30", timeStepMinutes: 60 },
+    });
+    const canonical =
+      form.querySelector<HTMLInputElement>('[name="startTime"]')!;
+    const editor = readEditor();
+
+    expect(canonical.getAttribute("min")).toBe("09:30");
+    expect(canonical.getAttribute("step")).toBe("3600");
+
+    // 10:30 is one step after the 09:30 minimum (native-valid)…
+    fireEvent.input(editor, { target: { value: "10:30" } });
+    expect(onChange).toHaveBeenCalledWith("10:30");
+    expect(canonical.value).toBe("10:30");
+
+    // …while 10:00 is a midnight-anchored step the native field rejects,
+    // so the editor rejects it alongside the canonical field's anchoring.
+    onChange.mockClear();
+    fireEvent.input(editor, { target: { value: "10:00" } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(canonical.value).toBe("10:30");
+  });
+
+  test("validates an unnamed required control without naming it", () => {
+    const { form } = renderTimeInput({
+      props: { required: true },
+      withName: false,
+    });
+    const canonical =
+      form.querySelector<HTMLInputElement>('input[type="time"]')!;
+
+    expect(canonical.name).toBe("");
+    expect(canonical.required).toBe(true);
+    expect(form.checkValidity()).toBe(false);
+    expect(new FormData(form).get("startTime")).toBeNull();
+  });
+
+  test("treats malformed and non-canonical prop values as empty", () => {
+    const { readEditor, readHidden, view } = renderTimeInput({
+      props: { value: "25:99" },
+    });
+
+    expect(readHidden()[0].value).toBe("");
+    expect(readEditor().value).toBe("");
+
+    view.rerender(
+      <form aria-label="Bound form">
+        <TimeInput ariaLabel="Start time" name="startTime" value="16:00:00" />
+      </form>
+    );
+    expect(readHidden()[0].value).toBe("");
+  });
+
+  test("re-checks dynamic bounds at event time and reverts rejected edits in place", () => {
+    let minimum = "15:00";
+    const onChange = mock(() => undefined);
+    const view = render(
+      <form aria-label="Bound form">
+        <TimeInput
+          ariaLabel="Start time"
+          defaultValue="16:00"
+          minimum={() => minimum}
+          onChange={onChange}
+        />
+      </form>
+    );
+    const editor = view.getByLabelText("Start time") as HTMLInputElement;
+    editor.focus();
+
+    // The minimum advances without a rerender; the fresh bound rejects the
+    // edit and reverts the editor in place without a remount.
+    minimum = "17:00";
+    fireEvent.input(editor, { target: { value: "16:30" } });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(editor.value).toBe("16:00");
+    expect(view.container.ownerDocument.activeElement).toBe(editor);
+
+    // An abandoned incomplete edit reverts on blur.
+    Object.defineProperty(editor, "validity", {
+      configurable: true,
+      value: { valid: false, badInput: true },
+    });
+    fireEvent.input(editor, { target: { value: "16:00" } });
+    editor.value = "16";
+    fireEvent.blur(editor);
+    expect(editor.value).toBe("16:00");
+  });
+
   test("renders the native time editor with minute steps by default", () => {
     const { readEditor, readHidden } = renderTimeInput({
       props: { defaultValue: "10:00" },

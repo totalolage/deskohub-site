@@ -1,18 +1,34 @@
 import { Option, Predicate, Schema } from "effect";
-import { localDateTimeSchema } from "@/shared/utils/temporal";
+import {
+  localDateTimeSchema,
+  localTimeSchema,
+  plainDateStringSchema,
+} from "@/shared/utils/temporal";
 
 export type TemporalBoundInput = string | (() => string);
 
-const decodeLocalDateTime = Schema.decodeUnknownOption(localDateTimeSchema);
+export type TemporalTimeBoundInput = string | (() => string | undefined);
 
-export const parsePlainDate = (value: string | undefined) => {
-  if (!value) return undefined;
-  try {
-    return Temporal.PlainDate.from(value);
-  } catch {
-    return undefined;
-  }
-};
+const decodeLocalDateTime = Schema.decodeUnknownOption(localDateTimeSchema);
+const decodePlainDate = Schema.decodeUnknownOption(plainDateStringSchema);
+const decodeLocalTime = Schema.decodeUnknownOption(localTimeSchema);
+
+/**
+ * Decodes a canonical `YYYY-MM-DD` boundary value. Datetime-shaped or
+ * malformed strings decode to `undefined` instead of a silently re-shaped
+ * date, matching what the native date field would submit.
+ */
+export const parsePlainDate = (value: string | undefined) =>
+  decodePlainDate(value).pipe(
+    Option.map((date) => Temporal.PlainDate.from(date)),
+    Option.getOrUndefined
+  );
+
+export const parseLocalTime = (value: string | undefined) =>
+  decodeLocalTime(value).pipe(
+    Option.map((time) => Temporal.PlainTime.from(time)),
+    Option.getOrUndefined
+  );
 
 export const parsePlainDateTime = (value: string | undefined) =>
   decodeLocalDateTime(value).pipe(
@@ -21,17 +37,25 @@ export const parsePlainDateTime = (value: string | undefined) =>
   );
 
 export const resolveBound = (
-  bound: TemporalBoundInput | undefined
+  bound: TemporalTimeBoundInput | undefined
 ): string | undefined => {
   if (bound === undefined) return undefined;
   return Predicate.isFunction(bound) ? bound() : bound;
 };
 
-export const resolvePlainDateBound = (bound: TemporalBoundInput | undefined) =>
-  parsePlainDate(resolveBound(bound));
+export const resolveTimeBound = (
+  bound: TemporalTimeBoundInput | undefined
+): string | undefined => {
+  if (bound === undefined) return undefined;
+  return Predicate.isFunction(bound) ? bound() : bound;
+};
+
+export const resolvePlainDateBound = (
+  bound: TemporalTimeBoundInput | undefined
+) => parsePlainDate(resolveBound(bound));
 
 export const resolvePlainDateTimeBound = (
-  bound: TemporalBoundInput | undefined
+  bound: TemporalTimeBoundInput | undefined
 ) => parsePlainDateTime(resolveBound(bound));
 
 export const formatMinuteDateTime = (dateTime: Temporal.PlainDateTime) =>
@@ -44,11 +68,11 @@ export const getSameDayTimeBound = ({
   readonly date: Temporal.PlainDate | undefined;
   readonly dateTimeBound: Temporal.PlainDateTime | undefined;
 }): string | undefined =>
-  date &&
+  (date &&
   dateTimeBound &&
   Temporal.PlainDate.compare(date, dateTimeBound.toPlainDate()) === 0
     ? dateTimeBound.toPlainTime().toString({ smallestUnit: "minute" })
-    : undefined;
+    : undefined) || undefined;
 
 export const getCalendarDate = (date: Temporal.PlainDate) =>
   new Date(date.year, date.month - 1, date.day, 12);

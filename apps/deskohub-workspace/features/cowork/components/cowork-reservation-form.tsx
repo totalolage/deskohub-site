@@ -698,6 +698,7 @@ function CoworkReservationDateField({
             locale={locale}
             minimum={() => Temporal.Now.plainDateISO().toString()}
             name={field.name}
+            onBlur={field.onBlur}
             onChange={field.onChange}
             placeholder={m.reservationDatePlaceholder({}, { locale })}
             value={field.value}

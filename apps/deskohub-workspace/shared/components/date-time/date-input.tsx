@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarIcon } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { type Ref, useCallback, useRef, useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
 import {
@@ -17,6 +17,7 @@ import {
   isPlainDateDisabled,
   parsePlainDate,
   resolvePlainDateBound,
+  type TemporalTimeBoundInput,
 } from "./temporal-parts";
 import { useControllableState } from "./use-controllable-state";
 import { useFormReset } from "./use-form-reset";
@@ -35,11 +36,13 @@ export type DateInputProps = {
   readonly id?: string;
   readonly isDateDisabled?: (date: Temporal.PlainDate) => boolean;
   readonly locale?: string;
-  readonly maximum?: string | (() => string);
-  readonly minimum?: string | (() => string);
+  readonly maximum?: TemporalTimeBoundInput;
+  readonly minimum?: TemporalTimeBoundInput;
   readonly name?: string;
+  readonly onBlur?: () => void;
   readonly onChange?: (value: string | undefined) => void;
   readonly placeholder?: string;
+  readonly ref?: Ref<HTMLButtonElement>;
   readonly required?: boolean;
   readonly value?: string;
 };
@@ -57,8 +60,10 @@ export function DateInput({
   maximum,
   minimum,
   name,
+  onBlur,
   onChange,
   placeholder = "Pick a date",
+  ref,
   required = false,
   value,
 }: DateInputProps) {
@@ -82,26 +87,39 @@ export function DateInput({
   const minimumDate = resolvePlainDateBound(minimum);
   const maximumDate = resolvePlainDateBound(maximum);
   const selectedPlainDate = parsePlainDate(selectedDate);
+  const isAccepted = (date: Temporal.PlainDate) =>
+    !isPlainDateDisabled({
+      date,
+      isDateDisabled,
+      // Bounds re-resolve at event time so dynamic minimums and maximums
+      // are honored even when the owning form has not re-rendered yet.
+      maximumDate: resolvePlainDateBound(maximum),
+      minimumDate: resolvePlainDateBound(minimum),
+    });
+
+  const handleTriggerBlur = () => {
+    onBlur?.();
+  };
 
   return (
-    <>
-      {name && (
-        <input
-          aria-hidden="true"
-          className="sr-only pointer-events-none"
-          disabled={disabled}
-          id={id ? `${id}-canonical` : undefined}
-          max={maximumDate?.toString()}
-          min={minimumDate?.toString()}
-          name={name}
-          onChange={() => undefined}
-          ref={fieldRef}
-          required={required}
-          tabIndex={-1}
-          type="date"
-          value={selectedDate ?? ""}
-        />
-      )}
+    <div data-date-input="">
+      {/* The canonical field validates even when unnamed; only a named
+          control contributes its value to form submission. */}
+      <input
+        aria-hidden="true"
+        className="sr-only pointer-events-none"
+        disabled={disabled}
+        id={id ? `${id}-canonical` : undefined}
+        max={maximumDate?.toString()}
+        min={minimumDate?.toString()}
+        name={name}
+        onChange={() => undefined}
+        ref={fieldRef}
+        required={required}
+        tabIndex={-1}
+        type="date"
+        value={selectedDate ?? ""}
+      />
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -110,24 +128,28 @@ export function DateInput({
             aria-label={ariaLabel}
             aria-required={required || undefined}
             className={cn(
-              "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/45 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange",
+              "h-auto min-h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/45 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue whitespace-normal hover:border-burned-orange",
               !selectedPlainDate && "text-navy-blue/55",
               ariaInvalid && "border-burned-orange",
               className
             )}
             disabled={disabled}
             id={id}
+            onBlur={handleTriggerBlur}
+            ref={ref}
             type="button"
             variant="secondary"
           >
-            <CalendarIcon className="h-5 w-5 text-burned-orange" />
-            {selectedPlainDate
-              ? formatPlainDate({
-                  date: selectedPlainDate,
-                  dateStyle: "long",
-                  locale,
-                })
-              : placeholder}
+            <CalendarIcon className="h-5 w-5 shrink-0 text-burned-orange" />
+            <span className="min-w-0">
+              {selectedPlainDate
+                ? formatPlainDate({
+                    date: selectedPlainDate,
+                    dateStyle: "long",
+                    locale,
+                  })
+                : placeholder}
+            </span>
           </Button>
         </PopoverTrigger>
         <PopoverContent
@@ -138,27 +160,13 @@ export function DateInput({
           <div className="grid gap-2">
             <Calendar
               disabled={(date) =>
-                isPlainDateDisabled({
-                  date: getPlainDateFromCalendarDate(date),
-                  isDateDisabled,
-                  maximumDate,
-                  minimumDate,
-                })
+                !isAccepted(getPlainDateFromCalendarDate(date))
               }
               mode="single"
               onSelect={(date) => {
                 if (!date) return;
                 const plainDate = getPlainDateFromCalendarDate(date);
-                if (
-                  isPlainDateDisabled({
-                    date: plainDate,
-                    isDateDisabled,
-                    maximumDate,
-                    minimumDate,
-                  })
-                ) {
-                  return;
-                }
+                if (!isAccepted(plainDate)) return;
                 setSelectedDate(plainDate.toString());
                 setOpen(false);
               }}
@@ -184,6 +192,6 @@ export function DateInput({
           </div>
         </PopoverContent>
       </Popover>
-    </>
+    </div>
   );
 }

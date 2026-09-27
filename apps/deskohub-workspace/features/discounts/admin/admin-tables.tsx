@@ -1144,7 +1144,6 @@ export function DiscountCodeConfigurationFields({
           label="Valid from"
         >
           <DateTimeInput
-            className={composedDateTimeClassName}
             dateLabel="Valid from"
             defaultValue={initialValidFrom}
             id={fieldId("validFrom", code?.id)}
@@ -1164,7 +1163,6 @@ export function DiscountCodeConfigurationFields({
           label="Valid until"
         >
           <DateTimeInput
-            className={composedDateTimeClassName}
             dateLabel="Valid until"
             defaultValue={initialValidUntil}
             id={fieldId("validUntil", code?.id)}
@@ -1380,11 +1378,6 @@ function DirtyEventSlot({
     </div>
   );
 }
-
-// The composed datetime control stacks two controls in a narrow grid cell; let
-// the long localized date wrap instead of clipping against the fixed height.
-const composedDateTimeClassName =
-  "[&_button]:h-auto [&_button]:min-h-13 [&_button]:whitespace-normal";
 
 const selectClassName =
   "min-h-12 w-full rounded-[1.1rem] border border-navy-blue/12 bg-white px-4 py-3 text-base outline-none focus-visible:border-burned-orange focus-visible:ring-4 focus-visible:ring-burned-orange/10";
