@@ -70,10 +70,13 @@ export type CanonicalCoworkReservation = {
 /**
  * Accepts every cowork selection shape that reaches a pricing boundary:
  * advertised-price details (workstation presence), normalized orders, and
- * stored details projections (monitor configuration). The chosen monitor
+ * stored details projections (monitor configuration). The canonical cowork
+ * `kind` discriminator is mandatory so the input forwards truthfully into
+ * the exhaustive cross-family fingerprint dispatch. The chosen monitor
  * configuration never enters the priced quote items.
  */
 export type CoworkReservationQuoteInput = {
+  readonly kind: "cowork";
   readonly entryTier: WorkspaceCoworkProductTier;
   readonly coffee?: boolean;
   readonly workstation?: boolean;
@@ -87,9 +90,16 @@ type CoworkQuoteItems =
   | readonly [CoworkProductQuoteItem, CoworkCoffeeQuoteItem]
   | readonly [CoworkProductQuoteItem, CoworkWorkstationQuoteItem];
 
+/**
+ * Workstation presence is truthful: an empty or absent monitor option means
+ * no workstation was selected, so only an explicit workstation flag or a
+ * real, present monitor selection prices the paid add-on.
+ */
 const getCoworkReservationWorkstationSelected = (
   reservation: CoworkReservationQuoteInput
-) => reservation.workstation ?? reservation.monitorOption !== undefined;
+) =>
+  reservation.workstation ??
+  (reservation.monitorOption !== undefined && reservation.monitorOption !== "");
 
 export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
   function* (
@@ -139,12 +149,13 @@ export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
       };
     }
 
-    const items: CoworkQuoteItems =
-      addonItem === undefined
-        ? [productItem]
-        : addonItem.type === "coffee"
-          ? [productItem, addonItem]
-          : [productItem, addonItem];
+    let items: CoworkQuoteItems = [productItem];
+    if (addonItem?.type === "coffee") {
+      items = [productItem, addonItem];
+    }
+    if (addonItem?.type === "workstation") {
+      items = [productItem, addonItem];
+    }
     const undiscountedPrice = yield* addWorkspaceMoney(
       items.map((item) => item.amount)
     );

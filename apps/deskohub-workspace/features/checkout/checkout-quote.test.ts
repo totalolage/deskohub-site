@@ -2,6 +2,7 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
+import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
@@ -185,6 +186,31 @@ describe("cowork reservation quotes", () => {
 
     expect(firstMonitor.fingerprint).toBe(secondMonitor.fingerprint);
     expect(firstMonitor.summary).not.toEqual(secondMonitor.summary);
+  });
+
+  test("keeps the fingerprint stable across configurations and split by workstation presence", () => {
+    const fingerprintWith = (
+      monitorOption?: WorkspaceProductMonitorOption | ""
+    ) =>
+      Effect.runSync(
+        buildCoworkReservationQuoteEffect({
+          kind: "cowork",
+          entryTier: "reserved-desk",
+          coffee: true,
+          ...(monitorOption !== undefined && { monitorOption }),
+        })
+      ).fingerprint;
+
+    const selectedSmall = fingerprintWith("2x27-qhd");
+    const selectedLarge = fingerprintWith("2x32-4k");
+    const absent = fingerprintWith(undefined);
+    const empty = fingerprintWith("");
+
+    // Non-priced monitor configuration never changes the fingerprint.
+    expect(selectedSmall).toBe(selectedLarge);
+    expect(absent).toBe(empty);
+    // Workstation presence does.
+    expect(selectedSmall).not.toBe(absent);
   });
 
   test("applies generic cowork discounts without discounting paid coffee", () => {

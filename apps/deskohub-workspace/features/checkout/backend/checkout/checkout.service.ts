@@ -29,7 +29,10 @@ import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
-import { isWorkspaceCoworkSaleableProductTier } from "@/features/checkout/product-catalog";
+import {
+  isWorkspaceCoworkSaleableProductTier,
+  type WorkspaceCoworkProductTier,
+} from "@/features/checkout/product-catalog";
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
 import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
 import { getOfficeCheckoutDetails } from "@/features/checkout/schemas/checkout-details-office";
@@ -62,6 +65,7 @@ import {
   getWorkspaceRuntimeCallbackOrigin,
   type WorkspaceUrlConfigError,
 } from "@/shared/backend/config/workspace-url.config";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   capturePaymentCompleted,
   capturePaymentFailed,
@@ -125,6 +129,28 @@ type CheckoutRedirectResult = {
   readonly statusUrl?: string;
 };
 
+/**
+ * Exclusive-end guard for non-Open-Space cowork days: a Reserved Desk day
+ * spans Prague midnight to the next midnight, so a new payment attempt fails
+ * once the current Prague time is at or after midnight after the reserved
+ * date — exactly at midnight included. Future dates are never blocked.
+ */
+const isCoworkReservedDeskExclusiveEndReached = (input: {
+  readonly entryTier: WorkspaceCoworkProductTier;
+  readonly date: string;
+  readonly now?: Temporal.Instant;
+}) => {
+  if (input.entryTier === "open-space") return false;
+
+  const now = input.now ?? Temporal.Now.instant();
+  const exclusiveEnd = Temporal.PlainDate.from(input.date)
+    .add({ days: 1 })
+    .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+    .toInstant();
+
+  return Temporal.Instant.compare(now, exclusiveEnd) >= 0;
+};
+
 const ensureReservationHasNotEnded = Effect.fn(
   "checkout.ensureReservationHasNotEnded"
 )(function* (reservation: SignedPayState["reservation"]) {
@@ -148,6 +174,7 @@ const ensureReservationHasNotEnded = Effect.fn(
         // once the current Prague time is at or after 17:00 on the reserved
         // date. Idempotent provider-session reuse above is not affected.
         if (
+          coworkReservation.entryTier === "open-space" &&
           isCoworkOpenSpaceDayCutoffReached({
             entryTier: coworkReservation.entryTier,
             date: coworkReservation.date,
@@ -156,6 +183,19 @@ const ensureReservationHasNotEnded = Effect.fn(
           return new CheckoutError({
             code: "cowork_reservation_ended",
             message: "Open Space reservation day has already ended.",
+          });
+        }
+        // Calendar-day end: a new payment attempt for a Reserved Desk day
+        // fails once the current Prague time is at or after midnight after
+        // the reserved date. Idempotent provider-session reuse above is not
+        // affected.
+        if (
+          coworkReservation.entryTier !== "open-space" &&
+          isCoworkReservedDeskExclusiveEndReached(coworkReservation)
+        ) {
+          return new CheckoutError({
+            code: "cowork_reservation_ended",
+            message: "Reserved Desk reservation day has already ended.",
           });
         }
         return undefined;

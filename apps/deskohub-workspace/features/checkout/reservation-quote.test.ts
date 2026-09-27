@@ -4,8 +4,13 @@ import type {
   WorkspaceCoworkProductTier,
   WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
+import {
+  buildCoworkReservationQuote,
+  type CoworkReservationQuoteInput,
+} from "@/features/checkout/reservation-quote-cowork";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
+import { coworkAdvertisedPriceDetailsSchema } from "@/features/reservation/cowork-reservation";
 import {
   type ReservationOrderData,
   reservationOrderSchema,
@@ -359,5 +364,69 @@ describe("reservation quotes", () => {
         amount: money(182_000),
       },
     ]);
+  });
+});
+
+describe("cowork quote input truthfulness", () => {
+  const buildCoworkQuote = (input: CoworkReservationQuoteInput) =>
+    Effect.runSync(buildCoworkReservationQuote(input));
+
+  test("does not price the workstation add-on for an empty monitor option", () => {
+    const emptyOption = buildCoworkQuote({
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "",
+    });
+    const absentOption = buildCoworkQuote({
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+    });
+
+    for (const quote of [emptyOption, absentOption]) {
+      expect(quote.payment.expectedPrice.value).toBe(41_000);
+      expect(quote.items).not.toContainEqual(
+        expect.objectContaining({ type: "workstation" })
+      );
+    }
+  });
+
+  test("prices the workstation add-on only for a real monitor selection", () => {
+    const quote = buildCoworkQuote({
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    });
+
+    expect(quote.items).toContainEqual({
+      type: "workstation",
+      amount: { value: 12_000, exponent: 2, currency: "CZK" },
+    });
+    expect(quote.payment.expectedPrice.value).toBe(53_000);
+  });
+
+  test("requires the canonical cowork kind in the quote input", () => {
+    const decodeDetails = Schema.decodeUnknownSync(
+      coworkAdvertisedPriceDetailsSchema
+    );
+
+    expect(() =>
+      decodeDetails({
+        entryTier: "reserved-desk",
+        workstation: true,
+        date: "2099-06-10",
+      })
+    ).toThrow();
+
+    expect(() =>
+      decodeDetails({
+        kind: "cowork",
+        entryTier: "reserved-desk",
+        workstation: true,
+        date: "2099-06-10",
+      })
+    ).not.toThrow();
   });
 });
