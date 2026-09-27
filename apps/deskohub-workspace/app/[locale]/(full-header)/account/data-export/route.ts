@@ -127,12 +127,13 @@ export const GET = defineWorkspaceRoute(
     cancellation: "interrupt-on-disconnect",
   },
   () =>
-    // cacheComponents serves a GET route handler from the framework cache
-    // when the handler never consumes dynamic request data. The session read
-    // uses the headers captured at the route boundary instead of `headers()`,
-    // so the dynamic connection read here is the only per-request escape. It
-    // forces fresh rendering for every export, keeping the delivered document
-    // bound to the session that requested it.
+    // Defensive fresh-render guard, not a demonstrated failure repair:
+    // the session read resolves the headers captured at the route boundary,
+    // and Next's route proxy tracks that plain `request.headers` access, so
+    // framework caching of this handler was unlikely. Consuming the dynamic
+    // connection here makes the per-request rendering explicit anyway — this
+    // document is a fresh-snapshot, cross-account security boundary, so it
+    // must never be served from any cache even if request tracking changes.
     Effect.promise(() => connection()).pipe(
       Effect.andThen(() => buildExportResponse)
     )
