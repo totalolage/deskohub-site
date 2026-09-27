@@ -8,7 +8,6 @@ import {
   importSpecifiers,
   methodCallsNamed,
   nodesOf,
-  parseSource,
   parseTrackedSource,
   positionDelta,
   stringLiterals,
