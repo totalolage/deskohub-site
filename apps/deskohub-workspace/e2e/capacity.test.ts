@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Reservation } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
+import { Effect } from "effect";
 import {
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
@@ -14,6 +15,7 @@ import {
   workspaceE2ELegacyTierCleanupCapacityGroups,
   workspaceE2EMaximumSameDateCoworkReservations,
 } from "./capacity";
+import { selectCoworkDates } from "./checkout/data";
 
 test("covers whole Prague dates at both candidate-range boundaries", () => {
   expect(
@@ -41,6 +43,51 @@ test("keeps the case-plan per-date reservation maximums for the two offers", () 
   expect(workspaceE2EMaximumSameDateCoworkReservations["reserved-desk"]).toBe(
     1
   );
+});
+
+test("caps the produced date plan at the case-plan per-date maximums", async () => {
+  const allocation = {
+    fromOffsetDays: 14,
+    shardCount: 1,
+    shardIndex: 0,
+    toOffsetDays: 39,
+  } as const;
+  const openSpaceMaximum =
+    workspaceE2EMaximumSameDateCoworkReservations["open-space"];
+  const openSpaceDates = await Effect.runPromise(
+    selectCoworkDates(
+      ["2099-08-03", "2099-08-04", "2099-08-05"],
+      openSpaceMaximum * 2 + 2,
+      { allocation, maximumReservationsPerDate: openSpaceMaximum }
+    )
+  );
+
+  expect(openSpaceDates).toHaveLength(openSpaceMaximum * 2 + 2);
+  expect(
+    Math.max(
+      ...[...Map.groupBy(openSpaceDates, (date) => date).values()].map(
+        ({ length }) => length
+      )
+    )
+  ).toBe(openSpaceMaximum);
+
+  const reservedDeskMaximum =
+    workspaceE2EMaximumSameDateCoworkReservations["reserved-desk"];
+  const reservedDeskDates = await Effect.runPromise(
+    selectCoworkDates(
+      ["2099-08-03", "2099-08-04", "2099-08-05"],
+      reservedDeskMaximum * 3,
+      { allocation, maximumReservationsPerDate: reservedDeskMaximum }
+    )
+  );
+
+  expect(
+    Math.max(
+      ...[...Map.groupBy(reservedDeskDates, (date) => date).values()].map(
+        ({ length }) => length
+      )
+    )
+  ).toBe(reservedDeskMaximum);
 });
 
 test("reports only aggregate capacity for every saleable offer pool", () => {
@@ -183,10 +230,14 @@ test("excludes open-space tables carrying stray monitor tags", () => {
     from: new Date("2099-08-01T00:00:00.000Z"),
     reservations: [],
     tables: [
-      makeTable("open-space-monitor", [
-        "cowork:open-space",
-        ...workspaceProductMonitorOptionTableTags["2x27-qhd"],
-      ]),
+      makeTable(
+        "open-space-monitor",
+        [
+          "cowork:open-space",
+          ...workspaceProductMonitorOptionTableTags["2x27-qhd"],
+        ],
+        32
+      ),
     ],
     to: new Date("2099-09-01T00:00:00.000Z"),
   });
@@ -296,6 +347,67 @@ test("does not add reservation usage from non-overlapping dates", () => {
     availableSeatCount: 27,
     meetsRequiredCapacity: true,
     peakActiveReservationSeatCount: 5,
+  });
+});
+
+test("fails when overlapping reservations jointly exhaust run and cleanup headroom", () => {
+  const requiredAvailableSeatCount =
+    (1 + 1) * workspaceE2EMaximumSameDateCoworkReservations["open-space"];
+  const report = makeWorkspaceE2ECapacityReport({
+    from: new Date("2099-08-01T00:00:00.000Z"),
+    reservations: [
+      makeReservation("open-space-table", 8),
+      makeReservation("open-space-table", 8, {
+        endDate: "2099-08-03T17:00:00+00:00",
+        startDate: "2099-08-03T09:00:00+00:00",
+      }),
+    ],
+    tables: [
+      makeTable(
+        "open-space-table",
+        ["cowork:open-space"],
+        requiredAvailableSeatCount + 9
+      ),
+    ],
+    to: new Date("2099-09-01T00:00:00.000Z"),
+  });
+
+  expect(report.groups.find(({ id }) => id === "open-space")).toMatchObject({
+    activeReservationSeatCount: 16,
+    availableSeatCount: 1,
+    meetsRequiredCapacity: false,
+    peakActiveReservationSeatCount: 16,
+    requiredAvailableSeatCount,
+  });
+});
+
+test("adds no occupancy for out-of-interval and boundary-touching reservations", () => {
+  const report = makeWorkspaceE2ECapacityReport({
+    from: new Date("2099-08-01T00:00:00.000Z"),
+    reservations: [
+      makeReservation("open-space-table", 32, {
+        endDate: "2099-07-28T18:00:00+00:00",
+        startDate: "2099-07-28T08:00:00+00:00",
+      }),
+      makeReservation("open-space-table", 32, {
+        endDate: "2099-08-01T00:00:00+00:00",
+        startDate: "2099-07-31T08:00:00+00:00",
+      }),
+      makeReservation("open-space-table", 32, {
+        endDate: "2099-09-02T08:00:00+00:00",
+        startDate: "2099-09-01T00:00:00+00:00",
+      }),
+    ],
+    tables: [makeTable("open-space-table", ["cowork:open-space"], 32)],
+    to: new Date("2099-09-01T00:00:00.000Z"),
+  });
+
+  expect(report.groups.find(({ id }) => id === "open-space")).toMatchObject({
+    activeReservationCount: 0,
+    activeReservationSeatCount: 0,
+    availableSeatCount: 32,
+    meetsRequiredCapacity: true,
+    peakActiveReservationSeatCount: 0,
   });
 });
 
