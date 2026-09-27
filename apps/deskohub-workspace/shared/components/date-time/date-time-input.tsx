@@ -1,6 +1,6 @@
 "use client";
 
-import { type Ref, useCallback, useEffect, useRef, useState } from "react";
+import { type Ref, useCallback, useRef, useState } from "react";
 import { DateInput } from "./date-input";
 import {
   formatMinuteDateTime,
@@ -105,23 +105,32 @@ export function DateTimeInput({
   // Controlled ownership is independent of emptiness: any asserted `value`
   // (including an explicit empty string) keeps the parent authoritative,
   // while the editable draft lives here so a value can always be
-  // constructed from empty.
-  const everControlledRef = useRef(false);
-  if (value !== undefined) everControlledRef.current = true;
-  const isControlled = everControlledRef.current;
+  // constructed from empty. React's "adjust state during render" pattern
+  // keeps the sticky flag out of render-time ref access; the update fires
+  // only when this very component's render observes a first defined
+  // `value`, and React discards the output and re-renders immediately.
+  const [everControlled, setEverControlled] = useState(value !== undefined);
+  if (value !== undefined && !everControlled) setEverControlled(true);
+  const isControlled = everControlled;
   const [internalCommitted, setInternalCommitted] = useState<DateTimeParts>(
     () => parseParts(defaultValue)
   );
   const [draft, setDraft] = useState<DateTimeParts>(() =>
     parseParts(value ?? defaultValue)
   );
-  const committed = isControlled ? parseParts(value) : internalCommitted;
+  const controlledParts = parseParts(value);
+  const committed = isControlled ? controlledParts : internalCommitted;
   // Follow the asserted controlled value (including a parent resetting it)
   // without clobbering an in-progress partial draft: partial drafts never
-  // reach onChange, so the controlled value stays put while editing.
-  useEffect(() => {
-    if (isControlled) setDraft(parseParts(value));
-  }, [isControlled, value]);
+  // reach onChange, so the controlled value stays put while editing. The
+  // render-adjust pair tracks the previous controlled value so only an
+  // actual asserted change resets the draft, mirroring the previous
+  // effect's dependency guard.
+  const [prevControlledValue, setPrevControlledValue] = useState(value);
+  if (isControlled && value !== prevControlledValue) {
+    setPrevControlledValue(value);
+    setDraft(controlledParts);
+  }
 
   // Dynamic bounds stay resolvable at event time: the raw prop is forwarded
   // to the date control and re-resolved here for same-day time bounds, the

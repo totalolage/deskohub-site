@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 /**
  * Shared controlled/uncontrolled value state for the date-time controls.
@@ -24,9 +24,13 @@ export const useControllableState = ({
   (next: string | undefined) => void,
   boolean,
 ] => {
-  const everControlledRef = useRef(false);
-  if (value !== undefined) everControlledRef.current = true;
-  const isControlled = everControlledRef.current;
+  // React's "adjust state during render" pattern: deriving sticky ownership
+  // from state keeps controlled-mode tracking out of render-time ref access.
+  // The update fires only when this very component's render observes a first
+  // defined `value`; React discards the output and re-renders immediately.
+  const [everControlled, setEverControlled] = useState(value !== undefined);
+  if (value !== undefined && !everControlled) setEverControlled(true);
+  const isControlled = everControlled;
   const [internal, setInternal] = useState<string | undefined>(defaultValue);
   const state = isControlled ? value : internal;
 

@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import "@/shared/polyfills/temporal";
 import {
   registerWorkspaceComponentTestEnv,
@@ -101,9 +101,9 @@ const StatefulHarness = ({
   readonly onValueChange?: (value: string | undefined) => void;
 }) => {
   const [value, setValue] = useState<string | undefined>(valueProp);
-  useEffect(() => {
-    setValue(valueProp);
-  }, [valueProp]);
+  // Follow the asserted prop via React's render-adjust pattern instead of a
+  // synchronous setState effect.
+  if (value !== valueProp) setValue(valueProp);
   return (
     <DateTimeInput
       {...props}
