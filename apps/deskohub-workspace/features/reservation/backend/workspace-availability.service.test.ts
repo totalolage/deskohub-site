@@ -1113,7 +1113,9 @@ describe("WorkspaceAvailabilityService cowork offer intervals", () => {
   test("keeps a bare query date available when only the Open Space table has evening-only occupancy", async () => {
     const availability = await getAvailability({
       date: testDate,
-      tables: coworkOfferTables,
+      tables: [
+        makeTable({ id: "open-1", tags: ["cowork:open-space"] }),
+      ],
       reservations: [
         makeReservation({
           tableId: "open-1",
@@ -1126,6 +1128,26 @@ describe("WorkspaceAvailabilityService cowork offer intervals", () => {
 
     expect(availability.unavailableCoworkTiers).not.toContain("open-space");
     expect(availability.unavailableDates).not.toContain(testDate);
+  });
+
+  test("marks a bare query date unavailable when only the Open Space table has morning-overlapping occupancy", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      tables: [
+        makeTable({ id: "open-1", tags: ["cowork:open-space"] }),
+      ],
+      reservations: [
+        makeReservation({
+          tableId: "open-1",
+          status: "NEW",
+          startDate: "2099-06-10T06:00:00Z",
+          endDate: "2099-06-10T14:00:00Z",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableCoworkTiers).toContain("open-space");
+    expect(availability.unavailableDates).toContain(testDate);
   });
 
   test("does not let a selected open-space interval hide a full-day reserved-desk occupancy", async () => {
