@@ -452,6 +452,31 @@ describe("cowork quote input truthfulness", () => {
     ).toThrow();
   });
 
+  test("rejects wrong-family kinds at the cowork builder boundary", () => {
+    // Cast past TypeScript the way a runtime bug would: a dishonest input
+    // that claims to satisfy CoworkReservationQuoteInput.
+    const buildWrongFamilyQuote = (
+      input: Omit<CoworkReservationQuoteInput, "kind"> & {
+        kind: "office" | "meeting-room";
+      }
+    ) => Effect.runSync(buildCoworkReservationQuote(input as never));
+
+    expect(() =>
+      buildWrongFamilyQuote({
+        kind: "office",
+        entryTier: "reserved-desk",
+        workstation: true,
+      })
+    ).toThrow();
+    expect(() =>
+      buildWrongFamilyQuote({
+        kind: "meeting-room",
+        entryTier: "reserved-desk",
+        duration: { unit: "hour", amount: 1 },
+      })
+    ).toThrow();
+  });
+
   test("typechecks the required cowork kind discriminator", () => {
     expect(() =>
       Effect.runSync(

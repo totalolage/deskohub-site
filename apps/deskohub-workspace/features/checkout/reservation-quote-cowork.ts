@@ -186,6 +186,15 @@ export const buildCoworkReservationQuote = Effect.fn(
     readonly discountQuote?: DiscountQuote;
   } = {}
 ) {
+  // The cross-family fingerprint dispatcher would silently accept another
+  // family's kind while this builder still prices cowork items, so reject
+  // any runtime kind other than "cowork" at this boundary.
+  if (reservation.kind !== "cowork") {
+    return yield* Effect.die(
+      new Error("Cowork reservation quote requires the canonical cowork kind.")
+    );
+  }
+
   const quoteWithoutFingerprint = yield* getCoworkReservationQuote(
     reservation,
     options
