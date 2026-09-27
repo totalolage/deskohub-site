@@ -1,3 +1,5 @@
+export type { AresBusinessBillingDraft } from "./backend/ares-business-draft";
+export { toAresBusinessBillingDraft } from "./backend/ares-business-draft";
 export {
   OptionalAccountActivityGuard,
   requireAccountActivity,
