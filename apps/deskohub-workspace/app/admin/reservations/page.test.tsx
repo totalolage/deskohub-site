@@ -196,12 +196,11 @@ describe("ReservationsAdministrationPage", () => {
       })
     );
 
-    expect(view.getByLabelText("Start date from").getAttribute("value")).toBe(
-      "2026-08-04"
-    );
-    expect(view.getByLabelText("Start date to").getAttribute("value")).toBe(
-      "2026-08-10"
-    );
+    const canonicalValue = (id: string) =>
+      view.container.querySelector<HTMLInputElement>(`#${id}-canonical`)
+        ?.value ?? null;
+    expect(canonicalValue("reservation-date-from")).toBe("2026-08-04");
+    expect(canonicalValue("reservation-date-to")).toBe("2026-08-10");
     expect(view.getByRole("link", { name: "Next" }).getAttribute("href")).toBe(
       "/admin/reservations?direction=asc&from=2026-08-04&sort=date&to=2026-08-10&page=3"
     );

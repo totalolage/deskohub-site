@@ -188,10 +188,13 @@ test("switches the invoice date from due date to paid on", () => {
   );
   const view = renderInvoiceCreationForm();
 
-  expect(view.getByLabelText("Due date")).toHaveProperty("value", "2026-09-01");
+  const canonicalValue = (id: string) =>
+    view.container.querySelector<HTMLInputElement>(`#${id}-canonical`)?.value ??
+    null;
+  expect(canonicalValue("dueDate")).toBe("2026-09-01");
   fireEvent.click(view.getByRole("checkbox", { name: "Already paid" }));
   expect(view.queryByLabelText("Due date")).toBeNull();
-  expect(view.getByLabelText("Paid on")).toHaveProperty("value", "2026-08-18");
+  expect(canonicalValue("paidOn")).toBe("2026-08-18");
   fireEvent.change(view.getByLabelText("Price"), {
     target: { value: "1000" },
   });

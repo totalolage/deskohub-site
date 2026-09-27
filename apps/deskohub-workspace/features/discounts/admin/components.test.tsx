@@ -33,12 +33,25 @@ const refresh = mock();
 const back = mock();
 const replace = mock();
 
-const openTemporalEditor = async (
-  view: Pick<ReturnType<typeof render>, "getByRole" | "findByLabelText">,
-  label: string
+const pickDateFieldDay = async (
+  view: ReturnType<typeof render>,
+  label: string,
+  day = "10"
 ) => {
   fireEvent.click(view.getByRole("button", { name: label }));
-  return (await view.findByLabelText(`Edit ${label}`)) as HTMLInputElement;
+  const grid = await view.findByRole("grid");
+  const dayButton = [
+    ...grid.querySelectorAll("button"),
+  ].find((button) => button.textContent === day && !button.disabled);
+  if (!dayButton) throw new Error(`Day ${day} not offered for ${label}`);
+  fireEvent.click(dayButton);
+};
+
+// The calendar renders the current month, so picked days resolve within it.
+const currentMonthDay = (day: string) => {
+  const now = new Date();
+  const month = `${now.getMonth() + 1}`.padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
 };
 
 const readHiddenTemporalValue = (container: HTMLElement, name: string) =>
@@ -340,8 +353,10 @@ describe("discount administration pages", () => {
       "#validFrom-019c91dd-c560-7e55-b9d8-c95065efd52d"
     ) as HTMLButtonElement;
     expect(validFrom.type).toBe("button");
-    expect(validFrom.textContent).toContain("2026-08-01");
-    expect(validFrom.textContent).toContain("10:00");
+    expect(validFrom.textContent).not.toContain("Not set");
+    expect(
+      (view.getByLabelText("Valid from time") as HTMLInputElement).value
+    ).toBe("10:00");
     expect(readHiddenTemporalValue(view.container, "validFrom")).toBe(
       "2026-08-01T10:00"
     );
@@ -396,19 +411,11 @@ describe("discount administration pages", () => {
 
     fireEvent.click(view.getByText("Create a discount code"));
     const form = view.getByRole("form", { name: "Create discount code" });
-    fireEvent.change(within(form).getByRole("textbox", { name: "Code" }), {
+    await pickDateFieldDay(view, "Service date from (inclusive)");
+    await pickDateFieldDay(view, "Service date until (exclusive)", "12");
+    fireEvent.input(within(form).getByRole("textbox", { name: "Code" }), {
       target: { value: "summer-august" },
     });
-    fireEvent.input(
-      await openTemporalEditor(view, "Service date from (inclusive)"),
-      {
-        target: { value: "2026-08-10" },
-      }
-    );
-    fireEvent.input(
-      await openTemporalEditor(view, "Service date until (exclusive)"),
-      { target: { value: "2026-08-12" } }
-    );
     await act(async () => {
       fireEvent.submit(form);
       await Promise.resolve();
@@ -423,8 +430,8 @@ describe("discount administration pages", () => {
         validUntil: null,
         maxUses: null,
         maxUsesPerCustomer: null,
-        serviceDateFrom: "2026-08-10",
-        serviceDateUntil: "2026-08-12",
+        serviceDateFrom: currentMonthDay("10"),
+        serviceDateUntil: currentMonthDay("12"),
       },
       discount: {
         kind: "existing",
@@ -455,9 +462,12 @@ describe("discount administration pages", () => {
       "Service date from (inclusive)",
       "Service date until (exclusive)",
     ]) {
-      const editor = await openTemporalEditor(view, label);
-      fireEvent.input(editor, { target: { value: "2026-08-10" } });
-      fireEvent.input(editor, { target: { value: "" } });
+      await pickDateFieldDay(view, label);
+      // Picking a day closes the popover; reopen it to reach the clear action.
+      fireEvent.click(view.getByRole("button", { name: label }));
+      fireEvent.click(
+        await view.findByRole("button", { name: `Clear ${label}` })
+      );
     }
     expect(readHiddenTemporalValue(view.container, "serviceDateFrom")).toBe("");
     expect(readHiddenTemporalValue(view.container, "serviceDateUntil")).toBe(
@@ -587,11 +597,13 @@ describe("discount administration pages", () => {
     const { CodesAdministrationActions, CodesAdministrationCollection } =
       await import("./components");
     const readGridOrder = (grid: HTMLElement) =>
-      [...grid.querySelectorAll("input, select")].map((control) =>
-        control.getAttribute("name")
-      );
+      [...grid.querySelectorAll("input, select")]
+        .filter((control) => control.getAttribute("name") !== null)
+        .map((control) => control.getAttribute("name"));
     const readGridItems = (grid: HTMLElement) =>
-      [...grid.querySelectorAll("input, select")].map((control) => {
+      [...grid.querySelectorAll("input, select")]
+        .filter((control) => control.getAttribute("name") !== null)
+        .map((control) => {
         let item: HTMLElement = control;
         while (item.parentElement !== grid) {
           const parent = item.parentElement;

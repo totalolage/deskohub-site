@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import {
   type FormEvent,
   type ReactNode,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -33,7 +34,8 @@ import type {
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import { generatePromotionCode } from "@/features/discounts/promotion-code";
-import { TemporalInput } from "@/shared/components/temporal-input";
+import { DateInput } from "@/shared/components/date-time/date-input";
+import { DateTimeInput } from "@/shared/components/date-time/date-time-input";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -1071,6 +1073,20 @@ export function DiscountCodeConfigurationFields({
 }) {
   const [codeValue, setCodeValue] = useState(code?.code ?? "");
   const codeInputId = fieldId("code", code?.id);
+  const initialValidFrom = toDateTimeInputValue(code?.validFrom);
+  const initialValidUntil = toDateTimeInputValue(code?.validUntil);
+  const initialServiceDateFrom =
+    code && "serviceDateFrom" in code ? (code.serviceDateFrom ?? "") : "";
+  const initialServiceDateUntil =
+    code && "serviceDateUntil" in code ? (code.serviceDateUntil ?? "") : "";
+  const [validFrom, setValidFrom] = useState(initialValidFrom);
+  const [validUntil, setValidUntil] = useState(initialValidUntil);
+  const [serviceDateFrom, setServiceDateFrom] = useState(
+    initialServiceDateFrom
+  );
+  const [serviceDateUntil, setServiceDateUntil] = useState(
+    initialServiceDateUntil
+  );
 
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -1118,76 +1134,78 @@ export function DiscountCodeConfigurationFields({
         />
         Enabled
       </label>
-      <div className={`min-w-0 ${showMaxUses ? "" : "md:col-span-2"}`}>
+      <DirtyEventSlot
+        className={`min-w-0 ${showMaxUses ? "" : "md:col-span-2"}`}
+        value={validFrom}
+      >
         <FormField
           description={redemptionHintText}
           htmlFor={fieldId("validFrom", code?.id)}
           label="Valid from"
         >
-          <TemporalInput
-            defaultValue={toDateTimeInputValue(code?.validFrom)}
+          <DateTimeInput
+            className={composedDateTimeClassName}
+            dateLabel="Valid from"
+            defaultValue={initialValidFrom}
             id={fieldId("validFrom", code?.id)}
-            label="Valid from"
             name="validFrom"
-            type="datetime-local"
+            onChange={(next) => setValidFrom(next ?? "")}
+            timeLabel="Valid from time"
           />
         </FormField>
-      </div>
-      <div className={`min-w-0 ${showMaxUses ? "" : "md:col-span-2"}`}>
+      </DirtyEventSlot>
+      <DirtyEventSlot
+        className={`min-w-0 ${showMaxUses ? "" : "md:col-span-2"}`}
+        value={validUntil}
+      >
         <FormField
           description={redemptionHintText}
           htmlFor={fieldId("validUntil", code?.id)}
           label="Valid until"
         >
-          <TemporalInput
-            defaultValue={toDateTimeInputValue(code?.validUntil)}
+          <DateTimeInput
+            className={composedDateTimeClassName}
+            dateLabel="Valid until"
+            defaultValue={initialValidUntil}
             id={fieldId("validUntil", code?.id)}
-            label="Valid until"
             name="validUntil"
-            type="datetime-local"
+            onChange={(next) => setValidUntil(next ?? "")}
+            timeLabel="Valid until time"
           />
         </FormField>
-      </div>
+      </DirtyEventSlot>
       {showMaxUses && (
         <>
-          <div className="min-w-0">
+          <DirtyEventSlot className="min-w-0" value={serviceDateFrom}>
             <FormField
               description={serviceDateHintText}
               htmlFor={fieldId("serviceDateFrom", code?.id)}
               label="Service date from (inclusive)"
             >
-              <TemporalInput
-                defaultValue={
-                  code && "serviceDateFrom" in code
-                    ? (code.serviceDateFrom ?? "")
-                    : ""
-                }
+              <DateInput
+                ariaLabel="Service date from (inclusive)"
                 id={fieldId("serviceDateFrom", code?.id)}
-                label="Service date from (inclusive)"
                 name="serviceDateFrom"
-                type="date"
+                onChange={(next) => setServiceDateFrom(next ?? "")}
+                value={serviceDateFrom}
               />
             </FormField>
-          </div>
-          <div className="min-w-0">
+          </DirtyEventSlot>
+          <DirtyEventSlot className="min-w-0" value={serviceDateUntil}>
             <FormField
               description={serviceDateHintText}
               htmlFor={fieldId("serviceDateUntil", code?.id)}
               label="Service date until (exclusive)"
             >
-              <TemporalInput
-                defaultValue={
-                  code && "serviceDateUntil" in code
-                    ? (code.serviceDateUntil ?? "")
-                    : ""
-                }
+              <DateInput
+                ariaLabel="Service date until (exclusive)"
                 id={fieldId("serviceDateUntil", code?.id)}
-                label="Service date until (exclusive)"
                 name="serviceDateUntil"
-                type="date"
+                onChange={(next) => setServiceDateUntil(next ?? "")}
+                value={serviceDateUntil}
               />
             </FormField>
-          </div>
+          </DirtyEventSlot>
           <div className="min-w-0 md:col-span-2">
             <FormField label="Maximum uses">
               <Input
@@ -1336,6 +1354,36 @@ const toDateTimeInputValue = (value: string | null | undefined) =>
     : "";
 
 const fieldId = (name: string, id?: string) => (id ? `${name}-${id}` : name);
+
+/**
+ * The shared date/time controls commit through React state without native
+ * input events, so re-emit a bubbling input event after each committed value
+ * change for MutationForm's fingerprint-based dirty tracking.
+ */
+function DirtyEventSlot({
+  children,
+  className,
+  value,
+}: {
+  readonly children: ReactNode;
+  readonly className?: string;
+  readonly value: string;
+}) {
+  const slotRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    slotRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
+  }, [value]);
+  return (
+    <div className={className} ref={slotRef}>
+      {children}
+    </div>
+  );
+}
+
+// The composed datetime control stacks two controls in a narrow grid cell; let
+// the long localized date wrap instead of clipping against the fixed height.
+const composedDateTimeClassName =
+  "[&_button]:h-auto [&_button]:min-h-13 [&_button]:whitespace-normal";
 
 const selectClassName =
   "min-h-12 w-full rounded-[1.1rem] border border-navy-blue/12 bg-white px-4 py-3 text-base outline-none focus-visible:border-burned-orange focus-visible:ring-4 focus-visible:ring-burned-orange/10";

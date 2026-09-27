@@ -25,14 +25,6 @@ const temporalFields = [
   { label: "Service date until (exclusive)", name: "serviceDateUntil" },
 ] as const;
 
-const openTemporalEditor = async (
-  view: Pick<ReturnType<typeof render>, "getByRole" | "findByLabelText">,
-  label: string
-) => {
-  fireEvent.click(view.getByRole("button", { name: label }));
-  return (await view.findByLabelText(`Edit ${label}`)) as HTMLInputElement;
-};
-
 const readHiddenTemporalValue = (container: HTMLElement, name: string) =>
   container.querySelector<HTMLInputElement>(`input[name="${name}"]`)?.value ??
   null;
@@ -207,12 +199,18 @@ describe("discount code form hints", () => {
 
     for (const { label, name } of temporalFields) {
       expect(view.getByLabelText(label)).toHaveProperty("type", "button");
-      const editor = await openTemporalEditor(view, label);
-      expect(editor.getAttribute("name")).toBeNull();
       const hidden = readHiddenTemporalValue(view.container, name);
       expect(hidden).not.toBeNull();
       expect(hidden).not.toBe("");
     }
+    expect(view.getByLabelText("Valid from time")).toHaveProperty(
+      "type",
+      "time"
+    );
+    expect(view.getByLabelText("Valid until time")).toHaveProperty(
+      "type",
+      "time"
+    );
   });
 
   test("opens each date hint on keyboard focus and dismisses with Escape", async () => {

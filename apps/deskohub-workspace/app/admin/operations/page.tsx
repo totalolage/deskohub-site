@@ -3,7 +3,6 @@ import {
   AdministrationAlert,
   AdministrationFilterField,
   AdministrationFilterForm,
-  AdministrationFilterInput,
   AdministrationFilterSelect,
   AdministrationPage,
   AdministrationTableCount,
@@ -24,6 +23,7 @@ import {
   nexiOperationTypes,
 } from "@/features/administration/payment-administration-filters";
 import { OperationTable } from "@/features/administration/payment-tables";
+import { DateInput } from "@/shared/components/date-time/date-input";
 import { Button } from "@/shared/components/ui/button";
 
 export default function OperationsAdministrationPage({
@@ -99,9 +99,8 @@ function OperationFilters({ input, range }: OperationCriteria) {
         defaultValue={range.from}
         label="From"
         name="from"
-        type="date"
       />
-      <FilterField defaultValue={range.to} label="To" name="to" type="date" />
+      <FilterField defaultValue={range.to} label="To" name="to" />
       <SelectField
         defaultValue={input.channel}
         label="Origin"
@@ -149,20 +148,18 @@ function FilterField({
   defaultValue,
   label,
   name,
-  type,
 }: {
   readonly defaultValue?: string;
   readonly label: string;
   readonly name: string;
-  readonly type: "date";
 }) {
   return (
     <AdministrationFilterField htmlFor={`operation-${name}`} label={label}>
-      <AdministrationFilterInput
+      <DateInput
+        ariaLabel={label}
         defaultValue={defaultValue}
         id={`operation-${name}`}
         name={name}
-        type={type}
       />
     </AdministrationFilterField>
   );

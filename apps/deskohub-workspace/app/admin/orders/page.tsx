@@ -3,7 +3,6 @@ import {
   AdministrationAlert,
   AdministrationFilterField,
   AdministrationFilterForm,
-  AdministrationFilterInput,
   AdministrationPage,
   AdministrationTableCount,
   AdministrationTableToolbar,
@@ -19,6 +18,7 @@ import {
   loadAdministrationOrdersPage,
 } from "@/features/administration/page-data.server";
 import { OrderTable } from "@/features/administration/payment-tables";
+import { DateInput } from "@/shared/components/date-time/date-input";
 import { Button } from "@/shared/components/ui/button";
 
 export default function OrdersAdministrationPage({
@@ -129,11 +129,11 @@ function DateField({
 }) {
   return (
     <AdministrationFilterField htmlFor={`order-${name}`} label={label}>
-      <AdministrationFilterInput
+      <DateInput
+        ariaLabel={label}
         defaultValue={defaultValue}
         id={`order-${name}`}
         name={name}
-        type="date"
       />
     </AdministrationFilterField>
   );
