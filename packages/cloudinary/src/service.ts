@@ -2,7 +2,6 @@ import "server-only";
 
 import { v2 as cloudinary } from "cloudinary";
 import { Context, Duration, Effect, Layer, pipe, Schedule } from "effect";
-import { identity } from "effect/Function";
 import * as Schema from "effect/Schema";
 import { decodeCloudinaryAsset } from "./asset-decoding";
 import {
@@ -101,10 +100,7 @@ export class CloudinaryService extends Context.Service<
       const config = yield* validateCloudinaryRuntimeConfig(rawConfig);
       yield* configureCloudinarySdk(config);
 
-      yield* Effect.logDebug("Cloudinary service initialized", {
-        serviceName: config.serviceName,
-        cloudName: config.cloudName,
-      });
+      yield* Effect.logDebug("Cloudinary service initialized");
 
       const executeSearch = createSearchExecutor(config);
       const executeSanitizedSearch = createSearchExecutor(config, true);
@@ -155,8 +151,7 @@ export class CloudinaryService extends Context.Service<
         options
       ) =>
         Effect.gen(function* () {
-          yield* Effect.annotateLogsScoped({ folder, options });
-          yield* Effect.logInfo("Cloudinary folder search started", { folder });
+          yield* Effect.logInfo("Cloudinary folder search started");
 
           const expressions = [`folder=${folder}`, `folder:${folder}`];
 
@@ -167,33 +162,20 @@ export class CloudinaryService extends Context.Service<
             );
 
             if (assets.length > 0) {
-              yield* Effect.annotateLogsScoped({ result: assets });
-              yield* Effect.logInfo("Cloudinary folder search completed", {
-                folder,
-                expression,
-                resultCount: assets.length,
-              });
+              yield* Effect.logInfo("Cloudinary folder search completed");
               return assets;
             }
 
             yield* Effect.logWarning(
-              "Cloudinary folder search expression returned no assets",
-              {
-                folder,
-                expression,
-              }
+              "Cloudinary folder search expression returned no assets"
             );
           }
 
-          yield* Effect.annotateLogsScoped({ result: [] });
           yield* Effect.logWarning(
-            "Cloudinary folder search completed with no assets",
-            {
-              folder,
-            }
+            "Cloudinary folder search completed with no assets"
           );
           return [];
-        }).pipe(Effect.scoped, Effect.annotateLogs({ folder, options }));
+        }).pipe(Effect.scoped);
 
       const searchAll: ICloudinaryService["searchAll"] = (options) =>
         executeSearch("resource_type:image", options);
@@ -261,8 +243,7 @@ const publicIdLookupExpression = "public_id lookup";
 /**
  * Fixed, identifier-free failure message for the by-public-ID lookup path.
  * The provider's rejection text can echo the requested asset identifier, so
- * it is classified into an HTTP code and never carried into the error
- * message that callers (and their loggers) see.
+ * it is never carried into this error message.
  */
 const publicIdLookupFailureMessage = "Cloudinary public ID lookup failed";
 
@@ -369,7 +350,8 @@ function toCloudinarySearchError(
  * Fixed, identifier-free failure label for the sanitized folder-listing
  * path. The listed folder may embed an account identifier, so neither the
  * expression, the provider's rejection text, nor any asset payload may
- * reach the error or the logs — only the HTTP code and fixed messages.
+ * reach the error or the logs. The HTTP code remains available to the retry
+ * policy and typed error contract, but is never logged.
  */
 const folderListingExpressionLabel = "folder listing";
 const folderListingFailureMessage = "Cloudinary folder listing failed";
@@ -418,8 +400,8 @@ function createSearchExecutor(config: CloudinaryConfig, sanitized = false) {
   const defaultPageSize = config.defaultPageSize ?? 100;
 
   // In sanitized mode the real expression still drives the provider call,
-  // but every error, log line, and annotation carries only fixed messages
-  // and safe numeric metadata — never the expression itself.
+  // while errors and logs use fixed labels instead of the expression or
+  // provider response data.
   const toSearchError = (error: CloudinaryRejectedValue, expression: string) =>
     sanitized
       ? toSanitizedFolderListingError(error)
@@ -465,44 +447,16 @@ function createSearchExecutor(config: CloudinaryConfig, sanitized = false) {
         catch: (error) =>
           toSearchError(error as CloudinaryRejectedValue, expression),
       }),
-      // Raw provider payloads (asset URLs, public IDs) are logged only on
-      // the unsanitized gallery paths.
-      sanitized
-        ? identity
-        : Effect.tap((rawResult: unknown) =>
-            Effect.gen(function* () {
-              yield* Effect.annotateLogsScoped({ rawResult });
-              yield* Effect.logDebug("Cloudinary provider response received", {
-                rawResult,
-              });
-            })
-          ),
       Effect.flatMap((result) =>
         decodeSearchResponse(
           result,
           sanitized ? folderListingExpressionLabel : expression
         )
       ),
-      sanitized
-        ? identity
-        : Effect.tap((response: unknown) =>
-            Effect.gen(function* () {
-              yield* Effect.annotateLogsScoped({ response });
-              yield* Effect.logDebug("Cloudinary search response decoded", {
-                response,
-              });
-            })
-          ),
-      Effect.tapError((error: CloudinarySearchError) =>
+      Effect.tapError(() =>
         sanitized
-          ? Effect.logError(folderListingFailureMessage, {
-              httpCode: error.httpCode,
-            })
-          : Effect.logError("Cloudinary search page failed", {
-              expression,
-              errorMessage: error.message,
-              httpCode: error.httpCode,
-            })
+          ? Effect.logError(folderListingFailureMessage)
+          : Effect.logError("Cloudinary search page failed")
       ),
       Effect.retry(cloudinaryRetryPolicy)
     );
@@ -511,22 +465,12 @@ function createSearchExecutor(config: CloudinaryConfig, sanitized = false) {
     function* (expression: string, options?: SearchOptions) {
       yield* sanitized
         ? Effect.logInfo("Cloudinary folder listing page started")
-        : Effect.logInfo("Cloudinary search started", {
-            expression,
-            options,
-          });
+        : Effect.logInfo("Cloudinary search started");
 
       const decodedOptions = yield* decodeSearchOptions(
         options,
         sanitized ? folderListingExpressionLabel : expression
       );
-      if (!sanitized) {
-        yield* Effect.annotateLogsScoped({ decodedOptions });
-        yield* Effect.logDebug("Cloudinary search options decoded", {
-          decodedOptions,
-        });
-      }
-
       const assets: CloudinaryAsset[] = [];
       let nextCursor: CloudinarySearchCursor | undefined;
       let remainingResults = decodedOptions.maxResults;
@@ -560,49 +504,28 @@ function createSearchExecutor(config: CloudinaryConfig, sanitized = false) {
         },
       });
 
-      if (!sanitized) {
-        yield* Effect.annotateLogsScoped({ result: assets });
-      }
       if (assets.length === 0) {
         yield* sanitized
           ? Effect.logWarning("Cloudinary folder listing returned no assets")
-          : Effect.logWarning("Cloudinary search returned no assets", {
-              expression,
-              options,
-            });
+          : Effect.logWarning("Cloudinary search returned no assets");
       }
       yield* sanitized
         ? Effect.logInfo("Cloudinary folder listing page completed", {
             resultCount: assets.length,
           })
-        : Effect.logInfo("Cloudinary search completed", {
-            expression,
-            resultCount: assets.length,
-            options,
-          });
+        : Effect.logInfo("Cloudinary search completed");
 
       return assets;
     },
-    (effect, expression, options) =>
+    (effect) =>
       sanitized
         ? effect.pipe(
-            Effect.tapError((error: CloudinarySearchError) =>
-              Effect.logError(folderListingFailureMessage, {
-                httpCode: error.httpCode,
-              })
-            ),
+            Effect.tapError(() => Effect.logError(folderListingFailureMessage)),
             Effect.scoped
           )
         : effect.pipe(
-            Effect.tapError((error: CloudinarySearchError) =>
-              Effect.logError("Cloudinary search failed", {
-                expression,
-                errorMessage: error.message,
-                httpCode: error.httpCode,
-              })
-            ),
-            Effect.scoped,
-            Effect.annotateLogs({ expression, options })
+            Effect.tapError(() => Effect.logError("Cloudinary search failed")),
+            Effect.scoped
           )
   );
 }
@@ -611,7 +534,7 @@ function createPublicIdLookupExecutor() {
   // The looked-up public ID (and any asset-bearing response payload) is kept
   // out of logs and annotations entirely: this executor serves the avatar
   // path, where provider asset identifiers must never be logged. Only fixed
-  // operation/outcome codes and safe numeric metadata are emitted.
+  // operation messages are emitted.
   return Effect.fn("cloudinary.api.resource")(
     function* (publicId: CloudinaryPublicId) {
       yield* Effect.logInfo("Cloudinary public ID lookup started");
@@ -632,10 +555,8 @@ function createPublicIdLookupExecutor() {
         Effect.tap(() =>
           Effect.logInfo("Cloudinary public ID lookup completed")
         ),
-        Effect.tapError((error) =>
-          Effect.logError("Cloudinary public ID lookup failed", {
-            httpCode: error.httpCode,
-          })
+        Effect.tapError(() =>
+          Effect.logError("Cloudinary public ID lookup failed")
         ),
         Effect.retry(cloudinaryRetryPolicy)
       );
@@ -649,45 +570,28 @@ export const getGalleryImages = Effect.fn("getGalleryImages")(
     tags: CnfExpression<Tag>,
     options?: SearchOptions
   ) {
-    yield* Effect.annotateLogsScoped({ tags, options });
-    yield* Effect.logInfo("Cloudinary gallery images lookup started", {
-      tags,
-      options,
-    });
+    yield* Effect.logInfo("Cloudinary gallery images lookup started");
 
     const service = yield* CloudinaryService;
 
-    const result = yield* service.searchWithTags(tags, options).pipe(
-      Effect.tapError((error) =>
-        Effect.logError("Cloudinary gallery images lookup failed", {
-          tags,
-          options,
-          errorMessage: error.message,
-          httpCode: error.httpCode,
-        })
-      )
-    );
+    const result = yield* service
+      .searchWithTags(tags, options)
+      .pipe(
+        Effect.tapError(() =>
+          Effect.logError("Cloudinary gallery images lookup failed")
+        )
+      );
 
-    yield* Effect.annotateLogsScoped({ result });
     if (result.length === 0) {
       yield* Effect.logWarning(
-        "Cloudinary gallery images lookup returned no assets",
-        {
-          tags,
-          options,
-        }
+        "Cloudinary gallery images lookup returned no assets"
       );
     }
-    yield* Effect.logInfo("Cloudinary gallery images lookup completed", {
-      tags,
-      options,
-      resultCount: result.length,
-    });
+    yield* Effect.logInfo("Cloudinary gallery images lookup completed");
 
     return result;
   },
-  (effect, tags, options) =>
-    effect.pipe(Effect.scoped, Effect.annotateLogs({ tags, options }))
+  (effect) => effect.pipe(Effect.scoped)
 );
 
 function toUploadError(
@@ -752,12 +656,10 @@ function createUploadExecutor() {
     function* (input: CloudinaryImageUploadInput) {
       // The uploaded public ID and its folder (which may embed an account
       // identifier) never enter logs or annotations: this executor serves
-      // the avatar path, where provider asset identifiers must never be
-      // logged. Only fixed operation/outcome codes and safe numeric
-      // metadata are emitted.
-      yield* Effect.logInfo("Cloudinary image upload started", {
-        byteLength: input.bytes.byteLength,
-      });
+      // the avatar path, where provider asset identifiers and provider
+      // details must never be logged. Only fixed operation/outcome codes are
+      // emitted.
+      yield* Effect.logInfo("Cloudinary image upload started");
 
       return yield* pipe(
         performUpload(input),
@@ -774,19 +676,9 @@ function createUploadExecutor() {
             )
           )
         ),
-        Effect.tap((asset) =>
-          Effect.logInfo("Cloudinary image upload completed", {
-            width: asset.width,
-            height: asset.height,
-            format: asset.format,
-            version: asset.version,
-          })
-        ),
-        Effect.tapError((error) =>
-          Effect.logError("Cloudinary image upload failed", {
-            errorMessage: error.message,
-            httpCode: error.httpCode,
-          })
+        Effect.tap(() => Effect.logInfo("Cloudinary image upload completed")),
+        Effect.tapError(() =>
+          Effect.logError("Cloudinary image upload failed")
         ),
         Effect.retry(uploadRetryPolicy)
       );
@@ -869,8 +761,6 @@ function createDestroyExecutor() {
         Effect.tapError((error) =>
           Effect.logError("Cloudinary asset destroy failed", {
             outcome: error.outcome,
-            errorMessage: error.message,
-            httpCode: error.httpCode,
           })
         ),
         Effect.retry(destroyRetryPolicy)
@@ -985,7 +875,6 @@ function createPrefixDeleteExecutor() {
       Effect.tapError((error) =>
         Effect.logError("Cloudinary asset prefix delete failed", {
           outcome: error.outcome,
-          httpCode: error.httpCode,
         })
       ),
       Effect.retry(retryPolicy)
@@ -1110,8 +999,8 @@ function createRenameExecutor() {
 
       // The renamed public IDs never enter logs or annotations: this
       // executor serves the avatar path, where provider asset identifiers
-      // must never be logged. Only fixed operation/outcome codes and safe
-      // numeric metadata are emitted.
+      // must never be logged. Only fixed operation messages and the
+      // type-constrained overwrite flag are emitted.
       yield* Effect.logInfo("Cloudinary asset rename started", { overwrite });
 
       return yield* pipe(
@@ -1131,16 +1020,10 @@ function createRenameExecutor() {
             )
           )
         ),
-        Effect.tap((asset) =>
-          Effect.logInfo("Cloudinary asset rename completed", {
-            version: asset.version,
-          })
-        ),
+        Effect.tap(() => Effect.logInfo("Cloudinary asset rename completed")),
         Effect.tapError((error) =>
           Effect.logError("Cloudinary asset rename failed", {
             reason: error.reason,
-            errorMessage: error.message,
-            httpCode: error.httpCode,
           })
         ),
         Effect.retry(renameRetryPolicy)
