@@ -805,4 +805,52 @@ describe("CloudinaryService avatar-path logging", () => {
     expect(serialized).toContain("Cloudinary asset rename failed");
     expect(serialized).toContain("Cloudinary asset destroy failed");
   });
+
+  test("lists folder assets on the sanitized path without logging identifiers on success", async () => {
+    queuedResults = [{ resources: [stagedAsset] }];
+
+    const captured = await captureLogs((service) =>
+      service.listFolderAssets("avatars/test-staging/acct-abc-1", {
+        maxResults: 8,
+      })
+    );
+
+    expect(searchCalls[0]!.expression).toBe(
+      "folder=avatars/test-staging/acct-abc-1 AND resource_type:image"
+    );
+    const serialized = JSON.stringify(captured);
+    // The account-bearing folder, the asset identity, its delivery URL,
+    // the raw provider response, and the expression never appear…
+    expect(serialized).not.toContain("acct-abc-1");
+    expect(serialized).not.toContain("avatars/test-staging");
+    expect(serialized).not.toContain("res.cloudinary.com");
+    expect(serialized).not.toContain("public_id");
+    expect(serialized).not.toContain("secure_url");
+    expect(serialized).not.toContain("folder=");
+    // …only the fixed operation codes and the safe result count.
+    expect(serialized).toContain("Cloudinary folder listing started");
+    expect(serialized).toContain("Cloudinary folder listing completed");
+  });
+
+  test("lists folder assets on the sanitized path without logging provider failure text", async () => {
+    const identifyingMessage =
+      "Cloudinary: search on folder avatars/test-staging/acct-abc-1 denied for acct-abc-1";
+    queuedResults = [
+      { throw: { http_code: 401, message: identifyingMessage } },
+    ];
+
+    const captured = await captureLogs((service) =>
+      service
+        .listFolderAssets("avatars/test-staging/acct-abc-1", { maxResults: 8 })
+        .pipe(Effect.ignore)
+    );
+
+    const serialized = JSON.stringify(captured);
+    expect(serialized).not.toContain("acct-abc-1");
+    expect(serialized).not.toContain("avatars/test-staging");
+    expect(serialized).not.toContain(identifyingMessage);
+    expect(serialized).not.toContain("folder=");
+    // The fixed failure code is still emitted for diagnostics.
+    expect(serialized).toContain("Cloudinary folder listing failed");
+  });
 });

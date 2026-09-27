@@ -8,11 +8,14 @@ how the code honors it.
 ## Package boundary
 
 - All provider calls go through `@deskohub/cloudinary`. The package exposes
-  `uploadImage`, `destroyAsset`, `renameAsset` on `CloudinaryService` alongside
+  `uploadImage`, `destroyAsset`, `renameAsset`, and the sanitized
+  `listFolderAssets` on `CloudinaryService` alongside
   the existing search capability. They share one service class because they
   share the configured SDK, the runtime config layer, and the transient-retry
   policy; a sibling service would duplicate that wiring without a distinct
-  contract.
+  contract. Avatar paths only ever use the sanitized executors
+  (`getByPublicId`, `listFolderAssets`, `uploadImage`, `destroyAsset`,
+  `renameAsset`), which emit fixed identifier-free log messages.
 - Error contract: `CloudinaryUploadError`, `CloudinaryDestroyError` (with an
   `uncertain`/`failed` outcome), and `CloudinaryRenameError` (with a
   `target-exists`/`source-missing`/`failed` reason). Retry policy retries only
@@ -39,21 +42,48 @@ within the production namespace from a preview.
 - Stage upload under a unique temporary public ID, normalize, then rename to
   the account's fixed live public ID. Never upload directly onto the live ID:
   a bad image would replace a good one.
-- Clean up the staged asset on every failure path after staging succeeded.
-- Treat a rename failure as uncertain; retry the promotion instead of
-  reporting the swap as done, and never delete the staged asset while the
-  promotion outcome is unknown and the old avatar is gone.
-- When a promotion fails with no previous live avatar, the staged asset is
-  retained as the only recoverable copy instead of destroyed. The next
-  upload recovers it first: `recoverRetainedStaging` promotes the newest
-  retained staging asset onto the live ID before anything new is staged.
-  Recovery is best-effort; a failed recovery never blocks the fresh upload.
-- Deletion destroys the live asset first, then sweeps the account's staging
-  folder. The sweep is bounded: one `searchByFolder` call with `maxResults`
-  set to 8, destroying only the listed assets. An overflow of retained
-  staging beyond the bound never fails deletion — the live destroy is the
-  authoritative step. `searchByFolder` ordering is provider-defined; the
-  code does not rely on any particular order.
+- Clean up the staged asset on every known failure after staging succeeds. If
+  a promotion outcome is ambiguous, keep staging while it may be the only
+  recoverable copy; reconcile before cleanup.
+- Treat ambiguous rename failures as uncertain; retry and reconcile before
+  reporting the swap as done. A definitive provider rejection cleans staging
+  while leaving the old avatar untouched. Never delete the staged asset while
+  the promotion outcome is unknown and the old avatar is gone.
+- When promotion remains ambiguous, no previous live avatar exists, and the
+  staged source is still present, retain it as the only recoverable copy
+  instead of destroying it. The next
+  upload recovers it first: `recoverRetainedStaging` promotes the retained
+  staging asset onto the live ID before anything new is staged, but ONLY
+  when the live lookup definitively reports that no live avatar exists. A
+  live asset (recovery would overwrite a newer image with an older
+  retained one) and a lookup failure (outcome unknown) both skip recovery;
+  the stale staging then becomes cleanup material for deletion. Recovery
+  is best-effort; a failed or skipped recovery never blocks the fresh
+  upload.
+- Promotion reconciliation is identity-checked. The staged asset's
+  immutable provider `asset_id` survives the rename, so an asset found at
+  the live ID after an ambiguous rename outcome counts as the promoted
+  upload only when its identity matches. On a source-missing response, a
+  mismatch, a missing identity, or a failed live lookup stays uncertain:
+  nothing is destroyed and the operation fails retryably. After an ambiguous
+  retry, a different known live identity proves the previous asset remains,
+  so staging is cleaned and the operation fails retryably. "Any asset at the
+  live ID" is never proof of promotion, because the non-atomic rename contract
+  cannot distinguish the new upload from the previous live image.
+- Deletion destroys the live asset first, then drains the account's
+  staging folder completely: the sweep lists bounded batches
+  (`maxResults: 8`) and destroys them, looping until a listing verifies
+  the folder is empty (bounded by an internal iteration cap). Deletion
+  must never succeed with staged customer images left stored: any listing
+  or destroy failure — or exhausting the iteration cap — fails retryably
+  BEFORE identity removal, so the durable deletion marker persists and the
+  deletion can be retried. The live destroy is the authoritative media
+  step, but it is not a license to leave recoverable staging behind.
+  `searchByFolder`-style listing ordering is provider-defined; the code
+  does not rely on any particular order. Staging listing goes through the
+  sanitized folder-listing call, which never logs the account-bearing
+  folder, asset identities, URLs, raw provider responses, or provider
+  failure text.
 - Avatar mutations (upload, remove, destroy) run the whole media critical
   section — provider calls, reconciliation, and cleanup — under the account
   advisory lock and uninterruptibly: an interruption cannot release the lock

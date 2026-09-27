@@ -19,6 +19,12 @@ export type CloudinarySearchCursor = typeof CloudinarySearchCursorSchema.Type;
 
 export const CloudinaryAssetSchema = Schema.Struct({
   public_id: CloudinaryPublicIdSchema,
+  /**
+   * The provider's immutable asset identity. Unlike `public_id`, it survives
+   * renames, so callers can verify that the asset now living at a public ID
+   * is really the one they put there.
+   */
+  asset_id: Schema.optional(Schema.NonEmptyString),
   secure_url: Schema.String,
   url: Schema.String,
   width: Schema.Finite,

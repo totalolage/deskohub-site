@@ -29,7 +29,11 @@ import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace
 import type { CustomerAccountId } from "../customer-account";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
 import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
-import { CustomerAvatarService } from "../customer-avatar.service";
+import {
+  CustomerAvatarProviderError,
+  CustomerAvatarService,
+  type CustomerAvatarUnavailableError,
+} from "../customer-avatar.service";
 import { CustomerDotyposAdapter } from "../customer-dotypos-adapter.service";
 import type { MagicLinkSendFunction, WorkspaceAuthConfig } from "./auth-server";
 
@@ -238,7 +242,11 @@ const expectAccountsUnavailable = async (response: Response) => {
 };
 
 const makeTestDeletionLayers = (
-  expireCustomer: () => Effect.Effect<void, unknown>
+  expireCustomer: () => Effect.Effect<void, unknown>,
+  destroyAvatar: () => Effect.Effect<
+    void,
+    CustomerAvatarProviderError | CustomerAvatarUnavailableError
+  > = () => Effect.void
 ) =>
   CustomerAccountDeletionService.Default.pipe(
     Layer.provide(
@@ -255,7 +263,7 @@ const makeTestDeletionLayers = (
           )
         ),
         Layer.mock(CustomerDotyposAdapter, { expireCustomer }),
-        Layer.mock(CustomerAvatarService, { destroy: () => Effect.void })
+        Layer.mock(CustomerAvatarService, { destroy: destroyAvatar })
       )
     )
   );
@@ -1041,6 +1049,45 @@ describe.skipIf(!testDatabase)(
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({ sentLinks, beforeDeleteUser });
       const email = uniqueEmail("retry");
+
+      await signInForMagicLink(auth, email);
+      const verifyResponse = await verifyMagicLink(auth, sentLinks[0]!);
+      const cookie = cookieJar(getSessionCookie(verifyResponse)!);
+      const userId = (await userIdForEmail(email))!;
+      await linkAccount(userId, uniqueDotyposCustomerId());
+
+      const failed = await callHandler(auth, "/delete-user", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(failed.status).toBe(500);
+
+      const user = await testDatabase!.pool.query(
+        `select deletion_requested_at from auth."user" where id = $1`,
+        [userId]
+      );
+      expect(user.rows).toHaveLength(1);
+      expect(user.rows[0]!.deletion_requested_at).not.toBeNull();
+
+      const link = await testDatabase!.pool.query(
+        `select * from customer_account_links where customer_account_id = $1`,
+        [userId]
+      );
+      expect(link.rows).toHaveLength(1);
+    });
+
+    test("keeps the auth identity and link when avatar deletion has an unknown provider outcome", async () => {
+      const deletionLayers = makeTestDeletionLayers(
+        () => Effect.void,
+        () => Effect.fail(new CustomerAvatarProviderError({}))
+      );
+      const beforeDeleteUser = (accountId: CustomerAccountId) =>
+        runTestDeletion(deletionLayers, accountId);
+
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks, beforeDeleteUser });
+      const email = uniqueEmail("avatar-delete-retry");
 
       await signInForMagicLink(auth, email);
       const verifyResponse = await verifyMagicLink(auth, sentLinks[0]!);

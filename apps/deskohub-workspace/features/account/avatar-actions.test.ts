@@ -109,6 +109,7 @@ type UploadOutcome =
   | { readonly status: "retryable" };
 
 let uploadCalls: AvatarUploadInput[] = [];
+let uploadAccountIds: string[] = [];
 let removeCalls: string[] = [];
 let uploadOutcome: UploadOutcome = {
   status: "uploaded",
@@ -128,7 +129,7 @@ const AvatarLayer = Layer.succeed(Avatar, {
   upload: (accountId: string, input: AvatarUploadInput) =>
     Effect.suspend(() => {
       uploadCalls.push(input);
-      void accountId;
+      uploadAccountIds.push(accountId);
       if (uploadOutcome.status === "uploaded") {
         return Effect.succeed(uploadOutcome.avatar);
       }
@@ -173,6 +174,7 @@ const uploadForm = () => {
 describe("customer avatar actions", () => {
   beforeEach(() => {
     uploadCalls = [];
+    uploadAccountIds = [];
     removeCalls = [];
     uploadOutcome = {
       status: "uploaded",
@@ -196,8 +198,11 @@ describe("customer avatar actions", () => {
 
   test("uploads from the resolved session account and revalidates the account path", async () => {
     const { uploadCustomerAvatar } = await importActions();
+    const form = uploadForm();
+    form.set("accountId", "attacker-selected-account");
+    form.set("avatarUrl", "https://attacker.example/avatar.webp");
 
-    const result = await uploadCustomerAvatar(uploadForm());
+    const result = await uploadCustomerAvatar(form);
 
     expect(result).toEqual({
       data: {
@@ -209,6 +214,7 @@ describe("customer avatar actions", () => {
       },
     });
     expect(uploadCalls).toHaveLength(1);
+    expect(uploadAccountIds).toEqual(["@test/account-id"]);
     expect(uploadCalls[0]!.bytes.byteLength).toBe(pngBytes().byteLength);
     expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
   });

@@ -2,6 +2,7 @@ import "server-only";
 
 import { v2 as cloudinary } from "cloudinary";
 import { Context, Duration, Effect, Layer, pipe, Schedule } from "effect";
+import { identity } from "effect/Function";
 import * as Schema from "effect/Schema";
 import { decodeCloudinaryAsset } from "./asset-decoding";
 import {
@@ -51,6 +52,16 @@ export interface ICloudinaryService {
     folder: string,
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
+  /**
+   * Lists the assets in one folder without ever logging the folder, its
+   * assets, raw provider responses, or provider failure text. This is the
+   * sanitized sibling of `searchByFolder` for account-derived folders
+   * (avatar staging), where identifiers must not reach logs.
+   */
+  readonly listFolderAssets: (
+    folder: string,
+    options?: SearchOptions
+  ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
   readonly searchAll: (
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
@@ -92,6 +103,7 @@ export class CloudinaryService extends Context.Service<
       });
 
       const executeSearch = createSearchExecutor(config);
+      const executeSanitizedSearch = createSearchExecutor(config, true);
       const getByPublicId = createPublicIdLookupExecutor();
       const uploadImage = createUploadExecutor();
       const destroyAsset = createDestroyExecutor();
@@ -99,6 +111,39 @@ export class CloudinaryService extends Context.Service<
 
       const searchByTag: ICloudinaryService["searchByTag"] = (tag, options) =>
         executeSearch(`tags=${tag} AND resource_type:image`, options);
+
+      const listFolderAssets: ICloudinaryService["listFolderAssets"] = (
+        folder,
+        options
+      ) =>
+        Effect.gen(function* () {
+          yield* Effect.logInfo("Cloudinary folder listing started");
+
+          const expressions = [`folder=${folder}`, `folder:${folder}`];
+
+          for (const expression of expressions) {
+            const assets = yield* executeSanitizedSearch(
+              `${expression} AND resource_type:image`,
+              options
+            );
+
+            if (assets.length > 0) {
+              yield* Effect.logInfo("Cloudinary folder listing completed", {
+                resultCount: assets.length,
+              });
+              return assets;
+            }
+
+            yield* Effect.logDebug(
+              "Cloudinary folder listing expression returned no assets"
+            );
+          }
+
+          yield* Effect.logInfo("Cloudinary folder listing completed", {
+            resultCount: 0,
+          });
+          return [];
+        });
 
       const searchByFolder: ICloudinaryService["searchByFolder"] = (
         folder,
@@ -168,6 +213,7 @@ export class CloudinaryService extends Context.Service<
         getByPublicId,
         searchByTag,
         searchByFolder,
+        listFolderAssets,
         searchAll,
         searchByExpression,
         searchWithTags,
@@ -313,6 +359,28 @@ function toCloudinarySearchError(
   });
 }
 
+/**
+ * Fixed, identifier-free failure label for the sanitized folder-listing
+ * path. The listed folder may embed an account identifier, so neither the
+ * expression, the provider's rejection text, nor any asset payload may
+ * reach the error or the logs — only the HTTP code and fixed messages.
+ */
+const folderListingExpressionLabel = "folder listing";
+const folderListingFailureMessage = "Cloudinary folder listing failed";
+
+function toSanitizedFolderListingError(error: CloudinaryRejectedValue) {
+  const httpCode =
+    typeof error === "object" && error !== null
+      ? readCloudinaryHttpCode(error)
+      : undefined;
+
+  return new CloudinarySearchError({
+    message: folderListingFailureMessage,
+    expression: folderListingExpressionLabel,
+    httpCode,
+  });
+}
+
 function decodeSearchResponse(result: unknown, expression: string) {
   return pipe(
     Schema.decodeUnknownEffect(CloudinarySearchResponseSchema)(result),
@@ -340,8 +408,16 @@ function decodeSearchOptions(options: unknown, expression: string) {
   );
 }
 
-function createSearchExecutor(config: CloudinaryConfig) {
+function createSearchExecutor(config: CloudinaryConfig, sanitized = false) {
   const defaultPageSize = config.defaultPageSize ?? 100;
+
+  // In sanitized mode the real expression still drives the provider call,
+  // but every error, log line, and annotation carries only fixed messages
+  // and safe numeric metadata — never the expression itself.
+  const toSearchError = (error: CloudinaryRejectedValue, expression: string) =>
+    sanitized
+      ? toSanitizedFolderListingError(error)
+      : toCloudinarySearchError(error, expression);
 
   const buildSearchExpression = (
     expression: string,
@@ -381,48 +457,69 @@ function createSearchExecutor(config: CloudinaryConfig) {
             nextCursor
           ).execute(),
         catch: (error) =>
-          toCloudinarySearchError(error as CloudinaryRejectedValue, expression),
+          toSearchError(error as CloudinaryRejectedValue, expression),
       }),
-      Effect.tap((rawResult) =>
-        Effect.gen(function* () {
-          yield* Effect.annotateLogsScoped({ rawResult });
-          yield* Effect.logDebug("Cloudinary provider response received", {
-            rawResult,
-          });
-        })
+      // Raw provider payloads (asset URLs, public IDs) are logged only on
+      // the unsanitized gallery paths.
+      sanitized
+        ? identity
+        : Effect.tap((rawResult: unknown) =>
+            Effect.gen(function* () {
+              yield* Effect.annotateLogsScoped({ rawResult });
+              yield* Effect.logDebug("Cloudinary provider response received", {
+                rawResult,
+              });
+            })
+          ),
+      Effect.flatMap((result) =>
+        decodeSearchResponse(
+          result,
+          sanitized ? folderListingExpressionLabel : expression
+        )
       ),
-      Effect.flatMap((result) => decodeSearchResponse(result, expression)),
-      Effect.tap((response) =>
-        Effect.gen(function* () {
-          yield* Effect.annotateLogsScoped({ response });
-          yield* Effect.logDebug("Cloudinary search response decoded", {
-            response,
-          });
-        })
-      ),
-      Effect.tapError((error) =>
-        Effect.logError("Cloudinary search page failed", {
-          expression,
-          errorMessage: error.message,
-          httpCode: error.httpCode,
-        })
+      sanitized
+        ? identity
+        : Effect.tap((response: unknown) =>
+            Effect.gen(function* () {
+              yield* Effect.annotateLogsScoped({ response });
+              yield* Effect.logDebug("Cloudinary search response decoded", {
+                response,
+              });
+            })
+          ),
+      Effect.tapError((error: CloudinarySearchError) =>
+        sanitized
+          ? Effect.logError(folderListingFailureMessage, {
+              httpCode: error.httpCode,
+            })
+          : Effect.logError("Cloudinary search page failed", {
+              expression,
+              errorMessage: error.message,
+              httpCode: error.httpCode,
+            })
       ),
       Effect.retry(cloudinaryRetryPolicy)
     );
 
   return Effect.fn("cloudinary.search")(
     function* (expression: string, options?: SearchOptions) {
-      yield* Effect.annotateLogsScoped({ expression, options });
-      yield* Effect.logInfo("Cloudinary search started", {
-        expression,
-        options,
-      });
+      yield* sanitized
+        ? Effect.logInfo("Cloudinary folder listing page started")
+        : Effect.logInfo("Cloudinary search started", {
+            expression,
+            options,
+          });
 
-      const decodedOptions = yield* decodeSearchOptions(options, expression);
-      yield* Effect.annotateLogsScoped({ decodedOptions });
-      yield* Effect.logDebug("Cloudinary search options decoded", {
-        decodedOptions,
-      });
+      const decodedOptions = yield* decodeSearchOptions(
+        options,
+        sanitized ? folderListingExpressionLabel : expression
+      );
+      if (!sanitized) {
+        yield* Effect.annotateLogsScoped({ decodedOptions });
+        yield* Effect.logDebug("Cloudinary search options decoded", {
+          decodedOptions,
+        });
+      }
 
       const assets: CloudinaryAsset[] = [];
       let nextCursor: CloudinarySearchCursor | undefined;
@@ -457,33 +554,50 @@ function createSearchExecutor(config: CloudinaryConfig) {
         },
       });
 
-      yield* Effect.annotateLogsScoped({ result: assets });
-      if (assets.length === 0) {
-        yield* Effect.logWarning("Cloudinary search returned no assets", {
-          expression,
-          options,
-        });
+      if (!sanitized) {
+        yield* Effect.annotateLogsScoped({ result: assets });
       }
-      yield* Effect.logInfo("Cloudinary search completed", {
-        expression,
-        resultCount: assets.length,
-        options,
-      });
+      if (assets.length === 0) {
+        yield* sanitized
+          ? Effect.logWarning("Cloudinary folder listing returned no assets")
+          : Effect.logWarning("Cloudinary search returned no assets", {
+              expression,
+              options,
+            });
+      }
+      yield* sanitized
+        ? Effect.logInfo("Cloudinary folder listing page completed", {
+            resultCount: assets.length,
+          })
+        : Effect.logInfo("Cloudinary search completed", {
+            expression,
+            resultCount: assets.length,
+            options,
+          });
 
       return assets;
     },
     (effect, expression, options) =>
-      effect.pipe(
-        Effect.tapError((error) =>
-          Effect.logError("Cloudinary search failed", {
-            expression,
-            errorMessage: error.message,
-            httpCode: error.httpCode,
-          })
-        ),
-        Effect.scoped,
-        Effect.annotateLogs({ expression, options })
-      )
+      sanitized
+        ? effect.pipe(
+            Effect.tapError((error: CloudinarySearchError) =>
+              Effect.logError(folderListingFailureMessage, {
+                httpCode: error.httpCode,
+              })
+            ),
+            Effect.scoped
+          )
+        : effect.pipe(
+            Effect.tapError((error: CloudinarySearchError) =>
+              Effect.logError("Cloudinary search failed", {
+                expression,
+                errorMessage: error.message,
+                httpCode: error.httpCode,
+              })
+            ),
+            Effect.scoped,
+            Effect.annotateLogs({ expression, options })
+          )
   );
 }
 
