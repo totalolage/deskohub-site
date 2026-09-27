@@ -1,6 +1,8 @@
 "use client";
 
+import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import type { ColumnDef } from "@tanstack/react-table";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   ArrowUpRight,
   Pencil,
@@ -10,13 +12,14 @@ import {
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
-  type FormEvent,
-  type ReactNode,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+  type DefaultValues,
+  type FieldValues,
+  useForm,
+  useFormContext,
+  useWatch,
+} from "react-hook-form";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import { AdministrationDataTable } from "@/features/administration/data-table";
 import { AdministrationAlert } from "@/features/administration/notice";
@@ -33,8 +36,15 @@ import type {
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import { generatePromotionCode } from "@/features/discounts/promotion-code";
 import { Button } from "@/shared/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { Label } from "@/shared/components/ui/label";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import {
   defaultWorkspaceCurrency,
@@ -51,11 +61,21 @@ import type { DiscountAdminMutation } from "./contracts";
 import type { AdminCalendarSale } from "./discount-administration.service";
 import { getDiscountAdminValidationMessage } from "./form-feedback";
 import {
-  readDiscountCodeForm,
-  readDiscountForm,
-  readVoucherConfigurationForm,
-  readVoucherCreditForm,
+  toCreateDiscountCodeInput,
+  toCreateDiscountInput,
+  toDiscountCodeConfigurationInput,
+  toVoucherConfigurationInput,
+  toVoucherCreditInput,
 } from "./form-input";
+import {
+  type DiscountCodeConfigurationFormValues,
+  type DiscountCodeFormValues,
+  type DiscountDefinitionFormValues,
+  type VoucherFormValues,
+  discountCodeFormSchema,
+  discountDefinitionFormSchema,
+  voucherFormSchema,
+} from "./form-schemas";
 
 export type DiscountTableItem = {
   readonly id: StoredDiscountId;
@@ -311,14 +331,15 @@ export function VoucherEditor({
       </p>
       <MutationForm
         actionName={`updateVoucher.${voucher.id}`}
-        buildMutation={(formData) => ({
+        buildMutation={(values) => ({
           kind: "update-voucher",
           voucher: {
             id: voucher.id,
-            ...readVoucherConfigurationForm(formData),
-            credit: readVoucherCreditForm(formData),
+            ...toVoucherConfigurationInput(values),
+            credit: toVoucherCreditInput(values),
           },
         })}
+        defaultValues={voucherFormDefaults(voucher)}
         deleteControl={
           deletable ? (
             <DeleteButton
@@ -332,6 +353,7 @@ export function VoucherEditor({
           ) : undefined
         }
         requireDirty
+        schema={voucherFormSchema}
         submitLabel="Save voucher"
         submitIcon={<Save aria-hidden className="size-4" />}
       >
@@ -539,11 +561,13 @@ export function CreateDiscountForm({
   return (
     <MutationForm
       actionName="createDiscount"
-      buildMutation={(formData) => ({
+      buildMutation={(values) => ({
         kind: "create-discount",
-        discount: readDiscountForm(formData),
+        discount: toCreateDiscountInput(values),
       })}
+      defaultValues={discountDefinitionFormDefaults()}
       onSuccess={onCreated}
+      schema={discountDefinitionFormSchema}
       submitLabel="Create discount"
       submitIcon={<Plus aria-hidden className="size-4" />}
     >
@@ -560,14 +584,16 @@ export function CreateVoucherForm({
   return (
     <MutationForm
       actionName="createVoucher"
-      buildMutation={(formData) => ({
+      buildMutation={(values) => ({
         kind: "create-voucher",
         voucher: {
-          ...readVoucherConfigurationForm(formData),
-          credit: readVoucherCreditForm(formData),
+          ...toVoucherConfigurationInput(values),
+          credit: toVoucherCreditInput(values),
         },
       })}
+      defaultValues={voucherFormDefaults()}
       onSuccess={onCreated}
+      schema={voucherFormSchema}
       submitLabel="Create voucher"
       submitIcon={<Plus aria-hidden className="size-4" />}
     >
@@ -638,13 +664,14 @@ function DiscountEditor({
       </div>
       <MutationForm
         actionName={`updateDiscount.${discount.id}`}
-        buildMutation={(formData) => ({
+        buildMutation={(values) => ({
           kind: "update-discount",
           discount: {
             id: discount.id,
-            ...readDiscountForm(formData),
+            ...toCreateDiscountInput(values),
           },
         })}
+        defaultValues={discountDefinitionFormDefaults(discount)}
         deleteControl={
           deletable ? (
             <DeleteButton
@@ -656,6 +683,7 @@ function DiscountEditor({
           ) : undefined
         }
         requireDirty
+        schema={discountDefinitionFormSchema}
         submitLabel="Save discount"
         submitIcon={<Save aria-hidden className="size-4" />}
       >
@@ -679,14 +707,16 @@ function DiscountCodeEditor({
       </p>
       <MutationForm
         actionName={`updateDiscountCode.${code.id}`}
-        buildMutation={(formData) => ({
+        buildMutation={(values) => ({
           kind: "update-code",
           code: {
             id: code.id,
-            ...readDiscountCodeForm(formData),
+            ...toCreateDiscountCodeInput(values),
           },
         })}
+        defaultValues={discountCodeFormDefaults(code)}
         requireDirty
+        schema={discountCodeFormSchema}
         submitLabel="Save code"
         submitIcon={<Save aria-hidden className="size-4" />}
       >
@@ -696,42 +726,55 @@ function DiscountCodeEditor({
   );
 }
 
-function MutationForm({
+function MutationForm<
+  Input extends FieldValues,
+  Values = Input,
+>({
   actionName,
   buildMutation,
   children,
+  defaultValues,
   deleteControl,
   requireDirty = false,
+  schema,
   submitIcon,
   submitLabel,
   onSuccess,
 }: {
   readonly actionName: string;
-  readonly buildMutation: (formData: FormData) => DiscountAdminMutation;
+  readonly buildMutation: (values: Values) => DiscountAdminMutation;
   readonly children: ReactNode;
+  readonly defaultValues: DefaultValues<Input>;
   readonly deleteControl?: ReactNode;
   readonly requireDirty?: boolean;
+  readonly schema: StandardSchemaV1<Input, Values>;
   readonly submitIcon: ReactNode;
   readonly submitLabel: string;
   readonly onSuccess?: (message: string) => void;
 }) {
   const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
-  const initialFingerprint = useRef<string | null>(null);
-  const [dirty, setDirty] = useState(false);
   const [feedback, setFeedback] = useState<{
     readonly kind: "error" | "success";
     readonly message: string;
   } | null>(null);
+  const form = useForm<Input, unknown, Values>({
+    defaultValues,
+    mode: "onSubmit",
+    reValidateMode: "onChange",
+    resolver: standardSchemaResolver(schema),
+  });
+  const { isDirty } = form.formState;
+
+  useEffect(() => {
+    const subscription = form.watch(() => setFeedback(null));
+    return () => subscription.unsubscribe();
+  }, [form]);
+
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
     actionName,
     onSuccess: ({ data }) => {
       if (!data) return;
-      const form = formRef.current;
-      if (form) {
-        initialFingerprint.current = fingerprintForm(form);
-      }
-      setDirty(false);
+      form.reset();
       const message = data.createdDiscountId
         ? `${data.notice} Calendar ID: ${data.createdDiscountId}`
         : data.notice;
@@ -756,57 +799,43 @@ function MutationForm({
     },
   });
 
-  const disabled = isExecuting || (requireDirty && !dirty);
-  const handleFormChange = (event: FormEvent<HTMLFormElement>) => {
-    const form = event.currentTarget;
-    initialFingerprint.current ??= fingerprintForm(form);
-    setDirty(fingerprintForm(form) !== initialFingerprint.current);
-    setFeedback(null);
-  };
+  const disabled = isExecuting || (requireDirty && !isDirty);
 
   return (
-    <form
-      onChange={handleFormChange}
-      onInput={handleFormChange}
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (disabled) return;
-        initialFingerprint.current ??= fingerprintForm(event.currentTarget);
-        execute(buildMutation(new FormData(event.currentTarget)));
-      }}
-      ref={(form) => {
-        formRef.current = form;
-        if (form && initialFingerprint.current === null) {
-          initialFingerprint.current = fingerprintForm(form);
-        }
-      }}
-    >
-      {children}
-      {feedback && (
-        <AdministrationAlert
-          className="mt-5 font-semibold"
-          role={feedback.kind === "error" ? "alert" : "status"}
-          status={feedback.kind}
-        >
-          {feedback.message}
-        </AdministrationAlert>
-      )}
-      <div className="mt-6 flex items-center justify-between border-t border-navy-blue/10 pt-5">
-        <div>{deleteControl}</div>
-        <Button
-          className={
-            dirty
-              ? "bg-burned-orange-ink shadow-[0_7px_18px_rgba(174,69,26,0.24)] hover:bg-burned-orange-ink/90"
-              : ""
-          }
-          disabled={disabled}
-          type="submit"
-        >
-          {submitIcon}
-          {isExecuting ? "Saving…" : submitLabel}
-        </Button>
-      </div>
-    </form>
+    <Form {...form}>
+      <form
+        noValidate
+        onSubmit={form.handleSubmit((values) => {
+          execute(buildMutation(values));
+        })}
+      >
+        {children}
+        {feedback && (
+          <AdministrationAlert
+            className="mt-5 font-semibold"
+            role={feedback.kind === "error" ? "alert" : "status"}
+            status={feedback.kind}
+          >
+            {feedback.message}
+          </AdministrationAlert>
+        )}
+        <div className="mt-6 flex items-center justify-between border-t border-navy-blue/10 pt-5">
+          <div>{deleteControl}</div>
+          <Button
+            className={
+              isDirty
+                ? "bg-burned-orange-ink shadow-[0_7px_18px_rgba(174,69,26,0.24)] hover:bg-burned-orange-ink/90"
+                : ""
+            }
+            disabled={disabled}
+            type="submit"
+          >
+            {submitIcon}
+            {isExecuting ? "Saving…" : submitLabel}
+          </Button>
+        </div>
+      </form>
+    </Form>
   );
 }
 
@@ -877,112 +906,173 @@ export function DiscountDefinitionFields({
 }: {
   readonly discount?: DiscountTableItem;
 }) {
+  const { control, register } = useFormContext<DiscountDefinitionFormValues>();
+  const kind = useWatch({ control, name: "adjustmentKind" });
   const selectedProducts = new Set(discount?.products.map(({ kind }) => kind));
-  const adjustment = discount?.adjustment;
-  const [kind, setKind] = useState<"fixed" | "percentage">(
-    adjustment?.kind ?? "percentage"
-  );
   const existingFixedCurrency =
-    adjustment?.kind === "fixed" ? adjustment.amount.currency : undefined;
+    discount?.adjustment.kind === "fixed"
+      ? discount.adjustment.amount.currency
+      : undefined;
 
   return (
     <div className="grid gap-7">
       <fieldset className="grid gap-4 md:grid-cols-2">
         <legend className="mb-3 text-sm font-semibold">Customer labels</legend>
-        <FormField label="English (en-US)">
-          <Input
-            defaultValue={discount?.labels["en-US"]}
-            id={fieldId("labelEn", discount?.id)}
-            name="labelEn"
-            required
-          />
-        </FormField>
-        <FormField label="Czech (cs-CZ)">
-          <Input
-            defaultValue={discount?.labels["cs-CZ"]}
-            id={fieldId("labelCs", discount?.id)}
-            name="labelCs"
-            required
-          />
-        </FormField>
+        <FormField
+          control={control}
+          name="labelEn"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormLabel htmlFor={fieldId("labelEn", discount?.id)}>
+                English (en-US)
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  id={fieldId("labelEn", discount?.id)}
+                  required
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="labelCs"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormLabel htmlFor={fieldId("labelCs", discount?.id)}>
+                Czech (cs-CZ)
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  id={fieldId("labelCs", discount?.id)}
+                  required
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
       </fieldset>
 
       <fieldset>
         <legend className="mb-3 text-sm font-semibold">Adjustment</legend>
         <div className="grid gap-4 md:grid-cols-2">
-          <FormField label="Type">
-            <select
-              className={selectClassName}
-              id={fieldId("adjustmentKind", discount?.id)}
-              name="adjustmentKind"
-              onChange={(event) =>
-                setKind(event.currentTarget.value as "fixed" | "percentage")
-              }
-              value={kind}
-            >
-              <option value="percentage">Percentage</option>
-              <option value="fixed">Fixed amount</option>
-            </select>
-          </FormField>
+          <FormField
+            control={control}
+            name="adjustmentKind"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel htmlFor={fieldId("adjustmentKind", discount?.id)}>
+                  Type
+                </FormLabel>
+                <FormControl>
+                  <select
+                    {...field}
+                    className={selectClassName}
+                    id={fieldId("adjustmentKind", discount?.id)}
+                  >
+                    <option value="percentage">Percentage</option>
+                    <option value="fixed">Fixed amount</option>
+                  </select>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
           {kind === "percentage" ? (
-            <FormField label="Percentage">
-              <Input
-                defaultValue={
-                  adjustment?.kind === "percentage"
-                    ? adjustment.basisPoints / 100
-                    : 10
-                }
-                id={fieldId("percentage", discount?.id)}
-                max={100}
-                min={0.01}
-                name="percentage"
-                required
-                step={0.01}
-                type="number"
-              />
-            </FormField>
+            <FormField
+              control={control}
+              name="percentage"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel htmlFor={fieldId("percentage", discount?.id)}>
+                    Percentage
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      id={fieldId("percentage", discount?.id)}
+                      max={100}
+                      min={0.01}
+                      required
+                      step={0.01}
+                      type="number"
+                      variant={fieldState.error ? "error" : "default"}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           ) : (
             <>
-              <FormField label="Fixed value">
-                <Input
-                  defaultValue={
-                    adjustment?.kind === "fixed"
-                      ? adjustment.amount.value
-                      : 10_000
-                  }
-                  id={fieldId("fixedAmountValue", discount?.id)}
-                  min={1}
-                  name="fixedAmountValue"
-                  required
-                  step={1}
-                  type="number"
-                />
-              </FormField>
-              <FormField label="Currency">
-                <select
-                  className={selectClassName}
-                  defaultValue={
-                    adjustment?.kind === "fixed"
-                      ? adjustment.amount.currency
-                      : defaultWorkspaceCurrency.code
-                  }
-                  id={fieldId("fixedAmountCurrency", discount?.id)}
-                  name="fixedAmountCurrency"
-                  required
-                >
-                  {existingFixedCurrency &&
-                    !findWorkspaceCurrencyDefinition(existingFixedCurrency) && (
-                      <option value={existingFixedCurrency}>
-                        {existingFixedCurrency} — unsupported
-                      </option>
-                    )}
-                  {workspaceCurrencyDefinitions.map((currency) => (
-                    <option key={currency.code} value={currency.code}>
-                      {currency.code} — {currency.name}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
+              <FormField
+                control={control}
+                name="fixedAmountValue"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel
+                      htmlFor={fieldId("fixedAmountValue", discount?.id)}
+                    >
+                      Fixed value
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        id={fieldId("fixedAmountValue", discount?.id)}
+                        min={1}
+                        required
+                        step={1}
+                        type="number"
+                        variant={fieldState.error ? "error" : "default"}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={control}
+                name="fixedAmountCurrency"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel
+                      htmlFor={fieldId("fixedAmountCurrency", discount?.id)}
+                    >
+                      Currency
+                    </FormLabel>
+                    <FormControl>
+                      <select
+                        {...field}
+                        className={selectClassName}
+                        id={fieldId("fixedAmountCurrency", discount?.id)}
+                        required
+                      >
+                        {existingFixedCurrency &&
+                          !findWorkspaceCurrencyDefinition(
+                            existingFixedCurrency
+                          ) && (
+                            <option value={existingFixedCurrency}>
+                              {existingFixedCurrency} — unsupported
+                            </option>
+                          )}
+                        {workspaceCurrencyDefinitions.map((currency) => (
+                          <option key={currency.code} value={currency.code}>
+                            {currency.code} — {currency.name}
+                          </option>
+                        ))}
+                      </select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </>
           )}
         </div>
@@ -1004,9 +1094,9 @@ export function DiscountDefinitionFields({
               key={product.key}
             >
               <input
+                {...register("products")}
                 className="size-4 accent-[var(--brand-burned-orange)]"
                 defaultChecked={selectedProducts.has(product.key)}
-                name="products"
                 type="checkbox"
                 value={product.key}
               />
@@ -1026,23 +1116,36 @@ function DiscountCodeFields({
   readonly code?: DiscountCodeTableItem;
   readonly discounts: readonly DiscountTableItem[];
 }) {
+  const { control } = useFormContext<DiscountCodeFormValues>();
+
   return (
     <div className="grid gap-5">
-      <FormField label="Discount">
-        <select
-          className={selectClassName}
-          defaultValue={code?.discountId ?? undefined}
-          id={fieldId("discountId", code?.id)}
-          name="discountId"
-          required
-        >
-          {discounts.map((discount) => (
-            <option key={discount.id} value={discount.id}>
-              {discount.labels["en-US"]}
-            </option>
-          ))}
-        </select>
-      </FormField>
+      <FormField
+        control={control}
+        name="discountId"
+        render={({ field, fieldState }) => (
+          <FormItem>
+            <FormLabel htmlFor={fieldId("discountId", code?.id)}>
+              Discount
+            </FormLabel>
+            <FormControl>
+              <select
+                {...field}
+                className={selectClassName}
+                id={fieldId("discountId", code?.id)}
+                required
+              >
+                {discounts.map((discount) => (
+                  <option key={discount.id} value={discount.id}>
+                    {discount.labels["en-US"]}
+                  </option>
+                ))}
+              </select>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
       <DiscountCodeConfigurationFields code={code} />
     </div>
   );
@@ -1055,49 +1158,41 @@ export function DiscountCodeConfigurationFields({
   readonly code?: DiscountCodeTableItem | VoucherTableItem;
   readonly showMaxUses?: boolean;
 }) {
-  const [codeValue, setCodeValue] = useState(code?.code ?? "");
+  const { control, register, setValue } =
+    useFormContext<DiscountCodeConfigurationFormValues>();
   const codeInputId = fieldId("code", code?.id);
 
   return (
     <div className="grid gap-5">
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="grid gap-2">
-          <Label htmlFor={codeInputId}>Code</Label>
-          <div
-            className={
-              code ? undefined : "grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
-            }
-          >
-            <Input
-              autoCapitalize="characters"
-              className="font-mono uppercase"
-              id={codeInputId}
-              maxLength={64}
-              minLength={3}
-              name="code"
-              onChange={(event) => setCodeValue(event.currentTarget.value)}
-              required
-              spellCheck={false}
-              value={codeValue}
-            />
-            {!code && (
-              <Button
-                className="h-12 rounded-[1.1rem] px-5"
-                onClick={() => setCodeValue(generatePromotionCode())}
-                type="button"
-                variant="secondary"
-              >
-                <RefreshCw aria-hidden className="size-4" />
-                Generate code
-              </Button>
-            )}
-          </div>
-        </div>
+        <FormField
+          control={control}
+          name="code"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormLabel htmlFor={codeInputId}>Code</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  autoCapitalize="characters"
+                  className="font-mono uppercase"
+                  id={codeInputId}
+                  maxLength={64}
+                  minLength={3}
+                  required
+                  spellCheck={false}
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <label className="flex min-h-12 cursor-pointer items-center gap-3 self-end rounded-[1.1rem] bg-navy-blue/[0.045] px-4 py-3 text-sm font-semibold">
           <input
+            {...register("enabled")}
             className="size-4 accent-[var(--brand-burned-orange)]"
             defaultChecked={code?.enabled ?? true}
-            name="enabled"
             type="checkbox"
           />
           Enabled
@@ -1106,50 +1201,92 @@ export function DiscountCodeConfigurationFields({
       <div
         className={`grid gap-4 ${showMaxUses ? "md:grid-cols-4" : "md:grid-cols-2"}`}
       >
-        <FormField label="Valid from">
-          <Input
-            defaultValue={toDateTimeInputValue(code?.validFrom)}
-            id={fieldId("validFrom", code?.id)}
-            name="validFrom"
-            type="datetime-local"
-          />
-        </FormField>
-        <FormField label="Valid until">
-          <Input
-            defaultValue={toDateTimeInputValue(code?.validUntil)}
-            id={fieldId("validUntil", code?.id)}
-            name="validUntil"
-            type="datetime-local"
-          />
-        </FormField>
+        <FormField
+          control={control}
+          name="validFrom"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormLabel htmlFor={fieldId("validFrom", code?.id)}>
+                Valid from
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  id={fieldId("validFrom", code?.id)}
+                  type="datetime-local"
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="validUntil"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormLabel htmlFor={fieldId("validUntil", code?.id)}>
+                Valid until
+              </FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  id={fieldId("validUntil", code?.id)}
+                  type="datetime-local"
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         {showMaxUses && (
           <>
-            <FormField label="Maximum uses">
-              <Input
-                defaultValue={
-                  code && "maxUses" in code ? (code.maxUses ?? "") : ""
-                }
-                id={fieldId("maxUses", code?.id)}
-                min={1}
-                name="maxUses"
-                placeholder="Unlimited"
-                type="number"
-              />
-            </FormField>
-            <FormField label="Maximum uses per customer">
-              <Input
-                defaultValue={
-                  code && "maxUsesPerCustomer" in code
-                    ? (code.maxUsesPerCustomer ?? "")
-                    : ""
-                }
-                id={fieldId("maxUsesPerCustomer", code?.id)}
-                min={1}
-                name="maxUsesPerCustomer"
-                placeholder="Unlimited"
-                type="number"
-              />
-            </FormField>
+            <FormField
+              control={control}
+              name="maxUses"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel htmlFor={fieldId("maxUses", code?.id)}>
+                    Maximum uses
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      id={fieldId("maxUses", code?.id)}
+                      min={1}
+                      placeholder="Unlimited"
+                      type="number"
+                      variant={fieldState.error ? "error" : "default"}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={control}
+              name="maxUsesPerCustomer"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel htmlFor={fieldId("maxUsesPerCustomer", code?.id)}>
+                    Maximum uses per customer
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      id={fieldId("maxUsesPerCustomer", code?.id)}
+                      min={1}
+                      placeholder="Unlimited"
+                      type="number"
+                      variant={fieldState.error ? "error" : "default"}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </>
         )}
       </div>
@@ -1166,34 +1303,57 @@ export function VoucherCreditFields({
 }: {
   readonly credit?: WorkspaceMoney | null;
 }) {
+  const { control } = useFormContext<VoucherFormValues>();
+
   return (
     <fieldset>
       <legend className="mb-3 text-sm font-semibold">Voucher credit</legend>
       <div className="grid gap-4 md:grid-cols-2">
-        <FormField label="Value in minor units">
-          <Input
-            defaultValue={credit?.value ?? 10_000}
-            min={1}
-            name="voucherValue"
-            required
-            step={1}
-            type="number"
-          />
-        </FormField>
-        <FormField label="Currency">
-          <select
-            className={selectClassName}
-            defaultValue={credit?.currency ?? defaultWorkspaceCurrency.code}
-            name="voucherCurrency"
-            required
-          >
-            {workspaceCurrencyDefinitions.map((currency) => (
-              <option key={currency.code} value={currency.code}>
-                {currency.code} — {currency.name}
-              </option>
-            ))}
-          </select>
-        </FormField>
+        <FormField
+          control={control}
+          name="voucherValue"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormLabel htmlFor="voucherValue">Value in minor units</FormLabel>
+              <FormControl>
+                <Input
+                  {...field}
+                  id="voucherValue"
+                  min={1}
+                  required
+                  step={1}
+                  type="number"
+                  variant={fieldState.error ? "error" : "default"}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={control}
+          name="voucherCurrency"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel htmlFor="voucherCurrency">Currency</FormLabel>
+              <FormControl>
+                <select
+                  {...field}
+                  className={selectClassName}
+                  id="voucherCurrency"
+                  required
+                >
+                  {workspaceCurrencyDefinitions.map((currency) => (
+                    <option key={currency.code} value={currency.code}>
+                      {currency.code} — {currency.name}
+                    </option>
+                  ))}
+                </select>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
       </div>
       <p className="mt-3 text-xs leading-5 text-navy-blue/70">
         Credit uses minor units: 10000 = 100.00. Existing claims remain in the
@@ -1203,29 +1363,60 @@ export function VoucherCreditFields({
   );
 }
 
-function FormField({
-  children,
-  label,
-}: {
-  readonly children: ReactNode;
-  readonly label: string;
-}) {
-  return (
-    <Label className="grid gap-2">
-      <span>{label}</span>
-      {children}
-    </Label>
-  );
-}
+const discountDefinitionFormDefaults = (
+  discount?: DiscountTableItem
+): DiscountDefinitionFormValues => ({
+  labelEn: discount?.labels["en-US"] ?? "",
+  labelCs: discount?.labels["cs-CZ"] ?? "",
+  adjustmentKind: discount?.adjustment.kind ?? "percentage",
+  percentage:
+    discount?.adjustment.kind === "percentage"
+      ? String(discount.adjustment.basisPoints / 100)
+      : "10",
+  fixedAmountValue:
+    discount?.adjustment.kind === "fixed"
+      ? String(discount.adjustment.amount.value)
+      : "10000",
+  fixedAmountCurrency:
+    discount?.adjustment.kind === "fixed"
+      ? discount.adjustment.amount.currency
+      : defaultWorkspaceCurrency.code,
+  products: discount ? discount.products.map(({ kind }) => kind) : [],
+});
 
-const fingerprintForm = (form: HTMLFormElement) =>
-  JSON.stringify(
-    [...new FormData(form).entries()]
-      .map(([key, value]) => [key, String(value)] as const)
-      .toSorted(([leftKey, leftValue], [rightKey, rightValue]) =>
-        `${leftKey}:${leftValue}`.localeCompare(`${rightKey}:${rightValue}`)
-      )
-  );
+const discountCodeFormDefaults = (
+  code?: DiscountCodeTableItem
+): DiscountCodeFormValues => ({
+  discountId: code?.discountId ?? "",
+  ...discountCodeConfigurationFormDefaults(code),
+});
+
+const discountCodeConfigurationFormDefaults = (
+  item?: DiscountCodeTableItem | VoucherTableItem
+): DiscountCodeConfigurationFormValues => ({
+  code: item?.code ?? "",
+  enabled: item?.enabled ?? true,
+  validFrom: toDateTimeInputValue(item?.validFrom),
+  validUntil: toDateTimeInputValue(item?.validUntil),
+  maxUses:
+    item && "maxUses" in item && item.maxUses !== null
+      ? String(item.maxUses)
+      : "",
+  maxUsesPerCustomer:
+    item && "maxUsesPerCustomer" in item && item.maxUsesPerCustomer !== null
+      ? String(item.maxUsesPerCustomer)
+      : "",
+});
+
+const voucherFormDefaults = (voucher?: VoucherTableItem): VoucherFormValues => ({
+  voucherValue: voucher ? String(voucher.issuedCredit.value) : "10000",
+  voucherCurrency:
+    voucher?.issuedCredit.currency ?? defaultWorkspaceCurrency.code,
+  code: voucher?.code ?? "",
+  enabled: voucher?.enabled ?? true,
+  validFrom: toDateTimeInputValue(voucher?.validFrom),
+  validUntil: toDateTimeInputValue(voucher?.validUntil),
+});
 
 const toDateTimeInputValue = (value: string | null | undefined) =>
   value
