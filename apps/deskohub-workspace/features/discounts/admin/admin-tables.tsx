@@ -27,6 +27,7 @@ import type {
   VoucherId,
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
+import { generatePromotionCode } from "@/features/discounts/promotion-code";
 import { Button } from "@/shared/components/ui/button";
 import {
   Form,
@@ -1146,7 +1147,7 @@ export function DiscountCodeConfigurationFields({
   readonly code?: DiscountCodeTableItem | VoucherTableItem;
   readonly showMaxUses?: boolean;
 }) {
-  const { control, register } =
+  const { control, register, setValue } =
     useFormContext<DiscountCodeConfigurationFormValues>();
   const codeInputId = fieldId("code", code?.id);
 
@@ -1172,6 +1173,16 @@ export function DiscountCodeConfigurationFields({
                   variant={fieldState.error ? "error" : "default"}
                 />
               </FormControl>
+              {code ? null : (
+                <Button
+                  className="mt-3"
+                  onClick={() => setValue("code", generatePromotionCode())}
+                  type="button"
+                  variant="secondary"
+                >
+                  Generate code
+                </Button>
+              )}
               <FormMessage />
             </FormItem>
           )}
