@@ -28,6 +28,7 @@ const {
   getInvoiceDraftId,
   getInvoiceReviewTotal,
   InvoiceCreationForm,
+  invoiceFormSchema,
   isInvoicePriceInput,
   readInvoiceForm,
 } = await import("./invoice-form");
@@ -43,11 +44,12 @@ afterEach(async () => {
 });
 afterAll(unregisterWorkspaceComponentTestEnv);
 
-const formValues = (
-  overrides: {
-    readonly customer?: Partial<InvoiceFormOutput["customer"]>;
-  } & Partial<Omit<InvoiceFormOutput, "customer">> = {}
-): InvoiceFormOutput => ({
+const formValues = ({
+  customer,
+  ...overrides
+}: {
+  readonly customer?: Partial<InvoiceFormOutput["customer"]>;
+} & Partial<Omit<InvoiceFormOutput, "customer">> = {}): InvoiceFormOutput => ({
   customer: {
     customerType: "person",
     email: "billing@example.test",
@@ -62,7 +64,7 @@ const formValues = (
     city: "Prague",
     postalCode: "110 00",
     country: "CZ",
-    ...overrides.customer,
+    ...customer,
   },
   locale: "en-US",
   serviceDate: "2026-08-18",
@@ -74,6 +76,9 @@ const formValues = (
   lines: [{ id: "line-1", description: "Space rental", price: "1000" }],
   ...overrides,
 });
+
+const validateFormSchema = (values: InvoiceFormOutput) =>
+  invoiceFormSchema["~standard"].validate(values);
 
 test("calculates the immutable review total without losing precision", () => {
   expect(
@@ -103,6 +108,9 @@ test("omits blank optional business contact names", () => {
         lastName: "",
         companyName: "Example s.r.o.",
         companyId: "12345678",
+        vatId: "CZ12345678",
+        phone: "1".repeat(20),
+        line2: "Floor 2",
       },
     }),
     invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb21",
@@ -114,6 +122,21 @@ test("omits blank optional business contact names", () => {
   expect(() =>
     Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)(input)
   ).not.toThrow();
+});
+
+test("rejects values beyond the server-mirrored boundary lengths", async () => {
+  const longPhone = await validateFormSchema(
+    formValues({ customer: { phone: "1".repeat(21) } })
+  );
+  expect("issues" in longPhone && Boolean(longPhone.issues)).toBe(true);
+
+  const longEmail = await validateFormSchema(
+    formValues({ customer: { email: `${"a".repeat(250)}@example.test` } })
+  );
+  expect("issues" in longEmail && Boolean(longEmail.issues)).toBe(true);
+
+  const valid = await validateFormSchema(formValues());
+  expect("value" in valid).toBe(true);
 });
 
 test("preserves the reviewed variable symbol", () => {
@@ -160,29 +183,30 @@ const renderInvoiceCreationForm = () =>
 
 type InvoiceFormView = ReturnType<typeof renderInvoiceCreationForm>;
 
+const fillInput = (
+  view: InvoiceFormView,
+  label: string,
+  value: string,
+  index?: number
+) => {
+  const input = (
+    index === undefined
+      ? view.getByLabelText(label)
+      : view.getAllByLabelText(label)[index]
+  ) as HTMLInputElement;
+  fireEvent.input(input, { target: { value } });
+  return input;
+};
+
 const fillValidPersonInvoice = (view: InvoiceFormView) => {
   fireEvent.click(view.getByRole("button", { name: "New" }));
-  fireEvent.change(view.getByLabelText("Invoice email"), {
-    target: { value: "billing@example.test" },
-  });
-  fireEvent.change(view.getByLabelText("First name"), {
-    target: { value: "Synthetic" },
-  });
-  fireEvent.change(view.getByLabelText("Last name"), {
-    target: { value: "Customer" },
-  });
-  fireEvent.change(view.getByLabelText("Address"), {
-    target: { value: "Synthetic 1" },
-  });
-  fireEvent.change(view.getByLabelText("City"), {
-    target: { value: "Prague" },
-  });
-  fireEvent.change(view.getByLabelText("Postal code"), {
-    target: { value: "110 00" },
-  });
-  fireEvent.change(view.getByLabelText("Description 1"), {
-    target: { value: "Space rental" },
-  });
+  fillInput(view, "Invoice email", "billing@example.test");
+  fillInput(view, "First name", "Synthetic");
+  fillInput(view, "Last name", "Customer");
+  fillInput(view, "Address", "Synthetic 1");
+  fillInput(view, "City", "Prague");
+  fillInput(view, "Postal code", "110 00");
+  fillInput(view, "Description 1", "Space rental");
   fireEvent.change(view.getByLabelText("Price"), {
     target: { value: "1000" },
   });
@@ -206,13 +230,21 @@ const submitInvoiceForm = (view: InvoiceFormView) => {
   fireEvent.submit(form);
 };
 
+const flush = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+const invoiceIdOf = (call: unknown[] | undefined) => {
+  if (!call) throw new Error("Expected an action call");
+  return (call[0] as { invoiceId: string }).invoiceId;
+};
+
 test("carries edited fields into the review payload", async () => {
   const preview = mockPreviewAction();
   const view = renderInvoiceCreationForm();
   fillValidPersonInvoice(view);
-  fireEvent.change(view.getByLabelText("Country code"), {
-    target: { value: "cz" },
-  });
+  fillInput(view, "Country code", "cz");
 
   submitInvoiceForm(view);
   await view.findByText("This action creates and sends the invoice");
@@ -226,7 +258,7 @@ test("carries edited fields into the review payload", async () => {
           kind: "person",
           firstName: "Synthetic",
           lastName: "Customer",
-          country: "CZ",
+          address: expect.objectContaining({ country: "CZ" }),
         }),
       },
     })
@@ -237,8 +269,10 @@ test("shows validation feedback and skips the preview for an invalid invoice", a
   const preview = mockPreviewAction();
   const view = renderInvoiceCreationForm();
   fireEvent.click(view.getByRole("button", { name: "New" }));
+  // "1." passes the controlled input gate for exponent 2 but fails the
+  // submitted price pattern.
   fireEvent.change(view.getByLabelText("Price"), {
-    target: { value: "1000" },
+    target: { value: "1." },
   });
 
   submitInvoiceForm(view);
@@ -256,32 +290,85 @@ test("reuses the draft id for an unchanged retry and rotates it after a change",
 
   submitInvoiceForm(view);
   await view.findByText("This action creates and sends the invoice");
-  const firstInvoiceId = (preview.mock.calls[0][0] as { invoiceId: string })
-    .invoiceId;
+  const firstInvoiceId = invoiceIdOf(preview.mock.calls[0]);
 
   submitInvoiceForm(view);
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
+  await flush();
   expect(preview).toHaveBeenCalledTimes(2);
-  expect((preview.mock.calls[1][0] as { invoiceId: string }).invoiceId).toBe(
-    firstInvoiceId
-  );
+  expect(invoiceIdOf(preview.mock.calls[1])).toBe(firstInvoiceId);
 
-  fireEvent.change(view.getByLabelText("First name"), {
-    target: { value: "Changed" },
-  });
+  fillInput(view, "First name", "Changed");
   submitInvoiceForm(view);
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
+  await flush();
   expect(preview).toHaveBeenCalledTimes(3);
-  const thirdInvoiceId = (preview.mock.calls[2][0] as { invoiceId: string })
-    .invoiceId;
+  const thirdInvoiceId = invoiceIdOf(preview.mock.calls[2]);
   expect(thirdInvoiceId).not.toBe(firstInvoiceId);
   expect(getInvoiceDraftId(thirdInvoiceId)).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
   );
+});
+
+test("retries creation with the same id for an unchanged invoice and a new id after a change", async () => {
+  const preview = mock();
+  const create = mock();
+  let previewOnSuccess:
+    | ((result: { data: { dataUrl: string } }) => void)
+    | undefined;
+  let createOnError:
+    | ((result: { error: { serverError: string } }) => void)
+    | undefined;
+  workspaceUseAction.mockImplementation((_action, options) => {
+    const actionOptions = options as {
+      readonly actionName: string;
+      readonly onSuccess?: typeof previewOnSuccess;
+      readonly onError?: typeof createOnError;
+    };
+    if (actionOptions.actionName === "previewAdministrationInvoice") {
+      previewOnSuccess = actionOptions.onSuccess;
+      return { execute: preview, isExecuting: false } as never;
+    }
+    if (actionOptions.actionName === "createAdministrationInvoice") {
+      createOnError = actionOptions.onError;
+      return { execute: create, isExecuting: false } as never;
+    }
+    return { execute: mock(), isExecuting: false } as never;
+  });
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+
+  const submitAndCreate = async () => {
+    submitInvoiceForm(view);
+    await flush();
+    act(() =>
+      previewOnSuccess?.({
+        data: { dataUrl: "data:text/plain;base64,PA==" },
+      })
+    );
+    const createButton = view.getByRole("button", {
+      name: "Create and send invoice",
+    });
+    expect(createButton).toHaveProperty("disabled", false);
+    fireEvent.click(createButton);
+    await flush();
+  };
+
+  await submitAndCreate();
+  expect(create).toHaveBeenCalledTimes(1);
+  const firstInvoiceId = invoiceIdOf(create.mock.calls[0]);
+
+  act(() =>
+    createOnError?.({ error: { serverError: "Create exploded." } })
+  );
+  expect(view.getByText("Create exploded.")).toBeTruthy();
+
+  await submitAndCreate();
+  expect(create).toHaveBeenCalledTimes(2);
+  expect(invoiceIdOf(create.mock.calls[1])).toBe(firstInvoiceId);
+
+  fillInput(view, "First name", "Changed");
+  await submitAndCreate();
+  expect(create).toHaveBeenCalledTimes(3);
+  expect(invoiceIdOf(create.mock.calls[2])).not.toBe(firstInvoiceId);
 });
 
 test("renders preview and create action errors as alerts", async () => {
@@ -317,6 +404,9 @@ test("renders preview and create action errors as alerts", async () => {
 });
 
 test("manages line items and gates price input by currency precision", () => {
+  workspaceUseAction.mockImplementation(
+    () => ({ execute: mock(), isExecuting: false }) as never
+  );
   const view = renderInvoiceCreationForm();
   fireEvent.click(view.getByRole("button", { name: "New" }));
 
@@ -328,11 +418,11 @@ test("manages line items and gates price input by currency precision", () => {
   const remove2 = view.getByRole("button", { name: "Remove line 2" });
   expect(remove2).toHaveProperty("disabled", false);
 
-  const price = view.getByLabelText("Price") as HTMLInputElement;
-  fireEvent.change(price, { target: { value: "1.23" } });
-  expect(price.value).toBe("1.23");
-  fireEvent.change(price, { target: { value: "1.234" } });
-  expect(price.value).toBe("1.23");
+  const firstPrice = view.getAllByLabelText("Price")[0] as HTMLInputElement;
+  fireEvent.change(firstPrice, { target: { value: "1.23" } });
+  expect(firstPrice.value).toBe("1.23");
+  fireEvent.change(firstPrice, { target: { value: "1.234" } });
+  expect(firstPrice.value).toBe("1.23");
 
   fireEvent.click(remove2);
   expect(view.queryByLabelText("Description 2")).toBeNull();
@@ -346,22 +436,33 @@ test("previews the suggested variable symbol after restoring the default", async
   const variableSymbol = view.getByLabelText(
     "Variable symbol"
   ) as HTMLInputElement;
-  fireEvent.change(variableSymbol, { target: { value: "" } });
+  fireEvent.input(variableSymbol, { target: { value: "" } });
   fireEvent.blur(variableSymbol);
   expect(variableSymbol.value).toBe("2026000001");
   fireEvent.focus(variableSymbol);
   expect(variableSymbol.selectionStart).toBe(0);
   expect(variableSymbol.selectionEnd).toBe(variableSymbol.value.length);
   fillValidPersonInvoice(view);
-  fireEvent.change(view.getByLabelText("Variable symbol"), {
-    target: { value: "" },
-  });
+  fillInput(view, "Variable symbol", "");
   fireEvent.blur(view.getByLabelText("Variable symbol"));
 
   submitInvoiceForm(view);
   await view.findByText("This action creates and sends the invoice");
   expect(preview).toHaveBeenCalledWith(
     expect.objectContaining({ variableSymbol: "2026000001" })
+  );
+});
+
+test("previews an edited variable symbol unchanged", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  fillInput(view, "Variable symbol", "9876543210");
+
+  submitInvoiceForm(view);
+  await view.findByText("This action creates and sends the invoice");
+  expect(preview).toHaveBeenCalledWith(
+    expect.objectContaining({ variableSymbol: "9876543210" })
   );
 });
 
@@ -375,6 +476,27 @@ test("switches the invoice date from due date to paid on", async () => {
   expect(view.queryByLabelText("Due date")).toBeNull();
   expect(view.getByLabelText("Paid on")).toHaveProperty("value", "2026-08-18");
 
+  submitInvoiceForm(view);
+  await view.findByText("This action creates and sends the invoice");
+  expect(preview).toHaveBeenCalledWith(
+    expect.objectContaining({
+      payment: { status: "paid", date: "2026-08-18" },
+    })
+  );
+});
+
+test("ignores a blank hidden due date once already paid is selected", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  fillInput(view, "Due date", "");
+
+  submitInvoiceForm(view);
+  expect(view.getByText("This field is required.")).toBeTruthy();
+  expect(preview).not.toHaveBeenCalled();
+
+  fireEvent.click(view.getByRole("checkbox", { name: "Already paid" }));
+  expect(view.queryByLabelText("Due date")).toBeNull();
   submitInvoiceForm(view);
   await view.findByText("This action creates and sends the invoice");
   expect(preview).toHaveBeenCalledWith(

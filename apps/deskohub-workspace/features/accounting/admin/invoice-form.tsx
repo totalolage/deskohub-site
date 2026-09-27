@@ -42,16 +42,38 @@ const selectClassName =
 
 const requiredMessage = "This field is required.";
 
+const maxLengthMessage = (maximumLength: number) =>
+  `Use at most ${maximumLength} characters.`;
+
 const invoiceFormRequiredText = (maximumLength: number) =>
   Schema.Trim.check(
     Schema.isNonEmpty({ message: requiredMessage }),
-    Schema.isMaxLength(maximumLength, {
-      message: `Use at most ${maximumLength} characters.`,
-    })
+    Schema.isMaxLength(maximumLength, { message: maxLengthMessage(maximumLength) })
   );
+
+const invoiceFormOptionalText = (maximumLength: number) =>
+  Schema.Trim.check(
+    Schema.isMaxLength(maximumLength, { message: maxLengthMessage(maximumLength) })
+  );
+
+const isCalendarDate = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return (
+    !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value)
+  );
+};
+
+const calendarDateMessage = "Enter a valid calendar date.";
+
+const invoiceFormCalendarDate = Schema.Trim.check(
+  Schema.isNonEmpty({ message: requiredMessage }),
+  Schema.makeFilter(isCalendarDate, { message: calendarDateMessage })
+);
 
 const invoiceFormEmail = Schema.Trim.check(
   Schema.isNonEmpty({ message: requiredMessage }),
+  Schema.isMaxLength(255, { message: maxLengthMessage(255) }),
   Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, {
     message: "Enter a valid invoice email.",
   })
@@ -72,7 +94,7 @@ const invoiceFormLine = Schema.Struct({
 
 const invoiceFormAddress = {
   line1: invoiceFormRequiredText(180),
-  line2: Schema.Trim,
+  line2: invoiceFormOptionalText(180),
   city: invoiceFormRequiredText(255),
   postalCode: invoiceFormRequiredText(20),
   country: Schema.Trim.check(
@@ -86,50 +108,64 @@ const invoiceFormCustomer = Schema.Union([
     email: invoiceFormEmail,
     firstName: invoiceFormRequiredText(100),
     lastName: invoiceFormRequiredText(100),
-    companyName: Schema.Trim,
-    companyId: Schema.Trim,
-    vatId: Schema.Trim,
-    phone: Schema.Trim,
+    companyName: invoiceFormOptionalText(180),
+    companyId: invoiceFormOptionalText(255),
+    vatId: invoiceFormOptionalText(255),
+    phone: invoiceFormOptionalText(20),
     ...invoiceFormAddress,
   }),
   Schema.Struct({
     customerType: Schema.Literal("business"),
     email: invoiceFormEmail,
-    firstName: Schema.Trim,
-    lastName: Schema.Trim,
+    firstName: invoiceFormOptionalText(100),
+    lastName: invoiceFormOptionalText(100),
     companyName: invoiceFormRequiredText(180),
     companyId: invoiceFormRequiredText(255),
-    vatId: Schema.Trim,
-    phone: Schema.Trim,
+    vatId: invoiceFormOptionalText(255),
+    phone: invoiceFormOptionalText(20),
     ...invoiceFormAddress,
   }),
 ]);
 
+const invoiceFormValues = Schema.Struct({
+  customer: invoiceFormCustomer,
+  locale: Schema.Literals(["cs-CZ", "en-US"]),
+  serviceDate: invoiceFormCalendarDate,
+  paid: Schema.Boolean,
+  paidOn: Schema.Trim,
+  dueDate: Schema.Trim,
+  currency: Schema.String.check(
+    Schema.isPattern(/^[A-Z]{3}$/, { message: requiredMessage })
+  ),
+  variableSymbol: Schema.String.check(
+    Schema.makeFilter<string>(
+      (value) => value.trim() === "" || /^\d{1,10}$/.test(value.trim()),
+      { message: "Use at most 10 digits." }
+    )
+  ),
+  lines: Schema.Array(invoiceFormLine).check(
+    Schema.isMinLength(1, { message: "Add at least one line." })
+  ),
+});
+
 export const invoiceFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    customer: invoiceFormCustomer,
-    locale: Schema.Literals(["cs-CZ", "en-US"]),
-    serviceDate: Schema.Trim.check(
-      Schema.isNonEmpty({ message: requiredMessage })
-    ),
-    paid: Schema.Boolean,
-    paidOn: Schema.Trim.check(Schema.isNonEmpty({ message: requiredMessage })),
-    dueDate: Schema.Trim.check(Schema.isNonEmpty({ message: requiredMessage })),
-    currency: Schema.String.check(
-      Schema.isPattern(/^[A-Z]{3}$/, { message: requiredMessage })
-    ),
-    variableSymbol: Schema.String.check(
-      Schema.makeFilter<string>(
-        (value) => value.trim() === "" || /^\d{1,10}$/.test(value.trim()),
-        { message: "Use at most 10 digits." }
-      )
-    ),
-    lines: Schema.Array(invoiceFormLine).check(
-      Schema.isMinLength(1, { message: "Add at least one line." })
-    ),
-  }),
+  invoiceFormValues.check(
+    // Only the payment date chosen by the "Already paid" toggle is visible,
+    // so only that field carries a validation rule.
+    Schema.makeFilter<InvoiceFormValues>((value) => {
+      const paymentDate = (value.paid ? value.paidOn : value.dueDate).trim();
+      if (paymentDate !== "" && isCalendarDate(paymentDate)) return true;
+      return {
+        path: [value.paid ? "paidOn" : "dueDate"],
+        issue:
+          paymentDate === "" ? requiredMessage : calendarDateMessage,
+      };
+    })
+  ),
   { parseOptions: { errors: "all" } }
 );
+
+type InvoiceFormValues = typeof invoiceFormValues.Type;
 
 export type InvoiceFormInput = StandardSchemaV1.InferInput<
   typeof invoiceFormSchema
@@ -157,7 +193,10 @@ export function InvoiceCreationForm({
   readonly suggestedVariableSymbol: string;
 }) {
   const router = useRouter();
-  const invoiceIdRef = useRef<string | null>(null);
+  const draftRef = useRef<{
+    readonly fingerprint: string;
+    readonly invoiceId: string;
+  } | null>(null);
   const searchId = useId();
   const initialLineId = useId();
   const paidId = useId();
@@ -241,7 +280,7 @@ export function InvoiceCreationForm({
       actionName: "createAdministrationInvoice",
       onSuccess: ({ data }) => {
         if (data) {
-          invoiceIdRef.current = null;
+          draftRef.current = null;
           router.push(`/admin/invoices/${data.invoiceId}`);
         }
       },
@@ -298,12 +337,25 @@ export function InvoiceCreationForm({
 
   const openReview = (values: InvoiceFormOutput) => {
     setCreateError(null);
-    invoiceIdRef.current = getInvoiceDraftId(invoiceIdRef.current);
+    // The draft UUID is idempotent for an unchanged invoice and rotates when
+    // the normalized payload changes: the server rejects a reused id with
+    // different input.
+    const fingerprint = JSON.stringify([
+      customerMode,
+      customer?.id ?? null,
+      values,
+    ]);
+    const bound = draftRef.current;
+    const invoiceId =
+      bound && bound.fingerprint === fingerprint
+        ? bound.invoiceId
+        : getInvoiceDraftId(null);
+    draftRef.current = { fingerprint, invoiceId };
     const nextReview = readInvoiceForm({
       customer,
       customerMode,
       values,
-      invoiceId: invoiceIdRef.current,
+      invoiceId,
     });
     setPreviewError(null);
     setPreviewUrl(null);
@@ -911,6 +963,7 @@ export function InvoiceCreationForm({
                           )
                             event.currentTarget.select();
                         }}
+                        onInput={onChange}
                         pattern="[0-9]{1,10}"
                         required
                         variant={fieldState.error ? "error" : "default"}
