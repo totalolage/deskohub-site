@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseCsv } from "@/shared/testing/csv";
-import { serializeCsv } from "./csv";
+import { countCsvRecords, serializeCsv } from "./csv";
 
 describe("serializeCsv", () => {
   test("serializes plain rows without unnecessary quoting", () => {
@@ -71,5 +71,41 @@ describe("serializeCsv", () => {
       ],
       ["", "only-second", "multi\nline\r\nmixed\rtext"],
     ]);
+  });
+});
+
+describe("countCsvRecords", () => {
+  test("counts ordinary records", () => {
+    expect(countCsvRecords("a,b\r\nc,d\r\ne,f")).toBe(3);
+  });
+
+  test("does not count a record inside a quoted field with an embedded CRLF", () => {
+    expect(countCsvRecords('a,"multi\r\nline"\r\nb,c')).toBe(2);
+  });
+
+  test("does not end a record on an escaped double quote", () => {
+    expect(countCsvRecords('"say ""bye"" now",x\r\ny,z')).toBe(2);
+  });
+
+  test("counts a header-only document as one record", () => {
+    expect(countCsvRecords("H1,H2")).toBe(1);
+    expect(countCsvRecords("H1,H2\r\n")).toBe(1);
+  });
+
+  test("counts zero records for an empty document", () => {
+    expect(countCsvRecords("")).toBe(0);
+  });
+
+  test("supports LF-only record ends", () => {
+    expect(countCsvRecords("a,b\nc,d\n")).toBe(2);
+  });
+
+  test("counts records that serialize with embedded line breaks round-trip", () => {
+    const csv = serializeCsv([
+      ["id", "customer"],
+      ["1", "Example\r\nCustomer"],
+      ["2", 'quoted "name"'],
+    ]);
+    expect(countCsvRecords(csv)).toBe(3);
   });
 });

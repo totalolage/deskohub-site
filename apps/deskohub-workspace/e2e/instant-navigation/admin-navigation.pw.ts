@@ -1,6 +1,7 @@
 import { instant } from "@next/playwright";
 import { expect, test } from "@playwright/test";
 import { workspaceTestAdminCredentials } from "@/shared/testing/workspace-test-environment";
+import { countCsvRecords } from "@/shared/utils";
 import { resolveInstantNavigationAdminCredentials } from "../admin-basic-auth";
 import { enablePreviewAccess, requireBaseUrl } from "./navigation-test-helpers";
 import { evaluateReservationExportRowCount } from "./reservation-export-row-count";
@@ -249,7 +250,9 @@ test("downloads the reservations export as CSV", async ({ page, context }) => {
     lines[0] === reservationExportHeader,
     "CSV header must match the approved columns"
   ).toBe(true);
-  const dataRowCount = lines.slice(1).filter((line) => line !== "").length;
+  // Quoted fields may embed CRLF, so count logical RFC 4180 records instead
+  // of physical lines; the header is the first record.
+  const dataRowCount = countCsvRecords(csvText) - 1;
 
   // Re-read the count with a plain read-only navigation; the download click
   // above stayed native. The verdict is exact parity when the count is stable
