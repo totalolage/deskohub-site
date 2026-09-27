@@ -54,6 +54,10 @@ import {
   expireSyntheticCustomerProfile,
   readSyntheticCustomerProfile,
 } from "./fixtures";
+import {
+  classifyWorkspaceE2EExportIdentityMatch,
+  exportIdentityVerdictFailureMessage,
+} from "./export-identity";
 import type { MagicLinkRateBudget } from "./rate-budget";
 import {
   listSyntheticMessageIds,
@@ -1595,6 +1599,13 @@ export const makeWorkspaceE2EAccountCases = ({
                         document === null
                           ? null
                           : {
+                              // Compared as a boolean against the
+                              // journaled identity so a failed run
+                              // decides between a session divergence
+                              // and an email-string divergence; the
+                              // raw account id never leaves the page.
+                              accountIdMatches:
+                                document.identity.accountId === ${JSON.stringify(identity.userId)},
                               consentKeys:
                                 document.marketingConsent === null
                                   ? null
@@ -1669,6 +1680,7 @@ export const makeWorkspaceE2EAccountCases = ({
                     readonly contentType: string | null;
                     readonly ok: boolean;
                     readonly document: {
+                      readonly accountIdMatches: boolean;
                       readonly consentKeys: readonly string[] | null;
                       readonly dotyposProfileKeys: readonly string[] | null;
                       readonly email: string;
@@ -1701,6 +1713,22 @@ export const makeWorkspaceE2EAccountCases = ({
                 );
               }
               const snapshot = probeText.document;
+              // The journaled-account boolean splits the failure space
+              // before the strict email equality: an account-id match with
+              // an email mismatch proves an email-string divergence, while
+              // an account-id mismatch proves the session resolved to a
+              // different Better Auth identity. The raw identifiers never
+              // reach the message.
+              const verdict = classifyWorkspaceE2EExportIdentityMatch({
+                accountIdMatches: snapshot.accountIdMatches,
+                emailMatches: snapshot.email === recipient,
+              });
+              if (verdict !== "match") {
+                return yield* workspaceE2EError(
+                  exportIdentityVerdictFailureMessage(verdict),
+                  { operation: "assert account data export document" }
+                );
+              }
               assert(
                 snapshot.email === recipient,
                 "the export identity email did not match the synthetic recipient"
