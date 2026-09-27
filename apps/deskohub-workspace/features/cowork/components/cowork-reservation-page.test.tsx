@@ -222,6 +222,9 @@ test("offers the restart state for a legacy basic reservation in cs-CZ", async (
     "Tato cowork nabídka už není dostupná. Začněte prosím novou rezervaci s aktuální nabídkou."
   );
   expect(markup).toContain(`<a href="/cs-CZ/reservation/cowork"`);
+  expect(findAnchorElement(CoworkOfferReplaced({ locale: "cs-CZ" }))).toBe(
+    true
+  );
 });
 
 test("restores a signed current-tier open-space reservation into the form", async () => {
