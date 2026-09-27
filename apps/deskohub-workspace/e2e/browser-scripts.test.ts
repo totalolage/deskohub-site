@@ -56,7 +56,9 @@ test("asserts safe repeat-reservation defaults for every family", async () => {
       html: `
         <input name="date" value="2099-08-27" />
         <input checked name="entryTier" type="radio" value="open-space" />
-        <button aria-checked="false" role="switch"></button>
+        <label id="reservation-coffee-label">Coffee
+          <button aria-checked="false" aria-labelledby="reservation-coffee-label" role="switch"></button>
+        </label>
       `,
       url: "https://workspace.example.test/en-US/reservation/cowork?entryTier=open-space&coffee=false",
     },
@@ -70,6 +72,9 @@ test("asserts safe repeat-reservation defaults for every family", async () => {
       html: `
         <input name="date" value="2099-08-27" />
         <input checked name="entryTier" type="radio" value="reserved-desk" />
+        <label id="reservation-workstation-label">Monitor workstation
+          <button aria-checked="true" aria-labelledby="reservation-workstation-label" role="switch"></button>
+        </label>
         <input checked name="monitorOption" type="radio" value="2x27-qhd" />
       `,
       url: "https://workspace.example.test/en-US/reservation/cowork?entryTier=reserved-desk&coffee=true&monitorOption=2x27-qhd",

@@ -1,9 +1,48 @@
+import { type Locale, m } from "@/features/i18n";
 import {
   getMeetingRoomReservationDurationKey,
   isMeetingRoomWholeDayReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { CheckoutData, CheckoutRow } from "./types";
+
+// The real cowork form renders the coffee switch only for Open Space and the
+// workstation (monitor) switch only for Reserved Desk. Both are FormControl
+// switches whose accessible name comes from aria-labelledby pointing at their
+// FormLabel (shared/components/ui/form.tsx), so assertions match by that
+// localized label text.
+const getCoworkSwitchExpectations = (entryTier: string, locale: Locale) => ({
+  coffeeSwitchLabel:
+    entryTier === "open-space"
+      ? m.reservationCoffeeLabel({}, { locale })
+      : null,
+  workstationSwitchLabel:
+    entryTier === "reserved-desk"
+      ? m.reservationWorkstationLabel({}, { locale })
+      : null,
+});
+
+const getCoworkSwitchSelectionScript = () => `
+  const switchAccessibleName = (element) => {
+    const labelledby = element.getAttribute('aria-labelledby');
+    if (typeof labelledby === 'string' && labelledby.length > 0) {
+      const labelText = labelledby
+        .split(/\\s+/)
+        .map((id) => document.getElementById(id)?.textContent ?? '')
+        .join(' ')
+        .replace(/\\s+/g, ' ')
+        .trim();
+      if (labelText.length > 0) return labelText;
+    }
+    return (element.textContent ?? '').replace(/\\s+/g, ' ').trim();
+  };
+  const findSwitchByLabel = (label) =>
+    [...document.querySelectorAll('[role="switch"]')].find(
+      (candidate) =>
+        candidate instanceof HTMLButtonElement &&
+        switchAccessibleName(candidate).includes(label)
+    );
+`;
 
 const getOfficeDayCount = (office: NonNullable<CheckoutData["office"]>) =>
   Temporal.PlainDate.from(office.startsOn).until(
@@ -18,9 +57,7 @@ export const getAssertRepeatReservationScript = (data: CheckoutData) => {
         data.expectedReservationDetails;
       return {
         coffee,
-        // Only Open Space renders the coffee switch; Reserved Desk includes
-        // coffee with no switch control on the form.
-        expectCoffeeSwitch: entryTier === "open-space",
+        ...getCoworkSwitchExpectations(entryTier, data.locale),
         entryTier,
         kind: "cowork",
         monitorOption: monitorOption ?? null,
@@ -57,6 +94,7 @@ export const getAssertRepeatReservationScript = (data: CheckoutData) => {
   return `
 (() => {
   const expected = ${JSON.stringify(expected)};
+  ${getCoworkSwitchSelectionScript()}
   const fail = (field) => {
     throw new Error('repeat reservation ' + field + ' did not match');
   };
@@ -77,16 +115,28 @@ export const getAssertRepeatReservationScript = (data: CheckoutData) => {
     if (value('input[name="date"]', 'date') === expected.oldDate) fail('fresh date');
     const tier = document.querySelector('input[name="entryTier"]:checked');
     if (!(tier instanceof HTMLInputElement) || tier.value !== expected.entryTier) fail('entry tier');
-    const coffee = document.querySelector('[role="switch"]');
-    if (expected.expectCoffeeSwitch) {
+    const coffee = expected.coffeeSwitchLabel
+      ? findSwitchByLabel(expected.coffeeSwitchLabel)
+      : undefined;
+    if (expected.coffeeSwitchLabel) {
       if (
         !(coffee instanceof HTMLButtonElement) ||
         coffee.getAttribute('aria-checked') !== String(expected.coffee)
       ) {
-        fail('coffee');
+        fail('coffee switch');
       }
-    } else if (coffee !== null) {
-      fail('coffee switch rendered without an open-space offer');
+    }
+    const workstation = expected.workstationSwitchLabel
+      ? findSwitchByLabel(expected.workstationSwitchLabel)
+      : undefined;
+    if (expected.workstationSwitchLabel) {
+      if (
+        !(workstation instanceof HTMLButtonElement) ||
+        workstation.getAttribute('aria-checked') !==
+          String(expected.monitorOption !== null)
+      ) {
+        fail('workstation switch');
+      }
     }
     const monitor = document.querySelector('input[name="monitorOption"]:checked');
     if (expected.monitorOption === null ? monitor !== null : !(monitor instanceof HTMLInputElement) || monitor.value !== expected.monitorOption) fail('monitor option');
@@ -120,9 +170,7 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
 (() => {
   const expected = ${JSON.stringify({
     coffee: expectedReservation.coffee,
-    // Only Open Space renders the coffee switch; Reserved Desk includes
-    // coffee with no switch control on the form.
-    expectCoffeeSwitch: expectedReservation.entryTier === "open-space",
+    ...getCoworkSwitchExpectations(expectedReservation.entryTier, data.locale),
     date: data.date,
     email: data.email,
     entryTier: expectedReservation.entryTier,
@@ -131,6 +179,7 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
     name: data.name,
     phone: data.phone,
   })};
+  ${getCoworkSwitchSelectionScript()}
   const fail = (field) => {
     throw new Error('restored reservation ' + field + ' did not match');
   };
@@ -151,16 +200,28 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
   }).format(new Date(expected.date + 'T12:00:00Z'));
   if ((dateButton.textContent ?? '').trim() !== restoredDate) fail('date');
 
-  const coffee = document.querySelector('[role="switch"]');
-  if (expected.expectCoffeeSwitch) {
+  const coffee = expected.coffeeSwitchLabel
+    ? findSwitchByLabel(expected.coffeeSwitchLabel)
+    : undefined;
+  if (expected.coffeeSwitchLabel) {
     if (
       !(coffee instanceof HTMLButtonElement) ||
       coffee.getAttribute('aria-checked') !== String(expected.coffee)
     ) {
-      fail('coffee');
+      fail('coffee switch');
     }
-  } else if (coffee !== null) {
-    fail('coffee switch rendered without an open-space offer');
+  }
+  const workstation = expected.workstationSwitchLabel
+    ? findSwitchByLabel(expected.workstationSwitchLabel)
+    : undefined;
+  if (expected.workstationSwitchLabel) {
+    if (
+      !(workstation instanceof HTMLButtonElement) ||
+      workstation.getAttribute('aria-checked') !==
+        String(expected.monitorOption !== null)
+    ) {
+      fail('workstation switch');
+    }
   }
   if (value('input[name="email"]', 'email') !== expected.email) fail('email');
   if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
