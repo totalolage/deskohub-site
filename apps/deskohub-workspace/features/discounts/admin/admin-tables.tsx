@@ -1112,13 +1112,13 @@ export function DiscountCodeConfigurationFields({
           />
           {!code && (
             <Button
-              className="h-12 shrink-0 rounded-[1.1rem] px-5"
+              className="h-12 w-full min-w-0 rounded-[1.1rem] px-3"
               onClick={() => setCodeValue(generatePromotionCode())}
               type="button"
               variant="secondary"
             >
-              <RefreshCw aria-hidden className="size-4" />
-              Generate code
+              <RefreshCw aria-hidden className="size-4 shrink-0" />
+              <span className="truncate">Generate code</span>
             </Button>
           )}
         </div>

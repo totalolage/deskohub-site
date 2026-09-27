@@ -1,11 +1,14 @@
 /**
  * Layout-metrics regression for the discount-admin valid-from/valid-until
- * DateTimeInput pair. It bundles the real creation dialogs with the real
- * Tailwind CSS, serves them statically, and measures real chromium layout at
- * narrow width: the two fields must share one row, split the wrapper content
- * width into two equal halves, stay inside the wrapper bounds, and keep the
- * date-trigger text from overflowing. It also captures evidence screenshots
- * at 390/768/1280 for both dialog variants and locales.
+ * DateTimeInput pair and the paired code/enabled controls. It bundles the
+ * real creation dialogs with the real Tailwind CSS, serves them statically,
+ * and measures real chromium layout at narrow width: the two date fields
+ * must share one row, split the wrapper content width into two equal halves,
+ * stay inside the wrapper bounds, and keep the date-trigger text from
+ * overflowing. The Generate-code button must stay fully inside the Code
+ * half-cell (no overlap with the Enabled cell) without its text
+ * overflowing. It also captures evidence screenshots at 390/768/1280 for
+ * both dialog variants and locales.
  *
  * The metrics regression covers every locale × dialog combination (4
  * scenarios), and a built-in negative self-check tampering the DOM to remove
@@ -141,6 +144,49 @@ const pairMetricsScript = (): PairMetrics => {
         triggerRect === null ? null : triggerRect.right <= rect.right + 0.5,
     };
   };
+  const measureGenerateControls = (): GenerateMetrics => {
+    const codeInput = document.querySelector('input[name="code"]');
+    if (!codeInput) return { error: "missing code input" };
+    let cell: Element | null = codeInput;
+    while (cell && !cell.classList.contains("grid")) {
+      cell = cell.parentElement;
+    }
+    if (!cell) return { error: "missing code cell" };
+    const button = cell.querySelector<HTMLButtonElement>(
+      'button[type="button"]'
+    );
+    const buttonRect = button?.getBoundingClientRect() ?? null;
+    const buttonVisible =
+      button !== null &&
+      buttonRect !== null &&
+      buttonRect.width > 0 &&
+      buttonRect.height > 0 &&
+      getComputedStyle(button).visibility !== "hidden" &&
+      getComputedStyle(button).display !== "none";
+    const cellRect = cell.getBoundingClientRect();
+    const enabledInput = document.querySelector('input[name="enabled"]');
+    const enabledRect = enabledInput?.closest("label")?.getBoundingClientRect();
+    return {
+      buttonPresent: buttonVisible,
+      buttonText: button === null ? null : (button.textContent ?? "").trim(),
+      buttonRight: buttonRect?.right ?? null,
+      buttonLeft: buttonRect?.left ?? null,
+      cellRight: cellRect.right,
+      cellLeft: cellRect.left,
+      enabledLeft: enabledRect?.left ?? null,
+      buttonWithinCell:
+        buttonRect === null
+          ? null
+          : buttonRect.right <= cellRect.right + 0.5 &&
+            buttonRect.left >= cellRect.left - 0.5,
+      buttonTextOverflow:
+        button === null ? null : button.scrollWidth - button.clientWidth,
+      codeInputRight: codeInput.getBoundingClientRect().right,
+      codeInputWithinCell:
+        codeInput.getBoundingClientRect().right <= cellRect.right + 0.5,
+    };
+  };
+
   const wrapperStyle = getComputedStyle(wrapper);
   const wrapperRect = wrapper.getBoundingClientRect();
   const documentElement = document.documentElement;
@@ -158,8 +204,25 @@ const pairMetricsScript = (): PairMetrics => {
     ),
     from: measureField("validFrom"),
     until: measureField("validUntil"),
+    generate: measureGenerateControls(),
   };
 };
+
+type GenerateMetrics =
+  | { readonly error: string }
+  | {
+      readonly buttonPresent: boolean;
+      readonly buttonText: string | null;
+      readonly buttonRight: number | null;
+      readonly buttonLeft: number | null;
+      readonly cellRight: number;
+      readonly cellLeft: number;
+      readonly enabledLeft: number | null;
+      readonly buttonWithinCell: boolean | null;
+      readonly buttonTextOverflow: number | null;
+      readonly codeInputRight: number;
+      readonly codeInputWithinCell: boolean;
+    };
 
 type FieldMetrics = {
   readonly name: string;
@@ -184,6 +247,7 @@ type PairLayoutMetrics = {
   readonly documentOverflowPx: number;
   readonly from: FieldMetrics;
   readonly until: FieldMetrics;
+  readonly generate: GenerateMetrics;
 };
 
 type PairMetrics = { readonly error: string } | PairLayoutMetrics;
@@ -234,6 +298,44 @@ const checkPair = (pair: PairMetrics): readonly string[] => {
     failures.push(
       `document scrolls horizontally by ${pair.documentOverflowPx}px`
     );
+  }
+  if ("error" in pair.generate) {
+    failures.push(`generate controls error: ${pair.generate.error}`);
+  } else {
+    const generate = pair.generate;
+    if (!generate.buttonPresent) {
+      failures.push(
+        "generate: Generate-code button missing, hidden, or zero-size"
+      );
+    } else {
+      if (generate.buttonWithinCell === false) {
+        failures.push(
+          `generate: button rect [${generate.buttonLeft?.toFixed(1)}, ${generate.buttonRight?.toFixed(1)}] extends outside code cell [${generate.cellLeft.toFixed(1)}, ${generate.cellRight.toFixed(1)}]`
+        );
+      }
+      if (
+        generate.enabledLeft !== null &&
+        generate.buttonRight !== null &&
+        generate.buttonRight > generate.enabledLeft + 0.5
+      ) {
+        failures.push(
+          `generate: button right ${generate.buttonRight.toFixed(1)}px overlaps enabled cell starting ${generate.enabledLeft.toFixed(1)}px`
+        );
+      }
+      if (
+        generate.buttonTextOverflow !== null &&
+        generate.buttonTextOverflow > 1
+      ) {
+        failures.push(
+          `generate: button text overflows by ${generate.buttonTextOverflow}px`
+        );
+      }
+    }
+    if (!generate.codeInputWithinCell) {
+      failures.push(
+        `generate: code input right ${generate.codeInputRight.toFixed(1)}px exceeds code cell right ${generate.cellRight.toFixed(1)}px`
+      );
+    }
   }
   return failures;
 };
@@ -462,9 +564,13 @@ export const updateDiscountCodeAdminForm = () => { throw new Error("renderer stu
   console.log(`negative self-check: ${JSON.stringify(negativeCheck)}`);
   for (const [scenario, pair] of Object.entries(metricsByScenario)) {
     if ("error" in pair) continue;
+    const generateLine =
+      "error" in pair.generate
+        ? `generate error=${pair.generate.error}`
+        : `generate btn right=${pair.generate.buttonRight?.toFixed(1)} cell right=${pair.generate.cellRight.toFixed(1)} withinCell=${pair.generate.buttonWithinCell} textOverflow=${pair.generate.buttonTextOverflow}`;
     // biome-ignore lint/suspicious/noConsole: CLI diagnostic output
     console.log(
-      `${scenario}: viewport=${pair.viewportWidth} wrapper=${pair.wrapperWidth.toFixed(1)}px gap=${pair.gap}px halfExpected=${pair.halfWidthExpected.toFixed(1)}px | from w=${pair.from.width.toFixed(1)} top=${pair.from.top.toFixed(1)} right=${pair.from.right.toFixed(1)} triggerOverflow=${pair.from.triggerTextOverflow} | until w=${pair.until.width.toFixed(1)} top=${pair.until.top.toFixed(1)} right=${pair.until.right.toFixed(1)} triggerOverflow=${pair.until.triggerTextOverflow} | docOverflow=${pair.documentOverflowPx}`
+      `${scenario}: viewport=${pair.viewportWidth} wrapper=${pair.wrapperWidth.toFixed(1)}px gap=${pair.gap}px halfExpected=${pair.halfWidthExpected.toFixed(1)}px | from w=${pair.from.width.toFixed(1)} top=${pair.from.top.toFixed(1)} right=${pair.from.right.toFixed(1)} triggerOverflow=${pair.from.triggerTextOverflow} | until w=${pair.until.width.toFixed(1)} top=${pair.until.top.toFixed(1)} right=${pair.until.right.toFixed(1)} triggerOverflow=${pair.until.triggerTextOverflow} | docOverflow=${pair.documentOverflowPx} | ${generateLine}`
     );
   }
 };
