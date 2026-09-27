@@ -276,6 +276,20 @@ describe("AvatarControl failure feedback", () => {
     );
   });
 
+  test("bounds the avatar column width and lets the remove label wrap (issue #411 tablet overflow)", () => {
+    const view = renderControl("cs-CZ");
+    const root = view.container.firstElementChild as HTMLElement;
+    expect(root.className).toMatch(/\bw-48\b/);
+
+    const removeButton = view.getByRole("button", {
+      name: m.accountProfileAvatarRemove({}, { locale: "cs-CZ" }),
+    });
+    const removeClass = removeButton.className;
+    expect(removeClass).toMatch(/\bwhitespace-normal\b/);
+    expect(removeClass).toMatch(/\bh-auto\b/);
+    expect(removeClass).toMatch(/\bmin-h-8\b/);
+  });
+
   test("exposes the Czech upload, pending, success, and remove controls accessibly", async () => {
     let settleUpload: ((result: ActionResult) => void) | undefined;
     uploadResult = () =>
