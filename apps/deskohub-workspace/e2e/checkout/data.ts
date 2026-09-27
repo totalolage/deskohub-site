@@ -5,6 +5,7 @@ import type {
   WorkspaceCoworkSaleableTier,
   WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   getMeetingRoomReservationDurationKey,
   isMeetingRoomWholeDayReservationDuration,
@@ -290,6 +291,10 @@ const makeExpectedCoworkProduct = (
         entryTier,
         ...(product.monitorOption && { monitorOption: product.monitorOption }),
       } as const;
+    default:
+      throw new Error(
+        `Unsupported cowork entry tier ${String(entryTier)}; saleable tiers are open-space and reserved-desk`
+      );
   }
 };
 
@@ -790,8 +795,8 @@ const makeCoworkSelectionLabel = (
   monitorOption: WorkspaceProductMonitorOption | undefined
 ) =>
   monitorOption
-    ? `tier:${entryTier} with monitor:${monitorOption}`
-    : `tier:${entryTier}`;
+    ? `${getWorkspaceProductByTier(entryTier).label} with monitor:${monitorOption}`
+    : getWorkspaceProductByTier(entryTier).label;
 
 const getTouchedDates = (slot: MeetingRoomCheckoutSlot) => {
   const dates = [slot.date];

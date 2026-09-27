@@ -51,16 +51,29 @@ test("asserts safe repeat-reservation defaults for every family", async () => {
       data: makeCoworkCheckoutData(
         "https://workspace.example.test",
         "2099-09-01",
-        "cowork-repeat",
-        { coffee: true, entryTier: "profi", monitorOption: "2x27-qhd" }
+        "cowork-repeat-open-space"
       ),
       html: `
         <input name="date" value="2099-08-27" />
-        <input checked name="entryTier" type="radio" value="profi" />
+        <input checked name="entryTier" type="radio" value="open-space" />
+        <button aria-checked="false" role="switch"></button>
+      `,
+      url: "https://workspace.example.test/en-US/reservation/cowork?entryTier=open-space&coffee=false",
+    },
+    {
+      data: makeCoworkCheckoutData(
+        "https://workspace.example.test",
+        "2099-09-01",
+        "cowork-repeat-reserved-desk",
+        { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
+      ),
+      html: `
+        <input name="date" value="2099-08-27" />
+        <input checked name="entryTier" type="radio" value="reserved-desk" />
         <button aria-checked="true" role="switch"></button>
         <input checked name="monitorOption" type="radio" value="2x27-qhd" />
       `,
-      url: "https://workspace.example.test/en-US/reservation/cowork?entryTier=profi&coffee=true&monitorOption=2x27-qhd",
+      url: "https://workspace.example.test/en-US/reservation/cowork?entryTier=reserved-desk&coffee=true&monitorOption=2x27-qhd",
     },
     {
       data: makeMeetingRoomCheckoutData(
@@ -151,7 +164,7 @@ test("keeps advertised-price preparation separable from form submission", () => 
     "https://workspace.example.test",
     "2099-09-01",
     "calendar-pricing-change",
-    { entryTier: "profi" }
+    { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
   );
   const prepare = getPrepareCoworkAdvertisedPriceScript(data);
   const combined = getSubmitCoworkReservationScript(data);
@@ -177,12 +190,12 @@ test("keeps advertised-price preparation separable from form submission", () => 
   ).not.toThrow();
 });
 
-test("prepares the Profi advertised price without requiring another tier", async () => {
+test("prepares the Reserved Desk advertised price without requiring another tier", async () => {
   const data = makeCoworkCheckoutData(
     "https://workspace.example.test",
     "2099-09-01",
     "calendar-pricing-change",
-    { entryTier: "profi" }
+    { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
   );
   GlobalRegistrator.register({
     url: "https://workspace.example.test/en-US/reservation/cowork",
@@ -190,45 +203,29 @@ test("prepares the Profi advertised price without requiring another tier", async
   try {
     document.body.innerHTML = `
     <input name="date" value="2099-09-01" />
-    <button data-reservation-type-price="basic" data-reservation-type-price-ready="true"></button>
-    <button data-reservation-type-price="profi" data-reservation-type-price-ready="false"></button>
-    <input id="reservation-entry-tier-basic" type="radio" disabled />
-    <input id="reservation-entry-tier-profi" type="radio" checked />
+    <button data-reservation-type-price="reserved-desk" data-reservation-type-price-ready="false"></button>
+    <input id="reservation-entry-tier-reserved-desk" type="radio" checked />
     <label><input type="radio" value="2x27-qhd" /></label>
   `;
 
-    const basicPrice = document.querySelector<HTMLElement>(
-      '[data-reservation-type-price="basic"]'
+    const reservedDeskPrice = document.querySelector<HTMLElement>(
+      '[data-reservation-type-price="reserved-desk"]'
     )!;
-    const profiPrice = document.querySelector<HTMLElement>(
-      '[data-reservation-type-price="profi"]'
-    )!;
-    const basicInput = document.querySelector<HTMLInputElement>(
-      "#reservation-entry-tier-basic"
-    )!;
-    const profiInput = document.querySelector<HTMLInputElement>(
-      "#reservation-entry-tier-profi"
+    const reservedDeskInput = document.querySelector<HTMLInputElement>(
+      "#reservation-entry-tier-reserved-desk"
     )!;
     const monitorInput = document.querySelector<HTMLInputElement>(
       'input[value="2x27-qhd"]'
     )!;
 
-    basicPrice.addEventListener("click", () => {
-      if (basicInput.disabled) return;
-      basicInput.checked = true;
-      profiInput.checked = false;
+    reservedDeskPrice.addEventListener("click", () => {
+      reservedDeskInput.checked = true;
       monitorInput.checked = false;
-      basicPrice.dataset.reservationTypePriceReady = "true";
-    });
-    profiPrice.addEventListener("click", () => {
-      basicInput.checked = false;
-      profiInput.checked = true;
-      monitorInput.checked = false;
-      profiPrice.dataset.reservationTypePriceReady = "false";
+      reservedDeskPrice.dataset.reservationTypePriceReady = "false";
     });
     monitorInput.closest("label")!.addEventListener("click", () => {
       monitorInput.checked = true;
-      profiPrice.dataset.reservationTypePriceReady = "true";
+      reservedDeskPrice.dataset.reservationTypePriceReady = "true";
     });
 
     let now = 0;
@@ -263,21 +260,21 @@ test("prepares the Profi advertised price without requiring another tier", async
         location
       )
     ).resolves.toBe(location.href);
-    expect(profiInput.checked).toBe(true);
+    expect(reservedDeskInput.checked).toBe(true);
     expect(monitorInput.checked).toBe(true);
-    expect(profiPrice.dataset.reservationTypePriceReady).toBe("true");
+    expect(reservedDeskPrice.dataset.reservationTypePriceReady).toBe("true");
   } finally {
     await GlobalRegistrator.unregister();
     globalThis.Temporal = workspaceTemporal;
   }
 });
 
-test("accepts an already-prepared prefilled Profi price", async () => {
+test("accepts an already-prepared prefilled Reserved Desk price", async () => {
   const data = makeCoworkCheckoutData(
     "https://workspace.example.test",
     "2099-09-01",
     "calendar-pricing-change",
-    { entryTier: "profi" }
+    { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
   );
   GlobalRegistrator.register({
     url: "https://workspace.example.test/en-US/reservation/cowork",
@@ -285,8 +282,8 @@ test("accepts an already-prepared prefilled Profi price", async () => {
   try {
     document.body.innerHTML = `
       <input name="date" value="2099-09-01" />
-      <button data-reservation-type-price="profi" data-reservation-type-price-ready="true"></button>
-      <input id="reservation-entry-tier-profi" type="radio" checked />
+      <button data-reservation-type-price="reserved-desk" data-reservation-type-price-ready="true"></button>
+      <input id="reservation-entry-tier-reserved-desk" type="radio" checked />
       <label><input type="radio" value="2x27-qhd" checked /></label>
     `;
 
@@ -342,14 +339,14 @@ test("selects an edited cowork date and waits for its advertised price", async (
       <button aria-haspopup="dialog" type="button"></button>
       <div data-day="2099-10-02"><button type="button"></button></div>
       <input name="date" value="2099-10-01" />
-      <button data-reservation-type-price="basic" data-reservation-type-price-ready="true"></button>
-      <input id="reservation-entry-tier-basic" type="radio" checked />
+      <button data-reservation-type-price="open-space" data-reservation-type-price-ready="true"></button>
+      <input id="reservation-entry-tier-open-space" type="radio" checked />
     `;
 
     const hiddenDate =
       document.querySelector<HTMLInputElement>('input[name="date"]')!;
     const price = document.querySelector<HTMLElement>(
-      '[data-reservation-type-price="basic"]'
+      '[data-reservation-type-price="open-space"]'
     )!;
     document
       .querySelector('[data-day="2099-10-02"] button')!
