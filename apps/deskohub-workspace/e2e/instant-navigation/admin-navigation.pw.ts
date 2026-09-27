@@ -208,10 +208,11 @@ test("downloads the reservations export as CSV", async ({ page, context }) => {
     page.waitForEvent("download"),
     exportLink.click(),
   ]);
-  // Match with endsWith so a locale prefix or other base-path prefix cannot
-  // break the comparison.
+  // Compare the parsed pathname as a boolean with a fixed diagnostic: the
+  // download URL carries the filter query string, and no URL may echo into
+  // failure output.
   expect(
-    download.url().endsWith("/admin/reservations/export.csv"),
+    new URL(download.url()).pathname === "/admin/reservations/export.csv",
     "download must target the reservations export route"
   ).toBe(true);
   const downloadFailure = await download.failure();
