@@ -73,6 +73,8 @@ const deleteCustomerAccount = mock(
 );
 
 mock.module("@/features/account/actions", () => ({
+  lookupAresBusiness: () =>
+    Promise.resolve({ data: { status: "not-found", message: "" } }),
   completeCustomerProfile,
   deleteCustomerAccount,
   updateCustomerProfile,
@@ -416,11 +418,6 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
     role: "combobox",
   },
   {
-    label: (locale) => m.accountBillingSyncAres({}, { locale }),
-    name: "ARES control",
-    render: renderBillingScreen,
-  },
-  {
     label: (locale) => m.accountBillingAddPaymentCard({}, { locale }),
     name: "add payment card control",
     render: renderBillingScreen,
@@ -443,8 +440,8 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
 ];
 
 describe("account future-feature controls", () => {
-  test("keeps the future-feature inventory at seven controls", () => {
-    expect(futureFeatureTargets).toHaveLength(7);
+  test("keeps the future-feature inventory at six controls", () => {
+    expect(futureFeatureTargets).toHaveLength(6);
   });
 
   for (const target of futureFeatureTargets) {

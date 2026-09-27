@@ -243,7 +243,7 @@ describe("BillingScreen", () => {
     const markup = renderScreen("en-US");
     const buttons = markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
 
-    expect(buttons).toHaveLength(3);
+    expect(buttons).toHaveLength(2);
     for (const button of buttons) {
       expect(button).toMatch(/\btype="button"/);
       expect(button).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
@@ -309,7 +309,6 @@ describe("BillingScreen", () => {
         m.accountBillingPaymentMethodsTitle({}, { locale }),
         m.accountBillingAddPaymentCard({}, { locale }),
         m.accountBillingDetailsTitle({}, { locale }),
-        m.accountBillingSyncAres({}, { locale }),
         m.accountBillingInvoiceHistoryTitle({}, { locale }),
         m.accountBillingInvoiceEmpty({}, { locale }),
         m.accountBillingInvoiceLoading({}, { locale }),

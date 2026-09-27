@@ -37,6 +37,8 @@ const updateCustomerProfile = mock(() =>
 );
 
 mock.module("@/features/account/actions", () => ({
+  lookupAresBusiness: () =>
+    Promise.resolve({ data: { status: "not-found", message: "" } }),
   completeCustomerProfile,
   updateCustomerProfile,
 }));
@@ -340,7 +342,7 @@ describe("ProfileForm", () => {
       fireEvent.input(view.getByLabelText("Company name"), {
         target: { value: "Draft Company" },
       });
-      fireEvent.input(view.getByLabelText("Company ID"), {
+      fireEvent.input(view.getByLabelText("Company ID (IČO)"), {
         target: { value: "87654321" },
       });
       fireEvent.input(view.getByLabelText("VAT ID"), {
@@ -1387,7 +1389,7 @@ describe("ProfileForm", () => {
     });
 
     expect(view.getByLabelText("Company name")).toBeTruthy();
-    expect(view.getByLabelText("Company ID")).toBeTruthy();
+    expect(view.getByLabelText("Company ID (IČO)")).toBeTruthy();
     expect(view.getByLabelText("VAT ID")).toBeTruthy();
     expect(view.getByLabelText("Street and number")).toBeTruthy();
 
@@ -1447,7 +1449,7 @@ describe("ProfileForm", () => {
         "Original Company",
       ],
       [
-        "Company ID",
+        "Company ID (IČO)",
         "account-profile-billing-company-id",
         "billingCompanyId",
         "12345678",

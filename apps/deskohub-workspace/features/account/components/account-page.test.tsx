@@ -61,6 +61,8 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
 }));
 
 mock.module("@/features/account/actions", () => ({
+  lookupAresBusiness: () =>
+    Promise.resolve({ data: { status: "not-found", message: "" } }),
   completeCustomerProfile: () =>
     Promise.resolve({ data: { status: "completed" } }),
   updateCustomerProfile: () => Promise.resolve({ data: { status: "updated" } }),

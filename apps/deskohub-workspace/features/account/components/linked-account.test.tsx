@@ -61,6 +61,8 @@ const updateCustomerProfile = mock((input: CustomerProfileInput) => {
 let legalScreenMountCount = 0;
 
 mock.module("@/features/account/actions", () => ({
+  lookupAresBusiness: () =>
+    Promise.resolve({ data: { status: "not-found", message: "" } }),
   completeCustomerProfile: () =>
     Promise.resolve({ data: { status: "completed" } }),
   deleteCustomerAccount: () => Promise.resolve({ data: { status: "deleted" } }),

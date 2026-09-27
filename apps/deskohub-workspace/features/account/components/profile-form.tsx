@@ -10,9 +10,12 @@ import {
   useTransition,
 } from "react";
 import {
+  type AresBusinessLookupResult,
   completeCustomerProfile,
+  lookupAresBusiness,
   updateCustomerProfile,
 } from "@/features/account/actions";
+import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import type { CustomerProfileBilling } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { BillingScreen } from "@/features/account/components/billing/billing-screen";
@@ -59,6 +62,43 @@ type BillingValues = {
   readonly zip: string;
   readonly country: string;
 };
+
+type AresLookupStatus =
+  | "idle"
+  | "found"
+  | "invalid-ico"
+  | "not-found"
+  | "unavailable"
+  | "applied";
+
+type AresLookupUi = {
+  readonly isPending: boolean;
+  readonly status: AresLookupStatus;
+  readonly review?: AresBusinessBillingDraft;
+  readonly message?: string;
+  readonly onLookup: () => void;
+  readonly onApply: () => void;
+  readonly onDismiss: () => void;
+};
+
+type AresLookupUiState = {
+  status: AresLookupStatus;
+  review?: AresBusinessBillingDraft;
+  message?: string;
+  /** Invalidation generation at which this state was installed. */
+  generation?: number;
+};
+
+const aresDraftFields = [
+  "companyName",
+  "companyId",
+  "vatId",
+  "addressLine1",
+  "addressLine2",
+  "city",
+  "zip",
+  "country",
+] as const satisfies readonly (keyof BillingValues)[];
 
 type SavedIdentity = {
   readonly firstName: string;
@@ -145,18 +185,107 @@ export function ProfileForm({
   const [hasCompletedInitialProfile, setHasCompletedInitialProfile] =
     useState(false);
   const [isRefreshPending, startRefreshTransition] = useTransition();
+  const [aresLookup, setAresLookup] = useState<AresLookupUiState>({
+    status: "idle",
+  });
+  // Any IČO edit or billing-kind change bumps the generation; a pending
+  // lookup is tagged with the generation at its start, so a response that
+  // resolves after an edit is discarded and can never be applied.
+  const aresGenerationRef = useRef(0);
+  const pendingAresRequestGenerationRef = useRef(0);
 
   const isComplete = mode === "complete";
   const isInitialCompletion = isComplete && !hasCompletedInitialProfile;
   const screenCopy = getAccountScreenCopy(locale);
 
   const updateBillingValue = (field: keyof BillingValues, value: string) => {
+    if (field === "companyId") {
+      aresGenerationRef.current += 1;
+      setAresLookup({ status: "idle" });
+    }
     setBillingValues((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleBillingKindChange = (kind: BillingKind) => {
+    aresGenerationRef.current += 1;
+    setAresLookup({ status: "idle" });
+    setBillingKind(kind);
   };
 
   const action = (
     isInitialCompletion ? completeCustomerProfile : updateCustomerProfile
   ) as typeof updateCustomerProfile;
+
+  const lookupAres = useWorkspaceAction(lookupAresBusiness, {
+    actionName: "account.ares-lookup",
+    onSuccess: ({ data }) => {
+      const lookupResult = data as AresBusinessLookupResult | undefined;
+      if (!lookupResult) return;
+      // A response that resolves after the IČO or the billing kind changed
+      // mid-flight is superseded and must not overwrite newer UI state.
+      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
+        return;
+      if (lookupResult.status === "found") {
+        setAresLookup({
+          status: "found",
+          review: lookupResult.company,
+        });
+      } else {
+        setAresLookup({
+          status: lookupResult.status,
+          message: lookupResult.message,
+        });
+      }
+    },
+    onError: ({ error }) => {
+      // A resolved failure (expired session, pending deletion, disabled
+      // accounts, …) must surface in the lookup status instead of silently
+      // resetting the region, and must be discarded when superseded.
+      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
+        return;
+      setAresLookup({
+        status: "unavailable",
+        message:
+          error.serverError || m.accountAresLookupActionError({}, { locale }),
+      });
+    },
+    onTransportError: () => {
+      if (pendingAresRequestGenerationRef.current !== aresGenerationRef.current)
+        return;
+      setAresLookup({
+        status: "unavailable",
+        message: m.accountAresLookupActionError({}, { locale }),
+      });
+    },
+  });
+
+  const handleAresLookup = () => {
+    if (lookupAres.isExecuting) return;
+    setAresLookup({ status: "idle" });
+    pendingAresRequestGenerationRef.current = aresGenerationRef.current;
+    lookupAres.execute({ ico: billingValues.companyId });
+  };
+
+  const applyAresReview = () => {
+    const review = aresLookup.review;
+    if (!review || aresLookup.status !== "found") return;
+    setBillingValues((current) => {
+      const next = { ...current };
+      for (const field of aresDraftFields) {
+        const value = review[field];
+        if (value !== undefined) next[field] = value;
+      }
+      return next;
+    });
+    setAresLookup({
+      status: "applied",
+      message: m.accountAresLookupApplied({}, { locale }),
+    });
+  };
+
+  const dismissAresReview = () => {
+    setAresLookup({ status: "idle" });
+  };
 
   const updateDirtyState = () => {
     const form = formRef.current;
@@ -344,10 +473,19 @@ export function ProfileForm({
   );
   const billingFields = (
     <BillingFields
+      ares={{
+        isPending: lookupAres.isExecuting,
+        status: aresLookup.status,
+        review: aresLookup.review,
+        message: aresLookup.message,
+        onLookup: handleAresLookup,
+        onApply: applyAresReview,
+        onDismiss: dismissAresReview,
+      }}
       billingKind={billingKind}
       billingValues={billingValues}
       locale={locale}
-      onBillingKindChange={setBillingKind}
+      onBillingKindChange={handleBillingKindChange}
       onBillingValueChange={updateBillingValue}
       billingErrors={validationErrors?.fieldErrors?.billing}
     />
@@ -554,6 +692,7 @@ function IdentityFields({
 }
 
 function BillingFields({
+  ares,
   billingErrors,
   billingKind,
   billingValues,
@@ -561,6 +700,7 @@ function BillingFields({
   onBillingKindChange,
   onBillingValueChange,
 }: {
+  readonly ares: AresLookupUi;
   readonly billingErrors?: readonly string[];
   readonly billingKind: BillingKind;
   readonly billingValues: BillingValues;
@@ -608,6 +748,51 @@ function BillingFields({
       </p>
     );
   };
+
+  useEffect(() => {
+    if (ares.status !== "invalid-ico") return;
+    document.getElementById("account-profile-billing-company-id")?.focus();
+  }, [ares.status]);
+
+  const aresButtonLabel = (() => {
+    if (ares.isPending) return m.accountAresLookupLoading({}, { locale });
+    if (ares.status === "not-found" || ares.status === "unavailable") {
+      return m.accountAresLookupRetry({}, { locale });
+    }
+    return m.accountAresLookupSubmit({}, { locale });
+  })();
+
+  // The live region announces pending, found-for-review, and terminal
+  // outcomes; the review panel itself stays outside the region so nothing
+  // steals focus from manual entry.
+  const aresStatusContent = (() => {
+    if (ares.isPending) {
+      return <span>{m.accountAresLookupLoading({}, { locale })}</span>;
+    }
+    if (ares.status === "found") {
+      return (
+        <span className="text-emerald-800">
+          {m.accountAresLookupReviewReady({}, { locale })}
+        </span>
+      );
+    }
+    if (ares.message) {
+      return (
+        <span
+          className={
+            ares.status === "invalid-ico" ||
+            ares.status === "not-found" ||
+            ares.status === "unavailable"
+              ? "text-red-700"
+              : "text-emerald-800"
+          }
+        >
+          {ares.message}
+        </span>
+      );
+    }
+    return null;
+  })();
 
   return (
     <>
@@ -675,9 +860,9 @@ function BillingFields({
                 />
                 {renderFieldError("companyName")}
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="account-profile-billing-company-id">
-                  {m.accountProfileCompanyIdLabel({}, { locale })}
+                  {m.accountAresLookupIcoLabel({}, { locale })}
                 </Label>
                 <Input
                   id="account-profile-billing-company-id"
@@ -686,15 +871,44 @@ function BillingFields({
                   onInput={(event) =>
                     onBillingValueChange("companyId", event.currentTarget.value)
                   }
-                  aria-invalid={hasFieldError("companyId")}
-                  aria-describedby={
+                  aria-invalid={
+                    hasFieldError("companyId") || ares.status === "invalid-ico"
+                  }
+                  aria-describedby={[
                     hasFieldError("companyId")
                       ? billingFieldErrorId("companyId")
-                      : undefined
-                  }
+                      : undefined,
+                    ares.status === "invalid-ico"
+                      ? "account-profile-ares-status"
+                      : undefined,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                   maxLength={32}
+                  inputMode="numeric"
                 />
                 {renderFieldError("companyId")}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    className="rounded-xl bg-navy-blue px-4 text-xs uppercase tracking-[0.08em] hover:bg-navy-blue/90"
+                    disabled={ares.isPending}
+                    onClick={ares.onLookup}
+                    size="sm"
+                    type="button"
+                  >
+                    {aresButtonLabel}
+                  </Button>
+                </div>
+                <p
+                  id="account-profile-ares-status"
+                  aria-live="polite"
+                  className="min-h-5 text-sm"
+                >
+                  {aresStatusContent}
+                </p>
+                {Boolean(ares.review && ares.status === "found") && (
+                  <AresReviewPanel ares={ares} locale={locale} />
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="account-profile-billing-vat-id">
@@ -826,5 +1040,63 @@ function BillingFields({
         </>
       ) : null}
     </>
+  );
+}
+
+function AresReviewPanel({
+  ares,
+  locale,
+}: {
+  readonly ares: AresLookupUi;
+  readonly locale: Locale;
+}) {
+  const review = ares.review;
+  if (!review) return null;
+  const presentEntries = (
+    [
+      ["companyName", m.accountProfileCompanyNameLabel({}, { locale })],
+      ["companyId", m.accountProfileCompanyIdLabel({}, { locale })],
+      ["vatId", m.accountProfileVatIdLabel({}, { locale })],
+      ["addressLine1", m.accountProfileAddressLine1Label({}, { locale })],
+      ["addressLine2", m.accountProfileAddressLine2Label({}, { locale })],
+      ["city", m.accountProfileCityLabel({}, { locale })],
+      ["zip", m.accountProfileZipLabel({}, { locale })],
+      ["country", m.accountProfileCountryLabel({}, { locale })],
+    ] as const
+  ).filter(([field]) => review[field] !== undefined);
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-navy-blue/12 bg-navy-blue/3 p-4">
+      <p className="text-sm font-bold text-navy-blue">
+        {m.accountAresLookupReviewTitle({}, { locale })}
+      </p>
+      <dl className="grid gap-1 text-sm text-navy-blue">
+        {presentEntries.map(([field, label]) => (
+          <div className="flex min-w-0 gap-2" key={field}>
+            <dt className="shrink-0 font-semibold">{label}:</dt>
+            <dd className="min-w-0 break-words">{review[field]}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          className="rounded-xl bg-burned-orange px-4 text-xs uppercase tracking-[0.08em] hover:bg-burned-orange/90"
+          onClick={ares.onApply}
+          size="sm"
+          type="button"
+        >
+          {m.accountAresLookupApply({}, { locale })}
+        </Button>
+        <Button
+          className="rounded-xl border border-navy-blue/14 px-4 text-xs uppercase tracking-[0.08em] text-navy-blue hover:bg-navy-blue/5"
+          onClick={ares.onDismiss}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          {m.accountAresLookupDismiss({}, { locale })}
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -311,12 +311,9 @@ describe("account billing invoice history", () => {
       cleanup();
     });
 
-    test(`keeps payment and ARES controls as disabled future features in ${locale}`, () => {
+    test(`keeps payment controls as disabled future features in ${locale}`, () => {
       const view = renderBilling(locale, states.populated);
-      for (const label of [
-        m.accountBillingAddPaymentCard({}, { locale }),
-        m.accountBillingSyncAres({}, { locale }),
-      ]) {
+      for (const label of [m.accountBillingAddPaymentCard({}, { locale })]) {
         const control = view
           .getAllByRole("button")
           .find((button) => button.textContent?.includes(label));
@@ -332,11 +329,11 @@ describe("account billing invoice history", () => {
 
   test("does not count invoice controls in the future-feature inventory", () => {
     // The populated list renders zero future-feature groups; only the
-    // payment-card and ARES controls keep their tooltip wrappers.
+    // payment-card control keeps its tooltip wrapper.
     const view = renderBilling("en-US", states.populated);
     expect(
       view.container.querySelectorAll("[role='group'][tabindex='0']")
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     cleanup();
   });
 });
