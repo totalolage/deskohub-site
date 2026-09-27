@@ -1113,9 +1113,7 @@ describe("WorkspaceAvailabilityService cowork offer intervals", () => {
   test("keeps a bare query date available when only the Open Space table has evening-only occupancy", async () => {
     const availability = await getAvailability({
       date: testDate,
-      tables: [
-        makeTable({ id: "open-1", tags: ["cowork:open-space"] }),
-      ],
+      tables: [makeTable({ id: "open-1", tags: ["cowork:open-space"] })],
       reservations: [
         makeReservation({
           tableId: "open-1",
@@ -1133,9 +1131,7 @@ describe("WorkspaceAvailabilityService cowork offer intervals", () => {
   test("marks a bare query date unavailable when only the Open Space table has morning-overlapping occupancy", async () => {
     const availability = await getAvailability({
       date: testDate,
-      tables: [
-        makeTable({ id: "open-1", tags: ["cowork:open-space"] }),
-      ],
+      tables: [makeTable({ id: "open-1", tags: ["cowork:open-space"] })],
       reservations: [
         makeReservation({
           tableId: "open-1",

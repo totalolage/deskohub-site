@@ -275,9 +275,11 @@ const implementation = Effect.gen(function* () {
 
       const unavailableCoworkTiers = selectedDate
         ? yield* Effect.filter(workspaceCoworkSaleableTiers, (tier) =>
-            Effect.flatMap(getCoworkOfferOccupancy(selectedDate, tier), (
-              occupancy
-            ) => isCoworkCategoryUnavailable(tables, occupancy, tier))
+            Effect.flatMap(
+              getCoworkOfferOccupancy(selectedDate, tier),
+              (occupancy) =>
+                isCoworkCategoryUnavailable(tables, occupancy, tier)
+            )
           )
         : [];
       const meetingRoomUnavailable = selectedDate
@@ -475,10 +477,7 @@ const isUnavailableForSelection = (
   query: WorkspaceAvailabilityQuery,
   getCoworkOfferOccupancy: (
     tier: WorkspaceCoworkProductTier
-  ) => Effect.Effect<
-    ReadonlyMap<DotyposTableId, number>,
-    ValidationError
-  >
+  ) => Effect.Effect<ReadonlyMap<DotyposTableId, number>, ValidationError>
 ) =>
   Match.value(query).pipe(
     Match.discriminatorsExhaustive("kind")({
@@ -511,10 +510,7 @@ const isCoworkUnavailableForSelection = (
   query: Extract<WorkspaceAvailabilityQuery, { readonly kind: "cowork" }>,
   getOfferOccupancy: (
     tier: WorkspaceCoworkProductTier
-  ) => Effect.Effect<
-    ReadonlyMap<DotyposTableId, number>,
-    ValidationError
-  >
+  ) => Effect.Effect<ReadonlyMap<DotyposTableId, number>, ValidationError>
 ) => {
   const { entryTier, monitorOption } = query;
 
@@ -580,13 +576,11 @@ const isCoworkCategoryUnavailable = (
     : Effect.map(
         Effect.all([
           isCoworkOfferUnavailable(tables, occupancyByTableId, { entryTier }),
-          Effect.forEach(
-            workspaceProductMonitorOptions,
-            (monitorOption) =>
-              isCoworkOfferUnavailable(tables, occupancyByTableId, {
-                entryTier,
-                monitorOption,
-              })
+          Effect.forEach(workspaceProductMonitorOptions, (monitorOption) =>
+            isCoworkOfferUnavailable(tables, occupancyByTableId, {
+              entryTier,
+              monitorOption,
+            })
           ),
         ]),
         ([bareUnavailable, monitorOptionsUnavailable]) =>
