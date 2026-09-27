@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
@@ -55,6 +55,18 @@ const insertPaymentAttempt = async (input: {
         ? `https://pay.example.test/redirect-${uniqueId()}`
         : null,
     ]
+  );
+};
+
+const markReservationPaid = async (input: {
+  readonly id: WorkspaceReservationId;
+  readonly paymentAttemptId: string;
+}) => {
+  await testDatabase!.pool.query(
+    `update workspace_reservations
+       set payment_state = 'paid', paid_at = now(), active_payment_attempt_id = $2
+     where id = $1`,
+    [input.id, input.paymentAttemptId]
   );
 };
 
@@ -149,9 +161,9 @@ const insertAccessGrant = async (input: {
 }) => {
   await testDatabase!.pool.query(
     `insert into reservation_access_grants
-      (workspace_reservation_id, device_id, state, provider_credential_id, access_code,
-       scheduled_access_starts_at, access_starts_at, access_ends_at, issued_at)
-     values ($1, $2, $3, $4, $5, '2026-09-01T09:00:00Z', '2026-09-01T08:45:00Z', '2026-09-01T11:15:00Z', $6)`,
+       (workspace_reservation_id, device_id, state, provider_credential_id, access_code,
+        reservation_starts_at, access_starts_at, access_ends_at, issued_at)
+      values ($1, $2, $3, $4, $5, '2026-09-01T09:00:00Z', '2026-09-01T08:45:00Z', '2026-09-01T11:15:00Z', $6)`,
     [
       input.workspaceReservationId,
       `device-${uniqueId()}`,
@@ -229,14 +241,12 @@ describe.skipIf(!testDatabase)(
         sequence: 0,
       });
 
-      const ownInvoice = await insertInvoice({
-        dotyposCustomerId: ownCustomerId,
-        workspaceReservationId: ownReservationId,
+      await markReservationPaid({
+        id: ownReservationId,
         paymentAttemptId: ownAttemptId,
       });
-      const foreignInvoice = await insertInvoice({
-        dotyposCustomerId: foreignCustomerId,
-        workspaceReservationId: foreignReservationId,
+      await markReservationPaid({
+        id: foreignReservationId,
         paymentAttemptId: foreignAttemptId,
       });
 
@@ -247,6 +257,17 @@ describe.skipIf(!testDatabase)(
       await insertDocumentSnapshot({
         paymentAttemptId: foreignAttemptId,
         workspaceReservationId: foreignReservationId,
+      });
+
+      const ownInvoice = await insertInvoice({
+        dotyposCustomerId: ownCustomerId,
+        workspaceReservationId: ownReservationId,
+        paymentAttemptId: ownAttemptId,
+      });
+      const foreignInvoice = await insertInvoice({
+        dotyposCustomerId: foreignCustomerId,
+        workspaceReservationId: foreignReservationId,
+        paymentAttemptId: foreignAttemptId,
       });
 
       await insertInvoiceDelivery({
@@ -295,7 +316,7 @@ describe.skipIf(!testDatabase)(
         }).pipe(
           Effect.provide(
             AccountDataExportRecordsRepository.Default.pipe(
-              Effect.provide(testDatabase!.layer)
+              Layer.provide(testDatabase!.layer)
             )
           )
         )
@@ -346,7 +367,7 @@ describe.skipIf(!testDatabase)(
         }).pipe(
           Effect.provide(
             AccountDataExportRecordsRepository.Default.pipe(
-              Effect.provide(testDatabase!.layer)
+              Layer.provide(testDatabase!.layer)
             )
           )
         )
