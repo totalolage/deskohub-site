@@ -160,6 +160,7 @@ export class ReservationExportRangeUnavailableError extends Data.TaggedError(
 export class ReservationExportDataUnavailableError extends Data.TaggedError(
   "ReservationExportDataUnavailableError"
 )<{
+  readonly cause: unknown;
   readonly message: string;
 }> {}
 
@@ -1401,6 +1402,7 @@ export class AdministrationService extends Context.Service<
                     return strict
                       ? Effect.fail(
                           new ReservationExportDataUnavailableError({
+                            cause,
                             message:
                               "Reservation export customer details are unavailable.",
                           })
@@ -1434,6 +1436,7 @@ export class AdministrationService extends Context.Service<
                     return strict
                       ? Effect.fail(
                           new ReservationExportDataUnavailableError({
+                            cause,
                             message:
                               "Reservation export customer details are unavailable.",
                           })
@@ -1476,6 +1479,7 @@ export class AdministrationService extends Context.Service<
               return strict
                 ? Effect.fail(
                     new ReservationExportDataUnavailableError({
+                      cause,
                       message:
                         "Reservation export booking details are unavailable.",
                     })

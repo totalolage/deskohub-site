@@ -1,23 +1,20 @@
 import "@/shared/testing/workspace-test-env";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Context, Data, Effect, Layer } from "effect";
-import type { AdministrationReservationSummary } from "@/features/administration/administration.service";
-import type { AdministrationReservationExportInput } from "@/features/administration/reservation-export";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { Effect } from "effect";
+import {
+  type AdministrationReservationListInput,
+  AdministrationService,
+  ReservationExportDataUnavailableError,
+  ReservationExportRangeUnavailableError,
+} from "@/features/administration/administration.service";
+import { AdministrationServiceMock } from "@/features/administration/administration.service.mock";
 
 const events: string[] = [];
 let authorized = true;
 let exportOutcome: "success" | "range-unavailable" | "data-unavailable" =
   "success";
-const exportInputs: AdministrationReservationExportInput[] = [];
-
-class ReservationExportRangeUnavailableError extends Data.TaggedError(
-  "ReservationExportRangeUnavailableError"
-)<{ readonly message: string }> {}
-
-class ReservationExportDataUnavailableError extends Data.TaggedError(
-  "ReservationExportDataUnavailableError"
-)<{ readonly message: string }> {}
+const exportInputs: AdministrationReservationListInput[] = [];
 
 const reservation = {
   createdAt: "2026-08-10T08:00:00Z",
@@ -31,46 +28,30 @@ const reservation = {
   typeLabel: "Meeting room",
 } as never;
 
-interface IFakeAdministrationService {
-  readonly exportReservations: (
-    input: AdministrationReservationExportInput
-  ) => Effect.Effect<
-    readonly AdministrationReservationSummary[],
-    | ReservationExportRangeUnavailableError
-    | ReservationExportDataUnavailableError
-  >;
-}
-
-const FakeAdministrationService = Context.Service<
-  FakeAdministrationService,
-  IFakeAdministrationService
->()("@test/ReservationExportAdministrationService");
-
-const administrationLayer = Layer.succeed(FakeAdministrationService, {
-  exportReservations: (input) => {
-    events.push("export");
-    exportInputs.push(input);
-    if (exportOutcome === "range-unavailable") {
-      return Effect.fail(
-        new ReservationExportRangeUnavailableError({ message: "private range" })
-      );
-    }
-    if (exportOutcome === "data-unavailable") {
-      return Effect.fail(
-        new ReservationExportDataUnavailableError({ message: "private data" })
-      );
-    }
-    return Effect.succeed([reservation]);
-  },
-}) as Layer.Layer<FakeAdministrationService>;
-
-Object.assign(FakeAdministrationService, { Live: administrationLayer });
-
-mock.module("@/features/administration/administration.service", () => ({
-  AdministrationService: FakeAdministrationService,
-  ReservationExportDataUnavailableError,
-  ReservationExportRangeUnavailableError,
-}));
+const productionAdministrationLive = AdministrationService.Live;
+const makeAdministrationLayer = () =>
+  AdministrationServiceMock({
+    exportReservations: (input) => {
+      events.push("export");
+      exportInputs.push(input);
+      if (exportOutcome === "range-unavailable") {
+        return Effect.fail(
+          new ReservationExportRangeUnavailableError({
+            message: "private range",
+          })
+        );
+      }
+      if (exportOutcome === "data-unavailable") {
+        return Effect.fail(
+          new ReservationExportDataUnavailableError({
+            cause: new Error("private cause"),
+            message: "private data",
+          })
+        );
+      }
+      return Effect.succeed([reservation]);
+    },
+  });
 
 mock.module(
   "@/shared/administrator/administrator-authorization.server",
@@ -97,6 +78,11 @@ beforeEach(() => {
   exportInputs.length = 0;
   authorized = true;
   exportOutcome = "success";
+  AdministrationService.Live = makeAdministrationLayer();
+});
+
+afterAll(() => {
+  AdministrationService.Live = productionAdministrationLive;
 });
 
 describe("GET /admin/reservations/export.csv", () => {
@@ -180,6 +166,7 @@ describe("GET /admin/reservations/export.csv", () => {
     expect(body).toContain("Reservation export is temporarily unavailable");
     expect(body).not.toContain("private data");
     expect(body).not.toContain("private range");
+    expect(body).not.toContain("private cause");
     expect(body).not.toContain("Reservation ID");
   });
 });
