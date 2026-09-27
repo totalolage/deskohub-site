@@ -2483,18 +2483,25 @@ describe("AdministrationService exportReservations", () => {
     const database = {
       select: () => makeQuery(selectCall++ === 0 ? rows : []),
     };
+    let failedBookingLookups = 0;
 
     const result = await runExport(
       {},
       {
         db: database,
         dotypos: {
-          listReservations: (input) =>
-            "ids" in input ? providerFailure() : Effect.succeed([]),
+          listReservations: (input) => {
+            if ("ids" in input) {
+              failedBookingLookups += 1;
+              return providerFailure();
+            }
+            return Effect.succeed([]);
+          },
         },
       }
     );
 
+    expect(failedBookingLookups).toBe(1);
     expect(result).toHaveLength(217);
     expect(result.map((summary) => summary.id)).toEqual(expectedIds);
   });
