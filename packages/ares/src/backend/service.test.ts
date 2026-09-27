@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import {
-  AresLookupFailure,
-  type AresLookupFailure as AresLookupFailureType,
+  AresInvalidIco,
+  type AresLookupFailure,
   AresLookupService,
+  AresNotFound,
+  AresUnavailable,
   isValidCzechCompanyIco,
 } from "./service";
 
@@ -29,7 +31,7 @@ const runLookup = (ico: string, fetchImpl: FetchLike) =>
       Object.assign(fetchImpl, { preconnect: () => {} })
     ),
     Effect.map((subject) => ({ kind: "found" as const, subject })),
-    Effect.catch((failure: AresLookupFailureType) =>
+    Effect.catch((failure: AresLookupFailure) =>
       Effect.succeed({ kind: "failure" as const, failure })
     ),
     Effect.runPromise
@@ -87,10 +89,8 @@ describe("AresLookupService", () => {
       return Promise.resolve(Response.json({}));
     });
 
-    expect(result).toEqual({
-      kind: "failure",
-      failure: { _tag: "InvalidIco" },
-    });
+    expect(result.kind).toBe("failure");
+    expect(result.kind === "failure" && result.failure._tag).toBe("InvalidIco");
     expect(requests).toBe(0);
   });
 
@@ -104,7 +104,8 @@ describe("AresLookupService", () => {
       )
     );
 
-    expect(result).toEqual({ kind: "failure", failure: { _tag: "NotFound" } });
+    expect(result.kind).toBe("failure");
+    expect(result.kind === "failure" && result.failure._tag).toBe("NotFound");
   });
 
   test("maps rate limiting and server errors to the unavailable failure", async () => {
@@ -112,10 +113,10 @@ describe("AresLookupService", () => {
       const result = await runLookup("27082440", () =>
         Promise.resolve(new Response(null, { status }))
       );
-      expect(result).toEqual({
-        kind: "failure",
-        failure: { _tag: "Unavailable" },
-      });
+      expect(result.kind).toBe("failure");
+      expect(result.kind === "failure" && result.failure._tag).toBe(
+        "Unavailable"
+      );
     }
   });
 
@@ -124,10 +125,10 @@ describe("AresLookupService", () => {
       Promise.reject(new TypeError("network down"))
     );
 
-    expect(result).toEqual({
-      kind: "failure",
-      failure: { _tag: "Unavailable" },
-    });
+    expect(result.kind).toBe("failure");
+    expect(result.kind === "failure" && result.failure._tag).toBe(
+      "Unavailable"
+    );
   });
 
   test("maps a malformed or unexpected provider payload to the unavailable failure", async () => {
@@ -137,10 +138,10 @@ describe("AresLookupService", () => {
       )
     );
 
-    expect(result).toEqual({
-      kind: "failure",
-      failure: { _tag: "Unavailable" },
-    });
+    expect(result.kind).toBe("failure");
+    expect(result.kind === "failure" && result.failure._tag).toBe(
+      "Unavailable"
+    );
   });
 
   test("never leaks provider payload data into failure values", async () => {
@@ -154,10 +155,10 @@ describe("AresLookupService", () => {
       )
     );
 
-    expect(result).toEqual({
-      kind: "failure",
-      failure: { _tag: "Unavailable" },
-    });
+    expect(result.kind).toBe("failure");
+    expect(result.kind === "failure" && result.failure._tag).toBe(
+      "Unavailable"
+    );
     expect(JSON.stringify(result)).not.toContain("must-not-leak");
   });
 
@@ -208,10 +209,10 @@ describe("AresLookupService", () => {
       )
     );
 
-    expect(result).toEqual({
-      kind: "failure",
-      failure: { _tag: "Unavailable" },
-    });
+    expect(result.kind).toBe("failure");
+    expect(result.kind === "failure" && result.failure._tag).toBe(
+      "Unavailable"
+    );
   });
 
   test("maps a blank company name response to the unavailable failure", async () => {
@@ -219,17 +220,35 @@ describe("AresLookupService", () => {
       Promise.resolve(Response.json({ ico: "27082440", obchodniJmeno: "   " }))
     );
 
-    expect(result).toEqual({
-      kind: "failure",
-      failure: { _tag: "Unavailable" },
-    });
+    expect(result.kind).toBe("failure");
+    expect(result.kind === "failure" && result.failure._tag).toBe(
+      "Unavailable"
+    );
   });
 });
 
 describe("failure vocabulary", () => {
+  test("lookup failures are genuine Errors carrying the expected tags", async () => {
+    const invalidIco = await runLookup("1234567a", () =>
+      Promise.resolve(Response.json({}))
+    );
+    expect(invalidIco.kind).toBe("failure");
+    if (invalidIco.kind !== "failure") return;
+    expect(invalidIco.failure).toBeInstanceOf(Error);
+    expect(invalidIco.failure._tag).toBe("InvalidIco");
+
+    const unavailable = await runLookup("27082440", () =>
+      Promise.reject(new TypeError("network down"))
+    );
+    expect(unavailable.kind).toBe("failure");
+    if (unavailable.kind !== "failure") return;
+    expect(unavailable.failure).toBeInstanceOf(Error);
+    expect(unavailable.failure._tag).toBe("Unavailable");
+  });
+
   test("exposes exactly the three neutral outcome tags", () => {
-    expect(AresLookupFailure.InvalidIco()._tag).toBe("InvalidIco");
-    expect(AresLookupFailure.NotFound()._tag).toBe("NotFound");
-    expect(AresLookupFailure.Unavailable()._tag).toBe("Unavailable");
+    expect(new AresInvalidIco()._tag).toBe("InvalidIco");
+    expect(new AresNotFound()._tag).toBe("NotFound");
+    expect(new AresUnavailable()._tag).toBe("Unavailable");
   });
 });

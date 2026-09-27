@@ -1,4 +1,5 @@
-export { AresLookupFailure, AresLookupService } from "@deskohub/ares";
+export type { AresLookupFailure } from "@deskohub/ares";
+export { AresLookupService } from "@deskohub/ares";
 export type { AresBusinessBillingDraft } from "./backend/ares-business-draft";
 export { toAresBusinessBillingDraft } from "./backend/ares-business-draft";
 export {

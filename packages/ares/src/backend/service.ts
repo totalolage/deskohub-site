@@ -15,20 +15,24 @@ const aresBaseUrl = "https://ares.gov.cz/ekonomicke-subjekty-v-be/rest";
 const aresLookupTimeout = "5 seconds";
 
 /**
- * The three neutral outcomes of a business registry lookup. Failures carry no
- * provider detail: the caller localizes them from the tag alone, so raw
- * registry payloads and transport errors can never reach users or logs.
+ * The three neutral outcomes of a business registry lookup. Each failure is a
+ * genuine Error tagged with its outcome and carries no provider detail: the
+ * caller localizes it from the tag alone, so raw registry payloads and
+ * transport errors can never reach users or logs.
  */
-export type AresLookupFailure = Data.TaggedEnum<{
-  /** Not exactly eight digits or a failed mod-11 check digit. */
-  InvalidIco: Record<never, never>;
-  /** The registry answered that no company exists for this ID. */
-  NotFound: Record<never, never>;
-  /** Timeout, network, rate-limit, unexpected status, or bad payload. */
-  Unavailable: Record<never, never>;
-}>;
+export class AresInvalidIco extends Data.TaggedError("InvalidIco")<
+  Record<never, never>
+> {}
 
-export const AresLookupFailure = Data.taggedEnum<AresLookupFailure>();
+export class AresNotFound extends Data.TaggedError("NotFound")<
+  Record<never, never>
+> {}
+
+export class AresUnavailable extends Data.TaggedError("Unavailable")<
+  Record<never, never>
+> {}
+
+export type AresLookupFailure = AresInvalidIco | AresNotFound | AresUnavailable;
 
 /**
  * Czech IČO validity, the standard variant: exactly eight digits and the
@@ -65,7 +69,7 @@ const isNotFoundResponse = (error: unknown): boolean =>
 
 const reportUnavailable = Effect.logWarning("ARES company lookup failed").pipe(
   Effect.annotateLogs({ registry: "ares.gov.cz" }),
-  Effect.andThen(Effect.fail(AresLookupFailure.Unavailable()))
+  Effect.andThen(Effect.fail(new AresUnavailable()))
 );
 
 /**
@@ -114,7 +118,7 @@ export class AresLookupService extends Context.Service<
         ico: string
       ) {
         if (!isValidCzechCompanyIco(ico)) {
-          return yield* Effect.fail(AresLookupFailure.InvalidIco());
+          return yield* new AresInvalidIco();
         }
 
         const subject = yield* makeAresClient(httpClient)
@@ -125,7 +129,7 @@ export class AresLookupService extends Context.Service<
               (failure): Effect.Effect<never, AresLookupFailure> =>
                 Match.value(failure).pipe(
                   Match.when(isNotFoundResponse, () =>
-                    Effect.fail(AresLookupFailure.NotFound())
+                    Effect.fail(new AresNotFound())
                   ),
                   Match.orElse(() => reportUnavailable)
                 )
@@ -133,7 +137,7 @@ export class AresLookupService extends Context.Service<
           );
 
         if (!Schema.is(verifiedSubject(ico))(subject)) {
-          return yield* Effect.fail(AresLookupFailure.Unavailable());
+          return yield* new AresUnavailable();
         }
 
         return subject;

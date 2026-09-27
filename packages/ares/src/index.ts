@@ -1,6 +1,9 @@
+export type { AresLookupFailure } from "./backend/service";
 export {
-  AresLookupFailure,
+  AresInvalidIco,
   AresLookupService,
+  AresNotFound,
+  AresUnavailable,
   isValidCzechCompanyIco,
 } from "./backend/service";
 export type { EkonomickySubjekt } from "./generated/effect.gen";

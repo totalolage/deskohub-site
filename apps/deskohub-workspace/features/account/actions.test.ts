@@ -1,6 +1,12 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  AresInvalidIco,
+  type AresLookupFailure,
+  AresNotFound,
+  AresUnavailable,
+} from "@deskohub/ares";
 import { Context, Effect, Layer } from "effect";
 import { CustomerAccountAccessError } from "./customer-account";
 
@@ -135,7 +141,7 @@ mock.module("@/features/account/backend/customer-profile.service", () => ({
 
 let lookupOutcome: Effect.Effect<
   typeof syntheticAresCompany,
-  { readonly _tag: "InvalidIco" | "NotFound" | "Unavailable" }
+  AresLookupFailure
 >;
 let lookupCalls: string[];
 const AresLookup = Context.Service<
@@ -143,10 +149,7 @@ const AresLookup = Context.Service<
   {
     readonly lookup: (
       ico: string
-    ) => Effect.Effect<
-      typeof syntheticAresCompany,
-      { readonly _tag: "InvalidIco" | "NotFound" | "Unavailable" }
-    >;
+    ) => Effect.Effect<typeof syntheticAresCompany, AresLookupFailure>;
   }
 >()("@test/ActionsAresLookup");
 Object.assign(AresLookup, {
@@ -159,6 +162,9 @@ Object.assign(AresLookup, {
 });
 mock.module("@deskohub/ares", () => ({
   AresLookupService: AresLookup,
+  AresInvalidIco,
+  AresNotFound,
+  AresUnavailable,
 }));
 
 const syntheticAresCompany = {
@@ -408,7 +414,7 @@ describe("account ARES business lookup action", () => {
   });
 
   test("reports an invalid company ID without touching the registry", async () => {
-    lookupOutcome = Effect.fail({ _tag: "InvalidIco" as const });
+    lookupOutcome = Effect.fail(new AresInvalidIco());
     const { lookupAresBusiness } = await importActions();
 
     const result = await lookupAresBusiness({ ico: "1234567a" });
@@ -424,7 +430,7 @@ describe("account ARES business lookup action", () => {
   });
 
   test("reports a missing company as not found", async () => {
-    lookupOutcome = Effect.fail({ _tag: "NotFound" as const });
+    lookupOutcome = Effect.fail(new AresNotFound());
     const { lookupAresBusiness } = await importActions();
 
     const result = await lookupAresBusiness({ ico: "27082440" });
@@ -438,7 +444,7 @@ describe("account ARES business lookup action", () => {
   });
 
   test("reports an unavailable registry as retryable", async () => {
-    lookupOutcome = Effect.fail({ _tag: "Unavailable" as const });
+    lookupOutcome = Effect.fail(new AresUnavailable());
     const { lookupAresBusiness } = await importActions();
 
     const result = await lookupAresBusiness({ ico: "27082440" });
