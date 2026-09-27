@@ -22,9 +22,15 @@ const immutableWorkspaceDeploymentHost =
 const defaultPollDeadlineMilliseconds = 10 * 60_000;
 const defaultPollIntervalMilliseconds = 15_000;
 
-const requiredCronPaths = [
-  "/api/cron/workspace/reservation-holds",
-  "/api/cron/workspace/auth-cleanup",
+const requiredCronDefinitions = [
+  {
+    path: "/api/cron/workspace/reservation-holds",
+    schedule: "0 0 * * *",
+  },
+  {
+    path: "/api/cron/workspace/auth-cleanup",
+    schedule: "17 3 * * *",
+  },
 ] as const;
 
 const canonicalAliasResponse = Schema.Struct({
@@ -37,11 +43,35 @@ const canonicalAliasResponse = Schema.Struct({
 
 const stagedDeploymentResponse = Schema.Struct({
   id: Schema.String,
+  projectId: Schema.String,
+  target: Schema.String,
   readyState: Schema.String,
+  url: Schema.String,
+  crons: Schema.Array(
+    Schema.Struct({
+      path: Schema.optional(Schema.String),
+      schedule: Schema.optional(Schema.String),
+    })
+  ),
 });
 
-const projectCronsResponse = Schema.Struct({
-  crons: Schema.Array(Schema.Struct({ path: Schema.optional(Schema.String) })),
+const liveProjectCronsResponse = Schema.Struct({
+  id: Schema.String,
+  crons: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        deploymentId: Schema.optional(Schema.NullOr(Schema.String)),
+        definitions: Schema.optional(
+          Schema.Array(
+            Schema.Struct({
+              path: Schema.optional(Schema.String),
+              schedule: Schema.optional(Schema.String),
+            })
+          )
+        ),
+      })
+    )
+  ),
 });
 
 const projectAliasesPageResponse = Schema.Struct({
@@ -284,27 +314,53 @@ export const resolveProductionRollbackTarget = async (
   return { id: alias.deploymentId, url: alias.deploymentUrl };
 };
 
-export const assertRegisteredCrons = async (
+const missingCronDefinition = (
+  definitions:
+    | readonly {
+        readonly path?: string;
+        readonly schedule?: string;
+      }[]
+    | undefined
+) =>
+  requiredCronDefinitions.find(
+    (required) =>
+      !definitions?.some(
+        (definition) =>
+          definition.path === required.path &&
+          definition.schedule === required.schedule
+      )
+  );
+
+const assertRequiredCronDefinitions = (
+  definitions:
+    | readonly {
+        readonly path?: string;
+        readonly schedule?: string;
+      }[]
+    | undefined,
+  subject: string
+) => {
+  const missing = missingCronDefinition(definitions);
+  if (missing) {
+    throw new Error(
+      `${subject} is missing the required cron definition ${missing.path} (${missing.schedule})`
+    );
+  }
+};
+
+export const assertStagedDeploymentCrons = async (
+  stagedUrl: string,
   projectId: string,
   token: string,
   teamId: string | undefined
-) => {
-  const payload = Schema.decodeUnknownSync(projectCronsResponse)(
-    await vercelApiGet(
-      `/v1/projects/${encodeURIComponent(projectId)}/crons${vercelApiQuery({
-        teamId,
-      })}`,
-      token
-    )
+): Promise<void> => {
+  const validatedUrl = validateStagedDeploymentUrl(stagedUrl);
+  await resolveStagedDeployment(
+    validatedUrl.toString(),
+    projectId,
+    token,
+    teamId
   );
-  const registered = new Set(payload.crons.map((cron) => cron.path ?? ""));
-  for (const path of requiredCronPaths) {
-    if (!registered.has(path)) {
-      throw new Error(
-        `The account cleanup cron is not registered: missing ${path}`
-      );
-    }
-  }
 };
 
 const rollbackToDeployment = async (url: string) => {
@@ -341,9 +397,10 @@ export const emitRollbackTarget = async (): Promise<void> => {
 
 const resolveStagedDeployment = async (
   stagedUrl: string,
+  projectId: string,
   token: string,
   teamId: string | undefined
-): Promise<{ readonly id: string; readonly readyState: string }> => {
+): Promise<{ readonly id: string }> => {
   const host = urlHostName(stagedUrl);
   const payload = Schema.decodeUnknownSync(stagedDeploymentResponse)(
     await vercelApiGet(
@@ -353,7 +410,91 @@ const resolveStagedDeployment = async (
       token
     )
   );
-  return { id: payload.id, readyState: payload.readyState };
+  if (payload.projectId !== projectId) {
+    throw new Error(
+      `The staged deployment belongs to a different Vercel project (${payload.projectId} instead of ${projectId})`
+    );
+  }
+  if (payload.target !== "production") {
+    throw new Error(
+      `The staged deployment target is ${payload.target}, not production`
+    );
+  }
+  if (payload.readyState !== "READY") {
+    throw new Error(
+      `The staged deployment is ${payload.readyState}, not READY; refusing to promote`
+    );
+  }
+  if (payload.url !== host) {
+    throw new Error(
+      "The staged deployment lookup returned a different deployment URL"
+    );
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(payload.id)) {
+    throw new Error("The staged deployment returned an invalid deployment id");
+  }
+  assertRequiredCronDefinitions(payload.crons, "The staged deployment");
+  return { id: payload.id };
+};
+
+export const assertLiveProjectCrons = async (
+  promotedDeploymentId: string,
+  input: {
+    readonly token: string;
+    readonly projectId: string;
+    readonly teamId: string | undefined;
+  } & PollingOptions,
+  dependencies: PollingDependencies = {}
+): Promise<void> => {
+  if (!/^[A-Za-z0-9_-]+$/.test(promotedDeploymentId)) {
+    throw new Error("The promoted deployment id is invalid");
+  }
+
+  const { sleep, now } = makePolling(dependencies);
+  const deadline =
+    now() + (input.pollDeadlineMilliseconds ?? defaultPollDeadlineMilliseconds);
+  const interval =
+    input.pollIntervalMilliseconds ?? defaultPollIntervalMilliseconds;
+  let lastCondition = "the live cron configuration has not converged";
+
+  while (now() < deadline) {
+    let payload: Schema.Schema.Type<typeof liveProjectCronsResponse>;
+    try {
+      payload = Schema.decodeUnknownSync(liveProjectCronsResponse)(
+        await vercelApiGet(
+          `/v9/projects/${encodeURIComponent(input.projectId)}${vercelApiQuery({
+            teamId: input.teamId,
+          })}`,
+          input.token
+        )
+      );
+    } catch {
+      lastCondition = "the Vercel project cron response was unavailable";
+      await sleep(interval);
+      continue;
+    }
+
+    if (payload.id !== input.projectId) {
+      throw new Error(
+        `Live cron verification returned a different Vercel project (${payload.id} instead of ${input.projectId})`
+      );
+    }
+
+    const crons = payload.crons ?? undefined;
+    if (crons?.deploymentId !== promotedDeploymentId) {
+      lastCondition = `the live cron configuration still identifies deployment ${crons?.deploymentId ?? "unknown"}`;
+    } else {
+      const missing = missingCronDefinition(crons.definitions);
+      if (!missing) return;
+      lastCondition = `the live cron configuration is missing ${missing.path} (${missing.schedule})`;
+    }
+
+    await sleep(interval);
+  }
+
+  throw new Error(
+    `Live workspace cron verification did not converge before the deadline: ${lastCondition}`
+  );
 };
 
 /**
@@ -584,14 +725,10 @@ export const promoteStagedDeployment = async (
   const persist = dependencies.persist ?? persistReleaseOutput;
   const staged = await resolveStagedDeployment(
     input.stagedUrl,
+    input.projectId,
     input.token,
     input.teamId
   );
-  if (staged.readyState !== "READY") {
-    throw new Error(
-      `The staged deployment is ${staged.readyState}, not READY; refusing to promote`
-    );
-  }
 
   const baseline = await resolveCanonicalAlias(
     input.token,
@@ -637,7 +774,10 @@ export const promoteStagedDeployment = async (
     pollingFailure = cause;
   }
   if (promoted) {
-    await persist("promoted=true\npromotion_state=promoted\n");
+    process.stdout.write(`::add-mask::${staged.id}\n`);
+    await persist(
+      `promoted=true\npromoted_id=${staged.id}\npromotion_state=promoted\n`
+    );
     return { promoted: true };
   }
 
@@ -672,7 +812,7 @@ export const promoteStagedDeployment = async (
 const usage = (message?: string): never => {
   if (message) process.stderr.write(`${message}\n`);
   process.stderr.write(
-    "Usage: production-release.ts <resolve-previous|probe|verify-canonical|verify-crons|promote|rollback> [--url <url>] [--id <id>]\n"
+    "Usage: production-release.ts <resolve-previous|probe|verify-staged-crons|verify-canonical|promote|rollback> [--url <url>] [--id <id>]\n"
   );
   process.exit(1);
 };
@@ -706,11 +846,23 @@ const run = async () => {
       return;
     }
     case "verify-canonical": {
+      const promotedDeploymentId =
+        readOptionValue("--id") ?? usage("--id is required");
       await assertCanonicalSignInReady();
+      await assertLiveProjectCrons(promotedDeploymentId, {
+        token: vercelToken,
+        projectId,
+        teamId,
+      });
       return;
     }
-    case "verify-crons": {
-      await assertRegisteredCrons(projectId, vercelToken, teamId);
+    case "verify-staged-crons": {
+      await assertStagedDeploymentCrons(
+        readUrlOption(),
+        projectId,
+        vercelToken,
+        teamId
+      );
       return;
     }
     case "promote": {
