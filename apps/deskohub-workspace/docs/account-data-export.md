@@ -102,22 +102,33 @@ The archive deliberately excludes, and routes to the full manual access path:
   size are capped. When a bound is exceeded, or any assembly or data error
   occurs, the whole request fails and nothing is delivered — there is no
   silent truncation and no partial download.
-- Each customer-scoped local record read behind a section applies a
-  documented per-customer upper bound (`accountDataExportRecordBounds` in
-  the records repository). The bounds are generous, chosen far above any
-  typical data shape for one customer, but a customer with an
-  unusually long history can legitimately exceed one. Every query fetches at
-  most `bound + 1` rows; the extra sentinel row proves an overflow and fails
-  the whole request closed exactly like a size-bound violation: nothing is
+- Eight customer-scoped local reads in the records repository
+  (`AccountDataExportRecordsRepository`) apply a documented per-customer
+  upper bound (`accountDataExportRecordBounds`), one per section read:
+  workspace reservations (500), payment attempts (2000), discount
+  applications (2000), invoices (500), customer-audience invoice email
+  deliveries (500), legal-acceptance evidence events (2000), door-access
+  grants (500), and late-payment recoveries (500). Each of these queries
+  fetches at most `bound + 1` rows; the extra sentinel row proves an
+  overflow and fails the whole request closed exactly like a size-bound
+  violation: nothing is delivered and no record is truncated, and the
+  customer is directed to the full manual access request. These bounds are
+  per-customer-scope memory guards, never a substitute for the
+  customer-scoping query filters.
+- Not every read behind an archive section is sentinel-bounded. The
+  reservation-history integration — the customer's Dotypos profile, the
+  provider-side reservation summaries, and the local database read that
+  backs the reservation-history section — is fetched outside those per-read
+  bounds. Its size is governed only by the archive's overall entry and byte
+  caps (at most 32 entries and an 8 MiB uncompressed total) and the
+  fail-closed ZIP assembly limits. When any bound is exceeded, or any
+  assembly or data error occurs, the request fails closed: nothing is
   delivered and no record is truncated, and the customer is directed to the
-  full manual access request. These bounds are per-customer-scope memory
-  guards, never a substitute for the customer-scoping query filters.
-- The per-read sentinel bounds apply to local first-party record reads and,
-  alongside them, to the entry-count and uncompressed-size caps of the
-  serialized ZIP archive. Data sourced from the booking-system provider
-  (the customer profile and the provider-side reservation summaries) is
-  fetched per the existing upstream contract and is not claimed as bounded
-  end-to-end.
+  full manual access request. The per-read bounds are generous, chosen far
+  above any typical data shape for one customer, but a customer with an
+  unusually long history can legitimately exceed one — in every case the
+  outcome is the same fail-closed behavior and the full manual access
+  request, never silent truncation.
 - The snapshot is assembled during the request from several systems (account
   authentication, the booking-system provider, the consent store, and the
   local reservation, payment, and accounting records). It is therefore not an
