@@ -398,6 +398,48 @@ describe("shared cowork offer table candidate predicate", () => {
     ).toBe(false);
   });
 
+  test("configured addon rejects extra or unknown monitor tags (exact set)", () => {
+    expect(
+      isWorkspaceCoworkTableCandidate(
+        tags({
+          ...reservedDeskFullQhd,
+          tags: [...(reservedDeskFullQhd.tags ?? []), "monitor:xyz"],
+        } as Table),
+        { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
+      )
+    ).toBe(false);
+    expect(
+      isWorkspaceCoworkTableCandidate(
+        tags({
+          ...reservedDeskFullQhd,
+          tags: ["cowork:reserved-desk", "monitor:count:2", "monitor:xyz"],
+        } as Table),
+        { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
+      )
+    ).toBe(false);
+  });
+
+  test("no-addon queries reject any monitor tag, including unknown ones", () => {
+    expect(
+      isWorkspaceCoworkTableCandidate(
+        tags({
+          ...reservedDeskPlain,
+          tags: ["cowork:reserved-desk", "monitor:xyz"],
+        } as Table),
+        { entryTier: "reserved-desk" }
+      )
+    ).toBe(false);
+    expect(
+      isWorkspaceCoworkTableCandidate(
+        tags({
+          ...openSpaceTable,
+          tags: ["cowork:open-space", "monitor:xyz"],
+        } as Table),
+        { entryTier: "open-space" }
+      )
+    ).toBe(false);
+  });
+
   test("historical tiers keep their tier-tag predicate and never match offer labels", () => {
     expect(
       isWorkspaceCoworkHistoricalTableCandidate(tags(openSpaceTable), "basic")

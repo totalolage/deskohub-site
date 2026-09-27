@@ -31,19 +31,26 @@ export type WorkspaceCoworkTableCandidateQuery = {
 const hasNoMonitorTag = (tableTags: ReadonlySet<string>) =>
   ![...tableTags].some((tag) => tag.startsWith("monitor:"));
 
-const hasAllMonitorConfigurationTags = (
+const hasExactMonitorConfigurationTags = (
   tableTags: ReadonlySet<string>,
   monitorOption: WorkspaceProductMonitorOption
-) =>
-  workspaceProductMonitorOptionTableTags[monitorOption].every((tag) =>
-    tableTags.has(tag)
+) => {
+  const expectedTags = workspaceProductMonitorOptionTableTags[monitorOption];
+  return (
+    expectedTags.every((tag) => tableTags.has(tag)) &&
+    // Fail closed on unknown or contradictory monitor tags: a configured
+    // workstation must carry exactly the chosen configuration's monitor tags.
+    ![...tableTags].some(
+      (tag) => tag.startsWith("monitor:") && !expectedTags.includes(tag)
+    )
   );
+};
 
 /**
  * Shared saleable-offer candidate predicate used by BOTH availability and
  * authoritative table assignment. Partial monitor tagging fails closed: any
  * `monitor:` tag excludes a table from no-addon queries, and a configured
- * addon query requires every tag of the chosen configuration.
+ * addon query requires exactly the chosen configuration's monitor-tag set.
  */
 export const isWorkspaceCoworkTableCandidate = (
   tableTags: ReadonlySet<string>,
@@ -60,7 +67,7 @@ export const isWorkspaceCoworkTableCandidate = (
 
   if (!query.monitorOption) return hasNoMonitorTag(tableTags);
 
-  return hasAllMonitorConfigurationTags(tableTags, query.monitorOption);
+  return hasExactMonitorConfigurationTags(tableTags, query.monitorOption);
 };
 
 /**

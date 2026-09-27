@@ -263,15 +263,21 @@ const getReservationOccupancyInput = (
 ): Effect.Effect<Temporal.PlainDate | ReservationInterval, ValidationError> =>
   Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
-      cowork: ({ date }) =>
-        Effect.try({
-          try: () => Temporal.PlainDate.from(date),
-          catch: (cause) =>
-            new ValidationError({
-              message: `Workspace reservation date must be a valid YYYY-MM-DD date: ${date}`,
-              cause,
-            }),
-        }),
+      // Occupancy must use the tier's authoritative reservation interval
+      // (Open Space Prague 00:00-17:00 exclusive, every other tier Prague
+      // midnight to next midnight), not the whole calendar day.
+      cowork: ({ entryTier, date }) =>
+        getReservationIntervalNormalization(
+          getCoworkReservationIntervalInput(entryTier, date)
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ValidationError({
+                message: `Workspace cowork reservation interval must be valid for date: ${date}`,
+                cause,
+              })
+          )
+        ),
       "meeting-room": (meetingRoomReservation) =>
         Effect.succeed(meetingRoomReservation),
       office: (officeReservation) =>

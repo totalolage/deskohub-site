@@ -258,11 +258,25 @@ const implementation = Effect.gen(function* () {
           ? getWorkspaceTableOccupancyById(reservations, reservation)
           : selectedDateOccupancy;
 
+      // Alternative tier and monitor-option checks each use the candidate
+      // offer's OWN authoritative interval; the selected offer's interval must
+      // not leak into them (a 00:00-17:00 Open Space occupancy and a
+      // full-day Reserved Desk occupancy describe different intervals).
+      const getCoworkOfferOccupancy = (
+        date: string,
+        tier: WorkspaceCoworkProductTier
+      ) =>
+        normalizeCoworkAvailabilityInterval(date, tier).pipe(
+          Effect.map((interval) =>
+            getWorkspaceTableOccupancyById(reservations, interval)
+          )
+        );
+
       const unavailableCoworkTiers = selectedDate
         ? yield* Effect.filter(workspaceCoworkSaleableTiers, (tier) =>
-            isCoworkOfferUnavailable(tables, selectedDateOccupancy, {
-              entryTier: tier,
-            })
+            Effect.flatMap(getCoworkOfferOccupancy(selectedDate, tier), (
+              occupancy
+            ) => isCoworkCategoryUnavailable(tables, occupancy, tier))
           )
         : [];
       const meetingRoomUnavailable = selectedDate
@@ -278,10 +292,14 @@ const implementation = Effect.gen(function* () {
           : false;
       const unavailableMonitorOptions = selectedDate
         ? yield* Effect.filter(workspaceProductMonitorOptions, (option) =>
-            isCoworkOfferUnavailable(tables, selectedDateOccupancy, {
-              entryTier: "reserved-desk",
-              monitorOption: option,
-            })
+            Effect.flatMap(
+              getCoworkOfferOccupancy(selectedDate, "reserved-desk"),
+              (occupancy) =>
+                isCoworkOfferUnavailable(tables, occupancy, {
+                  entryTier: "reserved-desk",
+                  monitorOption: option,
+                })
+            )
           )
         : [];
 
@@ -526,6 +544,35 @@ const isCoworkOfferUnavailable = (
     occupancyByTableId,
     workspaceBookingSeatCount
   ).pipe(Effect.map((available) => !available));
+
+/**
+ * A cowork category is offered when ANY eligible table for it is available in
+ * that offer's true interval. Open Space only has bare open-space tables;
+ * Reserved Desk remains available while either a bare desk or any single
+ * workstation configuration is available in the full Prague day.
+ */
+const isCoworkCategoryUnavailable = (
+  tables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
+  entryTier: WorkspaceCoworkProductTier
+) =>
+  entryTier === "open-space"
+    ? isCoworkOfferUnavailable(tables, occupancyByTableId, { entryTier })
+    : Effect.map(
+        Effect.all([
+          isCoworkOfferUnavailable(tables, occupancyByTableId, { entryTier }),
+          Effect.forEach(
+            workspaceProductMonitorOptions,
+            (monitorOption) =>
+              isCoworkOfferUnavailable(tables, occupancyByTableId, {
+                entryTier,
+                monitorOption,
+              })
+          ),
+        ]),
+        ([bareUnavailable, monitorOptionsUnavailable]) =>
+          bareUnavailable && monitorOptionsUnavailable.every(Boolean)
+      );
 
 const isMeetingRoomUnavailable = (
   tables: readonly DotyposTable[],

@@ -891,3 +891,234 @@ describe("WorkspaceAvailabilityService", () => {
     expect(result._tag).toBe("Success");
   });
 });
+
+// Prague-local times for 2099-06-10 (CEST, UTC+2): midnight is 22:00Z of the
+// previous day, 08:00 is 06:00Z, 16:00 is 14:00Z, 17:00 is 15:00Z, 18:00 is
+// 16:00Z, and 20:00 is 18:00Z.
+const coworkOfferTables = [
+  makeTable({ id: "open-1", tags: ["cowork:open-space"] }),
+  makeTable({ id: "desk-1", tags: ["cowork:reserved-desk"] }),
+  makeTable({
+    id: "ws-qhd",
+    tags: [
+      "cowork:reserved-desk",
+      "monitor:count:2",
+      "monitor:size:27",
+      "monitor:resolution:qhd",
+    ],
+  }),
+];
+
+describe("WorkspaceAvailabilityService cowork offer intervals", () => {
+  test("keeps reserved-desk available when bare desks are occupied but a workstation configuration is free", async () => {
+    const bareDeskOccupied = await getAvailability({
+      date: testDate,
+      tables: coworkOfferTables,
+      reservations: [
+        makeReservation({
+          tableId: "desk-1",
+          status: "CONFIRMED",
+          startDate: testStart,
+          endDate: testEnd,
+        }),
+      ],
+    });
+
+    expect(bareDeskOccupied.unavailableCoworkTiers).not.toContain(
+      "reserved-desk"
+    );
+    expect(bareDeskOccupied.unavailableMonitorOptions).not.toContain(
+      "2x27-qhd"
+    );
+    // Configurations without any configured table stay unavailable.
+    expect(bareDeskOccupied.unavailableMonitorOptions).toEqual([
+      "2x32-qhd",
+      "2x27-4k",
+      "2x32-4k",
+    ]);
+
+    const workstationAlsoOccupied = await getAvailability({
+      date: testDate,
+      tables: coworkOfferTables,
+      reservations: [
+        makeReservation({
+          tableId: "desk-1",
+          status: "CONFIRMED",
+          startDate: testStart,
+          endDate: testEnd,
+        }),
+        makeReservation({
+          tableId: "ws-qhd",
+          status: "CONFIRMED",
+          startDate: testStart,
+          endDate: testEnd,
+        }),
+      ],
+    });
+
+    expect(workstationAlsoOccupied.unavailableCoworkTiers).toContain(
+      "reserved-desk"
+    );
+    expect(workstationAlsoOccupied.unavailableMonitorOptions).toContain(
+      "2x27-qhd"
+    );
+  });
+
+  test("checks each monitor option independently against the reserved-desk interval", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      tables: coworkOfferTables,
+      reservations: [
+        makeReservation({
+          tableId: "ws-qhd",
+          status: "NEW",
+          startDate: testStart,
+          endDate: testEnd,
+        }),
+      ],
+    });
+
+    expect(availability.unavailableMonitorOptions).toContain("2x27-qhd");
+    expect(availability.unavailableCoworkTiers).not.toContain("reserved-desk");
+  });
+
+  test("does not let an after-17:00 open-space occupancy leak into the reserved-desk check", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      tables: coworkOfferTables,
+      reservations: [
+        makeReservation({
+          tableId: "open-1",
+          status: "NEW",
+          startDate: "2099-06-10T16:00:00Z",
+          endDate: "2099-06-10T18:00:00Z",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableCoworkTiers).not.toContain("open-space");
+    expect(availability.unavailableCoworkTiers).not.toContain("reserved-desk");
+  });
+
+  test("does not let a selected open-space interval hide a full-day reserved-desk occupancy", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      entryTier: "open-space",
+      tables: [
+        makeTable({ id: "open-1", tags: ["cowork:open-space"] }),
+        makeTable({ id: "desk-1", tags: ["cowork:reserved-desk"] }),
+      ],
+      reservations: [
+        makeReservation({
+          tableId: "desk-1",
+          status: "CONFIRMED",
+          startDate: "2099-06-10T16:00:00Z",
+          endDate: "2099-06-10T18:00:00Z",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableCoworkTiers).not.toContain("open-space");
+    expect(availability.unavailableCoworkTiers).toContain("reserved-desk");
+  });
+
+  test("blocks each offer only within its own interval", async () => {
+    const morningOnOpenSpace = await getAvailability({
+      date: testDate,
+      tables: [
+        makeTable({ id: "open-1", tags: ["cowork:open-space"] }),
+        makeTable({ id: "desk-1", tags: ["cowork:reserved-desk"] }),
+      ],
+      reservations: [
+        makeReservation({
+          tableId: "open-1",
+          status: "NEW",
+          startDate: "2099-06-10T06:00:00Z",
+          endDate: "2099-06-10T14:00:00Z",
+        }),
+      ],
+    });
+
+    expect(morningOnOpenSpace.unavailableCoworkTiers).toContain("open-space");
+    expect(morningOnOpenSpace.unavailableCoworkTiers).not.toContain(
+      "reserved-desk"
+    );
+
+    const morningOnReservedDesk = await getAvailability({
+      date: testDate,
+      tables: [
+        makeTable({ id: "open-1", tags: ["cowork:open-space"] }),
+        makeTable({ id: "desk-1", tags: ["cowork:reserved-desk"] }),
+      ],
+      reservations: [
+        makeReservation({
+          tableId: "desk-1",
+          status: "NEW",
+          startDate: "2099-06-10T06:00:00Z",
+          endDate: "2099-06-10T14:00:00Z",
+        }),
+      ],
+    });
+
+    expect(morningOnReservedDesk.unavailableCoworkTiers).toContain(
+      "reserved-desk"
+    );
+    expect(morningOnReservedDesk.unavailableCoworkTiers).not.toContain(
+      "open-space"
+    );
+  });
+
+  test("holds the 17:00 half-open boundary parity for open-space availability", async () => {
+    // A reservation starting exactly at 17:00 Prague does not occupy the
+    // 00:00-17:00 exclusive-end open-space interval.
+    const startingAt17 = await getAvailability({
+      date: testDate,
+      tables: [makeTable({ id: "open-1", tags: ["cowork:open-space"] })],
+      reservations: [
+        makeReservation({
+          tableId: "open-1",
+          status: "NEW",
+          startDate: "2099-06-10T15:00:00Z",
+          endDate: "2099-06-10T18:00:00Z",
+        }),
+      ],
+    });
+
+    expect(startingAt17.unavailableCoworkTiers).not.toContain("open-space");
+
+    // A reservation ending exactly at 17:00 Prague still occupies the
+    // 00:00-17:00 interval up to its exclusive end.
+    const endingAt17 = await getAvailability({
+      date: testDate,
+      tables: [makeTable({ id: "open-1", tags: ["cowork:open-space"] })],
+      reservations: [
+        makeReservation({
+          tableId: "open-1",
+          status: "NEW",
+          startDate: "2099-06-10T14:00:00Z",
+          endDate: "2099-06-10T15:00:00Z",
+        }),
+      ],
+    });
+
+    expect(endingAt17.unavailableCoworkTiers).toContain("open-space");
+  });
+
+  test("marks the selected open-space date unavailable for a morning occupancy", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      entryTier: "open-space",
+      tables: [makeTable({ id: "open-1", tags: ["cowork:open-space"] })],
+      reservations: [
+        makeReservation({
+          tableId: "open-1",
+          status: "NEW",
+          startDate: "2099-06-10T06:00:00Z",
+          endDate: "2099-06-10T14:00:00Z",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableDates).toContain(testDate);
+  });
+});
