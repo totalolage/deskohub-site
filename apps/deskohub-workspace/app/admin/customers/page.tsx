@@ -1,9 +1,6 @@
 import { Suspense } from "react";
 import {
   AdministrationCustomerTable,
-  AdministrationFilterField,
-  AdministrationFilterForm,
-  AdministrationFilterSelect,
   AdministrationPage,
   AdministrationTableCount,
   AdministrationTableToolbar,
@@ -19,16 +16,14 @@ import {
   loadAdministrationCustomersPage,
 } from "@/features/administration/page-data.server";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
-import { m } from "@/features/i18n";
-import { Button } from "@/shared/components/ui/button";
+import { CustomerConsentFilterForm } from "./customer-consent-filter-form";
 
-export default async function DiscountCustomersAdminPage({
+export default function DiscountCustomersAdminPage({
   searchParams,
 }: {
   readonly searchParams: AdministrationSearchParams;
 }) {
   const { input, result } = loadAdministrationCustomersPage(searchParams);
-  const resolvedInput = await input;
 
   return (
     <AdministrationPage>
@@ -39,7 +34,7 @@ export default async function DiscountCustomersAdminPage({
             <CustomerCount result={result} />
           </Suspense>
         }
-        filters={<CustomerFilters input={resolvedInput} />}
+        filters={<CustomerConsentFilterForm />}
         itemLabel="customer"
         search={<CustomerSearch variant="toolbar" />}
       />
@@ -66,45 +61,6 @@ async function CustomerCount({
       count={(await result).total}
       itemLabel="customer"
     />
-  );
-}
-
-export function CustomerFilters({
-  input,
-}: {
-  readonly input: CustomersData["input"];
-}) {
-  return (
-    <AdministrationFilterForm variant="toolbar">
-      <AdministrationFilterField
-        htmlFor="customer-consent"
-        label={m.adminCustomersFilterConsentLabel({})}
-      >
-        <AdministrationFilterSelect
-          defaultValue={input.marketingConsent ?? ""}
-          id="customer-consent"
-          name="consent"
-        >
-          <option value="">{m.adminCustomersFilterConsentAll({})}</option>
-          <option value="granted">
-            {m.adminCustomersFilterConsentGranted({})}
-          </option>
-          <option value="withdrawn">
-            {m.adminCustomersFilterConsentWithdrawn({})}
-          </option>
-          <option value="never">
-            {m.adminCustomersFilterConsentNeverGranted({})}
-          </option>
-        </AdministrationFilterSelect>
-      </AdministrationFilterField>
-      <input name="sort" type="hidden" value={input.sort} />
-      <input name="direction" type="hidden" value={input.direction} />
-      <div className="sm:col-span-2 2xl:col-span-1 2xl:justify-self-end">
-        <Button className="min-h-10" size="sm" type="submit">
-          {m.adminCustomersFilterApply({})}
-        </Button>
-      </div>
-    </AdministrationFilterForm>
   );
 }
 

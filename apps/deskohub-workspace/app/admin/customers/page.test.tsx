@@ -31,14 +31,27 @@ type CustomerItem = {
 let mockInput: AdministrationCustomerListInput;
 let mockItems: readonly CustomerItem[];
 let mockPendingResult = false;
+let mockSearchParams = new URLSearchParams();
+const routerPushUrls: string[] = [];
 
 const resetMocks = () => {
   mockInput = { direction: "desc", page: 1, sort: "activity" };
   mockItems = [];
   mockPendingResult = false;
+  mockSearchParams = new URLSearchParams();
+  routerPushUrls.length = 0;
 };
 
 resetMocks();
+
+mock.module("next/navigation", () => ({
+  useRouter: () => ({
+    push: (url: string) => {
+      routerPushUrls.push(url);
+    },
+  }),
+  useSearchParams: () => mockSearchParams,
+}));
 
 mock.module("@/features/administration/page-data.server", () => ({
   loadAdministrationCustomers: () =>
@@ -99,17 +112,11 @@ describe("DiscountCustomersAdminPage", () => {
   });
 
   test("renders the consent filter with four options and keeps the selection", async () => {
-    const { CustomerFilters } = await import("./page");
-    const view = render(
-      <CustomerFilters
-        input={{
-          direction: "desc",
-          marketingConsent: "granted",
-          page: 1,
-          sort: "activity",
-        }}
-      />
+    mockSearchParams = new URLSearchParams("consent=granted");
+    const { CustomerConsentFilterForm } = await import(
+      "./customer-consent-filter-form"
     );
+    const view = render(<CustomerConsentFilterForm />);
 
     const select = view.getByLabelText(
       "Marketing consent"
@@ -121,24 +128,56 @@ describe("DiscountCustomersAdminPage", () => {
     expect(view.getByRole("button", { name: "Apply filters" })).toBeDefined();
   });
 
+  test("applies the consent filter through a soft navigation", async () => {
+    mockSearchParams = new URLSearchParams("consent=granted&sort=reservations");
+    const { CustomerConsentFilterForm } = await import(
+      "./customer-consent-filter-form"
+    );
+    const view = render(<CustomerConsentFilterForm />);
+
+    const form = view.container.querySelector("form") as HTMLFormElement;
+    expect(form.getAttribute("method")).toBe("get");
+    const select = view.getByLabelText(
+      "Marketing consent"
+    ) as HTMLSelectElement;
+    select.value = "never";
+
+    // A cancelable submit event proves the handler calls preventDefault
+    // (native submission is cancelled), and the recorded router push proves
+    // the soft navigation used the exact filtered URL.
+    const event = new window.Event("submit", {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    expect(form.dispatchEvent(event)).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    expect(routerPushUrls).toEqual([
+      "/admin/customers?consent=never&sort=reservations&direction=desc",
+    ]);
+  });
+
   test("keeps the consent filter visible while the customer list loads", async () => {
-    mockInput = {
-      direction: "desc",
-      marketingConsent: "granted",
-      page: 1,
-      sort: "activity",
-    };
+    mockSearchParams = new URLSearchParams(
+      "consent=granted&direction=desc&sort=activity"
+    );
     mockPendingResult = true;
     const { default: DiscountCustomersAdminPage } = await import("./page");
-    const tree = await DiscountCustomersAdminPage({
-      searchParams: Promise.resolve({ direction: "desc", sort: "activity" }),
-    });
-    const view = render(tree);
+    const view = render(
+      DiscountCustomersAdminPage({
+        searchParams: Promise.resolve({
+          consent: "granted",
+          direction: "desc",
+          sort: "activity",
+        }),
+      })
+    );
 
     const select = view.getByLabelText(
       "Marketing consent"
     ) as HTMLSelectElement;
     expect(select.value).toBe("granted");
+    expect(select.disabled).toBe(false);
     expect(view.queryByLabelText("Loading table filters")).toBeNull();
   });
 
