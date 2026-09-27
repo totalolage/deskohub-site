@@ -70,10 +70,16 @@ const sectionPanel = (section: AccountSection) => {
         createElement("select", { id: "account-profile-billing-kind" })
       );
     case "legal":
+      // Mirror the real LegalScreen: the landmark policy link lives inside
+      // the legal navigation, never as a bare panel link.
       return createElement(
-        "a",
-        { href: "/en-US/privacy-policy" },
-        "Privacy policy"
+        "nav",
+        null,
+        createElement(
+          "a",
+          { href: "/en-US/privacy-policy" },
+          "Privacy policy"
+        )
       );
     case "danger":
       return createElement(

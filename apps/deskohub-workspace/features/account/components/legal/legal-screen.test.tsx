@@ -10,6 +10,7 @@ import {
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import type { ComponentPropsWithoutRef, Ref } from "react";
 import { useState } from "react";
+import { accountSectionLandmarks } from "@/e2e/account/account-sections";
 import { type Locale, m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -270,6 +271,28 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
     }
   });
 }
+
+test("resolves the account legal landmark to exactly the legal navigation policy link", () => {
+  const locale = "en-US" as const;
+  // The account shell renders the active panel inside <main>; mirror that so
+  // the landmark selector is exercised the way the real page composes it.
+  const view = render(
+    <main>
+      <CookieConsentProvider locale={locale} />
+      <LegalScreen accountsEnabled={true} locale={locale} />
+    </main>
+  );
+  expect(view.container.querySelector("main")).not.toBeNull();
+
+  const matches = Array.from(
+    document.querySelectorAll(accountSectionLandmarks.legal)
+  );
+  expect(matches).toHaveLength(1);
+  expect(matches[0]?.closest("nav")).not.toBeNull();
+  expect(
+    Array.from(document.querySelectorAll("main a[href$='/privacy-policy']"))
+  ).toHaveLength(2);
+});
 
 test("hides the export control when accounts are disabled", () => {
   const locale = "en-US" as const;
