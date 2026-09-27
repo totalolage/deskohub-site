@@ -245,11 +245,13 @@ export function ProfileForm({
     onSuccess: () => {
       const submittedValues = submittedValuesRef.current;
       if (submittedValues !== undefined) {
-        // The saved baseline becomes the values as they were at submit time:
-        // fields edited while the request was in flight keep their values and
-        // stay dirty, everything else adopts the submitted snapshot.
+        // The saved baseline becomes the values as they were at submit time
+        // while every current value is preserved verbatim: an in-flight edit
+        // that returned a field to its original value must not be overwritten
+        // by the submitted snapshot, and dirty state is recomputed against
+        // the new baseline.
         savedBaselineRef.current = submittedValues;
-        form.reset(submittedValues, { keepDirtyValues: true });
+        form.reset(submittedValues, { keepValues: true });
         setSavedIdentity({
           firstName: submittedValues.firstName.trim(),
           lastName: submittedValues.lastName.trim() || null,
@@ -325,6 +327,7 @@ export function ProfileForm({
       let sectionWithError: "profile" | "billing" | undefined;
       if (
         (fieldErrors.firstName?.length ?? 0) > 0 ||
+        (fieldErrors.lastName?.length ?? 0) > 0 ||
         (fieldErrors.phone?.length ?? 0) > 0
       ) {
         sectionWithError = "profile";
@@ -341,7 +344,11 @@ export function ProfileForm({
     errors: FieldErrors<ProfileFormValues>
   ): "profile" | "billing" | undefined => {
     const names = Object.keys(errors);
-    if (names.includes("firstName") || names.includes("phone")) {
+    if (
+      names.includes("firstName") ||
+      names.includes("lastName") ||
+      names.includes("phone")
+    ) {
       return "profile";
     }
     if (
@@ -389,6 +396,12 @@ export function ProfileForm({
       form.setError("firstName", {
         type: "required",
         message: m.accountProfileFirstNameRequired({}, { locale }),
+      });
+    }
+    if (fieldName === "companyName") {
+      form.setError("companyName", {
+        type: "required",
+        message: m.accountProfileValidationError({}, { locale }),
       });
     }
 
