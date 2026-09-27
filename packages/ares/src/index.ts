@@ -1,7 +1,6 @@
 export {
-  type AresCompany,
   AresLookupFailure,
   AresLookupService,
-  type AresSidlo,
   isValidCzechCompanyIco,
 } from "./backend/service";
+export type { EkonomickySubjekt } from "./generated/effect.gen";

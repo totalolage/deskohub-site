@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, Predicate } from "effect";
+import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
 import {
   FetchHttpClient,
   HttpClient,
@@ -6,7 +6,7 @@ import {
 } from "effect/unstable/http";
 import {
   type AresClient,
-  type EkonomickySubjekt,
+  EkonomickySubjekt,
   make,
 } from "../generated/effect.gen";
 
@@ -29,26 +29,6 @@ export type AresLookupFailure = Data.TaggedEnum<{
 }>;
 
 export const AresLookupFailure = Data.taggedEnum<AresLookupFailure>();
-
-/** Structured registered seat (`sidlo`) address fields, absent when unknown. */
-export type AresSidlo = {
-  readonly ulice?: string;
-  readonly cisloDomovni?: string;
-  readonly cisloOrientacni?: string;
-  readonly castObce?: string;
-  readonly obec?: string;
-  readonly psc?: string;
-  /** Registry state code; the documented Czechia code is `"CZ"`. */
-  readonly statKod?: string;
-};
-
-/** Narrow verified ARES company record with absent values omitted. */
-export type AresCompany = {
-  readonly ico: string;
-  readonly obchodniJmeno: string;
-  readonly dic?: string;
-  readonly sidlo?: AresSidlo;
-};
 
 /**
  * Czech IČO validity, the standard variant: exactly eight digits and the
@@ -88,17 +68,38 @@ const reportUnavailable = Effect.logWarning("ARES company lookup failed").pipe(
   Effect.andThen(Effect.fail(AresLookupFailure.Unavailable()))
 );
 
+/**
+ * The generated record schema extended with a verified-subject check: the
+ * registry must answer for the requested company with a non-blank trade
+ * name. A mismatched or blank identity is a provider anomaly, not a match,
+ * so callers never receive wrong data.
+ */
+const verifiedSubject = (ico: string) =>
+  EkonomickySubjekt.check(
+    Schema.makeFilter(
+      (subject: EkonomickySubjekt) =>
+        subject.ico === ico &&
+        subject.obchodniJmeno !== undefined &&
+        subject.obchodniJmeno.trim().length > 0,
+      {
+        identifier: "verifiedAresSubject",
+        expected: `the company with IČO ${ico} and a non-blank trade name`,
+      }
+    )
+  );
+
 interface IAresLookupService {
   readonly lookup: (
     ico: string
-  ) => Effect.Effect<AresCompany, AresLookupFailure>;
+  ) => Effect.Effect<EkonomickySubjekt, AresLookupFailure>;
 }
 
 /**
  * Looks up a Czech company in the official public ARES registry by its IČO.
  * One provider request per invocation, no API key, no local copy of registry
- * data. The provider payload is validated by the generated OpenAPI client and
- * then projected onto the neutral domain types above.
+ * data. The provider payload is validated by the generated OpenAPI client
+ * and then checked against the verified-subject schema above; on success the
+ * generated registry record is returned as-is.
  */
 export class AresLookupService extends Context.Service<
   AresLookupService,
@@ -109,33 +110,31 @@ export class AresLookupService extends Context.Service<
     Effect.gen(function* () {
       const httpClient = yield* HttpClient.HttpClient;
 
-      const lookup = Effect.fn("AresLookupService.lookup")((ico: string) =>
-        Effect.suspend(() =>
-          isValidCzechCompanyIco(ico)
-            ? makeAresClient(httpClient)
-                .vratEkonomickySubjekt(encodeURIComponent(ico), undefined)
-                .pipe(
-                  Effect.timeout(aresLookupTimeout),
-                  Effect.map((subject) => projectCompany(subject)),
-                  // The registry must answer for the requested company: a
-                  // mismatched or blank identity is a provider anomaly, not
-                  // a match, so it degrades to the sanitized unavailable
-                  // outcome instead of handing callers wrong data.
-                  Effect.filterOrFail(
-                    (company) =>
-                      company.ico === ico && company.obchodniJmeno.length > 0,
-                    () => AresLookupFailure.Unavailable()
-                  ),
-                  Effect.catch(
-                    (failure): Effect.Effect<never, AresLookupFailure> =>
-                      isNotFoundResponse(failure)
-                        ? Effect.fail(AresLookupFailure.NotFound())
-                        : reportUnavailable
-                  )
-                )
-            : Effect.fail(AresLookupFailure.InvalidIco())
-        )
-      );
+      const lookup = Effect.fn("AresLookupService.lookup")(function* (
+        ico: string
+      ) {
+        if (!isValidCzechCompanyIco(ico)) {
+          return yield* Effect.fail(AresLookupFailure.InvalidIco());
+        }
+
+        const subject = yield* makeAresClient(httpClient)
+          .vratEkonomickySubjekt(encodeURIComponent(ico), undefined)
+          .pipe(
+            Effect.timeout(aresLookupTimeout),
+            Effect.catch(
+              (failure): Effect.Effect<never, AresLookupFailure> =>
+                isNotFoundResponse(failure)
+                  ? Effect.fail(AresLookupFailure.NotFound())
+                  : reportUnavailable
+            )
+          );
+
+        if (!Schema.is(verifiedSubject(ico))(subject)) {
+          return yield* Effect.fail(AresLookupFailure.Unavailable());
+        }
+
+        return subject;
+      });
 
       return { lookup };
     })
@@ -143,39 +142,3 @@ export class AresLookupService extends Context.Service<
 
   static Live = this.Default.pipe(Layer.provide(FetchHttpClient.layer));
 }
-
-const aresText = (value: string | number | undefined): string | undefined => {
-  if (value === undefined) return undefined;
-  const text = String(value).trim();
-  return text === "" ? undefined : text;
-};
-
-type AresAdresa = NonNullable<EkonomickySubjekt["sidlo"]>;
-
-const projectSidlo = (sidlo: AresAdresa): AresSidlo => ({
-  ulice: aresText(sidlo.nazevUlice),
-  cisloDomovni: aresText(sidlo.cisloDomovni),
-  cisloOrientacni:
-    aresText(sidlo.cisloOrientacni) === undefined
-      ? aresText(sidlo.cisloOrientacniPismeno)
-      : [sidlo.cisloOrientacni, sidlo.cisloOrientacniPismeno]
-          .filter((part) => aresText(part) !== undefined)
-          .map((part) => String(part).trim())
-          .join(""),
-  castObce: aresText(sidlo.nazevCastiObce),
-  obec: aresText(sidlo.nazevObce),
-  psc: aresText(sidlo.psc),
-  statKod: aresText(sidlo.kodStatu),
-});
-
-const projectCompany = (subject: EkonomickySubjekt): AresCompany => {
-  const company: AresCompany = {
-    ico: aresText(subject.ico) ?? "",
-    obchodniJmeno: aresText(subject.obchodniJmeno) ?? "",
-    dic: aresText(subject.dic),
-  };
-  if (subject.sidlo !== undefined) {
-    return { ...company, sidlo: projectSidlo(subject.sidlo) };
-  }
-  return company;
-};

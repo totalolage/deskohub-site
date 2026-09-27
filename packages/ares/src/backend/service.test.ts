@@ -28,7 +28,7 @@ const runLookup = (ico: string, fetchImpl: FetchLike) =>
       FetchHttpClient.Fetch,
       Object.assign(fetchImpl, { preconnect: () => {} })
     ),
-    Effect.map((company) => ({ kind: "found" as const, company })),
+    Effect.map((subject) => ({ kind: "found" as const, subject })),
     Effect.catch((failure: AresLookupFailureType) =>
       Effect.succeed({ kind: "failure" as const, failure })
     ),
@@ -74,7 +74,7 @@ describe("AresLookupService", () => {
     expect(requestedUrl).toBe(aresCompanyUrl("27082440"));
     expect(requestedUrl).toStartWith("https://ares.gov.cz/");
     expect(requestedMethod).toBe("GET");
-    expect(result.kind === "found" && result.company).toEqual({
+    expect(result.kind === "found" && result.subject).toEqual({
       ico: "27082440",
       obchodniJmeno: "Synthetická testovací s.r.o.",
     });
@@ -148,16 +148,20 @@ describe("AresLookupService", () => {
       Promise.resolve(
         Response.json({
           ico: "27082440",
-          obchodniJmeno: "Synthetická testovací s.r.o.",
+          obchodniJmeno: "   ",
           secretProviderField: "must-not-leak",
         })
       )
     );
 
+    expect(result).toEqual({
+      kind: "failure",
+      failure: { _tag: "Unavailable" },
+    });
     expect(JSON.stringify(result)).not.toContain("must-not-leak");
   });
 
-  test("omits whitespace-only optional values and normalizes seat numbers", async () => {
+  test("returns the generated raw provider record for a matching company", async () => {
     const result = await runLookup("27082440", () =>
       Promise.resolve(
         Response.json({
@@ -178,14 +182,17 @@ describe("AresLookupService", () => {
 
     expect(result).toEqual({
       kind: "found",
-      company: {
+      subject: {
         ico: "27082440",
-        obchodniJmeno: "Synthetická testovací s.r.o.",
+        obchodniJmeno: "  Synthetická testovací s.r.o. ",
+        dic: "   ",
         sidlo: {
-          cisloDomovni: "123",
-          cisloOrientacni: "4a",
-          obec: "Praha",
-          statKod: "CZ",
+          nazevUlice: "  ",
+          cisloDomovni: 123,
+          cisloOrientacni: 4,
+          cisloOrientacniPismeno: "a",
+          nazevObce: " Praha ",
+          kodStatu: " CZ ",
         },
       },
     });
