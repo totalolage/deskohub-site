@@ -46,9 +46,10 @@ export const toCreateDiscountInput = (
             kind: "percentage",
             basisPoints: Math.round(Number(values.percentage) * 100),
           },
-    products: values.products.flatMap((kind) =>
-      productTargets[kind] ? [productTargets[kind]!] : []
-    ) as [WorkspaceProductTarget, ...WorkspaceProductTarget[]],
+    products: values.products.flatMap((kind) => productTargets[kind] ?? []) as [
+      WorkspaceProductTarget,
+      ...WorkspaceProductTarget[],
+    ],
   };
 };
 
@@ -96,7 +97,11 @@ export const toVoucherConfigurationInput = (
     maxUses: _maxUses,
     maxUsesPerCustomer: _maxUsesPerCustomer,
     ...configuration
-  } = toDiscountCodeConfigurationInput(values);
+  } = toDiscountCodeConfigurationInput({
+    ...values,
+    maxUses: "",
+    maxUsesPerCustomer: "",
+  });
   return configuration;
 };
 
