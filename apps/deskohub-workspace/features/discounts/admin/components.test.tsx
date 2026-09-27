@@ -668,6 +668,19 @@ describe("discount administration pages", () => {
           }
           return [...item.classList];
         });
+    const readGridItemElement = (grid: HTMLElement, name: string) => {
+      const control = [...grid.querySelectorAll("input, select")].find(
+        (candidate) => candidate.getAttribute("name") === name
+      );
+      if (!control) throw new Error(`No named control ${name} in config grid`);
+      let item: HTMLElement = control;
+      while (item.parentElement !== grid) {
+        const parent = item.parentElement;
+        if (!parent) throw new Error(`Control ${name} is outside the grid`);
+        item = parent;
+      }
+      return item;
+    };
     const readConfigurationGrid = (
       view: Pick<ReturnType<typeof render>, "getByLabelText">
     ) => findConfigurationGrid(view.getByLabelText("Valid from"));
@@ -794,9 +807,19 @@ describe("discount administration pages", () => {
     const voucherItems = readGridItems(voucherGrid);
     expect(voucherItems[0]).toContain("md:col-span-2");
     expect(voucherItems[1]).toContain("md:col-span-2");
+    // Both datetime controls share one wrapper, and the voucher variant
+    // spans all four outer columns on wide screens (its two inner columns
+    // hold the pair) while still stacking full width on the narrow grid.
+    const voucherValidFromItem = readGridItemElement(voucherGrid, "validFrom");
+    const voucherValidUntilItem = readGridItemElement(
+      voucherGrid,
+      "validUntil"
+    );
+    expect(voucherValidUntilItem).toBe(voucherValidFromItem);
     for (const item of [voucherItems[2], voucherItems[3]]) {
-      expect(item).toContain("md:col-span-2");
+      expect(item).toContain("md:col-span-4");
       expect(item).toContain("col-span-2");
+      expect(item).toContain("grid-cols-1");
       expect(item).toContain("md:grid-cols-2");
     }
   });

@@ -418,7 +418,7 @@ describe("DateTimeInput", () => {
     const day13 = dayInCurrentMonth(13);
     let minimum = `${day10.toString()}T09:30`;
     const onChange = mock(() => undefined);
-    const view = render(
+    const renderComposite = () => (
       <form aria-label="Bound form">
         <DateTimeInput
           dateLabel="Start date"
@@ -426,10 +426,12 @@ describe("DateTimeInput", () => {
           locale="en-US"
           minimum={() => minimum}
           name="startsAt"
+          onChange={onChange}
           timeLabel="Start time"
         />
       </form>
     );
+    const view = render(renderComposite());
     const readHidden = () =>
       [
         ...view.container.querySelectorAll<HTMLInputElement>(
@@ -442,26 +444,22 @@ describe("DateTimeInput", () => {
     expect(currentMonthGridDay(view, 12)!.disabled).toBe(false);
 
     // The minimum advances past day 12 while the calendar stays open: the
-    // stale day click is rejected against the freshly resolved bound.
+    // stale day click is rejected by the calendar's event-time bound check,
+    // so nothing is emitted, the popover stays open instead of closing over
+    // an accepted selection, and the displayed date never becomes the
+    // rejected day.
     minimum = `${day13.toString()}T09:30`;
     fireEvent.click(currentMonthGridDay(view, 12)!);
     expect(onChange).not.toHaveBeenCalled();
+    expect(view.queryByRole("grid")).not.toBeNull();
     expect(readHidden().value).toBe(`${day10.toString()}T16:00`);
+    expect(
+      view.getByRole("button", { name: "Start date" }).textContent
+    ).toContain(day10.toLocaleString("en-US", { dateStyle: "long" }));
 
     // After a rerender the stale day renders disabled in the calendar: the
     // calendar reloads its day flags when the popover is reopened.
-    view.rerender(
-      <form aria-label="Bound form">
-        <DateTimeInput
-          dateLabel="Start date"
-          defaultValue={`${day10.toString()}T16:00`}
-          locale="en-US"
-          minimum={() => minimum}
-          name="startsAt"
-          timeLabel="Start time"
-        />
-      </form>
-    );
+    view.rerender(renderComposite());
     fireEvent.keyDown(view.getByRole("button", { name: "Start date" }), {
       key: "Escape",
     });

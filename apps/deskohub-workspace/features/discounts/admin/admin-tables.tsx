@@ -1134,7 +1134,9 @@ export function DiscountCodeConfigurationFields({
         />
         Enabled
       </label>
-      <div className="col-span-2 grid min-w-0 grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2">
+      <div
+        className={`col-span-2 grid min-w-0 grid-cols-1 gap-4 ${showMaxUses ? "md:col-span-2" : "md:col-span-4"} md:grid-cols-2`}
+      >
         <DirtyEventSlot className="min-w-0" value={validFrom}>
           <FormField
             description={redemptionHintText}
