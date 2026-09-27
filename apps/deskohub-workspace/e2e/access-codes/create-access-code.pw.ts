@@ -84,7 +84,10 @@ interface WindowBoundaryLabels {
  * the date trigger button opens the calendar popover whose day buttons carry
  * full-date accessible names, and the visible time editor is a native
  * `input[type=time]`. Every interaction is a trusted Playwright action, so
- * the hydrated React handlers receive genuine events.
+ * the hydrated React handlers receive genuine events. Day and navigation
+ * buttons are scoped to the opened popover dialog (Radix names it after the
+ * date label) because the previous field's closing popover can still be
+ * mounted mid-exit and expose a matching day button of its own.
  */
 const fillDateTimeInput = (
   page: Page,
@@ -108,6 +111,7 @@ const fillDateTimeInput = (
   }
 
   return (async () => {
+    const popover = page.getByRole("dialog", { name: labels.date });
     // The calendar popover opens on the current month, so navigate the
     // grid to the planned month before picking the day.
     const now = new Date();
@@ -125,11 +129,11 @@ const fillDateTimeInput = (
       navigated < navigation.steps;
       navigated += 1
     ) {
-      await page
+      await popover
         .getByRole("button", { name: navigation.label, exact: true })
         .click();
     }
-    await page
+    await popover
       .getByRole("button", {
         name: new RegExp(
           `${monthNames[month - 1]} ${day}${ordinalSuffix(day)}, ${year}`
