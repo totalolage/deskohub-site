@@ -36,6 +36,22 @@ const customerProfileAddressFields = {
   country: trimmedOptionalText(2),
 } as const;
 
+/**
+ * The single source of the business billing field schemas: the profile
+ * contract validates saved billing input against them, and the ARES mapper
+ * decodes registry values through the same schemas so both paths share one
+ * definition of trimming and maximum length.
+ */
+const customerProfileBusinessBillingSchema = Schema.Struct({
+  ...customerProfileAddressFields,
+  companyName: trimmedRequiredText(200),
+  companyId: trimmedOptionalText(32),
+  vatId: trimmedOptionalText(32),
+});
+
+export const customerProfileBusinessBillingFields =
+  customerProfileBusinessBillingSchema.fields;
+
 export type CustomerProfileAddressInput = {
   readonly addressLine1?: string;
   readonly addressLine2?: string;
@@ -51,10 +67,7 @@ export const customerProfileBillingSchema = Schema.Union([
   }),
   Schema.Struct({
     kind: Schema.Literal("business"),
-    ...customerProfileAddressFields,
-    companyName: trimmedRequiredText(200),
-    companyId: trimmedOptionalText(32),
-    vatId: trimmedOptionalText(32),
+    ...customerProfileBusinessBillingFields,
   }),
 ]);
 

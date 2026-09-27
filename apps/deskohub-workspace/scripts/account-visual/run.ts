@@ -57,7 +57,7 @@ import {
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
 const appRoot = resolve(import.meta.dir, "../..");
-const defaultOutputRoot = "/tmp/opencode/pr239-account-redesign/visual";
+export const defaultOutputRoot = "/tmp/opencode/pr239-account-redesign/visual";
 const referencePrefix = "e318512b-b78b-4780-8d86-7dcd43cc3d1f-";
 const referenceSuffixes = {
   profile: "fab0fa57-710e-4a5c-9807-a8ada402931b.png",
@@ -72,14 +72,14 @@ const actualAccountPagePath = join(
   appRoot,
   "features/account/components/account-page.tsx"
 );
-const fontPaths = {
+export const fontPaths = {
   regular: join(appRoot, "assets/fonts/Sculpin/regular.woff2"),
   italic: join(appRoot, "assets/fonts/Sculpin/italic.woff2"),
 } as const;
 const rendererEntryPath = join(import.meta.dir, "browser-entry.tsx");
 const defaultAdapterPath = join(import.meta.dir, "default-adapter.tsx");
 const populatedAdapterPath = join(import.meta.dir, "populated-adapter.tsx");
-const rendererCssPath = join(import.meta.dir, "renderer.css");
+export const rendererCssPath = join(import.meta.dir, "renderer.css");
 const postCssConfigPath = join(appRoot, "postcss.config.mjs");
 const fixedClockIso = "2026-11-10T10:00:00.000Z";
 const fixedClockMilliseconds = Date.parse(fixedClockIso);
@@ -241,7 +241,7 @@ type SourceFile = {
   readonly bytes: number;
 };
 
-type BrowserProblem = {
+export type BrowserProblem = {
   readonly kind: "page-error" | "console-error" | "blocked-external-request";
   readonly message: string;
 };
@@ -1305,7 +1305,7 @@ import { mountAccountVisual } from ${JSON.stringify(rendererEntryPath)};
 mountAccountVisual(Adapter, accountVisualAdapterMetadata, ${JSON.stringify(locale)});
 `;
 
-const buildEntryPathForRun = (runDirectory: string) =>
+export const buildEntryPathForRun = (runDirectory: string) =>
   join(runDirectory, ".account-visual-build-entry.tsx");
 
 type BuildResult = {
@@ -1319,7 +1319,7 @@ type BuildMetafile = {
   readonly inputs?: Readonly<Record<string, { readonly bytes?: number }>>;
 };
 
-const buildBundle = async (
+export const buildBundle = async (
   runDirectory: string,
   adapterPath: string,
   locale: AccountVisualLocale
@@ -1445,7 +1445,7 @@ const makeHtml = (
 </html>
 `;
 
-const makeStaticServer = async (
+export const makeStaticServer = async (
   javascriptPath: string,
   cssPath: string,
   rendererCss: Uint8Array,
@@ -1522,7 +1522,7 @@ const makeStaticServer = async (
   } as const;
 };
 
-const createContext = async (
+export const createContext = async (
   browser: Browser,
   baseUrl: string,
   problems: BrowserProblem[],
@@ -1553,11 +1553,12 @@ const createContext = async (
   return context;
 };
 
-const loadRendererPage = async (
+export const loadRendererPage = async (
   context: BrowserContext,
   baseUrl: string,
   screen: AccountVisualScreen,
-  problems: BrowserProblem[]
+  problems: BrowserProblem[],
+  searchOverride?: string
 ) => {
   const page = await context.newPage();
   page.on("pageerror", (error) => {
@@ -1569,7 +1570,7 @@ const loadRendererPage = async (
     }
   });
   try {
-    await page.goto(`${baseUrl}/?screen=${screen}`, {
+    await page.goto(`${baseUrl}/?${searchOverride ?? `screen=${screen}`}`, {
       waitUntil: "load",
       timeout: 15_000,
     });
@@ -5169,7 +5170,10 @@ const runNativeValidationProbe = async ({
   }
 };
 
-const makeUniqueRunDirectory = async (outputRoot: string, label: string) => {
+export const makeUniqueRunDirectory = async (
+  outputRoot: string,
+  label: string
+) => {
   const resolvedOutputRoot = resolve(outputRoot);
   if (!isWithin(defaultOutputRoot, resolvedOutputRoot)) {
     throw new Error(
