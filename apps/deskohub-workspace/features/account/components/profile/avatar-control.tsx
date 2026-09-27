@@ -185,7 +185,7 @@ export function AvatarControl({
   };
 
   return (
-    <div className="flex shrink-0 flex-col items-start gap-2">
+    <div className="flex w-48 shrink-0 flex-col items-start gap-2">
       <div className="relative size-20">
         <div
           aria-hidden="true"
@@ -229,7 +229,7 @@ export function AvatarControl({
       </div>
       {displayAvatar !== null ? (
         <Button
-          className="h-8 rounded-xl border border-[#dfe4ec] bg-white px-3 text-xs uppercase tracking-[0.08em] text-[#344258] hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
+          className="h-auto min-h-8 whitespace-normal rounded-xl border border-[#dfe4ec] bg-white px-3 text-left text-xs uppercase leading-4 tracking-[0.08em] text-[#344258] hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
           disabled={isPending}
           onClick={handleRemove}
           size="sm"
