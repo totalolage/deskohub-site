@@ -279,22 +279,50 @@ test.describe("admin customers filter navigation", () => {
       const warm = await page.request.get("/admin/customers");
       await warm.body();
       const initial = await page.goto("/admin/customers");
+      expect(initial?.status()).toBe(200);
+      // React swaps streamed Suspense content into place with inline scripts,
+      // which never run with JavaScript disabled, so the server-rendered
+      // controls stay inside hidden placeholders. Revealing them here is a
+      // side-effect-free preparation step; the submission itself below is
+      // issued by the browser natively.
+      await page.evaluate(() => {
+        for (const element of document.querySelectorAll("[hidden]")) {
+          element.removeAttribute("hidden");
+        }
+      });
       const initialHtml = await initial!.text();
       // The consent filter must remain a plain HTML GET form: without
       // JavaScript the browser itself builds and issues this submission.
       expect(initialHtml).toContain('method="get"');
       expect(initialHtml).toContain('name="consent"');
+      // The hidden controls must serialize the form's actual defaults
+      // (activity/desc), because the browser sends exactly these values.
       expect(initialHtml).toContain('name="sort"');
       expect(initialHtml).toContain('name="direction"');
+      expect(initialHtml).toContain('value="activity"');
+      expect(initialHtml).toContain('value="desc"');
 
-      // The exact document GET a native form submission of the unfiltered
-      // form produces (select consent=granted; hidden sort/direction kept).
-      const submitted = await page.goto(
-        "/admin/customers?consent=granted&sort=activity&direction=asc"
-      );
+      // Submit the form natively: select the consent option and click
+      // "Apply filters" so the browser itself builds and issues the GET.
+      await page.locator("#customer-consent").selectOption("granted");
+      const [submitted] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            response.request().method() === "GET" &&
+            new URL(response.url()).pathname === "/admin/customers"
+        ),
+        page.getByRole("button", { name: "Apply filters" }).click(),
+      ]);
       expect(submitted?.status()).toBe(200);
+      const submittedUrl = new URL(submitted!.url());
+      expect(submittedUrl.pathname).toBe("/admin/customers");
+      expect(submittedUrl.searchParams.get("consent")).toBe("granted");
+      expect(submittedUrl.searchParams.get("sort")).toBe("activity");
+      expect(submittedUrl.searchParams.get("direction")).toBe("desc");
+      // A new filter submission resets pagination: no page parameter.
+      expect(submittedUrl.searchParams.get("page")).toBeNull();
       await expect(page).toHaveURL(
-        /consent=granted&sort=activity&direction=asc/
+        /consent=granted&sort=activity&direction=desc/
       );
       const html = await submitted!.text();
       // Server-rendered results reflect the filter even though the streamed
@@ -302,6 +330,10 @@ test.describe("admin customers filter navigation", () => {
       expect(html).toContain(
         'href="/admin/customers/e2e-nojs-customer-granted-1"'
       );
+      expect(html).toContain(
+        'href="/admin/customers/e2e-nojs-customer-granted-2"'
+      );
+      expect(html).not.toContain("e2e-nojs-customer-withdrawn");
       expect(html).not.toContain("e2e-nojs-customer-never");
       expect(html).toContain(`${grantedTotal} customers`);
       expect(html).toContain('value="granted" selected');
