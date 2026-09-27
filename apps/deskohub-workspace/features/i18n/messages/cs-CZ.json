@@ -35,7 +35,7 @@
   "legalScreenPreferencesUnavailable": "Cookies tohoto prohlížeče spravujte v nastavení cookies. Marketingová sdělení spravujte na stránce ochrany osobních údajů v účtu, pokud je váš ověřený účet propojený se záznamem zákazníka, prostřednictvím vyhrazeného odkazu pro konkrétního zákazníka v budoucím marketingovém sdělení nebo kontaktováním podpory.",
   "legalScreenUnavailable": "Nedostupné",
   "legalScreenExportTitle": "Stažení vašich účtových dat",
-  "legalScreenExportDescription": "Stáhněte si strojově čitelný snímek účtových dat popsaných v této sekci: vaši identitu, váš profil, vaše rezervace a váš marketingový souhlas.",
+  "legalScreenExportDescription": "Stáhněte si strojově čitelný snímek účtových dat, které o vás Deskohub uchovává: vaši identitu a profil, vaše rezervace a historii z rezervačního systému, platby, slevy, metadata faktur a jejich doručení, přijetí právních podmínek, přístupy ke dveřím a vaše souhlasy.",
   "legalScreenExportAction": "Stáhnout svá účtová data",
   "legalScreenExportPendingStatus": "Připravujeme stažení vašich účtových dat…",
   "legalScreenExportDeliveredStatus": "Stahování vašich účtových dat začalo.",

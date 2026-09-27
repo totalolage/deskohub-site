@@ -224,16 +224,46 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
       view.getByText(m.legalScreenExportNotStatutory({}, { locale }))
     ).toBeTruthy();
 
-    // The archive contents are visible before the download: the section list
-    // matches the shared catalog order exactly, plus the manifest entry.
+    // The download action is available without expanding anything, and the
+    // full itemization is a secondary disclosure that starts collapsed.
+    const disclosure = view.getByRole("button", {
+      name: m.legalScreenExportSectionsLabel(
+        { count: accountDataExportSections.length },
+        { locale }
+      ),
+    });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    const detailsId = disclosure.getAttribute("aria-controls");
+    expect(detailsId).toBeTruthy();
+    const details = view.container.querySelector(`#${CSS.escape(detailsId!)}`);
+    expect(details?.hasAttribute("hidden")).toBe(true);
+    const exportAction = view.getByRole("button", {
+      name: m.legalScreenExportAction({}, { locale }),
+    });
+    expect((exportAction as HTMLButtonElement).disabled).toBe(false);
+    expect(exportAction.getAttribute("type")).toBe("button");
+    expect(exportAction.getAttribute("aria-live")).toBeNull();
+    // The action sits before the disclosure in DOM order.
     expect(
-      view.getByText(
-        m.legalScreenExportSectionsLabel(
-          { count: accountDataExportSections.length },
-          { locale }
-        )
-      )
+      exportAction.compareDocumentPosition(disclosure) &
+        Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+  });
+}
+
+for (const locale of ["en-US", "cs-CZ"] as const) {
+  test(`${locale} expands the collapsible archive itemization in catalog order`, () => {
+    const view = renderLegalScreen(locale);
+    const disclosure = view.getByRole("button", {
+      name: m.legalScreenExportSectionsLabel(
+        { count: accountDataExportSections.length },
+        { locale }
+      ),
+    });
+
+    fireEvent.click(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+
     const sectionNames = [
       ...accountDataExportSections.map((section) =>
         sectionTestName(section.path, locale)
@@ -244,25 +274,28 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
       view.container.querySelectorAll("ul li")
     ).map((item) => item.textContent);
     expect(listedItems).toEqual(sectionNames);
-    const exportAction = view.getByRole("button", {
-      name: m.legalScreenExportAction({}, { locale }),
-    });
-    expect((exportAction as HTMLButtonElement).disabled).toBe(false);
-    expect(exportAction.getAttribute("type")).toBe("button");
-    expect(exportAction.getAttribute("aria-live")).toBeNull();
+
+    fireEvent.click(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    const detailsId = disclosure.getAttribute("aria-controls");
+    expect(
+      view.container
+        .querySelector(`#${CSS.escape(detailsId!)}`)
+        ?.hasAttribute("hidden")
+    ).toBe(true);
   });
 }
 
 for (const locale of ["en-US", "cs-CZ"] as const) {
-  test(`${locale} stacks the export action in its own row below the explanatory text`, () => {
+  test(`${locale} stacks the export action after the scope copy and before the full-access path`, () => {
     const view = renderLegalScreen(locale);
     const exportAction = view.getByRole("button", {
       name: m.legalScreenExportAction({}, { locale }),
     });
 
-    // Structural placement: the action follows the title and both supporting
-    // paragraphs in DOM order, stacked vertically instead of sharing a
-    // flex row with the long localized prose.
+    // Structural placement: the action follows the title and scope sentence,
+    // and the statutory full-access path closes the block after the action
+    // and the collapsible itemization — the caveat never gates the action.
     const exportTitle = view.getByRole("heading", {
       level: 3,
       name: m.legalScreenExportTitle({}, { locale }),
@@ -273,12 +306,26 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
     const notStatutory = view.getByText(
       m.legalScreenExportNotStatutory({}, { locale })
     );
-    for (const preceding of [exportTitle, description, notStatutory]) {
+    for (const preceding of [exportTitle, description]) {
       expect(
         preceding.compareDocumentPosition(exportAction) &
           Node.DOCUMENT_POSITION_FOLLOWING
       ).toBeTruthy();
     }
+    expect(
+      exportAction.compareDocumentPosition(notStatutory) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    const disclosure = view.getByRole("button", {
+      name: m.legalScreenExportSectionsLabel(
+        { count: accountDataExportSections.length },
+        { locale }
+      ),
+    });
+    expect(
+      disclosure.compareDocumentPosition(notStatutory) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
 
     // No oval-inducing flex-shrink fighters on the action: it sizes to its
     // content and may wrap naturally only at extreme narrow widths.

@@ -60,16 +60,16 @@ export function LegalScreen({
             <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
               {m.legalScreenExportDescription({}, { locale })}
             </p>
-            <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
+          </div>
+          <AccountDataExport locale={locale} />
+          <div className="mt-4 min-w-0">
+            <p className="break-words text-base leading-6 text-[#586c88]">
               {m.legalScreenExportNotStatutory({}, { locale })}{" "}
               <PolicyLink
                 href={`${localePath}/privacy-policy`}
                 label={m.legalScreenExportStatutoryLink({}, { locale })}
               />
             </p>
-          </div>
-          <div className="mt-4 min-w-0">
-            <AccountDataExport locale={locale} />
           </div>
         </div>
       )}

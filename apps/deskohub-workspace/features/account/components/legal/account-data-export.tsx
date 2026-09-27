@@ -1,6 +1,6 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { ChevronDown, Download } from "lucide-react";
 import { useCallback, useId, useState } from "react";
 import { accountDataExportSections } from "@/features/account/account-data-export-sections";
 import { type Locale, m } from "@/features/i18n";
@@ -51,7 +51,9 @@ const sectionNameOf = (path: string, locale: Locale): string => {
 };
 
 /**
- * The self-service account data download. The browser-only fetch keeps error
+ * The self-service account data download. The download action comes first —
+ * it must be reachable without expanding anything — and the full archive
+ * itemization is a secondary disclosure. The browser-only fetch keeps error
  * handling in the page and the archive body out of logs and traces; the
  * archive itself lives only in this response and the customer's browser.
  */
@@ -59,7 +61,9 @@ export function AccountDataExport({ locale }: { readonly locale: Locale }) {
   const [state, setState] = useState<ExportRequestState>({
     kind: "idle",
   });
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const statusId = useId();
+  const detailsId = useId();
   const pending = state.kind === "pending";
 
   const downloadExport = useCallback(async () => {
@@ -99,37 +103,55 @@ export function AccountDataExport({ locale }: { readonly locale: Locale }) {
 
   return (
     <div>
-      <div className="mt-2 min-w-0">
-        <p className="break-words text-sm leading-5 text-[#586c88]">
+      <div className="mt-4 min-w-0">
+        <Button
+          aria-busy={pending}
+          aria-controls={statusId}
+          className="h-auto w-fit whitespace-normal px-4 py-2 text-center leading-5"
+          disabled={pending}
+          id="account-data-export"
+          onClick={() => {
+            void downloadExport();
+          }}
+          type="button"
+          variant="secondary"
+        >
+          <Download aria-hidden="true" className="size-4 shrink-0" />
+          {m.legalScreenExportAction({}, { locale })}
+        </Button>
+        <div aria-live="polite" id={statusId} role="status">
+          {statusMessage && <p className="mt-2 text-sm">{statusMessage}</p>}
+        </div>
+      </div>
+      <div className="mt-4 min-w-0">
+        <button
+          aria-controls={detailsId}
+          aria-expanded={detailsOpen}
+          className="inline-flex min-w-0 max-w-full items-start gap-1 break-words text-left text-sm leading-5 text-[#586c88] underline decoration-[#586c88]/40 underline-offset-4 hover:text-[#1f2d43] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
+          onClick={() => {
+            setDetailsOpen((open) => !open);
+          }}
+          type="button"
+        >
+          <ChevronDown
+            aria-hidden="true"
+            className={`mt-0.5 size-4 shrink-0 transition-transform ${
+              detailsOpen ? "rotate-180" : ""
+            }`}
+          />
           {m.legalScreenExportSectionsLabel(
             { count: accountDataExportSections.length },
             { locale }
           )}
-        </p>
-        <ul className="mt-1 list-disc pl-5 text-sm leading-5 text-[#586c88]">
-          {accountDataExportSections.map((section) => (
-            <li key={section.path}>{sectionNameOf(section.path, locale)}</li>
-          ))}
-          <li>{m.legalScreenExportSectionManifest({}, { locale })}</li>
-        </ul>
-      </div>
-      <Button
-        aria-busy={pending}
-        aria-controls={statusId}
-        className="mt-4 h-auto w-fit whitespace-normal px-4 py-2 text-center leading-5"
-        disabled={pending}
-        id="account-data-export"
-        onClick={() => {
-          void downloadExport();
-        }}
-        type="button"
-        variant="secondary"
-      >
-        <Download aria-hidden="true" className="size-4 shrink-0" />
-        {m.legalScreenExportAction({}, { locale })}
-      </Button>
-      <div aria-live="polite" id={statusId} role="status">
-        {statusMessage && <p className="mt-2 text-sm">{statusMessage}</p>}
+        </button>
+        <div hidden={!detailsOpen} id={detailsId}>
+          <ul className="mt-1 list-disc pl-5 text-sm leading-5 text-[#586c88]">
+            {accountDataExportSections.map((section) => (
+              <li key={section.path}>{sectionNameOf(section.path, locale)}</li>
+            ))}
+            <li>{m.legalScreenExportSectionManifest({}, { locale })}</li>
+          </ul>
+        </div>
       </div>
     </div>
   );
