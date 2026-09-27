@@ -366,6 +366,11 @@ class FakeAccountExternalState {
     return this.usersByEmail.get(email)?.id;
   }
 
+  findAuthUserEmailById(userId: string) {
+    this.authReads.push(`email:${userId}`);
+    return this.usersById.get(userId)?.email;
+  }
+
   findLinkedCustomerId(userId: string) {
     this.authReads.push(`link:${userId}`);
     return this.linksByUserId.get(userId);
@@ -1067,6 +1072,8 @@ mock.module("./resend-retrieval", () => ({
 mock.module("./auth-rows", () => ({
   assertNoAuthRows: (userId: string) =>
     Effect.sync(() => requireExternal().assertNoAuthRows(userId)),
+  findAuthUserEmailById: (userId: string) =>
+    Effect.sync(() => requireExternal().findAuthUserEmailById(userId)),
   findAuthUserIdByEmail: (email: string) =>
     Effect.sync(() => requireExternal().findAuthUserId(email)),
   findLinkedDotyposCustomerId: (userId: string) =>

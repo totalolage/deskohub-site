@@ -26,7 +26,7 @@ import {
   workspaceE2ETimeoutError,
 } from "../errors";
 import { pollUntil } from "../polling";
-import { assert, type Runner } from "../runtime";
+import { addRedaction, assert, type Runner } from "../runtime";
 import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 import {
   accountSectionLandmarks,
@@ -34,6 +34,7 @@ import {
 } from "./account-sections";
 import {
   assertNoAuthRows,
+  findAuthUserEmailById,
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
   removeSyntheticAccountLink,
@@ -56,7 +57,10 @@ import {
 } from "./fixtures";
 import {
   classifyWorkspaceE2EExportIdentityMatch,
+  exportEmailDivergenceMessage,
   exportIdentityVerdictFailureMessage,
+  workspaceE2EExportPageProbeScript,
+  type WorkspaceE2EExportProbePayload,
 } from "./export-identity";
 import type { MagicLinkRateBudget } from "./rate-budget";
 import {
@@ -92,7 +96,6 @@ const accountSuffix = "/account";
 const legalSuffix = "/account/legal";
 const callbackSuffix = "/auth/callback";
 const exportActionLabel = "Download your account data";
-const exportProbeWindowKey = "__workspaceAccountExportProbe";
 
 const signInFormSelector = "#account-sign-in-form";
 const signInEmailSelector = "#account-sign-in-email";
@@ -1501,6 +1504,46 @@ export const makeWorkspaceE2EAccountCases = ({
           )
         );
 
+        const identity = yield* runStep(
+          step(
+            "reads the signed-in identity for the export assertions",
+            Effect.gen(function* () {
+              const userId = yield* requireAuthUserId(recipient);
+              const customerId = yield* requireLinkedCustomerId(userId);
+              assert(
+                journalRef.journal.authUserIds.includes(userId),
+                "the export case ran against an unjournaled Better Auth identity"
+              );
+              return { customerId, userId };
+            }),
+            datasourceTimeout
+          )
+        );
+
+        // The exact synthetic row email is read by the journaled id alone so
+        // the divergence booleans compare the document against the row the
+        // session provably belongs to. It is registered with the process
+        // redactor because it is injected into page-evaluation input, and it
+        // only ever feeds the in-page boolean probe.
+        const rowEmail = yield* runStep(
+          step(
+            "reads the synthetic auth row email for the divergence probe",
+            Effect.gen(function* () {
+              const email = yield* findAuthUserEmailById(identity.userId);
+              assert(
+                email !== undefined,
+                "the journaled synthetic auth row disappeared before the export probe"
+              );
+              addRedaction(email);
+              return email;
+            }),
+            datasourceTimeout
+          )
+        );
+
+        // The profile page visit and the export probe share one document: the
+        // displayed email must be captured and compared in the SAME document,
+        // because any navigation (for example to the legal page) destroys it.
         yield* runStep(
           step(
             "asserts the export session is the synthetic main recipient",
@@ -1533,19 +1576,40 @@ export const makeWorkspaceE2EAccountCases = ({
           )
         );
 
-        const identity = yield* runStep(
+        // The probe fetch runs in the SAME document that still displays the
+        // profile email: Playwright awaits the returned promise, so one eval
+        // captures the displayed email live and resolves with the closed
+        // boolean payload. Only structural keys, counts, and booleans cross
+        // to the runner; the snapshot body never leaves the page.
+        const probePayload = yield* runStep(
           step(
-            "reads the signed-in identity for the export assertions",
-            Effect.gen(function* () {
-              const userId = yield* requireAuthUserId(recipient);
-              const customerId = yield* requireLinkedCustomerId(userId);
-              assert(
-                journalRef.journal.authUserIds.includes(userId),
-                "the export case ran against an unjournaled Better Auth identity"
-              );
-              return { customerId, userId };
-            }),
-            datasourceTimeout
+            "requests the account data export document on the profile page",
+            evalBrowserScript(
+              "request account data export",
+              run,
+              session,
+              workspaceE2EExportPageProbeScript({
+                requestUrl: `/${config.locale}${accountSuffix}/data-export`,
+                accountId: identity.userId,
+                rowEmail,
+                recipientEmail: recipient,
+                profileEmailSelector: profileEmailSelector,
+              }),
+              { logOutput: false, timeoutMs: browserTimeout }
+            ).pipe(
+              Effect.flatMap((result) => {
+                if (result.exitCode !== 0) {
+                  return workspaceE2EError(
+                    "the account data export probe did not return a result",
+                    { operation: "request account data export" }
+                  );
+                }
+                return Effect.succeed(
+                  JSON.parse(result.stdout) as WorkspaceE2EExportProbePayload
+                );
+              })
+            ),
+            browserTimeout
           )
         );
 
@@ -1560,159 +1624,21 @@ export const makeWorkspaceE2EAccountCases = ({
           )
         );
 
-        // The probe fetch runs inside the authenticated page and returns only
-        // allowlisted structural facts; the snapshot body never reaches the
-        // runner output, logs, or artifacts.
-        yield* runStep(
-          step(
-            "requests the account data export document in the page",
-            evalBrowserScript(
-              "request account data export",
-              run,
-              session,
-              `(() => {
-                const requestUrl = ${JSON.stringify(
-                  `/${config.locale}${accountSuffix}/data-export`
-                )};
-                window[${JSON.stringify(exportProbeWindowKey)}] = null;
-                fetch(requestUrl, {
-                  headers: { accept: "application/json" },
-                })
-                  .then((response) =>
-                    response.text().then((text) => ({
-                      cacheControl: response.headers.get("cache-control"),
-                      contentDisposition: response.headers.get("content-disposition"),
-                      contentType: response.headers.get("content-type"),
-                      ok: response.ok,
-                      text,
-                    }))
-                  )
-                  .then((probe) => {
-                    const document = probe.ok ? JSON.parse(probe.text) : null;
-                    window[${JSON.stringify(exportProbeWindowKey)}] = {
-                      requestUrl,
-                      cacheControl: probe.cacheControl,
-                      contentDisposition: probe.contentDisposition,
-                      contentType: probe.contentType,
-                      ok: probe.ok,
-                      document:
-                        document === null
-                          ? null
-                          : {
-                              // Compared as a boolean against the
-                              // journaled identity so a failed run
-                              // decides between a session divergence
-                              // and an email-string divergence; the
-                              // raw account id never leaves the page.
-                              accountIdMatches:
-                                document.identity.accountId === ${JSON.stringify(identity.userId)},
-                              consentKeys:
-                                document.marketingConsent === null
-                                  ? null
-                                  : Object.keys(document.marketingConsent).sort(),
-                              dotyposProfileKeys:
-                                document.dotyposProfile === null
-                                  ? null
-                                  : Object.keys(document.dotyposProfile).sort(),
-                              email: document.identity.email,
-                              generatedAt: document.meta.generatedAt,
-                              keys: Object.keys(document).sort(),
-                              reservationsCount: Array.isArray(
-                                document.reservations
-                              )
-                                ? document.reservations.length
-                                : -1,
-                              schemaVersion: document.meta.schemaVersion,
-                              scope: document.meta.scope,
-                            },
-                    };
-                  })
-                  .catch(() => {
-                    window[${JSON.stringify(exportProbeWindowKey)}] = {
-                      ok: false,
-                      document: null,
-                    };
-                  });
-                return true;
-              })()`,
-              { logOutput: false, timeoutMs: browserTimeout }
-            ),
-            browserTimeout
-          )
-        );
-
-        yield* runStep(
-          step(
-            "waits for the export probe result",
-            waitForBrowserCondition(
-              run,
-              session,
-              "account data export probe result",
-              `(() => window[${JSON.stringify(exportProbeWindowKey)}] !== null)()`,
-              { timeoutMs: providerTransition }
-            ),
-            providerTransition
-          )
-        );
-
-        const probeText = yield* runStep(
-          step(
-            "reads the export probe result",
-            evalBrowserScript(
-              "read account data export probe",
-              run,
-              session,
-              `(() => JSON.stringify(window[${JSON.stringify(exportProbeWindowKey)}]))()`,
-              { logOutput: false, timeoutMs: browserTimeout }
-            ).pipe(
-              Effect.flatMap((result) => {
-                if (result.exitCode !== 0) {
-                  return workspaceE2EError(
-                    "the account data export probe did not return a result",
-                    { operation: "read account data export probe" }
-                  );
-                }
-                return Effect.succeed(
-                  JSON.parse(result.stdout) as {
-                    readonly requestUrl: string;
-                    readonly cacheControl: string | null;
-                    readonly contentDisposition: string | null;
-                    readonly contentType: string | null;
-                    readonly ok: boolean;
-                    readonly document: {
-                      readonly accountIdMatches: boolean;
-                      readonly consentKeys: readonly string[] | null;
-                      readonly dotyposProfileKeys: readonly string[] | null;
-                      readonly email: string;
-                      readonly generatedAt: string;
-                      readonly keys: readonly string[];
-                      readonly reservationsCount: number;
-                      readonly schemaVersion: number;
-                      readonly scope: readonly string[];
-                    } | null;
-                  }
-                );
-              })
-            ),
-            browserTimeout
-          )
-        );
-
         yield* runStep(
           step(
             "asserts the export document against the synthetic expectations",
             Effect.gen(function* () {
               assert(
-                probeText.ok && probeText.document !== null,
+                probePayload.ok && probePayload.document !== null,
                 "the account data export request did not succeed"
               );
-              if (!probeText.ok || probeText.document == null) {
+              if (!probePayload.ok || probePayload.document == null) {
                 return yield* workspaceE2EError(
                   "the account data export probe carried no document",
                   { operation: "assert account data export document" }
                 );
               }
-              const snapshot = probeText.document;
+              const snapshot = probePayload.document;
               // The journaled-account boolean splits the failure space
               // before the strict email equality: an account-id match with
               // an email mismatch proves an email-string divergence, while
@@ -1721,16 +1647,26 @@ export const makeWorkspaceE2EAccountCases = ({
               // reach the message.
               const verdict = classifyWorkspaceE2EExportIdentityMatch({
                 accountIdMatches: snapshot.accountIdMatches,
-                emailMatches: snapshot.email === recipient,
+                emailMatches:
+                  snapshot.emailDivergence.documentEmailMatchesRecipient,
               });
               if (verdict !== "match") {
                 return yield* workspaceE2EError(
-                  exportIdentityVerdictFailureMessage(verdict),
+                  verdict === "email-mismatch"
+                    ? // The divergence booleans were computed inside the
+                      // page against the exact journaled row email; the
+                      // fixed message carries booleans and the length
+                      // relation only.
+                      exportEmailDivergenceMessage(
+                        snapshot.emailDivergence
+                      )
+                    : exportIdentityVerdictFailureMessage(verdict),
                   { operation: "assert account data export document" }
                 );
               }
               assert(
-                snapshot.email === recipient,
+                snapshot.emailDivergence.documentEmailMatchesRecipient &&
+                  snapshot.emailDivergence.exactEqual,
                 "the export identity email did not match the synthetic recipient"
               );
               assert(
@@ -1768,17 +1704,17 @@ export const makeWorkspaceE2EAccountCases = ({
                 "the export reservations section was not an array"
               );
               assert(
-                (probeText.contentType ?? "").startsWith("application/json") &&
-                  (probeText.contentType ?? "").includes("charset=utf-8"),
+                (probePayload.contentType ?? "").startsWith("application/json") &&
+                  (probePayload.contentType ?? "").includes("charset=utf-8"),
                 "the export response was not served as UTF-8 JSON"
               );
               assert(
-                (probeText.cacheControl ?? "").replace(/\s+/g, "") ===
+                (probePayload.cacheControl ?? "").replace(/\s+/g, "") ===
                   "private,no-store",
                 "the export response was not private and no-store"
               );
               assert(
-                (probeText.contentDisposition ?? "").startsWith("attachment"),
+                (probePayload.contentDisposition ?? "").startsWith("attachment"),
                 "the export response was not delivered as a JSON attachment"
               );
               assert(

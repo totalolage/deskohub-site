@@ -532,9 +532,13 @@ describe("workspace account e2e graph", () => {
       "requests the export sign-in link",
       "retrieves the delivered export sign-in link",
       "consumes the export sign-in link as the synthetic main recipient",
-      "asserts the export session is the synthetic main recipient",
       "reads the signed-in identity for the export assertions",
-      "requests the account data export document in the page",
+      "reads the synthetic auth row email for the divergence probe",
+      "asserts the export session is the synthetic main recipient",
+      // The export probe must run in the SAME document that displays the
+      // profile email, before the legal-page navigation destroys it.
+      "requests the account data export document on the profile page",
+      "shows the account data download control on the legal page",
     ];
     const stepCalls = orderedStepIds.map((stepId) => {
       const call = stepCallById(stepId);
