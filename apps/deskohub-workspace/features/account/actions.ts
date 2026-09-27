@@ -228,7 +228,7 @@ const aresLookupFailureResult = (
   locale: Locale
 ): AresBusinessLookupResult =>
   Match.value(failure).pipe(
-    Match.tagsExhaustive({
+    Match.discriminatorsExhaustive("reason")({
       InvalidIco: () => ({
         status: "invalid-ico" as const,
         message: m.accountAresLookupInvalidIco({}, { locale }),

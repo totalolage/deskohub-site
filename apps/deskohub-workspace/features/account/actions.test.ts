@@ -1,12 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import {
-  AresInvalidIco,
-  type AresLookupFailure,
-  AresNotFound,
-  AresUnavailable,
-} from "@deskohub/ares";
+import { AresLookupFailure } from "@deskohub/ares";
 import { Context, Effect, Layer } from "effect";
 import { CustomerAccountAccessError } from "./customer-account";
 
@@ -161,10 +156,8 @@ Object.assign(AresLookup, {
   }),
 });
 mock.module("@deskohub/ares", () => ({
+  AresLookupFailure,
   AresLookupService: AresLookup,
-  AresInvalidIco,
-  AresNotFound,
-  AresUnavailable,
 }));
 
 const syntheticAresCompany = {
@@ -414,7 +407,9 @@ describe("account ARES business lookup action", () => {
   });
 
   test("reports an invalid company ID without touching the registry", async () => {
-    lookupOutcome = Effect.fail(new AresInvalidIco());
+    lookupOutcome = Effect.fail(
+      new AresLookupFailure({ reason: "InvalidIco" })
+    );
     const { lookupAresBusiness } = await importActions();
 
     const result = await lookupAresBusiness({ ico: "1234567a" });
@@ -430,7 +425,7 @@ describe("account ARES business lookup action", () => {
   });
 
   test("reports a missing company as not found", async () => {
-    lookupOutcome = Effect.fail(new AresNotFound());
+    lookupOutcome = Effect.fail(new AresLookupFailure({ reason: "NotFound" }));
     const { lookupAresBusiness } = await importActions();
 
     const result = await lookupAresBusiness({ ico: "27082440" });
@@ -444,7 +439,9 @@ describe("account ARES business lookup action", () => {
   });
 
   test("reports an unavailable registry as retryable", async () => {
-    lookupOutcome = Effect.fail(new AresUnavailable());
+    lookupOutcome = Effect.fail(
+      new AresLookupFailure({ reason: "Unavailable" })
+    );
     const { lookupAresBusiness } = await importActions();
 
     const result = await lookupAresBusiness({ ico: "27082440" });

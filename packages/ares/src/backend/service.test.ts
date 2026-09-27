@@ -2,11 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import {
-  AresInvalidIco,
-  type AresLookupFailure,
+  AresLookupFailure,
   AresLookupService,
-  AresNotFound,
-  AresUnavailable,
   isValidCzechCompanyIco,
 } from "./service";
 
@@ -36,6 +33,17 @@ const runLookup = (ico: string, fetchImpl: FetchLike) =>
     ),
     Effect.runPromise
   );
+
+const expectLookupFailure = (
+  result: Awaited<ReturnType<typeof runLookup>>,
+  reason: AresLookupFailure["reason"]
+) => {
+  expect(result.kind).toBe("failure");
+  if (result.kind !== "failure") return;
+  expect(result.failure).toBeInstanceOf(Error);
+  expect(result.failure._tag).toBe("AresLookupFailure");
+  expect(result.failure.reason).toBe(reason);
+};
 
 describe("Czech company ID validation", () => {
   test("accepts exactly eight digits with a valid mod-11 checksum", () => {
@@ -89,8 +97,7 @@ describe("AresLookupService", () => {
       return Promise.resolve(Response.json({}));
     });
 
-    expect(result.kind).toBe("failure");
-    expect(result.kind === "failure" && result.failure._tag).toBe("InvalidIco");
+    expectLookupFailure(result, "InvalidIco");
     expect(requests).toBe(0);
   });
 
@@ -104,8 +111,7 @@ describe("AresLookupService", () => {
       )
     );
 
-    expect(result.kind).toBe("failure");
-    expect(result.kind === "failure" && result.failure._tag).toBe("NotFound");
+    expectLookupFailure(result, "NotFound");
   });
 
   test("maps rate limiting and server errors to the unavailable failure", async () => {
@@ -113,10 +119,7 @@ describe("AresLookupService", () => {
       const result = await runLookup("27082440", () =>
         Promise.resolve(new Response(null, { status }))
       );
-      expect(result.kind).toBe("failure");
-      expect(result.kind === "failure" && result.failure._tag).toBe(
-        "Unavailable"
-      );
+      expectLookupFailure(result, "Unavailable");
     }
   });
 
@@ -125,10 +128,7 @@ describe("AresLookupService", () => {
       Promise.reject(new TypeError("network down"))
     );
 
-    expect(result.kind).toBe("failure");
-    expect(result.kind === "failure" && result.failure._tag).toBe(
-      "Unavailable"
-    );
+    expectLookupFailure(result, "Unavailable");
   });
 
   test("maps a malformed or unexpected provider payload to the unavailable failure", async () => {
@@ -138,10 +138,7 @@ describe("AresLookupService", () => {
       )
     );
 
-    expect(result.kind).toBe("failure");
-    expect(result.kind === "failure" && result.failure._tag).toBe(
-      "Unavailable"
-    );
+    expectLookupFailure(result, "Unavailable");
   });
 
   test("never leaks provider payload data into failure values", async () => {
@@ -155,10 +152,7 @@ describe("AresLookupService", () => {
       )
     );
 
-    expect(result.kind).toBe("failure");
-    expect(result.kind === "failure" && result.failure._tag).toBe(
-      "Unavailable"
-    );
+    expectLookupFailure(result, "Unavailable");
     expect(JSON.stringify(result)).not.toContain("must-not-leak");
   });
 
@@ -209,10 +203,7 @@ describe("AresLookupService", () => {
       )
     );
 
-    expect(result.kind).toBe("failure");
-    expect(result.kind === "failure" && result.failure._tag).toBe(
-      "Unavailable"
-    );
+    expectLookupFailure(result, "Unavailable");
   });
 
   test("maps a blank company name response to the unavailable failure", async () => {
@@ -220,22 +211,34 @@ describe("AresLookupService", () => {
       Promise.resolve(Response.json({ ico: "27082440", obchodniJmeno: "   " }))
     );
 
-    expect(result.kind).toBe("failure");
-    expect(result.kind === "failure" && result.failure._tag).toBe(
-      "Unavailable"
-    );
+    expectLookupFailure(result, "Unavailable");
   });
 });
 
 describe("failure vocabulary", () => {
-  test("lookup failures are genuine Errors carrying the expected tags", async () => {
+  test("lookup failures are genuine Errors tagged AresLookupFailure with the matching reason", async () => {
     const invalidIco = await runLookup("1234567a", () =>
       Promise.resolve(Response.json({}))
     );
     expect(invalidIco.kind).toBe("failure");
     if (invalidIco.kind !== "failure") return;
     expect(invalidIco.failure).toBeInstanceOf(Error);
-    expect(invalidIco.failure._tag).toBe("InvalidIco");
+    expect(invalidIco.failure._tag).toBe("AresLookupFailure");
+    expect(invalidIco.failure.reason).toBe("InvalidIco");
+
+    const notFound = await runLookup("27082440", () =>
+      Promise.resolve(
+        Response.json(
+          { kod: "NENALEZENO", popis: "Zdroj nenalezen" },
+          { status: 404 }
+        )
+      )
+    );
+    expect(notFound.kind).toBe("failure");
+    if (notFound.kind !== "failure") return;
+    expect(notFound.failure).toBeInstanceOf(Error);
+    expect(notFound.failure._tag).toBe("AresLookupFailure");
+    expect(notFound.failure.reason).toBe("NotFound");
 
     const unavailable = await runLookup("27082440", () =>
       Promise.reject(new TypeError("network down"))
@@ -243,12 +246,19 @@ describe("failure vocabulary", () => {
     expect(unavailable.kind).toBe("failure");
     if (unavailable.kind !== "failure") return;
     expect(unavailable.failure).toBeInstanceOf(Error);
-    expect(unavailable.failure._tag).toBe("Unavailable");
+    expect(unavailable.failure._tag).toBe("AresLookupFailure");
+    expect(unavailable.failure.reason).toBe("Unavailable");
   });
 
-  test("exposes exactly the three neutral outcome tags", () => {
-    expect(new AresInvalidIco()._tag).toBe("InvalidIco");
-    expect(new AresNotFound()._tag).toBe("NotFound");
-    expect(new AresUnavailable()._tag).toBe("Unavailable");
+  test("exposes exactly the closed low-cardinality reason vocabulary", () => {
+    expect(new AresLookupFailure({ reason: "InvalidIco" }).reason).toBe(
+      "InvalidIco"
+    );
+    expect(new AresLookupFailure({ reason: "NotFound" }).reason).toBe(
+      "NotFound"
+    );
+    expect(new AresLookupFailure({ reason: "Unavailable" }).reason).toBe(
+      "Unavailable"
+    );
   });
 });
