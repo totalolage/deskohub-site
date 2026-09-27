@@ -75,7 +75,10 @@ names. Inspect settings and deployment metadata without printing their values.
   Resend plan. Keep `EMAIL_PROVIDER=resend` and `EMAIL_API_KEY` scoped to
   Production.
 - The non-sensitive Preview-only
-  `POSTHOG_FEATURE_FLAG_OVERRIDES={"calendar_sales":true,"customer_discounts":true,"discount_codes":true,"meeting_room_page":true,"office_page":true}`.
+  `POSTHOG_FEATURE_FLAG_OVERRIDES={"accounts":true,"calendar_sales":true,"customer_discounts":true,"discount_codes":true,"meeting_room_page":true,"office_page":true}`.
+  Account navigation E2E requires `accounts:true` even when the production
+  rollout is off. A branch-specific Preview override replaces the whole map,
+  so include every flag above when targeting one PR branch.
   Set this before the immutable Git preview is built; the runner never mutates
   deployment configuration or the real PostHog rollout state.
 - `GOOGLE_CALENDAR_SALES_ID` must identify the dedicated Preview E2E sales

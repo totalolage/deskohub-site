@@ -77,32 +77,33 @@ jobs:
         working-directory: apps/deskohub-workspace
         run: bun scripts/production-release.ts probe --url "${{ steps.deploy.outputs.url }}"
 
-      - name: Verify registered workspace crons
+      - name: Verify staged workspace crons
         working-directory: apps/deskohub-workspace
-        run: bun scripts/production-release.ts verify-crons
+        run: bun scripts/production-release.ts verify-staged-crons --url "${{ steps.deploy.outputs.url }}"
 
       - name: Promote production deployment
         id: promote
         working-directory: apps/deskohub-workspace
         run: bun scripts/production-release.ts promote --url "${{ steps.deploy.outputs.url }}"
 
-      - name: Probe canonical production after promotion
+      - name: Verify canonical production smoke and cron convergence
         id: canonical-smoke
         if: always() && steps.promote.outputs.promoted == 'true'
         working-directory: apps/deskohub-workspace
-        run: bun scripts/production-release.ts verify-canonical
+        run: bun scripts/production-release.ts verify-canonical --id "${{ steps.promote.outputs.promoted_id }}"
 
       - name: Restore the pre-request production baseline
         if: >-
           always() &&
           (steps.promote.outputs.promotion_state == 'possibly-started' ||
             steps.promote.outputs.promotion_state == 'recovery-needed' ||
-            (steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome != 'success'))
+            (steps.promote.outputs.promoted == 'true' &&
+              (steps.canonical-smoke.outcome != 'success' || cancelled())))
         working-directory: apps/deskohub-workspace
         run: bun scripts/production-release.ts rollback --url "${{ steps.promote.outputs.baseline_url }}" --id "${{ steps.promote.outputs.baseline_id }}"
 
       - name: Fail the release after rollback
-        if: always() && failure()
+        if: always() && (failure() || cancelled())
         run: |
           echo "The production release failed around promotion; production must never keep a promoted untested release" >&2
           exit 1
