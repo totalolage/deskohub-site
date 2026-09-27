@@ -44,6 +44,104 @@ const createdRegionSelector = '[data-standalone-access-code-creation="created"]'
 const fixturePin = "1111111";
 const fixturePinDigitsLabel = "1 1 1 1 1 1 1";
 
+const monthNames = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+/** Matches the ordinal suffixes date-fns renders in the day-button labels. */
+const ordinalSuffix = (day: number) => {
+  if (day % 100 >= 11 && day % 100 <= 13) return "th";
+  switch (day % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+};
+
+interface WindowBoundaryLabels {
+  readonly date: string;
+  readonly time: string;
+}
+
+/**
+ * Fills one DateTimeInput composite through its real interactive controls:
+ * the date trigger button opens the calendar popover whose day buttons carry
+ * full-date accessible names, and the visible time editor is a native
+ * `input[type=time]`. Every interaction is a trusted Playwright action, so
+ * the hydrated React handlers receive genuine events.
+ */
+const fillDateTimeInput = (
+  page: Page,
+  labels: WindowBoundaryLabels,
+  valueLocal: string
+): Promise<void> => {
+  const [datePart, timePart] = valueLocal.split("T");
+  if (!datePart || !timePart) {
+    return Promise.reject(
+      new Error(`The planned window value is not a local datetime: ${valueLocal}`)
+    );
+  }
+  const [yearText, monthText, dayText] = datePart.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (!Number.isInteger(year) || !(month >= 1 && month <= 12) || !(day >= 1)) {
+    return Promise.reject(
+      new Error(`The planned window date is not a plain date: ${valueLocal}`)
+    );
+  }
+
+  return (async () => {
+    // The calendar popover opens on the current month, so navigate the
+    // grid to the planned month before picking the day.
+    const now = new Date();
+    const monthDelta =
+      year * 12 + (month - 1) - (now.getFullYear() * 12 + now.getMonth());
+    const navigation =
+      monthDelta > 0
+        ? { label: "Go to the Next Month", steps: monthDelta }
+        : { label: "Go to the Previous Month", steps: -monthDelta };
+    await page
+      .getByRole("button", { name: labels.date, exact: true })
+      .click();
+    for (
+      let navigated = 0;
+      navigated < navigation.steps;
+      navigated += 1
+    ) {
+      await page
+        .getByRole("button", { name: navigation.label, exact: true })
+        .click();
+    }
+    await page
+      .getByRole("button", {
+        name: new RegExp(
+          `${monthNames[month - 1]} ${day}${ordinalSuffix(day)}, ${year}`
+        ),
+      })
+      .click();
+    await page
+      .getByLabel(labels.time, { exact: true })
+      .fill(timePart);
+  })();
+};
+
 interface CapturedActionRequest {
   readonly body: Buffer;
   readonly headers: Record<string, string>;
@@ -250,22 +348,22 @@ const runAccessCodeCreationCase = (input: {
               "fill-window-start",
               workspaceE2ETimeouts.browserAction,
               sanitizedBrowserOperation("fill the access window start", () =>
-                input.page
-                  .getByLabel("Starts", { exact: true })
-                  .fill(input.plan.startsAtLocal, {
-                    timeout: workspaceE2ETimeouts.browserAction,
-                  })
+                fillDateTimeInput(
+                  input.page,
+                  { date: "Starts date", time: "Starts time" },
+                  input.plan.startsAtLocal
+                )
               )
             );
             yield* step(
               "fill-window-end",
               workspaceE2ETimeouts.browserAction,
               sanitizedBrowserOperation("fill the access window end", () =>
-                input.page
-                  .getByLabel("Ends", { exact: true })
-                  .fill(input.plan.endsAtLocal, {
-                    timeout: workspaceE2ETimeouts.browserAction,
-                  })
+                fillDateTimeInput(
+                  input.page,
+                  { date: "Ends date", time: "Ends time" },
+                  input.plan.endsAtLocal
+                )
               )
             );
             yield* step(
