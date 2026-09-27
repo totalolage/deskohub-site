@@ -5,6 +5,7 @@ import {
   isManualInvoiceDocument,
   type ManualInvoiceDocument,
 } from "@/features/accounting/invoice";
+import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
@@ -70,8 +71,9 @@ type InvoiceCopy = {
   readonly amount: string;
   readonly totalPaid: string;
   readonly nonVatPayer: string;
-  readonly coworkProducts: Readonly<Record<"basic" | "plus" | "profi", string>>;
+  readonly coworkProducts: Readonly<Record<WorkspaceCoworkProductTier, string>>;
   readonly coffee: string;
+  readonly workstation: string;
   readonly meetingRoom: string;
   readonly office: string;
   readonly discount: string;
@@ -98,11 +100,14 @@ const getInvoiceCopy = (locale: Locale): InvoiceCopy => ({
   totalPaid: m.invoiceTotalPaidLabel({}, { locale }),
   nonVatPayer: m.invoiceNonVatPayerStatement({}, { locale }),
   coworkProducts: {
+    "open-space": getWorkspaceProductTierTitle("open-space", locale),
+    "reserved-desk": getWorkspaceProductTierTitle("reserved-desk", locale),
     basic: getWorkspaceProductTierTitle("basic", locale),
     plus: getWorkspaceProductTierTitle("plus", locale),
     profi: getWorkspaceProductTierTitle("profi", locale),
   },
   coffee: m.invoiceCoffeeLineLabel({}, { locale }),
+  workstation: m.invoiceWorkstationLineLabel({}, { locale }),
   meetingRoom: m.invoiceMeetingRoomLineLabel({}, { locale }),
   office: m.invoiceOfficeLineLabel({}, { locale }),
   discount: m.invoiceDiscountLabel({}, { locale }),
@@ -325,6 +330,11 @@ const getItemLines = (
           coffee: ({ amount }) => ({
             kind: "item" as const,
             description: copy.coffee,
+            amount: formatWorkspaceMoney(amount, document.locale),
+          }),
+          workstation: ({ amount }) => ({
+            kind: "item" as const,
+            description: copy.workstation,
             amount: formatWorkspaceMoney(amount, document.locale),
           }),
           "meeting-room": ({ amount, duration }) => {

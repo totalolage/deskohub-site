@@ -186,6 +186,16 @@ const createCoworkReservationDetails = (
   },
   ...Match.value(details).pipe(
     Match.discriminatorsExhaustive("entryTier")({
+      "open-space": () => [],
+      "reserved-desk": ({ monitorOption }) =>
+        monitorOption
+          ? [
+              {
+                label: m.reservationEmailMonitorsLabel({}, { locale }),
+                value: getWorkspaceProductMonitorTitle(monitorOption, locale),
+              } satisfies WorkspaceEmailDetail,
+            ]
+          : [],
       basic: () => [],
       plus: () => [],
       profi: ({ monitorOption }) => [

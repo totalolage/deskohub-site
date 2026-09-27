@@ -89,6 +89,18 @@ export const submitWorkspaceReservation = Effect.fn(
                         { locale: input.locale }
                       )
                     ),
+                    Match.when("cowork_reservation_ended", () =>
+                      m.reservationValidationCoworkEnded(
+                        {},
+                        { locale: input.locale }
+                      )
+                    ),
+                    Match.when("cowork_offer_replaced", () =>
+                      m.reservationValidationCoworkOfferReplaced(
+                        {},
+                        { locale: input.locale }
+                      )
+                    ),
                     Match.when("checkout_failed", () =>
                       Match.value(checkoutError.cause).pipe(
                         Match.when(

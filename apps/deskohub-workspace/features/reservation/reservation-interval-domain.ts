@@ -43,10 +43,24 @@ export const isSingleDayReservationInterval = (interval: {
     .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDateTime();
 
-  return (
+  // Full Prague calendar day: midnight to the next midnight, including 23-
+  // and 25-hour daylight-saving days.
+  if (
     isMidnight(start) &&
     isMidnight(end) &&
     end.toPlainDate().equals(start.toPlainDate().add({ days: 1 }))
+  ) {
+    return true;
+  }
+
+  // Open Space day: Prague-local 00:00 until 17:00 on the same calendar date.
+  return (
+    isMidnight(start) &&
+    start.hour === 0 &&
+    start.minute === 0 &&
+    end.hour === 17 &&
+    end.minute === 0 &&
+    end.toPlainDate().equals(start.toPlainDate())
   );
 };
 

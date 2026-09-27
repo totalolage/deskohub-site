@@ -7,6 +7,14 @@ import type {
 import { formatAdministrationPlainDate } from "./formatters";
 
 const reservationActivityCategoryStyles = {
+  "cowork-open-space": {
+    className: "bg-aquamarine-green/25",
+    label: "Open Space",
+  },
+  "cowork-reserved-desk": {
+    className: "bg-aquamarine-green/70",
+    label: "Reserved Desk",
+  },
   "cowork-basic": {
     className: "bg-aquamarine-green/25",
     label: "Basic",

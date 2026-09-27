@@ -25,6 +25,14 @@ export type WorkspaceProductTierCardMessages = {
 };
 
 export const workspaceProductTierMessages = {
+  "open-space": {
+    title: m.reservationOpenSpaceTitle,
+    description: m.reservationOpenSpaceDescription,
+  },
+  "reserved-desk": {
+    title: m.reservationReservedDeskTitle,
+    description: m.reservationReservedDeskDescription,
+  },
   basic: {
     title: m.reservationTierBasicTitle,
     description: m.reservationTierBasicDescription,
@@ -46,6 +54,22 @@ export const workspaceProductTierMessages = {
 >;
 
 export const workspaceProductTierCardMessages = {
+  "open-space": {
+    description: m.reservationOpenSpaceBulletDesk,
+    perksLabel: m.reservationTierPerksLabel,
+    perks: [
+      { message: m.reservationOpenSpacePerkHours, highlighted: true },
+      { message: m.reservationOpenSpacePerkWifi },
+    ],
+  },
+  "reserved-desk": {
+    description: m.reservationReservedDeskBulletDesk,
+    perksLabel: m.reservationTierPerksLabel,
+    perks: [
+      { message: m.reservationReservedDeskPerkCoffee },
+      { message: m.reservationReservedDeskPerkMonitor, marker: "plus" },
+    ],
+  },
   basic: {
     description: m.reservationTierBasicBulletDesk,
     perksLabel: m.reservationTierPerksLabel,

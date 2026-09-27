@@ -4,7 +4,12 @@ import {
   ValidationError,
 } from "@deskohub/dotypos";
 import { Effect, Match, Schema } from "effect";
-import { workspaceCoworkTiers } from "@/features/checkout/product-catalog";
+import {
+  type WorkspaceCoworkProductTier,
+  type WorkspaceProductMonitorOption,
+  workspaceCoworkHistoricalTiers,
+  workspaceProductMonitorOptionTableTags,
+} from "@/features/checkout/product-catalog";
 import {
   type WorkspaceReservationKind,
   workspaceReservationKindSchema,
@@ -15,6 +20,60 @@ import { workspaceBookingSeatCount } from "./workspace-table-occupancy";
 export const workspaceMeetingRoomReservationTableTag =
   "reservation:meeting-room";
 export const workspaceOfficeReservationTableTag = "reservation:office";
+export const workspaceCoworkOpenSpaceTableTag = "cowork:open-space";
+export const workspaceCoworkReservedDeskTableTag = "cowork:reserved-desk";
+
+export type WorkspaceCoworkTableCandidateQuery = {
+  readonly entryTier: WorkspaceCoworkProductTier;
+  readonly monitorOption?: WorkspaceProductMonitorOption;
+};
+
+const hasNoMonitorTag = (tableTags: ReadonlySet<string>) =>
+  ![...tableTags].some((tag) => tag.startsWith("monitor:"));
+
+const hasAllMonitorConfigurationTags = (
+  tableTags: ReadonlySet<string>,
+  monitorOption: WorkspaceProductMonitorOption
+) =>
+  workspaceProductMonitorOptionTableTags[monitorOption].every((tag) =>
+    tableTags.has(tag)
+  );
+
+/**
+ * Shared saleable-offer candidate predicate used by BOTH availability and
+ * authoritative table assignment. Partial monitor tagging fails closed: any
+ * `monitor:` tag excludes a table from no-addon queries, and a configured
+ * addon query requires every tag of the chosen configuration.
+ */
+export const isWorkspaceCoworkTableCandidate = (
+  tableTags: ReadonlySet<string>,
+  query: WorkspaceCoworkTableCandidateQuery
+) => {
+  if (query.entryTier === "open-space") {
+    return (
+      tableTags.has(workspaceCoworkOpenSpaceTableTag) && hasNoMonitorTag(tableTags)
+    );
+  }
+
+  if (!tableTags.has(workspaceCoworkReservedDeskTableTag)) return false;
+
+  if (!query.monitorOption) return hasNoMonitorTag(tableTags);
+
+  return hasAllMonitorConfigurationTags(tableTags, query.monitorOption);
+};
+
+/**
+ * Historical-only predicate: legacy tiers keep their `tier:${tier}` tags on
+ * decode, reconcile, fulfillment, and cancellation paths. It must never serve
+ * a new saleable request.
+ */
+export const isWorkspaceCoworkHistoricalTableCandidate = (
+  tableTags: ReadonlySet<string>,
+  tier: WorkspaceCoworkProductTier
+) =>
+  workspaceCoworkHistoricalTiers.includes(
+    tier as (typeof workspaceCoworkHistoricalTiers)[number]
+  ) && tableTags.has(`tier:${tier}`);
 
 const fallbackRoomKey = "__workspace-table-selection:fallback-room__";
 
@@ -47,6 +106,18 @@ export const getWorkspaceTableCandidates = (
   tables: readonly DotyposTable[],
   requiredTags: readonly string[]
 ) => tables.filter((table) => isAssignableWorkspaceTable(table, requiredTags));
+
+export const getWorkspaceTableCandidatesByPredicate = (
+  tables: readonly DotyposTable[],
+  isCandidateTable: (tableTags: ReadonlySet<string>) => boolean
+) =>
+  tables.filter((table) => {
+    const tableId = getAssignableDotyposTableId(table);
+    if (!tableId) return false;
+    if (table.enabled !== true || table.display !== true) return false;
+
+    return isCandidateTable(new Set(table.tags ?? []));
+  });
 
 export const getWorkspaceTableSeatCapacity = Effect.fn(
   "WorkspaceTable.getSeatCapacity"
@@ -86,6 +157,28 @@ export const hasAvailableWorkspaceTableCandidate = (
     )
   );
 
+export const hasAvailableWorkspaceTableCandidateByPredicate = (
+  tables: readonly DotyposTable[],
+  isCandidateTable: (tableTags: ReadonlySet<string>) => boolean,
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
+  seats = workspaceBookingSeatCount,
+  requireEmpty = false
+) =>
+  decodeWorkspaceTableCandidates(
+    getWorkspaceTableCandidatesByPredicate(tables, isCandidateTable)
+  ).pipe(
+    Effect.map((candidates) =>
+      candidates.some((candidate) =>
+        hasWorkspaceTableCapacity(
+          candidate,
+          occupancyByTableId,
+          seats,
+          requireEmpty
+        )
+      )
+    )
+  );
+
 export const selectWorkspaceTableFromCandidates = (
   candidates: readonly DotyposTable[],
   allTables: readonly DotyposTable[],
@@ -103,6 +196,22 @@ export const selectWorkspaceTableFromCandidates = (
         requireEmpty
       )
     )
+  );
+
+export const selectWorkspaceTableByPredicate = (
+  tables: readonly DotyposTable[],
+  isCandidateTable: (tableTags: ReadonlySet<string>) => boolean,
+  allTables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
+  seats = workspaceBookingSeatCount,
+  requireEmpty = false
+) =>
+  selectWorkspaceTableFromCandidates(
+    getWorkspaceTableCandidatesByPredicate(tables, isCandidateTable),
+    allTables,
+    occupancyByTableId,
+    seats,
+    requireEmpty
   );
 
 const selectDecodedWorkspaceTableFromCandidates = (
@@ -259,7 +368,13 @@ const hasWorkspaceReservationTableTag = (
   Match.value({ kind }).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: () =>
-        workspaceCoworkTiers.some((tier) => tableTags.has(`tier:${tier}`)),
+        // Display/scoring predicate: recognizes both historical tier tags and
+        // the saleable offer labels.
+        workspaceCoworkHistoricalTiers.some((tier) =>
+          tableTags.has(`tier:${tier}`)
+        ) ||
+        tableTags.has(workspaceCoworkOpenSpaceTableTag) ||
+        tableTags.has(workspaceCoworkReservedDeskTableTag),
       "meeting-room": () =>
         tableTags.has(workspaceMeetingRoomReservationTableTag),
       office: () => tableTags.has(workspaceOfficeReservationTableTag),

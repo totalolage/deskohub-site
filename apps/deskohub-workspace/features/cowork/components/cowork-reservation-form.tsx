@@ -14,9 +14,9 @@ import {
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   isWorkspaceProductMonitorOption,
-  type WorkspaceCoworkProductTier,
+  type WorkspaceCoworkSaleableTier,
   type WorkspaceProductMonitorOption,
-  workspaceCoworkProductTiers,
+  workspaceCoworkSaleableTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
@@ -57,8 +57,7 @@ import {
   coworkReservationSchema,
   getAllowedMonitorOptionsForCoworkTier,
   getCoworkReservationOrder,
-  getCoworkTierIncludesCourtesyCoffee,
-  getCoworkTierRequiresMonitorOption,
+  getCoworkSaleableReservationOrder,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
@@ -101,10 +100,10 @@ const coworkReservationFormSchema = Schema.toStandardSchemaV1(
 );
 
 const tierOptions: ReadonlyArray<{
-  value: WorkspaceCoworkProductTier;
+  value: WorkspaceCoworkSaleableTier;
   title: Parameters<typeof getWorkspaceProductMessage>[0];
   description: Parameters<typeof getWorkspaceProductMessage>[0];
-}> = workspaceCoworkProductTiers.map((tier) => ({
+}> = workspaceCoworkSaleableTiers.map((tier) => ({
   value: tier,
   ...workspaceProductTierMessages[tier],
 }));
@@ -118,7 +117,7 @@ const monitorOptions: ReadonlyArray<{
   ...workspaceProductMonitorMessages[option],
 }));
 
-const fallbackTierCards = ["tier-1", "tier-2", "tier-3"] as const;
+const fallbackTierCards = ["offer-1", "offer-2"] as const;
 
 const getWorkspaceAvailabilityQuery = ({
   date,
@@ -130,7 +129,7 @@ const getWorkspaceAvailabilityQuery = ({
   date?: string;
   from: string;
   monitorOption?: string;
-  tier: WorkspaceCoworkProductTier;
+  tier: WorkspaceCoworkSaleableTier;
   to: string;
 }): CoworkWorkspaceAvailabilityQuery => {
   return {
@@ -184,9 +183,9 @@ export function CoworkReservationForm({
       control: form.control,
       name: ["entryTier", "date", "coffee", "monitorOption"],
     });
-  const courtesyCoffeeIncluded =
-    getCoworkTierIncludesCourtesyCoffee(selectedTier);
-  const shouldShowMonitors = getCoworkTierRequiresMonitorOption(selectedTier);
+  const showCoffeeAddon = selectedTier === "open-space";
+  const showWorkstationAddon = selectedTier === "reserved-desk";
+  const workstationSelected = selectedMonitorOption !== undefined;
   const allowedMonitorOptions =
     getAllowedMonitorOptionsForCoworkTier(selectedTier);
   const availabilityQuery = useMemo(
@@ -216,19 +215,26 @@ export function CoworkReservationForm({
     }
 
     return getCoworkTierAdvertisedPriceRequests({
-      coffee: Boolean(selectedCoffee),
       date: selectedDate,
       locale,
+      offers: [
+        { entryTier: "open-space", coffee: Boolean(selectedCoffee) },
+        {
+          entryTier: "reserved-desk",
+          coffee: true,
+          ...(selectedMonitorOption && { monitorOption: selectedMonitorOption }),
+        },
+      ],
       submittedCode,
     });
-  }, [locale, selectedCoffee, selectedDate, submittedCode]);
+  }, [locale, selectedCoffee, selectedDate, selectedMonitorOption, submittedCode]);
   const advertisedPriceQueryResults = useAdvertisedPrices(
     advertisedPriceRequests,
     initialAdvertisedPrices
   );
   const coffeeAdvertisedPriceRequest = useMemo(
     () =>
-      selectedDate
+      selectedDate && selectedTier === "open-space"
         ? getCoworkCoffeeAdvertisedPriceRequest({
             date: selectedDate,
             locale,
@@ -254,7 +260,7 @@ export function CoworkReservationForm({
     ? formatWorkspaceMoney(coffeePrice, locale)
     : undefined;
   const advertisedPricesByTier = new Map<
-    WorkspaceCoworkProductTier,
+    string,
     Extract<AdvertisedPrice, { readonly kind: "cowork" }>
   >();
 
@@ -274,7 +280,18 @@ export function CoworkReservationForm({
   }
 
   const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
-    ({ reservation }) => reservation.details.entryTier === selectedTier
+    ({ reservation }) => {
+      const { entryTier } = reservation.details;
+      if (entryTier === "reserved-desk") {
+        return (
+          selectedTier === "reserved-desk" &&
+          reservation.details.workstation ===
+            (selectedMonitorOption !== undefined)
+        );
+      }
+      if (entryTier === "open-space") return selectedTier === "open-space";
+      return false;
+    }
   );
   const advertisedPriceQueryResult =
     advertisedPriceQueryResults[selectedAdvertisedPriceIndex];
@@ -320,12 +337,15 @@ export function CoworkReservationForm({
     });
 
   useEffect(() => {
-    if (shouldShowMonitors) {
+    if (showWorkstationAddon) {
       return;
     }
 
     form.setValue("monitorOption", undefined, { shouldValidate: true });
-  }, [form, shouldShowMonitors]);
+    if (!showCoffeeAddon) {
+      form.setValue("coffee", true, { shouldValidate: true });
+    }
+  }, [form, showCoffeeAddon, showWorkstationAddon]);
 
   return (
     <ReservationCheckoutForm
@@ -342,8 +362,8 @@ export function CoworkReservationForm({
           : undefined,
       }}
       afterCustomerFields={
-        shouldShowMonitors && (
-          <CoworkMonitorField
+        showWorkstationAddon && (
+          <CoworkWorkstationField
             allowedMonitorOptions={allowedMonitorOptions}
             control={form.control}
             locale={locale}
@@ -359,7 +379,7 @@ export function CoworkReservationForm({
       }}
       checkoutSessionId={checkoutSessionId}
       form={form}
-      getReservation={getCoworkReservationOrder}
+      getReservation={getCoworkSaleableReservationOrder}
       locale={locale}
       messagePlaceholder={m.reservationMessagePlaceholder({}, { locale })}
     >
@@ -403,9 +423,8 @@ export function CoworkReservationForm({
                       key={option.value}
                       className={
                         {
-                          basic: "lg:col-start-1",
-                          plus: "lg:col-start-2",
-                          profi: "lg:col-start-3",
+                          "open-space": "lg:col-start-1",
+                          "reserved-desk": "lg:col-start-2",
                         }[option.value]
                       }
                       disabled={isUnavailable}
@@ -480,49 +499,43 @@ export function CoworkReservationForm({
         )}
 
         <div className="[grid-area:coffee]">
-          <FormField
-            control={form.control}
-            name="coffee"
-            render={({ field }) => (
-              <FormItem>
-                <ReservationFormLabel>
-                  {m.reservationCoffeeLabel({}, { locale })}
-                </ReservationFormLabel>
-                <FormLabel
-                  className={cn(
-                    "flex h-13 items-center justify-between gap-3 rounded-[1.1rem] border border-navy-blue/10 bg-linear-to-br from-sunset-yellow/18 to-white px-4 py-3 text-navy-blue transition",
-                    !courtesyCoffeeIncluded &&
-                      "cursor-pointer hover:border-burned-orange/30",
-                    courtesyCoffeeIncluded && "cursor-default"
-                  )}
-                >
-                  <span className="flex items-center gap-3">
-                    <Coffee className="h-5 w-5 shrink-0 text-burned-orange" />
-                    <FormControl>
-                      <Switch
-                        checked={courtesyCoffeeIncluded ? true : field.value}
-                        disabled={courtesyCoffeeIncluded}
-                        onBlur={field.onBlur}
-                        onCheckedChange={(checked) =>
-                          field.onChange(Boolean(checked))
-                        }
-                      />
-                    </FormControl>
-                  </span>
-                  <span data-reservation-coffee-price="">
-                    {coffeePriceLabel ? (
-                      <span className="text-sm font-semibold text-navy-blue before:content-['+']">
-                        {coffeePriceLabel}
-                      </span>
-                    ) : (
-                      <ReservationSkeletonBlock className="h-4 w-14 bg-sunset-yellow/25" />
-                    )}
-                  </span>
-                </FormLabel>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {showCoffeeAddon && (
+            <FormField
+              control={form.control}
+              name="coffee"
+              render={({ field }) => (
+                <FormItem>
+                  <ReservationFormLabel>
+                    {m.reservationCoffeeLabel({}, { locale })}
+                  </ReservationFormLabel>
+                  <FormLabel className="flex h-13 cursor-pointer items-center justify-between gap-3 rounded-[1.1rem] border border-navy-blue/10 bg-linear-to-br from-sunset-yellow/18 to-white px-4 py-3 text-navy-blue transition hover:border-burned-orange/30">
+                    <span className="flex items-center gap-3">
+                      <Coffee className="h-5 w-5 shrink-0 text-burned-orange" />
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onBlur={field.onBlur}
+                          onCheckedChange={(checked) =>
+                            field.onChange(Boolean(checked))
+                          }
+                        />
+                      </FormControl>
+                    </span>
+                    <span data-reservation-coffee-price="">
+                      {coffeePriceLabel ? (
+                        <span className="text-sm font-semibold text-navy-blue before:content-['+']">
+                          {coffeePriceLabel}
+                        </span>
+                      ) : (
+                        <ReservationSkeletonBlock className="h-4 w-14 bg-sunset-yellow/25" />
+                      )}
+                    </span>
+                  </FormLabel>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
         </div>
       </div>
     </ReservationCheckoutForm>
@@ -534,7 +547,7 @@ function CoworkTierDescription({
   tier,
 }: {
   readonly locale: Locale;
-  readonly tier: WorkspaceCoworkProductTier;
+  readonly tier: WorkspaceCoworkSaleableTier;
 }) {
   return (
     <div
@@ -554,7 +567,7 @@ function CoworkTierPerks({
   tier,
 }: {
   readonly locale: Locale;
-  readonly tier: WorkspaceCoworkProductTier;
+  readonly tier: WorkspaceCoworkSaleableTier;
 }) {
   const content: WorkspaceProductTierCardMessages =
     workspaceProductTierCardMessages[tier];
@@ -591,7 +604,7 @@ function CoworkTierPerks({
   );
 }
 
-function CoworkMonitorField({
+function CoworkWorkstationField({
   allowedMonitorOptions,
   control,
   locale,
@@ -612,65 +625,81 @@ function CoworkMonitorField({
       name="monitorOption"
       render={({ field }) => (
         <FormItem className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
-          <FormLabel
-            className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-aquamarine-ink"
-            required
-          >
-            <Monitor className="h-4 w-4 text-aquamarine-ink" />
-            {m.reservationMonitorLabel({}, { locale })}
-          </FormLabel>
-          <FormControl>
-            <div
-              role="radiogroup"
-              aria-required="true"
-              className="grid gap-3 sm:grid-cols-3"
-            >
-              {monitorOptions
-                .filter((option) =>
-                  allowedMonitorOptions.includes(option.value)
-                )
-                .map((option) => {
-                  const isSelected = field.value === option.value;
-                  const isUnavailable = unavailableMonitorOptions.has(
-                    option.value
-                  );
+          <div className="flex items-center justify-between gap-3">
+            <FormLabel className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-aquamarine-ink">
+              <Monitor className="h-4 w-4 text-aquamarine-ink" />
+              {m.reservationWorkstationLabel({}, { locale })}
+            </FormLabel>
+            <FormControl>
+              <Switch
+                checked={field.value !== undefined}
+                onBlur={field.onBlur}
+                onCheckedChange={(checked) =>
+                  field.onChange(
+                    checked ? allowedMonitorOptions[0] : undefined
+                  )
+                }
+              />
+            </FormControl>
+          </div>
+          {field.value !== undefined && (
+            <>
+              <FormLabel className="block pt-1 text-sm text-navy-blue/60">
+                {m.reservationMonitorLabel({}, { locale })}
+              </FormLabel>
+              <FormControl>
+                <div role="radiogroup" className="grid gap-3 sm:grid-cols-3">
+                  {monitorOptions
+                    .filter((option) =>
+                      allowedMonitorOptions.includes(option.value)
+                    )
+                    .map((option) => {
+                      const isSelected = field.value === option.value;
+                      const isUnavailable = unavailableMonitorOptions.has(
+                        option.value
+                      );
 
-                  return (
-                    <label
-                      key={option.value}
-                      className={cn(
-                        "cursor-pointer rounded-[1.1rem] border p-3 transition hover:-translate-y-0.5",
-                        isUnavailable &&
-                          "cursor-not-allowed opacity-45 hover:translate-y-0",
-                        isSelected
-                          ? "border-aquamarine-green bg-white ring-4 ring-aquamarine-green/15"
-                          : "border-navy-blue/10 bg-white/75 hover:border-aquamarine-green/55"
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        className="sr-only"
-                        checked={isSelected}
-                        value={option.value}
-                        disabled={isUnavailable}
-                        name={field.name}
-                        onBlur={field.onBlur}
-                        onChange={() => {
-                          if (!isUnavailable) field.onChange(option.value);
-                        }}
-                        ref={field.ref}
-                      />
-                      <span className="block font-semibold text-navy-blue">
-                        {getWorkspaceProductMessage(option.title, locale)}
-                      </span>
-                      <span className="mt-1 block text-sm leading-5 text-navy-blue/60">
-                        {getWorkspaceProductMessage(option.description, locale)}
-                      </span>
-                    </label>
-                  );
-                })}
-            </div>
-          </FormControl>
+                      return (
+                        <label
+                          key={option.value}
+                          className={cn(
+                            "cursor-pointer rounded-[1.1rem] border p-3 transition hover:-translate-y-0.5",
+                            isUnavailable &&
+                              "cursor-not-allowed opacity-45 hover:translate-y-0",
+                            isSelected
+                              ? "border-aquamarine-green bg-white ring-4 ring-aquamarine-green/15"
+                              : "border-navy-blue/10 bg-white/75 hover:border-aquamarine-green/55"
+                          )}
+                        >
+                          <input
+                            type="radio"
+                            className="sr-only"
+                            checked={isSelected}
+                            value={option.value}
+                            disabled={isUnavailable}
+                            name={field.name}
+                            onBlur={field.onBlur}
+                            onChange={() => {
+                              if (!isUnavailable) field.onChange(option.value);
+                            }}
+                            ref={field.ref}
+                          />
+                          <span className="block font-semibold text-navy-blue">
+                            {getWorkspaceProductMessage(option.title, locale)}
+                          </span>
+                          <span className="mt-1 block text-sm leading-5 text-navy-blue/60">
+                            {getWorkspaceProductMessage(
+                              option.description,
+                              locale
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+              </FormControl>
+            </>
+          )}
           <FormMessage />
         </FormItem>
       )}
@@ -728,7 +757,7 @@ export function CoworkReservationFormFallback({
     >
       <div className="space-y-2">
         <ReservationSkeletonBlock className="h-4 w-28" />
-        <div className="grid gap-3 lg:grid-cols-3 lg:gap-x-3 lg:gap-y-3">
+        <div className="grid gap-3 lg:grid-cols-2 lg:gap-x-3 lg:gap-y-3">
           {fallbackTierCards.map((tierCard) => (
             <div
               className="rounded-[1.4rem] border border-navy-blue/10 bg-white p-4"

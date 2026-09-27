@@ -84,7 +84,7 @@ export type CoworkDiscountCodePriceResult = ReservationDiscountCodePriceResult<
 
 const getCoworkPricingContext = Effect.fn(
   "CoworkCheckoutPricing.getPricingContext"
-)((reservation: CoworkAdvertisedPriceDetails) => {
+)((reservation: CoworkPricingDetails) => {
   const product = getWorkspaceProductByTier(reservation.entryTier);
 
   return Effect.succeed({
@@ -96,6 +96,10 @@ const getCoworkPricingContext = Effect.fn(
     },
   });
 });
+
+type CoworkPricingDetails =
+  | CoworkAdvertisedPriceDetails
+  | NormalizedCoworkReservationOrder;
 
 type CoworkPricingContext = Effect.Success<
   ReturnType<typeof getCoworkPricingContext>
@@ -110,9 +114,8 @@ const buildCoworkQuote = Effect.fn("CoworkCheckoutPricing.buildQuote")(
       discountQuote: input.discountQuote,
     })
 );
-
 export const coworkCheckoutPricing = reservationCheckoutPricing<
-  CoworkAdvertisedPriceDetails,
+  CoworkPricingDetails,
   CoworkAdvertisedPriceReservation,
   NormalizedCoworkReservationOrder,
   CoworkPricingContext,

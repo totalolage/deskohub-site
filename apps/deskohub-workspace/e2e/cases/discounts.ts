@@ -116,11 +116,11 @@ export const prepareDiscountAvailabilityE2E = (
       availableBasicDates: loadAvailableCoworkDates(config, { allocation }),
       availablePlusDates: loadAvailableCoworkDates(config, {
         allocation,
-        entryTier: "plus",
+        entryTier: "open-space",
       }),
       availableProfiDates: loadAvailableCoworkDates(config, {
         allocation,
-        entryTier: "profi",
+        entryTier: "reserved-desk",
         monitorOption: "2x27-qhd",
       }),
     },
@@ -274,7 +274,7 @@ export const makeDiscountE2ECases = ({
       config.baseUrl,
       yield* requireCheckoutDate(calendarCheckoutDates, 0),
       "cowork-calendar-sale",
-      { entryTier: "plus" }
+      { entryTier: "open-space" }
     );
     const calendarCheckoutState = trackCheckoutState(
       flowStates,
@@ -307,7 +307,7 @@ export const makeDiscountE2ECases = ({
       config.baseUrl,
       yield* requireCheckoutDate(calendarCheckoutDates, 1),
       "cowork-calendar-sale-and-code",
-      { entryTier: "plus" }
+      { entryTier: "open-space" }
     );
     const combinedCheckoutState = trackCheckoutState(
       flowStates,
@@ -347,14 +347,14 @@ export const makeDiscountE2ECases = ({
       config.baseUrl,
       yield* requireCheckoutDate(transientCalendarDates, 0),
       "cowork-calendar-disappears-before-quote",
-      { entryTier: "profi" }
+      { entryTier: "reserved-desk" }
     );
     const quoteChangeState = trackCheckoutState(flowStates, quoteChangeData);
     const paymentChangeData = makeCoworkCheckoutData(
       config.baseUrl,
       yield* requireCheckoutDate(transientCalendarDates, 1),
       "cowork-calendar-disappears-before-payment",
-      { entryTier: "profi" }
+      { entryTier: "reserved-desk" }
     );
     const paymentChangeState = trackCheckoutState(
       flowStates,
@@ -428,7 +428,7 @@ export const makeDiscountE2ECases = ({
           config.baseUrl,
           yield* requireCheckoutDate(calendarCheckoutDates, 2),
           "cowork-calendar-and-customer-discount",
-          { entryTier: "plus" }
+          { entryTier: "open-space" }
         ),
         expectedDiscounts: [
           ...coworkAutomaticDiscounts,
@@ -441,7 +441,7 @@ export const makeDiscountE2ECases = ({
           config.baseUrl,
           yield* requireCheckoutDate(calendarCheckoutDates, 3),
           "cowork-all-discounts",
-          { entryTier: "plus" }
+          { entryTier: "open-space" }
         ),
         discountCode: discountCodeFixtures.partial.code,
         expectedDiscounts: [

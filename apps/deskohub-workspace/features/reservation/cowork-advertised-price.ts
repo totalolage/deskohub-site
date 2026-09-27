@@ -2,31 +2,38 @@ import type {
   AdvertisedPriceRequest,
   CoworkAdvertisedPriceRequest,
 } from "@/features/checkout/advertised-price";
-import {
-  type WorkspaceCoworkProductTier,
-  workspaceCoworkProductTiers,
-} from "@/features/checkout/product-catalog";
+import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
+import type { WorkspaceCoworkSaleableTier } from "@/features/checkout/product-catalog";
+
+export type CoworkAdvertisedPriceOfferSelection = {
+  readonly entryTier: WorkspaceCoworkSaleableTier;
+  readonly coffee: boolean;
+  readonly monitorOption?: WorkspaceProductMonitorOption;
+};
 
 export const getCoworkTierAdvertisedPriceRequests = ({
-  coffee,
   date,
   locale,
+  offers,
   submittedCode,
 }: {
-  readonly coffee: boolean;
   readonly date: string;
   readonly locale: Locale;
+  readonly offers: ReadonlyArray<CoworkAdvertisedPriceOfferSelection>;
   readonly submittedCode?: CanonicalPromotionCode;
 }): ReadonlyArray<CoworkAdvertisedPriceRequest> =>
-  workspaceCoworkProductTiers.map((tier) => ({
+  offers.map((offer) => ({
     locale,
     ...(submittedCode && { submittedCode }),
     reservation: getCoworkAdvertisedPriceReservation({
-      entryTier: tier,
-      coffee,
+      entryTier: offer.entryTier,
+      coffee: offer.coffee,
+      ...(offer.monitorOption !== undefined && {
+        monitorOption: offer.monitorOption,
+      }),
       date,
     }),
   }));
@@ -40,7 +47,7 @@ export const getCoworkCoffeeAdvertisedPriceRequest = ({
   readonly date: string;
   readonly locale: Locale;
   readonly submittedCode?: CanonicalPromotionCode;
-  readonly tier: WorkspaceCoworkProductTier;
+  readonly tier: WorkspaceCoworkSaleableTier;
 }): AdvertisedPriceRequest => ({
   locale,
   ...(submittedCode && { submittedCode }),

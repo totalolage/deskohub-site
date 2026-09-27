@@ -24,6 +24,7 @@ export {
 export const checkoutSummaryAddOnItemSchema = Schema.Struct({
   key: Schema.Union([
     Schema.Literal("addon:coffee"),
+    Schema.Literal("addon:workstation"),
     Schema.TemplateLiteral(["monitor:", Schema.String]),
   ]),
   amount: nonNegativeWorkspaceMoneyCodec,

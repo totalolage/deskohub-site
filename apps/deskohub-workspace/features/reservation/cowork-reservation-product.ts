@@ -1,9 +1,12 @@
 import { Match, Schema, SchemaGetter } from "effect";
 import {
+  getCoworkTierWorkstationAddon,
   getWorkspaceProductByTier,
   type WorkspaceCoworkProductTier,
+  type WorkspaceCoworkSaleableTier,
   type WorkspaceProductMonitorOption,
   workspaceCoworkProductTiers,
+  workspaceCoworkSaleableTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
@@ -20,14 +23,14 @@ const coworkReservationMonitorOptionInputSchema = Schema.optional(
 );
 
 export const coworkReservationProductInputSchema = Schema.Struct({
-  entryTier: Schema.Literals(workspaceCoworkProductTiers),
+  entryTier: Schema.Literals(workspaceCoworkSaleableTiers),
   coffee: Schema.Boolean,
   monitorOption: coworkReservationMonitorOptionInputSchema,
 });
 
 export const workspaceCoworkProductIdentitySchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
-  tier: coworkReservationProductInputSchema.fields.entryTier,
+  tier: Schema.Literals(workspaceCoworkProductTiers),
 });
 
 export type WorkspaceCoworkProductIdentity =
@@ -60,6 +63,21 @@ export const getWorkspaceCoworkProductKey = ({
 }: WorkspaceCoworkProductIdentity): WorkspaceCoworkProductKey =>
   `${kind}:${tier}`;
 
+export const normalizedOpenSpaceCoworkReservationProductSchema = Schema.Struct({
+  entryTier: Schema.Literal("open-space"),
+  coffee: Schema.Boolean,
+  monitorOption: Schema.optional(Schema.Never),
+});
+
+export const normalizedReservedDeskCoworkReservationProductSchema =
+  Schema.Struct({
+    entryTier: Schema.Literal("reserved-desk"),
+    coffee: Schema.Literal(true),
+    monitorOption: Schema.optional(
+      Schema.Literals(workspaceProductMonitorOptions)
+    ),
+  });
+
 export const normalizedBasicCoworkReservationProductSchema = Schema.Struct({
   entryTier: Schema.Literal("basic"),
   coffee: Schema.Boolean,
@@ -79,6 +97,8 @@ export const normalizedProfiCoworkReservationProductSchema = Schema.Struct({
 });
 
 export const normalizedCoworkReservationProductSchema = Schema.Union([
+  normalizedOpenSpaceCoworkReservationProductSchema,
+  normalizedReservedDeskCoworkReservationProductSchema,
   normalizedBasicCoworkReservationProductSchema,
   normalizedPlusCoworkReservationProductSchema,
   normalizedProfiCoworkReservationProductSchema,
@@ -86,6 +106,16 @@ export const normalizedCoworkReservationProductSchema = Schema.Union([
   identifier: "NormalizedCoworkReservationProduct",
   description:
     "Canonical cowork product selection after tier-specific normalization.",
+});
+
+const storedOpenSpaceCoworkReservationDetailsSchema = Schema.Struct({
+  kind: workspaceCoworkProductIdentitySchema.fields.kind,
+  ...normalizedOpenSpaceCoworkReservationProductSchema.fields,
+});
+
+const storedReservedDeskCoworkReservationDetailsSchema = Schema.Struct({
+  kind: workspaceCoworkProductIdentitySchema.fields.kind,
+  ...normalizedReservedDeskCoworkReservationProductSchema.fields,
 });
 
 const storedBasicCoworkReservationDetailsSchema = Schema.Struct({
@@ -104,6 +134,8 @@ const storedProfiCoworkReservationDetailsSchema = Schema.Struct({
 });
 
 export const storedCoworkReservationDetailsSchema = Schema.Union([
+  storedOpenSpaceCoworkReservationDetailsSchema,
+  storedReservedDeskCoworkReservationDetailsSchema,
   storedBasicCoworkReservationDetailsSchema,
   storedPlusCoworkReservationDetailsSchema,
   storedProfiCoworkReservationDetailsSchema,
@@ -148,14 +180,6 @@ export const getCoworkReservationProductMonitorOption = (
   reservation: CoworkReservationProductInput
 ) => normalizeMonitorOption(reservation.monitorOption);
 
-export const getCoworkTierIncludesCourtesyCoffee = (
-  tier: WorkspaceCoworkProductTier
-) => getWorkspaceProductByTier(tier).includesCourtesyCoffee;
-
-export const getCoworkTierRequiresMonitorOption = (
-  tier: WorkspaceCoworkProductTier
-) => getWorkspaceProductByTier(tier).requiresMonitorOption;
-
 export const getAllowedMonitorOptionsForCoworkTier = (
   tier: WorkspaceCoworkProductTier
 ) => getWorkspaceProductByTier(tier).allowedMonitorOptions;
@@ -163,10 +187,10 @@ export const getAllowedMonitorOptionsForCoworkTier = (
 export const getCoworkReservationProductIssues = (
   data: CoworkReservationProductInput
 ): readonly Schema.FilterIssue[] => {
-  const product = getWorkspaceProductByTier(data.entryTier);
+  const workstationAddon = getCoworkTierWorkstationAddon(data.entryTier);
   const monitorOption = normalizeMonitorOption(data.monitorOption);
 
-  if (product.requiresMonitorOption && !monitorOption) {
+  if (workstationAddon === "required" && !monitorOption) {
     return [
       {
         path: ["monitorOption"],
@@ -176,9 +200,11 @@ export const getCoworkReservationProductIssues = (
   }
 
   if (
-    product.requiresMonitorOption &&
+    workstationAddon !== "unavailable" &&
     monitorOption &&
-    !product.allowedMonitorOptions.includes(monitorOption)
+    !getAllowedMonitorOptionsForCoworkTier(data.entryTier).some(
+      (allowed) => allowed === monitorOption
+    )
   ) {
     return [
       {
@@ -188,7 +214,7 @@ export const getCoworkReservationProductIssues = (
     ];
   }
 
-  if (!product.requiresMonitorOption && monitorOption) {
+  if (workstationAddon === "unavailable" && monitorOption) {
     return [
       {
         path: ["monitorOption"],
@@ -204,23 +230,17 @@ export const normalizeCoworkReservationProduct = (
   data: CoworkReservationProductInput
 ): NormalizedCoworkReservationProduct =>
   Match.value(data.entryTier).pipe(
-    Match.when("basic", () =>
-      normalizedBasicCoworkReservationProductSchema.make({
-        entryTier: "basic",
+    Match.when("open-space", () =>
+      normalizedOpenSpaceCoworkReservationProductSchema.make({
+        entryTier: "open-space",
         coffee: data.coffee,
       })
     ),
-    Match.when("plus", () =>
-      normalizedPlusCoworkReservationProductSchema.make({
-        entryTier: "plus",
+    Match.when("reserved-desk", () =>
+      normalizedReservedDeskCoworkReservationProductSchema.make({
+        entryTier: "reserved-desk",
         coffee: true,
-      })
-    ),
-    Match.when("profi", () =>
-      normalizedProfiCoworkReservationProductSchema.make({
-        entryTier: "profi",
-        coffee: true,
-        monitorOption: normalizeMonitorOption(data.monitorOption)!,
+        monitorOption: normalizeMonitorOption(data.monitorOption),
       })
     ),
     Match.exhaustive
@@ -231,6 +251,19 @@ export const getStoredCoworkReservationDetails = (
 ): StoredCoworkReservationDetails =>
   Match.value(product).pipe(
     Match.discriminatorsExhaustive("entryTier")({
+      "open-space": (openSpaceProduct) =>
+        storedOpenSpaceCoworkReservationDetailsSchema.make({
+          kind: coworkReservationKind,
+          entryTier: openSpaceProduct.entryTier,
+          coffee: openSpaceProduct.coffee,
+        }),
+      "reserved-desk": (reservedDeskProduct) =>
+        storedReservedDeskCoworkReservationDetailsSchema.make({
+          kind: coworkReservationKind,
+          entryTier: reservedDeskProduct.entryTier,
+          coffee: true,
+          monitorOption: reservedDeskProduct.monitorOption,
+        }),
       basic: (basicProduct) =>
         storedBasicCoworkReservationDetailsSchema.make({
           kind: coworkReservationKind,
@@ -258,6 +291,16 @@ const getCoworkReservationProductFields = (
 ): CoworkProductFields =>
   Match.value(details).pipe(
     Match.discriminatorsExhaustive("entryTier")({
+      "open-space": (openSpaceDetails) => ({
+        productTier: openSpaceDetails.entryTier,
+        productCoffee: openSpaceDetails.coffee,
+        productMonitorOption: null,
+      }),
+      "reserved-desk": (reservedDeskDetails) => ({
+        productTier: reservedDeskDetails.entryTier,
+        productCoffee: reservedDeskDetails.coffee,
+        productMonitorOption: reservedDeskDetails.monitorOption ?? null,
+      }),
       basic: (basicDetails) => ({
         productTier: basicDetails.entryTier,
         productCoffee: basicDetails.coffee,
@@ -314,4 +357,4 @@ export const coworkReservationProductSchema =
         "Cowork product selection validated and normalized by entry tier.",
     });
 
-export type { WorkspaceCoworkProductTier, WorkspaceProductMonitorOption };
+export type { WorkspaceCoworkProductTier, WorkspaceCoworkSaleableTier, WorkspaceProductMonitorOption };

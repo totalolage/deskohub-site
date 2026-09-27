@@ -57,13 +57,25 @@ export async function renderCoworkReservationContent({
       };
   const initialAdvertisedPrices = await loadAdvertisedPrices(
     getCoworkTierAdvertisedPriceRequests({
-      coffee: initialValues.coffee,
       date: initialValues.date,
       locale,
+      offers: [
+        { entryTier: "open-space", coffee: initialValues.coffee },
+        {
+          entryTier: "reserved-desk",
+          coffee: true,
+          ...(initialValues.monitorOption && {
+            monitorOption: initialValues.monitorOption,
+          }),
+        },
+      ],
       submittedCode,
     }).filter(
       ({ reservation }) =>
-        reservation.details.entryTier === initialValues.entryTier
+        reservation.details.entryTier === initialValues.entryTier &&
+        (reservation.details.entryTier !== "reserved-desk" ||
+          reservation.details.workstation ===
+            (initialValues.monitorOption !== undefined))
     )
   ).pipe(
     Effect.provide(CheckoutPricingService.Live),

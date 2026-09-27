@@ -2,6 +2,8 @@ import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Predicate, Record, Schema } from "effect";
 import {
   getWorkspaceProductByTier,
+  isWorkspaceCoworkSaleableProductTier,
+  workspaceCoworkSaleableTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
@@ -73,7 +75,7 @@ const queryDateSchema = Schema.toStandardSchemaV1(
   )
 );
 const queryTierSchema = Schema.toStandardSchemaV1(
-  workspaceCoworkProductIdentitySchema.fields.tier
+  Schema.Literals(workspaceCoworkSaleableTiers)
 );
 const queryMonitorOptionSchema = Schema.toStandardSchemaV1(
   Schema.Literals(workspaceProductMonitorOptions)
@@ -157,27 +159,38 @@ export const getReservationDefaultValuesFromSearchParams = (
 
   return {
     ...values,
-    ...(product.requiresCoffee && { coffee: true }),
-    ...(!product.requiresMonitorOption && { monitorOption: undefined }),
+    ...(product.coffeeAddon === "included" && { coffee: true }),
+    ...(product.workstationAddon === "unavailable" && {
+      monitorOption: undefined,
+    }),
   };
 };
 
 export const getReservationDefaultValuesFromPayState = (
   reservation: NormalizedCoworkReservationOrder
-): CoworkReservationInput => ({
-  entryTier: reservation.entryTier,
-  date: reservation.date,
-  coffee: reservation.coffee,
-  name: reservation.name,
-  email: reservation.email,
-  phone: reservation.phone,
-  billing: reservation.billing,
-  ...(reservation.monitorOption !== undefined && {
-    monitorOption: reservation.monitorOption,
-  }),
-  ...(reservation.message !== undefined && { message: reservation.message }),
-  marketingConsent: false,
-});
+): CoworkReservationInput => {
+  if (!isWorkspaceCoworkSaleableProductTier(reservation.entryTier)) {
+    throw new Error(
+      "Historical cowork tiers cannot be restored into the reservation form.",
+      { cause: reservation.entryTier }
+    );
+  }
+
+  return {
+    entryTier: reservation.entryTier,
+    date: reservation.date,
+    coffee: reservation.coffee,
+    name: reservation.name,
+    email: reservation.email,
+    phone: reservation.phone,
+    billing: reservation.billing,
+    ...(reservation.monitorOption !== undefined && {
+      monitorOption: reservation.monitorOption,
+    }),
+    ...(reservation.message !== undefined && { message: reservation.message }),
+    marketingConsent: false,
+  };
+};
 
 export const getOfficeReservationDefaultValuesFromSearchParams = (
   searchParams: SupportedSearchParams,
@@ -281,5 +294,11 @@ export const getWorkspaceAvailabilityQueryFromReservationSearchParams = (
     });
   }
 
-  return query;
+  const { entryTier, ...rest } = query;
+
+  return {
+    ...rest,
+    ...(entryTier !== undefined &&
+      isWorkspaceCoworkSaleableProductTier(entryTier) && { entryTier }),
+  };
 };
