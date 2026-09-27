@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { type ReactNode, Suspense } from "react";
-import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
+import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
 import { GalleryErrorBoundary } from "@/features/gallery/components/gallery-error-boundary";
 import { WorkspaceGalleryAlbum } from "@/features/gallery/components/workspace-gallery-album";
 import { toGalleryPhotos } from "@/features/gallery/types/gallery-photo";
