@@ -73,3 +73,30 @@ test("serves the administration shell and granular loading regions", async ({
     { baseURL: requireBaseUrl(baseURL) }
   );
 });
+
+test("captures the resolved reservations export view", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/admin/reservations");
+
+  await expect(page.getByRole("link", { name: "Export CSV" })).toBeVisible();
+  await expect(page.getByLabel("Loading reservations")).toHaveCount(0);
+
+  const reservations = page.getByRole("table", { name: "Reservations" });
+  await expect(reservations).toBeVisible();
+  await expect(reservations.getByRole("row").nth(1)).toBeVisible();
+
+  await page.locator("nextjs-portal").evaluateAll((portals) => {
+    for (const portal of portals) {
+      (portal as HTMLElement).style.display = "none";
+    }
+  });
+
+  const screenshotPath =
+    "e2e-artifacts/reservation-links/admin-reservations-export.png";
+  await page.screenshot({ fullPage: true, path: screenshotPath });
+  await testInfo.attach("admin-reservations-export", {
+    contentType: "image/png",
+    path: screenshotPath,
+  });
+});
