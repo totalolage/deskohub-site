@@ -13,7 +13,8 @@ import { fileURLToPath } from "node:url";
 import {
   assertAuthSessionReady,
   assertCanonicalSignInReady,
-  assertRegisteredCrons,
+  assertLiveProjectCrons,
+  assertStagedDeploymentCrons,
   emitRollbackTarget,
   promoteStagedDeployment,
   resolveCanonicalAlias,
@@ -31,7 +32,25 @@ type VercelApiPayload =
       }[];
     }
   | {
-      readonly crons?: readonly { readonly path?: string }[];
+      readonly id?: string;
+      readonly projectId?: string;
+      readonly target?: string;
+      readonly readyState?: string;
+      readonly url?: string;
+      readonly crons?: readonly {
+        readonly path?: string;
+        readonly schedule?: string;
+      }[];
+    }
+  | {
+      readonly id?: string;
+      readonly crons?: {
+        readonly deploymentId?: string | null;
+        readonly definitions?: readonly {
+          readonly path?: string;
+          readonly schedule?: string;
+        }[];
+      } | null;
     }
   | {
       readonly deployment?: {
@@ -613,8 +632,20 @@ describe("workspace production release checks", () => {
         return Promise.resolve(
           jsonResponse({
             id: "dpl_staged",
+            projectId: "prj_test",
+            target: "production",
             readyState: "READY",
             url: "workspace-staged.vercel.app",
+            crons: [
+              {
+                path: "/api/cron/workspace/reservation-holds",
+                schedule: "0 0 * * *",
+              },
+              {
+                path: "/api/cron/workspace/auth-cleanup",
+                schedule: "17 3 * * *",
+              },
+            ],
           })
         );
       }
@@ -751,7 +782,7 @@ describe("workspace production release checks", () => {
       "baseline_url=https://workspace-baseline.vercel.app\nbaseline_id=dpl_baseline\n"
     );
     expect(environment.persisted).toContain(
-      "promoted=true\npromotion_state=promoted\n"
+      "promoted=true\npromoted_id=dpl_staged\npromotion_state=promoted\n"
     );
   });
 
@@ -830,7 +861,14 @@ describe("workspace production release checks", () => {
         url.pathname === "/v13/deployments/workspace-staged.vercel.app"
       ) {
         return Promise.resolve(
-          jsonResponse({ id: "dpl_staged", readyState: "BUILDING" })
+          jsonResponse({
+            id: "dpl_staged",
+            projectId: "prj_test",
+            target: "production",
+            readyState: "BUILDING",
+            url: "workspace-staged.vercel.app",
+            crons: [],
+          })
         );
       }
       return environment.mockFetch(input, init);
@@ -1229,30 +1267,541 @@ describe("workspace production release checks", () => {
     ).rejects.toThrow("Rollback verification failed");
   });
 
-  test("fails closed when the registered crons are missing the account cleanup", async () => {
+  test("validates both staged cron definitions without consulting the live baseline", async () => {
+    const requests: URL[] = [];
+    mockGlobalFetch((input) => {
+      const url = new URL(input.toString());
+      requests.push(url);
+      if (url.pathname.startsWith("/v9/projects/")) {
+        return Promise.resolve(
+          jsonResponse({
+            id: "prj_test",
+            crons: {
+              deploymentId: "dpl_baseline",
+              definitions: [
+                {
+                  path: "/api/cron/workspace/reservation-holds",
+                  schedule: "0 0 * * *",
+                },
+              ],
+            },
+          })
+        );
+      }
+      return Promise.resolve(
+        jsonResponse({
+          id: "dpl_staged",
+          projectId: "prj_test",
+          target: "production",
+          readyState: "READY",
+          url: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
+          crons: [
+            {
+              path: "/api/cron/workspace/reservation-holds",
+              schedule: "0 0 * * *",
+            },
+            {
+              path: "/api/cron/workspace/auth-cleanup",
+              schedule: "17 3 * * *",
+            },
+          ],
+        })
+      );
+    });
+
+    await expect(
+      assertStagedDeploymentCrons(
+        stagedDeploymentUrl,
+        "prj_test",
+        "token",
+        "team_test"
+      )
+    ).resolves.toBeUndefined();
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.pathname).toBe(
+      "/v13/deployments/deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app"
+    );
+    expect(requests[0]?.searchParams.get("teamId")).toBe("team_test");
+    expect(
+      requests.some((url) => url.pathname.startsWith("/v9/projects/"))
+    ).toBe(false);
+  });
+
+  test("rejects a staged cron response for another project or target", async () => {
+    for (const identity of [
+      { projectId: "prj_other", target: "production" },
+      { projectId: "prj_test", target: "preview" },
+    ]) {
+      mockGlobalFetch(() =>
+        Promise.resolve(
+          jsonResponse({
+            id: "dpl_staged",
+            ...identity,
+            readyState: "READY",
+            url: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
+            crons: [
+              {
+                path: "/api/cron/workspace/reservation-holds",
+                schedule: "0 0 * * *",
+              },
+              {
+                path: "/api/cron/workspace/auth-cleanup",
+                schedule: "17 3 * * *",
+              },
+            ],
+          })
+        )
+      );
+
+      await expect(
+        assertStagedDeploymentCrons(
+          stagedDeploymentUrl,
+          "prj_test",
+          "token",
+          undefined
+        )
+      ).rejects.toThrow(
+        identity.projectId === "prj_test" ? "production" : "project"
+      );
+    }
+  });
+
+  test("rejects a staged deployment that is not READY", async () => {
     mockGlobalFetch(() =>
-      jsonResponse({
-        crons: [{ path: "/api/cron/workspace/reservation-holds" }],
-      })
+      Promise.resolve(
+        jsonResponse({
+          id: "dpl_staged",
+          projectId: "prj_test",
+          target: "production",
+          readyState: "BUILDING",
+          url: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
+          crons: [],
+        })
+      )
     );
 
     await expect(
-      assertRegisteredCrons("prj_test", "token", undefined)
+      assertStagedDeploymentCrons(
+        stagedDeploymentUrl,
+        "prj_test",
+        "token",
+        undefined
+      )
+    ).rejects.toThrow("READY");
+  });
+
+  test("rejects a staged cron with a missing or incorrect schedule", async () => {
+    mockGlobalFetch(() =>
+      Promise.resolve(
+        jsonResponse({
+          id: "dpl_staged",
+          projectId: "prj_test",
+          target: "production",
+          readyState: "READY",
+          url: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
+          crons: [
+            {
+              path: "/api/cron/workspace/reservation-holds",
+              schedule: "0 0 * * *",
+            },
+            {
+              path: "/api/cron/workspace/auth-cleanup",
+              schedule: "0 3 * * *",
+            },
+          ],
+        })
+      )
+    );
+
+    await expect(
+      assertStagedDeploymentCrons(
+        stagedDeploymentUrl,
+        "prj_test",
+        "token",
+        undefined
+      )
+    ).rejects.toThrow("17 3 * * *");
+  });
+
+  test("rejects a staged cron definition with no schedule when both paths exist", async () => {
+    mockGlobalFetch(() =>
+      Promise.resolve(
+        jsonResponse({
+          id: "dpl_staged",
+          projectId: "prj_test",
+          target: "production",
+          readyState: "READY",
+          url: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
+          crons: [
+            {
+              path: "/api/cron/workspace/reservation-holds",
+              schedule: "0 0 * * *",
+            },
+            { path: "/api/cron/workspace/auth-cleanup" },
+          ],
+        })
+      )
+    );
+
+    await expect(
+      assertStagedDeploymentCrons(
+        stagedDeploymentUrl,
+        "prj_test",
+        "token",
+        undefined
+      )
     ).rejects.toThrow("auth-cleanup");
   });
 
-  test("accepts the registered account cleanup cron alongside the reservation sweep", async () => {
+  test("rejects a staged deployment lookup that does not match the exact URL", async () => {
     mockGlobalFetch(() =>
-      jsonResponse({
-        crons: [
-          { path: "/api/cron/workspace/reservation-holds" },
-          { path: "/api/cron/workspace/auth-cleanup" },
-        ],
-      })
+      Promise.resolve(
+        jsonResponse({
+          id: "dpl_other",
+          projectId: "prj_test",
+          target: "production",
+          readyState: "READY",
+          url: "another-deployment.vercel.app",
+          crons: [
+            {
+              path: "/api/cron/workspace/reservation-holds",
+              schedule: "0 0 * * *",
+            },
+            {
+              path: "/api/cron/workspace/auth-cleanup",
+              schedule: "17 3 * * *",
+            },
+          ],
+        })
+      )
     );
 
     await expect(
-      assertRegisteredCrons("prj_test", "token", "team_test")
+      assertStagedDeploymentCrons(
+        stagedDeploymentUrl,
+        "prj_test",
+        "token",
+        undefined
+      )
+    ).rejects.toThrow("different deployment URL");
+  });
+
+  test("waits for the live project cron deployment and definitions to converge", async () => {
+    let clock = 0;
+    let requests = 0;
+    const requestedUrls: URL[] = [];
+    mockGlobalFetch((input) => {
+      const url = new URL(input.toString());
+      requestedUrls.push(url);
+      requests += 1;
+      const updated = requests > 1;
+      return Promise.resolve(
+        jsonResponse({
+          id: "prj_test",
+          crons: {
+            deploymentId: updated ? "dpl_staged" : "dpl_baseline",
+            definitions: updated
+              ? [
+                  {
+                    path: "/api/cron/workspace/reservation-holds",
+                    schedule: "0 0 * * *",
+                  },
+                  {
+                    path: "/api/cron/workspace/auth-cleanup",
+                    schedule: "17 3 * * *",
+                  },
+                ]
+              : [
+                  {
+                    path: "/api/cron/workspace/reservation-holds",
+                    schedule: "0 0 * * *",
+                  },
+                ],
+          },
+        })
+      );
+    });
+
+    await expect(
+      assertLiveProjectCrons(
+        "dpl_staged",
+        {
+          token: "token",
+          projectId: "prj_test",
+          teamId: "team_test",
+          pollDeadlineMilliseconds: 100,
+          pollIntervalMilliseconds: 10,
+        },
+        {
+          sleep: async (ms) => {
+            clock += ms;
+          },
+          now: () => clock,
+        }
+      )
     ).resolves.toBeUndefined();
+
+    expect(requests).toBe(2);
+    expect(requestedUrls[0]?.pathname).toBe("/v9/projects/prj_test");
+    expect(requestedUrls[0]?.searchParams.get("teamId")).toBe("team_test");
+  });
+
+  test("fails live cron verification closed for another project or missing schedule", async () => {
+    let clock = 0;
+    const verifyLive = () =>
+      assertLiveProjectCrons(
+        "dpl_staged",
+        {
+          token: "token",
+          projectId: "prj_test",
+          teamId: undefined,
+          pollDeadlineMilliseconds: 2,
+          pollIntervalMilliseconds: 1,
+        },
+        {
+          sleep: async (ms) => {
+            clock += ms;
+          },
+          now: () => clock,
+        }
+      );
+
+    mockGlobalFetch(() =>
+      Promise.resolve(
+        jsonResponse({
+          id: "prj_other",
+          crons: {
+            deploymentId: "dpl_staged",
+            definitions: [],
+          },
+        })
+      )
+    );
+    await expect(verifyLive()).rejects.toThrow("different Vercel project");
+
+    mockGlobalFetch(() =>
+      Promise.resolve(
+        jsonResponse({
+          id: "prj_test",
+          crons: {
+            deploymentId: "dpl_staged",
+            definitions: [
+              {
+                path: "/api/cron/workspace/reservation-holds",
+                schedule: "0 0 * * *",
+              },
+            ],
+          },
+        })
+      )
+    );
+    await expect(verifyLive()).rejects.toThrow("auth-cleanup");
+  });
+
+  test("rejects a live cron definition with no schedule when both paths exist", async () => {
+    let clock = 0;
+    mockGlobalFetch(() =>
+      Promise.resolve(
+        jsonResponse({
+          id: "prj_test",
+          crons: {
+            deploymentId: "dpl_staged",
+            definitions: [
+              {
+                path: "/api/cron/workspace/reservation-holds",
+                schedule: "0 0 * * *",
+              },
+              { path: "/api/cron/workspace/auth-cleanup" },
+            ],
+          },
+        })
+      )
+    );
+
+    await expect(
+      assertLiveProjectCrons(
+        "dpl_staged",
+        {
+          token: "token",
+          projectId: "prj_test",
+          teamId: undefined,
+          pollDeadlineMilliseconds: 2,
+          pollIntervalMilliseconds: 1,
+        },
+        {
+          sleep: async (ms) => {
+            clock += ms;
+          },
+          now: () => clock,
+        }
+      )
+    ).rejects.toThrow("auth-cleanup");
+  });
+
+  test("bounds stalled live cron requests and body consumption by the overall deadline", async () => {
+    for (const stall of ["request", "body"] as const) {
+      let clock = 0;
+      let requestSignal: AbortSignal | undefined;
+      mockGlobalFetch((_input, init) => {
+        requestSignal = init?.signal as AbortSignal | undefined;
+        if (stall === "request") {
+          return new Promise<Response>(() => {});
+        }
+
+        const response = new Response(null, { status: 200 });
+        Object.defineProperty(response, "json", {
+          value: () => new Promise<unknown>(() => {}),
+        });
+        return Promise.resolve(response);
+      });
+
+      const deadlineTimer = (milliseconds: number) => ({
+        promise: Promise.resolve().then(() => {
+          clock += milliseconds;
+        }),
+        cancel: () => {},
+      });
+
+      await expect(
+        assertLiveProjectCrons(
+          "dpl_staged",
+          {
+            token: "token",
+            projectId: "prj_test",
+            teamId: undefined,
+            pollDeadlineMilliseconds: 5,
+          },
+          { now: () => clock, deadlineTimer }
+        )
+      ).rejects.toThrow("deadline");
+
+      expect(requestSignal?.aborted).toBe(true);
+    }
+  });
+
+  test("rejects valid live cron data completed after the deadline", async () => {
+    let clock = 0;
+    mockGlobalFetch(() => {
+      clock = 11;
+      return Promise.resolve(
+        jsonResponse({
+          id: "prj_test",
+          crons: {
+            deploymentId: "dpl_staged",
+            definitions: [
+              {
+                path: "/api/cron/workspace/reservation-holds",
+                schedule: "0 0 * * *",
+              },
+              {
+                path: "/api/cron/workspace/auth-cleanup",
+                schedule: "17 3 * * *",
+              },
+            ],
+          },
+        })
+      );
+    });
+
+    await expect(
+      assertLiveProjectCrons(
+        "dpl_staged",
+        {
+          token: "token",
+          projectId: "prj_test",
+          teamId: undefined,
+          pollDeadlineMilliseconds: 10,
+        },
+        {
+          now: () => clock,
+          deadlineTimer: () => ({
+            promise: new Promise<void>(() => {}),
+            cancel: () => {},
+          }),
+        }
+      )
+    ).rejects.toThrow("deadline");
+  });
+
+  test("caps live cron polling sleep at the remaining deadline", async () => {
+    let clock = 0;
+    const sleeps: number[] = [];
+    mockGlobalFetch(() =>
+      Promise.resolve(
+        jsonResponse({
+          id: "prj_test",
+          crons: {
+            deploymentId: "dpl_baseline",
+            definitions: [],
+          },
+        })
+      )
+    );
+
+    await expect(
+      assertLiveProjectCrons(
+        "dpl_staged",
+        {
+          token: "token",
+          projectId: "prj_test",
+          teamId: undefined,
+          pollDeadlineMilliseconds: 3,
+          pollIntervalMilliseconds: 10,
+        },
+        {
+          now: () => clock,
+          sleep: async (milliseconds) => {
+            sleeps.push(milliseconds);
+            clock += milliseconds;
+          },
+        }
+      )
+    ).rejects.toThrow("deadline");
+
+    expect(sleeps).toEqual([3]);
+  });
+
+  test("does not accept the baseline deployment's one-cron project snapshot", async () => {
+    let clock = 0;
+    let requests = 0;
+    mockGlobalFetch(() => {
+      requests += 1;
+      return Promise.resolve(
+        jsonResponse({
+          id: "prj_test",
+          crons: {
+            deploymentId: "dpl_baseline",
+            definitions: [
+              {
+                path: "/api/cron/workspace/reservation-holds",
+                schedule: "0 0 * * *",
+              },
+            ],
+          },
+        })
+      );
+    });
+
+    await expect(
+      assertLiveProjectCrons(
+        "dpl_staged",
+        {
+          token: "token",
+          projectId: "prj_test",
+          teamId: undefined,
+          pollDeadlineMilliseconds: 2,
+          pollIntervalMilliseconds: 1,
+        },
+        {
+          sleep: async (ms) => {
+            clock += ms;
+          },
+          now: () => clock,
+        }
+      )
+    ).rejects.toThrow("dpl_baseline");
+
+    expect(requests).toBe(2);
   });
 });
