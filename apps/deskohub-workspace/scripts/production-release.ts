@@ -12,10 +12,10 @@ const requiredProductionAliases = [
   workspaceProductionDomain,
   customerFacingProductionDomain,
 ] as const;
-const signInPath = "/en-US/auth/sign-in";
+const canonicalLandingPath = "/en-US";
 const authSessionPath = "/api/auth/get-session";
 const authSessionCacheControl = "private, no-store";
-const signInFormMarker = 'id="account-sign-in-form"';
+const landingPageHeadingMarker = 'id="landing-page-heading"';
 const immutableWorkspaceDeploymentHost =
   /^deskohub-workspace(?:-site)?-[a-z0-9]{9}-[a-z0-9-]+\.vercel\.app$/;
 
@@ -271,26 +271,27 @@ export const assertAuthSessionReady = async (
 };
 
 /**
- * Production smoke against the customer-facing host from the business
- * specification: the anonymous session endpoint and the public sign-in page
- * must both be healthy on the domain customers actually use. Deliberately
- * never requests a magic link; delivery is proven by the exact-SHA preview
- * E2E.
+ * Production smoke against the customer-facing host: the anonymous session
+ * endpoint and public landing page must both be healthy on the domain
+ * customers actually use. The landing page is independent of account rollout
+ * state; delivery is proven by the exact-SHA preview E2E.
  */
-export const assertCanonicalSignInReady = async (
+export const assertCanonicalLandingReady = async (
   fetchImpl: typeof fetch = fetch
 ) => {
   const base = `https://${customerFacingProductionDomain}`;
   await assertAuthSessionReady(base, fetchImpl);
-  const response = await fetchImpl(new URL(signInPath, base));
+  const response = await fetchImpl(new URL(canonicalLandingPath, base), {
+    redirect: "error",
+  });
   if (response.status !== 200) {
     throw new Error(
-      `Canonical sign-in page probe failed with ${response.status}`
+      `Canonical landing page probe failed with ${response.status}`
     );
   }
-  if (!(await response.text()).includes(signInFormMarker)) {
+  if (!(await response.text()).includes(landingPageHeadingMarker)) {
     throw new Error(
-      "Canonical sign-in page did not render the magic-link form"
+      "Canonical landing page did not render the landing-page heading"
     );
   }
 };
@@ -891,7 +892,7 @@ const run = async () => {
     case "verify-canonical": {
       const promotedDeploymentId =
         readOptionValue("--id") ?? usage("--id is required");
-      await assertCanonicalSignInReady();
+      await assertCanonicalLandingReady();
       await assertLiveProjectCrons(promotedDeploymentId, {
         token: vercelToken,
         projectId,
