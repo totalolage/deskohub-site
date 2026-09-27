@@ -598,11 +598,14 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
     onSuccess: ({ data }) => {
       if (!data) return;
       setFeedback({ kind: "success", message: data.notice });
+      // Rebase the defaults onto the submitted snapshot while retaining every
+      // current value, so dirty state recomputes against the snapshot and an
+      // in-flight edit that reverted a field to its original value survives.
       form.reset(
         resetOnSuccessTo === "submitted"
           ? (submittedValues ?? undefined)
           : undefined,
-        resetOnSuccessTo === "submitted" ? { keepDirtyValues: true } : undefined
+        resetOnSuccessTo === "submitted" ? { keepValues: true } : undefined
       );
       router.refresh();
     },
