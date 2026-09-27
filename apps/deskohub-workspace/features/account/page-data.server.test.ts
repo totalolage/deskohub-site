@@ -153,10 +153,8 @@ mock.module(
   })
 );
 
-let preferenceLoadEffect: Effect.Effect<
-  "cs-CZ" | "en-US" | undefined,
-  unknown
-> = Effect.succeed(undefined);
+let preferenceLoadEffect: Effect.Effect<"cs-CZ" | "en-US", unknown> =
+  Effect.succeed("cs-CZ");
 
 const PreferenceRepository = Context.Service<
   PreferenceRepository,
@@ -195,7 +193,7 @@ describe("loadCustomerAccountPage", () => {
       kind: "available",
       groups: { current: [], past: [], unavailable: [] },
     });
-    preferenceLoadEffect = Effect.succeed(undefined);
+    preferenceLoadEffect = Effect.succeed("cs-CZ");
   });
 
   const loadPageState = async () => {
@@ -300,14 +298,35 @@ describe("loadCustomerAccountPage", () => {
     });
   });
 
-  test("renders the linked account with profile and grouped history", async () => {
+  test("renders the linked account with profile, grouped history, and the saved preference", async () => {
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "linked",
       email: "ada@example.test",
-      preferredLanguage: null,
+      preferredLanguage: "cs-CZ",
       profile: { firstName: "Ada" },
       history: { kind: "available" },
     });
+  });
+
+  test("never exposes a missing preference row as a successful unset state", async () => {
+    // A linked account always has a required preference row; the repository
+    // fails the read with the typed missing error and the page state has no
+    // null/unset success value.
+    preferenceLoadEffect = Effect.fail({
+      _tag: "CustomerCommunicationPreferenceMissingError",
+      code: "account-communication-preference.missing",
+    });
+
+    const state = await loadPageState();
+
+    expect(state.kind).toBe("linked");
+    if (state.kind === "linked") {
+      expect(["read-failed", "cs-CZ", "en-US"]).toContain(
+        state.preferredLanguage
+      );
+      expect(state.preferredLanguage).toBe("read-failed");
+      expect(state.preferredLanguage).not.toBeNull();
+    }
   });
 
   test("restores the saved communication preference in the linked state", async () => {
@@ -337,7 +356,7 @@ describe("loadCustomerAccountPage", () => {
     await expect(loadPageState()).resolves.toEqual({
       kind: "linked",
       email: "ada@example.test",
-      preferredLanguage: null,
+      preferredLanguage: "cs-CZ",
       profile: {
         firstName: "Ada",
         lastName: "Lovelace",

@@ -9,6 +9,7 @@ import { Effect, Option, Schema } from "effect";
 import { after } from "next/server";
 import { Resend } from "resend";
 import { makeAuthDatabase } from "@/db/auth-database-client";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceDatabasePool } from "@/db/database-provider.server";
 import { drizzleAuthTables } from "@/db/schema/auth";
 import { env } from "@/env";
@@ -17,9 +18,18 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
-import { defaultLocale, isLocale, type Locale } from "@/features/i18n";
+import {
+  defaultLocale,
+  getLocaleFromPathname,
+  isLocale,
+  type Locale,
+} from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { workspaceSiteConstants } from "@/shared/utils";
+import {
+  lookupMagicLinkDeliveryLocale,
+  type MagicLinkLocaleLookup,
+} from "../customer-communication-preference.repository";
 import { authOptions, betterAuthMagicLinkOptions } from "./auth-options";
 import { renderMagicLinkEmail } from "./magic-link-email";
 import {
@@ -39,6 +49,15 @@ export type WorkspaceAuthConfig = {
   readonly areAccountsEnabled: () => Promise<boolean>;
   readonly sendMagicLink: MagicLinkSendFunction;
   readonly beforeDeleteUser: (accountId: CustomerAccountId) => Promise<void>;
+  /**
+   * Seeds the required preferred communication language at account creation
+   * from the initiating site locale. Never throws into the auth flow: the
+   * hook logs a fixed failure code instead.
+   */
+  readonly createAccountCommunicationPreference: (
+    accountId: CustomerAccountId,
+    locale: Locale
+  ) => Promise<void>;
 };
 
 const accountMagicLinkPaths = new Set([
@@ -70,6 +89,63 @@ const decodeMagicLinkLocale = (
   );
   const locale = decoded?.locale;
   return locale && isLocale(locale) ? locale : defaultLocale;
+};
+
+const authContextSchema = Schema.Struct({
+  path: Schema.optional(Schema.String),
+  query: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+});
+
+type ParsedAuthContext = {
+  readonly path?: string;
+  readonly query?: Readonly<Record<string, string>>;
+};
+
+/**
+ * Derives the initiating site language from the auth request that creates
+ * the account: the magic-link verify request carries the localized callback
+ * URL. Anything unparseable falls back to the site default locale.
+ */
+const siteLocaleFromAuthContext = (ctx: ParsedAuthContext): Locale => {
+  const callbackURL = ctx.query?.callbackURL ?? ctx.path;
+  if (!callbackURL) return defaultLocale;
+  try {
+    const fromCallback = getLocaleFromPathname(
+      new URL(callbackURL, "https://auth.internal.invalid").pathname
+    );
+    return fromCallback ?? defaultLocale;
+  } catch {
+    return defaultLocale;
+  }
+};
+
+/**
+ * Picks the magic-link email locale: a verified existing account always uses
+ * its saved preference; every other lookup outcome keeps the initiating site
+ * locale and logs a fixed, non-PII code so an operational failure never
+ * silently guesses a wrong customer preference.
+ */
+const magicLinkDeliveryLocale = (
+  lookup: MagicLinkLocaleLookup,
+  fallback: Locale
+): Locale => {
+  if (lookup.kind === "account") return lookup.locale;
+  if (
+    lookup.kind === "account-locale-missing" ||
+    lookup.kind === "read-failed"
+  ) {
+    void runWorkspaceEffect("account.magic-link.locale", {
+      boundary: "route",
+    })(
+      Effect.logWarning("Magic-link delivery fell back to the site locale.", {
+        code:
+          lookup.kind === "account-locale-missing"
+            ? "account.magic-link.locale.missing"
+            : "account.magic-link.locale.read-failed",
+      })
+    ).catch(() => undefined);
+  }
+  return fallback;
 };
 
 /**
@@ -157,6 +233,39 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
           }),
         },
       },
+      user: {
+        create: {
+          after: async (user, ctx) => {
+            const accountId = Option.getOrUndefined(
+              Schema.decodeOption(customerAccountIdSchema)(user.id)
+            );
+            if (!accountId) return;
+            // The auth request context is the I/O boundary: parse it here.
+            const parsedCtx = Option.getOrUndefined(
+              Schema.decodeUnknownOption(authContextSchema)(ctx)
+            );
+            const locale = siteLocaleFromAuthContext(parsedCtx ?? {});
+            try {
+              await config.createAccountCommunicationPreference(
+                accountId,
+                locale
+              );
+            } catch {
+              // The user row is already committed when this hook runs, so a
+              // failed seed must not fail the sign-in; the operational
+              // failure stays distinguishable in the logs.
+              await runWorkspaceEffect("account.magic-link.seed-locale", {
+                boundary: "route",
+              })(
+                Effect.logWarning(
+                  "Customer communication preference seed failed.",
+                  { code: "account-communication-preference.seed-failed" }
+                )
+              ).catch(() => undefined);
+            }
+          },
+        },
+      },
     },
     user: {
       ...authOptions.user,
@@ -220,8 +329,16 @@ export const makeWorkspaceAuthDatabase = () =>
     schemaName: "auth",
   });
 
-export const workspaceSendMagicLink: MagicLinkSendFunction = (data) => {
-  const locale = decodeMagicLinkLocale(data);
+export const workspaceSendMagicLink: MagicLinkSendFunction = async (data) => {
+  const fallbackLocale = decodeMagicLinkLocale(data);
+  const lookup = await runWorkspaceEffect("account.magic-link.locale", {
+    boundary: "route",
+  })(
+    lookupMagicLinkDeliveryLocale(data.email).pipe(
+      Effect.provide(WorkspaceDatabase.Default)
+    )
+  ).catch(() => ({ kind: "read-failed" }) as const);
+  const locale = magicLinkDeliveryLocale(lookup, fallbackLocale);
   after(() =>
     runWorkspaceEffect("account.magic-link.deliver", { boundary: "task" })(
       makeWorkspaceMagicLinkDelivery(env.EMAIL_API_KEY).deliver({

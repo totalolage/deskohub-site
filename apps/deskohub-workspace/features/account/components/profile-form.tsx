@@ -456,7 +456,7 @@ export function ProfileForm({
                 footer={section === "profile" ? formFooter : undefined}
                 lastName={savedIdentity.lastName}
                 locale={locale}
-                preferredLanguage={preferredLanguage ?? null}
+                preferredLanguage={preferredLanguage}
               >
                 {identityFields}
               </ProfileScreen>

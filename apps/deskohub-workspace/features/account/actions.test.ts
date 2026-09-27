@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
-import { type Locale, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { CustomerAccountAccessError } from "./customer-account";
 
 const revalidatePath = mock((_path: string) => undefined);
@@ -324,6 +324,36 @@ describe("account actions", () => {
 
     expect(result.validationErrors).toBeTruthy();
     expect(preferenceSaveCalls).toHaveLength(0);
+  });
+
+  test("accepts every locale of the inlang locales tuple and no hard-coded list remains", async () => {
+    const { locales } = await import("@/features/i18n");
+    const { updatePreferredLanguage } = await importActions();
+
+    for (const locale of locales) {
+      const result = await updatePreferredLanguage({ locale });
+      expect(result).toEqual({ data: { status: "saved" } });
+    }
+    expect(preferenceSaveCalls.map(({ locale }) => locale)).toEqual([
+      ...locales,
+    ]);
+
+    // The validation must stay derived from the locales tuple: a structural
+    // AST check verifies no literal locale list and no locale string literal
+    // exists in the action module.
+    const { callsNamed, parseTrackedSource, stringLiterals } = await import(
+      "../../scripts/shared/source-ast"
+    );
+    const actionsSource = parseTrackedSource(
+      new URL("./actions.ts", import.meta.url).pathname
+    );
+    for (const call of callsNamed(actionsSource.ast, "Literals")) {
+      expect(call.arguments[0]?.type).toBe("Identifier");
+    }
+    const localeLiterals = stringLiterals(actionsSource.ast)
+      .map(({ value }) => value)
+      .filter((value) => locales.includes(value as never));
+    expect(localeLiterals).toEqual([]);
   });
 
   test("returns the session-expired error without saving when unauthenticated", async () => {

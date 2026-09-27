@@ -30,7 +30,7 @@ export type CustomerAccountPageState =
   | {
       readonly kind: "linked";
       readonly email: string;
-      readonly preferredLanguage: Locale | null | "read-failed";
+      readonly preferredLanguage: Locale | "read-failed";
       readonly profile: CustomerProfile;
       readonly history: CustomerReservationHistory;
     }
@@ -106,17 +106,17 @@ export const loadCustomerAccountPage = cache(
       );
 
       /**
-       * The durable communication-language preference is independent of the
-       * Dotypos profile. A missing row is `null`; a read failure becomes the
-       * explicit "read-failed" sentinel so it never blocks the rest of the
-       * page and never renders a restored value.
+       * The durable communication-language preference is required for every
+       * active account, so there is no unset success state: a saved locale
+       * renders, and a missing row or a failed read becomes the explicit
+       * "read-failed" operational failure so it never blocks the rest of the
+       * page and never renders a guessed value.
        */
       const preferredLanguage = await Effect.flatMap(
         CustomerCommunicationPreferenceRepository,
         (repository) => repository.load(account.success.accountId)
       ).pipe(
         Effect.provide(CustomerCommunicationPreferenceRepository.Live),
-        Effect.map((value) => value ?? null),
         // The raw repository failure never reaches the log: fold it into the
         // fixed non-PII read-failure cause first, matching the other account
         // page reads.

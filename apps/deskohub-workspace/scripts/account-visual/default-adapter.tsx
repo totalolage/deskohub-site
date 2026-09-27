@@ -9,7 +9,7 @@ import {
 const linkedFixture = {
   kind: "linked",
   email: "ada@example.test",
-  preferredLanguage: null,
+  preferredLanguage: "read-failed",
   profile: {
     firstName: "Ada",
     lastName: "Example",

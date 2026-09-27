@@ -27,6 +27,7 @@ const makeTestLayers = (options: {
   readonly row?: PreferenceRow;
   readonly lockFails?: boolean;
   readonly holdLock?: Promise<void>;
+  readonly readFails?: boolean;
 }) => {
   const upserts: {
     readonly accountId: CustomerAccountId;
@@ -35,7 +36,7 @@ const makeTestLayers = (options: {
   let sessionAccountId: CustomerAccountId | null = accountId;
   let authReads = 0;
 
-  const linksFindActivityState = (accountId: CustomerAccountId) =>
+  const linksFindActivityState = (_accountId: CustomerAccountId) =>
     Effect.succeed(options.state);
 
   const LinksLayer = Layer.succeed(
@@ -74,7 +75,10 @@ const makeTestLayers = (options: {
     select: () => ({
       from: () => ({
         where: () => ({
-          limit: () => Effect.succeed(options.row ? [options.row] : []),
+          limit: () =>
+            options.readFails
+              ? Effect.fail(new Error("synthetic preference read failure"))
+              : Effect.succeed(options.row ? [options.row] : []),
         }),
       }),
     }),
@@ -122,7 +126,7 @@ const makeSession = (accountId: CustomerAccountId): CustomerAccountSession => ({
 const accountId = "pref-account-1" as CustomerAccountId;
 
 describe("CustomerCommunicationPreferenceRepository with mock layers", () => {
-  test("distinguishes a missing row from a saved row on load", async () => {
+  test("fails the load with the typed missing error when no row exists", async () => {
     const missing = makeTestLayers({
       state: { kind: "active", deletionRequestedAt: null },
     });
@@ -134,7 +138,7 @@ describe("CustomerCommunicationPreferenceRepository with mock layers", () => {
     const missingLoad = await Effect.runPromise(
       Effect.flatMap(CustomerCommunicationPreferenceRepository, (repository) =>
         repository.load(accountId)
-      ).pipe(Effect.provide(missing.Repository))
+      ).pipe(Effect.result, Effect.provide(missing.Repository))
     );
     const savedLoad = await Effect.runPromise(
       Effect.flatMap(CustomerCommunicationPreferenceRepository, (repository) =>
@@ -142,8 +146,38 @@ describe("CustomerCommunicationPreferenceRepository with mock layers", () => {
       ).pipe(Effect.provide(saved.Repository))
     );
 
-    expect(missingLoad).toBeUndefined();
+    expect(missingLoad._tag).toBe("Failure");
+    if (missingLoad._tag === "Failure") {
+      expect((missingLoad.failure as { readonly code?: string }).code).toBe(
+        "account-communication-preference.missing"
+      );
+    }
     expect(savedLoad).toBe("cs-CZ");
+  });
+
+  test("keeps an operational read failure distinguishable from a missing row", async () => {
+    const readFailed = makeTestLayers({
+      state: { kind: "active", deletionRequestedAt: null },
+      readFails: true,
+    });
+
+    const outcome = await Effect.runPromise(
+      Effect.flatMap(CustomerCommunicationPreferenceRepository, (repository) =>
+        repository.load(accountId)
+      ).pipe(Effect.result, Effect.provide(readFailed.Repository))
+    );
+
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag === "Failure") {
+      const failure = outcome.failure as unknown;
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toContain(
+        "synthetic preference read failure"
+      );
+      expect((failure as { readonly code?: string }).code).not.toBe(
+        "account-communication-preference.missing"
+      );
+    }
   });
 
   test("fails closed with the deletion-pending error and never writes under a deletion marker", async () => {

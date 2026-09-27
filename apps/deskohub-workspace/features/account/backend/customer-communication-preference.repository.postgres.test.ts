@@ -17,7 +17,11 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "./customer-authentication.service";
-import { CustomerCommunicationPreferenceRepository } from "./customer-communication-preference.repository";
+import {
+  CustomerCommunicationPreferenceRepository,
+  lookupMagicLinkDeliveryLocale,
+  seedAccountCommunicationPreference,
+} from "./customer-communication-preference.repository";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -98,7 +102,7 @@ describe.skipIf(!testDatabase)(
       const outcomes = await Effect.runPromise(
         Effect.gen(function* () {
           const preferences = yield* CustomerCommunicationPreferenceRepository;
-          const missing = yield* preferences.load(account);
+          const missing = yield* Effect.result(preferences.load(account));
           yield* preferences.save(account, "cs-CZ");
           const saved = yield* preferences.load(account);
           yield* preferences.save(account, "en-US");
@@ -107,7 +111,12 @@ describe.skipIf(!testDatabase)(
         }).pipe(Effect.provide(layer))
       );
 
-      expect(outcomes.missing).toBeUndefined();
+      expect(outcomes.missing._tag).toBe("Failure");
+      if (outcomes.missing._tag === "Failure") {
+        expect(
+          (outcomes.missing.failure as { readonly code?: string }).code
+        ).toBe("account-communication-preference.missing");
+      }
       expect(outcomes.saved).toBe("cs-CZ");
       expect(outcomes.resaved).toBe("en-US");
 
@@ -137,12 +146,19 @@ describe.skipIf(!testDatabase)(
         Effect.gen(function* () {
           const preferences = yield* CustomerCommunicationPreferenceRepository;
           yield* preferences.save(firstAccount, "cs-CZ");
-          const secondView = yield* preferences.load(secondAccount);
+          const secondView = yield* Effect.result(
+            preferences.load(secondAccount)
+          );
           return secondView;
         }).pipe(Effect.provide(layer))
       );
 
-      expect(outcomes).toBeUndefined();
+      expect(outcomes._tag).toBe("Failure");
+      if (outcomes._tag === "Failure") {
+        expect((outcomes.failure as { readonly code?: string }).code).toBe(
+          "account-communication-preference.missing"
+        );
+      }
     });
 
     test("rejects a locale outside the inlang locale list with the CHECK constraint", async () => {
@@ -232,6 +248,61 @@ describe.skipIf(!testDatabase)(
         [account]
       );
       expect(rows.rows).toHaveLength(0);
+    });
+
+    test("seed and lookup helpers resolve the magic-link delivery locale", async () => {
+      const dbLayer = Layer.succeed(
+        WorkspaceDatabase,
+        WorkspaceDatabase.of({ db: testDatabase!.db })
+      );
+      const verifiedEmail = `lookup-${crypto.randomUUID()}@deskohub.test`;
+      const unverifiedEmail = `unverified-${crypto.randomUUID()}@deskohub.test`;
+      const seedAccount = customerAccountIdSchema.make(uniqueId());
+      await insertAuthUser(seedAccount, verifiedEmail);
+      await testDatabase!.pool.query(
+        `update auth."user" set email_verified = true where id = $1`,
+        [seedAccount]
+      );
+      await insertAuthUser(
+        customerAccountIdSchema.make(uniqueId()),
+        unverifiedEmail
+      );
+
+      const outcomes = await Effect.runPromise(
+        Effect.gen(function* () {
+          const beforeAccount =
+            yield* lookupMagicLinkDeliveryLocale(verifiedEmail);
+          yield* seedAccountCommunicationPreference(seedAccount, "cs-CZ");
+          const seeded = yield* lookupMagicLinkDeliveryLocale(verifiedEmail);
+          // Re-seeding never overwrites the saved preference.
+          yield* seedAccountCommunicationPreference(seedAccount, "en-US");
+          const afterReseed =
+            yield* lookupMagicLinkDeliveryLocale(verifiedEmail);
+          const unverified =
+            yield* lookupMagicLinkDeliveryLocale(unverifiedEmail);
+          const unknown = yield* lookupMagicLinkDeliveryLocale(
+            `nobody-${crypto.randomUUID()}@deskohub.test`
+          );
+          return {
+            beforeAccount,
+            seeded,
+            afterReseed,
+            unverified,
+            unknown,
+          };
+        }).pipe(Effect.provide(dbLayer))
+      );
+
+      expect(outcomes.beforeAccount).toEqual({
+        kind: "account-locale-missing",
+      });
+      expect(outcomes.seeded).toEqual({ kind: "account", locale: "cs-CZ" });
+      expect(outcomes.afterReseed).toEqual({
+        kind: "account",
+        locale: "cs-CZ",
+      });
+      expect(outcomes.unverified).toEqual({ kind: "unverified-email" });
+      expect(outcomes.unknown).toEqual({ kind: "pre-account" });
     });
 
     test("serializes saves against an outer account lock holder", async () => {

@@ -15,7 +15,7 @@ import type { CustomerAccountId } from "@/features/account/customer-account";
 import { CustomerAccountAccessError } from "@/features/account/customer-account";
 import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import type { Locale } from "@/features/i18n";
-import { m } from "@/features/i18n";
+import { locales, m } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
@@ -25,12 +25,12 @@ const deleteCustomerAccountConfirmedSchema = Schema.toStandardSchemaV1(
 );
 
 /**
- * The selectable preferred communication languages. Hardcoded to the two
- * locales the account screen offers; the database CHECK derives from the
- * same inlang locale list.
+ * The selectable preferred communication languages, derived from the Inlang
+ * `locales` tuple so a locale list change is authoritative here too; the
+ * database CHECK derives from the same list.
  */
 const preferredLanguageSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({ locale: Schema.Literals(["cs-CZ", "en-US"]) }),
+  Schema.Struct({ locale: Schema.Literals(locales) }),
   { parseOptions: { errors: "all", onExcessProperty: "error" } }
 );
 

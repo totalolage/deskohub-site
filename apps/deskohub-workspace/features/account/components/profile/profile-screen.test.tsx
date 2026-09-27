@@ -1,18 +1,11 @@
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
+import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import {
   act,
   cleanup,
   fireEvent,
   render,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -257,6 +250,7 @@ function renderProfile(overrides: Partial<ProfileScreenProps> = {}): string {
         "lastName" in overrides ? (overrides.lastName ?? null) : "Lovelace"
       }
       locale={overrides.locale ?? "en-US"}
+      preferredLanguage={overrides.preferredLanguage ?? "read-failed"}
       footer={
         "footer" in overrides ? (
           overrides.footer
@@ -441,13 +435,13 @@ describe("ProfileScreen", () => {
       /<select\b[^>]*aria-hidden="true"[^>]*tabindex="-1"/
     );
     expect(markup).not.toMatch(/<select\b[^>]*name=/);
-    expect(markup).toContain("Not set");
+    expect(markup).toContain(englishCopy.languageReadUnavailable);
     expect(markup).not.toContain(
       formerLanguageUnavailableDescriptions["en-US"]
     );
   });
 
-  test("renders the Not set placeholder for a missing preference in both locales", () => {
+  test("falls closed to the read-unavailable placeholder when no saved state is provided", () => {
     for (const [locale, copy] of [
       ["en-US", englishCopy],
       ["cs-CZ", czechCopy],
@@ -459,6 +453,7 @@ describe("ProfileScreen", () => {
           firstName="Ada"
           lastName="Lovelace"
           locale={locale}
+          preferredLanguage="read-failed"
         >
           {profileFields}
         </ProfileScreen>
@@ -466,8 +461,8 @@ describe("ProfileScreen", () => {
       const trigger = view.getByRole("combobox", { name: copy.languageLabel });
 
       expect((trigger as HTMLButtonElement).disabled).toBe(false);
-      expect(trigger.textContent).toContain(copy.languageUnavailableValue);
-      expect(trigger.textContent).not.toContain(copy.languageReadUnavailable);
+      expect(trigger.textContent).toContain(copy.languageReadUnavailable);
+      expect(trigger.textContent).not.toContain(copy.languageUnavailableValue);
       cleanup();
     }
   });
@@ -498,6 +493,43 @@ describe("ProfileScreen", () => {
 
     expect(trigger.textContent).toContain("Čeština");
     expect(trigger.textContent).not.toContain("Not set");
+    cleanup();
+  });
+
+  test("offers exactly one labelled option for every inlang locale", async () => {
+    const { locales } = await import("@/features/i18n");
+    const view = render(
+      <ProfileScreen
+        copy={englishCopy}
+        email="ada@example.test"
+        firstName="Ada"
+        lastName="Lovelace"
+        locale="en-US"
+        preferredLanguage="cs-CZ"
+      >
+        {profileFields}
+      </ProfileScreen>
+    );
+    const trigger = view.getByRole("combobox", {
+      name: englishCopy.languageLabel,
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(trigger, { key: "Enter" });
+    });
+    const listbox = await view.findByRole("listbox");
+
+    const options = within(listbox).getAllByRole("option");
+    expect(options).toHaveLength(locales.length);
+    // The option order follows the inlang locales tuple, and every locale has
+    // a non-empty translated label.
+    const labelsByLocale = {
+      "cs-CZ": englishCopy.languageOptionCs,
+      "en-US": englishCopy.languageOptionEn,
+    };
+    expect(options.map((option) => option.textContent)).toEqual(
+      locales.map((locale) => labelsByLocale[locale])
+    );
     cleanup();
   });
 
@@ -549,7 +581,7 @@ describe("ProfileScreen", () => {
     await act(async () => {
       fireEvent.keyDown(trigger, { key: "Enter" });
     });
-    const listbox = await view.findByRole("listbox");
+    const _listbox = await view.findByRole("listbox");
 
     const option = view.getByRole("option", { name: "Čeština" });
     await act(async () => {
@@ -601,7 +633,7 @@ describe("ProfileScreen", () => {
     await act(async () => {
       fireEvent.keyDown(trigger, { key: "Enter" });
     });
-    const listbox = await view.findByRole("listbox");
+    const _listbox = await view.findByRole("listbox");
     const option = view.getByRole("option", { name: "Čeština" });
     await act(async () => {
       option.focus();
@@ -655,7 +687,7 @@ describe("ProfileScreen", () => {
     await act(async () => {
       fireEvent.keyDown(trigger, { key: "Enter" });
     });
-    const listbox = await view.findByRole("listbox");
+    const _listbox = await view.findByRole("listbox");
     const option = view.getByRole("option", { name: "Čeština" });
     await act(async () => {
       option.focus();
@@ -701,7 +733,7 @@ describe("ProfileScreen", () => {
     await act(async () => {
       fireEvent.keyDown(trigger, { key: "Enter" });
     });
-    const listbox = await view.findByRole("listbox");
+    const _listbox = await view.findByRole("listbox");
     const option = view.getByRole("option", { name: "Čeština" });
     await act(async () => {
       option.focus();
@@ -831,6 +863,8 @@ describe("ProfileScreen", () => {
       languageSaved: _languageSaved,
       languageSaveFailed: _languageSaveFailed,
       languageReadUnavailable: _languageReadUnavailable,
+      // The unset placeholder never renders: the preference is required.
+      languageUnavailableValue: _languageUnavailableValue,
       // Option labels render only inside the open listbox.
       languageOptionCs: _languageOptionCs,
       languageOptionEn: _languageOptionEn,

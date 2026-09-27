@@ -29,6 +29,7 @@ import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace
 import type { CustomerAccountId } from "../customer-account";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
 import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
+import { seedAccountCommunicationPreference } from "../customer-communication-preference.repository";
 import { CustomerDotyposAdapter } from "../customer-dotypos-adapter.service";
 import type { MagicLinkSendFunction, WorkspaceAuthConfig } from "./auth-server";
 
@@ -76,12 +77,30 @@ type TestAuthOptions = {
   readonly sentLinks?: CapturedMagicLink[];
   readonly areAccountsEnabled?: WorkspaceAuthConfig["areAccountsEnabled"];
   readonly beforeDeleteUser?: (accountId: CustomerAccountId) => Promise<void>;
+  readonly createAccountCommunicationPreference?: WorkspaceAuthConfig["createAccountCommunicationPreference"];
 };
 
 const makeTestAuth = (options: TestAuthOptions = {}) => {
   const sendMagicLink: MagicLinkSendFunction = (data) => {
     options.sentLinks?.push(data);
   };
+  const createAccountCommunicationPreference:
+    | WorkspaceAuthConfig["createAccountCommunicationPreference"]
+    | undefined =
+    options.createAccountCommunicationPreference ??
+    (testDatabase
+      ? (accountId, locale) =>
+          Effect.runPromise(
+            seedAccountCommunicationPreference(accountId, locale).pipe(
+              Effect.provide(
+                Layer.succeed(
+                  WorkspaceDatabase,
+                  WorkspaceDatabase.of({ db: testDatabase!.db })
+                )
+              )
+            )
+          )
+      : async () => undefined);
   return makeWorkspaceAuth({
     database: options.database ?? buildDatabaseAdapter(),
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
@@ -90,6 +109,7 @@ const makeTestAuth = (options: TestAuthOptions = {}) => {
     areAccountsEnabled: options.areAccountsEnabled ?? (async () => true),
     sendMagicLink,
     beforeDeleteUser: options.beforeDeleteUser ?? (() => Promise.resolve()),
+    createAccountCommunicationPreference,
   });
 };
 
@@ -627,6 +647,40 @@ describe.skipIf(!testDatabase)(
         [email]
       );
       expect(user.rows).toHaveLength(0);
+    });
+
+    test("seeds the required communication preference from the initiating site locale at account creation", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks });
+
+      const preferenceLocaleFor = async (email: string) => {
+        const userId = await userIdForEmail(email);
+        expect(userId).toBeTruthy();
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const rows = await testDatabase!.pool.query(
+            `select locale from customer_communication_preferences where customer_account_id = $1`,
+            [userId]
+          );
+          if (rows.rows.length > 0) return rows.rows[0]!.locale as string;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return undefined;
+      };
+
+      const emailEn = uniqueEmail("seed-en");
+      await signInForMagicLink(auth, emailEn, "/en-US/account");
+      await verifyMagicLink(auth, sentLinks[0]!);
+      expect(await preferenceLocaleFor(emailEn)).toBe("en-US");
+
+      const emailCs = uniqueEmail("seed-cs");
+      await signInForMagicLink(auth, emailCs, "/cs-CZ/account");
+      await verifyMagicLink(auth, sentLinks[1]!);
+      expect(await preferenceLocaleFor(emailCs)).toBe("cs-CZ");
+
+      const emailDefault = uniqueEmail("seed-default");
+      await signInForMagicLink(auth, emailDefault);
+      await verifyMagicLink(auth, sentLinks[2]!);
+      expect(await preferenceLocaleFor(emailDefault)).toBe("en-US");
     });
 
     test("keeps normal magic-link users at the auth placeholders", async () => {

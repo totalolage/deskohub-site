@@ -6,7 +6,7 @@ import { type ReactNode, useId, useState } from "react";
 import { updatePreferredLanguage } from "@/features/account/actions";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
-import type { Locale } from "@/features/i18n";
+import { type Locale, locales } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 import {
@@ -32,11 +32,12 @@ import {
  */
 
 /**
- * The server-read state of the saved preference: `null` when no preference
- * row exists, `"read-failed"` when the read could not be completed, and
- * otherwise the persisted locale.
+ * The server-read state of the saved preference: `"read-failed"` when the
+ * read could not be completed, and otherwise the persisted locale. The
+ * preference is required for every active account, so there is no unset
+ * success state.
  */
-export type PreferredLanguageState = Locale | null | "read-failed";
+export type PreferredLanguageState = Locale | "read-failed";
 
 export interface ProfileScreenCopy {
   readonly title: string;
@@ -84,13 +85,17 @@ const languageStatusCopy = (input: {
   return null;
 };
 
-const languageOptions = [
-  { locale: "cs-CZ", label: "languageOptionCs" },
-  { locale: "en-US", label: "languageOptionEn" },
-] as const satisfies readonly {
-  locale: Locale;
-  label: keyof ProfileScreenCopy;
-}[];
+/**
+ * Every Inlang locale must have a translated label key, so adding a locale
+ * to the tuple is a compile error until this record gains its label. The
+ * option list derives from the tuple, keeping the selector exhaustive.
+ */
+type LanguageOptionLabelKey = "languageOptionCs" | "languageOptionEn";
+
+const languageOptionLabels: Readonly<Record<Locale, LanguageOptionLabelKey>> = {
+  "cs-CZ": "languageOptionCs",
+  "en-US": "languageOptionEn",
+};
 
 export function ProfileScreen({
   children,
@@ -100,7 +105,7 @@ export function ProfileScreen({
   footer,
   lastName,
   locale,
-  preferredLanguage = null,
+  preferredLanguage,
 }: ProfileScreenProps) {
   const router = useRouter();
   const titleId = useId();
@@ -131,8 +136,7 @@ export function ProfileScreen({
     .filter((initial): initial is string => initial !== undefined)
     .join("");
 
-  const hasSavedLanguage =
-    preferredLanguage !== null && preferredLanguage !== "read-failed";
+  const hasSavedLanguage = preferredLanguage !== "read-failed";
   const savedLanguage = hasSavedLanguage ? preferredLanguage : null;
   const languageValue = selectedLanguage ?? savedLanguage;
   const languagePlaceholder =
@@ -263,9 +267,9 @@ export function ProfileScreen({
             <SelectValue placeholder={languagePlaceholder} />
           </SelectTrigger>
           <SelectContent>
-            {languageOptions.map((option) => (
-              <SelectItem key={option.locale} value={option.locale}>
-                {copy[option.label]}
+            {locales.map((optionLocale) => (
+              <SelectItem key={optionLocale} value={optionLocale}>
+                {copy[languageOptionLabels[optionLocale]]}
               </SelectItem>
             ))}
           </SelectContent>
