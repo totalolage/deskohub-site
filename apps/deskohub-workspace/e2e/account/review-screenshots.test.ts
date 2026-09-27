@@ -10,6 +10,7 @@ import {
   captureAccountReview,
   captureReservationStatusReview,
   persistCallbackDocumentReview,
+  withLanguagePreferenceReview,
   withSignInPendingReview,
 } from "./review-screenshots";
 
@@ -1623,5 +1624,407 @@ describe("account review screenshot capture", () => {
       expect(fakePage.continueArguments).toEqual([[]]);
       expect(fakePage.continueCallCount()).toBe(1);
     });
+  });
+});
+
+type LanguageLocale = "cs-CZ" | "en-US";
+
+type LanguageReviewFakeRouteRequest = {
+  readonly method: () => string;
+  readonly url: () => string;
+  readonly headers: () => Record<string, string>;
+  readonly postData: () => string | null;
+};
+
+type LanguageReviewRouteOutcome = "fallback" | "continue" | "abort";
+
+const languageReviewSavedCopy = "Communication language saved.";
+const languageReviewFailedCopy =
+  "Saving the communication language failed. Try again.";
+
+/**
+ * Synthetic page for the language preference review wrapper. It models the
+ * profile screen contract the wrapper depends on: the Radix select fires
+ * onValueChange only for a genuine change against the displayed value, Save
+ * stays disabled without a selection, and the save POST is a Server Action
+ * with the serialized { locale } argument. Both the language "Save" and the
+ * profile "Save profile" controls are rendered so locator ambiguity is
+ * exercised.
+ */
+const makeLanguageReviewFakePage = (
+  options: { readonly persistedLocale?: LanguageLocale } = {}
+): {
+  abortedUrls: string[];
+  clickedButtonNames: string[];
+  page: Playwright.Page;
+  registeredMatchers: unknown[];
+  saveLanguage: (locale: LanguageLocale) => Promise<void>;
+  savedLocale: () => LanguageLocale | null;
+  savedLocaleHistory: LanguageLocale[];
+  selectOption: (locale: LanguageLocale) => Promise<void>;
+  clickSave: () => Promise<void>;
+  sendRequest: (
+    request: LanguageReviewFakeRouteRequest
+  ) => LanguageReviewRouteOutcome[];
+  settleRouteHandlers: () => Promise<void>;
+} => {
+  let currentUrl = `${baseUrl}/en-US/account?section=profile`;
+  let currentViewport: Playwright.ViewportSize | null = { ...initialViewport };
+  let savedLocale: LanguageLocale | null = options.persistedLocale ?? "en-US";
+  let selectedLocale: LanguageLocale | null = null;
+  let savedFeedbackCount = 0;
+  let failedFeedbackCount = 0;
+  const screenshotCalls: Record<string, unknown>[] = [];
+  const viewportChanges: (Playwright.ViewportSize | null)[] = [];
+  const savedLocaleHistory: LanguageLocale[] = [];
+  const clickedButtonNames: string[] = [];
+  const abortedUrls: string[] = [];
+  const registeredMatchers: unknown[] = [];
+
+  type RouteHandler = Parameters<Playwright.Page["route"]>[1];
+  const routes: { matcher: unknown; handler: RouteHandler }[] = [];
+  const pendingHandlerPromises: Promise<unknown>[] = [];
+
+  const matchRouteUrl = (matcher: unknown, url: string): boolean =>
+    typeof matcher === "function"
+      ? (matcher as (url: URL) => boolean)(new URL(url))
+      : String(matcher) === url;
+
+  const sendRequest = (
+    request: LanguageReviewFakeRouteRequest
+  ): LanguageReviewRouteOutcome[] => {
+    const outcomes: LanguageReviewRouteOutcome[] = [];
+    for (const entry of [...routes].reverse()) {
+      if (!matchRouteUrl(entry.matcher, request.url())) continue;
+      const route = Object.assign({} as Playwright.Route, {
+        abort: async () => {
+          outcomes.push("abort");
+          abortedUrls.push(request.url());
+        },
+        continue: async () => {
+          outcomes.push("continue");
+        },
+        fallback: async () => {
+          outcomes.push("fallback");
+        },
+      });
+      const handlerPromise = Promise.resolve(
+        entry.handler(
+          route,
+          Object.assign({} as Playwright.Request, {
+            headers: request.headers,
+            method: request.method,
+            postData: request.postData,
+            url: request.url,
+          })
+        )
+      ).catch(() => undefined);
+      pendingHandlerPromises.push(handlerPromise);
+      return outcomes;
+    }
+    return outcomes;
+  };
+
+  // Resolves every route handler dispatched so far, so tests observe the
+  // wrapper's self-unrouting saving gate deterministically.
+  const settleRouteHandlers = async () => {
+    const pending = [...pendingHandlerPromises];
+    pendingHandlerPromises.length = 0;
+    await Promise.all(pending);
+    await flushMicrotasks();
+  };
+
+  const clearLanguageFeedback = () => {
+    savedFeedbackCount = 0;
+    failedFeedbackCount = 0;
+  };
+
+  const chooseOption = (locale: LanguageLocale) => {
+    // The displayed value is the selection or the persisted preference, and
+    // onValueChange fires only when the picked option differs from it.
+    if (locale === (selectedLocale ?? savedLocale)) return;
+    selectedLocale = locale;
+    clearLanguageFeedback();
+  };
+
+  const clickSave = async () => {
+    if (selectedLocale === null) return; // Save is disabled
+    const locale = selectedLocale;
+    const outcomes = sendRequest({
+      headers: () => ({ "next-action": "synthetic-action-id" }),
+      method: () => "POST",
+      postData: () => `[{"locale":"${locale}"}]`,
+      url: () => `${baseUrl}/en-US/account?section=profile`,
+    });
+    if (outcomes.includes("abort")) {
+      clearLanguageFeedback();
+      failedFeedbackCount = 1;
+      return;
+    }
+    savedLocale = locale;
+    savedLocaleHistory.push(locale);
+    clearLanguageFeedback();
+    savedFeedbackCount = 1;
+  };
+
+  const statusCopy = (): string | null => {
+    if (failedFeedbackCount > 0) return languageReviewFailedCopy;
+    if (savedFeedbackCount > 0) return languageReviewSavedCopy;
+    return null;
+  };
+
+  const makeButtonLocator = (roleOptions?: {
+    readonly exact?: boolean;
+    readonly name?: string;
+  }): Playwright.Locator => {
+    const buttons = [
+      { kind: "language-save", name: "Save" },
+      { kind: "profile-save", name: "Save profile" },
+    ];
+    const requested = roleOptions?.name ?? "";
+    const matches =
+      roleOptions?.exact === true
+        ? buttons.filter((button) => button.name === requested)
+        : buttons.filter((button) =>
+            button.name.toLowerCase().includes(requested.toLowerCase())
+          );
+    return Object.assign({} as Playwright.Locator, {
+      click: async () => {
+        if (matches.length !== 1)
+          throw new Error(
+            `strict mode violation: getByRole("button") with name ${JSON.stringify(requested)} resolved to ${matches.length} buttons`
+          );
+        clickedButtonNames.push(matches[0]!.name);
+        if (matches[0]!.kind === "language-save") await clickSave();
+      },
+    });
+  };
+
+  const page = Object.assign({} as Playwright.Page, {
+    evaluate: async () => undefined,
+    getByRole: (
+      _role: string,
+      roleOptions?: { readonly exact?: boolean; readonly name?: string }
+    ): Playwright.Locator => makeButtonLocator(roleOptions),
+    getByText: (text: string): Playwright.Locator =>
+      Object.assign({} as Playwright.Locator, {
+        waitFor: async () => {
+          if (statusCopy() !== text)
+            throw new Error(`status copy is not visible: ${text}`);
+        },
+      }),
+    goto: async (url: string) => {
+      currentUrl = url;
+    },
+    locator: (selector: string): Playwright.Locator => {
+      const locatorFake: Playwright.Locator = Object.assign(
+        {} as Playwright.Locator,
+        {
+          click: async () => {
+            if (selector.includes('role="option"')) {
+              if (selector.includes("Čeština")) chooseOption("cs-CZ");
+              else if (selector.includes("English (US)")) chooseOption("en-US");
+            }
+          },
+          getByRole: (
+            _role: string,
+            roleOptions?: { readonly exact?: boolean; readonly name?: string }
+          ): Playwright.Locator => makeButtonLocator(roleOptions),
+          first: (): Playwright.Locator => locatorFake,
+          waitFor: async () => undefined,
+        }
+      );
+      return locatorFake;
+    },
+    route: async (matcher: unknown, handler: RouteHandler) => {
+      registeredMatchers.push(matcher);
+      routes.push({ handler, matcher });
+    },
+    screenshot: async (screenshotOptions: Record<string, unknown>) => {
+      screenshotCalls.push(screenshotOptions);
+      return Buffer.from("synthetic-language-png");
+    },
+    setViewportSize: async (viewport: Playwright.ViewportSize | null) => {
+      viewportChanges.push(viewport);
+      currentViewport = viewport;
+    },
+    unroute: async (matcher: unknown, handler: RouteHandler) => {
+      const index = routes.findIndex(
+        (entry) => entry.matcher === matcher && entry.handler === handler
+      );
+      if (index >= 0) routes.splice(index, 1);
+    },
+    url: () => currentUrl,
+    viewportSize: () => currentViewport,
+  });
+
+  const selectOption = async (locale: LanguageLocale) => {
+    chooseOption(locale);
+  };
+
+  const saveLanguage = async (locale: LanguageLocale) => {
+    await selectOption("cs-CZ");
+    await selectOption(locale);
+    await clickSave();
+  };
+
+  return {
+    abortedUrls,
+    clickedButtonNames,
+    page,
+    registeredMatchers,
+    saveLanguage,
+    savedLocale: () => savedLocale,
+    savedLocaleHistory,
+    selectOption,
+    clickSave,
+    sendRequest,
+    settleRouteHandlers,
+  };
+};
+
+describe("language preference review wrapper", () => {
+  const createLanguageWriteFileSpy = () =>
+    spyOn(fsPromises, "writeFile").mockImplementation(async () => undefined);
+  let languageWriteFileSpy:
+    | ReturnType<typeof createLanguageWriteFileSpy>
+    | undefined;
+  const writeFileNames = (): string[] =>
+    (languageWriteFileSpy?.mock.calls ?? []).map(
+      ([path]) => String(path).split(/[\\/]/).pop() ?? ""
+    );
+
+  beforeEach(() => {
+    languageWriteFileSpy = createLanguageWriteFileSpy();
+  });
+
+  afterEach(() => {
+    languageWriteFileSpy?.mockRestore();
+    languageWriteFileSpy = undefined;
+  });
+
+  test("captures the saving state only for the preference save POST", async () => {
+    const fakePage = makeLanguageReviewFakePage();
+
+    await withLanguagePreferenceReview(fakePage.page, baseUrl, async () => {
+      // The case's sign-out POST leaves the page for /api/auth and must
+      // never reach, wait on, or abort the account route gate.
+      expect(
+        fakePage.sendRequest({
+          headers: () => ({}),
+          method: () => "POST",
+          postData: () => "",
+          url: () => `${baseUrl}/api/auth/sign-out`,
+        })
+      ).toEqual([]);
+
+      // The saving route matches the account pathname with its permitted
+      // section query, not an exact URL string.
+      const matcher = fakePage.registeredMatchers[0];
+      expect(typeof matcher).toBe("function");
+      const routeMatcher = matcher as (url: URL) => boolean;
+      expect(routeMatcher(new URL(`${baseUrl}/en-US/account`))).toBe(true);
+      expect(
+        routeMatcher(new URL(`${baseUrl}/en-US/account?section=profile`))
+      ).toBe(true);
+      expect(routeMatcher(new URL(`${baseUrl}/api/auth/sign-out`))).toBe(false);
+
+      // The case's navigation to the profile section is a document request
+      // at the gated URL; it falls through without consuming the route.
+      expect(
+        fakePage.sendRequest({
+          headers: () => ({}),
+          method: () => "GET",
+          postData: () => null,
+          url: () => `${baseUrl}/en-US/account?section=profile`,
+        })
+      ).toEqual(["fallback"]);
+
+      // A Server Action POST without the preference argument shape (account
+      // deletion) is not the intended save either.
+      expect(
+        fakePage.sendRequest({
+          headers: () => ({ "next-action": "synthetic-delete-action" }),
+          method: () => "POST",
+          postData: () => `[{"confirmed":true}]`,
+          url: () => `${baseUrl}/en-US/account?section=profile`,
+        })
+      ).toEqual(["fallback"]);
+
+      // The case's own language save is the only captured request.
+      await fakePage.saveLanguage("en-US");
+      await fakePage.settleRouteHandlers();
+    });
+
+    expect(fakePage.abortedUrls).toEqual([
+      `${baseUrl}/en-US/account?section=profile`,
+    ]);
+    // The case's own save plus the wrapper's saved capture and restore.
+    expect(fakePage.savedLocaleHistory).toEqual(["en-US", "en-US", "en-US"]);
+    expect(fakePage.savedLocale()).toBe("en-US");
+    // The wrapper's three save-button clicks (saved, failed, restore); the
+    // runCase save above bypasses the button locator.
+    expect(fakePage.clickedButtonNames).toEqual(["Save", "Save", "Save"]);
+    expect(writeFileNames()).toEqual([
+      "linked-profile-language-saving-desktop.png",
+      "linked-profile-language-saved-desktop.png",
+      "linked-profile-language-failed-desktop.png",
+      "linked-profile-language-desktop-cs.png",
+      "linked-profile-language-mobile.png",
+    ]);
+  });
+
+  test("resolves the save locator to the language button only", async () => {
+    const fakePage = makeLanguageReviewFakePage();
+
+    // The exact accessible name skips the profile screen's "Save profile"
+    // submit control and hits only the language Save button.
+    await fakePage.selectOption("cs-CZ");
+    await fakePage.selectOption("en-US");
+    await fakePage.page
+      .getByRole("button", { name: "Save", exact: true })
+      .click();
+
+    expect(fakePage.clickedButtonNames).toEqual(["Save"]);
+    expect(fakePage.savedLocaleHistory).toEqual(["en-US"]);
+
+    // Without exact, both "Save" and "Save profile" match and strict mode
+    // rejects the resolution.
+    await expect(
+      fakePage.page.getByRole("button", { name: "Save" }).click()
+    ).rejects.toThrow("resolved to 2 buttons");
+    expect(fakePage.clickedButtonNames).toEqual(["Save"]);
+  });
+
+  test("forces a genuine selection change before the saved-state capture", async () => {
+    const fakePage = makeLanguageReviewFakePage({ persistedLocale: "en-US" });
+
+    await withLanguagePreferenceReview(fakePage.page, baseUrl, async () => {
+      // A fresh session restores the persisted value without a selection, so
+      // re-picking English (US) fires no onValueChange and Save stays
+      // disabled: no preference POST happens.
+      await fakePage.selectOption("en-US");
+      await fakePage.clickSave();
+      expect(fakePage.savedLocaleHistory).toEqual([]);
+
+      // The case must genuinely change the selection to save; the wrapper's
+      // own saved capture repeats the same Czech-then-English sequence.
+      await fakePage.saveLanguage("en-US");
+      await fakePage.settleRouteHandlers();
+      expect(fakePage.savedLocaleHistory).toEqual(["en-US"]);
+    });
+
+    expect(fakePage.savedLocale()).toBe("en-US");
+    expect(fakePage.savedLocaleHistory).toEqual(["en-US", "en-US", "en-US"]);
+    expect(fakePage.abortedUrls).toEqual([
+      `${baseUrl}/en-US/account?section=profile`,
+    ]);
+    expect(writeFileNames()).toEqual([
+      "linked-profile-language-saving-desktop.png",
+      "linked-profile-language-saved-desktop.png",
+      "linked-profile-language-failed-desktop.png",
+      "linked-profile-language-desktop-cs.png",
+      "linked-profile-language-mobile.png",
+    ]);
   });
 });

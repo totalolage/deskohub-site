@@ -833,13 +833,23 @@ export const withSignInPendingReview = async (
 const languageSavingButtonSelector = 'button:has-text("Saving…")';
 const languageTriggerSelector =
   "[data-screen='profile-screen'] [data-slot='select-trigger']";
-const languageSaveButtonSelector =
-  "[data-screen='profile-screen'] button:has-text('Save')";
+// The profile screen also renders the "Save profile" submit control, so a
+// substring selector like button:has-text("Save") resolves to two buttons
+// and fails strict mode. The exact accessible name leaves only the language
+// Save button.
+const languageSaveButtonName = "Save";
+const languageOptionCsSelector = '[role="option"]:has-text("Čeština")';
 const languageOptionEnSelector = '[role="option"]:has-text("English (US)")';
 const languageSavedCopy = "Communication language saved.";
 const languageFailedCopy =
   "Saving the communication language failed. Try again.";
 const profileScreenSelector = "[data-screen='profile-screen']";
+
+const languageSaveButton = (page: Playwright.Page): Playwright.Locator =>
+  page
+    .locator(profileScreenSelector)
+    .getByRole("button", { name: languageSaveButtonName, exact: true });
+
 const csCzProfileNavButtonSelector =
   'nav[aria-label="Navigace účtu"] button:not([data-account-section]):has-text("Profil a identita")';
 const enUsProfileNavButtonSelector =
@@ -864,7 +874,6 @@ export const withLanguagePreferenceReview = async (
   const savingMetadata =
     accountReviewTargetMetadata["linked-profile-language-saving-desktop"];
   if (!savingMetadata) throw accountReviewCaptureFailure();
-  const saveActionUrl = new URL("/en-US/account", baseUrl).toString();
 
   let savingHandlerPromise: Promise<void> | undefined;
   let savingRouteMatched = false;
@@ -875,14 +884,33 @@ export const withLanguagePreferenceReview = async (
   let wrapperFailed = false;
   let previousViewport: Playwright.ViewportSize | null = null;
 
-  // The language save and the sign-out are both Server Action POSTs to the
-  // account URL, so the saving route gates on the action argument carrying
-  // the locale payload before it waits for the saving feedback. A gate miss
-  // fails closed through savingRouteMatched below.
-  const localeActionBody = (request: Playwright.Request): boolean => {
-    const body = request.postData() ?? "";
-    return body.includes("locale") || body.includes("en-US");
-  };
+  /**
+   * The saving gate matches the preference save POST by its URL shape plus a
+   * validated action-argument discriminator instead of an exact URL string:
+   * the profile section is reached at /en-US/account?section=profile, so a
+   * Server Action POST always carries that query and an exact /en-US/account
+   * match never fires. The Next-Action id itself is a build-time hash that
+   * changes on every deploy, so the deterministic discriminator is the
+   * serialized argument: the action schema locks the single input to
+   * { locale: "cs-CZ" | "en-US" } (features/account/actions.ts) and React's
+   * Flight serialization embeds that object verbatim in the postdata. The
+   * other account POSTs never carry this pair: sign-out is a Better Auth
+   * request without a Next-Action header, the profile save serializes name
+   * and phone fields, and account deletion serializes { confirmed: true }.
+   */
+  const languagePreferenceLocales = ["cs-CZ", "en-US"] as const;
+  const languagePreferencePayloadPattern = new RegExp(
+    `"locale"\\s*:\\s*"(?:${languagePreferenceLocales.join("|")})"`
+  );
+  const languageSaveRouteMatcher = (url: URL): boolean =>
+    url.pathname === "/en-US/account" &&
+    isAllowedPrivateLinkedAccountQuery(url.search);
+  const isLanguagePreferenceSaveRequest = (
+    request: Playwright.Request
+  ): boolean =>
+    request.method() === "POST" &&
+    request.headers()["next-action"] !== undefined &&
+    languagePreferencePayloadPattern.test(request.postData() ?? "");
 
   const handleSavingRoute: Parameters<Playwright.Page["route"]>[1] = (
     route,
@@ -890,9 +918,18 @@ export const withLanguagePreferenceReview = async (
   ) => {
     const deadline = Date.now() + browserActionTimeout();
     const handlerPromise = (async () => {
+      if (!isLanguagePreferenceSaveRequest(request)) {
+        // Leave every unrelated request untouched and keep the gate armed
+        // for the intended preference save POST.
+        try {
+          await route.fallback();
+        } catch {
+          reviewFailed = true;
+        }
+        return;
+      }
+      savingRouteMatched = true;
       try {
-        if (request.method() !== "POST" || !localeActionBody(request)) return;
-        savingRouteMatched = true;
         await page.locator(languageSavingButtonSelector).waitFor({
           state: "visible",
           timeout: remainingAccountReviewBudget(deadline),
@@ -921,6 +958,11 @@ export const withLanguagePreferenceReview = async (
         } catch {
           reviewFailed = true;
         }
+        // The intended request is handled, so the interception is unwound
+        // here; the cleanup unroute below stays as an idempotent backstop.
+        try {
+          await page.unroute(languageSaveRouteMatcher, handleSavingRoute);
+        } catch {}
       }
     })();
     savingHandlerPromise = handlerPromise;
@@ -931,8 +973,8 @@ export const withLanguagePreferenceReview = async (
     route,
     request
   ) => {
-    if (request.method() !== "POST") {
-      void route.continue().catch(() => {
+    if (!isLanguagePreferenceSaveRequest(request)) {
+      void route.fallback().catch(() => {
         reviewFailed = true;
       });
       return;
@@ -942,16 +984,26 @@ export const withLanguagePreferenceReview = async (
     });
   };
 
-  const selectEnglishAndSave = async () => {
+  const selectLanguageOption = async (optionSelector: string) => {
     await page
       .locator(languageTriggerSelector)
       .click({ timeout: browserActionTimeout() });
     await page
-      .locator(languageOptionEnSelector)
+      .locator(optionSelector)
       .click({ timeout: browserActionTimeout() });
-    await page
-      .locator(languageSaveButtonSelector)
-      .click({ timeout: browserActionTimeout() });
+  };
+
+  const selectEnglishAndSave = async () => {
+    // A fresh session renders the select without a selection, so re-picking
+    // the already-saved locale fires no onValueChange and Save stays
+    // disabled. Selecting Czech first forces a genuine selection change so
+    // the final English pick enables Save; the intermediate pick is never
+    // saved.
+    await selectLanguageOption(languageOptionCsSelector);
+    await selectLanguageOption(languageOptionEnSelector);
+    await languageSaveButton(page).click({
+      timeout: browserActionTimeout(),
+    });
   };
 
   const performSavedFeedbackCapture = async () => {
@@ -967,11 +1019,11 @@ export const withLanguagePreferenceReview = async (
   };
 
   const performTransportFailureCapture = async () => {
-    await page.route(saveActionUrl, handleAbortRoute, { times: 1 });
+    await page.route(languageSaveRouteMatcher, handleAbortRoute);
     abortRouteCleanupOwed = true;
-    await page
-      .locator(languageSaveButtonSelector)
-      .click({ timeout: browserActionTimeout() });
+    await languageSaveButton(page).click({
+      timeout: browserActionTimeout(),
+    });
     await page
       .getByText(languageFailedCopy, { exact: true })
       .waitFor({ state: "visible", timeout: browserActionTimeout() });
@@ -983,11 +1035,11 @@ export const withLanguagePreferenceReview = async (
   };
 
   const restoreSavedLanguage = async () => {
-    await page.unroute(saveActionUrl, handleAbortRoute);
+    await page.unroute(languageSaveRouteMatcher, handleAbortRoute);
     abortRouteCleanupOwed = false;
-    await page
-      .locator(languageSaveButtonSelector)
-      .click({ timeout: browserActionTimeout() });
+    await languageSaveButton(page).click({
+      timeout: browserActionTimeout(),
+    });
     await page
       .getByText(languageSavedCopy, { exact: true })
       .waitFor({ state: "visible", timeout: browserActionTimeout() });
@@ -1034,7 +1086,7 @@ export const withLanguagePreferenceReview = async (
       Date.now() + browserActionTimeout()
     );
     await waitForAccountReviewOperation(
-      () => page.route(saveActionUrl, handleSavingRoute, { times: 1 }),
+      () => page.route(languageSaveRouteMatcher, handleSavingRoute),
       Date.now() + browserActionTimeout()
     );
     try {
@@ -1067,7 +1119,7 @@ export const withLanguagePreferenceReview = async (
   const cleanupDeadline = Date.now() + workspaceE2ETimeouts.cleanupAction;
   try {
     await waitForAccountReviewOperation(
-      () => page.unroute(saveActionUrl, handleSavingRoute),
+      () => page.unroute(languageSaveRouteMatcher, handleSavingRoute),
       cleanupDeadline
     );
   } catch {
@@ -1076,7 +1128,7 @@ export const withLanguagePreferenceReview = async (
   if (abortRouteCleanupOwed) {
     try {
       await waitForAccountReviewOperation(
-        () => page.unroute(saveActionUrl, handleAbortRoute),
+        () => page.unroute(languageSaveRouteMatcher, handleAbortRoute),
         cleanupDeadline
       );
     } catch {
