@@ -232,18 +232,33 @@ const implementation = Effect.gen(function* () {
       }
 
       const unavailableDates: string[] = [];
+      // Alternative tier, monitor-option, and bare range-selection checks
+      // each use the candidate offer's OWN authoritative interval; the
+      // selected offer's interval must not leak into them (a 00:00-17:00 Open
+      // Space occupancy and a full-day Reserved Desk occupancy describe
+      // different intervals).
+      const getCoworkOfferOccupancy = (
+        date: string,
+        tier: WorkspaceCoworkProductTier
+      ) =>
+        normalizeCoworkAvailabilityInterval(date, tier).pipe(
+          Effect.map((interval) =>
+            getWorkspaceTableOccupancyById(reservations, interval)
+          )
+        );
       for (const day of dates.map(plainDateToString)) {
         if (fullyOccupiedDates.has(day)) {
           unavailableDates.push(day);
           continue;
         }
+        if (!(shouldCheckRangeDateSelection || day === selectedDate)) continue;
         if (
-          (shouldCheckRangeDateSelection || day === selectedDate) &&
-          (yield* isUnavailableForSelection(
+          yield* isUnavailableForSelection(
             tables,
             occupancyByDate.get(day) ?? new Map<DotyposTableId, number>(),
-            query
-          ))
+            query,
+            (tier) => getCoworkOfferOccupancy(day, tier)
+          )
         ) {
           unavailableDates.push(day);
         }
@@ -257,20 +272,6 @@ const implementation = Effect.gen(function* () {
         query.kind === officeReservationKind && reservation
           ? getWorkspaceTableOccupancyById(reservations, reservation)
           : selectedDateOccupancy;
-
-      // Alternative tier and monitor-option checks each use the candidate
-      // offer's OWN authoritative interval; the selected offer's interval must
-      // not leak into them (a 00:00-17:00 Open Space occupancy and a
-      // full-day Reserved Desk occupancy describe different intervals).
-      const getCoworkOfferOccupancy = (
-        date: string,
-        tier: WorkspaceCoworkProductTier
-      ) =>
-        normalizeCoworkAvailabilityInterval(date, tier).pipe(
-          Effect.map((interval) =>
-            getWorkspaceTableOccupancyById(reservations, interval)
-          )
-        );
 
       const unavailableCoworkTiers = selectedDate
         ? yield* Effect.filter(workspaceCoworkSaleableTiers, (tier) =>
@@ -471,7 +472,13 @@ const getCalendarNotices = (
 const isUnavailableForSelection = (
   tables: readonly DotyposTable[],
   occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
-  query: WorkspaceAvailabilityQuery
+  query: WorkspaceAvailabilityQuery,
+  getCoworkOfferOccupancy: (
+    tier: WorkspaceCoworkProductTier
+  ) => Effect.Effect<
+    ReadonlyMap<DotyposTableId, number>,
+    ValidationError
+  >
 ) =>
   Match.value(query).pipe(
     Match.discriminatorsExhaustive("kind")({
@@ -481,7 +488,8 @@ const isUnavailableForSelection = (
         isCoworkUnavailableForSelection(
           tables,
           occupancyByTableId,
-          coworkQuery
+          coworkQuery,
+          getCoworkOfferOccupancy
         ),
       office: ({ seats }) =>
         isOfficeUnavailable(
@@ -500,15 +508,26 @@ const isMeetingRoomUnavailableForSelection = (
 const isCoworkUnavailableForSelection = (
   tables: readonly DotyposTable[],
   occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
-  query: Extract<WorkspaceAvailabilityQuery, { readonly kind: "cowork" }>
+  query: Extract<WorkspaceAvailabilityQuery, { readonly kind: "cowork" }>,
+  getOfferOccupancy: (
+    tier: WorkspaceCoworkProductTier
+  ) => Effect.Effect<
+    ReadonlyMap<DotyposTableId, number>,
+    ValidationError
+  >
 ) => {
   const { entryTier, monitorOption } = query;
 
+  // A bare query offers every saleable category, so each category is judged
+  // with its OWN authoritative interval occupancy (Open Space 00:00-17:00;
+  // Reserved Desk full Prague day, including every eligible workstation
+  // configuration). The date is unavailable only when no category has an
+  // open offer — never because one category's interval looks full.
   if (!entryTier) {
     return Effect.forEach(workspaceCoworkSaleableTiers, (candidateTier) =>
-      isCoworkOfferUnavailable(tables, occupancyByTableId, {
-        entryTier: candidateTier,
-      })
+      Effect.flatMap(getOfferOccupancy(candidateTier), (offerOccupancy) =>
+        isCoworkCategoryUnavailable(tables, offerOccupancy, candidateTier)
+      )
     ).pipe(Effect.map((unavailable) => unavailable.every(Boolean)));
   }
 

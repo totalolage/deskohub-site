@@ -417,6 +417,28 @@ describe("shared cowork offer table candidate predicate", () => {
         { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
       )
     ).toBe(false);
+    const contradictoryResolution = tags({
+      ...reservedDeskFullQhd,
+      tags: [
+        "cowork:reserved-desk",
+        "monitor:count:2",
+        "monitor:size:27",
+        "monitor:resolution:qhd",
+        "monitor:resolution:4k",
+      ],
+    } as Table);
+    expect(
+      isWorkspaceCoworkTableCandidate(contradictoryResolution, {
+        entryTier: "reserved-desk",
+        monitorOption: "2x27-qhd",
+      })
+    ).toBe(false);
+    expect(
+      isWorkspaceCoworkTableCandidate(contradictoryResolution, {
+        entryTier: "reserved-desk",
+        monitorOption: "2x27-4k",
+      })
+    ).toBe(false);
   });
 
   test("no-addon queries reject any monitor tag, including unknown ones", () => {
