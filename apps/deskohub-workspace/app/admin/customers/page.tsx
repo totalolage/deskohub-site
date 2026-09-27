@@ -16,7 +16,10 @@ import {
   loadAdministrationCustomersPage,
 } from "@/features/administration/page-data.server";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
+import { CustomerCountPending } from "./customer-count-pending";
 import { CustomerConsentFilterForm } from "./customer-consent-filter-form";
+import { CustomerFilterNavigationProvider } from "./customer-filter-navigation";
+import { CustomerResultsPendingOverlay } from "./customer-results-pending-overlay";
 
 export default function DiscountCustomersAdminPage({
   searchParams,
@@ -26,26 +29,30 @@ export default function DiscountCustomersAdminPage({
   const { input, result } = loadAdministrationCustomersPage(searchParams);
 
   return (
-    <AdministrationPage>
-      <h1 className="sr-only">Customers</h1>
-      <AdministrationTableToolbar
-        count={
-          <Suspense fallback={<AdministrationCountLoading label="customer" />}>
-            <CustomerCount result={result} />
-          </Suspense>
-        }
-        filters={<CustomerConsentFilterForm />}
-        itemLabel="customer"
-        search={<CustomerSearch variant="toolbar" />}
-      />
-      <Suspense
-        fallback={
-          <AdministrationCollectionLoading label="customers" columns={4} />
-        }
-      >
-        <CustomersTable input={input} result={result} />
-      </Suspense>
-    </AdministrationPage>
+    <CustomerFilterNavigationProvider>
+      <AdministrationPage>
+        <h1 className="sr-only">Customers</h1>
+        <AdministrationTableToolbar
+          count={
+            <CustomerCountPending>
+              <Suspense fallback={<AdministrationCountLoading label="customer" />}>
+                <CustomerCount result={result} />
+              </Suspense>
+            </CustomerCountPending>
+          }
+          filters={<CustomerConsentFilterForm />}
+          itemLabel="customer"
+          search={<CustomerSearch variant="toolbar" />}
+        />
+        <Suspense
+          fallback={
+            <AdministrationCollectionLoading label="customers" columns={4} />
+          }
+        >
+          <CustomersTable input={input} result={result} />
+        </Suspense>
+      </AdministrationPage>
+    </CustomerFilterNavigationProvider>
   );
 }
 
@@ -75,27 +82,29 @@ export async function CustomersTable({
 
   return (
     <section className="mt-7">
-      <AdministrationCustomerTable
-        consent={resolvedInput.marketingConsent}
-        customers={resolvedResult.items}
-        sorting={{
-          direction: resolvedInput.direction ?? "desc",
-          field: resolvedInput.sort ?? "activity",
-          params: {
+      <CustomerResultsPendingOverlay>
+        <AdministrationCustomerTable
+          consent={resolvedInput.marketingConsent}
+          customers={resolvedResult.items}
+          sorting={{
+            direction: resolvedInput.direction ?? "desc",
+            field: resolvedInput.sort ?? "activity",
+            params: {
+              consent: resolvedInput.marketingConsent,
+            },
+          }}
+        />
+        <Pagination
+          basePath="/admin/customers"
+          page={resolvedResult.page}
+          pageCount={resolvedResult.pageCount}
+          params={{
             consent: resolvedInput.marketingConsent,
-          },
-        }}
-      />
-      <Pagination
-        basePath="/admin/customers"
-        page={resolvedResult.page}
-        pageCount={resolvedResult.pageCount}
-        params={{
-          consent: resolvedInput.marketingConsent,
-          direction: resolvedInput.direction,
-          sort: resolvedInput.sort,
-        }}
-      />
+            direction: resolvedInput.direction,
+            sort: resolvedInput.sort,
+          }}
+        />
+      </CustomerResultsPendingOverlay>
     </section>
   );
 }

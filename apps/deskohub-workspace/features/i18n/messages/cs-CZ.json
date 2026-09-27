@@ -892,5 +892,6 @@
   "adminCustomersFilterConsentWithdrawn": "Odvolán",
   "adminCustomersFilterConsentNeverGranted": "Nikdy neposkytnut",
   "adminCustomersFilterApply": "Použít filtry",
+  "adminCustomersPendingLabel": "Načítání zákazníků…",
   "adminCustomersEmptyConsentFiltered": "Žádní zákazníci neodpovídají tomuto filtru marketingového souhlasu."
 }

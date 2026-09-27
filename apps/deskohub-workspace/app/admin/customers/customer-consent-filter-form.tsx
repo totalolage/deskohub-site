@@ -8,10 +8,12 @@ import {
 } from "@/features/administration/components";
 import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
+import { useCustomerFilterNavigation } from "./customer-filter-navigation";
 
 export function CustomerConsentFilterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { startFilterNavigation } = useCustomerFilterNavigation();
   const consent = searchParams.get("consent") ?? "";
   const sort = searchParams.get("sort") ?? "activity";
   const direction = searchParams.get("direction") ?? "desc";
@@ -28,7 +30,9 @@ export function CustomerConsentFilterForm() {
           const value = formData.get(key);
           if (value !== null) params.set(key, String(value));
         }
-        router.push(`/admin/customers?${params.toString()}`);
+        startFilterNavigation(() => {
+          router.push(`/admin/customers?${params.toString()}`);
+        });
       }}
       variant="toolbar"
     >

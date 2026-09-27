@@ -7,7 +7,8 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
+import { useState } from "react";
 import type { AdministrationCustomerListInput } from "@/features/administration/administration.service";
 import {
   registerWorkspaceComponentTestEnv,
@@ -284,5 +285,218 @@ describe("DiscountCustomersAdminPage", () => {
     expect(
       hrefs.some((href) => href?.includes("consent=granted&direction=desc"))
     ).toBe(true);
+  });
+});
+
+describe("CustomerFilterNavigation pending state", () => {
+  beforeAll(() => registerWorkspaceComponentTestEnv());
+  afterEach(() => {
+    cleanup();
+    resetMocks();
+  });
+  afterAll(() => unregisterWorkspaceComponentTestEnv());
+
+  const submitForm = (view: ReturnType<typeof render>) => {
+    const form = view.container.querySelector("form") as HTMLFormElement;
+    const event = new window.Event("submit", {
+      bubbles: true,
+      cancelable: true,
+    });
+    form.dispatchEvent(event);
+    return event;
+  };
+
+  test("routes filter submission through the pending navigation context", async () => {
+    mockSearchParams = new URLSearchParams("consent=granted&sort=activity");
+    const { CustomerConsentFilterForm } = await import(
+      "./customer-consent-filter-form"
+    );
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+
+    let startFilterNavigationCalls = 0;
+    let deferredNavigate: (() => void) | null = null;
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: false,
+          startFilterNavigation: (navigate) => {
+            startFilterNavigationCalls += 1;
+            deferredNavigate = navigate;
+          },
+        }}
+      >
+        <CustomerConsentFilterForm />
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    const select = view.getByLabelText(
+      "Marketing consent"
+    ) as HTMLSelectElement;
+    select.value = "never";
+    const event = submitForm(view);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(startFilterNavigationCalls).toBe(1);
+    expect(deferredNavigate).toBeTypeOf("function");
+    deferredNavigate?.();
+    expect(routerPushUrls).toEqual([
+      "/admin/customers?consent=never&sort=activity&direction=desc",
+    ]);
+  });
+
+  test("engages the pending flag while the deferred navigation runs", async () => {
+    const {
+      CustomerFilterNavigationProvider,
+      useCustomerFilterNavigation,
+    } = await import("./customer-filter-navigation");
+
+    const pendingValues: boolean[] = [];
+    let trigger: ((navigate: () => void) => void) | null = null;
+
+    let bumpGate: (() => void) | null = null;
+
+    const Probe = () => {
+      const { isFilterNavigationPending, startFilterNavigation } =
+        useCustomerFilterNavigation();
+      pendingValues.push(isFilterNavigationPending);
+      trigger = startFilterNavigation;
+      return null;
+    };
+
+    // The deferred navigation schedules its own state update, the way a
+    // router push does; the transition stays pending until that update
+    // commits.
+    const Gate = () => {
+      const [, setGate] = useState(0);
+      bumpGate = () => setGate((value) => value + 1);
+      return null;
+    };
+
+    render(
+      <CustomerFilterNavigationProvider>
+        <Gate />
+        <Probe />
+      </CustomerFilterNavigationProvider>
+    );
+
+    act(() => {
+      trigger?.(() => {
+        bumpGate?.();
+      });
+    });
+    expect(pendingValues).toContain(true);
+    expect(pendingValues[pendingValues.length - 1]).toBe(false);
+  });
+
+  test("obscures the results children behind a pending status while navigation is pending", async () => {
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+    const { CustomerResultsPendingOverlay } = await import(
+      "./customer-results-pending-overlay"
+    );
+
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: true,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerResultsPendingOverlay>
+          <table>
+            <tbody>
+              <tr>
+                <td>Customer 101</td>
+              </tr>
+            </tbody>
+          </table>
+        </CustomerResultsPendingOverlay>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    const status = view.getByRole("status");
+    expect(status.textContent).toBe("Loading customers…");
+    expect(
+      view.getByText("Customer 101").closest("[aria-busy='true']")
+    ).not.toBeNull();
+  });
+
+  test("renders the results children unchanged when navigation is not pending", async () => {
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+    const { CustomerResultsPendingOverlay } = await import(
+      "./customer-results-pending-overlay"
+    );
+
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: false,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerResultsPendingOverlay>
+          <p>Customer 101</p>
+        </CustomerResultsPendingOverlay>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    expect(view.queryByRole("status")).toBeNull();
+    expect(view.getByText("Customer 101")).toBeDefined();
+  });
+
+  test("replaces the toolbar count with a pending indicator while navigation is pending", async () => {
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+    const { CustomerCountPending } = await import(
+      "./customer-count-pending"
+    );
+
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: true,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerCountPending>
+          <output aria-label="8 customers">8</output>
+        </CustomerCountPending>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    const status = view.getByRole("status");
+    expect(status.textContent).toBe("Loading customers…");
+    expect(view.queryByLabelText("8 customers")).toBeNull();
+  });
+
+  test("renders the toolbar count unchanged when navigation is not pending", async () => {
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+    const { CustomerCountPending } = await import(
+      "./customer-count-pending"
+    );
+
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: false,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerCountPending>
+          <output aria-label="8 customers">8</output>
+        </CustomerCountPending>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    expect(view.queryByText("Loading customers…")).toBeNull();
+    expect(view.getByLabelText("8 customers")).toBeDefined();
   });
 });

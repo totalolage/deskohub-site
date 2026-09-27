@@ -884,5 +884,6 @@
   "adminCustomersFilterConsentWithdrawn": "Withdrawn",
   "adminCustomersFilterConsentNeverGranted": "Never granted",
   "adminCustomersFilterApply": "Apply filters",
+  "adminCustomersPendingLabel": "Loading customers…",
   "adminCustomersEmptyConsentFiltered": "No customers match this marketing consent filter."
 }
