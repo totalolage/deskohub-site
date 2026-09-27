@@ -105,17 +105,28 @@ const reservationExportHeader = [
 
 const toReservationExportRow = (
   reservation: AdministrationReservationSummary
-): readonly string[] => [
-  reservation.id,
-  formatAdministrationReservationDate(reservation) ?? "",
-  reservation.status.label,
-  reservation.customer?.displayName ?? "",
-  reservation.typeLabel,
-  formatAdministrationDateTime(reservation.createdAt),
-  reservation.latestPayment
-    ? `${reservation.latestPayment.stateLabel} ${formatAdministrationMoney(reservation.latestPayment.amount)}`
-    : "",
-];
+): readonly string[] => {
+  const customerName = reservation.customer?.displayName ?? "";
+  const firstCodeUnit = customerName.charCodeAt(0);
+  const exportCustomerName =
+    firstCodeUnit <= 0x1f ||
+    firstCodeUnit === 0x7f ||
+    /^[\p{White_Space}\p{Cf}\p{Cc}]*[=+\-@＝＋－＠]/u.test(customerName)
+      ? `Customer: ${customerName}`
+      : customerName;
+
+  return [
+    reservation.id,
+    formatAdministrationReservationDate(reservation) ?? "",
+    reservation.status.label,
+    exportCustomerName,
+    reservation.typeLabel,
+    formatAdministrationDateTime(reservation.createdAt),
+    reservation.latestPayment
+      ? `${reservation.latestPayment.stateLabel} ${formatAdministrationMoney(reservation.latestPayment.amount)}`
+      : "",
+  ];
+};
 
 /**
  * Renders the safe reservation projection as CSV. Only fields already shown
