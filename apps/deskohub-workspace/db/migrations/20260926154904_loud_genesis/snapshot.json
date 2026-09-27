@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "4aa9e4c2-f334-4b7b-8a73-a2e5e2dd8fee",
+  "id": "eea9d11b-ae3a-4e0f-a777-a82fb7a621a8",
   "prevIds": [
     "eb8f4793-8c8a-4b57-a66c-d17f362e946f"
   ],
@@ -6399,23 +6399,6 @@
       "entityType": "fks",
       "schema": "public",
       "table": "legal_evidence_events"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "active_payment_attempt_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "payment_attempts",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "NO ACTION",
-      "name": "orders_active_payment_attempt_id_payment_attempts_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "orders"
     },
     {
       "nameExplicit": false,

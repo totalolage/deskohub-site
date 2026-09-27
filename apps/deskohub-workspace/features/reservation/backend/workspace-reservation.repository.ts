@@ -36,10 +36,7 @@ import type {
   PaymentAttemptId,
 } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
-import {
-  ensureReservationOrder,
-  lockReservationActivePaymentAttempt,
-} from "@/features/order/backend/reservation-order";
+import { ensureReservationOrder } from "@/features/order/backend/reservation-order";
 import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
@@ -399,8 +396,8 @@ export class WorkspaceReservationRepository extends Context.Service<
                   return inserted;
                 }
 
-                const [existingAttemptId] = yield* tx
-                  .select({ id: workspaceReservations.id })
+                const [existingAttempt] = yield* tx
+                  .select()
                   .from(workspaceReservations)
                   .where(
                     eq(
@@ -408,31 +405,19 @@ export class WorkspaceReservationRepository extends Context.Service<
                       input.checkoutAttemptKey
                     )
                   )
-                  .limit(1);
+                  .limit(1)
+                  .for("update");
 
-                if (existingAttemptId) {
-                  yield* lockReservationActivePaymentAttempt({
+                if (existingAttempt) {
+                  yield* ensureReservationOrder({
                     tx,
-                    reservationId: existingAttemptId.id,
+                    reservation: existingAttempt,
                   });
-                  const [existingAttempt] = yield* tx
-                    .select()
-                    .from(workspaceReservations)
-                    .where(eq(workspaceReservations.id, existingAttemptId.id))
-                    .limit(1)
-                    .for("update");
-
-                  if (existingAttempt) {
-                    yield* ensureReservationOrder({
-                      tx,
-                      reservation: existingAttempt,
-                    });
-                    return existingAttempt;
-                  }
+                  return existingAttempt;
                 }
 
-                const [currentAttemptId] = yield* tx
-                  .select({ id: workspaceReservations.id })
+                const [currentAttempt] = yield* tx
+                  .select()
                   .from(workspaceReservations)
                   .where(
                     and(
@@ -444,28 +429,6 @@ export class WorkspaceReservationRepository extends Context.Service<
                     )
                   )
                   .orderBy(desc(workspaceReservations.createdAt))
-                  .limit(1);
-
-                if (!currentAttemptId) {
-                  return yield* Effect.die(
-                    "Workspace reservation insert returned no row."
-                  );
-                }
-
-                yield* lockReservationActivePaymentAttempt({
-                  tx,
-                  reservationId: currentAttemptId.id,
-                });
-
-                const [currentAttempt] = yield* tx
-                  .select()
-                  .from(workspaceReservations)
-                  .where(
-                    and(
-                      eq(workspaceReservations.id, currentAttemptId.id),
-                      sql`${workspaceReservations.reservationState} <> 'cancelled'`
-                    )
-                  )
                   .limit(1)
                   .for("update");
                 if (!currentAttempt) {
@@ -535,10 +498,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -574,10 +533,6 @@ export class WorkspaceReservationRepository extends Context.Service<
           function* (id) {
             const transaction = db.transaction(
               Effect.fn(function* (tx) {
-                yield* lockReservationActivePaymentAttempt({
-                  tx,
-                  reservationId: id,
-                });
                 const [updated] = yield* tx
                   .update(workspaceReservations)
                   .set({
@@ -606,10 +561,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (id) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: id,
-              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -639,10 +590,6 @@ export class WorkspaceReservationRepository extends Context.Service<
           function* (input) {
             const transaction = db.transaction(
               Effect.fn(function* (tx) {
-                yield* lockReservationActivePaymentAttempt({
-                  tx,
-                  reservationId: input.id,
-                });
                 const [updated] = yield* tx
                   .update(workspaceReservations)
                   .set({
@@ -679,10 +626,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -714,10 +657,6 @@ export class WorkspaceReservationRepository extends Context.Service<
           function* (id) {
             const transaction = db.transaction(
               Effect.fn(function* (tx) {
-                yield* lockReservationActivePaymentAttempt({
-                  tx,
-                  reservationId: id,
-                });
                 const [claimed] = yield* tx
                   .update(workspaceReservations)
                   .set({
@@ -750,10 +689,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (id) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: id,
-              });
               const [claimed] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -783,10 +718,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const now = Temporal.Now.instant();
               const [grant] = yield* tx
                 .select({
@@ -830,18 +761,15 @@ export class WorkspaceReservationRepository extends Context.Service<
               // When this cancellation will also cancel the pending payment
               // attempt, the attempt row must be locked BEFORE the
               // reservation row: attempt-mutating payment writers (and the
-              // deployed old writers) anchor on the attempt first, and any
-              // reservation-first attempt access would invert that order into
-              // a deadlock.
+              // deployed old writers) anchor on the attempt first. The
+              // order mirror only copies the active-attempt scalar and does
+              // not acquire a payment-attempt lock.
               if (input.pendingPaymentCancellation) {
                 // Lock mode: FOR NO KEY UPDATE — the attempt UPDATE below
                 // writes only non-key columns (state, failure_code,
                 // updated_at), so this is the weakest mode that still
-                // conflicts with old writers' plain UPDATE row locks and new
-                // writers' NO KEY anchors, and it stays compatible with the
-                // FOR KEY SHARE of the orders → payment_attempts FK check a
-                // concurrent reservation-only mirror performs (FOR UPDATE
-                // would conflict with KEY SHARE and deadlock against it).
+                // conflicts with old writers' FOR UPDATE locks and new
+                // payment writers' NO KEY anchors.
                 yield* tx
                   .select({ id: paymentAttempts.id })
                   .from(paymentAttempts)
@@ -968,10 +896,6 @@ export class WorkspaceReservationRepository extends Context.Service<
           function* (input) {
             const transaction = db.transaction(
               Effect.fn(function* (tx) {
-                yield* lockReservationActivePaymentAttempt({
-                  tx,
-                  reservationId: input.id,
-                });
                 const [updated] = yield* tx
                   .update(workspaceReservations)
                   .set({
@@ -1006,25 +930,16 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const updatedAt = Temporal.Now.instant();
               // Lock-order contract: payment attempt → reservation → order.
               // The refund-required attempt update below must never wait on
               // the attempt rows while already holding the reservation row:
               // attempt-mutating payment writers anchor on the attempt first,
-              // and that inversion is a deadlock. Lock the paid attempts
-              // before the reservation row.
+              // so lock the paid attempts before the reservation row.
               // Lock mode: FOR NO KEY UPDATE — the refund-state UPDATE below
               // writes only non-key columns (refund_state, updated_at), so
-              // this is the weakest mode that still conflicts with old
-              // writers' plain UPDATE row locks and new writers' NO KEY
-              // anchors, and it is compatible with the FOR KEY SHARE of the
-              // orders → payment_attempts FK check performed by a concurrent
-              // reservation-only mirror (FOR UPDATE would conflict with
-              // KEY SHARE and deadlock against it).
+              // this is the weakest mode that conflicts with old writers'
+              // FOR UPDATE locks and new payment writers' NO KEY anchors.
               yield* tx
                 .select({ id: paymentAttempts.id })
                 .from(paymentAttempts)
@@ -1078,10 +993,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.cancelledReservationId,
-              });
               const [cancelled] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1153,10 +1064,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1188,10 +1095,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1223,10 +1126,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1262,10 +1161,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const [claimed] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1351,10 +1246,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1398,22 +1289,6 @@ export class WorkspaceReservationRepository extends Context.Service<
           );
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              const [reservation] = yield* tx
-                .select({ id: workspaceReservations.id })
-                .from(workspaceReservations)
-                .where(
-                  eq(
-                    workspaceReservations.activeCustomerEmailDeliveryId,
-                    input.customerEmailDeliveryId
-                  )
-                )
-                .limit(1);
-              if (reservation) {
-                yield* lockReservationActivePaymentAttempt({
-                  tx,
-                  reservationId: reservation.id,
-                });
-              }
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1463,22 +1338,6 @@ export class WorkspaceReservationRepository extends Context.Service<
           );
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              const [reservation] = yield* tx
-                .select({ id: workspaceReservations.id })
-                .from(workspaceReservations)
-                .where(
-                  eq(
-                    workspaceReservations.activeCustomerEmailDeliveryId,
-                    input.customerEmailDeliveryId
-                  )
-                )
-                .limit(1);
-              if (reservation) {
-                yield* lockReservationActivePaymentAttempt({
-                  tx,
-                  reservationId: reservation.id,
-                });
-              }
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1510,10 +1369,6 @@ export class WorkspaceReservationRepository extends Context.Service<
           function* (input) {
             const transaction = db.transaction(
               Effect.fn(function* (tx) {
-                yield* lockReservationActivePaymentAttempt({
-                  tx,
-                  reservationId: input.id,
-                });
                 const [updated] = yield* tx
                   .update(workspaceReservations)
                   .set({
@@ -1546,10 +1401,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1599,10 +1450,6 @@ export class WorkspaceReservationRepository extends Context.Service<
           );
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const [failed] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1632,10 +1479,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const [recovered] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1674,10 +1517,6 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           const transaction = db.transaction(
             Effect.fn(function* (tx) {
-              yield* lockReservationActivePaymentAttempt({
-                tx,
-                reservationId: input.id,
-              });
               const [updated] = yield* tx
                 .update(workspaceReservations)
                 .set({

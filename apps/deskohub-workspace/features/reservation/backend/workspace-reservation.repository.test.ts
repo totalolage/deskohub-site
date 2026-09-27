@@ -169,8 +169,6 @@ describe("WorkspaceReservationRepository", () => {
     const { recording, repository } = await makeRepository();
     const claimedAt = Temporal.Instant.from("2026-01-01T10:00:00.000Z");
     recording.setRows([
-      [["attempt-1"]], // reservation active-attempt lookup
-      [["attempt-1"]], // active-attempt anchor before reservation update
       [["attempt-1"]], // paid Nexi attempts locked for refund handling
       [reservationRow({ activePaymentAttemptId: "attempt-1" })],
       [orderRow()], // order mirror upsert
@@ -273,10 +271,8 @@ describe("WorkspaceReservationRepository", () => {
   test("cancels the pending payment attempt inside a forced payment cancellation", async () => {
     const { recording, repository } = await makeRepository();
     recording.setRows([
-      [["attempt-1"]], // reservation active-attempt lookup
-      [["attempt-1"]], // active-attempt anchor before reading the grant
       [], // access grant lookup
-      [["attempt-1"]], // attempt-first anchor before the reservation update
+      [["attempt-1"]], // attempt-first lock before the reservation update
       [reservationRow({ activePaymentAttemptId: "attempt-1" })], // claimed reservation row
       [orderRow()], // order mirror upsert
       [["attempt-1"]], // cancelled payment attempt
@@ -319,8 +315,6 @@ describe("WorkspaceReservationRepository", () => {
   test("expires a live access credential before cancelling", async () => {
     const { recording, repository } = await makeRepository();
     recording.setRows([
-      [["attempt-1"]], // reservation active-attempt lookup
-      [["attempt-1"]], // active-attempt anchor before reading the grant
       [
         [
           "grant-1",
@@ -330,7 +324,7 @@ describe("WorkspaceReservationRepository", () => {
           "2026-01-01T09:59:00.000Z",
         ],
       ],
-      [["attempt-1"]], // attempt-first anchor before the reservation update
+      [["attempt-1"]], // attempt-first lock before the reservation update
       [reservationRow({ activePaymentAttemptId: "attempt-1" })],
       [orderRow()], // order mirror upsert
       [["attempt-1"]], // cancelled payment attempt

@@ -60,6 +60,5 @@ UPDATE "payment_attempts"
 SET "order_id" = "workspace_reservation_id"
 WHERE "order_id" IS NULL;--> statement-breakpoint
 CREATE INDEX "payment_attempts_order_idx" ON "payment_attempts" ("order_id");--> statement-breakpoint
-ALTER TABLE "orders" ADD CONSTRAINT "orders_active_payment_attempt_id_payment_attempts_id_fkey" FOREIGN KEY ("active_payment_attempt_id") REFERENCES "payment_attempts"("id");--> statement-breakpoint
 ALTER TABLE "payment_attempts" ADD CONSTRAINT "payment_attempts_order_id_orders_id_fkey" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "payment_attempts" ADD CONSTRAINT "payment_attempts_reservation_order_match_check" CHECK ("order_id" is null or "order_id" = "workspace_reservation_id");

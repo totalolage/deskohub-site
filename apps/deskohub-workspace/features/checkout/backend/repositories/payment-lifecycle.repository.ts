@@ -402,70 +402,19 @@ export class PaymentLifecycleRepository extends Context.Service<
           );
         }
 
-        return yield* db
-          .transaction(
-            Effect.fn(function* (tx) {
-              const [current] = yield* tx
-                .select({
-                  activePaymentAttemptId:
-                    workspaceReservations.activePaymentAttemptId,
-                  paymentState: workspaceReservations.paymentState,
-                })
-                .from(workspaceReservations)
-                .where(
-                  eq(workspaceReservations.id, input.workspaceReservationId)
-                )
-                .limit(1);
-
-              if (
-                current?.paymentState === "paid" &&
-                current.activePaymentAttemptId
-              ) {
-                // Internal-payment replay may need to restore the legacy
-                // order_id key. Anchor the active attempt before locking the
-                // reservation so invoice issuance and old recovery writers
-                // cannot wait on it while holding the reservation.
-                yield* tx
+        while (true) {
+          const result = yield* db
+            .transaction(
+              Effect.fn(function* (tx) {
+                // Lock all current paid internal attempts before the
+                // reservation. If a legacy writer makes a new attempt active
+                // after this scan, the locked-row check below restarts in a
+                // fresh transaction before mirroring or relinking.
+                const lockedInternalAttempts = yield* tx
                   .select({ id: paymentAttempts.id })
                   .from(paymentAttempts)
                   .where(
                     and(
-                      eq(paymentAttempts.id, current.activePaymentAttemptId),
-                      eq(
-                        paymentAttempts.workspaceReservationId,
-                        input.workspaceReservationId
-                      )
-                    )
-                  )
-                  .limit(1)
-                  .for("no key update");
-              }
-
-              const [reservation] = yield* tx
-                .select()
-                .from(workspaceReservations)
-                .where(
-                  eq(workspaceReservations.id, input.workspaceReservationId)
-                )
-                .limit(1)
-                .for("update");
-
-              const paidAt = Temporal.Now.instant();
-
-              if (
-                reservation?.paymentState === "paid" &&
-                reservation.activePaymentAttemptId
-              ) {
-                yield* ensureReservationOrder({ tx, reservation });
-                const [existingAttempt] = yield* tx
-                  .select()
-                  .from(paymentAttempts)
-                  .where(
-                    and(
-                      eq(
-                        paymentAttempts.id,
-                        reservation.activePaymentAttemptId
-                      ),
                       eq(
                         paymentAttempts.workspaceReservationId,
                         input.workspaceReservationId
@@ -474,183 +423,237 @@ export class PaymentLifecycleRepository extends Context.Service<
                       eq(paymentAttempts.state, "paid")
                     )
                   )
-                  .limit(1);
+                  .for("no key update");
+                const lockedInternalAttemptIds = new Set(
+                  lockedInternalAttempts.map(({ id }) => id)
+                );
+
+                const [reservation] = yield* tx
+                  .select()
+                  .from(workspaceReservations)
+                  .where(
+                    eq(workspaceReservations.id, input.workspaceReservationId)
+                  )
+                  .limit(1)
+                  .for("update");
+
+                const paidAt = Temporal.Now.instant();
 
                 if (
-                  existingAttempt &&
-                  workspaceMoneyEquals(
-                    toPaymentAttempt(existingAttempt).amount,
-                    input.amount
+                  reservation?.paymentState === "paid" &&
+                  reservation.activePaymentAttemptId
+                ) {
+                  const [existingAttempt] = yield* tx
+                    .select()
+                    .from(paymentAttempts)
+                    .where(
+                      and(
+                        eq(
+                          paymentAttempts.id,
+                          reservation.activePaymentAttemptId
+                        ),
+                        eq(
+                          paymentAttempts.workspaceReservationId,
+                          input.workspaceReservationId
+                        ),
+                        eq(paymentAttempts.provider, "internal"),
+                        eq(paymentAttempts.state, "paid")
+                      )
+                    )
+                    .limit(1);
+
+                  if (
+                    existingAttempt &&
+                    workspaceMoneyEquals(
+                      toPaymentAttempt(existingAttempt).amount,
+                      input.amount
+                    )
+                  ) {
+                    if (
+                      existingAttempt.orderId === null &&
+                      !lockedInternalAttemptIds.has(existingAttempt.id)
+                    ) {
+                      return { retry: true as const };
+                    }
+
+                    yield* ensureReservationOrder({ tx, reservation });
+                    if (existingAttempt.orderId === null) {
+                      yield* relinkLegacyAttemptOrder(tx, {
+                        id: existingAttempt.id,
+                        workspaceReservationId: input.workspaceReservationId,
+                      });
+                    }
+                    return {
+                      attempt: toPaymentAttempt(existingAttempt),
+                      changed: false,
+                      timestamp:
+                        reservation.paidAt ?? existingAttempt.updatedAt,
+                    };
+                  }
+                }
+
+                if (
+                  reservation?.reservationState !== "held" ||
+                  !reservation.reservationHoldExpiresAt ||
+                  Temporal.Instant.compare(
+                    reservation.reservationHoldExpiresAt,
+                    paidAt
+                  ) <= 0 ||
+                  !["not_started", "failed", "cancelled", "expired"].includes(
+                    reservation.paymentState
                   )
                 ) {
-                  yield* relinkLegacyAttemptOrder(tx, {
-                    id: existingAttempt.id,
-                    workspaceReservationId: input.workspaceReservationId,
-                  });
-                  return {
-                    attempt: toPaymentAttempt(existingAttempt),
-                    changed: false,
-                    timestamp: reservation.paidAt ?? existingAttempt.updatedAt,
-                  };
+                  return yield* lifecycleStateError(
+                    "completeInternalPayment",
+                    {
+                      type: "workspaceReservationId",
+                      id: input.workspaceReservationId,
+                    },
+                    "Internal payments can only complete a current held unpaid reservation."
+                  );
                 }
-              }
 
-              if (
-                reservation?.reservationState !== "held" ||
-                !reservation.reservationHoldExpiresAt ||
-                Temporal.Instant.compare(
-                  reservation.reservationHoldExpiresAt,
-                  paidAt
-                ) <= 0 ||
-                !["not_started", "failed", "cancelled", "expired"].includes(
-                  reservation.paymentState
-                )
-              ) {
-                return yield* lifecycleStateError(
-                  "completeInternalPayment",
-                  {
+                yield* validateAccountingDocumentSnapshotProviderIdentity({
+                  snapshot: accountingSnapshot,
+                  paymentReference: {
                     type: "workspaceReservationId",
                     id: input.workspaceReservationId,
                   },
-                  "Internal payments can only complete a current held unpaid reservation."
-                );
-              }
+                  dotyposCustomerId: reservation.dotyposCustomerId,
+                  dotyposReservationId: reservation.dotyposReservationId,
+                });
 
-              yield* validateAccountingDocumentSnapshotProviderIdentity({
-                snapshot: accountingSnapshot,
-                paymentReference: {
-                  type: "workspaceReservationId",
-                  id: input.workspaceReservationId,
-                },
-                dotyposCustomerId: reservation.dotyposCustomerId,
-                dotyposReservationId: reservation.dotyposReservationId,
-              });
+                const accountingSnapshotKey =
+                  yield* accountingSnapshotKeys.getActive.pipe(
+                    Effect.mapError(
+                      () =>
+                        new AccountingDocumentSnapshotStorageError({
+                          operation: "encrypt",
+                          paymentReference: {
+                            type: "workspaceReservationId",
+                            id: input.workspaceReservationId,
+                          },
+                          message:
+                            "Accounting snapshot encryption key is unavailable.",
+                        })
+                    )
+                  );
 
-              const accountingSnapshotKey =
-                yield* accountingSnapshotKeys.getActive.pipe(
-                  Effect.mapError(
-                    () =>
-                      new AccountingDocumentSnapshotStorageError({
-                        operation: "encrypt",
-                        paymentReference: {
-                          type: "workspaceReservationId",
-                          id: input.workspaceReservationId,
-                        },
-                        message:
-                          "Accounting snapshot encryption key is unavailable.",
-                      })
-                  )
-                );
+                // Repair a missing order row before the attempt insert so the
+                // attempt's order foreign key cannot fail on legacy rows.
+                yield* ensureReservationOrder({ tx, reservation });
 
-              // Repair a missing order row before the attempt insert so the
-              // attempt's order foreign key cannot fail on legacy rows.
-              yield* ensureReservationOrder({ tx, reservation });
+                const [attemptRow] = yield* tx
+                  .insert(paymentAttempts)
+                  .values({
+                    id: postgresUuidV7,
+                    orderId: orderIdSchema.make(input.workspaceReservationId),
+                    workspaceReservationId: input.workspaceReservationId,
+                    provider: "internal",
+                    providerOrderId: null,
+                    state: "paid",
+                    amountValue: input.amount.value,
+                    amountExponent: input.amount.exponent,
+                    currency: input.amount.currency,
+                    createdAt: paidAt,
+                    updatedAt: paidAt,
+                  })
+                  .returning();
 
-              const [attemptRow] = yield* tx
-                .insert(paymentAttempts)
-                .values({
-                  id: postgresUuidV7,
-                  orderId: orderIdSchema.make(input.workspaceReservationId),
+                if (!attemptRow) {
+                  return yield* Effect.die(
+                    "Internal payment attempt insert returned no row."
+                  );
+                }
+
+                yield* persistAccountingDocumentSnapshot({
+                  tx,
+                  paymentAttemptId: attemptRow.id,
                   workspaceReservationId: input.workspaceReservationId,
-                  provider: "internal",
-                  providerOrderId: null,
-                  state: "paid",
-                  amountValue: input.amount.value,
-                  amountExponent: input.amount.exponent,
-                  currency: input.amount.currency,
-                  createdAt: paidAt,
-                  updatedAt: paidAt,
-                })
-                .returning();
+                  snapshot: accountingSnapshot,
+                  key: accountingSnapshotKey,
+                });
 
-              if (!attemptRow) {
-                return yield* Effect.die(
-                  "Internal payment attempt insert returned no row."
-                );
-              }
-
-              yield* persistAccountingDocumentSnapshot({
-                tx,
-                paymentAttemptId: attemptRow.id,
-                workspaceReservationId: input.workspaceReservationId,
-                snapshot: accountingSnapshot,
-                key: accountingSnapshotKey,
-              });
-
-              const [completedReservation] = yield* tx
-                .update(workspaceReservations)
-                .set({
-                  activePaymentAttemptId: attemptRow.id,
-                  paymentState: "paid",
-                  paidAt,
-                  failureCode: null,
-                  updatedAt: paidAt,
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    inArray(workspaceReservations.paymentState, [
-                      "not_started",
-                      "failed",
-                      "cancelled",
-                      "expired",
-                    ])
+                const [completedReservation] = yield* tx
+                  .update(workspaceReservations)
+                  .set({
+                    activePaymentAttemptId: attemptRow.id,
+                    paymentState: "paid",
+                    paidAt,
+                    failureCode: null,
+                    updatedAt: paidAt,
+                  })
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.id,
+                        input.workspaceReservationId
+                      ),
+                      eq(workspaceReservations.reservationState, "held"),
+                      inArray(workspaceReservations.paymentState, [
+                        "not_started",
+                        "failed",
+                        "cancelled",
+                        "expired",
+                      ])
+                    )
                   )
-                )
-                .returning();
+                  .returning();
 
-              if (!completedReservation) {
-                return yield* lifecycleStateError(
-                  "completeInternalPayment",
-                  { type: "paymentAttemptId", id: attemptRow.id },
-                  "Internal payment could not atomically complete the held reservation."
-                );
-              }
-              yield* ensureReservationOrder({
-                tx,
-                reservation: completedReservation,
-              });
+                if (!completedReservation) {
+                  return yield* lifecycleStateError(
+                    "completeInternalPayment",
+                    { type: "paymentAttemptId", id: attemptRow.id },
+                    "Internal payment could not atomically complete the held reservation."
+                  );
+                }
+                yield* ensureReservationOrder({
+                  tx,
+                  reservation: completedReservation,
+                });
 
-              const applicationRows = yield* persistDiscountApplications({
-                tx,
-                commitment,
-                paymentAttemptId: attemptRow.id,
-                workspaceReservationId: input.workspaceReservationId,
-              });
-              const claimedAt = yield* reserveCommittedCodeClaim({
-                tx,
-                claimedApplication,
-                applicationRows,
-                paymentAttemptId: attemptRow.id,
-                locale: input.locale,
-                reservationCustomerId: reservation.dotyposCustomerId,
-                reservationExpiresAt: reservation.reservationHoldExpiresAt,
-              });
-              if (claimedAt) {
-                yield* redeemCodeClaim(tx, attemptRow.id, claimedAt);
-              }
+                const applicationRows = yield* persistDiscountApplications({
+                  tx,
+                  commitment,
+                  paymentAttemptId: attemptRow.id,
+                  workspaceReservationId: input.workspaceReservationId,
+                });
+                const claimedAt = yield* reserveCommittedCodeClaim({
+                  tx,
+                  claimedApplication,
+                  applicationRows,
+                  paymentAttemptId: attemptRow.id,
+                  locale: input.locale,
+                  reservationCustomerId: reservation.dotyposCustomerId,
+                  reservationExpiresAt: reservation.reservationHoldExpiresAt,
+                });
+                if (claimedAt) {
+                  yield* redeemCodeClaim(tx, attemptRow.id, claimedAt);
+                }
 
-              return {
-                attempt: toPaymentAttempt(attemptRow),
-                changed: true,
-                timestamp: paidAt,
-              };
-            })
-          )
-          .pipe(
-            Effect.catchIf(isActiveClaimUniqueViolation, (cause) =>
-              Effect.fail(
-                new DiscountClaimError({
-                  operation: "reserve",
-                  reason: "claim_conflict",
-                  message:
-                    "The discount code was claimed by another payment attempt.",
-                  cause,
-                })
-              )
+                return {
+                  attempt: toPaymentAttempt(attemptRow),
+                  changed: true,
+                  timestamp: paidAt,
+                };
+              })
             )
-          );
+            .pipe(
+              Effect.catchIf(isActiveClaimUniqueViolation, (cause) =>
+                Effect.fail(
+                  new DiscountClaimError({
+                    operation: "reserve",
+                    reason: "claim_conflict",
+                    message:
+                      "The discount code was claimed by another payment attempt.",
+                    cause,
+                  })
+                )
+              )
+            );
+          if ("retry" in result) continue;
+          return result;
+        }
       });
 
       const attachProviderSession = Effect.fn(
@@ -695,16 +698,9 @@ export class PaymentLifecycleRepository extends Context.Service<
       // Old writers left their payment attempts without order linkage.
       // Repair it here, while the caller already holds the attempt row lock
       // and ensureReservationOrder has guaranteed the order row exists. The
-      // reservation id is the order id, so the persisted linkage is exact.
-      // Lock note: order_id is a key (FK-referenced) column, so when this
-      // UPDATE fires it takes an exclusive row lock on the attempt. That is
-      // safe against a concurrent reservation-only mirror holding FOR KEY
-      // SHARE: the mirror acquired its key share after the reservation lock
-      // it already owns and needs nothing further from this transaction, so
-      // the upgrade can wait without cycling. Callers reach this update only
-      // after anchoring the attempt at NO KEY UPDATE strength (compatible
-      // with KEY SHARE), which is what keeps the mixed-version mirror
-      // deadlock-free.
+      // reservation id is the order id, so the persisted application-level
+      // linkage remains exact even though the mirrored active-attempt scalar
+      // has no database FK.
       const relinkLegacyAttemptOrder = Effect.fn(
         "PaymentLifecycleRepository.relinkLegacyAttemptOrder"
       )(function* (
@@ -746,12 +742,9 @@ export class PaymentLifecycleRepository extends Context.Service<
               // inverting into a deadlock.
               // Lock mode: this leading UPDATE only writes non-key attempt
               // columns (state, failure_code, webhook/provider bookkeeping),
-              // so Postgres takes a NO KEY UPDATE-strength row lock: it
-              // conflicts with old writers' plain UPDATE row locks and other
-              // new writers' anchors, yet stays compatible with the FOR KEY
-              // SHARE of the orders → payment_attempts FK check a concurrent
-              // reservation-only mirror performs, so the mirror cannot
-              // deadlock against this writer.
+              // so Postgres takes a NO KEY UPDATE-strength row lock that
+              // conflicts with old FOR UPDATE writers and other new payment
+              // writers before this transaction locks the reservation.
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
@@ -885,9 +878,8 @@ export class PaymentLifecycleRepository extends Context.Service<
               // inverting into a deadlock.
               // Lock mode: same as markPaid — the leading UPDATE writes only
               // non-key attempt columns, so Postgres takes a NO KEY
-              // UPDATE-strength row lock: serializing against old and new
-              // writers while staying compatible with the FOR KEY SHARE of a
-              // concurrent reservation-only order mirror.
+              // UPDATE-strength row lock and serializes against old and new
+              // payment writers before the reservation lock.
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({

@@ -134,10 +134,10 @@ describe("invoice repository persistence contract", () => {
     const attemptAnchor = sqlTexts.find((sql) =>
       sql.includes('from "payment_attempts"')
     );
-    // The anchor is FOR NO KEY UPDATE: issuance never writes attempt key
-    // columns, and NO KEY UPDATE — unlike FOR UPDATE — is compatible with
-    // the FOR KEY SHARE the order mirror's FK check takes, so mixed-version
-    // mirrors cannot deadlock against issuance.
+    // The anchor is FOR NO KEY UPDATE: issuance only reads the attempt, while
+    // this lock serializes it with old recovery/payment writers before the
+    // reservation lock is acquired. Reservation order mirrors do not lock
+    // attempts or enforce this scalar with a database FK.
     expect(attemptAnchor).toContain("for no key update");
     const forUpdate = sqlTexts.filter((sql) => sql.includes("for update"));
     expect(forUpdate.length).toBeGreaterThanOrEqual(1);

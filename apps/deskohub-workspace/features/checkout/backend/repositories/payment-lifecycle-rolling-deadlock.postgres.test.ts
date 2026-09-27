@@ -5,10 +5,12 @@ import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
+import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { eq, inArray, sql } from "drizzle-orm";
 import { Effect, Layer, Schema } from "effect";
 import {
   accountingDocumentSnapshots,
+  discountApplications,
   invoices,
   latePaymentRecoveries,
   orders,
@@ -32,6 +34,8 @@ import {
   PaymentLifecycleRepository,
 } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
+import { makeDiscountCommitment } from "@/features/discounts/commitment";
+import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
@@ -102,6 +106,69 @@ const makeSource = (identity: {
     },
     delivery: { email: "synthetic@example.test" },
   });
+};
+
+/** An internal-payment source snapshot whose full payable amount is discounted. */
+const makeZeroTotalSource = (identity: {
+  readonly workspaceReservationId: WorkspaceReservationId;
+  readonly dotyposReservationId: string;
+  readonly dotyposCustomerId: string;
+}) => {
+  const source = makeSource(identity);
+  const firstItem = source.quote.items[0]!;
+  const subtotal = {
+    value: source.quote.items.reduce(
+      (total, item) => total + item.amount.value,
+      0
+    ),
+    exponent: firstItem.amount.exponent,
+    currency: firstItem.amount.currency,
+  };
+  const zero = {
+    value: 0,
+    exponent: subtotal.exponent,
+    currency: subtotal.currency,
+  };
+  const discount = {
+    discount: {
+      id: discountIdSchema.make("rolling-internal-zero-discount"),
+      label: "Zero total",
+      adjustment: { kind: "percentage" as const, basisPoints: 10_000 },
+    },
+    subtotalBefore: subtotal,
+    amount: subtotal,
+    subtotalAfter: zero,
+  };
+  const snapshot = Schema.decodeUnknownSync(accountingDocumentSnapshotSchema)({
+    ...source,
+    quote: {
+      ...source.quote,
+      payment: {
+        ...source.quote.payment,
+        expectedPrice: zero,
+        discounts: [discount],
+      },
+    },
+  });
+
+  return {
+    amount: zero,
+    snapshot,
+    commitment: makeDiscountCommitment({
+      product: { kind: "cowork", tier: "basic" },
+      applications: [
+        {
+          application: snapshot.quote.payment.discounts[0]!,
+          candidate: {
+            provenance: {
+              providerNamespace: "test",
+              providerReference: "rolling-internal-zero",
+            },
+          },
+        },
+      ],
+    }),
+  };
 };
 
 describe.skipIf(!postgresDatabase)(
@@ -176,13 +243,16 @@ describe.skipIf(!postgresDatabase)(
     const insertAttempt = async (
       values: Partial<typeof paymentAttempts.$inferInsert> & {
         readonly workspaceReservationId: WorkspaceReservationId;
-      }
+      },
+      options: { readonly orderless?: boolean } = {}
     ) => {
       const [attempt] = await Effect.runPromise(
         postgres.db
           .insert(paymentAttempts)
           .values({
-            orderId: values.workspaceReservationId as never,
+            ...(!options.orderless && {
+              orderId: values.workspaceReservationId as never,
+            }),
             provider: "nexi",
             providerOrderId: `order-${crypto.randomUUID()}` as never,
             state: "pending",
@@ -264,9 +334,8 @@ describe.skipIf(!postgresDatabase)(
         })
       );
       await insertOrderMirror(id);
-      // orders.active_payment_attempt_id → payment_attempts and
-      // payment_attempts.order_id → orders form a cycle, so the linkage is
-      // set after both rows exist, like the production writers do in-tx.
+      // The order's active attempt is a scalar mirror; payment_attempts.order_id
+      // retains its FK, so create the order before persisting that attempt link.
       await Effect.runPromise(
         postgres.db
           .update(paymentAttempts)
@@ -309,6 +378,44 @@ describe.skipIf(!postgresDatabase)(
           .where(eq(workspaceReservations.id, id))
       );
       return { id, attemptId: attempt.id };
+    };
+
+    /** Old post-backfill writer shape: terminal attempt, active pointer, no Order. */
+    const insertLegacyTerminalWithoutOrder = async () => {
+      const id = await insertReservation({
+        reservationState: "held",
+        paymentState: "failed",
+        failureCode: "provider_declined",
+        reservationHoldExpiresAt: Temporal.Instant.from("2099-01-01T00:00:00Z"),
+      });
+      const [reservation] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id))
+          .limit(1)
+      );
+      const attempt = await insertAttempt(
+        {
+          workspaceReservationId: id,
+          orderId: null,
+          state: "failed",
+          failureCode: "provider_declined",
+        },
+        { orderless: true }
+      );
+      await Effect.runPromise(
+        postgres.db
+          .update(workspaceReservations)
+          .set({ activePaymentAttemptId: attempt.id })
+          .where(eq(workspaceReservations.id, id))
+      );
+      return {
+        id,
+        attemptId: attempt.id,
+        dotyposCustomerId: reservation!.dotyposCustomerId,
+        dotyposReservationId: reservation!.dotyposReservationId!,
+      };
     };
 
     const makeLifecycleRepository = async () =>
@@ -388,6 +495,141 @@ describe.skipIf(!postgresDatabase)(
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       return false;
+    };
+
+    const waitUntilBlockedOnOrderInsert = async () => {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const { rows } = await postgres.pool.query(
+          `select 1 from pg_stat_activity
+            where wait_event_type = 'Lock'
+              and pid <> pg_backend_pid()
+              and query ilike '%insert into "orders"%'
+            limit 1`
+        );
+        if (rows.length > 0) return true;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return false;
+    };
+
+    const waitUntilBlockedOnReservation = async () => {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const { rows } = await postgres.pool.query(
+          `select 1 from pg_stat_activity
+            where wait_event_type = 'Lock'
+              and pid <> pg_backend_pid()
+              and query ilike '%from workspace_reservations%'
+              and query ilike '%for update%'
+            limit 1`
+        );
+        if (rows.length > 0) return true;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return false;
+    };
+
+    const runOldRecoveryStartOverlap = async <T>(input: {
+      readonly attemptId: string;
+      readonly reservationId: WorkspaceReservationId;
+      readonly writer: () => Promise<T>;
+    }) => {
+      const old = await postgres.pool.connect();
+      const latch = await postgres.pool.connect();
+      let writer: Promise<T> | undefined;
+      let recoveryStart: Promise<void> | undefined;
+      let orderInsertBlocked = false;
+      let reservationBlocked = false;
+      let oldResult: PromiseSettledResult<void> | undefined;
+      let writerResult: PromiseSettledResult<T> | undefined;
+      try {
+        await postgres.pool.query(`
+          create or replace function workspace_test_pause_recovery_order_mirror()
+          returns trigger language plpgsql as $$
+          begin
+            perform pg_advisory_xact_lock(hashtext(new.id), 247385);
+            return new;
+          end;
+          $$
+        `);
+        await postgres.pool.query(
+          "drop trigger if exists workspace_test_pause_recovery_order_mirror on orders"
+        );
+        await postgres.pool.query(`
+          create trigger workspace_test_pause_recovery_order_mirror
+          before insert or update on orders
+          for each row execute function workspace_test_pause_recovery_order_mirror()
+        `);
+        await latch.query("select pg_advisory_lock(hashtext($1), 247385)", [
+          input.reservationId,
+        ]);
+        await old.query("begin");
+        await old.query(
+          "select id from payment_attempts where id = $1 for update",
+          [input.attemptId]
+        );
+
+        writer = input.writer();
+        orderInsertBlocked = await waitUntilBlockedOnOrderInsert();
+        recoveryStart = (async () => {
+          const [reservation] = (
+            await old.query(
+              "select dotypos_reservation_id from workspace_reservations where id = $1 for update",
+              [input.reservationId]
+            )
+          ).rows;
+          await old.query(
+            `insert into late_payment_recoveries
+               (payment_attempt_id, workspace_reservation_id, webhook_event_id,
+                provider_status, state, original_dotypos_reservation_id,
+                verified_paid_at)
+             values ($1, $2, $3, 'APPROVED', 'pending', $4, now())`,
+            [
+              input.attemptId,
+              input.reservationId,
+              `event-${crypto.randomUUID()}`,
+              reservation!.dotypos_reservation_id,
+            ]
+          );
+          await old.query("commit");
+        })();
+        reservationBlocked = await waitUntilBlockedOnReservation();
+        await latch.query("select pg_advisory_unlock(hashtext($1), 247385)", [
+          input.reservationId,
+        ]);
+        [oldResult, writerResult] = await Promise.allSettled([
+          recoveryStart!,
+          writer!,
+        ]);
+      } finally {
+        await latch
+          .query("select pg_advisory_unlock(hashtext($1), 247385)", [
+            input.reservationId,
+          ])
+          .catch(() => {});
+        await Promise.allSettled(
+          [recoveryStart, writer].filter(
+            (promise): promise is Promise<unknown> => promise !== undefined
+          )
+        );
+        await old.query("rollback").catch(() => {});
+        old.release();
+        latch.release();
+        await postgres.pool.query(
+          "drop trigger if exists workspace_test_pause_recovery_order_mirror on orders"
+        );
+        await postgres.pool.query(
+          "drop function if exists workspace_test_pause_recovery_order_mirror()"
+        );
+      }
+
+      return {
+        oldResult: oldResult!,
+        writerResult: writerResult!,
+        orderInsertBlocked,
+        reservationBlocked,
+      };
     };
 
     /**
@@ -492,8 +734,10 @@ describe.skipIf(!postgresDatabase)(
         );
         await Effect.runPromise(
           postgres.db
-            .delete(orders)
-            .where(inArray(orders.id, ids as readonly string[]))
+            .delete(discountApplications)
+            .where(
+              inArray(discountApplications.workspaceReservationId, ids as never)
+            )
         );
         await Effect.runPromise(
           postgres.db
@@ -501,6 +745,11 @@ describe.skipIf(!postgresDatabase)(
             .where(
               inArray(paymentAttempts.workspaceReservationId, ids as never)
             )
+        );
+        await Effect.runPromise(
+          postgres.db
+            .delete(orders)
+            .where(inArray(orders.id, ids as readonly string[]))
         );
         await Effect.runPromise(
           postgres.db
@@ -653,6 +902,200 @@ describe.skipIf(!postgresDatabase)(
           .limit(1)
       );
       expect(attempt!.orderId).toBe(id);
+    });
+
+    test("old recovery FOR UPDATE start overlaps external retry with a missing order", async () => {
+      const fixture = await insertLegacyTerminalWithoutOrder();
+      const lifecycle = await makeLifecycleRepository();
+      const snapshot = makeSource({
+        workspaceReservationId: fixture.id,
+        dotyposReservationId: fixture.dotyposReservationId,
+        dotyposCustomerId: fixture.dotyposCustomerId,
+      });
+      expect(snapshot.workspaceReservationId).toBe(fixture.id);
+      expect(snapshot.locale).toBe("en-US");
+      expect(
+        snapshot.quote.items.reduce(
+          (total, item) => total + item.amount.value,
+          0
+        )
+      ).toBe(snapshot.quote.payment.undiscountedPrice.value);
+      expect(
+        snapshot.quote.items.reduce(
+          (total, item) => total + item.amount.value,
+          0
+        ) -
+          snapshot.quote.payment.discounts.reduce(
+            (total, discount) => total + discount.amount.value,
+            0
+          )
+      ).toBe(snapshot.quote.payment.expectedPrice.value);
+      const run = await runOldRecoveryStartOverlap({
+        attemptId: fixture.attemptId,
+        reservationId: fixture.id,
+        writer: () =>
+          Effect.runPromise(
+            lifecycle.createPendingNexiAttempt({
+              workspaceReservationId: fixture.id,
+              providerOrderId: NexiOrderIdSchema.make(
+                `retry-${crypto.randomUUID()}`
+              ),
+              amount: snapshot.quote.payment.expectedPrice,
+              commitment: makeDiscountCommitment({
+                product: { kind: "cowork", tier: "basic" },
+                applications: [],
+              }),
+              locale: "en-US",
+              accountingSnapshot: snapshot,
+            })
+          ),
+      });
+
+      expect(run.orderInsertBlocked).toBe(true);
+      expect(run.reservationBlocked).toBe(true);
+      expect(run.oldResult.status).toBe("fulfilled");
+      expect(run.writerResult.status).toBe("fulfilled");
+      if (run.writerResult.status !== "fulfilled") return;
+
+      const newAttempt = run.writerResult.value;
+      expect(newAttempt.state).toBe("created");
+      expect(newAttempt.orderId).toBe(fixture.id);
+
+      const [reservation] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, fixture.id))
+          .limit(1)
+      );
+      const [order] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(orders)
+          .where(eq(orders.id, fixture.id))
+          .limit(1)
+      );
+      const attempts = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(paymentAttempts)
+          .where(eq(paymentAttempts.workspaceReservationId, fixture.id))
+      );
+      const [recovery] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(latePaymentRecoveries)
+          .where(
+            eq(
+              latePaymentRecoveries.paymentAttemptId,
+              fixture.attemptId as never
+            )
+          )
+          .limit(1)
+      );
+
+      expect(reservation!.paymentState).toBe("pending");
+      expect(reservation!.activePaymentAttemptId).toBe(newAttempt.id);
+      expect(order!.paymentState).toBe(reservation!.paymentState);
+      expect(order!.activePaymentAttemptId).toBe(newAttempt.id);
+      expect(attempts).toHaveLength(2);
+      expect(attempts.find(({ id }) => id === fixture.attemptId)?.state).toBe(
+        "failed"
+      );
+      expect(
+        attempts.find(({ id }) => id === fixture.attemptId)?.orderId
+      ).toBeNull();
+      expect(recovery!.state).toBe("pending");
+    });
+
+    test("old recovery FOR UPDATE start overlaps zero-total replacement of a failed attempt", async () => {
+      const fixture = await insertLegacyTerminalWithoutOrder();
+      const lifecycle = await makeLifecycleRepository();
+      const checkout = makeZeroTotalSource({
+        workspaceReservationId: fixture.id,
+        dotyposReservationId: fixture.dotyposReservationId,
+        dotyposCustomerId: fixture.dotyposCustomerId,
+      });
+      const run = await runOldRecoveryStartOverlap({
+        attemptId: fixture.attemptId,
+        reservationId: fixture.id,
+        writer: () =>
+          Effect.runPromise(
+            lifecycle.completeInternalPayment({
+              workspaceReservationId: fixture.id,
+              amount: checkout.amount,
+              commitment: checkout.commitment,
+              locale: "en-US",
+              accountingSnapshot: checkout.snapshot,
+            })
+          ),
+      });
+
+      expect(run.orderInsertBlocked).toBe(true);
+      expect(run.reservationBlocked).toBe(true);
+      expect(run.oldResult.status).toBe("fulfilled");
+      expect(run.writerResult.status).toBe("fulfilled");
+      if (run.writerResult.status !== "fulfilled") return;
+
+      const transition = run.writerResult.value;
+      expect(transition.changed).toBe(true);
+      expect(transition.attempt.provider).toBe("internal");
+      expect(transition.attempt.state).toBe("paid");
+      expect(transition.attempt.orderId).toBe(fixture.id);
+
+      const [reservation] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, fixture.id))
+          .limit(1)
+      );
+      const [order] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(orders)
+          .where(eq(orders.id, fixture.id))
+          .limit(1)
+      );
+      const attempts = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(paymentAttempts)
+          .where(eq(paymentAttempts.workspaceReservationId, fixture.id))
+      );
+      const [recovery] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(latePaymentRecoveries)
+          .where(
+            eq(
+              latePaymentRecoveries.paymentAttemptId,
+              fixture.attemptId as never
+            )
+          )
+          .limit(1)
+      );
+
+      expect(reservation!.paymentState).toBe("paid");
+      expect(reservation!.activePaymentAttemptId).toBe(transition.attempt.id);
+      expect(reservation!.fulfilledAt).toBeNull();
+      expect(order!.paymentState).toBe("paid");
+      expect(order!.activePaymentAttemptId).toBe(transition.attempt.id);
+      expect(order!.fulfilledAt).toBeNull();
+      expect(attempts).toHaveLength(2);
+      expect(attempts.find(({ id }) => id === fixture.attemptId)?.state).toBe(
+        "failed"
+      );
+      expect(
+        attempts.find(({ id }) => id === transition.attempt.id)
+      ).toMatchObject({
+        provider: "internal",
+        state: "paid",
+        orderId: fixture.id,
+        amountValue: 0,
+        currency: checkout.amount.currency,
+      });
+      expect(recovery!.state).toBe("pending");
     });
   }
 );

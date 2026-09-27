@@ -471,7 +471,7 @@ describe.skipIf(!postgresDatabase)(
       expect(issued.invoice.workspaceReservationId).toBe(fixture.id);
     });
 
-    test("invoice issuance and a reservation-only mirror avoid the FK lock cycle", async () => {
+    test("invoice issuance and a reservation-only mirror serialize without an active-attempt FK", async () => {
       const fixture = await insertPaidFulfilledReservation();
       const repository = await makeInvoiceRepository();
       const reservations = await Effect.runPromise(
@@ -547,7 +547,7 @@ describe.skipIf(!postgresDatabase)(
         );
         pending.push(issuance);
         expect(
-          await waitForLockWait('%from "payment_attempts"%for no key update%')
+          await waitForLockWait('%from "workspace_reservations"%for update%')
         ).toBe(true);
 
         await latch.query("select pg_advisory_unlock(hashtext($1), 247385)", [

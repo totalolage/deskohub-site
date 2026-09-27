@@ -178,12 +178,10 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 );
               }
 
-              // Lock-order contract: payment attempt → reservation → order.
-              // The NO KEY UPDATE anchor serializes with deployed FOR UPDATE
-              // recovery writers and new reservation mirrors while remaining
-              // compatible with orders.active_payment_attempt_id's FK
-              // KEY SHARE check. The later order_id relink upgrades this
-              // already-held lock only after the reservation mirror exists.
+              // The recovery row is locked first to serialize settlement
+              // generations. The attempt anchor then precedes the reservation,
+              // matching payment and invoice writers; order mirrors copy the
+              // active-attempt scalar without taking an attempt lock.
               const [attemptAnchor] = yield* tx
                 .select({ id: paymentAttempts.id })
                 .from(paymentAttempts)
@@ -496,16 +494,16 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 }
 
                 // Lock-order contract: payment attempt → reservation →
-                // order. The attempt-first anchor matches the deployed old
-                // writers and the payment lifecycle writers, so old-new
-                // overlap during a rolling deploy serializes instead of
-                // inverting into a deadlock.
+                // order. The attempt-first anchor matches deployed recovery
+                // and payment lifecycle writers. Reservation-only mirrors do
+                // not lock attempts; their active-attempt projection is a
+                // scalar without a database FK, so they can complete while an
+                // old reader holds the attempt before waiting on the
+                // reservation. The order_id relink below remains protected by
+                // its separate order foreign key.
                 // Lock mode: FOR NO KEY UPDATE. It conflicts with old
-                // recovery FOR UPDATE locks and the new reservation-mirror
-                // anchors, but remains compatible with the order FK's KEY
-                // SHARE check. Reservation-only writers take their attempt
-                // anchor before the reservation, so the order_id relink can
-                // safely upgrade this lock without forming a cycle.
+                // recovery FOR UPDATE locks and other payment-writer anchors
+                // before this transaction locks the reservation.
                 const [attempt] = yield* tx
                   .select({ id: paymentAttempts.id })
                   .from(paymentAttempts)

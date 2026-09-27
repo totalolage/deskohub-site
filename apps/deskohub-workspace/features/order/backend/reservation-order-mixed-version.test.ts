@@ -152,23 +152,6 @@ describe.skipIf(!pgBin)(
       return id;
     };
 
-    const waitUntilBlockedOnAttemptAnchor = async () => {
-      const deadline = Date.now() + 5_000;
-      while (Date.now() < deadline) {
-        const { rows } = await pool.query(
-          `select 1 from pg_stat_activity
-            where wait_event_type = 'Lock'
-              and pid <> pg_backend_pid()
-              and query ilike '%from "payment_attempts"%'
-              and query ilike '%for no key update%'
-            limit 1`
-        );
-        if (rows.length > 0) return true;
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      return false;
-    };
-
     beforeAll(async () => {
       if (!pgBin) return;
       workdir = mkdtempSync(join(tmpdir(), "reservation-order-gate-"));
@@ -785,6 +768,7 @@ describe.skipIf(!pgBin)(
       );
 
       const old = await pool.connect();
+      let mirror: Promise<void> | undefined;
       try {
         await old.query("begin");
         await old.query(
@@ -792,28 +776,39 @@ describe.skipIf(!pgBin)(
           [attempt!.id]
         );
 
-        const mirror = Effect.runPromise(
+        mirror = Effect.runPromise(
           repository.markFulfilled({
             id,
             fulfilledAt: Temporal.Now.instant(),
           })
         );
-        expect(await waitUntilBlockedOnAttemptAnchor()).toBe(true);
+        const mirrorOutcome = await Promise.race([
+          mirror.then(
+            () => "completed" as const,
+            () => "failed" as const
+          ),
+          new Promise<"blocked">((resolve) =>
+            setTimeout(() => resolve("blocked"), 1_000)
+          ),
+        ]);
+        expect(mirrorOutcome).toBe("completed");
 
         const oldRecovery = await old.query(
           "select id from workspace_reservations where id = $1 for update",
           [id]
         );
         expect(oldRecovery.rowCount).toBe(1);
+        await old.query(
+          "update workspace_reservations set updated_at = updated_at where id = $1",
+          [id]
+        );
         await old.query("commit");
-        const mirrorResult = await Promise.allSettled([mirror]);
-
-        // The old recovery has the deployed attempt-FOR-UPDATE → reservation
-        // interleaving. It must be able to finish its reservation work before
-        // the new mirror proceeds to its foreign-key check.
-        expect(mirrorResult[0]?.status).toBe("fulfilled");
+        expect((await Promise.allSettled([mirror]))[0]?.status).toBe(
+          "fulfilled"
+        );
       } finally {
         await old.query("rollback").catch(() => {});
+        if (mirror) await Promise.allSettled([mirror]);
         old.release();
       }
     });

@@ -1,13 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { NexiCorrelationId } from "@deskohub/nexi";
 import { sql } from "drizzle-orm";
-import {
-  type AnyPgColumn,
-  check,
-  index,
-  pgTable,
-  text,
-} from "drizzle-orm/pg-core";
+import { check, index, pgTable, text } from "drizzle-orm/pg-core";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import {
   type OrderFulfillmentState,
@@ -20,7 +14,6 @@ import {
 } from "@/features/order";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
-import { paymentAttempts } from "./payment-attempts";
 import { quotedSqlList } from "./sql-list";
 
 export const orders = pgTable(
@@ -40,9 +33,9 @@ export const orders = pgTable(
     fulfillmentState: text("fulfillment_state")
       .notNull()
       .$type<OrderFulfillmentState>(),
-    activePaymentAttemptId: text("active_payment_attempt_id")
-      .$type<PaymentAttemptId>()
-      .references((): AnyPgColumn => paymentAttempts.id),
+    activePaymentAttemptId: text(
+      "active_payment_attempt_id"
+    ).$type<PaymentAttemptId>(),
     paidAt: instant("paid_at"),
     fulfilledAt: instant("fulfilled_at"),
     fulfillmentFailedAt: instant("fulfillment_failed_at"),
