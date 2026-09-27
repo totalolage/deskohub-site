@@ -122,15 +122,18 @@ describe("account billing invoice history", () => {
         const invoiceHistory = rendered.getByRole("region", {
           name: m.accountBillingInvoiceHistoryTitle({}, { locale }),
         });
-        const invoiceState = invoiceHistory.querySelector("p");
-        if (!invoiceState) throw new Error("Invoice state was not rendered");
-        expect(invoiceState.textContent).toBe(loadingCopy);
+        const status = invoiceHistory.querySelector("[role='status']");
+        if (!status) throw new Error("Invoice loading status was not rendered");
+        expect(status.getAttribute("aria-busy")).toBe("true");
+        expect(status.textContent).toContain(loadingCopy);
+        expect(
+          invoiceHistory.querySelectorAll("[data-slot='skeleton']").length
+        ).toBeGreaterThan(0);
         const exportButton = rendered.getByRole("button", {
           name: m.accountBillingExportInvoices({}, { locale }),
         });
-        expect(exportButton.getAttribute("aria-describedby")).toBe(
-          invoiceState.id
-        );
+        expect((exportButton as HTMLButtonElement).disabled).toBe(true);
+        expect(exportButton.getAttribute("aria-describedby")).toBeNull();
 
         await reactAct(async () => {
           resolveInvoices(states.populated);
@@ -146,6 +149,10 @@ describe("account billing invoice history", () => {
           })
         ).toBeTruthy();
         expect(rendered.queryByText(loadingCopy)).toBeNull();
+        expect(
+          rendered.container.querySelectorAll("[data-slot='skeleton']")
+        ).toHaveLength(0);
+        expect(rendered.container.querySelector("[role='status']")).toBeNull();
       } finally {
         resolveInvoices(states.populated);
         cleanup();
@@ -195,7 +202,22 @@ describe("account billing invoice history", () => {
             );
           expect(exportButton).toBeTruthy();
           expect((exportButton as HTMLButtonElement).disabled).toBe(true);
-          expect(exportButton?.getAttribute("aria-describedby")).toBeTruthy();
+          if (kind === "loading") {
+            // The loading skeleton carries the status semantics itself; the
+            // disabled export control stays free of a description reference.
+            expect(exportButton?.getAttribute("aria-describedby")).toBeNull();
+            expect(
+              view.container.querySelectorAll("[data-slot='skeleton']").length
+            ).toBeGreaterThan(0);
+            const status = view.container.querySelector("[role='status']");
+            expect(status).toBeTruthy();
+            expect(status?.getAttribute("aria-busy")).toBe("true");
+          } else {
+            expect(exportButton?.getAttribute("aria-describedby")).toBeTruthy();
+            expect(
+              view.container.querySelectorAll("[data-slot='skeleton']")
+            ).toHaveLength(0);
+          }
         }
         cleanup();
       });

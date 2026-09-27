@@ -39,10 +39,26 @@ const getSavedPaymentMethodsMarkup = (markup: string) =>
   )?.[0] ?? "";
 
 describe("BillingScreen", () => {
-  test("renders inside the shared account section panel", () => {
+  test("renders exactly two sibling account section panels", () => {
     const markup = renderScreen("en-US");
 
-    expect(markup).toContain('data-slot="account-section-panel"');
+    expect(countOccurrences(markup, 'data-slot="account-section-panel"')).toBe(
+      2
+    );
+  });
+
+  test("renders the invoice history as a second panel with its own h2 heading", () => {
+    const markup = renderScreen("en-US");
+    const secondPanelStart = markup.indexOf(
+      'data-slot="account-section-panel"',
+      markup.indexOf('data-slot="account-section-panel"') + 1
+    );
+    const secondPanel = markup.slice(secondPanelStart);
+
+    expect(secondPanel).toMatch(/<h2 [^>]*id="[^"]*-invoice-history-title"/);
+    expect(secondPanel).toContain(
+      escapeHtml(m.accountBillingInvoiceHistoryTitle({}, "en-US"))
+    );
   });
 
   test("renders children and the optional footer exactly once without owning a form or input", () => {
@@ -80,11 +96,16 @@ describe("BillingScreen", () => {
         </div>
       </BillingScreen>
     );
-    const sectionClass = markup
+    const firstPanelEnd = markup.indexOf(
+      'data-slot="account-section-panel"',
+      markup.indexOf('data-slot="account-section-panel"') + 1
+    );
+    const firstPanel = markup.slice(0, firstPanelEnd);
+    const sectionClass = firstPanel
       .match(/<section[^>]*class="([^"]*)"/)?.[1]
       ?.replaceAll("&amp;", "&");
-    const footerWrapperClass = markup.match(
-      /<div class="([^"]*)"><span data-footer-marker="billing-footer">Save billing<\/span><\/div><\/section>$/
+    const footerWrapperClass = firstPanel.match(
+      /<div class="([^"]*)"><span data-footer-marker="billing-footer">Save billing<\/span><\/div>/
     )?.[1];
 
     expect(sectionClass).toBeDefined();
@@ -110,6 +131,63 @@ describe("BillingScreen", () => {
     expect(footerWrapperClass).toContain(
       "pb-[max(1rem,env(safe-area-inset-bottom))]"
     );
+    // The sticky footer lives in panel 1, before the invoice history region.
+    expect(
+      firstPanel.indexOf('data-footer-marker="billing-footer"')
+    ).toBeLessThan(markup.indexOf("-invoice-history-title"));
+  });
+
+  test("renders populated invoice rows directly in the panel body without a card or empty state paragraph", () => {
+    const markup = renderScreen("en-US", {
+      invoices: [
+        {
+          currency: "CZK",
+          id: "billing-screen-structure-test-invoice",
+          invoiceNumber: "WS-FV-2026-000002",
+          issuedAt: "2026-09-01T08:00:00.000Z",
+          paymentStatus: "due",
+          total: "100",
+          dueDate: "2026-10-02",
+        },
+      ],
+      kind: "populated",
+    });
+    const secondPanelStart = markup.indexOf(
+      'data-slot="account-section-panel"',
+      markup.indexOf('data-slot="account-section-panel"') + 1
+    );
+    const secondPanel = markup.slice(secondPanelStart);
+
+    expect(secondPanel).not.toContain("border-[#e0e6ee]");
+    expect(secondPanel).not.toContain("bg-[#fbfcfd]");
+    expect(secondPanel).not.toMatch(/<p[^>]*><\/p>/);
+    const exportAnchor = markup.match(
+      /<a ([^>]*account\/invoices\/export[^>]*)>/
+    )?.[1];
+    expect(exportAnchor).toBeDefined();
+    expect(exportAnchor).not.toMatch(/\baria-describedby=/);
+  });
+
+  test("renders a skeleton with status semantics and a muted export control while invoices load", () => {
+    const markup = renderScreen("en-US", { kind: "loading" });
+
+    expect(markup).toContain('role="status"');
+    expect(markup).toContain('aria-busy="true"');
+    expect(markup.match(/data-slot="skeleton"/g)?.length ?? 0).toBeGreaterThan(
+      0
+    );
+    expect(markup).toContain("sr-only");
+    expect(markup).toContain(
+      escapeHtml(m.accountBillingInvoiceLoading({}, "en-US"))
+    );
+    const exportButton = (
+      markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []
+    ).find((button) =>
+      button.includes(escapeHtml(m.accountBillingExportInvoices({}, "en-US")))
+    );
+    expect(exportButton).toBeDefined();
+    expect(exportButton).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
+    expect(exportButton).not.toMatch(/\baria-describedby=/);
   });
 
   test("renders safely without an optional footer", () => {
