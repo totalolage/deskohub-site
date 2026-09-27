@@ -61,6 +61,8 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
 }));
 
 mock.module("@/features/account/actions", () => ({
+  lookupAresBusiness: () =>
+    Promise.resolve({ data: { status: "not-found", message: "" } }),
   completeCustomerProfile: () =>
     Promise.resolve({ data: { status: "completed" } }),
   updateCustomerProfile: () => Promise.resolve({ data: { status: "updated" } }),
@@ -151,7 +153,6 @@ const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
     paymentMethodsUnavailable:
       "Saved payment methods are not available in this account.",
     removePaymentCard: "Remove payment card",
-    syncAres: "Sync with ARES Registry",
     title: "Billing & invoices",
   },
   reservations: {

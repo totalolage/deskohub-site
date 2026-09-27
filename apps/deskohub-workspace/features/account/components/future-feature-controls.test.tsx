@@ -74,6 +74,8 @@ const deleteCustomerAccount = mock(
 );
 
 mock.module("@/features/account/actions", () => ({
+  lookupAresBusiness: () =>
+    Promise.resolve({ data: { status: "not-found", message: "" } }),
   completeCustomerProfile,
   deleteCustomerAccount,
   updateCustomerProfile,
@@ -210,7 +212,6 @@ const billingCopy = {
     paymentMethodsUnavailable:
       "Saved payment methods are not available in this account.",
     removePaymentCard: "Remove payment card",
-    syncAres: "Sync with ARES Registry",
     title: "Billing & invoices",
   },
   "cs-CZ": {
@@ -226,7 +227,6 @@ const billingCopy = {
     paymentMethodsUnavailable:
       "Uložené platební metody nejsou pro tento účet dostupné.",
     removePaymentCard: "Odebrat platební kartu",
-    syncAres: "Synchronizovat s registrem ARES",
     title: "Fakturace a faktury",
   },
 } satisfies Record<Locale, BillingScreenCopy>;
@@ -456,11 +456,6 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
     name: "language control",
     render: renderProfileScreen,
     role: "combobox",
-  },
-  {
-    label: (locale) => billingCopy[locale].syncAres,
-    name: "ARES control",
-    render: renderBillingScreen,
   },
   {
     label: (locale) => billingCopy[locale].addPaymentCard,
