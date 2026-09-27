@@ -22,6 +22,7 @@ import {
   discountCodes,
   discountProductTargets,
   discounts,
+  latePaymentRecoveries,
   paymentAttempts,
   promotionCodeCustomers,
   promotionCodes,
@@ -872,6 +873,25 @@ export class PaymentLifecycleRepository extends Context.Service<
 
           return yield* db.transaction(
             Effect.fn(function* (tx) {
+              // Terminal-replay serialization: a deployed late-payment
+              // settlement locks recovery row → reservation → attempt. A
+              // matching-terminal replay that locked the attempt first would
+              // invert that order into a mixed-version deadlock, so anchor on
+              // any recovery row for this attempt BEFORE the attempt lock.
+              // With no recovery row this select locks nothing and the
+              // attempt-first payment order below is unchanged.
+              // Lock mode: FOR NO KEY UPDATE — the replay never writes the
+              // recovery row, so this is the weakest mode that still
+              // serializes against the settlement's FOR UPDATE.
+              yield* tx
+                .select({
+                  paymentAttemptId: latePaymentRecoveries.paymentAttemptId,
+                })
+                .from(latePaymentRecoveries)
+                .where(eq(latePaymentRecoveries.paymentAttemptId, input.id))
+                .limit(1)
+                .for("no key update");
+
               // Lock-order contract: payment attempt → reservation → order.
               // The attempt-first anchor matches the deployed old writers, so
               // old-new overlap during a rolling deploy serializes instead of
