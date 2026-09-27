@@ -121,12 +121,12 @@ export class AresLookupService extends Context.Service<
           .vratEkonomickySubjekt(encodeURIComponent(ico), undefined)
           .pipe(
             Effect.timeout(aresLookupTimeout),
-            Effect.catch(
-              (failure): Effect.Effect<never, AresLookupFailure> =>
-                isNotFoundResponse(failure)
-                  ? Effect.fail(AresLookupFailure.NotFound())
-                  : reportUnavailable
-            )
+            Effect.catch((failure): Effect.Effect<never, AresLookupFailure> => {
+              if (isNotFoundResponse(failure)) {
+                return Effect.fail(AresLookupFailure.NotFound());
+              }
+              return reportUnavailable;
+            })
           );
 
         if (!Schema.is(verifiedSubject(ico))(subject)) {
