@@ -5,15 +5,13 @@ import { Effect } from "effect";
 import {
   type AdministrationReservationListInput,
   AdministrationService,
-  ReservationExportDataUnavailableError,
   ReservationExportRangeUnavailableError,
 } from "@/features/administration/administration.service";
 import { AdministrationServiceMock } from "@/features/administration/administration.service.mock";
 
 const events: string[] = [];
 let authorized = true;
-let exportOutcome: "success" | "range-unavailable" | "data-unavailable" =
-  "success";
+let exportOutcome: "success" | "range-unavailable" = "success";
 const exportInputs: AdministrationReservationListInput[] = [];
 
 const reservation = {
@@ -38,14 +36,6 @@ const makeAdministrationLayer = () =>
         return Effect.fail(
           new ReservationExportRangeUnavailableError({
             message: "private range",
-          })
-        );
-      }
-      if (exportOutcome === "data-unavailable") {
-        return Effect.fail(
-          new ReservationExportDataUnavailableError({
-            cause: new Error("private cause"),
-            message: "private data",
           })
         );
       }
@@ -150,23 +140,5 @@ describe("GET /admin/reservations/export.csv", () => {
       "booking dates are temporarily unavailable"
     );
     expect(events).toEqual(["authorize", "export"]);
-  });
-
-  test("returns a generic unavailable non-CSV response when enrichment fails", async () => {
-    exportOutcome = "data-unavailable";
-
-    const response = await GET(request());
-    const body = await response.text();
-
-    expect(response.status).toBe(503);
-    expect(response.headers.get("content-type")).toBe(
-      "text/plain; charset=utf-8"
-    );
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(body).toContain("Reservation export is temporarily unavailable");
-    expect(body).not.toContain("private data");
-    expect(body).not.toContain("private range");
-    expect(body).not.toContain("private cause");
-    expect(body).not.toContain("Reservation ID");
   });
 });

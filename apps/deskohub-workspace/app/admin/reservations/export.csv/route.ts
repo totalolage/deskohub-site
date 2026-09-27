@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 import {
   AdministrationService,
-  ReservationExportDataUnavailableError,
   ReservationExportRangeUnavailableError,
 } from "@/features/administration/administration.service";
 
@@ -60,16 +59,6 @@ export async function GET(request: Request) {
           Effect.as(
             new Response(
               "Reservation booking dates are temporarily unavailable. Try this export again shortly.",
-              { headers: plainTextHeaders, status: 503 }
-            )
-          )
-        );
-      }
-      if (cause instanceof ReservationExportDataUnavailableError) {
-        return Effect.logWarning("Reservation export data unavailable").pipe(
-          Effect.as(
-            new Response(
-              "Reservation export is temporarily unavailable. Try again shortly.",
               { headers: plainTextHeaders, status: 503 }
             )
           )
