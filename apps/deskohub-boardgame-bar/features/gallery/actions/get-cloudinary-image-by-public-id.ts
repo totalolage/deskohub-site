@@ -30,8 +30,8 @@ export async function getCloudinaryImageByPublicId(
     }),
     GalleryCloudinaryLayer
   ).pipe(
-    Effect.catch((error) =>
-      Effect.logError("Cloudinary public ID lookup failed", error).pipe(
+    Effect.catch(() =>
+      Effect.logError("Cloudinary public ID lookup failed").pipe(
         Effect.as(undefined)
       )
     )
