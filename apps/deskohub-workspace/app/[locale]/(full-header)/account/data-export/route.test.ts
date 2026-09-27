@@ -74,12 +74,19 @@ const makeLayers = (fakes: RouteFakes) => {
   } satisfies Partial<CustomerAuthentication["Service"]>);
 
   const exportService = Layer.mock(AccountDataExportService, {
-    build: () =>
+    build: ({ session: buildSession }: { session: CustomerAccountSession }) =>
       Effect.suspend(() => {
         buildInvocations += 1;
         return fakes.build
           ? Effect.fail(fakes.build)
-          : Effect.succeed(snapshotFixture);
+          : Effect.succeed({
+              ...snapshotFixture,
+              identity: {
+                ...snapshotFixture.identity,
+                accountId: buildSession.accountId,
+                email: buildSession.email,
+              },
+            });
       }),
   } satisfies Partial<AccountDataExportService["Service"]>);
 
@@ -137,6 +144,39 @@ describe("account data export route", () => {
       readonly identity: { readonly email: string };
     };
     expect(body.identity.email).toBe(session.email);
+  });
+
+  test("serves each request from the session read at request time", async () => {
+    // Module-scope route layers must not memoize a session or document
+    // across requests: the second invocation against the same layers has to
+    // reflect the session read for that invocation.
+    const fakes: RouteFakes = {};
+    const { layers } = makeLayers(fakes);
+    const secondSession = {
+      ...session,
+      accountId: customerAccountIdSchema.make("auth-user-export-route-2"),
+      email: "grace@example.test",
+    } as CustomerAccountSession;
+    const run = () =>
+      Effect.runPromise(
+        Effect.result(
+          buildAccountDataExportResponse(Effect.succeed(account), layers)
+        )
+      ).then((result) => {
+        if (!result.success) throw result.failure;
+        return result.success;
+      });
+
+    const first = await run();
+    fakes.session = secondSession;
+    const second = await run();
+
+    expect(
+      ((await first.json()) as { identity: { email: string } }).identity.email
+    ).toBe(session.email);
+    expect(
+      ((await second.json()) as { identity: { email: string } }).identity.email
+    ).toBe(secondSession.email);
   });
 
   test("fails closed with 404 and never builds a snapshot when the flag is disabled", async () => {

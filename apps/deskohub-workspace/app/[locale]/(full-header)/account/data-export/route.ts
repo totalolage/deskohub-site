@@ -1,5 +1,5 @@
 import { Effect, Layer, type Schema } from "effect";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 import { AccountDataExportService } from "@/features/account/backend/account-data-export.service";
 import { AccountFeatureFlagService } from "@/features/account/backend/account-feature-flag.service";
 import { resolveCurrentCustomerAccount } from "@/features/account/backend/customer-account-resolver.service";
@@ -126,5 +126,14 @@ export const GET = defineWorkspaceRoute(
     operation: "accountDataExport",
     cancellation: "interrupt-on-disconnect",
   },
-  () => buildExportResponse
+  () =>
+    // cacheComponents serves a GET route handler from the framework cache
+    // when the handler never consumes dynamic request data. The session read
+    // uses the headers captured at the route boundary instead of `headers()`,
+    // so the dynamic connection read here is the only per-request escape. It
+    // forces fresh rendering for every export, keeping the delivered document
+    // bound to the session that requested it.
+    Effect.promise(() => connection()).pipe(
+      Effect.andThen(() => buildExportResponse)
+    )
 );
