@@ -590,6 +590,9 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
     reValidateMode: "onChange",
     resolver: standardSchemaResolver(schema),
   });
+  // Snapshot taken at submit entry so the success reset cannot absorb values
+  // edited while the request is in flight.
+  const [submittedValues, setSubmittedValues] = useState<Input | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
     actionName: submitLabel,
     onSuccess: ({ data }) => {
@@ -597,8 +600,9 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
       setFeedback({ kind: "success", message: data.notice });
       form.reset(
         resetOnSuccessTo === "submitted"
-          ? (form.getValues() as Input)
-          : undefined
+          ? (submittedValues ?? undefined)
+          : undefined,
+        resetOnSuccessTo === "submitted" ? { keepDirtyValues: true } : undefined
       );
       router.refresh();
     },
@@ -621,6 +625,7 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
         noValidate
         onSubmit={form.handleSubmit((values) => {
           setFeedback(null);
+          setSubmittedValues(form.getValues());
           execute(buildMutation(values));
         })}
       >
