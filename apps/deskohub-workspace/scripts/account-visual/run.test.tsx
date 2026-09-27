@@ -135,6 +135,8 @@ const expectedOwnedSourcePaths = [
   "apps/deskohub-workspace/scripts/account-visual/browser-entry.tsx",
   "apps/deskohub-workspace/scripts/account-visual/create-account-visual-verification.ts",
   "apps/deskohub-workspace/scripts/account-visual/default-adapter.tsx",
+  "apps/deskohub-workspace/scripts/account-visual/failed-adapter.tsx",
+  "apps/deskohub-workspace/scripts/account-visual/loading-adapter.tsx",
   "apps/deskohub-workspace/scripts/account-visual/marketing-preferences-adapter.tsx",
   "apps/deskohub-workspace/scripts/account-visual/marketing-preferences-browser.test.tsx",
   "apps/deskohub-workspace/scripts/account-visual/marketing-preferences-fixture.ts",
@@ -153,6 +155,7 @@ const expectedOwnedSourcePaths = [
   "apps/deskohub-workspace/scripts/account-visual/stubs/next-navigation.ts",
   "apps/deskohub-workspace/scripts/account-visual/stubs/server-only-fail-closed.ts",
   "apps/deskohub-workspace/scripts/account-visual/types.ts",
+  "apps/deskohub-workspace/scripts/account-visual/unavailable-adapter.tsx",
 ] as const;
 
 const archivalScreenNames = [
