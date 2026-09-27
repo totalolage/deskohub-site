@@ -130,8 +130,10 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
 
   const dateButton = document.querySelector('button[aria-haspopup="dialog"]');
   if (!(dateButton instanceof HTMLButtonElement)) fail('date');
+  // The shared date control renders its trigger text with the long date
+  // style, so the restored-date expectation mirrors that format.
   const restoredDate = new Intl.DateTimeFormat(${JSON.stringify(data.locale)}, {
-    dateStyle: 'full',
+    dateStyle: 'long',
     timeZone: 'Europe/Prague',
   }).format(new Date(expected.date + 'T12:00:00Z'));
   if ((dateButton.textContent ?? '').trim() !== restoredDate) fail('date');
