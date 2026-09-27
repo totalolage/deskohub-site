@@ -19,7 +19,7 @@ import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
-import { ReservationFormDatePicker } from "@/features/reservation/components/reservation-date-picker";
+import { ReservationFormDateInput } from "@/features/reservation/components/reservation-date-input";
 import {
   ReservationCustomerFieldsFallback,
   ReservationFormFallback,
@@ -252,12 +252,12 @@ export function OfficeReservationForm({
           <FormField
             control={form.control}
             name="startsOn"
-            render={({ field, fieldState }) => (
+            render={({ field }) => (
               <FormItem>
                 <ReservationFormLabel required>
                   {m.reservationOfficeStartDateLabel({}, { locale })}
                 </ReservationFormLabel>
-                <ReservationFormDatePicker
+                <ReservationFormDateInput
                   ariaLabel={m.reservationOfficeStartDateLabel({}, { locale })}
                   isDateDisabled={(date) =>
                     unavailableDates.has(date.toString())
@@ -269,7 +269,6 @@ export function OfficeReservationForm({
                   onChange={field.onChange}
                   placeholder={m.reservationDatePlaceholder({}, { locale })}
                   value={field.value}
-                  variant={fieldState.error ? "error" : "default"}
                 />
                 <FormMessage />
               </FormItem>

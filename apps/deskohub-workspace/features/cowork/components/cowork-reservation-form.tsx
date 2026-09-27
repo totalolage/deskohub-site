@@ -32,7 +32,7 @@ import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
-import { ReservationFormDatePicker } from "@/features/reservation/components/reservation-date-picker";
+import { ReservationFormDateInput } from "@/features/reservation/components/reservation-date-input";
 import {
   ReservationCustomerFieldsFallback,
   ReservationSkeletonBlock,
@@ -67,7 +67,6 @@ import {
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
-import { formatReservationInputDate } from "@/features/reservation/reservation-date";
 import type { CoworkWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import {
   FormControl,
@@ -142,13 +141,6 @@ const getWorkspaceAvailabilityQuery = ({
     ...(isWorkspaceProductMonitorOption(monitorOption) && { monitorOption }),
   };
 };
-
-const formatDisplayDate = (date: string, locale: Locale) =>
-  formatReservationInputDate(
-    date,
-    locale,
-    m.reservationDatePlaceholder({}, { locale })
-  );
 
 export function CoworkReservationForm({
   initialReservation,
@@ -700,9 +692,8 @@ function CoworkReservationDateField({
           <ReservationFormLabel required>
             {m.reservationDateLabel({}, { locale })}
           </ReservationFormLabel>
-          <ReservationFormDatePicker
+          <ReservationFormDateInput
             ariaLabel={m.reservationDateLabel({}, { locale })}
-            displayValue={formatDisplayDate(field.value, locale)}
             isDateDisabled={(date) => unavailableDates.has(date.toString())}
             locale={locale}
             minimum={() => Temporal.Now.plainDateISO().toString()}
