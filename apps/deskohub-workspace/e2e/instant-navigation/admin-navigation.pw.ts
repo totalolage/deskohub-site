@@ -79,7 +79,22 @@ test("captures the resolved reservations export view", async ({
 }, testInfo) => {
   await page.goto("/admin/reservations");
 
-  await expect(page.getByRole("link", { name: "Export CSV" })).toBeVisible();
+  const toolbar = page.getByRole("region", {
+    name: "reservation table controls",
+  });
+  const exportLink = toolbar.getByRole("link", { name: "Export CSV" });
+  await expect(toolbar).toBeVisible();
+  await expect(exportLink).toBeVisible();
+  await expect(toolbar.locator("#reservation-status")).toBeVisible();
+  await expect(toolbar.locator("#reservation-type")).toBeVisible();
+  await expect(toolbar.locator("#reservation-date-from")).toBeVisible();
+  await expect(toolbar.locator("#reservation-date-to")).toBeVisible();
+  await expect(
+    toolbar.getByRole("navigation", { name: "Reservation date shortcuts" })
+  ).toBeVisible();
+  await expect(
+    toolbar.getByRole("button", { name: "Apply filters" })
+  ).toBeVisible();
 
   const reservations = page.getByRole("table", { name: "Reservations" });
   const emptyState = page.getByText("No reservations match this view.", {
@@ -92,15 +107,49 @@ test("captures the resolved reservations export view", async ({
     )
     .toBe(true);
 
+  // The table is inside an overflow wrapper within its outer responsive frame.
+  const tableBoundary = reservations.locator("xpath=../..");
+  const resultBoundary = (await reservations.isVisible())
+    ? tableBoundary
+    : emptyState;
+  await expect(resultBoundary).toBeVisible();
+
   await page.locator("nextjs-portal").evaluateAll((portals) => {
     for (const portal of portals) {
       (portal as HTMLElement).style.display = "none";
     }
   });
 
+  const viewportSize = page.viewportSize();
+  const toolbarBounds = await toolbar.boundingBox();
+  const exportBounds = await exportLink.boundingBox();
+  const resultBounds = await resultBoundary.boundingBox();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  if (
+    viewportSize === null ||
+    toolbarBounds === null ||
+    exportBounds === null ||
+    resultBounds === null
+  ) {
+    throw new Error("Could not determine safe reservations screenshot bounds");
+  }
+
+  const toolbarBottom = toolbarBounds.y + toolbarBounds.height;
+  const exportBottom = exportBounds.y + exportBounds.height;
+  const resultClearance = 8;
+  const clipHeight = Math.floor(resultBounds.y - resultClearance);
+  expect(exportBounds.y).toBeGreaterThanOrEqual(toolbarBounds.y);
+  expect(exportBottom).toBeLessThanOrEqual(toolbarBottom);
+  expect(resultBounds.y - clipHeight).toBeGreaterThanOrEqual(resultClearance);
+  expect(clipHeight).toBeGreaterThan(toolbarBottom);
+  expect(clipHeight).toBeLessThanOrEqual(viewportSize.height);
+
   const screenshotPath =
     "e2e-artifacts/reservation-links/admin-reservations-export.png";
-  await page.screenshot({ fullPage: true, path: screenshotPath });
+  await page.screenshot({
+    clip: { height: clipHeight, width: viewportSize.width, x: 0, y: 0 },
+    path: screenshotPath,
+  });
   await testInfo.attach("admin-reservations-export", {
     contentType: "image/png",
     path: screenshotPath,
