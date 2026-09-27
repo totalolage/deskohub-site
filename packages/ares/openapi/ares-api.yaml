@@ -102,7 +102,7 @@ components:
                 type: string
                 description: >-
                   CZ-NACE_2008 ekonomického subjektu - kód (ciselnikKod:
-                  CzNace2008, zdroj:res) 
+                  CzNace2008, zdroj:res)
             seznamRegistraci:
               $ref: '#/components/schemas/SeznamRegistraci'
               description: >-
@@ -125,17 +125,17 @@ components:
                 type: string
                 description: >-
                   Seznam CZ-NACE_2025 - seznam ekonomické činnosti - kód
-                  (ciselnikKod: CzNace, zdroj:res) 
+                  (ciselnikKod: CzNace, zdroj:res)
             subRegistrSzr:
               type: string
               description: >-
                 Indeftifikátor sub-registru zdroje SZR - kód (ciselnikKod:
-                SubRegistrSzr, zdroj:com) 
+                SubRegistrSzr, zdroj:com)
             dicSkDph:
               type: string
               description: >-
                 Daňové identifikační číslo skupiny plátce DPH ve formátu
-                CZNNNNNNNNNN 
+                CZNNNNNNNNNN
     EkonomickySubjektZaklad:
       type: object
       description: Základní informace o ekonomickém subjektu - obecný předek
@@ -175,7 +175,7 @@ components:
           type: string
           description: >-
             Správně příslušný finanční úřad - kód (ciselnikKod: FinancniUrad,
-            zdroj:ufo) 
+            zdroj:ufo)
         datumVzniku:
           format: date
           type: string
@@ -348,28 +348,28 @@ components:
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji ROS (Základní registr - Registr
-            osob) - kód (ciselnikKod: StavZdroje, zdroj: com) 
+            osob) - kód (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeVr:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji VR (Veřejné rejstříky) - kód
-            (ciselnikKod: StavZdroje, zdroj: com) 
+            (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeRes:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji RES (Registr ekonomických
-            subjektů) - kód (ciselnikKod: StavZdroje, zdroj: com) 
+            subjektů) - kód (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeRzp:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji RŽP (Registr živnostenského
-            podnikání) - kód (ciselnikKod: StavZdroje, zdroj: com) 
+            podnikání) - kód (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeNrpzs:
           maxLength: 64
           minLength: 1
@@ -377,14 +377,14 @@ components:
           description: >-
             Stav ekonomického subjektu ve zdroji NRPZS (Národní registr
             poskytovatelů zdrovotnických služeb) - kód (ciselnikKod: StavZdroje,
-            zdroj: com) 
+            zdroj: com)
         stavZdrojeRpsh:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji RPSH (Registr politických stran
-            a hnutí) - kód (ciselnikKod: StavZdroje, zdroj: com) 
+            a hnutí) - kód (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeRcns:
           maxLength: 64
           minLength: 1
@@ -392,21 +392,21 @@ components:
           description: >-
             Stav ekonomického subjektu ve zdroji RCNS(Registr církví a
             náboženských společenství) - kód (ciselnikKod: StavZdroje, zdroj:
-            com) 
+            com)
         stavZdrojeSzr:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji  SZR(Společný zemědělský
-            registr) - kód (ciselnikKod: StavZdroje, zdroj: com) 
+            registr) - kód (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeDph:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji DPH(Registr plátců daně s
-            přidané hodnoty) - kód (ciselnikKod: StavZdroje, zdroj: com) 
+            přidané hodnoty) - kód (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeSkDph:
           maxLength: 64
           minLength: 1
@@ -414,49 +414,49 @@ components:
           description: >-
             Stav ekonomického subjektu ve zdroji DPH(Registr plátců daně s
             přidané hodnoty - skupinové DPH) - kód (ciselnikKod: StavZdroje,
-            zdroj: com) 
+            zdroj: com)
         stavZdrojeSd:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji SD(Registr plátců spotřební
-            daně) - kód (ciselnikKod: StavZdroje, zdroj: com) 
+            daně) - kód (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeIr:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji ISIR(Insolvenční rejstřík) -
-            kód (ciselnikKod: StavZdroje, zdroj: com) 
+            kód (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeCeu:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji CEÚ(Centrální evidence úpadců)
-            - kód (ciselnikKod: StavZdroje, zdroj: com) 
+            - kód (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeRs:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji RŠ(Registr škol) - kód
-            (ciselnikKod: StavZdroje, zdroj: com) 
+            (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeRed:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji RED(Registr evidence dotací) -
-            kód (ciselnikKod: StavZdroje, zdroj: com) 
+            kód (ciselnikKod: StavZdroje, zdroj: com)
         stavZdrojeMonitor:
           maxLength: 64
           minLength: 1
           type: string
           description: >-
             Stav ekonomického subjektu ve zdroji MONITOR(Monitor účetních
-            jednotek státu) - kód (ciselnikKod: StavZdroje, zdroj: com) 
+            jednotek státu) - kód (ciselnikKod: StavZdroje, zdroj: com)
     EkonomickySubjektDalsiUdaje:
       type: object
       description: Další údaje o ekonomickém subjektu
@@ -490,13 +490,13 @@ components:
           type: string
           description: >-
             Aktuální spisová značka ve tvaru ODDIL xx/SOUD (např. B 100/MSPH) -
-            poskytováno pouze pro zdroj: Veřejné rejstříky 
+            poskytováno pouze pro zdroj: Veřejné rejstříky
         datovyZdroj:
           maxLength: 30
           type: string
           description: >-
             Identifikace primárního zdroje dat - kód (ciselnikKod: TypZdroje,
-            zdroj: com) 
+            zdroj: com)
     ObchodniJmenoAres:
       type: object
       description: Obchodní jméno s platností
@@ -557,4 +557,3 @@ components:
         - NENI_IMPLEMENTOVANO
         - NEPRIHLASENY_UZIVATEL
         - NENI_OPRAVNENI
-
