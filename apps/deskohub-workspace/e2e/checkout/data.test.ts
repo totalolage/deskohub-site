@@ -4,6 +4,7 @@ import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import isEmail from "validator/lib/isEmail.js";
+import type { WorkspaceCoworkSaleableTier } from "@/features/checkout/product-catalog";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { makeWorkspaceE2EDateAllocation } from "../allocation";
 import type { WorkspaceE2EConfig } from "../config";
@@ -118,6 +119,22 @@ test("keeps its persistence oracle independent of application normalization", ()
     kind: "cowork",
     monitorOption: "2x32-4k",
   });
+});
+
+test("rejects an invalid runtime cowork tier with an intelligible error", () => {
+  // Runtime-only bypass: JS callers can pass a historical tier that the
+  // WorkspaceCoworkSaleableTier type no longer allows.
+  const legacyTier = "profi" as WorkspaceCoworkSaleableTier;
+  expect(() =>
+    makeCoworkCheckoutData(
+      "https://workspace.example.com",
+      "2099-09-01",
+      "cowork-legacy-tier",
+      { entryTier: legacyTier }
+    )
+  ).toThrow(
+    "Unsupported cowork entry tier profi; saleable tiers are open-space and reserved-desk"
+  );
 });
 
 test("reuses customer identity for a later reservation", () => {

@@ -18,6 +18,9 @@ export const getAssertRepeatReservationScript = (data: CheckoutData) => {
         data.expectedReservationDetails;
       return {
         coffee,
+        // Only Open Space renders the coffee switch; Reserved Desk includes
+        // coffee with no switch control on the form.
+        expectCoffeeSwitch: entryTier === "open-space",
         entryTier,
         kind: "cowork",
         monitorOption: monitorOption ?? null,
@@ -75,7 +78,16 @@ export const getAssertRepeatReservationScript = (data: CheckoutData) => {
     const tier = document.querySelector('input[name="entryTier"]:checked');
     if (!(tier instanceof HTMLInputElement) || tier.value !== expected.entryTier) fail('entry tier');
     const coffee = document.querySelector('[role="switch"]');
-    if (!(coffee instanceof HTMLButtonElement) || coffee.getAttribute('aria-checked') !== String(expected.coffee)) fail('coffee');
+    if (expected.expectCoffeeSwitch) {
+      if (
+        !(coffee instanceof HTMLButtonElement) ||
+        coffee.getAttribute('aria-checked') !== String(expected.coffee)
+      ) {
+        fail('coffee');
+      }
+    } else if (coffee !== null) {
+      fail('coffee switch rendered without an open-space offer');
+    }
     const monitor = document.querySelector('input[name="monitorOption"]:checked');
     if (expected.monitorOption === null ? monitor !== null : !(monitor instanceof HTMLInputElement) || monitor.value !== expected.monitorOption) fail('monitor option');
   } else if (expected.kind === 'office') {
@@ -108,6 +120,9 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
 (() => {
   const expected = ${JSON.stringify({
     coffee: expectedReservation.coffee,
+    // Only Open Space renders the coffee switch; Reserved Desk includes
+    // coffee with no switch control on the form.
+    expectCoffeeSwitch: expectedReservation.entryTier === "open-space",
     date: data.date,
     email: data.email,
     entryTier: expectedReservation.entryTier,
@@ -137,7 +152,16 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
   if ((dateButton.textContent ?? '').trim() !== restoredDate) fail('date');
 
   const coffee = document.querySelector('[role="switch"]');
-  if (!(coffee instanceof HTMLButtonElement) || coffee.getAttribute('aria-checked') !== String(expected.coffee)) fail('coffee');
+  if (expected.expectCoffeeSwitch) {
+    if (
+      !(coffee instanceof HTMLButtonElement) ||
+      coffee.getAttribute('aria-checked') !== String(expected.coffee)
+    ) {
+      fail('coffee');
+    }
+  } else if (coffee !== null) {
+    fail('coffee switch rendered without an open-space offer');
+  }
   if (value('input[name="email"]', 'email') !== expected.email) fail('email');
   if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
   if (value('input[name="name"]', 'name') !== expected.name) fail('name');
