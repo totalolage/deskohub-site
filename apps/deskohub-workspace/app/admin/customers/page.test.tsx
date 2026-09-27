@@ -30,10 +30,12 @@ type CustomerItem = {
 
 let mockInput: AdministrationCustomerListInput;
 let mockItems: readonly CustomerItem[];
+let mockPendingResult = false;
 
 const resetMocks = () => {
   mockInput = { direction: "desc", page: 1, sort: "activity" };
   mockItems = [];
+  mockPendingResult = false;
 };
 
 resetMocks();
@@ -46,12 +48,14 @@ mock.module("@/features/administration/page-data.server", () => ({
     }),
   loadAdministrationCustomersPage: () => ({
     input: Promise.resolve(mockInput),
-    result: Promise.resolve({
-      items: mockItems,
-      page: 1,
-      pageCount: 2,
-      total: 24,
-    }),
+    result: mockPendingResult
+      ? new Promise<never>(() => {})
+      : Promise.resolve({
+          items: mockItems,
+          page: 1,
+          pageCount: 2,
+          total: 24,
+        }),
   }),
 }));
 
@@ -115,6 +119,27 @@ describe("DiscountCustomersAdminPage", () => {
     expect(options).toEqual(["", "granted", "withdrawn", "never"]);
     expect(select.value).toBe("granted");
     expect(view.getByRole("button", { name: "Apply filters" })).toBeDefined();
+  });
+
+  test("keeps the consent filter visible while the customer list loads", async () => {
+    mockInput = {
+      direction: "desc",
+      marketingConsent: "granted",
+      page: 1,
+      sort: "activity",
+    };
+    mockPendingResult = true;
+    const { default: DiscountCustomersAdminPage } = await import("./page");
+    const tree = await DiscountCustomersAdminPage({
+      searchParams: Promise.resolve({ direction: "desc", sort: "activity" }),
+    });
+    const view = render(tree);
+
+    const select = view.getByLabelText(
+      "Marketing consent"
+    ) as HTMLSelectElement;
+    expect(select.value).toBe("granted");
+    expect(view.queryByLabelText("Loading table filters")).toBeNull();
   });
 
   test("renders consent state in the desktop table and mobile rows", async () => {

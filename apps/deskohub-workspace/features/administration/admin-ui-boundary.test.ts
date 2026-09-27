@@ -63,7 +63,6 @@ describe("administration UI boundaries", () => {
       "app/admin/cli/sessions/page.tsx",
       "app/admin/codes/page.tsx",
       "app/admin/codes/[codeId]/page.tsx",
-      "app/admin/customers/page.tsx",
       "app/admin/customers/[customerId]/page.tsx",
       "app/admin/customers/[customerId]/create-code/page.tsx",
       "app/admin/operations/page.tsx",
@@ -80,6 +79,19 @@ describe("administration UI boundaries", () => {
       expect(source).toContain("<Suspense");
       expect(source).not.toContain("export default async function");
     }
+
+    // The customers page awaits only the searchParams-derived parsed input in
+    // its shell so filter controls render without a Suspense boundary; it must
+    // never await the provider-backed data result, which would block streaming.
+    const customersSource = await readWorkspaceFile(
+      "app/admin/customers/page.tsx"
+    );
+    expect(customersSource).toContain("<Suspense");
+    const customersShell = customersSource.slice(
+      0,
+      customersSource.indexOf("async function CustomerCount")
+    );
+    expect(customersShell).not.toMatch(/await\s+result/);
   });
 
   test("keeps low-level table and badge composition out of route pages", async () => {

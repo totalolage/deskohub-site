@@ -12,7 +12,6 @@ import {
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
-  AdministrationFiltersLoading,
 } from "@/features/administration/loading";
 import {
   type AdministrationSearchParams,
@@ -23,12 +22,13 @@ import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client
 import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 
-export default function DiscountCustomersAdminPage({
+export default async function DiscountCustomersAdminPage({
   searchParams,
 }: {
   readonly searchParams: AdministrationSearchParams;
 }) {
   const { input, result } = loadAdministrationCustomersPage(searchParams);
+  const resolvedInput = await input;
 
   return (
     <AdministrationPage>
@@ -39,11 +39,7 @@ export default function DiscountCustomersAdminPage({
             <CustomerCount result={result} />
           </Suspense>
         }
-        filters={
-          <Suspense fallback={<AdministrationFiltersLoading fields={1} />}>
-            <CustomerFiltersContent input={input} />
-          </Suspense>
-        }
+        filters={<CustomerFilters input={resolvedInput} />}
         itemLabel="customer"
         search={<CustomerSearch variant="toolbar" />}
       />
@@ -71,14 +67,6 @@ async function CustomerCount({
       itemLabel="customer"
     />
   );
-}
-
-async function CustomerFiltersContent({
-  input,
-}: {
-  readonly input: Promise<CustomersData["input"]>;
-}) {
-  return <CustomerFilters input={await input} />;
 }
 
 export function CustomerFilters({
