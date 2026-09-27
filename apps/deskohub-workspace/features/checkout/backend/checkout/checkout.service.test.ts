@@ -1646,6 +1646,151 @@ describe("CheckoutService", () => {
     }
   });
 
+  test("rejects a new Open Space payment for a date before the current local date", async () => {
+    const yesterday = Temporal.Now.zonedDateTimeISO(
+      workspaceSiteConstants.location.timeZone
+    )
+      .toPlainDate()
+      .subtract({ days: 1 })
+      .toString();
+    const endedReservation = buildSaleableCoworkReservation(
+      "open-space",
+      yesterday
+    );
+    const orderId = "cowork-open-space-past-date";
+
+    const harness = await createCheckoutHarness({
+      orderId,
+      payStateToken: buildPayStateToken({
+        orderId,
+        reservation: endedReservation,
+      }),
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      code: "cowork_reservation_ended",
+      message: "Open Space reservation day has already ended.",
+    });
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("does not create a provider attempt when the reserved day ends during final revalidation", async () => {
+    const originalNow = Temporal.Now.instant;
+    let now = Temporal.Instant.from("2099-06-10T21:59:59Z");
+    Temporal.Now.instant = () => now;
+    const reservation = buildSaleableCoworkReservation(
+      "reserved-desk",
+      "2099-06-10"
+    );
+    const orderId = "cowork-ends-during-final-revalidation";
+    let revalidationCount = 0;
+    const requireCurrent = mock(() => {
+      revalidationCount += 1;
+      if (revalidationCount === 2) {
+        // Midnight after the reserved date arrives during the final
+        // revalidation inside the provider session start.
+        now = Temporal.Instant.from("2099-06-10T22:00:00Z");
+      }
+      return Effect.succeed(makeReservation(orderId));
+    });
+
+    try {
+      const harness = await createCheckoutHarness({
+        orderId,
+        payStateToken: buildPayStateToken({
+          orderId,
+          reservation,
+        }),
+        requireCurrent,
+      });
+
+      const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+      expect(error).toMatchObject({
+        _tag: "CheckoutError",
+        message: "Reserved Desk reservation day has already ended.",
+      });
+      expect(requireCurrent).toHaveBeenCalledTimes(2);
+      expect(harness.affirm).toHaveBeenCalled();
+      expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+      expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
+  test("does not complete an internal payment when the reserved day ends during final revalidation", async () => {
+    const originalNow = Temporal.Now.instant;
+    let now = Temporal.Instant.from("2099-06-10T14:59:59Z");
+    Temporal.Now.instant = () => now;
+    const zeroTotalReservationEndedDay = Schema.decodeUnknownSync(
+      normalizedCoworkReservationOrderSchema
+    )({
+      kind: "cowork",
+      entryTier: "open-space",
+      date: "2099-06-10",
+      coffee: false,
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 777 777",
+    });
+    const acceptedQuote = buildCoworkReservationQuote(
+      zeroTotalReservationEndedDay,
+      {
+        discountQuote: zeroTotalQuote,
+      }
+    );
+    const orderId = "cowork-zero-total-ends-during-final-revalidation";
+    let revalidationCount = 0;
+    const requireCurrent = mock(() => {
+      revalidationCount += 1;
+      if (revalidationCount === 2) {
+        // The 17:00 Open Space cutoff arrives during the final revalidation
+        // inside the internal payment completion.
+        now = Temporal.Instant.from("2099-06-10T15:00:00Z");
+      }
+      return Effect.succeed(makeReservation(orderId));
+    });
+
+    try {
+      const harness = await createCheckoutHarness({
+        orderId,
+        payStateToken: buildPayStateToken({
+          orderId,
+          reservation: zeroTotalReservationEndedDay,
+          quote: acceptedQuote,
+        }),
+        acceptedQuote,
+        affirm: mock(() =>
+          Effect.succeed({
+            quote: acceptedQuote,
+            commitment: fullyDiscountedCommitment,
+          })
+        ),
+        requireCurrent,
+      });
+
+      const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+      expect(error).toMatchObject({
+        _tag: "CheckoutError",
+        message: "Open Space reservation day has already ended.",
+      });
+      expect(requireCurrent).toHaveBeenCalledTimes(2);
+      expect(harness.affirm).toHaveBeenCalled();
+      expect(harness.completeInternalPayment).not.toHaveBeenCalled();
+      expect(harness.fulfillPaidOrder).not.toHaveBeenCalled();
+      expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
   test("recovers an active provider session after the meeting-room reservation ends", async () => {
     const endedReservation = buildEndedMeetingRoomReservation();
     const orderId = "meeting-room-ended-active-payment";

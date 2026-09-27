@@ -429,4 +429,40 @@ describe("cowork quote input truthfulness", () => {
       })
     ).not.toThrow();
   });
+
+  test("rejects quote building without the canonical cowork kind", () => {
+    const buildQuoteWithoutKind = (
+      input: Omit<CoworkReservationQuoteInput, "kind">
+    ) => Effect.runSync(buildCoworkReservationQuote(input as never));
+
+    expect(() =>
+      buildQuoteWithoutKind({
+        entryTier: "reserved-desk",
+        coffee: true,
+        workstation: true,
+      })
+    ).toThrow();
+    expect(() =>
+      buildQuoteWithoutKind({
+        kind: "residency",
+        entryTier: "reserved-desk",
+        coffee: true,
+        workstation: true,
+      } as Omit<CoworkReservationQuoteInput, "kind">)
+    ).toThrow();
+  });
+
+  test("typechecks the required cowork kind discriminator", () => {
+    expect(() =>
+      Effect.runSync(
+        // @ts-expect-error The canonical cowork kind discriminator is required
+        // in CoworkReservationQuoteInput.
+        buildCoworkReservationQuote({
+          entryTier: "reserved-desk",
+          coffee: true,
+          workstation: true,
+        })
+      )
+    ).toThrow();
+  });
 });

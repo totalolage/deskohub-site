@@ -50,7 +50,7 @@ import {
 import { isEarlyPerformanceRequestRequired } from "@/features/legal/early-performance";
 import type { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { isCoworkOpenSpaceDayCutoffReached } from "@/features/reservation/cowork-reservation";
+import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { hasOfficeReservationEnded } from "@/features/reservation/office-reservation";
 import {
@@ -130,21 +130,23 @@ type CheckoutRedirectResult = {
 };
 
 /**
- * Exclusive-end guard for non-Open-Space cowork days: a Reserved Desk day
- * spans Prague midnight to the next midnight, so a new payment attempt fails
- * once the current Prague time is at or after midnight after the reserved
- * date — exactly at midnight included. Future dates are never blocked.
+ * Exclusive-end guard for cowork days, tier-aware via the reservation
+ * domain's shared interval constructor: an Open Space day spans Prague-local
+ * 00:00 until 17:00 exclusive on the reserved date, every other tier spans
+ * Prague midnight to the next midnight (DST-correct calendar day). A new
+ * payment attempt fails once the current instant is at or after the reserved
+ * day's exclusive end — exactly at the end included, and always for dates
+ * already before the current local date, whose exclusive end is past.
  */
-const isCoworkReservedDeskExclusiveEndReached = (input: {
+const isCoworkReservationExclusiveEndReached = (input: {
   readonly entryTier: WorkspaceCoworkProductTier;
   readonly date: string;
   readonly now?: Temporal.Instant;
 }) => {
-  if (input.entryTier === "open-space") return false;
-
   const now = input.now ?? Temporal.Now.instant();
-  const exclusiveEnd = Temporal.PlainDate.from(input.date)
-    .add({ days: 1 })
+  const exclusiveEnd = Temporal.PlainDateTime.from(
+    getCoworkReservationIntervalInput(input.entryTier, input.date).endsAt
+  )
     .toZonedDateTime(workspaceSiteConstants.location.timeZone)
     .toInstant();
 
@@ -170,32 +172,19 @@ const ensureReservationHasNotEnded = Effect.fn(
               "This cowork offer is no longer available. Please start a new reservation with the current offers.",
           });
         }
-        // Same-day cutoff: a new payment attempt for an Open Space day fails
-        // once the current Prague time is at or after 17:00 on the reserved
-        // date. Idempotent provider-session reuse above is not affected.
-        if (
-          coworkReservation.entryTier === "open-space" &&
-          isCoworkOpenSpaceDayCutoffReached({
-            entryTier: coworkReservation.entryTier,
-            date: coworkReservation.date,
-          })
-        ) {
+        // Exclusive-day end: a new payment attempt for an Open Space day
+        // fails once the current Prague time is at or after 17:00 on the
+        // reserved date, and a Reserved Desk day once it is at or after
+        // midnight after the reserved date — including reservations whose
+        // date is already before the current local date. Idempotent
+        // provider-session reuse above is not affected.
+        if (isCoworkReservationExclusiveEndReached(coworkReservation)) {
           return new CheckoutError({
             code: "cowork_reservation_ended",
-            message: "Open Space reservation day has already ended.",
-          });
-        }
-        // Calendar-day end: a new payment attempt for a Reserved Desk day
-        // fails once the current Prague time is at or after midnight after
-        // the reserved date. Idempotent provider-session reuse above is not
-        // affected.
-        if (
-          coworkReservation.entryTier !== "open-space" &&
-          isCoworkReservedDeskExclusiveEndReached(coworkReservation)
-        ) {
-          return new CheckoutError({
-            code: "cowork_reservation_ended",
-            message: "Reserved Desk reservation day has already ended.",
+            message:
+              coworkReservation.entryTier === "open-space"
+                ? "Open Space reservation day has already ended."
+                : "Reserved Desk reservation day has already ended.",
           });
         }
         return undefined;
@@ -626,6 +615,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           readonly commitment: DiscountCommitment;
           readonly customer: HostedPaymentCustomer;
           readonly accountingSnapshot: AccountingDocumentSnapshot;
+          readonly reservation: SignedPayState["reservation"];
         }) {
           yield* Effect.annotateLogsScoped({
             providerSessionInput: {
@@ -666,6 +656,12 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           );
           yield* Effect.annotateLogsScoped({ nexiAmount });
           yield* Effect.logDebug("Checkout provider session inputs prepared");
+
+          // Session preparation awaited async work; re-check the reservation
+          // end directly before attempt creation so time that passed during
+          // revalidation and URL/amount preparation cannot admit a late
+          // payment attempt.
+          yield* ensureReservationHasNotEnded(input.reservation);
 
           const attempt = yield* paymentLifecycle.createPendingNexiAttempt({
             workspaceReservationId: input.workspaceReservationId,
@@ -751,8 +747,14 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         readonly total: WorkspaceMoney;
         readonly commitment: DiscountCommitment;
         readonly accountingSnapshot: AccountingDocumentSnapshot;
+        readonly reservation: SignedPayState["reservation"];
       }) {
         yield* revalidatePayableReservation(input);
+
+        // Revalidation awaited async work; re-check the reservation end
+        // directly before the internal completion so time that passed during
+        // it cannot admit a late zero-total completion.
+        yield* ensureReservationHasNotEnded(input.reservation);
 
         const transition = yield* paymentLifecycle.completeInternalPayment({
           workspaceReservationId: input.workspaceReservationId,
@@ -1179,6 +1181,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                           total: expectedPrice,
                           commitment: prepared.commitment,
                           accountingSnapshot,
+                          reservation: state.reservation,
                         })
                       : startProviderSession({
                           workspaceReservationId: reservation.id,
@@ -1194,6 +1197,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                             phone: data.phone,
                           }),
                           accountingSnapshot,
+                          reservation: state.reservation,
                         });
 
                   return yield* startPayment.pipe(

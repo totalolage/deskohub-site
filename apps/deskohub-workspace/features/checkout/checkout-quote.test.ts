@@ -3,6 +3,7 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
+import { workspaceProductMonitorOptions } from "@/features/checkout/product-catalog";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
@@ -188,10 +189,8 @@ describe("cowork reservation quotes", () => {
     expect(firstMonitor.summary).not.toEqual(secondMonitor.summary);
   });
 
-  test("keeps the fingerprint stable across configurations and split by workstation presence", () => {
-    const fingerprintWith = (
-      monitorOption?: WorkspaceProductMonitorOption | ""
-    ) =>
+  test("keeps the fingerprint stable across every catalog configuration and split by workstation presence", () => {
+    const quoteWith = (monitorOption?: WorkspaceProductMonitorOption | "") =>
       Effect.runSync(
         buildCoworkReservationQuoteEffect({
           kind: "cowork",
@@ -199,18 +198,34 @@ describe("cowork reservation quotes", () => {
           coffee: true,
           ...(monitorOption !== undefined && { monitorOption }),
         })
-      ).fingerprint;
+      );
 
-    const selectedSmall = fingerprintWith("2x27-qhd");
-    const selectedLarge = fingerprintWith("2x32-4k");
-    const absent = fingerprintWith(undefined);
-    const empty = fingerprintWith("");
+    const configured = workspaceProductMonitorOptions.map((monitorOption) => {
+      const quote = quoteWith(monitorOption);
+      return {
+        monitorOption,
+        fingerprint: quote.fingerprint,
+        expectedPrice: quote.payment.expectedPrice,
+      };
+    });
 
-    // Non-priced monitor configuration never changes the fingerprint.
-    expect(selectedSmall).toBe(selectedLarge);
-    expect(absent).toBe(empty);
-    // Workstation presence does.
-    expect(selectedSmall).not.toBe(absent);
+    // Every catalog monitor configuration is the same priced workstation:
+    // one shared fingerprint and the 410 + 120 workstation total.
+    expect(configured).toHaveLength(4);
+    for (const configuredQuote of configured) {
+      expect(configuredQuote.fingerprint).toBe(configured[0].fingerprint);
+      expect(configuredQuote.expectedPrice.value).toBe(53_000);
+    }
+
+    const absent = quoteWith();
+    const empty = quoteWith("");
+
+    // Absent and empty selections are no-workstation quotes: 410 base, a
+    // different fingerprint from the paid workstation compositions.
+    expect(absent.payment.expectedPrice.value).toBe(41_000);
+    expect(empty.payment.expectedPrice.value).toBe(41_000);
+    expect(absent.fingerprint).toBe(empty.fingerprint);
+    expect(configured[0].fingerprint).not.toBe(absent.fingerprint);
   });
 
   test("applies generic cowork discounts without discounting paid coffee", () => {
