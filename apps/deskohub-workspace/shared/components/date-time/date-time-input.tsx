@@ -279,7 +279,10 @@ export function DateTimeInput({
         type="datetime-local"
         value={canonicalValue}
       />
-      <div className="grid gap-3">
+      {/* grid-cols-1 pins the stack to a minmax(0, 1fr) column so the
+          w-full date trigger cannot size the auto track to the long
+          localized date's max-content width inside narrow form cells. */}
+      <div className="grid grid-cols-1 gap-3">
         <DateInput
           ariaDescribedBy={ariaDescribedBy}
           ariaInvalid={ariaInvalid}

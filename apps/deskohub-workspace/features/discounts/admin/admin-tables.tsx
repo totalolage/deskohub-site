@@ -1134,8 +1134,11 @@ export function DiscountCodeConfigurationFields({
         />
         Enabled
       </label>
+      {/* The paired from/until fields sit side-by-side in one row on the
+          narrow two-column grid; each composite stacks its date and time
+          controls vertically inside its half-width cell. */}
       <div
-        className={`col-span-2 grid min-w-0 grid-cols-1 gap-4 ${showMaxUses ? "md:col-span-2" : "md:col-span-4"} md:grid-cols-2`}
+        className={`col-span-2 grid min-w-0 grid-cols-2 gap-4 ${showMaxUses ? "md:col-span-2" : "md:col-span-4"} md:grid-cols-2`}
       >
         <DirtyEventSlot className="min-w-0" value={validFrom}>
           <FormField

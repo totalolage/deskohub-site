@@ -710,10 +710,13 @@ describe("discount administration pages", () => {
     expect(editItems[8]).toContain("md:col-span-2");
     expect(editItems[8]).not.toContain("col-span-2");
     // The paired valid-from/valid-until datetime fields share one
-    // full-width group on the narrow two-column grid and split into two
-    // compact columns on the wide four-column grid.
+    // full-width group that lays both fields out side-by-side as a single
+    // row on the narrow two-column grid, and splits into two compact
+    // columns on the wide four-column grid.
     for (const item of [editItems[3], editItems[4]]) {
       expect(item).toContain("col-span-2");
+      expect(item).toContain("grid-cols-2");
+      expect(item).not.toContain("grid-cols-1");
       expect(item).toContain("md:col-span-2");
       expect(item).toContain("md:grid-cols-2");
     }
@@ -751,6 +754,8 @@ describe("discount administration pages", () => {
     expect(createItems[2]).not.toContain("col-span-2");
     for (const item of [createItems[3], createItems[4]]) {
       expect(item).toContain("col-span-2");
+      expect(item).toContain("grid-cols-2");
+      expect(item).not.toContain("grid-cols-1");
       expect(item).toContain("md:col-span-2");
       expect(item).toContain("md:grid-cols-2");
     }
@@ -809,7 +814,8 @@ describe("discount administration pages", () => {
     expect(voucherItems[1]).toContain("md:col-span-2");
     // Both datetime controls share one wrapper, and the voucher variant
     // spans all four outer columns on wide screens (its two inner columns
-    // hold the pair) while still stacking full width on the narrow grid.
+    // hold the pair) while the pair still sits side-by-side in one row on
+    // the narrow two-column grid.
     const voucherValidFromItem = readGridItemElement(voucherGrid, "validFrom");
     const voucherValidUntilItem = readGridItemElement(
       voucherGrid,
@@ -819,7 +825,8 @@ describe("discount administration pages", () => {
     for (const item of [voucherItems[2], voucherItems[3]]) {
       expect(item).toContain("md:col-span-4");
       expect(item).toContain("col-span-2");
-      expect(item).toContain("grid-cols-1");
+      expect(item).toContain("grid-cols-2");
+      expect(item).not.toContain("grid-cols-1");
       expect(item).toContain("md:grid-cols-2");
     }
   });
