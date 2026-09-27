@@ -108,9 +108,11 @@ const invoiceFormCustomer = Schema.Union([
     email: invoiceFormEmail,
     firstName: invoiceFormRequiredText(100),
     lastName: invoiceFormRequiredText(100),
-    companyName: invoiceFormOptionalText(180),
-    companyId: invoiceFormOptionalText(255),
-    vatId: invoiceFormOptionalText(255),
+    // Business-only values: a type switch retains them in form state, but a
+    // person payload never sends them, so they stay unconstrained here.
+    companyName: Schema.String,
+    companyId: Schema.String,
+    vatId: Schema.String,
     phone: invoiceFormOptionalText(20),
     ...invoiceFormAddress,
   }),
