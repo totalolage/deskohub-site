@@ -166,7 +166,7 @@ test("captures the resolved reservations export view", async ({
 const reservationExportHeader =
   "Reservation ID,Booking date,Status,Customer,Reservation type,Created,Payment";
 
-test("downloads the reservations export as CSV", async ({ page }) => {
+test("downloads the reservations export as CSV", async ({ page, context }) => {
   await page.goto("/admin/reservations");
 
   const toolbar = page.getByRole("region", {
@@ -188,19 +188,39 @@ test("downloads the reservations export as CSV", async ({ page }) => {
   expect(Number.isInteger(renderedTotal)).toBe(true);
   expect(renderedTotal).toBeGreaterThanOrEqual(0);
 
-  const exportResponsePromise = page.waitForEvent("response", (response) => {
-    try {
-      return new URL(response.url()).pathname === "/admin/reservations/export.csv";
-    } catch {
-      return false;
-    }
-  });
+  // Chromium download responses are not surfaced as page "response" events and
+  // the Download API (Playwright 1.61) exposes no request/response objects, so
+  // status and headers are asserted with a same-context API request that
+  // reuses the exact export href and shares the browser context's cookie jar
+  // and httpCredentials. The native click stays the download trigger.
+  const exportHref = await exportLink.getAttribute("href");
+  expect(exportHref === null, "export link href must be set").toBe(false);
+  if (exportHref === null) {
+    throw new Error("export link href must be set");
+  }
+  const exportUrl = new URL(exportHref, page.url());
+  expect(
+    exportUrl.pathname.endsWith("/admin/reservations/export.csv"),
+    "export href must target the reservations export route"
+  ).toBe(true);
+
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     exportLink.click(),
   ]);
-  const exportResponse = await exportResponsePromise;
+  // Match with endsWith so a locale prefix or other base-path prefix cannot
+  // break the comparison.
+  expect(
+    download.url().endsWith("/admin/reservations/export.csv"),
+    "download must target the reservations export route"
+  ).toBe(true);
+  const downloadFailure = await download.failure();
+  expect(
+    downloadFailure === null,
+    "export download failed before completion"
+  ).toBe(true);
 
+  const exportResponse = await context.request.get(exportUrl.toString());
   expect(exportResponse.status()).toBe(200);
   expect(exportResponse.headers()["content-type"]).toBe(
     "text/csv; charset=utf-8"
@@ -209,6 +229,7 @@ test("downloads the reservations export as CSV", async ({ page }) => {
     'attachment; filename="reservations-export.csv"'
   );
   expect(exportResponse.headers()["cache-control"]).toBe("private, no-store");
+  await exportResponse.dispose();
   expect(download.suggestedFilename()).toBe("reservations-export.csv");
 
   // Read the CSV body in memory only; the body carries customer data and must
