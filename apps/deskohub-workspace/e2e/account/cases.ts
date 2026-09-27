@@ -1235,6 +1235,13 @@ export const makeWorkspaceE2EAccountCases = ({
             navigationTimeout
           )
         );
+        const observedMessageIds = yield* runStep(
+          step(
+            "records the delivered message baseline before the fresh sign-in",
+            observeDeliveredMessageIds(recipient),
+            providerTransition
+          )
+        );
         const startedAt = new Date();
         yield* rateBudget.run(
           "send",
@@ -1249,7 +1256,7 @@ export const makeWorkspaceE2EAccountCases = ({
         const link = yield* runStep(
           step(
             "retrieves the fresh sign-in link",
-            retrieveSignInLink(recipient, [], startedAt),
+            retrieveSignInLink(recipient, observedMessageIds, startedAt),
             authDeliveryTimeout
           )
         );
@@ -1300,6 +1307,13 @@ export const makeWorkspaceE2EAccountCases = ({
             navigationTimeout
           )
         );
+        const restoreObservedMessageIds = yield* runStep(
+          step(
+            "records the delivered message baseline before the restore sign-in",
+            observeDeliveredMessageIds(recipient),
+            providerTransition
+          )
+        );
         const restoreStartedAt = new Date();
         yield* rateBudget.run(
           "send",
@@ -1314,7 +1328,11 @@ export const makeWorkspaceE2EAccountCases = ({
         const restoreLink = yield* runStep(
           step(
             "retrieves the restore sign-in link",
-            retrieveSignInLink(recipient, [], restoreStartedAt),
+            retrieveSignInLink(
+              recipient,
+              restoreObservedMessageIds,
+              restoreStartedAt
+            ),
             authDeliveryTimeout
           )
         );
