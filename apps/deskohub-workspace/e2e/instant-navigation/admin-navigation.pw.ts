@@ -221,7 +221,12 @@ test("downloads the reservations export as CSV", async ({ page }) => {
   const csvText = Buffer.concat(chunks).toString("utf-8");
 
   const lines = csvText.split("\r\n");
-  expect(lines[0]).toBe(reservationExportHeader);
+  // Compare as a boolean with a fixed diagnostic so a failure message can
+  // never echo CSV body content, which carries customer data.
+  expect(
+    lines[0] === reservationExportHeader,
+    "CSV header must match the approved columns"
+  ).toBe(true);
   const dataRowCount = lines.slice(1).filter((line) => line !== "").length;
   // Exact row-count matching is not deterministic in this fully parallel
   // project because the preview database is shared with mutating checkout
