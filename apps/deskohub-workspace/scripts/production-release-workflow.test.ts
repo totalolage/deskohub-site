@@ -482,7 +482,12 @@ describe("deploy-workspace-production workflow", () => {
       `bun scripts/production-release.ts verify-canonical --id "\${{ steps.promote.outputs.promoted_id }}"`
     );
     expect(scriptIdentifiers.has("customerFacingProductionDomain")).toBe(true);
+    expect(scriptIdentifiers.has("assertCanonicalLandingReady")).toBe(true);
+    expect(scriptIdentifiers.has("assertCanonicalSignInReady")).toBe(false);
     expect(scriptIdentifiers.has("assertLiveProjectCrons")).toBe(true);
+    expect(
+      callsNamed(releaseScript.ast, "assertCanonicalLandingReady")
+    ).toHaveLength(1);
     expect(
       callsNamed(releaseScript.ast, "assertLiveProjectCrons")
     ).toHaveLength(1);
