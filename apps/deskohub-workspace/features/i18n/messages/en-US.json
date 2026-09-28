@@ -753,7 +753,7 @@
     }
   ],
   "reservationValidationMonitorRequired": "Choose a monitor setup for Profi Workstation.",
-  "reservationValidationMonitorUnavailable": "Monitor setup is available only with Profi Workstation.",
+  "reservationValidationMonitorUnavailable": "Monitor setup is available only with Reserved Desk.",
   "reservationValidationCoffeeRequired": "Coffee is included with this tier and must stay selected.",
   "reservationRateLimitMessage": "Too many reservation requests were sent. Please wait a moment and try again.",
   "reservationSecurityInvalidOrigin": "The reservation request could not be verified. Please reload the page and try again.",

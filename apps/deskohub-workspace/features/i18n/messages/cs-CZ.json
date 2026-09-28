@@ -760,7 +760,7 @@
     }
   ],
   "reservationValidationMonitorRequired": "U Profi Workstation vyber monitorový setup.",
-  "reservationValidationMonitorUnavailable": "Monitorový setup je dostupný jen u Profi Workstation.",
+  "reservationValidationMonitorUnavailable": "Monitorový setup je dostupný jen s Vyhrazeným místem.",
   "reservationValidationCoffeeRequired": "Káva je u tohoto tarifu zahrnutá a musí zůstat vybraná.",
   "reservationRateLimitMessage": "Z tohoto připojení přišlo příliš mnoho rezervací. Chvíli počkej a zkus to znovu.",
   "reservationSecurityInvalidOrigin": "Rezervační požadavek se nepodařilo ověřit. Načti stránku znovu a zkus to prosím znovu.",
