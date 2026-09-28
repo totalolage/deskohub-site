@@ -453,7 +453,7 @@ test("keeps the draft id when a whitespace-only edit produces the same payload",
   });
   const view = renderInvoiceCreationForm();
   fillValidPersonInvoice(view);
-  fillInput(view, "Variable symbol", "2026000001 ");
+  fillInput(view, "Variable symbol", "20260001 ");
 
   const submitAndFail = async () => {
     submitInvoiceForm(view);
@@ -482,7 +482,7 @@ test("keeps the draft id when a whitespace-only edit produces the same payload",
   // A whitespace-only variableSymbol edit is payload-equivalent once
   // readInvoiceForm trims it, so the interrupted draft id must be reused
   // instead of minting a fresh id the server would accept as a new invoice.
-  fillInput(view, "Variable symbol", "2026000001");
+  fillInput(view, "Variable symbol", "20260001");
   await submitAndFail();
 
   expect(create).toHaveBeenCalledTimes(2);
