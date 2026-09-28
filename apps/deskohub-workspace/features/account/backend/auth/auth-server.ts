@@ -182,13 +182,13 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
  * template rendering; the shared `@deskohub/email` EmailServiceTag provider
  * machinery owns the actual sending and retry. Synthetic Preview E2E
  * recipients route to the shared Console provider (the single authorized
- * preview-e2e log line), every other recipient routes to the shared Resend
- * provider, and no credential fails closed to the fixed unconfigured code.
+ * preview-e2e log line); every other recipient routes to the shared
+ * `EmailConfigLayer` configured default provider, and a missing delivering
+ * credential fails closed to the fixed unconfigured code.
  */
 export const makeWorkspaceMagicLinkDelivery = () =>
   makeMagicLinkEmailDelivery(renderMagicLinkEmail, {
     isVercelPreview: env.VERCEL_ENV === "preview",
-    resendApiKey: env.EMAIL_API_KEY,
   });
 
 export const makeWorkspaceAuthDatabase = () =>

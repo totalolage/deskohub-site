@@ -1,19 +1,24 @@
 import {
+  ConfiguredEmailProviderLayer,
   ConsoleEmailProviderLive,
-  EmailConfigTag,
+  type EmailConfigTag,
   type EmailMessage,
+  type EmailProviderTag,
   type EmailServiceError,
   EmailServiceTag,
   EmailTemplateServiceTag,
+  type NetworkError,
+} from "@deskohub/email";
+import { type Config, Data, Effect, Layer } from "effect";
+import type { WorkspaceEmailLocale } from "@/emails/_components/workspace-email-layout";
+import { EmailConfigLayer } from "@/shared/backend/config/email.config";
+import { workspaceSiteConstants } from "@/shared/utils";
+import {
+  accountMagicLinkEmailCategoryTag,
+  accountMagicLinkEmailSurface,
   isSyntheticE2EEmailRecipient,
   magicLinkPreviewE2ELogCode,
-  magicLinkSyntheticRecipientPattern,
-  type NetworkError,
-  ResendEmailProviderLive,
-} from "@deskohub/email";
-import { Data, Effect, Layer } from "effect";
-import type { WorkspaceEmailLocale } from "@/emails/_components/workspace-email-layout";
-import { workspaceSiteConstants } from "@/shared/utils";
+} from "./magic-link-policy";
 
 /**
  * Account-owned transport failure. The original provider rejection is
@@ -62,116 +67,52 @@ export type MagicLinkEmailRenderer = (
  * provider machinery live in the shared `@deskohub/email`
  * `EmailServiceTag`/provider layers.
  */
-export type MagicLinkEmailRoute =
-  | "preview-e2e-console"
-  | "resend"
-  | "unconfigured";
+export type MagicLinkEmailRoute = "preview-e2e-console" | "configured-default";
 
 export type MagicLinkEmailRoutingConfig = {
-  /** Vercel Preview runtime flag; only Preview may use the Console route. */
+  /**
+   * Vercel Preview runtime flag. Only a Preview runtime may force the shared
+   * Console provider for synthetic recipients; every other recipient context
+   * uses the `EmailConfigLayer` configured default provider.
+   */
   readonly isVercelPreview: boolean;
-  /** Send-only Resend credential; its absence fails closed to `unconfigured`. */
-  readonly resendApiKey: string | undefined;
 };
 
+/**
+ * Synthetic E2E recipients in a Vercel Preview runtime force the shared
+ * Console provider (the single authorized `account.magic-link.preview-e2e`
+ * line). Every other recipient context — including non-synthetic Preview,
+ * development, and production — uses the `EmailConfigLayer` configured default
+ * provider.
+ */
 export const routeMagicLinkEmail = (
   config: MagicLinkEmailRoutingConfig,
   recipient: string
-): MagicLinkEmailRoute => {
-  if (config.isVercelPreview && isSyntheticE2EEmailRecipient(recipient)) {
-    return "preview-e2e-console";
-  }
-  return config.resendApiKey ? "resend" : "unconfigured";
-};
-
-/**
- * Non-secret Resend correlation identity attached to every magic-link
- * message. Through the shared provider machinery these render as the Resend
- * tags `category=account-magic-link` and `surface=workspace`; the exact-SHA
- * E2E runner may use them as one additional equality check. They never carry
- * bearer or request-specific content.
- */
-export const magicLinkMessageTags = ["account-magic-link"] as const;
-export const magicLinkMessageMetadata = { surface: "workspace" } as const;
-
-export const magicLinkSender = {
-  email: "reservations@workspace.deskohub.cz",
-  name: workspaceSiteConstants.brand.name,
-} as const;
-
-const magicLinkEmailMessage = (
-  request: MagicLinkDeliveryRequest,
-  rendered: {
-    readonly subject: string;
-    readonly html: string;
-    readonly text: string;
-  }
-): EmailMessage => ({
-  from: magicLinkSender,
-  to: { email: request.email },
-  subject: rendered.subject,
-  html: rendered.html,
-  text: rendered.text,
-  tags: [...magicLinkMessageTags],
-  metadata: { ...magicLinkMessageMetadata },
-});
-
-const unconfiguredDelivery = (): Effect.Effect<
-  "account.magic-link.delivery-unconfigured",
-  never,
-  never
-> =>
-  Effect.logWarning("Magic-link delivery has no configured email provider.", {
-    code: "account.magic-link.delivery-unconfigured",
-  }).pipe(Effect.as("account.magic-link.delivery-unconfigured" as const));
-
-/**
- * Per-recipient provider composition over the shared service: auth selects
- * the `EmailProviderTag` layer for this recipient and provides
- * `EmailServiceTag` through the standard shared composition. No send or
- * retry logic is duplicated here.
- */
-const magicLinkEmailServiceLayer = (
-  route: Exclude<MagicLinkEmailRoute, "unconfigured">,
-  routing: MagicLinkEmailRoutingConfig
-) => {
-  const configLayer = Layer.succeed(EmailConfigTag, {
-    provider: "resend",
-    defaultFrom: magicLinkSender,
-    apiKey: routing.resendApiKey,
-  });
-  const providerLayer =
-    route === "preview-e2e-console"
-      ? ConsoleEmailProviderLive
-      : ResendEmailProviderLive.pipe(Layer.provide(configLayer));
-  return EmailServiceTag.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        EmailTemplateServiceTag.Default,
-        configLayer,
-        providerLayer
-      )
-    )
-  );
-};
+): MagicLinkEmailRoute =>
+  config.isVercelPreview && isSyntheticE2EEmailRecipient(recipient)
+    ? "preview-e2e-console"
+    : "configured-default";
 
 /**
  * Builds the account magic-link delivery from the typed routing decision.
  * `deliver` returns only the fixed censored delivery codes; the bearer
  * URL, token, rendered body, recipient, and any provider payload never reach
  * logs, errors, or telemetry — except the single intentionally authorized
- * exception: the shared Console provider's one structured
- * `account.magic-link.preview-e2e` raw console line for a Preview runtime
- * delivering to exactly one synthetic recipient. Do not remove that
- * exception: the E2E runner retrieves the preview link from it.
+ * exception: one `account.magic-link.preview-e2e` raw console line for a
+ * Preview runtime delivering to exactly one synthetic recipient. Do not remove
+ * that exception: the E2E runner retrieves the preview link from it.
  */
 export const makeMagicLinkEmailDelivery = (
   render: MagicLinkEmailRenderer,
   routing: MagicLinkEmailRoutingConfig
-) => {
+): {
+  readonly deliver: (
+    request: MagicLinkDeliveryRequest
+  ) => Effect.Effect<MagicLinkDeliveryCode>;
+} => {
   const deliverRouted = Effect.fn("MagicLinkEmailDelivery.deliver")(function* (
     request: MagicLinkDeliveryRequest,
-    _route: Exclude<MagicLinkEmailRoute, "unconfigured">
+    route: MagicLinkEmailRoute
   ) {
     const rendered = yield* render(request).pipe(
       Effect.tapError(() =>
@@ -203,40 +144,129 @@ export const makeMagicLinkEmailDelivery = (
       );
     if (outcome !== null) return outcome;
 
+    // The one explicitly authorized bearer-material line, gated to the
+    // synthetic Preview route and emitted only after a successful shared
+    // Console send.
+    if (route === "preview-e2e-console") {
+      emitPreviewE2EConsoleDelivery(request.email, rendered.text);
+    }
+
     yield* Effect.logInfo("Magic-link email accepted for delivery.", {
       code: "account.magic-link.delivery-accepted",
     });
     return "account.magic-link.delivery-accepted" as const;
   });
 
-  return {
-    deliver: (
-      request: MagicLinkDeliveryRequest
-    ): Effect.Effect<MagicLinkDeliveryCode> => {
-      const route = routeMagicLinkEmail(routing, request.email);
-      if (route === "unconfigured") return unconfiguredDelivery();
-      return deliverRouted(request, route).pipe(
-        Effect.provide(magicLinkEmailServiceLayer(route, routing)),
-        // The only remaining failures are the censored transport error and a
-        // provider layer that could not be constructed from the routing
-        // configuration; both collapse to fixed censored delivery codes.
-        Effect.catch(
-          (error: EmailServiceError | MagicLinkDeliveryTransportError) =>
-            error._tag === "MagicLinkDeliveryTransportError"
-              ? Effect.logWarning("Magic-link email delivery failed.", {
-                  code: "account.magic-link.delivery-failed",
-                }).pipe(
-                  Effect.as("account.magic-link.delivery-failed" as const)
-                )
-              : unconfiguredDelivery()
-        )
-      );
-    },
-  };
+  const deliver = Effect.fn("account.magic-link.deliver")(function* (
+    request: MagicLinkDeliveryRequest
+  ) {
+    const route = routeMagicLinkEmail(routing, request.email);
+    return yield* deliverRouted(request, route).pipe(
+      Effect.provide(magicLinkEmailServiceLayer(route)),
+      // The only remaining failures are the censored transport error and a
+      // provider layer that could not be constructed from the configured
+      // default provider (the production Console guard and the fail-closed
+      // missing delivering credential); both collapse to fixed censored
+      // delivery codes.
+      Effect.catch(
+        (
+          error:
+            | Config.ConfigError
+            | EmailServiceError
+            | MagicLinkDeliveryTransportError
+        ) =>
+          error._tag === "MagicLinkDeliveryTransportError"
+            ? Effect.logWarning("Magic-link email delivery failed.", {
+                code: "account.magic-link.delivery-failed",
+              }).pipe(Effect.as("account.magic-link.delivery-failed" as const))
+            : unconfiguredDelivery()
+      )
+    );
+  });
+
+  return { deliver };
 };
 
-export {
-  isSyntheticE2EEmailRecipient,
-  magicLinkPreviewE2ELogCode,
-  magicLinkSyntheticRecipientPattern,
+const magicLinkSender = {
+  email: "reservations@workspace.deskohub.cz",
+  name: workspaceSiteConstants.brand.name,
+} as const;
+
+/**
+ * Every magic-link message carries bearer material (the sign-in URL), so it is
+ * marked sensitive and every provider suppresses recipient, subject, body, and
+ * any development banner output for it.
+ */
+const magicLinkEmailMessage = (
+  request: MagicLinkDeliveryRequest,
+  rendered: {
+    readonly subject: string;
+    readonly html: string;
+    readonly text: string;
+  }
+): EmailMessage => ({
+  from: magicLinkSender,
+  to: { email: request.email },
+  subject: rendered.subject,
+  html: rendered.html,
+  text: rendered.text,
+  tags: [accountMagicLinkEmailCategoryTag],
+  metadata: { surface: accountMagicLinkEmailSurface },
+  sensitiveContent: true,
+});
+
+const unconfiguredDelivery = (): Effect.Effect<
+  "account.magic-link.delivery-unconfigured",
+  never,
+  never
+> =>
+  Effect.logWarning("Magic-link delivery has no configured email provider.", {
+    code: "account.magic-link.delivery-unconfigured",
+  }).pipe(Effect.as("account.magic-link.delivery-unconfigured" as const));
+
+/**
+ * Per-recipient provider composition over the shared service. Synthetic
+ * Preview recipients force the shared Console provider; every other recipient
+ * context uses the shared `ConfiguredEmailProviderLayer` resolved from the
+ * `EmailConfigLayer` configured default. No send or retry logic is duplicated
+ * here.
+ */
+const magicLinkEmailServiceLayer = (
+  route: MagicLinkEmailRoute
+): Layer.Layer<EmailServiceTag, Config.ConfigError | EmailServiceError> => {
+  const providerLayer: Layer.Layer<
+    EmailProviderTag,
+    EmailServiceError,
+    EmailConfigTag
+  > =
+    route === "preview-e2e-console"
+      ? ConsoleEmailProviderLive
+      : ConfiguredEmailProviderLayer;
+  return EmailServiceTag.Default.pipe(
+    Layer.provide(EmailTemplateServiceTag.Default),
+    Layer.provide(providerLayer),
+    Layer.provide(EmailConfigLayer)
+  );
+};
+
+/**
+ * The one explicitly authorized bearer-material log line: a protected Vercel
+ * Preview delivering an auth magic link to an exact synthetic E2E recipient
+ * prints the rendered TEXT body (which carries the magic link) as a single
+ * structured raw-`console.log` line, bypassing Effect/OTel censorship so the
+ * E2E runner can read it from Vercel runtime logs. Called only after a
+ * successful shared Console send, for exactly one synthetic recipient.
+ */
+const emitPreviewE2EConsoleDelivery = (recipient: string, text: string) => {
+  // Raw console output is the point: the E2E runner reads this line from
+  // Vercel runtime logs, outside Effect/OTel logging censorship.
+  // biome-ignore lint/suspicious/noConsole: Explicitly authorized preview E2E link delivery channel
+  console.log(
+    JSON.stringify({
+      code: magicLinkPreviewE2ELogCode,
+      recipient,
+      message: "Synthetic preview magic-link text body for E2E retrieval.",
+      text,
+    })
+  );
 };
