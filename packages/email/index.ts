@@ -10,13 +10,6 @@ export {
   EmailServiceTag,
   EmailTemplateServiceTag,
 } from "./backend/service";
-export {
-  accountMagicLinkEmailCategoryTag,
-  accountMagicLinkEmailSurface,
-  isSyntheticE2EEmailRecipient,
-  magicLinkPreviewE2ELogCode,
-  magicLinkSyntheticRecipientPattern,
-} from "./backend/synthetic-recipient";
 export type {
   EmailAttachment,
   EmailDeliveryId,
