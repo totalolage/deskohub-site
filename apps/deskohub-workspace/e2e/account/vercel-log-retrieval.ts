@@ -14,9 +14,10 @@ import type { WorkspaceE2EAccountConfig } from "./config";
  * packages/email/backend/providers/console-provider.ts). The fixed code is
  * the `--query` marker, and the individual log entry's recipient field must
  * equal the requesting case's exact synthetic recipient (case-insensitively)
- * for the entry to count as a match. Entries with an absent or mismatched
- * recipient are invalid matches and fail the retrieval instead of being
- * skipped.
+ * for the entry to count as a match. Well-formed entries whose recipient
+ * differs from the requested recipient are skipped so concurrent synthetic
+ * recipients in the same query window do not fail the retrieval; entries
+ * that cannot be parsed as a structured envelope fail closed.
  */
 export const workspaceE2EPreviewE2ELogCode = "account.magic-link.preview-e2e";
 
@@ -227,17 +228,29 @@ const flattenLogRequest = (
   });
 };
 
+/**
+ * Result of parsing one code-matching log line's structured envelope.
+ * `other-recipient` marks a well-formed entry that belongs to a different
+ * synthetic recipient and must be skipped; `unreadable` marks a record that
+ * cannot be parsed as a valid preview-e2e envelope (or whose body fails
+ * validation for the requested recipient) and must fail closed.
+ */
+type PreviewE2ELogLineParseResult =
+  | { readonly kind: "match"; readonly text: string }
+  | { readonly kind: "other-recipient" }
+  | { readonly kind: "unreadable" };
+
 const parsePreviewE2ELogLine = (
   message: string,
   expectedRecipient: string
-): { readonly text: string } | undefined => {
+): PreviewE2ELogLineParseResult => {
   const trimmed = message.trim();
-  if (!trimmed.startsWith("{")) return undefined;
+  if (!trimmed.startsWith("{")) return { kind: "unreadable" };
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    return undefined;
+    return { kind: "unreadable" };
   }
   const candidate = parsed as {
     code?: unknown;
@@ -246,14 +259,17 @@ const parsePreviewE2ELogLine = (
   } | null;
   if (
     candidate?.code !== workspaceE2EPreviewE2ELogCode ||
-    typeof candidate.recipient !== "string" ||
-    candidate.recipient.toLowerCase() !== expectedRecipient.toLowerCase() ||
-    typeof candidate.text !== "string" ||
-    candidate.text.length === 0
+    typeof candidate.recipient !== "string"
   ) {
-    return undefined;
+    return { kind: "unreadable" };
   }
-  return { text: candidate.text };
+  if (candidate.recipient.toLowerCase() !== expectedRecipient.toLowerCase()) {
+    return { kind: "other-recipient" };
+  }
+  if (typeof candidate.text !== "string" || candidate.text.length === 0) {
+    return { kind: "unreadable" };
+  }
+  return { kind: "match", text: candidate.text };
 };
 
 /**
@@ -348,7 +364,7 @@ const pollForLogMatch = (
       const [match] = matches;
       if (match) {
         const body = parsePreviewE2ELogLine(match.message, bounds.recipient);
-        if (!body) {
+        if (body.kind !== "match") {
           return yield* workspaceE2EError(
             "Vercel log retrieval matched an unreadable preview log entry",
             {
@@ -384,9 +400,8 @@ const matchPreviewE2EEntries = (
       entry.message.includes(workspaceE2EPreviewE2ELogCode)
   );
   // A code-matching entry whose request or log record was truncated by the
-  // log pipeline, or that cannot be parsed — including a missing or
-  // mismatched recipient — fails closed instead of being silently skipped,
-  // and counts toward the exactly-one rule.
+  // log pipeline fails closed instead of being silently skipped, and counts
+  // toward the exactly-one rule.
   if (candidates.some((entry) => entry.truncated)) {
     throw workspaceE2EError(
       "Vercel log retrieval matched a truncated preview log entry",
@@ -396,19 +411,27 @@ const matchPreviewE2EEntries = (
       }
     );
   }
-  const unreadable = candidates.filter(
-    (entry) => !parsePreviewE2ELogLine(entry.message, bounds.recipient)
-  );
-  if (unreadable.length > 0) {
-    throw workspaceE2EError(
-      "Vercel log retrieval matched an unreadable preview log entry",
-      {
-        diagnosticCode: "auth_delivery_message_invalid",
-        operation: "parse Vercel preview log entry",
-      }
-    );
+  // Well-formed entries for other synthetic recipients are skipped so a
+  // shared query window does not fail the requested recipient's retrieval.
+  // Entries that cannot be parsed as a structured envelope — including a
+  // missing recipient or an invalid body for the requested recipient — fail
+  // closed and count toward the exactly-one rule.
+  const matches: WorkspaceE2EVercelLogEntry[] = [];
+  for (const entry of candidates) {
+    const parsed = parsePreviewE2ELogLine(entry.message, bounds.recipient);
+    if (parsed.kind === "other-recipient") continue;
+    if (parsed.kind === "unreadable") {
+      throw workspaceE2EError(
+        "Vercel log retrieval matched an unreadable preview log entry",
+        {
+          diagnosticCode: "auth_delivery_message_invalid",
+          operation: "parse Vercel preview log entry",
+        }
+      );
+    }
+    matches.push(entry);
   }
-  return candidates;
+  return matches;
 };
 
 const authLinkPattern = /https:\/\/[^\s"'<>\\]+/g;

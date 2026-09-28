@@ -239,7 +239,11 @@ describe("workspace e2e Vercel log retrieval", () => {
     await expect(result).rejects.toThrow("unreadable preview log entry");
   });
 
-  test("rejects a matching entry whose recipient does not match exactly", async () => {
+  test("skips a well-formed entry whose recipient does not match exactly", async () => {
+    // A well-formed entry for a different synthetic recipient is not a
+    // malformed record: it is skipped so the requested recipient's own
+    // entry can still match. With only a foreign entry present, retrieval
+    // finds zero matches and times out.
     const stdout = jsonl([
       {
         id: "req-r",
@@ -252,7 +256,30 @@ describe("workspace e2e Vercel log retrieval", () => {
     ]);
     const { result } = makeRetrieval(stdout);
 
-    await expect(result).rejects.toThrow("unreadable preview log entry");
+    await expect(result).rejects.toThrow("before the deadline");
+  });
+
+  test("returns only the requested recipient's link when other synthetic recipients are present", async () => {
+    // Regression: the CLI --query returns every synthetic recipient's
+    // preview-e2e entry in the deployment time window. A well-formed entry
+    // for a different recipient must be skipped, not treated as unreadable,
+    // so the requested recipient's valid link is still returned.
+    const secondRecipient = makeWorkspaceE2EAccountRecipient(config, "second");
+    const mainLink = magicLink("main-token");
+    const secondLink = magicLink("second-token");
+    const stdout = jsonl([
+      {
+        id: "req-main",
+        logs: [{ message: previewE2ELine(mainLink) }],
+      },
+      {
+        id: "req-second",
+        logs: [{ message: previewE2ELine(secondLink, secondRecipient) }],
+      },
+    ]);
+    const { result } = makeRetrieval(stdout);
+
+    await expect(result).resolves.toBe(mainLink);
   });
 
   test("matches a recipient case-insensitively", async () => {
