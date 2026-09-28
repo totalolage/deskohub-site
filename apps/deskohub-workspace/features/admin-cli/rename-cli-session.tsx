@@ -50,7 +50,6 @@ export function RenameCliSession({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const form = useForm<
     RenameCliSessionFormInput,
     unknown,
@@ -65,7 +64,7 @@ export function RenameCliSession({
     actionName: "renameCliSession",
     onSuccess: ({ data }) => {
       if (!data) return;
-      setNotice(data.notice);
+      setOpen(false);
       router.refresh();
     },
     onError: ({ error: actionError }) =>
@@ -82,7 +81,6 @@ export function RenameCliSession({
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
         setError(null);
-        setNotice(null);
         form.reset({ sessionId, clientName });
       }}
     >
@@ -106,7 +104,6 @@ export function RenameCliSession({
             onSubmit={(event) => {
               void form.handleSubmit((values) => {
                 setError(null);
-                setNotice(null);
                 execute({
                   clientName: values.clientName,
                   sessionId: values.sessionId,
@@ -139,14 +136,6 @@ export function RenameCliSession({
                 role="alert"
               >
                 {error}
-              </p>
-            )}
-            {notice && (
-              <p
-                className="mt-3 rounded-xl bg-aquamarine-green/15 px-4 py-3 text-sm font-semibold text-aquamarine-ink"
-                role="status"
-              >
-                {notice}
               </p>
             )}
             <DialogFooter>
