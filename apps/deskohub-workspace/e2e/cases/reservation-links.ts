@@ -270,7 +270,6 @@ const makeReservationLinkCheckoutData = (
     [discountCodeQueryParam]: discountCode,
     duration: getMeetingRoomReservationDurationKey(slot.duration),
     email: base.email,
-    message: base.message,
     name: base.name,
     // URLSearchParams percent-encodes the leading "+" so the signed link
     // survives email clients and copy/paste instead of decoding into a space.
@@ -1027,7 +1026,6 @@ const returnToReservationWithConflictingQuery = ({
         url.searchParams.set(discountCodeQueryParam, unknownLinkCode);
         url.searchParams.set("duration", "hour:4");
         url.searchParams.set("email", "conflicting-link@example.test");
-        url.searchParams.set("message", "Conflicting public link query");
         url.searchParams.set("name", "Conflicting Link Name");
         url.searchParams.set("phone", "+420999999999");
         // A valid different start so the conflict is itself submittable and

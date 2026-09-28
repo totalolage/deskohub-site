@@ -112,14 +112,11 @@ describe("getReservationDefaultValuesFromSearchParams", () => {
 
   test("decodes customer fields independently as URLSearchParams", () => {
     const values = getReservationDefaultValuesFromSearchParams(
-      new URLSearchParams(
-        "name=Ada%20Lovelace&email=invalid@&message=%20%20Window%20seat%20%20"
-      )
+      new URLSearchParams("name=Ada%20Lovelace&email=invalid@")
     );
 
     expect(values.name).toBe("Ada Lovelace");
     expect(values.email).toBe("");
-    expect(values.message).toBe("Window seat");
     expect(values.phone).toBe("");
   });
 
@@ -128,13 +125,11 @@ describe("getReservationDefaultValuesFromSearchParams", () => {
       name: "  ",
       email: "ada@example.com",
       phone: "+420777777777",
-      message: "invalid\nmessage\nwith\nnewlines",
     });
 
     expect(values.name).toBe("");
     expect(values.email).toBe("ada@example.com");
     expect(values.phone).toBe("+420777777777");
-    expect(values.message).toBe("invalid\nmessage\nwith\nnewlines");
   });
 });
 
@@ -144,7 +139,6 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
       {
         duration: "hour:1",
         email: " ada@example.com ",
-        message: "  Window seat please.  ",
         name: "Ada Lovelace",
         phone: "+420777777777",
         startDateTime: "2099-08-12T09:00",
@@ -158,7 +152,6 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "+420777777777",
-      message: "Window seat please.",
       billing: { purpose: "personal", invoice: "none" },
       marketingConsent: false,
     });
@@ -216,7 +209,6 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "",
-      message: "",
       billing: { purpose: "personal", invoice: "none" },
       marketingConsent: false,
     });
@@ -343,7 +335,6 @@ describe("getOfficeReservationDefaultValuesFromSearchParams", () => {
       name: "",
       email: "",
       phone: "",
-      message: "",
       billing: { purpose: "personal", invoice: "none" },
       marketingConsent: false,
     });
@@ -382,7 +373,6 @@ describe("getReservationDefaultValuesFromPayState", () => {
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "+420 777 000 111",
-      message: "Please prepare the standing desk.",
     });
 
     expect(getReservationDefaultValuesFromPayState(reservation)).toEqual({
@@ -393,7 +383,65 @@ describe("getReservationDefaultValuesFromPayState", () => {
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "+420 777 000 111",
+      billing: { purpose: "personal", invoice: "none" },
+      marketingConsent: false,
+    });
+  });
+});
+
+describe("retired reservation customer message", () => {
+  test("ignores a message query parameter without harming valid siblings", () => {
+    const values = getReservationDefaultValuesFromSearchParams(
+      new URLSearchParams(
+        "name=Ada%20Lovelace&email=ada%40example.com&phone=%2B420777777777&message=%20Legacy%20note%20&entryTier=open-space&date=2099-06-10"
+      )
+    );
+
+    expect(values.name).toBe("Ada Lovelace");
+    expect(values.email).toBe("ada@example.com");
+    expect(values.phone).toBe("+420777777777");
+    expect(values.entryTier).toBe("open-space");
+    expect(values.date).toBe("2099-06-10");
+    expect(values).not.toHaveProperty("message");
+  });
+
+  test("does not introduce a message field into new form defaults", () => {
+    const fromEmptyQuery = getReservationDefaultValuesFromSearchParams({});
+    const fromMeetingRoomQuery =
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        { name: "Ada Lovelace" },
+        deterministicNow()
+      );
+
+    expect(fromEmptyQuery).not.toHaveProperty("message");
+    expect(fromMeetingRoomQuery).not.toHaveProperty("message");
+  });
+
+  test("drops a legacy customer message when restoring from signed Pay state", () => {
+    const reservation = Schema.decodeUnknownSync(
+      normalizedCoworkReservationOrderSchema,
+      { onExcessProperty: "error" }
+    )({
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      date: "2099-06-10",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 000 111",
       message: "Please prepare the standing desk.",
+    });
+
+    expect(reservation).not.toHaveProperty("message");
+    expect(getReservationDefaultValuesFromPayState(reservation)).toEqual({
+      entryTier: "reserved-desk",
+      date: "2099-06-10",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 000 111",
       billing: { purpose: "personal", invoice: "none" },
       marketingConsent: false,
     });

@@ -227,12 +227,10 @@ test("reuses a meeting-room customer while changing the interval", () => {
 
   expect({
     email: second.email,
-    message: second.message,
     name: second.name,
     phone: second.phone,
   }).toEqual({
     email: first.email,
-    message: first.message,
     name: first.name,
     phone: first.phone,
   });

@@ -63,7 +63,6 @@ describe("meetingRoomReservationSchema", () => {
       startDateTime: "",
       duration: "hour:1",
       ...customer,
-      message: "",
       marketingConsent: false,
     });
 
@@ -77,7 +76,6 @@ describe("meetingRoomReservationSchema", () => {
       name: "  Ada Lovelace  ",
       email: "  ada@example.com  ",
       phone: customer.phone,
-      message: "  Project workshop  ",
       marketingConsent: true,
     });
 
@@ -86,7 +84,6 @@ describe("meetingRoomReservationSchema", () => {
       expect(result.success).toMatchObject({
         name: "Ada Lovelace",
         email: "ada@example.com",
-        message: "Project workshop",
         marketingConsent: true,
       });
     }
@@ -99,7 +96,6 @@ describe("meetingRoomReservationSchema", () => {
       startDateTime: "2099-06-10T12:00",
       duration: "hour:1",
       ...customer,
-      message: "",
       marketingConsent: false,
     });
     const issues = Effect.runSync(
@@ -163,7 +159,6 @@ describe("meetingRoomReservationSchema", () => {
         startDateTime,
         duration: "hour:1",
         ...customer,
-        message: "",
         marketingConsent: false,
       });
 
@@ -179,7 +174,6 @@ describe("meetingRoomReservationSchema", () => {
       startsAt: "2099-07-30T08:00:00Z",
       endsAt: "2099-07-30T12:00:00Z",
       ...customer,
-      message: "Workshop",
     });
 
     const defaults = getMeetingRoomReservationDefaultValues(reservation);
@@ -187,7 +181,6 @@ describe("meetingRoomReservationSchema", () => {
       startDateTime: "2099-07-30T10:00",
       duration: "hour:4",
       ...customer,
-      message: "Workshop",
       billing: { purpose: "personal", invoice: "none" },
       marketingConsent: false,
     });
@@ -255,7 +248,6 @@ describe("meetingRoomReservationSchema", () => {
       startDateTime: "2099-06-10T15:00",
       duration: "day:1",
       ...customer,
-      message: "",
       marketingConsent: false,
     });
 
@@ -268,5 +260,42 @@ describe("meetingRoomReservationSchema", () => {
         endsAt: "2099-06-10T22:00:00Z",
       });
     }
+  });
+});
+
+describe("retired reservation customer message", () => {
+  test("omits the message field from new normalized orders", () => {
+    const result = safeParseForm({
+      startDateTime: "2099-06-10T10:00",
+      duration: "hour:1",
+      ...customer,
+      marketingConsent: false,
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success).not.toHaveProperty("message");
+    }
+  });
+
+  test("drops a legacy customer message on order decode", () => {
+    const reservation = Schema.decodeUnknownSync(
+      normalizedMeetingRoomReservationOrderSchema,
+      { onExcessProperty: "error" }
+    )({
+      kind: "meeting-room",
+      duration: { unit: "hour", amount: 1 },
+      reservationDate: "2099-06-10",
+      startsAt: "2099-06-10T08:00:00Z",
+      endsAt: "2099-06-10T09:00:00Z",
+      ...customer,
+      message: "Legacy workshop note.",
+    });
+
+    expect(reservation).not.toHaveProperty("message");
+    expect(reservation.name).toBe("Ada Lovelace");
+    expect(getMeetingRoomReservationDefaultValues(reservation)).not.toHaveProperty(
+      "message"
+    );
   });
 });

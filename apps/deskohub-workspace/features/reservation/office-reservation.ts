@@ -6,6 +6,7 @@ import {
   reservationBillingSelectionInputSchema,
 } from "@/features/reservation/reservation-billing";
 import {
+  droppingRetiredReservationCustomerMessage,
   normalizedReservationCustomerSchema,
   reservationCustomerSchema,
 } from "@/features/reservation/reservation-contact";
@@ -228,14 +229,17 @@ export type OfficeReservationOrderInput =
 export type OfficeReservationFormInput =
   typeof officeReservationFormInputSchema.Type;
 
-export const normalizedOfficeReservationOrderSchema = Schema.Struct({
-  kind: Schema.Literal(officeReservationKind),
-  ...normalizedReservationCustomerSchema.fields,
-  billing: normalizedReservationBillingSelectionSchema,
-  startsOn: plainDateStringSchema,
-  endsOn: plainDateStringSchema,
-  seats: officeSeatsSchema,
-});
+export const normalizedOfficeReservationOrderSchema =
+  droppingRetiredReservationCustomerMessage(
+    Schema.Struct({
+      kind: Schema.Literal(officeReservationKind),
+      ...normalizedReservationCustomerSchema.fields,
+      billing: normalizedReservationBillingSelectionSchema,
+      startsOn: plainDateStringSchema,
+      endsOn: plainDateStringSchema,
+      seats: officeSeatsSchema,
+    })
+  );
 
 export const normalizedOfficeReservationFormSchema = Schema.Struct({
   ...normalizedReservationCustomerSchema.fields,
@@ -471,7 +475,6 @@ export const normalizeOfficeReservationOrder = (
     name: reservation.name,
     email: reservation.email,
     phone: reservation.phone,
-    ...(reservation.message !== undefined && { message: reservation.message }),
     billing: reservation.billing ?? defaultReservationBillingSelection,
     startsOn: decodePlainDate(reservation.startsOn),
     endsOn: decodePlainDate(reservation.endsOn),
@@ -497,7 +500,6 @@ export const normalizeOfficeReservationForm = (
     name: reservation.name,
     email: reservation.email,
     phone: reservation.phone,
-    ...(reservation.message !== undefined && { message: reservation.message }),
     billing: reservation.billing ?? defaultReservationBillingSelection,
     startsOn: decodePlainDate(reservation.startsOn),
     dayCount: reservation.dayCount,
@@ -513,9 +515,6 @@ export const officeReservationSchema = officeReservationFormInputSchema.pipe(
         name: reservation.name,
         email: reservation.email,
         phone: reservation.phone,
-        ...(reservation.message !== undefined && {
-          message: reservation.message,
-        }),
         billing: reservation.billing ?? defaultReservationBillingSelection,
         startsOn: reservation.startsOn,
         dayCount: reservation.dayCount,
@@ -536,7 +535,6 @@ export const officeReservationDefaultValues: OfficeReservationInput = {
   name: "",
   email: "",
   phone: "",
-  message: "",
   billing: defaultReservationBillingSelection,
   marketingConsent: false,
 };
@@ -549,7 +547,6 @@ export const getOfficeReservationOrder = (
     name: form.name,
     email: form.email,
     phone: form.phone,
-    ...(form.message !== undefined && { message: form.message }),
     billing: form.billing,
     startsOn: form.startsOn,
     endsOn: decodePlainDate(getOfficeReservationEndsOn(form)),
@@ -565,7 +562,6 @@ export const getOfficeReservationDefaultValues = (
   name: reservation.name,
   email: reservation.email,
   phone: reservation.phone,
-  ...(reservation.message !== undefined && { message: reservation.message }),
   billing: reservation.billing,
   marketingConsent: false,
 });

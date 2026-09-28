@@ -35,7 +35,6 @@ import {
 } from "@/features/reservation/office-reservation";
 import {
   reservationCustomerEmailSchema,
-  reservationCustomerMessageSchema,
   reservationCustomerNameSchema,
   reservationCustomerPhoneSchema,
 } from "@/features/reservation/reservation-contact";
@@ -54,7 +53,6 @@ const reservationCheckoutQueryFields = [
   "name",
   "email",
   "phone",
-  "message",
 ] as const;
 
 type ReservationCheckoutQueryField =
@@ -89,7 +87,6 @@ const queryCustomerSchemas = {
   name: Schema.toStandardSchemaV1(reservationCustomerNameSchema),
   email: Schema.toStandardSchemaV1(reservationCustomerEmailSchema),
   phone: Schema.toStandardSchemaV1(reservationCustomerPhoneSchema),
-  message: Schema.toStandardSchemaV1(reservationCustomerMessageSchema),
 };
 
 const getTrimmedSearchParam = (
@@ -186,7 +183,6 @@ export const getReservationDefaultValuesFromPayState = (
     ...(reservation.monitorOption !== undefined && {
       monitorOption: reservation.monitorOption,
     }),
-    ...(reservation.message !== undefined && { message: reservation.message }),
     marketingConsent: false,
   };
 };

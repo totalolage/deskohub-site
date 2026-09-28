@@ -4,6 +4,7 @@ import "@/shared/polyfills/temporal";
 import {
   coworkCurrentReservationOrderSchema,
   coworkReservationSchema,
+  normalizedCoworkReservationOrderSchema,
   getCoworkReservationDetails,
   getCoworkReservationIntervalInput,
   getCoworkReservationOrder,
@@ -43,7 +44,6 @@ describe("cowork reservation schema", () => {
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "+420777777777",
-      message: "  hello  ",
       marketingConsent: false,
     });
 
@@ -54,7 +54,6 @@ describe("cowork reservation schema", () => {
         entryTier: "reserved-desk",
         date: "2099-06-10",
         coffee: true,
-        message: "hello",
       });
       expect(result.success).not.toHaveProperty("startsAt");
       expect(result.success).not.toHaveProperty("endsAt");
@@ -102,7 +101,6 @@ describe("cowork reservation schema", () => {
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "+420777777777",
-      message: "",
       marketingConsent: false,
     });
 
@@ -213,5 +211,44 @@ describe("cowork offer intervals across daylight-saving changes", () => {
     );
     expect(spring.startsAt).toBe("2027-03-27T23:00:00Z");
     expect(spring.endsAt).toBe("2027-03-28T15:00:00Z");
+  });
+});
+
+describe("retired reservation customer message", () => {
+  test("omits the message field from new normalized orders", () => {
+    const result = safeParseCoworkReservation({
+      entryTier: "reserved-desk",
+      date: "2099-06-10",
+      coffee: false,
+      monitorOption: undefined,
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+      marketingConsent: false,
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success).not.toHaveProperty("message");
+    }
+  });
+
+  test("drops a legacy customer message on strict normalized decode", () => {
+    const reservation = Schema.decodeUnknownSync(
+      normalizedCoworkReservationOrderSchema,
+      { onExcessProperty: "error" }
+    )({
+      kind: "cowork",
+      entryTier: "open-space",
+      date: "2099-06-10",
+      coffee: false,
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+      message: "Legacy setup note.",
+    });
+
+    expect(reservation).not.toHaveProperty("message");
+    expect(reservation.name).toBe("Ada Lovelace");
   });
 });
