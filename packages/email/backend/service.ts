@@ -98,6 +98,32 @@ const getEmailRetryPolicyDescription = (
     ? "exponential backoff (1s base, jittered, max 3 attempts)"
     : "no retry - not a network error";
 
+/**
+ * Non-PII send facts shared by the log annotations of every email send.
+ * Rendered bodies are token bearer material and recipients are PII, so only
+ * booleans, the provider, and the non-secret category tag may be annotated.
+ */
+const emailSendLogFacts = (message: {
+  html?: string;
+  text?: string;
+  tags?: string[];
+}) => ({
+  category: message.tags?.[0],
+  hasHtml: !!message.html,
+  hasText: !!message.text,
+});
+
+/**
+ * Provider failures are censored at source: only the error `_tag` and a
+ * fixed code reach logs, never the raw provider error message.
+ */
+const emailFailureLogFacts = (error: EmailServiceError | NetworkError) => ({
+  code: isRetryableEmailError(error)
+    ? "email.send.transport-retryable"
+    : "email.send.rejected",
+  errorType: error._tag,
+});
+
 const emailRetryPolicy = Schedule.exponential("1 second").pipe(
   Schedule.jittered,
   Schedule.while<EmailServiceError | NetworkError, Duration.Duration>(
@@ -124,61 +150,35 @@ const emailServiceImplementation = Effect.gen(function* () {
   return {
     send: Effect.fn("email.send")(
       function* (message: EmailMessage) {
-        yield* Effect.annotateLogsScoped({ message });
         yield* Effect.logInfo("Email send started", {
           provider: provider.name,
+          ...emailSendLogFacts(message),
         });
 
         const finalMessage = {
           ...message,
           from: message.from || config.defaultFrom,
         };
-        yield* Effect.annotateLogsScoped({ finalMessage });
-
-        yield* Effect.logInfo("Sending email", {
-          to: Array.isArray(finalMessage.to)
-            ? finalMessage.to.map((r) => r.email || r)
-            : finalMessage.to.email || finalMessage.to,
-          subject: finalMessage.subject,
-          provider: provider.name,
-        });
 
         const result = yield* provider.send(finalMessage).pipe(
           Effect.tapError((error) =>
             Effect.logWarning("Email send failed, will retry if NetworkError", {
-              errorType: error._tag,
-              errorMessage: error.message,
+              ...emailFailureLogFacts(error),
               willRetry: isRetryableEmailError(error),
-              recipient: Array.isArray(finalMessage.to)
-                ? finalMessage.to.map((r) => r.email || r)
-                : finalMessage.to.email || finalMessage.to,
-              subject: finalMessage.subject,
               retryPolicy: getEmailRetryPolicyDescription(error),
             })
           ),
           Effect.retry(emailRetryPolicy),
           Effect.tap((sendResult) =>
-            Effect.gen(function* () {
-              yield* Effect.annotateLogsScoped({ result: sendResult });
-              yield* Effect.logInfo("Email sent successfully", {
-                id: sendResult.id,
-                provider: sendResult.provider,
-                recipient: Array.isArray(finalMessage.to)
-                  ? finalMessage.to.map((r) => r.email || r)
-                  : finalMessage.to.email || finalMessage.to,
-                subject: finalMessage.subject,
-              });
+            Effect.logInfo("Email sent successfully", {
+              id: sendResult.id,
+              provider: sendResult.provider,
             })
           ),
           Effect.tapError((error) =>
             Effect.logError("Email send failed - all retries exhausted", {
-              errorType: error._tag,
-              errorMessage: error.message,
+              ...emailFailureLogFacts(error),
               provider: provider.name,
-              recipient: Array.isArray(finalMessage.to)
-                ? finalMessage.to.map((r) => r.email || r)
-                : finalMessage.to.email || finalMessage.to,
-              subject: finalMessage.subject,
               maxRetriesReached: true,
             })
           )
@@ -189,20 +189,21 @@ const emailServiceImplementation = Effect.gen(function* () {
       (effect, message) =>
         effect.pipe(
           Effect.scoped,
-          Effect.annotateLogs({ provider: provider.name, message })
+          Effect.annotateLogs({
+            provider: provider.name,
+            ...emailSendLogFacts(message),
+          })
         )
     ),
 
     sendTemplate: Effect.fn("email.sendTemplate")(
       function* (recipient, template) {
-        yield* Effect.annotateLogsScoped({ recipient, template });
         yield* Effect.logInfo("Template email send started", {
           provider: provider.name,
           template: template.type,
         });
 
         const rendered = yield* templateService.render(template);
-        yield* Effect.annotateLogsScoped({ rendered });
         yield* Effect.logDebug("Template email rendered", {
           template: template.type,
         });
@@ -221,54 +222,41 @@ const emailServiceImplementation = Effect.gen(function* () {
             templateType: template.type,
           },
         };
-        yield* Effect.annotateLogsScoped({ message });
 
         return yield* provider.send(message).pipe(
           Effect.tapError((error) =>
             Effect.logWarning(
               "Template email failed, will retry if NetworkError",
               {
-                errorType: error._tag,
-                errorMessage: error.message,
+                ...emailFailureLogFacts(error),
                 willRetry: isRetryableEmailError(error),
                 template: template.type,
-                recipient: to.email,
-                subject: message.subject,
                 retryPolicy: getEmailRetryPolicyDescription(error),
               }
             )
           ),
           Effect.retry(emailRetryPolicy),
           Effect.tap((sendResult) =>
-            Effect.gen(function* () {
-              yield* Effect.annotateLogsScoped({ result: sendResult });
-              yield* Effect.logInfo("Template email sent successfully", {
-                id: sendResult.id,
-                template: template.type,
-                recipient: to.email,
-                subject: message.subject,
-              });
+            Effect.logInfo("Template email sent successfully", {
+              id: sendResult.id,
+              template: template.type,
             })
           ),
           Effect.tapError((error) =>
             Effect.logError("Template email failed - all retries exhausted", {
-              errorType: error._tag,
-              errorMessage: error.message,
+              ...emailFailureLogFacts(error),
               template: template.type,
-              recipient: to.email,
-              subject: message.subject,
               maxRetriesReached: true,
             })
           )
         );
       },
-      (effect, recipient, template) =>
+      (effect, _recipient, template) =>
         effect.pipe(
           Effect.scoped,
           Effect.annotateLogs({
             provider: provider.name,
-            recipient,
-            template,
+            template: template.type,
           })
         )
     ),
@@ -278,31 +266,24 @@ const emailServiceImplementation = Effect.gen(function* () {
         provider: provider.name,
       });
 
-      const isValid = yield* provider.verify.pipe(
-        Effect.tap((valid) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ result: valid });
-            if (valid) {
-              yield* Effect.logInfo("Email service verified successfully", {
-                provider: provider.name,
-              });
-            } else {
-              yield* Effect.logWarning("Email service verification failed", {
-                provider: provider.name,
-              });
-            }
-          })
-        ),
+      return yield* provider.verify.pipe(
+        Effect.tap((valid) => {
+          if (valid) {
+            return Effect.logInfo("Email service verified successfully", {
+              provider: provider.name,
+            });
+          }
+          return Effect.logWarning("Email service verification failed", {
+            provider: provider.name,
+          });
+        }),
         Effect.tapError((error) =>
           Effect.logError("Email service verification failed", {
+            ...emailFailureLogFacts(error),
             provider: provider.name,
-            errorType: error._tag,
-            errorMessage: error.message,
           })
         )
       );
-
-      return isValid;
     }).pipe(
       Effect.scoped,
       Effect.annotateLogs({ provider: provider.name }),

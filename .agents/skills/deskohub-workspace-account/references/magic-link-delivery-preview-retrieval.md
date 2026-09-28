@@ -2,15 +2,22 @@
 
 Research date: 2026-09-02
 
-> **Decision status (2026-09-03).** This is a restored historical research
-> note. Its isolated synthetic Resend tenant/team-and-domain option is
-> **superseded**: the closed decision uses the **existing Resend team and
-> domain** for Preview delivery and exact-SHA retrieval (send-only
-> `EMAIL_API_KEY` in Vercel Preview; full-access `WORKSPACE_E2E_RESEND_API_KEY`
-> only in the protected `workspace-checkout-e2e` GitHub environment, never in
-> Vercel or application configuration). Do not cite the tenant-isolation
-> arrangement below as the current plan. Delivery-boundary, redaction, and
-> retrieval mechanics remain accurate.
+> **Decision status (2026-09-03, updated 2026-09-27).** This is a restored
+> historical research note. Both of its Resend-based Preview options are
+> **superseded**: protected-preview E2E magic-link delivery for synthetic
+> recipients (`delivered+<run-id>-<label>@resend.dev`) makes **zero Resend
+> calls**. Auth routes those recipients to the shared `@deskohub/email`
+> Console provider, which console-logs the rendered TEXT body (bearer link
+> included) as one structured line under `account.magic-link.preview-e2e`,
+> emitted with raw `console.log` outside the Effect/OTel censorship layer, and
+> the runner retrieves it by looking up Vercel runtime logs with
+> `WORKSPACE_E2E_VERCEL_TOKEN` — provided only to the protected
+> `workspace-checkout-e2e` GitHub environment, never in Vercel or application
+> configuration. Non-synthetic Preview recipients and all Production and
+> development auth route through the shared Resend provider with fixed,
+> censored result codes and no link logging. Do not cite the tenant-isolation
+> or Resend-retrieval arrangements below as the current plan. Delivery-boundary,
+> redaction, and censorship mechanics remain accurate.
 
 This note resolves the research question in
 [Research magic-link delivery and protected-preview retrieval](https://github.com/totalolage/deskohub-site/issues/343).
@@ -23,13 +30,11 @@ The viable arrangement is to keep production and test email authority separate:
 
 - Production uses the existing Resend path with a sending-only, domain-scoped
   API key. Production message retrieval credentials are never available to CI.
-- Preview auth delivery uses a separate Resend team/account and domain that may
-  contain only synthetic messages. The deployed preview receives only a
-  sending-only, domain-scoped key for that test tenant.
-- The protected GitHub E2E environment receives a different full-access key for
-  that synthetic-only tenant. The runner uses Resend's list and retrieve APIs to
-  find the message for a unique Resend test address, extracts the bearer link in
-  memory, validates its exact immutable-preview origin, and never prints it.
+- Preview auth delivery for synthetic E2E recipients now console-logs the
+  rendered TEXT body through the shared Console provider instead of sending
+  through Resend (see the decision status above); Production keeps the
+  existing Resend path with a sending-only, domain-scoped API key. Production
+  message retrieval credentials are never available to CI.
 - Focused local tests use an injected fake delivery callback. A human local flow
   either uses explicitly supplied credentials for the synthetic Resend tenant or
   remains disabled and fails closed.
@@ -69,46 +74,56 @@ The callback is not a test hook. Preview E2E should exercise the production-shap
 callback and provider API, then retrieve the resulting synthetic message out of
 band.
 
-## Existing Workspace email path
+## Workspace email path (historical baseline)
 
-Workspace currently selects one global provider from
+At research time, Workspace selected one global provider from
 [`email.config.ts`](../../../../../apps/deskohub-workspace/shared/backend/config/email.config.ts):
-Resend or console. The shared message type includes recipients, content, tags,
-and metadata in
+Resend or console. Today, synthetic-recipient Preview auth instead routes to the
+Console provider per recipient, while non-synthetic Preview auth and all
+Production and development auth keep the shared Resend provider (see the
+decision status above). The shared message type includes
+recipients, content, tags, and metadata in
 [`email.types.ts`](../../../../../packages/email/types/email.types.ts).
 
-Neither current provider can safely carry a magic link unchanged:
+Historical baseline (research date): at the time this note was written, neither
+provider then in place could safely carry a magic link unchanged:
 
 - [`console-provider.ts`](../../../../../packages/email/backend/providers/console-provider.ts)
-  logs sender, recipients, subject, tags, and metadata. In development it prints
+  logged sender, recipients, subject, tags, and metadata. In development it printed
   the text body and the first 500 HTML characters, which would expose the bearer
   URL and recipient.
 - [`resend-provider.ts`](../../../../../packages/email/backend/providers/resend-provider.ts)
-  attaches the full message to Effect log annotations and logs provider responses
-  and addressing metadata. A magic-link message passing through this boundary
-  could reach logs or traces even if Better Auth itself is configured correctly.
+  attached the full message to Effect log annotations and logged provider responses
+  and addressing metadata. A magic-link message passing through that boundary
+  could reach logs or traces even if Better Auth itself were configured correctly.
 
-Implementation must first establish a safe auth-email logging boundary. It may
-adapt the shared provider or add a purpose-specific auth delivery capability, but
-its telemetry may contain only fixed event codes, provider name, non-sensitive
-status, latency, and opaque delivery ID. Do not attach or stringify the message,
-provider request, provider response, or thrown SDK object.
+The safe auth-email logging boundary this note demanded was subsequently
+established: the shared Console provider now emits the synthetic Preview magic
+link as one structured, raw-`console.log` line (see the decision status above),
+and the same fixed-telemetry rule still applies generally — provider telemetry
+may contain only fixed event codes, provider name, non-sensitive status, latency,
+and opaque delivery ID; never attach or stringify the message, provider request,
+provider response, or thrown SDK object.
 
-The current protected-preview contract sets `EMAIL_PROVIDER=console` in Preview
-and reserves Resend for Production; see
+Historical alternatives that preceded the current decision: the protected-preview
+contract originally set `EMAIL_PROVIDER=console` in Preview and reserved Resend
+for Production; see
 [`preview-workflow.md`](../../deskohub-workspace-e2e/references/preview-workflow.md).
-Real preview magic-link delivery requires a deliberate narrow change to that
-contract. The two viable choices are:
+At research time, real preview magic-link delivery would have required a deliberate
+narrow change to that contract, and the two candidate choices were:
 
 1. send every Preview email through the synthetic Resend tenant; or
 2. retain console delivery for reservation/checkout messages and select the
    synthetic Resend provider only for auth messages.
 
-The first is less configuration but consumes provider quota for unrelated E2E
-emails and changes established checkout behavior. The second creates a
-purpose-aware provider boundary but limits external delivery and privileged
-retrieval to auth. This is a later implementation decision; a single global
-Preview provider must not be changed accidentally as a side effect of auth.
+At research time the trade-off read as follows: the first option offered less
+configuration but consumed provider quota for unrelated E2E emails and would
+change established checkout behavior; the second created a purpose-aware
+provider boundary but limited external delivery and privileged retrieval to
+auth. Neither is a current recommendation: the implemented resolution is the
+Console provider route described above; these historical alternatives are
+retained for context only, and a single global Preview provider must not be
+changed accidentally as a side effect of auth.
 
 ## Resend capabilities and constraints
 
@@ -183,38 +198,44 @@ domain.
 
 ### Preview and exact-SHA E2E
 
-- Create a separate Resend tenant/team whose messages and domains are guaranteed
-  synthetic-only. Its name and IDs are non-secret configuration; its keys are
-  secrets.
-- Give the Workspace Vercel Preview environment only a sending-only key scoped to
-  the test domain. The application cannot list messages with that key.
-- Store a distinct full-access retrieval key in the protected Workspace E2E
-  GitHub environment. Exact-SHA code will necessarily receive it, so the isolated
-  tenant is the blast-radius boundary. Do not reuse a personal or production-team
-  key.
-- Generate a unique `delivered+<opaque-run-id>@resend.dev` recipient for each
-  lifecycle. Request a magic link through the protected immutable preview.
-- Poll the list API with a bounded deadline and recent timestamp, match the exact
-  recipient and non-secret run tags, retrieve that exact message ID, and reject
-  ambiguity.
-- Parse the one expected auth URL in memory. Before navigation, require HTTPS,
+- Synthetic-recipient Preview delivery is console-only: auth renders the
+  message and routes it to the shared `@deskohub/email` Console provider,
+  which emits one structured raw-`console.log` line with the TEXT body and
+  bearer link under `account.magic-link.preview-e2e`, and never calls Resend.
+  This works with or without `EMAIL_API_KEY`, since no send occurs.
+- The runner correlates the log line by the unique
+  `delivered+<opaque-run-id>-<label>@resend.dev` recipient it generated for
+  the lifecycle, reading Vercel runtime logs for the exact immutable preview
+  deployment with `WORKSPACE_E2E_VERCEL_TOKEN`. That token lives only in the
+  protected Workspace E2E GitHub environment; it never enters Vercel or
+  application configuration.
+- Match the one log line for the exact synthetic recipient, require a single
+  unambiguous match, and reject zero or multiple matches.
+- Parse the one expected auth URL in memory from the logged TEXT body. Before
+  navigation, require HTTPS,
   the exact immutable preview host for the pushed SHA, the expected Better Auth
   callback path, and no unexpected redirect target.
-- Register the recipient, URL, raw token/query, session cookie, and provider
-  payload with the redactor before they can reach failure attachments. Do not
+- Register the recipient, URL, raw token/query, session cookie, and log line
+  with the redactor before they can reach failure attachments. Do not
   include them in Playwright traces, HARs, screenshots, console output, step
   titles, GitHub summaries, or thrown messages.
 - Exercise the real Better Auth verification route and resulting session cookie.
   Do not read the token from Postgres, add a token-returning route, ship
   `testUtils`, toggle a browser-controlled delivery mode, or add a Cloudflare
   tunnel/webhook.
+- Non-synthetic Preview recipients, and all Production and development auth,
+  route through the shared Resend provider with fixed, censored result codes
+  and no link logging; the preview runtime keeps its send-only
+  `EMAIL_API_KEY` for those paths.
 - Clean up only records created by the run where the provider API and retention
   policy support that safely. Cleanup failure must not trigger broad deletion.
 
 Vercel Deployment Protection remains orthogonal. The browser and direct preview
-requests continue using the established automation-bypass header/cookie. Resend
-retrieval is an outbound GitHub-to-Resend API call and needs no tunnel into the
-protected deployment.
+requests continue using the established automation-bypass header/cookie. Under
+the superseded Resend-retrieval option, retrieval was an outbound
+GitHub-to-Resend API call needing no tunnel into the protected deployment; the
+current Console-log retrieval likewise makes zero Resend calls and needs no
+tunnel into the protected deployment.
 
 ### Local development and focused tests
 

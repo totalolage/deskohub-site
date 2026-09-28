@@ -232,8 +232,13 @@ describe("Customer-account boundary", () => {
       file.includes("/backend/")
     );
 
+    // Raw console output is not allowed anywhere in the account backend: the
+    // authorized protected-preview synthetic-E2E delivery line lives in the
+    // shared `@deskohub/email` Console provider, not here.
     for (const file of backendFiles) {
       const { ast } = parseTrackedSource(file);
+      // Test files legitimately capture console output to assert on it.
+      if (file.includes(".test.")) continue;
       const consoleCalls = nodesOf(ast).flatMap((node) =>
         node.type === "MemberExpression" &&
         !node.computed &&

@@ -12,7 +12,6 @@ import {
   makeWorkspaceE2EAccountRecipient,
   makeWorkspaceE2EAccountRecipientForRunId,
   workspaceE2EAccountMainRecipientLabel,
-  workspaceE2EAuthCorrelationTags,
 } from "./config";
 
 const runId = (value: string): WorkspaceE2ERunId =>
@@ -23,7 +22,8 @@ const makeAccountEnvironment = (
 ) =>
   makeWorkspaceE2EEnvironment({
     ...validE2ERuntimeEnvironment,
-    WORKSPACE_E2E_RESEND_API_KEY: "re_full-access-retrieval-key",
+    WORKSPACE_E2E_VERCEL_PROJECT: "workspace-preview-project",
+    WORKSPACE_E2E_VERCEL_TOKEN: "vercel-log-read-token",
     ...overrides,
   });
 
@@ -44,12 +44,20 @@ describe("workspace account e2e configuration", () => {
     expect(config.runId).toBe("1234567890-2");
   });
 
-  test("fails closed before account cases when the retrieval key is absent", () => {
+  test("fails closed before account cases when the Vercel log-read token is absent", () => {
     expect(() =>
       getAccountE2EConfig(
-        makeAccountEnvironment({ WORKSPACE_E2E_RESEND_API_KEY: undefined })
+        makeAccountEnvironment({ WORKSPACE_E2E_VERCEL_TOKEN: undefined })
       )
-    ).toThrow("WORKSPACE_E2E_RESEND_API_KEY is required");
+    ).toThrow("WORKSPACE_E2E_VERCEL_TOKEN is required");
+  });
+
+  test("fails closed before account cases when the Vercel project id is absent", () => {
+    expect(() =>
+      getAccountE2EConfig(
+        makeAccountEnvironment({ WORKSPACE_E2E_VERCEL_PROJECT: undefined })
+      )
+    ).toThrow("WORKSPACE_E2E_VERCEL_PROJECT is required");
   });
 
   test("fails closed when the base URL is not an immutable Vercel origin", () => {
@@ -85,10 +93,10 @@ describe("workspace account e2e configuration", () => {
     );
   });
 
-  test("registers the retrieval key with the process redactor", () => {
+  test("registers the Vercel log-read token with the process redactor", () => {
     getAccountE2EConfig(makeAccountEnvironment());
 
-    expect(redact("token re_full-access-retrieval-key tail")).toBe(
+    expect(redact("token vercel-log-read-token tail")).toBe(
       "token [redacted] tail"
     );
   });
@@ -156,12 +164,5 @@ describe("workspace account e2e configuration", () => {
     expect(() => makeWorkspaceE2EAccountRecipient(config, "user@mail")).toThrow(
       "must stay opaque"
     );
-  });
-
-  test("exposes the fixed correlation tags shared with the deployed sender", () => {
-    expect(workspaceE2EAuthCorrelationTags).toEqual([
-      { name: "category", value: "account-magic-link" },
-      { name: "surface", value: "workspace" },
-    ]);
   });
 });

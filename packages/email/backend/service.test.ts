@@ -170,3 +170,74 @@ describe("EmailService", () => {
     });
   });
 });
+
+describe("EmailService censorship", () => {
+  const captureConsoleLog = (): string[] & { restore: () => void } => {
+    const lines: string[] = [];
+    // biome-ignore lint/suspicious/noConsole: The test captures log output to assert censorship.
+    const original = console.log;
+    console.log = (...args: unknown[]) => {
+      lines.push(
+        args
+          .map((arg) =>
+            typeof arg === "string" ? arg : (JSON.stringify(arg) ?? "")
+          )
+          .join(" ")
+      );
+    };
+    const captured = lines as string[] & { restore: () => void };
+    captured.restore = () => {
+      console.log = original;
+    };
+    return captured;
+  };
+
+  test("success logs carry no recipient, subject, or rendered body", async () => {
+    const consoleLines = captureConsoleLog();
+    try {
+      await runWithEmail(
+        Effect.gen(function* () {
+          const email = yield* EmailServiceTag;
+          return yield* email.send(message);
+        }),
+        makeProvider()
+      );
+    } finally {
+      consoleLines.restore();
+    }
+
+    const logged = consoleLines.join("\n");
+    expect(logged).not.toContain("ada@example.test");
+    expect(logged).not.toContain("Hello");
+    expect(logged).not.toContain("<p>Hello</p>");
+  });
+
+  test("provider failures log only the error tag and a censored code", async () => {
+    const consoleLines = captureConsoleLog();
+    let outcome: Awaited<ReturnType<typeof runWithEmail>> | undefined;
+    try {
+      outcome = await runWithEmail(
+        Effect.gen(function* () {
+          const email = yield* EmailServiceTag;
+          return yield* email.send(message).pipe(Effect.result);
+        }),
+        makeProvider(
+          mock((_message: EmailMessage) =>
+            Effect.fail(new EmailServiceError("raw provider detail: quota 429"))
+          )
+        )
+      );
+    } finally {
+      consoleLines.restore();
+    }
+
+    expect(outcome?._tag).toBe("Failure");
+    const logged = consoleLines.join("\n");
+    expect(logged).toContain("EmailServiceError");
+    expect(logged).toContain("email.send.rejected");
+    expect(logged).not.toContain("raw provider detail");
+    expect(logged).not.toContain("quota");
+    expect(logged).not.toContain("ada@example.test");
+    expect(logged).not.toContain("Hello");
+  });
+});

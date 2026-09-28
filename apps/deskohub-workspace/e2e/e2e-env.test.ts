@@ -42,20 +42,32 @@ describe("Workspace E2E environment", () => {
     ).toBeUndefined();
   });
 
-  test("decodes the GitHub-only Resend retrieval key when present", () => {
+  test("decodes the GitHub-only Vercel log retrieval variables when present", () => {
     const environment = makeTestE2EEnvironment({
-      WORKSPACE_E2E_RESEND_API_KEY: "re_e2e-retrieval-key",
+      WORKSPACE_E2E_VERCEL_PROJECT: "workspace-preview-project",
+      WORKSPACE_E2E_VERCEL_TOKEN: "vercel-log-read-token",
     });
 
-    expect(environment.WORKSPACE_E2E_RESEND_API_KEY).toBe(
-      "re_e2e-retrieval-key"
+    expect(environment.WORKSPACE_E2E_VERCEL_TOKEN).toBe(
+      "vercel-log-read-token"
+    );
+    expect(environment.WORKSPACE_E2E_VERCEL_PROJECT).toBe(
+      "workspace-preview-project"
     );
   });
 
-  test("treats a missing Resend retrieval key as absent instead of failing checkout cases", () => {
-    expect(
-      makeTestE2EEnvironment().WORKSPACE_E2E_RESEND_API_KEY
-    ).toBeUndefined();
+  test("treats missing Vercel log retrieval variables as absent instead of failing checkout cases", () => {
+    const environment = makeTestE2EEnvironment();
+    expect(environment.WORKSPACE_E2E_VERCEL_TOKEN).toBeUndefined();
+    expect(environment.WORKSPACE_E2E_VERCEL_PROJECT).toBeUndefined();
+  });
+
+  test("stops consuming the retired Resend retrieval key without failing on its presence", () => {
+    const environment = makeTestE2EEnvironment({
+      WORKSPACE_E2E_RESEND_API_KEY: "re_legacy-retrieval-key",
+    });
+
+    expect(environment).not.toHaveProperty("WORKSPACE_E2E_RESEND_API_KEY");
   });
 
   test("never exposes application mail authority through the E2E boundary", () => {

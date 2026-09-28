@@ -7,7 +7,6 @@ import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
 import { Effect, Option, Schema } from "effect";
 import { after } from "next/server";
-import { Resend } from "resend";
 import { makeAuthDatabase } from "@/db/auth-database-client";
 import { workspaceDatabasePool } from "@/db/database-provider.server";
 import { drizzleAuthTables } from "@/db/schema/auth";
@@ -19,13 +18,9 @@ import {
 } from "@/features/account/customer-account";
 import { defaultLocale, isLocale, type Locale } from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { workspaceSiteConstants } from "@/shared/utils";
 import { authOptions, betterAuthMagicLinkOptions } from "./auth-options";
 import { renderMagicLinkEmail } from "./magic-link-email";
-import {
-  magicLinkCorrelationTags,
-  makeMagicLinkEmailDelivery,
-} from "./send-magic-link-email";
+import { makeMagicLinkEmailDelivery } from "./send-magic-link-email";
 
 export type MagicLinkSendFunction = NonNullable<
   Parameters<typeof magicLink>[0]["sendMagicLink"]
@@ -181,37 +176,20 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
   });
 };
 
-const magicLinkSenderIdentity = `${workspaceSiteConstants.brand.name} <reservations@workspace.deskohub.cz>`;
-
-export const makeResendMagicLinkSender = (apiKey: string | undefined) => {
-  if (!apiKey) return null;
-  const resend = new Resend(apiKey);
-  return (message: {
-    readonly to: string;
-    readonly subject: string;
-    readonly html: string;
-    readonly text: string;
-  }) =>
-    resend.emails
-      .send({
-        from: magicLinkSenderIdentity,
-        to: [message.to],
-        subject: message.subject,
-        html: message.html,
-        text: message.text,
-        tags: [...magicLinkCorrelationTags],
-      })
-      .then((result) => ({
-        id: result.data?.id ?? null,
-        error: result.error,
-      }));
-};
-
-export const makeWorkspaceMagicLinkDelivery = (apiKey: string | undefined) =>
-  makeMagicLinkEmailDelivery(
-    apiKey ? makeResendMagicLinkSender(apiKey) : null,
-    renderMagicLinkEmail
-  );
+/**
+ * Recipient-based routing decision for account magic links, derived once
+ * from the typed environment. Auth owns only this selection and the
+ * template rendering; the shared `@deskohub/email` EmailServiceTag provider
+ * machinery owns the actual sending and retry. Synthetic Preview E2E
+ * recipients route to the shared Console provider (the single authorized
+ * preview-e2e log line), every other recipient routes to the shared Resend
+ * provider, and no credential fails closed to the fixed unconfigured code.
+ */
+export const makeWorkspaceMagicLinkDelivery = () =>
+  makeMagicLinkEmailDelivery(renderMagicLinkEmail, {
+    isVercelPreview: env.VERCEL_ENV === "preview",
+    resendApiKey: env.EMAIL_API_KEY,
+  });
 
 export const makeWorkspaceAuthDatabase = () =>
   drizzleAdapter(makeAuthDatabase(workspaceDatabasePool), {
@@ -224,7 +202,7 @@ export const workspaceSendMagicLink: MagicLinkSendFunction = (data) => {
   const locale = decodeMagicLinkLocale(data);
   after(() =>
     runWorkspaceEffect("account.magic-link.deliver", { boundary: "task" })(
-      makeWorkspaceMagicLinkDelivery(env.EMAIL_API_KEY).deliver({
+      makeWorkspaceMagicLinkDelivery().deliver({
         email: data.email,
         url: data.url,
         locale,

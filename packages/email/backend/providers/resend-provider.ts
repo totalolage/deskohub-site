@@ -61,11 +61,10 @@ const createResendProvider = (apiKey: string): EmailProvider => {
 
     send: Effect.fn("resend.send")(
       function* (message: EmailMessage) {
-        yield* Effect.annotateLogsScoped({ message });
         yield* Effect.logInfo("Sending email via Resend", {
-          to: message.to,
-          subject: message.subject,
-          from: message.from,
+          category: message.tags?.[0],
+          hasHtml: !!message.html,
+          hasText: !!message.text,
         });
 
         const result = yield* Effect.tryPromise({
@@ -124,14 +123,18 @@ const createResendProvider = (apiKey: string): EmailProvider => {
             return response;
           },
           catch: (error) => {
+            // Classification uses the raw provider failure internally, but the
+            // constructed error carries ONLY fixed messages with no raw
+            // provider cause, so no provider content can reach logs, traces,
+            // or OTel exception events before the account boundary censors.
             const errorMessage =
               error instanceof Error ? error.message : String(error);
             const normalizedErrorMessage = errorMessage.toLowerCase();
 
             if (errorMessage.includes("CLIENT_ERROR:")) {
               return new EmailServiceError(
-                errorMessage.replace("CLIENT_ERROR: ", ""),
-                error,
+                "Resend rejected the email request",
+                undefined,
                 "resend"
               );
             }
@@ -145,13 +148,12 @@ const createResendProvider = (apiKey: string): EmailProvider => {
             ) {
               return new NetworkError({
                 message: "Resend network error",
-                cause: error,
               });
             }
 
             return new EmailServiceError(
-              `Resend error: ${errorMessage}`,
-              error,
+              "Resend email send failed",
+              undefined,
               "resend"
             );
           },
@@ -161,21 +163,14 @@ const createResendProvider = (apiKey: string): EmailProvider => {
             orElse: () =>
               Effect.fail(
                 new NetworkError({
-                  cause: `Resend request timed out after ${resendSendTimeout}`,
                   message: "Resend send timed out",
                 })
               ),
           }),
           Effect.tap((response) =>
-            Effect.gen(function* () {
-              yield* Effect.annotateLogsScoped({ response });
-              yield* Effect.logDebug("Resend provider response received", {
-                response,
-              });
-              yield* Effect.logInfo("Resend tryPromise succeeded", {
-                hasData: !!response.data,
-                id: response.data?.id,
-              });
+            Effect.logInfo("Resend tryPromise succeeded", {
+              hasData: !!response.data,
+              id: response.data?.id,
             })
           ),
           Effect.tapError((error) =>
@@ -183,7 +178,6 @@ const createResendProvider = (apiKey: string): EmailProvider => {
               "Resend tryPromise failed - will retry if NetworkError",
               {
                 errorTag: error._tag,
-                errorMessage: error.message,
                 willRetry: isRetryableEmailError(error),
               }
             )
@@ -194,10 +188,10 @@ const createResendProvider = (apiKey: string): EmailProvider => {
           EmailDeliveryIdSchema
         )(result.data?.id).pipe(
           Effect.mapError(
-            (cause) =>
+            () =>
               new EmailServiceError(
                 "Resend response did not contain a valid email delivery ID",
-                cause,
+                undefined,
                 "resend"
               )
           )
@@ -211,12 +205,8 @@ const createResendProvider = (apiKey: string): EmailProvider => {
         };
 
         yield* Effect.annotateLogsScoped({ result: sendResult });
-        yield* Effect.logDebug("Resend email send result created", {
-          result: sendResult,
-        });
         yield* Effect.logInfo("Email sent successfully via Resend", {
           id: result.data?.id,
-          response: result,
         });
 
         return sendResult;
@@ -224,7 +214,12 @@ const createResendProvider = (apiKey: string): EmailProvider => {
       (effect, message) =>
         effect.pipe(
           Effect.scoped,
-          Effect.annotateLogs({ provider: "resend", message })
+          Effect.annotateLogs({
+            provider: "resend",
+            category: message.tags?.[0],
+            hasHtml: !!message.html,
+            hasText: !!message.text,
+          })
         )
     ),
 
@@ -235,43 +230,30 @@ const createResendProvider = (apiKey: string): EmailProvider => {
         try: async () => {
           return await resend.domains.list();
         },
-        catch: (error) => {
-          return new EmailServiceError(
-            "Failed to verify Resend API key",
-            error
-          );
-        },
+        catch: () =>
+          // The caught exception is deliberately discarded: the fixed,
+          // cause-free message keeps raw provider content out of failed
+          // spans and OTel exception events.
+          new EmailServiceError("Failed to verify Resend API key"),
       }).pipe(
-        Effect.tap((response) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ response });
-            yield* Effect.logDebug("Resend verify provider response received", {
-              response,
-            });
-          })
-        ),
         Effect.flatMap((response) => {
           const resendError = response.error;
           if (!resendError) return Effect.succeed(true);
 
           return Effect.fail(
             new EmailServiceError(
-              `Failed to verify Resend API key: ${getResendErrorMessage(resendError)}`,
-              resendError,
+              "Failed to verify Resend API key",
+              undefined,
               "resend"
             )
           );
         }),
-        Effect.tap((success) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ result: success });
-            yield* Effect.logInfo("Resend API key verified successfully");
-          })
+        Effect.tap((_success) =>
+          Effect.logInfo("Resend API key verified successfully")
         ),
         Effect.tapError((error) =>
           Effect.logError("Resend API key verification failed", {
             errorType: error._tag,
-            errorMessage: error.message,
           })
         )
       );

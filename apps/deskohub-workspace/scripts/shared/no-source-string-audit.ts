@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
-import { resolve } from "node:path";
+import { lstatSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 /**
  * Deterministic audit: no tracked test may pin literal substrings of tracked
@@ -15,8 +16,8 @@ import { resolve } from "node:path";
  *     matchers applied to the variable, and count-occurrence helpers fed
  *     with the variable.
  *
- * The enumeration is repository-wide: every tracked `*.test.ts(x)` under the
- * repo root is audited, not only the Workspace app.
+ * The enumeration is repository-wide: every existing `*.test.ts(x)` under
+ * the repo root is audited, not only the Workspace app.
  *
  * Sanctioned replacements compute verdicts structurally — parsed-TypeScript
  * AST checks (`scripts/shared/source-ast.ts`), executed runtime/module
@@ -99,15 +100,42 @@ export const repositoryRoot = (): string => {
   return cachedRepositoryRoot;
 };
 
-/** Every tracked test file in the repository, relative to the repo root. */
-export const listTrackedTestFiles = (): readonly string[] =>
-  execSync("git ls-files -- '*.test.ts' '*.test.tsx'", {
-    cwd: repositoryRoot(),
-    encoding: "utf8",
-  })
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+/**
+ * Whether the path exists in the worktree, tolerating dangling symlinks:
+ * `lstatSync` classifies the directory entry itself, so a dangling symlink
+ * stays present and its subsequent read surfaces the read error. Only a
+ * confirmed-missing entry (ENOENT, or ENOTDIR when a parent path component
+ * is no longer a directory) is skipped; every other stat failure rethrows.
+ */
+const presentPath = (root: string, relativePath: string): boolean => {
+  try {
+    lstatSync(join(root, relativePath));
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
+  }
+};
+
+/**
+ * Every existing, nonignored test file in a repository worktree, relative
+ * to the repo root: tracked files plus untracked new tests, excluding
+ * tracked files deleted in the worktree. Paths are present on disk (lstat
+ * classifies the entry, dangling symlinks included), so a read failure on
+ * an enumerated path is a genuine read error, never a stale-enumeration
+ * artifact.
+ */
+export const listAuditedTestFiles = (
+  root: string = repositoryRoot()
+): readonly string[] =>
+  execSync(
+    "git ls-files --cached --others --exclude-standard -z -- '*.test.ts' '*.test.tsx'",
+    { cwd: root, encoding: "utf8" }
+  )
+    .split("\0")
+    .filter((entry) => entry.length > 0 && presentPath(root, entry))
+    .sort();
 
 export const findViolations = (
   files: readonly { readonly path: string; readonly content: string }[]
