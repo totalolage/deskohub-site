@@ -24,16 +24,26 @@ mock.module("./actions", () => ({
   searchAdministrationInvoiceCustomers: async () => ({}),
 }));
 
-const {
-  getInvoiceDraftId,
-  getInvoiceReviewTotal,
-  InvoiceCreationForm,
-  invoiceFormSchema,
-  isInvoicePriceInput,
-  readInvoiceForm,
-} = await import("./invoice-form");
+// The form module (and the Radix dialog it renders) must be imported after
+// the happy-dom global registration, or the dialog portal never mounts.
+let getInvoiceDraftId: typeof import("./invoice-form").getInvoiceDraftId;
+let getInvoiceReviewTotal: typeof import("./invoice-form").getInvoiceReviewTotal;
+let InvoiceCreationForm: typeof import("./invoice-form").InvoiceCreationForm;
+let invoiceFormSchema: typeof import("./invoice-form").invoiceFormSchema;
+let isInvoicePriceInput: typeof import("./invoice-form").isInvoicePriceInput;
+let readInvoiceForm: typeof import("./invoice-form").readInvoiceForm;
 
-beforeAll(registerWorkspaceComponentTestEnv);
+beforeAll(async () => {
+  registerWorkspaceComponentTestEnv();
+  ({
+    getInvoiceDraftId,
+    getInvoiceReviewTotal,
+    InvoiceCreationForm,
+    invoiceFormSchema,
+    isInvoicePriceInput,
+    readInvoiceForm,
+  } = await import("./invoice-form"));
+});
 beforeEach(() => {
   workspaceUseAction.mockReset();
   window.happyDOM.setURL("https://deskohub.test/admin/invoices/new");
@@ -393,9 +403,7 @@ test("retries creation with the same id for an unchanged invoice and a new id af
   expect(create).toHaveBeenCalledTimes(1);
   const firstInvoiceId = invoiceIdOf(create.mock.calls[0]);
 
-  act(() =>
-    createOnError?.({ error: { serverError: "Create exploded." } })
-  );
+  act(() => createOnError?.({ error: { serverError: "Create exploded." } }));
   expect(view.getByText("Create exploded.")).toBeTruthy();
 
   await submitAndCreate();
