@@ -1003,12 +1003,20 @@ class FakeBrowser {
       }
       return;
     }
-    if (description === "restored English (US) option selected") {
+    if (description === "language Save stays disabled before any selection change") {
+      // The save gate stays closed until a genuine selection change sets a
+      // pending value; the restored preference alone never enables it.
+      if (this.languagePending !== null) {
+        throw new Error("the language Save was enabled without a change");
+      }
+      return;
+    }
+    if (description === "restored Čeština option selected") {
       if (!this.languageListboxOpen) {
         throw new Error("the restored language check ran without a listbox");
       }
-      if (this.languageValue !== "en-US") {
-        throw new Error("the restored language option is not English (US)");
+      if (this.languageValue !== "cs-CZ") {
+        throw new Error("the restored language option is not Čeština");
       }
       return;
     }
@@ -1756,24 +1764,25 @@ test("saves the preferred communication language through a genuine selection cha
   );
 
   // Both sign-ins budgeted their send and verification, and the save
-  // persisted English (US) exactly once through a genuine selection change
-  // (the restored preference is re-picked only after committing Czech).
+  // persisted Čeština exactly once through a genuine selection change away
+  // from the backfilled English (US) initial value, so the restore check
+  // proves a real write.
   expect(scenario.operations).toEqual(["send", "verify", "send", "verify"]);
   expect(scenario.retries).toEqual([]);
-  expect(external.languageSaves).toEqual(["en-US"]);
-  expect(external.preferredLanguage).toBe("en-US");
+  expect(external.languageSaves).toEqual(["cs-CZ"]);
+  expect(external.preferredLanguage).toBe("cs-CZ");
   expect(stepIds).toEqual([
     "signs out for a fresh language-preference sign-in",
     "records the delivered message baseline before the fresh sign-in",
     "requests the fresh sign-in link",
     "retrieves the fresh sign-in link",
     "signs in and opens the profile section",
-    "saves English (US) as the preferred communication language",
+    "saves Čeština as the preferred communication language",
     "signs out before the restore check",
     "records the delivered message baseline before the restore sign-in",
     "requests the restore sign-in link",
     "retrieves the restore sign-in link",
     "signs in again and opens the profile section for the restore check",
-    "restores English (US) as the saved communication language",
+    "restores Čeština as the saved communication language",
   ]);
 });

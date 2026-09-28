@@ -608,12 +608,10 @@ describe("ProfileScreen", () => {
   });
 
   test("keeps Save disabled when a restored preference is re-picked without a change", async () => {
-    // The E2E runner seeds the account with the site default preference, so
-    // the restored selection equals the option the language case picks first.
     // Radix Select fires onValueChange only when the value changes, so
-    // re-picking the restored locale leaves the save gate closed; the case
-    // must make a genuine selection change (as the review wrapper does)
-    // before Save enables.
+    // re-picking the restored locale leaves the save gate closed; a case that
+    // must save has to make a genuine selection change away from the restored
+    // value (as the E2E language case does) before Save enables.
     updatePreferredLanguage.mockClear();
     const view = render(
       <ProfileScreen

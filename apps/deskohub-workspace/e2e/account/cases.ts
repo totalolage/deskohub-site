@@ -1224,10 +1224,8 @@ export const makeWorkspaceE2EAccountCases = ({
         const languageTriggerSelector = '[data-slot="select-trigger"]';
         const languageSaveSelector = 'button[type="button"]:has-text("Save")';
         const languageOptionCsSelector = '[role="option"]:has-text("Čeština")';
-        const languageOptionEnSelector =
-          '[role="option"]:has-text("English (US)")';
         const languageSavedCopy = "Communication language saved.";
-        const languageOptionEn = "English (US)";
+        const languageOptionCs = "Čeština";
 
         yield* runStep(
           step(
@@ -1277,7 +1275,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "saves English (US) as the preferred communication language",
+            "saves Čeština as the preferred communication language",
             Effect.gen(function* () {
               yield* clickBrowserElement(
                 run,
@@ -1285,30 +1283,28 @@ export const makeWorkspaceE2EAccountCases = ({
                 languageTriggerSelector,
                 { timeoutMs: browserTimeout }
               );
+              yield* waitForBrowserCondition(
+                run,
+                session,
+                "language Save stays disabled before any selection change",
+                `(() => {
+                    const save = Array.from(document.querySelectorAll('button[type="button"]'))
+                      .find((button) => button.textContent?.trim() === "Save");
+                    return save instanceof HTMLButtonElement && save.disabled;
+                  })()`,
+                { timeoutMs: uiTransition }
+              );
               // The runner seeds the account with the site default
-              // preference, so English (US) is already the restored value and
-              // re-picking it fires no onValueChange: Save stays disabled.
-              // Commit a genuine selection change through the other locale
-              // first, exactly as the language review wrapper does.
+              // preference, so English (US) is the restored value and Save
+              // starts disabled. Commit one genuine selection change to
+              // Čeština — a real write that differs from the backfilled
+              // initial value — so the later restore check proves a
+              // persisted save rather than a no-op.
               yield* clickBrowserElement(
                 run,
                 session,
                 languageOptionCsSelector,
                 { timeoutMs: browserTimeout }
-              );
-              yield* clickBrowserElement(
-                run,
-                session,
-                languageTriggerSelector,
-                { timeoutMs: browserTimeout }
-              );
-              yield* clickBrowserElement(
-                run,
-                session,
-                languageOptionEnSelector,
-                {
-                  timeoutMs: browserTimeout,
-                }
               );
               yield* clickBrowserElement(run, session, languageSaveSelector, {
                 timeoutMs: browserTimeout,
@@ -1372,7 +1368,7 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "restores English (US) as the saved communication language",
+            "restores Čeština as the saved communication language",
             Effect.gen(function* () {
               yield* clickBrowserElement(
                 run,
@@ -1383,11 +1379,11 @@ export const makeWorkspaceE2EAccountCases = ({
               yield* waitForBrowserCondition(
                 run,
                 session,
-                "restored English (US) option selected",
+                "restored Čeština option selected",
                 `(() => {
                     const selected = document.querySelector('[role="option"][aria-selected="true"]');
                     return selected !== null &&
-                      selected.textContent?.includes(${JSON.stringify(languageOptionEn)}) === true;
+                      selected.textContent?.includes(${JSON.stringify(languageOptionCs)}) === true;
                   })()`,
                 { timeoutMs: uiTransition }
               );
