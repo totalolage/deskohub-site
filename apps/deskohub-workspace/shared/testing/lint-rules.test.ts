@@ -106,6 +106,25 @@ const blockBodiedBareSucceed = `export const makeValue = (input: string): Effect
   return Effect.succeed(input);
 };\n`;
 
+const blockBodiedInferred = `export const deliver = (request: string) => {
+  const routed = Effect.succeed(request);
+  return routed.pipe(Effect.andThen((value) => value));
+};\n`;
+const blockBodiedInferredDirect = `export const deliver = (request: string) => {
+  return Effect.succeed(request).pipe(Effect.map(value => value));
+};\n`;
+const blockBodiedAsyncPromise = `export const deliver = async (request: string) => {
+  return await fetch(request);
+};\n`;
+const blockBodiedInferredNonEffect = `export const deliver = (request: string) => {
+  return request.toUpperCase();
+};\n`;
+const blockBodiedMethod = `export const service = {
+  deliver(request: string) {
+    return Effect.succeed(request).pipe(Effect.map(value => value));
+  },
+};\n`;
+
 const reservations = "apps/deskohub-workspace/features/reservations";
 const booking = `${reservations}/book-seat.ts`;
 const generated =
@@ -144,6 +163,8 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["rejects a block-bodied arrow returning Effect.succeed(...).pipe(...)", blockBodiedDirectPiped, true],
       ["rejects a block-bodied arrow returning Effect.gen", blockBodiedEffectGen, true],
       ["rejects a block-bodied method property returning composed Effects", blockBodiedMethodProperty, true],
+      ["rejects a block-bodied arrow with inferred return type", blockBodiedInferred, true],
+      ["rejects a block-bodied arrow with inferred return type returning direct pipe", blockBodiedInferredDirect, true],
       ["permits the canonical generator callback", traced("function* (input: string) { return yield* Effect.succeed(input); }"), false],
       ["permits the canonical callback with many transforms", traced("function* (input: string) { return yield* Effect.succeed(input); }", threeTransforms), false],
       ["permits a non-generator Effect callback", arrowGen('Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key: string) => Effect.succeed(key).pipe(Effect.andThen((value) => value)));'), false],
@@ -152,6 +173,9 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["permits a block-bodied non-Effect arrow", blockBodiedNonEffect, false],
       ["permits a block-bodied arrow already using Effect.fn", blockBodiedEffectFnCallback, false],
       ["permits a block-bodied arrow returning bare Effect.succeed without pipe", blockBodiedBareSucceed, false],
+      ["permits a block-bodied async arrow returning a Promise", blockBodiedAsyncPromise, false],
+      ["permits a block-bodied arrow with inferred non-Effect return", blockBodiedInferredNonEffect, false],
+      ["permits an object shorthand method returning composed Effects", blockBodiedMethod, false],
     ],
   },
   {

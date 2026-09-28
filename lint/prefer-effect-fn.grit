@@ -18,11 +18,12 @@ file($name, $body) where {
     },
     $body <: contains bubble {
       JsArrowFunctionExpression() as $block_arrow where {
-        $block_arrow <: r"(?s)^(?:async\s*)?\((?:[^()]|\([^()]*\))*\)\s*:\s*Effect\.Effect[^=]*(?:=>[^=]*)*\s*=>\s*\{.*",
+        $block_arrow <: r"(?s)^(?:\((?:[^()]|\([^()]*\))*\)|[a-zA-Z_$][\w$]*)\s*(?::\s*[^=]*(?:=>[^=]*)*)?\s*=>\s*\{.*",
         $block_arrow <: not within (or {
           `Effect.fn($_)($_)`,
           `Effect.fn($_)`
         }),
+        $block_arrow <: not within `$_($_)`,
         $block_arrow <: contains `return $returned`,
         $returned <: or {
           r"(?s)^[^(]*\([^)]*\)\.pipe\(\s*Effect\..*",
