@@ -1,5 +1,5 @@
-import type { TSESTree } from "@typescript-eslint/types";
 import { expect, test } from "bun:test";
+import type { TSESTree } from "@typescript-eslint/types";
 import {
   identifierNames,
   methodCallsNamed,
