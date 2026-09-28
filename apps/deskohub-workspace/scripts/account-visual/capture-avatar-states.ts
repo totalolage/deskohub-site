@@ -62,10 +62,14 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 /**
  * The bundle is compiled from the working tree, so any staged, unstaged, or
  * untracked difference from HEAD would make the report misattribute a dirty
- * tree to the clean commit. `git status --porcelain` covers all three.
+ * tree to the clean commit. `--untracked-files=all` is explicit because
+ * `git status` otherwise honors `status.showUntrackedFiles=no` from git
+ * config and would silently hide untracked build inputs.
  */
-const gitStatusPorcelainLines = (): readonly string[] =>
-  execSync("git status --porcelain", { cwd: repoRoot })
+export const gitStatusPorcelainLines = (
+  cwd: string = repoRoot
+): readonly string[] =>
+  execSync("git status --porcelain=v1 --untracked-files=all", { cwd })
     .toString()
     .split("\n")
     .filter((line) => line.trim().length > 0);

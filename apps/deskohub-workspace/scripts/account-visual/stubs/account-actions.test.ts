@@ -86,8 +86,19 @@ test("avatar stubs count one invocation and hold or resolve per outcome", async 
     expectedInvocationCount += 1;
 
     if (outcome.startsWith("pending-")) {
-      // The stub intentionally never resolves so the pending state holds.
-      expect(resultPromise).toBeInstanceOf(Promise);
+      // The stub intentionally never settles so the pending state holds.
+      // Race against a bounded window so this fails if a pending branch is
+      // ever changed to resolve or reject (e.g. Promise.resolve).
+      const settlement = await Promise.race([
+        resultPromise.then(
+          () => "settled" as const,
+          () => "settled" as const
+        ),
+        new Promise<"still-pending">((resolvePending) => {
+          setTimeout(() => resolvePending("still-pending"), 25);
+        }),
+      ]);
+      expect(settlement).toBe("still-pending");
     } else {
       expect(await resultPromise).toEqual({
         data: expect.objectContaining({ status: outcome }),
