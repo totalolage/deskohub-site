@@ -1021,7 +1021,6 @@ export function InvoiceCreationForm({
                         <FormControl>
                           <Input
                             {...field}
-                            id={`description-${line.id}`}
                             onInput={onChange}
                             required
                             variant={fieldState.error ? "error" : "default"}
@@ -1040,7 +1039,6 @@ export function InvoiceCreationForm({
                         <FormControl>
                           <InvoicePriceInput
                             exponent={currencyExponent}
-                            lineId={line.id}
                             onBlur={field.onBlur}
                             onChange={onChange}
                             ref={field.ref}
@@ -1212,7 +1210,6 @@ const invoicePricePattern = (exponent: number) =>
 // so the DOM value could drift from the form state it is supposed to gate.
 function InvoicePriceInput({
   exponent,
-  lineId,
   onBlur,
   onChange,
   ref,
@@ -1221,7 +1218,6 @@ function InvoicePriceInput({
   ...labelProps
 }: {
   readonly exponent: number;
-  readonly lineId: string;
   readonly onBlur: () => void;
   readonly onChange: (price: string) => void;
   readonly ref?: (node: HTMLInputElement | null) => void;
@@ -1249,7 +1245,6 @@ function InvoicePriceInput({
 
   return (
     <Input
-      id={`price-${lineId}`}
       inputMode="decimal"
       onBlur={onBlur}
       onChange={(event) => {
