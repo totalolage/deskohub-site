@@ -458,6 +458,41 @@ test("renders preview and create action errors as alerts", async () => {
   expect(view.getByText("Create exploded.")).toBeTruthy();
 });
 
+const expectLabelsToMatchInputs = (view: InvoiceFormView) => {
+  const labels = [
+    ...view.container.querySelectorAll("label[for]"),
+  ] as HTMLLabelElement[];
+  expect(labels.length).toBeGreaterThan(0);
+  for (const label of labels) {
+    const input = view.container.querySelector(`#${CSS.escape(label.htmlFor)}`);
+    expect(
+      input,
+      `label "${label.textContent}" points at missing id "${label.htmlFor}"`
+    ).toBeTruthy();
+    // Checkbox controls render as buttons with role="checkbox", so allow
+    // both native and ARIA-labelable targets.
+    const tagName = input?.tagName ?? "";
+    expect(
+      ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(tagName),
+      `label htmlFor "${label.htmlFor}" does not target a form control`
+    ).toBe(true);
+  }
+};
+
+test("associates every label with its rendered input", () => {
+  workspaceUseAction.mockImplementation(
+    () => ({ execute: mock(), isExecuting: false }) as never
+  );
+  const view = renderInvoiceCreationForm();
+  expectLabelsToMatchInputs(view);
+
+  fireEvent.click(view.getByRole("button", { name: "Add line" }));
+  expectLabelsToMatchInputs(view);
+
+  fireEvent.click(view.getByRole("button", { name: "Remove line 2" }));
+  expectLabelsToMatchInputs(view);
+});
+
 test("manages line items and gates price input by currency precision", () => {
   workspaceUseAction.mockImplementation(
     () => ({ execute: mock(), isExecuting: false }) as never
