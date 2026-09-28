@@ -11,9 +11,11 @@
  * both dialog variants and locales.
  *
  * The metrics regression covers every locale × dialog combination (4
- * scenarios), and a built-in negative self-check tampering the DOM to remove
- * the valid-until date trigger once, proving the assertions fail closed when
- * the trigger is absent.
+ * scenarios) and asserts each dialog's Generate-code button renders the
+ * localized accessible name (CS text must differ from EN). Built-in
+ * negative self-checks tamper the live dialog to prove the assertions fail
+ * closed: once with the valid-until date trigger removed, once with the
+ * code input hidden.
  *
  * Usage:
  *   bun apps/deskohub-workspace/scripts/discounts-admin-narrow-pair/run.ts \
@@ -164,6 +166,13 @@ const pairMetricsScript = (): PairMetrics => {
       getComputedStyle(button).visibility !== "hidden" &&
       getComputedStyle(button).display !== "none";
     const cellRect = cell.getBoundingClientRect();
+    const codeInputRect = codeInput.getBoundingClientRect();
+    const codeInputStyle = getComputedStyle(codeInput);
+    const codeInputVisible =
+      codeInputRect.width > 0 &&
+      codeInputRect.height > 0 &&
+      codeInputStyle.visibility !== "hidden" &&
+      codeInputStyle.display !== "none";
     const enabledInput = document.querySelector('input[name="enabled"]');
     const enabledRect = enabledInput?.closest("label")?.getBoundingClientRect();
     return {
@@ -181,9 +190,13 @@ const pairMetricsScript = (): PairMetrics => {
             buttonRect.left >= cellRect.left - 0.5,
       buttonTextOverflow:
         button === null ? null : button.scrollWidth - button.clientWidth,
-      codeInputRight: codeInput.getBoundingClientRect().right,
+      codeInputVisible,
+      codeInputLeft: codeInputRect.left,
+      codeInputRight: codeInputRect.right,
       codeInputWithinCell:
-        codeInput.getBoundingClientRect().right <= cellRect.right + 0.5,
+        codeInputVisible &&
+        codeInputRect.right <= cellRect.right + 0.5 &&
+        codeInputRect.left >= cellRect.left - 0.5,
     };
   };
 
@@ -220,6 +233,8 @@ type GenerateMetrics =
       readonly enabledLeft: number | null;
       readonly buttonWithinCell: boolean | null;
       readonly buttonTextOverflow: number | null;
+      readonly codeInputVisible: boolean;
+      readonly codeInputLeft: number;
       readonly codeInputRight: number;
       readonly codeInputWithinCell: boolean;
     };
@@ -254,6 +269,12 @@ type PairMetrics = { readonly error: string } | PairLayoutMetrics;
 
 const topTolerancePx = 2;
 const widthTolerancePx = 2;
+
+const generateButtonText = (pair: PairMetrics): string | null => {
+  if ("error" in pair) return null;
+  if ("error" in pair.generate) return null;
+  return pair.generate.buttonText;
+};
 
 const checkPair = (pair: PairMetrics): readonly string[] => {
   const failures: string[] = [];
@@ -324,6 +345,8 @@ const checkPair = (pair: PairMetrics): readonly string[] => {
       }
       if (
         generate.buttonTextOverflow !== null &&
+        // scrollWidth and clientWidth are rounded integers, so a 1px delta
+        // can come from subpixel layout rounding; >1 is a real overflow.
         generate.buttonTextOverflow > 1
       ) {
         failures.push(
@@ -331,9 +354,14 @@ const checkPair = (pair: PairMetrics): readonly string[] => {
         );
       }
     }
+    if (!generate.codeInputVisible) {
+      failures.push(
+        "generate: code input missing, hidden, or zero-size"
+      );
+    }
     if (!generate.codeInputWithinCell) {
       failures.push(
-        `generate: code input right ${generate.codeInputRight.toFixed(1)}px exceeds code cell right ${generate.cellRight.toFixed(1)}px`
+        `generate: code input rect [${generate.codeInputLeft.toFixed(1)}, ${generate.codeInputRight.toFixed(1)}] not fully inside code cell [${generate.cellLeft.toFixed(1)}, ${generate.cellRight.toFixed(1)}]`
       );
     }
   }
@@ -441,11 +469,13 @@ export const updateDiscountCodeAdminForm = () => { throw new Error("renderer stu
   });
   const failures: string[] = [];
   const metricsByScenario: Record<string, PairMetrics> = {};
-  let negativeCheck: {
+  const buttonTextByScenario: Record<string, string | null> = {};
+  let negativeChecks: readonly {
     readonly scenario: string;
+    readonly kind: "missing-trigger" | "hidden-code-input";
     readonly detected: boolean;
     readonly failures: readonly string[];
-  } | null = null;
+  }[] = [];
 
   try {
     for (const locale of locales) {
@@ -490,14 +520,15 @@ export const updateDiscountCodeAdminForm = () => { throw new Error("renderer stu
           pairMetricsScript
         )) as PairMetrics;
         metricsByScenario[`${suffix}-390`] = pairMetrics;
+        buttonTextByScenario[`${suffix}-390`] = generateButtonText(pairMetrics);
         const scenarioFailures = checkPair(pairMetrics);
         if (scenarioFailures.length > 0) {
           failures.push(`${suffix}-390: ${scenarioFailures.join("; ")}`);
         }
-        if (negativeCheck === null) {
-          // Negative self-check: tamper the valid-until trigger out of the
-          // live dialog once and prove the assertions fail closed. The dialog
-          // is discarded right after, so later scenarios are unaffected.
+        if (negativeChecks.length === 0) {
+          // Negative self-checks: tamper the live dialog once per failure
+          // mode and prove the assertions fail closed. The dialog is
+          // discarded right after, so later scenarios are unaffected.
           await page.evaluate(() => {
             const input = document.querySelector<HTMLInputElement>(
               'input[name="validUntil"]'
@@ -511,21 +542,51 @@ export const updateDiscountCodeAdminForm = () => { throw new Error("renderer stu
             }
             element?.querySelector('button[aria-haspopup="dialog"]')?.remove();
           });
-          const tamperedMetrics = (await page.evaluate(
+          const missingTriggerMetrics = (await page.evaluate(
             pairMetricsScript
           )) as PairMetrics;
-          const tamperedFailures = checkPair(tamperedMetrics);
-          const detected = tamperedFailures.some((failure) =>
-            failure.includes("date trigger")
+          const missingTriggerFailures = checkPair(missingTriggerMetrics);
+          const missingTriggerDetected = missingTriggerFailures.some(
+            (failure) => failure.includes("date trigger")
           );
-          negativeCheck = {
-            scenario: `${suffix}-390`,
-            detected,
-            failures: tamperedFailures,
-          };
-          if (!detected) {
+          negativeChecks = [
+            {
+              scenario: `${suffix}-390`,
+              kind: "missing-trigger",
+              detected: missingTriggerDetected,
+              failures: missingTriggerFailures,
+            },
+          ];
+          if (!missingTriggerDetected) {
             failures.push(
               "negative self-check: missing valid-until date trigger was NOT detected"
+            );
+          }
+          await page.evaluate(() => {
+            const input = document.querySelector<HTMLInputElement>(
+              'input[name="code"]'
+            );
+            if (input) input.style.visibility = "hidden";
+          });
+          const hiddenCodeInputMetrics = (await page.evaluate(
+            pairMetricsScript
+          )) as PairMetrics;
+          const hiddenCodeInputFailures = checkPair(hiddenCodeInputMetrics);
+          const hiddenCodeInputDetected = hiddenCodeInputFailures.some(
+            (failure) => failure.includes("code input")
+          );
+          negativeChecks = [
+            ...negativeChecks,
+            {
+              scenario: `${suffix}-390`,
+              kind: "hidden-code-input",
+              detected: hiddenCodeInputDetected,
+              failures: hiddenCodeInputFailures,
+            },
+          ];
+          if (!hiddenCodeInputDetected) {
+            failures.push(
+              "negative self-check: hidden code input was NOT detected"
             );
           }
         }
@@ -538,14 +599,43 @@ export const updateDiscountCodeAdminForm = () => { throw new Error("renderer stu
     server.stop(true);
   }
 
+  // Accessible-name regression: every dialog must render distinct localized
+  // Generate-code button text for CS vs EN (both locales define the
+  // discountAdminGenerateCode catalog message).
+  for (const dialog of dialogs) {
+    const en = buttonTextByScenario[`${dialog}-en-US-390`];
+    const cs = buttonTextByScenario[`${dialog}-cs-CZ-390`];
+    if (en === null || cs === null) {
+      failures.push(
+        `${dialog}: generate button text missing (en=${JSON.stringify(en)}, cs=${JSON.stringify(cs)})`
+      );
+    } else if (en === cs) {
+      failures.push(
+        `${dialog}: CS generate button text does not differ from EN (both ${JSON.stringify(en)})`
+      );
+    }
+  }
+
   await writeFile(
     join(outputRoot, "narrow-pair-metrics.json"),
-    JSON.stringify(metricsByScenario, null, 2),
+    JSON.stringify(
+      Object.fromEntries(
+        Object.entries(metricsByScenario).map(([scenario, pair]) => [
+          scenario,
+          {
+            ...pair,
+            buttonText: generateButtonText(pair),
+          },
+        ])
+      ),
+      null,
+      2
+    ),
     "utf8"
   );
   await writeFile(
     join(outputRoot, "negative-check.json"),
-    JSON.stringify(negativeCheck, null, 2),
+    JSON.stringify(negativeChecks, null, 2),
     "utf8"
   );
 
@@ -555,13 +645,13 @@ export const updateDiscountCodeAdminForm = () => { throw new Error("renderer stu
     // biome-ignore lint/suspicious/noConsole: CLI diagnostic output
     for (const failure of failures) console.error(`- ${failure}`);
     // biome-ignore lint/suspicious/noConsole: CLI diagnostic output
-    console.error(`negative self-check: ${JSON.stringify(negativeCheck)}`);
+    console.error(`negative self-checks: ${JSON.stringify(negativeChecks)}`);
     process.exit(1);
   }
   // biome-ignore lint/suspicious/noConsole: CLI diagnostic output
   console.log("NARROW PAIR METRICS PASSED");
   // biome-ignore lint/suspicious/noConsole: CLI diagnostic output
-  console.log(`negative self-check: ${JSON.stringify(negativeCheck)}`);
+  console.log(`negative self-checks: ${JSON.stringify(negativeChecks)}`);
   for (const [scenario, pair] of Object.entries(metricsByScenario)) {
     if ("error" in pair) continue;
     const generateLine =

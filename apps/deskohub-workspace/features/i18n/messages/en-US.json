@@ -874,6 +874,7 @@
   "accountDeletedMetadataTitle": "Account deleted | Deskohub Workspace",
   "accountDeletedMetadataDescription": "Your Deskohub Workspace customer account was deleted.",
   "accountDeletedTitle": "Your account was deleted",
+  "discountAdminGenerateCode": "Generate code",
   "accountDeletedBody": "You are signed out and your login was deleted. Signing in again later with the same verified email reactivates your retained customer profile.",
   "accountDeletedSignInAgain": "Sign in again",
   "accountSupportTitle": "We need to verify your profile",

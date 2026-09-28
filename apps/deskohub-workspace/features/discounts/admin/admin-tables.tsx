@@ -34,6 +34,7 @@ import type {
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import { generatePromotionCode } from "@/features/discounts/promotion-code";
+import { getLocale, m } from "@/features/i18n";
 import { DateInput } from "@/shared/components/date-time/date-input";
 import { DateTimeInput } from "@/shared/components/date-time/date-time-input";
 import { Button } from "@/shared/components/ui/button";
@@ -1072,6 +1073,7 @@ export function DiscountCodeConfigurationFields({
   readonly showMaxUses?: boolean;
 }) {
   const [codeValue, setCodeValue] = useState(code?.code ?? "");
+  const locale = getLocale();
   const codeInputId = fieldId("code", code?.id);
   const initialValidFrom = toDateTimeInputValue(code?.validFrom);
   const initialValidUntil = toDateTimeInputValue(code?.validUntil);
@@ -1118,7 +1120,9 @@ export function DiscountCodeConfigurationFields({
               variant="secondary"
             >
               <RefreshCw aria-hidden className="size-4 shrink-0" />
-              <span className="truncate">Generate code</span>
+              <span className="truncate">
+                {m.discountAdminGenerateCode({}, { locale })}
+              </span>
             </Button>
           )}
         </div>
