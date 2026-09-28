@@ -253,7 +253,8 @@ describe("Customer-account boundary", () => {
     ): boolean => {
       if (file !== authorizedEmitterFile) return false;
       const property = member.property;
-      if (property.type !== "Identifier" || property.name !== "log") return false;
+      if (property.type !== "Identifier" || property.name !== "log")
+        return false;
       // Must sit inside the dedicated preview-E2E emitter.
       const emitter = nodesOf(ast).find(
         (node) =>
@@ -273,7 +274,9 @@ describe("Customer-account boundary", () => {
       if (call?.type !== "CallExpression") return false;
       return (
         identifierNames(call).has("magicLinkPreviewE2ELogCode") ||
-        stringLiterals(call).some((literal) => literal.value === authorizedLogCode)
+        stringLiterals(call).some(
+          (literal) => literal.value === authorizedLogCode
+        )
       );
     };
 
