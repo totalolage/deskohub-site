@@ -276,9 +276,12 @@ test("prepares the transient calendar pool with the bare reserved-desk product",
   expect(pricingChangeCase).toBeDefined();
   expect(pricingChangeCase?.checkoutStates).toHaveLength(2);
   for (const { data } of pricingChangeCase?.checkoutStates ?? []) {
-    expect(data.expectedReservationDetails).toMatchObject({
-      entryTier: "reserved-desk",
-    });
+    const details = data.expectedReservationDetails;
+    expect(details).toMatchObject({ entryTier: "reserved-desk" });
+    expect(details).not.toHaveProperty("monitorOption");
+    expect(new URL(data.checkoutUrl).searchParams.has("monitorOption")).toBe(
+      false
+    );
     expect(bareReservedDeskDates).toContain(data.date);
     expect(monitorTaggedDates).not.toContain(data.date);
   }
