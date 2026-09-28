@@ -1063,8 +1063,12 @@ describe("CoworkReservationForm advertised pricing", () => {
       const message = await getUnavailableMessage(view);
       expect(message).not.toMatch(/all out of space|nemáme volné místo/);
       if (locale === "en-US") {
+        expect(message).toMatch(/your selected reservation/i);
+        expect(message).not.toMatch(/offer you selected/i);
         expect(message).toMatch(/another monitor setup/i);
       } else {
+        expect(message).toMatch(/zvolené konfiguraci/i);
+        expect(message).not.toMatch(/nabídka .* není na .* dostupná\./u);
         expect(message).toMatch(/jinou sestavu monitorů/);
       }
       await act(async () => {

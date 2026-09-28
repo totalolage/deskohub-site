@@ -25,6 +25,7 @@ describe("reservation offer copy", () => {
       { locale: "en-US" }
     );
     expect(en).not.toMatch(/\btier\b/i);
+    expect(en).toMatch(/your selected reservation/i);
     expect(en).toMatch(/another offer|different offer/i);
     expect(en).toMatch(/date/i);
     expect(en).toMatch(/if you selected a workstation/i);
@@ -35,6 +36,8 @@ describe("reservation offer copy", () => {
       { locale: "cs-CZ" }
     );
     expect(cs).not.toMatch(/\btarif\b/i);
+    expect(cs).toMatch(/rezervace nabídky/i);
+    expect(cs).toMatch(/zvolené konfiguraci/i);
     expect(cs).toMatch(/jinou nabídku/);
     expect(cs).toMatch(/datum/);
     expect(cs).toMatch(/pracovní stanici/);
