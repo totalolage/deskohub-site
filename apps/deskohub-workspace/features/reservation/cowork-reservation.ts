@@ -13,8 +13,8 @@ import {
   normalizedPlusCoworkReservationProductSchema,
   normalizedProfiCoworkReservationProductSchema,
   normalizedReservedDeskCoworkReservationProductSchema,
+  type WorkspaceCoworkCurrentTier,
   type WorkspaceCoworkProductTier,
-  type WorkspaceCoworkSaleableTier,
 } from "@/features/reservation/cowork-reservation-product";
 import {
   defaultReservationBillingSelection,
@@ -216,9 +216,9 @@ export const normalizedCoworkReservationFormSchema = Schema.Union([
   }),
 ]);
 
-// Public issuance only ever produces the saleable offers; the full form union
+// Public issuance only ever produces the current offers; the full form union
 // above stays decodable for historical truth.
-export const normalizedSaleableCoworkReservationFormSchema = Schema.Union([
+export const normalizedCurrentCoworkReservationFormSchema = Schema.Union([
   Schema.Struct({
     ...normalizedOpenSpaceCoworkReservationOrderSchema.fields,
     marketingConsent: Schema.Boolean,
@@ -233,8 +233,8 @@ export type NormalizedCoworkReservationOrder =
   typeof normalizedCoworkReservationOrderSchema.Type;
 export type NormalizedCoworkReservationForm =
   typeof normalizedCoworkReservationFormSchema.Type;
-export type NormalizedSaleableCoworkReservationForm =
-  typeof normalizedSaleableCoworkReservationFormSchema.Type;
+export type NormalizedCurrentCoworkReservationForm =
+  typeof normalizedCurrentCoworkReservationFormSchema.Type;
 
 const coworkReservationDetailsDateSchema = Schema.toEncoded(
   plainDateStringSchema
@@ -547,25 +547,25 @@ export const coworkReservationOrderSchema = coworkReservationOrderInputSchema
     })
   );
 
-// Public order issuance only produces the saleable offers.
-export const normalizedSaleableCoworkReservationOrderSchema = Schema.Union([
+// Public order issuance only produces the current offers.
+export const normalizedCurrentCoworkReservationOrderSchema = Schema.Union([
   normalizedOpenSpaceCoworkReservationOrderSchema,
   normalizedReservedDeskCoworkReservationOrderSchema,
 ]);
 
-export type NormalizedSaleableCoworkReservationOrder =
-  typeof normalizedSaleableCoworkReservationOrderSchema.Type;
+export type NormalizedCurrentCoworkReservationOrder =
+  typeof normalizedCurrentCoworkReservationOrderSchema.Type;
 
-export const coworkSaleableReservationOrderSchema =
+export const coworkCurrentReservationOrderSchema =
   coworkReservationOrderInputSchema
     .check(Schema.makeFilter(getCoworkReservationIssues))
     .pipe(
-      Schema.decodeTo(normalizedSaleableCoworkReservationOrderSchema, {
+      Schema.decodeTo(normalizedCurrentCoworkReservationOrderSchema, {
         decode: SchemaGetter.transform(
           (data) =>
             normalizeCoworkReservationOrder(
               data
-            ) as NormalizedSaleableCoworkReservationOrder
+            ) as NormalizedCurrentCoworkReservationOrder
         ),
         encode: SchemaGetter.transform(decodeCoworkReservationOrder),
       })
@@ -573,17 +573,15 @@ export const coworkSaleableReservationOrderSchema =
 
 export const normalizeCoworkReservationForm = (
   data: CoworkReservationFormInput
-): NormalizedSaleableCoworkReservationForm =>
-  // Issuance input can only produce the saleable offers.
+): NormalizedCurrentCoworkReservationForm =>
+  // Issuance input can only produce the current offers.
   ({
     ...normalizeCoworkReservationOrder(data),
     marketingConsent: data.marketingConsent,
-  }) as NormalizedSaleableCoworkReservationForm;
+  }) as NormalizedCurrentCoworkReservationForm;
 
 export const getCoworkReservationOrder = (
-  form:
-    | NormalizedCoworkReservationForm
-    | NormalizedSaleableCoworkReservationForm
+  form: NormalizedCoworkReservationForm | NormalizedCurrentCoworkReservationForm
 ): NormalizedCoworkReservationOrder =>
   Match.value(form).pipe(
     Match.discriminatorsExhaustive("entryTier")({
@@ -600,9 +598,9 @@ export const getCoworkReservationOrder = (
     })
   );
 
-export const getCoworkSaleableReservationOrder = (
-  form: NormalizedSaleableCoworkReservationForm
-): NormalizedSaleableCoworkReservationOrder =>
+export const getCoworkCurrentReservationOrder = (
+  form: NormalizedCurrentCoworkReservationForm
+): NormalizedCurrentCoworkReservationOrder =>
   Match.value(form).pipe(
     Match.discriminatorsExhaustive("entryTier")({
       "open-space": ({ marketingConsent: _, ...reservation }) =>
@@ -617,7 +615,7 @@ const coworkReservationDraftSchema = coworkReservationFormInputSchema.check(
 );
 
 export const coworkReservationSchema = coworkReservationDraftSchema.pipe(
-  Schema.decodeTo(normalizedSaleableCoworkReservationFormSchema, {
+  Schema.decodeTo(normalizedCurrentCoworkReservationFormSchema, {
     decode: SchemaGetter.transform(normalizeCoworkReservationForm),
     encode: SchemaGetter.transform(
       (reservation): CoworkReservationFormInput => ({
@@ -649,7 +647,7 @@ export {
   getCoworkTierRequiresMonitorOption,
   getCoworkTierWorkstationAddon,
 } from "@/features/checkout/product-catalog";
-export type { WorkspaceCoworkProductTier, WorkspaceCoworkSaleableTier };
+export type { WorkspaceCoworkCurrentTier, WorkspaceCoworkProductTier };
 export {
   getAllowedMonitorOptionsForCoworkTier,
   getCoworkReservationProductCoffee,

@@ -30,7 +30,7 @@ import {
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
 import {
-  isWorkspaceCoworkSaleableProductTier,
+  isWorkspaceCoworkCurrentProductTier,
   type WorkspaceCoworkProductTier,
 } from "@/features/checkout/product-catalog";
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
@@ -159,13 +159,11 @@ const ensureReservationHasNotEnded = Effect.fn(
   const error = Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: (coworkReservation) => {
-        // Old tiers stay decodable for history but are no longer saleable:
+        // Old tiers stay decodable for history but are no longer current:
         // in-flight legacy checkouts get no grace path and must restart with
         // the current offers instead of creating a payment attempt at old
         // amounts.
-        if (
-          !isWorkspaceCoworkSaleableProductTier(coworkReservation.entryTier)
-        ) {
+        if (!isWorkspaceCoworkCurrentProductTier(coworkReservation.entryTier)) {
           return new CheckoutError({
             code: "cowork_offer_replaced",
             message:

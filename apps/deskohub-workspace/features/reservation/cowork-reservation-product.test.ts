@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
-import { workspaceProductMonitorOptions } from "@/features/checkout/product-catalog";
+import { Result, Schema, SchemaAST } from "effect";
+import {
+  type WorkspaceCoworkProductTier,
+  type WorkspaceProductMonitorOption,
+  workspaceCoworkTiers,
+  workspaceProductMonitorOptions,
+} from "@/features/checkout/product-catalog";
+import { coworkReservationDetailsSchema } from "./cowork-reservation";
 import {
   coworkReservationProductSchema,
   getStoredCoworkReservationDetails,
@@ -30,6 +36,55 @@ const safeParseStoredDetails = Schema.decodeUnknownResult(
   storedCoworkReservationDetailsSchema,
   { onExcessProperty: "error" }
 );
+const parseReservationDetails = Schema.decodeUnknownSync(
+  coworkReservationDetailsSchema,
+  { onExcessProperty: "error" }
+);
+
+type StoredCoworkDetailsSample = {
+  readonly kind: "cowork";
+  readonly entryTier: WorkspaceCoworkProductTier;
+  readonly coffee: boolean;
+  readonly monitorOption?: WorkspaceProductMonitorOption;
+};
+
+const representativeStoredDetailsByTier = {
+  basic: { kind: "cowork", entryTier: "basic", coffee: false },
+  plus: { kind: "cowork", entryTier: "plus", coffee: true },
+  profi: {
+    kind: "cowork",
+    entryTier: "profi",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+  },
+  "open-space": { kind: "cowork", entryTier: "open-space", coffee: true },
+  "reserved-desk": {
+    kind: "cowork",
+    entryTier: "reserved-desk",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+  },
+} satisfies Record<WorkspaceCoworkProductTier, StoredCoworkDetailsSample>;
+
+const codecEntryTierLiterals = (schema: {
+  readonly ast: SchemaAST.AST;
+}): readonly string[] => {
+  const variants = SchemaAST.isUnion(schema.ast)
+    ? schema.ast.types
+    : [schema.ast];
+  return variants.map((variant) => {
+    if (!SchemaAST.isObjects(variant)) {
+      throw new Error("expected a struct-like cowork codec variant");
+    }
+    const entryTier = variant.propertySignatures.find(
+      (signature) => signature.name === "entryTier"
+    );
+    if (!entryTier || !SchemaAST.isLiteral(entryTier.type)) {
+      throw new Error("expected a literal entryTier codec discriminant");
+    }
+    return String(entryTier.type.literal);
+  });
+};
 
 describe("cowork reservation product", () => {
   test("owns canonical cowork product keys", () => {
@@ -295,5 +350,89 @@ describe("cowork reservation product", () => {
         })
       )
     ).toBe(true);
+  });
+
+  test("decodes the exact 20260720 backfill shapes through every codec", () => {
+    const backfillDetails = [
+      { kind: "cowork", entryTier: "basic", coffee: true },
+      { kind: "cowork", entryTier: "basic", coffee: false },
+      { kind: "cowork", entryTier: "plus", coffee: true },
+      ...workspaceProductMonitorOptions.map(
+        (monitorOption) =>
+          ({
+            kind: "cowork",
+            entryTier: "profi",
+            coffee: true,
+            monitorOption,
+          }) as const
+      ),
+    ] as const;
+
+    for (const details of backfillDetails) {
+      expect(parseStoredDetails(details)).toEqual(details);
+
+      const { kind: _, ...product } = details;
+      const normalized = safeParseNormalizedProduct(product);
+      expect(Result.isSuccess(normalized)).toBe(true);
+      if (Result.isSuccess(normalized)) {
+        expect(normalized.success).toEqual(product);
+      }
+
+      const dated = { ...details, date: "2026-07-20" };
+      expect(parseReservationDetails(dated)).toEqual(dated);
+    }
+  });
+
+  test("decodes all five historical and current stored tier shapes", () => {
+    for (const details of [
+      { kind: "cowork", entryTier: "basic", coffee: false },
+      { kind: "cowork", entryTier: "basic", coffee: true },
+      { kind: "cowork", entryTier: "plus", coffee: true },
+      {
+        kind: "cowork",
+        entryTier: "profi",
+        coffee: true,
+        monitorOption: "2x27-4k",
+      },
+      { kind: "cowork", entryTier: "open-space", coffee: false },
+      { kind: "cowork", entryTier: "open-space", coffee: true },
+      {
+        kind: "cowork",
+        entryTier: "reserved-desk",
+        coffee: true,
+        monitorOption: "2x32-4k",
+      },
+      { kind: "cowork", entryTier: "reserved-desk", coffee: true },
+    ] as const) {
+      expect(parseStoredDetails(details)).toEqual(details);
+    }
+  });
+
+  test("keeps catalog tiers and persisted codec discriminants in lockstep", () => {
+    // Every codec entryTier literal must appear in the catalog.
+    expect(
+      [...codecEntryTierLiterals(storedCoworkReservationDetailsSchema)].sort()
+    ).toEqual([...workspaceCoworkTiers].sort());
+    expect(
+      [
+        ...codecEntryTierLiterals(normalizedCoworkReservationProductSchema),
+      ].sort()
+    ).toEqual([...workspaceCoworkTiers].sort());
+
+    // Every catalog tier literal must have a stored and a normalized codec
+    // variant that decodes.
+    for (const tier of workspaceCoworkTiers) {
+      const storedDetails = representativeStoredDetailsByTier[tier];
+      expect(parseStoredDetails(storedDetails)).toMatchObject({
+        entryTier: tier,
+      });
+
+      const { kind: _, ...product } = storedDetails;
+      const normalized = safeParseNormalizedProduct(product);
+      expect(Result.isSuccess(normalized)).toBe(true);
+      if (Result.isSuccess(normalized)) {
+        expect(normalized.success.entryTier).toBe(tier);
+      }
+    }
   });
 });

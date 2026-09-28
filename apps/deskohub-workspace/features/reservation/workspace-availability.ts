@@ -4,10 +4,10 @@ import {
 } from "@deskohub/standard-schema";
 import { Match, Option, Schema } from "effect";
 import {
-  isWorkspaceCoworkSaleableProductTier,
+  isWorkspaceCoworkCurrentProductTier,
   isWorkspaceProductMonitorOption,
   type WorkspaceCoworkProductTier,
-  workspaceCoworkSaleableTiers,
+  workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
@@ -42,7 +42,7 @@ export const coworkWorkspaceAvailabilityQuerySchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
   ...workspaceAvailabilityQueryBaseFields,
   date: Schema.optional(Schema.String),
-  entryTier: Schema.optional(Schema.Literals(workspaceCoworkSaleableTiers)),
+  entryTier: Schema.optional(Schema.Literals(workspaceCoworkCurrentTiers)),
   monitorOption: Schema.optional(
     Schema.Literals(workspaceProductMonitorOptions)
   ),
@@ -78,7 +78,7 @@ export type OfficeWorkspaceAvailabilityQuery =
 
 // Internal availability computations also serve historical recovery paths,
 // so the selection query keeps every cowork tier decodable even though the
-// public query schema only accepts the saleable offers.
+// public query schema only accepts the current offers.
 export type CoworkWorkspaceAvailabilitySelectionQuery = Omit<
   CoworkWorkspaceAvailabilityQuery,
   "entryTier"
@@ -156,7 +156,7 @@ const getDateParam = (searchParams: URLSearchParams, key: string) => {
 
 const getTierParam = (value: string | null) => {
   const normalized = value?.trim();
-  return isWorkspaceCoworkSaleableProductTier(normalized)
+  return isWorkspaceCoworkCurrentProductTier(normalized)
     ? normalized
     : undefined;
 };

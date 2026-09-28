@@ -2,8 +2,8 @@ import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Predicate, Record, Schema } from "effect";
 import {
   getWorkspaceProductByTier,
-  isWorkspaceCoworkSaleableProductTier,
-  workspaceCoworkSaleableTiers,
+  isWorkspaceCoworkCurrentProductTier,
+  workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
@@ -74,7 +74,7 @@ const queryDateSchema = Schema.toStandardSchemaV1(
   )
 );
 const queryTierSchema = Schema.toStandardSchemaV1(
-  Schema.Literals(workspaceCoworkSaleableTiers)
+  Schema.Literals(workspaceCoworkCurrentTiers)
 );
 const queryMonitorOptionSchema = Schema.toStandardSchemaV1(
   Schema.Literals(workspaceProductMonitorOptions)
@@ -168,7 +168,7 @@ export const getReservationDefaultValuesFromSearchParams = (
 export const getReservationDefaultValuesFromPayState = (
   reservation: NormalizedCoworkReservationOrder
 ): CoworkReservationInput => {
-  if (!isWorkspaceCoworkSaleableProductTier(reservation.entryTier)) {
+  if (!isWorkspaceCoworkCurrentProductTier(reservation.entryTier)) {
     throw new Error(
       "Historical cowork tiers cannot be restored into the reservation form.",
       { cause: reservation.entryTier }
@@ -298,6 +298,6 @@ export const getWorkspaceAvailabilityQueryFromReservationSearchParams = (
   return {
     ...rest,
     ...(entryTier !== undefined &&
-      isWorkspaceCoworkSaleableProductTier(entryTier) && { entryTier }),
+      isWorkspaceCoworkCurrentProductTier(entryTier) && { entryTier }),
   };
 };

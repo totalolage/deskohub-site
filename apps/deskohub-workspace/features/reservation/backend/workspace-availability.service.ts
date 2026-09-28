@@ -23,9 +23,9 @@ import {
   workspaceOfficeReservationTableTag,
 } from "@/features/checkout/backend/reservation";
 import {
-  isWorkspaceCoworkSaleableProductTier,
+  isWorkspaceCoworkCurrentProductTier,
   type WorkspaceCoworkProductTier,
-  workspaceCoworkSaleableTiers,
+  workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
@@ -274,7 +274,7 @@ const implementation = Effect.gen(function* () {
           : selectedDateOccupancy;
 
       const unavailableCoworkTiers = selectedDate
-        ? yield* Effect.filter(workspaceCoworkSaleableTiers, (tier) =>
+        ? yield* Effect.filter(workspaceCoworkCurrentTiers, (tier) =>
             Effect.flatMap(
               getCoworkOfferOccupancy(selectedDate, tier),
               (occupancy) =>
@@ -514,13 +514,13 @@ const isCoworkUnavailableForSelection = (
 ) => {
   const { entryTier, monitorOption } = query;
 
-  // A bare query offers every saleable category, so each category is judged
+  // A bare query offers every current category, so each category is judged
   // with its OWN authoritative interval occupancy (Open Space 00:00-17:00;
   // Reserved Desk full Prague day, including every eligible workstation
   // configuration). The date is unavailable only when no category has an
   // open offer — never because one category's interval looks full.
   if (!entryTier) {
-    return Effect.forEach(workspaceCoworkSaleableTiers, (candidateTier) =>
+    return Effect.forEach(workspaceCoworkCurrentTiers, (candidateTier) =>
       Effect.flatMap(getOfferOccupancy(candidateTier), (offerOccupancy) =>
         isCoworkCategoryUnavailable(tables, offerOccupancy, candidateTier)
       )
@@ -528,8 +528,8 @@ const isCoworkUnavailableForSelection = (
   }
 
   // Legacy tiers are only ever re-checked on historical recovery paths and
-  // keep their `tier:${tier}` tags; they never serve a new saleable request.
-  if (!isWorkspaceCoworkSaleableProductTier(entryTier)) {
+  // keep their `tier:${tier}` tags; they never serve a new current request.
+  if (!isWorkspaceCoworkCurrentProductTier(entryTier)) {
     return hasAvailableWorkspaceTableCandidate(
       tables,
       [`tier:${entryTier}`],

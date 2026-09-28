@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { Result, Schema } from "effect";
 import "@/shared/polyfills/temporal";
 import {
+  coworkCurrentReservationOrderSchema,
   coworkReservationSchema,
-  coworkSaleableReservationOrderSchema,
   getCoworkReservationDetails,
   getCoworkReservationIntervalInput,
   getCoworkReservationOrder,
@@ -15,7 +15,7 @@ const safeParseCoworkReservation = Schema.decodeUnknownResult(
   coworkReservationSchema
 );
 const safeParseCoworkReservationOrder = Schema.decodeUnknownResult(
-  coworkSaleableReservationOrderSchema
+  coworkCurrentReservationOrderSchema
 );
 
 describe("cowork reservation schema", () => {

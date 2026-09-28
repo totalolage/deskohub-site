@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Effect, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import type {
-  WorkspaceCoworkSaleableTier,
+  WorkspaceCoworkCurrentTier,
   WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
@@ -74,7 +74,7 @@ export type OfficeAvailability = {
 
 export type CoworkAvailabilitySelection = {
   readonly allocation?: WorkspaceE2EDateAllocation;
-  readonly entryTier?: WorkspaceCoworkSaleableTier;
+  readonly entryTier?: WorkspaceCoworkCurrentTier;
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };
 
@@ -124,7 +124,7 @@ export const makeCoworkCheckoutData = (
   flowId = "cowork-basic",
   product: {
     readonly coffee?: boolean;
-    readonly entryTier?: WorkspaceCoworkSaleableTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   } = {}
 ): CheckoutData => {
@@ -143,7 +143,7 @@ export const reuseCoworkCheckoutContact = (
   source: CheckoutData,
   product: {
     readonly coffee?: boolean;
-    readonly entryTier?: WorkspaceCoworkSaleableTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   } = {}
 ): CheckoutData =>
@@ -236,7 +236,7 @@ const makeCoworkCheckoutDataWithContact = (
   contact: ReturnType<typeof makeCheckoutContact>,
   product: {
     readonly coffee?: boolean;
-    readonly entryTier?: WorkspaceCoworkSaleableTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   }
 ): CheckoutData => {
@@ -273,7 +273,7 @@ const makeCoworkCheckoutDataWithContact = (
 };
 
 const makeExpectedCoworkProduct = (
-  entryTier: WorkspaceCoworkSaleableTier,
+  entryTier: WorkspaceCoworkCurrentTier,
   product: {
     readonly coffee?: boolean;
     readonly monitorOption?: WorkspaceProductMonitorOption;
@@ -318,7 +318,7 @@ export const selectAvailableCoworkDates = (
     maximumReservationsPerDate,
     monitorOption,
   }: {
-    readonly entryTier?: WorkspaceCoworkSaleableTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly excludedDates?: ReadonlySet<string>;
     readonly monitorOption?: WorkspaceProductMonitorOption;
     readonly allocation?: WorkspaceE2EDateAllocation;
@@ -791,7 +791,7 @@ export const loadMeetingRoomAvailability = (
   });
 
 const makeCoworkSelectionLabel = (
-  entryTier: WorkspaceCoworkSaleableTier,
+  entryTier: WorkspaceCoworkCurrentTier,
   monitorOption: WorkspaceProductMonitorOption | undefined
 ) =>
   monitorOption

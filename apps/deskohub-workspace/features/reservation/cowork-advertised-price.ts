@@ -3,7 +3,7 @@ import type {
   CoworkAdvertisedPriceRequest,
 } from "@/features/checkout/advertised-price";
 import type {
-  WorkspaceCoworkSaleableTier,
+  WorkspaceCoworkCurrentTier,
   WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
 import type { CanonicalPromotionCode } from "@/features/discounts";
@@ -11,7 +11,7 @@ import type { Locale } from "@/features/i18n";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
 
 export type CoworkAdvertisedPriceOfferSelection = {
-  readonly entryTier: WorkspaceCoworkSaleableTier;
+  readonly entryTier: WorkspaceCoworkCurrentTier;
   readonly coffee: boolean;
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };
@@ -49,7 +49,7 @@ export const getCoworkCoffeeAdvertisedPriceRequest = ({
   readonly date: string;
   readonly locale: Locale;
   readonly submittedCode?: CanonicalPromotionCode;
-  readonly tier: WorkspaceCoworkSaleableTier;
+  readonly tier: WorkspaceCoworkCurrentTier;
 }): AdvertisedPriceRequest => ({
   locale,
   ...(submittedCode && { submittedCode }),
