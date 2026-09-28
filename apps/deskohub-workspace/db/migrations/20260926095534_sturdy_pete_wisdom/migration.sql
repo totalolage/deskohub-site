@@ -15,3 +15,11 @@ ALTER TABLE "customer_communication_preferences" ADD CONSTRAINT "customer_commun
 INSERT INTO "customer_communication_preferences" ("customer_account_id", "locale")
 SELECT u."id", 'en-US' FROM "auth"."user" AS u
 ON CONFLICT ("customer_account_id") DO NOTHING;
+--> statement-breakpoint
+-- Single retained locale slot for the customer email idempotency generation:
+-- written only while null before a generation's first provider send so failed
+-- and accepted-but-unrecorded retries keep a locale-stable idempotency key,
+-- and atomically cleared when the accepted send's delivery ID is recorded so
+-- the next generation resolves the current preference. Idempotent by
+-- IF NOT EXISTS; nullable, so no backfill is needed.
+ALTER TABLE "workspace_reservations" ADD COLUMN IF NOT EXISTS "customer_email_delivery_locale" text;

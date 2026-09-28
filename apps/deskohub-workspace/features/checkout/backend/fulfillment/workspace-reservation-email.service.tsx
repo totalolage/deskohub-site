@@ -61,6 +61,7 @@ import { createWorkspaceMeetingRoomEmailDetailRows } from "./workspace-meeting-r
 export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservationDetails;
+    readonly customerEmailLocale: Locale;
     readonly customerEmailIdempotencyKey?: string;
   }) => Effect.Effect<EmailDeliveryId, EmailServiceError | NetworkError>;
   readonly sendCancellationEmail: (input: {
@@ -105,8 +106,12 @@ const getReservationLocale = (locale: string): Locale =>
  * always uses its required saved communication preference, while an unlinked
  * guest keeps the reservation locale. A preference read failure fails the
  * email send instead of silently guessing a wrong customer preference.
+ *
+ * Exported for the paid-fulfillment workflow, which must resolve and retain
+ * the locale before a generation's first provider send so failed and
+ * accepted-but-unrecorded retries keep a locale-stable idempotency key.
  */
-const createCustomerEmailLocaleResolver =
+export const createCustomerEmailLocaleResolver =
   (emailLocale: CustomerEmailLocaleService["Service"]) =>
   (reservation: WorkspaceReservationDetails) =>
     emailLocale.byDotyposCustomer(reservation.dotyposCustomerId).pipe(
@@ -578,7 +583,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
           "WorkspaceReservationEmailService.sendPaidReservationEmails"
         )(function* (input) {
           const { reservation } = input;
-          const locale = yield* resolveCustomerEmailLocale(reservation);
+          const locale = input.customerEmailLocale;
           const customer = reservation.customer;
           const customerName = getCustomerName(customer);
           const customerEmail = customer.email?.trim();

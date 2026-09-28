@@ -24,6 +24,7 @@ import { captureReservationCompleted } from "../analytics/posthog-lifecycle-even
 import { WorkspaceCheckoutNetworkDetailsService } from "./network-details.service";
 import {
   createCustomerEmailInitialIdempotencyKey,
+  createCustomerEmailLocaleResolver,
   createCustomerEmailRecoveryIdempotencyKey,
   WorkspaceReservationEmailService,
 } from "./workspace-reservation-email.service";
@@ -68,6 +69,9 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
       const reservations = yield* WorkspaceReservationRepository;
       const dotypos = yield* DotyposService;
       const reservationEmails = yield* WorkspaceReservationEmailService;
+      const emailLocale = yield* CustomerEmailLocaleService;
+      const resolveCustomerEmailLocale =
+        createCustomerEmailLocaleResolver(emailLocale);
       const workspaceReservations = yield* WorkspaceReservationService;
       const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
       const posthogEvents = yield* PostHogEventService;
@@ -388,9 +392,39 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                   })
                 )
               );
+            // A retained locale pins the current idempotency generation to the
+            // language of its first send: preference changes between failed or
+            // accepted-but-unrecorded retries must not change the email under
+            // the same provider idempotency key. Recording the accepted send's
+            // delivery ID clears the slot, so the next generation resolves the
+            // current preference again.
+            const customerEmailLocale = yield* (
+              claimed.customerEmailDeliveryLocale
+                ? Effect.succeed(claimed.customerEmailDeliveryLocale)
+                : resolveCustomerEmailLocale(reservationForDelivery).pipe(
+                    Effect.tap((locale) =>
+                      reservations.retainCustomerEmailDeliveryLocale({
+                        id: claimed.id,
+                        locale,
+                      })
+                    )
+                  )
+            ).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new WorkspacePaidFulfillmentError({
+                    orderId: input.orderId,
+                    failureCode: "fulfillment_email_failed",
+                    message:
+                      "Paid reservation customer email locale could not be resolved and retained.",
+                    cause,
+                  })
+              )
+            );
             const customerEmailDeliveryId = yield* reservationEmails
               .sendPaidReservationEmails({
                 reservation: reservationForDelivery,
+                customerEmailLocale,
                 customerEmailIdempotencyKey:
                   claimed.activeCustomerEmailDeliveryId
                     ? createCustomerEmailRecoveryIdempotencyKey(
