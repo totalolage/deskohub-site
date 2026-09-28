@@ -1257,6 +1257,13 @@ function InvoicePriceInput({
         if (!isInvoicePriceInput(price, exponent)) return;
         onChange(price);
       }}
+      onInput={(event) => {
+        // Mirrors the other form fields: real typing dispatches input
+        // events, which React's synthetic onChange does not always surface.
+        const price = event.currentTarget.value;
+        if (!isInvoicePriceInput(price, exponent)) return;
+        if (price !== value) onChange(price);
+      }}
       pattern={invoicePricePattern(exponent)}
       placeholder="0.00"
       ref={(node) => {

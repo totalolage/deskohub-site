@@ -213,11 +213,21 @@ test("reuses an existing draft id and generates one when absent", () => {
   );
 });
 
-const renderInvoiceCreationForm = () =>
+const renderInvoiceCreationForm = ({
+  currencies = [{ code: "CZK", exponent: 2, name: "Czech koruna" }],
+  defaultCurrency = "CZK",
+}: {
+  readonly currencies?: {
+    readonly code: string;
+    readonly exponent: number;
+    readonly name: string;
+  }[];
+  readonly defaultCurrency?: string;
+} = {}) =>
   render(
     createElement(InvoiceCreationForm, {
-      currencies: [{ code: "CZK", exponent: 2, name: "Czech koruna" }],
-      defaultCurrency: "CZK",
+      currencies,
+      defaultCurrency,
       defaultDueDate: "2026-09-01",
       defaultServiceDate: "2026-08-18",
       suggestedVariableSymbol: "2026000001",
@@ -574,4 +584,83 @@ test("ignores a blank hidden due date once already paid is selected", async () =
       payment: { status: "paid", date: "2026-08-18" },
     })
   );
+});
+
+const priceInputOf = (view: InvoiceFormView) =>
+  view.getByLabelText("Price") as HTMLInputElement;
+
+const previewPayloadOf = (
+  preview: ReturnType<typeof mockPreviewAction>,
+  callIndex: number
+) =>
+  preview.mock.calls[callIndex]![0] as {
+    readonly lines: { readonly price: string }[];
+  };
+
+test("accepts a browser-typed price and keeps a rejected one out of the payload", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  const priceInput = priceInputOf(view);
+
+  // Browser-style typing: input events through the same handler the other
+  // fields use.
+  fireEvent.input(priceInput, { target: { value: "1250.5" } });
+  expect(priceInput.value).toBe("1250.5");
+
+  // More precision than the currency allows: rejected, never enters state.
+  fireEvent.input(priceInput, { target: { value: "1250.555" } });
+  expect(priceInput.value).toBe("1250.555");
+
+  submitInvoiceForm(view);
+  await view.findByText("This action creates and sends the invoice");
+  expect(previewPayloadOf(preview, 0).lines[0]).toEqual({
+    description: "Space rental",
+    price: "1250.5",
+  });
+});
+
+test("follows the switched currency exponent when gating price input", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm({
+    currencies: [
+      { code: "JPY", exponent: 0, name: "Japanese yen" },
+      { code: "CZK", exponent: 2, name: "Czech koruna" },
+    ],
+  });
+  fillValidPersonInvoice(view);
+  const priceInput = priceInputOf(view);
+  expect(priceInput.value).toBe("1000");
+
+  // Exponent 0 rejects any decimal places.
+  fireEvent.change(view.getByLabelText("Currency"), {
+    target: { value: "JPY" },
+  });
+  fireEvent.change(priceInput, { target: { value: "1.5" } });
+  expect(priceInput.value).toBe("1000");
+  fireEvent.input(priceInput, { target: { value: "1.5" } });
+  expect(priceInput.value).toBe("1.5");
+
+  submitInvoiceForm(view);
+  await view.findByText("This action creates and sends the invoice");
+  const jpyPayload = previewPayloadOf(preview, 0);
+  expect(jpyPayload.lines[0]).toEqual({
+    description: "Space rental",
+    price: "1000",
+  });
+
+  // Exponent 2 accepts the decimal again.
+  fireEvent.change(view.getByLabelText("Currency"), {
+    target: { value: "CZK" },
+  });
+  fireEvent.input(priceInput, { target: { value: "1.5" } });
+  expect(priceInput.value).toBe("1.5");
+
+  submitInvoiceForm(view);
+  await flush();
+  const czkPayload = previewPayloadOf(preview, 1);
+  expect(czkPayload.lines[0]).toEqual({
+    description: "Space rental",
+    price: "1.5",
+  });
 });
