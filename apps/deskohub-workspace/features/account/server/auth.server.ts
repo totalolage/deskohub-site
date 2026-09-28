@@ -11,7 +11,10 @@ import {
   workspaceBeforeDeleteUser,
   workspaceSendMagicLink,
 } from "@/features/account/backend/auth/auth-server";
-import { seedAccountCommunicationPreference } from "@/features/account/backend/customer-communication-preference.repository";
+import {
+  requireAccountCommunicationPreference,
+  seedAccountCommunicationPreference,
+} from "@/features/account/backend/customer-communication-preference.repository";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { areAccountsEnabled } from "./account-feature-flag.server";
@@ -52,6 +55,14 @@ export const auth = makeWorkspaceAuth({
       boundary: "route",
     })(
       seedAccountCommunicationPreference(accountId, locale).pipe(
+        Effect.provide(WorkspaceDatabase.Default)
+      )
+    ),
+  requireAccountCommunicationPreference: (accountId) =>
+    runWorkspaceEffect("account.communication-preference.require", {
+      boundary: "route",
+    })(
+      requireAccountCommunicationPreference(accountId).pipe(
         Effect.provide(WorkspaceDatabase.Default)
       )
     ),

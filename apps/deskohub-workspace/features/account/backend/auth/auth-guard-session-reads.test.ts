@@ -13,7 +13,10 @@ import {
   authVerification,
 } from "@/db/schema/auth";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { seedAccountCommunicationPreference } from "../customer-communication-preference.repository";
+import {
+  requireAccountCommunicationPreference as requireAccountCommunicationPreferenceEffect,
+  seedAccountCommunicationPreference,
+} from "../customer-communication-preference.repository";
 import { type MagicLinkSendFunction, makeWorkspaceAuth } from "./auth-server";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -82,6 +85,17 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     sendMagicLink,
     beforeDeleteUser: () => Promise.resolve(),
     createAccountCommunicationPreference: seedPreference,
+    requireAccountCommunicationPreference: (accountId) =>
+      Effect.runPromise(
+        requireAccountCommunicationPreferenceEffect(accountId).pipe(
+          Effect.provide(
+            Layer.succeed(
+              WorkspaceDatabase,
+              WorkspaceDatabase.of({ db: testDatabase!.db })
+            )
+          )
+        )
+      ),
   });
 };
 

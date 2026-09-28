@@ -13,6 +13,7 @@ const resendSends: {
   readonly to: readonly string[];
   readonly subject: string;
 }[] = [];
+const emitWorkspaceLog = mock(() => undefined);
 
 mock.module("next/server", () => ({
   after: (callback: () => unknown) => {
@@ -34,13 +35,12 @@ mock.module("resend", () => ({
 mock.module("@/instrumentation", () => ({
   postHogLoggerProvider: {
     forceFlush: () => Promise.resolve(),
-    getLogger: () => ({ emit: () => undefined }),
+    getLogger: () => ({ emit: emitWorkspaceLog }),
   },
 }));
 
 const { workspaceSendMagicLink } = await import("./auth-server");
 
-const EN_SUBJECT = "Your Deskohub Workspace sign-in link";
 const CS_SUBJECT = "Přihlašovací odkaz do Deskohub Workspace";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -114,27 +114,56 @@ describe.skipIf(!testDatabase)(
       expect(sentSubjectsFor(email)).toEqual([CS_SUBJECT]);
     });
 
-    test("recovers a missing preference from the initiating locale and never overwrites a saved one", async () => {
-      const email = uniqueEmail("recover-missing");
+    test("preserves a missing preference on an existing account without seeding the request locale", async () => {
+      const email = uniqueEmail("missing-preserved");
       const accountId = await insertVerifiedUser(email, true);
 
+      emitWorkspaceLog.mockClear();
       const queued = await requestDelivery(email, "cs-CZ");
 
-      expect(queued).toBe(1);
-      expect(sentSubjectsFor(email)).toEqual([CS_SUBJECT]);
+      expect(queued).toBe(0);
+      expect(sentSubjectsFor(email)).toEqual([]);
 
       const rows = await testDatabase!.pool.query(
         `select locale from customer_communication_preferences where customer_account_id = $1`,
         [accountId]
       );
-      expect(rows.rows).toEqual([{ locale: "cs-CZ" }]);
+      expect(rows.rows).toEqual([]);
 
-      await testDatabase!.pool.query(
-        `update customer_communication_preferences set locale = 'en-US' where customer_account_id = $1`,
+      // The skip log is emitted fire-and-forget; give it a moment to land.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const skipLogs = emitWorkspaceLog.mock.calls.filter((call) =>
+        JSON.stringify(call).includes("account.magic-link.locale.missing")
+      );
+      expect(skipLogs.length).toBeGreaterThan(0);
+    });
+
+    test("keeps a failed-activation account undelivered on a later different-locale sign-in", async () => {
+      // A persistent seed failure during a Czech signup leaves a verified
+      // user row without its required preference (proven end-to-end by
+      // auth-handler.test.ts). A later English sign-in request must never
+      // choose or persist the customer's language: no delivery, no insert,
+      // and the fixed skip log code.
+      const email = uniqueEmail("failed-activation");
+      const accountId = await insertVerifiedUser(email, true);
+
+      emitWorkspaceLog.mockClear();
+      const queued = await requestDelivery(email, "en-US");
+
+      expect(queued).toBe(0);
+      expect(sentSubjectsFor(email)).toEqual([]);
+
+      const rows = await testDatabase!.pool.query(
+        `select locale from customer_communication_preferences where customer_account_id = $1`,
         [accountId]
       );
-      await requestDelivery(email, "cs-CZ");
-      expect(sentSubjectsFor(email)).toEqual([CS_SUBJECT, EN_SUBJECT]);
+      expect(rows.rows).toEqual([]);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const skipLogs = emitWorkspaceLog.mock.calls.filter((call) =>
+        JSON.stringify(call).includes("account.magic-link.locale.missing")
+      );
+      expect(skipLogs.length).toBeGreaterThan(0);
     });
 
     test("skips delivery for an existing account when the preference read keeps failing", async () => {

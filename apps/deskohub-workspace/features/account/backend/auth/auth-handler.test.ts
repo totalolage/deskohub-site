@@ -30,7 +30,10 @@ import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace
 import type { CustomerAccountId } from "../customer-account";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
 import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
-import { seedAccountCommunicationPreference } from "../customer-communication-preference.repository";
+import {
+  requireAccountCommunicationPreference as requireAccountCommunicationPreferenceEffect,
+  seedAccountCommunicationPreference,
+} from "../customer-communication-preference.repository";
 import { CustomerDotyposAdapter } from "../customer-dotypos-adapter.service";
 import type { MagicLinkSendFunction, WorkspaceAuthConfig } from "./auth-server";
 
@@ -79,6 +82,7 @@ type TestAuthOptions = {
   readonly areAccountsEnabled?: WorkspaceAuthConfig["areAccountsEnabled"];
   readonly beforeDeleteUser?: (accountId: CustomerAccountId) => Promise<void>;
   readonly createAccountCommunicationPreference?: WorkspaceAuthConfig["createAccountCommunicationPreference"];
+  readonly requireAccountCommunicationPreference?: WorkspaceAuthConfig["requireAccountCommunicationPreference"];
 };
 
 const makeTestAuth = (options: TestAuthOptions = {}) => {
@@ -104,6 +108,26 @@ const makeTestAuth = (options: TestAuthOptions = {}) => {
             )
           )
       : async () => undefined);
+  const requireAccountCommunicationPreference:
+    | WorkspaceAuthConfig["requireAccountCommunicationPreference"]
+    | undefined =
+    options.requireAccountCommunicationPreference ??
+    // The real guard reads the required preference row in the migrated
+    // disposable Postgres, so memory-backed auth instances default to a
+    // noop guard.
+    (testDatabase && !options.database
+      ? (accountId) =>
+          Effect.runPromise(
+            requireAccountCommunicationPreferenceEffect(accountId).pipe(
+              Effect.provide(
+                Layer.succeed(
+                  WorkspaceDatabase,
+                  WorkspaceDatabase.of({ db: testDatabase!.db })
+                )
+              )
+            )
+          )
+      : async () => undefined);
   return makeWorkspaceAuth({
     database: options.database ?? buildDatabaseAdapter(),
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
@@ -113,6 +137,7 @@ const makeTestAuth = (options: TestAuthOptions = {}) => {
     sendMagicLink,
     beforeDeleteUser: options.beforeDeleteUser ?? (() => Promise.resolve()),
     createAccountCommunicationPreference,
+    requireAccountCommunicationPreference,
   });
 };
 
@@ -686,7 +711,7 @@ describe.skipIf(!testDatabase)(
       expect(await preferenceLocaleFor(emailDefault)).toBe("en-US");
     });
 
-    test("rejects account activation when the preference seed keeps failing", async () => {
+    test("rejects account activation when the preference seed keeps failing, including a second outstanding link", async () => {
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({
         sentLinks,
@@ -697,9 +722,18 @@ describe.skipIf(!testDatabase)(
 
       emitWorkspaceLog.mockClear();
       await signInForMagicLink(auth, email, "/cs-CZ/account");
-      const verified = await verifyMagicLink(auth, sentLinks[0]!);
+      // A second outstanding magic link: verifying it must not create a
+      // session for the now-existing user without its required preference.
+      await signInForMagicLink(auth, email, "/cs-CZ/account");
+      expect(sentLinks).toHaveLength(2);
 
-      expect(getSessionCookie(verified)).toBeUndefined();
+      const firstVerified = await verifyMagicLink(auth, sentLinks[0]!);
+      expect(getSessionCookie(firstVerified)).toBeUndefined();
+      expect(firstVerified.status).toBe(500);
+
+      const secondVerified = await verifyMagicLink(auth, sentLinks[1]!);
+      expect(getSessionCookie(secondVerified)).toBeUndefined();
+      expect(secondVerified.status).toBe(500);
 
       const userId = await userIdForEmail(email);
       expect(userId).toBeTruthy();
@@ -708,6 +742,12 @@ describe.skipIf(!testDatabase)(
         [userId]
       );
       expect(preference.rows).toHaveLength(0);
+
+      const sessions = await testDatabase!.pool.query(
+        `select id from auth.session where user_id = $1`,
+        [userId]
+      );
+      expect(sessions.rows).toHaveLength(0);
 
       const seedFailureLogs = emitWorkspaceLog.mock.calls.filter((call) =>
         JSON.stringify(call).includes(

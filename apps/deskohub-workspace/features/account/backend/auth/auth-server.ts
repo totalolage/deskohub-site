@@ -27,8 +27,8 @@ import {
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
+  lookupMagicLinkDeliveryLocale,
   type MagicLinkLocaleLookup,
-  recoverMagicLinkDeliveryLocale,
 } from "../customer-communication-preference.repository";
 import { authOptions, betterAuthMagicLinkOptions } from "./auth-options";
 import { renderMagicLinkEmail } from "./magic-link-email";
@@ -59,6 +59,16 @@ export type WorkspaceAuthConfig = {
   readonly createAccountCommunicationPreference: (
     accountId: CustomerAccountId,
     locale: Locale
+  ) => Promise<void>;
+  /**
+   * Fails when the account's required preferred communication language row
+   * is missing or unreadable. The session-creation guard invokes this on
+   * every session-creating verification path so a user row can never start
+   * a session without its required preference, even when the creation-time
+   * seed failed on an earlier attempt.
+   */
+  readonly requireAccountCommunicationPreference: (
+    accountId: CustomerAccountId
   ) => Promise<void>;
 };
 
@@ -270,13 +280,44 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     databaseHooks: {
       session: {
         create: {
-          before: async (session) => ({
-            data: {
-              ...session,
-              ipAddress: null,
-              userAgent: null,
-            },
-          }),
+          before: async (session) => {
+            const accountId = Option.getOrUndefined(
+              Schema.decodeOption(customerAccountIdSchema)(session.userId)
+            );
+            if (accountId) {
+              try {
+                await config.requireAccountCommunicationPreference(accountId);
+              } catch {
+                // The required preference is missing or unreadable, so the
+                // account must not be activated: every session-creating
+                // verification path for an existing user is blocked here,
+                // not only user creation. The response stays a generic
+                // failure so the account's existence is never revealed.
+                void runWorkspaceEffect("account.auth.session-guard", {
+                  boundary: "route",
+                })(
+                  Effect.logWarning(
+                    "Session creation blocked: the required communication preference is missing or unreadable.",
+                    { code: "account-communication-preference.missing" }
+                  )
+                ).catch(() => undefined);
+                // Match the user.create.after rejection style: a rejected
+                // promise instead of a thrown error in this Effect module.
+                return Promise.reject(
+                  new APIError("INTERNAL_SERVER_ERROR", {
+                    message: "Internal Server Error",
+                  })
+                );
+              }
+            }
+            return {
+              data: {
+                ...session,
+                ipAddress: null,
+                userAgent: null,
+              },
+            };
+          },
         },
       },
       user: {
@@ -300,8 +341,9 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
               // The user row is already committed when this hook runs, but
               // the required preference row is missing, so the activation
               // request must not report success; the initiating locale stays
-              // attached to every retried seed attempt and the delivery-path
-              // recovery reseeds from it idempotently.
+              // attached to every retried seed attempt and the
+              // session-creation guard blocks any later verification until
+              // the preference row exists.
               return Promise.reject(
                 seedFailure.error instanceof Error
                   ? seedFailure.error
@@ -381,7 +423,7 @@ export const workspaceSendMagicLink: MagicLinkSendFunction = async (data) => {
   const lookup = await runWorkspaceEffect("account.magic-link.locale", {
     boundary: "route",
   })(
-    recoverMagicLinkDeliveryLocale(data.email, fallbackLocale).pipe(
+    lookupMagicLinkDeliveryLocale(data.email).pipe(
       Effect.provide(WorkspaceDatabase.Default)
     )
   ).catch(() => ({ kind: "read-failed" }) as const);
