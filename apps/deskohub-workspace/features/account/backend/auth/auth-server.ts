@@ -27,8 +27,8 @@ import {
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
-  lookupMagicLinkDeliveryLocale,
   type MagicLinkLocaleLookup,
+  recoverMagicLinkDeliveryLocale,
 } from "../customer-communication-preference.repository";
 import { authOptions, betterAuthMagicLinkOptions } from "./auth-options";
 import { renderMagicLinkEmail } from "./magic-link-email";
@@ -51,13 +51,50 @@ export type WorkspaceAuthConfig = {
   readonly beforeDeleteUser: (accountId: CustomerAccountId) => Promise<void>;
   /**
    * Seeds the required preferred communication language at account creation
-   * from the initiating site locale. Never throws into the auth flow: the
-   * hook logs a fixed failure code instead.
+   * from the initiating site locale. The seed is retried with the same
+   * initiating locale and a persistent failure rejects the hook so the
+   * account activation request never reports success without the required
+   * preference row.
    */
   readonly createAccountCommunicationPreference: (
     accountId: CustomerAccountId,
     locale: Locale
   ) => Promise<void>;
+};
+
+/**
+ * Retries the preference seed with the same initiating locale so a transient
+ * failure still produces the required row. A persistent failure is returned:
+ * the hook only ever runs for a freshly created user row, so swallowing the
+ * error here would leave an activated account permanently without its
+ * required preference.
+ */
+const seedCommunicationPreferenceOrFail = async (
+  config: WorkspaceAuthConfig,
+  accountId: CustomerAccountId,
+  locale: Locale
+): Promise<{ readonly error: unknown } | undefined> => {
+  let lastError: unknown = new Error(
+    "The communication preference seed did not run."
+  );
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await config.createAccountCommunicationPreference(accountId, locale);
+      return undefined;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  await runWorkspaceEffect("account.magic-link.seed-locale", {
+    boundary: "route",
+  })(
+    Effect.logWarning(
+      "Customer communication preference seed failed; rejecting account activation.",
+      { code: "account-communication-preference.seed-failed" }
+    )
+  ).catch(() => undefined);
+  return { error: lastError };
 };
 
 const accountMagicLinkPaths = new Set([
@@ -120,32 +157,41 @@ const siteLocaleFromAuthContext = (ctx: ParsedAuthContext): Locale => {
 };
 
 /**
- * Picks the magic-link email locale: a verified existing account always uses
- * its saved preference; every other lookup outcome keeps the initiating site
- * locale and logs a fixed, non-PII code so an operational failure never
- * silently guesses a wrong customer preference.
+ * Picks the magic-link email language. A verified existing account always
+ * uses its saved preference. For an existing account, an unreadable or
+ * missing preference never falls back to a guessed site locale: delivery is
+ * skipped so no wrong-language magic link reaches a customer. Only genuine
+ * pre-account (first) delivery and a pending unverified signup keep the
+ * initiating site locale.
  */
-const magicLinkDeliveryLocale = (
+export type MagicLinkDeliveryDecision =
+  | { readonly action: "deliver"; readonly locale: Locale }
+  | {
+      readonly action: "skip";
+      readonly code:
+        | "account.magic-link.locale.missing"
+        | "account.magic-link.locale.read-failed";
+    };
+
+export const decideMagicLinkDelivery = (
   lookup: MagicLinkLocaleLookup,
   fallback: Locale
-): Locale => {
-  if (lookup.kind === "account") return lookup.locale;
+): MagicLinkDeliveryDecision => {
+  if (lookup.kind === "account")
+    return { action: "deliver", locale: lookup.locale };
   if (
     lookup.kind === "account-locale-missing" ||
     lookup.kind === "read-failed"
   ) {
-    void runWorkspaceEffect("account.magic-link.locale", {
-      boundary: "route",
-    })(
-      Effect.logWarning("Magic-link delivery fell back to the site locale.", {
-        code:
-          lookup.kind === "account-locale-missing"
-            ? "account.magic-link.locale.missing"
-            : "account.magic-link.locale.read-failed",
-      })
-    ).catch(() => undefined);
+    return {
+      action: "skip",
+      code:
+        lookup.kind === "account-locale-missing"
+          ? "account.magic-link.locale.missing"
+          : "account.magic-link.locale.read-failed",
+    };
   }
-  return fallback;
+  return { action: "deliver", locale: fallback };
 };
 
 /**
@@ -245,23 +291,24 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
               Schema.decodeUnknownOption(authContextSchema)(ctx)
             );
             const locale = siteLocaleFromAuthContext(parsedCtx ?? {});
-            try {
-              await config.createAccountCommunicationPreference(
-                accountId,
-                locale
+            const seedFailure = await seedCommunicationPreferenceOrFail(
+              config,
+              accountId,
+              locale
+            );
+            if (seedFailure) {
+              // The user row is already committed when this hook runs, but
+              // the required preference row is missing, so the activation
+              // request must not report success; the initiating locale stays
+              // attached to every retried seed attempt and the delivery-path
+              // recovery reseeds from it idempotently.
+              return Promise.reject(
+                seedFailure.error instanceof Error
+                  ? seedFailure.error
+                  : new Error(
+                      "The customer communication preference seed failed."
+                    )
               );
-            } catch {
-              // The user row is already committed when this hook runs, so a
-              // failed seed must not fail the sign-in; the operational
-              // failure stays distinguishable in the logs.
-              await runWorkspaceEffect("account.magic-link.seed-locale", {
-                boundary: "route",
-              })(
-                Effect.logWarning(
-                  "Customer communication preference seed failed.",
-                  { code: "account-communication-preference.seed-failed" }
-                )
-              ).catch(() => undefined);
             }
           },
         },
@@ -334,11 +381,23 @@ export const workspaceSendMagicLink: MagicLinkSendFunction = async (data) => {
   const lookup = await runWorkspaceEffect("account.magic-link.locale", {
     boundary: "route",
   })(
-    lookupMagicLinkDeliveryLocale(data.email).pipe(
+    recoverMagicLinkDeliveryLocale(data.email, fallbackLocale).pipe(
       Effect.provide(WorkspaceDatabase.Default)
     )
   ).catch(() => ({ kind: "read-failed" }) as const);
-  const locale = magicLinkDeliveryLocale(lookup, fallbackLocale);
+  const decision = decideMagicLinkDelivery(lookup, fallbackLocale);
+  if (decision.action === "skip") {
+    await runWorkspaceEffect("account.magic-link.locale", {
+      boundary: "route",
+    })(
+      Effect.logWarning(
+        "Magic-link delivery skipped for an existing account with an unreadable language preference.",
+        { code: decision.code }
+      )
+    ).catch(() => undefined);
+    return;
+  }
+  const locale = decision.locale;
   after(() =>
     runWorkspaceEffect("account.magic-link.deliver", { boundary: "task" })(
       makeWorkspaceMagicLinkDelivery(env.EMAIL_API_KEY).deliver({

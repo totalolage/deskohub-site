@@ -9,6 +9,7 @@ import type { Locale } from "@/features/i18n";
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
+  customerAccountIdSchema,
   mapCustomerAccountFailure,
 } from "../customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
@@ -217,6 +218,48 @@ export const lookupMagicLinkDeliveryLocale = (
   lookupMagicLinkDeliveryLocaleEffect(email).pipe(
     Effect.orElseSucceed(() => ({ kind: "read-failed" }) as const)
   );
+
+/**
+ * Operational recovery for the magic-link delivery locale. A deliverable
+ * lookup passes through unchanged. A missing preference row on an existing
+ * account is reseeded idempotently from the initiating site locale (the seed
+ * never overwrites an already-saved preference) and re-read; a failed read is
+ * retried once. The outcome stays a closed lookup so the caller can still
+ * skip delivery instead of guessing a language.
+ */
+export const recoverMagicLinkDeliveryLocale = (
+  email: string,
+  initiatingLocale: Locale
+): Effect.Effect<MagicLinkLocaleLookup, never, WorkspaceDatabase> =>
+  Effect.gen(function* () {
+    const lookup = yield* lookupMagicLinkDeliveryLocale(email);
+    if (
+      lookup.kind === "account" ||
+      lookup.kind === "pre-account" ||
+      lookup.kind === "unverified-email"
+    ) {
+      return lookup;
+    }
+    if (lookup.kind === "account-locale-missing") {
+      yield* Effect.gen(function* () {
+        const workspace = yield* WorkspaceDatabase;
+        const [user] = yield* workspace.db
+          .select({ id: authUser.id })
+          .from(authUser)
+          .where(eq(authUser.email, email))
+          .limit(1);
+        if (user) {
+          // A failed recovery seed leaves the lookup missing so the caller
+          // still skips delivery instead of guessing a language.
+          yield* seedAccountCommunicationPreference(
+            customerAccountIdSchema.make(user.id),
+            initiatingLocale
+          ).pipe(Effect.catch(() => Effect.void));
+        }
+      }).pipe(Effect.catch(() => Effect.void));
+    }
+    return yield* lookupMagicLinkDeliveryLocale(email);
+  });
 
 /**
  * Seeds the required preference row from the initiating site locale. The

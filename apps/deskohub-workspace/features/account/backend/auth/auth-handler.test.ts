@@ -25,6 +25,7 @@ import {
   authUser,
   authVerification,
 } from "@/db/schema/auth";
+import type { Locale } from "@/features/i18n";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { CustomerAccountId } from "../customer-account";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
@@ -88,7 +89,9 @@ const makeTestAuth = (options: TestAuthOptions = {}) => {
     | WorkspaceAuthConfig["createAccountCommunicationPreference"]
     | undefined =
     options.createAccountCommunicationPreference ??
-    (testDatabase
+    // The real seed requires the account row in the migrated disposable
+    // Postgres, so memory-backed auth instances default to a noop seed.
+    (testDatabase && !options.database
       ? (accountId, locale) =>
           Effect.runPromise(
             seedAccountCommunicationPreference(accountId, locale).pipe(
@@ -681,6 +684,78 @@ describe.skipIf(!testDatabase)(
       await signInForMagicLink(auth, emailDefault);
       await verifyMagicLink(auth, sentLinks[2]!);
       expect(await preferenceLocaleFor(emailDefault)).toBe("en-US");
+    });
+
+    test("rejects account activation when the preference seed keeps failing", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        createAccountCommunicationPreference: () =>
+          Promise.reject(new Error("synthetic persistent seed failure")),
+      });
+      const email = uniqueEmail("seed-persistent-failure");
+
+      emitWorkspaceLog.mockClear();
+      await signInForMagicLink(auth, email, "/cs-CZ/account");
+      const verified = await verifyMagicLink(auth, sentLinks[0]!);
+
+      expect(getSessionCookie(verified)).toBeUndefined();
+
+      const userId = await userIdForEmail(email);
+      expect(userId).toBeTruthy();
+      const preference = await testDatabase!.pool.query(
+        `select locale from customer_communication_preferences where customer_account_id = $1`,
+        [userId]
+      );
+      expect(preference.rows).toHaveLength(0);
+
+      const seedFailureLogs = emitWorkspaceLog.mock.calls.filter((call) =>
+        JSON.stringify(call).includes(
+          "account-communication-preference.seed-failed"
+        )
+      );
+      expect(seedFailureLogs.length).toBeGreaterThan(0);
+    });
+
+    test("recovers a transient preference seed failure within the same activation without losing the initiating locale", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      let attempts = 0;
+      const realSeed = (accountId: CustomerAccountId, locale: Locale) =>
+        Effect.runPromise(
+          seedAccountCommunicationPreference(accountId, locale).pipe(
+            Effect.provide(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: testDatabase!.db })
+              )
+            )
+          )
+        );
+      const auth = makeTestAuth({
+        sentLinks,
+        createAccountCommunicationPreference: async (accountId, locale) => {
+          attempts += 1;
+          if (attempts === 1) {
+            throw new Error("synthetic transient seed failure");
+          }
+          await realSeed(accountId, locale);
+        },
+      });
+      const email = uniqueEmail("seed-transient-recovery");
+
+      await signInForMagicLink(auth, email, "/cs-CZ/account");
+      const verified = await verifyMagicLink(auth, sentLinks[0]!);
+
+      expect(getSessionCookie(verified)).toBeTruthy();
+      expect(attempts).toBe(2);
+
+      const userId = await userIdForEmail(email);
+      expect(userId).toBeTruthy();
+      const preference = await testDatabase!.pool.query(
+        `select locale from customer_communication_preferences where customer_account_id = $1`,
+        [userId]
+      );
+      expect(preference.rows).toEqual([{ locale: "cs-CZ" }]);
     });
 
     test("keeps normal magic-link users at the auth placeholders", async () => {
