@@ -5,14 +5,36 @@ file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
   not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
   not $name <: r".*/generated/.*",
-  $body <: contains bubble {
-    `$parameters => $generator` as $arrow where {
-      $generator <: r"(?s)^\s*Effect\.gen\(function\*.*",
-      register_diagnostic(
-        span = $arrow,
-        message = "Define Effect generator functions with Effect.fn instead of wrapping Effect.gen in an arrow function.",
-        severity = "error"
-      )
+  or {
+    $body <: contains bubble {
+      `$parameters => $generator` as $arrow where {
+        $generator <: r"(?s)^\s*Effect\.gen\(function\*.*",
+        register_diagnostic(
+          span = $arrow,
+          message = "Define Effect generator functions with Effect.fn instead of wrapping Effect.gen in an arrow function.",
+          severity = "error"
+        )
+      }
+    },
+    $body <: contains bubble {
+      JsArrowFunctionExpression() as $block_arrow where {
+        $block_arrow <: r"(?s)^(?:async\s*)?\((?:[^()]|\([^()]*\))*\)\s*:\s*Effect\.Effect[^=]*(?:=>[^=]*)*\s*=>\s*\{.*",
+        $block_arrow <: not within (or {
+          `Effect.fn($_)($_)`,
+          `Effect.fn($_)`
+        }),
+        $block_arrow <: contains `return $returned`,
+        $returned <: or {
+          r"(?s)^[^(]*\([^)]*\)\.pipe\(\s*Effect\..*",
+          r"(?s)^[a-zA-Z_$][\w$]*\.pipe\(\s*Effect\..*",
+          r"(?s)^Effect\.gen\(.*"
+        },
+        register_diagnostic(
+          span = $block_arrow,
+          message = "Define Effect generator functions with Effect.fn instead of wrapping Effect.gen in an arrow function.",
+          severity = "error"
+        )
+      }
     }
   }
 }
