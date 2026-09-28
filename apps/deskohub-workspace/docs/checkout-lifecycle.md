@@ -43,7 +43,7 @@ Voucher codes follow the same customer flow but resolve to their current stored 
 
 The meeting-room reservation page accepts prefill parameters in its URL in every supported locale:
 
-- `name`, `email`, `phone`, and `message` prefill the customer fields.
+- `name`, `email`, and `phone` prefill the customer fields.
 - `startDateTime` is a local start in `YYYY-MM-DDTHH:mm` form, interpreted in the Workspace timezone (Europe/Prague). Only whole hours are accepted.
 - `duration` accepts `hour:1`, `hour:4`, or `day:1`.
 - `discountCode` carries an ordinary discount code.
