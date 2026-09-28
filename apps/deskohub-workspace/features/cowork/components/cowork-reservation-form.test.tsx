@@ -1102,4 +1102,161 @@ describe("CoworkReservationForm advertised pricing", () => {
       });
     }
   });
+
+  test("shows the coffee toggle only when coffee is an optional addon", async () => {
+    // Open Space coffee is an optional paid addon: the toggle is visible.
+    const openSpaceView = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "open-space",
+        date: "2099-07-30",
+      },
+    });
+    expect(
+      openSpaceView.container.querySelector("[data-reservation-coffee-price]")
+    ).not.toBeNull();
+    await act(async () => {
+      openSpaceView.unmount();
+    });
+
+    // Reserved Desk includes coffee: there is no paid coffee toggle.
+    const reservedDeskView = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "reserved-desk",
+        date: "2099-07-30",
+      },
+    });
+    expect(
+      reservedDeskView.container.querySelector(
+        "[data-reservation-coffee-price]"
+      )
+    ).toBeNull();
+    await act(async () => {
+      reservedDeskView.unmount();
+    });
+  });
+
+  test("does not render a paid workstation toggle for a restored historical Profi tier", async () => {
+    // Reserved Desk workstation is an optional paid addon: the toggle is
+    // visible before it is flipped.
+    const reservedDeskView = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "reserved-desk",
+        date: "2099-07-30",
+      },
+    });
+    expect(
+      reservedDeskView.container.querySelector(
+        "[data-reservation-workstation-price]"
+      )
+    ).not.toBeNull();
+    expect(
+      reservedDeskView.getByRole("switch", { name: /Monitor workstation/i })
+    ).toBeDefined();
+    await act(async () => {
+      reservedDeskView.unmount();
+    });
+
+    // Historical Profi carries a required workstation, which is not a paid
+    // toggle and must not render one.
+    const profiView = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "profi",
+        date: "2099-07-30",
+      },
+    });
+    await profiView.findByText(/original price.*290/i, {}, { timeout: 3000 });
+    expect(
+      profiView.container.querySelector("[data-reservation-workstation-price]")
+    ).toBeNull();
+    expect(
+      profiView.queryByRole("switch", { name: /Monitor workstation/i })
+    ).toBeNull();
+    await act(async () => {
+      profiView.unmount();
+    });
+  });
+
+  test("does not issue an availability query for a historical tier", async () => {
+    const availabilityRequests: string[] = [];
+    getAdvertisedPrices.mockImplementation((requests) =>
+      Promise.resolve(
+        advertisedPricesResult(requests, getCoworkAdvertisedPriceResponse)
+      )
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        availabilityRequests.push(url);
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    // A restored historical tier refuses the availability query while the
+    // current tier-card prices still load.
+    const profiView = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "profi",
+        date: "2099-07-30",
+      },
+    });
+    await profiView.findByText(/original price.*290/i, {}, { timeout: 3000 });
+    await act(async () => {});
+    expect(availabilityRequests).toHaveLength(0);
+    await act(async () => {
+      profiView.unmount();
+    });
+
+    // A current tier does issue the availability query.
+    const currentView = renderForm();
+    await currentView.findByText(/original price.*290/i, {}, { timeout: 3000 });
+    await waitFor(() => {
+      expect(availabilityRequests.length).toBeGreaterThan(0);
+    });
+    await act(async () => {
+      currentView.unmount();
+    });
+  });
+
+  test("correlates the workstation addon price from the workstation advertised variant", async () => {
+    getAdvertisedPrices.mockImplementation((requests) =>
+      Promise.resolve(
+        advertisedPricesResult(requests, getCoworkAdvertisedPriceResponse)
+      )
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm();
+    await view.findByText(/original price.*290/i, {}, { timeout: 3000 });
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector(
+          "#reservation-entry-tier-reserved-desk"
+        ) as HTMLElement
+      );
+    });
+
+    // The bare Reserved Desk variant has no workstation quote item, so the
+    // advertised +120 amount can only come from the workstation variant
+    // correlated by nested shape matching.
+    await waitFor(() => {
+      const price = view.container.querySelector(
+        "[data-reservation-workstation-price]"
+      );
+      expect(price?.textContent).toContain("120");
+      expect(price?.querySelector("[data-slot='skeleton']")).toBeNull();
+    });
+    await act(async () => {});
+  });
 });
