@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { m } from "@/features/i18n";
 
 describe("reservation offer copy", () => {
-  test("availability unavailable message names the offer without tier or monitor copy", () => {
+  test("availability unavailable message names the selected setup with conditional monitor advice", () => {
     const reservedDeskName = "Reserved Desk – Afternoon";
     for (const locale of ["en-US", "cs-CZ"] as const) {
       const openSpace = m.reservationAvailabilityUnavailable(
@@ -25,18 +25,20 @@ describe("reservation offer copy", () => {
       { locale: "en-US" }
     );
     expect(en).not.toMatch(/\btier\b/i);
-    expect(en).not.toMatch(/monitor/i);
     expect(en).toMatch(/another offer|different offer/i);
     expect(en).toMatch(/date/i);
+    expect(en).toMatch(/if you selected a workstation/i);
+    expect(en).toMatch(/monitor setup/i);
 
     const cs = m.reservationAvailabilityUnavailable(
       { tier: "Open Space", date: "12. 9. 2026" },
       { locale: "cs-CZ" }
     );
-    expect(cs).not.toMatch(/\btarif/i);
-    expect(cs).not.toMatch(/monitor/i);
+    expect(cs).not.toMatch(/\btarif\b/i);
     expect(cs).toMatch(/jinou nabídku/);
-    expect(cs).toMatch(/datum/i);
+    expect(cs).toMatch(/datum/);
+    expect(cs).toMatch(/pracovní stanici/);
+    expect(cs).toMatch(/sestavu monitorů/);
   });
 
   test("checkout status tier label reads Offer", () => {

@@ -979,4 +979,123 @@ describe("CoworkReservationForm advertised pricing", () => {
     // environment globals are still registered.
     await act(async () => {});
   });
+
+  const monitorUnavailableAvailability = {
+    ...availabilityResponse,
+    unavailableMonitorOptions: ["2x27-qhd"],
+  } as const;
+
+  const openSpaceUnavailableAvailability = {
+    ...availabilityResponse,
+    // Both tiers are marked unavailable so happy-dom keeps the selected
+    // (disabled) Open Space radio checked instead of force-selecting the
+    // other one, which would mask the unavailable-message rendering.
+    unavailableCoworkTiers: ["open-space", "reserved-desk"],
+  } as const;
+
+  const getUnavailableMessage = async (view: ReturnType<typeof renderForm>) => {
+    await waitFor(
+      () => {
+        expect(
+          view.container.querySelector('[data-reservation-unavailable="true"]')
+        ).not.toBeNull();
+      },
+      { timeout: 5000 }
+    );
+    const message = view.container.querySelector("p[aria-live='polite']");
+    expect(message?.textContent).toBeDefined();
+    return message!.textContent!;
+  };
+
+  const renderWithAvailability = async (
+    locale: "en-US" | "cs-CZ",
+    unavailableAvailability: typeof availabilityResponse
+  ) => {
+    getAdvertisedPrices.mockImplementation((requests) =>
+      Promise.resolve(
+        advertisedPricesResult(requests, getCoworkAdvertisedPriceResponse)
+      )
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        const isMonitorRequest = decodeURIComponent(url).includes(
+          "monitorOption=2x27-qhd"
+        );
+        return Promise.resolve(
+          jsonResponse(
+            isMonitorRequest
+              ? monitorUnavailableAvailability
+              : unavailableAvailability
+          )
+        );
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm({ locale });
+    await view.findByText(
+      locale === "en-US" ? /original price.*290/i : /původní cena.*290/i,
+      {},
+      { timeout: 5000 }
+    );
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector(
+          "#reservation-entry-tier-reserved-desk"
+        ) as HTMLElement
+      );
+    });
+    if (unavailableAvailability === monitorUnavailableAvailability) {
+      await act(async () => {
+        fireEvent.click(view.getByRole("switch", { name: /monitor/i }));
+      });
+    }
+    return view;
+  };
+
+  test("scopes the unavailable message to the selected monitor setup instead of the whole Reserved Desk offer", async () => {
+    for (const locale of ["en-US", "cs-CZ"] as const) {
+      const view = await renderWithAvailability(
+        locale,
+        monitorUnavailableAvailability
+      );
+      const message = await getUnavailableMessage(view);
+      expect(message).not.toMatch(/all out of space|nemáme volné místo/);
+      if (locale === "en-US") {
+        expect(message).toMatch(/another monitor setup/i);
+      } else {
+        expect(message).toMatch(/jinou sestavu monitorů/);
+      }
+      await act(async () => {
+        view.unmount();
+      });
+    }
+  });
+
+  test("keeps the monitor advice conditional when an Open Space tier is unavailable", async () => {
+    for (const locale of ["en-US", "cs-CZ"] as const) {
+      const view = await renderWithAvailability(
+        locale,
+        openSpaceUnavailableAvailability
+      );
+      const message = await getUnavailableMessage(view);
+      if (locale === "en-US") {
+        expect(message).toMatch(/Open Space/);
+        expect(message).toMatch(/another offer/i);
+        expect(message).toMatch(/date/i);
+        expect(message).toMatch(/if you selected a workstation/i);
+        expect(message).toMatch(/monitor setup/i);
+      } else {
+        expect(message).toMatch(/Sdílené místo/);
+        expect(message).toMatch(/jinou nabídku/);
+        expect(message).toMatch(/datum/);
+        expect(message).toMatch(/pracovní stanici/);
+        expect(message).toMatch(/sestavu monitorů/);
+      }
+      await act(async () => {
+        view.unmount();
+      });
+    }
+  });
 });

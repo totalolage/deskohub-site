@@ -444,7 +444,7 @@
   "reservationAdvertisedPriceError": "Aktuální cenu se nepodařilo načíst. Před pokračováním to zkus znovu.",
   "reservationAdvertisedPriceRetry": "Zkusit znovu",
   "reservationAlreadyPaidMessage": "Pro tyto údaje už existuje zaplacená rezervace. Změň prosím údaje rezervace nebo nás kontaktuj.",
-  "reservationAvailabilityUnavailable": "Pro nabídku {tier} už na {date} nemáme volné místo. Zkus prosím jinou nabídku nebo datum!",
+  "reservationAvailabilityUnavailable": "Vybraná nabídka {tier} není na {date} dostupná. Zkus prosím jinou nabídku nebo datum — nebo, pokud máš vybranou pracovní stanici, jinou sestavu monitorů!",
   "reservationAvailabilityLoading": "Kontrolujeme dostupnost workspace...",
   "reservationAvailabilityPartialNotice": "Od {startsAt} do {endsAt} může být workspace vytíženější než obvykle.",
   "reservationConfirmationYes": "Ano",

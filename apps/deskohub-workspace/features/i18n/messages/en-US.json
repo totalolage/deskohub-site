@@ -441,7 +441,7 @@
   "reservationAdvertisedPriceError": "The current price could not be loaded. Try again before continuing.",
   "reservationAdvertisedPriceRetry": "Try again",
   "reservationAlreadyPaidMessage": "A paid reservation already exists for these details. Change the reservation details or contact us if you need help.",
-  "reservationAvailabilityUnavailable": "We are all out of space for the {tier} offer on {date}. Please try another offer or date!",
+  "reservationAvailabilityUnavailable": "The {tier} offer you selected isn’t available on {date}. Please try another offer or date — or, if you selected a workstation, another monitor setup!",
   "reservationAvailabilityLoading": "Checking workspace availability...",
   "reservationAvailabilityPartialNotice": "From {startsAt} to {endsAt}, the workspace may be busier than usual.",
   "reservationConfirmationYes": "Yes",
