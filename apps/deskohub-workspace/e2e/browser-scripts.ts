@@ -109,7 +109,6 @@ export const getAssertRepeatReservationScript = (data: CheckoutData) => {
   if (value('input[name="email"]', 'email') !== '') fail('email reset');
   if (value('input[name="phone"]', 'phone') !== '') fail('phone reset');
   if (value('input[name="name"]', 'name') !== '') fail('name reset');
-  if (value('textarea[name="message"]', 'message') !== '') fail('message reset');
 
   if (expected.kind === 'cowork') {
     if (value('input[name="date"]', 'date') === expected.oldDate) fail('fresh date');
@@ -174,7 +173,6 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
     date: data.date,
     email: data.email,
     entryTier: expectedReservation.entryTier,
-    message: data.message,
     monitorOption: expectedReservation.monitorOption ?? null,
     name: data.name,
     phone: data.phone,
@@ -226,7 +224,6 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
   if (value('input[name="email"]', 'email') !== expected.email) fail('email');
   if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
   if (value('input[name="name"]', 'name') !== expected.name) fail('name');
-  if (value('textarea[name="message"]', 'message') !== expected.message) fail('message');
 
   const monitorInputs = [...document.querySelectorAll('input[type="radio"]')]
     .filter((input) => input instanceof HTMLInputElement && input.name !== 'entryTier');
@@ -257,7 +254,6 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
       data.meetingRoom.duration
     ),
     email: data.email,
-    message: data.message,
     name: data.name,
     phone: data.phone,
     time: data.meetingRoom.startDateTime.slice(11),
@@ -288,7 +284,6 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
   if (value('input[name="email"]', 'email') !== expected.email) fail('email');
   if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
   if (value('input[name="name"]', 'name') !== expected.name) fail('name');
-  if (value('textarea[name="message"]', 'message') !== expected.message) fail('message');
 
   const marketingConsent = document.querySelector('#reservation-marketing-consent');
   if (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false') fail('marketing consent reset');
@@ -307,7 +302,6 @@ const getAssertPrefilledOfficeReservationScript = (data: CheckoutData) => {
   const expected = ${JSON.stringify({
     email: data.email,
     dayCount: getOfficeDayCount(data.office),
-    message: data.message,
     name: data.name,
     phone: data.phone,
     seats: data.office.seats,
@@ -329,7 +323,6 @@ const getAssertPrefilledOfficeReservationScript = (data: CheckoutData) => {
   if (value('input[name="email"]', 'email') !== expected.email) fail('email');
   if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
   if (value('input[name="name"]', 'name') !== expected.name) fail('name');
-  if (value('textarea[name="message"]', 'message') !== expected.message) fail('message');
 
   const marketingConsent = document.querySelector('#reservation-marketing-consent');
   if (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false') fail('marketing consent reset');
@@ -575,7 +568,6 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
       data.meetingRoom.duration
     ),
     email: data.email,
-    message: data.message,
     name: data.name,
     phone: data.phone,
     time: data.meetingRoom.startDateTime.slice(11),
@@ -678,7 +670,6 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
   setField('input[name="email"]', expected.email);
   setField('input[name="phone"]', expected.phone);
   setField('input[name="name"]', expected.name);
-  setField('textarea[name="message"]', expected.message);
 
   let priceRetryAttempted = false;
   await waitUntil(() => {
@@ -740,7 +731,6 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
   const expected = ${JSON.stringify({
     email: data.email,
     dayCount: getOfficeDayCount(data.office),
-    message: data.message,
     name: data.name,
     phone: data.phone,
     seats: data.office.seats,
@@ -909,7 +899,6 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
   setField('input[name="email"]', expected.email);
   setField('input[name="phone"]', expected.phone);
   setField('input[name="name"]', expected.name);
-  setField('textarea[name="message"]', expected.message);
 
   let priceRetryAttempted = false;
   await waitUntil(() => {

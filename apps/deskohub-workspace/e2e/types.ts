@@ -89,7 +89,6 @@ export type CheckoutData = {
     readonly startsAt: ReservationInterval["startsAt"];
     readonly startsOn: string;
   };
-  readonly message: string;
   readonly name: string;
   readonly orderIdHint: string;
   readonly phone: string;

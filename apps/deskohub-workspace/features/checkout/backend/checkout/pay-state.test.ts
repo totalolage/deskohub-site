@@ -30,6 +30,7 @@ const {
 const { buildCheckoutPayContinuationPath, buildCheckoutPayPath } = await import(
   "./checkout-pay-url"
 );
+const { sealCheckoutState } = await import("./checkout-state-token");
 
 const runSync = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSync(effect);
 
@@ -66,7 +67,6 @@ const baseReservation = Schema.decodeUnknownSync(
   name: "Ada Lovelace",
   email: "ada@example.com",
   phone: "+420 777 777 777",
-  message: "Private setup note.",
 });
 
 const buildState = (overrides: Partial<SignedPayState> = {}) => ({
@@ -502,7 +502,6 @@ describe("Pay URL state", () => {
     expect(token).not.toContain(baseReservation.name);
     expect(token).not.toContain(baseReservation.email);
     expect(token).not.toContain(baseReservation.phone);
-    expect(token).not.toContain(baseReservation.message);
     expect(token).not.toContain("SUMMER50");
   });
 
@@ -586,5 +585,45 @@ describe("Pay URL state", () => {
     expect(continued.orderId).toBe(reviewState.orderId);
     expect(continued.submittedCode).toBeUndefined();
     expect(continued.submittedCodeDiscountId).toBeUndefined();
+  });
+});
+
+describe("legacy signed Pay state with a retired customer message", () => {
+  test("restores safely while dropping the unknown message key", () => {
+    const state = buildState();
+    const legacyState = {
+      ...state,
+      reservation: {
+        ...state.reservation,
+        message: "Private setup note.",
+      },
+    };
+    // Seal the legacy-shaped payload at the token layer so the ciphertext
+    // carries the retired key exactly as an already-issued Pay state would.
+    const token = runSync(
+      sealCheckoutState(legacyState, fixedKey.kid, {
+        keys: [fixedKey],
+        randomBytes: fixedRandomBytes,
+      })
+    );
+
+    const opened = runSync(
+      openPayState(token, { keys: [fixedKey], now: () => fixedNow })
+    );
+
+    expect(opened.reservation).not.toHaveProperty("message");
+    expect(opened.orderId).toBe(state.orderId);
+    expect(opened.checkoutSessionId).toBe(state.checkoutSessionId);
+    expect(opened.reservation.name).toBe(state.reservation.name);
+    expect(opened.reservation.email).toBe(state.reservation.email);
+    expect(
+      runSync(getPayStateRestartKind(token, { keys: [fixedKey] }))
+    ).toBe("cowork");
+  });
+
+  test("does not carry the retired message into freshly built Pay state", () => {
+    const state = buildState();
+
+    expect(state.reservation).not.toHaveProperty("message");
   });
 });

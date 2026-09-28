@@ -113,9 +113,8 @@ const makeCheckoutContact = (flowId: string) => {
   const name = `Workspace E2E ${flowId} ${runId} ${sequence}`;
   const phone = `+4207${runId.slice(2, 8)}${sequence}`;
   const email = `${deliveredEmailPrefix}${emailKey}@resend.dev`;
-  const message = `Automated checkout e2e ${flowId} ${runId} ${sequence}`;
 
-  return { email, message, name, phone };
+  return { email, name, phone };
 };
 
 export const makeCoworkCheckoutData = (
@@ -152,7 +151,6 @@ export const reuseCoworkCheckoutContact = (
     date,
     {
       email: source.email,
-      message: source.message,
       name: source.name,
       phone: source.phone,
     },
@@ -184,7 +182,6 @@ export const makeOfficeCheckoutData = (
     email: contact.email,
     expectedReservationDetails: { kind: "office" },
     locale,
-    message: contact.message,
     name: contact.name,
     office: slot,
     orderIdHint: "",
@@ -199,7 +196,6 @@ export const reuseMeetingRoomCheckoutContact = (
 ): CheckoutData => {
   return makeMeetingRoomCheckoutDataWithContact(checkoutBaseUrl, slot, {
     email: source.email,
-    message: source.message,
     name: source.name,
     phone: source.phone,
   });
@@ -223,7 +219,6 @@ const makeMeetingRoomCheckoutDataWithContact = (
       startDateTime: slot.startDateTime,
       startsAt: slot.startsAt,
     },
-    message: contact.message,
     name: contact.name,
     orderIdHint: "",
     phone: contact.phone,
@@ -248,7 +243,6 @@ const makeCoworkCheckoutDataWithContact = (
     date,
     email: contact.email,
     entryTier: normalizedProduct.entryTier,
-    message: contact.message,
     name: contact.name,
     phone: contact.phone,
   });
@@ -265,7 +259,6 @@ const makeCoworkCheckoutDataWithContact = (
       ...normalizedProduct,
     },
     locale,
-    message: contact.message,
     name: contact.name,
     orderIdHint: "",
     phone: contact.phone,

@@ -16,7 +16,6 @@ const validMeetingRoomReservation = {
   name: "Ada Lovelace",
   email: "ada@example.com",
   phone: "+420777777777",
-  message: "",
 } as const;
 
 describe("reservation schema", () => {

@@ -22,6 +22,7 @@ import {
   reservationBillingSelectionInputSchema,
 } from "@/features/reservation/reservation-billing";
 import {
+  droppingRetiredReservationCustomerMessage,
   normalizedReservationCustomerSchema,
   reservationCustomerSchema,
 } from "@/features/reservation/reservation-contact";
@@ -185,13 +186,16 @@ export const normalizedProfiCoworkReservationOrderSchema = Schema.Struct({
   date: plainDateStringSchema,
 });
 
-export const normalizedCoworkReservationOrderSchema = Schema.Union([
-  normalizedOpenSpaceCoworkReservationOrderSchema,
-  normalizedReservedDeskCoworkReservationOrderSchema,
-  normalizedBasicCoworkReservationOrderSchema,
-  normalizedPlusCoworkReservationOrderSchema,
-  normalizedProfiCoworkReservationOrderSchema,
-]);
+export const normalizedCoworkReservationOrderSchema =
+  droppingRetiredReservationCustomerMessage(
+    Schema.Union([
+      normalizedOpenSpaceCoworkReservationOrderSchema,
+      normalizedReservedDeskCoworkReservationOrderSchema,
+      normalizedBasicCoworkReservationOrderSchema,
+      normalizedPlusCoworkReservationOrderSchema,
+      normalizedProfiCoworkReservationOrderSchema,
+    ])
+  );
 
 export const normalizedCoworkReservationFormSchema = Schema.Union([
   Schema.Struct({
@@ -487,7 +491,6 @@ export const normalizeCoworkReservationOrder = (
     name: data.name,
     email: data.email,
     phone: data.phone,
-    ...(data.message !== undefined && { message: data.message }),
     billing: data.billing ?? defaultReservationBillingSelection,
   };
   const product = normalizeCoworkReservationProduct(data);
@@ -637,7 +640,6 @@ export const coworkReservationDefaultValues: CoworkReservationInput = {
   name: "",
   email: "",
   phone: "",
-  message: "",
   billing: defaultReservationBillingSelection,
   marketingConsent: false,
 };
