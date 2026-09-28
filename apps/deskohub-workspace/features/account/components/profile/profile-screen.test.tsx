@@ -607,6 +607,73 @@ describe("ProfileScreen", () => {
     cleanup();
   });
 
+  test("keeps Save disabled when a restored preference is re-picked without a change", async () => {
+    // The E2E runner seeds the account with the site default preference, so
+    // the restored selection equals the option the language case picks first.
+    // Radix Select fires onValueChange only when the value changes, so
+    // re-picking the restored locale leaves the save gate closed; the case
+    // must make a genuine selection change (as the review wrapper does)
+    // before Save enables.
+    updatePreferredLanguage.mockClear();
+    const view = render(
+      <ProfileScreen
+        copy={englishCopy}
+        email="ada@example.test"
+        firstName="Ada"
+        lastName="Lovelace"
+        locale="en-US"
+        preferredLanguage="en-US"
+      >
+        {profileFields}
+      </ProfileScreen>
+    );
+    const trigger = view.getByRole("combobox", {
+      name: englishCopy.languageLabel,
+    });
+
+    const openListbox = async () => {
+      await act(async () => {
+        fireEvent.keyDown(trigger, { key: "Enter" });
+      });
+      return view.findByRole("listbox");
+    };
+    const chooseOption = async (name: string) => {
+      const option = view.getByRole("option", { name });
+      await act(async () => {
+        option.focus();
+      });
+      await act(async () => {
+        fireEvent.keyDown(option, { key: "Enter" });
+      });
+    };
+
+    await openListbox();
+    await chooseOption("English (US)");
+
+    const saveButton = view.getByRole("button", { name: "Save" });
+    expect(saveButton.hasAttribute("disabled")).toBe(true);
+    await act(async () => {
+      fireEvent.click(saveButton);
+    });
+    expect(updatePreferredLanguage).not.toHaveBeenCalled();
+
+    // A genuine selection change through the other locale closes the listbox,
+    // so reopen before committing the final value.
+    await openListbox();
+    await chooseOption("Čeština");
+    await openListbox();
+    await chooseOption("English (US)");
+
+    expect(saveButton.hasAttribute("disabled")).toBe(false);
+    await act(async () => {
+      fireEvent.click(saveButton);
+    });
+    await waitFor(() =>
+      expect(updatePreferredLanguage).toHaveBeenCalledWith({ locale: "en-US" })
+    );
+    cleanup();
+  });
+
   test("announces saving during execution and the localized result copy afterwards", async () => {
     let resolveSave!: (result: LanguageActionResult) => void;
     updatePreferredLanguage.mockImplementationOnce(

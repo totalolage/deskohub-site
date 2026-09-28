@@ -1223,6 +1223,7 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         const languageTriggerSelector = '[data-slot="select-trigger"]';
         const languageSaveSelector = 'button[type="button"]:has-text("Save")';
+        const languageOptionCsSelector = '[role="option"]:has-text("Čeština")';
         const languageOptionEnSelector =
           '[role="option"]:has-text("English (US)")';
         const languageSavedCopy = "Communication language saved.";
@@ -1278,6 +1279,23 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "saves English (US) as the preferred communication language",
             Effect.gen(function* () {
+              yield* clickBrowserElement(
+                run,
+                session,
+                languageTriggerSelector,
+                { timeoutMs: browserTimeout }
+              );
+              // The runner seeds the account with the site default
+              // preference, so English (US) is already the restored value and
+              // re-picking it fires no onValueChange: Save stays disabled.
+              // Commit a genuine selection change through the other locale
+              // first, exactly as the language review wrapper does.
+              yield* clickBrowserElement(
+                run,
+                session,
+                languageOptionCsSelector,
+                { timeoutMs: browserTimeout }
+              );
               yield* clickBrowserElement(
                 run,
                 session,
