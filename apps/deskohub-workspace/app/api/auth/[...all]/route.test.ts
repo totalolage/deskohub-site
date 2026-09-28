@@ -444,13 +444,9 @@ describe.skipIf(!testDatabase)(
 
       const verify = await callRoute(verifyPath, "GET");
       expect(verify.status).toBe(500);
-      expect(await verify.text()).not.toContain("seed dependency unavailable");
+      expect(await verify.json()).toEqual({ message: "Internal Server Error" });
       expect(verify.headers.get("cache-control")).toBe("private, no-store");
-      expect(
-        verify.headers
-          .getSetCookie()
-          .some((cookie) => cookie.includes("session_token="))
-      ).toBe(false);
+      expect(verify.headers.getSetCookie()).toHaveLength(0);
     });
 
     test("rejects replayed links and foreign origins without caching the failure", async () => {
