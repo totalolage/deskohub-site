@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
+import type { Pool } from "pg";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { authUser } from "./auth";
 import { customerCommunicationPreferences } from "./customer-communication-preferences";
@@ -22,13 +23,7 @@ const readBackfillStatement = async () => {
   return backfill!;
 };
 
-const insertAuthUser = async (
-  pool: NonNullable<
-    Awaited<ReturnType<typeof connectWorkspacePostgresTestDatabase>>
-  >,
-  id: string,
-  email: string
-) => {
+const insertAuthUser = async (pool: Pool, id: string, email: string) => {
   await pool.query(
     `insert into auth."user" (id, name, email) values ($1, '', $2)`,
     [id, email]
