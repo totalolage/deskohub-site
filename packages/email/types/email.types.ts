@@ -51,6 +51,12 @@ export interface EmailMessage {
   idempotencyKey?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;
+  /**
+   * When true, the message carries sensitive content (bearer links, tokens,
+   * credentials). Providers must suppress recipient, subject, body, and any
+   * development banner output for such messages.
+   */
+  sensitiveContent?: boolean;
 }
 
 /**
