@@ -125,6 +125,25 @@ const blockBodiedMethod = `export const service = {
   },
 };\n`;
 
+const servicePropertyInferred = `const implementation = Effect.gen(function* () {
+  return {
+    deliver: (request: string) => {
+      return Effect.succeed(request).pipe(Effect.map(value => value));
+    },
+  };
+});\n`;
+const servicePropertyTyped = `const implementation = Effect.gen(function* () {
+  return {
+    deliver: (request: string): Effect.Effect<string> => {
+      return Effect.succeed(request).pipe(Effect.map(value => value));
+    },
+  };
+});\n`;
+const inlineCallback = `export const load = Effect.fn("Workspace.load")(() => Effect.succeed("value").pipe(Effect.map((value) => value)));\n`;
+const inlineCallbackMethod = `export const load = Effect.fn("Workspace.load")(function* () { return yield* Effect.succeed("value").pipe(Effect.map((value) => value)); });\n`;
+const blockBodiedInlineCallback = `export const run = Effect.succeed("value").pipe(Effect.map((value) => { return Effect.succeed(value).pipe(Effect.map(v => v)); }));\n`;
+const blockBodiedInlineHandler = `export const run = Effect.succeed("value").pipe(Effect.catchTag("NotFound", (error) => { return Effect.succeed(error).pipe(Effect.map(value => value)); }));\n`;
+
 const reservations = "apps/deskohub-workspace/features/reservations";
 const booking = `${reservations}/book-seat.ts`;
 const generated =
@@ -165,6 +184,8 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["rejects a block-bodied method property returning composed Effects", blockBodiedMethodProperty, true],
       ["rejects a block-bodied arrow with inferred return type", blockBodiedInferred, true],
       ["rejects a block-bodied arrow with inferred return type returning direct pipe", blockBodiedInferredDirect, true],
+      ["rejects an inferred-return service property nested in Effect.gen", servicePropertyInferred, true],
+      ["rejects a typed-return service property nested in Effect.gen", servicePropertyTyped, true],
       ["permits the canonical generator callback", traced("function* (input: string) { return yield* Effect.succeed(input); }"), false],
       ["permits the canonical callback with many transforms", traced("function* (input: string) { return yield* Effect.succeed(input); }", threeTransforms), false],
       ["permits a non-generator Effect callback", arrowGen('Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key: string) => Effect.succeed(key).pipe(Effect.andThen((value) => value)));'), false],
@@ -176,6 +197,10 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["permits a block-bodied async arrow returning a Promise", blockBodiedAsyncPromise, false],
       ["permits a block-bodied arrow with inferred non-Effect return", blockBodiedInferredNonEffect, false],
       ["permits an object shorthand method returning composed Effects", blockBodiedMethod, false],
+      ["permits a direct inline callback", inlineCallback, false],
+      ["permits a direct inline generator callback", inlineCallbackMethod, false],
+      ["permits a block-bodied inline callback argument", blockBodiedInlineCallback, false],
+      ["permits a block-bodied inline handler argument", blockBodiedInlineHandler, false],
     ],
   },
   {

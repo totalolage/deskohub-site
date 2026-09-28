@@ -23,7 +23,20 @@ file($name, $body) where {
           `Effect.fn($_)($_)`,
           `Effect.fn($_)`
         }),
-        $block_arrow <: not within `$_($_)`,
+        // Only arrows that are themselves call arguments are inline callbacks.
+        // `$$$` call spreads match nothing in this engine, so arities are enumerated.
+        $block_arrow <: not within (or {
+          `$_($block_arrow)`,
+          `$_($block_arrow, $_)`,
+          `$_($_, $block_arrow)`,
+          `$_($block_arrow, $_, $_)`,
+          `$_($_, $block_arrow, $_)`,
+          `$_($_, $_, $block_arrow)`,
+          `$_($block_arrow, $_, $_, $_)`,
+          `$_($_, $block_arrow, $_, $_)`,
+          `$_($_, $_, $block_arrow, $_)`,
+          `$_($_, $_, $_, $block_arrow)`
+        }),
         $block_arrow <: contains `return $returned`,
         $returned <: or {
           r"(?s)^[^(]*\([^)]*\)\.pipe\(\s*Effect\..*",
