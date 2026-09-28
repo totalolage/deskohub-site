@@ -94,7 +94,7 @@ const unavailableCodeScenarios = [
 export type DiscountE2EPreparation = {
   readonly availableBasicDates: readonly string[];
   readonly availablePlusDates: readonly string[];
-  readonly availableProfiDates: readonly string[];
+  readonly availableReservedDeskDates: readonly string[];
   readonly customerDiscountGroup: E2EDotyposDiscountGroup;
 };
 
@@ -118,10 +118,9 @@ export const prepareDiscountAvailabilityE2E = (
         allocation,
         entryTier: "open-space",
       }),
-      availableProfiDates: loadAvailableCoworkDates(config, {
+      availableReservedDeskDates: loadAvailableCoworkDates(config, {
         allocation,
         entryTier: "reserved-desk",
-        monitorOption: "2x27-qhd",
       }),
     },
     { concurrency: "unbounded" }
@@ -176,7 +175,7 @@ export const makeDiscountE2ECases = ({
       }
     );
     const transientCalendarDates = yield* selectCoworkDates(
-      preparation.availableProfiDates,
+      preparation.availableReservedDeskDates,
       2,
       {
         allocation,
@@ -185,7 +184,7 @@ export const makeDiscountE2ECases = ({
           ...checkoutDates,
           ...calendarCheckoutDates,
         ]),
-        selectionLabel: "reserved-desk with monitor:2x27-qhd",
+        selectionLabel: "reserved-desk",
       }
     );
     const cases: WorkspaceE2ECase[] = [];

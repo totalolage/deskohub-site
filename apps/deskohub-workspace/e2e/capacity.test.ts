@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import type { Reservation } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
@@ -9,6 +9,10 @@ import {
 } from "@/features/checkout/product-catalog";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import {
+  getWorkspaceE2ECandidateDate,
+  isWorkspaceE2EAllocatedWeekday,
+} from "./allocation";
+import {
   getWorkspaceE2ECapacityFailures,
   getWorkspaceE2ECapacityInterval,
   getWorkspaceE2EDateInterval,
@@ -18,12 +22,18 @@ import {
   workspaceE2EMaximumSameDateCoworkReservations,
 } from "./capacity";
 import { makeWorkspaceE2ECases, type WorkspaceE2EPreparation } from "./cases";
+import {
+  makeDiscountE2ECases,
+  prepareDiscountAvailabilityE2E,
+} from "./cases/discounts";
 import { meetingRoomE2EDurations } from "./cases/meeting-room";
 import { selectCoworkDates } from "./checkout/data";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
 import type { E2EDotyposDiscountGroup } from "./integrations/dotypos";
 import type { Runner } from "./runtime";
 import { workspaceE2ETimeouts } from "./timeouts";
+
+afterEach(() => setSystemTime());
 
 test("covers whole Prague dates at both candidate-range boundaries", () => {
   expect(
@@ -127,7 +137,7 @@ test("wires the case-plan per-date maximums through the real case builders", asy
         "2099-08-22",
         "2099-08-23",
       ],
-      availableProfiDates: reservedDeskDates,
+      availableReservedDeskDates: reservedDeskDates,
     },
     meetingRoom: { slots: makeTestMeetingRoomSlots() },
     office: undefined,
@@ -174,6 +184,104 @@ test("wires the case-plan per-date maximums through the real case builders", asy
     );
   expect(maximumPerDate(openSpaceDateSet)).toBe(openSpaceMaximum);
   expect(maximumPerDate(reservedDeskDateSet)).toBe(reservedDeskMaximum);
+});
+
+test("prepares the transient calendar pool with the bare reserved-desk product", async () => {
+  setSystemTime(new Date("2099-07-17T09:48:00.000Z"));
+  const allocation = {
+    fromOffsetDays: 14,
+    shardCount: 1,
+    shardIndex: 0,
+    toOffsetDays: 45,
+  } as const;
+  const allocatedWeekdays = Array.from(
+    { length: allocation.toOffsetDays - allocation.fromOffsetDays + 1 },
+    (_, index) =>
+      getWorkspaceE2ECandidateDate(allocation.fromOffsetDays + index)
+  ).filter((date) => isWorkspaceE2EAllocatedWeekday(date, allocation));
+  // The bulk open-space selection packs 20 dates at 4/date and the calendar
+  // sale takes the next 4 at 1/date, so the transient selections land on
+  // these later weekdays.
+  const bareReservedDeskDates = [
+    allocatedWeekdays[9],
+    allocatedWeekdays[10],
+  ] as const;
+  const monitorTaggedDates = [
+    allocatedWeekdays[11],
+    allocatedWeekdays[12],
+  ] as const;
+  const requests: URL[] = [];
+  const availableDatesFor = (url: URL): readonly string[] => {
+    if (url.searchParams.has("monitorOption")) return monitorTaggedDates;
+    if (url.searchParams.get("entryTier") === "reserved-desk") {
+      return bareReservedDeskDates;
+    }
+    return allocatedWeekdays;
+  };
+  const fetchMock: typeof globalThis.fetch = async (input) => {
+    const request = input instanceof Request ? input : new Request(input);
+    const url = new URL(request.url);
+    requests.push(url);
+    const wantedDates = availableDatesFor(url);
+    return Response.json({
+      unavailableDates: allocatedWeekdays.filter(
+        (date) => !wantedDates.includes(date)
+      ),
+    });
+  };
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchMock))
+  );
+  const config = makeConstructionTestConfig();
+
+  const preparation = await Effect.runPromise(
+    prepareDiscountAvailabilityE2E(config, allocation).pipe(
+      Effect.provide(httpClientLayer)
+    )
+  );
+
+  const transientRequest = requests.find(
+    (url) => url.searchParams.get("entryTier") === "reserved-desk"
+  );
+  expect(transientRequest).toBeDefined();
+  expect(transientRequest?.searchParams.has("monitorOption")).toBe(false);
+  expect(requests.some((url) => url.searchParams.has("monitorOption"))).toBe(
+    false
+  );
+  expect(preparation.availableReservedDeskDates).toEqual([
+    ...bareReservedDeskDates,
+  ]);
+
+  const cases = await Effect.runPromise(
+    makeDiscountE2ECases({
+      allocation,
+      config,
+      datasourceConfig: {} as DatasourceConfig,
+      excludedDates: new Set<string>(),
+      flowStates: [],
+      preparation: {
+        ...preparation,
+        customerDiscountGroup: {
+          basisPoints: 1000,
+          id: "e2e-discount-group",
+        } as E2EDotyposDiscountGroup,
+      },
+      run: makeStubRunner(),
+    }).pipe(Effect.provide(httpClientLayer))
+  );
+
+  const pricingChangeCase = cases.find(
+    ({ id }) => id === "calendar-sale-pricing-changes"
+  );
+  expect(pricingChangeCase).toBeDefined();
+  expect(pricingChangeCase?.checkoutStates).toHaveLength(2);
+  for (const { data } of pricingChangeCase?.checkoutStates ?? []) {
+    expect(data.expectedReservationDetails).toMatchObject({
+      entryTier: "reserved-desk",
+    });
+    expect(bareReservedDeskDates).toContain(data.date);
+    expect(monitorTaggedDates).not.toContain(data.date);
+  }
 });
 
 test("reports only aggregate capacity for every saleable offer pool", () => {
