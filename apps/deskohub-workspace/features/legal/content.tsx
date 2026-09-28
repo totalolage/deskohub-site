@@ -642,8 +642,8 @@ const legalDocuments = {
               We process the data you provide through our public website,
               especially contact details and message content sent through the
               contact form, plus reservation details: your name, email, phone
-              number, optional message, selected reservation family and product,
-              date or date range, start time, duration, seat count, and any
+              number, selected reservation family and product, date or date
+              range, start time, duration, seat count, and any
               coworking refreshment, monitor, or workstation preferences.
             </>,
             <>
@@ -1080,9 +1080,9 @@ const legalDocuments = {
             <>
               Zpracováváme údaje, které nám poskytnete přes veřejný web, zejména
               kontaktní údaje a obsah zprávy odeslané přes kontaktní formulář a
-              údaje o rezervaci: jméno, e-mail, telefonní číslo, volitelnou
-              zprávu, vybranou rodinu a produkt rezervace, datum nebo rozsah
-              dat, čas začátku, dobu trvání, počet míst a případné coworkingové
+              údaje o rezervaci: jméno, e-mail, telefonní číslo, vybranou rodinu
+              a produkt rezervace, datum nebo rozsah dat, čas začátku, dobu
+              trvání, počet míst a případné coworkingové
               preference občerstvení, monitorů nebo pracovní stanice.
             </>,
             <>

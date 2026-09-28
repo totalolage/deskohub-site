@@ -361,7 +361,6 @@
   "reservationMeetingRoomDateLabel": "Datum začátku rezervace zasedací místnosti",
   "reservationMeetingRoomTimeLabel": "Čas začátku rezervace zasedací místnosti",
   "reservationMeetingRoomDurationLabel": "Délka rezervace",
-  "reservationMeetingRoomMessagePlaceholder": "Název firmy, nastavení místnosti, poznámka k fakturaci nebo cokoliv, co máme vědět.",
   "reservationMeetingRoomUnavailable": "Zasedací místnost není v tomto termínu dostupná. Zkus jiný začátek nebo délku rezervace.",
   "reservationOfficeProductTitle": "Soukromá kancelář",
   "reservationOfficeBasePriceLabel": [
@@ -397,7 +396,6 @@
       }
     }
   ],
-  "reservationOfficeMessagePlaceholder": "Název firmy, nastavení kanceláře, poznámka k fakturaci nebo cokoliv, co máme vědět.",
   "reservationOfficeUnavailable": "Kancelář není dostupná po všechny vybrané dny. Zkus jiné datum začátku nebo kratší pobyt.",
   "reservationCoffeeLabel": "Káva",
   "reservationMonitorLabel": "Monitorový setup",
@@ -409,8 +407,6 @@
   "reservationMonitor2x27FourKDescription": "Dva 27palcové 4K monitory pro ostřejší vizuální práci.",
   "reservationMonitor2x32FourKTitle": "2x 32 4K",
   "reservationMonitor2x32FourKDescription": "Dva 32palcové 4K monitory pro největší ostrou pracovní plochu.",
-  "reservationMessageLabel": "Zpráva",
-  "reservationMessagePlaceholder": "Čas příchodu, název firmy, poznámka k fakturaci nebo cokoliv, co máme vědět.",
   "reservationPurposeLabel": "Účel rezervace",
   "reservationPurposeBusinessLabel": "Firemní využití",
   "reservationBusinessUseTooltip": "Při firemním využití se na nás jako dodavatele vztahují odlišné předpisy EU.",

@@ -360,7 +360,6 @@
   "reservationMeetingRoomDateLabel": "Meeting room start date",
   "reservationMeetingRoomTimeLabel": "Meeting room start time",
   "reservationMeetingRoomDurationLabel": "Duration",
-  "reservationMeetingRoomMessagePlaceholder": "Company name, room setup, invoice note, or anything we should know.",
   "reservationMeetingRoomUnavailable": "The meeting room is not available for this time. Try another start time or duration.",
   "reservationOfficeProductTitle": "Private office",
   "reservationOfficeBasePriceLabel": [
@@ -394,7 +393,6 @@
       }
     }
   ],
-  "reservationOfficeMessagePlaceholder": "Company name, office setup, invoice note, or anything we should know.",
   "reservationOfficeUnavailable": "The office is not available for all the selected days. Try another start date or a shorter stay.",
   "reservationCoffeeLabel": "Coffee",
   "reservationMonitorLabel": "Monitor setup",
@@ -406,8 +404,6 @@
   "reservationMonitor2x27FourKDescription": "Dual 27-inch 4K monitors for sharper visual work.",
   "reservationMonitor2x32FourKTitle": "2x 32 4K",
   "reservationMonitor2x32FourKDescription": "Dual 32-inch 4K monitors for the largest sharp workspace.",
-  "reservationMessageLabel": "Message",
-  "reservationMessagePlaceholder": "Arrival time, company name, invoice note, or anything we should know.",
   "reservationPurposeLabel": "Reservation purpose",
   "reservationPurposeBusinessLabel": "Business use",
   "reservationBusinessUseTooltip": "Different EU regulations apply to us as the supplier for business use.",
