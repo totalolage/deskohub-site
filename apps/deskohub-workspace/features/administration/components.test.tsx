@@ -780,6 +780,126 @@ describe("administration reservation components", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  test("reports a field error for an empty identifier without calling the action", async () => {
+    const execute = mock();
+    workspaceUseAction.mockImplementation(() => ({
+      execute,
+      isExecuting: false,
+    }));
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    const input = view.getByRole("searchbox", {
+      name: "Reservation or payment ID",
+    });
+    await act(async () => {
+      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    });
+
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      view.getByText('Expected a value with a length of at least 1, got ""')
+    ).toBeDefined();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test("accepts an identifier at the maximum length and passes it through", async () => {
+    const execute = mock();
+    workspaceUseAction.mockImplementation(() => ({
+      execute,
+      isExecuting: false,
+    }));
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    const input = view.getByRole("searchbox", {
+      name: "Reservation or payment ID",
+    });
+    fireEvent.input(input, { target: { value: "a".repeat(256) } });
+    await act(async () => {
+      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    });
+
+    expect(input.getAttribute("aria-invalid")).not.toBe("true");
+    expect(execute).toHaveBeenCalledWith({ identifier: "a".repeat(256) });
+  });
+
+  test("reports a field error for an identifier past the maximum length", async () => {
+    const execute = mock();
+    workspaceUseAction.mockImplementation(() => ({
+      execute,
+      isExecuting: false,
+    }));
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    const input = view.getByRole("searchbox", {
+      name: "Reservation or payment ID",
+    });
+    fireEvent.input(input, { target: { value: "a".repeat(257) } });
+    await act(async () => {
+      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    });
+
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(view.getByText(/at most 256/)).toBeDefined();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test("shows the unavailable notice when the lookup action fails", async () => {
+    const execute = mock();
+    let onError:
+      | ((result: {
+          readonly error: { readonly serverError?: string };
+        }) => void)
+      | undefined;
+    workspaceUseAction.mockImplementation((_action, options) => {
+      onError = (
+        options as {
+          readonly onError?: (result: {
+            readonly error: { readonly serverError?: string };
+          }) => void;
+        }
+      ).onError;
+      return { execute, isExecuting: false };
+    });
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    fireEvent.input(
+      view.getByRole("searchbox", { name: "Reservation or payment ID" }),
+      { target: { value: "payment-500" } }
+    );
+    await act(async () => {
+      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    });
+    act(() => {
+      onError?.({
+        error: {
+          serverError: "The reservation lookup is temporarily unavailable.",
+        },
+      });
+    });
+
+    expect(
+      view.getByText("The reservation lookup is temporarily unavailable.")
+    ).toBeDefined();
+    expect(workspaceRouterPush).not.toHaveBeenCalled();
+  });
+
+  test("disables the submit button while the lookup is in flight", async () => {
+    const execute = mock();
+    workspaceUseAction.mockImplementation(() => ({
+      execute,
+      isExecuting: true,
+    }));
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    const button = view.getByRole("button", { name: "Looking up…" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
+
   test("shows the not-found notice when no reservation matched", async () => {
     const execute = mock();
     let onSuccess:

@@ -73,6 +73,7 @@ export function ReservationLookup({
             variant === "card" &&
               "rounded-xl border border-navy-blue/10 bg-white p-5"
           )}
+          noValidate
           onSubmit={(event) => {
             void form.handleSubmit(({ identifier }) => {
               setError(null);
