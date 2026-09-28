@@ -131,7 +131,7 @@ test("reports an overlong label as a field error without calling the action", as
   expect(execute).not.toHaveBeenCalled();
 });
 
-test("submits the exact action args and shows the success notice", async () => {
+test("submits the exact action args and closes the dialog on success", async () => {
   withActionOptions();
   const view = await renderComponent();
   const dialog = await openDialog(view);
@@ -151,9 +151,8 @@ test("submits the exact action args and shows the success notice", async () => {
       data: { notice: "CLI session label updated." },
     });
   });
-  expect(dialog.querySelector("[role='status']")?.textContent).toBe(
-    "CLI session label updated."
-  );
+  expect(view.queryByRole("dialog")).toBeNull();
+  expect(view.queryByRole("status")).toBeNull();
 });
 
 test("shows the not-found server error", async () => {
