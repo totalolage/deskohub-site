@@ -5,10 +5,11 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { BigDecimal, Option, Schema } from "effect";
 import { CircleAlert, Minus, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState } from "react";
+import type * as React from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
-import { AdministrationAlert } from "@/features/administration/components";
 import type { InvoiceAdministrationCustomer } from "@/features/accounting/admin/invoice-administration.service";
+import { AdministrationAlert } from "@/features/administration/components";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
@@ -48,12 +49,16 @@ const maxLengthMessage = (maximumLength: number) =>
 const invoiceFormRequiredText = (maximumLength: number) =>
   Schema.Trim.check(
     Schema.isNonEmpty({ message: requiredMessage }),
-    Schema.isMaxLength(maximumLength, { message: maxLengthMessage(maximumLength) })
+    Schema.isMaxLength(maximumLength, {
+      message: maxLengthMessage(maximumLength),
+    })
   );
 
 const invoiceFormOptionalText = (maximumLength: number) =>
   Schema.Trim.check(
-    Schema.isMaxLength(maximumLength, { message: maxLengthMessage(maximumLength) })
+    Schema.isMaxLength(maximumLength, {
+      message: maxLengthMessage(maximumLength),
+    })
   );
 
 const isCalendarDate = (value: string) => {
@@ -159,8 +164,7 @@ export const invoiceFormSchema = Schema.toStandardSchemaV1(
       if (paymentDate !== "" && isCalendarDate(paymentDate)) return true;
       return {
         path: [value.paid ? "paidOn" : "dueDate"],
-        issue:
-          paymentDate === "" ? requiredMessage : calendarDateMessage,
+        issue: paymentDate === "" ? requiredMessage : calendarDateMessage,
       };
     })
   ),
@@ -321,9 +325,10 @@ export function InvoiceCreationForm({
     firstName: next?.details.firstName ?? "",
     lastName: next?.details.lastName ?? "",
     companyName:
-      next?.details.kind === "business" ? next.details.companyName : "",
-    companyId: next?.details.kind === "business" ? next.details.companyId : "",
-    vatId: next?.details.kind === "business" ? next.details.vatId : "",
+      next?.details.kind === "business" ? (next.details.companyName ?? "") : "",
+    companyId:
+      next?.details.kind === "business" ? (next.details.companyId ?? "") : "",
+    vatId: next?.details.kind === "business" ? (next.details.vatId ?? "") : "",
     phone: next?.details.phone ?? "",
     line1: next?.details.address.line1 ?? "",
     line2: next?.details.address.line2 ?? "",
@@ -397,7 +402,11 @@ export function InvoiceCreationForm({
         <form
           className="space-y-6"
           noValidate
-          onSubmit={form.handleSubmit(openReview)}
+          onSubmit={(event) => {
+            // Bound at event time so the draft ref is only read outside
+            // render.
+            form.handleSubmit(openReview)(event);
+          }}
         >
           <section className="rounded-2xl border border-navy-blue/10 bg-white p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -633,9 +642,7 @@ export function InvoiceCreationForm({
                                 {...field}
                                 onInput={onChange}
                                 required
-                                variant={
-                                  fieldState.error ? "error" : "default"
-                                }
+                                variant={fieldState.error ? "error" : "default"}
                               />
                             </FormControl>
                             <FormMessage />
@@ -656,9 +663,7 @@ export function InvoiceCreationForm({
                                 {...field}
                                 onInput={onChange}
                                 required
-                                variant={
-                                  fieldState.error ? "error" : "default"
-                                }
+                                variant={fieldState.error ? "error" : "default"}
                               />
                             </FormControl>
                             <FormMessage />
@@ -678,9 +683,7 @@ export function InvoiceCreationForm({
                               <Input
                                 {...field}
                                 onInput={onChange}
-                                variant={
-                                  fieldState.error ? "error" : "default"
-                                }
+                                variant={fieldState.error ? "error" : "default"}
                               />
                             </FormControl>
                             <FormMessage />
@@ -961,7 +964,8 @@ export function InvoiceCreationForm({
                         }}
                         onFocus={(event) => {
                           if (
-                            event.currentTarget.value === suggestedVariableSymbol
+                            event.currentTarget.value ===
+                            suggestedVariableSymbol
                           )
                             event.currentTarget.select();
                         }}
@@ -1011,10 +1015,7 @@ export function InvoiceCreationForm({
                   <FormField
                     control={form.control}
                     name={`lines.${index}.description`}
-                    render={({
-                      field: { onChange, ...field },
-                      fieldState,
-                    }) => (
+                    render={({ field: { onChange, ...field }, fieldState }) => (
                       <FormItem>
                         <FormLabel>Description {index + 1}</FormLabel>
                         <FormControl>
@@ -1033,26 +1034,17 @@ export function InvoiceCreationForm({
                   <FormField
                     control={form.control}
                     name={`lines.${index}.price`}
-                    render={({
-                      field: { onChange, ...field },
-                      fieldState,
-                    }) => (
+                    render={({ field: { onChange, ...field }, fieldState }) => (
                       <FormItem>
                         <FormLabel>Price</FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            id={`price-${line.id}`}
-                            inputMode="decimal"
-                            onChange={(event) => {
-                              const price = event.target.value;
-                              if (!isInvoicePriceInput(price, currencyExponent))
-                                return;
-                              onChange(price);
-                            }}
-                            pattern={invoicePricePattern(currencyExponent)}
-                            placeholder="0.00"
-                            required
+                          <InvoicePriceInput
+                            exponent={currencyExponent}
+                            lineId={line.id}
+                            onBlur={field.onBlur}
+                            onChange={onChange}
+                            ref={field.ref}
+                            value={field.value}
                             variant={fieldState.error ? "error" : "default"}
                           />
                         </FormControl>
@@ -1213,6 +1205,71 @@ export const isInvoicePriceInput = (value: string, exponent: number) =>
 
 const invoicePricePattern = (exponent: number) =>
   exponent === 0 ? "[+-]?\\d+" : `[+-]?\\d+(?:\\.\\d{1,${exponent}})?`;
+
+// The price gate must also observe native `change` events (typed into the
+// field without a preceding `input` event, as some browsers and automation
+// dispatch them): React's synthetic `onChange` does not fire for those here,
+// so the DOM value could drift from the form state it is supposed to gate.
+function InvoicePriceInput({
+  exponent,
+  lineId,
+  onBlur,
+  onChange,
+  ref,
+  value,
+  variant,
+  ...labelProps
+}: {
+  readonly exponent: number;
+  readonly lineId: string;
+  readonly onBlur: () => void;
+  readonly onChange: (price: string) => void;
+  readonly ref?: (node: HTMLInputElement | null) => void;
+  readonly value: string;
+  readonly variant: "default" | "error";
+} & Omit<React.ComponentProps<"input">, "onChange" | "ref" | "value">) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const handleNativeChange = (event: Event) => {
+      const price = (event.currentTarget as HTMLInputElement).value;
+      if (!isInvoicePriceInput(price, exponent)) {
+        // Rejected input never reaches form state, so restore the DOM to the
+        // accepted value instead of letting it drift.
+        input.value = value;
+        return;
+      }
+      if (price !== value) onChange(price);
+    };
+    input.addEventListener("change", handleNativeChange);
+    return () => input.removeEventListener("change", handleNativeChange);
+  }, [exponent, onChange, value]);
+
+  return (
+    <Input
+      id={`price-${lineId}`}
+      inputMode="decimal"
+      onBlur={onBlur}
+      onChange={(event) => {
+        const price = event.target.value;
+        if (!isInvoicePriceInput(price, exponent)) return;
+        onChange(price);
+      }}
+      pattern={invoicePricePattern(exponent)}
+      placeholder="0.00"
+      ref={(node) => {
+        inputRef.current = node;
+        ref?.(node);
+      }}
+      required
+      value={value}
+      variant={variant}
+      {...labelProps}
+    />
+  );
+}
 
 export function readInvoiceForm(input: {
   readonly customer: InvoiceAdministrationCustomer | null;
