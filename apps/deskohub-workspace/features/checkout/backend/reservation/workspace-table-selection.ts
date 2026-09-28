@@ -28,22 +28,25 @@ export type WorkspaceCoworkTableCandidateQuery = {
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };
 
-const hasNoMonitorTag = (tableTags: ReadonlySet<string>) =>
-  ![...tableTags].some((tag) => tag.startsWith("monitor:"));
+const hasNoMonitorTag = (tableTags: ReadonlySet<string>) => {
+  for (const tag of tableTags) {
+    if (tag.startsWith("monitor:")) return false;
+  }
+  return true;
+};
 
 const hasExactMonitorConfigurationTags = (
   tableTags: ReadonlySet<string>,
   monitorOption: WorkspaceProductMonitorOption
 ) => {
   const expectedTags = workspaceProductMonitorOptionTableTags[monitorOption];
-  return (
-    expectedTags.every((tag) => tableTags.has(tag)) &&
-    // Fail closed on unknown or contradictory monitor tags: a configured
-    // workstation must carry exactly the chosen configuration's monitor tags.
-    ![...tableTags].some(
-      (tag) => tag.startsWith("monitor:") && !expectedTags.includes(tag)
-    )
-  );
+  if (!expectedTags.every((tag) => tableTags.has(tag))) return false;
+  // Fail closed on unknown or contradictory monitor tags: a configured
+  // workstation must carry exactly the chosen configuration's monitor tags.
+  for (const tag of tableTags) {
+    if (tag.startsWith("monitor:") && !expectedTags.includes(tag)) return false;
+  }
+  return true;
 };
 
 /**
