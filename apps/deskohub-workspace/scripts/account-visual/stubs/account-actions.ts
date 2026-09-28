@@ -103,6 +103,15 @@ const unavailable = async (): Promise<UnavailableActionResult> => {
 };
 
 /**
+ * Fallback envelope returned directly by the avatar stubs after their own
+ * initial `recordInvocation`, so each invocation counts exactly once; the
+ * shared `unavailable` wrapper would increment a second time.
+ */
+const unavailableAvatarResult: UnavailableActionResult = {
+  serverError: unavailableMessage,
+};
+
+/**
  * Controlled outcome for the synthetic avatar mutation stubs. The capture flow
  * sets it on the page before driving the real AvatarControl interactions;
  * "unavailable" is the safe fallback when no outcome was requested. A pending
@@ -143,7 +152,7 @@ export const uploadCustomerAvatar = async (): Promise<unknown> => {
       data: { status: "uploaded", avatar: { url: syntheticAvatarDataUrl } },
     };
   }
-  return unavailable();
+  return unavailableAvatarResult;
 };
 
 export const removeCustomerAvatar = async (): Promise<unknown> => {
@@ -151,7 +160,7 @@ export const removeCustomerAvatar = async (): Promise<unknown> => {
   const outcome = avatarOutcome();
   if (outcome === "pending-remove") return new Promise<never>(() => {});
   if (outcome === "removed") return { data: { status: "removed" } };
-  return unavailable();
+  return unavailableAvatarResult;
 };
 
 export const completeCustomerProfile = unavailable;

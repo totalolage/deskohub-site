@@ -57,6 +57,29 @@ const gitHeadSha = (): string =>
     .toString()
     .trim();
 
+const repoRoot = resolve(import.meta.dir, "../../../..");
+
+/**
+ * The bundle is compiled from the working tree, so any staged, unstaged, or
+ * untracked difference from HEAD would make the report misattribute a dirty
+ * tree to the clean commit. `git status --porcelain` covers all three.
+ */
+const gitStatusPorcelainLines = (): readonly string[] =>
+  execSync("git status --porcelain", { cwd: repoRoot })
+    .toString()
+    .split("\n")
+    .filter((line) => line.trim().length > 0);
+
+export const assertCapturedSourcesMatchHead = (
+  statusLines: readonly string[]
+): void => {
+  if (statusLines.length > 0) {
+    throw new Error(
+      `Account visual capture compiles the working tree, so it requires a tree identical to HEAD; refusing to attribute a dirty tree to a clean commit. Differences:\n${statusLines.join("\n")}`
+    );
+  }
+};
+
 const parseArgs = (argv: readonly string[]) => {
   let label: string | undefined;
   let outputRoot = defaultOutputRoot;
@@ -285,11 +308,12 @@ const runLocale = async ({
   } finally {
     await staticServer.server.stop(true);
   }
-  return stateResults;
+  return { states: stateResults, bundleInputs: bundle.manifest.bundleInputs };
 };
 
 const main = async () => {
   const { label, outputRoot, port } = parseArgs(Bun.argv.slice(2));
+  assertCapturedSourcesMatchHead(gitStatusPorcelainLines());
   const outputDirectory = await makeUniqueRunDirectory(outputRoot, label);
   const sha = gitHeadSha();
   process.stdout.write(
@@ -316,6 +340,12 @@ const main = async () => {
     .png()
     .toBuffer();
   const problems: BrowserProblem[] = [];
+  const bundleInputs: Array<{
+    readonly locale: AccountVisualLocale;
+    readonly bundleInputs: Awaited<
+      ReturnType<typeof buildBundle>
+    >["manifest"]["bundleInputs"];
+  }> = [];
   const browser = await chromium.launch({ headless: true });
   const browserVersion = browser.version();
   const results: unknown[] = [];
@@ -323,25 +353,32 @@ const main = async () => {
     for (const locale of locales) {
       if (!isAccountVisualLocale(locale))
         throw new Error(`Invalid locale: ${locale}`);
-      results.push(
-        ...(await runLocale({
-          browser,
-          outputDirectory,
-          locale,
-          port,
-          problems,
-          syntheticPng,
-        }))
-      );
+      const localeResult = await runLocale({
+        browser,
+        outputDirectory,
+        locale,
+        port,
+        problems,
+        syntheticPng,
+      });
+      results.push(...localeResult.states);
+      bundleInputs.push({ locale, bundleInputs: localeResult.bundleInputs });
     }
   } finally {
     await browser.close();
   }
+  // Re-verify revision and source identity before publishing: the capture
+  // must never attribute a tree that changed mid-run to the starting commit.
+  if (gitHeadSha() !== sha) {
+    throw new Error(`HEAD moved during capture from ${sha}`);
+  }
+  assertCapturedSourcesMatchHead(gitStatusPorcelainLines());
   const report = {
     schemaVersion: 1,
     capturedFromCommit: sha,
     browserVersion,
     fixtureAvatar: "synthetic only; never real customer media",
+    bundleInputs,
     states: results,
     problems,
   };
