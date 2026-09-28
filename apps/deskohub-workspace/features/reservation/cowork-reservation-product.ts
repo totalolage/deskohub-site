@@ -2,8 +2,9 @@ import { Match, Schema, SchemaGetter } from "effect";
 import {
   getCoworkTierWorkstationAddon,
   getWorkspaceProductByTier,
+  type WorkspaceCoworkCurrentTier,
+  type WorkspaceCoworkHistoricalTier,
   type WorkspaceCoworkProductTier,
-  type WorkspaceCoworkSaleableTier,
   type WorkspaceProductMonitorOption,
   workspaceCoworkProductTiers,
   workspaceProductMonitorOptions,
@@ -63,14 +64,16 @@ export const getWorkspaceCoworkProductKey = ({
   `${kind}:${tier}`;
 
 export const normalizedOpenSpaceCoworkReservationProductSchema = Schema.Struct({
-  entryTier: Schema.Literal("open-space"),
+  entryTier: Schema.Literal("open-space" satisfies WorkspaceCoworkCurrentTier),
   coffee: Schema.Boolean,
   monitorOption: Schema.optional(Schema.Never),
 });
 
 export const normalizedReservedDeskCoworkReservationProductSchema =
   Schema.Struct({
-    entryTier: Schema.Literal("reserved-desk"),
+    entryTier: Schema.Literal(
+      "reserved-desk" satisfies WorkspaceCoworkCurrentTier
+    ),
     coffee: Schema.Literal(true),
     monitorOption: Schema.optional(
       Schema.Literals(workspaceProductMonitorOptions)
@@ -78,19 +81,19 @@ export const normalizedReservedDeskCoworkReservationProductSchema =
   });
 
 export const normalizedBasicCoworkReservationProductSchema = Schema.Struct({
-  entryTier: Schema.Literal("basic"),
+  entryTier: Schema.Literal("basic" satisfies WorkspaceCoworkHistoricalTier),
   coffee: Schema.Boolean,
   monitorOption: Schema.optional(Schema.Never),
 });
 
 export const normalizedPlusCoworkReservationProductSchema = Schema.Struct({
-  entryTier: Schema.Literal("plus"),
+  entryTier: Schema.Literal("plus" satisfies WorkspaceCoworkHistoricalTier),
   coffee: Schema.Literal(true),
   monitorOption: Schema.optional(Schema.Never),
 });
 
 export const normalizedProfiCoworkReservationProductSchema = Schema.Struct({
-  entryTier: Schema.Literal("profi"),
+  entryTier: Schema.Literal("profi" satisfies WorkspaceCoworkHistoricalTier),
   coffee: Schema.Literal(true),
   monitorOption: Schema.Literals(workspaceProductMonitorOptions),
 });
@@ -377,7 +380,7 @@ export const coworkReservationProductSchema =
     });
 
 export type {
+  WorkspaceCoworkCurrentTier,
   WorkspaceCoworkProductTier,
-  WorkspaceCoworkSaleableTier,
   WorkspaceProductMonitorOption,
 };

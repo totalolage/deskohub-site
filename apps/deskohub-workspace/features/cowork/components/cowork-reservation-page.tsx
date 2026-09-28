@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
-import { isWorkspaceCoworkSaleableProductTier } from "@/features/checkout/product-catalog";
+import { isWorkspaceCoworkCurrentProductTier } from "@/features/checkout/product-catalog";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
@@ -81,7 +81,7 @@ export async function renderCoworkReservationContent({
 }) {
   if (
     initialReservation &&
-    !isWorkspaceCoworkSaleableProductTier(initialReservation.entryTier)
+    !isWorkspaceCoworkCurrentProductTier(initialReservation.entryTier)
   ) {
     return <CoworkOfferReplaced locale={locale} />;
   }

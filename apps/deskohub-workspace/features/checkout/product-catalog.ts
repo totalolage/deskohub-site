@@ -20,13 +20,13 @@ export const workspaceCoworkHistoricalTiers = [
   "plus",
   "profi",
 ] as const;
-export const workspaceCoworkSaleableTiers = [
+export const workspaceCoworkCurrentTiers = [
   "open-space",
   "reserved-desk",
 ] as const;
 export const workspaceCoworkTiers = [
   ...workspaceCoworkHistoricalTiers,
-  ...workspaceCoworkSaleableTiers,
+  ...workspaceCoworkCurrentTiers,
 ] as const;
 export const workspaceCoworkProductTiers = workspaceCoworkTiers;
 export const workspaceProductTiers = workspaceCoworkTiers;
@@ -40,8 +40,8 @@ export const workspaceProductMonitorOptions = [
 
 export type WorkspaceCoworkHistoricalTier =
   (typeof workspaceCoworkHistoricalTiers)[number];
-export type WorkspaceCoworkSaleableTier =
-  (typeof workspaceCoworkSaleableTiers)[number];
+export type WorkspaceCoworkCurrentTier =
+  (typeof workspaceCoworkCurrentTiers)[number];
 export type WorkspaceCoworkProductTier = (typeof workspaceCoworkTiers)[number];
 export type WorkspaceProductTier = WorkspaceCoworkProductTier;
 export type WorkspaceProductMonitorOption =
@@ -67,7 +67,6 @@ export type WorkspaceProductCatalogItem = {
   readonly tier: WorkspaceCoworkProductTier;
   readonly label: string;
   readonly price: WorkspaceMoney;
-  readonly saleable: boolean;
   readonly coffeeAddon: CoworkCoffeeAddonAvailability;
   readonly workstationAddon: CoworkWorkstationAddonAvailability;
   readonly allowedMonitorOptions: readonly WorkspaceProductMonitorOption[];
@@ -78,7 +77,6 @@ const workspaceCoworkProductsByTier = {
     tier: "basic",
     label: "Basic Day Pass",
     price: currencyCZK(35_000),
-    saleable: false,
     coffeeAddon: "optional",
     workstationAddon: "unavailable",
     allowedMonitorOptions: [],
@@ -87,7 +85,6 @@ const workspaceCoworkProductsByTier = {
     tier: "plus",
     label: "Cowork Plus",
     price: currencyCZK(49_000),
-    saleable: false,
     coffeeAddon: "included",
     workstationAddon: "unavailable",
     allowedMonitorOptions: [],
@@ -96,7 +93,6 @@ const workspaceCoworkProductsByTier = {
     tier: "profi",
     label: "Profi Workstation",
     price: currencyCZK(55_000),
-    saleable: false,
     coffeeAddon: "included",
     workstationAddon: "required",
     allowedMonitorOptions: workspaceProductMonitorOptions,
@@ -105,7 +101,6 @@ const workspaceCoworkProductsByTier = {
     tier: "open-space",
     label: "Open Space",
     price: currencyCZK(29_000),
-    saleable: true,
     coffeeAddon: "optional",
     workstationAddon: "unavailable",
     allowedMonitorOptions: [],
@@ -114,14 +109,13 @@ const workspaceCoworkProductsByTier = {
     tier: "reserved-desk",
     label: "Reserved Desk",
     price: currencyCZK(41_000),
-    saleable: true,
     coffeeAddon: "included",
     workstationAddon: "optional",
     allowedMonitorOptions: workspaceProductMonitorOptions,
   },
 } satisfies Record<WorkspaceCoworkProductTier, WorkspaceProductCatalogItem>;
 
-export const workspaceCoworkSaleableCatalog = workspaceCoworkSaleableTiers.map(
+export const workspaceCoworkCurrentCatalog = workspaceCoworkCurrentTiers.map(
   (tier) => workspaceCoworkProductsByTier[tier]
 );
 
@@ -168,12 +162,12 @@ export function isWorkspaceProductMonitorOption(
   );
 }
 
-export function isWorkspaceCoworkSaleableProductTier(
+export function isWorkspaceCoworkCurrentProductTier(
   value: string | undefined
-): value is WorkspaceCoworkSaleableTier {
+): value is WorkspaceCoworkCurrentTier {
   return (
     value !== undefined &&
-    workspaceCoworkSaleableTiers.includes(value as WorkspaceCoworkSaleableTier)
+    workspaceCoworkCurrentTiers.includes(value as WorkspaceCoworkCurrentTier)
   );
 }
 

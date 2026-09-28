@@ -1,7 +1,7 @@
 "use client";
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { Schema } from "effect";
+import { Match, Schema } from "effect";
 import { AlertTriangle, Coffee, Monitor } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
@@ -13,10 +13,13 @@ import {
 } from "@/features/checkout/advertised-price";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
+  getCoworkTierCoffeeAddon,
+  getCoworkTierWorkstationAddon,
+  isWorkspaceCoworkCurrentProductTier,
   isWorkspaceProductMonitorOption,
-  type WorkspaceCoworkSaleableTier,
+  type WorkspaceCoworkCurrentTier,
   type WorkspaceProductMonitorOption,
-  workspaceCoworkSaleableTiers,
+  workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
@@ -56,7 +59,7 @@ import {
   type CoworkReservationInput,
   coworkReservationSchema,
   getAllowedMonitorOptionsForCoworkTier,
-  getCoworkSaleableReservationOrder,
+  getCoworkCurrentReservationOrder,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
@@ -99,10 +102,10 @@ const coworkReservationFormSchema = Schema.toStandardSchemaV1(
 );
 
 const tierOptions: ReadonlyArray<{
-  value: WorkspaceCoworkSaleableTier;
+  value: WorkspaceCoworkCurrentTier;
   title: Parameters<typeof getWorkspaceProductMessage>[0];
   description: Parameters<typeof getWorkspaceProductMessage>[0];
-}> = workspaceCoworkSaleableTiers.map((tier) => ({
+}> = workspaceCoworkCurrentTiers.map((tier) => ({
   value: tier,
   ...workspaceProductTierMessages[tier],
 }));
@@ -128,7 +131,7 @@ const getWorkspaceAvailabilityQuery = ({
   date?: string;
   from: string;
   monitorOption?: string;
-  tier: WorkspaceCoworkSaleableTier;
+  tier: WorkspaceCoworkCurrentTier;
   to: string;
 }): CoworkWorkspaceAvailabilityQuery => {
   return {
@@ -182,19 +185,22 @@ export function CoworkReservationForm({
       control: form.control,
       name: ["entryTier", "date", "coffee", "monitorOption"],
     });
-  const showCoffeeAddon = selectedTier === "open-space";
-  const showWorkstationAddon = selectedTier === "reserved-desk";
+  const showCoffeeAddon = getCoworkTierCoffeeAddon(selectedTier) === "optional";
+  const showWorkstationAddon =
+    getCoworkTierWorkstationAddon(selectedTier) === "optional";
   const allowedMonitorOptions =
     getAllowedMonitorOptionsForCoworkTier(selectedTier);
   const availabilityQuery = useMemo(
     () =>
-      getWorkspaceAvailabilityQuery({
-        date: selectedDate,
-        from: initialAvailabilityQuery.from,
-        monitorOption: selectedMonitorOption,
-        tier: selectedTier as WorkspaceCoworkSaleableTier,
-        to: initialAvailabilityQuery.to,
-      }),
+      isWorkspaceCoworkCurrentProductTier(selectedTier)
+        ? getWorkspaceAvailabilityQuery({
+            date: selectedDate,
+            from: initialAvailabilityQuery.from,
+            monitorOption: selectedMonitorOption,
+            tier: selectedTier,
+            to: initialAvailabilityQuery.to,
+          })
+        : undefined,
     [
       initialAvailabilityQuery.from,
       initialAvailabilityQuery.to,
@@ -287,11 +293,22 @@ export function CoworkReservationForm({
 
   const workstationAdvertisedPriceQueryResult =
     advertisedPriceQueryResults[
-      advertisedPriceRequests.findIndex(
-        ({ reservation }) =>
-          reservation.kind === "cowork" &&
-          reservation.details.entryTier === "reserved-desk" &&
-          reservation.details.workstation === true
+      advertisedPriceRequests.findIndex(({ reservation }) =>
+        Match.value(reservation.details).pipe(
+          Match.when(
+            { entryTier: "reserved-desk", workstation: true },
+            () => true
+          ),
+          Match.when(
+            { entryTier: "reserved-desk", workstation: false },
+            () => false
+          ),
+          Match.when({ entryTier: "open-space" }, () => false),
+          Match.when({ entryTier: "basic" }, () => false),
+          Match.when({ entryTier: "plus" }, () => false),
+          Match.when({ entryTier: "profi" }, () => false),
+          Match.exhaustive
+        )
       )
     ];
   const workstationAdvertisedPrice =
@@ -308,18 +325,29 @@ export function CoworkReservationForm({
     : undefined;
 
   const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
-    ({ reservation }) => {
-      const { entryTier } = reservation.details;
-      if (entryTier === "reserved-desk") {
-        return (
-          selectedTier === "reserved-desk" &&
-          reservation.details.workstation ===
-            (selectedMonitorOption !== undefined)
-        );
-      }
-      if (entryTier === "open-space") return selectedTier === "open-space";
-      return false;
-    }
+    ({ reservation }) =>
+      Match.value(reservation.details).pipe(
+        Match.when(
+          { entryTier: "open-space" },
+          () => selectedTier === "open-space"
+        ),
+        Match.when(
+          { entryTier: "reserved-desk", workstation: true },
+          () =>
+            selectedTier === "reserved-desk" &&
+            selectedMonitorOption !== undefined
+        ),
+        Match.when(
+          { entryTier: "reserved-desk", workstation: false },
+          () =>
+            selectedTier === "reserved-desk" &&
+            selectedMonitorOption === undefined
+        ),
+        Match.when({ entryTier: "basic" }, () => false),
+        Match.when({ entryTier: "plus" }, () => false),
+        Match.when({ entryTier: "profi" }, () => false),
+        Match.exhaustive
+      )
   );
   const advertisedPriceQueryResult =
     advertisedPriceQueryResults[selectedAdvertisedPriceIndex];
@@ -414,7 +442,7 @@ export function CoworkReservationForm({
       }}
       checkoutSessionId={checkoutSessionId}
       form={form}
-      getReservation={getCoworkSaleableReservationOrder}
+      getReservation={getCoworkCurrentReservationOrder}
       locale={locale}
       messagePlaceholder={m.reservationMessagePlaceholder({}, { locale })}
     >
@@ -582,7 +610,7 @@ function CoworkTierDescription({
   tier,
 }: {
   readonly locale: Locale;
-  readonly tier: WorkspaceCoworkSaleableTier;
+  readonly tier: WorkspaceCoworkCurrentTier;
 }) {
   return (
     <div
@@ -602,7 +630,7 @@ function CoworkTierPerks({
   tier,
 }: {
   readonly locale: Locale;
-  readonly tier: WorkspaceCoworkSaleableTier;
+  readonly tier: WorkspaceCoworkCurrentTier;
 }) {
   const content: WorkspaceProductTierCardMessages =
     workspaceProductTierCardMessages[tier];
