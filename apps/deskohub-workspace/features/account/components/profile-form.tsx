@@ -29,6 +29,7 @@ import {
   type ProfileBillingKind,
   type ProfileFormValues,
   profileBillingFieldNames,
+  profileFieldPathFromDomName,
   toCustomerProfileInput,
 } from "@/features/account/components/profile-form-schema";
 import { type Locale, m } from "@/features/i18n";
@@ -391,14 +392,15 @@ export function ProfileForm({
     if (!(target instanceof HTMLElement)) return;
     const fieldName = target.getAttribute("name");
     if (fieldName === null) return;
+    const fieldPath = profileFieldPathFromDomName(fieldName);
 
-    if (fieldName === "firstName") {
+    if (fieldPath === "firstName") {
       form.setError("firstName", {
         type: "required",
         message: m.accountProfileFirstNameRequired({}, { locale }),
       });
     }
-    if (fieldName === "companyName") {
+    if (fieldPath === "companyName") {
       form.setError("companyName", {
         type: "required",
         message: m.accountProfileValidationError({}, { locale }),
@@ -409,12 +411,14 @@ export function ProfileForm({
       (element): element is HTMLInputElement =>
         element instanceof HTMLInputElement && !element.validity.valid
     );
-    const firstInvalidFieldName = invalidInputs.find(
-      ({ name }) =>
-        name === "firstName" ||
-        name === "phone" ||
-        (profileBillingFieldNames as readonly string[]).includes(name)
-    )?.name;
+    const firstInvalidFieldName = invalidInputs
+      .map(({ name }) => profileFieldPathFromDomName(name))
+      .find(
+        (name) =>
+          name === "firstName" ||
+          name === "phone" ||
+          (profileBillingFieldNames as readonly string[]).includes(name)
+      );
     let firstInvalidSection: "profile" | "billing" | undefined;
     if (
       firstInvalidFieldName === "firstName" ||
@@ -451,6 +455,11 @@ export function ProfileForm({
     name: keyof ProfileFormValues,
     options: {
       readonly autoComplete?: string;
+      // Legacy public DOM contract: some billing inputs keep their
+      // pre-RHF `name` attributes (consumed by the account-visual
+      // harness and native validation messages) even though the RHF
+      // field path differs.
+      readonly domName?: string;
       readonly id: string;
       readonly inputMode?: "numeric";
       readonly label: string;
@@ -490,6 +499,7 @@ export function ProfileForm({
                 id={options.id}
                 inputMode={options.inputMode}
                 maxLength={options.maxLength}
+                name={options.domName ?? name}
                 required={options.required}
               />
             </FormControl>
@@ -602,6 +612,7 @@ export function ProfileForm({
                 aria-labelledby="account-profile-billing-kind-label"
                 className="w-full rounded-xl border border-navy-blue/14 bg-white px-3 py-2.5 text-navy-blue"
                 id="account-profile-billing-kind"
+                name={undefined}
                 onChange={(event) => {
                   field.onChange(event);
                   invalidateAresLookup();
@@ -632,6 +643,7 @@ export function ProfileForm({
           {billingKind === "business" ? (
             <>
               {renderTextField("companyName", {
+                domName: "billingCompanyName",
                 id: "account-profile-billing-company-name",
                 label: m.accountProfileCompanyNameLabel({}, { locale }),
                 maxLength: 200,
@@ -673,6 +685,7 @@ export function ProfileForm({
                             id="account-profile-billing-company-id"
                             inputMode="numeric"
                             maxLength={32}
+                            name="billingCompanyId"
                             onChange={(event) => {
                               field.onChange(event);
                               invalidateAresLookup();
@@ -725,6 +738,7 @@ export function ProfileForm({
                 )}
               </FormItem>
               {renderTextField("vatId", {
+                domName: "billingVatId",
                 id: "account-profile-billing-vat-id",
                 label: m.accountProfileVatIdLabel({}, { locale }),
                 maxLength: 32,
@@ -732,27 +746,32 @@ export function ProfileForm({
             </>
           ) : null}
           {renderTextField("addressLine1", {
+            domName: "billingAddressLine1",
             id: "account-profile-billing-address-line1",
             label: m.accountProfileAddressLine1Label({}, { locale }),
             maxLength: 200,
           })}
           {renderTextField("addressLine2", {
+            domName: "billingAddressLine2",
             id: "account-profile-billing-address-line2",
             label: m.accountProfileAddressLine2Label({}, { locale }),
             maxLength: 200,
           })}
           {renderTextField("city", {
+            domName: "billingCity",
             id: "account-profile-billing-city",
             label: m.accountProfileCityLabel({}, { locale }),
             maxLength: 100,
           })}
           <div className="min-w-0 grid gap-5 sm:grid-cols-2">
             {renderTextField("zip", {
+              domName: "billingZip",
               id: "account-profile-billing-zip",
               label: m.accountProfileZipLabel({}, { locale }),
               maxLength: 20,
             })}
             {renderTextField("country", {
+              domName: "billingCountry",
               autoComplete: "country",
               id: "account-profile-billing-country",
               label: m.accountProfileCountryLabel({}, { locale }),
