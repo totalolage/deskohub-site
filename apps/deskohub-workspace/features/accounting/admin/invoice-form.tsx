@@ -344,26 +344,19 @@ export function InvoiceCreationForm({
 
   const openReview = (values: InvoiceFormOutput) => {
     setCreateError(null);
-    // The draft UUID is idempotent for an unchanged invoice and rotates when
-    // the normalized payload changes: the server rejects a reused id with
-    // different input.
-    const fingerprint = JSON.stringify([
-      customerMode,
-      customer?.id ?? null,
-      values,
-    ]);
+    // The draft UUID is idempotent for an equivalent normalized payload
+    // (trimming and hidden-field normalization included) and rotates when the
+    // normalized submitted payload changes: the server rejects a reused id
+    // with different input.
+    const payload = readInvoiceFormPayload({ customer, customerMode, values });
+    const fingerprint = JSON.stringify(payload);
     const bound = draftRef.current;
     const invoiceId =
       bound && bound.fingerprint === fingerprint
         ? bound.invoiceId
         : getInvoiceDraftId(null);
     draftRef.current = { fingerprint, invoiceId };
-    const nextReview = readInvoiceForm({
-      customer,
-      customerMode,
-      values,
-      invoiceId,
-    });
+    const nextReview = { invoiceId, ...payload };
     setPreviewError(null);
     setPreviewUrl(null);
     setReview(nextReview);
@@ -1279,6 +1272,17 @@ export function readInvoiceForm(input: {
   readonly invoiceId: string;
   readonly values: InvoiceFormOutput;
 }) {
+  return {
+    invoiceId: input.invoiceId,
+    ...readInvoiceFormPayload(input),
+  };
+}
+
+export function readInvoiceFormPayload(input: {
+  readonly customer: InvoiceAdministrationCustomer | null;
+  readonly customerMode: "existing" | "new";
+  readonly values: InvoiceFormOutput;
+}) {
   const formCustomer = input.values.customer;
   const address = {
     line1: formCustomer.line1,
@@ -1311,7 +1315,6 @@ export function readInvoiceForm(input: {
         };
   const variableSymbol = input.values.variableSymbol.trim();
   return {
-    invoiceId: input.invoiceId,
     customer:
       input.customerMode === "existing" && input.customer
         ? {

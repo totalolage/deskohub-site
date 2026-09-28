@@ -426,6 +426,70 @@ test("retries creation with the same id for an unchanged invoice and a new id af
   expect(invoiceIdOf(create.mock.calls[2])).not.toBe(firstInvoiceId);
 });
 
+test("keeps the draft id when a whitespace-only edit produces the same payload", async () => {
+  const preview = mock();
+  const create = mock();
+  let previewOnSuccess:
+    | ((result: { data: { dataUrl: string } }) => void)
+    | undefined;
+  let createOnError:
+    | ((result: { error: { serverError: string } }) => void)
+    | undefined;
+  workspaceUseAction.mockImplementation((_action, options) => {
+    const actionOptions = options as {
+      readonly actionName: string;
+      readonly onSuccess?: typeof previewOnSuccess;
+      readonly onError?: typeof createOnError;
+    };
+    if (actionOptions.actionName === "previewAdministrationInvoice") {
+      previewOnSuccess = actionOptions.onSuccess;
+      return { execute: preview, isExecuting: false } as never;
+    }
+    if (actionOptions.actionName === "createAdministrationInvoice") {
+      createOnError = actionOptions.onError;
+      return { execute: create, isExecuting: false } as never;
+    }
+    return { execute: mock(), isExecuting: false } as never;
+  });
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+  fillInput(view, "Variable symbol", "2026000001 ");
+
+  const submitAndFail = async () => {
+    submitInvoiceForm(view);
+    await flush();
+    act(() =>
+      previewOnSuccess?.({
+        data: { dataUrl: "data:text/plain;base64,PA==" },
+      })
+    );
+    const createButton = view.getByRole("button", {
+      name: "Create and send invoice",
+    });
+    expect(createButton).toHaveProperty("disabled", false);
+    fireEvent.click(createButton);
+    await flush();
+    act(() =>
+      createOnError?.({ error: { serverError: "Create interrupted." } })
+    );
+  };
+
+  await submitAndFail();
+  expect(create).toHaveBeenCalledTimes(1);
+  const firstCall = create.mock.calls[0];
+  const firstInvoiceId = invoiceIdOf(firstCall);
+
+  // A whitespace-only variableSymbol edit is payload-equivalent once
+  // readInvoiceForm trims it, so the interrupted draft id must be reused
+  // instead of minting a fresh id the server would accept as a new invoice.
+  fillInput(view, "Variable symbol", "2026000001");
+  await submitAndFail();
+
+  expect(create).toHaveBeenCalledTimes(2);
+  expect(invoiceIdOf(create.mock.calls[1])).toBe(firstInvoiceId);
+  expect(create.mock.calls[1]).toEqual(firstCall);
+});
+
 test("renders preview and create action errors as alerts", async () => {
   let previewOnError:
     | ((result: { error: { serverError: string } }) => void)
