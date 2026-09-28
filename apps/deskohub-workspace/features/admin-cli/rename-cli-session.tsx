@@ -1,9 +1,11 @@
 "use client";
 
 import type { CliSessionIdType } from "@deskohub/workspace-admin-api";
+import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { Button } from "@/shared/components/ui/button";
 import {
   Dialog,
@@ -15,10 +17,28 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/shared/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { renameCliSession } from "./actions";
+import { renameCliSessionStandardSchema } from "./contracts";
+
+type RenameCliSessionFormInput = {
+  readonly sessionId: string;
+  readonly clientName: string;
+};
+
+type RenameCliSessionFormValues = {
+  readonly sessionId: CliSessionIdType;
+  readonly clientName: string;
+};
 
 export function RenameCliSession({
   clientName,
@@ -27,15 +47,25 @@ export function RenameCliSession({
   readonly clientName: string;
   readonly sessionId: CliSessionIdType;
 }) {
-  const inputId = useId();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const form = useForm<
+    RenameCliSessionFormInput,
+    unknown,
+    RenameCliSessionFormValues
+  >({
+    defaultValues: { sessionId, clientName },
+    mode: "onSubmit",
+    reValidateMode: "onChange",
+    resolver: standardSchemaResolver(renameCliSessionStandardSchema),
+  });
   const { execute, isExecuting } = useWorkspaceAction(renameCliSession, {
     actionName: "renameCliSession",
     onSuccess: ({ data }) => {
       if (!data) return;
-      setOpen(false);
+      setNotice(data.notice);
       router.refresh();
     },
     onError: ({ error: actionError }) =>
@@ -52,6 +82,8 @@ export function RenameCliSession({
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
         setError(null);
+        setNotice(null);
+        form.reset({ sessionId, clientName });
       }}
     >
       <DialogTrigger asChild>
@@ -68,48 +100,71 @@ export function RenameCliSession({
             does not change its access.
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="mt-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setError(null);
-            const nextClientName = new FormData(event.currentTarget)
-              .get("clientName")
-              ?.toString();
-            if (!nextClientName) return;
-            execute({ clientName: nextClientName, sessionId });
-          }}
-        >
-          <div className="grid gap-1.5">
-            <Label htmlFor={inputId}>Client label</Label>
-            <Input
-              autoComplete="off"
-              defaultValue={clientName}
-              id={inputId}
-              maxLength={80}
+        <Form {...form}>
+          <form
+            className="mt-5"
+            onSubmit={(event) => {
+              void form.handleSubmit((values) => {
+                setError(null);
+                setNotice(null);
+                execute({
+                  clientName: values.clientName,
+                  sessionId: values.sessionId,
+                });
+              })(event);
+            }}
+          >
+            <FormField
+              control={form.control}
               name="clientName"
-              required
+              render={({ field: { onChange, ...field }, fieldState }) => (
+                <FormItem>
+                  <FormLabel>Client label</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      autoComplete="off"
+                      maxLength={80}
+                      onInput={onChange}
+                      variant={fieldState.error ? "error" : "default"}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          {error && (
-            <p
-              className="mt-3 rounded-xl bg-burned-orange/10 px-4 py-3 text-sm font-semibold text-burned-orange-ink"
-              role="alert"
-            >
-              {error}
-            </p>
-          )}
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button disabled={isExecuting} type="button" variant="secondary">
-                Cancel
+            {error && (
+              <p
+                className="mt-3 rounded-xl bg-burned-orange/10 px-4 py-3 text-sm font-semibold text-burned-orange-ink"
+                role="alert"
+              >
+                {error}
+              </p>
+            )}
+            {notice && (
+              <p
+                className="mt-3 rounded-xl bg-aquamarine-green/15 px-4 py-3 text-sm font-semibold text-aquamarine-ink"
+                role="status"
+              >
+                {notice}
+              </p>
+            )}
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button
+                  disabled={isExecuting}
+                  type="button"
+                  variant="secondary"
+                >
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button disabled={isExecuting} type="submit">
+                {isExecuting ? "Saving…" : "Save label"}
               </Button>
-            </DialogClose>
-            <Button disabled={isExecuting} type="submit">
-              {isExecuting ? "Saving…" : "Save label"}
-            </Button>
-          </DialogFooter>
-        </form>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
