@@ -35,25 +35,25 @@ describe("reservation offer copy", () => {
     );
     expect(cs).not.toMatch(/\btarif/i);
     expect(cs).not.toMatch(/monitor/i);
-    expect(cs).toMatch(/jinou nabídku|jinou nabídku/i);
+    expect(cs).toMatch(/jinou nabídku/);
     expect(cs).toMatch(/datum/i);
   });
 
   test("checkout status tier label reads Offer", () => {
-    expect(
-      m.checkoutStatusSummaryTierLabel({}, { locale: "en-US" })
-    ).toBe("Offer");
-    expect(
-      m.checkoutStatusSummaryTierLabel({}, { locale: "cs-CZ" })
-    ).toBe("Nabídka");
+    expect(m.checkoutStatusSummaryTierLabel({}, { locale: "en-US" })).toBe(
+      "Offer"
+    );
+    expect(m.checkoutStatusSummaryTierLabel({}, { locale: "cs-CZ" })).toBe(
+      "Nabídka"
+    );
   });
 
   test("tier validation message reads Choose an offer", () => {
-    expect(
-      m.reservationValidationTierRequired({}, { locale: "en-US" })
-    ).toBe("Choose an offer.");
-    expect(
-      m.reservationValidationTierRequired({}, { locale: "cs-CZ" })
-    ).toBe("Vyber nabídku.");
+    expect(m.reservationValidationTierRequired({}, { locale: "en-US" })).toBe(
+      "Choose an offer."
+    );
+    expect(m.reservationValidationTierRequired({}, { locale: "cs-CZ" })).toBe(
+      "Vyber nabídku."
+    );
   });
 });
