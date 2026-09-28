@@ -232,6 +232,7 @@ describe.skipIf(!postgresDatabase)(
         reservations.markAwaitingCustomerEmailDelivery({
           id: reservationId,
           customerEmailDeliveryId: emailId,
+          expectedActiveCustomerEmailDeliveryId: null,
         })
       );
 

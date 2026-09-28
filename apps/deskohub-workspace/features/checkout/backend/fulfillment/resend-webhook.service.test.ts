@@ -1410,7 +1410,10 @@ describe("ResendWebhookService", () => {
       claimPaidFulfillment: mock(() =>
         Effect.succeed(claimedReservation as never)
       ),
-      retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
+      retainCustomerEmailDeliveryLocale: mock(
+        (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+          Effect.succeed(input.locale)
+      ),
       markFulfilled,
     };
     const dotypos = {

@@ -243,10 +243,11 @@ export interface IWorkspaceReservationRepository {
   readonly retainCustomerEmailDeliveryLocale: (input: {
     readonly id: WorkspaceReservationId;
     readonly locale: Locale;
-  }) => Effect.Effect<void, EffectDrizzleQueryError>;
+  }) => Effect.Effect<Locale | null, EffectDrizzleQueryError>;
   readonly markAwaitingCustomerEmailDelivery: (input: {
     readonly id: WorkspaceReservationId;
     readonly customerEmailDeliveryId: EmailDeliveryId;
+    readonly expectedActiveCustomerEmailDeliveryId: EmailDeliveryId | null;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
@@ -1077,8 +1078,9 @@ export class WorkspaceReservationRepository extends Context.Service<
         )(function* (input) {
           // Only the first send of a generation may seed the slot, so a later
           // attempt can never overwrite the locale behind an existing
-          // idempotency key.
-          yield* db
+          // idempotency key. A writer that loses the null-slot race receives
+          // the already-retained locale so its send matches the generation.
+          const [seeded] = yield* db
             .update(workspaceReservations)
             .set({
               customerEmailDeliveryLocale: input.locale,
@@ -1089,11 +1091,27 @@ export class WorkspaceReservationRepository extends Context.Service<
                 eq(workspaceReservations.id, input.id),
                 isNull(workspaceReservations.customerEmailDeliveryLocale)
               )
-            );
+            )
+            .returning({
+              locale: workspaceReservations.customerEmailDeliveryLocale,
+            });
+          if (seeded) return seeded.locale;
+          const [retained] = yield* db
+            .select({
+              locale: workspaceReservations.customerEmailDeliveryLocale,
+            })
+            .from(workspaceReservations)
+            .where(eq(workspaceReservations.id, input.id))
+            .limit(1);
+          return retained?.locale ?? null;
         }),
         markAwaitingCustomerEmailDelivery: Effect.fn(
           "workspaceReservations.markAwaitingCustomerEmailDelivery"
         )(function* (input) {
+          // The expected prior delivery ID binds the recording to the
+          // generation the writer claimed, so a delayed recording from an old
+          // generation can never overwrite a newer generation's delivery ID
+          // or clear its retained locale.
           const updated = yield* db
             .update(workspaceReservations)
             .set({
@@ -1108,7 +1126,13 @@ export class WorkspaceReservationRepository extends Context.Service<
               and(
                 eq(workspaceReservations.id, input.id),
                 eq(workspaceReservations.paymentState, "paid"),
-                eq(workspaceReservations.fulfillmentState, "processing")
+                eq(workspaceReservations.fulfillmentState, "processing"),
+                input.expectedActiveCustomerEmailDeliveryId === null
+                  ? isNull(workspaceReservations.activeCustomerEmailDeliveryId)
+                  : eq(
+                      workspaceReservations.activeCustomerEmailDeliveryId,
+                      input.expectedActiveCustomerEmailDeliveryId
+                    )
               )
             )
             .returning({ id: workspaceReservations.id });

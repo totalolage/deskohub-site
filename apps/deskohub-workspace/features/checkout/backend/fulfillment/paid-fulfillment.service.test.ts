@@ -115,7 +115,10 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
-                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
                 claimPaidFulfillment,
                 markReservationConfirmed,
                 markFulfilled,
@@ -230,7 +233,10 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
-                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -358,7 +364,10 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
-                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -472,7 +481,10 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
-                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -548,7 +560,10 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
-                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
                 claimPaidFulfillment,
                 markFulfilled: mock(() => Effect.void),
                 markFulfillmentFailed,
@@ -616,7 +631,10 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
-                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
                 markFulfillmentFailed,
               }),
               Layer.mock(DotyposService, {}),
@@ -682,7 +700,10 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
-                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -799,7 +820,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         >[0]
       ) => {
         retainInputs.push(input);
-        return Effect.void;
+        return Effect.succeed(input.locale);
       }
     );
     const sendInputs: unknown[] = [];
@@ -874,5 +895,115 @@ describe("WorkspacePaidFulfillmentService", () => {
         "workspace-paid-reservation-access-reservation-id",
     });
     expect(sendInputs[1]).toEqual(sendInputs[0]);
+  });
+
+  test("sends the retained winner locale when a stale writer loses the retain race", async () => {
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "failed",
+    };
+    const claimed = {
+      ...order,
+      reservationState: "confirmed",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      customerEmailDeliveryLocale: null,
+      locale: "en-US",
+    };
+    const emailReservation = {
+      ...claimed,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
+      customer: { email: "customer@example.com" },
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
+      tableName: "12",
+    };
+    // The stale writer resolves the changed preference, but the repository
+    // reports the locale the winning concurrent worker already retained for
+    // this idempotency generation.
+    const retainCustomerEmailDeliveryLocale = mock(
+      (
+        input: Parameters<
+          IWorkspaceReservationRepository["retainCustomerEmailDeliveryLocale"]
+        >[0]
+      ) => {
+        expect(input.locale).toBe("cs-CZ");
+        return Effect.succeed("en-US" as const);
+      }
+    );
+    const sendInputs: unknown[] = [];
+    const sendPaidReservationEmails = mock(
+      (
+        input: Parameters<
+          IWorkspaceReservationEmailService["sendPaidReservationEmails"]
+        >[0]
+      ) => {
+        sendInputs.push(input);
+        return Effect.succeed(
+          EmailDeliveryIdSchema.make("accepted-customer-email")
+        );
+      }
+    );
+
+    await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const service = yield* WorkspacePaidFulfillmentService;
+          yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
+        }),
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
+                retainCustomerEmailDeliveryLocale,
+                markFulfilled: mock(() => Effect.void),
+                markFulfillmentFailed: mock(() => Effect.void),
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "account", locale: "cs-CZ" } as never)
+                ),
+              }),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.succeed(emailReservation as never)
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails,
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.succeed("access-code")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() => Effect.void),
+              })
+            )
+          )
+        )
+      )
+    );
+
+    // The stale writer must send the authoritative retained locale, so the
+    // content under the generation's idempotency key stays consistent.
+    expect(sendInputs).toHaveLength(1);
+    expect(sendInputs[0]).toMatchObject({ customerEmailLocale: "en-US" });
   });
 });

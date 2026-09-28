@@ -115,6 +115,7 @@ describe.skipIf(!postgresDatabase)(
         reservations.markAwaitingCustomerEmailDelivery({
           id,
           customerEmailDeliveryId,
+          expectedActiveCustomerEmailDeliveryId: null,
         })
       );
 
@@ -138,6 +139,7 @@ describe.skipIf(!postgresDatabase)(
         reservations.markAwaitingCustomerEmailDelivery({
           id,
           customerEmailDeliveryId,
+          expectedActiveCustomerEmailDeliveryId: null,
         })
       );
 
@@ -148,21 +150,52 @@ describe.skipIf(!postgresDatabase)(
       expect(stored?.customerEmailDeliveryLocale).toBeNull();
     });
 
-    test("retains the email locale only while the slot is still null", async () => {
+    test("returns the authoritative retained locale to a losing retain writer", async () => {
       const id = await Effect.runPromise(
         insertPaidReservationFixture({ fulfillmentState: "processing" })
       );
 
-      await Effect.runPromise(
+      const winnerLocale = await Effect.runPromise(
         reservations.retainCustomerEmailDeliveryLocale({ id, locale: "cs-CZ" })
       );
-      // A racing second writer must not overwrite the retained generation
-      // locale behind an existing idempotency key.
-      await Effect.runPromise(
+      // The second writer loses the null-slot race and must learn the
+      // already-retained locale so its send matches the idempotency generation.
+      const loserAuthoritativeLocale = await Effect.runPromise(
         reservations.retainCustomerEmailDeliveryLocale({ id, locale: "en-US" })
       );
 
+      expect(winnerLocale).toBe("cs-CZ");
+      expect(loserAuthoritativeLocale).toBe("cs-CZ");
       const stored = await Effect.runPromise(reservations.findById(id));
+      expect(stored?.customerEmailDeliveryLocale).toBe("cs-CZ");
+    });
+
+    test("rejects an old-generation recording arriving after a newer recovery generation began", async () => {
+      const newerGenerationMarker = newEmailDeliveryId();
+      const staleExpectedMarker = newEmailDeliveryId();
+      const id = await Effect.runPromise(
+        insertPaidReservationFixture({
+          fulfillmentState: "processing",
+          activeCustomerEmailDeliveryId: newerGenerationMarker,
+          customerEmailDeliveryLocale: "cs-CZ",
+        })
+      );
+
+      const error = await Effect.runPromise(
+        Effect.flip(
+          reservations.markAwaitingCustomerEmailDelivery({
+            id,
+            customerEmailDeliveryId: newEmailDeliveryId(),
+            expectedActiveCustomerEmailDeliveryId: staleExpectedMarker,
+          })
+        )
+      );
+
+      expect(error).toBeInstanceOf(WorkspaceReservationStateError);
+      const stored = await Effect.runPromise(reservations.findById(id));
+      expect(stored?.activeCustomerEmailDeliveryId).toEqual(
+        newerGenerationMarker
+      );
       expect(stored?.customerEmailDeliveryLocale).toBe("cs-CZ");
     });
 
@@ -176,6 +209,7 @@ describe.skipIf(!postgresDatabase)(
           reservations.markAwaitingCustomerEmailDelivery({
             id,
             customerEmailDeliveryId: newEmailDeliveryId(),
+            expectedActiveCustomerEmailDeliveryId: null,
           })
         )
       );

@@ -36,6 +36,12 @@ const {
 const { WorkspaceReservationRepository } = await import(
   "@/features/reservation/backend/workspace-reservation.repository"
 );
+const { WorkspaceReservationStateError } = await import(
+  "@/features/reservation/backend/workspace-reservation.repository"
+);
+const { workspaceReservationIdSchema } = await import(
+  "@/features/reservation/persistence-contracts"
+);
 const { WorkspaceReservationService } = await import(
   "@/features/reservation/backend/workspace-reservation.service"
 );
@@ -99,7 +105,10 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
-                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -153,6 +162,7 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     expect(markAwaitingCustomerEmailDelivery).toHaveBeenCalledWith({
       id: "reservation-id",
       customerEmailDeliveryId,
+      expectedActiveCustomerEmailDeliveryId: null,
     });
     expect(markFulfilled).not.toHaveBeenCalled();
     expect(processInvoice).not.toHaveBeenCalled();
@@ -214,7 +224,10 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
-                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -267,6 +280,7 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     expect(markAwaitingCustomerEmailDelivery).toHaveBeenCalledWith({
       id: "reservation-id",
       customerEmailDeliveryId: recoveredDeliveryId,
+      expectedActiveCustomerEmailDeliveryId: priorDeliveryId,
     });
     expect(markFulfilled).not.toHaveBeenCalled();
   });
@@ -342,7 +356,10 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
-                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -415,6 +432,7 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     expect(markAwaitingCustomerEmailDelivery).toHaveBeenCalledWith({
       id: "reservation-id",
       customerEmailDeliveryId: acceptedDeliveryId,
+      expectedActiveCustomerEmailDeliveryId: null,
     });
   });
 
@@ -472,7 +490,7 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
         >[0]
       ) => {
         retainInputs.push(input);
-        return Effect.void;
+        return Effect.succeed(input.locale);
       }
     );
     const attachmentFailure = new Error(
@@ -576,5 +594,116 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
         "workspace-paid-reservation-access-reservation-id",
     });
     expect(sendInputs[1]).toEqual(sendInputs[0]);
+  });
+
+  test("treats a recording superseded by a newer delivery generation as a no-op without failing fulfillment", async () => {
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "not_started",
+    };
+    const claimed = {
+      ...order,
+      reservationState: "confirmed",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      customerEmailDeliveryLocale: null,
+      locale: "en-US",
+    };
+    const emailReservation = {
+      ...claimed,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
+      customer: { email: "customer@example.com" },
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
+      tableName: "12",
+    };
+    // A newer recovery generation already recorded its delivery, so this
+    // old-generation recording is rejected by the repository's generation
+    // guard instead of clobbering the newer generation.
+    const supersededError = new WorkspaceReservationStateError({
+      operation: "workspaceReservations.markAwaitingCustomerEmailDelivery",
+      reservationId: workspaceReservationIdSchema.make("reservation-id"),
+      message:
+        "Only processing paid reservations can await customer email delivery.",
+    });
+    const markAwaitingCustomerEmailDelivery = mock(() =>
+      Effect.fail(supersededError)
+    );
+    const markFulfillmentFailed = mock(() =>
+      Effect.die("a superseded recording must not fail fulfillment")
+    );
+
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const service = yield* WorkspacePaidFulfillmentService;
+          return yield* service
+            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .pipe(Effect.result);
+        }),
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
+                markAwaitingCustomerEmailDelivery,
+                markFulfilled: mock(() =>
+                  Effect.die(
+                    "production fulfillment must stay awaiting delivery"
+                  )
+                ),
+                markFulfillmentFailed,
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "guest" })
+                ),
+              }),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.succeed(emailReservation as never)
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails: mock(() =>
+                  Effect.succeed(EmailDeliveryIdSchema.make("stale-delivery"))
+                ),
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.succeed("access-code")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() =>
+                  Effect.die("production acceptance must not process invoices")
+                ),
+              })
+            )
+          )
+        )
+      )
+    );
+
+    expect(result._tag).toBe("Success");
+    expect(markFulfillmentFailed).not.toHaveBeenCalled();
   });
 });
