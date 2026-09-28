@@ -789,11 +789,15 @@ describe("administration reservation components", () => {
     const { ReservationLookup } = await import("./reservation-lookup");
     const view = render(<ReservationLookup />);
 
+    const form = view.container.querySelector("form");
+    expect(form).not.toBeNull();
+    expect(form?.hasAttribute("noValidate")).toBe(true);
+
     const input = view.getByRole("searchbox", {
       name: "Reservation or payment ID",
     });
     await act(async () => {
-      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+      fireEvent.click(view.getByRole("button", { name: "Get reservation" }));
     });
 
     expect(input.getAttribute("aria-invalid")).toBe("true");
