@@ -386,7 +386,10 @@ describe("workspace reservation email details", () => {
     try {
       await Effect.gen(function* () {
         const service = yield* WorkspaceReservationEmailService;
-        yield* service.sendPaidReservationEmails({ reservation });
+        yield* service.sendPaidReservationEmails({
+          reservation,
+          customerEmailLocale: "en-US",
+        });
         yield* service.sendCancellationEmail({ reservation });
       }).pipe(
         Effect.provide(
@@ -501,6 +504,7 @@ describe("sendPaidReservationEmails idempotency", () => {
         const service = yield* WorkspaceReservationEmailService;
         yield* service.sendPaidReservationEmails({
           reservation,
+          customerEmailLocale: "en-US",
           customerEmailIdempotencyKey: createCustomerEmailInitialIdempotencyKey(
             reservation.id
           ),
@@ -586,6 +590,7 @@ describe("sendPaidReservationEmails idempotent retry stability", () => {
           const service = yield* WorkspaceReservationEmailService;
           yield* service.sendPaidReservationEmails({
             reservation,
+            customerEmailLocale: "en-US",
             customerEmailIdempotencyKey: idempotencyKey,
           });
         }).pipe(
@@ -698,7 +703,10 @@ describe("sendPaidReservationEmails reservation access capability", () => {
     await Effect.gen(function* () {
       const service = yield* WorkspaceReservationEmailService;
       for (const reservation of reservations) {
-        yield* service.sendPaidReservationEmails({ reservation });
+        yield* service.sendPaidReservationEmails({
+          reservation,
+          customerEmailLocale: reservation.locale,
+        });
       }
     }).pipe(
       Effect.provide(
@@ -874,12 +882,32 @@ describe("sendPaidReservationEmails reservation access capability", () => {
 });
 
 describe("reservation customer email language", () => {
-  type ScenarioMode = "both" | "paid";
-
-  const runScenario = async (
+  // The paid-fulfillment workflow owns paid-send locale resolution through the
+  // exported resolver; the service itself applies the locale it receives.
+  const runResolverScenario = async (
     outcome: typeof customerEmailLocaleOutcome,
-    reservation: WorkspaceReservationDetails,
-    mode: ScenarioMode
+    reservation: WorkspaceReservationDetails
+  ) => {
+    customerEmailLocaleOutcome = outcome;
+    customerEmailLocaleReads.length = 0;
+    const { createCustomerEmailLocaleResolver } = await import(
+      "./workspace-reservation-email.service"
+    );
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const emailLocale = yield* TestCustomerEmailLocaleService;
+        return yield* createCustomerEmailLocaleResolver(emailLocale)(
+          reservation
+        );
+      }).pipe(Effect.provide(TestCustomerEmailLocaleService.Default))
+    );
+    return { exit, reads: customerEmailLocaleReads };
+  };
+
+  const runCancellationScenario = async (
+    outcome: typeof customerEmailLocaleOutcome,
+    reservation: WorkspaceReservationDetails
   ) => {
     customerEmailLocaleOutcome = outcome;
     customerEmailLocaleReads.length = 0;
@@ -919,12 +947,8 @@ describe("reservation customer email language", () => {
       const exit = await Effect.runPromiseExit(
         Effect.gen(function* () {
           const service = yield* WorkspaceReservationEmailService;
-          yield* service.sendPaidReservationEmails({ reservation });
-          if (mode === "both") {
-            yield* service.sendCancellationEmail({ reservation });
-          }
+          yield* service.sendCancellationEmail({ reservation });
         }).pipe(
-          Effect.as(undefined),
           Effect.provide(
             WorkspaceReservationEmailService.Default.pipe(
               Layer.provide(
@@ -947,68 +971,58 @@ describe("reservation customer email language", () => {
     }
   };
 
-  test("uses the linked account's saved preference for paid confirmation and cancellation emails", async () => {
-    const { m } = await import("@/features/i18n");
+  test("uses the linked account's saved preference over the reservation locale", async () => {
     const reservation = makeReservation({ locale: "en-US" });
 
-    const { exit, sentMessages, reads } = await runScenario(
+    const { exit, reads } = await runResolverScenario(
       { kind: "account", locale: "cs-CZ" },
-      reservation,
-      "both"
+      reservation
     );
 
     expect(exit._tag).toBe("Success");
-    expect(reads).toEqual([
-      reservation.dotyposCustomerId,
-      reservation.dotyposCustomerId,
-    ]);
-    const [customerMessage, internalMessage, cancellationMessage] =
-      sentMessages;
-    expect(customerMessage?.subject).toBe(
-      m.checkoutEmailCustomerAccessSubject({}, { locale: "cs-CZ" })
-    );
-    expect(customerMessage?.html).toContain("/cs-CZ/reservation/access/");
-    // Internal operator copies stay in the operator locale.
-    expect(internalMessage?.html).not.toContain("/cs-CZ/");
-    expect(cancellationMessage?.subject).toBe(
-      m.reservationCancellationEmailSubject({}, { locale: "cs-CZ" })
-    );
+    expect(exit._tag === "Success" && exit.value).toBe("cs-CZ");
+    expect(reads).toEqual([reservation.dotyposCustomerId]);
   });
 
   test("keeps the reservation locale for an unlinked guest reservation", async () => {
-    const { m } = await import("@/features/i18n");
     const reservation = makeReservation({ locale: "en-US" });
 
-    const { sentMessages, reads } = await runScenario(
+    const { exit, reads } = await runResolverScenario(
       { kind: "guest" },
-      reservation,
-      "both"
+      reservation
     );
 
-    expect(reads).toEqual([
-      reservation.dotyposCustomerId,
-      reservation.dotyposCustomerId,
-    ]);
-    const [customerMessage, , cancellationMessage] = sentMessages;
-    expect(customerMessage?.subject).toBe(
-      m.checkoutEmailCustomerAccessSubject({}, { locale: "en-US" })
-    );
-    expect(customerMessage?.html).toContain("/en-US/reservation/access/");
-    expect(cancellationMessage?.subject).toBe(
-      m.reservationCancellationEmailSubject({}, { locale: "en-US" })
-    );
+    expect(exit._tag).toBe("Success");
+    expect(exit._tag === "Success" && exit.value).toBe("en-US");
+    expect(reads).toEqual([reservation.dotyposCustomerId]);
   });
 
-  test("fails the send instead of guessing a language when the preference read fails", async () => {
+  test("fails instead of guessing a language when the preference read fails", async () => {
     const reservation = makeReservation({ locale: "en-US" });
 
-    const { exit, sentMessages } = await runScenario(
+    const { exit, reads } = await runResolverScenario(
       { kind: "read-error", code: "customer-email-locale.read" },
-      reservation,
-      "paid"
+      reservation
     );
 
     expect(exit._tag).toBe("Failure");
-    expect(sentMessages).toHaveLength(0);
+    expect(reads).toEqual([reservation.dotyposCustomerId]);
+  });
+
+  test("uses the linked account's saved preference for cancellation emails", async () => {
+    const { m } = await import("@/features/i18n");
+    const reservation = makeReservation({ locale: "en-US" });
+
+    const { exit, sentMessages, reads } = await runCancellationScenario(
+      { kind: "account", locale: "cs-CZ" },
+      reservation
+    );
+
+    expect(exit._tag).toBe("Success");
+    expect(reads).toEqual([reservation.dotyposCustomerId]);
+    const cancellationMessage = sentMessages[0];
+    expect(cancellationMessage?.subject).toBe(
+      m.reservationCancellationEmailSubject({}, { locale: "cs-CZ" })
+    );
   });
 });

@@ -6,6 +6,7 @@ import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { Effect, Layer } from "effect";
 import { env, getAccountingDocumentSnapshotSecret } from "@/env";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
+import type { IWorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
@@ -41,6 +42,7 @@ const { WorkspaceReservationRepository } = await import(
 const { WorkspaceReservationService } = await import(
   "@/features/reservation/backend/workspace-reservation.service"
 );
+const { CustomerEmailLocaleService } = await import("@/features/account");
 const { PostHogEventService } = await import(
   "@/shared/backend/analytics/posthog-event.service"
 );
@@ -62,6 +64,8 @@ describe("WorkspacePaidFulfillmentService", () => {
       fulfillmentState: "processing",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
+      customerEmailDeliveryLocale: null,
+      locale: "en-US",
     };
     const emailReservation = {
       ...claimed,
@@ -111,6 +115,7 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
                 claimPaidFulfillment,
                 markReservationConfirmed,
                 markFulfilled,
@@ -118,6 +123,11 @@ describe("WorkspacePaidFulfillmentService", () => {
               }),
               Layer.mock(DotyposService, {
                 confirmReservation,
+              }),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "guest" })
+                ),
               }),
               Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
@@ -153,6 +163,7 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(markReservationConfirmed).not.toHaveBeenCalled();
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
+      customerEmailLocale: "en-US",
       customerEmailIdempotencyKey:
         "workspace-paid-reservation-access-reservation-id",
     });
@@ -184,6 +195,8 @@ describe("WorkspacePaidFulfillmentService", () => {
       fulfillmentState: "processing",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
+      customerEmailDeliveryLocale: null,
+      locale: "en-US",
     };
     const emailReservation = {
       ...claimed,
@@ -217,6 +230,7 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -226,6 +240,11 @@ describe("WorkspacePaidFulfillmentService", () => {
               }),
               Layer.mock(DotyposService, {
                 confirmReservation,
+              }),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "guest" })
+                ),
               }),
               Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
@@ -259,6 +278,7 @@ describe("WorkspacePaidFulfillmentService", () => {
     );
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
+      customerEmailLocale: "en-US",
       customerEmailIdempotencyKey:
         "workspace-paid-reservation-access-reservation-id",
     });
@@ -287,6 +307,8 @@ describe("WorkspacePaidFulfillmentService", () => {
       fulfillmentState: "processing",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
+      customerEmailDeliveryLocale: null,
+      locale: "en-US",
     };
     const emailReservation = {
       ...claimed,
@@ -336,6 +358,7 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -343,6 +366,11 @@ describe("WorkspacePaidFulfillmentService", () => {
                 markFulfillmentFailed,
               }),
               Layer.mock(DotyposService, {}),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "guest" })
+                ),
+              }),
               Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
                   Effect.succeed(emailReservation as never)
@@ -384,12 +412,14 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(sendInputs).toHaveLength(2);
     expect(sendInputs[0]).toEqual({
       reservation: emailReservation,
+      customerEmailLocale: "en-US",
       customerEmailIdempotencyKey:
         createCustomerEmailRecoveryIdempotencyKey(priorDeliveryId),
     });
     expect(sendInputs[1]).toEqual(sendInputs[0]);
     expect(sendInputs[0]).not.toEqual({
       reservation: emailReservation,
+      customerEmailLocale: "en-US",
       customerEmailIdempotencyKey:
         "workspace-paid-reservation-access-reservation-id",
     });
@@ -412,6 +442,8 @@ describe("WorkspacePaidFulfillmentService", () => {
       fulfillmentState: "processing",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
+      customerEmailDeliveryLocale: null,
+      locale: "en-US",
     };
     const emailReservation = {
       ...claimed,
@@ -440,6 +472,7 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -447,6 +480,11 @@ describe("WorkspacePaidFulfillmentService", () => {
                 markFulfillmentFailed: mock(() => Effect.void),
               }),
               Layer.mock(DotyposService, {}),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "guest" })
+                ),
+              }),
               Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
                   Effect.succeed(emailReservation as never)
@@ -474,6 +512,7 @@ describe("WorkspacePaidFulfillmentService", () => {
 
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
+      customerEmailLocale: "en-US",
       customerEmailIdempotencyKey:
         "workspace-paid-reservation-access-reservation-id",
     });
@@ -509,11 +548,17 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
                 claimPaidFulfillment,
                 markFulfilled: mock(() => Effect.void),
                 markFulfillmentFailed,
               }),
               Layer.mock(DotyposService, {}),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "guest" })
+                ),
+              }),
               Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
                   Effect.die("email flow should not start")
@@ -571,9 +616,15 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
                 markFulfillmentFailed,
               }),
               Layer.mock(DotyposService, {}),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "guest" })
+                ),
+              }),
               Layer.mock(WorkspaceReservationService, {}),
               Layer.mock(WorkspaceReservationEmailService, {}),
               Layer.mock(WorkspaceCheckoutAccessCodeService, {}),
@@ -613,6 +664,8 @@ describe("WorkspacePaidFulfillmentService", () => {
       fulfillmentState: "processing",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
+      customerEmailDeliveryLocale: null,
+      locale: "en-US",
     };
     const connectionFailure = new Error("database connection unavailable");
     const markFulfillmentFailed = mock(() => Effect.void);
@@ -629,6 +682,7 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
+                retainCustomerEmailDeliveryLocale: mock(() => Effect.void),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -640,6 +694,11 @@ describe("WorkspacePaidFulfillmentService", () => {
               }),
               Layer.mock(DotyposService, {
                 confirmReservation: mock(() => Effect.void),
+              }),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "guest" })
+                ),
               }),
               Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
@@ -685,5 +744,135 @@ describe("WorkspacePaidFulfillmentService", () => {
         failureCode: "fulfillment_completion_failed",
       })
     );
+  });
+
+  test("retains the resolved locale across same-generation retries when the preference changes", async () => {
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "failed",
+    };
+    const initialClaimed = {
+      ...order,
+      locale: "en-US",
+      reservationState: "confirmed",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      customerEmailDeliveryLocale: null,
+    };
+    // The first generation's failed send retained its resolved locale.
+    const retainedClaimed = {
+      ...initialClaimed,
+      customerEmailDeliveryLocale: "cs-CZ" as const,
+    };
+    const emailReservation = {
+      ...retainedClaimed,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
+      customer: { email: "customer@example.com" },
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
+      tableName: "12",
+    };
+    const claims = [initialClaimed, retainedClaimed];
+    const claimPaidFulfillment = mock(() =>
+      Effect.succeed(claims.shift() as never)
+    );
+    // The customer changed the saved preference between the two attempts.
+    const preferenceLocales = ["cs-CZ", "en-US"];
+    const byDotyposCustomer = mock(() => {
+      const locale = preferenceLocales.shift();
+      return Effect.succeed({ kind: "account", locale } as never);
+    });
+    const retainInputs: Parameters<
+      IWorkspaceReservationRepository["retainCustomerEmailDeliveryLocale"]
+    >[0][] = [];
+    const retainCustomerEmailDeliveryLocale = mock(
+      (
+        input: Parameters<
+          IWorkspaceReservationRepository["retainCustomerEmailDeliveryLocale"]
+        >[0]
+      ) => {
+        retainInputs.push(input);
+        return Effect.void;
+      }
+    );
+    const sendInputs: unknown[] = [];
+    const sendPaidReservationEmails = mock(
+      (
+        input: Parameters<
+          IWorkspaceReservationEmailService["sendPaidReservationEmails"]
+        >[0]
+      ) => {
+        sendInputs.push(input);
+        return Effect.succeed(
+          EmailDeliveryIdSchema.make(`accepted-${sendInputs.length}`)
+        );
+      }
+    );
+
+    await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const service = yield* WorkspacePaidFulfillmentService;
+          yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
+          yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
+        }),
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                claimPaidFulfillment,
+                retainCustomerEmailDeliveryLocale,
+                markFulfilled: mock(() => Effect.void),
+                markFulfillmentFailed: mock(() => Effect.void),
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer,
+              }),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.succeed(emailReservation as never)
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails,
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.succeed("access-code")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() => Effect.void),
+              })
+            )
+          )
+        )
+      )
+    );
+
+    // Only the first generation resolves the preference; the retry reuses the
+    // retained slot instead of re-reading the changed preference.
+    expect(byDotyposCustomer).toHaveBeenCalledTimes(1);
+    expect(retainInputs).toEqual([{ id: "reservation-id", locale: "cs-CZ" }]);
+    expect(sendInputs).toHaveLength(2);
+    expect(sendInputs[0]).toEqual({
+      reservation: emailReservation,
+      customerEmailLocale: "cs-CZ",
+      customerEmailIdempotencyKey:
+        "workspace-paid-reservation-access-reservation-id",
+    });
+    expect(sendInputs[1]).toEqual(sendInputs[0]);
   });
 });

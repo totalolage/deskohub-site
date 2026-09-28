@@ -45,6 +45,7 @@ describe.skipIf(!postgresDatabase)(
     const insertPaidReservationFixture = (input: {
       readonly fulfillmentState: FulfillmentState;
       readonly activeCustomerEmailDeliveryId?: EmailDeliveryId;
+      readonly customerEmailDeliveryLocale?: "en-US" | "cs-CZ";
     }) =>
       Effect.gen(function* () {
         const id = workspaceReservationIdSchema.make(
@@ -67,6 +68,7 @@ describe.skipIf(!postgresDatabase)(
           reservationConfirmedAt: deliveryEventAt(0),
           fulfillmentState: input.fulfillmentState,
           activeCustomerEmailDeliveryId: input.activeCustomerEmailDeliveryId,
+          customerEmailDeliveryLocale: input.customerEmailDeliveryLocale,
           reservationDetails: {
             kind: "cowork",
             entryTier: "basic",
@@ -121,6 +123,47 @@ describe.skipIf(!postgresDatabase)(
       expect(stored?.activeCustomerEmailDeliveryId).toEqual(
         customerEmailDeliveryId
       );
+    });
+
+    test("clears the retained email locale when recording the accepted delivery", async () => {
+      const id = await Effect.runPromise(
+        insertPaidReservationFixture({
+          fulfillmentState: "processing",
+          customerEmailDeliveryLocale: "cs-CZ",
+        })
+      );
+      const customerEmailDeliveryId = newEmailDeliveryId();
+
+      await Effect.runPromise(
+        reservations.markAwaitingCustomerEmailDelivery({
+          id,
+          customerEmailDeliveryId,
+        })
+      );
+
+      const stored = await Effect.runPromise(reservations.findById(id));
+      expect(stored?.activeCustomerEmailDeliveryId).toEqual(
+        customerEmailDeliveryId
+      );
+      expect(stored?.customerEmailDeliveryLocale).toBeNull();
+    });
+
+    test("retains the email locale only while the slot is still null", async () => {
+      const id = await Effect.runPromise(
+        insertPaidReservationFixture({ fulfillmentState: "processing" })
+      );
+
+      await Effect.runPromise(
+        reservations.retainCustomerEmailDeliveryLocale({ id, locale: "cs-CZ" })
+      );
+      // A racing second writer must not overwrite the retained generation
+      // locale behind an existing idempotency key.
+      await Effect.runPromise(
+        reservations.retainCustomerEmailDeliveryLocale({ id, locale: "en-US" })
+      );
+
+      const stored = await Effect.runPromise(reservations.findById(id));
+      expect(stored?.customerEmailDeliveryLocale).toBe("cs-CZ");
     });
 
     test("refuses to attach a reservation whose fulfillment is not processing", async () => {
