@@ -1419,6 +1419,47 @@ describe("ProfileForm", () => {
     expect(view.getByLabelText("City")).toBeTruthy();
   });
 
+  test("keeps legacy public DOM name attributes on profile inputs", async () => {
+    const { ProfileForm } = await import("./profile-form");
+
+    const view = render(
+      <ProfileForm
+        mode="edit"
+        locale="en-US"
+        email="ada@example.test"
+        profile={businessProfile}
+      />
+    );
+
+    const legacyNames: Readonly<Record<string, string>> = {
+      "account-profile-first-name": "firstName",
+      "account-profile-last-name": "lastName",
+      "account-profile-phone": "phone",
+      "account-profile-billing-company-name": "billingCompanyName",
+      "account-profile-billing-company-id": "billingCompanyId",
+      "account-profile-billing-vat-id": "billingVatId",
+      "account-profile-billing-address-line1": "billingAddressLine1",
+      "account-profile-billing-address-line2": "billingAddressLine2",
+      "account-profile-billing-city": "billingCity",
+      "account-profile-billing-zip": "billingZip",
+      "account-profile-billing-country": "billingCountry",
+    };
+
+    for (const [id, expectedName] of Object.entries(legacyNames)) {
+      const input = view.container.querySelector(
+        `#${id}`
+      ) as HTMLInputElement | null;
+      expect(input).toBeTruthy();
+      expect(input?.getAttribute("name")).toBe(expectedName);
+    }
+
+    const billingKind = view.container.querySelector(
+      "#account-profile-billing-kind"
+    ) as HTMLSelectElement | null;
+    expect(billingKind).toBeTruthy();
+    expect(billingKind?.getAttribute("name")).toBeNull();
+  });
+
   test("keeps billing address controls in responsive grid cells", async () => {
     updateCustomerProfile.mockImplementationOnce(() =>
       Promise.resolve({
@@ -1462,31 +1503,36 @@ describe("ProfileForm", () => {
       [
         "Company name",
         "account-profile-billing-company-name",
-        "companyName",
+        "billingCompanyName",
         "Original Company",
       ],
       [
         "Company ID (IČO)",
         "account-profile-billing-company-id",
-        "companyId",
+        "billingCompanyId",
         "12345678",
       ],
-      ["VAT ID", "account-profile-billing-vat-id", "vatId", ""],
+      ["VAT ID", "account-profile-billing-vat-id", "billingVatId", ""],
       [
         "Street and number",
         "account-profile-billing-address-line1",
-        "addressLine1",
+        "billingAddressLine1",
         "Original Street 1",
       ],
       [
         "Apartment, suite",
         "account-profile-billing-address-line2",
-        "addressLine2",
+        "billingAddressLine2",
         "",
       ],
-      ["City", "account-profile-billing-city", "city", "Prague"],
-      ["Postal code", "account-profile-billing-zip", "zip", "11000"],
-      ["Country code", "account-profile-billing-country", "country", "CZ"],
+      ["City", "account-profile-billing-city", "billingCity", "Prague"],
+      ["Postal code", "account-profile-billing-zip", "billingZip", "11000"],
+      [
+        "Country code",
+        "account-profile-billing-country",
+        "billingCountry",
+        "CZ",
+      ],
     ] as const;
 
     const billingInputs = fields
