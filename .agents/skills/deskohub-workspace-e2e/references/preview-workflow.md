@@ -68,11 +68,16 @@ names. Inspect settings and deployment metadata without printing their values.
   exists.
 - `EMAIL_PROVIDER=console` for Preview. Browser cases exercise the complete
   email workflow without making external delivery attempts or consuming the
-  Resend plan. Auth ignores that global selection: exact synthetic E2E
-  magic-link recipients in Vercel Preview send through the shared Console
-  transport (zero Resend sends), while all other auth recipients in Preview
-  use the shared Resend transport. Preview therefore keeps a send-only
-  `EMAIL_API_KEY`, and a missing key fails closed.
+  Resend plan. Checkout and reservation mail use that configured default.
+  Auth ignores the global selection only for exact synthetic E2E magic-link
+  recipients: they force the shared Console transport (zero Resend sends),
+  and the account app feature then emits the single gated
+  `account.magic-link.preview-e2e` raw console line whose
+  `{code, recipient, message, text}` envelope is the E2E parser's stable wire
+  format. Non-synthetic auth uses the `EmailConfigLayer` configured default
+  provider, which may be Console. Preview keeps a send-only `EMAIL_API_KEY`
+  for Resend webhook verification and for the configured default whenever it
+  is Resend; a missing key fails closed only when that provider needs one.
 - The non-sensitive Preview-only
   `POSTHOG_FEATURE_FLAG_OVERRIDES={"accounts":true,"calendar_sales":true,"customer_discounts":true,"discount_codes":true,"meeting_room_page":true,"office_page":true}`.
   Account navigation E2E requires `accounts:true` even when the production
