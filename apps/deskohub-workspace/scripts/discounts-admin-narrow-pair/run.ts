@@ -355,9 +355,7 @@ const checkPair = (pair: PairMetrics): readonly string[] => {
       }
     }
     if (!generate.codeInputVisible) {
-      failures.push(
-        "generate: code input missing, hidden, or zero-size"
-      );
+      failures.push("generate: code input missing, hidden, or zero-size");
     }
     if (!generate.codeInputWithinCell) {
       failures.push(
@@ -563,9 +561,8 @@ export const updateDiscountCodeAdminForm = () => { throw new Error("renderer stu
             );
           }
           await page.evaluate(() => {
-            const input = document.querySelector<HTMLInputElement>(
-              'input[name="code"]'
-            );
+            const input =
+              document.querySelector<HTMLInputElement>('input[name="code"]');
             if (input) input.style.visibility = "hidden";
           });
           const hiddenCodeInputMetrics = (await page.evaluate(
