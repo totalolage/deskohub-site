@@ -67,6 +67,20 @@ export class WorkspaceReservationStateError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
+/**
+ * A delivery recording or retention arrived for an email idempotency
+ * generation that another writer already closed by recording its accepted
+ * send, so the writer must adopt the newer generation instead of touching it.
+ */
+export class WorkspaceReservationDeliveryGenerationSupersededError extends Data.TaggedError(
+  "WorkspaceReservationDeliveryGenerationSupersededError"
+)<{
+  readonly operation: string;
+  readonly reservationId: WorkspaceReservationId;
+  readonly expectedActiveCustomerEmailDeliveryId: EmailDeliveryId | null;
+  readonly activeCustomerEmailDeliveryId: EmailDeliveryId | null;
+}> {}
+
 export class WorkspaceReservationDetailsMalformedError extends Data.TaggedError(
   "WorkspaceReservationDetailsMalformedError"
 )<{
@@ -243,6 +257,7 @@ export interface IWorkspaceReservationRepository {
   readonly retainCustomerEmailDeliveryLocale: (input: {
     readonly id: WorkspaceReservationId;
     readonly locale: Locale;
+    readonly expectedActiveCustomerEmailDeliveryId: EmailDeliveryId | null;
   }) => Effect.Effect<Locale | null, EffectDrizzleQueryError>;
   readonly markAwaitingCustomerEmailDelivery: (input: {
     readonly id: WorkspaceReservationId;
@@ -250,7 +265,9 @@ export interface IWorkspaceReservationRepository {
     readonly expectedActiveCustomerEmailDeliveryId: EmailDeliveryId | null;
   }) => Effect.Effect<
     void,
-    EffectDrizzleQueryError | WorkspaceReservationStateError
+    | EffectDrizzleQueryError
+    | WorkspaceReservationDeliveryGenerationSupersededError
+    | WorkspaceReservationStateError
   >;
   readonly markCustomerEmailDeliveryFulfilled: (input: {
     readonly customerEmailDeliveryId: EmailDeliveryId;
@@ -1076,10 +1093,21 @@ export class WorkspaceReservationRepository extends Context.Service<
         retainCustomerEmailDeliveryLocale: Effect.fn(
           "workspaceReservations.retainCustomerEmailDeliveryLocale"
         )(function* (input) {
-          // Only the first send of a generation may seed the slot, so a later
-          // attempt can never overwrite the locale behind an existing
-          // idempotency key. A writer that loses the null-slot race receives
-          // the already-retained locale so its send matches the generation.
+          // Both statements are bound to the claimed delivery generation via
+          // its active-delivery marker, so a writer whose generation was
+          // recorded (or advanced) while it stalled can neither seed nor
+          // borrow another generation's locale slot. Only the first send of a
+          // generation may seed the slot, so a later attempt can never
+          // overwrite the locale behind an existing idempotency key.
+          const generationStillActive =
+            input.expectedActiveCustomerEmailDeliveryId === null
+              ? isNull(workspaceReservations.activeCustomerEmailDeliveryId)
+              : eq(
+                  workspaceReservations.activeCustomerEmailDeliveryId,
+                  input.expectedActiveCustomerEmailDeliveryId
+                );
+          // A writer that loses the null-slot race receives the
+          // already-retained locale so its send matches the generation.
           const [seeded] = yield* db
             .update(workspaceReservations)
             .set({
@@ -1089,7 +1117,8 @@ export class WorkspaceReservationRepository extends Context.Service<
             .where(
               and(
                 eq(workspaceReservations.id, input.id),
-                isNull(workspaceReservations.customerEmailDeliveryLocale)
+                isNull(workspaceReservations.customerEmailDeliveryLocale),
+                generationStillActive
               )
             )
             .returning({
@@ -1101,8 +1130,12 @@ export class WorkspaceReservationRepository extends Context.Service<
               locale: workspaceReservations.customerEmailDeliveryLocale,
             })
             .from(workspaceReservations)
-            .where(eq(workspaceReservations.id, input.id))
+            .where(
+              and(eq(workspaceReservations.id, input.id), generationStillActive)
+            )
             .limit(1);
+          // Null means the claimed generation is closed: another writer
+          // recorded its accepted send between the claim and this retention.
           return retained?.locale ?? null;
         }),
         markAwaitingCustomerEmailDelivery: Effect.fn(
@@ -1136,6 +1169,35 @@ export class WorkspaceReservationRepository extends Context.Service<
               )
             )
             .returning({ id: workspaceReservations.id });
+          if (updated.length > 0) return;
+          // Distinguish verified generation supersession from other
+          // invalid-state failures so callers only treat supersession as a
+          // benign no-op.
+          const [current] = yield* db
+            .select({
+              activeCustomerEmailDeliveryId:
+                workspaceReservations.activeCustomerEmailDeliveryId,
+            })
+            .from(workspaceReservations)
+            .where(eq(workspaceReservations.id, input.id))
+            .limit(1);
+          if (
+            current &&
+            current.activeCustomerEmailDeliveryId !==
+              input.expectedActiveCustomerEmailDeliveryId
+          ) {
+            return yield* new WorkspaceReservationDeliveryGenerationSupersededError(
+              {
+                operation:
+                  "workspaceReservations.markAwaitingCustomerEmailDelivery",
+                reservationId: input.id,
+                expectedActiveCustomerEmailDeliveryId:
+                  input.expectedActiveCustomerEmailDeliveryId,
+                activeCustomerEmailDeliveryId:
+                  current.activeCustomerEmailDeliveryId,
+              }
+            );
+          }
           yield* ensureUpdated(
             updated,
             "workspaceReservations.markAwaitingCustomerEmailDelivery",

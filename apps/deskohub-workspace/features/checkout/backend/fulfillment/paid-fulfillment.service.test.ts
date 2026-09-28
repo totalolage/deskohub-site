@@ -886,7 +886,13 @@ describe("WorkspacePaidFulfillmentService", () => {
     // Only the first generation resolves the preference; the retry reuses the
     // retained slot instead of re-reading the changed preference.
     expect(byDotyposCustomer).toHaveBeenCalledTimes(1);
-    expect(retainInputs).toEqual([{ id: "reservation-id", locale: "cs-CZ" }]);
+    expect(retainInputs).toEqual([
+      {
+        id: "reservation-id",
+        locale: "cs-CZ",
+        expectedActiveCustomerEmailDeliveryId: null,
+      },
+    ]);
     expect(sendInputs).toHaveLength(2);
     expect(sendInputs[0]).toEqual({
       reservation: emailReservation,
@@ -1005,5 +1011,135 @@ describe("WorkspacePaidFulfillmentService", () => {
     // content under the generation's idempotency key stays consistent.
     expect(sendInputs).toHaveLength(1);
     expect(sendInputs[0]).toMatchObject({ customerEmailLocale: "en-US" });
+  });
+
+  test("fails without sending when the claimed locale generation closed before retention", async () => {
+    const priorDeliveryId = EmailDeliveryIdSchema.make(
+      "recorded-prior-customer-email-delivery"
+    );
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "failed",
+      activeCustomerEmailDeliveryId: priorDeliveryId,
+    };
+    const claimed = {
+      ...order,
+      reservationState: "confirmed",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      customerEmailDeliveryLocale: null,
+      locale: "en-US",
+    };
+    const emailReservation = {
+      ...claimed,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
+      customer: { email: "customer@example.com" },
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
+      tableName: "12",
+    };
+    const retainInputs: Parameters<
+      IWorkspaceReservationRepository["retainCustomerEmailDeliveryLocale"]
+    >[0][] = [];
+    // Another writer recorded this generation's accepted send between the
+    // claim and the retention, so the repository reports the slot as closed.
+    const retainCustomerEmailDeliveryLocale = mock(
+      (
+        input: Parameters<
+          IWorkspaceReservationRepository["retainCustomerEmailDeliveryLocale"]
+        >[0]
+      ) => {
+        retainInputs.push(input);
+        return Effect.succeed(null);
+      }
+    );
+    const sendPaidReservationEmails = mock(() =>
+      Effect.die("a closed generation must not send email")
+    );
+    const markFulfillmentFailed = mock(() => Effect.void);
+
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const service = yield* WorkspacePaidFulfillmentService;
+          return yield* service
+            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .pipe(Effect.result);
+        }),
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
+                retainCustomerEmailDeliveryLocale,
+                markFulfilled: mock(() =>
+                  Effect.die("a closed generation must not fulfill")
+                ),
+                markFulfillmentFailed,
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "guest" })
+                ),
+              }),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.succeed(emailReservation as never)
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails,
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.succeed("access-code")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() =>
+                  Effect.die("invoice processing should not start")
+                ),
+              })
+            )
+          )
+        )
+      )
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "WorkspacePaidFulfillmentError",
+        failureCode: "fulfillment_email_failed",
+      },
+    });
+    // Retention is bound to the claimed delivery generation, not just the
+    // reservation row.
+    expect(retainInputs).toEqual([
+      {
+        id: "reservation-id",
+        locale: "en-US",
+        expectedActiveCustomerEmailDeliveryId: priorDeliveryId,
+      },
+    ]);
+    expect(sendPaidReservationEmails).not.toHaveBeenCalled();
+    // The closed-generation failure carries no fulfillment marker: the row is
+    // owned by whichever writer closed the generation, so this writer must not
+    // mark it failed.
+    expect(markFulfillmentFailed).not.toHaveBeenCalled();
   });
 });

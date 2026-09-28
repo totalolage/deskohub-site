@@ -399,14 +399,15 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
             // A retained locale pins the current idempotency generation to the
             // language of its first send: preference changes between failed or
             // accepted-but-unrecorded retries must not change the email under
-            // the same provider idempotency key. The repository returns the
-            // AUTHORITATIVE retained locale, so a writer that loses the
-            // null-slot race adopts the winner's locale and sends it. A null
-            // result means another writer already closed this generation by
-            // recording its accepted send, so this writer fails before
-            // sending. Recording the accepted send's delivery ID clears the
-            // slot, so the next generation resolves the current preference
-            // again.
+            // the same provider idempotency key. Retention is bound to the
+            // claimed delivery generation via its active-delivery marker, and
+            // the repository returns the AUTHORITATIVE retained locale, so a
+            // writer that loses the null-slot race adopts the winner's locale
+            // and sends it. A null result means another writer already closed
+            // this generation by recording its accepted send, so this writer
+            // fails before sending. Recording the accepted send's delivery ID
+            // clears the slot, so the next generation resolves the current
+            // preference again.
             const customerEmailLocale = yield* (
               claimed.customerEmailDeliveryLocale
                 ? Effect.succeed(claimed.customerEmailDeliveryLocale)
@@ -415,6 +416,8 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                       reservations.retainCustomerEmailDeliveryLocale({
                         id: claimed.id,
                         locale,
+                        expectedActiveCustomerEmailDeliveryId:
+                          claimed.activeCustomerEmailDeliveryId ?? null,
                       })
                     ),
                     Effect.flatMap((authoritativeLocale) =>
@@ -484,13 +487,17 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                   claimed.activeCustomerEmailDeliveryId ?? null,
               })
               .pipe(
-                Effect.catch((cause) =>
-                  Predicate.isTagged(cause, "WorkspaceReservationStateError")
-                    ? Effect.logWarning(
-                        "Paid fulfillment delivery recording superseded by a newer delivery generation",
-                        { orderId: input.orderId }
-                      )
-                    : Effect.fail(cause)
+                // Only a verified generation supersession is benign: another
+                // writer owns the reservation row, so this recording is a
+                // no-op. Any other invalid-state failure keeps the normal
+                // failure handling.
+                Effect.catchTag(
+                  "WorkspaceReservationDeliveryGenerationSupersededError",
+                  () =>
+                    Effect.logWarning(
+                      "Paid fulfillment delivery recording superseded by a newer delivery generation",
+                      { orderId: input.orderId }
+                    )
                 )
               );
             yield* Effect.logInfo(

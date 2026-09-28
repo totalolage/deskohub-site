@@ -21,6 +21,7 @@ import {
 import {
   fulfillmentEmailFailureCode,
   type IWorkspaceReservationRepository,
+  WorkspaceReservationDeliveryGenerationSupersededError,
   WorkspaceReservationRepository,
   WorkspaceReservationStateError,
 } from "./workspace-reservation.repository";
@@ -126,6 +127,63 @@ describe.skipIf(!postgresDatabase)(
       );
     });
 
+    test("does not seed the locale slot after the claimed generation closed", async () => {
+      const id = await Effect.runPromise(
+        insertPaidReservationFixture({ fulfillmentState: "processing" })
+      );
+      const recordedDeliveryId = newEmailDeliveryId();
+      // The claimed initial generation is recorded by a concurrent worker
+      // before the stalled writer resolves its locale.
+      await Effect.runPromise(
+        reservations.markAwaitingCustomerEmailDelivery({
+          id,
+          customerEmailDeliveryId: recordedDeliveryId,
+          expectedActiveCustomerEmailDeliveryId: null,
+        })
+      );
+
+      const authoritativeLocale = await Effect.runPromise(
+        reservations.retainCustomerEmailDeliveryLocale({
+          id,
+          locale: "cs-CZ",
+          expectedActiveCustomerEmailDeliveryId: null,
+        })
+      );
+
+      // The generation is closed: the stalled writer must not seed the newer
+      // generation's slot nor borrow its locale.
+      expect(authoritativeLocale).toBeNull();
+      const stored = await Effect.runPromise(reservations.findById(id));
+      expect(stored?.activeCustomerEmailDeliveryId).toEqual(recordedDeliveryId);
+      expect(stored?.customerEmailDeliveryLocale).toBeNull();
+    });
+
+    test("does not return a newer generation's locale from the fallback read after advancement", async () => {
+      const newerGenerationMarker = newEmailDeliveryId();
+      const staleExpectedMarker = newEmailDeliveryId();
+      const id = await Effect.runPromise(
+        insertPaidReservationFixture({
+          fulfillmentState: "processing",
+          activeCustomerEmailDeliveryId: newerGenerationMarker,
+          customerEmailDeliveryLocale: "cs-CZ",
+        })
+      );
+
+      // The slot is already seeded, so the conditional update cannot apply;
+      // the fallback read must still be bound to the claimed generation.
+      const authoritativeLocale = await Effect.runPromise(
+        reservations.retainCustomerEmailDeliveryLocale({
+          id,
+          locale: "en-US",
+          expectedActiveCustomerEmailDeliveryId: staleExpectedMarker,
+        })
+      );
+
+      expect(authoritativeLocale).toBeNull();
+      const stored = await Effect.runPromise(reservations.findById(id));
+      expect(stored?.customerEmailDeliveryLocale).toBe("cs-CZ");
+    });
+
     test("clears the retained email locale when recording the accepted delivery", async () => {
       const id = await Effect.runPromise(
         insertPaidReservationFixture({
@@ -156,12 +214,20 @@ describe.skipIf(!postgresDatabase)(
       );
 
       const winnerLocale = await Effect.runPromise(
-        reservations.retainCustomerEmailDeliveryLocale({ id, locale: "cs-CZ" })
+        reservations.retainCustomerEmailDeliveryLocale({
+          id,
+          locale: "cs-CZ",
+          expectedActiveCustomerEmailDeliveryId: null,
+        })
       );
       // The second writer loses the null-slot race and must learn the
       // already-retained locale so its send matches the idempotency generation.
       const loserAuthoritativeLocale = await Effect.runPromise(
-        reservations.retainCustomerEmailDeliveryLocale({ id, locale: "en-US" })
+        reservations.retainCustomerEmailDeliveryLocale({
+          id,
+          locale: "en-US",
+          expectedActiveCustomerEmailDeliveryId: null,
+        })
       );
 
       expect(winnerLocale).toBe("cs-CZ");
@@ -191,7 +257,9 @@ describe.skipIf(!postgresDatabase)(
         )
       );
 
-      expect(error).toBeInstanceOf(WorkspaceReservationStateError);
+      expect(
+        error instanceof WorkspaceReservationDeliveryGenerationSupersededError
+      ).toBe(true);
       const stored = await Effect.runPromise(reservations.findById(id));
       expect(stored?.activeCustomerEmailDeliveryId).toEqual(
         newerGenerationMarker

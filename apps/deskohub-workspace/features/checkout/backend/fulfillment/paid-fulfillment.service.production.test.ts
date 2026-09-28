@@ -39,6 +39,9 @@ const { WorkspaceReservationRepository } = await import(
 const { WorkspaceReservationStateError } = await import(
   "@/features/reservation/backend/workspace-reservation.repository"
 );
+const { WorkspaceReservationDeliveryGenerationSupersededError } = await import(
+  "@/features/reservation/backend/workspace-reservation.repository"
+);
 const { workspaceReservationIdSchema } = await import(
   "@/features/reservation/persistence-contracts"
 );
@@ -585,7 +588,13 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     });
     expect(runs.second._tag).toBe("Success");
     expect(byDotyposCustomer).toHaveBeenCalledTimes(1);
-    expect(retainInputs).toEqual([{ id: "reservation-id", locale: "cs-CZ" }]);
+    expect(retainInputs).toEqual([
+      {
+        id: "reservation-id",
+        locale: "cs-CZ",
+        expectedActiveCustomerEmailDeliveryId: null,
+      },
+    ]);
     expect(sendInputs).toHaveLength(2);
     expect(sendInputs[0]).toEqual({
       reservation: emailReservation,
@@ -627,12 +636,15 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     // A newer recovery generation already recorded its delivery, so this
     // old-generation recording is rejected by the repository's generation
     // guard instead of clobbering the newer generation.
-    const supersededError = new WorkspaceReservationStateError({
-      operation: "workspaceReservations.markAwaitingCustomerEmailDelivery",
-      reservationId: workspaceReservationIdSchema.make("reservation-id"),
-      message:
-        "Only processing paid reservations can await customer email delivery.",
-    });
+    const supersededError =
+      new WorkspaceReservationDeliveryGenerationSupersededError({
+        operation: "workspaceReservations.markAwaitingCustomerEmailDelivery",
+        reservationId: workspaceReservationIdSchema.make("reservation-id"),
+        expectedActiveCustomerEmailDeliveryId: null,
+        activeCustomerEmailDeliveryId: EmailDeliveryIdSchema.make(
+          "newer-generation-delivery"
+        ),
+      });
     const markAwaitingCustomerEmailDelivery = mock(() =>
       Effect.fail(supersededError)
     );
@@ -705,5 +717,128 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
 
     expect(result._tag).toBe("Success");
     expect(markFulfillmentFailed).not.toHaveBeenCalled();
+  });
+
+  test("fails fulfillment when the delivery recording rejects for a non-supersession reason", async () => {
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "not_started",
+    };
+    const claimed = {
+      ...order,
+      reservationState: "confirmed",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      customerEmailDeliveryLocale: null,
+      locale: "en-US",
+    };
+    const emailReservation = {
+      ...claimed,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
+      customer: { email: "customer@example.com" },
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
+      tableName: "12",
+    };
+    // The reservation is no longer claimable for recording even though the
+    // delivery generation still matches, so this is a real invalid-state
+    // failure, not a superseded generation.
+    const stateError = new WorkspaceReservationStateError({
+      operation: "workspaceReservations.markAwaitingCustomerEmailDelivery",
+      reservationId: workspaceReservationIdSchema.make("reservation-id"),
+      message:
+        "Only processing paid reservations can await customer email delivery.",
+    });
+    const markAwaitingCustomerEmailDelivery = mock(() =>
+      Effect.fail(stateError)
+    );
+    const markFulfillmentFailed = mock(() => Effect.void);
+
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const service = yield* WorkspacePaidFulfillmentService;
+          return yield* service
+            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .pipe(Effect.result);
+        }),
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                retainCustomerEmailDeliveryLocale: mock(
+                  (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+                    Effect.succeed(input.locale)
+                ),
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
+                markAwaitingCustomerEmailDelivery,
+                markFulfilled: mock(() =>
+                  Effect.die(
+                    "production fulfillment must stay awaiting delivery"
+                  )
+                ),
+                markFulfillmentFailed,
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: mock(() =>
+                  Effect.succeed({ kind: "guest" })
+                ),
+              }),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.succeed(emailReservation as never)
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails: mock(() =>
+                  Effect.succeed(
+                    EmailDeliveryIdSchema.make("accepted-delivery")
+                  )
+                ),
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.succeed("access-code")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() =>
+                  Effect.die("production acceptance must not process invoices")
+                ),
+              })
+            )
+          )
+        )
+      )
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "WorkspacePaidFulfillmentError",
+        failureCode: "fulfillment_completion_failed",
+        cause: stateError,
+      },
+    });
+    expect(markFulfillmentFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "reservation-id",
+        failureCode: "fulfillment_completion_failed",
+      })
+    );
   });
 });
