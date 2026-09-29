@@ -655,10 +655,6 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           yield* Effect.annotateLogsScoped({ nexiAmount });
           yield* Effect.logDebug("Checkout provider session inputs prepared");
 
-          // Session preparation awaited async work; re-check the reservation
-          // end directly before attempt creation so time that passed during
-          // revalidation and URL/amount preparation cannot admit a late
-          // payment attempt.
           yield* ensureReservationHasNotEnded(input.reservation);
 
           const attempt = yield* paymentLifecycle.createPendingNexiAttempt({
@@ -749,9 +745,6 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
       }) {
         yield* revalidatePayableReservation(input);
 
-        // Revalidation awaited async work; re-check the reservation end
-        // directly before the internal completion so time that passed during
-        // it cannot admit a late zero-total completion.
         yield* ensureReservationHasNotEnded(input.reservation);
 
         const transition = yield* paymentLifecycle.completeInternalPayment({
