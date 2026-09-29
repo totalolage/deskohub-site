@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { type Locale, m } from "@/features/i18n";
 import {
@@ -382,6 +382,42 @@ test("keeps a deferred save single-flight and announces the pending state", asyn
         m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
       ).getAttribute("aria-checked")
     ).toBe("true");
+  });
+});
+
+test("permits a second toggle after a settled save with no observable busy render and blocks duplicates while pending", async () => {
+  const context = "synthetic-account-context";
+  const view = renderForm({
+    context,
+    source: "account",
+    status: "absent",
+  });
+  const marketingSwitch = getSwitch(
+    view,
+    m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+  );
+
+  // Raw click: no act() flush between setIsExecuting(true) and the microtask
+  // that calls setIsExecuting(false), so busy is never committed as true.
+  marketingSwitch.click();
+  // While the save is still pending, a duplicate click must be dropped.
+  marketingSwitch.click();
+  expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
+
+  // Let the microtask resolve first, then flush the single coalesced render.
+  await Promise.resolve();
+  act(() => {});
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
+
+  // A settled save must permit a second toggle.
+  marketingSwitch.click();
+  expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(2);
+  expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
+    confirmed: true,
+    context,
+    granted: false,
+    locale: "en-US",
+    source: "account",
   });
 });
 
