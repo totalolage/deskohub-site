@@ -39,13 +39,11 @@ type ReservationCheckoutFormProps<
     readonly isFetching: boolean;
     readonly unavailableMessage?: string;
   };
-  readonly afterCustomerFields?: ReactNode;
   readonly checkoutSessionId?: CheckoutSessionId;
   readonly children: ReactNode;
   readonly form: UseFormReturn<Input, unknown, Data>;
   readonly getReservation: (data: Data) => ReservationOrderIssuanceData;
   readonly locale: Locale;
-  readonly messagePlaceholder: string;
 };
 
 export function ReservationCheckoutForm<
@@ -53,14 +51,12 @@ export function ReservationCheckoutForm<
   Data extends ReservationFormData,
 >({
   advertisedPrice,
-  afterCustomerFields,
   availability,
   checkoutSessionId,
   children,
   form,
   getReservation,
   locale,
-  messagePlaceholder,
 }: ReservationCheckoutFormProps<Input, Data>) {
   const {
     capturePrePaymentOutcome,
@@ -122,12 +118,8 @@ export function ReservationCheckoutForm<
       <Form {...form}>
         <form className="space-y-7" noValidate onSubmit={handleSubmit}>
           {children}
-          <ReservationCustomerFields
-            locale={locale}
-            messagePlaceholder={messagePlaceholder}
-          />
+          <ReservationCustomerFields locale={locale} />
           <ReservationBillingFields locale={locale} />
-          {afterCustomerFields}
           <ReservationPrivacyNotice locale={locale} />
           <ReservationMarketingConsentField locale={locale} />
           <ReservationSubmitSection
