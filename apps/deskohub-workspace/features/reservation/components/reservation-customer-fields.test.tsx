@@ -1,7 +1,18 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import { Form } from "@/shared/components/ui/form";
+import {
+  registerWorkspaceComponentTestEnv,
+  unregisterWorkspaceComponentTestEnv,
+} from "@/shared/testing/workspace-component-test-env";
 import { ReservationCustomerFields } from "./reservation-customer-fields";
 
 function Harness() {
@@ -19,7 +30,15 @@ function Harness() {
 }
 
 describe("ReservationCustomerFields", () => {
+  beforeAll(() => {
+    registerWorkspaceComponentTestEnv();
+  });
+
   afterEach(cleanup);
+
+  afterAll(() => {
+    unregisterWorkspaceComponentTestEnv();
+  });
 
   test("renders contact fields without a message input or textarea", () => {
     const view = render(<Harness />);
