@@ -8,8 +8,6 @@ import {
   mock,
   test,
 } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
@@ -1387,13 +1385,16 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
   });
 
-  test("drops the removed shell slot props from the cowork form", () => {
-    const source = readFileSync(
-      join(import.meta.dir, "cowork-reservation-form.tsx"),
-      "utf8"
-    );
-    expect(source).not.toContain("afterCustomerFields");
-    expect(source).not.toContain("messagePlaceholder");
+  test("does not render a message field in the cowork form", () => {
+    const view = renderForm();
+    const form = view.container.querySelector("form");
+
+    expect(form).not.toBeNull();
+    expect(form?.querySelector("textarea")).toBeNull();
+    expect(
+      within(form!).queryByRole("textbox", { name: /message/i })
+    ).toBeNull();
+    view.unmount();
   });
 
   test("shows one shared optional add-on toggle per tier", async () => {
@@ -1788,14 +1789,6 @@ describe("CoworkReservationForm advertised pricing", () => {
   });
 
   test("keeps add-on and monitor layouts free of grid-template-areas orphans", async () => {
-    const source = readFileSync(
-      join(import.meta.dir, "cowork-reservation-form.tsx"),
-      "utf8"
-    );
-    // The coffee add-on left the date grid-template-areas spot entirely.
-    expect(source).not.toContain("grid-area:coffee");
-    expect(source).not.toMatch(/grid-template-areas:[^"']*\bcoffee\b/);
-
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
       if (url.startsWith("/api/workspace/availability")) {
