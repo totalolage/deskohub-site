@@ -457,6 +457,7 @@ export function CoworkReservationForm({
             <FormControl>
               <ReservationTypeInput
                 aria-required="true"
+                className="lg:grid-cols-2"
                 idPrefix="reservation-entry-tier"
                 inputRef={field.ref}
                 name={field.name}
@@ -484,12 +485,6 @@ export function CoworkReservationForm({
                   return (
                     <ReservationTypeOption
                       key={option.value}
-                      className={
-                        {
-                          "open-space": "lg:col-start-1",
-                          "reserved-desk": "lg:col-start-2",
-                        }[option.value]
-                      }
                       disabled={isUnavailable}
                       price={
                         advertisedProductItem ? (
