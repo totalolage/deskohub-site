@@ -1478,7 +1478,18 @@ describe("CoworkReservationForm advertised pricing", () => {
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
       if (url.startsWith("/api/workspace/availability")) {
-        return Promise.resolve(jsonResponse(availabilityResponse));
+        return Promise.resolve(
+          jsonResponse({
+            ...availabilityResponse,
+            notices: [
+              {
+                date: "2099-07-30",
+                startsAt: "12:00",
+                endsAt: "14:00",
+              },
+            ],
+          })
+        );
       }
       return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     }) as typeof fetch;
@@ -1494,12 +1505,19 @@ describe("CoworkReservationForm advertised pricing", () => {
 
     const form = view.container.querySelector("form");
     expect(form).not.toBeNull();
+
+    const dateAddonRow = form!.querySelector("[data-cowork-date-addon-row]");
+    const dateColumn = form!.querySelector("[data-cowork-date-column]");
+    const addonColumn = form!.querySelector("[data-cowork-addon-column]");
+    const dateNotice = await view.findByText(
+      "From 12:00 to 14:00, the workspace may be busier than usual."
+    );
+    const dateNoticeRegion = dateNotice.closest("p[aria-live='polite']");
     const ordered = Array.from(form!.querySelectorAll("*"));
     const at = (element: Element | null | undefined) => {
       expect(element).toBeTruthy();
       return ordered.indexOf(element as Element);
     };
-
     const offer = form!.querySelector(
       "[data-reservation-type-option='open-space']"
     );
@@ -1516,10 +1534,21 @@ describe("CoworkReservationForm advertised pricing", () => {
     const marketing = form!.querySelector("#reservation-marketing-consent");
     const submit = view.getByRole("button", { name: "Continue" });
 
+    expect(dateAddonRow?.classList.contains("grid")).toBe(true);
+    expect(dateAddonRow?.classList.contains("lg:grid-cols-2")).toBe(true);
+    expect(dateAddonRow?.classList.contains("grid-cols-2")).toBe(false);
+    expect(dateColumn?.parentElement).toBe(dateAddonRow);
+    expect(addonColumn?.parentElement).toBe(dateAddonRow);
+    expect(dateColumn?.nextElementSibling).toBe(addonColumn);
+    expect(dateColumn?.contains(dateNoticeRegion)).toBe(true);
+    expect(dateNoticeRegion?.getAttribute("aria-live")).toBe("polite");
+
     // offer -> date/notices -> add-on -> monitors -> contact -> billing ->
     // privacy -> marketing -> submit. DOM order is focus order here: no
     // element reorders itself with tabindex.
     expect(at(offer)).toBeLessThan(at(dateField));
+    expect(at(dateField)).toBeLessThan(at(dateNoticeRegion));
+    expect(at(dateNoticeRegion)).toBeLessThan(at(addon));
     expect(at(dateField)).toBeLessThan(at(addon));
     expect(at(addon)).toBeLessThan(at(monitors));
     expect(at(monitors)).toBeLessThan(at(email));
@@ -1727,6 +1756,12 @@ describe("CoworkReservationForm advertised pricing", () => {
         view.container.querySelector("input[value='2x27-qhd']")
       ).not.toBeNull();
     });
+    const addonColumn = view.container.querySelector(
+      "[data-cowork-addon-column]"
+    );
+    const addonControl = view.container.querySelector(
+      "[data-cowork-addon-control]"
+    );
     const toggle = view.container.querySelector(
       "[data-cowork-optional-addon-toggle='workstation']"
     );
@@ -1735,7 +1770,11 @@ describe("CoworkReservationForm advertised pricing", () => {
       .querySelector("input[value='2x27-qhd']")
       ?.closest("[role='radiogroup']");
     expect(monitors).not.toBeNull();
-    expect(toggle?.nextElementSibling?.contains(monitors as Node)).toBe(true);
+    const monitorOptions = monitors?.closest("[data-cowork-monitor-options]");
+    expect(addonControl?.contains(toggle as Node)).toBe(true);
+    expect(addonControl?.nextElementSibling).toBe(monitorOptions);
+    expect(monitorOptions?.parentElement).toBe(addonColumn);
+    expect(monitorOptions?.classList.contains("lg:col-span-2")).toBe(true);
     const form = view.container.querySelector("form")!;
     const ordered = Array.from(form.querySelectorAll("*"));
     expect(ordered.indexOf(monitors as Element)).toBeLessThan(
@@ -1904,7 +1943,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     }
   });
 
-  test("keeps add-on and monitor layouts free of grid-template-areas orphans", async () => {
+  test("pairs either optional cowork add-on with the date in responsive columns", async () => {
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
       if (url.startsWith("/api/workspace/availability")) {
@@ -1913,42 +1952,60 @@ describe("CoworkReservationForm advertised pricing", () => {
       return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     }) as typeof fetch;
 
-    const view = renderForm({
-      initialValues: {
-        ...coworkReservationDefaultValues,
-        entryTier: "reserved-desk",
-        date: "2099-07-30",
-        monitorOption: "2x27-qhd",
+    const cases = [
+      {
+        addon: "coffee",
+        initialValues: {
+          ...coworkReservationDefaultValues,
+          entryTier: "open-space" as const,
+          date: "2099-07-30",
+          coffee: true,
+        },
       },
-    });
+      {
+        addon: "workstation",
+        initialValues: {
+          ...coworkReservationDefaultValues,
+          entryTier: "reserved-desk" as const,
+          date: "2099-07-30",
+          monitorOption: undefined,
+        },
+      },
+    ] as const;
 
-    // Date/notices keep their own grouping without the retired coffee area
-    // or its desktop column partner.
-    const dateGroup = Array.from(view.container.querySelectorAll("div")).find(
-      (div) => div.className.includes("grid-template-areas")
-    );
-    expect(dateGroup?.className).toContain("'date'");
-    expect(dateGroup?.className).not.toContain("coffee");
-    expect(dateGroup?.className).not.toContain("md:grid-cols-2");
+    for (const { addon, initialValues } of cases) {
+      const view = renderForm({ initialValues });
+      const dateAddonRow = view.container.querySelector(
+        "[data-cowork-date-addon-row]"
+      );
+      const dateColumn = view.container.querySelector(
+        "[data-cowork-date-column]"
+      );
+      const addonColumn = view.container.querySelector(
+        "[data-cowork-addon-column]"
+      );
+      const addonControl = view.container.querySelector(
+        "[data-cowork-addon-control]"
+      );
+      const toggle = view.container.querySelector(
+        `[data-cowork-optional-addon-toggle='${addon}']`
+      );
 
-    // The add-on is its own row below that group, not pinned into its cells.
-    const addon = view.container.querySelector(
-      "[data-cowork-optional-addon-toggle]"
-    );
-    expect(addon).not.toBeNull();
-    expect(dateGroup?.contains(addon as Node)).toBe(false);
+      expect(dateAddonRow?.classList.contains("lg:grid-cols-2")).toBe(true);
+      expect(dateAddonRow?.classList.contains("grid-cols-2")).toBe(false);
+      expect(dateColumn?.parentElement).toBe(dateAddonRow);
+      expect(addonColumn?.parentElement).toBe(dateAddonRow);
+      expect(dateColumn?.nextElementSibling).toBe(addonColumn);
+      expect(addonColumn?.classList.contains("contents")).toBe(true);
+      expect(addonControl?.parentElement).toBe(addonColumn);
+      expect(addonControl?.contains(toggle as Node)).toBe(true);
+      expect(
+        view.container.querySelectorAll("[data-cowork-optional-addon-toggle]")
+      ).toHaveLength(1);
 
-    // 320px stacks the monitor choices in one column; 768px/1280px may open
-    // three. No base grid-cols-3 forces a squeeze at the smallest width.
-    const monitors = view.container
-      .querySelector("input[value='2x27-qhd']")
-      ?.closest("[role='radiogroup']");
-    expect(monitors?.classList.contains("grid")).toBe(true);
-    expect(monitors?.classList.contains("sm:grid-cols-3")).toBe(true);
-    expect(monitors?.classList.contains("grid-cols-3")).toBe(false);
-
-    await act(async () => {
-      view.unmount();
-    });
+      await act(async () => {
+        view.unmount();
+      });
+    }
   });
 });

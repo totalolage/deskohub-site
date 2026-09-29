@@ -512,56 +512,56 @@ export function CoworkReservationForm({
         )}
       />
 
-      <div className="grid gap-5 [grid-template-areas:'date'_'notice']">
-        <div className="[grid-area:date]">
+      <div data-cowork-date-addon-row className="grid gap-5 lg:grid-cols-2">
+        <div data-cowork-date-column className="space-y-5">
           <CoworkReservationDateField
             control={form.control}
             locale={locale}
             unavailableDates={unavailableDates}
           />
+
+          {selectedDateNotices.length > 0 && (
+            <div className="space-y-3">
+              {selectedDateNotices.map((notice) => (
+                <p
+                  key={`${notice.date}-${notice.startsAt}-${notice.endsAt}`}
+                  aria-live="polite"
+                  className="flex items-start gap-2 rounded-2xl border border-dashed border-sunset-yellow/45 bg-sunset-yellow/14 px-4 py-3 text-sm leading-6 text-navy-blue/50"
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-chilean-fire" />
+                  <span>
+                    {m.reservationAvailabilityPartialNotice(
+                      {
+                        startsAt: notice.startsAt,
+                        endsAt: notice.endsAt,
+                      },
+                      { locale }
+                    )}
+                  </span>
+                </p>
+              ))}
+            </div>
+          )}
         </div>
 
-        {selectedDateNotices.length > 0 && (
-          <div className="space-y-3 [grid-area:notice]">
-            {selectedDateNotices.map((notice) => (
-              <p
-                key={`${notice.date}-${notice.startsAt}-${notice.endsAt}`}
-                aria-live="polite"
-                className="flex items-start gap-2 rounded-2xl border border-dashed border-sunset-yellow/45 bg-sunset-yellow/14 px-4 py-3 text-sm leading-6 text-navy-blue/50"
-              >
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-chilean-fire" />
-                <span>
-                  {m.reservationAvailabilityPartialNotice(
-                    {
-                      startsAt: notice.startsAt,
-                      endsAt: notice.endsAt,
-                    },
-                    { locale }
-                  )}
-                </span>
-              </p>
-            ))}
-          </div>
+        {showCoffeeAddon && (
+          <CoworkCoffeeAddonField
+            control={form.control}
+            locale={locale}
+            priceLabel={coffeePriceLabel}
+          />
+        )}
+
+        {showWorkstationAddon && (
+          <CoworkWorkstationAddonField
+            allowedMonitorOptions={allowedMonitorOptions}
+            control={form.control}
+            locale={locale}
+            priceLabel={workstationPriceLabel}
+            unavailableMonitorOptions={unavailableMonitorOptions}
+          />
         )}
       </div>
-
-      {showCoffeeAddon && (
-        <CoworkCoffeeAddonField
-          control={form.control}
-          locale={locale}
-          priceLabel={coffeePriceLabel}
-        />
-      )}
-
-      {showWorkstationAddon && (
-        <CoworkWorkstationAddonField
-          allowedMonitorOptions={allowedMonitorOptions}
-          control={form.control}
-          locale={locale}
-          priceLabel={workstationPriceLabel}
-          unavailableMonitorOptions={unavailableMonitorOptions}
-        />
-      )}
     </ReservationCheckoutForm>
   );
 }
@@ -646,17 +646,19 @@ function CoworkCoffeeAddonField({
       control={control}
       name="coffee"
       render={({ field }) => (
-        <FormItem>
-          <CoworkOptionalAddonToggle
-            addon="coffee"
-            checked={field.value}
-            icon={Coffee}
-            label={m.reservationCoffeeLabel({}, { locale })}
-            onBlur={field.onBlur}
-            onCheckedChange={(checked) => field.onChange(Boolean(checked))}
-            priceLabel={priceLabel}
-          />
-          <FormMessage />
+        <FormItem className="contents" data-cowork-addon-column>
+          <div data-cowork-addon-control className="space-y-2">
+            <CoworkOptionalAddonToggle
+              addon="coffee"
+              checked={field.value}
+              icon={Coffee}
+              label={m.reservationCoffeeLabel({}, { locale })}
+              onBlur={field.onBlur}
+              onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+              priceLabel={priceLabel}
+            />
+            <FormMessage />
+          </div>
         </FormItem>
       )}
     />
@@ -688,20 +690,25 @@ function CoworkWorkstationAddonField({
       control={control}
       name="monitorOption"
       render={({ field }) => (
-        <FormItem>
-          <CoworkOptionalAddonToggle
-            addon="workstation"
-            checked={field.value !== undefined}
-            icon={Monitor}
-            label={m.reservationWorkstationLabel({}, { locale })}
-            onBlur={field.onBlur}
-            onCheckedChange={(checked) =>
-              field.onChange(checked ? allowedMonitorOptions[0] : undefined)
-            }
-            priceLabel={priceLabel}
-          />
+        <FormItem className="contents" data-cowork-addon-column>
+          <div data-cowork-addon-control className="space-y-2">
+            <CoworkOptionalAddonToggle
+              addon="workstation"
+              checked={field.value !== undefined}
+              icon={Monitor}
+              label={m.reservationWorkstationLabel({}, { locale })}
+              onBlur={field.onBlur}
+              onCheckedChange={(checked) =>
+                field.onChange(checked ? allowedMonitorOptions[0] : undefined)
+              }
+              priceLabel={priceLabel}
+            />
+          </div>
           {field.value !== undefined && (
-            <div className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
+            <div
+              data-cowork-monitor-options
+              className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4 lg:col-span-2"
+            >
               <Label
                 id={monitorSetupLabelId}
                 className="block pt-1 text-sm text-navy-blue/60"
@@ -766,7 +773,7 @@ function CoworkWorkstationAddonField({
               </FormControl>
             </div>
           )}
-          <FormMessage />
+          <FormMessage className="lg:col-span-2" />
         </FormItem>
       )}
     />
@@ -852,7 +859,7 @@ export function CoworkReservationFormFallback({
         </div>
       </div>
 
-      <div className="grid gap-5">
+      <div className="grid gap-5 lg:grid-cols-2">
         <ReservationSkeletonField />
         <ReservationSkeletonField />
       </div>
