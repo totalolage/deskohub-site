@@ -6,7 +6,10 @@ import { Effect, Layer } from "effect";
 import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
 import { makeCoworkInvoiceDocument } from "@/features/accounting/invoice.test-utils";
 import { DiscountClaimError } from "@/features/discounts/errors";
-import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
+import {
+  WorkspaceAvailabilityService,
+  WorkspaceTableUnavailableError,
+} from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
 import {
@@ -258,6 +261,98 @@ describe("LatePaymentRecoveryService", () => {
         failureCode: "late_payment_newer_reservation",
       })
     );
+  });
+
+  test("requires a refund when the purchased historical Profi monitor setup is unavailable", async () => {
+    const requireRefund = mock(() => Effect.void);
+    const ensureAvailable = mock(() =>
+      Effect.fail(
+        new WorkspaceTableUnavailableError({
+          date: "2099-01-01",
+          reservation: {
+            kind: "cowork",
+            entryTier: "profi",
+            monitorOption: "2x27-qhd",
+          },
+        })
+      )
+    );
+    const assignTableId = mock(() =>
+      Effect.die("an unavailable reservation must not be assigned")
+    );
+    const fulfillPaidOrder = mock(() =>
+      Effect.die("an unavailable reservation must not be fulfilled")
+    );
+    const snapshot = {
+      ...makeCoworkInvoiceDocument("en-US"),
+      reservation: {
+        kind: "cowork",
+        date: "2099-01-01",
+      },
+      workspaceReservationId: "reservation-id",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+    } as never;
+    const cancelledReservation = {
+      id: "reservation-id",
+      activePaymentAttemptId: "attempt-id",
+      reservationState: "cancelled",
+      dotyposCustomerId: "dotypos-customer-id",
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "profi",
+        coffee: true,
+        monitorOption: "2x27-qhd",
+      },
+    };
+    const layer = LatePaymentRecoveryService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(LatePaymentRecoveryRepository, {
+            findByPaymentAttemptId: mock(() =>
+              Effect.succeed(recovery as never)
+            ),
+            claim: mock(() =>
+              Effect.succeed({ ...recovery, state: "processing" } as never)
+            ),
+            hasNewerActiveReservation: mock(() => Effect.succeed(false)),
+            requireRefund,
+          }),
+          Layer.mock(WorkspaceReservationRepository, {
+            findById: mock(() => Effect.succeed(cancelledReservation as never)),
+          }),
+          Layer.mock(AccountingDocumentSnapshotRepository, {
+            findByPaymentAttemptId: mock(() => Effect.succeed(snapshot)),
+          }),
+          Layer.mock(WorkspaceAvailabilityService, { ensureAvailable }),
+          Layer.mock(DotyposService, {
+            listActiveReservationsOverlapping: mock(() => Effect.succeed([])),
+          }),
+          Layer.mock(WorkspaceTableAssignmentService, { assignTableId }),
+          Layer.mock(WorkspacePaidFulfillmentService, { fulfillPaidOrder })
+        )
+      )
+    );
+
+    const outcome = await Effect.gen(function* () {
+      const service = yield* LatePaymentRecoveryService;
+      return yield* service.recover({ paymentAttemptId: "attempt-id" });
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(outcome).toBe("refund_required");
+    expect(ensureAvailable).toHaveBeenCalledWith({
+      kind: "cowork",
+      date: "2099-01-01",
+      entryTier: "profi",
+      monitorOption: "2x27-qhd",
+    });
+    expect(requireRefund).toHaveBeenCalledWith(
+      expect.objectContaining({
+        failureCode: "late_payment_reservation_unavailable",
+      })
+    );
+    expect(assignTableId).not.toHaveBeenCalled();
+    expect(fulfillPaidOrder).not.toHaveBeenCalled();
   });
 
   test("requires a refund without disturbing a newer active payment attempt", async () => {

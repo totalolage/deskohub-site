@@ -726,6 +726,53 @@ describe("WorkspaceAvailabilityService", () => {
     }
   });
 
+  test("rejects an occupied historical Profi monitor setup while another setup is free", async () => {
+    const results = await runWithInventory(
+      Effect.gen(function* () {
+        const availability = yield* Effect.promise(
+          () => import("./workspace-availability.service")
+        );
+        const service = yield* availability.WorkspaceAvailabilityService;
+        const purchasedSetup = yield* Effect.result(
+          service.ensureAvailable({
+            kind: "cowork",
+            date: testDate,
+            entryTier: "profi",
+            monitorOption: "2x27-qhd",
+          })
+        );
+        const availableAlternative = yield* Effect.result(
+          service.ensureAvailable({
+            kind: "cowork",
+            date: testDate,
+            entryTier: "profi",
+            monitorOption: "2x32-qhd",
+          })
+        );
+
+        return { purchasedSetup, availableAlternative };
+      }),
+      {
+        reservations: [
+          makeReservation({ tableId: "profi-27-qhd", status: "NEW" }),
+        ],
+      }
+    );
+
+    expect(results.purchasedSetup._tag).toBe("Failure");
+    if (results.purchasedSetup._tag === "Failure") {
+      expect(results.purchasedSetup.failure._tag).toBe(
+        "WorkspaceTableUnavailableError"
+      );
+      expect(results.purchasedSetup.failure.reservation).toEqual({
+        kind: "cowork",
+        entryTier: "profi",
+        monitorOption: "2x27-qhd",
+      });
+    }
+    expect(results.availableAlternative._tag).toBe("Success");
+  });
+
   test("describes an unavailable meeting-room reservation with its kind", async () => {
     const result = await runWithInventory(
       Effect.result(

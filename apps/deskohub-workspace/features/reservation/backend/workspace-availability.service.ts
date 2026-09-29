@@ -27,6 +27,7 @@ import {
   type WorkspaceCoworkProductTier,
   workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
+  workspaceProductMonitorOptionTableTags,
 } from "@/features/checkout/product-catalog";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
 import {
@@ -530,9 +531,16 @@ const isCoworkUnavailableForSelection = (
   // Legacy tiers are only ever re-checked on historical recovery paths and
   // keep their `tier:${tier}` tags; they never serve a new current request.
   if (!isWorkspaceCoworkCurrentProductTier(entryTier)) {
+    const requiredTags = [
+      `tier:${entryTier}`,
+      ...(entryTier === "profi" && monitorOption
+        ? workspaceProductMonitorOptionTableTags[monitorOption]
+        : []),
+    ];
+
     return hasAvailableWorkspaceTableCandidate(
       tables,
-      [`tier:${entryTier}`],
+      requiredTags,
       occupancyByTableId,
       workspaceBookingSeatCount
     ).pipe(Effect.map((available) => !available));
