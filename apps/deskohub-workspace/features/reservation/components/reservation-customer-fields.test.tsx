@@ -44,9 +44,7 @@ describe("ReservationCustomerFields", () => {
     const view = render(<Harness />);
 
     expect(view.container.querySelector("textarea")).toBeNull();
-    expect(
-      view.container.querySelector('input[name="message"]')
-    ).toBeNull();
+    expect(view.container.querySelector('input[name="message"]')).toBeNull();
 
     expect(view.container.querySelector('input[name="email"]')).not.toBeNull();
     expect(view.container.querySelector('input[name="phone"]')).not.toBeNull();
