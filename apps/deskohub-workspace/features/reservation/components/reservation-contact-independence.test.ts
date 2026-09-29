@@ -10,13 +10,18 @@ describe("contact form independence from reservation message removal", () => {
       join(root, "features/contact/components/contact-form.tsx"),
       "utf8"
     );
-    expect(source).toContain('import { Textarea } from "@/shared/components/ui/textarea"');
+    expect(source).toContain(
+      'import { Textarea } from "@/shared/components/ui/textarea"'
+    );
     expect(source).toContain('name="message"');
   });
 
   test("reservation customer fields no longer import Textarea", () => {
     const source = readFileSync(
-      join(root, "features/reservation/components/reservation-customer-fields.tsx"),
+      join(
+        root,
+        "features/reservation/components/reservation-customer-fields.tsx"
+      ),
       "utf8"
     );
     expect(source).not.toContain("Textarea");
