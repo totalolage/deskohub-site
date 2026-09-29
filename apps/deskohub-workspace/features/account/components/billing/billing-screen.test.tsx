@@ -13,7 +13,6 @@ const englishCopy = {
   addPaymentCard: "Add payment card",
   removePaymentCard: "Remove payment card",
   billingDetailsTitle: "Billing details",
-  syncAres: "Sync with ARES Registry",
   invoiceHistoryTitle: "Invoice history",
   invoiceHistoryUnavailable:
     "Invoice history and downloads are not available in this account.",
@@ -30,7 +29,6 @@ const czechCopy = {
   addPaymentCard: "Přidat platební kartu",
   removePaymentCard: "Odebrat platební kartu",
   billingDetailsTitle: "Fakturační údaje",
-  syncAres: "Synchronizovat s registrem ARES",
   invoiceHistoryTitle: "Historie faktur",
   invoiceHistoryUnavailable:
     "Historie faktur a jejich stahování nejsou pro tento účet dostupné.",
@@ -192,7 +190,7 @@ describe("BillingScreen", () => {
     const markup = renderScreen(englishCopy, "en-US");
     const buttons = markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
 
-    expect(buttons).toHaveLength(4);
+    expect(buttons).toHaveLength(3);
     for (const button of buttons) {
       expect(button).toMatch(/\btype="button"/);
       expect(button).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
