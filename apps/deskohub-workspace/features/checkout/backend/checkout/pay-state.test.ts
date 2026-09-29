@@ -4,11 +4,13 @@ import { Effect, Predicate, Schema } from "effect";
 import type { JsonObject } from "type-fest";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { buildReservationQuote } from "@/features/checkout/reservation-quote";
+import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import {
   canonicalPromotionCodeSchema,
   discountIdSchema,
 } from "@/features/discounts/contracts";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
+import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import { getReservationStartPath } from "@/features/reservation/routes";
 import type { PayStateKey, SignedPayState } from "./pay-state";
@@ -108,6 +110,30 @@ const buildMeetingRoomState = () => {
         reservation,
         quote: Effect.runSync(buildReservationQuote(reservation)),
         orderId: "meeting-room-pay-state-test-order-id",
+      },
+      { keys: [fixedKey], now: () => fixedNow }
+    )
+  );
+};
+
+const buildOfficeState = () => {
+  const reservation = normalizedOfficeReservationOrderSchema.make({
+    kind: "office",
+    startsOn: "2099-06-20",
+    endsOn: "2099-06-21",
+    seats: 3,
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  });
+
+  return runSync(
+    buildSignedPayState(
+      {
+        locale: "en-US",
+        reservation,
+        quote: runSync(buildOfficeReservationQuote(reservation)),
+        orderId: "office-pay-state-test-order-id",
       },
       { keys: [fixedKey], now: () => fixedNow }
     )
@@ -589,8 +615,7 @@ describe("Pay URL state", () => {
 });
 
 describe("legacy signed Pay state with a retired customer message", () => {
-  test("restores safely while dropping the unknown message key", () => {
-    const state = buildState();
+  const openLegacyPayStateWithMessage = (state: SignedPayState) => {
     const legacyState = {
       ...state,
       reservation: {
@@ -598,8 +623,7 @@ describe("legacy signed Pay state with a retired customer message", () => {
         message: "Private setup note.",
       },
     };
-    // Seal the legacy-shaped payload at the token layer so the ciphertext
-    // carries the retired key exactly as an already-issued Pay state would.
+    // Seal below the Pay-state schema so the retired key is already in the token.
     const token = runSync(
       sealCheckoutState(legacyState, fixedKey.kid, {
         keys: [fixedKey],
@@ -607,18 +631,73 @@ describe("legacy signed Pay state with a retired customer message", () => {
       })
     );
 
-    const opened = runSync(
-      openPayState(token, { keys: [fixedKey], now: () => fixedNow })
-    );
+    return {
+      legacyState,
+      opened: runSync(
+        openPayState(token, { keys: [fixedKey], now: () => fixedNow })
+      ),
+      restartKind: runSync(getPayStateRestartKind(token, { keys: [fixedKey] })),
+    };
+  };
 
+  test("restores meeting-room Pay state from a token with retired message", () => {
+    const state = buildMeetingRoomState();
+    const { legacyState, opened, restartKind } =
+      openLegacyPayStateWithMessage(state);
+
+    expect(legacyState.reservation).toHaveProperty(
+      "message",
+      "Private setup note."
+    );
+    expect(opened).toEqual(state);
     expect(opened.reservation).not.toHaveProperty("message");
-    expect(opened.orderId).toBe(state.orderId);
-    expect(opened.checkoutSessionId).toBe(state.checkoutSessionId);
-    expect(opened.reservation.name).toBe(state.reservation.name);
-    expect(opened.reservation.email).toBe(state.reservation.email);
-    expect(
-      runSync(getPayStateRestartKind(token, { keys: [fixedKey] }))
-    ).toBe("cowork");
+    expect(opened.reservation).toMatchObject({
+      kind: "meeting-room",
+      duration: { unit: "hour", amount: 4 },
+      reservationDate: "2099-06-10",
+    });
+    expect(restartKind).toBe("meeting-room");
+  });
+
+  test("restores office Pay state from a token with retired message", () => {
+    const state = buildOfficeState();
+    const { legacyState, opened, restartKind } =
+      openLegacyPayStateWithMessage(state);
+
+    expect(legacyState.reservation).toHaveProperty(
+      "message",
+      "Private setup note."
+    );
+    expect(opened).toEqual(state);
+    expect(opened.reservation).not.toHaveProperty("message");
+    expect(opened.reservation).toMatchObject({
+      kind: "office",
+      startsOn: "2099-06-20",
+      endsOn: "2099-06-21",
+      seats: 3,
+    });
+    expect(restartKind).toBe("office");
+  });
+
+  test("restores cowork Pay state from a token with retired message", () => {
+    const state = buildState();
+    const { legacyState, opened, restartKind } =
+      openLegacyPayStateWithMessage(state);
+
+    expect(legacyState.reservation).toHaveProperty(
+      "message",
+      "Private setup note."
+    );
+    expect(opened).toEqual(state);
+    expect(opened.reservation).not.toHaveProperty("message");
+    expect(opened.reservation).toMatchObject({
+      kind: "cowork",
+      entryTier: "profi",
+      date: "2026-06-20",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    });
+    expect(restartKind).toBe("cowork");
   });
 
   test("does not carry the retired message into freshly built Pay state", () => {
