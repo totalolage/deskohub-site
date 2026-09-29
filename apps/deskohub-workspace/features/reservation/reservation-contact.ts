@@ -62,9 +62,9 @@ export const normalizedReservationCustomerSchema = Schema.Struct({
  * Decode a reservation payload while dropping the retired customer-message
  * key so legacy signed Pay state remains restorable.
  */
-export const droppingRetiredReservationCustomerMessage = <A, I, R>(
-  schema: Schema.Schema<A, I, R>
-): Schema.Schema<A, unknown, R> =>
+export const droppingRetiredReservationCustomerMessage = <A, RD, RE>(
+  schema: Schema.Codec<A, unknown, RD, RE>
+): Schema.Codec<A, unknown, RD, RE> =>
   Schema.Unknown.pipe(
     Schema.decodeTo(schema, {
       decode: SchemaGetter.transform((input) => {
