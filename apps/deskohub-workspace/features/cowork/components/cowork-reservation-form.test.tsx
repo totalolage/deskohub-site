@@ -1259,4 +1259,128 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
     await act(async () => {});
   });
+
+  test("renders the two cowork offers as equal half-width desktop columns with no empty third column", () => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams("entryTier=open-space")
+    );
+    getAdvertisedPrices.mockImplementation(() => new Promise(() => undefined));
+
+    const view = renderForm();
+    const offers = Array.from(
+      view.container.querySelectorAll("[data-reservation-type-option]")
+    );
+    expect(offers).toHaveLength(2);
+
+    const offerGrid = offers[0]?.parentElement;
+    expect(offerGrid).not.toBeNull();
+
+    // Effective grid composition: the shared lg:grid-cols-3 default is
+    // overridden by the cowork-only lg:grid-cols-2, so only two column
+    // tracks exist and neither is an empty third one.
+    expect(offerGrid?.classList.contains("lg:grid-cols-2")).toBe(true);
+    expect(offerGrid?.classList.contains("lg:grid-cols-3")).toBe(false);
+    expect(offerGrid?.classList.contains("grid-cols-3")).toBe(false);
+
+    // Both cards span the full four-row subgrid, so the two cards sit in one
+    // row with equal width class composition and no per-card width overrides.
+    for (const offer of offers) {
+      expect(offer.classList.contains("lg:row-span-4")).toBe(true);
+      expect(offer.classList.contains("lg:grid-rows-subgrid")).toBe(true);
+      const widthOverrides = String(offer.className)
+        .split(/\s+/)
+        .filter((className) =>
+          /(?:^|:)(?:col-start|col-span|w-)/.test(className)
+        );
+      expect(widthOverrides).toEqual([]);
+    }
+    view.unmount();
+  });
+
+  test("stacks the two cowork offers into one column below the desktop breakpoint", () => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams("entryTier=open-space")
+    );
+    getAdvertisedPrices.mockImplementation(() => new Promise(() => undefined));
+
+    const view = renderForm();
+    const offerGrid = view.container.querySelector(
+      "[data-reservation-type-option='open-space']"
+    )?.parentElement;
+    expect(offerGrid).not.toBeNull();
+
+    // 320px and 768px stay a single stacked column: only lg: (1024px and up)
+    // may open a second track, so nothing forces a side-by-side at small
+    // viewports.
+    expect(offerGrid?.classList.contains("grid")).toBe(true);
+    expect(offerGrid?.classList.contains("space-y-3")).toBe(true);
+    expect(offerGrid?.classList.contains("grid-cols-2")).toBe(false);
+    expect(offerGrid?.classList.contains("sm:grid-cols-2")).toBe(false);
+    expect(offerGrid?.classList.contains("md:grid-cols-2")).toBe(false);
+    expect(offerGrid?.classList.contains("lg:grid-cols-2")).toBe(true);
+    view.unmount();
+  });
+
+  test("does not pin cowork offer cards to explicit grid columns", () => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams("entryTier=open-space")
+    );
+    getAdvertisedPrices.mockImplementation(() => new Promise(() => undefined));
+
+    const view = renderForm();
+    for (const tier of ["open-space", "reserved-desk"]) {
+      const offer = view.container.querySelector(
+        `[data-reservation-type-option="${tier}"]`
+      );
+      expect(offer).not.toBeNull();
+      expect(offer?.className).not.toContain("col-start");
+      expect(offer?.className).not.toContain("lg:col-start-1");
+      expect(offer?.className).not.toContain("lg:col-start-2");
+    }
+    view.unmount();
+  });
+
+  test("keeps selecting between the two cowork offers", async () => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams("entryTier=open-space")
+    );
+    getAdvertisedPrices.mockImplementation(() => new Promise(() => undefined));
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm();
+    const openSpaceInput = view.container.querySelector(
+      "#reservation-entry-tier-open-space"
+    ) as HTMLInputElement;
+    const reservedDeskInput = view.container.querySelector(
+      "#reservation-entry-tier-reserved-desk"
+    ) as HTMLInputElement;
+
+    expect(openSpaceInput.checked).toBe(true);
+    expect(reservedDeskInput.checked).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(reservedDeskInput);
+    });
+    await waitFor(() => {
+      expect(reservedDeskInput.checked).toBe(true);
+      expect(openSpaceInput.checked).toBe(false);
+    });
+
+    await act(async () => {
+      fireEvent.click(openSpaceInput);
+    });
+    await waitFor(() => {
+      expect(openSpaceInput.checked).toBe(true);
+      expect(reservedDeskInput.checked).toBe(false);
+    });
+    await act(async () => {
+      view.unmount();
+    });
+  });
 });
