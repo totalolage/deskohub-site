@@ -294,8 +294,8 @@ describe("retired reservation customer message", () => {
 
     expect(reservation).not.toHaveProperty("message");
     expect(reservation.name).toBe("Ada Lovelace");
-    expect(getMeetingRoomReservationDefaultValues(reservation)).not.toHaveProperty(
-      "message"
-    );
+    expect(
+      getMeetingRoomReservationDefaultValues(reservation)
+    ).not.toHaveProperty("message");
   });
 });
