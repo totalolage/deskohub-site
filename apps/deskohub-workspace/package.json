@@ -10,7 +10,7 @@
     "dev:next": "next dev --turbo",
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",
     "email:dev": "email dev --dir emails --port 3001",
-    "i18n:compile": "bunx @inlang/paraglide-js compile --project ./project.inlang --outdir ./features/i18n/paraglide",
+    "i18n:compile": "bun x @inlang/paraglide-js compile --project ./project.inlang --outdir ./features/i18n/paraglide",
     "feature-flags:sync": "bun scripts/sync-posthog-feature-flags.ts",
     "administrator-credentials:generate": "bash scripts/generate-administrator-credentials.sh",
     "db:generate": "drizzle-kit generate",
