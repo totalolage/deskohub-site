@@ -1531,6 +1531,51 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
   });
 
+  test("shows monitor card focus treatment when its radio receives focus", async () => {
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "reserved-desk",
+        date: "2099-07-30",
+        monitorOption: "2x27-qhd",
+      },
+    });
+    await waitFor(() => {
+      expect(
+        view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+      ).toBe(false);
+    });
+    const radio = view.container.querySelector<HTMLInputElement>(
+      "input[type='radio'][value='2x27-qhd']"
+    );
+    expect(radio).not.toBeNull();
+    const option = radio!.closest("label");
+    expect(option).not.toBeNull();
+
+    await act(async () => {
+      radio!.focus();
+    });
+
+    expect(document.activeElement).toBe(radio);
+    expect(option?.contains(radio!)).toBe(true);
+    expect(option?.className).toContain("focus-within:outline");
+    expect(option?.className).toContain("focus-within:outline-2");
+    expect(option?.className).toContain("focus-within:outline-offset-2");
+    expect(option?.className).toContain("focus-within:outline-navy-blue");
+
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
   test("renders monitor choices below the workstation toggle only while selected", async () => {
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);

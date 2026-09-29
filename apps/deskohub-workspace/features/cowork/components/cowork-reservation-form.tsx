@@ -718,7 +718,7 @@ function CoworkWorkstationAddonField({
                         <label
                           key={option.value}
                           className={cn(
-                            "cursor-pointer rounded-[1.1rem] border p-3 transition hover:-translate-y-0.5",
+                            "cursor-pointer rounded-[1.1rem] border p-3 transition hover:-translate-y-0.5 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-navy-blue",
                             isUnavailable &&
                               "cursor-not-allowed opacity-45 hover:translate-y-0",
                             isSelected
