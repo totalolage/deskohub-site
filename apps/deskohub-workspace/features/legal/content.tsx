@@ -643,8 +643,8 @@ const legalDocuments = {
               especially contact details and message content sent through the
               contact form, plus reservation details: your name, email, phone
               number, selected reservation family and product, date or date
-              range, start time, duration, seat count, and any
-              coworking refreshment, monitor, or workstation preferences.
+              range, start time, duration, seat count, and any coworking
+              refreshment, monitor, or workstation preferences.
             </>,
             <>
               When you continue to checkout, we also process the quoted and paid
@@ -1082,8 +1082,8 @@ const legalDocuments = {
               kontaktní údaje a obsah zprávy odeslané přes kontaktní formulář a
               údaje o rezervaci: jméno, e-mail, telefonní číslo, vybranou rodinu
               a produkt rezervace, datum nebo rozsah dat, čas začátku, dobu
-              trvání, počet míst a případné coworkingové
-              preference občerstvení, monitorů nebo pracovní stanice.
+              trvání, počet míst a případné coworkingové preference občerstvení,
+              monitorů nebo pracovní stanice.
             </>,
             <>
               Při pokračování k objednávce zpracováváme také nabízenou a
