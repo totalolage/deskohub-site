@@ -24,8 +24,6 @@ type ReservationCustomerFieldsProps = {
 export function ReservationCustomerFields({
   locale,
 }: ReservationCustomerFieldsProps) {
-  const { control } = useFormContext<ReservationCustomerFormValues>();
-
   return (
     <>
       <div className="grid gap-5 md:grid-cols-2">
