@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
-import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { type Locale, m } from "@/features/i18n";
 import {
@@ -127,7 +127,11 @@ beforeAll(registerWorkspaceComponentTestEnv);
 
 afterEach(() => {
   cleanup();
-  saveMarketingPreferencesAction.mockClear();
+  saveMarketingPreferencesAction.mockReset();
+  saveMarketingPreferencesAction.mockImplementation(
+    (_input: MarketingPreferenceSaveInput): Promise<ActionResult> =>
+      Promise.resolve({ data: { status: "saved" } })
+  );
   confirmMarketingManagementAction.mockClear();
   clearMarketingManagementAction.mockClear();
   routerRefresh.mockClear();
@@ -385,7 +389,7 @@ test("keeps a deferred save single-flight and announces the pending state", asyn
   });
 });
 
-test("permits a second toggle after a settled save with no observable busy render and blocks duplicates while pending", async () => {
+test("permits a second toggle after a settled save and blocks duplicates while pending", async () => {
   const context = "synthetic-account-context";
   const view = renderForm({
     context,
@@ -397,20 +401,21 @@ test("permits a second toggle after a settled save with no observable busy rende
     m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
   );
 
-  // Raw click: no act() flush between setIsExecuting(true) and the microtask
-  // that calls setIsExecuting(false), so busy is never committed as true.
-  marketingSwitch.click();
+  fireEvent.click(marketingSwitch);
   // While the save is still pending, a duplicate click must be dropped.
-  marketingSwitch.click();
+  fireEvent.click(marketingSwitch);
   expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
-
-  // Let the microtask resolve first, then flush the single coalesced render.
-  await Promise.resolve();
-  act(() => {});
+  // A pending save disables the switch while it already reads the target state.
+  expect(marketingSwitch.hasAttribute("disabled")).toBe(true);
   expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
 
-  // A settled save must permit a second toggle.
-  marketingSwitch.click();
+  // A settled save must re-enable the switch and permit a second toggle.
+  await waitFor(() =>
+    expect(marketingSwitch.hasAttribute("disabled")).toBe(false)
+  );
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
+
+  fireEvent.click(marketingSwitch);
   expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(2);
   expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
     confirmed: true,
@@ -590,6 +595,14 @@ test.each([
         Promise.resolve({ serverError: "Synthetic preference save failure" })
       );
     }
+    await waitFor(() =>
+      expect(
+        getSwitch(
+          view,
+          m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+        ).hasAttribute("disabled")
+      ).toBe(false)
+    );
     fireEvent.click(
       getSwitch(
         view,
@@ -709,6 +722,14 @@ test("resets a stale save error when the dismissal context changes", async () =>
       "Synthetic stale save failure"
     );
   });
+  await waitFor(() =>
+    expect(
+      getSwitch(
+        view,
+        m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+      ).hasAttribute("disabled")
+    ).toBe(false)
+  );
 
   view.rerender(
     <MarketingPreferencesForm
@@ -834,6 +855,14 @@ test.each(["en-US", "cs-CZ"] as const)(
       });
       expect(routerRefresh).toHaveBeenCalledTimes(1);
     });
+    await waitFor(() =>
+      expect(
+        getSwitch(
+          view,
+          m.marketingPreferencesFormRowTitle({}, { locale })
+        ).hasAttribute("disabled")
+      ).toBe(false)
+    );
     expect(
       view.getByText(m.marketingPreferencesFormSaved({}, { locale }))
     ).toBeTruthy();
