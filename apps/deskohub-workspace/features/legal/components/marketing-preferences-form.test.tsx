@@ -416,6 +416,9 @@ test("permits a second toggle after a settled save and blocks duplicates while p
   expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
 
   fireEvent.click(marketingSwitch);
+  await waitFor(() =>
+    expect(marketingSwitch.hasAttribute("disabled")).toBe(false)
+  );
   expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(2);
   expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
     confirmed: true,
@@ -424,6 +427,11 @@ test("permits a second toggle after a settled save and blocks duplicates while p
     locale: "en-US",
     source: "account",
   });
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
+  expect(
+    view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
+  ).toBeTruthy();
+  expect(routerRefresh).toHaveBeenCalledTimes(2);
 });
 
 test("preserves the server-authoritative switch on a save failure and allows retry", async () => {
