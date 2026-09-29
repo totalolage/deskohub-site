@@ -10,7 +10,10 @@ import {
   isCoworkOpenSpaceDayCutoffReached,
   normalizedCoworkReservationOrderSchema,
 } from "./cowork-reservation";
-import { reservationIntervalSchema } from "./reservation-interval";
+import {
+  coworkReservationIntervalSchema,
+  reservationIntervalSchema,
+} from "./reservation-interval";
 
 const safeParseCoworkReservation = Schema.decodeUnknownResult(
   coworkReservationSchema
@@ -32,6 +35,17 @@ describe("cowork reservation schema", () => {
     ).toEqual({
       startsAt: "2099-06-10T00:00",
       endsAt: "2099-06-11T00:00",
+    });
+  });
+
+  test("accepts the Open Space interval through cowork interval validation", () => {
+    const interval = Schema.decodeSync(coworkReservationIntervalSchema)(
+      getCoworkReservationIntervalInput("open-space", "2099-06-10")
+    );
+
+    expect(interval).toEqual({
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-10T15:00:00Z",
     });
   });
 

@@ -101,17 +101,30 @@ describe("reservation intervals", () => {
   });
 
   test("treats local midnight-to-midnight as full-day across DST changes", () => {
-    expect(
-      isSingleDayReservationInterval(
-        Effect.runSync(
-          normalizeReservationInterval(
-            decodeInterval({
-              startsAt: "2026-03-29T00:00",
-              endsAt: "2026-03-30T00:00",
-            })
+    for (const [startsAt, endsAt] of [
+      ["2026-03-29T00:00", "2026-03-30T00:00"],
+      ["2026-10-25T00:00", "2026-10-26T00:00"],
+    ]) {
+      expect(
+        isSingleDayReservationInterval(
+          Effect.runSync(
+            normalizeReservationInterval(decodeInterval({ startsAt, endsAt }))
           )
         )
+      ).toBeTrue();
+    }
+  });
+
+  test("does not classify the Open Space interval as a whole calendar day", () => {
+    const interval = Effect.runSync(
+      normalizeReservationInterval(
+        decodeInterval({
+          startsAt: "2026-06-10T00:00",
+          endsAt: "2026-06-10T17:00",
+        })
       )
-    ).toBeTrue();
+    );
+
+    expect(isSingleDayReservationInterval(interval)).toBeFalse();
   });
 });

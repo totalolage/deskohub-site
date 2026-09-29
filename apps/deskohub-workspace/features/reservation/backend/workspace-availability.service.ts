@@ -39,6 +39,7 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   getReservationDate,
+  isCoworkReservationInterval,
   isSingleDayReservationInterval,
   normalizeReservationInterval,
   type ReservationInterval,
@@ -211,7 +212,9 @@ const implementation = Effect.gen(function* () {
       const shouldCheckRangeDateSelection =
         query.kind === officeReservationKind ||
         !reservation ||
-        isSingleDayReservationInterval(reservation);
+        (query.kind === coworkReservationKind
+          ? isCoworkReservationInterval(reservation)
+          : isSingleDayReservationInterval(reservation));
 
       for (const day of dates) {
         const dayKey = plainDateToString(day);
