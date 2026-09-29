@@ -74,11 +74,11 @@ import {
   FormControl,
   FormField,
   FormItem,
-  FormLabel,
   FormMessage,
 } from "@/shared/components/ui/form";
-import { Switch } from "@/shared/components/ui/switch";
+import { Label } from "@/shared/components/ui/label";
 import { cn } from "@/shared/utils";
+import { CoworkOptionalAddonToggle } from "./cowork-optional-addon-toggle";
 
 type CoworkReservationFormProps = {
   initialReservation?: NormalizedCoworkReservationOrder;
@@ -423,17 +423,6 @@ export function CoworkReservationForm({
             }
           : undefined,
       }}
-      afterCustomerFields={
-        showWorkstationAddon && (
-          <CoworkWorkstationField
-            allowedMonitorOptions={allowedMonitorOptions}
-            control={form.control}
-            locale={locale}
-            priceLabel={workstationPriceLabel}
-            unavailableMonitorOptions={unavailableMonitorOptions}
-          />
-        )
-      }
       availability={{
         isFetching: availabilityQueryResult.isFetching,
         unavailableMessage: isSelectedReservationUnavailable
@@ -444,7 +433,6 @@ export function CoworkReservationForm({
       form={form}
       getReservation={getCoworkCurrentReservationOrder}
       locale={locale}
-      messagePlaceholder={m.reservationMessagePlaceholder({}, { locale })}
     >
       <FormField
         control={form.control}
@@ -524,7 +512,7 @@ export function CoworkReservationForm({
         )}
       />
 
-      <div className="grid gap-5 [grid-template-areas:'date'_'notice'_'coffee'] md:grid-cols-2 md:[grid-template-areas:'date_coffee'_'notice_notice']">
+      <div className="grid gap-5 [grid-template-areas:'date'_'notice']">
         <div className="[grid-area:date]">
           <CoworkReservationDateField
             control={form.control}
@@ -555,47 +543,25 @@ export function CoworkReservationForm({
             ))}
           </div>
         )}
-
-        <div className="[grid-area:coffee]">
-          {showCoffeeAddon && (
-            <FormField
-              control={form.control}
-              name="coffee"
-              render={({ field }) => (
-                <FormItem>
-                  <ReservationFormLabel>
-                    {m.reservationCoffeeLabel({}, { locale })}
-                  </ReservationFormLabel>
-                  <FormLabel className="flex h-13 cursor-pointer items-center justify-between gap-3 rounded-[1.1rem] border border-navy-blue/10 bg-linear-to-br from-sunset-yellow/18 to-white px-4 py-3 text-navy-blue transition hover:border-burned-orange/30">
-                    <span className="flex items-center gap-3">
-                      <Coffee className="h-5 w-5 shrink-0 text-burned-orange" />
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onBlur={field.onBlur}
-                          onCheckedChange={(checked) =>
-                            field.onChange(Boolean(checked))
-                          }
-                        />
-                      </FormControl>
-                    </span>
-                    <span data-reservation-coffee-price="">
-                      {coffeePriceLabel ? (
-                        <span className="text-sm font-semibold text-navy-blue before:content-['+']">
-                          {coffeePriceLabel}
-                        </span>
-                      ) : (
-                        <ReservationSkeletonBlock className="h-4 w-14 bg-sunset-yellow/25" />
-                      )}
-                    </span>
-                  </FormLabel>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          )}
-        </div>
       </div>
+
+      {showCoffeeAddon && (
+        <CoworkCoffeeAddonField
+          control={form.control}
+          locale={locale}
+          priceLabel={coffeePriceLabel}
+        />
+      )}
+
+      {showWorkstationAddon && (
+        <CoworkWorkstationAddonField
+          allowedMonitorOptions={allowedMonitorOptions}
+          control={form.control}
+          locale={locale}
+          priceLabel={workstationPriceLabel}
+          unavailableMonitorOptions={unavailableMonitorOptions}
+        />
+      )}
     </ReservationCheckoutForm>
   );
 }
@@ -662,7 +628,42 @@ function CoworkTierPerks({
   );
 }
 
-function CoworkWorkstationField({
+function CoworkCoffeeAddonField({
+  control,
+  locale,
+  priceLabel,
+}: {
+  readonly control: Control<
+    CoworkReservationInput,
+    unknown,
+    CoworkReservationData
+  >;
+  readonly locale: Locale;
+  readonly priceLabel?: string;
+}) {
+  return (
+    <FormField
+      control={control}
+      name="coffee"
+      render={({ field }) => (
+        <FormItem>
+          <CoworkOptionalAddonToggle
+            addon="coffee"
+            checked={field.value}
+            icon={Coffee}
+            label={m.reservationCoffeeLabel({}, { locale })}
+            onBlur={field.onBlur}
+            onCheckedChange={(checked) => field.onChange(Boolean(checked))}
+            priceLabel={priceLabel}
+          />
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
+}
+
+function CoworkWorkstationAddonField({
   allowedMonitorOptions,
   control,
   locale,
@@ -684,38 +685,23 @@ function CoworkWorkstationField({
       control={control}
       name="monitorOption"
       render={({ field }) => (
-        <FormItem className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <FormLabel className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-aquamarine-ink">
-                <Monitor className="h-4 w-4 text-aquamarine-ink" />
-                {m.reservationWorkstationLabel({}, { locale })}
-              </FormLabel>
-              <span data-reservation-workstation-price="">
-                {priceLabel ? (
-                  <span className="text-sm font-semibold text-navy-blue before:content-['+']">
-                    {priceLabel}
-                  </span>
-                ) : (
-                  <ReservationSkeletonBlock className="h-4 w-14 bg-aquamarine-green/25" />
-                )}
-              </span>
-            </div>
-            <FormControl>
-              <Switch
-                checked={field.value !== undefined}
-                onBlur={field.onBlur}
-                onCheckedChange={(checked) =>
-                  field.onChange(checked ? allowedMonitorOptions[0] : undefined)
-                }
-              />
-            </FormControl>
-          </div>
+        <FormItem>
+          <CoworkOptionalAddonToggle
+            addon="workstation"
+            checked={field.value !== undefined}
+            icon={Monitor}
+            label={m.reservationWorkstationLabel({}, { locale })}
+            onBlur={field.onBlur}
+            onCheckedChange={(checked) =>
+              field.onChange(checked ? allowedMonitorOptions[0] : undefined)
+            }
+            priceLabel={priceLabel}
+          />
           {field.value !== undefined && (
-            <>
-              <FormLabel className="block pt-1 text-sm text-navy-blue/60">
+            <div className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
+              <Label className="block pt-1 text-sm text-navy-blue/60">
                 {m.reservationMonitorLabel({}, { locale })}
-              </FormLabel>
+              </Label>
               <FormControl>
                 <div role="radiogroup" className="grid gap-3 sm:grid-cols-3">
                   {monitorOptions
@@ -767,7 +753,7 @@ function CoworkWorkstationField({
                     })}
                 </div>
               </FormControl>
-            </>
+            </div>
           )}
           <FormMessage />
         </FormItem>
@@ -855,14 +841,14 @@ export function CoworkReservationFormFallback({
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid gap-5">
         <ReservationSkeletonField />
         <ReservationSkeletonField />
       </div>
 
-      <ReservationCustomerFieldsFallback />
-
       {showMonitorOption && <SkeletonMonitorOptionField />}
+
+      <ReservationCustomerFieldsFallback />
 
       <div className="space-y-3 pt-1">
         <ReservationSubmitFallback />
