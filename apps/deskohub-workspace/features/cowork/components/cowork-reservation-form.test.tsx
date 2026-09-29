@@ -8,6 +8,8 @@ import {
   mock,
   test,
 } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
@@ -1379,6 +1381,301 @@ describe("CoworkReservationForm advertised pricing", () => {
       expect(openSpaceInput.checked).toBe(true);
       expect(reservedDeskInput.checked).toBe(false);
     });
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
+  test("drops the removed shell slot props from the cowork form", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "cowork-reservation-form.tsx"),
+      "utf8"
+    );
+    expect(source).not.toContain("afterCustomerFields");
+    expect(source).not.toContain("messagePlaceholder");
+  });
+
+  test("shows one shared optional add-on toggle per tier", async () => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams("entryTier=open-space&date=2099-07-30")
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm();
+
+    // Both offers render; Open Space carries only the coffee add-on.
+    expect(
+      view.container.querySelectorAll("[data-reservation-type-option]")
+    ).toHaveLength(2);
+    const coffeeToggle = view.container.querySelector(
+      "[data-cowork-optional-addon-toggle]"
+    );
+    expect(
+      coffeeToggle?.getAttribute("data-cowork-optional-addon-toggle")
+    ).toBe("coffee");
+    expect(
+      view.container.querySelectorAll("[data-cowork-optional-addon-toggle]")
+    ).toHaveLength(1);
+    expect(
+      view.container.querySelector("[data-reservation-coffee-price]")
+    ).not.toBeNull();
+    expect(
+      view.container.querySelector("[data-reservation-workstation-price]")
+    ).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector(
+          "#reservation-entry-tier-reserved-desk"
+        ) as HTMLElement
+      );
+    });
+
+    // Reserved Desk carries only the workstation add-on.
+    await waitFor(() => {
+      expect(
+        view.container
+          .querySelector("[data-cowork-optional-addon-toggle]")
+          ?.getAttribute("data-cowork-optional-addon-toggle")
+      ).toBe("workstation");
+    });
+    expect(
+      view.container.querySelectorAll("[data-cowork-optional-addon-toggle]")
+    ).toHaveLength(1);
+    expect(
+      view.container.querySelector("[data-reservation-workstation-price]")
+    ).not.toBeNull();
+    expect(
+      view.container.querySelector("[data-reservation-coffee-price]")
+    ).toBeNull();
+
+    // Both add-ons share one presentational toggle: same test id path and
+    // identical card markup classes, never two divergent presentations.
+    const workstationToggle = view.container.querySelector(
+      "[data-cowork-optional-addon-toggle='workstation']"
+    );
+    expect(workstationToggle?.getAttribute("class")).toBe(
+      coffeeToggle?.getAttribute("class")
+    );
+    expect(coffeeToggle?.childElementCount).toBe(
+      workstationToggle?.childElementCount
+    );
+
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
+  test("matches the spatial thesis in DOM order with monitors selected", async () => {
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "reserved-desk",
+        date: "2099-07-30",
+        monitorOption: "2x27-qhd",
+      },
+    });
+
+    const form = view.container.querySelector("form");
+    expect(form).not.toBeNull();
+    const ordered = Array.from(form!.querySelectorAll("*"));
+    const at = (element: Element | null | undefined) => {
+      expect(element).toBeTruthy();
+      return ordered.indexOf(element as Element);
+    };
+
+    const offer = form!.querySelector(
+      "[data-reservation-type-option='open-space']"
+    );
+    const dateField = form!.querySelector("input[name='date']");
+    const addon = form!.querySelector(
+      "[data-cowork-optional-addon-toggle='workstation']"
+    );
+    const monitors = form!
+      .querySelector("input[value='2x27-qhd']")
+      ?.closest("[role='radiogroup']");
+    const email = form!.querySelector("input[name='email']");
+    const invoice = view.getByRole("checkbox", { name: "Create invoice" });
+    const privacy = form!.querySelector("a[href*='privacy-policy']");
+    const marketing = form!.querySelector("#reservation-marketing-consent");
+    const submit = view.getByRole("button", { name: "Continue" });
+
+    // offer -> date/notices -> add-on -> monitors -> contact -> billing ->
+    // privacy -> marketing -> submit. DOM order is focus order here: no
+    // element reorders itself with tabindex.
+    expect(at(offer)).toBeLessThan(at(dateField));
+    expect(at(dateField)).toBeLessThan(at(addon));
+    expect(at(addon)).toBeLessThan(at(monitors));
+    expect(at(monitors)).toBeLessThan(at(email));
+    expect(at(email)).toBeLessThan(at(invoice));
+    expect(at(invoice)).toBeLessThan(at(privacy));
+    expect(at(privacy)).toBeLessThan(at(marketing));
+    expect(at(marketing)).toBeLessThan(at(submit));
+
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
+  test("renders monitor choices below the workstation toggle only while selected", async () => {
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "reserved-desk",
+        date: "2099-07-30",
+      },
+    });
+
+    // Workstation unselected: no monitor radiogroup anywhere in the form.
+    expect(view.container.querySelector("input[value='2x27-qhd']")).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("switch", { name: /Monitor workstation/i })
+      );
+    });
+
+    // Workstation selected: the monitor radiogroup is directly below the
+    // toggle and above the contact fields.
+    await waitFor(() => {
+      expect(
+        view.container.querySelector("input[value='2x27-qhd']")
+      ).not.toBeNull();
+    });
+    const toggle = view.container.querySelector(
+      "[data-cowork-optional-addon-toggle='workstation']"
+    );
+    expect(toggle).not.toBeNull();
+    const monitors = view.container
+      .querySelector("input[value='2x27-qhd']")
+      ?.closest("[role='radiogroup']");
+    expect(monitors).not.toBeNull();
+    expect(toggle?.nextElementSibling?.contains(monitors as Node)).toBe(true);
+    const form = view.container.querySelector("form")!;
+    const ordered = Array.from(form.querySelectorAll("*"));
+    expect(ordered.indexOf(monitors as Element)).toBeLessThan(
+      ordered.indexOf(form.querySelector("input[name='email']") as Element)
+    );
+
+    // Turning the workstation off removes the monitor choices and clears the
+    // monitorOption field (covered end-to-end by the submission test above).
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("switch", { name: /Monitor workstation/i })
+      );
+    });
+    await waitFor(() => {
+      expect(
+        view.container.querySelector("input[value='2x27-qhd']")
+      ).toBeNull();
+    });
+
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
+  test("renders add-on labels from the en-US and cs-CZ catalogs", async () => {
+    const expectations = [
+      { locale: "en-US", tier: "open-space", name: "Coffee" },
+      { locale: "cs-CZ", tier: "open-space", name: "Káva" },
+      { locale: "en-US", tier: "reserved-desk", name: "Monitor workstation" },
+      {
+        locale: "cs-CZ",
+        tier: "reserved-desk",
+        name: "Pracovní stanice s monitory",
+      },
+    ] as const;
+
+    for (const { locale, name, tier } of expectations) {
+      const view = renderForm({
+        locale,
+        initialValues: {
+          ...coworkReservationDefaultValues,
+          entryTier: tier,
+          date: "2099-07-30",
+        },
+      });
+      expect(view.getByRole("switch", { name })).toBeDefined();
+      await act(async () => {
+        view.unmount();
+      });
+    }
+  });
+
+  test("keeps add-on and monitor layouts free of grid-template-areas orphans", async () => {
+    const source = readFileSync(
+      join(import.meta.dir, "cowork-reservation-form.tsx"),
+      "utf8"
+    );
+    // The coffee add-on left the date grid-template-areas spot entirely.
+    expect(source).not.toContain("grid-area:coffee");
+    expect(source).not.toMatch(/grid-template-areas:[^"']*\bcoffee\b/);
+
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "reserved-desk",
+        date: "2099-07-30",
+        monitorOption: "2x27-qhd",
+      },
+    });
+
+    // Date/notices keep their own grouping without the retired coffee area
+    // or its desktop column partner.
+    const dateGroup = Array.from(view.container.querySelectorAll("div")).find(
+      (div) => div.className.includes("grid-template-areas")
+    );
+    expect(dateGroup?.className).toContain("'date'");
+    expect(dateGroup?.className).not.toContain("coffee");
+    expect(dateGroup?.className).not.toContain("md:grid-cols-2");
+
+    // The add-on is its own row below that group, not pinned into its cells.
+    const addon = view.container.querySelector(
+      "[data-cowork-optional-addon-toggle]"
+    );
+    expect(addon).not.toBeNull();
+    expect(dateGroup?.contains(addon as Node)).toBe(false);
+
+    // 320px stacks the monitor choices in one column; 768px/1280px may open
+    // three. No base grid-cols-3 forces a squeeze at the smallest width.
+    const monitors = view.container
+      .querySelector("input[value='2x27-qhd']")
+      ?.closest("[role='radiogroup']");
+    expect(monitors?.classList.contains("grid")).toBe(true);
+    expect(monitors?.classList.contains("sm:grid-cols-3")).toBe(true);
+    expect(monitors?.classList.contains("grid-cols-3")).toBe(false);
+
     await act(async () => {
       view.unmount();
     });
