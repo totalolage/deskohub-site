@@ -29,6 +29,15 @@ const catalogs = {
   "cs-CZ": csCzCatalog as Record<string, string>,
 };
 
+const copyWithoutInterpolationTags = (copy: string, tag: string) =>
+  copy.replaceAll(`<${tag}>`, "").replaceAll(`</${tag}>`, "");
+
+const interpolatedLinkLabel = (copy: string, tag: string) => {
+  const match = new RegExp(`<${tag}>(.*?)</${tag}>`).exec(copy);
+  expect(match).not.toBeNull();
+  return match?.[1] ?? "";
+};
+
 const chromeNeedle = "rounded-[1.35rem]";
 const focusableSelector =
   'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -72,50 +81,65 @@ describe("reservation form legal cards", () => {
   });
 
   test("privacy exposes no form control and only marketing is a checkbox", () => {
-    const view = render(<LegalCardsHarness locale="en-US" />);
+    for (const locale of ["en-US", "cs-CZ"] as const) {
+      const view = render(<LegalCardsHarness locale={locale} />);
 
-    const checkboxes = view.getAllByRole("checkbox");
-    expect(checkboxes).toHaveLength(1);
+      const checkboxes = view.getAllByRole("checkbox");
+      expect(checkboxes).toHaveLength(1);
 
-    const privacyIcon = view.container.querySelector(
-      "svg[aria-hidden='true']"
-    ) as SVGElement;
-    expect(privacyIcon).not.toBeNull();
-    expect(privacyIcon.getAttribute("role")).not.toBe("checkbox");
-    expect(privacyIcon.getAttribute("aria-hidden")).toBe("true");
-    expect(privacyIcon.getAttribute("focusable")).toBe("false");
-    expect(privacyIcon.matches(focusableSelector)).toBe(false);
-    expect(privacyIcon.tabIndex).toBeLessThan(0);
+      const cards = legalCards(view);
+      expect(cards).toHaveLength(2);
+      expect(cards[0]?.querySelector('[role="checkbox"]')).toBeNull();
+      expect(cards[1]?.querySelector('[role="checkbox"]')).toBe(checkboxes[0]);
 
-    const focusable = [...view.container.querySelectorAll(focusableSelector)];
-    expect(focusable.some((element) => element === privacyIcon)).toBe(false);
-    expect(focusable.some((element) => element.contains(privacyIcon))).toBe(
-      false
-    );
-    expect(focusable).toContain(checkboxes[0]);
+      const privacyIcon = view.container.querySelector(
+        "svg[aria-hidden='true']"
+      ) as SVGElement;
+      expect(privacyIcon).not.toBeNull();
+      expect(privacyIcon.getAttribute("role")).not.toBe("checkbox");
+      expect(privacyIcon.getAttribute("aria-hidden")).toBe("true");
+      expect(privacyIcon.getAttribute("focusable")).toBe("false");
+      expect(privacyIcon.matches(focusableSelector)).toBe(false);
+      expect(privacyIcon.tabIndex).toBeLessThan(0);
+
+      const focusable = [...view.container.querySelectorAll(focusableSelector)];
+      expect(focusable.some((element) => element === privacyIcon)).toBe(false);
+      expect(focusable.some((element) => element.contains(privacyIcon))).toBe(
+        false
+      );
+      expect(focusable).toContain(checkboxes[0]);
+      cleanup();
+    }
   });
 
   test("marketing is a labeled real checkbox, initially unchecked and togglable", () => {
-    const view = render(<LegalCardsHarness locale="en-US" />);
-    const catalog = catalogs["en-US"];
+    for (const locale of ["en-US", "cs-CZ"] as const) {
+      const view = render(<LegalCardsHarness locale={locale} />);
+      const catalog = catalogs[locale];
 
-    const marketing = view.getByRole("checkbox", {
-      name: (_accessibleName, element) =>
-        element.id === "reservation-marketing-consent" &&
-        (element.closest("label")?.textContent ?? "").includes(
-          catalog.reservationMarketingConsentBefore
-        ),
-    });
-    expect(marketing.getAttribute("aria-checked")).toBe("false");
-    expect(marketing.getAttribute("data-state")).toBe("unchecked");
-    expect(view.getByTestId("marketing-consent-value").textContent).toBe(
-      "false"
-    );
+      const marketing = view.getByRole("checkbox", {
+        name: (_accessibleName, element) =>
+          element.id === "reservation-marketing-consent" &&
+          (element.closest("label")?.textContent ?? "") ===
+            copyWithoutInterpolationTags(
+              catalog.reservationMarketingConsent,
+              "marketingConsent"
+            ),
+      });
+      expect(marketing.getAttribute("aria-checked")).toBe("false");
+      expect(marketing.getAttribute("data-state")).toBe("unchecked");
+      expect(view.getByTestId("marketing-consent-value").textContent).toBe(
+        "false"
+      );
 
-    fireEvent.click(marketing);
-    expect(marketing.getAttribute("aria-checked")).toBe("true");
-    expect(marketing.getAttribute("data-state")).toBe("checked");
-    expect(view.getByTestId("marketing-consent-value").textContent).toBe("true");
+      fireEvent.click(marketing);
+      expect(marketing.getAttribute("aria-checked")).toBe("true");
+      expect(marketing.getAttribute("data-state")).toBe("checked");
+      expect(view.getByTestId("marketing-consent-value").textContent).toBe(
+        "true"
+      );
+      cleanup();
+    }
   });
 
   test("both rows share legal-card chrome and matched indicator alignment", () => {
@@ -157,47 +181,40 @@ describe("reservation form legal cards", () => {
     );
   });
 
-  test("privacy and marketing links keep accessible names and hrefs", () => {
-    const view = render(<LegalCardsHarness locale="en-US" />);
-    const catalog = catalogs["en-US"];
-
-    const privacyLink = view.getByRole("link", {
-      name: catalog.reservationPrivacyNoteLinkLabel,
-    });
-    expect(privacyLink.getAttribute("href")).toBe("/en-US/privacy-policy");
-
-    const marketingLink = view.getByRole("link", {
-      name: catalog.reservationMarketingConsentLinkLabel,
-    });
-    expect(marketingLink.getAttribute("href")).toBe(
-      "/en-US/marketing-communications"
-    );
-  });
-
-  test("renders privacy and marketing copy from real en-US and cs-CZ catalogs", () => {
+  test("renders each locale's complete copy around its linked text", () => {
     for (const locale of ["en-US", "cs-CZ"] as const) {
       const catalog = catalogs[locale];
       const view = render(<LegalCardsHarness locale={locale} />);
+      const cards = legalCards(view);
+      const privacyCopy = catalog.reservationPrivacyNote;
+      const marketingCopy = catalog.reservationMarketingConsent;
+      const privacyLinkLabel = interpolatedLinkLabel(
+        privacyCopy,
+        "privacyPolicy"
+      );
+      const marketingLinkLabel = interpolatedLinkLabel(
+        marketingCopy,
+        "marketingConsent"
+      );
 
-      const text = view.container.textContent ?? "";
-      expect(text).toContain(catalog.reservationPrivacyNoteBefore);
-      expect(text).toContain(catalog.reservationPrivacyNoteLinkLabel);
-      expect(text).toContain(catalog.reservationPrivacyNoteAfter);
-      expect(text).toContain(catalog.reservationMarketingConsentBefore);
-      expect(text).toContain(catalog.reservationMarketingConsentLinkLabel);
-      expect(text).toContain(catalog.reservationMarketingConsentAfter);
+      expect(cards[0]?.textContent).toBe(
+        copyWithoutInterpolationTags(privacyCopy, "privacyPolicy")
+      );
+      expect(cards[1]?.textContent).toBe(
+        copyWithoutInterpolationTags(marketingCopy, "marketingConsent")
+      );
 
       expect(
         view
           .getByRole("link", {
-            name: catalog.reservationPrivacyNoteLinkLabel,
+            name: privacyLinkLabel,
           })
           .getAttribute("href")
       ).toBe(`/${locale}/privacy-policy`);
       expect(
         view
           .getByRole("link", {
-            name: catalog.reservationMarketingConsentLinkLabel,
+            name: marketingLinkLabel,
           })
           .getAttribute("href")
       ).toBe(`/${locale}/marketing-communications`);

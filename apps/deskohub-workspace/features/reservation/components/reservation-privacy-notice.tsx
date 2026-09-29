@@ -1,3 +1,4 @@
+import Interpolate from "@doist/react-interpolate";
 import { CircleCheck } from "lucide-react";
 import Link from "next/link";
 import { type Locale, m } from "@/features/i18n";
@@ -20,17 +21,22 @@ export function ReservationPrivacyNotice({
         />
       }
     >
-      {m.reservationPrivacyNoteBefore({}, { locale })}{" "}
-      <Link
-        className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
-        href={`/${locale}/privacy-policy`}
-        prefetch={false}
-        rel="noreferrer"
-        target="_blank"
-      >
-        {m.reservationPrivacyNoteLinkLabel({}, { locale })}
-      </Link>
-      {m.reservationPrivacyNoteAfter({}, { locale })}
+      <Interpolate
+        string={m.reservationPrivacyNote({}, { locale })}
+        mapping={{
+          privacyPolicy: (label) => (
+            <Link
+              className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
+              href={`/${locale}/privacy-policy`}
+              prefetch={false}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {label}
+            </Link>
+          ),
+        }}
+      />
     </ReservationFormLegalCard>
   );
 }

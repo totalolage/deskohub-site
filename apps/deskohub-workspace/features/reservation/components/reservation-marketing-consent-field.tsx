@@ -1,5 +1,6 @@
 "use client";
 
+import Interpolate from "@doist/react-interpolate";
 import Link from "next/link";
 import { useFormContext } from "react-hook-form";
 import { type Locale, m } from "@/features/i18n";
@@ -29,10 +30,7 @@ export function ReservationMarketingConsentField({
       name="marketingConsent"
       render={({ field }) => (
         <FormItem>
-          <label
-            className="block cursor-pointer"
-            htmlFor={id}
-          >
+          <label className="block cursor-pointer" htmlFor={id}>
             <ReservationFormLegalCard
               indicator={
                 <FormControl>
@@ -48,17 +46,22 @@ export function ReservationMarketingConsentField({
                 </FormControl>
               }
             >
-              {m.reservationMarketingConsentBefore({}, { locale })}{" "}
-              <Link
-                className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
-                href={`/${locale}/marketing-communications`}
-                prefetch={false}
-                rel="noreferrer"
-                target="_blank"
-              >
-                {m.reservationMarketingConsentLinkLabel({}, { locale })}
-              </Link>
-              {m.reservationMarketingConsentAfter({}, { locale })}
+              <Interpolate
+                string={m.reservationMarketingConsent({}, { locale })}
+                mapping={{
+                  marketingConsent: (label) => (
+                    <Link
+                      className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
+                      href={`/${locale}/marketing-communications`}
+                      prefetch={false}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {label}
+                    </Link>
+                  ),
+                }}
+              />
             </ReservationFormLegalCard>
           </label>
           <FormMessage />
