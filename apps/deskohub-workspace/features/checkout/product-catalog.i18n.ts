@@ -57,15 +57,13 @@ export const workspaceProductTierCardMessages = {
   "open-space": {
     description: m.reservationOpenSpaceBulletDesk,
     perksLabel: m.reservationTierPerksLabel,
-    perks: [
-      { message: m.reservationOpenSpacePerkHours, highlighted: true },
-      { message: m.reservationOpenSpacePerkWifi },
-    ],
+    perks: [{ message: m.reservationOpenSpacePerkWifi }],
   },
   "reserved-desk": {
     description: m.reservationReservedDeskBulletDesk,
     perksLabel: m.reservationTierPerksLabel,
     perks: [
+      { message: m.reservationReservedDeskPerkAccess, highlighted: true },
       { message: m.reservationReservedDeskPerkCoffee },
       { message: m.reservationReservedDeskPerkMonitor, marker: "plus" },
     ],

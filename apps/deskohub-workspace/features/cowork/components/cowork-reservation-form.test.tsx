@@ -1788,6 +1788,122 @@ describe("CoworkReservationForm advertised pricing", () => {
     }
   });
 
+  test("keeps cowork access claims in one card section in both locales", async () => {
+    const expectations = [
+      {
+        locale: "en-US",
+        openSpaceDescription:
+          "Shared desk, available until 17:00 on your reserved day.",
+        openSpaceWifi: "High-speed Wi-Fi",
+        reservedDeskDescription: "Reserved desk",
+        reservedDeskAccess: "24/7 access on your reserved day",
+        reservedDeskCoffee: "Coffee included",
+        reservedDeskMonitor: "Optional monitor workstation",
+        currency: "CZK",
+      },
+      {
+        locale: "cs-CZ",
+        openSpaceDescription:
+          "Sdílené místo v open space, k dispozici do 17:00 v den tvé rezervace.",
+        openSpaceWifi: "Vysokorychlostní Wi-Fi",
+        reservedDeskDescription: "Vyhrazené místo",
+        reservedDeskAccess: "24/7 přístup v den tvé rezervace",
+        reservedDeskCoffee: "Káva v ceně",
+        reservedDeskMonitor: "Volitelná stanice s monitory",
+        currency: "Kč",
+      },
+    ] as const;
+
+    for (const copy of expectations) {
+      getAdvertisedPrices.mockImplementation((requests) =>
+        Promise.resolve(
+          advertisedPricesResult(requests, getCoworkAdvertisedPriceResponse)
+        )
+      );
+      globalThis.fetch = mock((request: RequestInfo | URL) => {
+        const url = String(request);
+        if (url.startsWith("/api/workspace/availability")) {
+          return Promise.resolve(jsonResponse(availabilityResponse));
+        }
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }) as typeof fetch;
+
+      const view = renderForm({
+        locale: copy.locale,
+        initialValues: {
+          ...coworkReservationDefaultValues,
+          entryTier: "open-space",
+          coffee: true,
+          date: "2099-07-30",
+        },
+      });
+
+      await waitFor(() => {
+        const openSpacePrice = view.container.querySelector(
+          '[data-reservation-type-price="open-space"]'
+        );
+        const reservedDeskPrice = view.container.querySelector(
+          '[data-reservation-type-price="reserved-desk"]'
+        );
+        expect(openSpacePrice?.textContent).toContain("290");
+        expect(openSpacePrice?.textContent).toContain(copy.currency);
+        expect(reservedDeskPrice?.textContent).toContain("410");
+        expect(reservedDeskPrice?.textContent).toContain(copy.currency);
+        expect(
+          view.container.querySelector("[data-reservation-coffee-price]")
+            ?.textContent
+        ).toContain("50");
+      });
+
+      const openSpaceDescription = view.container.querySelector(
+        '[data-reservation-type-description="open-space"]'
+      )?.textContent;
+      const openSpacePerks = view.container.querySelector(
+        '[data-reservation-type-perks="open-space"]'
+      )?.textContent;
+      const reservedDeskDescription = view.container.querySelector(
+        '[data-reservation-type-description="reserved-desk"]'
+      )?.textContent;
+      const reservedDeskPerks = view.container.querySelector(
+        '[data-reservation-type-perks="reserved-desk"]'
+      )?.textContent;
+
+      expect(openSpaceDescription).toBe(copy.openSpaceDescription);
+      expect(openSpaceDescription).not.toMatch(/24\/7/);
+      expect(openSpacePerks).toContain(copy.openSpaceWifi);
+      expect(openSpacePerks).not.toMatch(/00:00|17:00|24\/7/);
+      expect(reservedDeskDescription).toBe(copy.reservedDeskDescription);
+      expect(reservedDeskDescription).not.toMatch(/24\/7/);
+      expect(reservedDeskPerks).toContain(copy.reservedDeskAccess);
+      expect(reservedDeskPerks).toContain(copy.reservedDeskCoffee);
+      expect(reservedDeskPerks).toContain(copy.reservedDeskMonitor);
+      expect(
+        `${reservedDeskDescription} ${reservedDeskPerks}`.match(/24\/7/g)
+      ).toHaveLength(1);
+
+      await act(async () => {
+        fireEvent.click(
+          view.container.querySelector(
+            "#reservation-entry-tier-reserved-desk"
+          ) as HTMLElement
+        );
+      });
+      await waitFor(() => {
+        expect(
+          view.container.querySelector("[data-reservation-workstation-price]")
+            ?.textContent
+        ).toContain("120");
+      });
+      expect(
+        view.container.querySelector("[data-reservation-coffee-price]")
+      ).toBeNull();
+
+      await act(async () => {
+        view.unmount();
+      });
+    }
+  });
+
   test("keeps add-on and monitor layouts free of grid-template-areas orphans", async () => {
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
