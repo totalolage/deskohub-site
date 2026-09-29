@@ -69,10 +69,8 @@ export const droppingRetiredReservationCustomerMessage = <A, RD, RE>(
     Schema.decodeTo(schema, {
       decode: SchemaGetter.transform((input) => {
         if (Predicate.isObject(input) && !Array.isArray(input)) {
-          const { message: _retired, ...rest } = input as Record<
-            string,
-            unknown
-          >;
+          const rest = { ...input };
+          Reflect.deleteProperty(rest, "message");
           return rest;
         }
         return input;
