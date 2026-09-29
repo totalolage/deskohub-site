@@ -4,7 +4,7 @@ import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Match, Schema } from "effect";
 import { AlertTriangle, Coffee, Monitor } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect, useId, useMemo } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import {
   type AdvertisedPrice,
@@ -680,6 +680,9 @@ function CoworkWorkstationAddonField({
   readonly priceLabel?: string;
   readonly unavailableMonitorOptions: ReadonlySet<WorkspaceProductMonitorOption>;
 }) {
+  const monitorSetupId = useId();
+  const monitorSetupLabelId = `${monitorSetupId}-label`;
+
   return (
     <FormField
       control={control}
@@ -699,11 +702,19 @@ function CoworkWorkstationAddonField({
           />
           {field.value !== undefined && (
             <div className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
-              <Label className="block pt-1 text-sm text-navy-blue/60">
+              <Label
+                id={monitorSetupLabelId}
+                className="block pt-1 text-sm text-navy-blue/60"
+              >
                 {m.reservationMonitorLabel({}, { locale })}
               </Label>
               <FormControl>
-                <div role="radiogroup" className="grid gap-3 sm:grid-cols-3">
+                <div
+                  id={monitorSetupId}
+                  role="radiogroup"
+                  aria-labelledby={monitorSetupLabelId}
+                  className="grid gap-3 sm:grid-cols-3"
+                >
                   {monitorOptions
                     .filter((option) =>
                       allowedMonitorOptions.includes(option.value)

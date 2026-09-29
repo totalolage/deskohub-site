@@ -17,6 +17,7 @@ import {
   fireEvent,
   render,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { Schema } from "effect";
 import type { ComponentProps } from "react";
@@ -1525,6 +1526,122 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(at(invoice)).toBeLessThan(at(privacy));
     expect(at(privacy)).toBeLessThan(at(marketing));
     expect(at(marketing)).toBeLessThan(at(submit));
+
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
+  test("gives each monitor group a unique ID separate from its workstation switch", async () => {
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const initialValues = {
+      ...coworkReservationDefaultValues,
+      entryTier: "reserved-desk" as const,
+      date: "2099-07-30",
+      monitorOption: "2x27-qhd" as const,
+    };
+    const firstView = renderForm({ initialValues });
+    const secondView = renderForm({ initialValues });
+    const monitorGroupIds = [firstView, secondView].map((view) => {
+      const workstationSwitch = within(view.container).getByRole("switch", {
+        name: "Monitor workstation",
+      });
+      const monitorGroup = view.container
+        .querySelector<HTMLInputElement>("input[value='2x27-qhd']")
+        ?.closest<HTMLElement>("[role='radiogroup']");
+      expect(monitorGroup).not.toBeNull();
+      const monitorGroupId = monitorGroup?.getAttribute("id");
+
+      expect(monitorGroupId).not.toBeNull();
+      expect(monitorGroupId).not.toBe(workstationSwitch.getAttribute("id"));
+      return monitorGroupId;
+    });
+
+    expect(monitorGroupIds[0]).not.toBe(monitorGroupIds[1]);
+    await act(async () => {
+      firstView.unmount();
+      secondView.unmount();
+    });
+  });
+
+  test("names the monitor group from the visible Monitor setup label", async () => {
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "reserved-desk",
+        date: "2099-07-30",
+        monitorOption: "2x27-qhd",
+      },
+    });
+
+    expect(
+      view.getByRole("switch", { name: "Monitor workstation" })
+    ).toBeDefined();
+    const monitorGroup = view.getByRole("radiogroup", {
+      name: "Monitor setup",
+    });
+    const labelId = monitorGroup.getAttribute("aria-labelledby");
+    expect(labelId).not.toBeNull();
+    expect(document.getElementById(labelId!)?.textContent).toBe(
+      "Monitor setup"
+    );
+
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
+  test("describes monitor validation errors from the monitor group", async () => {
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "reserved-desk",
+        date: "2099-07-30",
+        monitorOption: "invalid-monitor-option" as never,
+      },
+    });
+    const monitorGroup = view.container
+      .querySelector<HTMLInputElement>("input[value='2x27-qhd']")
+      ?.closest<HTMLElement>("[role='radiogroup']");
+    expect(monitorGroup).not.toBeNull();
+    const continueButton = view.getByRole("button", { name: "Continue" });
+    await waitFor(() => {
+      expect(continueButton.hasAttribute("disabled")).toBe(false);
+    });
+
+    fireEvent.click(continueButton);
+
+    await waitFor(() => {
+      expect(monitorGroup?.getAttribute("aria-invalid")).toBe("true");
+    });
+    const descriptionId = monitorGroup?.getAttribute("aria-describedby");
+    expect(descriptionId).not.toBeNull();
+    const description = document.getElementById(descriptionId!);
+    expect(description).not.toBeNull();
+    expect(description?.textContent).toBeTruthy();
 
     await act(async () => {
       view.unmount();
