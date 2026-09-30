@@ -34,6 +34,8 @@ import {
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { getCoworkTierAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
 import { coworkReservationDefaultValues } from "@/features/reservation/cowork-reservation";
+import { getWorkspaceAvailabilityQueryFromReservationSearchParams } from "@/features/reservation/reservation-checkout-query";
+import { workspaceAvailabilityKeys } from "@/features/reservation/workspace-availability";
 import {
   workspaceRouterPush as push,
   workspaceUseAction,
@@ -2189,6 +2191,84 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
   });
 
+  test("keeps the settled workstation requirement stable across conflicting fresh cache variants", async () => {
+    const searchParams = new URLSearchParams(
+      "entryTier=reserved-desk&date=2099-07-30"
+    );
+    workspaceUseSearchParams.mockReturnValue(searchParams);
+    const baseQuery =
+      getWorkspaceAvailabilityQueryFromReservationSearchParams(searchParams);
+    const bareQuery = {
+      ...baseQuery,
+      entryTier: "reserved-desk" as const,
+      date: "2099-07-30",
+    };
+    const monitorQuery = {
+      ...bareQuery,
+      monitorOption: "2x32-qhd" as const,
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retryDelay: 0 } },
+    });
+    queryClient.setQueryData(
+      [...workspaceAvailabilityKeys.availability(bareQuery), null],
+      {
+        ...requiredWorkstationAvailability("2099-07-30"),
+        from: bareQuery.from,
+        to: bareQuery.to,
+      }
+    );
+    queryClient.setQueryData(
+      [...workspaceAvailabilityKeys.availability(monitorQuery), null],
+      {
+        ...availabilityResponse,
+        date: "2099-07-30",
+        from: monitorQuery.from,
+        to: monitorQuery.to,
+        unavailableDates: [],
+        reservedDeskWorkstationRequiredDates: [],
+        unavailableMonitorOptions: [],
+      }
+    );
+
+    let renderCount = 0;
+    function CountedReservationForm() {
+      renderCount += 1;
+      return (
+        <CoworkReservationForm
+          initialValues={reservedDeskFormValues()}
+          locale="en-US"
+        />
+      );
+    }
+
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <CountedReservationForm />
+      </QueryClientProvider>
+    );
+    const selectedMonitor = view.container.querySelector<HTMLInputElement>(
+      "input[type='radio'][value='2x32-qhd']"
+    );
+
+    await waitFor(() => expect(selectedMonitor?.checked).toBe(true));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+
+    expect(selectedMonitor?.checked).toBe(true);
+    const settledRenderCount = renderCount;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(renderCount).toBe(settledRenderCount);
+    expect(
+      view
+        .getByRole("switch", { name: "Monitor workstation" })
+        .getAttribute("aria-checked")
+    ).toBe("true");
+  });
+
   test("keeps the locked workstation help trigger keyboard accessible in both locales", async () => {
     const cases = [
       {
@@ -2262,6 +2342,106 @@ describe("CoworkReservationForm advertised pricing", () => {
     }
   });
 
+  test("keeps the required workstation explanation open after a touch tap until tapped again", async () => {
+    const cases = [
+      {
+        locale: "en-US" as const,
+        trigger: "Why is a workstation required?",
+        content:
+          "All desks without a workstation are fully booked for this date. A workstation is required.",
+      },
+      {
+        locale: "cs-CZ" as const,
+        trigger: "Proč je pracovní stanice povinná?",
+        content:
+          "Všechna místa bez pracovní stanice jsou pro toto datum plně obsazená. Pracovní stanice je povinná.",
+      },
+    ];
+
+    for (const { locale, trigger, content } of cases) {
+      globalThis.fetch = mock((request: RequestInfo | URL) => {
+        const url = String(request);
+        if (!url.startsWith("/api/workspace/availability")) {
+          return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+        }
+
+        const monitorOption = new URL(url, "http://localhost").searchParams.get(
+          "monitorOption"
+        );
+        return Promise.resolve(
+          jsonResponse(
+            requiredWorkstationAvailability(
+              "2099-07-30",
+              monitorOption as
+                | (typeof workspaceProductMonitorOptions)[number]
+                | null
+            )
+          )
+        );
+      }) as typeof fetch;
+
+      const view = renderForm({
+        locale,
+        initialValues: reservedDeskFormValues(),
+      });
+      const help = await view.findByRole("button", { name: trigger });
+      await waitFor(() => {
+        expect(
+          view
+            .getByRole("switch", {
+              name:
+                locale === "en-US"
+                  ? "Monitor workstation"
+                  : "Pracovní stanice s monitory",
+            })
+            .hasAttribute("disabled")
+        ).toBe(true);
+      });
+
+      const tap = async () => {
+        await act(async () => {
+          fireEvent.pointerDown(help, {
+            button: 0,
+            isPrimary: true,
+            pointerId: 1,
+            pointerType: "touch",
+          });
+          help.focus();
+          fireEvent.pointerUp(help, {
+            button: 0,
+            isPrimary: true,
+            pointerId: 1,
+            pointerType: "touch",
+          });
+          fireEvent.click(help, { detail: 1 });
+        });
+      };
+
+      await tap();
+      const tooltip = await within(view.baseElement).findByRole("tooltip");
+      expect(tooltip.textContent).toBe(content);
+      expect(help.getAttribute("aria-describedby")).toBe(tooltip.id);
+      await act(async () => {
+        fireEvent.pointerMove(help, {
+          pointerId: 1,
+          pointerType: "touch",
+        });
+      });
+      expect(
+        (await within(view.baseElement).findByRole("tooltip")).textContent
+      ).toBe(content);
+
+      await tap();
+      await waitFor(() => {
+        expect(within(view.baseElement).queryByRole("tooltip")).toBeNull();
+      });
+
+      await act(async () => {
+        view.unmount();
+      });
+    }
+  });
+
   test("keeps required workstation dates selectable even when the bare date is unavailable", async () => {
     const initialDate = dateOffsetFromToday(1);
     const requiredDate = dateOffsetFromToday(2);
@@ -2323,6 +2503,79 @@ describe("CoworkReservationForm advertised pricing", () => {
         )?.checked
       ).toBe(true);
     });
+  });
+
+  test("disables full dates and leaves workstation-required dates selectable before a date is chosen", async () => {
+    const fullDate = dateOffsetFromToday(2);
+    const requiredDate = dateOffsetFromToday(3);
+    workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (!url.startsWith("/api/workspace/availability")) {
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }
+
+      const searchParams = new URL(url, "http://localhost").searchParams;
+      return Promise.resolve(
+        jsonResponse({
+          ...availabilityResponse,
+          date: undefined,
+          from: searchParams.get("from"),
+          to: searchParams.get("to"),
+          unavailableDates: [fullDate, requiredDate],
+          reservedDeskWorkstationRequiredDates: [requiredDate],
+        })
+      );
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: reservedDeskFormValues(""),
+    });
+    const datePickerButton = view.getByRole("button", {
+      name: /Reservation date/i,
+    });
+    await act(async () => fireEvent.click(datePickerButton));
+    const dialog = await within(document.body).findByRole("dialog");
+    const targetDate = new Date(`${fullDate}T12:00:00`);
+    const currentMonthLabel = within(dialog).getByRole("status").textContent;
+    const currentMonthDate = new Date(
+      currentMonthLabel?.replace(" ", " 1, ") ?? ""
+    );
+    const monthsToNavigate =
+      (targetDate.getFullYear() - currentMonthDate.getFullYear()) * 12 +
+      targetDate.getMonth() -
+      currentMonthDate.getMonth();
+    for (let month = 0; month < Math.abs(monthsToNavigate); month += 1) {
+      await act(async () => {
+        fireEvent.click(
+          within(dialog).getByRole("button", {
+            name:
+              monthsToNavigate > 0
+                ? "Go to the Next Month"
+                : "Go to the Previous Month",
+          })
+        );
+      });
+    }
+    const monthLabel = targetDate.toLocaleDateString("en-US", {
+      month: "long",
+    });
+    const fullDateButton = await within(dialog).findByRole("button", {
+      name: new RegExp(
+        `${monthLabel} ${targetDate.getDate()}(?:st|nd|rd|th)?, ${targetDate.getFullYear()}`
+      ),
+    });
+    const workstationDate = new Date(`${requiredDate}T12:00:00`);
+    const requiredDateButton = within(dialog).getByRole("button", {
+      name: new RegExp(
+        `${monthLabel} ${workstationDate.getDate()}(?:st|nd|rd|th)?, ${workstationDate.getFullYear()}`
+      ),
+    });
+
+    await waitFor(() => {
+      expect((fullDateButton as HTMLButtonElement).disabled).toBe(true);
+    });
+    expect((requiredDateButton as HTMLButtonElement).disabled).toBe(false);
   });
 
   test("does not force a workstation when the selected offer or date is unavailable, or when a bare desk remains available", async () => {

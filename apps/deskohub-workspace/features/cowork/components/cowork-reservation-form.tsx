@@ -209,8 +209,29 @@ export function CoworkReservationForm({
       selectedTier,
     ]
   );
+  const workstationRequirementQuery = useMemo(
+    () =>
+      selectedTier === "reserved-desk" && selectedDate
+        ? getWorkspaceAvailabilityQuery({
+            date: selectedDate,
+            from: initialAvailabilityQuery.from,
+            tier: selectedTier,
+            to: initialAvailabilityQuery.to,
+          })
+        : undefined,
+    [
+      initialAvailabilityQuery.from,
+      initialAvailabilityQuery.to,
+      selectedDate,
+      selectedTier,
+    ]
+  );
   const availabilityQueryResult = useReservationAvailability(
     availabilityQuery,
+    { replacementToken }
+  );
+  const workstationRequirementQueryResult = useReservationAvailability(
+    workstationRequirementQuery,
     { replacementToken }
   );
   const advertisedPriceRequests = useMemo(() => {
@@ -359,6 +380,18 @@ export function CoworkReservationForm({
       : undefined;
   const advertisedPrice = selectedAdvertisedPrice ?? null;
   const { availability } = availabilityQueryResult;
+  const isAvailabilitySettledForCurrentRange = Boolean(
+    availabilityQuery &&
+      availability?.from === availabilityQuery.from &&
+      availability?.to === availabilityQuery.to &&
+      availabilityQueryResult.isSuccess &&
+      !availabilityQueryResult.isFetching &&
+      !availabilityQueryResult.isError &&
+      !availabilityQueryResult.isPlaceholderData
+  );
+  const currentRangeAvailability = isAvailabilitySettledForCurrentRange
+    ? availability
+    : null;
   const isAvailabilitySettledForSelectedDate = Boolean(
     selectedDate &&
       availabilityQuery?.date === selectedDate &&
@@ -371,22 +404,37 @@ export function CoworkReservationForm({
   const currentAvailability = isAvailabilitySettledForSelectedDate
     ? availability
     : null;
+  const isWorkstationRequirementSettledForSelectedDate = Boolean(
+    selectedDate &&
+      workstationRequirementQuery?.date === selectedDate &&
+      workstationRequirementQueryResult.availability?.date === selectedDate &&
+      workstationRequirementQueryResult.isSuccess &&
+      !workstationRequirementQueryResult.isFetching &&
+      !workstationRequirementQueryResult.isError &&
+      !workstationRequirementQueryResult.isPlaceholderData
+  );
+  const currentWorkstationRequirementAvailability =
+    isWorkstationRequirementSettledForSelectedDate
+      ? workstationRequirementQueryResult.availability
+      : null;
   const unavailableDates = useMemo(
     () =>
       new Set(
-        (currentAvailability?.unavailableDates ?? []).filter(
+        (currentRangeAvailability?.unavailableDates ?? []).filter(
           (date) =>
             selectedTier !== "reserved-desk" ||
-            !currentAvailability?.reservedDeskWorkstationRequiredDates.includes(
+            !currentRangeAvailability?.reservedDeskWorkstationRequiredDates.includes(
               date
             )
         )
       ),
-    [currentAvailability, selectedTier]
+    [currentRangeAvailability, selectedTier]
   );
+  const currentTierAvailability =
+    currentAvailability ?? currentRangeAvailability;
   const unavailableCoworkTiers = useMemo(
-    () => new Set(currentAvailability?.unavailableCoworkTiers ?? []),
-    [currentAvailability]
+    () => new Set(currentTierAvailability?.unavailableCoworkTiers ?? []),
+    [currentTierAvailability]
   );
   const unavailableMonitorOptions = useMemo(
     () => new Set(currentAvailability?.unavailableMonitorOptions ?? []),
@@ -399,14 +447,22 @@ export function CoworkReservationForm({
       ),
     [currentAvailability, selectedDate]
   );
+  const unavailableRequirementMonitorOptions = useMemo(
+    () =>
+      new Set(
+        currentWorkstationRequirementAvailability?.unavailableMonitorOptions ??
+          []
+      ),
+    [currentWorkstationRequirementAvailability]
+  );
   const firstAvailableMonitorOption = allowedMonitorOptions.find(
-    (option) => !unavailableMonitorOptions.has(option)
+    (option) => !unavailableRequirementMonitorOptions.has(option)
   );
   const isWorkstationRequiredForDate = Boolean(
-    isAvailabilitySettledForSelectedDate &&
+    isWorkstationRequirementSettledForSelectedDate &&
       selectedTier === "reserved-desk" &&
       selectedDate &&
-      currentAvailability?.reservedDeskWorkstationRequiredDates.includes(
+      currentWorkstationRequirementAvailability?.reservedDeskWorkstationRequiredDates.includes(
         selectedDate
       ) &&
       firstAvailableMonitorOption
@@ -414,7 +470,7 @@ export function CoworkReservationForm({
   const isWorkstationNormalizationPending = Boolean(
     isWorkstationRequiredForDate &&
       (!selectedMonitorOption ||
-        unavailableMonitorOptions.has(selectedMonitorOption))
+        unavailableRequirementMonitorOptions.has(selectedMonitorOption))
   );
   const isSelectedTierUnavailable = unavailableCoworkTiers.has(selectedTier);
   const isSelectedMonitorUnavailable = Boolean(
@@ -442,6 +498,7 @@ export function CoworkReservationForm({
     if (showWorkstationAddon) {
       if (
         !isAvailabilitySettledForSelectedDate ||
+        !isWorkstationRequirementSettledForSelectedDate ||
         selectedTier !== "reserved-desk" ||
         form.getValues("entryTier") !== selectedTier ||
         form.getValues("date") !== selectedDate ||
@@ -461,7 +518,7 @@ export function CoworkReservationForm({
           return;
         }
 
-        if (unavailableMonitorOptions.has(selectedMonitorOption)) {
+        if (unavailableRequirementMonitorOptions.has(selectedMonitorOption)) {
           form.setValue("monitorOption", firstAvailableMonitorOption, {
             shouldValidate: true,
           });
@@ -485,13 +542,14 @@ export function CoworkReservationForm({
     firstAvailableMonitorOption,
     form,
     isAvailabilitySettledForSelectedDate,
+    isWorkstationRequirementSettledForSelectedDate,
     isWorkstationRequiredForDate,
     selectedDate,
     selectedMonitorOption,
     selectedTier,
     showCoffeeAddon,
     showWorkstationAddon,
-    unavailableMonitorOptions,
+    unavailableRequirementMonitorOptions,
   ]);
 
   return (
@@ -511,6 +569,7 @@ export function CoworkReservationForm({
       availability={{
         isFetching:
           availabilityQueryResult.isFetching ||
+          workstationRequirementQueryResult.isFetching ||
           isWorkstationNormalizationPending,
         unavailableMessage: isSelectedReservationUnavailable
           ? selectedReservationUnavailableMessage
