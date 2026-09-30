@@ -241,6 +241,7 @@ const getAvailability = (input: {
 
 const getReplacementAvailability = (input: {
   readonly excludedDotyposReservationId: string;
+  readonly entryTier?: "open-space" | "reserved-desk";
   readonly reservations: readonly Reservation[];
   readonly tables: readonly Table[];
 }) =>
@@ -256,7 +257,7 @@ const getReplacementAvailability = (input: {
           from: testDate,
           to: testDate,
           date: testDate,
-          entryTier: "open-space",
+          entryTier: input.entryTier ?? "open-space",
         },
         occupancyExclusion: {
           dotyposReservationId: input.excludedDotyposReservationId,
@@ -267,6 +268,16 @@ const getReplacementAvailability = (input: {
   );
 
 describe("WorkspaceAvailabilityService", () => {
+  test("returns no workstation requirement dates for a meeting room query", async () => {
+    const availability = await getAvailability({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T08:00:00Z",
+      endsAt: "2099-06-10T09:00:00Z",
+    });
+
+    expect(availability.reservedDeskWorkstationRequiredDates).toEqual([]);
+  });
+
   test("fails when an eligible table has an invalid seat capacity", async () => {
     await expect(
       getAvailability({
@@ -968,6 +979,175 @@ const coworkOfferTables = [
 ];
 
 describe("WorkspaceAvailabilityService cowork offer intervals", () => {
+  test("requires a workstation when a bare Reserved Desk is unavailable", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      entryTier: "reserved-desk",
+      tables: coworkOfferTables,
+      reservations: [
+        makeReservation({
+          tableId: "desk-1",
+          status: "CONFIRMED",
+          startDate: testStart,
+          endDate: testEnd,
+        }),
+      ],
+    });
+
+    expect(availability.unavailableDates).toContain(testDate);
+    expect(availability.reservedDeskWorkstationRequiredDates).toEqual([
+      testDate,
+    ]);
+  });
+
+  test("finds an available monitor configuration later in the catalog", async () => {
+    const bareDesk = makeTable({
+      id: "bare-desk",
+      tags: ["cowork:reserved-desk"],
+    });
+    const availability = await getAvailability({
+      date: testDate,
+      entryTier: "reserved-desk",
+      tables: [...defaultTables, bareDesk],
+      reservations: [
+        makeReservation({ tableId: "bare-desk", status: "NEW" }),
+        makeReservation({ tableId: "profi-27-qhd", status: "NEW" }),
+        makeReservation({ tableId: "profi-32-qhd", status: "CONFIRMED" }),
+        makeReservation({ tableId: "profi-27-4k", status: "NEW" }),
+      ],
+    });
+
+    expect(availability.reservedDeskWorkstationRequiredDates).toEqual([
+      testDate,
+    ]);
+  });
+
+  test("does not require a workstation when every exact monitor configuration is full", async () => {
+    const bareDesk = makeTable({
+      id: "bare-desk",
+      tags: ["cowork:reserved-desk"],
+    });
+    const availability = await getAvailability({
+      date: testDate,
+      entryTier: "reserved-desk",
+      tables: [...defaultTables, bareDesk],
+      reservations: [
+        makeReservation({ tableId: "bare-desk", status: "NEW" }),
+        makeReservation({ tableId: "profi-27-qhd", status: "NEW" }),
+        makeReservation({ tableId: "profi-32-qhd", status: "NEW" }),
+        makeReservation({ tableId: "profi-27-4k", status: "NEW" }),
+        makeReservation({ tableId: "profi-32-4k", status: "NEW" }),
+      ],
+    });
+
+    expect(availability.reservedDeskWorkstationRequiredDates).not.toContain(
+      testDate
+    );
+  });
+
+  test("does not require a workstation while a bare Reserved Desk is available", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      entryTier: "reserved-desk",
+      tables: coworkOfferTables,
+    });
+
+    expect(availability.unavailableDates).not.toContain(testDate);
+    expect(availability.reservedDeskWorkstationRequiredDates).not.toContain(
+      testDate
+    );
+  });
+
+  test("does not require a workstation on a fully occupied calendar date", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      entryTier: "reserved-desk",
+      tables: coworkOfferTables,
+      reservations: [makeReservation({ tableId: "desk-1", status: "NEW" })],
+      limitations: [
+        WorkspaceCalendarLimitation.FullyOccupied({
+          date: testDate,
+          sourceEventId: "calendar-full",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableDates).toContain(testDate);
+    expect(availability.reservedDeskWorkstationRequiredDates).not.toContain(
+      testDate
+    );
+  });
+
+  test("uses the full Reserved Desk day instead of a selected Open Space interval", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      entryTier: "open-space",
+      tables: [
+        makeTable({
+          id: "shared-bare-desk",
+          tags: ["cowork:open-space", "cowork:reserved-desk"],
+        }),
+        makeTable({
+          id: "workstation",
+          tags: [
+            "cowork:reserved-desk",
+            "monitor:count:2",
+            "monitor:size:27",
+            "monitor:resolution:qhd",
+          ],
+        }),
+      ],
+      reservations: [
+        makeReservation({
+          tableId: "shared-bare-desk",
+          status: "NEW",
+          startDate: "2099-06-10T15:00:00Z",
+          endDate: "2099-06-10T16:00:00Z",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableDates).not.toContain(testDate);
+    expect(availability.reservedDeskWorkstationRequiredDates).toEqual([
+      testDate,
+    ]);
+  });
+
+  test("excludes only a replacement hold while counting unrelated Reserved Desk holds", async () => {
+    const ownHold = makeReservation({
+      id: "own-reservation-id",
+      tableId: "desk-1",
+      status: "NEW",
+    });
+    const input = {
+      excludedDotyposReservationId: "own-reservation-id",
+      entryTier: "reserved-desk" as const,
+      tables: coworkOfferTables,
+    };
+    const onlyOwnHold = await getReplacementAvailability({
+      ...input,
+      reservations: [ownHold],
+    });
+    const unrelatedHoldRemains = await getReplacementAvailability({
+      ...input,
+      reservations: [
+        ownHold,
+        makeReservation({
+          id: "unrelated-reservation-id",
+          tableId: "desk-1",
+          status: "NEW",
+        }),
+      ],
+    });
+
+    expect(onlyOwnHold.reservedDeskWorkstationRequiredDates).not.toContain(
+      testDate
+    );
+    expect(unrelatedHoldRemains.reservedDeskWorkstationRequiredDates).toEqual([
+      testDate,
+    ]);
+  });
+
   test("keeps reserved-desk available when bare desks are occupied but a workstation configuration is free", async () => {
     const bareDeskOccupied = await getAvailability({
       date: testDate,
