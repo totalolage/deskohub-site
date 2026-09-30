@@ -1,7 +1,6 @@
 import {
   afterAll,
   afterEach,
-  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -45,6 +44,8 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
+registerWorkspaceComponentTestEnv();
+
 const execute = mock(() => undefined);
 const getAdvertisedPrices = mock(
   (requests: ReadonlyArray<AdvertisedPriceRequest>) =>
@@ -57,6 +58,14 @@ mock.module("@/features/cookie-consent", () => ({
 
 mock.module("@/features/reservation/actions/get-advertised-price", () => ({
   getAdvertisedPrices,
+}));
+
+mock.module("@/features/reservation/actions/prepare-pay-state", () => ({
+  preparePayState: mock(),
+}));
+
+mock.module("@/features/reservation/actions/submit-reservation", () => ({
+  submitReservation: mock(),
 }));
 
 const { CoworkReservationForm } = await import("./cowork-reservation-form");
@@ -245,11 +254,76 @@ const renderForm = (
   );
 };
 
-describe("CoworkReservationForm advertised pricing", () => {
-  beforeAll(() => {
-    registerWorkspaceComponentTestEnv();
-  });
+const reservedDeskFormValues = (
+  date = "2099-07-30",
+  monitorOption?: (typeof workspaceProductMonitorOptions)[number]
+) => ({
+  ...coworkReservationDefaultValues,
+  entryTier: "reserved-desk" as const,
+  date,
+  monitorOption,
+  name: "Ada Lovelace",
+  email: "ada@example.test",
+  phone: "+420777777777",
+});
 
+const requiredWorkstationAvailability = (
+  date = "2099-07-30",
+  monitorOption?: (typeof workspaceProductMonitorOptions)[number] | null
+) => ({
+  ...availabilityResponse,
+  date,
+  unavailableDates: monitorOption ? [] : [date],
+  reservedDeskWorkstationRequiredDates: [date],
+  unavailableMonitorOptions: ["2x27-qhd"],
+});
+
+const selectCalendarDate = async (
+  view: ReturnType<typeof renderForm>,
+  date: string
+) => {
+  const datePickerButton = view.getByRole("button", {
+    name: /Reservation date/i,
+  });
+  await act(async () => fireEvent.click(datePickerButton));
+  const dialog = await within(document.body).findByRole("dialog");
+  const targetDate = new Date(`${date}T12:00:00`);
+  const currentMonthLabel = within(dialog).getByRole("status").textContent;
+  const currentMonthDate = new Date(
+    currentMonthLabel?.replace(" ", " 1, ") ?? ""
+  );
+  const monthsToNavigate =
+    (targetDate.getFullYear() - currentMonthDate.getFullYear()) * 12 +
+    targetDate.getMonth() -
+    currentMonthDate.getMonth();
+  for (let month = 0; month < Math.abs(monthsToNavigate); month += 1) {
+    await act(async () => {
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name:
+            monthsToNavigate > 0
+              ? "Go to the Next Month"
+              : "Go to the Previous Month",
+        })
+      );
+    });
+  }
+  const formattedMonth = targetDate.toLocaleDateString("en-US", {
+    month: "long",
+  });
+  const dateButton = await within(dialog).findByRole("button", {
+    name: new RegExp(
+      `${formattedMonth} ${targetDate.getDate()}(?:st|nd|rd|th)?, ${targetDate.getFullYear()}`
+    ),
+  });
+  expect((dateButton as HTMLButtonElement).disabled).toBe(false);
+  await act(async () => fireEvent.click(dateButton));
+};
+
+const dateOffsetFromToday = (days: number) =>
+  Temporal.Now.plainDateISO().add({ days }).toString();
+
+describe("CoworkReservationForm advertised pricing", () => {
   beforeEach(() => {
     workspaceUseSearchParams.mockReturnValue(
       new URLSearchParams(
@@ -266,8 +340,9 @@ describe("CoworkReservationForm advertised pricing", () => {
     );
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     getAdvertisedPrices.mockClear();
     push.mockClear();
     execute.mockClear();
@@ -2008,5 +2083,586 @@ describe("CoworkReservationForm advertised pricing", () => {
         view.unmount();
       });
     }
+  });
+
+  test("forces the first available paid workstation and submits its advertised variant", async () => {
+    const availabilityRequests: string[] = [];
+    getAdvertisedPrices.mockImplementation((requests) =>
+      Promise.resolve(
+        advertisedPricesResult(requests, getCoworkAdvertisedPriceResponse)
+      )
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (!url.startsWith("/api/workspace/availability")) {
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }
+
+      availabilityRequests.push(url);
+      const monitorOption = new URL(url, "http://localhost").searchParams.get(
+        "monitorOption"
+      );
+      return Promise.resolve(
+        jsonResponse(
+          requiredWorkstationAvailability(
+            "2099-07-30",
+            monitorOption as
+              | (typeof workspaceProductMonitorOptions)[number]
+              | null
+          )
+        )
+      );
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: reservedDeskFormValues(),
+    });
+    const workstationSwitch = view.getByRole("switch", {
+      name: "Monitor workstation",
+    });
+
+    await waitFor(() => {
+      expect(
+        (
+          view.container.querySelector(
+            "input[type='radio'][value='2x32-qhd']"
+          ) as HTMLInputElement | null
+        )?.checked
+      ).toBe(true);
+      expect(workstationSwitch.getAttribute("aria-checked")).toBe("true");
+      expect(workstationSwitch.hasAttribute("disabled")).toBe(true);
+      expect(
+        view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+      ).toBe(false);
+    });
+
+    expect(
+      availabilityRequests.some((url) => url.includes("monitorOption=2x32-qhd"))
+    ).toBe(true);
+    expect(
+      view.container.querySelector("[data-reservation-workstation-price]")
+        ?.textContent
+    ).toContain("120");
+
+    const help = view.getByRole("button", {
+      name: "Why is a workstation required?",
+    });
+    expect(help.tagName).toBe("BUTTON");
+    expect(help.hasAttribute("disabled")).toBe(false);
+    await act(async () => help.focus());
+    const tooltip = await within(view.baseElement).findByRole("tooltip");
+    expect(tooltip.textContent).toBe(
+      "All desks without a workstation are fully booked for this date. A workstation is required."
+    );
+    expect(help.getAttribute("aria-describedby")).toBe(tooltip.id);
+    await act(async () => {
+      fireEvent.pointerMove(help, { pointerType: "mouse" });
+    });
+    expect(
+      (await within(view.baseElement).findByRole("tooltip")).textContent
+    ).toBe(tooltip.textContent);
+
+    fireEvent.click(workstationSwitch);
+    expect(workstationSwitch.getAttribute("aria-checked")).toBe("true");
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    });
+    await waitFor(() => {
+      expect(execute).toHaveBeenCalledTimes(1);
+    });
+    const submission = execute.mock.calls[0]?.[0] as {
+      readonly advertisedPriceToken?: string;
+      readonly reservation?: {
+        readonly date?: string;
+        readonly entryTier?: string;
+        readonly monitorOption?: string;
+      };
+    };
+    expect(submission.advertisedPriceToken).toBe(
+      "sealed-reserved-desk-workstation-advertised-price"
+    );
+    expect(submission.reservation).toMatchObject({
+      date: "2099-07-30",
+      entryTier: "reserved-desk",
+      monitorOption: "2x32-qhd",
+    });
+  });
+
+  test("keeps the locked workstation help trigger keyboard accessible in both locales", async () => {
+    const cases = [
+      {
+        locale: "en-US" as const,
+        trigger: "Why is a workstation required?",
+        content:
+          "All desks without a workstation are fully booked for this date. A workstation is required.",
+      },
+      {
+        locale: "cs-CZ" as const,
+        trigger: "Proč je pracovní stanice povinná?",
+        content:
+          "Všechna místa bez pracovní stanice jsou pro toto datum plně obsazená. Pracovní stanice je povinná.",
+      },
+    ];
+
+    for (const { locale, trigger, content } of cases) {
+      globalThis.fetch = mock((request: RequestInfo | URL) => {
+        const url = String(request);
+        if (!url.startsWith("/api/workspace/availability")) {
+          return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+        }
+
+        const monitorOption = new URL(url, "http://localhost").searchParams.get(
+          "monitorOption"
+        );
+        return Promise.resolve(
+          jsonResponse(
+            requiredWorkstationAvailability(
+              "2099-07-30",
+              monitorOption as
+                | (typeof workspaceProductMonitorOptions)[number]
+                | null
+            )
+          )
+        );
+      }) as typeof fetch;
+
+      const view = renderForm({
+        locale,
+        initialValues: reservedDeskFormValues(),
+      });
+      const workstationSwitch = view.getByRole("switch", {
+        name:
+          locale === "en-US"
+            ? "Monitor workstation"
+            : "Pracovní stanice s monitory",
+      });
+      await waitFor(() => {
+        expect(workstationSwitch.getAttribute("aria-checked")).toBe("true");
+        expect(workstationSwitch.hasAttribute("disabled")).toBe(true);
+      });
+
+      const help = view.getByRole("button", { name: trigger });
+      expect(help.tagName).toBe("BUTTON");
+      expect(help.hasAttribute("disabled")).toBe(false);
+      await act(async () => help.focus());
+      const tooltip = await within(view.baseElement).findByRole("tooltip");
+      expect(tooltip.textContent).toBe(content);
+      expect(help.getAttribute("aria-describedby")).toBe(tooltip.id);
+      await act(async () => {
+        fireEvent.pointerMove(help, { pointerType: "mouse" });
+      });
+      expect(
+        (await within(view.baseElement).findByRole("tooltip")).textContent
+      ).toBe(content);
+
+      await act(async () => {
+        view.unmount();
+      });
+    }
+  });
+
+  test("keeps required workstation dates selectable even when the bare date is unavailable", async () => {
+    const initialDate = dateOffsetFromToday(1);
+    const requiredDate = dateOffsetFromToday(2);
+    getAdvertisedPrices.mockImplementation((requests) =>
+      Promise.resolve(
+        advertisedPricesResult(requests, getCoworkAdvertisedPriceResponse)
+      )
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (!url.startsWith("/api/workspace/availability")) {
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }
+
+      const searchParams = new URL(url, "http://localhost").searchParams;
+      const date = searchParams.get("date") ?? initialDate;
+      const monitorOption = searchParams.get("monitorOption");
+      if (date === initialDate) {
+        return Promise.resolve(
+          jsonResponse({
+            ...availabilityResponse,
+            date,
+            unavailableDates: [requiredDate],
+            reservedDeskWorkstationRequiredDates: [requiredDate],
+          })
+        );
+      }
+
+      return Promise.resolve(
+        jsonResponse(
+          requiredWorkstationAvailability(
+            date,
+            monitorOption as
+              | (typeof workspaceProductMonitorOptions)[number]
+              | null
+          )
+        )
+      );
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: reservedDeskFormValues(initialDate),
+    });
+    await waitFor(() => {
+      expect(
+        view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+      ).toBe(false);
+    });
+
+    await selectCalendarDate(view, requiredDate);
+    await waitFor(() => {
+      expect(
+        view.container.querySelector<HTMLInputElement>("input[name='date']")
+          ?.value
+      ).toBe(requiredDate);
+      expect(
+        view.container.querySelector<HTMLInputElement>(
+          "input[type='radio'][value='2x32-qhd']"
+        )?.checked
+      ).toBe(true);
+    });
+  });
+
+  test("does not force a workstation when the selected offer or date is unavailable, or when a bare desk remains available", async () => {
+    const cases = [
+      {
+        name: "every reserved desk configuration is unavailable",
+        availability: {
+          ...availabilityResponse,
+          unavailableCoworkTiers: ["reserved-desk"],
+          unavailableMonitorOptions: [...workspaceProductMonitorOptions],
+        },
+        unavailable: true,
+      },
+      {
+        name: "the whole calendar date is unavailable",
+        availability: {
+          ...availabilityResponse,
+          unavailableDates: ["2099-07-30"],
+          unavailableCoworkTiers: ["open-space", "reserved-desk"],
+          unavailableMonitorOptions: [...workspaceProductMonitorOptions],
+        },
+        unavailable: true,
+      },
+      {
+        name: "a bare Reserved Desk remains available",
+        availability: availabilityResponse,
+        unavailable: false,
+      },
+    ];
+
+    for (const testCase of cases) {
+      globalThis.fetch = mock((request: RequestInfo | URL) => {
+        const url = String(request);
+        if (!url.startsWith("/api/workspace/availability")) {
+          return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+        }
+        return Promise.resolve(jsonResponse(testCase.availability));
+      }) as typeof fetch;
+
+      const view = renderForm({
+        initialValues: reservedDeskFormValues(),
+      });
+      await waitFor(() => {
+        expect(
+          view
+            .getByRole("button", { name: "Continue" })
+            .hasAttribute("disabled")
+        ).toBe(testCase.unavailable);
+      });
+      expect(
+        view
+          .getByRole("switch", { name: "Monitor workstation" })
+          .getAttribute("aria-checked")
+      ).toBe("false");
+      expect(
+        view.queryByRole("button", { name: "Why is a workstation required?" })
+      ).toBeNull();
+
+      await act(async () => {
+        view.unmount();
+      });
+    }
+  });
+
+  test("does not use previous-date availability while the new date is refetching and clears only its own addon after settlement", async () => {
+    const initialDate = dateOffsetFromToday(1);
+    const newDate = dateOffsetFromToday(2);
+    let resolveNewDateAvailability: ((response: Response) => void) | undefined;
+    const availabilityRequests: string[] = [];
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (!url.startsWith("/api/workspace/availability")) {
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }
+
+      availabilityRequests.push(url);
+      const searchParams = new URL(url, "http://localhost").searchParams;
+      const date = searchParams.get("date") ?? initialDate;
+      const monitorOption = searchParams.get("monitorOption");
+      if (date === initialDate) {
+        return Promise.resolve(
+          jsonResponse({
+            ...requiredWorkstationAvailability(
+              date,
+              monitorOption as
+                | (typeof workspaceProductMonitorOptions)[number]
+                | null
+            ),
+            reservedDeskWorkstationRequiredDates: [initialDate, newDate],
+          })
+        );
+      }
+      if (date === newDate && monitorOption) {
+        return new Promise<Response>((resolve) => {
+          resolveNewDateAvailability = resolve;
+        });
+      }
+
+      return Promise.resolve(
+        jsonResponse({
+          ...availabilityResponse,
+          date,
+          unavailableDates: [],
+          reservedDeskWorkstationRequiredDates: [],
+          unavailableMonitorOptions: [],
+        })
+      );
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: reservedDeskFormValues(initialDate),
+    });
+    await waitFor(() => {
+      expect(
+        view.container.querySelector<HTMLInputElement>(
+          "input[type='radio'][value='2x32-qhd']"
+        )?.checked
+      ).toBe(true);
+      expect(
+        view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+      ).toBe(false);
+    });
+
+    await selectCalendarDate(view, newDate);
+    await waitFor(() => {
+      expect(
+        view.container.querySelector<HTMLInputElement>("input[name='date']")
+          ?.value
+      ).toBe(newDate);
+      expect(
+        view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+      ).toBe(true);
+    });
+    expect(
+      view.queryByRole("button", { name: "Why is a workstation required?" })
+    ).toBeNull();
+    expect(
+      view
+        .getByRole("switch", { name: "Monitor workstation" })
+        .hasAttribute("disabled")
+    ).toBe(false);
+    expect(
+      view
+        .getByRole("switch", { name: "Monitor workstation" })
+        .getAttribute("aria-checked")
+    ).toBe("true");
+
+    fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    expect(execute).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveNewDateAvailability?.(
+        jsonResponse({
+          ...availabilityResponse,
+          date: newDate,
+          unavailableDates: [],
+          reservedDeskWorkstationRequiredDates: [],
+          unavailableMonitorOptions: [],
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(
+        view
+          .getByRole("switch", { name: "Monitor workstation" })
+          .getAttribute("aria-checked")
+      ).toBe("false");
+      expect(
+        view.container.querySelector("[data-cowork-monitor-options]")
+      ).toBeNull();
+      expect(
+        view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+      ).toBe(false);
+    });
+    expect(
+      availabilityRequests.some((url) => url.includes(`date=${newDate}`))
+    ).toBe(true);
+  });
+
+  test("preserves restored and initial workstation preferences when the requirement clears", async () => {
+    const requiredDate = dateOffsetFromToday(1);
+    const availableDate = dateOffsetFromToday(2);
+    const restoredReservation = {
+      kind: "cowork" as const,
+      entryTier: "reserved-desk" as const,
+      coffee: true,
+      date: requiredDate,
+      monitorOption: "2x32-qhd" as const,
+      name: "Ada Lovelace",
+      email: "ada@example.test",
+      phone: "+420777777777",
+      billing: coworkReservationDefaultValues.billing,
+    };
+    const cases = [
+      {
+        props: {
+          initialValues: reservedDeskFormValues(requiredDate, "2x32-qhd"),
+        },
+      },
+      { props: { initialReservation: restoredReservation } },
+    ];
+
+    for (const { props } of cases) {
+      globalThis.fetch = mock((request: RequestInfo | URL) => {
+        const url = String(request);
+        if (!url.startsWith("/api/workspace/availability")) {
+          return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+        }
+
+        const searchParams = new URL(url, "http://localhost").searchParams;
+        const date = searchParams.get("date") ?? requiredDate;
+        if (date === requiredDate) {
+          return Promise.resolve(
+            jsonResponse(requiredWorkstationAvailability(date, "2x32-qhd"))
+          );
+        }
+        return Promise.resolve(
+          jsonResponse({
+            ...availabilityResponse,
+            date,
+            unavailableDates: [],
+            reservedDeskWorkstationRequiredDates: [],
+            unavailableMonitorOptions: [],
+          })
+        );
+      }) as typeof fetch;
+
+      const view = renderForm(props);
+      await waitFor(() => {
+        expect(
+          view.container.querySelector<HTMLInputElement>(
+            "input[type='radio'][value='2x32-qhd']"
+          )?.checked
+        ).toBe(true);
+      });
+      await selectCalendarDate(view, availableDate);
+      await waitFor(() => {
+        expect(
+          view.container.querySelector<HTMLInputElement>(
+            "input[type='radio'][value='2x32-qhd']"
+          )?.checked
+        ).toBe(true);
+        expect(
+          view
+            .getByRole("switch", { name: "Monitor workstation" })
+            .getAttribute("aria-checked")
+        ).toBe("true");
+        expect(
+          view.queryByRole("button", {
+            name: "Why is a workstation required?",
+          })
+        ).toBeNull();
+      });
+
+      await act(async () => {
+        view.unmount();
+      });
+    }
+  });
+
+  test("keeps a monitor choice made while the workstation is forced", async () => {
+    const requiredDate = dateOffsetFromToday(1);
+    const availableDate = dateOffsetFromToday(2);
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (!url.startsWith("/api/workspace/availability")) {
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }
+
+      const searchParams = new URL(url, "http://localhost").searchParams;
+      const date = searchParams.get("date") ?? requiredDate;
+      if (date === requiredDate) {
+        return Promise.resolve(
+          jsonResponse(
+            requiredWorkstationAvailability(
+              date,
+              searchParams.get("monitorOption") as
+                | (typeof workspaceProductMonitorOptions)[number]
+                | null
+            )
+          )
+        );
+      }
+      return Promise.resolve(
+        jsonResponse({
+          ...availabilityResponse,
+          date,
+          unavailableDates: [],
+          reservedDeskWorkstationRequiredDates: [],
+          unavailableMonitorOptions: [],
+        })
+      );
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: reservedDeskFormValues(requiredDate),
+    });
+    await waitFor(() => {
+      expect(
+        view.container.querySelector<HTMLInputElement>(
+          "input[type='radio'][value='2x32-qhd']"
+        )?.checked
+      ).toBe(true);
+      expect(
+        view
+          .getByRole("switch", { name: "Monitor workstation" })
+          .hasAttribute("disabled")
+      ).toBe(true);
+    });
+
+    fireEvent.click(
+      view.container.querySelector(
+        "input[type='radio'][value='2x27-4k']"
+      ) as HTMLInputElement
+    );
+    await waitFor(() => {
+      expect(
+        view.container.querySelector<HTMLInputElement>(
+          "input[type='radio'][value='2x27-4k']"
+        )?.checked
+      ).toBe(true);
+    });
+    await selectCalendarDate(view, availableDate);
+    await waitFor(() => {
+      expect(
+        view.container.querySelector<HTMLInputElement>(
+          "input[type='radio'][value='2x27-4k']"
+        )?.checked
+      ).toBe(true);
+      expect(
+        view
+          .getByRole("switch", { name: "Monitor workstation" })
+          .getAttribute("aria-checked")
+      ).toBe("true");
+    });
+    await act(async () => {});
+    expect(
+      view.container.querySelector<HTMLInputElement>(
+        "input[type='radio'][value='2x27-4k']"
+      )?.checked
+    ).toBe(true);
   });
 });

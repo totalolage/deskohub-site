@@ -4,7 +4,7 @@ import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Match, Schema } from "effect";
 import { AlertTriangle, Coffee, Monitor } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import {
   type AdvertisedPrice,
@@ -211,7 +211,7 @@ export function CoworkReservationForm({
   );
   const availabilityQueryResult = useReservationAvailability(
     availabilityQuery,
-    { keepPreviousData: true, replacementToken }
+    { replacementToken }
   );
   const advertisedPriceRequests = useMemo(() => {
     if (!selectedDate) {
@@ -359,24 +359,62 @@ export function CoworkReservationForm({
       : undefined;
   const advertisedPrice = selectedAdvertisedPrice ?? null;
   const { availability } = availabilityQueryResult;
+  const isAvailabilitySettledForSelectedDate = Boolean(
+    selectedDate &&
+      availabilityQuery?.date === selectedDate &&
+      availability?.date === selectedDate &&
+      availabilityQueryResult.isSuccess &&
+      !availabilityQueryResult.isFetching &&
+      !availabilityQueryResult.isError &&
+      !availabilityQueryResult.isPlaceholderData
+  );
+  const currentAvailability = isAvailabilitySettledForSelectedDate
+    ? availability
+    : null;
   const unavailableDates = useMemo(
-    () => new Set(availability?.unavailableDates ?? []),
-    [availability]
+    () =>
+      new Set(
+        (currentAvailability?.unavailableDates ?? []).filter(
+          (date) =>
+            selectedTier !== "reserved-desk" ||
+            !currentAvailability?.reservedDeskWorkstationRequiredDates.includes(
+              date
+            )
+        )
+      ),
+    [currentAvailability, selectedTier]
   );
   const unavailableCoworkTiers = useMemo(
-    () => new Set(availability?.unavailableCoworkTiers ?? []),
-    [availability]
+    () => new Set(currentAvailability?.unavailableCoworkTiers ?? []),
+    [currentAvailability]
   );
   const unavailableMonitorOptions = useMemo(
-    () => new Set(availability?.unavailableMonitorOptions ?? []),
-    [availability]
+    () => new Set(currentAvailability?.unavailableMonitorOptions ?? []),
+    [currentAvailability]
   );
   const selectedDateNotices = useMemo(
     () =>
-      (availability?.notices ?? []).filter(
+      (currentAvailability?.notices ?? []).filter(
         (notice) => notice.date === selectedDate
       ),
-    [availability, selectedDate]
+    [currentAvailability, selectedDate]
+  );
+  const firstAvailableMonitorOption = allowedMonitorOptions.find(
+    (option) => !unavailableMonitorOptions.has(option)
+  );
+  const isWorkstationRequiredForDate = Boolean(
+    isAvailabilitySettledForSelectedDate &&
+      selectedTier === "reserved-desk" &&
+      selectedDate &&
+      currentAvailability?.reservedDeskWorkstationRequiredDates.includes(
+        selectedDate
+      ) &&
+      firstAvailableMonitorOption
+  );
+  const isWorkstationNormalizationPending = Boolean(
+    isWorkstationRequiredForDate &&
+      (!selectedMonitorOption ||
+        unavailableMonitorOptions.has(selectedMonitorOption))
   );
   const isSelectedTierUnavailable = unavailableCoworkTiers.has(selectedTier);
   const isSelectedMonitorUnavailable = Boolean(
@@ -398,16 +436,63 @@ export function CoworkReservationForm({
       reservation: { kind: "cowork", entryTier: selectedTier },
     });
 
+  const autoAddedWorkstation = useRef(false);
+
   useEffect(() => {
     if (showWorkstationAddon) {
+      if (
+        !isAvailabilitySettledForSelectedDate ||
+        selectedTier !== "reserved-desk" ||
+        form.getValues("entryTier") !== selectedTier ||
+        form.getValues("date") !== selectedDate ||
+        form.getValues("monitorOption") !== selectedMonitorOption
+      ) {
+        return;
+      }
+
+      if (isWorkstationRequiredForDate) {
+        if (!firstAvailableMonitorOption) return;
+
+        if (!selectedMonitorOption) {
+          autoAddedWorkstation.current = true;
+          form.setValue("monitorOption", firstAvailableMonitorOption, {
+            shouldValidate: true,
+          });
+          return;
+        }
+
+        if (unavailableMonitorOptions.has(selectedMonitorOption)) {
+          form.setValue("monitorOption", firstAvailableMonitorOption, {
+            shouldValidate: true,
+          });
+        }
+        return;
+      }
+
+      if (autoAddedWorkstation.current) {
+        autoAddedWorkstation.current = false;
+        form.setValue("monitorOption", undefined, { shouldValidate: true });
+      }
       return;
     }
 
+    autoAddedWorkstation.current = false;
     form.setValue("monitorOption", undefined, { shouldValidate: true });
     if (!showCoffeeAddon) {
       form.setValue("coffee", true, { shouldValidate: true });
     }
-  }, [form, showCoffeeAddon, showWorkstationAddon]);
+  }, [
+    firstAvailableMonitorOption,
+    form,
+    isAvailabilitySettledForSelectedDate,
+    isWorkstationRequiredForDate,
+    selectedDate,
+    selectedMonitorOption,
+    selectedTier,
+    showCoffeeAddon,
+    showWorkstationAddon,
+    unavailableMonitorOptions,
+  ]);
 
   return (
     <ReservationCheckoutForm
@@ -424,7 +509,9 @@ export function CoworkReservationForm({
           : undefined,
       }}
       availability={{
-        isFetching: availabilityQueryResult.isFetching,
+        isFetching:
+          availabilityQueryResult.isFetching ||
+          isWorkstationNormalizationPending,
         unavailableMessage: isSelectedReservationUnavailable
           ? selectedReservationUnavailableMessage
           : undefined,
@@ -556,7 +643,11 @@ export function CoworkReservationForm({
           <CoworkWorkstationAddonField
             allowedMonitorOptions={allowedMonitorOptions}
             control={form.control}
+            isWorkstationRequired={isWorkstationRequiredForDate}
             locale={locale}
+            onManualSelection={() => {
+              autoAddedWorkstation.current = false;
+            }}
             priceLabel={workstationPriceLabel}
             unavailableMonitorOptions={unavailableMonitorOptions}
           />
@@ -668,7 +759,9 @@ function CoworkCoffeeAddonField({
 function CoworkWorkstationAddonField({
   allowedMonitorOptions,
   control,
+  isWorkstationRequired,
   locale,
+  onManualSelection,
   priceLabel,
   unavailableMonitorOptions,
 }: {
@@ -678,7 +771,9 @@ function CoworkWorkstationAddonField({
     unknown,
     CoworkReservationData
   >;
+  readonly isWorkstationRequired: boolean;
   readonly locale: Locale;
+  readonly onManualSelection: () => void;
   readonly priceLabel?: string;
   readonly unavailableMonitorOptions: ReadonlySet<WorkspaceProductMonitorOption>;
 }) {
@@ -694,13 +789,31 @@ function CoworkWorkstationAddonField({
           <div data-cowork-addon-control className="space-y-2">
             <CoworkOptionalAddonToggle
               addon="workstation"
-              checked={field.value !== undefined}
+              checked={field.value !== undefined || isWorkstationRequired}
+              disabled={isWorkstationRequired}
               icon={Monitor}
+              info={
+                isWorkstationRequired
+                  ? {
+                      triggerLabel:
+                        m.reservationWorkstationRequiredTooltipTrigger(
+                          {},
+                          { locale }
+                        ),
+                      content: m.reservationWorkstationRequiredTooltipContent(
+                        {},
+                        { locale }
+                      ),
+                    }
+                  : undefined
+              }
               label={m.reservationWorkstationLabel({}, { locale })}
               onBlur={field.onBlur}
-              onCheckedChange={(checked) =>
-                field.onChange(checked ? allowedMonitorOptions[0] : undefined)
-              }
+              onCheckedChange={(checked) => {
+                if (isWorkstationRequired) return;
+                onManualSelection();
+                field.onChange(checked ? allowedMonitorOptions[0] : undefined);
+              }}
               priceLabel={priceLabel}
             />
           </div>
@@ -753,7 +866,10 @@ function CoworkWorkstationAddonField({
                             name={field.name}
                             onBlur={field.onBlur}
                             onChange={() => {
-                              if (!isUnavailable) field.onChange(option.value);
+                              if (!isUnavailable) {
+                                onManualSelection();
+                                field.onChange(option.value);
+                              }
                             }}
                             ref={field.ref}
                           />

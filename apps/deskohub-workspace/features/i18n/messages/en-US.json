@@ -318,6 +318,8 @@
   "reservationReservedDeskPerkMonitor": "Optional monitor workstation",
   "reservationWorkstationLabel": "Monitor workstation",
   "reservationWorkstationToggleLabel": "Add monitor workstation",
+  "reservationWorkstationRequiredTooltipContent": "All desks without a workstation are fully booked for this date. A workstation is required.",
+  "reservationWorkstationRequiredTooltipTrigger": "Why is a workstation required?",
   "reservationValidationOpenSpaceDayEnded": "Open Space reservations for today can no longer be started because the day ends at 17:00. Please choose another date.",
   "reservationTierBasicTitle": "Basic Day Pass",
   "reservationTierBasicPrice": "CZK 350 / day",

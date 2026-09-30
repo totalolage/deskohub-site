@@ -318,6 +318,8 @@
   "reservationReservedDeskPerkMonitor": "Volitelná stanice s monitory",
   "reservationWorkstationLabel": "Pracovní stanice s monitory",
   "reservationWorkstationToggleLabel": "Přidat pracovní stanici s monitory",
+  "reservationWorkstationRequiredTooltipContent": "Všechna místa bez pracovní stanice jsou pro toto datum plně obsazená. Pracovní stanice je povinná.",
+  "reservationWorkstationRequiredTooltipTrigger": "Proč je pracovní stanice povinná?",
   "reservationValidationOpenSpaceDayEnded": "Rezervace sdíleného místa na dnešek už nelze zahájit, protože den končí v 17:00. Vyber prosím jiné datum.",
   "reservationTierBasicTitle": "Basic Day Pass",
   "reservationTierBasicPrice": "350 Kč / den",
