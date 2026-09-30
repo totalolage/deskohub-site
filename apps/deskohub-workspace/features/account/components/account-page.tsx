@@ -29,6 +29,7 @@ export function AccountPage({
         <LinkedAccount
           email={state.email}
           history={state.history}
+          invoices={state.invoices}
           locale={locale}
           profile={state.profile}
         />

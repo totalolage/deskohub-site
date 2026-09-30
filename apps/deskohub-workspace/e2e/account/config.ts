@@ -51,7 +51,6 @@ export const getAccountE2EConfig = (
       { operation: "configure workspace account e2e" }
     );
   }
-
   addRedaction(resendApiKey);
   const bypassSecret = environment.VERCEL_AUTOMATION_BYPASS_SECRET;
   addRedaction(bypassSecret);

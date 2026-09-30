@@ -16,7 +16,6 @@ import type {
   CustomerReservationHistory,
   CustomerReservationSummary,
 } from "../contracts";
-import type { BillingScreenCopy } from "./billing/billing-screen";
 import type { ProfileScreenCopy } from "./profile/profile-screen";
 import type { ReservationHistoryCopy } from "./reservation-history";
 
@@ -190,39 +189,6 @@ const profileCopy = {
   },
 } satisfies Record<Locale, ProfileScreenCopy>;
 
-const billingCopy = {
-  "en-US": {
-    addPaymentCard: "Add payment card",
-    billingDetailsTitle: "Billing details",
-    currency: "Currency: CZK (Kč)",
-    downloadInvoice: "Download PDF",
-    exportInvoices: "Export all",
-    invoiceHistoryTitle: "Invoice history",
-    invoiceHistoryUnavailable:
-      "Invoice history and downloads are not available in this account.",
-    paymentMethodsTitle: "Saved payment methods",
-    paymentMethodsUnavailable:
-      "Saved payment methods are not available in this account.",
-    removePaymentCard: "Remove payment card",
-    title: "Billing & invoices",
-  },
-  "cs-CZ": {
-    addPaymentCard: "Přidat platební kartu",
-    billingDetailsTitle: "Fakturační údaje",
-    currency: "Měna: CZK (Kč)",
-    downloadInvoice: "Stáhnout PDF",
-    exportInvoices: "Exportovat vše",
-    invoiceHistoryTitle: "Historie faktur",
-    invoiceHistoryUnavailable:
-      "Historie faktur a jejich stahování nejsou pro tento účet dostupné.",
-    paymentMethodsTitle: "Uložené platební metody",
-    paymentMethodsUnavailable:
-      "Uložené platební metody nejsou pro tento účet dostupné.",
-    removePaymentCard: "Odebrat platební kartu",
-    title: "Fakturace a faktury",
-  },
-} satisfies Record<Locale, BillingScreenCopy>;
-
 const reservationCopy = {
   "en-US": {
     assignedDesk: "Assigned desk",
@@ -259,7 +225,6 @@ const reservationCopy = {
 } satisfies Record<Locale, ReservationHistoryCopy>;
 
 const accountScreenCopy = {
-  billing: billingCopy["en-US"],
   dangerTitle: "Danger zone",
   profile: profileCopy["en-US"],
   reservations: reservationCopy["en-US"],
@@ -357,7 +322,7 @@ function renderProfileScreen(locale: Locale): ScreenView {
 
 function renderBillingScreen(locale: Locale): ScreenView {
   return render(
-    <BillingScreen copy={billingCopy[locale]} locale={locale}>
+    <BillingScreen invoices={{ kind: "unavailable" }} locale={locale}>
       <div>Caller-owned billing fields</div>
     </BillingScreen>
   );
@@ -453,18 +418,8 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
     role: "combobox",
   },
   {
-    label: (locale) => billingCopy[locale].addPaymentCard,
+    label: (locale) => m.accountBillingAddPaymentCard({}, { locale }),
     name: "add payment card control",
-    render: renderBillingScreen,
-  },
-  {
-    label: (locale) => billingCopy[locale].downloadInvoice,
-    name: "download invoice control",
-    render: renderBillingScreen,
-  },
-  {
-    label: (locale) => billingCopy[locale].exportInvoices,
-    name: "export invoices control",
     render: renderBillingScreen,
   },
   {
@@ -485,8 +440,8 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
 ];
 
 describe("account future-feature controls", () => {
-  test("keeps the future-feature inventory at eight controls", () => {
-    expect(futureFeatureTargets).toHaveLength(8);
+  test("keeps the future-feature inventory at six controls", () => {
+    expect(futureFeatureTargets).toHaveLength(6);
   });
 
   for (const target of futureFeatureTargets) {

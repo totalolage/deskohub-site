@@ -1,5 +1,6 @@
 import { normalizePhoneNumber } from "@deskohub/dotypos";
 import { Schema } from "effect";
+import type { CustomerInvoiceSummary } from "@/features/accounting/customer-invoice";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 
@@ -130,6 +131,21 @@ export type CustomerReservationHistory =
         | "link-required"
         | "provider-unavailable";
     };
+
+/**
+ * The closed state of the customer invoice list in the billing section. Rows
+ * carry only the issued-document facts the UI renders; loading exists for
+ * deferred composition and is never persisted.
+ */
+export type CustomerInvoiceListState =
+  | {
+      readonly kind: "populated";
+      readonly invoices: readonly CustomerInvoiceSummary[];
+    }
+  | { readonly kind: "empty" }
+  | { readonly kind: "loading" }
+  | { readonly kind: "unavailable" }
+  | { readonly kind: "failed" };
 
 const toInstantOrNull = (value: string): Temporal.Instant | null => {
   try {

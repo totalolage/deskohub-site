@@ -68,7 +68,7 @@ function SyntheticContent({
   let description: string;
   switch (activeSection) {
     case "billing": {
-      description = copy.billing.paymentMethodsUnavailable;
+      description = m.accountBillingPaymentMethodsUnavailable({}, { locale });
       break;
     }
     case "danger": {

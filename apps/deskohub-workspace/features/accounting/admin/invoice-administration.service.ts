@@ -28,6 +28,7 @@ import {
   Schema,
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { formatInvoiceMinorUnits } from "@/features/accounting/customer-invoice";
 import {
   getManualInvoicePayment,
   type InvoiceBuyer,
@@ -591,7 +592,7 @@ const toListItem = (
   const money = manual
     ? { total: document.total, currency: document.currency }
     : {
-        total: minorUnitsToDecimal(
+        total: formatInvoiceMinorUnits(
           document.quote.payment.expectedPrice.value,
           document.quote.payment.expectedPrice.exponent
         ),
@@ -673,16 +674,6 @@ const getPragueDate = () =>
   Temporal.Now.zonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate()
     .toString();
-
-const minorUnitsToDecimal = (value: number, exponent: number) => {
-  const sign = value < 0 ? "-" : "";
-  const digits = Math.abs(value)
-    .toString()
-    .padStart(exponent + 1, "0");
-  return exponent === 0
-    ? `${sign}${digits}`
-    : `${sign}${digits.slice(0, -exponent)}.${digits.slice(-exponent)}`;
-};
 
 export const sortInvoiceAdministrationItems = (
   items: readonly InvoiceAdministrationListItem[],

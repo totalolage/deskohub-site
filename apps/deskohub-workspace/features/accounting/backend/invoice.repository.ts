@@ -1,6 +1,7 @@
-import { eq, type SQL, sql } from "drizzle-orm";
+import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { and, desc, eq, inArray, type SQL, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -10,6 +11,10 @@ import {
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
+import {
+  type CustomerInvoiceSummary,
+  getCustomerInvoiceSummary,
+} from "@/features/accounting/customer-invoice";
 import {
   decodeInvoiceDocument,
   formatInvoiceNumber,
@@ -156,6 +161,19 @@ export interface IInvoiceRepository {
   readonly getSuggestedVariableSymbol: () => Effect.Effect<
     string,
     EffectDrizzleQueryError
+  >;
+  readonly listForCustomer: (
+    dotyposCustomerId: DotyposCustomerId
+  ) => Effect.Effect<
+    readonly CustomerInvoiceSummary[],
+    EffectDrizzleQueryError | InvoiceStorageError
+  >;
+  readonly findForCustomer: (
+    dotyposCustomerId: DotyposCustomerId,
+    invoiceId: string
+  ) => Effect.Effect<
+    Invoice | null,
+    EffectDrizzleQueryError | InvoiceStorageError
   >;
 }
 
@@ -765,6 +783,129 @@ export class InvoiceRepository extends Context.Service<
         );
       });
 
+      const listForCustomer = Effect.fn("InvoiceRepository.listForCustomer")(
+        function* (dotyposCustomerId: DotyposCustomerId) {
+          // The owner filter happens in SQL; nothing is fetched, let alone
+          // decrypted, outside the requesting customer's ledger rows.
+          const rows = yield* db
+            .select({
+              id: invoices.id,
+              keyId: invoices.keyId,
+              issuedAt: invoices.issuedAt,
+            })
+            .from(invoices)
+            .where(eq(invoices.dotyposCustomerId, dotyposCustomerId))
+            .orderBy(desc(invoices.issuedAt));
+          if (rows.length === 0) return [];
+
+          const keyIds = [...new Set(rows.map((row) => row.keyId))];
+          const secretsById = new Map<string, string>();
+          for (const keyId of keyIds) {
+            const key = yield* keys.getById(keyId).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new InvoiceStorageError({
+                    operation: "decrypt",
+                    paymentAttemptId: keyId,
+                    message: "Invoice decryption key is unavailable.",
+                    cause: censorLogValue(cause),
+                  })
+              )
+            );
+            secretsById.set(keyId, key.secret);
+          }
+
+          const documents = new Map<string, InvoiceDocument>();
+          for (const keyId of keyIds) {
+            const keyRowIds = rows
+              .filter((row) => row.keyId === keyId)
+              .map((row) => row.id);
+            const decrypted = yield* db
+              .select({
+                id: invoices.id,
+                documentJson: decryptAccountingSnapshot(
+                  invoices.encryptedDocument,
+                  secretsById.get(keyId) as string
+                ),
+              })
+              .from(invoices)
+              .where(inArray(invoices.id, keyRowIds))
+              .pipe(
+                Effect.withTracerEnabled(false),
+                Effect.mapError(
+                  (cause) =>
+                    new InvoiceStorageError({
+                      operation: "decrypt",
+                      paymentAttemptId: keyId,
+                      message: "Invoice could not be decrypted.",
+                      cause: censorLogValue(cause),
+                    })
+                )
+              );
+            for (const row of decrypted) {
+              const encoded = yield* Effect.try({
+                try: () => JSON.parse(row.documentJson) as unknown,
+                catch: () =>
+                  new InvoiceStorageError({
+                    operation: "parse",
+                    paymentAttemptId: row.id,
+                    message: "Invoice JSON is invalid.",
+                  }),
+              });
+              const document = yield* decodeInvoiceDocument(encoded).pipe(
+                Effect.mapError(
+                  () =>
+                    new InvoiceStorageError({
+                      operation: "parse",
+                      paymentAttemptId: row.id,
+                      message: "Invoice schema is invalid.",
+                    })
+                )
+              );
+              documents.set(row.id, document);
+            }
+          }
+
+          if (documents.size !== rows.length) {
+            return yield* new InvoiceStorageError({
+              operation: "load",
+              paymentAttemptId: dotyposCustomerId,
+              message: "A ledger row lost its issued document while listing.",
+            });
+          }
+
+          return rows.map((row) => {
+            const document = documents.get(row.id)!;
+            return getCustomerInvoiceSummary({
+              id: row.id,
+              issuedAt: row.issuedAt,
+              document,
+            });
+          });
+        }
+      );
+
+      const decodeStoredInvoiceId = Schema.decodeUnknownOption(invoiceIdSchema);
+
+      const findForCustomer = Effect.fn("InvoiceRepository.findForCustomer")(
+        (dotyposCustomerId: DotyposCustomerId, invoiceId: string) => {
+          // A malformed invoice id can never match a stored row; decode
+          // without throwing so it lands on the same not-found null as a
+          // missing or non-owned invoice.
+          const decodedInvoiceId = decodeStoredInvoiceId(invoiceId);
+          if (Option.isNone(decodedInvoiceId)) return Effect.succeed(null);
+          return loadInvoice({
+            // The invoice id is only ever looked up together with the owning
+            // Dotypos customer id; the owner filter is part of the SQL.
+            where: and(
+              eq(invoices.id, decodedInvoiceId.value),
+              eq(invoices.dotyposCustomerId, dotyposCustomerId)
+            ) as SQL,
+            lookupId: invoiceId,
+          });
+        }
+      );
+
       return {
         findById,
         findByPaymentAttemptId,
@@ -772,6 +913,8 @@ export class InvoiceRepository extends Context.Service<
         issueManual,
         list,
         getSuggestedVariableSymbol,
+        listForCustomer,
+        findForCustomer,
       } satisfies IInvoiceRepository;
     })
   );

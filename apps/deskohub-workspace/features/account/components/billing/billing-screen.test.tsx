@@ -1,40 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import type { ComponentPropsWithoutRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Locale } from "@/features/i18n";
-import type { BillingScreenCopy } from "./billing-screen";
+import type { CustomerInvoiceListState } from "@/features/account/contracts";
+import { type Locale, m } from "@/features/i18n";
 import { BillingScreen } from "./billing-screen";
-
-const englishCopy = {
-  title: "Billing & invoices",
-  currency: "Currency: CZK (Kč)",
-  paymentMethodsTitle: "Saved payment methods",
-  paymentMethodsUnavailable:
-    "Saved payment methods are not available in this account.",
-  addPaymentCard: "Add payment card",
-  removePaymentCard: "Remove payment card",
-  billingDetailsTitle: "Billing details",
-  invoiceHistoryTitle: "Invoice history",
-  invoiceHistoryUnavailable:
-    "Invoice history and downloads are not available in this account.",
-  downloadInvoice: "Download PDF",
-  exportInvoices: "Export all",
-} satisfies BillingScreenCopy;
-
-const czechCopy = {
-  title: "Fakturace a faktury",
-  currency: "Měna: CZK (Kč)",
-  paymentMethodsTitle: "Uložené platební metody",
-  paymentMethodsUnavailable:
-    "Uložené platební metody nejsou pro tento účet dostupné.",
-  addPaymentCard: "Přidat platební kartu",
-  removePaymentCard: "Odebrat platební kartu",
-  billingDetailsTitle: "Fakturační údaje",
-  invoiceHistoryTitle: "Historie faktur",
-  invoiceHistoryUnavailable:
-    "Historie faktur a jejich stahování nejsou pro tento účet dostupné.",
-  downloadInvoice: "Stáhnout PDF",
-  exportInvoices: "Exportovat vše",
-} satisfies BillingScreenCopy;
 
 const countOccurrences = (value: string, needle: string) =>
   value.split(needle).length - 1;
@@ -47,9 +16,14 @@ const escapeHtml = (value: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#x27;");
 
-const renderScreen = (copy: BillingScreenCopy, locale: Locale) =>
+const renderScreen = (
+  locale: Locale,
+  invoices: ComponentPropsWithoutRef<typeof BillingScreen>["invoices"] = {
+    kind: "empty",
+  }
+) =>
   renderToStaticMarkup(
-    <BillingScreen copy={copy} locale={locale}>
+    <BillingScreen invoices={invoices} locale={locale}>
       <div data-child-marker="billing-fields">Caller-owned billing fields</div>
     </BillingScreen>
   );
@@ -65,16 +39,32 @@ const getSavedPaymentMethodsMarkup = (markup: string) =>
   )?.[0] ?? "";
 
 describe("BillingScreen", () => {
-  test("renders inside the shared account section panel", () => {
-    const markup = renderScreen(englishCopy, "en-US");
+  test("renders exactly two sibling account section panels", () => {
+    const markup = renderScreen("en-US");
 
-    expect(markup).toContain('data-slot="account-section-panel"');
+    expect(countOccurrences(markup, 'data-slot="account-section-panel"')).toBe(
+      2
+    );
+  });
+
+  test("renders the invoice history as a second panel with its own h2 heading", () => {
+    const markup = renderScreen("en-US");
+    const secondPanelStart = markup.indexOf(
+      'data-slot="account-section-panel"',
+      markup.indexOf('data-slot="account-section-panel"') + 1
+    );
+    const secondPanel = markup.slice(secondPanelStart);
+
+    expect(secondPanel).toMatch(/<h2 [^>]*id="[^"]*-invoice-history-title"/);
+    expect(secondPanel).toContain(
+      escapeHtml(m.accountBillingInvoiceHistoryTitle({}, "en-US"))
+    );
   });
 
   test("renders children and the optional footer exactly once without owning a form or input", () => {
     const markup = renderToStaticMarkup(
       <BillingScreen
-        copy={englishCopy}
+        invoices={{ kind: "empty" }}
         footer={<span data-footer-marker="billing-footer">Save billing</span>}
         locale="en-US"
       >
@@ -97,7 +87,7 @@ describe("BillingScreen", () => {
   test("keeps a provided footer in one sticky, opaque, safe-area wrapper", () => {
     const markup = renderToStaticMarkup(
       <BillingScreen
-        copy={englishCopy}
+        invoices={{ kind: "empty" }}
         footer={<span data-footer-marker="billing-footer">Save billing</span>}
         locale="en-US"
       >
@@ -106,11 +96,16 @@ describe("BillingScreen", () => {
         </div>
       </BillingScreen>
     );
-    const sectionClass = markup
+    const firstPanelEnd = markup.indexOf(
+      'data-slot="account-section-panel"',
+      markup.indexOf('data-slot="account-section-panel"') + 1
+    );
+    const firstPanel = markup.slice(0, firstPanelEnd);
+    const sectionClass = firstPanel
       .match(/<section[^>]*class="([^"]*)"/)?.[1]
       ?.replaceAll("&amp;", "&");
-    const footerWrapperClass = markup.match(
-      /<div class="([^"]*)"><span data-footer-marker="billing-footer">Save billing<\/span><\/div><\/section>$/
+    const footerWrapperClass = firstPanel.match(
+      /<div class="([^"]*)"><span data-footer-marker="billing-footer">Save billing<\/span><\/div>/
     )?.[1];
 
     expect(sectionClass).toBeDefined();
@@ -136,24 +131,82 @@ describe("BillingScreen", () => {
     expect(footerWrapperClass).toContain(
       "pb-[max(1rem,env(safe-area-inset-bottom))]"
     );
+    // The sticky footer lives in panel 1, before the invoice history region.
+    expect(
+      firstPanel.indexOf('data-footer-marker="billing-footer"')
+    ).toBeLessThan(markup.indexOf("-invoice-history-title"));
+  });
+
+  test("renders populated invoice rows directly in the panel body without a card or empty state paragraph", () => {
+    const markup = renderScreen("en-US", {
+      invoices: [
+        {
+          currency: "CZK",
+          id: "billing-screen-structure-test-invoice",
+          invoiceNumber: "WS-FV-2026-000002",
+          issuedAt: "2026-09-01T08:00:00.000Z",
+          paymentStatus: "due",
+          total: "100",
+          dueDate: "2026-10-02",
+        },
+      ],
+      kind: "populated",
+    });
+    const secondPanelStart = markup.indexOf(
+      'data-slot="account-section-panel"',
+      markup.indexOf('data-slot="account-section-panel"') + 1
+    );
+    const secondPanel = markup.slice(secondPanelStart);
+
+    expect(secondPanel).not.toContain("border-[#e0e6ee]");
+    expect(secondPanel).not.toContain("bg-[#fbfcfd]");
+    expect(secondPanel).not.toMatch(/<p[^>]*><\/p>/);
+    const exportAnchor = markup.match(
+      /<a ([^>]*account\/invoices\/export[^>]*)>/
+    )?.[1];
+    expect(exportAnchor).toBeDefined();
+    expect(exportAnchor).not.toMatch(/\baria-describedby=/);
+  });
+
+  test("renders a skeleton with status semantics and a muted export control while invoices load", () => {
+    const markup = renderScreen("en-US", { kind: "loading" });
+
+    expect(markup).toContain('role="status"');
+    expect(markup).toContain('aria-busy="true"');
+    expect(markup.match(/data-slot="skeleton"/g)?.length ?? 0).toBeGreaterThan(
+      0
+    );
+    expect(markup).toContain("sr-only");
+    expect(markup).toContain(
+      escapeHtml(m.accountBillingInvoiceLoading({}, "en-US"))
+    );
+    const exportButton = (
+      markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []
+    ).find((button) =>
+      button.includes(escapeHtml(m.accountBillingExportInvoices({}, "en-US")))
+    );
+    expect(exportButton).toBeDefined();
+    expect(exportButton).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
+    expect(exportButton).not.toMatch(/\baria-describedby=/);
   });
 
   test("renders safely without an optional footer", () => {
-    const markup = renderScreen(englishCopy, "en-US");
+    const markup = renderScreen("en-US");
 
     expect(markup).not.toContain("data-footer-marker");
   });
 
-  test.each([
-    ["English", "en-US", englishCopy],
-    ["Czech", "cs-CZ", czechCopy],
-  ] as const)(
-    "keeps the %s billing title without rendering currency copy",
-    (_language, locale, copy) => {
-      const markup = renderScreen(copy, locale);
+  test.each(["en-US", "cs-CZ"] as const)(
+    "keeps the localized billing title without rendering currency copy in %s",
+    (locale) => {
+      const markup = renderScreen(locale);
 
-      expect(markup).toContain(escapeHtml(copy.title));
-      expect(markup).not.toContain(escapeHtml(copy.currency));
+      expect(markup).toContain(
+        escapeHtml(m.accountSectionBilling({}, { locale }))
+      );
+      expect(markup).not.toContain(
+        escapeHtml(m.accountBillingCurrency({}, { locale }))
+      );
     }
   );
 
@@ -161,7 +214,7 @@ describe("BillingScreen", () => {
     const markup = renderToStaticMarkup(
       <form id="account-profile-form">
         <BillingScreen
-          copy={englishCopy}
+          invoices={{ kind: "empty" }}
           footer={<button type="submit">Save billing</button>}
           locale="en-US"
         >
@@ -187,62 +240,96 @@ describe("BillingScreen", () => {
   });
 
   test("keeps every unsupported action disabled and native button-shaped", () => {
-    const markup = renderScreen(englishCopy, "en-US");
+    const markup = renderScreen("en-US");
     const buttons = markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
 
-    expect(buttons).toHaveLength(3);
+    expect(buttons).toHaveLength(2);
     for (const button of buttons) {
       expect(button).toMatch(/\btype="button"/);
       expect(button).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
     }
   });
 
-  test.each([
-    ["English", "en-US", englishCopy],
-    ["Czech", "cs-CZ", czechCopy],
-  ] as const)(
-    "renders only the saved payment heading and disabled Add action for %s",
-    (_language, locale, copy) => {
-      const savedSection = getSavedPaymentMethodsMarkup(
-        renderScreen(copy, locale)
-      );
+  test.each(["en-US", "cs-CZ"] as const)(
+    "renders only the saved payment heading and disabled Add action in %s",
+    (locale) => {
+      const savedSection = getSavedPaymentMethodsMarkup(renderScreen(locale));
       const buttons =
         savedSection.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
 
-      expect(savedSection).toContain(escapeHtml(copy.paymentMethodsTitle));
-      expect(savedSection).not.toContain(
-        escapeHtml(copy.paymentMethodsUnavailable)
+      expect(savedSection).toContain(
+        escapeHtml(m.accountBillingPaymentMethodsTitle({}, { locale }))
       );
-      expect(savedSection).not.toContain(escapeHtml(copy.removePaymentCard));
+      expect(savedSection).not.toContain(
+        escapeHtml(m.accountBillingPaymentMethodsUnavailable({}, { locale }))
+      );
+      expect(savedSection).not.toContain(
+        escapeHtml(m.accountBillingRemovePaymentCard({}, { locale }))
+      );
       expect(savedSection).not.toContain("payment-methods-unavailable");
       expect(buttons).toHaveLength(1);
-      expect(buttons[0]).toContain(escapeHtml(copy.addPaymentCard));
+      expect(buttons[0]).toContain(
+        escapeHtml(m.accountBillingAddPaymentCard({}, { locale }))
+      );
       expect(buttons[0]).toMatch(/\btype="button"/);
       expect(buttons[0]).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
       expect(buttons[0]).not.toMatch(/\baria-describedby=/);
     }
   );
 
-  test.each([
-    ["English", "en-US", englishCopy],
-    ["Czech", "cs-CZ", czechCopy],
-  ] as const)(
-    "renders every supplied %s string without invented billing data",
-    (_language, locale, copy) => {
-      const markup = renderScreen(copy, locale);
-      const {
-        currency,
-        paymentMethodsUnavailable,
-        removePaymentCard,
-        ...renderedCopy
-      } = copy;
+  test.each(["en-US", "cs-CZ"] as const)(
+    "renders billing catalog copy without invented billing data in %s",
+    (locale) => {
+      const invoiceStates: CustomerInvoiceListState[] = [
+        { kind: "empty" },
+        { kind: "loading" },
+        { kind: "unavailable" },
+        { kind: "failed" },
+        {
+          invoices: [
+            {
+              currency: "CZK",
+              id: "billing-screen-test-invoice",
+              invoiceNumber: "WS-FV-2026-000001",
+              issuedAt: "2026-09-01T08:00:00.000Z",
+              paymentStatus: "due",
+              total: "100",
+              dueDate: "2026-10-02",
+            },
+          ],
+          kind: "populated",
+        },
+      ];
+      const markup = invoiceStates
+        .map((invoices) => renderScreen(locale, invoices))
+        .join("\n");
 
-      for (const value of Object.values(renderedCopy)) {
+      for (const value of [
+        m.accountSectionBilling({}, { locale }),
+        m.accountBillingPaymentMethodsTitle({}, { locale }),
+        m.accountBillingAddPaymentCard({}, { locale }),
+        m.accountBillingDetailsTitle({}, { locale }),
+        m.accountBillingInvoiceHistoryTitle({}, { locale }),
+        m.accountBillingInvoiceEmpty({}, { locale }),
+        m.accountBillingInvoiceLoading({}, { locale }),
+        m.accountBillingInvoiceUnavailable({}, { locale }),
+        m.accountBillingInvoiceFailed({}, { locale }),
+        m.accountBillingDownloadInvoice({}, { locale }),
+        m.accountBillingExportInvoices({}, { locale }),
+        m.invoiceManualUnpaid({}, { locale }),
+        m.invoiceManualDueDate({}, { locale }),
+      ]) {
         expect(markup).toContain(escapeHtml(value));
       }
-      expect(markup).not.toContain(escapeHtml(currency));
-      expect(markup).not.toContain(escapeHtml(paymentMethodsUnavailable));
-      expect(markup).not.toContain(escapeHtml(removePaymentCard));
+      expect(markup).not.toContain(
+        escapeHtml(m.accountBillingCurrency({}, { locale }))
+      );
+      expect(markup).not.toContain(
+        escapeHtml(m.accountBillingPaymentMethodsUnavailable({}, { locale }))
+      );
+      expect(markup).not.toContain(
+        escapeHtml(m.accountBillingRemovePaymentCard({}, { locale }))
+      );
       expect(markup).not.toMatch(
         /Visa|Mastercard|American Express|Stripe|4242|••••|Issued:/i
       );
@@ -253,10 +340,10 @@ describe("BillingScreen", () => {
   test("keeps labels and description references unique across two instances", () => {
     const markup = renderToStaticMarkup(
       <div>
-        <BillingScreen copy={englishCopy} locale="en-US">
+        <BillingScreen invoices={{ kind: "empty" }} locale="en-US">
           <div>First billing fields</div>
         </BillingScreen>
-        <BillingScreen copy={czechCopy} locale="cs-CZ">
+        <BillingScreen invoices={{ kind: "empty" }} locale="cs-CZ">
           <div>Second billing fields</div>
         </BillingScreen>
       </div>
