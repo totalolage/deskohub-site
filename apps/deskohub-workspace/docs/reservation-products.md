@@ -11,10 +11,17 @@ Cowork offers are exactly two, both for a single Prague calendar date:
   CZK 50. Open Space is never marketed as 24/7 access.
 - **Reserved Desk** (CZK 410/day, coffee included): a reserved desk for the
   whole Prague calendar day (midnight to next midnight, DST-correct) with
-  24/7 code access. An optional workstation addon costs CZK 120 and is
+  24/7 code access. An optional workstation addon costs CZK 120/day and is
   selectable only as one of the four existing monitor configurations; the
   chosen configuration changes availability and the reserved product
-  composition, never the price.
+  composition, never the price. When no bare Reserved Desk is available for a
+  date but at least one valid workstation configuration is available, the
+  customer must reserve a workstation and choose from the available monitor
+  configurations. The advertised and accepted price includes an additional
+  CZK 120/day for the workstation. The customer cannot select an unavailable
+  exact configuration. Reserved Desk cannot be selected when neither a bare
+  desk nor any workstation configuration is available for the full calendar
+  date.
 
 Historical entry tiers (basic, plus, profi) remain decodable for stored
 reservations and reporting but are no longer saleable. A cowork discount
@@ -54,3 +61,14 @@ The office is exclusive for the complete selected date range. Any existing occup
 - Discount configuration may target a whole reservation family, while quotes and completed purchases preserve the exact selected product.
 - Availability, pricing, summaries, persistence, confirmation, email, and status views dispatch each family explicitly.
 - Adding a reservation family requires complete support at every issuing and consuming boundary before it becomes publicly selectable.
+
+## Cross-family email policy
+
+The current Open Space customer confirmation, preview, and retry emails list
+all eligible named Open Space tables instead of the assigned table. Numeric
+names are sorted and compacted only for consecutive runs of at least three;
+pairs remain separate. Nonnumeric names follow in provider order. For example,
+`9-12, 15, 16, wallee, gromice`. If no eligible named tables exist, the email
+omits the table block and never falls back to an assigned table ID. Reserved
+Desk, other reservation families, and historical cowork tiers retain assigned-
+table email behavior.
