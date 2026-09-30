@@ -174,6 +174,70 @@ describe("generateSvgPngBuffer", () => {
     });
   });
 
+  test("fits SVG content without distortion inside a padded opaque canvas", async () => {
+    const image = await Effect.runPromise(
+      generateSvgPngBuffer(
+        '<svg width="200" height="100" xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="180" height="80" fill="#00024F"/></svg>',
+        {
+          canvas: {
+            width: 512,
+            height: 512,
+            padding: 24,
+            background: "#FFFFFF",
+          },
+        }
+      )
+    );
+    const { data, info } = await sharp(image)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    expect(info).toMatchObject({ width: 512, height: 512, channels: 4 });
+    const pixelAt = (x: number, y: number) => [
+      ...data.subarray(
+        (y * info.width + x) * info.channels,
+        (y * info.width + x + 1) * info.channels
+      ),
+    ];
+    expect(pixelAt(0, 0)).toEqual([255, 255, 255, 255]);
+    expect(pixelAt(256, 155)).toEqual([255, 255, 255, 255]);
+    expect(pixelAt(256, 256)).toEqual([0, 2, 79, 255]);
+
+    const navyPixelOffsets = [];
+    for (let x = 0; x < info.width; x += 1) {
+      const offset = (256 * info.width + x) * info.channels;
+      if (
+        data[offset] === 0 &&
+        data[offset + 1] === 2 &&
+        data[offset + 2] === 79 &&
+        data[offset + 3] === 255
+      ) {
+        navyPixelOffsets.push(x);
+      }
+    }
+    const navyColumnOffsets = [];
+    for (let y = 0; y < info.height; y += 1) {
+      const offset = (y * info.width + 256) * info.channels;
+      if (
+        data[offset] === 0 &&
+        data[offset + 1] === 2 &&
+        data[offset + 2] === 79 &&
+        data[offset + 3] === 255
+      ) {
+        navyColumnOffsets.push(y);
+      }
+    }
+    expect(navyPixelOffsets[0]).toBeGreaterThanOrEqual(24);
+    expect(navyPixelOffsets.at(-1)).toBeLessThan(488);
+    expect(navyColumnOffsets[0]).toBeGreaterThan(24);
+    expect(navyColumnOffsets.at(-1)).toBeLessThan(488);
+    expect(navyPixelOffsets.length / navyColumnOffsets.length).toBeCloseTo(
+      2.25,
+      1
+    );
+  });
+
   test("composites centered text overlays without changing output dimensions", async () => {
     const svg =
       '<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg"><rect width="128" height="128" fill="#006b55"/></svg>';
