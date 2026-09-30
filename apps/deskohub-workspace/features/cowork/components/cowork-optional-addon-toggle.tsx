@@ -1,7 +1,7 @@
 "use client";
 
 import { Info, type LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ReservationSkeletonBlock } from "@/features/reservation/components/reservation-form-fallback";
 import { ReservationFormLabel } from "@/features/reservation/components/reservation-form-label";
 import { Button } from "@/shared/components/ui/button";
@@ -48,7 +48,7 @@ export function CoworkOptionalAddonToggle({
 }: CoworkOptionalAddonToggleProps) {
   const { formItemId } = useFormField();
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
-  const [isTouchTooltipOpen, setIsTouchTooltipOpen] = useState(false);
+  const isTouchTooltipOpen = useRef(false);
 
   return (
     <>
@@ -90,7 +90,7 @@ export function CoworkOptionalAddonToggle({
             <Tooltip
               open={isTooltipOpen}
               onOpenChange={(open) => {
-                if (isTouchTooltipOpen && !open) return;
+                if (isTouchTooltipOpen.current && !open) return;
                 setIsTooltipOpen(open);
               }}
             >
@@ -103,8 +103,8 @@ export function CoworkOptionalAddonToggle({
                   className="h-11 w-11 shrink-0 rounded-full p-0 text-navy-blue/60"
                   onPointerDown={(event) => {
                     if (event.pointerType !== "touch") return;
-                    const open = !isTouchTooltipOpen;
-                    setIsTouchTooltipOpen(open);
+                    const open = !isTouchTooltipOpen.current;
+                    isTouchTooltipOpen.current = open;
                     setIsTooltipOpen(open);
                   }}
                 >
@@ -116,7 +116,7 @@ export function CoworkOptionalAddonToggle({
                 collisionPadding={16}
                 className="w-[min(22rem,calc(100vw-2rem))] p-4"
                 onEscapeKeyDown={() => {
-                  setIsTouchTooltipOpen(false);
+                  isTouchTooltipOpen.current = false;
                   setIsTooltipOpen(false);
                 }}
                 side="top"

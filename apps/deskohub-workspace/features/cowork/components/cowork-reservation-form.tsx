@@ -190,6 +190,17 @@ export function CoworkReservationForm({
     getCoworkTierWorkstationAddon(selectedTier) === "optional";
   const allowedMonitorOptions =
     getAllowedMonitorOptionsForCoworkTier(selectedTier);
+  const rangeAvailabilityQuery = useMemo(
+    () =>
+      isWorkspaceCoworkCurrentProductTier(selectedTier)
+        ? getWorkspaceAvailabilityQuery({
+            from: initialAvailabilityQuery.from,
+            tier: selectedTier,
+            to: initialAvailabilityQuery.to,
+          })
+        : undefined,
+    [initialAvailabilityQuery.from, initialAvailabilityQuery.to, selectedTier]
+  );
   const availabilityQuery = useMemo(
     () =>
       isWorkspaceCoworkCurrentProductTier(selectedTier)
@@ -228,6 +239,10 @@ export function CoworkReservationForm({
   );
   const availabilityQueryResult = useReservationAvailability(
     availabilityQuery,
+    { replacementToken }
+  );
+  const rangeAvailabilityQueryResult = useReservationAvailability(
+    rangeAvailabilityQuery,
     { replacementToken }
   );
   const workstationRequirementQueryResult = useReservationAvailability(
@@ -380,17 +395,18 @@ export function CoworkReservationForm({
       : undefined;
   const advertisedPrice = selectedAdvertisedPrice ?? null;
   const { availability } = availabilityQueryResult;
+  const { availability: rangeAvailability } = rangeAvailabilityQueryResult;
   const isAvailabilitySettledForCurrentRange = Boolean(
-    availabilityQuery &&
-      availability?.from === availabilityQuery.from &&
-      availability?.to === availabilityQuery.to &&
-      availabilityQueryResult.isSuccess &&
-      !availabilityQueryResult.isFetching &&
-      !availabilityQueryResult.isError &&
-      !availabilityQueryResult.isPlaceholderData
+    rangeAvailabilityQuery &&
+      rangeAvailability?.from === rangeAvailabilityQuery.from &&
+      rangeAvailability?.to === rangeAvailabilityQuery.to &&
+      rangeAvailabilityQueryResult.isSuccess &&
+      !rangeAvailabilityQueryResult.isFetching &&
+      !rangeAvailabilityQueryResult.isError &&
+      !rangeAvailabilityQueryResult.isPlaceholderData
   );
   const currentRangeAvailability = isAvailabilitySettledForCurrentRange
-    ? availability
+    ? rangeAvailability
     : null;
   const isAvailabilitySettledForSelectedDate = Boolean(
     selectedDate &&
@@ -437,8 +453,12 @@ export function CoworkReservationForm({
     [currentTierAvailability]
   );
   const unavailableMonitorOptions = useMemo(
-    () => new Set(currentAvailability?.unavailableMonitorOptions ?? []),
-    [currentAvailability]
+    () =>
+      new Set(
+        currentWorkstationRequirementAvailability?.unavailableMonitorOptions ??
+          []
+      ),
+    [currentWorkstationRequirementAvailability]
   );
   const selectedDateNotices = useMemo(
     () =>
@@ -569,6 +589,7 @@ export function CoworkReservationForm({
       availability={{
         isFetching:
           availabilityQueryResult.isFetching ||
+          rangeAvailabilityQueryResult.isFetching ||
           workstationRequirementQueryResult.isFetching ||
           isWorkstationNormalizationPending,
         unavailableMessage: isSelectedReservationUnavailable

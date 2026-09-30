@@ -280,15 +280,7 @@ const requiredWorkstationAvailability = (
   unavailableMonitorOptions: ["2x27-qhd"],
 });
 
-const selectCalendarDate = async (
-  view: ReturnType<typeof renderForm>,
-  date: string
-) => {
-  const datePickerButton = view.getByRole("button", {
-    name: /Reservation date/i,
-  });
-  await act(async () => fireEvent.click(datePickerButton));
-  const dialog = await within(document.body).findByRole("dialog");
+const getCalendarDateButton = async (dialog: HTMLElement, date: string) => {
   const targetDate = new Date(`${date}T12:00:00`);
   const currentMonthLabel = within(dialog).getByRole("status").textContent;
   const currentMonthDate = new Date(
@@ -318,6 +310,19 @@ const selectCalendarDate = async (
       `${formattedMonth} ${targetDate.getDate()}(?:st|nd|rd|th)?, ${targetDate.getFullYear()}`
     ),
   });
+  return dateButton;
+};
+
+const selectCalendarDate = async (
+  view: ReturnType<typeof renderForm>,
+  date: string
+) => {
+  const datePickerButton = view.getByRole("button", {
+    name: /Reservation date/i,
+  });
+  await act(async () => fireEvent.click(datePickerButton));
+  const dialog = await within(document.body).findByRole("dialog");
+  const dateButton = await getCalendarDateButton(dialog, date);
   expect((dateButton as HTMLButtonElement).disabled).toBe(false);
   await act(async () => fireEvent.click(dateButton));
 };
@@ -2191,7 +2196,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
   });
 
-  test("keeps the settled workstation requirement stable across conflicting fresh cache variants", async () => {
+  test("uses one bare availability snapshot for required and selected workstation availability", async () => {
     const searchParams = new URLSearchParams(
       "entryTier=reserved-desk&date=2099-07-30"
     );
@@ -2202,6 +2207,12 @@ describe("CoworkReservationForm advertised pricing", () => {
       ...baseQuery,
       entryTier: "reserved-desk" as const,
       date: "2099-07-30",
+    };
+    const rangeQuery = {
+      kind: "cowork" as const,
+      from: baseQuery.from,
+      to: baseQuery.to,
+      entryTier: "reserved-desk" as const,
     };
     const monitorQuery = {
       ...bareQuery,
@@ -2227,8 +2238,22 @@ describe("CoworkReservationForm advertised pricing", () => {
         to: monitorQuery.to,
         unavailableDates: [],
         reservedDeskWorkstationRequiredDates: [],
-        unavailableMonitorOptions: [],
+        unavailableMonitorOptions: ["2x32-qhd"],
       }
+    );
+    queryClient.setQueryData(
+      [...workspaceAvailabilityKeys.availability(rangeQuery), null],
+      {
+        ...availabilityResponse,
+        date: undefined,
+        from: rangeQuery.from,
+        to: rangeQuery.to,
+      }
+    );
+    getAdvertisedPrices.mockImplementation((requests) =>
+      Promise.resolve(
+        advertisedPricesResult(requests, getCoworkAdvertisedPriceResponse)
+      )
     );
 
     let renderCount = 0;
@@ -2257,6 +2282,10 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
 
     expect(selectedMonitor?.checked).toBe(true);
+    expect(selectedMonitor?.disabled).toBe(false);
+    expect(
+      view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+    ).toBe(false);
     const settledRenderCount = renderCount;
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 30));
@@ -2407,6 +2436,10 @@ describe("CoworkReservationForm advertised pricing", () => {
             pointerType: "touch",
           });
           help.focus();
+          fireEvent.pointerMove(help, {
+            pointerId: 1,
+            pointerType: "touch",
+          });
           fireEvent.pointerUp(help, {
             button: 0,
             isPrimary: true,
@@ -2414,6 +2447,10 @@ describe("CoworkReservationForm advertised pricing", () => {
             pointerType: "touch",
           });
           fireEvent.click(help, { detail: 1 });
+          fireEvent.pointerLeave(help, {
+            pointerId: 1,
+            pointerType: "touch",
+          });
         });
       };
 
@@ -2426,12 +2463,25 @@ describe("CoworkReservationForm advertised pricing", () => {
           pointerId: 1,
           pointerType: "touch",
         });
+        await new Promise<void>((resolve) => setTimeout(resolve, 1000));
       });
       expect(
         (await within(view.baseElement).findByRole("tooltip")).textContent
       ).toBe(content);
 
       await tap();
+      await waitFor(() => {
+        expect(within(view.baseElement).queryByRole("tooltip")).toBeNull();
+      });
+
+      await tap();
+      const reopenedTooltip = await within(view.baseElement).findByRole(
+        "tooltip"
+      );
+      expect(reopenedTooltip.textContent).toBe(content);
+      await act(async () => {
+        fireEvent.keyDown(reopenedTooltip, { key: "Escape" });
+      });
       await waitFor(() => {
         expect(within(view.baseElement).queryByRole("tooltip")).toBeNull();
       });
@@ -2550,39 +2600,12 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
     await act(async () => fireEvent.click(datePickerButton));
     const dialog = await within(document.body).findByRole("dialog");
-    const getCalendarDateButton = async (date: string) => {
-      const targetDate = new Date(`${date}T12:00:00`);
-      const currentMonthLabel = within(dialog).getByRole("status").textContent;
-      const currentMonthDate = new Date(
-        currentMonthLabel?.replace(" ", " 1, ") ?? ""
-      );
-      const monthsToNavigate =
-        (targetDate.getFullYear() - currentMonthDate.getFullYear()) * 12 +
-        targetDate.getMonth() -
-        currentMonthDate.getMonth();
-      for (let month = 0; month < Math.abs(monthsToNavigate); month += 1) {
-        await act(async () => {
-          fireEvent.click(
-            within(dialog).getByRole("button", {
-              name:
-                monthsToNavigate > 0
-                  ? "Go to the Next Month"
-                  : "Go to the Previous Month",
-            })
-          );
-        });
-      }
-      const monthLabel = targetDate.toLocaleDateString("en-US", {
-        month: "long",
-      });
-      return within(dialog).findByRole("button", {
-        name: new RegExp(
-          `${monthLabel} ${targetDate.getDate()}(?:st|nd|rd|th)?, ${targetDate.getFullYear()}`
-        ),
-      });
-    };
-    const fullDateButton = await getCalendarDateButton(fullDate.toString());
+    const fullDateButton = await getCalendarDateButton(
+      dialog,
+      fullDate.toString()
+    );
     const requiredDateButton = await getCalendarDateButton(
+      dialog,
       requiredDate.toString()
     );
 
@@ -2603,6 +2626,110 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
     expect(requestedAvailabilityRange.from <= fullDate.toString()).toBe(true);
     expect(requestedAvailabilityRange.to >= requiredDate.toString()).toBe(true);
+  });
+
+  test("keeps range calendar availability while a new selected-date query is pending", async () => {
+    const initialDate = dateOffsetFromToday(1);
+    const newDate = dateOffsetFromToday(2);
+    const unavailableDate = dateOffsetFromToday(4);
+    const availabilityRequests: string[] = [];
+    let resolveNewDateAvailability: ((response: Response) => void) | undefined;
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (!url.startsWith("/api/workspace/availability")) {
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }
+
+      availabilityRequests.push(url);
+      const searchParams = new URL(url, "http://localhost").searchParams;
+      const date = searchParams.get("date");
+      if (!date) {
+        return Promise.resolve(
+          jsonResponse({
+            ...availabilityResponse,
+            date: undefined,
+            from: searchParams.get("from"),
+            to: searchParams.get("to"),
+            unavailableDates: [unavailableDate],
+          })
+        );
+      }
+      if (date === newDate) {
+        return new Promise<Response>((resolve) => {
+          resolveNewDateAvailability = resolve;
+        });
+      }
+      return Promise.resolve(
+        jsonResponse({
+          ...availabilityResponse,
+          date,
+          unavailableDates: [],
+        })
+      );
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        entryTier: "open-space",
+        date: initialDate,
+        name: "Ada Lovelace",
+        email: "ada@example.test",
+        phone: "+420777777777",
+      },
+    });
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    await waitFor(() => {
+      expect(
+        availabilityRequests.some(
+          (url) => !new URL(url, "http://localhost").searchParams.has("date")
+        )
+      ).toBe(true);
+    });
+
+    await selectCalendarDate(view, newDate);
+    await waitFor(() => {
+      expect(
+        view.container.querySelector<HTMLInputElement>("input[name='date']")
+          ?.value
+      ).toBe(newDate);
+      expect(
+        availabilityRequests.some((url) =>
+          new URL(url, "http://localhost").searchParams
+            .get("date")
+            ?.includes(newDate)
+        )
+      ).toBe(true);
+    });
+
+    const datePickerButton = view.getByRole("button", {
+      name: /Reservation date/i,
+    });
+    await act(async () => fireEvent.click(datePickerButton));
+    const dialog = await within(document.body).findByRole("dialog");
+    const unavailableDateButton = await getCalendarDateButton(
+      dialog,
+      unavailableDate
+    );
+    expect((unavailableDateButton as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+    ).toBe(true);
+
+    await act(async () => {
+      resolveNewDateAvailability?.(
+        jsonResponse({
+          ...availabilityResponse,
+          date: newDate,
+          unavailableDates: [],
+        })
+      );
+    });
+    await act(async () => {
+      view.unmount();
+    });
   });
 
   test("does not force a workstation when the selected offer or date is unavailable, or when a bare desk remains available", async () => {
