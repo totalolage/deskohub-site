@@ -436,6 +436,7 @@
   "reservationAdvertisedPriceRetry": "Try again",
   "reservationAlreadyPaidMessage": "A paid reservation already exists for these details. Change the reservation details or contact us if you need help.",
   "reservationAvailabilityUnavailable": "Your selected reservation for {tier} isn’t available on {date}. Please try another offer or date — or, if you selected a workstation, another monitor setup!",
+  "coworkReservationAvailabilityError": "We couldn't confirm availability. Please try again.",
   "reservationAvailabilityLoading": "Checking workspace availability...",
   "reservationAvailabilityPartialNotice": "From {startsAt} to {endsAt}, the workspace may be busier than usual.",
   "reservationConfirmationYes": "Yes",

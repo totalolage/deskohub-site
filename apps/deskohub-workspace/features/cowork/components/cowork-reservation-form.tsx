@@ -433,6 +433,18 @@ export function CoworkReservationForm({
     isWorkstationRequirementSettledForSelectedDate
       ? workstationRequirementQueryResult.availability
       : null;
+  const isSelectedAvailabilityUnsettled = Boolean(
+    selectedDate &&
+      availabilityQuery?.date === selectedDate &&
+      !isAvailabilitySettledForSelectedDate
+  );
+  const isWorkstationRequirementUnsettled = Boolean(
+    workstationRequirementQuery &&
+      !isWorkstationRequirementSettledForSelectedDate
+  );
+  const isAvailabilityQueryFetching =
+    availabilityQueryResult.isFetching ||
+    workstationRequirementQueryResult.isFetching;
   const unavailableCalendarDates = useMemo(
     () =>
       new Set(
@@ -492,7 +504,9 @@ export function CoworkReservationForm({
       (!selectedMonitorOption ||
         unavailableRequirementMonitorOptions.has(selectedMonitorOption))
   );
-  const isSelectedTierUnavailable = unavailableCoworkTiers.has(selectedTier);
+  const isSelectedTierUnavailable = Boolean(
+    currentAvailability?.unavailableCoworkTiers.includes(selectedTier)
+  );
   const isSelectedMonitorUnavailable = Boolean(
     selectedMonitorOption &&
       unavailableMonitorOptions.has(selectedMonitorOption)
@@ -519,6 +533,14 @@ export function CoworkReservationForm({
       locale,
       reservation: { kind: "cowork", entryTier: selectedTier },
     });
+  const availabilityMessage = isSelectedReservationUnavailable
+    ? selectedReservationUnavailableMessage
+    : undefined;
+  const availabilityConfirmationErrorMessage =
+    (isSelectedAvailabilityUnsettled || isWorkstationRequirementUnsettled) &&
+    !isAvailabilityQueryFetching
+      ? m.coworkReservationAvailabilityError({}, { locale })
+      : undefined;
 
   const autoAddedWorkstation = useRef(false);
 
@@ -600,9 +622,8 @@ export function CoworkReservationForm({
           rangeAvailabilityQueryResult.isFetching ||
           workstationRequirementQueryResult.isFetching ||
           isWorkstationNormalizationPending,
-        unavailableMessage: isSelectedReservationUnavailable
-          ? selectedReservationUnavailableMessage
-          : undefined,
+        unavailableMessage:
+          availabilityMessage ?? availabilityConfirmationErrorMessage,
       }}
       checkoutSessionId={checkoutSessionId}
       form={form}

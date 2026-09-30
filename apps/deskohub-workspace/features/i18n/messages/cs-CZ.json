@@ -439,6 +439,7 @@
   "reservationAdvertisedPriceRetry": "Zkusit znovu",
   "reservationAlreadyPaidMessage": "Pro tyto údaje už existuje zaplacená rezervace. Změň prosím údaje rezervace nebo nás kontaktuj.",
   "reservationAvailabilityUnavailable": "Rezervace nabídky {tier} ve zvolené konfiguraci není na {date} dostupná. Zkus prosím jinou nabídku nebo datum — nebo, pokud máš vybranou pracovní stanici, jinou sestavu monitorů!",
+  "coworkReservationAvailabilityError": "Nepodařilo se ověřit dostupnost. Zkus to prosím znovu.",
   "reservationAvailabilityLoading": "Kontrolujeme dostupnost workspace...",
   "reservationAvailabilityPartialNotice": "Od {startsAt} do {endsAt} může být workspace vytíženější než obvykle.",
   "reservationConfirmationYes": "Ano",
