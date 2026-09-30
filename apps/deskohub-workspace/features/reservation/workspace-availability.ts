@@ -111,6 +111,7 @@ const workspaceAvailabilityResponseSchema = Schema.Struct({
   from: Schema.String,
   to: Schema.String,
   unavailableDates: Schema.Array(Schema.String),
+  reservedDeskWorkstationRequiredDates: Schema.Array(Schema.String),
   unavailableCoworkTiers: Schema.Array(
     workspaceCoworkProductIdentitySchema.fields.tier
   ),

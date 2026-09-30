@@ -250,6 +250,36 @@ const implementation = Effect.gen(function* () {
             getWorkspaceTableOccupancyById(reservations, interval)
           )
         );
+      const reservedDeskWorkstationRequiredDates: string[] = [];
+      if (query.kind === coworkReservationKind) {
+        for (const day of dates.map(plainDateToString)) {
+          if (fullyOccupiedDates.has(day)) continue;
+
+          const reservedDeskOccupancy = yield* getCoworkOfferOccupancy(
+            day,
+            "reserved-desk"
+          );
+          const bareReservedDeskUnavailable = yield* isCoworkOfferUnavailable(
+            tables,
+            reservedDeskOccupancy,
+            { entryTier: "reserved-desk" }
+          );
+          if (!bareReservedDeskUnavailable) continue;
+
+          const unavailableMonitorOptions = yield* Effect.forEach(
+            workspaceProductMonitorOptions,
+            (monitorOption) =>
+              isCoworkOfferUnavailable(tables, reservedDeskOccupancy, {
+                entryTier: "reserved-desk",
+                monitorOption,
+              })
+          );
+          if (unavailableMonitorOptions.some((unavailable) => !unavailable)) {
+            reservedDeskWorkstationRequiredDates.push(day);
+          }
+        }
+      }
+
       for (const day of dates.map(plainDateToString)) {
         if (fullyOccupiedDates.has(day)) {
           unavailableDates.push(day);
@@ -315,6 +345,7 @@ const implementation = Effect.gen(function* () {
         from: query.from,
         to: query.to,
         unavailableDates,
+        reservedDeskWorkstationRequiredDates,
         unavailableCoworkTiers,
         meetingRoomUnavailable,
         officeUnavailable,

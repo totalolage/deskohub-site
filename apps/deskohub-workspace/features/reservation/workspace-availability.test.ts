@@ -118,6 +118,7 @@ describe("parseWorkspaceAvailabilityResponse", () => {
       from: "2099-06-10",
       to: "2099-06-10",
       unavailableDates: [],
+      reservedDeskWorkstationRequiredDates: ["2099-06-10"],
       unavailableCoworkTiers: ["plus"],
       meetingRoomUnavailable: false,
       officeUnavailable: false,
@@ -125,6 +126,9 @@ describe("parseWorkspaceAvailabilityResponse", () => {
       notices: [],
     });
 
+    expect(response.reservedDeskWorkstationRequiredDates).toEqual([
+      "2099-06-10",
+    ]);
     expect(response.unavailableCoworkTiers).toEqual(["plus"]);
     expect(response.meetingRoomUnavailable).toBe(false);
     expect(response.officeUnavailable).toBe(false);
@@ -136,7 +140,23 @@ describe("parseWorkspaceAvailabilityResponse", () => {
         from: "2099-06-10",
         to: "2099-06-10",
         unavailableDates: [],
+        reservedDeskWorkstationRequiredDates: [],
         unavailableTiers: ["plus"],
+        meetingRoomUnavailable: false,
+        officeUnavailable: false,
+        unavailableMonitorOptions: [],
+        notices: [],
+      })
+    ).toThrow("Invalid workspace availability response");
+  });
+
+  test("rejects responses without reserved-desk workstation requirement dates", () => {
+    expect(() =>
+      parseWorkspaceAvailabilityResponse({
+        from: "2099-06-10",
+        to: "2099-06-10",
+        unavailableDates: [],
+        unavailableCoworkTiers: [],
         meetingRoomUnavailable: false,
         officeUnavailable: false,
         unavailableMonitorOptions: [],

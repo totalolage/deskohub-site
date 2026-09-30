@@ -100,6 +100,7 @@ const availabilityResponse = {
   from: "2099-07-30",
   to: "2100-01-30",
   unavailableDates: [],
+  reservedDeskWorkstationRequiredDates: [],
   unavailableCoworkTiers: [],
   meetingRoomUnavailable: false,
   officeUnavailable: false,
