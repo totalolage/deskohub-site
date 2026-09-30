@@ -2506,9 +2506,18 @@ describe("CoworkReservationForm advertised pricing", () => {
   });
 
   test("disables full dates and leaves workstation-required dates selectable before a date is chosen", async () => {
-    const fullDate = dateOffsetFromToday(2);
-    const requiredDate = dateOffsetFromToday(3);
-    workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
+    const searchParams = new URLSearchParams();
+    workspaceUseSearchParams.mockReturnValue(searchParams);
+    const availabilityRange =
+      getWorkspaceAvailabilityQueryFromReservationSearchParams(searchParams);
+    const firstAvailableDate = Temporal.PlainDate.from(availabilityRange.from);
+    const fullDate = firstAvailableDate.with({
+      day: firstAvailableDate.daysInMonth,
+    });
+    const requiredDate = fullDate.add({ days: 1 });
+    expect(fullDate.day).toBe(fullDate.daysInMonth);
+    expect(requiredDate.day).toBe(1);
+    let requestedAvailabilityRange: { from: string; to: string } | undefined;
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
       if (!url.startsWith("/api/workspace/availability")) {
@@ -2516,14 +2525,19 @@ describe("CoworkReservationForm advertised pricing", () => {
       }
 
       const searchParams = new URL(url, "http://localhost").searchParams;
+      const from = searchParams.get("from");
+      const to = searchParams.get("to");
+      if (from !== null && to !== null) {
+        requestedAvailabilityRange = { from, to };
+      }
       return Promise.resolve(
         jsonResponse({
           ...availabilityResponse,
           date: undefined,
-          from: searchParams.get("from"),
-          to: searchParams.get("to"),
-          unavailableDates: [fullDate, requiredDate],
-          reservedDeskWorkstationRequiredDates: [requiredDate],
+          from,
+          to,
+          unavailableDates: [fullDate.toString(), requiredDate.toString()],
+          reservedDeskWorkstationRequiredDates: [requiredDate.toString()],
         })
       );
     }) as typeof fetch;
@@ -2536,46 +2550,59 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
     await act(async () => fireEvent.click(datePickerButton));
     const dialog = await within(document.body).findByRole("dialog");
-    const targetDate = new Date(`${fullDate}T12:00:00`);
-    const currentMonthLabel = within(dialog).getByRole("status").textContent;
-    const currentMonthDate = new Date(
-      currentMonthLabel?.replace(" ", " 1, ") ?? ""
-    );
-    const monthsToNavigate =
-      (targetDate.getFullYear() - currentMonthDate.getFullYear()) * 12 +
-      targetDate.getMonth() -
-      currentMonthDate.getMonth();
-    for (let month = 0; month < Math.abs(monthsToNavigate); month += 1) {
-      await act(async () => {
-        fireEvent.click(
-          within(dialog).getByRole("button", {
-            name:
-              monthsToNavigate > 0
-                ? "Go to the Next Month"
-                : "Go to the Previous Month",
-          })
-        );
+    const getCalendarDateButton = async (date: string) => {
+      const targetDate = new Date(`${date}T12:00:00`);
+      const currentMonthLabel = within(dialog).getByRole("status").textContent;
+      const currentMonthDate = new Date(
+        currentMonthLabel?.replace(" ", " 1, ") ?? ""
+      );
+      const monthsToNavigate =
+        (targetDate.getFullYear() - currentMonthDate.getFullYear()) * 12 +
+        targetDate.getMonth() -
+        currentMonthDate.getMonth();
+      for (let month = 0; month < Math.abs(monthsToNavigate); month += 1) {
+        await act(async () => {
+          fireEvent.click(
+            within(dialog).getByRole("button", {
+              name:
+                monthsToNavigate > 0
+                  ? "Go to the Next Month"
+                  : "Go to the Previous Month",
+            })
+          );
+        });
+      }
+      const monthLabel = targetDate.toLocaleDateString("en-US", {
+        month: "long",
       });
-    }
-    const monthLabel = targetDate.toLocaleDateString("en-US", {
-      month: "long",
-    });
-    const fullDateButton = await within(dialog).findByRole("button", {
-      name: new RegExp(
-        `${monthLabel} ${targetDate.getDate()}(?:st|nd|rd|th)?, ${targetDate.getFullYear()}`
-      ),
-    });
-    const workstationDate = new Date(`${requiredDate}T12:00:00`);
-    const requiredDateButton = within(dialog).getByRole("button", {
-      name: new RegExp(
-        `${monthLabel} ${workstationDate.getDate()}(?:st|nd|rd|th)?, ${workstationDate.getFullYear()}`
-      ),
-    });
+      return within(dialog).findByRole("button", {
+        name: new RegExp(
+          `${monthLabel} ${targetDate.getDate()}(?:st|nd|rd|th)?, ${targetDate.getFullYear()}`
+        ),
+      });
+    };
+    const fullDateButton = await getCalendarDateButton(fullDate.toString());
+    const requiredDateButton = await getCalendarDateButton(
+      requiredDate.toString()
+    );
 
     await waitFor(() => {
       expect((fullDateButton as HTMLButtonElement).disabled).toBe(true);
+      expect((requiredDateButton as HTMLButtonElement).disabled).toBe(false);
+      expect(
+        view.container.querySelector<HTMLInputElement>("input[name='date']")
+          ?.value
+      ).toBe("");
     });
-    expect((requiredDateButton as HTMLButtonElement).disabled).toBe(false);
+    if (!requestedAvailabilityRange) {
+      throw new Error("Expected a calendar availability range request");
+    }
+    expect(requestedAvailabilityRange).toEqual({
+      from: availabilityRange.from,
+      to: availabilityRange.to,
+    });
+    expect(requestedAvailabilityRange.from <= fullDate.toString()).toBe(true);
+    expect(requestedAvailabilityRange.to >= requiredDate.toString()).toBe(true);
   });
 
   test("does not force a workstation when the selected offer or date is unavailable, or when a bare desk remains available", async () => {
