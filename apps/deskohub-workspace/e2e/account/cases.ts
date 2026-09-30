@@ -26,7 +26,7 @@ import {
   workspaceE2ETimeoutError,
 } from "../errors";
 import { pollUntil } from "../polling";
-import { assert, type Runner } from "../runtime";
+import { addRedaction, assert, type Runner } from "../runtime";
 import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 import {
   accountSectionLandmarks,
@@ -34,6 +34,7 @@ import {
 } from "./account-sections";
 import {
   assertNoAuthRows,
+  findAuthUserEmailById,
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
   removeSyntheticAccountLink,
@@ -46,6 +47,13 @@ import {
   makeWorkspaceE2EAccountRecipient,
   workspaceE2EAccountMainRecipientLabel,
 } from "./config";
+import {
+  classifyWorkspaceE2EExportIdentityMatch,
+  exportEmailDivergenceMessage,
+  exportIdentityVerdictFailureMessage,
+  type WorkspaceE2EExportProbePayload,
+  workspaceE2EExportPageProbeScript,
+} from "./export-identity";
 import {
   assertNoSyntheticCustomerProfile,
   cancelSyntheticReservation,
@@ -64,6 +72,25 @@ import type {
   WorkspaceE2EAccountJournalRef,
   WorkspaceE2EAccountLifecycleHandoff,
 } from "./types";
+
+/**
+ * The exact allowlisted archive entry set, alphabetically sorted to match
+ * the probe output (`Array.from(entries.keys()).sort()`), so the archive
+ * comparison never depends on the probe's iteration order. The manifest
+ * section-order assertion below stays the only order-sensitive check.
+ */
+export const workspaceE2EExportArchiveEntryAllowlist = [
+  "access-grants.json",
+  "consents.json",
+  "discount-applications.json",
+  "dotypos-profile.json",
+  "identity.json",
+  "invoices.json",
+  "manifest.json",
+  "payments.json",
+  "reservation-history.json",
+  "workspace-reservations.json",
+] as const;
 
 const acceptedTitle = "Check your inbox";
 const acceptedBody =
@@ -85,7 +112,9 @@ const confirmedStatus = "Confirmed";
 
 const signInSuffix = "/auth/sign-in";
 const accountSuffix = "/account";
+const legalSuffix = "/account/legal";
 const callbackSuffix = "/auth/callback";
+const exportActionLabel = "Download your account data";
 
 const signInFormSelector = "#account-sign-in-form";
 const signInEmailSelector = "#account-sign-in-email";
@@ -1411,6 +1440,312 @@ export const makeWorkspaceE2EAccountCases = ({
               );
             }),
             providerTransition
+          )
+        );
+      })
+    ),
+    makeCase("account-data-export", ({ journalRef, runStep }) =>
+      Effect.gen(function* () {
+        // The serial lane shares one browser session across every case, and
+        // the database fixture steps below never read the session. Align the
+        // session to the verified synthetic main recipient first so the
+        // exported identity cannot belong to an earlier identity chain.
+        yield* runStep(
+          step(
+            "requires an anonymous browser session before the export sign-in",
+            Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* waitForBrowserCondition(
+                run,
+                session,
+                "anonymous sign-in redirect or signed-in account shell",
+                `(() => location.href.includes(${JSON.stringify(signInSuffix)}) || document.querySelector(${JSON.stringify(signOutSelector)}) !== null)()`,
+                { timeoutMs: uiTransition }
+              );
+              const url = yield* readBrowserUrl(run, session);
+              if (url !== undefined && url.includes(signInSuffix)) {
+                yield* waitSignInForm();
+              } else {
+                yield* signOutAndRequireAnonymous();
+              }
+            }),
+            navigationTimeout
+          )
+        );
+
+        const exportStartedAt = new Date();
+        const exportObservedMessageIds = yield* runStep(
+          step(
+            "records the delivered message baseline before the export sign-in",
+            observeDeliveredMessageIds(recipient),
+            providerTransition
+          )
+        );
+
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the export sign-in link",
+              requestSignInLink(recipient),
+              navigationTimeout
+            )
+          )
+        );
+
+        const exportLink = yield* runStep(
+          step(
+            "retrieves the delivered export sign-in link",
+            retrieveSignInLink(
+              recipient,
+              exportObservedMessageIds,
+              exportStartedAt
+            ),
+            authDeliveryTimeout
+          )
+        );
+
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "consumes the export sign-in link as the synthetic main recipient",
+              Effect.gen(function* () {
+                yield* openPage(exportLink);
+                yield* waitDefaultReservations(
+                  "export session account reservations"
+                );
+                const userId = yield* requireAuthUserId(recipient);
+                yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
+              }),
+              providerTransition
+            )
+          )
+        );
+
+        const identity = yield* runStep(
+          step(
+            "reads the signed-in identity for the export assertions",
+            Effect.gen(function* () {
+              const userId = yield* requireAuthUserId(recipient);
+              const customerId = yield* requireLinkedCustomerId(userId);
+              assert(
+                journalRef.journal.authUserIds.includes(userId),
+                "the export case ran against an unjournaled Better Auth identity"
+              );
+              return { customerId, userId };
+            }),
+            datasourceTimeout
+          )
+        );
+
+        // The exact synthetic row email is read by the journaled id alone so
+        // the divergence booleans compare the document against the row the
+        // session provably belongs to. It is registered with the process
+        // redactor because it is injected into page-evaluation input, and it
+        // only ever feeds the in-page boolean probe.
+        const rowEmail = yield* runStep(
+          step(
+            "reads the synthetic auth row email for the divergence probe",
+            Effect.gen(function* () {
+              const email = yield* findAuthUserEmailById(identity.userId);
+              assert(
+                email !== undefined,
+                "the journaled synthetic auth row disappeared before the export probe"
+              );
+              addRedaction(email);
+              return email;
+            }),
+            datasourceTimeout
+          )
+        );
+
+        // The profile page visit and the export probe share one document: the
+        // displayed email must be captured and compared in the SAME document,
+        // because any navigation (for example to the legal page) destroys it.
+        yield* runStep(
+          step(
+            "asserts the export session is the synthetic main recipient",
+            Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* waitDefaultReservations(
+                "export identity account reservations"
+              );
+              yield* selectAccountSectionInRunner(run, session, "profile");
+              const result = yield* evalBrowserScript(
+                "assert the export session identity is the synthetic main recipient",
+                run,
+                session,
+                `(() => {
+                    const profile = document.querySelector(${JSON.stringify(accountSectionLandmarks.profile)});
+                    return JSON.stringify({
+                      matches: profile instanceof HTMLElement &&
+                        profile.textContent?.includes(${JSON.stringify(recipient)}) === true,
+                    });
+                  })()`,
+                { logOutput: false, timeoutMs: browserTimeout }
+              ).pipe(Effect.map((command) => command.stdout));
+              const parsed = JSON.parse(result) as { matches: boolean };
+              assert(
+                parsed.matches,
+                "the export session identity did not match the synthetic main recipient"
+              );
+            }),
+            accountPageLoadTimeout
+          )
+        );
+
+        // The probe fetch runs in the SAME document that still displays the
+        // profile email: Playwright awaits the returned promise, so one eval
+        // captures the displayed email live and resolves with the closed
+        // boolean payload. Only structural keys, counts, and booleans cross
+        // to the runner; the snapshot body never leaves the page.
+        const probePayload = yield* runStep(
+          step(
+            "requests the account data export document on the profile page",
+            evalBrowserScript(
+              "request account data export",
+              run,
+              session,
+              workspaceE2EExportPageProbeScript({
+                requestUrl: `/${config.locale}${accountSuffix}/data-export`,
+                accountId: identity.userId,
+                rowEmail,
+                recipientEmail: recipient,
+                profileEmailSelector: profileEmailSelector,
+              }),
+              { logOutput: false, timeoutMs: browserTimeout }
+            ).pipe(
+              Effect.flatMap((result) => {
+                if (result.exitCode !== 0) {
+                  return workspaceE2EError(
+                    "the account data export probe did not return a result",
+                    { operation: "request account data export" }
+                  );
+                }
+                return Effect.succeed(
+                  JSON.parse(result.stdout) as WorkspaceE2EExportProbePayload
+                );
+              })
+            ),
+            browserTimeout
+          )
+        );
+
+        yield* runStep(
+          step(
+            "shows the account data download control on the legal page",
+            Effect.gen(function* () {
+              yield* openPage(localized(legalSuffix));
+              yield* waitText("export action label", exportActionLabel);
+            }),
+            accountPageLoadTimeout
+          )
+        );
+
+        yield* runStep(
+          step(
+            "asserts the export document against the synthetic expectations",
+            Effect.gen(function* () {
+              assert(
+                probePayload.ok && probePayload.document !== null,
+                "the account data export request did not succeed"
+              );
+              if (!probePayload.ok || probePayload.document == null) {
+                return yield* workspaceE2EError(
+                  "the account data export probe carried no document",
+                  { operation: "assert account data export document" }
+                );
+              }
+              const snapshot = probePayload.document;
+              // The journaled-account boolean splits the failure space
+              // before the strict email equality: an account-id match with
+              // an email mismatch proves an email-string divergence, while
+              // an account-id mismatch proves the session resolved to a
+              // different Better Auth identity. The raw identifiers never
+              // reach the message.
+              const verdict = classifyWorkspaceE2EExportIdentityMatch({
+                accountIdMatches: snapshot.accountIdMatches,
+                emailMatches:
+                  snapshot.emailDivergence.documentEmailMatchesRecipient,
+              });
+              if (verdict !== "match") {
+                return yield* workspaceE2EError(
+                  verdict === "email-mismatch"
+                    ? // The divergence booleans were computed inside the
+                      // page against the exact journaled row email; the
+                      // fixed message carries booleans and the length
+                      // relation only.
+                      exportEmailDivergenceMessage(snapshot.emailDivergence)
+                    : exportIdentityVerdictFailureMessage(verdict),
+                  { operation: "assert account data export document" }
+                );
+              }
+              assert(
+                snapshot.emailDivergence.documentEmailMatchesRecipient &&
+                  snapshot.emailDivergence.exactEqual,
+                "the export identity email did not match the synthetic recipient"
+              );
+              assert(
+                snapshot.entryNames.join(",") ===
+                  workspaceE2EExportArchiveEntryAllowlist.join(","),
+                "the export archive exposed entries outside the manifest allowlist"
+              );
+              assert(
+                snapshot.schemaVersion === 2,
+                "the export archive used an unexpected schema version"
+              );
+              assert(
+                snapshot.manifestSectionPaths.join(",") ===
+                  "identity.json,dotypos-profile.json,reservation-history.json,workspace-reservations.json,payments.json,discount-applications.json,invoices.json,consents.json,access-grants.json",
+                "the export manifest section order drifted from the contractual section order"
+              );
+              assert(
+                Number.isFinite(Date.parse(snapshot.generatedAt)),
+                "the export archive did not carry a parseable generation time"
+              );
+              assert(
+                snapshot.workspaceReservationsCount >= 0 &&
+                  snapshot.paymentsCount >= 0 &&
+                  snapshot.discountApplicationsCount >= 0 &&
+                  snapshot.invoicesCount >= 0 &&
+                  snapshot.legalEvidenceCount >= 0 &&
+                  snapshot.accessGrantsCount >= 0,
+                "the export archive carried a missing or malformed customer-records section"
+              );
+              assert(
+                (probePayload.contentType ?? "").startsWith("application/zip"),
+                "the export response was not served as a ZIP archive"
+              );
+              assert(
+                (probePayload.cacheControl ?? "").replace(/\s+/g, "") ===
+                  "private,no-store",
+                "the export response was not private and no-store"
+              );
+              assert(
+                (probePayload.contentDisposition ?? "").startsWith(
+                  "attachment"
+                ) && (probePayload.contentDisposition ?? "").includes(".zip"),
+                "the export response was not delivered as a ZIP attachment"
+              );
+              assert(
+                snapshot.dotyposProfileKeys !== null &&
+                  snapshot.dotyposProfileKeys.join(",") ===
+                    "billing,firstName,lastName,phone",
+                "the export profile section exposed fields outside the mapped profile"
+              );
+              assert(
+                snapshot.consentKeys === null ||
+                  snapshot.consentKeys.join(",") ===
+                    "grantedAt,locale,withdrawnAt",
+                "the export consent section exposed the document hash or other internals"
+              );
+              assert(
+                snapshot.reservationsCount >= 0,
+                "the export reservations section was not an array"
+              );
+            }),
+            datasourceTimeout
           )
         );
       })

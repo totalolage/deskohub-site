@@ -24,13 +24,16 @@ export const accountSectionLabels = {
 /**
  * Stable controls that are only visible when their owning account panel is
  * active. The reservations landmark anchors on the past panel because it
- * renders unconditionally, even when the current group is empty.
+ * renders unconditionally, even when the current group is empty. The legal
+ * landmark is the policy link inside the legal navigation landmark; the
+ * export statutory-sentence content link to the same destination is
+ * intentionally excluded.
  */
 export const accountSectionLandmarks = {
   reservations: "#account-reservations-past-title",
   profile: "[data-screen='profile-screen']",
   billing: "#account-profile-billing-kind",
-  legal: "main a[href$='/privacy-policy']",
+  legal: "main nav a[href$='/privacy-policy']",
   danger: "#delete-account-trigger",
 } as const satisfies Readonly<Record<AccountSection, string>>;
 

@@ -366,6 +366,11 @@ class FakeAccountExternalState {
     return this.usersByEmail.get(email)?.id;
   }
 
+  findAuthUserEmailById(userId: string) {
+    this.authReads.push(`email:${userId}`);
+    return this.usersById.get(userId)?.email;
+  }
+
   findLinkedCustomerId(userId: string) {
     this.authReads.push(`link:${userId}`);
     return this.linksByUserId.get(userId);
@@ -1067,6 +1072,8 @@ mock.module("./resend-retrieval", () => ({
 mock.module("./auth-rows", () => ({
   assertNoAuthRows: (userId: string) =>
     Effect.sync(() => requireExternal().assertNoAuthRows(userId)),
+  findAuthUserEmailById: (userId: string) =>
+    Effect.sync(() => requireExternal().findAuthUserEmailById(userId)),
   findAuthUserIdByEmail: (email: string) =>
     Effect.sync(() => requireExternal().findAuthUserId(email)),
   findLinkedDotyposCustomerId: (userId: string) =>
@@ -1610,4 +1617,99 @@ test("fails when the reauthentication handoff names a different linked customer"
   ]);
   expect(scenario.operations).toEqual(["verify"]);
   expect(scenario.retries).toEqual([]);
+});
+
+test("the export probe's entry names equal the lane's sorted archive allowlist", async () => {
+  setSystemTime(fixedNow);
+  const { workspaceE2EExportArchiveEntryAllowlist } = await import("./cases");
+  const { workspaceE2EExportPageProbeScript } = await import(
+    "./export-identity"
+  );
+  const { zipSync } = await import("fflate");
+
+  const identityEntry = {
+    accountId: "00000000-0000-0000-0000-000000000000",
+    email: "export-probe@example.test",
+  };
+  const archiveBytes = () =>
+    zipSync(
+      {
+        "manifest.json": Buffer.from(
+          JSON.stringify({
+            generatedAt: "2026-01-01T00:00:00Z",
+            schemaVersion: 2,
+            sections: [{ path: "identity.json", description: "d" }],
+          })
+        ),
+        "identity.json": Buffer.from(JSON.stringify(identityEntry)),
+        "dotypos-profile.json": Buffer.from(
+          JSON.stringify({
+            firstName: "Ada",
+            lastName: null,
+            phone: null,
+            billing: null,
+          })
+        ),
+        "reservation-history.json": Buffer.from(JSON.stringify([])),
+        "workspace-reservations.json": Buffer.from(JSON.stringify([])),
+        "payments.json": Buffer.from(
+          JSON.stringify({ payments: [], latePaymentRecoveries: [] })
+        ),
+        "discount-applications.json": Buffer.from(JSON.stringify([])),
+        "invoices.json": Buffer.from(
+          JSON.stringify({ invoices: [], customerEmailDeliveries: [] })
+        ),
+        "consents.json": Buffer.from(
+          JSON.stringify({ marketingConsent: null, legalEvidenceEvents: [] })
+        ),
+        "access-grants.json": Buffer.from(JSON.stringify({ accessGrants: [] })),
+      },
+      // Stored entries keep the fixture independent of the environment's
+      // DecompressionStream, exactly like the probe's own test suite.
+      { level: 0 }
+    );
+
+  // The probe guards `instanceof HTMLInputElement`; the node test provides
+  // the class the same way the probe's own suite does.
+  (globalThis as { HTMLInputElement?: unknown }).HTMLInputElement ??=
+    class HTMLInputElement {};
+  const displayedEmail = new (globalThis as {
+    HTMLInputElement: new () => { value: string };
+  }).HTMLInputElement();
+  displayedEmail.value = "export-probe@example.test";
+
+  const run = new Function(
+    "document",
+    "fetch",
+    `"use strict"; return (${workspaceE2EExportPageProbeScript({
+      requestUrl: "/en-US/account/data-export",
+      accountId: "00000000-0000-0000-0000-000000000000",
+      rowEmail: "export-probe@example.test",
+      recipientEmail: "export-probe@example.test",
+      profileEmailSelector: "#account-profile-email",
+    })});`
+  ) as (document: unknown, fetch: unknown) => Promise<string>;
+
+  const raw = await run(
+    { querySelector: () => displayedEmail },
+    async () => ({
+      ok: true,
+      headers: {
+        get: (name: string) =>
+          name.toLowerCase() === "content-type" ? "application/zip" : null,
+      },
+      arrayBuffer: async () => archiveBytes().buffer,
+    })
+  );
+  const payload = JSON.parse(raw) as {
+    ok: boolean;
+    document: { entryNames: readonly string[] } | null;
+  };
+
+  expect(payload.ok).toBe(true);
+  // The probe output is exactly what the lane's archive assertion compares
+  // against, so this pair cannot drift apart silently.
+  expect([...(payload.document?.entryNames ?? [])]).toEqual([
+    ...workspaceE2EExportArchiveEntryAllowlist,
+  ]);
 });

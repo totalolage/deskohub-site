@@ -418,7 +418,7 @@ type PublicLegalNavigationReport = {
   readonly authentication: "not-proved";
   readonly legalPathname: string | null;
   readonly cookiePreferencesVisible: boolean;
-  readonly archiveDisabled: boolean;
+  readonly exportEnabled: boolean;
   readonly consentChanges: {
     readonly analyticsEnabled: boolean;
     readonly analyticsDisabled: boolean;
@@ -2108,7 +2108,7 @@ const runPublicLegalNavigationCheck = async ({
   let page: Page | undefined;
   let legalPathname: string | null = null;
   let cookiePreferencesVisible = false;
-  let archiveDisabled = false;
+  let exportEnabled = false;
   const consentChanges = {
     analyticsEnabled: false,
     analyticsDisabled: false,
@@ -2229,29 +2229,26 @@ const runPublicLegalNavigationCheck = async ({
     }
     cookiePreferencesVisible = allCookiePreferencesVisible;
 
-    const archiveAction = m.legalScreenArchiveAction({}, { locale });
-    const archiveButton = page
-      .getByRole("button", { name: archiveAction, exact: true })
+    const exportAction = m.legalScreenExportAction({}, { locale });
+    const exportButton = page
+      .getByRole("button", { name: exportAction, exact: true })
       .first();
-    let archiveVisible = true;
+    let exportVisible = true;
     try {
-      await archiveButton.waitFor({ state: "visible", timeout: 5_000 });
+      await exportButton.waitFor({ state: "visible", timeout: 5_000 });
     } catch {
-      archiveVisible = false;
+      exportVisible = false;
     }
-    if (!archiveVisible) {
-      failures.push(
-        `Initial public legal route: archive button with localized copy ${JSON.stringify(archiveAction)} was not visible`
-      );
-    } else {
-      archiveDisabled = await waitForPublicLegalControlDisabled(
-        archiveButton,
-        true
-      );
-      if (!archiveDisabled) {
+    if (exportVisible) {
+      // The export control is a real action now; when the fixture shows it,
+      // it must be enabled and must not be a disabled future feature.
+      const exportDisabled = await exportButton.isDisabled();
+      if (exportDisabled) {
         failures.push(
-          "Initial public legal route: localized archive button was not disabled"
+          "Initial public legal route: localized export button was disabled"
         );
+      } else {
+        exportEnabled = true;
       }
     }
 
@@ -2505,7 +2502,7 @@ const runPublicLegalNavigationCheck = async ({
       authentication: "not-proved",
       legalPathname,
       cookiePreferencesVisible,
-      archiveDisabled,
+      exportEnabled,
       consentChanges,
       returns,
       failures,
@@ -2519,7 +2516,7 @@ const runPublicLegalNavigationCheck = async ({
       authentication: "not-proved",
       legalPathname,
       cookiePreferencesVisible,
-      archiveDisabled,
+      exportEnabled,
       consentChanges,
       returns,
       failures,

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import type { TSESTree } from "@typescript-eslint/types";
-import { isString } from "effect/Predicate";
 import { workspaceE2EAccountCaseIds } from "../e2e/account/catalog";
 import { accountReviewTargetByCaseId } from "../e2e/account/review-targets";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "../e2e/account/types";
@@ -125,7 +124,7 @@ const budgetPlan = (): ReadonlyMap<string, "send" | "verify"> => {
       return { call, operation: operation as "send" | "verify" };
     }
   );
-  expect(wrappers).toHaveLength(8);
+  expect(wrappers).toHaveLength(10);
   const plan = new Map<string, "send" | "verify">();
   for (const wrapper of wrappers) {
     for (const stepCall of callsNamed(casesModule.ast, "step")) {
@@ -152,6 +151,11 @@ const BUDGETED_STEPS: readonly (readonly [string, "send" | "verify"])[] = [
     "verify",
   ],
   ["signs the same account back in", "verify"],
+  ["requests the export sign-in link", "send"],
+  [
+    "consumes the export sign-in link as the synthetic main recipient",
+    "verify",
+  ],
 ];
 
 const UNBUDGETED_STEPS: readonly string[] = [
@@ -160,6 +164,9 @@ const UNBUDGETED_STEPS: readonly string[] = [
   "retrieves the delivered single-use link",
   "retrieves the delivered reauthentication link",
   "retrieves the reactivation link",
+  "retrieves the delivered export sign-in link",
+  "requires an anonymous browser session before the export sign-in",
+  "asserts the export session is the synthetic main recipient",
 ];
 
 /**
@@ -287,6 +294,7 @@ describe("workspace account e2e graph", () => {
       "account-deletion-marker-reauth",
       "account-session-lifecycle",
       "account-deletion-and-reactivation",
+      "account-data-export",
       "account-linking-variants",
     ]);
 
@@ -337,17 +345,17 @@ describe("workspace account e2e graph", () => {
     );
     expect(magicLinkOperationsPerWindow).toBeGreaterThan(0);
 
-    // The budget plan comes from the cases syntax tree: exactly eight
-    // wrappers, four sends and four verifies, each hugging its exact
+    // The budget plan comes from the cases syntax tree: exactly ten
+    // wrappers, five sends and five verifies, each hugging its exact
     // semantic endpoint, and no direct reservation API anywhere.
     const plan = budgetPlan();
     expect(
       [...plan.values()].filter((operation) => operation === "send")
-    ).toHaveLength(4);
+    ).toHaveLength(5);
     expect(
       [...plan.values()].filter((operation) => operation === "verify")
-    ).toHaveLength(4);
-    expect(plan.size).toBe(8);
+    ).toHaveLength(5);
+    expect(plan.size).toBe(10);
     const caseIdentifiers = identifierNames(casesModule.ast);
     expect(caseIdentifiers.has("reserve")).toBe(false);
     expect(caseIdentifiers.has("tryReserve")).toBe(false);
@@ -510,6 +518,68 @@ describe("workspace account e2e graph", () => {
   // case in every protected-preview E2E run, and the recorded synthetic
   // profile carries the formatted "+420 555 000 111" fixture value so a
   // raw-string comparison could never converge.
+
+  test("aligns the export session to the main recipient before the probe", () => {
+    // The serial lane shares one browser session across cases, and the
+    // export case's database fixture steps never read the session. The case
+    // must therefore explicitly sign in the verified synthetic main
+    // recipient through the lane's approved helpers and prove the signed-in
+    // identity before any probe or download step runs.
+    const exportRange = makeCaseRange("account-data-export");
+    const orderedStepIds = [
+      "requires an anonymous browser session before the export sign-in",
+      "records the delivered message baseline before the export sign-in",
+      "requests the export sign-in link",
+      "retrieves the delivered export sign-in link",
+      "consumes the export sign-in link as the synthetic main recipient",
+      "reads the signed-in identity for the export assertions",
+      "reads the synthetic auth row email for the divergence probe",
+      "asserts the export session is the synthetic main recipient",
+      // The export probe must run in the SAME document that displays the
+      // profile email, before the legal-page navigation destroys it.
+      "requests the account data export document on the profile page",
+      "shows the account data download control on the legal page",
+    ];
+    const stepCalls = orderedStepIds.map((stepId) => {
+      const call = stepCallById(stepId);
+      expect(call).toBeDefined();
+      expect(call!.range![0]).toBeGreaterThanOrEqual(exportRange[0]);
+      expect(call!.range![1]).toBeLessThanOrEqual(exportRange[1]);
+      return call!;
+    });
+    for (let index = 1; index < stepCalls.length; index += 1) {
+      expect(
+        positionDelta(stepCalls[index - 1]!, stepCalls[index]!)
+      ).toBeLessThan(0);
+    }
+
+    // The alignment consumes exactly one send and one verify through the
+    // lane's rate budget; the retrieval and assertion steps stay outside it.
+    const inExport = (call: TSESTree.CallExpression) =>
+      call.range![0] >= exportRange[0] && call.range![1] <= exportRange[1];
+    const exportWrappers = memberCallsNamed(
+      casesModule.ast,
+      "rateBudget",
+      "run"
+    ).filter(inExport);
+    expect(exportWrappers).toHaveLength(2);
+    expect(firstStringArgument(exportWrappers[0]!)).toBe("send");
+    expect(firstStringArgument(exportWrappers[1]!)).toBe("verify");
+    const exportIdentifiers = identifiersInRange(exportRange);
+    expect(exportIdentifiers.has("requestSignInLink")).toBe(true);
+    expect(exportIdentifiers.has("retrieveSignInLink")).toBe(true);
+    expect(exportIdentifiers.has("signOutAndRequireAnonymous")).toBe(true);
+
+    // The fail-fast identity verdict uses a fixed message and never leaks a
+    // recipient address; the strict final identity assertion is untouched.
+    const exportLiterals = stringLiteralsInRange(exportRange);
+    expect(exportLiterals).toContain(
+      "the export session identity did not match the synthetic main recipient"
+    );
+    expect(exportLiterals).toContain(
+      "the export identity email did not match the synthetic recipient"
+    );
+  });
 
   test("bounds the confirmed-reservations step as one combined condition", () => {
     const stepCall = stepCallById(

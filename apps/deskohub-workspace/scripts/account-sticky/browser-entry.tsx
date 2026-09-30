@@ -72,7 +72,7 @@ function SyntheticContent({
       break;
     }
     case "danger": {
-      description = m.legalScreenArchiveDescription({}, { locale });
+      description = m.accountDeletionDescription({}, { locale });
       break;
     }
     case "legal": {

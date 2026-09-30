@@ -876,6 +876,25 @@ const legalDocuments = {
               </a>
               .
             </>,
+            <>
+              If you have an account, you can download a machine-readable
+              archive of your identity, profile, reservation history, payment
+              and discount records, invoice metadata, consents, and door-access
+              grant status from the legal page of the account. This self-service
+              download is generated fresh for every request and is not a full
+              statutory access or data-portability request: it is not a complete
+              copy of every record we hold. Records such as invoice documents,
+              credentials and session data, analytics or technical logs, and
+              provider-held records beyond your booking profile are not
+              included. For a full request under data protection law, contact{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
+            </>,
           ],
         },
       ],
@@ -1301,6 +1320,27 @@ const legalDocuments = {
               žádost podle předpisů o ochraně osobních údajů týkající se
               rezervací nebo zákonně uchovávaných záznamů; takovou žádost
               pošlete na{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
+            </>,
+            <>
+              Pokud máte založený účet, můžete si ze stránky „Právní informace a
+              ochrana osobních údajů“ v účtu stáhnout strojově čitelný archív
+              svých identifikačních údajů, profilu, historie rezervací, záznamů
+              o platbách a slevách, metadat faktur, souhlasů a stavů přístupů ke
+              dveřím. Toto samoobslužné stažení se generuje čerstvě při každém
+              požadavku a není úplnou zákonnou žádostí o přístup k údajům ani o
+              jejich přenositelnost: není to úplná kopie všech záznamů, které
+              uchováváme. Záznamy, jako jsou dokumenty faktur, přístupové údaje
+              a data relací, analytické či technické protokoly a záznamy u
+              poskytovatelů nad rámec vašeho rezervačního profilu, nejsou
+              zahrnuty. Pro úplnou žádost podle předpisů o ochraně osobních
+              údajů kontaktujte{" "}
               <a
                 className="text-burned-orange underline underline-offset-4"
                 href={`mailto:${contactEmail}`}
