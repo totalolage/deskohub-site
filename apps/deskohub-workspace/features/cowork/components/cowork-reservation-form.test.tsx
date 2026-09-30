@@ -2298,6 +2298,253 @@ describe("CoworkReservationForm advertised pricing", () => {
     ).toBe("true");
   });
 
+  test("blocks checkout when the settled selected-date response closes an otherwise available date", async () => {
+    const selectedDate = dateOffsetFromToday(1);
+    const searchParams = new URLSearchParams(
+      `entryTier=open-space&date=${selectedDate}`
+    );
+    workspaceUseSearchParams.mockReturnValue(searchParams);
+    const baseQuery =
+      getWorkspaceAvailabilityQueryFromReservationSearchParams(searchParams);
+    const rangeQuery = {
+      kind: "cowork" as const,
+      from: baseQuery.from,
+      to: baseQuery.to,
+      entryTier: "open-space" as const,
+    };
+    const selectedDateQuery = { ...rangeQuery, date: selectedDate };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retryDelay: 0 } },
+    });
+    queryClient.setQueryData(
+      [...workspaceAvailabilityKeys.availability(rangeQuery), null],
+      {
+        ...availabilityResponse,
+        date: undefined,
+        from: rangeQuery.from,
+        to: rangeQuery.to,
+        unavailableDates: [],
+      }
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (!url.startsWith("/api/workspace/availability")) {
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }
+
+      const params = new URL(url, "http://localhost").searchParams;
+      const date = params.get("date");
+      return Promise.resolve(
+        jsonResponse(
+          date
+            ? {
+                ...availabilityResponse,
+                date,
+                unavailableDates: [selectedDate],
+                unavailableCoworkTiers: [],
+                unavailableMonitorOptions: [],
+              }
+            : {
+                ...availabilityResponse,
+                date: undefined,
+                from: params.get("from"),
+                to: params.get("to"),
+                unavailableDates: [],
+              }
+        )
+      );
+    }) as typeof fetch;
+
+    const view = renderForm(
+      {
+        initialValues: {
+          ...coworkReservationDefaultValues,
+          entryTier: "open-space",
+          date: selectedDate,
+          name: "Ada Lovelace",
+          email: "ada@example.test",
+          phone: "+420777777777",
+        },
+      },
+      queryClient
+    );
+    await view.findByText(/original price.*290/i, {}, { timeout: 5000 });
+
+    const selectedDateAvailabilityKey = [
+      ...workspaceAvailabilityKeys.availability(selectedDateQuery),
+      null,
+    ];
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData(selectedDateAvailabilityKey)
+      ).toMatchObject({
+        date: selectedDate,
+        unavailableDates: [selectedDate],
+        unavailableCoworkTiers: [],
+        unavailableMonitorOptions: [],
+      });
+    });
+    expect(
+      queryClient.getQueryData([
+        ...workspaceAvailabilityKeys.availability(rangeQuery),
+        null,
+      ])
+    ).toMatchObject({ unavailableDates: [] });
+
+    const continueButton = view.getByRole("button", { name: "Continue" });
+    await waitFor(() => {
+      expect(continueButton.hasAttribute("disabled")).toBe(true);
+    });
+    await act(async () => fireEvent.click(continueButton));
+    expect(execute).not.toHaveBeenCalled();
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
+  test("keeps monitor choices non-interactive during a same-date workstation requirement refresh", async () => {
+    const selectedDate = dateOffsetFromToday(1);
+    const searchParams = new URLSearchParams(
+      `entryTier=reserved-desk&date=${selectedDate}`
+    );
+    workspaceUseSearchParams.mockReturnValue(searchParams);
+    const baseQuery =
+      getWorkspaceAvailabilityQueryFromReservationSearchParams(searchParams);
+    const bareQuery = {
+      ...baseQuery,
+      entryTier: "reserved-desk" as const,
+      date: selectedDate,
+    };
+    const bareQueryKey = [
+      ...workspaceAvailabilityKeys.availability(bareQuery),
+      null,
+    ];
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retryDelay: 0 } },
+    });
+    let bareQueryRequestCount = 0;
+    let resolveBareQueryRefresh: ((response: Response) => void) | undefined;
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (!url.startsWith("/api/workspace/availability")) {
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }
+
+      const params = new URL(url, "http://localhost").searchParams;
+      const date = params.get("date");
+      const monitorOption = params.get("monitorOption");
+      if (!date) {
+        return Promise.resolve(
+          jsonResponse({
+            ...availabilityResponse,
+            date: undefined,
+            from: params.get("from"),
+            to: params.get("to"),
+            unavailableDates: [],
+          })
+        );
+      }
+      if (date === selectedDate && monitorOption === null) {
+        bareQueryRequestCount += 1;
+        if (bareQueryRequestCount > 1) {
+          return new Promise<Response>((resolve) => {
+            resolveBareQueryRefresh = resolve;
+          });
+        }
+        return Promise.resolve(
+          jsonResponse({
+            ...availabilityResponse,
+            date,
+            unavailableDates: [],
+            reservedDeskWorkstationRequiredDates: [],
+            unavailableMonitorOptions: ["2x27-qhd"],
+          })
+        );
+      }
+      return Promise.resolve(
+        jsonResponse({
+          ...availabilityResponse,
+          date,
+          unavailableDates: [],
+          reservedDeskWorkstationRequiredDates: [],
+          unavailableMonitorOptions: [],
+        })
+      );
+    }) as typeof fetch;
+
+    const view = renderForm(
+      {
+        initialValues: reservedDeskFormValues(selectedDate, "2x32-qhd"),
+      },
+      queryClient
+    );
+    const unavailableMonitor = view.container.querySelector<HTMLInputElement>(
+      "input[type='radio'][value='2x27-qhd']"
+    );
+    const availableMonitor = view.container.querySelector<HTMLInputElement>(
+      "input[type='radio'][value='2x32-qhd']"
+    );
+    const continueButton = view.getByRole("button", { name: "Continue" });
+    await waitFor(() => {
+      expect(unavailableMonitor?.disabled).toBe(true);
+      expect(availableMonitor?.disabled).toBe(false);
+      expect(availableMonitor?.checked).toBe(true);
+      expect(continueButton.hasAttribute("disabled")).toBe(false);
+    });
+
+    let refresh: Promise<void> | undefined;
+    await act(async () => {
+      refresh = queryClient.refetchQueries({
+        queryKey: bareQueryKey,
+        exact: true,
+      });
+      await waitFor(() => expect(resolveBareQueryRefresh).toBeDefined());
+    });
+    await waitFor(() => {
+      expect(
+        queryClient.isFetching({ queryKey: bareQueryKey, exact: true })
+      ).toBe(1);
+      expect(continueButton.hasAttribute("disabled")).toBe(true);
+    });
+
+    expect(unavailableMonitor?.disabled).toBe(true);
+    await act(async () => {
+      if (!unavailableMonitor) {
+        throw new Error("Expected the unavailable monitor radio");
+      }
+      fireEvent.click(unavailableMonitor);
+    });
+    expect(unavailableMonitor?.checked).toBe(false);
+    expect(availableMonitor?.checked).toBe(true);
+    expect(continueButton.hasAttribute("disabled")).toBe(true);
+    expect(execute).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveBareQueryRefresh?.(
+        jsonResponse({
+          ...availabilityResponse,
+          date: selectedDate,
+          unavailableDates: [],
+          reservedDeskWorkstationRequiredDates: [],
+          unavailableMonitorOptions: ["2x32-qhd"],
+        })
+      );
+      await refresh;
+    });
+    await waitFor(() => {
+      expect(unavailableMonitor?.disabled).toBe(false);
+      expect(availableMonitor?.disabled).toBe(true);
+      expect(continueButton.hasAttribute("disabled")).toBe(true);
+    });
+    expect(queryClient.getQueryData(bareQueryKey)).toMatchObject({
+      unavailableMonitorOptions: ["2x32-qhd"],
+    });
+    expect(execute).not.toHaveBeenCalled();
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
   test("keeps the locked workstation help trigger keyboard accessible in both locales", async () => {
     const cases = [
       {

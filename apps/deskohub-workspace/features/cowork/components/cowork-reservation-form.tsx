@@ -433,7 +433,7 @@ export function CoworkReservationForm({
     isWorkstationRequirementSettledForSelectedDate
       ? workstationRequirementQueryResult.availability
       : null;
-  const unavailableDates = useMemo(
+  const unavailableCalendarDates = useMemo(
     () =>
       new Set(
         (currentRangeAvailability?.unavailableDates ?? []).filter(
@@ -498,7 +498,15 @@ export function CoworkReservationForm({
       unavailableMonitorOptions.has(selectedMonitorOption)
   );
   const isSelectedDateUnavailable = Boolean(
-    selectedDate && unavailableDates.has(selectedDate)
+    currentAvailability &&
+      selectedDate &&
+      currentAvailability.unavailableDates.includes(selectedDate) &&
+      !(
+        selectedTier === "reserved-desk" &&
+        currentAvailability.reservedDeskWorkstationRequiredDates.includes(
+          selectedDate
+        )
+      )
   );
   const isSelectedReservationUnavailable =
     isSelectedTierUnavailable ||
@@ -684,7 +692,7 @@ export function CoworkReservationForm({
           <CoworkReservationDateField
             control={form.control}
             locale={locale}
-            unavailableDates={unavailableDates}
+            unavailableDates={unavailableCalendarDates}
           />
 
           {selectedDateNotices.length > 0 && (
@@ -724,6 +732,9 @@ export function CoworkReservationForm({
             allowedMonitorOptions={allowedMonitorOptions}
             control={form.control}
             isWorkstationRequired={isWorkstationRequiredForDate}
+            monitorOptionsAvailabilitySettled={
+              isWorkstationRequirementSettledForSelectedDate
+            }
             locale={locale}
             onManualSelection={() => {
               autoAddedWorkstation.current = false;
@@ -840,6 +851,7 @@ function CoworkWorkstationAddonField({
   allowedMonitorOptions,
   control,
   isWorkstationRequired,
+  monitorOptionsAvailabilitySettled,
   locale,
   onManualSelection,
   priceLabel,
@@ -852,6 +864,7 @@ function CoworkWorkstationAddonField({
     CoworkReservationData
   >;
   readonly isWorkstationRequired: boolean;
+  readonly monitorOptionsAvailabilitySettled: boolean;
   readonly locale: Locale;
   readonly onManualSelection: () => void;
   readonly priceLabel?: string;
@@ -924,13 +937,15 @@ function CoworkWorkstationAddonField({
                       const isUnavailable = unavailableMonitorOptions.has(
                         option.value
                       );
+                      const isDisabled =
+                        isUnavailable || !monitorOptionsAvailabilitySettled;
 
                       return (
                         <label
                           key={option.value}
                           className={cn(
                             "cursor-pointer rounded-[1.1rem] border p-3 transition hover:-translate-y-0.5 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-navy-blue",
-                            isUnavailable &&
+                            isDisabled &&
                               "cursor-not-allowed opacity-45 hover:translate-y-0",
                             isSelected
                               ? "border-aquamarine-green bg-white ring-4 ring-aquamarine-green/15"
@@ -942,11 +957,11 @@ function CoworkWorkstationAddonField({
                             className="sr-only"
                             checked={isSelected}
                             value={option.value}
-                            disabled={isUnavailable}
+                            disabled={isDisabled}
                             name={field.name}
                             onBlur={field.onBlur}
                             onChange={() => {
-                              if (!isUnavailable) {
+                              if (!isDisabled) {
                                 onManualSelection();
                                 field.onChange(option.value);
                               }
