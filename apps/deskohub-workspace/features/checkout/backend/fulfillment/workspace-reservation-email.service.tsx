@@ -48,6 +48,7 @@ import {
   workspaceLocationMapImagePath,
   workspaceSiteConstants,
 } from "@/shared/utils";
+import { formatNamesWithNumericRanges } from "@/shared/utils/number";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import {
   createWorkspaceCheckoutWifiQrPayload,
@@ -307,6 +308,23 @@ const createInternalReservationDetails = (
   return details;
 };
 
+const getCustomerEmailTable = (reservation: WorkspaceReservationDetails) => {
+  if (
+    reservation.reservationDetails.kind === "cowork" &&
+    reservation.reservationDetails.entryTier === "open-space"
+  ) {
+    const name = formatNamesWithNumericRanges(
+      reservation.openSpaceTableNames ?? []
+    );
+
+    return name ? { mode: "shared" as const, name } : undefined;
+  }
+
+  return reservation.tableName
+    ? { mode: "assigned" as const, name: reservation.tableName }
+    : undefined;
+};
+
 const createCustomerReservationEmail = (input: {
   readonly reservation: WorkspaceReservationDetails;
   readonly locale: Locale;
@@ -320,6 +338,7 @@ const createCustomerReservationEmail = (input: {
     {},
     { locale: input.locale }
   );
+  const table = getCustomerEmailTable(input.reservation);
 
   return (
     <CustomerReservationEmail
@@ -354,6 +373,7 @@ const createCustomerReservationEmail = (input: {
           { locale: input.locale }
         ),
         table: m.checkoutEmailTableNumberLabel({}, { locale: input.locale }),
+        tables: m.checkoutEmailTablesLabel({}, { locale: input.locale }),
         network: m.checkoutEmailNetworkHeading({}, { locale: input.locale }),
         networkName: m.checkoutEmailNetworkSsidLabel(
           {},
@@ -376,9 +396,7 @@ const createCustomerReservationEmail = (input: {
         qrImageSrc: input.networkQrImageSrc,
       }}
       preview={subject}
-      {...(input.reservation.tableName
-        ? { table: { name: input.reservation.tableName } }
-        : {})}
+      {...(table && { table })}
     />
   );
 };

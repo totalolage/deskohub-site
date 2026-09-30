@@ -51,6 +51,7 @@ export const customerReservationPreviewProps = {
     location: "Where to go",
     directions: "Open route in Google Maps",
     table: "Table",
+    tables: "Tables",
     network: "Wi-Fi",
     networkName: "Network name",
     networkPassword: "Password",
@@ -62,6 +63,7 @@ export const customerReservationPreviewProps = {
     mapImageSrc: workspaceLocationMapUrl,
   },
   table: {
+    mode: "assigned",
     name: "12",
   },
   network: {

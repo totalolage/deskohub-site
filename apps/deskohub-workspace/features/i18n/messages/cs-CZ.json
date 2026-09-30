@@ -679,6 +679,7 @@
   "checkoutEmailCustomerInvoiceLabel": "Faktura",
   "checkoutEmailCustomerInvoiceDownload": "Stáhnout",
   "checkoutEmailTableNumberLabel": "Stůl",
+  "checkoutEmailTablesLabel": "Stoly",
   "checkoutEmailNetworkHeading": "Wi-Fi",
   "checkoutEmailNetworkSsidLabel": "Název sítě",
   "checkoutEmailNetworkPasswordLabel": "Heslo",

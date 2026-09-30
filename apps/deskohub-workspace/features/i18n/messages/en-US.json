@@ -673,6 +673,7 @@
   "checkoutEmailCustomerInvoiceLabel": "Invoice",
   "checkoutEmailCustomerInvoiceDownload": "Download",
   "checkoutEmailTableNumberLabel": "Table",
+  "checkoutEmailTablesLabel": "Tables",
   "checkoutEmailNetworkHeading": "Wi-Fi",
   "checkoutEmailNetworkSsidLabel": "Network name",
   "checkoutEmailNetworkPasswordLabel": "Password",
