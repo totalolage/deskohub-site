@@ -286,6 +286,47 @@ describe("workspace E2E workflow", () => {
     expect(rawSkipped.includes("vercel deploy")).toBe(false);
   });
 
+  test("migrates the resolved preview before capacity checks and browser setup", () => {
+    const steps = testJob.steps ?? [];
+    const resolveIndex = steps.findIndex(
+      (step) => step.name === "Resolve Neon branch backing the preview"
+    );
+    const migrateIndex = steps.findIndex(
+      (step) => step.name === "Migrate preview database"
+    );
+    const staleCleanupIndex = steps.findIndex(
+      (step) => step.name === "Reconcile stale Workspace E2E reservations"
+    );
+    const capacityIndex = steps.findIndex(
+      (step) => step.name === "Validate aggregate Dotypos capacity"
+    );
+    const browserIndex = steps.findIndex(
+      (step) => step.name === "Verify hosted browser runtime"
+    );
+    const migration = stepByName("Migrate preview database");
+    const runIndex = steps.findIndex(
+      (step) => step.name === "Run checkout E2E"
+    );
+
+    expect(doc.jobs["migrate-preview"]).toBeUndefined();
+    expect(testJob.needs).toBe("resolve-target");
+    expect(resolveIndex).toBeGreaterThanOrEqual(0);
+    expect(migrateIndex).toBeGreaterThan(resolveIndex);
+    expect(staleCleanupIndex).toBeGreaterThan(migrateIndex);
+    expect(capacityIndex).toBeGreaterThan(migrateIndex);
+    expect(browserIndex).toBeGreaterThan(migrateIndex);
+    expect(runIndex).toBeGreaterThan(migrateIndex);
+    expect(migration.if).toBeUndefined();
+    expect(migration["continue-on-error"]).toBeUndefined();
+    expect(migration["working-directory"]).toBe("apps/deskohub-workspace");
+    expect(migration.env).toEqual({
+      DATABASE_URL: "$" + "{{ steps.preview-database.outputs.direct_url }}",
+      DATABASE_URL_UNPOOLED:
+        "$" + "{{ steps.preview-database.outputs.direct_url }}",
+    });
+    expect(migration.run).toBe("bun run db:migrate");
+  });
+
   test("classifies the synthetic main account only after a failed E2E run", () => {
     const packageJson = readTrackedJson("../package.json") as {
       readonly scripts: Record<string, string | undefined>;
@@ -727,15 +768,12 @@ describe("workspace E2E workflow", () => {
     expect(serializedWorkflow.includes("Run instant navigation E2E")).toBe(
       false
     );
-    expect(JSON.stringify(testJob.needs)).toBe(
-      JSON.stringify(["resolve-target", "migrate-preview"])
-    );
-    // The checkout job reuses the migrated preview; it never migrates itself.
+    expect(testJob.needs).toBe("resolve-target");
     expect(
       (testJob.steps ?? []).some(
         (step) => step.name === "Migrate preview database"
       )
-    ).toBe(false);
+    ).toBe(true);
     expect(doc.jobs["publish-final-status"].needs).toEqual([
       "resolve-target",
       "test-e2e",

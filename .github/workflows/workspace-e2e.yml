@@ -212,102 +212,8 @@ jobs:
             echo "url=$normalized_url"
           } >> "$GITHUB_OUTPUT"
 
-  migrate-preview:
-    needs: resolve-target
-    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: workspace-checkout-e2e
-    permissions:
-      contents: read
-    env:
-      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-      TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
-
-    steps:
-      - name: Checkout exact target
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve-target.outputs.sha }}
-          persist-credentials: false
-
-      - name: Confirm checked-out commit
-        run: |
-          set -euo pipefail
-          actual_sha="$(git rev-parse HEAD)"
-          if [[ "$actual_sha" != "$TARGET_SHA" ]]; then
-            echo "Checked-out commit does not match the deployment SHA" >&2
-            exit 1
-          fi
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.0
-
-      - name: Install repository dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Resolve Neon branch backing the preview
-        id: preview-database
-        env:
-          HEAD_REF: ${{ needs.resolve-target.outputs.head_ref }}
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-        run: |
-          set -euo pipefail
-          if ! git check-ref-format --branch "$HEAD_REF" >/dev/null; then
-            echo "Unsupported preview branch name" >&2
-            exit 1
-          fi
-          branch_name="preview/$HEAD_REF"
-          if ! git check-ref-format --branch "$branch_name" >/dev/null; then
-            echo "Derived Neon preview branch name is invalid" >&2
-            exit 1
-          fi
-
-          branch_id=""
-          for _ in $(seq 1 12); do
-            branches="$(bunx neonctl@2.30.1 branches list \
-              --project-id "$NEON_PROJECT_ID" \
-              --api-key "$NEON_API_KEY" \
-              --output json)"
-            matches="$(jq \
-              --arg name "$branch_name" \
-              '[(if type == "array" then . else .branches end)[] | select(.name == $name and .primary != true)]' \
-              <<<"$branches")"
-            match_count="$(jq 'length' <<<"$matches")"
-            if [[ "$match_count" == "1" ]]; then
-              branch_id="$(jq -r '.[0].id' <<<"$matches")"
-              break
-            fi
-            if [[ "$match_count" != "0" ]]; then
-              echo "Neon preview branch mapping is ambiguous" >&2
-              exit 1
-            fi
-            sleep 5
-          done
-
-          if [[ ! "$branch_id" =~ ^br-[A-Za-z0-9-]+$ ]]; then
-            echo "The integration-created Neon preview branch was not found" >&2
-            exit 1
-          fi
-
-          direct_url="$(bunx neonctl@2.30.1 connection-string "$branch_id" \
-            --project-id "$NEON_PROJECT_ID" \
-            --role-name neondb_owner \
-            --database-name neondb \
-            --api-key "$NEON_API_KEY")"
-          echo "::add-mask::$direct_url"
-          echo "direct_url=$direct_url" >> "$GITHUB_OUTPUT"
-
-      - name: Migrate preview database
-        working-directory: apps/deskohub-workspace
-        env:
-          DATABASE_URL: ${{ steps.preview-database.outputs.direct_url }}
-          DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
-        run: bun run db:migrate
-
   test-e2e:
-    needs: [resolve-target, migrate-preview]
+    needs: resolve-target
     if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -472,6 +378,13 @@ jobs:
             echo "direct_url=$direct_url"
             echo "pooled_url=$pooled_url"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Migrate preview database
+        working-directory: apps/deskohub-workspace
+        env:
+          DATABASE_URL: ${{ steps.preview-database.outputs.direct_url }}
+          DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
+        run: bun run db:migrate
 
       - name: Reconcile stale Workspace E2E reservations
         if: github.event_name == 'workflow_dispatch' && inputs.cleanup_stale_e2e_reservations
