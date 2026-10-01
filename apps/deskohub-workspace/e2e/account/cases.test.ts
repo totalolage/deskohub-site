@@ -51,6 +51,10 @@ const signInFormSelector = "#account-sign-in-form";
 const signInEmailSelector = "#account-sign-in-email";
 const signInSubmitSelector = "#account-sign-in-submit";
 const signOutSelector = "#account-sign-out";
+const languageTriggerSelector = '[data-slot="select-trigger"]';
+const languageSaveSelector = 'button[type="button"]:has-text("Save")';
+const languageOptionCsSelector = '[role="option"]:has-text("Čeština")';
+const languageOptionEnSelector = '[role="option"]:has-text("English (US)")';
 const deleteTriggerSelector = "#delete-account-trigger";
 const deleteReauthSendSelector = "#delete-account-reauth-send";
 const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
@@ -200,6 +204,15 @@ class FakeAccountExternalState {
   readonly usersById = new Map<string, FakeUser>();
   readonly linksByUserId = new Map<string, string>();
   readonly consumedLinks = new Set<string>();
+  readonly languageSaves: Array<"cs-CZ" | "en-US"> = [];
+
+  /**
+   * The site default preference: the migration backfills existing accounts
+   * and the user.create hook seeds new accounts from the initiating site
+   * locale, so the synthetic account restores English (US) on every sign-in
+   * until a save changes it.
+   */
+  preferredLanguage: "cs-CZ" | "en-US" = "en-US";
 
   currentAuthUserId: string | undefined;
   historyReady = false;
@@ -408,6 +421,11 @@ class FakeAccountExternalState {
     this.events.push({ customerId, type: "unlink", userId: accountId });
   }
 
+  savePreferredLanguage(locale: "cs-CZ" | "en-US") {
+    this.languageSaves.push(locale);
+    this.preferredLanguage = locale;
+  }
+
   sendMessage(email: string, kind: "sign-in" | "reauthentication") {
     let messageKind: FakeMessageKind;
     if (kind === "reauthentication") {
@@ -479,8 +497,15 @@ class FakeAccountExternalState {
     this.consumedLinks.add(link);
     switch (message.kind) {
       case "initial-main": {
-        this.createAuthUser("auth-original", message.recipient);
-        this.currentAuthUserId = "auth-original";
+        // A magic-link sign-in for an existing verified account signs into
+        // the same user instead of creating a duplicate identity; the lane's
+        // later account cases rely on that persisted link and preference.
+        if (this.usersById.has("auth-original")) {
+          this.currentAuthUserId = "auth-original";
+        } else {
+          this.createAuthUser("auth-original", message.recipient);
+          this.currentAuthUserId = "auth-original";
+        }
         this.events.push({
           id: message.id,
           kind: message.kind,
@@ -722,11 +747,26 @@ class FakeBrowser {
   private nativeValidationBlocked = false;
   private formReady = false;
   private selectedSection = "";
+  private languageListboxOpen = false;
+  private languagePending: "cs-CZ" | "en-US" | null = null;
 
   constructor(readonly external: FakeAccountExternalState) {}
 
+  /**
+   * The committed select value: a genuinely changed selection wins until the
+   * save lands, otherwise the persisted preference is what Radix restored.
+   * Re-picking this restored value fires no onValueChange, exactly as the
+   * real Radix Select behaves.
+   */
+  private get languageValue(): "cs-CZ" | "en-US" {
+    return this.languagePending ?? this.external.preferredLanguage;
+  }
+
   open(url: string) {
     const parsed = new URL(url);
+    this.languageListboxOpen = false;
+    this.languagePending = null;
+    this.selectedSection = "";
     this.external.recordBrowserAction({
       kind: "open",
       selectorOrDestination: parsed.pathname,
@@ -865,6 +905,40 @@ class FakeBrowser {
       this.selectedSection = "danger";
       return;
     }
+    if (selector.includes("Profile & Identity")) {
+      this.selectedSection = "profile";
+      return;
+    }
+    if (selector === languageTriggerSelector) {
+      this.languageListboxOpen = true;
+      return;
+    }
+    if (selector === languageOptionCsSelector) {
+      if (!this.languageListboxOpen) {
+        throw new Error("the language option was clicked without a listbox");
+      }
+      if (this.languageValue !== "cs-CZ") this.languagePending = "cs-CZ";
+      this.languageListboxOpen = false;
+      return;
+    }
+    if (selector === languageOptionEnSelector) {
+      if (!this.languageListboxOpen) {
+        throw new Error("the language option was clicked without a listbox");
+      }
+      if (this.languageValue !== "en-US") this.languagePending = "en-US";
+      this.languageListboxOpen = false;
+      return;
+    }
+    if (selector === languageSaveSelector) {
+      if (this.languagePending === null) {
+        throw new Error("the language Save stayed disabled");
+      }
+      this.external.savePreferredLanguage(this.languagePending);
+      this.languagePending = null;
+      this.languageListboxOpen = false;
+      this.pageText = `${this.pageText} Communication language saved.`;
+      return;
+    }
     throw new Error("the synthetic browser clicked an unexpected control");
   }
 
@@ -880,6 +954,7 @@ class FakeBrowser {
       kind: "press",
       selectorOrDestination: key,
     });
+    if (key === "Escape") this.languageListboxOpen = false;
   }
 
   eval(input: string) {
@@ -919,6 +994,29 @@ class FakeBrowser {
     if (description === "reauthentication dialog") {
       if (!this.external.reauthenticationDialog) {
         throw new Error("the reauthentication dialog is missing");
+      }
+      return;
+    }
+    if (description === "account profile section") {
+      if (this.selectedSection !== "profile") {
+        throw new Error("the profile section is not selected");
+      }
+      return;
+    }
+    if (description === "language Save stays disabled before any selection change") {
+      // The save gate stays closed until a genuine selection change sets a
+      // pending value; the restored preference alone never enables it.
+      if (this.languagePending !== null) {
+        throw new Error("the language Save was enabled without a change");
+      }
+      return;
+    }
+    if (description === "restored Čeština option selected") {
+      if (!this.languageListboxOpen) {
+        throw new Error("the restored language check ran without a listbox");
+      }
+      if (this.languageValue !== "cs-CZ") {
+        throw new Error("the restored language option is not Čeština");
       }
       return;
     }
@@ -1610,4 +1708,81 @@ test("fails when the reauthentication handoff names a different linked customer"
   ]);
   expect(scenario.operations).toEqual(["verify"]);
   expect(scenario.retries).toEqual([]);
+});
+
+test("saves the preferred communication language through a genuine selection change", async () => {
+  setSystemTime(fixedNow);
+  const { makeWorkspaceE2EAccountCases } = await import("./cases");
+  const scenario = makeScenario();
+  const external = scenario.external;
+
+  // The lane reaches the language case with an onboarded, linked account
+  // whose reservation history is already provisioned, signed in on a fresh
+  // session. The site default preference is English (US).
+  const seedUser = {
+    createdAt: fixedNow,
+    deletionRequestedAt: null,
+    email: external.mainRecipient,
+    id: "auth-original",
+    session: true,
+  } satisfies FakeUser;
+  external.usersById.set(seedUser.id, seedUser);
+  external.usersByEmail.set(seedUser.email, seedUser);
+  const seedProfile = {
+    companyName: null,
+    deleted: false,
+    email: external.mainRecipient,
+    expireDate: null,
+    firstName: "E2E",
+    id: "customer-language",
+    lastName: "",
+    phone: "",
+  } satisfies FakeProfile;
+  external.profiles.set(seedProfile.id, seedProfile);
+  external.linksByUserId.set(seedUser.id, seedProfile.id);
+  external.currentAuthUserId = seedUser.id;
+  external.historyReady = true;
+
+  const selected = await buildCase(
+    makeWorkspaceE2EAccountCases,
+    "account-communication-language",
+    scenario
+  );
+  const stepIds: string[] = [];
+  const runStep: WorkspaceE2EStepRunner = <A, R>(
+    step: WorkspaceE2EStep<A, R>
+  ) => {
+    stepIds.push(step.id);
+    return step.execute;
+  };
+  await Effect.runPromise(
+    selected.execute({
+      journalRef: scenario.journalRef,
+      runStep,
+      session,
+    }) as Effect.Effect<void, WorkspaceE2EError>
+  );
+
+  // Both sign-ins budgeted their send and verification, and the save
+  // persisted Čeština exactly once through a genuine selection change away
+  // from the backfilled English (US) initial value, so the restore check
+  // proves a real write.
+  expect(scenario.operations).toEqual(["send", "verify", "send", "verify"]);
+  expect(scenario.retries).toEqual([]);
+  expect(external.languageSaves).toEqual(["cs-CZ"]);
+  expect(external.preferredLanguage).toBe("cs-CZ");
+  expect(stepIds).toEqual([
+    "signs out for a fresh language-preference sign-in",
+    "records the delivered message baseline before the fresh sign-in",
+    "requests the fresh sign-in link",
+    "retrieves the fresh sign-in link",
+    "signs in and opens the profile section",
+    "saves Čeština as the preferred communication language",
+    "signs out before the restore check",
+    "records the delivered message baseline before the restore sign-in",
+    "requests the restore sign-in link",
+    "retrieves the restore sign-in link",
+    "signs in again and opens the profile section for the restore check",
+    "restores Čeština as the saved communication language",
+  ]);
 });

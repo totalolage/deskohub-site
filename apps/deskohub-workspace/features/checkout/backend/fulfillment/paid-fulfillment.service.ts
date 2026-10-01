@@ -3,6 +3,7 @@ import { EmailServiceTag } from "@deskohub/email/backend/service";
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { env } from "@/env";
+import { CustomerEmailLocaleService } from "@/features/account";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
 import {
@@ -23,6 +24,7 @@ import { captureReservationCompleted } from "../analytics/posthog-lifecycle-even
 import { WorkspaceCheckoutNetworkDetailsService } from "./network-details.service";
 import {
   createCustomerEmailInitialIdempotencyKey,
+  createCustomerEmailLocaleResolver,
   createCustomerEmailRecoveryIdempotencyKey,
   WorkspaceReservationEmailService,
 } from "./workspace-reservation-email.service";
@@ -46,6 +48,10 @@ export class WorkspacePaidFulfillmentError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+class CustomerEmailDeliveryGenerationClosed extends Data.TaggedError(
+  "CustomerEmailDeliveryGenerationClosed"
+)<{}> {}
+
 export const PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS = 60 * 1000;
 
 export interface IWorkspacePaidFulfillmentService {
@@ -67,6 +73,9 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
       const reservations = yield* WorkspaceReservationRepository;
       const dotypos = yield* DotyposService;
       const reservationEmails = yield* WorkspaceReservationEmailService;
+      const emailLocale = yield* CustomerEmailLocaleService;
+      const resolveCustomerEmailLocale =
+        createCustomerEmailLocaleResolver(emailLocale);
       const workspaceReservations = yield* WorkspaceReservationService;
       const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
       const posthogEvents = yield* PostHogEventService;
@@ -387,9 +396,54 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                   })
                 )
               );
+            // A retained locale pins the current idempotency generation to the
+            // language of its first send: preference changes between failed or
+            // accepted-but-unrecorded retries must not change the email under
+            // the same provider idempotency key. Retention is bound to the
+            // claimed delivery generation via its active-delivery marker, and
+            // the repository returns the AUTHORITATIVE retained locale, so a
+            // writer that loses the null-slot race adopts the winner's locale
+            // and sends it. A null result means another writer already closed
+            // this generation by recording its accepted send, so this writer
+            // fails before sending. Recording the accepted send's delivery ID
+            // clears the slot, so the next generation resolves the current
+            // preference again.
+            const customerEmailLocale = yield* (
+              claimed.customerEmailDeliveryLocale
+                ? Effect.succeed(claimed.customerEmailDeliveryLocale)
+                : resolveCustomerEmailLocale(reservationForDelivery).pipe(
+                    Effect.flatMap((locale) =>
+                      reservations.retainCustomerEmailDeliveryLocale({
+                        id: claimed.id,
+                        locale,
+                        expectedActiveCustomerEmailDeliveryId:
+                          claimed.activeCustomerEmailDeliveryId ?? null,
+                      })
+                    ),
+                    Effect.flatMap((authoritativeLocale) =>
+                      authoritativeLocale
+                        ? Effect.succeed(authoritativeLocale)
+                        : Effect.fail(
+                            new CustomerEmailDeliveryGenerationClosed()
+                          )
+                    )
+                  )
+            ).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new WorkspacePaidFulfillmentError({
+                    orderId: input.orderId,
+                    failureCode: "fulfillment_email_failed",
+                    message:
+                      "Paid reservation customer email locale could not be resolved and retained.",
+                    cause,
+                  })
+              )
+            );
             const customerEmailDeliveryId = yield* reservationEmails
               .sendPaidReservationEmails({
                 reservation: reservationForDelivery,
+                customerEmailLocale,
                 customerEmailIdempotencyKey:
                   claimed.activeCustomerEmailDeliveryId
                     ? createCustomerEmailRecoveryIdempotencyKey(
@@ -425,10 +479,27 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
             yield* Effect.logInfo(
               "Paid fulfillment recorded accepted customer email delivery"
             );
-            yield* reservations.markAwaitingCustomerEmailDelivery({
-              id: claimed.id,
-              customerEmailDeliveryId,
-            });
+            yield* reservations
+              .markAwaitingCustomerEmailDelivery({
+                id: claimed.id,
+                customerEmailDeliveryId,
+                expectedActiveCustomerEmailDeliveryId:
+                  claimed.activeCustomerEmailDeliveryId ?? null,
+              })
+              .pipe(
+                // Only a verified generation supersession is benign: another
+                // writer owns the reservation row, so this recording is a
+                // no-op. Any other invalid-state failure keeps the normal
+                // failure handling.
+                Effect.catchTag(
+                  "WorkspaceReservationDeliveryGenerationSupersededError",
+                  () =>
+                    Effect.logWarning(
+                      "Paid fulfillment delivery recording superseded by a newer delivery generation",
+                      { orderId: input.orderId }
+                    )
+                )
+              );
             yield* Effect.logInfo(
               "Paid fulfillment is awaiting Resend delivery webhook"
             );
@@ -457,8 +528,11 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
       Layer.provideMerge(
         WorkspaceReservationEmailService.Default,
         Layer.provideMerge(
-          Layer.provideMerge(EmailServiceTag.Live, EmailConfigLayer),
-          WorkspaceCheckoutNetworkDetailsService.Default
+          Layer.provideMerge(
+            Layer.provideMerge(EmailServiceTag.Live, EmailConfigLayer),
+            WorkspaceCheckoutNetworkDetailsService.Default
+          ),
+          CustomerEmailLocaleService.Live
         )
       )
     ),

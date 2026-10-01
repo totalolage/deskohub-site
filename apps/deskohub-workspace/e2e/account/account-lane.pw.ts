@@ -40,6 +40,7 @@ import {
 import {
   captureAccountReview,
   captureReservationStatusReview,
+  withLanguagePreferenceReview,
   withSignInPendingReview,
 } from "./review-screenshots";
 import {
@@ -348,6 +349,12 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         );
       } else if (caseId === "account-magic-link-delivery") {
         await withCallbackHandoffReview(
+          getOwnedPage(),
+          accountLane.config.baseUrl,
+          runCase
+        );
+      } else if (caseId === "account-communication-language") {
+        await withLanguagePreferenceReview(
           getOwnedPage(),
           accountLane.config.baseUrl,
           runCase

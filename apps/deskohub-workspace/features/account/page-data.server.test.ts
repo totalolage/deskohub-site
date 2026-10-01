@@ -152,6 +152,29 @@ mock.module(
     CustomerReservationHistoryService: History,
   })
 );
+
+let preferenceLoadEffect: Effect.Effect<"cs-CZ" | "en-US", unknown> =
+  Effect.succeed("cs-CZ");
+
+const PreferenceRepository = Context.Service<
+  PreferenceRepository,
+  { readonly load: () => typeof preferenceLoadEffect }
+>()("@test/AccountCommunicationPreference");
+
+const PreferenceRepositoryLayer = Layer.succeed(PreferenceRepository, {
+  load: () => preferenceLoadEffect,
+});
+Object.assign(PreferenceRepository, {
+  Default: PreferenceRepositoryLayer,
+  Live: PreferenceRepositoryLayer,
+});
+
+mock.module(
+  "@/features/account/backend/customer-communication-preference.repository",
+  () => ({
+    CustomerCommunicationPreferenceRepository: PreferenceRepository,
+  })
+);
 mock.module("@/shared/backend/workspace-effect", () => ({
   runWorkspaceEffect:
     (_operation: string, _options: { readonly boundary: string }) =>
@@ -170,6 +193,7 @@ describe("loadCustomerAccountPage", () => {
       kind: "available",
       groups: { current: [], past: [], unavailable: [] },
     });
+    preferenceLoadEffect = Effect.succeed("cs-CZ");
   });
 
   const loadPageState = async () => {
@@ -274,10 +298,53 @@ describe("loadCustomerAccountPage", () => {
     });
   });
 
-  test("renders the linked account with profile and grouped history", async () => {
+  test("renders the linked account with profile, grouped history, and the saved preference", async () => {
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "linked",
       email: "ada@example.test",
+      preferredLanguage: "cs-CZ",
+      profile: { firstName: "Ada" },
+      history: { kind: "available" },
+    });
+  });
+
+  test("never exposes a missing preference row as a successful unset state", async () => {
+    // A linked account always has a required preference row; the repository
+    // fails the read with the typed missing error and the page state has no
+    // null/unset success value.
+    preferenceLoadEffect = Effect.fail({
+      _tag: "CustomerCommunicationPreferenceMissingError",
+      code: "account-communication-preference.missing",
+    });
+
+    const state = await loadPageState();
+
+    expect(state.kind).toBe("linked");
+    if (state.kind === "linked") {
+      expect(["read-failed", "cs-CZ", "en-US"]).toContain(
+        state.preferredLanguage
+      );
+      expect(state.preferredLanguage).toBe("read-failed");
+      expect(state.preferredLanguage).not.toBeNull();
+    }
+  });
+
+  test("restores the saved communication preference in the linked state", async () => {
+    preferenceLoadEffect = Effect.succeed("cs-CZ");
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      preferredLanguage: "cs-CZ",
+    });
+  });
+
+  test("marks the linked state read-failed without blocking the page when the preference read fails", async () => {
+    preferenceLoadEffect = Effect.fail(new Error("preference read down"));
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      email: "ada@example.test",
+      preferredLanguage: "read-failed",
       profile: { firstName: "Ada" },
       history: { kind: "available" },
     });
@@ -289,6 +356,7 @@ describe("loadCustomerAccountPage", () => {
     await expect(loadPageState()).resolves.toEqual({
       kind: "linked",
       email: "ada@example.test",
+      preferredLanguage: "cs-CZ",
       profile: {
         firstName: "Ada",
         lastName: "Lovelace",

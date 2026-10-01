@@ -9,6 +9,7 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
   lt,
   lte,
   ne,
@@ -36,6 +37,7 @@ import type {
   PaymentAttemptId,
 } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
+import type { Locale } from "@/features/i18n";
 import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
@@ -63,6 +65,20 @@ export class WorkspaceReservationStateError extends Data.TaggedError(
   readonly operation: string;
   readonly reservationId: WorkspaceReservationId;
   readonly message: string;
+}> {}
+
+/**
+ * A delivery recording or retention arrived for an email idempotency
+ * generation that another writer already closed by recording its accepted
+ * send, so the writer must adopt the newer generation instead of touching it.
+ */
+export class WorkspaceReservationDeliveryGenerationSupersededError extends Data.TaggedError(
+  "WorkspaceReservationDeliveryGenerationSupersededError"
+)<{
+  readonly operation: string;
+  readonly reservationId: WorkspaceReservationId;
+  readonly expectedActiveCustomerEmailDeliveryId: EmailDeliveryId | null;
+  readonly activeCustomerEmailDeliveryId: EmailDeliveryId | null;
 }> {}
 
 export class WorkspaceReservationDetailsMalformedError extends Data.TaggedError(
@@ -238,12 +254,20 @@ export interface IWorkspaceReservationRepository {
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
+  readonly retainCustomerEmailDeliveryLocale: (input: {
+    readonly id: WorkspaceReservationId;
+    readonly locale: Locale;
+    readonly expectedActiveCustomerEmailDeliveryId: EmailDeliveryId | null;
+  }) => Effect.Effect<Locale | null, EffectDrizzleQueryError>;
   readonly markAwaitingCustomerEmailDelivery: (input: {
     readonly id: WorkspaceReservationId;
     readonly customerEmailDeliveryId: EmailDeliveryId;
+    readonly expectedActiveCustomerEmailDeliveryId: EmailDeliveryId | null;
   }) => Effect.Effect<
     void,
-    EffectDrizzleQueryError | WorkspaceReservationStateError
+    | EffectDrizzleQueryError
+    | WorkspaceReservationDeliveryGenerationSupersededError
+    | WorkspaceReservationStateError
   >;
   readonly markCustomerEmailDeliveryFulfilled: (input: {
     readonly customerEmailDeliveryId: EmailDeliveryId;
@@ -1066,24 +1090,114 @@ export class WorkspaceReservationRepository extends Context.Service<
           (effect, customerEmailDeliveryId) =>
             effect.pipe(Effect.annotateLogs({ customerEmailDeliveryId }))
         ),
+        retainCustomerEmailDeliveryLocale: Effect.fn(
+          "workspaceReservations.retainCustomerEmailDeliveryLocale"
+        )(function* (input) {
+          // Both statements are bound to the claimed delivery generation via
+          // its active-delivery marker, so a writer whose generation was
+          // recorded (or advanced) while it stalled can neither seed nor
+          // borrow another generation's locale slot. Only the first send of a
+          // generation may seed the slot, so a later attempt can never
+          // overwrite the locale behind an existing idempotency key.
+          const generationStillActive =
+            input.expectedActiveCustomerEmailDeliveryId === null
+              ? isNull(workspaceReservations.activeCustomerEmailDeliveryId)
+              : eq(
+                  workspaceReservations.activeCustomerEmailDeliveryId,
+                  input.expectedActiveCustomerEmailDeliveryId
+                );
+          // A writer that loses the null-slot race receives the
+          // already-retained locale so its send matches the generation.
+          const [seeded] = yield* db
+            .update(workspaceReservations)
+            .set({
+              customerEmailDeliveryLocale: input.locale,
+              updatedAt: Temporal.Now.instant(),
+            })
+            .where(
+              and(
+                eq(workspaceReservations.id, input.id),
+                isNull(workspaceReservations.customerEmailDeliveryLocale),
+                generationStillActive
+              )
+            )
+            .returning({
+              locale: workspaceReservations.customerEmailDeliveryLocale,
+            });
+          if (seeded) return seeded.locale;
+          const [retained] = yield* db
+            .select({
+              locale: workspaceReservations.customerEmailDeliveryLocale,
+            })
+            .from(workspaceReservations)
+            .where(
+              and(eq(workspaceReservations.id, input.id), generationStillActive)
+            )
+            .limit(1);
+          // Null means the claimed generation is closed: another writer
+          // recorded its accepted send between the claim and this retention.
+          return retained?.locale ?? null;
+        }),
         markAwaitingCustomerEmailDelivery: Effect.fn(
           "workspaceReservations.markAwaitingCustomerEmailDelivery"
         )(function* (input) {
+          // The expected prior delivery ID binds the recording to the
+          // generation the writer claimed, so a delayed recording from an old
+          // generation can never overwrite a newer generation's delivery ID
+          // or clear its retained locale.
           const updated = yield* db
             .update(workspaceReservations)
             .set({
               fulfillmentState: "awaiting_delivery",
               activeCustomerEmailDeliveryId: input.customerEmailDeliveryId,
+              // Recording the accepted send closes its idempotency generation,
+              // so the next generation resolves the current preference again.
+              customerEmailDeliveryLocale: null,
               updatedAt: Temporal.Now.instant(),
             })
             .where(
               and(
                 eq(workspaceReservations.id, input.id),
                 eq(workspaceReservations.paymentState, "paid"),
-                eq(workspaceReservations.fulfillmentState, "processing")
+                eq(workspaceReservations.fulfillmentState, "processing"),
+                input.expectedActiveCustomerEmailDeliveryId === null
+                  ? isNull(workspaceReservations.activeCustomerEmailDeliveryId)
+                  : eq(
+                      workspaceReservations.activeCustomerEmailDeliveryId,
+                      input.expectedActiveCustomerEmailDeliveryId
+                    )
               )
             )
             .returning({ id: workspaceReservations.id });
+          if (updated.length > 0) return;
+          // Distinguish verified generation supersession from other
+          // invalid-state failures so callers only treat supersession as a
+          // benign no-op.
+          const [current] = yield* db
+            .select({
+              activeCustomerEmailDeliveryId:
+                workspaceReservations.activeCustomerEmailDeliveryId,
+            })
+            .from(workspaceReservations)
+            .where(eq(workspaceReservations.id, input.id))
+            .limit(1);
+          if (
+            current &&
+            current.activeCustomerEmailDeliveryId !==
+              input.expectedActiveCustomerEmailDeliveryId
+          ) {
+            return yield* new WorkspaceReservationDeliveryGenerationSupersededError(
+              {
+                operation:
+                  "workspaceReservations.markAwaitingCustomerEmailDelivery",
+                reservationId: input.id,
+                expectedActiveCustomerEmailDeliveryId:
+                  input.expectedActiveCustomerEmailDeliveryId,
+                activeCustomerEmailDeliveryId:
+                  current.activeCustomerEmailDeliveryId,
+              }
+            );
+          }
           yield* ensureUpdated(
             updated,
             "workspaceReservations.markAwaitingCustomerEmailDelivery",

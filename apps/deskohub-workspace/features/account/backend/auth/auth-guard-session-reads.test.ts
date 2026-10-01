@@ -2,7 +2,9 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
+import { Effect, Layer } from "effect";
 import { makeAuthDatabase } from "@/db/auth-database-client";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   authAccount,
   authRateLimit,
@@ -11,9 +13,28 @@ import {
   authVerification,
 } from "@/db/schema/auth";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  requireAccountCommunicationPreference as requireAccountCommunicationPreferenceEffect,
+  seedAccountCommunicationPreference,
+} from "../customer-communication-preference.repository";
 import { type MagicLinkSendFunction, makeWorkspaceAuth } from "./auth-server";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
+
+const seedPreference = (
+  accountId: Parameters<typeof seedAccountCommunicationPreference>[0],
+  locale: Parameters<typeof seedAccountCommunicationPreference>[1]
+) =>
+  Effect.runPromise(
+    seedAccountCommunicationPreference(accountId, locale).pipe(
+      Effect.provide(
+        Layer.succeed(
+          WorkspaceDatabase,
+          WorkspaceDatabase.of({ db: testDatabase!.db })
+        )
+      )
+    )
+  );
 
 type RecordedCookieSet = {
   readonly name: string;
@@ -63,6 +84,18 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     areAccountsEnabled: async () => true,
     sendMagicLink,
     beforeDeleteUser: () => Promise.resolve(),
+    createAccountCommunicationPreference: seedPreference,
+    requireAccountCommunicationPreference: (accountId) =>
+      Effect.runPromise(
+        requireAccountCommunicationPreferenceEffect(accountId).pipe(
+          Effect.provide(
+            Layer.succeed(
+              WorkspaceDatabase,
+              WorkspaceDatabase.of({ db: testDatabase!.db })
+            )
+          )
+        )
+      ),
   });
 };
 

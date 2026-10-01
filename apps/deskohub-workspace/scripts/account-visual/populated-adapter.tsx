@@ -7,6 +7,7 @@ import type { AccountVisualAdapterProps } from "./types";
 const populatedFixture = {
   kind: "linked",
   email: "ada@example.test",
+  preferredLanguage: "cs-CZ",
   profile: {
     firstName: "Ada",
     lastName: "Example",

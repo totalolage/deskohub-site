@@ -14,6 +14,7 @@ export type {
   CustomerProfile,
   CustomerProfileBilling,
 } from "./backend/customer-dotypos-adapter.service";
+export { CustomerEmailLocaleService } from "./backend/customer-email-locale.service";
 export { CustomerProfileService } from "./backend/customer-profile.service";
 export { CustomerReservationHistoryService } from "./backend/customer-reservation-history.service";
 export type {

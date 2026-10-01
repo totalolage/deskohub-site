@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, expect, mock, spyOn, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
@@ -20,7 +20,28 @@ import {
 } from "@playwright/test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getAccountScreenCopy } from "../../features/account/components/account-screen-copy";
-import { ProfileScreen } from "../../features/account/components/profile/profile-screen";
+
+mock.module("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => undefined }),
+}));
+
+mock.module("@/features/account/actions", () => ({
+  updatePreferredLanguage: () => Promise.resolve({ data: { status: "saved" } }),
+}));
+
+mock.module("@/shared/utils/use-workspace-action", () => ({
+  useWorkspaceAction: () => ({
+    execute: () => undefined,
+    isExecuting: false,
+    reset: () => undefined,
+    result: {},
+  }),
+}));
+
+const { ProfileScreen } = await import(
+  "../../features/account/components/profile/profile-screen"
+);
+
 import type { JsonObject } from "./create-account-visual-verification";
 import {
   assertCurrentPngMatchesHistoricalHash,

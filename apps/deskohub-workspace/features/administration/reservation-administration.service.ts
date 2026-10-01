@@ -2,6 +2,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import { EmailServiceTag } from "@deskohub/email/backend/service";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { CustomerEmailLocaleService } from "@/features/account";
 import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/backend/fulfillment/network-details.service";
 import { WorkspaceReservationEmailService } from "@/features/checkout/backend/fulfillment/workspace-reservation-email.service";
 import { administrationForcedPaymentCancellationFailureCode } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
@@ -268,8 +269,11 @@ export class ReservationAdministrationService extends Context.Service<
       Layer.provideMerge(
         WorkspaceReservationEmailService.Default,
         Layer.provideMerge(
-          Layer.provideMerge(EmailServiceTag.Live, EmailConfigLayer),
-          WorkspaceCheckoutNetworkDetailsService.Default
+          Layer.provideMerge(
+            Layer.provideMerge(EmailServiceTag.Live, EmailConfigLayer),
+            WorkspaceCheckoutNetworkDetailsService.Default
+          ),
+          CustomerEmailLocaleService.Live
         )
       )
     ),

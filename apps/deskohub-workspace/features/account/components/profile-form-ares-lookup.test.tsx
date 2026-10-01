@@ -41,6 +41,7 @@ mock.module("@/features/account/actions", () => ({
   completeCustomerProfile,
   lookupAresBusiness,
   updateCustomerProfile,
+  updatePreferredLanguage: () => Promise.resolve({ data: { status: "saved" } }),
 }));
 
 mock.module("@/features/account/components/account-screen-copy", () => ({

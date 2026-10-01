@@ -18,6 +18,7 @@ import type {
   CheckoutSessionKey,
   PaymentAttemptId,
 } from "@/features/checkout/checkout-identifiers";
+import type { Locale } from "@/features/i18n";
 import type {
   StoredWorkspaceReservationDetails,
   WorkspaceReservationId,
@@ -114,6 +115,9 @@ export const workspaceReservations = pgTable(
     activeCustomerEmailDeliveryId: text(
       "active_customer_email_delivery_id"
     ).$type<EmailDeliveryId>(),
+    customerEmailDeliveryLocale: text(
+      "customer_email_delivery_locale"
+    ).$type<Locale>(),
     reservationDetails: jsonb("reservation_details")
       .$type<StoredWorkspaceReservationDetails>()
       .notNull(),

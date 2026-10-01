@@ -1219,6 +1219,183 @@ export const makeWorkspaceE2EAccountCases = ({
         );
       })
     ),
+    makeCase("account-communication-language", ({ runStep }) =>
+      Effect.gen(function* () {
+        const languageTriggerSelector = '[data-slot="select-trigger"]';
+        const languageSaveSelector = 'button[type="button"]:has-text("Save")';
+        const languageOptionCsSelector = '[role="option"]:has-text("Čeština")';
+        const languageSavedCopy = "Communication language saved.";
+        const languageOptionCs = "Čeština";
+
+        yield* runStep(
+          step(
+            "signs out for a fresh language-preference sign-in",
+            signOutAndRequireAnonymous(),
+            navigationTimeout
+          )
+        );
+        const observedMessageIds = yield* runStep(
+          step(
+            "records the delivered message baseline before the fresh sign-in",
+            observeDeliveredMessageIds(recipient),
+            providerTransition
+          )
+        );
+        const startedAt = new Date();
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the fresh sign-in link",
+              requestSignInLink(recipient),
+              navigationTimeout
+            )
+          )
+        );
+        const link = yield* runStep(
+          step(
+            "retrieves the fresh sign-in link",
+            retrieveSignInLink(recipient, observedMessageIds, startedAt),
+            authDeliveryTimeout
+          )
+        );
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "signs in and opens the profile section",
+              Effect.gen(function* () {
+                yield* openPage(link);
+                yield* waitDefaultReservations("freshly signed-in account");
+                yield* selectAccountSectionInRunner(run, session, "profile");
+              }),
+              providerTransition
+            )
+          )
+        );
+        yield* runStep(
+          step(
+            "saves Čeština as the preferred communication language",
+            Effect.gen(function* () {
+              yield* clickBrowserElement(
+                run,
+                session,
+                languageTriggerSelector,
+                { timeoutMs: browserTimeout }
+              );
+              yield* waitForBrowserCondition(
+                run,
+                session,
+                "language Save stays disabled before any selection change",
+                `(() => {
+                    const save = Array.from(document.querySelectorAll('button[type="button"]'))
+                      .find((button) => button.textContent?.trim() === "Save");
+                    return save instanceof HTMLButtonElement && save.disabled;
+                  })()`,
+                { timeoutMs: uiTransition }
+              );
+              // The runner seeds the account with the site default
+              // preference, so English (US) is the restored value and Save
+              // starts disabled. Commit one genuine selection change to
+              // Čeština — a real write that differs from the backfilled
+              // initial value — so the later restore check proves a
+              // persisted save rather than a no-op.
+              yield* clickBrowserElement(
+                run,
+                session,
+                languageOptionCsSelector,
+                { timeoutMs: browserTimeout }
+              );
+              yield* clickBrowserElement(run, session, languageSaveSelector, {
+                timeoutMs: browserTimeout,
+              });
+              yield* waitText("language preference saved", languageSavedCopy);
+            }),
+            providerTransition
+          )
+        );
+        yield* runStep(
+          step(
+            "signs out before the restore check",
+            signOutAndRequireAnonymous(),
+            navigationTimeout
+          )
+        );
+        const restoreObservedMessageIds = yield* runStep(
+          step(
+            "records the delivered message baseline before the restore sign-in",
+            observeDeliveredMessageIds(recipient),
+            providerTransition
+          )
+        );
+        const restoreStartedAt = new Date();
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the restore sign-in link",
+              requestSignInLink(recipient),
+              navigationTimeout
+            )
+          )
+        );
+        const restoreLink = yield* runStep(
+          step(
+            "retrieves the restore sign-in link",
+            retrieveSignInLink(
+              recipient,
+              restoreObservedMessageIds,
+              restoreStartedAt
+            ),
+            authDeliveryTimeout
+          )
+        );
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "signs in again and opens the profile section for the restore check",
+              Effect.gen(function* () {
+                yield* openPage(restoreLink);
+                yield* waitDefaultReservations(
+                  "restored-session account reservations"
+                );
+                yield* selectAccountSectionInRunner(run, session, "profile");
+              }),
+              providerTransition
+            )
+          )
+        );
+        yield* runStep(
+          step(
+            "restores Čeština as the saved communication language",
+            Effect.gen(function* () {
+              yield* clickBrowserElement(
+                run,
+                session,
+                languageTriggerSelector,
+                { timeoutMs: browserTimeout }
+              );
+              yield* waitForBrowserCondition(
+                run,
+                session,
+                "restored Čeština option selected",
+                `(() => {
+                    const selected = document.querySelector('[role="option"][aria-selected="true"]');
+                    return selected !== null &&
+                      selected.textContent?.includes(${JSON.stringify(languageOptionCs)}) === true;
+                  })()`,
+                { timeoutMs: uiTransition }
+              );
+              yield* pressBrowserKey(run, session, "Escape", {
+                timeoutMs: browserTimeout,
+              });
+            }),
+            uiTransition
+          )
+        );
+      })
+    ),
     makeCase("account-linking-variants", ({ journalRef, runStep }) =>
       Effect.gen(function* () {
         const mainIdentity = yield* runStep(

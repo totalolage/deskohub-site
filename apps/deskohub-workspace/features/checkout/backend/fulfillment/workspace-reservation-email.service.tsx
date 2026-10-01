@@ -17,6 +17,7 @@ import { CustomerReservationEmail } from "@/emails/customer-reservation";
 import { ReservationNotificationEmail } from "@/emails/reservation-notification";
 import type { WorkspaceEmailDetail } from "@/emails/workspace-email-detail";
 import { env } from "@/env";
+import { CustomerEmailLocaleService } from "@/features/account";
 import {
   getWorkspaceOfficeProductTitle,
   getWorkspaceProductMonitorTitle,
@@ -60,6 +61,7 @@ import { createWorkspaceMeetingRoomEmailDetailRows } from "./workspace-meeting-r
 export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservationDetails;
+    readonly customerEmailLocale: Locale;
     readonly customerEmailIdempotencyKey?: string;
   }) => Effect.Effect<EmailDeliveryId, EmailServiceError | NetworkError>;
   readonly sendCancellationEmail: (input: {
@@ -98,6 +100,40 @@ const customerAccessHeadingDateFormatOptions = {
 
 const getReservationLocale = (locale: string): Locale =>
   isLocale(locale) ? locale : "cs-CZ";
+
+/**
+ * Resolves the customer email language for one reservation: a linked account
+ * always uses its required saved communication preference, while an unlinked
+ * guest keeps the reservation locale. A preference read failure fails the
+ * email send instead of silently guessing a wrong customer preference.
+ *
+ * Exported for the paid-fulfillment workflow, which must resolve and retain
+ * the locale before a generation's first provider send so failed and
+ * accepted-but-unrecorded retries keep a locale-stable idempotency key.
+ */
+export const createCustomerEmailLocaleResolver =
+  (emailLocale: CustomerEmailLocaleService["Service"]) =>
+  (reservation: WorkspaceReservationDetails) =>
+    emailLocale.byDotyposCustomer(reservation.dotyposCustomerId).pipe(
+      Effect.flatMap((resolved) =>
+        resolved.kind === "account"
+          ? Effect.succeed(resolved.locale)
+          : Effect.succeed(getReservationLocale(reservation.locale))
+      ),
+      Effect.mapError(
+        (cause) =>
+          new EmailServiceError(
+            "Workspace reservation customer email language could not be determined.",
+            cause
+          )
+      ),
+      Effect.tapError((cause) =>
+        Effect.logError(
+          "Workspace reservation customer email language read failed",
+          { cause, workspaceReservationId: reservation.id }
+        )
+      )
+    );
 
 const getCustomerName = (customer: Customer) =>
   [customer.firstName, customer.lastName]
@@ -467,6 +503,9 @@ export class WorkspaceReservationEmailService extends Context.Service<
       const emailConfig = yield* EmailConfigTag;
       const networkDetailsService =
         yield* WorkspaceCheckoutNetworkDetailsService;
+      const emailLocaleService = yield* CustomerEmailLocaleService;
+      const resolveCustomerEmailLocale =
+        createCustomerEmailLocaleResolver(emailLocaleService);
 
       const createCustomerAccessUrls = Effect.fn(
         "WorkspaceReservationEmailService.createCustomerAccessUrls"
@@ -504,7 +543,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
         sendCancellationEmail: Effect.fn(
           "WorkspaceReservationEmailService.sendCancellationEmail"
         )(function* ({ reservation }) {
-          const locale = getReservationLocale(reservation.locale);
+          const locale = yield* resolveCustomerEmailLocale(reservation);
           const customerEmail = reservation.customer.email?.trim();
           if (!customerEmail) {
             return yield* Effect.fail(
@@ -544,7 +583,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
           "WorkspaceReservationEmailService.sendPaidReservationEmails"
         )(function* (input) {
           const { reservation } = input;
-          const locale = getReservationLocale(reservation.locale);
+          const locale = input.customerEmailLocale;
           const customer = reservation.customer;
           const customerName = getCustomerName(customer);
           const customerEmail = customer.email?.trim();

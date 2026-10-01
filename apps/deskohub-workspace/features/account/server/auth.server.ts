@@ -1,5 +1,7 @@
 import "server-only";
 
+import { Effect } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { env } from "@/env";
 import { resolveBetterAuthAllowedHosts } from "@/features/account/backend/auth/auth-hosts";
 import { parseBetterAuthSecrets } from "@/features/account/backend/auth/auth-secrets";
@@ -9,6 +11,11 @@ import {
   workspaceBeforeDeleteUser,
   workspaceSendMagicLink,
 } from "@/features/account/backend/auth/auth-server";
+import {
+  requireAccountCommunicationPreference,
+  seedAccountCommunicationPreference,
+} from "@/features/account/backend/customer-communication-preference.repository";
+import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { areAccountsEnabled } from "./account-feature-flag.server";
 
@@ -43,4 +50,20 @@ export const auth = makeWorkspaceAuth({
   areAccountsEnabled,
   sendMagicLink: workspaceSendMagicLink,
   beforeDeleteUser: workspaceBeforeDeleteUser,
+  createAccountCommunicationPreference: (accountId, locale) =>
+    runWorkspaceEffect("account.communication-preference.seed", {
+      boundary: "route",
+    })(
+      seedAccountCommunicationPreference(accountId, locale).pipe(
+        Effect.provide(WorkspaceDatabase.Default)
+      )
+    ),
+  requireAccountCommunicationPreference: (accountId) =>
+    runWorkspaceEffect("account.communication-preference.require", {
+      boundary: "route",
+    })(
+      requireAccountCommunicationPreference(accountId).pipe(
+        Effect.provide(WorkspaceDatabase.Default)
+      )
+    ),
 });

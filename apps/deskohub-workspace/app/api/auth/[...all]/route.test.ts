@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
 import type {
   Account,
@@ -10,7 +10,11 @@ import type {
   Verification,
 } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
+import { eq } from "drizzle-orm";
+import { Effect, Layer } from "effect";
 import { makeAuthDatabase } from "@/db/auth-database-client";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { customerCommunicationPreferences } from "@/db/schema";
 import {
   authAccount,
   authRateLimit,
@@ -18,7 +22,14 @@ import {
   authUser,
   authVerification,
 } from "@/db/schema/auth";
-import { makeWorkspaceAuth } from "@/features/account/backend/auth/auth-server";
+import {
+  makeWorkspaceAuth,
+  type WorkspaceAuthConfig,
+} from "@/features/account/backend/auth/auth-server";
+import {
+  requireAccountCommunicationPreference,
+  seedAccountCommunicationPreference,
+} from "@/features/account/backend/customer-communication-preference.repository";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
@@ -159,7 +170,11 @@ const uniqueEmail = (label: string) =>
   `${label}-${crypto.randomUUID()}@deskohub.test`;
 
 const makeDisposableAuth = (
-  sentLinks: { email: string; url: string; token: string }[]
+  sentLinks: { email: string; url: string; token: string }[],
+  preferenceOverride?: {
+    readonly createAccountCommunicationPreference?: WorkspaceAuthConfig["createAccountCommunicationPreference"];
+    readonly requireAccountCommunicationPreference?: WorkspaceAuthConfig["requireAccountCommunicationPreference"];
+  }
 ) =>
   makeWorkspaceAuth({
     database: drizzleAdapter(makeAuthDatabase(testDatabase!.pool), {
@@ -181,6 +196,35 @@ const makeDisposableAuth = (
       sentLinks.push(data);
     },
     beforeDeleteUser: () => Promise.resolve(),
+    // The real preference repository effects run against the migrated
+    // disposable Postgres, so the route-level Postgres harness exercises the
+    // true seed and session-guard path.
+    createAccountCommunicationPreference:
+      preferenceOverride?.createAccountCommunicationPreference ??
+      ((accountId, locale) =>
+        Effect.runPromise(
+          seedAccountCommunicationPreference(accountId, locale).pipe(
+            Effect.provide(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: testDatabase!.db })
+              )
+            )
+          )
+        )),
+    requireAccountCommunicationPreference:
+      preferenceOverride?.requireAccountCommunicationPreference ??
+      ((accountId) =>
+        Effect.runPromise(
+          requireAccountCommunicationPreference(accountId).pipe(
+            Effect.provide(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: testDatabase!.db })
+              )
+            )
+          )
+        )),
   });
 
 type CapturedMagicLink = {
@@ -208,6 +252,10 @@ const makeMemoryAuth = (
     verification: [],
     rateLimit: [],
   };
+  // Faithful succeeding stand-in for the required communication preference:
+  // the seed records the account's locale and the session guard requires the
+  // row, mirroring the real dependency without a database.
+  const preferenceLocales = new Map<string, string>();
   const auth = makeWorkspaceAuth({
     database: memoryAdapter(store),
     secrets: [{ version: 1, value: SECRET_V1 }],
@@ -218,6 +266,16 @@ const makeMemoryAuth = (
       sentLinks.push(data);
     },
     beforeDeleteUser: () => Promise.resolve(),
+    createAccountCommunicationPreference: (accountId, locale) => {
+      preferenceLocales.set(accountId, locale);
+      return Promise.resolve();
+    },
+    requireAccountCommunicationPreference: (accountId) =>
+      preferenceLocales.has(accountId)
+        ? Promise.resolve()
+        : Promise.reject(
+            new Error("The required communication preference is missing.")
+          ),
   });
   return { auth, store };
 };
@@ -285,6 +343,15 @@ test("runs the account gate through the exported route methods with memory auth"
 describe.skipIf(!testDatabase)(
   "Better Auth route on the migrated disposable Postgres",
   () => {
+    beforeEach(async () => {
+      // The wrapper uses fixed 192.0.2.x request IPs, so leftover rate-limit
+      // rows from an earlier run against the same persistent disposable
+      // database must not reject this run's sign-in requests.
+      await testDatabase!.pool.query(
+        `delete from auth.rate_limit where key like '192.0.2.%'`
+      );
+    });
+
     test("answers the official endpoints and rejects unknown paths with private, no-store", async () => {
       handlerOverride = makeDisposableAuth([]).handler as (
         request: Request
@@ -335,6 +402,51 @@ describe.skipIf(!testDatabase)(
           .some((cookie) => cookie.includes("session_token="))
       ).toBe(true);
       expect(verify.headers.get("cache-control")).toBe("private, no-store");
+
+      // The wired real repository seeded the required preference row for the
+      // activated account from the initiating site locale.
+      const [createdUser] = await Effect.runPromise(
+        testDatabase!.db
+          .select({ id: authUser.id })
+          .from(authUser)
+          .where(eq(authUser.email, email))
+          .limit(1)
+      );
+      const seeded = await Effect.runPromise(
+        testDatabase!.db
+          .select({ locale: customerCommunicationPreferences.locale })
+          .from(customerCommunicationPreferences)
+          .where(
+            eq(
+              customerCommunicationPreferences.customerAccountId,
+              createdUser!.id
+            )
+          )
+      );
+      expect(seeded).toEqual([{ locale: "en-US" }]);
+    });
+
+    test("rejects account activation with the non-enumerating failure when the seed dependency fails", async () => {
+      const sentLinks: { email: string; url: string; token: string }[] = [];
+      handlerOverride = makeDisposableAuth(sentLinks, {
+        createAccountCommunicationPreference: () =>
+          Promise.reject(new Error("seed dependency unavailable")),
+      }).handler as (request: Request) => Promise<Response>;
+
+      const email = uniqueEmail("route-seed-failure");
+      await callRoute("/sign-in/magic-link", "POST", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const link = sentLinks[0]!;
+      const verifyPath = link.url.slice(`https://${HOST}/api/auth`.length);
+
+      const verify = await callRoute(verifyPath, "GET");
+      expect(verify.status).toBe(500);
+      expect(await verify.json()).toEqual({ message: "Internal Server Error" });
+      expect(verify.headers.get("cache-control")).toBe("private, no-store");
+      expect(verify.headers.getSetCookie()).toHaveLength(0);
     });
 
     test("rejects replayed links and foreign origins without caching the failure", async () => {

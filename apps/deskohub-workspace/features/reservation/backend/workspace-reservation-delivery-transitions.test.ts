@@ -21,6 +21,7 @@ import {
 import {
   fulfillmentEmailFailureCode,
   type IWorkspaceReservationRepository,
+  WorkspaceReservationDeliveryGenerationSupersededError,
   WorkspaceReservationRepository,
   WorkspaceReservationStateError,
 } from "./workspace-reservation.repository";
@@ -45,6 +46,7 @@ describe.skipIf(!postgresDatabase)(
     const insertPaidReservationFixture = (input: {
       readonly fulfillmentState: FulfillmentState;
       readonly activeCustomerEmailDeliveryId?: EmailDeliveryId;
+      readonly customerEmailDeliveryLocale?: "en-US" | "cs-CZ";
     }) =>
       Effect.gen(function* () {
         const id = workspaceReservationIdSchema.make(
@@ -67,6 +69,7 @@ describe.skipIf(!postgresDatabase)(
           reservationConfirmedAt: deliveryEventAt(0),
           fulfillmentState: input.fulfillmentState,
           activeCustomerEmailDeliveryId: input.activeCustomerEmailDeliveryId,
+          customerEmailDeliveryLocale: input.customerEmailDeliveryLocale,
           reservationDetails: {
             kind: "cowork",
             entryTier: "basic",
@@ -113,6 +116,7 @@ describe.skipIf(!postgresDatabase)(
         reservations.markAwaitingCustomerEmailDelivery({
           id,
           customerEmailDeliveryId,
+          expectedActiveCustomerEmailDeliveryId: null,
         })
       );
 
@@ -121,6 +125,146 @@ describe.skipIf(!postgresDatabase)(
       expect(stored?.activeCustomerEmailDeliveryId).toEqual(
         customerEmailDeliveryId
       );
+    });
+
+    test("does not seed the locale slot after the claimed generation closed", async () => {
+      const id = await Effect.runPromise(
+        insertPaidReservationFixture({ fulfillmentState: "processing" })
+      );
+      const recordedDeliveryId = newEmailDeliveryId();
+      // The claimed initial generation is recorded by a concurrent worker
+      // before the stalled writer resolves its locale.
+      await Effect.runPromise(
+        reservations.markAwaitingCustomerEmailDelivery({
+          id,
+          customerEmailDeliveryId: recordedDeliveryId,
+          expectedActiveCustomerEmailDeliveryId: null,
+        })
+      );
+
+      const authoritativeLocale = await Effect.runPromise(
+        reservations.retainCustomerEmailDeliveryLocale({
+          id,
+          locale: "cs-CZ",
+          expectedActiveCustomerEmailDeliveryId: null,
+        })
+      );
+
+      // The generation is closed: the stalled writer must not seed the newer
+      // generation's slot nor borrow its locale.
+      expect(authoritativeLocale).toBeNull();
+      const stored = await Effect.runPromise(reservations.findById(id));
+      expect(stored?.activeCustomerEmailDeliveryId).toEqual(recordedDeliveryId);
+      expect(stored?.customerEmailDeliveryLocale).toBeNull();
+    });
+
+    test("does not return a newer generation's locale from the fallback read after advancement", async () => {
+      const newerGenerationMarker = newEmailDeliveryId();
+      const staleExpectedMarker = newEmailDeliveryId();
+      const id = await Effect.runPromise(
+        insertPaidReservationFixture({
+          fulfillmentState: "processing",
+          activeCustomerEmailDeliveryId: newerGenerationMarker,
+          customerEmailDeliveryLocale: "cs-CZ",
+        })
+      );
+
+      // The slot is already seeded, so the conditional update cannot apply;
+      // the fallback read must still be bound to the claimed generation.
+      const authoritativeLocale = await Effect.runPromise(
+        reservations.retainCustomerEmailDeliveryLocale({
+          id,
+          locale: "en-US",
+          expectedActiveCustomerEmailDeliveryId: staleExpectedMarker,
+        })
+      );
+
+      expect(authoritativeLocale).toBeNull();
+      const stored = await Effect.runPromise(reservations.findById(id));
+      expect(stored?.customerEmailDeliveryLocale).toBe("cs-CZ");
+    });
+
+    test("clears the retained email locale when recording the accepted delivery", async () => {
+      const id = await Effect.runPromise(
+        insertPaidReservationFixture({
+          fulfillmentState: "processing",
+          customerEmailDeliveryLocale: "cs-CZ",
+        })
+      );
+      const customerEmailDeliveryId = newEmailDeliveryId();
+
+      await Effect.runPromise(
+        reservations.markAwaitingCustomerEmailDelivery({
+          id,
+          customerEmailDeliveryId,
+          expectedActiveCustomerEmailDeliveryId: null,
+        })
+      );
+
+      const stored = await Effect.runPromise(reservations.findById(id));
+      expect(stored?.activeCustomerEmailDeliveryId).toEqual(
+        customerEmailDeliveryId
+      );
+      expect(stored?.customerEmailDeliveryLocale).toBeNull();
+    });
+
+    test("returns the authoritative retained locale to a losing retain writer", async () => {
+      const id = await Effect.runPromise(
+        insertPaidReservationFixture({ fulfillmentState: "processing" })
+      );
+
+      const winnerLocale = await Effect.runPromise(
+        reservations.retainCustomerEmailDeliveryLocale({
+          id,
+          locale: "cs-CZ",
+          expectedActiveCustomerEmailDeliveryId: null,
+        })
+      );
+      // The second writer loses the null-slot race and must learn the
+      // already-retained locale so its send matches the idempotency generation.
+      const loserAuthoritativeLocale = await Effect.runPromise(
+        reservations.retainCustomerEmailDeliveryLocale({
+          id,
+          locale: "en-US",
+          expectedActiveCustomerEmailDeliveryId: null,
+        })
+      );
+
+      expect(winnerLocale).toBe("cs-CZ");
+      expect(loserAuthoritativeLocale).toBe("cs-CZ");
+      const stored = await Effect.runPromise(reservations.findById(id));
+      expect(stored?.customerEmailDeliveryLocale).toBe("cs-CZ");
+    });
+
+    test("rejects an old-generation recording arriving after a newer recovery generation began", async () => {
+      const newerGenerationMarker = newEmailDeliveryId();
+      const staleExpectedMarker = newEmailDeliveryId();
+      const id = await Effect.runPromise(
+        insertPaidReservationFixture({
+          fulfillmentState: "processing",
+          activeCustomerEmailDeliveryId: newerGenerationMarker,
+          customerEmailDeliveryLocale: "cs-CZ",
+        })
+      );
+
+      const error = await Effect.runPromise(
+        Effect.flip(
+          reservations.markAwaitingCustomerEmailDelivery({
+            id,
+            customerEmailDeliveryId: newEmailDeliveryId(),
+            expectedActiveCustomerEmailDeliveryId: staleExpectedMarker,
+          })
+        )
+      );
+
+      expect(
+        error instanceof WorkspaceReservationDeliveryGenerationSupersededError
+      ).toBe(true);
+      const stored = await Effect.runPromise(reservations.findById(id));
+      expect(stored?.activeCustomerEmailDeliveryId).toEqual(
+        newerGenerationMarker
+      );
+      expect(stored?.customerEmailDeliveryLocale).toBe("cs-CZ");
     });
 
     test("refuses to attach a reservation whose fulfillment is not processing", async () => {
@@ -133,6 +277,7 @@ describe.skipIf(!postgresDatabase)(
           reservations.markAwaitingCustomerEmailDelivery({
             id,
             customerEmailDeliveryId: newEmailDeliveryId(),
+            expectedActiveCustomerEmailDeliveryId: null,
           })
         )
       );

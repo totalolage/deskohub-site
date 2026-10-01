@@ -19,7 +19,10 @@ import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-b
 import type { CustomerProfileBilling } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { BillingScreen } from "@/features/account/components/billing/billing-screen";
-import { ProfileScreen } from "@/features/account/components/profile/profile-screen";
+import {
+  type PreferredLanguageState,
+  ProfileScreen,
+} from "@/features/account/components/profile/profile-screen";
 import type { CustomerProfileInput } from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -35,6 +38,12 @@ type ProfileFormProps = {
   readonly locale: Locale;
   readonly mode: CustomerProfileFormMode;
   readonly onSectionChange?: (section: "profile" | "billing") => void;
+  /**
+   * The server-read preferred communication language. Completion mode never
+   * renders the language control, so the prop is optional and defaults to
+   * "no preference".
+   */
+  readonly preferredLanguage?: PreferredLanguageState;
   readonly profile?: {
     readonly firstName: string;
     readonly lastName: string | null;
@@ -148,6 +157,7 @@ export function ProfileForm({
   locale,
   mode,
   onSectionChange,
+  preferredLanguage,
   profile,
   section = "profile",
 }: ProfileFormProps) {
@@ -584,6 +594,7 @@ export function ProfileForm({
                 footer={section === "profile" ? formFooter : undefined}
                 lastName={savedIdentity.lastName}
                 locale={locale}
+                preferredLanguage={preferredLanguage}
               >
                 {identityFields}
               </ProfileScreen>

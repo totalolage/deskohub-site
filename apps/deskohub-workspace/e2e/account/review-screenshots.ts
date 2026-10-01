@@ -18,6 +18,12 @@ export type AccountReviewTarget =
   | "linked-reservations-desktop"
   | "linked-reservations-mobile"
   | "linked-profile-desktop"
+  | "linked-profile-language-desktop"
+  | "linked-profile-language-desktop-cs"
+  | "linked-profile-language-mobile"
+  | "linked-profile-language-saving-desktop"
+  | "linked-profile-language-saved-desktop"
+  | "linked-profile-language-failed-desktop"
   | "linked-billing-desktop"
   | "linked-billing-mobile"
   | "linked-legal-desktop"
@@ -93,6 +99,36 @@ const accountReviewTargetMetadata = {
   },
   "linked-profile-desktop": {
     filename: "linked-profile-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-profile-language-desktop": {
+    filename: "linked-profile-language-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-profile-language-desktop-cs": {
+    filename: "linked-profile-language-desktop-cs.png",
+    path: "/cs-CZ/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-profile-language-mobile": {
+    filename: "linked-profile-language-mobile.png",
+    path: "/en-US/account",
+    viewport: { height: 900, width: 375 },
+  },
+  "linked-profile-language-saving-desktop": {
+    filename: "linked-profile-language-saving-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-profile-language-saved-desktop": {
+    filename: "linked-profile-language-saved-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-profile-language-failed-desktop": {
+    filename: "linked-profile-language-failed-desktop.png",
     path: "/en-US/account",
     viewport: { height: 1000, width: 1440 },
   },
@@ -253,6 +289,12 @@ const isPrivateLinkedAccountTarget = (target: ReviewTarget): boolean =>
   target === "linked-reservations-desktop" ||
   target === "linked-reservations-mobile" ||
   target === "linked-profile-desktop" ||
+  target === "linked-profile-language-desktop" ||
+  target === "linked-profile-language-desktop-cs" ||
+  target === "linked-profile-language-mobile" ||
+  target === "linked-profile-language-saving-desktop" ||
+  target === "linked-profile-language-saved-desktop" ||
+  target === "linked-profile-language-failed-desktop" ||
   target === "linked-billing-desktop" ||
   target === "linked-billing-mobile" ||
   target === "linked-danger-desktop" ||
@@ -780,5 +822,355 @@ export const withSignInPendingReview = async (
 
   if (runCaseFailed) throw runCaseFailure;
   if (wrapperFailed || reviewFailed || !fullHandlerPromise)
+    throw accountReviewCaptureFailure();
+};
+
+/**
+ * Deployed copy of the language feedback states the wrapper waits for; the
+ * keys behind these strings (accountProfileScreenLanguageSaving/Saved/
+ * SaveFailed) are pinned by the shared message catalogs.
+ */
+const languageSavingButtonSelector = 'button:has-text("Saving…")';
+const languageTriggerSelector =
+  "[data-screen='profile-screen'] [data-slot='select-trigger']";
+// The profile screen also renders the "Save profile" submit control, so a
+// substring selector like button:has-text("Save") resolves to two buttons
+// and fails strict mode. The exact accessible name leaves only the language
+// Save button.
+const languageSaveButtonName = "Save";
+const languageOptionCsSelector = '[role="option"]:has-text("Čeština")';
+const languageOptionEnSelector = '[role="option"]:has-text("English (US)")';
+const languageSavedCopy = "Communication language saved.";
+const languageFailedCopy =
+  "Saving the communication language failed. Try again.";
+const profileScreenSelector = "[data-screen='profile-screen']";
+
+const languageSaveButton = (page: Playwright.Page): Playwright.Locator =>
+  page
+    .locator(profileScreenSelector)
+    .getByRole("button", { name: languageSaveButtonName, exact: true });
+
+const csCzProfileNavButtonSelector =
+  'nav[aria-label="Navigace účtu"] button:not([data-account-section]):has-text("Profil a identita")';
+const enUsProfileNavButtonSelector =
+  'nav[aria-label="Account navigation"] button:not([data-account-section]):has-text("Profile & Identity")';
+
+const browserActionTimeout = () => workspaceE2ETimeouts.browserAction;
+
+/**
+ * Drives the preferred-communication-language feature's own review states
+ * around the language case: the mid-flight saving feedback captured while
+ * the case's own save request is in flight, the saved feedback, an
+ * abort-induced transport failure restored by a real save, the cs-CZ
+ * selector view, and the mobile view. Callers own the synthetic context;
+ * this helper only captures the allowlisted PNGs and never changes the
+ * persisted language preference.
+ */
+export const withLanguagePreferenceReview = async (
+  page: Playwright.Page,
+  baseUrl: string,
+  runCase: () => Promise<void>
+): Promise<void> => {
+  const savingMetadata =
+    accountReviewTargetMetadata["linked-profile-language-saving-desktop"];
+  if (!savingMetadata) throw accountReviewCaptureFailure();
+
+  let savingHandlerPromise: Promise<void> | undefined;
+  let savingRouteMatched = false;
+  let abortRouteConsumed = false;
+  let abortRouteCleanupOwed = false;
+  let reviewFailed = false;
+  let runCaseFailed = false;
+  let runCaseFailure: unknown;
+  let wrapperFailed = false;
+  let previousViewport: Playwright.ViewportSize | null = null;
+
+  /**
+   * The saving gate matches the preference save POST by its URL shape plus a
+   * validated action-argument discriminator instead of an exact URL string:
+   * the profile section is reached at /en-US/account?section=profile, so a
+   * Server Action POST always carries that query and an exact /en-US/account
+   * match never fires. The Next-Action id itself is a build-time hash that
+   * changes on every deploy, so the deterministic discriminator is the
+   * serialized argument: the action schema locks the single input to
+   * { locale: "cs-CZ" | "en-US" } (features/account/actions.ts) and React's
+   * Flight serialization embeds that object verbatim in the postdata. The
+   * other account POSTs never carry this pair: sign-out is a Better Auth
+   * request without a Next-Action header, the profile save serializes name
+   * and phone fields, and account deletion serializes { confirmed: true }.
+   * The matcher also requires the preview origin so a cross-origin request
+   * with an identical path, query, header, and payload is never intercepted.
+   */
+  const languagePreferenceLocales = ["cs-CZ", "en-US"] as const;
+  const languagePreferencePayloadPattern = new RegExp(
+    `"locale"\\s*:\\s*"(?:${languagePreferenceLocales.join("|")})"`
+  );
+  const previewOrigin = new URL(baseUrl).origin;
+  const languageSaveRouteMatcher = (url: URL): boolean =>
+    url.origin === previewOrigin &&
+    url.pathname === "/en-US/account" &&
+    isAllowedPrivateLinkedAccountQuery(url.search);
+  const isLanguagePreferenceSaveRequest = (
+    request: Playwright.Request
+  ): boolean =>
+    request.method() === "POST" &&
+    request.headers()["next-action"] !== undefined &&
+    languagePreferencePayloadPattern.test(request.postData() ?? "");
+
+  const handleSavingRoute: Parameters<Playwright.Page["route"]>[1] = (
+    route,
+    request
+  ) => {
+    // Consume exactly one matching preference save: the flag is checked and
+    // set synchronously before any await, so a second matching request
+    // during the capture window falls through instead of overwriting the
+    // in-flight capture or the saved handler promise.
+    if (savingRouteMatched || !isLanguagePreferenceSaveRequest(request)) {
+      // Leave every unrelated request and every later matching request
+      // untouched.
+      void route.fallback().catch(() => {
+        reviewFailed = true;
+      });
+      return;
+    }
+    savingRouteMatched = true;
+    const deadline = Date.now() + browserActionTimeout();
+    const handlerPromise = (async () => {
+      try {
+        await page.locator(languageSavingButtonSelector).waitFor({
+          state: "visible",
+          timeout: remainingAccountReviewBudget(deadline),
+        });
+        remainingAccountReviewBudget(deadline);
+        const screenshot = await captureAccountReviewPixels(
+          page,
+          baseUrl,
+          "linked-profile-language-saving-desktop",
+          savingMetadata,
+          deadline
+        );
+        await persistAccountReview(
+          page,
+          baseUrl,
+          "linked-profile-language-saving-desktop",
+          savingMetadata,
+          screenshot,
+          deadline
+        );
+      } catch {
+        reviewFailed = true;
+      } finally {
+        try {
+          await route.continue();
+        } catch {
+          reviewFailed = true;
+        }
+        // The intended request is handled, so the interception is unwound
+        // here; the cleanup unroute below stays as an idempotent backstop.
+        try {
+          await page.unroute(languageSaveRouteMatcher, handleSavingRoute);
+        } catch {}
+      }
+    })();
+    savingHandlerPromise = handlerPromise;
+    return handlerPromise;
+  };
+
+  const handleAbortRoute: Parameters<Playwright.Page["route"]>[1] = (
+    route,
+    request
+  ) => {
+    // Abort exactly one matching preference save; any further matching
+    // request while this gate is still registered falls through untouched.
+    if (abortRouteConsumed || !isLanguagePreferenceSaveRequest(request)) {
+      void route.fallback().catch(() => {
+        reviewFailed = true;
+      });
+      return;
+    }
+    abortRouteConsumed = true;
+    void route.abort().catch(() => {
+      reviewFailed = true;
+    });
+  };
+
+  const selectLanguageOption = async (optionSelector: string) => {
+    await page
+      .locator(languageTriggerSelector)
+      .click({ timeout: browserActionTimeout() });
+    await page
+      .locator(optionSelector)
+      .click({ timeout: browserActionTimeout() });
+  };
+
+  const selectEnglishAndSave = async () => {
+    // A fresh session renders the select without a selection, so re-picking
+    // the already-saved locale fires no onValueChange and Save stays
+    // disabled. Selecting Czech first forces a genuine selection change so
+    // the final English pick enables Save; the intermediate pick is never
+    // saved.
+    await selectLanguageOption(languageOptionCsSelector);
+    await selectLanguageOption(languageOptionEnSelector);
+    await languageSaveButton(page).click({
+      timeout: browserActionTimeout(),
+    });
+  };
+
+  const performSavedFeedbackCapture = async () => {
+    await selectEnglishAndSave();
+    await page
+      .getByText(languageSavedCopy, { exact: true })
+      .waitFor({ state: "visible", timeout: browserActionTimeout() });
+    await captureAccountReview(
+      page,
+      baseUrl,
+      "linked-profile-language-saved-desktop"
+    );
+  };
+
+  const performTransportFailureCapture = async () => {
+    await page.route(languageSaveRouteMatcher, handleAbortRoute);
+    abortRouteCleanupOwed = true;
+    await languageSaveButton(page).click({
+      timeout: browserActionTimeout(),
+    });
+    await page
+      .getByText(languageFailedCopy, { exact: true })
+      .waitFor({ state: "visible", timeout: browserActionTimeout() });
+    await captureAccountReview(
+      page,
+      baseUrl,
+      "linked-profile-language-failed-desktop"
+    );
+  };
+
+  const restoreSavedLanguage = async () => {
+    await page.unroute(languageSaveRouteMatcher, handleAbortRoute);
+    abortRouteCleanupOwed = false;
+    await languageSaveButton(page).click({
+      timeout: browserActionTimeout(),
+    });
+    await page
+      .getByText(languageSavedCopy, { exact: true })
+      .waitFor({ state: "visible", timeout: browserActionTimeout() });
+  };
+
+  const performCsCzSelectorCapture = async () => {
+    await page.goto(new URL("/cs-CZ/account", baseUrl).toString(), {
+      timeout: browserActionTimeout(),
+    });
+    await page
+      .locator(csCzProfileNavButtonSelector)
+      .first()
+      .click({ timeout: browserActionTimeout() });
+    await page
+      .locator(profileScreenSelector)
+      .first()
+      .waitFor({ state: "visible", timeout: browserActionTimeout() });
+    await captureAccountReview(
+      page,
+      baseUrl,
+      "linked-profile-language-desktop-cs"
+    );
+  };
+
+  const returnToEnglishProfile = async () => {
+    await page.goto(new URL("/en-US/account", baseUrl).toString(), {
+      timeout: browserActionTimeout(),
+    });
+    await page
+      .locator(enUsProfileNavButtonSelector)
+      .first()
+      .click({ timeout: browserActionTimeout() });
+    await page
+      .locator(profileScreenSelector)
+      .first()
+      .waitFor({ state: "visible", timeout: browserActionTimeout() });
+  };
+
+  try {
+    previousViewport = page.viewportSize();
+    if (previousViewport === null) throw accountReviewCaptureFailure();
+    await waitForAccountReviewOperation(
+      () => page.setViewportSize(savingMetadata.viewport),
+      Date.now() + browserActionTimeout()
+    );
+    await waitForAccountReviewOperation(
+      () => page.route(languageSaveRouteMatcher, handleSavingRoute),
+      Date.now() + browserActionTimeout()
+    );
+    try {
+      await runCase();
+    } catch (cause) {
+      runCaseFailed = true;
+      runCaseFailure = cause;
+    }
+  } catch {
+    wrapperFailed = true;
+  }
+
+  if (!runCaseFailed && !wrapperFailed) {
+    try {
+      await performSavedFeedbackCapture();
+      await performTransportFailureCapture();
+      await restoreSavedLanguage();
+      await performCsCzSelectorCapture();
+      await returnToEnglishProfile();
+      await captureAccountReview(
+        page,
+        baseUrl,
+        "linked-profile-language-mobile"
+      );
+    } catch {
+      reviewFailed = true;
+    }
+  }
+
+  const cleanupDeadline = Date.now() + workspaceE2ETimeouts.cleanupAction;
+  try {
+    await waitForAccountReviewOperation(
+      () => page.unroute(languageSaveRouteMatcher, handleSavingRoute),
+      cleanupDeadline
+    );
+  } catch {
+    wrapperFailed = true;
+  }
+  if (abortRouteCleanupOwed) {
+    try {
+      await waitForAccountReviewOperation(
+        () => page.unroute(languageSaveRouteMatcher, handleAbortRoute),
+        cleanupDeadline
+      );
+    } catch {
+      wrapperFailed = true;
+    }
+  }
+  if (savingHandlerPromise) {
+    try {
+      await waitForAccountReviewOperation(
+        () => savingHandlerPromise as Promise<void>,
+        cleanupDeadline
+      );
+    } catch {
+      wrapperFailed = true;
+    }
+  } else {
+    reviewFailed = true;
+  }
+  if (!runCaseFailed && !savingRouteMatched) reviewFailed = true;
+  if (previousViewport !== null) {
+    const viewportToRestore = previousViewport;
+    try {
+      await waitForAccountReviewOperation(
+        () => page.setViewportSize(viewportToRestore),
+        cleanupDeadline
+      );
+    } catch {
+      wrapperFailed = true;
+    }
+  }
+
+  if (runCaseFailed) throw runCaseFailure;
+  if (wrapperFailed || reviewFailed || !savingHandlerPromise)
     throw accountReviewCaptureFailure();
 };

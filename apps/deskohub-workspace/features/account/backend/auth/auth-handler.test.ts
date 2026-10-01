@@ -25,10 +25,15 @@ import {
   authUser,
   authVerification,
 } from "@/db/schema/auth";
+import type { Locale } from "@/features/i18n";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import type { CustomerAccountId } from "../customer-account";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
 import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
+import {
+  requireAccountCommunicationPreference as requireAccountCommunicationPreferenceEffect,
+  seedAccountCommunicationPreference,
+} from "../customer-communication-preference.repository";
 import { CustomerDotyposAdapter } from "../customer-dotypos-adapter.service";
 import type { MagicLinkSendFunction, WorkspaceAuthConfig } from "./auth-server";
 
@@ -76,12 +81,53 @@ type TestAuthOptions = {
   readonly sentLinks?: CapturedMagicLink[];
   readonly areAccountsEnabled?: WorkspaceAuthConfig["areAccountsEnabled"];
   readonly beforeDeleteUser?: (accountId: CustomerAccountId) => Promise<void>;
+  readonly createAccountCommunicationPreference?: WorkspaceAuthConfig["createAccountCommunicationPreference"];
+  readonly requireAccountCommunicationPreference?: WorkspaceAuthConfig["requireAccountCommunicationPreference"];
 };
 
 const makeTestAuth = (options: TestAuthOptions = {}) => {
   const sendMagicLink: MagicLinkSendFunction = (data) => {
     options.sentLinks?.push(data);
   };
+  const createAccountCommunicationPreference:
+    | WorkspaceAuthConfig["createAccountCommunicationPreference"]
+    | undefined =
+    options.createAccountCommunicationPreference ??
+    // The real seed requires the account row in the migrated disposable
+    // Postgres, so memory-backed auth instances default to a noop seed.
+    (testDatabase && !options.database
+      ? (accountId, locale) =>
+          Effect.runPromise(
+            seedAccountCommunicationPreference(accountId, locale).pipe(
+              Effect.provide(
+                Layer.succeed(
+                  WorkspaceDatabase,
+                  WorkspaceDatabase.of({ db: testDatabase!.db })
+                )
+              )
+            )
+          )
+      : async () => undefined);
+  const requireAccountCommunicationPreference:
+    | WorkspaceAuthConfig["requireAccountCommunicationPreference"]
+    | undefined =
+    options.requireAccountCommunicationPreference ??
+    // The real guard reads the required preference row in the migrated
+    // disposable Postgres, so memory-backed auth instances default to a
+    // noop guard.
+    (testDatabase && !options.database
+      ? (accountId) =>
+          Effect.runPromise(
+            requireAccountCommunicationPreferenceEffect(accountId).pipe(
+              Effect.provide(
+                Layer.succeed(
+                  WorkspaceDatabase,
+                  WorkspaceDatabase.of({ db: testDatabase!.db })
+                )
+              )
+            )
+          )
+      : async () => undefined);
   return makeWorkspaceAuth({
     database: options.database ?? buildDatabaseAdapter(),
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
@@ -90,6 +136,8 @@ const makeTestAuth = (options: TestAuthOptions = {}) => {
     areAccountsEnabled: options.areAccountsEnabled ?? (async () => true),
     sendMagicLink,
     beforeDeleteUser: options.beforeDeleteUser ?? (() => Promise.resolve()),
+    createAccountCommunicationPreference,
+    requireAccountCommunicationPreference,
   });
 };
 
@@ -627,6 +675,127 @@ describe.skipIf(!testDatabase)(
         [email]
       );
       expect(user.rows).toHaveLength(0);
+    });
+
+    test("seeds the required communication preference from the initiating site locale at account creation", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks });
+
+      const preferenceLocaleFor = async (email: string) => {
+        const userId = await userIdForEmail(email);
+        expect(userId).toBeTruthy();
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const rows = await testDatabase!.pool.query(
+            `select locale from customer_communication_preferences where customer_account_id = $1`,
+            [userId]
+          );
+          if (rows.rows.length > 0) return rows.rows[0]!.locale as string;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return undefined;
+      };
+
+      const emailEn = uniqueEmail("seed-en");
+      await signInForMagicLink(auth, emailEn, "/en-US/account");
+      await verifyMagicLink(auth, sentLinks[0]!);
+      expect(await preferenceLocaleFor(emailEn)).toBe("en-US");
+
+      const emailCs = uniqueEmail("seed-cs");
+      await signInForMagicLink(auth, emailCs, "/cs-CZ/account");
+      await verifyMagicLink(auth, sentLinks[1]!);
+      expect(await preferenceLocaleFor(emailCs)).toBe("cs-CZ");
+
+      const emailDefault = uniqueEmail("seed-default");
+      await signInForMagicLink(auth, emailDefault);
+      await verifyMagicLink(auth, sentLinks[2]!);
+      expect(await preferenceLocaleFor(emailDefault)).toBe("en-US");
+    });
+
+    test("rejects account activation when the preference seed keeps failing, including a second outstanding link", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        createAccountCommunicationPreference: () =>
+          Promise.reject(new Error("synthetic persistent seed failure")),
+      });
+      const email = uniqueEmail("seed-persistent-failure");
+
+      emitWorkspaceLog.mockClear();
+      await signInForMagicLink(auth, email, "/cs-CZ/account");
+      // A second outstanding magic link: verifying it must not create a
+      // session for the now-existing user without its required preference.
+      await signInForMagicLink(auth, email, "/cs-CZ/account");
+      expect(sentLinks).toHaveLength(2);
+
+      const firstVerified = await verifyMagicLink(auth, sentLinks[0]!);
+      expect(getSessionCookie(firstVerified)).toBeUndefined();
+      expect(firstVerified.status).toBe(500);
+
+      const secondVerified = await verifyMagicLink(auth, sentLinks[1]!);
+      expect(getSessionCookie(secondVerified)).toBeUndefined();
+      expect(secondVerified.status).toBe(500);
+
+      const userId = await userIdForEmail(email);
+      expect(userId).toBeTruthy();
+      const preference = await testDatabase!.pool.query(
+        `select locale from customer_communication_preferences where customer_account_id = $1`,
+        [userId]
+      );
+      expect(preference.rows).toHaveLength(0);
+
+      const sessions = await testDatabase!.pool.query(
+        `select id from auth.session where user_id = $1`,
+        [userId]
+      );
+      expect(sessions.rows).toHaveLength(0);
+
+      const seedFailureLogs = emitWorkspaceLog.mock.calls.filter((call) =>
+        JSON.stringify(call).includes(
+          "account-communication-preference.seed-failed"
+        )
+      );
+      expect(seedFailureLogs.length).toBeGreaterThan(0);
+    });
+
+    test("recovers a transient preference seed failure within the same activation without losing the initiating locale", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      let attempts = 0;
+      const realSeed = (accountId: CustomerAccountId, locale: Locale) =>
+        Effect.runPromise(
+          seedAccountCommunicationPreference(accountId, locale).pipe(
+            Effect.provide(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: testDatabase!.db })
+              )
+            )
+          )
+        );
+      const auth = makeTestAuth({
+        sentLinks,
+        createAccountCommunicationPreference: async (accountId, locale) => {
+          attempts += 1;
+          if (attempts === 1) {
+            throw new Error("synthetic transient seed failure");
+          }
+          await realSeed(accountId, locale);
+        },
+      });
+      const email = uniqueEmail("seed-transient-recovery");
+
+      await signInForMagicLink(auth, email, "/cs-CZ/account");
+      const verified = await verifyMagicLink(auth, sentLinks[0]!);
+
+      expect(getSessionCookie(verified)).toBeTruthy();
+      expect(attempts).toBe(2);
+
+      const userId = await userIdForEmail(email);
+      expect(userId).toBeTruthy();
+      const preference = await testDatabase!.pool.query(
+        `select locale from customer_communication_preferences where customer_account_id = $1`,
+        [userId]
+      );
+      expect(preference.rows).toEqual([{ locale: "cs-CZ" }]);
     });
 
     test("keeps normal magic-link users at the auth placeholders", async () => {

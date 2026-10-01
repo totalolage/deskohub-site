@@ -10,6 +10,7 @@ import {
 import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
 import { Effect, Layer, Logger } from "effect";
+import { CustomerEmailLocaleService } from "@/features/account";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { m } from "@/features/i18n";
 import type { IWorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -1082,6 +1083,7 @@ describe("ResendWebhookService", () => {
     await Effect.gen(function* () {
       const service = yield* WorkspaceReservationEmailService;
       return yield* service.sendPaidReservationEmails({
+        customerEmailLocale: "en-US",
         reservation: {
           id: "reservation-id",
           locale: "en-US",
@@ -1131,7 +1133,15 @@ describe("ResendWebhookService", () => {
             Layer.mergeAll(
               Layer.mock(EmailServiceTag, emailService),
               Layer.mock(EmailConfigTag, emailConfig),
-              WorkspaceCheckoutNetworkDetailsService.Default
+              WorkspaceCheckoutNetworkDetailsService.Default,
+              Layer.succeed(
+                CustomerEmailLocaleService,
+                CustomerEmailLocaleService.of({
+                  // Webhook recovery exercises the guest path: the email
+                  // keeps the reservation locale.
+                  byDotyposCustomer: () => Effect.succeed({ kind: "guest" }),
+                })
+              )
             )
           )
         )
@@ -1358,6 +1368,7 @@ describe("ResendWebhookService", () => {
     const { PostHogEventService } = await import(
       "@/shared/backend/analytics/posthog-event.service"
     );
+    const { CustomerEmailLocaleService } = await import("@/features/account");
     const existingReservation = {
       id: "reservation-id",
       activePaymentAttemptId: "payment-attempt-id",
@@ -1370,6 +1381,8 @@ describe("ResendWebhookService", () => {
       fulfillmentState: "processing",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
+      locale: "en-US",
+      customerEmailDeliveryLocale: null,
     };
     const sendPaidReservationEmails = mock(() => Effect.void);
     const resolveCustomerAccessCode = mock(() => Effect.succeed("access-code"));
@@ -1397,6 +1410,10 @@ describe("ResendWebhookService", () => {
       claimPaidFulfillment: mock(() =>
         Effect.succeed(claimedReservation as never)
       ),
+      retainCustomerEmailDeliveryLocale: mock(
+        (input: { readonly locale: "en-US" | "cs-CZ" }) =>
+          Effect.succeed(input.locale)
+      ),
       markFulfilled,
     };
     const dotypos = {
@@ -1418,6 +1435,9 @@ describe("ResendWebhookService", () => {
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, reservations),
               Layer.mock(DotyposService, dotypos),
+              Layer.mock(CustomerEmailLocaleService, {
+                byDotyposCustomer: () => Effect.succeed({ kind: "guest" }),
+              }),
               Layer.mock(WorkspaceReservationService, workspaceReservations),
               Layer.mock(WorkspaceReservationEmailService, reservationEmails),
               Layer.mock(WorkspaceCheckoutAccessCodeService, {
@@ -1442,6 +1462,7 @@ describe("ResendWebhookService", () => {
     expect(getReservation).toHaveBeenCalledWith("reservation-id");
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
+      customerEmailLocale: "en-US",
       customerEmailIdempotencyKey:
         "workspace-paid-reservation-access-reservation-id",
     });

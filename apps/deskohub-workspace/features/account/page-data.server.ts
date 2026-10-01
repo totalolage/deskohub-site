@@ -4,10 +4,16 @@ import { Effect, Result } from "effect";
 import { cache } from "react";
 import { resolveCurrentCustomerAccount } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import { CustomerCommunicationPreferenceRepository } from "@/features/account/backend/customer-communication-preference.repository";
 import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
 import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
 import type { CustomerReservationHistory } from "@/features/account/contracts";
+import {
+  type CustomerAccountAccessError,
+  type CustomerAccountFailureCode,
+  mapCustomerAccountFailure,
+} from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
@@ -24,6 +30,7 @@ export type CustomerAccountPageState =
   | {
       readonly kind: "linked";
       readonly email: string;
+      readonly preferredLanguage: Locale | "read-failed";
       readonly profile: CustomerProfile;
       readonly history: CustomerReservationHistory;
     }
@@ -31,6 +38,15 @@ export type CustomerAccountPageState =
   | { readonly kind: "deletion-pending"; readonly email: string };
 
 const unavailable = (): CustomerAccountPageState => ({ kind: "unavailable" });
+
+/**
+ * The log-safe diagnostic for a failed preference read: only the fixed,
+ * non-PII failure code of the sanitized access error ever reaches telemetry.
+ */
+const preferenceReadFailureCode = (
+  error: CustomerAccountAccessError
+): CustomerAccountFailureCode =>
+  error.cause?.code ?? "account-communication-preference.read";
 
 export const loadCustomerAccountPage = cache(
   async (_locale: Locale): Promise<CustomerAccountPageState> => {
@@ -89,9 +105,39 @@ export const loadCustomerAccountPage = cache(
         })
       );
 
+      /**
+       * The durable communication-language preference is required for every
+       * active account, so there is no unset success state: a saved locale
+       * renders, and a missing row or a failed read becomes the explicit
+       * "read-failed" operational failure so it never blocks the rest of the
+       * page and never renders a guessed value.
+       */
+      const preferredLanguage = await Effect.flatMap(
+        CustomerCommunicationPreferenceRepository,
+        (repository) => repository.load(account.success.accountId)
+      ).pipe(
+        Effect.provide(CustomerCommunicationPreferenceRepository.Live),
+        // The raw repository failure never reaches the log: fold it into the
+        // fixed non-PII read-failure cause first, matching the other account
+        // page reads.
+        Effect.mapError(
+          mapCustomerAccountFailure("account-communication-preference.read")
+        ),
+        Effect.tapError((error) =>
+          Effect.logError("Account communication preference read failed", {
+            code: preferenceReadFailureCode(error),
+          })
+        ),
+        Effect.orElseSucceed(() => "read-failed" as const),
+        runWorkspaceEffect("account.communication-language.read", {
+          boundary: "page",
+        })
+      );
+
       return {
         kind: "linked",
         email: user.email,
+        preferredLanguage,
         profile: profile.success,
         history,
       };
