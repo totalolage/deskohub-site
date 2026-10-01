@@ -357,6 +357,10 @@ cleanup. Keep automatic deletion of obsolete preview branches enabled in the
 integration, and do not add repository workflows that delete integration-owned
 branches.
 
+The CI workflow resolves and migrates this branch in the exact-SHA `test-e2e`
+job after its dependency install. Migrate with the direct URL before stale
+reservation cleanup, capacity validation, and browser setup.
+
 The preview becomes Ready before CI runs migrations. That ordering is safe only
 while the Workspace build is database-independent and runtime traffic does not
 require a schema-breaking migration before E2E starts. Schema-breaking changes

@@ -6,7 +6,6 @@ import {
   findStepByName,
   parseWorkflow,
   type WorkflowStep,
-  workflowStepNames,
   workflowStepRuns,
   workflowSteps,
 } from "./shared/workflow-contract";
@@ -17,23 +16,32 @@ const workflowPath = resolve(
 );
 
 const doc = parseWorkflow(workflowPath);
-const testJob = doc.jobs["test-functional"];
-const stepNames = workflowStepNames(doc);
-const docServices = (
-  doc as {
-    jobs: {
-      "test-functional": {
-        services?: {
-          postgres?: {
-            image?: string;
-            env?: Record<string, string>;
-            options?: string;
-          };
-        };
+const testJob = doc.jobs["test-functional-shards"];
+const shardContract = testJob as typeof testJob & {
+  readonly services?: {
+    readonly postgres?: {
+      readonly image?: string;
+      readonly env?: Record<string, string>;
+      readonly options?: string;
+    };
+  };
+  readonly strategy?: {
+    readonly "fail-fast"?: boolean;
+    readonly matrix?: { readonly shard?: readonly number[] };
+  };
+};
+const validationJob = doc.jobs["validate-workspace"];
+const validationServices = (
+  validationJob as typeof validationJob & {
+    readonly services?: {
+      readonly postgres?: {
+        readonly image?: string;
+        readonly env?: Record<string, string>;
+        readonly options?: string;
       };
     };
   }
-).jobs["test-functional"].services;
+).services;
 
 const stepByName = (name: string): WorkflowStep => {
   const step = findStepByName(doc, name);
@@ -41,10 +49,11 @@ const stepByName = (name: string): WorkflowStep => {
   return step as WorkflowStep;
 };
 
-test("runs the Postgres-backed workspace suites against the disposable service database", () => {
+test("runs each Workspace shard against its disposable Postgres service", () => {
   expect(testJob).toBeDefined();
+  expect(validationJob).toBeDefined();
   // Pinned disposable Postgres service with a UUIDv7-capable image.
-  const service = docServices?.postgres;
+  const service = shardContract.services?.postgres;
   expect(service?.image).toBe("ghcr.io/fboulnois/pg_uuidv7:1.7.0");
   expect(service?.image?.includes(":latest")).toBe(false);
   expect(service?.env).toEqual({
@@ -61,31 +70,32 @@ test("runs the Postgres-backed workspace suites against the disposable service d
   );
   expect(JSON.stringify(testStepEnv).includes("secrets.")).toBe(false);
 
-  // Schema validation runs against the same disposable database.
+  // Schema validation has its own disposable service database.
   const schemaStepEnv = stepByName("Validate Workspace schema migration").env;
   expect(schemaStepEnv?.DATABASE_URL).toBe(
     "postgresql://workspace:workspace@127.0.0.1:5432/workspace"
   );
+  expect(validationServices?.postgres?.image).toBe(service?.image);
   expect(
     stepByName("Validate Workspace schema migration").run?.includes(
       "bun turbo db:generate --filter=deskohub-workspace"
     )
   ).toBe(true);
   expect(
-    workflowSteps(doc, "test-functional").filter((step) =>
+    workflowSteps(doc, "test-functional-shards").filter((step) =>
       JSON.stringify(step).includes("WORKSPACE_TEST_DATABASE_URL")
     )
   ).toHaveLength(1);
 });
 
 test("installs the matching Chromium browser before the Workspace test task", () => {
-  const names = stepNames;
+  const names = workflowSteps(doc, "test-functional-shards").map(
+    (step) => step.name ?? ""
+  );
   const installIndex = names.indexOf("Install Workspace Playwright Chromium");
-  const lintIndex = names.indexOf("Lint Workspace");
   const testIndex = names.indexOf("Run Workspace tests");
 
   expect(installIndex).toBeGreaterThan(-1);
-  expect(installIndex).toBeLessThan(lintIndex);
   expect(installIndex).toBeLessThan(testIndex);
 
   const browserStep = stepByName("Install Workspace Playwright Chromium");
@@ -97,11 +107,91 @@ test("installs the matching Chromium browser before the Workspace test task", ()
   expect(
     names.filter((name) => name === "Install Workspace Playwright Chromium")
   ).toHaveLength(1);
+  const shardExpression = "$" + "{{ matrix.shard }}";
+  expect(stepByName("Run Workspace tests").run).toContain(
+    `--shard=${shardExpression}/4`
+  );
+  expect(stepByName("Run Workspace tests").run).toContain("bun turbo test");
   expect(
     workflowStepRuns(doc).some((run) =>
       run.includes("bun install --frozen-lockfile")
     )
   ).toBe(true);
+});
+
+test("runs four serial Bun test shards and keeps test-functional as a fail-closed gate", () => {
+  expect(shardContract.strategy).toEqual({
+    "fail-fast": false,
+    matrix: { shard: [1, 2, 3, 4] },
+  });
+
+  const packageJson = JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../package.json"), "utf8")
+  ) as { readonly scripts: { readonly test: string } };
+  expect(packageJson.scripts.test).toContain("--parallel=1");
+
+  const gate = doc.jobs["test-functional"];
+  expect(gate.needs).toEqual([
+    "validate-workspace",
+    "validate-workspace-migrations",
+    "test-functional-shards",
+  ]);
+  expect(gate.if).toContain("always()");
+  expect(gate.if).toContain("github.event.action != 'converted_to_draft'");
+
+  const gateStep = workflowSteps(doc, "test-functional")[0];
+  expect(gateStep?.env).toEqual({
+    VALIDATION_RESULT: "$" + "{{ needs.validate-workspace.result }}",
+    MIGRATION_COUNT_RESULT:
+      "$" + "{{ needs.validate-workspace-migrations.result }}",
+    FUNCTIONAL_SHARDS_RESULT: "$" + "{{ needs.test-functional-shards.result }}",
+  });
+  const expectedResults = {
+    VALIDATION_RESULT: "success",
+    MIGRATION_COUNT_RESULT: "success",
+    FUNCTIONAL_SHARDS_RESULT: "success",
+  };
+  const runGate = (overrides: Partial<typeof expectedResults> = {}) =>
+    Bun.spawnSync({
+      cmd: ["bash", "-e", "-o", "pipefail", "-c", gateStep?.run ?? ""],
+      env: { ...process.env, ...expectedResults, ...overrides },
+      stderr: "pipe",
+      stdout: "pipe",
+    });
+  expect(runGate().exitCode).toBe(0);
+  const resultNames = [
+    "VALIDATION_RESULT",
+    "MIGRATION_COUNT_RESULT",
+    "FUNCTIONAL_SHARDS_RESULT",
+  ] as const;
+  for (const resultName of resultNames) {
+    for (const result of ["failure", "cancelled", "skipped"]) {
+      expect(runGate({ [resultName]: result }).exitCode).not.toBe(0);
+    }
+  }
+
+  const validationSteps = workflowSteps(doc, "validate-workspace");
+  expect(validationSteps.some((step) => step.name === "Lint Workspace")).toBe(
+    true
+  );
+  expect(
+    validationSteps.some(
+      (step) => step.name === "Validate Workspace schema migration"
+    )
+  ).toBe(true);
+  expect(
+    validationSteps.some(
+      (step) => step.name === "Validate Workspace E2E allocation bundle"
+    )
+  ).toBe(true);
+  expect(
+    validationSteps.some((step) => step.run === "bun turbo typecheck")
+  ).toBe(true);
+  expect(
+    workflowSteps(doc, "test-functional-shards").some(
+      (step) => step.name === "Lint Workspace"
+    )
+  ).toBe(false);
 });
 
 test("passes the disposable test database through Turborepo at the test task only", () => {
