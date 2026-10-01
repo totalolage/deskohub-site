@@ -25,6 +25,8 @@ const vercelCliVersion = "54.9.1";
 const logLimit = 100;
 /** One CLI invocation must never outlive a bounded slice of the deadline. */
 const cliInvocationTimeoutMs = 30_000;
+/** Only inspect a bounded prefix when deriving a safe CLI failure category. */
+const cliFailureClassificationLimit = 8_192;
 const defaultPollIntervalMs = 5_000;
 /**
  * The injectable child-process boundary behind the pinned Vercel CLI. The
@@ -116,18 +118,52 @@ const vercelLogsArgs = (config: WorkspaceE2EAccountConfig, since: Date) => [
   config.vercelProjectId,
 ];
 
+const invalidVercelLogPayload = () =>
+  workspaceE2EError("Vercel runtime log payload was invalid", {
+    diagnosticCode: "auth_delivery_message_invalid",
+    operation: "decode Vercel runtime log entries",
+  });
+
+const classifyVercelLogsCliFailure = (stderr: string) => {
+  const statusPattern =
+    /\b(?:HTTP(?:\/\d+(?:\.\d+)?)?|status(?:\s+code)?)\s*[:=]?\s*(401|403|404|429|5\d{2})\b/gi;
+  const statuses = new Set(
+    Array.from(
+      stderr.slice(0, cliFailureClassificationLimit).matchAll(statusPattern),
+      (match) => match[1]
+    )
+  );
+  if (statuses.size !== 1) return "cli-rejected";
+
+  const [status] = statuses;
+  switch (status) {
+    case "401":
+      return "cli-authentication-rejected";
+    case "403":
+      return "cli-access-forbidden";
+    case "404":
+      return "cli-resource-not-found";
+    case "429":
+      return "cli-rate-limited";
+    default:
+      return status?.startsWith("5") ? "cli-server-error" : "cli-rejected";
+  }
+};
+
 const runLogQuery = (
   config: WorkspaceE2EAccountConfig,
   since: Date
 ): Effect.Effect<readonly WorkspaceE2EVercelLogEntry[], WorkspaceE2EError> =>
   Effect.gen(function* () {
     const result = yield* Effect.tryPromise({
-      catch: (cause) =>
-        workspaceE2EError("query Vercel preview runtime logs failed", {
-          cause,
-          diagnosticCode: "auth_delivery_message_retrieve_failed",
-          operation: "query Vercel preview runtime logs",
-        }),
+      catch: () =>
+        workspaceE2EError(
+          "query Vercel preview runtime logs failed (process-rejected)",
+          {
+            diagnosticCode: "auth_delivery_message_retrieve_failed",
+            operation: "query Vercel preview runtime logs",
+          }
+        ),
       try: () =>
         config.vercelLogsProcess({
           args: vercelLogsArgs(config, since),
@@ -137,16 +173,17 @@ const runLogQuery = (
     });
     if (result.exitCode !== 0) {
       return yield* workspaceE2EError(
-        "query Vercel preview runtime logs failed",
+        `query Vercel preview runtime logs failed (${classifyVercelLogsCliFailure(result.stderr)})`,
         {
           diagnosticCode: "auth_delivery_message_retrieve_failed",
           operation: "query Vercel preview runtime logs",
         }
       );
     }
-    return yield* tryWorkspaceE2ESync("decode Vercel runtime log entries", () =>
-      decodeLogRequests(result.stdout)
-    );
+    return yield* Effect.try({
+      catch: invalidVercelLogPayload,
+      try: () => decodeLogRequests(result.stdout),
+    });
   });
 
 /**
@@ -170,13 +207,7 @@ const decodeLogRequests = (
     try {
       payload = JSON.parse(line);
     } catch {
-      throw workspaceE2EError(
-        "Vercel runtime logs returned an unreadable log payload",
-        {
-          diagnosticCode: "auth_delivery_message_retrieve_failed",
-          operation: "decode Vercel runtime log entries",
-        }
-      );
+      throw invalidVercelLogPayload();
     }
     return flattenLogRequest(payload);
   });
@@ -195,13 +226,7 @@ const flattenLogRequest = (
     candidate.id.length === 0 ||
     !Array.isArray(candidate.logs)
   ) {
-    throw workspaceE2EError(
-      "Vercel runtime logs returned a log request with unexpected shape",
-      {
-        diagnosticCode: "auth_delivery_message_retrieve_failed",
-        operation: "decode Vercel runtime log entries",
-      }
-    );
+    throw invalidVercelLogPayload();
   }
   // `messageTruncated` is optional at both the request and log-entry level;
   // absent means not truncated.
@@ -212,13 +237,7 @@ const flattenLogRequest = (
       messageTruncated?: unknown;
     } | null;
     if (typeof entry?.message !== "string") {
-      throw workspaceE2EError(
-        "Vercel runtime logs returned a log entry with unexpected shape",
-        {
-          diagnosticCode: "auth_delivery_message_retrieve_failed",
-          operation: "decode Vercel runtime log entries",
-        }
-      );
+      throw invalidVercelLogPayload();
     }
     return {
       id: `${candidate.id}:${logIndex}`,

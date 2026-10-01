@@ -76,15 +76,18 @@ const makeRetrieval = (
   options: {
     readonly exitCode?: number;
     readonly excludeLogEntryIds?: readonly string[];
+    readonly processRejection?: Error;
+    readonly stderr?: string;
   } = {}
 ) => {
   const invocations: CliInvocation[] = [];
   const fakeProcess: WorkspaceE2EVercelLogsProcess = async (command) => {
     invocations.push({ args: command.args, env: command.env });
+    if (options.processRejection) throw options.processRejection;
     if (options.exitCode !== undefined) {
       return {
         exitCode: options.exitCode,
-        stderr: "cli failed",
+        stderr: options.stderr ?? "cli failed",
         stdout: "",
       };
     }
@@ -106,6 +109,14 @@ const makeRetrieval = (
   );
   return { invocations, result };
 };
+
+const captureFailure = (result: Promise<string>) =>
+  result.then(
+    () => {
+      throw new Error("expected Vercel log retrieval to fail");
+    },
+    (failure: unknown) => failure
+  );
 
 describe("workspace e2e Vercel log retrieval", () => {
   test("runs the pinned CLI with the bounded scoped query and returns the validated link", async () => {
@@ -206,7 +217,25 @@ describe("workspace e2e Vercel log retrieval", () => {
       `${jsonl([{ id: "req-ok", logs: [infoLogEntry("fine")] }])}\nnot json`
     );
 
-    await expect(result).rejects.toThrow("unreadable log payload");
+    await expect(result).rejects.toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_invalid",
+      message: "Vercel runtime log payload was invalid",
+      operation: "decode Vercel runtime log entries",
+    });
+  });
+
+  test("rejects a JSONL request with an invalid log-entry shape", async () => {
+    const { result } = makeRetrieval(
+      JSON.stringify({ id: "req-invalid-shape", logs: [{ message: 1 }] })
+    );
+
+    await expect(result).rejects.toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_invalid",
+      message: "Vercel runtime log payload was invalid",
+      operation: "decode Vercel runtime log entries",
+    });
   });
 
   test("rejects a matching log line that is not valid JSON", async () => {
@@ -322,12 +351,78 @@ describe("workspace e2e Vercel log retrieval", () => {
     );
   });
 
-  test("rejects a CLI failure without leaking raw CLI output", async () => {
-    const { result } = makeRetrieval("", { exitCode: 1 });
+  test("categorizes a CLI HTTP failure without exposing raw CLI text", async () => {
+    const secretSentinel = "sentinel-vercel-token-value";
+    const urlSentinel = `https://private.example.test/logs?token=${secretSentinel}`;
+    const { result } = makeRetrieval("", {
+      exitCode: 1,
+      stderr: `Error: HTTP 401 at ${urlSentinel}; credential ${secretSentinel}`,
+    });
 
-    await expect(result).rejects.toThrow(
-      "query Vercel preview runtime logs failed"
-    );
+    const failure = await captureFailure(result);
+    expect(failure).toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      message:
+        "query Vercel preview runtime logs failed (cli-authentication-rejected)",
+      operation: "query Vercel preview runtime logs",
+    });
+    expect((failure as { cause?: unknown }).cause).toBeUndefined();
+    const failureText = [
+      String(failure),
+      (failure as { message?: string }).message,
+      JSON.stringify(failure),
+    ].join(" ");
+    expect(failureText).not.toContain(secretSentinel);
+    expect(failureText).not.toContain(urlSentinel);
+  });
+
+  test("maps only supported HTTP status classes to fixed CLI categories", async () => {
+    const cases = [
+      {
+        stderr: "request failed with status code 403",
+        category: "cli-access-forbidden",
+      },
+      { stderr: "HTTP/2 404", category: "cli-resource-not-found" },
+      { stderr: "HTTP 429", category: "cli-rate-limited" },
+      { stderr: "HTTP 503", category: "cli-server-error" },
+      { stderr: "HTTP 418", category: "cli-rejected" },
+      { stderr: "HTTP 401 then HTTP 403", category: "cli-rejected" },
+    ] as const;
+
+    for (const { stderr, category } of cases) {
+      const { result } = makeRetrieval("", { exitCode: 1, stderr });
+      await expect(result).rejects.toMatchObject({
+        _tag: "WorkspaceE2EError",
+        diagnosticCode: "auth_delivery_message_retrieve_failed",
+        message: `query Vercel preview runtime logs failed (${category})`,
+        operation: "query Vercel preview runtime logs",
+      });
+    }
+  });
+
+  test("categorizes process rejection without retaining raw cause text", async () => {
+    const secretSentinel = "sentinel-process-token-value";
+    const urlSentinel = `https://private.example.test/launch?token=${secretSentinel}`;
+    const { result } = makeRetrieval("", {
+      processRejection: new Error(`launch failed for ${urlSentinel}`),
+    });
+
+    const failure = await captureFailure(result);
+    expect(failure).toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      message: "query Vercel preview runtime logs failed (process-rejected)",
+      operation: "query Vercel preview runtime logs",
+    });
+    expect((failure as { cause?: unknown }).cause).toBeUndefined();
+    const failureText = [
+      String(failure),
+      (failure as { message?: string }).message,
+      JSON.stringify(failure),
+    ].join(" ");
+    expect(failureText).not.toContain(secretSentinel);
+    expect(failureText).not.toContain(urlSentinel);
   });
 
   test("returns stable composite baseline ids and excludes them across poll iterations", async () => {
