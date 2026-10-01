@@ -49,6 +49,9 @@ export async function verifyProfileNavigation(
     });
   };
 
+  process.stdout.write(
+    "e2e.account.profile-navigation: reading profile and billing baseline\n"
+  );
   await selectProfileSection();
   const originalProfile = {
     firstName: await firstName.inputValue({
@@ -86,6 +89,9 @@ export async function verifyProfileNavigation(
   const draftFirstName = `${originalProfile.firstName} draft`.slice(0, 100);
   await selectProfileSection();
 
+  process.stdout.write(
+    "e2e.account.profile-navigation: checking clean home and account re-entry\n"
+  );
   await Promise.all([
     page.waitForURL(homeUrl, {
       timeout: workspaceE2ETimeouts.browserNavigation,
@@ -111,6 +117,9 @@ export async function verifyProfileNavigation(
     })
   ).toHaveCount(0, { timeout: workspaceE2ETimeouts.browserAction });
 
+  process.stdout.write(
+    "e2e.account.profile-navigation: checking profile draft across section switches\n"
+  );
   await firstName.fill(draftFirstName, {
     timeout: workspaceE2ETimeouts.browserAction,
   });
@@ -126,6 +135,9 @@ export async function verifyProfileNavigation(
       name: accountSectionLabels.billing,
     })
   ).toBeVisible({ timeout: workspaceE2ETimeouts.browserAction });
+  process.stdout.write(
+    "e2e.account.profile-navigation: checking hidden billing native validation\n"
+  );
   await selectProfileSection();
   await expect(firstName).toHaveValue(draftFirstName, {
     timeout: workspaceE2ETimeouts.browserAction,
@@ -169,6 +181,9 @@ export async function verifyProfileNavigation(
 
   // The profile form remains mounted while its profile panel is hidden.
   await selectAccountSection(page, "billing");
+  process.stdout.write(
+    "e2e.account.profile-navigation: dismissing home navigation confirmation\n"
+  );
   const headerClickDialogPromise = page.waitForEvent("dialog", {
     timeout: workspaceE2ETimeouts.browserAction,
   });
@@ -187,6 +202,9 @@ export async function verifyProfileNavigation(
     timeout: workspaceE2ETimeouts.browserAction,
   });
 
+  process.stdout.write(
+    "e2e.account.profile-navigation: dismissing history navigation confirmation\n"
+  );
   const backDialogPromise = page.waitForEvent("dialog", {
     timeout: workspaceE2ETimeouts.browserAction,
   });
@@ -203,6 +221,9 @@ export async function verifyProfileNavigation(
     timeout: workspaceE2ETimeouts.browserAction,
   });
 
+  process.stdout.write(
+    "e2e.account.profile-navigation: accepting leave confirmation\n"
+  );
   const leaveDialogPromise = page.waitForEvent("dialog", {
     timeout: workspaceE2ETimeouts.browserAction,
   });
@@ -217,6 +238,9 @@ export async function verifyProfileNavigation(
     timeout: workspaceE2ETimeouts.browserNavigation,
   });
 
+  process.stdout.write(
+    "e2e.account.profile-navigation: verifying restored saved profile and billing values\n"
+  );
   await page.goto(accountUrl, {
     waitUntil: "load",
     timeout: workspaceE2ETimeouts.browserNavigation,

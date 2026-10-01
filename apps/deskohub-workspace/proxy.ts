@@ -155,19 +155,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const localeFromUrl = getLocaleFromRequestPathname(request, locales);
-
-  const isPayEntry =
-    request.nextUrl.pathname === "/checkout/pay" ||
-    (localeFromUrl !== undefined &&
-      request.nextUrl.pathname === `/${localeFromUrl}/checkout/pay`);
   if (
     env.VERCEL_ENV === "preview" &&
-    (request.method === "GET" || request.method === "HEAD") &&
-    isPayEntry
+    (request.method === "GET" || request.method === "HEAD")
   ) {
     const callbackOrigin = await getWorkspaceRuntimeCallbackOrigin.pipe(
-      runWorkspaceEffect("checkout.canonical-origin", { boundary: "route" })
+      runWorkspaceEffect("workspace.canonical-origin", { boundary: "route" })
     );
     if (request.nextUrl.origin !== callbackOrigin.origin) {
       const redirectUrl = new URL(
@@ -180,6 +173,8 @@ export async function proxy(request: NextRequest) {
       return privateResponse(NextResponse.redirect(redirectUrl));
     }
   }
+
+  const localeFromUrl = getLocaleFromRequestPathname(request, locales);
 
   if (localeFromUrl) {
     const exchanged = await exchangeReservationCapability(

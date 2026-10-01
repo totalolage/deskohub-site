@@ -32,6 +32,10 @@ const inspectCheckoutEntry = (
           ["https://branch-preview.vercel.app/en-US/checkout/pay/return/synthetic-order", {}],
           ["https://branch-preview.vercel.app/en-US/checkout/pay", { method: "POST", headers: { "next-action": "synthetic-action" } }],
           ["https://branch-preview.vercel.app/en-US/checkout/pay?state=synthetic-summary", { headers: { rsc: "1" } }],
+          ["https://branch-preview.vercel.app/en-US/account", {}],
+          ["https://immutable-preview.vercel.app/en-US/account", { headers: { cookie: "better-auth.session_token=synthetic-session" } }],
+          ["https://branch-preview.vercel.app/en-US", {}],
+          ["https://branch-preview.vercel.app/en-US/reservation/cowork", {}],
         ];
         const results = [];
         for (const [url, options] of requests) {
@@ -85,10 +89,30 @@ test("starts Preview payment on the callback host before issuing its host-only c
     expect(response.referrerPolicy).toBe("no-referrer");
   }
 
-  for (const index of [3, 4, 5, 6]) {
+  for (const index of [4, 5]) {
+    expect(responses[index].status).toBe(307);
+    expect(new URL(responses[index].location).origin).toBe(
+      "https://immutable-preview.vercel.app"
+    );
+  }
+  for (const index of [3, 6]) {
     expect(responses[index].location).toBeNull();
     expect(responses[index].status).toBe(200);
   }
+});
+
+test("uses the Preview callback host before sign-in and reservation preparation", () => {
+  const result = inspectCheckoutEntry("preview");
+  expect(result.exitCode).toBe(0);
+  const responses = JSON.parse(new TextDecoder().decode(result.stdout));
+  for (const index of [8, 10, 11]) {
+    expect(responses[index].status).toBe(307);
+    expect(new URL(responses[index].location).origin).toBe(
+      "https://immutable-preview.vercel.app"
+    );
+  }
+  expect(responses[9].location).toBeNull();
+  expect(responses[9].status).toBe(200);
 });
 
 test("retains Development and Production payment origins", () => {
@@ -96,7 +120,7 @@ test("retains Development and Production payment origins", () => {
     const result = inspectCheckoutEntry(environment);
     expect(result.exitCode).toBe(0);
     const responses = JSON.parse(new TextDecoder().decode(result.stdout));
-    for (const index of [0, 1, 3, 4, 5, 6, 7]) {
+    for (const index of [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
       expect(responses[index].location).toBeNull();
     }
   }
