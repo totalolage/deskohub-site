@@ -425,6 +425,65 @@ describe("workspace e2e Vercel log retrieval", () => {
     expect(failureText).not.toContain(urlSentinel);
   });
 
+  test("classifies standard process error messages without exposing their text", async () => {
+    const secretSentinel = "sentinel-private-process-message";
+    const cases = [
+      {
+        message: `spawn bunx: No such file or directory (${secretSentinel})`,
+        category: "process-executable-not-found",
+      },
+      {
+        message: `spawn bunx: Permission denied (${secretSentinel})`,
+        category: "process-permission-denied",
+      },
+      {
+        message: `spawn bunx: Resource temporarily unavailable (${secretSentinel})`,
+        category: "process-resource-unavailable",
+      },
+      {
+        message: `spawn bunx: Too many open files (${secretSentinel})`,
+        category: "process-file-descriptors-exhausted",
+      },
+      {
+        message: `spawn bunx: Out of memory (${secretSentinel})`,
+        category: "process-memory-pressure",
+      },
+      {
+        message: `spawn bunx: operation timed out (${secretSentinel})`,
+        category: "process-timeout",
+      },
+    ] as const;
+
+    const failureMessages: unknown[] = [];
+    for (const { message } of cases) {
+      const { result } = makeRetrieval("", {
+        processRejection: new Error(message),
+      });
+      const failure = await captureFailure(result);
+
+      expect(failure).toMatchObject({
+        _tag: "WorkspaceE2EError",
+        diagnosticCode: "auth_delivery_message_retrieve_failed",
+        operation: "query Vercel preview runtime logs",
+      });
+      failureMessages.push((failure as { message?: unknown }).message);
+      expect((failure as { cause?: unknown }).cause).toBeUndefined();
+      const failureText = [
+        String(failure),
+        (failure as { message?: string }).message,
+        JSON.stringify(failure),
+      ].join(" ");
+      expect(failureText).not.toContain(secretSentinel);
+      expect(failureText).not.toContain(message);
+    }
+    expect(failureMessages).toEqual(
+      cases.map(
+        ({ category }) =>
+          `query Vercel preview runtime logs failed (${category})`
+      )
+    );
+  });
+
   test("classifies structured process rejection fields without exposing error text", async () => {
     const cases = [
       { code: "ENOENT", category: "process-executable-not-found" },
@@ -481,12 +540,20 @@ describe("workspace e2e Vercel log retrieval", () => {
       },
       { code: "ENOMEM", category: "process-memory-pressure" },
       { name: "AbortError", category: "process-timeout" },
+      {
+        message: "Resource temporarily unavailable",
+        category: "process-resource-unavailable",
+      },
     ] as const;
 
     for (const rejection of cases) {
-      const sentinel = `sentinel-nested-rejection-${rejection.code ?? rejection.name}`;
+      const sentinel = `sentinel-nested-rejection-${rejection.category}`;
+      const rejectionMessage =
+        "message" in rejection
+          ? `${rejection.message} (${sentinel})`
+          : `${sentinel}: private process details`;
       let cause: unknown = Object.assign(
-        new Error(`${sentinel}: private process details`),
+        new Error(rejectionMessage),
         "code" in rejection ? { code: rejection.code } : {},
         "name" in rejection ? { name: rejection.name } : {}
       );

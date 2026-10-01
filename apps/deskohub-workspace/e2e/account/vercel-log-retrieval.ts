@@ -25,8 +25,8 @@ const vercelCliVersion = "54.9.1";
 const logLimit = 100;
 /** One CLI invocation must never outlive a bounded slice of the deadline. */
 const cliInvocationTimeoutMs = 30_000;
-/** Only inspect a bounded prefix when deriving a safe CLI failure category. */
-const cliFailureClassificationLimit = 8_192;
+/** Only inspect a bounded prefix when deriving a safe failure category. */
+const failureClassificationLimit = 8_192;
 const defaultPollIntervalMs = 5_000;
 /**
  * The injectable child-process boundary behind the pinned Vercel CLI. The
@@ -129,7 +129,7 @@ const classifyVercelLogsCliFailure = (stderr: string) => {
     /\b(?:HTTP(?:\/\d+(?:\.\d+)?)?|status(?:\s+code)?)\s*[:=]?\s*(401|403|404|429|5\d{2})\b/gi;
   const statuses = new Set(
     Array.from(
-      stderr.slice(0, cliFailureClassificationLimit).matchAll(statusPattern),
+      stderr.slice(0, failureClassificationLimit).matchAll(statusPattern),
       (match) => match[1]
     )
   );
@@ -150,6 +150,34 @@ const classifyVercelLogsCliFailure = (stderr: string) => {
   }
 };
 
+const classifyVercelLogsProcessMessage = (message: string) => {
+  const boundedMessage = message.slice(0, failureClassificationLimit);
+  if (/\bno such file or directory\b/i.test(boundedMessage)) {
+    return "process-executable-not-found";
+  }
+  if (
+    /\b(?:permission denied|operation not permitted)\b/i.test(boundedMessage)
+  ) {
+    return "process-permission-denied";
+  }
+  if (/\bresource temporarily unavailable\b/i.test(boundedMessage)) {
+    return "process-resource-unavailable";
+  }
+  if (/\btoo many open files\b/i.test(boundedMessage)) {
+    return "process-file-descriptors-exhausted";
+  }
+  if (
+    /\b(?:out of memory|cannot allocate memory|not enough memory)\b/i.test(
+      boundedMessage
+    )
+  ) {
+    return "process-memory-pressure";
+  }
+  if (/\b(?:timed out|timeout)\b/i.test(boundedMessage)) {
+    return "process-timeout";
+  }
+};
+
 const classifyVercelLogsProcessRejection = (cause: unknown) => {
   let current = cause;
   for (let causeDepth = 0; causeDepth <= 3; causeDepth += 1) {
@@ -164,6 +192,7 @@ const classifyVercelLogsProcessRejection = (cause: unknown) => {
     const error = current as {
       readonly cause?: unknown;
       readonly code?: unknown;
+      readonly message?: unknown;
       readonly name?: unknown;
     };
     switch (error.code) {
@@ -181,7 +210,12 @@ const classifyVercelLogsProcessRejection = (cause: unknown) => {
       case "ENOMEM":
         return "process-memory-pressure";
       default:
-        if (error.name === "AbortError") return "process-timeout";
+        break;
+    }
+    if (error.name === "AbortError") return "process-timeout";
+    if (typeof error.message === "string") {
+      const messageCategory = classifyVercelLogsProcessMessage(error.message);
+      if (messageCategory) return messageCategory;
     }
 
     if (causeDepth === 3) break;
