@@ -18,9 +18,7 @@ const ConsoleEmailProvider: EmailProvider = {
     message: EmailMessage
   ) {
     if (message.sensitiveContent === true) {
-      // Sensitive messages carry bearer material (links, tokens, credentials).
-      // Suppress recipient, subject, body, and the development banner; emit
-      // no raw console output and annotate only non-PII facts.
+      // Sensitive messages may carry bearer data; log only non-PII facts.
       yield* Effect.logInfo("Console Email Provider - Sending Email", {
         category: message.tags?.[0],
         hasHtml: !!message.html,

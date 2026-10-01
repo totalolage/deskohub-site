@@ -284,9 +284,7 @@ export const makeWorkspaceE2EAccountCases = ({
     });
 
   /**
-   * Bounded Vercel runtime log retrieval for one delivered link. The log
-   * entries observed before the request exclude every earlier entry for the
-   * same recipient, so repeated sign-ins never match a stale logged link.
+   * The baseline IDs prevent repeated sign-ins from matching a stale link.
    */
   const retrieveSignInLink = (
     email: string,

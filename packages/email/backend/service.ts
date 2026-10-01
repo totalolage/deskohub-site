@@ -98,11 +98,7 @@ const getEmailRetryPolicyDescription = (
     ? "exponential backoff (1s base, jittered, max 3 attempts)"
     : "no retry - not a network error";
 
-/**
- * Non-PII send facts shared by the log annotations of every email send.
- * Rendered bodies are token bearer material and recipients are PII, so only
- * booleans, the provider, and the non-secret category tag may be annotated.
- */
+/** Log only non-PII send facts; recipients and rendered bodies stay out. */
 const emailSendLogFacts = (message: {
   html?: string;
   text?: string;
@@ -113,10 +109,7 @@ const emailSendLogFacts = (message: {
   hasText: !!message.text,
 });
 
-/**
- * Provider failures are censored at source: only the error `_tag` and a
- * fixed code reach logs, never the raw provider error message.
- */
+/** Provider logs receive fixed codes and tags, never raw error messages. */
 const emailFailureLogFacts = (error: EmailServiceError | NetworkError) => ({
   code: isRetryableEmailError(error)
     ? "email.send.transport-retryable"

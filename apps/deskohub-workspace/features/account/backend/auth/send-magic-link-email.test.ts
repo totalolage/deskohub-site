@@ -110,8 +110,6 @@ const captureConsole = (): string[] & { restore: () => void } => {
   // biome-ignore lint/suspicious/noConsole: The test captures the authorized console delivery channel.
   const original = consoleMethods.map((method) => console[method]);
   const capture = (...args: unknown[]) => {
-    // Structurally inspectable: objects keep their fields via JSON instead
-    // of degrading to "[object Object]".
     lines.push(
       args
         .map((arg) =>

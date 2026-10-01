@@ -233,15 +233,8 @@ describe("Customer-account boundary", () => {
       file.includes("/backend/")
     );
 
-    // The single authorized bearer-material log line in the account backend:
-    // a protected Vercel Preview delivering a magic link to an exact synthetic
-    // E2E recipient emits the plaintext JSON Lines envelope
-    // `{code, recipient, message, text}` with `code=account.magic-link.preview-e2e`
-    // from `emitPreviewE2EConsoleDelivery` in `auth/send-magic-link-email.ts`.
-    // That one raw `console.log` is the explicit exception to the no-bearer-
-    // material logging rule, so the E2E runner can read the link from runtime
-    // logs. Every other console call — another site, a second call, or
-    // `console.info`/`warn`/`error` — stays forbidden.
+    // Permit only the synthetic Preview bearer-link emitter in the account
+    // backend.
     const authorizedEmitterFile = `${accountDirectory}/backend/auth/send-magic-link-email.ts`;
     const authorizedEmitterName = "emitPreviewE2EConsoleDelivery";
     const authorizedLogCode = "account.magic-link.preview-e2e";
@@ -255,7 +248,6 @@ describe("Customer-account boundary", () => {
       const property = member.property;
       if (property.type !== "Identifier" || property.name !== "log")
         return false;
-      // Must sit inside the dedicated preview-E2E emitter.
       const emitter = nodesOf(ast).find(
         (node) =>
           node.type === "VariableDeclarator" &&
@@ -263,7 +255,6 @@ describe("Customer-account boundary", () => {
           node.id.name === authorizedEmitterName
       );
       if (!emitter || !containsNode(emitter, member)) return false;
-      // And the call it belongs to must log the authorized envelope code.
       const call = nodesOf(ast).find(
         (node) =>
           node.type === "CallExpression" &&
@@ -287,7 +278,6 @@ describe("Customer-account boundary", () => {
 
     for (const file of backendFiles) {
       const { ast } = parseTrackedSource(file);
-      // Test files legitimately capture console output to assert on it.
       if (file.includes(".test.")) continue;
       for (const node of nodesOf(ast)) {
         if (
@@ -325,8 +315,6 @@ describe("Customer-account boundary", () => {
       expect(leakingLogCalls).toEqual([]);
     }
 
-    // At most one raw console call may exist in the account backend, and only
-    // when it is the authorized `account.magic-link.preview-e2e` emitter.
     expect(consoleCalls.length).toBeLessThanOrEqual(1);
     expect(consoleCalls.filter((call) => !call.authorized)).toEqual([]);
   });

@@ -280,12 +280,8 @@ describe("ResendEmailProvider", () => {
 });
 
 /**
- * In-memory Tracer capturing every ended span exactly as the OpenTelemetry
- * bridge would observe it: the span's terminal exit carries the failure, and
- * that exit is what the bridge turns into `exception` events with
- * `exception.message`. Console capture cannot see this channel. Error
- * messages are non-enumerable, so the exit is deep-serialized with Error
- * fields explicitly extracted — the leak assertions inspect real content.
+ * Captures terminal span errors, including non-enumerable messages, for leak
+ * assertions.
  */
 const serializeExitValue = (value: unknown, depth = 0): unknown => {
   if (depth > 8 || value === null || typeof value !== "object") return value;

@@ -16,9 +16,6 @@ import { join, resolve } from "node:path";
  *     matchers applied to the variable, and count-occurrence helpers fed
  *     with the variable.
  *
- * The enumeration is repository-wide: every existing `*.test.ts(x)` under
- * the repo root is audited, not only the Workspace app.
- *
  * Sanctioned replacements compute verdicts structurally — parsed-TypeScript
  * AST checks (`scripts/shared/source-ast.ts`), executed runtime/module
  * behavior, parsed YAML/JSON config, and generated-output comparisons — and
@@ -100,13 +97,7 @@ export const repositoryRoot = (): string => {
   return cachedRepositoryRoot;
 };
 
-/**
- * Whether the path exists in the worktree, tolerating dangling symlinks:
- * `lstatSync` classifies the directory entry itself, so a dangling symlink
- * stays present and its subsequent read surfaces the read error. Only a
- * confirmed-missing entry (ENOENT, or ENOTDIR when a parent path component
- * is no longer a directory) is skipped; every other stat failure rethrows.
- */
+/** Keep dangling symlinks so subsequent reads surface their read errors. */
 const presentPath = (root: string, relativePath: string): boolean => {
   try {
     lstatSync(join(root, relativePath));
@@ -118,14 +109,6 @@ const presentPath = (root: string, relativePath: string): boolean => {
   }
 };
 
-/**
- * Every existing, nonignored test file in a repository worktree, relative
- * to the repo root: tracked files plus untracked new tests, excluding
- * tracked files deleted in the worktree. Paths are present on disk (lstat
- * classifies the entry, dangling symlinks included), so a read failure on
- * an enumerated path is a genuine read error, never a stale-enumeration
- * artifact.
- */
 export const listAuditedTestFiles = (
   root: string = repositoryRoot()
 ): readonly string[] =>

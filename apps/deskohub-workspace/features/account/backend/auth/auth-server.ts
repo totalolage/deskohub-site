@@ -176,12 +176,6 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
   });
 };
 
-/**
- * Synthetic Preview E2E recipients use the shared Console provider and the
- * single authorized `account.magic-link.preview-e2e` log line. Other
- * recipients use the configured default provider, failing closed when its
- * required credential is absent.
- */
 export const makeWorkspaceMagicLinkDelivery = () =>
   makeMagicLinkEmailDelivery(renderMagicLinkEmail, {
     isVercelPreview: env.VERCEL_ENV === "preview",

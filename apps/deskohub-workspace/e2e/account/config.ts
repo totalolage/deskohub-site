@@ -6,7 +6,7 @@ import type { WorkspaceE2ERunId } from "../run-identifiers";
 import { addRedaction } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { WorkspaceE2EVercelLogsProcess } from "./vercel-log-retrieval";
-import { makeBunVercelLogsProcess } from "./vercel-log-retrieval";
+import { makeVercelLogsProcess } from "./vercel-log-retrieval";
 
 /** Resend synthetic test recipients ignore local parts; this host stays fixed. */
 const resendSyntheticRecipientHost = "resend.dev";
@@ -29,12 +29,6 @@ export type WorkspaceE2EAccountConfig = {
   readonly vercelLogsProcess: WorkspaceE2EVercelLogsProcess;
 };
 
-/**
- * Builds the account E2E configuration from the validated run context. The
- * GitHub-only project-scoped Vercel token never enters Vercel or application
- * configuration, so account cases fail closed when it is absent: they block
- * before executing and never skip.
- */
 export const getAccountE2EConfig = (
   environment: WorkspaceE2EEnvironment,
   runId: WorkspaceE2ERunId
@@ -70,7 +64,7 @@ export const getAccountE2EConfig = (
     timeouts: workspaceE2ETimeouts,
     vercelProjectId,
     vercelToken,
-    vercelLogsProcess: makeBunVercelLogsProcess({
+    vercelLogsProcess: makeVercelLogsProcess({
       HOME: environment.HOME,
       PATH: environment.PATH,
     }),

@@ -1,4 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Effect, Schema } from "effect";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import { validE2ERuntimeEnvironment } from "../e2e-env.test-fixture";
@@ -27,6 +37,17 @@ const recipient = makeWorkspaceE2EAccountRecipient(config, "retrieval");
 const expectedHost = config.expectedHost;
 const authOrigin = `https://${expectedHost}`;
 const callbackPath = `/${config.locale}/auth/callback`;
+const workspaceDir = fileURLToPath(new URL("../../", import.meta.url));
+const playwrightCliPath = join(
+  workspaceDir,
+  "node_modules/@playwright/test/cli.js"
+);
+const playwrightTestApiPath = fileURLToPath(
+  new URL("../../node_modules/@playwright/test/index.js", import.meta.url)
+);
+const vercelLogsProcessSourcePath = fileURLToPath(
+  new URL("./vercel-log-retrieval.ts", import.meta.url)
+);
 
 const magicLink = (token: string) =>
   `${authOrigin}/api/auth/magic-link/verify?token=${token}&callbackURL=${encodeURIComponent(callbackPath)}`;
@@ -58,7 +79,6 @@ type CliInvocation = {
   readonly env: Readonly<Record<string, string | undefined>>;
 };
 
-/** Serialized stdout exactly as `vercel logs --json` writes it: JSON Lines. */
 const jsonl = (requests: readonly FakeLogRequest[]): string =>
   requests.map((request) => JSON.stringify(request)).join("\n");
 
@@ -119,6 +139,103 @@ const captureFailure = (result: Promise<string>) =>
   );
 
 describe("workspace e2e Vercel log retrieval", () => {
+  test("runs the Vercel process through the real Node Playwright worker", async () => {
+    const tempDirectory = mkdtempSync(
+      join(tmpdir(), "vercel-log-node-worker-")
+    );
+    const fakeBin = join(tempDirectory, "bin");
+    const testDirectory = join(tempDirectory, "tests");
+    const fakeBunx = join(fakeBin, "bunx");
+    const configPath = join(tempDirectory, "playwright.config.mjs");
+    const specPath = join(testDirectory, "process-worker.pw.ts");
+    const childPath = `${fakeBin}${delimiter}${process.env.PATH ?? ""}`;
+
+    try {
+      mkdirSync(fakeBin);
+      mkdirSync(testDirectory);
+      writeFileSync(
+        fakeBunx,
+        `#!/usr/bin/env node
+const token = process.env.VERCEL_TOKEN;
+if (!token || process.argv.includes(token)) process.exit(91);
+if (process.env.PR466_PROCESS_MODE === "timeout") {
+  setTimeout(() => process.exit(0), 2000);
+} else if (process.env.PR466_PROCESS_MODE === "nonzero") {
+  process.stdout.write("synthetic stdout\\n");
+  process.stderr.write("synthetic stderr\\n");
+  process.exit(17);
+} else {
+  process.stdout.write("synthetic stdout\\n");
+  process.stderr.write("synthetic stderr\\n");
+}
+`
+      );
+      chmodSync(fakeBunx, 0o755);
+      writeFileSync(
+        configPath,
+        `export default { testDir: ${JSON.stringify(testDirectory)}, outputDir: ${JSON.stringify(join(tempDirectory, "results"))}, testMatch: "process-worker.pw.ts", workers: 1, reporter: "list" };\n`
+      );
+      writeFileSync(
+        specPath,
+        `import { expect, test } from ${JSON.stringify(playwrightTestApiPath)};
+import { makeVercelLogsProcess } from ${JSON.stringify(vercelLogsProcessSourcePath)};
+
+test("captures output and status, and rejects a timed out CLI", async () => {
+  const run = (mode: string, timeoutMs = 2000) =>
+    makeVercelLogsProcess({
+      HOME: ${JSON.stringify(tmpdir())},
+      PATH: ${JSON.stringify(childPath)},
+    })({
+      args: ["logs", "--json"],
+      env: { PR466_PROCESS_MODE: mode, VERCEL_TOKEN: "synthetic-private-token" },
+      timeoutMs,
+    });
+
+  expect(typeof globalThis.Bun).toBe("undefined");
+  expect(await run("success")).toEqual({
+    exitCode: 0,
+    stderr: "synthetic stderr\\n",
+    stdout: "synthetic stdout\\n",
+  });
+  expect(await run("nonzero")).toEqual({
+    exitCode: 17,
+    stderr: "synthetic stderr\\n",
+    stdout: "synthetic stdout\\n",
+  });
+  await expect(run("timeout", 50)).rejects.toThrow();
+});
+`
+      );
+
+      const playwright = Bun.spawn(
+        ["node", playwrightCliPath, "test", "--config", configPath],
+        {
+          cwd: workspaceDir,
+          env: {
+            HOME: process.env.HOME,
+            PATH: process.env.PATH,
+            TMPDIR: process.env.TMPDIR,
+          },
+          signal: AbortSignal.timeout(15_000),
+          stderr: "pipe",
+          stdin: "ignore",
+          stdout: "pipe",
+        }
+      );
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(playwright.stdout).text(),
+        new Response(playwright.stderr).text(),
+        playwright.exited,
+      ]);
+
+      if (exitCode !== 0) {
+        throw new Error(`Node Playwright worker failed: ${stdout}\n${stderr}`);
+      }
+    } finally {
+      rmSync(tempDirectory, { force: true, recursive: true });
+    }
+  });
+
   test("runs the pinned CLI with the bounded scoped query and returns the validated link", async () => {
     const stdout = jsonl([
       {
@@ -641,8 +758,7 @@ describe("workspace e2e Vercel log retrieval", () => {
       id: "req-baseline",
       logs: [infoLogEntry("boot"), matchingLogEntry()],
     };
-    // A genuinely different link: exclusion bugs cannot be masked by the
-    // stale and fresh entries sharing one URL.
+    // Distinct URLs expose stale-match bugs.
     const freshToken = "fresh-token";
     const freshRequest: FakeLogRequest = {
       id: "req-fresh",

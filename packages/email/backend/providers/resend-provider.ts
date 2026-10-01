@@ -123,10 +123,7 @@ const createResendProvider = (apiKey: string): EmailProvider => {
             return response;
           },
           catch: (error) => {
-            // Classification uses the raw provider failure internally, but the
-            // constructed error carries ONLY fixed messages with no raw
-            // provider cause, so no provider content can reach logs, traces,
-            // or OTel exception events before the account boundary censors.
+            // Classify internally, then discard the raw provider failure.
             const errorMessage =
               error instanceof Error ? error.message : String(error);
             const normalizedErrorMessage = errorMessage.toLowerCase();
@@ -231,9 +228,7 @@ const createResendProvider = (apiKey: string): EmailProvider => {
           return await resend.domains.list();
         },
         catch: () =>
-          // The caught exception is deliberately discarded: the fixed,
-          // cause-free message keeps raw provider content out of failed
-          // spans and OTel exception events.
+          // Discard the exception so failed spans cannot expose provider data.
           new EmailServiceError("Failed to verify Resend API key"),
       }).pipe(
         Effect.flatMap((response) => {

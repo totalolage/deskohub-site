@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { Effect } from "effect";
 import {
   toWorkspaceE2EError,
@@ -8,30 +9,14 @@ import {
 import { addRedaction } from "../runtime";
 import type { WorkspaceE2EAccountConfig } from "./config";
 
-/**
- * The structured payload the Preview runtime prints for synthetic magic-link
- * delivery (see the shared `@deskohub/email` Console provider,
- * packages/email/backend/providers/console-provider.ts). The fixed code is
- * the `--query` marker, and the individual log entry's recipient field must
- * equal the requesting case's exact synthetic recipient (case-insensitively)
- * for the entry to count as a match. Well-formed entries whose recipient
- * differs from the requested recipient are skipped so concurrent synthetic
- * recipients in the same query window do not fail the retrieval; entries
- * that cannot be parsed as a structured envelope fail closed.
- */
 export const workspaceE2EPreviewE2ELogCode = "account.magic-link.preview-e2e";
 
 const vercelCliVersion = "54.9.1";
 const logLimit = 100;
-/** One CLI invocation must never outlive a bounded slice of the deadline. */
 const cliInvocationTimeoutMs = 30_000;
-/** Only inspect a bounded prefix when deriving a safe failure category. */
 const failureClassificationLimit = 8_192;
 const defaultPollIntervalMs = 5_000;
-/**
- * The injectable child-process boundary behind the pinned Vercel CLI. The
- * token always travels in the child environment, never in argv.
- */
+/** Vercel token is passed to the CLI through its environment, never argv. */
 export type WorkspaceE2EVercelLogsProcess = (command: {
   readonly args: readonly string[];
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -42,41 +27,32 @@ export type WorkspaceE2EVercelLogsProcess = (command: {
   readonly stdout: string;
 }>;
 
-/**
- * The real process boundary: `bunx vercel@54.9.1` behind the base
- * environment captured once from the typed E2E environment.
- */
-export const makeBunVercelLogsProcess = (
-  baseEnv: Readonly<Record<string, string | undefined>>
-): WorkspaceE2EVercelLogsProcess =>
-  async function runVercelLogs({ args, env, timeoutMs }) {
-    const process_ = Bun.spawn(
-      ["bunx", `vercel@${vercelCliVersion}`, ...args],
-      {
-        env: { ...baseEnv, ...env },
-        signal: AbortSignal.timeout(timeoutMs),
-        stderr: "pipe",
-        stdout: "pipe",
-      }
-    );
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(process_.stdout).text(),
-      new Response(process_.stderr).text(),
-      process_.exited,
-    ]);
-    return { exitCode, stderr, stdout };
-  };
+export const makeVercelLogsProcess =
+  (
+    baseEnv: Readonly<Record<string, string | undefined>>
+  ): WorkspaceE2EVercelLogsProcess =>
+  ({ args, env, timeoutMs }) =>
+    new Promise((resolve, reject) => {
+      execFile(
+        "bunx",
+        [`vercel@${vercelCliVersion}`, ...args],
+        {
+          encoding: "utf8",
+          env: { ...baseEnv, ...env } as NodeJS.ProcessEnv,
+          signal: AbortSignal.timeout(timeoutMs),
+        },
+        (error, stdout, stderr) => {
+          if (!error) {
+            resolve({ exitCode: 0, stderr, stdout });
+          } else if (typeof error.code === "number") {
+            resolve({ exitCode: error.code, stderr, stdout });
+          } else {
+            reject(error);
+          }
+        }
+      );
+    });
 
-type WorkspaceE2EVercelLogRequest = {
-  readonly id: string;
-  readonly messageTruncated: boolean;
-  readonly logs: readonly {
-    readonly message: string;
-    readonly messageTruncated: boolean;
-  }[];
-};
-
-/** One flattened, matchable log record with its stable composite identity. */
 type WorkspaceE2EVercelLogEntry = {
   readonly id: string;
   readonly message: string;
@@ -85,20 +61,11 @@ type WorkspaceE2EVercelLogEntry = {
 
 export type WorkspaceE2EMagicLinkRequest = {
   readonly callbackPath: string;
-  /** Log entry ids observed before the request; retrieval ignores them. */
+  /** Baseline IDs prevent stale links from matching. */
   readonly excludeLogEntryIds?: readonly string[];
-  /**
-   * The exact synthetic recipient this retrieval serves. A preview-e2e log
-   * line only counts as a match when its recipient field equals this
-   * recipient (case-insensitively); the serial lane, the `--since` window,
-   * and the baseline exclusions provide the remaining correlation.
-   */
   readonly recipient: string;
-  /** Bounded query window start; entries logged before it can never match. */
   readonly startedAt: Date;
-  /** Test-only override; the runner always uses the checked-in timeout. */
   readonly pollIntervalMs?: number;
-  /** Test-only override; the runner always uses the checked-in timeout. */
   readonly deadlineAfterMs?: number;
 };
 
@@ -260,12 +227,6 @@ const runLogQuery = (
     });
   });
 
-/**
- * Decodes the CLI's bounded JSON Lines output: `vercel logs --json` writes
- * one JSON object per REQUEST line, `{ id, messageTruncated?, logs: [...] }`,
- * where each `logs[]` record is an individual `{ message, messageTruncated? }`
- * entry. Malformed lines fail closed; empty stdout is zero entries.
- */
 const decodeLogRequests = (
   stdout: string
 ): readonly WorkspaceE2EVercelLogEntry[] => {
@@ -302,8 +263,7 @@ const flattenLogRequest = (
   ) {
     throw invalidVercelLogPayload();
   }
-  // `messageTruncated` is optional at both the request and log-entry level;
-  // absent means not truncated.
+  // Vercel may omit this flag; only `true` marks an entry truncated.
   const requestTruncated = candidate.messageTruncated === true;
   return candidate.logs.map((log, logIndex) => {
     const entry = log as {
@@ -321,13 +281,6 @@ const flattenLogRequest = (
   });
 };
 
-/**
- * Result of parsing one code-matching log line's structured envelope.
- * `other-recipient` marks a well-formed entry that belongs to a different
- * synthetic recipient and must be skipped; `unreadable` marks a record that
- * cannot be parsed as a valid preview-e2e envelope (or whose body fails
- * validation for the requested recipient) and must fail closed.
- */
 type PreviewE2ELogLineParseResult =
   | { readonly kind: "match"; readonly text: string }
   | { readonly kind: "other-recipient" }
@@ -365,17 +318,6 @@ const parsePreviewE2ELogLine = (
   return { kind: "match", text: candidate.text };
 };
 
-/**
- * Bounded Vercel runtime log retrieval for one synthetic magic link. The log
- * line is matched by the fixed preview-e2e code marker, the exact synthetic
- * recipient carried by the line, the pre-request time
- * window (`--since`), and the pre-request baseline ids; exactly one valid
- * match is tolerated. The bearer link is parsed in memory from the logged
- * text body, validated against the exact immutable preview origin and
- * callback, and registered with the redactor before it is returned. Raw CLI
- * output, the log body, the URL, and the token never reach logs or
- * artifacts.
- */
 export const retrieveWorkspaceE2EMagicLink = (
   config: WorkspaceE2EAccountConfig,
   request: WorkspaceE2EMagicLinkRequest
@@ -405,13 +347,7 @@ export const retrieveWorkspaceE2EMagicLink = (
     });
   });
 
-/**
- * Lists the preview-e2e runtime log entry ids the deployment currently holds
- * within the request window, as stable composite identities
- * `<requestId>:<logIndex>`. Cases capture this baseline before requesting a
- * new link so retrieval matches only the newly logged entry regardless of log
- * delivery timing.
- */
+/** Captures prior entry IDs so retrieval cannot reuse a stale link. */
 export const listSyntheticLogEntryIds = (
   config: WorkspaceE2EAccountConfig,
   request: WorkspaceE2EMagicLinkRequest
@@ -492,9 +428,7 @@ const matchPreviewE2EEntries = (
       !excluded.has(entry.id) &&
       entry.message.includes(workspaceE2EPreviewE2ELogCode)
   );
-  // A code-matching entry whose request or log record was truncated by the
-  // log pipeline fails closed instead of being silently skipped, and counts
-  // toward the exactly-one rule.
+  // Truncated matching entries fail closed.
   if (candidates.some((entry) => entry.truncated)) {
     throw workspaceE2EError(
       "Vercel log retrieval matched a truncated preview log entry",
@@ -504,11 +438,7 @@ const matchPreviewE2EEntries = (
       }
     );
   }
-  // Well-formed entries for other synthetic recipients are skipped so a
-  // shared query window does not fail the requested recipient's retrieval.
-  // Entries that cannot be parsed as a structured envelope — including a
-  // missing recipient or an invalid body for the requested recipient — fail
-  // closed and count toward the exactly-one rule.
+  // Skip other recipients; unreadable matching entries fail closed.
   const matches: WorkspaceE2EVercelLogEntry[] = [];
   for (const entry of candidates) {
     const parsed = parsePreviewE2ELogLine(entry.message, bounds.recipient);

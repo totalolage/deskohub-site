@@ -671,6 +671,43 @@ In the Workspace PostHog project:
 6. Use `e2e.execution_context` to separate `manual` and `ci` runs, and inspect
    `e2e.outcome` plus `e2e.failure.kind` when a span did not pass.
 
+If the CLI catalog or SQL explorer cannot query native spans, use PostHog's
+`POST /api/projects/204184/tracing/spans/query/` endpoint with the saved-login
+auth helper. Bound the time range and use the exact run-attempt correlation:
+
+```json
+{
+  "query": {
+    "kind": "TraceSpansQuery",
+    "dateRange": { "date_from": "<UTC start>", "date_to": "<UTC end>" },
+    "serviceNames": ["deskohub-workspace-e2e"],
+    "filterGroup": {
+      "type": "AND",
+      "values": [
+        {
+          "type": "AND",
+          "values": [
+            {
+              "key": "e2e.run.id",
+              "value": "<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>",
+              "operator": "exact",
+              "type": "span_attribute"
+            }
+          ]
+        }
+      ]
+    },
+    "flatSpans": true,
+    "limit": 1000
+  }
+}
+```
+
+This requires `tracing:read` permission; a public ingest token cannot read
+traces. See the
+[Tracing API](https://posthog.com/docs/api/tracing). Keep the response in
+memory and report only the safe fields listed below.
+
 ### Investigating a failed run
 
 For any failure that reached the Workspace E2E runner, start with the exported
