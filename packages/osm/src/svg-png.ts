@@ -14,6 +14,12 @@ export interface SvgPngTextOverlay {
 
 export interface SvgPngBufferOptions {
   readonly textOverlays?: readonly SvgPngTextOverlay[];
+  readonly canvas?: {
+    readonly width: number;
+    readonly height: number;
+    readonly padding?: number;
+    readonly background?: string;
+  };
 }
 
 export const generateSvgPngBuffer = Effect.fn("osm.generateSvgPngBuffer")(
@@ -32,9 +38,72 @@ export const generateSvgPngBuffer = Effect.fn("osm.generateSvgPngBuffer")(
       ),
       Effect.map(({ base, composite }) =>
         Option.getOrElse(composite, () => base)
+      ),
+      Effect.flatMap((image) =>
+        options.canvas
+          ? renderSvgPngCanvas(image, options.canvas)
+          : Effect.succeed(image)
       )
     )
 );
+
+type SvgPngCanvas = NonNullable<SvgPngBufferOptions["canvas"]>;
+
+const renderSvgPngCanvas = (image: Buffer, canvas: SvgPngCanvas) =>
+  Effect.tryPromise({
+    try: () => {
+      const padding = canvas.padding ?? 0;
+      const contentWidth = canvas.width - 2 * padding;
+      const contentHeight = canvas.height - 2 * padding;
+
+      if (
+        !Number.isSafeInteger(canvas.width) ||
+        !Number.isSafeInteger(canvas.height) ||
+        !Number.isSafeInteger(padding) ||
+        canvas.width <= 0 ||
+        canvas.height <= 0 ||
+        padding < 0 ||
+        contentWidth <= 0 ||
+        contentHeight <= 0
+      ) {
+        throw new RangeError(
+          "Canvas dimensions and padding must leave positive pixel dimensions."
+        );
+      }
+
+      const background = canvas.background ?? {
+        r: 0,
+        g: 0,
+        b: 0,
+        alpha: 0,
+      };
+      const source = sharp(image);
+      const flattened = canvas.background
+        ? source.flatten({ background: canvas.background })
+        : source;
+
+      return flattened
+        .resize(contentWidth, contentHeight, {
+          fit: "contain",
+          background,
+        })
+        .extend({
+          top: padding,
+          right: padding,
+          bottom: padding,
+          left: padding,
+          background,
+        })
+        .png()
+        .toBuffer();
+    },
+    catch: (cause) =>
+      new ImageRenderingError({
+        cause,
+        message: "The SVG image could not be rendered on the requested canvas.",
+        operation: "render-svg",
+      }),
+  });
 
 const renderSvg = (svg: string | Buffer) =>
   Effect.tryPromise({

@@ -32,7 +32,11 @@ export const metadata: Metadata = {
   title: "Deskohub Workspace",
   description: "Workspace shell application for Deskohub products.",
   icons: {
-    icon: "/favicon.svg",
+    icon: {
+      url: "/favicon.png",
+      type: "image/png",
+      sizes: "512x512",
+    },
   },
 };
 
