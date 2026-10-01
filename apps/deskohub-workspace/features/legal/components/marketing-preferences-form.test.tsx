@@ -390,6 +390,13 @@ test("keeps a deferred save single-flight and announces the pending state", asyn
 });
 
 test("permits a second toggle after a settled save and blocks duplicates while pending", async () => {
+  let resolveFirstSave!: (result: ActionResult) => void;
+  saveMarketingPreferencesAction.mockImplementationOnce(
+    () =>
+      new Promise<ActionResult>((resolve) => {
+        resolveFirstSave = resolve;
+      })
+  );
   const context = "synthetic-account-context";
   const view = renderForm({
     context,
@@ -402,33 +409,37 @@ test("permits a second toggle after a settled save and blocks duplicates while p
   );
 
   fireEvent.click(marketingSwitch);
+  await waitFor(() => {
+    expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
+    expect(marketingSwitch.hasAttribute("disabled")).toBe(true);
+  });
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
   fireEvent.click(marketingSwitch);
   expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
-  expect(marketingSwitch.hasAttribute("disabled")).toBe(true);
-  expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
 
+  resolveFirstSave({ data: { status: "saved" } });
   await waitFor(() =>
     expect(marketingSwitch.hasAttribute("disabled")).toBe(false)
   );
   expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
 
   fireEvent.click(marketingSwitch);
-  await waitFor(() =>
-    expect(marketingSwitch.hasAttribute("disabled")).toBe(false)
-  );
-  expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(2);
-  expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
-    confirmed: true,
-    context,
-    granted: false,
-    locale: "en-US",
-    source: "account",
+  await waitFor(() => {
+    expect(marketingSwitch.hasAttribute("disabled")).toBe(false);
+    expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(2);
+    expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
+      confirmed: true,
+      context,
+      granted: false,
+      locale: "en-US",
+      source: "account",
+    });
+    expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
+    expect(
+      view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
+    ).toBeTruthy();
+    expect(routerRefresh).toHaveBeenCalledTimes(2);
   });
-  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
-  expect(
-    view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
-  ).toBeTruthy();
-  expect(routerRefresh).toHaveBeenCalledTimes(2);
 });
 
 test("preserves the server-authoritative switch on a save failure and allows retry", async () => {
@@ -506,12 +517,12 @@ test("announces a rejected save request with localized copy and allows a success
     expect(view.getByRole("alert").textContent).toBe(
       m.marketingPreferencesFormSaveError({}, { locale: "en-US" })
     );
+    expect(marketingSwitch.hasAttribute("disabled")).toBe(false);
   });
   // The feedback block renders inside the managed row's support column, not
   // as a loose sibling of the row article.
   expect(getArticle(view).contains(view.getByRole("alert"))).toBe(true);
   expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
-  expect(marketingSwitch.hasAttribute("disabled")).toBe(false);
   expect(routerRefresh).not.toHaveBeenCalled();
 
   fireEvent.click(

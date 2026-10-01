@@ -431,6 +431,12 @@ describe("workspace e2e Vercel log retrieval", () => {
       { code: "EACCES", category: "process-permission-denied" },
       { code: "EPERM", category: "process-permission-denied" },
       { code: "ETIMEDOUT", category: "process-timeout" },
+      { code: "EAGAIN", category: "process-resource-unavailable" },
+      {
+        code: "EMFILE",
+        category: "process-file-descriptors-exhausted",
+      },
+      { code: "ENOMEM", category: "process-memory-pressure" },
       { name: "AbortError", category: "process-timeout" },
       { code: "UNKNOWN_CODE", category: "process-rejected" },
     ] as const;
@@ -459,6 +465,107 @@ describe("workspace e2e Vercel log retrieval", () => {
       ].join(" ");
       expect(failureText).not.toContain(sentinel);
       expect(failureText).not.toContain("private process details");
+    }
+  });
+
+  test("classifies recognized structured fields up to three nested causes", async () => {
+    const cases = [
+      { code: "ENOENT", category: "process-executable-not-found" },
+      { code: "EACCES", category: "process-permission-denied" },
+      { code: "EPERM", category: "process-permission-denied" },
+      { code: "ETIMEDOUT", category: "process-timeout" },
+      { code: "EAGAIN", category: "process-resource-unavailable" },
+      {
+        code: "EMFILE",
+        category: "process-file-descriptors-exhausted",
+      },
+      { code: "ENOMEM", category: "process-memory-pressure" },
+      { name: "AbortError", category: "process-timeout" },
+    ] as const;
+
+    for (const rejection of cases) {
+      const sentinel = `sentinel-nested-rejection-${rejection.code ?? rejection.name}`;
+      let cause: unknown = Object.assign(
+        new Error(`${sentinel}: private process details`),
+        "code" in rejection ? { code: rejection.code } : {},
+        "name" in rejection ? { name: rejection.name } : {}
+      );
+      for (let depth = 0; depth < 2; depth += 1) {
+        cause = Object.assign(
+          new Error(`${sentinel}: wrapped process details`),
+          { cause }
+        );
+      }
+      const processRejection = Object.assign(
+        new Error(`${sentinel}: root process details`),
+        { cause }
+      );
+      const { result } = makeRetrieval("", { processRejection });
+
+      const failure = await captureFailure(result);
+      expect(failure).toMatchObject({
+        _tag: "WorkspaceE2EError",
+        diagnosticCode: "auth_delivery_message_retrieve_failed",
+        message: `query Vercel preview runtime logs failed (${rejection.category})`,
+        operation: "query Vercel preview runtime logs",
+      });
+      expect((failure as { cause?: unknown }).cause).toBeUndefined();
+      const failureText = [
+        String(failure),
+        (failure as { message?: string }).message,
+        JSON.stringify(failure),
+      ].join(" ");
+      expect(failureText).not.toContain(sentinel);
+      expect(failureText).not.toContain("private process details");
+      expect(failureText).not.toContain("wrapped process details");
+      expect(failureText).not.toContain("root process details");
+    }
+  });
+
+  test("keeps over-depth, array, and string causes in the generic category", async () => {
+    const sentinel = "sentinel-untraversed-process-rejection";
+    let overDepthCause: unknown = Object.assign(
+      new Error(`${sentinel}: structured private details`),
+      { code: "ENOENT" }
+    );
+    for (let depth = 0; depth < 3; depth += 1) {
+      overDepthCause = Object.assign(
+        new Error(`${sentinel}: wrapped private details`),
+        { cause: overDepthCause }
+      );
+    }
+    const rejections = [
+      Object.assign(new Error(`${sentinel}: root private details`), {
+        cause: overDepthCause,
+      }),
+      Object.assign(new Error(`${sentinel}: array private details`), {
+        cause: [
+          Object.assign(new Error("nested private detail"), { code: "ENOENT" }),
+        ],
+      }),
+      Object.assign(new Error(`${sentinel}: string private details`), {
+        cause: "nested private detail: ENOENT",
+      }),
+    ];
+
+    for (const processRejection of rejections) {
+      const { result } = makeRetrieval("", { processRejection });
+      const failure = await captureFailure(result);
+
+      expect(failure).toMatchObject({
+        _tag: "WorkspaceE2EError",
+        diagnosticCode: "auth_delivery_message_retrieve_failed",
+        message: "query Vercel preview runtime logs failed (process-rejected)",
+        operation: "query Vercel preview runtime logs",
+      });
+      expect((failure as { cause?: unknown }).cause).toBeUndefined();
+      const failureText = [
+        String(failure),
+        (failure as { message?: string }).message,
+        JSON.stringify(failure),
+      ].join(" ");
+      expect(failureText).not.toContain(sentinel);
+      expect(failureText).not.toContain("nested private detail");
     }
   });
 

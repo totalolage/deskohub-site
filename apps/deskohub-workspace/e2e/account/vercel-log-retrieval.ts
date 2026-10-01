@@ -151,22 +151,43 @@ const classifyVercelLogsCliFailure = (stderr: string) => {
 };
 
 const classifyVercelLogsProcessRejection = (cause: unknown) => {
-  if (cause === null || typeof cause !== "object") return "process-rejected";
+  let current = cause;
+  for (let causeDepth = 0; causeDepth <= 3; causeDepth += 1) {
+    if (
+      current === null ||
+      typeof current !== "object" ||
+      Array.isArray(current)
+    ) {
+      break;
+    }
 
-  const error = cause as { readonly code?: unknown; readonly name?: unknown };
-  switch (error.code) {
-    case "ENOENT":
-      return "process-executable-not-found";
-    case "EACCES":
-    case "EPERM":
-      return "process-permission-denied";
-    case "ETIMEDOUT":
-      return "process-timeout";
-    default:
-      return error.name === "AbortError"
-        ? "process-timeout"
-        : "process-rejected";
+    const error = current as {
+      readonly cause?: unknown;
+      readonly code?: unknown;
+      readonly name?: unknown;
+    };
+    switch (error.code) {
+      case "ENOENT":
+        return "process-executable-not-found";
+      case "EACCES":
+      case "EPERM":
+        return "process-permission-denied";
+      case "ETIMEDOUT":
+        return "process-timeout";
+      case "EAGAIN":
+        return "process-resource-unavailable";
+      case "EMFILE":
+        return "process-file-descriptors-exhausted";
+      case "ENOMEM":
+        return "process-memory-pressure";
+      default:
+        if (error.name === "AbortError") return "process-timeout";
+    }
+
+    if (causeDepth === 3) break;
+    current = error.cause;
   }
+  return "process-rejected";
 };
 
 const runLogQuery = (
