@@ -177,14 +177,10 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
 };
 
 /**
- * Recipient-based routing decision for account magic links, derived once
- * from the typed environment. Auth owns only this selection and the
- * template rendering; the shared `@deskohub/email` EmailServiceTag provider
- * machinery owns the actual sending and retry. Synthetic Preview E2E
- * recipients route to the shared Console provider (the single authorized
- * preview-e2e log line); every other recipient routes to the shared
- * `EmailConfigLayer` configured default provider, and a missing delivering
- * credential fails closed to the fixed unconfigured code.
+ * Synthetic Preview E2E recipients use the shared Console provider and the
+ * single authorized `account.magic-link.preview-e2e` log line. Other
+ * recipients use the configured default provider, failing closed when its
+ * required credential is absent.
  */
 export const makeWorkspaceMagicLinkDelivery = () =>
   makeMagicLinkEmailDelivery(renderMagicLinkEmail, {

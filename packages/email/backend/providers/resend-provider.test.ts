@@ -378,7 +378,6 @@ describe("ResendEmailProvider span censorship", () => {
     expect(traced).not.toContain("ada@example.test");
     expect(traced).not.toContain("secret-token");
     expect(traced).not.toContain("bearer text");
-    // The failure is still classified as a client rejection.
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("EmailServiceError");
     }

@@ -146,8 +146,6 @@ describe("workspace e2e Vercel log retrieval", () => {
   });
 
   test("matches the individual log entry, not the request-level message", async () => {
-    // Request-level message carries the code, but no nested log entry does:
-    // this must not match.
     const stdout = jsonl([
       {
         id: "req-decoy",
@@ -240,10 +238,6 @@ describe("workspace e2e Vercel log retrieval", () => {
   });
 
   test("skips a well-formed entry whose recipient does not match exactly", async () => {
-    // A well-formed entry for a different synthetic recipient is not a
-    // malformed record: it is skipped so the requested recipient's own
-    // entry can still match. With only a foreign entry present, retrieval
-    // finds zero matches and times out.
     const stdout = jsonl([
       {
         id: "req-r",
@@ -260,10 +254,6 @@ describe("workspace e2e Vercel log retrieval", () => {
   });
 
   test("returns only the requested recipient's link when other synthetic recipients are present", async () => {
-    // Regression: the CLI --query returns every synthetic recipient's
-    // preview-e2e entry in the deployment time window. A well-formed entry
-    // for a different recipient must be skipped, not treated as unreadable,
-    // so the requested recipient's valid link is still returned.
     const secondRecipient = makeWorkspaceE2EAccountRecipient(config, "second");
     const mainLink = magicLink("main-token");
     const secondLink = magicLink("second-token");
@@ -355,9 +345,6 @@ describe("workspace e2e Vercel log retrieval", () => {
 
     const invocations: CliInvocation[] = [];
     let call = 0;
-    // Poll 1 returns ONLY the baseline entry; poll 2 returns baseline +
-    // fresh. A broken implementation that applies exclusions only on the
-    // first poll would return the stale link or reject as ambiguous.
     const stdouts = [
       jsonl([staleRequest]),
       jsonl([staleRequest, freshRequest]),
@@ -369,8 +356,6 @@ describe("workspace e2e Vercel log retrieval", () => {
       return { exitCode: 0, stderr: "", stdout };
     };
 
-    // Iteration 1: only the stale match exists; its composite id is the
-    // baseline.
     const baseline = await Effect.runPromise(
       listSyntheticLogEntryIds(
         { ...config, vercelLogsProcess: fakeProcess },
@@ -383,15 +368,9 @@ describe("workspace e2e Vercel log retrieval", () => {
     );
     expect(baseline).toEqual(["req-baseline:1"]);
 
-    // Reset the response counter and the invocation list so the retrieval
-    // phase itself starts at poll 1 (stale only) and poll 2 (stale + fresh):
-    // exclusion must hold across two retrieval polls, not just after a
-    // separate baseline lookup.
     call = 0;
     invocations.length = 0;
 
-    // Iteration 2+: retrieval polls past the excluded stale match and
-    // converges on the fresh one.
     const link = await Effect.runPromise(
       retrieveWorkspaceE2EMagicLink(
         { ...config, vercelLogsProcess: fakeProcess },

@@ -72,7 +72,6 @@ const captureConsole = (): {
   };
 };
 
-/** Every string value reachable in captured data, for leak scans. */
 const collectStrings = (value: unknown, into: string[] = []): string[] => {
   if (typeof value === "string") into.push(value);
   else if (Array.isArray(value)) {
@@ -86,7 +85,6 @@ const collectStrings = (value: unknown, into: string[] = []): string[] => {
   return into;
 };
 
-/** Structurally inspectable text of captured console records. */
 const recordText = (records: readonly unknown[][]): string =>
   records
     .map((args) =>

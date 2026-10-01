@@ -51,9 +51,6 @@ describe("no source-as-string contract tests", () => {
   });
 
   test("the enumeration classifies tracked, deleted, untracked, ignored, and dangling-symlink test paths", () => {
-    // Controlled temporary Git repo with explicit expected paths, so the
-    // enumeration contract holds in any checkout state, including a clean
-    // committed CI tree.
     const fixtureRoot = mkdtempSync(join(tmpdir(), "audited-tests-"));
     const git = (args: string) =>
       execSync(`git ${args}`, { cwd: fixtureRoot, encoding: "utf8" });
@@ -77,10 +74,7 @@ describe("no source-as-string contract tests", () => {
       );
       writeFileSync(join(fixtureRoot, ".gitignore"), "ignored.test.ts\n");
       git("add tracked-present.test.ts tracked-deleted.test.ts .gitignore");
-      // Tracked in the index, deleted from the worktree without staging.
       unlinkSync(join(fixtureRoot, "tracked-deleted.test.ts"));
-      // Present directory entry whose target does not exist: must remain
-      // enumerated so the later read surfaces the error.
       symlinkSync("missing-target.ts", join(fixtureRoot, "dangling.test.ts"));
 
       expect(listAuditedTestFiles(fixtureRoot)).toEqual([
@@ -88,8 +82,6 @@ describe("no source-as-string contract tests", () => {
         "tracked-present.test.ts",
         "untracked file.test.tsx",
       ]);
-      // The dangling symlink is listed but not readable: the read error
-      // must surface, not be suppressed by the enumeration.
       expect(() =>
         readFileSync(join(fixtureRoot, "dangling.test.ts"), "utf8")
       ).toThrow();

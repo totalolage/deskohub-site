@@ -121,7 +121,6 @@ const captureConsole = (): string[] & { restore: () => void } => {
     );
   };
   for (const method of consoleMethods) {
-    // The test captures the authorized console delivery channel.
     console[method] = capture;
   }
 

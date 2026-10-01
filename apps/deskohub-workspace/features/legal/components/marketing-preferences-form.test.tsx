@@ -402,14 +402,11 @@ test("permits a second toggle after a settled save and blocks duplicates while p
   );
 
   fireEvent.click(marketingSwitch);
-  // While the save is still pending, a duplicate click must be dropped.
   fireEvent.click(marketingSwitch);
   expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
-  // A pending save disables the switch while it already reads the target state.
   expect(marketingSwitch.hasAttribute("disabled")).toBe(true);
   expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
 
-  // A settled save must re-enable the switch and permit a second toggle.
   await waitFor(() =>
     expect(marketingSwitch.hasAttribute("disabled")).toBe(false)
   );
