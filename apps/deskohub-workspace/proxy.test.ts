@@ -11,6 +11,97 @@ import { reservationAccessTokenQueryParam } from "@/features/reservation/reserva
 import { workspaceTestAdministrators } from "@/shared/testing/workspace-test-environment";
 import { config, proxy } from "./proxy";
 
+const inspectCheckoutEntry = (
+  deploymentEnvironment: "preview" | "production" | "development"
+) =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      `
+        const { NextRequest } = await import("next/server");
+        const { proxy } = await import("./proxy.ts");
+        const requests = [
+          ["https://branch-preview.vercel.app/en-US/checkout/pay?state=synthetic%2Bsummary", {}],
+          ["https://branch-preview.vercel.app/cs-CZ/checkout/pay?state=synthetic-summary", { method: "HEAD" }],
+          ["https://branch-preview.vercel.app/checkout/pay?state=synthetic-summary", {}],
+          ["https://immutable-preview.vercel.app/en-US/checkout/pay", {}],
+          ["https://branch-preview.vercel.app/en-US/cowork", {}],
+          ["https://branch-preview.vercel.app/en-US/checkout/pay/return/synthetic-order", {}],
+          ["https://branch-preview.vercel.app/en-US/checkout/pay", { method: "POST", headers: { "next-action": "synthetic-action" } }],
+          ["https://branch-preview.vercel.app/en-US/checkout/pay?state=synthetic-summary", { headers: { rsc: "1" } }],
+        ];
+        const results = [];
+        for (const [url, options] of requests) {
+          const response = await proxy(new NextRequest(url, options));
+          results.push({
+            status: response.status,
+            location: response.headers.get("location"),
+            cacheControl: response.headers.get("cache-control"),
+            referrerPolicy: response.headers.get("referrer-policy"),
+          });
+        }
+        process.stdout.write(JSON.stringify(results));
+      `,
+    ],
+    cwd: import.meta.dir,
+    env: {
+      ...process.env,
+      VERCEL_ENV: deploymentEnvironment,
+      VERCEL_URL: "immutable-preview.vercel.app",
+      VERCEL_PROJECT_PRODUCTION_URL: "workspace.example",
+      VERCEL_AUTOMATION_BYPASS_SECRET: "synthetic-preview-bypass",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+test("starts Preview payment on the callback host before issuing its host-only cookie", () => {
+  const result = inspectCheckoutEntry("preview");
+  expect(result.exitCode).toBe(0);
+  const responses = JSON.parse(new TextDecoder().decode(result.stdout));
+
+  for (const index of [0, 1, 2, 7]) {
+    const response = responses[index];
+    expect(response.status).toBe(307);
+    const location = new URL(response.location);
+    expect(location.origin).toBe("https://immutable-preview.vercel.app");
+    expect(location.pathname).toBe(
+      ["/en-US/checkout/pay", "/cs-CZ/checkout/pay", "/checkout/pay"][index] ??
+        "/en-US/checkout/pay"
+    );
+    expect(location.searchParams.get("state")).toBe(
+      index === 0 ? "synthetic+summary" : "synthetic-summary"
+    );
+    expect(location.searchParams.get("x-vercel-protection-bypass")).toBe(
+      "synthetic-preview-bypass"
+    );
+    expect(location.searchParams.get("x-vercel-set-bypass-cookie")).toBe(
+      "true"
+    );
+    expect(response.cacheControl).toBe("private, no-store");
+    expect(response.referrerPolicy).toBe("no-referrer");
+  }
+
+  for (const index of [3, 4, 5, 6]) {
+    expect(responses[index].location).toBeNull();
+    expect(responses[index].status).toBe(200);
+  }
+});
+
+test("retains Development and Production payment origins", () => {
+  for (const environment of ["development", "production"] as const) {
+    const result = inspectCheckoutEntry(environment);
+    expect(result.exitCode).toBe(0);
+    const responses = JSON.parse(new TextDecoder().decode(result.stdout));
+    for (const index of [0, 1, 3, 4, 5, 6, 7]) {
+      expect(responses[index].location).toBeNull();
+    }
+  }
+});
+
 const toAuthorization = (username: string, password: string) =>
   `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 
