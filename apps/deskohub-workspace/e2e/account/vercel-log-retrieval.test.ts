@@ -425,6 +425,43 @@ describe("workspace e2e Vercel log retrieval", () => {
     expect(failureText).not.toContain(urlSentinel);
   });
 
+  test("classifies structured process rejection fields without exposing error text", async () => {
+    const cases = [
+      { code: "ENOENT", category: "process-executable-not-found" },
+      { code: "EACCES", category: "process-permission-denied" },
+      { code: "EPERM", category: "process-permission-denied" },
+      { code: "ETIMEDOUT", category: "process-timeout" },
+      { name: "AbortError", category: "process-timeout" },
+      { code: "UNKNOWN_CODE", category: "process-rejected" },
+    ] as const;
+
+    for (const rejection of cases) {
+      const sentinel = `sentinel-process-rejection-${rejection.code ?? rejection.name}`;
+      const error = Object.assign(
+        new Error(`${sentinel}: private process details`),
+        "code" in rejection ? { code: rejection.code } : {},
+        "name" in rejection ? { name: rejection.name } : {}
+      );
+      const { result } = makeRetrieval("", { processRejection: error });
+
+      const failure = await captureFailure(result);
+      expect(failure).toMatchObject({
+        _tag: "WorkspaceE2EError",
+        diagnosticCode: "auth_delivery_message_retrieve_failed",
+        message: `query Vercel preview runtime logs failed (${rejection.category})`,
+        operation: "query Vercel preview runtime logs",
+      });
+      expect((failure as { cause?: unknown }).cause).toBeUndefined();
+      const failureText = [
+        String(failure),
+        (failure as { message?: string }).message,
+        JSON.stringify(failure),
+      ].join(" ");
+      expect(failureText).not.toContain(sentinel);
+      expect(failureText).not.toContain("private process details");
+    }
+  });
+
   test("returns stable composite baseline ids and excludes them across poll iterations", async () => {
     const staleRequest: FakeLogRequest = {
       id: "req-baseline",

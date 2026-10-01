@@ -150,15 +150,34 @@ const classifyVercelLogsCliFailure = (stderr: string) => {
   }
 };
 
+const classifyVercelLogsProcessRejection = (cause: unknown) => {
+  if (cause === null || typeof cause !== "object") return "process-rejected";
+
+  const error = cause as { readonly code?: unknown; readonly name?: unknown };
+  switch (error.code) {
+    case "ENOENT":
+      return "process-executable-not-found";
+    case "EACCES":
+    case "EPERM":
+      return "process-permission-denied";
+    case "ETIMEDOUT":
+      return "process-timeout";
+    default:
+      return error.name === "AbortError"
+        ? "process-timeout"
+        : "process-rejected";
+  }
+};
+
 const runLogQuery = (
   config: WorkspaceE2EAccountConfig,
   since: Date
 ): Effect.Effect<readonly WorkspaceE2EVercelLogEntry[], WorkspaceE2EError> =>
   Effect.gen(function* () {
     const result = yield* Effect.tryPromise({
-      catch: () =>
+      catch: (cause) =>
         workspaceE2EError(
-          "query Vercel preview runtime logs failed (process-rejected)",
+          `query Vercel preview runtime logs failed (${classifyVercelLogsProcessRejection(cause)})`,
           {
             diagnosticCode: "auth_delivery_message_retrieve_failed",
             operation: "query Vercel preview runtime logs",
