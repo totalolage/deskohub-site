@@ -111,42 +111,42 @@ const getCoworkTableIds = (tables: readonly DotyposTable[]) => {
   ).pipe(Effect.map((tableIds) => new Set(tableIds)));
 };
 
-const getCoworkSeatCapacity = (tables: readonly DotyposTable[]) => {
-  return Effect.gen(function* () {
-    const seatsByTableId = new Map<string, number>();
-    let capacity = 0;
+const getCoworkSeatCapacity = Effect.fn("getCoworkSeatCapacity")(function* (
+  tables: readonly DotyposTable[]
+) {
+  const seatsByTableId = new Map<string, number>();
+  let capacity = 0;
 
-    for (const table of tables) {
-      if (!hasCoworkTableTag(table)) continue;
+  for (const table of tables) {
+    if (!hasCoworkTableTag(table)) continue;
 
-      const tableId = yield* decodeRelevantTableId(table);
-      const seats = yield* decodeRelevantTableSeats(table);
-      const existingSeats = seatsByTableId.get(tableId);
+    const tableId = yield* decodeRelevantTableId(table);
+    const seats = yield* decodeRelevantTableSeats(table);
+    const existingSeats = seatsByTableId.get(tableId);
 
-      if (existingSeats !== undefined) {
-        if (existingSeats !== seats) {
-          return yield* new FaqOccupancyError({
-            message:
-              "Cowork-tagged Dotypos tables with the same ID have conflicting seat capacities.",
-          });
-        }
-        continue;
-      }
-
-      const nextCapacity = capacity + seats;
-      if (!Number.isSafeInteger(nextCapacity)) {
+    if (existingSeats !== undefined) {
+      if (existingSeats !== seats) {
         return yield* new FaqOccupancyError({
-          message: "Cowork-tagged Dotypos table capacity is too large.",
+          message:
+            "Cowork-tagged Dotypos tables with the same ID have conflicting seat capacities.",
         });
       }
-
-      seatsByTableId.set(tableId, seats);
-      capacity = nextCapacity;
+      continue;
     }
 
-    return capacity;
-  });
-};
+    const nextCapacity = capacity + seats;
+    if (!Number.isSafeInteger(nextCapacity)) {
+      return yield* new FaqOccupancyError({
+        message: "Cowork-tagged Dotypos table capacity is too large.",
+      });
+    }
+
+    seatsByTableId.set(tableId, seats);
+    capacity = nextCapacity;
+  }
+
+  return capacity;
+});
 
 const hasCoworkTableTag = (table: DotyposTable) =>
   table.tags?.some((tag) => tag.startsWith(coworkTableTagPrefix)) ?? false;
