@@ -71,4 +71,20 @@ describe("Cloudinary schemas", () => {
       })
     ).toBeFalse();
   });
+
+  test("rejects empty immutable asset identities at the provider boundary", () => {
+    expect(
+      Schema.is(CloudinaryAssetSchema)({
+        asset_id: "",
+        public_id: "gallery/image",
+        secure_url: "https://res.cloudinary.com/demo/image/upload/image.jpg",
+        url: "http://res.cloudinary.com/demo/image/upload/image.jpg",
+        width: 1200,
+        height: 800,
+        format: "jpg",
+        resource_type: "image",
+        created_at: "2026-06-20T10:00:00Z",
+      })
+    ).toBeFalse();
+  });
 });

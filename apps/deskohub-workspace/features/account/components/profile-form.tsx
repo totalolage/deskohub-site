@@ -19,6 +19,7 @@ import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-b
 import type { CustomerProfileBilling } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { BillingScreen } from "@/features/account/components/billing/billing-screen";
+import { AvatarControl } from "@/features/account/components/profile/avatar-control";
 import { ProfileScreen } from "@/features/account/components/profile/profile-screen";
 import type { CustomerProfileInput } from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
@@ -41,6 +42,10 @@ type ProfileFormProps = {
     readonly phone: string | null;
     readonly billing: CustomerProfileBilling | null;
   };
+  readonly avatar?: {
+    readonly url: string;
+    readonly version?: number;
+  } | null;
   readonly section?: "profile" | "billing";
 };
 
@@ -144,6 +149,7 @@ const formSnapshot = (form: HTMLFormElement) =>
   JSON.stringify([...new FormData(form).entries()]);
 
 export function ProfileForm({
+  avatar = null,
   email,
   locale,
   mode,
@@ -578,6 +584,14 @@ export function ProfileForm({
           <>
             <div hidden={section !== "profile"}>
               <ProfileScreen
+                avatar={
+                  <AvatarControl
+                    avatar={avatar}
+                    firstName={savedIdentity.firstName}
+                    lastName={savedIdentity.lastName}
+                    locale={locale}
+                  />
+                }
                 copy={screenCopy.profile}
                 email={email}
                 firstName={savedIdentity.firstName}

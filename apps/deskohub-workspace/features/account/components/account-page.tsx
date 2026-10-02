@@ -27,6 +27,7 @@ export function AccountPage({
       <>
         <SessionRefresh />
         <LinkedAccount
+          avatar={state.avatar}
           email={state.email}
           history={state.history}
           locale={locale}

@@ -15,7 +15,7 @@ type ImageSearch = {
 
 const imageSearches: ImageSearch[] = [];
 
-mock.module("@/features/gallery/actions/get-cloudinary-images", () => ({
+mock.module("@/features/gallery/backend/get-cloudinary-images.server", () => ({
   getCloudinaryImages: (search: ImageSearch) => {
     imageSearches.push(search);
     return Promise.resolve([]);

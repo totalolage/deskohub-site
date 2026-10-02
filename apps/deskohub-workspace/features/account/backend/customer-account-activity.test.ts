@@ -98,6 +98,7 @@ const makeDeletion = (options: {
         }),
       findLink: () => Effect.succeed(null),
       expireCustomer: () => Effect.void,
+      destroyAvatar: () => Effect.void,
       withAccountLock: options.lock.withAccountLock,
     })(accountId)
   );

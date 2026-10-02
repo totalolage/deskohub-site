@@ -15,6 +15,7 @@ const linkedFixture = {
     phone: null,
     billing: null,
   },
+  avatar: null,
   history: {
     kind: "available",
     groups: { current: [], past: [], unavailable: [] },

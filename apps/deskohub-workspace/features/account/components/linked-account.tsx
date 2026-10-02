@@ -17,9 +17,14 @@ type LinkedAccountProps = {
   readonly history: CustomerReservationHistory;
   readonly locale: Locale;
   readonly profile: CustomerProfile;
+  readonly avatar?: {
+    readonly url: string;
+    readonly version?: number;
+  } | null;
 };
 
 export function LinkedAccount({
+  avatar = null,
   email,
   history,
   locale,
@@ -53,6 +58,7 @@ export function LinkedAccount({
 
       <div hidden={activeSection !== "profile" && activeSection !== "billing"}>
         <ProfileForm
+          avatar={avatar}
           email={email}
           locale={locale}
           mode="edit"

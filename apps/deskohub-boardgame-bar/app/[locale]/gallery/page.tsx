@@ -1,5 +1,5 @@
 import { Gallery } from "@/features/gallery";
-import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
+import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
 import { GalleryHeader } from "@/features/gallery/components/gallery-header";
 import { m, setLocale } from "@/features/i18n";
 import { metadata } from "@/shared/utils/metadata";

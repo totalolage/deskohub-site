@@ -34,12 +34,30 @@ const completeCustomerProfile = mock(() =>
 const updateCustomerProfile = mock(() =>
   Promise.resolve({ data: { status: "updated" } })
 );
+const uploadCustomerAvatar = mock(() =>
+  Promise.resolve({
+    data: {
+      avatar: {
+        url: "https://res.cloudinary.test/upload/v2/avatars/live",
+        version: 2,
+      },
+      status: "uploaded",
+    },
+  })
+);
+const removeCustomerAvatar = mock(() =>
+  Promise.resolve({ data: { status: "removed" } })
+);
 
 mock.module("@/features/account/actions", () => ({
   lookupAresBusiness: () =>
     Promise.resolve({ data: { status: "not-found", message: "" } }),
   completeCustomerProfile,
   updateCustomerProfile,
+}));
+mock.module("@/features/account/avatar-actions", () => ({
+  removeCustomerAvatar,
+  uploadCustomerAvatar,
 }));
 mock.module("@/features/account/components/account-screen-copy", () => ({
   getAccountScreenCopy: (locale: "en-US" | "cs-CZ") => ({
@@ -55,8 +73,6 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
       },
     },
     profile: {
-      avatarUnavailableDescription: "Profile photos are not available here.",
-      avatarUnavailableLabel: "Profile photo unavailable",
       emailLabel: "Email",
       emailVerification: {
         unverified: "This email still needs verification.",
@@ -236,6 +252,8 @@ describe("ProfileForm", () => {
     cleanup();
     completeCustomerProfile.mockClear();
     updateCustomerProfile.mockClear();
+    uploadCustomerAvatar.mockClear();
+    removeCustomerAvatar.mockClear();
     workspaceRouterRefresh.mockClear();
   });
 
@@ -1599,5 +1617,363 @@ describe("ProfileForm", () => {
     } finally {
       window.confirm = originalConfirm;
     }
+  });
+
+  describe("avatar control", () => {
+    const existingAvatar = {
+      url: "https://res.cloudinary.test/upload/v1/avatars/live",
+      version: 1,
+    };
+
+    const renderEditProfile = async (
+      props: Partial<ComponentPropsWithoutRef<typeof ProfileForm>> = {}
+    ) => {
+      const { ProfileForm: ProfileFormComponent } = await import(
+        "./profile-form"
+      );
+      return render(
+        <ProfileFormComponent
+          email="ada@example.test"
+          locale="en-US"
+          mode="edit"
+          profile={editProfile}
+          {...props}
+        />
+      );
+    };
+
+    const fileInput = (view: ReturnType<typeof render>) =>
+      view.container.querySelector("input[type='file']") as HTMLInputElement;
+
+    const pickAvatarFile = (view: ReturnType<typeof render>) => {
+      fireEvent.change(fileInput(view), {
+        target: {
+          files: [
+            new File([new Uint8Array([137, 80])], "avatar.png", {
+              type: "image/png",
+            }),
+          ],
+        },
+      });
+    };
+
+    test("shows the initials fallback and hides remove without an avatar", async () => {
+      const view = await renderEditProfile();
+
+      expect(view.container.querySelector("img")).toBeNull();
+      expect(view.getByText("AL")).toBeTruthy();
+      expect(
+        view.queryByRole("button", { name: "Remove profile photo" })
+      ).toBeNull();
+      expect(
+        view.getByRole("button", { name: "Change profile photo" })
+      ).toBeTruthy();
+      expect(view.getByText("JPG, PNG or WebP, up to 2 MB.")).toBeTruthy();
+    });
+
+    test("renders the stored avatar with localized alt text and a remove control", async () => {
+      const view = await renderEditProfile({ avatar: existingAvatar });
+
+      const image = view.getByAltText("Your profile picture");
+      expect((image as HTMLImageElement).src).toBe(existingAvatar.url);
+      expect(
+        view.getByRole("button", { name: "Remove profile photo" })
+      ).toBeTruthy();
+      expect(view.queryByText("AL")).toBeNull();
+    });
+
+    test("falls back to initials when the avatar image fails to load", async () => {
+      const view = await renderEditProfile({ avatar: existingAvatar });
+      const image = view.getByAltText("Your profile picture");
+
+      await act(async () => {
+        fireEvent.error(image);
+      });
+
+      expect(view.container.querySelector("img")).toBeNull();
+      expect(view.getByText("AL")).toBeTruthy();
+    });
+
+    test("reaches and activates upload and remove from the keyboard", async () => {
+      const view = await renderEditProfile({ avatar: existingAvatar });
+      const input = fileInput(view);
+      const openPicker = mock(() => undefined);
+      input.click = openPicker;
+
+      const camera = view.getByRole("button", {
+        name: "Change profile photo",
+      });
+      expect(camera.tagName).toBe("BUTTON");
+      expect((camera as HTMLButtonElement).disabled).toBe(false);
+      await act(async () => {
+        camera.focus();
+      });
+      expect(document.activeElement).toBe(camera);
+      await act(async () => {
+        fireEvent.click(camera);
+      });
+      expect(openPicker).toHaveBeenCalledTimes(1);
+
+      const remove = view.getByRole("button", {
+        name: "Remove profile photo",
+      });
+      expect(remove.tagName).toBe("BUTTON");
+      await act(async () => {
+        remove.focus();
+      });
+      expect(document.activeElement).toBe(remove);
+      await act(async () => {
+        fireEvent.click(remove);
+      });
+
+      expect(removeCustomerAvatar).toHaveBeenCalledTimes(1);
+      expect(uploadCustomerAvatar).not.toHaveBeenCalled();
+    });
+
+    test("shows honest pending copy and disables actions while uploading", async () => {
+      let resolveUpload!: (value: { readonly data: unknown }) => void;
+      uploadCustomerAvatar.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveUpload = resolve;
+          })
+      );
+      const view = await renderEditProfile({ avatar: existingAvatar });
+
+      pickAvatarFile(view);
+
+      expect(view.getByText("Uploading…")).toBeTruthy();
+      expect(
+        (
+          view.getByRole("button", {
+            name: "Change profile photo",
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+      expect(
+        (
+          view.getByRole("button", {
+            name: "Remove profile photo",
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+      expect(workspaceRouterRefresh).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveUpload({
+          data: {
+            avatar: {
+              ...existingAvatar,
+              url: "https://res.cloudinary.test/upload/v2/avatars/live",
+            },
+            status: "uploaded",
+          },
+        });
+      });
+
+      expect(view.getByText("Profile photo updated.")).toBeTruthy();
+      expect(
+        (view.getByAltText("Your profile picture") as HTMLImageElement).src
+      ).toBe("https://res.cloudinary.test/upload/v2/avatars/live");
+    });
+
+    test("keeps dirty identity and billing drafts when refreshed server props arrive after an avatar upload", async () => {
+      const { ProfileForm: ProfileFormComponent } = await import(
+        "./profile-form"
+      );
+      const refreshedAvatar = {
+        url: "https://res.cloudinary.test/upload/v2/avatars/live",
+        version: 2,
+      };
+
+      function RefreshHarness() {
+        const [profile, setProfile] = React.useState(businessProfile);
+        const [avatar, setAvatar] = React.useState<{
+          url: string;
+          version: number;
+        } | null>(null);
+        const [section, setSection] = React.useState<"profile" | "billing">(
+          "profile"
+        );
+        return (
+          <>
+            <button type="button" onClick={() => setSection("profile")}>
+              Identity section
+            </button>
+            <button type="button" onClick={() => setSection("billing")}>
+              Billing section
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                // The router refresh re-renders the form with fresh server
+                // data while the customer's drafts are dirty.
+                setProfile({
+                  ...businessProfile,
+                  firstName: "Server",
+                  lastName: "Refreshed",
+                });
+                setAvatar(refreshedAvatar);
+              }}
+            >
+              Apply server refresh
+            </button>
+            <ProfileFormComponent
+              email="ada@example.test"
+              locale="en-US"
+              mode="edit"
+              profile={profile}
+              avatar={avatar}
+              section={section}
+              onSectionChange={setSection}
+            />
+          </>
+        );
+      }
+
+      const view = render(<RefreshHarness />);
+
+      // Dirty the identity drafts.
+      await act(async () => {
+        fireEvent.input(view.getByLabelText("First name"), {
+          target: { value: "Grace" },
+        });
+        fireEvent.input(view.getByLabelText("Last name"), {
+          target: { value: "Byron" },
+        });
+      });
+      // Dirty the billing drafts too.
+      fireEvent.click(view.getByRole("button", { name: "Billing section" }));
+      await act(async () => {
+        fireEvent.input(view.getByLabelText("Company name"), {
+          target: { value: "Draft Company" },
+        });
+      });
+
+      // Upload the avatar from the identity section.
+      fireEvent.click(view.getByRole("button", { name: "Identity section" }));
+      pickAvatarFile(view);
+      await view.findByText("Profile photo updated.");
+
+      // The successful upload refreshes server data: the form re-renders
+      // with new profile and avatar props while both drafts are dirty.
+      fireEvent.click(
+        view.getByRole("button", { name: "Apply server refresh" })
+      );
+
+      expect(updateCustomerProfile).not.toHaveBeenCalled();
+      expect(completeCustomerProfile).not.toHaveBeenCalled();
+      // The refreshed avatar prop is applied…
+      expect(
+        (view.getByAltText("Your profile picture") as HTMLImageElement).src
+      ).toBe(refreshedAvatar.url);
+      // …but neither draft is clobbered by the refreshed server values.
+      fireEvent.click(view.getByRole("button", { name: "Billing section" }));
+      expect(
+        (view.getByLabelText("Company name") as HTMLInputElement).value
+      ).toBe("Draft Company");
+      fireEvent.click(view.getByRole("button", { name: "Identity section" }));
+      expect(
+        (view.getByLabelText("First name") as HTMLInputElement).value
+      ).toBe("Grace");
+      expect((view.getByLabelText("Last name") as HTMLInputElement).value).toBe(
+        "Byron"
+      );
+      expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    test("keeps the previous image and the usable picker on a validation rejection", async () => {
+      uploadCustomerAvatar.mockImplementationOnce(() =>
+        Promise.resolve({
+          data: { status: "rejected", reason: "file-too-large" },
+        })
+      );
+      const view = await renderEditProfile({ avatar: existingAvatar });
+
+      pickAvatarFile(view);
+      await view.findByText(
+        "That image is larger than 2 MB. Choose a smaller file."
+      );
+
+      expect(
+        (view.getByAltText("Your profile picture") as HTMLImageElement).src
+      ).toBe(existingAvatar.url);
+      expect(fileInput(view).value).toBe("");
+      expect(workspaceRouterRefresh).not.toHaveBeenCalled();
+    });
+
+    test("reports provider failures as retryable and keeps the previous image", async () => {
+      uploadCustomerAvatar.mockImplementationOnce(() =>
+        Promise.resolve({ data: { status: "retryable" } })
+      );
+      const view = await renderEditProfile({ avatar: existingAvatar });
+
+      pickAvatarFile(view);
+      await view.findByText(
+        "We could not update your profile photo. Please try again."
+      );
+
+      expect(
+        (view.getByAltText("Your profile picture") as HTMLImageElement).src
+      ).toBe(existingAvatar.url);
+      expect(workspaceRouterRefresh).not.toHaveBeenCalled();
+    });
+
+    test("shows session-expired server errors and keeps the previous image", async () => {
+      uploadCustomerAvatar.mockImplementationOnce(() =>
+        Promise.resolve({
+          serverError: "Your session has expired. Sign in again.",
+        })
+      );
+      const view = await renderEditProfile({ avatar: existingAvatar });
+
+      pickAvatarFile(view);
+      await view.findByText("Your session has expired. Sign in again.");
+
+      expect(
+        (view.getByAltText("Your profile picture") as HTMLImageElement).src
+      ).toBe(existingAvatar.url);
+    });
+
+    test("returns to initials after a successful removal", async () => {
+      const view = await renderEditProfile({ avatar: existingAvatar });
+
+      await act(async () => {
+        fireEvent.click(
+          view.getByRole("button", { name: "Remove profile photo" })
+        );
+      });
+      await view.findByText("Profile photo removed.");
+
+      expect(view.container.querySelector("img")).toBeNull();
+      expect(view.getByText("AL")).toBeTruthy();
+      expect(
+        view.queryByRole("button", { name: "Remove profile photo" })
+      ).toBeNull();
+      expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    test("keeps the avatar after a failed removal", async () => {
+      removeCustomerAvatar.mockImplementationOnce(() =>
+        Promise.resolve({ data: { status: "retryable" } })
+      );
+      const view = await renderEditProfile({ avatar: existingAvatar });
+
+      await act(async () => {
+        fireEvent.click(
+          view.getByRole("button", { name: "Remove profile photo" })
+        );
+      });
+      await view.findByText(
+        "We could not update your profile photo. Please try again."
+      );
+
+      expect(
+        (view.getByAltText("Your profile picture") as HTMLImageElement).src
+      ).toBe(existingAvatar.url);
+      expect(
+        view.getByRole("button", { name: "Remove profile photo" })
+      ).toBeTruthy();
+    });
   });
 });

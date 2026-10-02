@@ -13,6 +13,7 @@ const makeDependencies = (
   overrides: {
     readonly link?: string | null;
     readonly expireOutcome?: Effect.Effect<void, unknown>;
+    readonly avatarOutcome?: Effect.Effect<void, unknown>;
   } & Partial<CustomerAccountDeletionDependencies> = {}
 ) => {
   const calls: string[] = [];
@@ -30,6 +31,13 @@ const makeDependencies = (
     expireCustomer: () => {
       calls.push("expire");
       return (overrides.expireOutcome ?? Effect.void) as Effect.Effect<
+        void,
+        never
+      >;
+    },
+    destroyAvatar: () => {
+      calls.push("destroy-avatar");
+      return (overrides.avatarOutcome ?? Effect.void) as Effect.Effect<
         void,
         never
       >;
@@ -59,6 +67,7 @@ describe("Customer account deletion", () => {
       "marker",
       "find-link",
       "expire",
+      "destroy-avatar",
       "lock-release",
     ]);
   });
@@ -80,6 +89,26 @@ describe("Customer account deletion", () => {
       "marker",
       "find-link",
       "expire",
+      "lock-release",
+    ]);
+  });
+
+  test("blocks account identity deletion when avatar removal has an unknown provider outcome", async () => {
+    const { dependencies, calls } = makeDependencies({
+      avatarOutcome: Effect.fail(new Error("media provider unavailable")),
+    });
+
+    const outcome = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.result)
+    );
+
+    expect(outcome._tag).toBe("Failure");
+    expect(calls).toEqual([
+      "lock-acquire",
+      "marker",
+      "find-link",
+      "expire",
+      "destroy-avatar",
       "lock-release",
     ]);
   });
@@ -115,6 +144,7 @@ describe("Customer account deletion", () => {
       "lock-acquire",
       "marker",
       "find-link",
+      "destroy-avatar",
       "lock-release",
     ]);
   });
