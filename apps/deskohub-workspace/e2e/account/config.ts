@@ -21,7 +21,7 @@ export type WorkspaceE2EAccountConfig = {
   /** Validated run-context run id; every synthetic recipient derives from it. */
   readonly runId: WorkspaceE2ERunId;
   readonly timeouts: WorkspaceE2EConfig["timeouts"];
-  /** GitHub-only project-scoped Vercel token; never enters Vercel or app config. */
+  /** GitHub-only Vercel token for Workspace history reads; never enters Vercel or app config. */
   readonly vercelToken: string;
   readonly vercelProjectId: string;
 };
@@ -33,7 +33,7 @@ export const getAccountE2EConfig = (
   const vercelToken = environment.WORKSPACE_E2E_VERCEL_TOKEN;
   if (!vercelToken) {
     throw workspaceE2EError(
-      "WORKSPACE_E2E_VERCEL_TOKEN is required for account e2e cases; provision the project-scoped Vercel token in the protected workspace-checkout-e2e GitHub environment. Account coverage fails closed instead of skipping",
+      "WORKSPACE_E2E_VERCEL_TOKEN is required for account e2e cases; provide the protected workspace-checkout-e2e GitHub environment token with verified Workspace team history access. Account coverage fails closed instead of skipping",
       { operation: "configure workspace account e2e" }
     );
   }

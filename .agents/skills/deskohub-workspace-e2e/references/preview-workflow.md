@@ -99,9 +99,11 @@ This Vercel list is separate from the GitHub Actions
   the public project ingest token, never a management API key or secret.
 - `WORKSPACE_E2E_VERCEL_TOKEN` as a protected-environment SECRET and
   `WORKSPACE_E2E_VERCEL_PROJECT` as its environment variable. Neither enters
-  Vercel or application configuration. The token is project-scoped to the
-  Workspace Vercel project with read/write permission there — not a
-  logs-only or read-only token.
+  Vercel or application configuration. The accepted secret is a Workspace
+  team PAT with history-read access; the runner treats it as opaque and does
+  not validate its scope. The user accepts this team access, and no
+  full-account key is required. Prefer narrower project authority if the
+  historical route supports it.
 
 Do not use production Nexi, Dotypos, or database credentials in Preview.
 Do not add callback-origin or BotID test-bypass overrides. Non-production
@@ -523,13 +525,16 @@ The account worker resolves the immutable deployment and queries the historical
 `https://vercel.com/api/logs/request-logs` route used by pinned Vercel CLI
 54.9.1, filtering by project, deployment, time, page, marker, baseline row IDs,
 and exact recipient. This is an internal CLI request-log contract rather than
-a documented public history API. The project-scoped
-`WORKSPACE_E2E_VERCEL_TOKEN` remains the required credential and is sent only
-in a Bearer header. The exact protected-preview check currently resolves
-matching deployment metadata but receives HTTP 403 from the history route; the
-denial reason is unknown, so this is not evidence that project tokens are
-unsupported or that broader credentials are required. Require an exact
-protected-preview E2E pass before treating log access as verified.
+a documented public history API. The protected GitHub secret
+`WORKSPACE_E2E_VERCEL_TOKEN` is opaque to the runner and is sent only in a
+Bearer header. In the final-440 probe, the configured same-account Workspace
+team PAT returned HTTP 200 after deployment project and commit metadata
+matched. An earlier project PAT returned HTTP 403 on this route; the denial
+reason and general project-token support remain unknown. The probe establishes
+history-read access for the current credential only; it did not test drain
+creation or deletion. Keep the exact project, deployment, time, marker,
+baseline-row, and recipient filters. Require an exact protected-preview E2E
+pass before treating a delivered link as verified.
 
 The runner relies on Bun to load dotenv files before the entry module executes.
 `e2e/e2e-env.ts` is the only E2E boundary that reads `process.env`: it selects,
