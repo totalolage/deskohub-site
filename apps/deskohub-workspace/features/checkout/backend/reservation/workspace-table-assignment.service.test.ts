@@ -23,6 +23,16 @@ type MakeCoworkReservationInput =
       readonly coffee?: boolean;
       readonly date?: string;
     }
+  | {
+      readonly entryTier: "open-space";
+      readonly coffee?: boolean;
+      readonly date?: string;
+    }
+  | {
+      readonly entryTier: "reserved-desk";
+      readonly date?: string;
+      readonly monitorOption?: WorkspaceProductMonitorOption;
+    }
   | { readonly entryTier: "plus"; readonly date?: string }
   | {
       readonly entryTier: "profi";
@@ -34,6 +44,25 @@ const makeReservation = (
   input: MakeCoworkReservationInput = {}
 ): WorkspaceTableAssignmentReservation => {
   const date = input.date ?? "2099-06-10";
+
+  if (input.entryTier === "open-space") {
+    return {
+      kind: "cowork",
+      entryTier: "open-space",
+      coffee: input.coffee ?? false,
+      date,
+    };
+  }
+
+  if (input.entryTier === "reserved-desk") {
+    return {
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      date,
+      ...(input.monitorOption && { monitorOption: input.monitorOption }),
+    };
+  }
 
   if (input.entryTier === "plus") {
     return { kind: "cowork", entryTier: "plus", coffee: true, date };
@@ -216,6 +245,188 @@ describe("WorkspaceTableAssignmentService", () => {
 
     expect(interval?.startDate.toISOString()).toBe("2026-10-24T22:00:00.000Z");
     expect(interval?.endDate.toISOString()).toBe("2026-10-25T23:00:00.000Z");
+  });
+
+  test("uses the tier reservation interval as cowork occupancy input across DST", async () => {
+    const captureInterval = () => {
+      let interval: DotyposReservationInterval | undefined;
+      return {
+        get interval() {
+          return interval;
+        },
+        capture: (value: DotyposReservationInterval) => {
+          interval = value;
+        },
+      };
+    };
+    const openSpace = captureInterval();
+
+    await assignTableId(
+      makeReservation({ entryTier: "open-space", date: "2026-10-25" }),
+      [
+        makeTable({
+          id: "open-1",
+          name: "Open 1",
+          tags: ["cowork:open-space"],
+        }),
+      ],
+      [],
+      [],
+      openSpace.capture
+    );
+
+    expect(openSpace.interval?.startDate.toISOString()).toBe(
+      "2026-10-24T22:00:00.000Z"
+    );
+    expect(openSpace.interval?.endDate.toISOString()).toBe(
+      "2026-10-25T16:00:00.000Z"
+    );
+
+    const reservedDesk = captureInterval();
+
+    await assignTableId(
+      makeReservation({ entryTier: "reserved-desk", date: "2026-10-25" }),
+      [
+        makeTable({
+          id: "desk-1",
+          name: "Desk 1",
+          tags: ["cowork:reserved-desk"],
+        }),
+      ],
+      [],
+      [],
+      reservedDesk.capture
+    );
+
+    expect(reservedDesk.interval?.startDate.toISOString()).toBe(
+      "2026-10-24T22:00:00.000Z"
+    );
+    expect(reservedDesk.interval?.endDate.toISOString()).toBe(
+      "2026-10-25T23:00:00.000Z"
+    );
+  });
+
+  test("does not consume open-space assignment capacity for an after-17:00 reservation", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ entryTier: "open-space" }),
+        [
+          makeTable({
+            id: "open-1",
+            name: "Open 1",
+            tags: ["cowork:open-space"],
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "open-1",
+            status: "CONFIRMED",
+            startDate: "2099-06-10T16:00:00Z",
+            endDate: "2099-06-10T18:00:00Z",
+          }),
+        ]
+      )
+    ).resolves.toBe("open-1");
+  });
+
+  test("consumes open-space assignment capacity for an overlapping morning reservation", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ entryTier: "open-space" }),
+        [
+          makeTable({
+            id: "open-1",
+            name: "Open 1",
+            tags: ["cowork:open-space"],
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "open-1",
+            status: "CONFIRMED",
+            startDate: "2099-06-10T06:00:00Z",
+            endDate: "2099-06-10T08:00:00Z",
+          }),
+        ]
+      )
+    ).rejects.toThrow(
+      "No available Dotypos workspace table matches tags: cowork:open-space"
+    );
+  });
+
+  test("keeps the 17:00 half-open boundary parity on the assignment path", async () => {
+    // A reservation starting exactly at 17:00 Prague does not occupy the
+    // 00:00-17:00 exclusive-end open-space interval.
+    await expect(
+      assignTableId(
+        makeReservation({ entryTier: "open-space" }),
+        [
+          makeTable({
+            id: "open-1",
+            name: "Open 1",
+            tags: ["cowork:open-space"],
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "open-1",
+            status: "NEW",
+            startDate: "2099-06-10T15:00:00Z",
+            endDate: "2099-06-10T18:00:00Z",
+          }),
+        ]
+      )
+    ).resolves.toBe("open-1");
+
+    // A reservation ending exactly at 17:00 Prague still occupies the
+    // 00:00-17:00 interval up to its exclusive end.
+    await expect(
+      assignTableId(
+        makeReservation({ entryTier: "open-space" }),
+        [
+          makeTable({
+            id: "open-1",
+            name: "Open 1",
+            tags: ["cowork:open-space"],
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "open-1",
+            status: "NEW",
+            startDate: "2099-06-10T14:00:00Z",
+            endDate: "2099-06-10T15:00:00Z",
+          }),
+        ]
+      )
+    ).rejects.toThrow(
+      "No available Dotypos workspace table matches tags: cowork:open-space"
+    );
+  });
+
+  test("blocks a reserved-desk assignment for an after-17:00 occupancy", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ entryTier: "reserved-desk" }),
+        [
+          makeTable({
+            id: "desk-1",
+            name: "Desk 1",
+            tags: ["cowork:reserved-desk"],
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "desk-1",
+            status: "CONFIRMED",
+            startDate: "2099-06-10T16:00:00Z",
+            endDate: "2099-06-10T18:00:00Z",
+          }),
+        ]
+      )
+    ).rejects.toThrow(
+      "No available Dotypos workspace table matches tags: cowork:reserved-desk"
+    );
   });
 
   test("matches Profi 2x27 QHD by tier and monitor tags", async () => {

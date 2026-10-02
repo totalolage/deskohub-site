@@ -2,6 +2,8 @@ import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Predicate, Record, Schema } from "effect";
 import {
   getWorkspaceProductByTier,
+  isWorkspaceCoworkCurrentProductTier,
+  workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
@@ -9,7 +11,6 @@ import {
   coworkReservationDefaultValues,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
-import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
 import {
   type MeetingRoomReservationInput,
   meetingRoomReservationDefaultValues,
@@ -34,7 +35,6 @@ import {
 } from "@/features/reservation/office-reservation";
 import {
   reservationCustomerEmailSchema,
-  reservationCustomerMessageSchema,
   reservationCustomerNameSchema,
   reservationCustomerPhoneSchema,
 } from "@/features/reservation/reservation-contact";
@@ -53,7 +53,6 @@ const reservationCheckoutQueryFields = [
   "name",
   "email",
   "phone",
-  "message",
 ] as const;
 
 type ReservationCheckoutQueryField =
@@ -73,7 +72,7 @@ const queryDateSchema = Schema.toStandardSchemaV1(
   )
 );
 const queryTierSchema = Schema.toStandardSchemaV1(
-  workspaceCoworkProductIdentitySchema.fields.tier
+  Schema.Literals(workspaceCoworkCurrentTiers)
 );
 const queryMonitorOptionSchema = Schema.toStandardSchemaV1(
   Schema.Literals(workspaceProductMonitorOptions)
@@ -88,7 +87,6 @@ const queryCustomerSchemas = {
   name: Schema.toStandardSchemaV1(reservationCustomerNameSchema),
   email: Schema.toStandardSchemaV1(reservationCustomerEmailSchema),
   phone: Schema.toStandardSchemaV1(reservationCustomerPhoneSchema),
-  message: Schema.toStandardSchemaV1(reservationCustomerMessageSchema),
 };
 
 const getTrimmedSearchParam = (
@@ -157,27 +155,37 @@ export const getReservationDefaultValuesFromSearchParams = (
 
   return {
     ...values,
-    ...(product.requiresCoffee && { coffee: true }),
-    ...(!product.requiresMonitorOption && { monitorOption: undefined }),
+    ...(product.coffeeAddon === "included" && { coffee: true }),
+    ...(product.workstationAddon === "unavailable" && {
+      monitorOption: undefined,
+    }),
   };
 };
 
 export const getReservationDefaultValuesFromPayState = (
   reservation: NormalizedCoworkReservationOrder
-): CoworkReservationInput => ({
-  entryTier: reservation.entryTier,
-  date: reservation.date,
-  coffee: reservation.coffee,
-  name: reservation.name,
-  email: reservation.email,
-  phone: reservation.phone,
-  billing: reservation.billing,
-  ...(reservation.monitorOption !== undefined && {
-    monitorOption: reservation.monitorOption,
-  }),
-  ...(reservation.message !== undefined && { message: reservation.message }),
-  marketingConsent: false,
-});
+): CoworkReservationInput => {
+  if (!isWorkspaceCoworkCurrentProductTier(reservation.entryTier)) {
+    throw new Error(
+      "Historical cowork tiers cannot be restored into the reservation form.",
+      { cause: reservation.entryTier }
+    );
+  }
+
+  return {
+    entryTier: reservation.entryTier,
+    date: reservation.date,
+    coffee: reservation.coffee,
+    name: reservation.name,
+    email: reservation.email,
+    phone: reservation.phone,
+    billing: reservation.billing,
+    ...(reservation.monitorOption !== undefined && {
+      monitorOption: reservation.monitorOption,
+    }),
+    marketingConsent: false,
+  };
+};
 
 export const getOfficeReservationDefaultValuesFromSearchParams = (
   searchParams: SupportedSearchParams,
@@ -281,5 +289,11 @@ export const getWorkspaceAvailabilityQueryFromReservationSearchParams = (
     });
   }
 
-  return query;
+  const { entryTier, ...rest } = query;
+
+  return {
+    ...rest,
+    ...(entryTier !== undefined &&
+      isWorkspaceCoworkCurrentProductTier(entryTier) && { entryTier }),
+  };
 };

@@ -109,6 +109,7 @@ describe("OfficeReservationForm", () => {
             from: "2026-08-10",
             to: "2026-09-10",
             unavailableDates: ["2026-08-12"],
+            reservedDeskWorkstationRequiredDates: [],
             unavailableCoworkTiers: [],
             meetingRoomUnavailable: false,
             officeUnavailable: false,

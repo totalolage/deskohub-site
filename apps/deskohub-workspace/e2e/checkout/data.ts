@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { Effect, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import type {
-  WorkspaceCoworkProductTier,
+  WorkspaceCoworkCurrentTier,
   WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   getMeetingRoomReservationDurationKey,
   isMeetingRoomWholeDayReservationDuration,
@@ -73,7 +74,7 @@ export type OfficeAvailability = {
 
 export type CoworkAvailabilitySelection = {
   readonly allocation?: WorkspaceE2EDateAllocation;
-  readonly entryTier?: WorkspaceCoworkProductTier;
+  readonly entryTier?: WorkspaceCoworkCurrentTier;
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };
 
@@ -112,9 +113,8 @@ const makeCheckoutContact = (flowId: string) => {
   const name = `Workspace E2E ${flowId} ${runId} ${sequence}`;
   const phone = `+4207${runId.slice(2, 8)}${sequence}`;
   const email = `${deliveredEmailPrefix}${emailKey}@resend.dev`;
-  const message = `Automated checkout e2e ${flowId} ${runId} ${sequence}`;
 
-  return { email, message, name, phone };
+  return { email, name, phone };
 };
 
 export const makeCoworkCheckoutData = (
@@ -123,7 +123,7 @@ export const makeCoworkCheckoutData = (
   flowId = "cowork-basic",
   product: {
     readonly coffee?: boolean;
-    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   } = {}
 ): CheckoutData => {
@@ -142,7 +142,7 @@ export const reuseCoworkCheckoutContact = (
   source: CheckoutData,
   product: {
     readonly coffee?: boolean;
-    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   } = {}
 ): CheckoutData =>
@@ -151,7 +151,6 @@ export const reuseCoworkCheckoutContact = (
     date,
     {
       email: source.email,
-      message: source.message,
       name: source.name,
       phone: source.phone,
     },
@@ -183,7 +182,6 @@ export const makeOfficeCheckoutData = (
     email: contact.email,
     expectedReservationDetails: { kind: "office" },
     locale,
-    message: contact.message,
     name: contact.name,
     office: slot,
     orderIdHint: "",
@@ -198,7 +196,6 @@ export const reuseMeetingRoomCheckoutContact = (
 ): CheckoutData => {
   return makeMeetingRoomCheckoutDataWithContact(checkoutBaseUrl, slot, {
     email: source.email,
-    message: source.message,
     name: source.name,
     phone: source.phone,
   });
@@ -222,7 +219,6 @@ const makeMeetingRoomCheckoutDataWithContact = (
       startDateTime: slot.startDateTime,
       startsAt: slot.startsAt,
     },
-    message: contact.message,
     name: contact.name,
     orderIdHint: "",
     phone: contact.phone,
@@ -235,23 +231,22 @@ const makeCoworkCheckoutDataWithContact = (
   contact: ReturnType<typeof makeCheckoutContact>,
   product: {
     readonly coffee?: boolean;
-    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   }
 ): CheckoutData => {
   const locale: CheckoutData["locale"] = "en-US";
-  const entryTier = product.entryTier ?? "basic";
+  const entryTier = product.entryTier ?? "open-space";
   const normalizedProduct = makeExpectedCoworkProduct(entryTier, product);
   const params = new URLSearchParams({
     coffee: String(normalizedProduct.coffee),
     date,
     email: contact.email,
     entryTier: normalizedProduct.entryTier,
-    message: contact.message,
     name: contact.name,
     phone: contact.phone,
   });
-  if (normalizedProduct.monitorOption) {
+  if ("monitorOption" in normalizedProduct && normalizedProduct.monitorOption) {
     params.set("monitorOption", normalizedProduct.monitorOption);
   }
 
@@ -264,7 +259,6 @@ const makeCoworkCheckoutDataWithContact = (
       ...normalizedProduct,
     },
     locale,
-    message: contact.message,
     name: contact.name,
     orderIdHint: "",
     phone: contact.phone,
@@ -272,29 +266,28 @@ const makeCoworkCheckoutDataWithContact = (
 };
 
 const makeExpectedCoworkProduct = (
-  entryTier: WorkspaceCoworkProductTier,
+  entryTier: WorkspaceCoworkCurrentTier,
   product: {
     readonly coffee?: boolean;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   }
 ) => {
   switch (entryTier) {
-    case "basic":
+    case "open-space":
       return {
         coffee: product.coffee ?? false,
         entryTier,
       } as const;
-    case "plus":
+    case "reserved-desk":
       return {
         coffee: true,
         entryTier,
+        ...(product.monitorOption && { monitorOption: product.monitorOption }),
       } as const;
-    case "profi":
-      return {
-        coffee: true,
-        entryTier,
-        monitorOption: product.monitorOption ?? "2x27-qhd",
-      } as const;
+    default:
+      throw new Error(
+        `Unsupported cowork entry tier ${String(entryTier)}; saleable tiers are open-space and reserved-desk`
+      );
   }
 };
 
@@ -313,12 +306,12 @@ export const selectAvailableCoworkDates = (
   count: number,
   {
     allocation,
-    entryTier = "basic",
+    entryTier = "open-space",
     excludedDates = new Set<string>(),
     maximumReservationsPerDate,
     monitorOption,
   }: {
-    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly entryTier?: WorkspaceCoworkCurrentTier;
     readonly excludedDates?: ReadonlySet<string>;
     readonly monitorOption?: WorkspaceProductMonitorOption;
     readonly allocation?: WorkspaceE2EDateAllocation;
@@ -344,7 +337,7 @@ export const loadAvailableCoworkDates = (
   config: WorkspaceE2EConfig,
   {
     allocation = workspaceE2EFullDateAllocation,
-    entryTier = "basic",
+    entryTier = "open-space",
     monitorOption,
   }: CoworkAvailabilitySelection = {}
 ): Effect.Effect<readonly string[], WorkspaceE2EError, HttpClient.HttpClient> =>
@@ -791,12 +784,12 @@ export const loadMeetingRoomAvailability = (
   });
 
 const makeCoworkSelectionLabel = (
-  entryTier: WorkspaceCoworkProductTier,
+  entryTier: WorkspaceCoworkCurrentTier,
   monitorOption: WorkspaceProductMonitorOption | undefined
 ) =>
   monitorOption
-    ? `tier:${entryTier} with monitor:${monitorOption}`
-    : `tier:${entryTier}`;
+    ? `${getWorkspaceProductByTier(entryTier).label} with monitor:${monitorOption}`
+    : getWorkspaceProductByTier(entryTier).label;
 
 const getTouchedDates = (slot: MeetingRoomCheckoutSlot) => {
   const dates = [slot.date];

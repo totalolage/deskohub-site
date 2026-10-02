@@ -32,6 +32,7 @@ export type CustomerReservationEmailProps = {
     readonly location: string;
     readonly directions: string;
     readonly table: string;
+    readonly tables: string;
     readonly network: string;
     readonly networkName: string;
     readonly networkPassword: string;
@@ -42,6 +43,7 @@ export type CustomerReservationEmailProps = {
     readonly mapImageSrc?: string;
   };
   readonly table?: {
+    readonly mode: "assigned" | "shared";
     readonly name: string;
   };
   readonly network?: {
@@ -86,8 +88,24 @@ export function CustomerReservationEmail({
         </Section>
         {table && (
           <Section className="border-t-4 border-aquamarine bg-[#e9fff6] px-5 py-5 text-center">
-            <WorkspaceEmailLabel>{labels.table}</WorkspaceEmailLabel>
-            <Text className="m-0 mt-1 text-[48px] font-bold leading-[54px] text-navy">
+            <WorkspaceEmailLabel>
+              {{ assigned: labels.table, shared: labels.tables }[table.mode]}
+            </WorkspaceEmailLabel>
+            <Text
+              className={
+                {
+                  assigned:
+                    "m-0 mt-1 text-[48px] font-bold leading-[54px] text-navy",
+                  shared:
+                    "m-0 mt-1 break-words text-[18px] font-bold leading-[26px] text-navy",
+                }[table.mode]
+              }
+              style={
+                table.mode === "shared"
+                  ? { overflowWrap: "anywhere" }
+                  : undefined
+              }
+            >
               {table.name}
             </Text>
           </Section>

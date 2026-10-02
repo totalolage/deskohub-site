@@ -16,6 +16,7 @@ import {
 } from "@/features/checkout/checkout-quote.test-utils";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
 import { getOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { discountIdSchema } from "@/features/discounts/contracts";
@@ -79,6 +80,129 @@ describe("CheckoutSummary", () => {
 
     expect(view.getByText("Basic Day Pass")).toBeDefined();
     expect(view.queryByText("product:basic")).toBeNull();
+  });
+
+  test("renders the paid workstation addon with its localized price in both locales", () => {
+    for (const [locale, addonLabel, priceLabel] of [
+      ["en-US", "Monitor workstation", "CZK 120"],
+      ["cs-CZ", "Pracovní stanice s monitory", "120 Kč"],
+    ] as const) {
+      const quote = buildCoworkReservationQuote({
+        entryTier: "reserved-desk",
+        coffee: true,
+        monitorOption: "2x27-qhd",
+      });
+
+      const view = render(
+        <CheckoutSummary locale={locale} summary={quote.summary} />
+      );
+
+      expect(view.getByText(addonLabel)).toBeDefined();
+      const addonRow = view.getByText(addonLabel).parentElement;
+      expect(addonRow?.textContent?.replaceAll("\u00a0", " ")).toContain(
+        priceLabel
+      );
+      expect(view.queryByText("addon:workstation")).toBeNull();
+      cleanup();
+    }
+  });
+
+  test("renders zero-priced monitor configuration lines for every monitor option", () => {
+    for (const monitorOption of [
+      "2x27-qhd",
+      "2x32-qhd",
+      "2x27-4k",
+      "2x32-4k",
+    ] as const) {
+      const quote = buildCoworkReservationQuote({
+        entryTier: "reserved-desk",
+        coffee: true,
+        monitorOption,
+      });
+
+      const view = render(
+        <CheckoutSummary locale="en-US" summary={quote.summary} />
+      );
+
+      expect(view.queryByText(`monitor:${monitorOption}`)).toBeNull();
+      const monitorTitle = {
+        "2x27-qhd": "2x 27 QHD",
+        "2x32-qhd": "2x 32 QHD",
+        "2x27-4k": "2x 27 4K",
+        "2x32-4k": "2x 32 4K",
+      }[monitorOption];
+      const monitorRow = view.getByText(monitorTitle).parentElement;
+      expect(monitorRow?.textContent?.replaceAll("\u00a0", " ")).toContain(
+        "CZK 0"
+      );
+      cleanup();
+    }
+  });
+
+  test("keeps the paid workstation addon full price while discounting only the Reserved Desk product", () => {
+    const reservedDeskPrice = getWorkspaceProductByTier("reserved-desk").price;
+    const quote = buildCoworkReservationQuote(
+      {
+        entryTier: "reserved-desk",
+        coffee: true,
+        monitorOption: "2x27-qhd",
+      },
+      {
+        discountQuote: {
+          product: { kind: "cowork", tier: "reserved-desk" },
+          discountableSubtotal: reservedDeskPrice,
+          discounts: [
+            {
+              discount: {
+                id: Schema.decodeUnknownSync(discountIdSchema)("launch-sale"),
+                label: "Launch sale",
+                adjustment: { kind: "percentage", basisPoints: 5000 },
+              },
+              subtotalBefore: reservedDeskPrice,
+              amount: {
+                value: reservedDeskPrice.value / 2,
+                exponent: reservedDeskPrice.exponent,
+                currency: reservedDeskPrice.currency,
+              },
+              subtotalAfter: {
+                value: reservedDeskPrice.value / 2,
+                exponent: reservedDeskPrice.exponent,
+                currency: reservedDeskPrice.currency,
+              },
+            },
+          ],
+          totalDiscount: {
+            value: reservedDeskPrice.value / 2,
+            exponent: reservedDeskPrice.exponent,
+            currency: reservedDeskPrice.currency,
+          },
+          discountedSubtotal: {
+            value: reservedDeskPrice.value / 2,
+            exponent: reservedDeskPrice.exponent,
+            currency: reservedDeskPrice.currency,
+          },
+        },
+      }
+    );
+
+    const view = render(
+      <CheckoutSummary locale="en-US" summary={quote.summary} />
+    );
+
+    expect(view.container.querySelectorAll("del")).toHaveLength(1);
+    // Original catalog base: CZK 410, half-price discounted base: CZK 205.
+    const productRow = view.getByText("Reserved Desk").parentElement;
+    expect(productRow?.querySelector("del")?.textContent).toContain("410");
+    expect(productRow?.textContent?.replaceAll("\u00a0", " ")).toContain("205");
+    // Undiscounted addon and reconciled total: 205 + 120 = 325.
+    const addonRow = view.getByText("Monitor workstation").parentElement;
+    expect(addonRow?.textContent?.replaceAll("\u00a0", " ")).toContain(
+      "CZK 120"
+    );
+    expect(addonRow?.querySelector("del")).toBeNull();
+    expect(view.getByText("Total to pay").parentElement?.textContent).toContain(
+      "325"
+    );
   });
 
   test("renders the day product as whole day", () => {

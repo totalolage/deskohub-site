@@ -1,6 +1,10 @@
 import type { DotyposReservation, DotyposTable } from "@deskohub/dotypos";
 import "@/shared/polyfills/temporal";
 import {
+  isWorkspaceCoworkTableCandidate,
+  type WorkspaceCoworkTableCandidateQuery,
+  workspaceCoworkOpenSpaceTableTag,
+  workspaceCoworkReservedDeskTableTag,
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,
 } from "@/features/checkout/backend/reservation/workspace-table-selection";
@@ -22,9 +26,8 @@ const provisionedRunCapacity =
   workspaceE2EConcurrentRunTarget + workspaceE2EProviderHeadroomRuns;
 
 export const workspaceE2EMaximumSameDateCoworkReservations = {
-  basic: 4,
-  plus: 1,
-  profi: 1,
+  "open-space": 4,
+  "reserved-desk": 1,
 } as const;
 
 export const getWorkspaceE2EDateInterval = ({
@@ -62,6 +65,7 @@ export const getWorkspaceE2ECapacityInterval = (now = new Date()) =>
   });
 
 type CapacityGroup = {
+  readonly candidateQuery?: WorkspaceCoworkTableCandidateQuery;
   readonly id: string;
   readonly requiredAvailableSeatCount?: number;
   readonly requiredAvailableTableCount?: number;
@@ -70,42 +74,38 @@ type CapacityGroup = {
   readonly requiredTags: readonly string[];
 };
 
-const capacityGroups: readonly CapacityGroup[] = [
+const reservedDeskMaximum =
+  workspaceE2EMaximumSameDateCoworkReservations["reserved-desk"];
+
+const newSaleCapacityGroups: readonly CapacityGroup[] = [
   {
-    id: "tier:basic",
+    candidateQuery: { entryTier: "open-space" },
+    id: "open-space",
     requiredAvailableSeatCount:
       (workspaceE2EProviderHeadroomRuns + 1) *
-      workspaceE2EMaximumSameDateCoworkReservations.basic,
+      workspaceE2EMaximumSameDateCoworkReservations["open-space"],
     requiredSeatCount:
       provisionedRunCapacity *
-      workspaceE2EMaximumSameDateCoworkReservations.basic,
-    requiredTags: ["tier:basic"],
+      workspaceE2EMaximumSameDateCoworkReservations["open-space"],
+    requiredTags: [workspaceCoworkOpenSpaceTableTag],
   },
   {
-    id: "tier:plus",
+    candidateQuery: { entryTier: "reserved-desk" },
+    id: "reserved-desk",
     requiredAvailableSeatCount:
-      (workspaceE2EProviderHeadroomRuns + 1) *
-      workspaceE2EMaximumSameDateCoworkReservations.plus,
-    requiredSeatCount:
-      provisionedRunCapacity *
-      workspaceE2EMaximumSameDateCoworkReservations.plus,
-    requiredTags: ["tier:plus"],
-  },
-  {
-    id: "tier:profi",
-    requiredTags: ["tier:profi"],
+      (workspaceE2EProviderHeadroomRuns + 1) * reservedDeskMaximum,
+    requiredSeatCount: provisionedRunCapacity * reservedDeskMaximum,
+    requiredTags: [workspaceCoworkReservedDeskTableTag],
   },
   ...workspaceProductMonitorOptions.map(
     (monitorOption): CapacityGroup => ({
-      id: `tier:profi/monitor:${monitorOption}`,
+      candidateQuery: { entryTier: "reserved-desk", monitorOption },
+      id: `reserved-desk/monitor:${monitorOption}`,
       requiredAvailableSeatCount:
-        (workspaceE2EProviderHeadroomRuns + 1) *
-        workspaceE2EMaximumSameDateCoworkReservations.profi,
-      requiredSeatCount:
-        provisionedRunCapacity *
-        workspaceE2EMaximumSameDateCoworkReservations.profi,
+        (workspaceE2EProviderHeadroomRuns + 1) * reservedDeskMaximum,
+      requiredSeatCount: provisionedRunCapacity * reservedDeskMaximum,
       requiredTags: [
-        "tier:profi",
+        workspaceCoworkReservedDeskTableTag,
         ...workspaceProductMonitorOptionTableTags[monitorOption],
       ],
     })
@@ -123,6 +123,28 @@ const capacityGroups: readonly CapacityGroup[] = [
     requiredTags: [workspaceOfficeReservationTableTag],
   },
 ];
+
+/**
+ * Report-only visibility pools for tables still carrying legacy `tier:*` tags.
+ * These groups carry no required capacity and are never part of the new-sale
+ * preflight, so unassigned saleable labels fail closed instead of being propped
+ * up by historical tags.
+ */
+export const workspaceE2ELegacyTierCleanupCapacityGroups: readonly CapacityGroup[] =
+  [
+    { id: "tier:basic", requiredTags: ["tier:basic"] },
+    { id: "tier:plus", requiredTags: ["tier:plus"] },
+    { id: "tier:profi", requiredTags: ["tier:profi"] },
+    ...workspaceProductMonitorOptions.map(
+      (monitorOption): CapacityGroup => ({
+        id: `tier:profi/monitor:${monitorOption}`,
+        requiredTags: [
+          "tier:profi",
+          ...workspaceProductMonitorOptionTableTags[monitorOption],
+        ],
+      })
+    ),
+  ];
 
 export type WorkspaceE2ECapacityGroupReport = {
   readonly activeVisibleTableCount: number;
@@ -178,24 +200,27 @@ export const getWorkspaceE2ECapacityFailures = (
         ]
   );
 
-export const makeWorkspaceE2ECapacityReport = ({
+const makeWorkspaceE2ECapacityGroupReports = ({
   from,
+  groups,
   reservations,
   tables,
   to,
 }: {
   readonly from: Date;
+  readonly groups: readonly CapacityGroup[];
   readonly reservations: readonly DotyposReservation[];
   readonly tables: readonly DotyposTable[];
   readonly to: Date;
-}): WorkspaceE2ECapacityReport => {
-  const groups = capacityGroups.map((group) => {
-    const activeVisibleTables = tables.filter(
-      (table) =>
-        table.enabled === true &&
-        table.display === true &&
-        group.requiredTags.every((tag) => table.tags?.includes(tag))
-    );
+}): WorkspaceE2ECapacityGroupReport[] =>
+  groups.map((group) => {
+    const activeVisibleTables = tables.filter((table) => {
+      if (table.enabled !== true || table.display !== true) return false;
+      const tableTags = new Set(table.tags ?? []);
+      return group.candidateQuery
+        ? isWorkspaceCoworkTableCandidate(tableTags, group.candidateQuery)
+        : group.requiredTags.every((tag) => tableTags.has(tag));
+    });
     const assignableTables = activeVisibleTables.flatMap((table) => {
       const id = table.id?.trim();
       const seats = parsePositiveInteger(table.seats);
@@ -269,15 +294,58 @@ export const makeWorkspaceE2ECapacityReport = ({
     } satisfies WorkspaceE2ECapacityGroupReport;
   });
 
-  return {
-    groups,
-    meetsRequiredCapacity: groups.every(
-      ({ meetsRequiredCapacity }) => meetsRequiredCapacity
-    ),
-    provisionedRunCapacity,
-    supportedConcurrentRuns: workspaceE2EConcurrentRunTarget,
-  };
-};
+const makeWorkspaceE2ECapacityReportFromGroups = (
+  groupReports: readonly WorkspaceE2ECapacityGroupReport[]
+): WorkspaceE2ECapacityReport => ({
+  groups: groupReports,
+  meetsRequiredCapacity: groupReports.every(
+    ({ meetsRequiredCapacity }) => meetsRequiredCapacity
+  ),
+  provisionedRunCapacity,
+  supportedConcurrentRuns: workspaceE2EConcurrentRunTarget,
+});
+
+export const makeWorkspaceE2ECapacityReport = ({
+  from,
+  reservations,
+  tables,
+  to,
+}: {
+  readonly from: Date;
+  readonly reservations: readonly DotyposReservation[];
+  readonly tables: readonly DotyposTable[];
+  readonly to: Date;
+}): WorkspaceE2ECapacityReport =>
+  makeWorkspaceE2ECapacityReportFromGroups(
+    makeWorkspaceE2ECapacityGroupReports({
+      from,
+      groups: newSaleCapacityGroups,
+      reservations,
+      tables,
+      to,
+    })
+  );
+
+export const makeWorkspaceE2ELegacyTierCleanupCapacityReport = ({
+  from,
+  reservations,
+  tables,
+  to,
+}: {
+  readonly from: Date;
+  readonly reservations: readonly DotyposReservation[];
+  readonly tables: readonly DotyposTable[];
+  readonly to: Date;
+}): WorkspaceE2ECapacityReport =>
+  makeWorkspaceE2ECapacityReportFromGroups(
+    makeWorkspaceE2ECapacityGroupReports({
+      from,
+      groups: workspaceE2ELegacyTierCleanupCapacityGroups,
+      reservations,
+      tables,
+      to,
+    })
+  );
 
 const parsePositiveInteger = (value: string | undefined) => {
   const parsed = Number(value);

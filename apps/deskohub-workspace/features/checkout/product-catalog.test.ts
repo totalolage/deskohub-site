@@ -1,12 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import {
+  type CoworkCoffeeAddonAvailability,
+  type CoworkWorkstationAddonAvailability,
+  getCoworkTierCoffeeAddon,
+  getCoworkTierWorkstationAddon,
   getWorkspaceMeetingRoomPriceForDuration,
   getWorkspaceOfficePrice,
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
+  isWorkspaceCoworkCurrentProductTier,
   isWorkspaceProductTier,
+  type WorkspaceCoworkProductTier,
+  workspaceCoworkCatalog,
+  workspaceCoworkCurrentCatalog,
+  workspaceCoworkCurrentTiers,
+  workspaceCoworkHistoricalTiers,
   workspaceCoworkProductCatalog,
+  workspaceCoworkTiers,
   workspaceMeetingRoomCatalog,
   workspaceMeetingRoomProductsByDurationKey,
   workspaceProductCoffeePrice,
@@ -45,10 +56,76 @@ describe("workspace product catalog", () => {
 
   test("keeps cowork-only catalog consumers separate from meeting room", () => {
     expect(
-      workspaceCoworkProductCatalog.map((product) => product.tier)
-    ).toEqual(["basic", "plus", "profi"]);
+      workspaceCoworkCurrentCatalog.map((product) => product.tier)
+    ).toEqual(["open-space", "reserved-desk"]);
+    expect(workspaceCoworkCatalog.map((product) => product.tier)).toEqual([
+      "basic",
+      "plus",
+      "profi",
+      "open-space",
+      "reserved-desk",
+    ]);
     expect(isWorkspaceProductTier("basic")).toBe(true);
+    expect(isWorkspaceProductTier("open-space")).toBe(true);
     expect(isWorkspaceProductTier("toString")).toBe(false);
+    expect(isWorkspaceCoworkCurrentProductTier("basic")).toBe(false);
+    expect(isWorkspaceCoworkCurrentProductTier("reserved-desk")).toBe(true);
+  });
+
+  test("exposes exactly the current two-tier bookable subset", () => {
+    expect([...workspaceCoworkCurrentTiers]).toEqual([
+      "open-space",
+      "reserved-desk",
+    ]);
+    for (const tier of workspaceCoworkCurrentTiers) {
+      expect(isWorkspaceCoworkCurrentProductTier(tier)).toBe(true);
+      expect(isWorkspaceProductTier(tier)).toBe(true);
+    }
+    for (const tier of workspaceCoworkHistoricalTiers) {
+      // Historical tiers stay decodable and present in the full catalog,
+      // but they are not in the bookable/issuable subset.
+      expect(isWorkspaceCoworkCurrentProductTier(tier)).toBe(false);
+      expect(isWorkspaceProductTier(tier)).toBe(true);
+      expect([...workspaceCoworkTiers]).toContain(tier);
+    }
+  });
+
+  test("pins the cowork coffee and workstation addon policy per tier", () => {
+    const policyByTier = {
+      basic: { coffeeAddon: "optional", workstationAddon: "unavailable" },
+      plus: { coffeeAddon: "included", workstationAddon: "unavailable" },
+      profi: { coffeeAddon: "included", workstationAddon: "required" },
+      "open-space": {
+        coffeeAddon: "optional",
+        workstationAddon: "unavailable",
+      },
+      "reserved-desk": {
+        coffeeAddon: "included",
+        workstationAddon: "optional",
+      },
+    } satisfies Record<
+      WorkspaceCoworkProductTier,
+      {
+        readonly coffeeAddon: CoworkCoffeeAddonAvailability;
+        readonly workstationAddon: CoworkWorkstationAddonAvailability;
+      }
+    >;
+
+    for (const [tier, policy] of Object.entries(policyByTier)) {
+      const productTier = tier as WorkspaceCoworkProductTier;
+      expect(getCoworkTierCoffeeAddon(productTier)).toBe(policy.coffeeAddon);
+      expect(getCoworkTierWorkstationAddon(productTier)).toBe(
+        policy.workstationAddon
+      );
+    }
+
+    // Profi's workstation is a required inclusion, not a paid optional toggle;
+    // Reserved Desk's workstation stays optional and Open Space has no
+    // workstation addon at all.
+    expect(getCoworkTierWorkstationAddon("profi")).toBe("required");
+    expect(getCoworkTierWorkstationAddon("reserved-desk")).toBe("optional");
+    expect(getCoworkTierWorkstationAddon("open-space")).toBe("unavailable");
+    expect(getCoworkTierCoffeeAddon("open-space")).toBe("optional");
   });
 
   test("exposes approved meeting room duration prices", () => {

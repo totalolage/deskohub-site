@@ -4,6 +4,8 @@ import { Effect } from "effect";
 import {
   getWorkspaceTableSeatCapacity,
   isDisplayableWorkspaceTable,
+  isWorkspaceCoworkHistoricalTableCandidate,
+  isWorkspaceCoworkTableCandidate,
   selectWorkspaceTableFromCandidates as selectWorkspaceTableFromCandidatesEffect,
 } from "./workspace-table-selection";
 
@@ -297,5 +299,176 @@ describe("selectWorkspaceTableFromCandidates", () => {
         new Map([["occupied-plus", 1]])
       )?.id
     ).toBe("first-basic");
+  });
+});
+
+describe("shared cowork offer table candidate predicate", () => {
+  const tags = (table: Table) => new Set(table.tags ?? []);
+
+  const openSpaceTable: Table = {
+    id: "os-1",
+    name: "OS1",
+    enabled: true,
+    display: true,
+    tags: ["cowork:open-space"],
+  } as never;
+  const openSpaceWithMonitor: Table = {
+    id: "os-2",
+    name: "OS2",
+    enabled: true,
+    display: true,
+    tags: ["cowork:open-space", "monitor:size:27"],
+  } as never;
+  const reservedDeskPlain: Table = {
+    id: "rd-1",
+    name: "RD1",
+    enabled: true,
+    display: true,
+    tags: ["cowork:reserved-desk"],
+  } as never;
+  const reservedDeskPartial: Table = {
+    id: "rd-2",
+    name: "RD2",
+    enabled: true,
+    display: true,
+    tags: ["cowork:reserved-desk", "monitor:count:2", "monitor:size:27"],
+  } as never;
+  const reservedDeskFullQhd: Table = {
+    id: "rd-3",
+    name: "RD3",
+    enabled: true,
+    display: true,
+    tags: [
+      "cowork:reserved-desk",
+      "monitor:count:2",
+      "monitor:size:27",
+      "monitor:resolution:qhd",
+    ],
+  } as never;
+
+  test("open-space requires the label and excludes monitor-tagged tables", () => {
+    expect(
+      isWorkspaceCoworkTableCandidate(tags(openSpaceTable), {
+        entryTier: "open-space",
+      })
+    ).toBe(true);
+    expect(
+      isWorkspaceCoworkTableCandidate(tags(openSpaceWithMonitor), {
+        entryTier: "open-space",
+      })
+    ).toBe(false);
+    expect(
+      isWorkspaceCoworkTableCandidate(tags(reservedDeskPlain), {
+        entryTier: "open-space",
+      })
+    ).toBe(false);
+  });
+
+  test("reserved-desk without addon excludes monitor-tagged tables", () => {
+    expect(
+      isWorkspaceCoworkTableCandidate(tags(reservedDeskPlain), {
+        entryTier: "reserved-desk",
+      })
+    ).toBe(true);
+    expect(
+      isWorkspaceCoworkTableCandidate(tags(reservedDeskFullQhd), {
+        entryTier: "reserved-desk",
+      })
+    ).toBe(false);
+  });
+
+  test("reserved-desk workstation addon requires the FULL configuration (fail closed)", () => {
+    expect(
+      isWorkspaceCoworkTableCandidate(tags(reservedDeskPartial), {
+        entryTier: "reserved-desk",
+        monitorOption: "2x27-qhd",
+      })
+    ).toBe(false);
+    expect(
+      isWorkspaceCoworkTableCandidate(tags(reservedDeskFullQhd), {
+        entryTier: "reserved-desk",
+        monitorOption: "2x27-qhd",
+      })
+    ).toBe(true);
+    expect(
+      isWorkspaceCoworkTableCandidate(tags(reservedDeskFullQhd), {
+        entryTier: "reserved-desk",
+        monitorOption: "2x27-4k",
+      })
+    ).toBe(false);
+  });
+
+  test("configured addon rejects extra or unknown monitor tags (exact set)", () => {
+    expect(
+      isWorkspaceCoworkTableCandidate(
+        tags({
+          ...reservedDeskFullQhd,
+          tags: [...(reservedDeskFullQhd.tags ?? []), "monitor:xyz"],
+        } as Table),
+        { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
+      )
+    ).toBe(false);
+    expect(
+      isWorkspaceCoworkTableCandidate(
+        tags({
+          ...reservedDeskFullQhd,
+          tags: ["cowork:reserved-desk", "monitor:count:2", "monitor:xyz"],
+        } as Table),
+        { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
+      )
+    ).toBe(false);
+    const contradictoryResolution = tags({
+      ...reservedDeskFullQhd,
+      tags: [
+        "cowork:reserved-desk",
+        "monitor:count:2",
+        "monitor:size:27",
+        "monitor:resolution:qhd",
+        "monitor:resolution:4k",
+      ],
+    } as Table);
+    expect(
+      isWorkspaceCoworkTableCandidate(contradictoryResolution, {
+        entryTier: "reserved-desk",
+        monitorOption: "2x27-qhd",
+      })
+    ).toBe(false);
+    expect(
+      isWorkspaceCoworkTableCandidate(contradictoryResolution, {
+        entryTier: "reserved-desk",
+        monitorOption: "2x27-4k",
+      })
+    ).toBe(false);
+  });
+
+  test("no-addon queries reject any monitor tag, including unknown ones", () => {
+    expect(
+      isWorkspaceCoworkTableCandidate(
+        tags({
+          ...reservedDeskPlain,
+          tags: ["cowork:reserved-desk", "monitor:xyz"],
+        } as Table),
+        { entryTier: "reserved-desk" }
+      )
+    ).toBe(false);
+    expect(
+      isWorkspaceCoworkTableCandidate(
+        tags({
+          ...openSpaceTable,
+          tags: ["cowork:open-space", "monitor:xyz"],
+        } as Table),
+        { entryTier: "open-space" }
+      )
+    ).toBe(false);
+  });
+
+  test("historical tiers keep their tier-tag predicate and never match offer labels", () => {
+    expect(
+      isWorkspaceCoworkHistoricalTableCandidate(tags(openSpaceTable), "basic")
+    ).toBe(false);
+    const legacy = new Set(["tier:basic"]);
+    expect(isWorkspaceCoworkHistoricalTableCandidate(legacy, "basic")).toBe(
+      true
+    );
   });
 });

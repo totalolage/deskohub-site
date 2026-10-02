@@ -3,6 +3,7 @@ import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   type Instant,
   isMidnight,
+  isWholeHour,
   type LocalDateTime,
 } from "@/shared/utils/temporal";
 
@@ -32,21 +33,51 @@ export type ReservationIntervalValidationIssue = {
   readonly message: string;
 };
 
+const getPragueLocalDateTimes = (interval: {
+  readonly startsAt: ReservationInterval["startsAt"] | Temporal.Instant;
+  readonly endsAt: ReservationInterval["endsAt"] | Temporal.Instant;
+}) => ({
+  start: Temporal.Instant.from(interval.startsAt)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDateTime(),
+  end: Temporal.Instant.from(interval.endsAt)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDateTime(),
+});
+
+const isFullPragueCalendarDay = (
+  start: Temporal.PlainDateTime,
+  end: Temporal.PlainDateTime
+) =>
+  isMidnight(start) &&
+  isMidnight(end) &&
+  end.toPlainDate().equals(start.toPlainDate().add({ days: 1 }));
+
 export const isSingleDayReservationInterval = (interval: {
   readonly startsAt: ReservationInterval["startsAt"] | Temporal.Instant;
   readonly endsAt: ReservationInterval["endsAt"] | Temporal.Instant;
 }) => {
-  const start = Temporal.Instant.from(interval.startsAt)
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDateTime();
-  const end = Temporal.Instant.from(interval.endsAt)
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDateTime();
+  const { start, end } = getPragueLocalDateTimes(interval);
 
+  // Full Prague calendar day: midnight to the next midnight, including 23-
+  // and 25-hour daylight-saving days.
+  return isFullPragueCalendarDay(start, end);
+};
+
+export const isCoworkReservationInterval = (interval: {
+  readonly startsAt: ReservationInterval["startsAt"] | Temporal.Instant;
+  readonly endsAt: ReservationInterval["endsAt"] | Temporal.Instant;
+}) => {
+  const { start, end } = getPragueLocalDateTimes(interval);
+
+  // Reserved Desk and historical cowork tiers use a full Prague calendar day.
+  // Open Space ends at 17:00 on that same Prague date.
   return (
-    isMidnight(start) &&
-    isMidnight(end) &&
-    end.toPlainDate().equals(start.toPlainDate().add({ days: 1 }))
+    isFullPragueCalendarDay(start, end) ||
+    (isMidnight(start) &&
+      end.hour === 17 &&
+      isWholeHour(end) &&
+      end.toPlainDate().equals(start.toPlainDate()))
   );
 };
 

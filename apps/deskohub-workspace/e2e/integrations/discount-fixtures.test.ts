@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
+import { getWorkspaceProductByTier } from "../../features/checkout/product-catalog";
 import {
   callsNamed,
   identifierNames,
@@ -9,6 +10,8 @@ import {
   propertyAssignments,
   stringLiterals,
 } from "../../scripts/shared/source-ast";
+import { calendarDiscountExpectation } from "../cases/discounts";
+import { discountCodeFixtures } from "./discount-fixtures";
 
 const parseFixtureModule = () =>
   parseTrackedSource(
@@ -73,4 +76,22 @@ test("targets the zero-total fixture at the meeting-room family", () => {
     return [kind.value.value];
   });
   expect(kindValues).toContain("meeting-room");
+});
+
+test("voucher credit covers two one-day Open Space checkouts after the Calendar sale", () => {
+  const openSpacePrice = getWorkspaceProductByTier("open-space").price.value;
+  const calendarSaleBasisPoints =
+    calendarDiscountExpectation.adjustment.basisPoints;
+
+  const perDateAfterSale =
+    openSpacePrice -
+    Math.floor((openSpacePrice * calendarSaleBasisPoints) / 10_000);
+  expect(perDateAfterSale).toBe(
+    Math.floor((openSpacePrice * (10_000 - calendarSaleBasisPoints)) / 10_000)
+  );
+
+  const expectedTwoDateTotal = perDateAfterSale * 2;
+  expect(discountCodeFixtures.voucherReuse.creditPerRun.value).toBe(
+    expectedTwoDateTotal
+  );
 });

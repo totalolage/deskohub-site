@@ -4,6 +4,7 @@ import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import isEmail from "validator/lib/isEmail.js";
+import type { WorkspaceCoworkCurrentTier } from "@/features/checkout/product-catalog";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { makeWorkspaceE2EDateAllocation } from "../allocation";
 import type { WorkspaceE2EConfig } from "../config";
@@ -56,46 +57,84 @@ test("keeps generated emails valid for the longest checkout flow identifier", ()
 });
 
 test("builds checkout data from the selected cowork product", () => {
-  const data = makeCoworkCheckoutData(
+  const openSpace = makeCoworkCheckoutData(
     "https://workspace.example.com",
     "2099-09-01",
-    "cowork-plus",
-    { entryTier: "plus" }
+    "cowork-open-space",
+    { coffee: true, entryTier: "open-space" }
   );
 
-  expect(new URL(data.checkoutUrl).searchParams.get("entryTier")).toBe("plus");
-  expect(data.expectedReservationDetails).toEqual({
+  expect(new URL(openSpace.checkoutUrl).searchParams.get("entryTier")).toBe(
+    "open-space"
+  );
+  expect(openSpace.expectedReservationDetails).toEqual({
     coffee: true,
-    entryTier: "plus",
+    entryTier: "open-space",
     kind: "cowork",
+  });
+
+  const reservedDesk = makeCoworkCheckoutData(
+    "https://workspace.example.com",
+    "2099-09-01",
+    "cowork-reserved-desk",
+    { entryTier: "reserved-desk", monitorOption: "2x27-qhd" }
+  );
+
+  expect(new URL(reservedDesk.checkoutUrl).searchParams.get("entryTier")).toBe(
+    "reserved-desk"
+  );
+  expect(
+    new URL(reservedDesk.checkoutUrl).searchParams.get("monitorOption")
+  ).toBe("2x27-qhd");
+  expect(reservedDesk.expectedReservationDetails).toEqual({
+    coffee: true,
+    entryTier: "reserved-desk",
+    kind: "cowork",
+    monitorOption: "2x27-qhd",
   });
 });
 
 test("keeps its persistence oracle independent of application normalization", () => {
-  const basic = makeCoworkCheckoutData(
+  const openSpace = makeCoworkCheckoutData(
     "https://workspace.example.com",
     "2099-09-01",
-    "cowork-basic-coffee",
+    "cowork-open-space-coffee",
     { coffee: true }
   );
-  const profi = makeCoworkCheckoutData(
+  const reservedDesk = makeCoworkCheckoutData(
     "https://workspace.example.com",
     "2099-09-02",
-    "cowork-profi",
-    { entryTier: "profi", monitorOption: "2x32-4k" }
+    "cowork-reserved-desk",
+    { entryTier: "reserved-desk", monitorOption: "2x32-4k" }
   );
 
-  expect(basic.expectedReservationDetails).toEqual({
+  expect(openSpace.expectedReservationDetails).toEqual({
     coffee: true,
-    entryTier: "basic",
+    entryTier: "open-space",
     kind: "cowork",
   });
-  expect(profi.expectedReservationDetails).toEqual({
+  expect(reservedDesk.expectedReservationDetails).toEqual({
     coffee: true,
-    entryTier: "profi",
+    entryTier: "reserved-desk",
     kind: "cowork",
     monitorOption: "2x32-4k",
   });
+});
+
+test("rejects an invalid runtime cowork tier with an intelligible error", () => {
+  // Runtime-only bypass: JS callers can pass a historical tier that the
+  // WorkspaceCoworkCurrentTier type no longer allows.
+  const legacyTier = "profi" as WorkspaceCoworkCurrentTier;
+  expect(() =>
+    makeCoworkCheckoutData(
+      "https://workspace.example.com",
+      "2099-09-01",
+      "cowork-legacy-tier",
+      { entryTier: legacyTier }
+    )
+  ).toThrow(
+    "Unsupported cowork entry tier profi; saleable tiers are open-space and reserved-desk"
+  );
 });
 
 test("reuses customer identity for a later reservation", () => {
@@ -188,12 +227,10 @@ test("reuses a meeting-room customer while changing the interval", () => {
 
   expect({
     email: second.email,
-    message: second.message,
     name: second.name,
     phone: second.phone,
   }).toEqual({
     email: first.email,
-    message: first.message,
     name: first.name,
     phone: first.phone,
   });
@@ -248,7 +285,7 @@ test("loads availability through the provided HTTP client", async () => {
   expect(dates).toEqual(["2099-07-31", "2099-08-03"]);
   expect(requests).toHaveLength(1);
   expect(requests[0]?.url).toBe(
-    "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/api/workspace/availability?entryTier=basic&from=2099-07-31&to=2099-10-15"
+    "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/api/workspace/availability?entryTier=open-space&from=2099-07-31&to=2099-10-15"
   );
   expect(requests[0]?.headers.get("x-vercel-protection-bypass")).toBe(
     "test-protection-bypass"
@@ -277,14 +314,14 @@ test("selects tier-specific dates without reusing excluded dates", async () => {
 
   const dates = await Effect.runPromise(
     selectAvailableCoworkDates(makeConfig(), 1, {
-      entryTier: "profi",
+      entryTier: "reserved-desk",
       excludedDates: new Set(["2099-07-31"]),
       monitorOption: "2x27-qhd",
     }).pipe(Effect.provide(httpClientLayer))
   );
 
   expect(dates).toEqual(["2099-08-03"]);
-  expect(requests[0]?.url).toContain("entryTier=profi");
+  expect(requests[0]?.url).toContain("entryTier=reserved-desk");
   expect(requests[0]?.url).toContain("monitorOption=2x27-qhd");
 });
 
@@ -431,14 +468,14 @@ test("reports allocation capacity context before case construction", async () =>
         shardIndex: 0,
         toOffsetDays: 39,
       },
-      selectionLabel: "tier:profi with monitor:2x27-qhd",
+      selectionLabel: "Reserved Desk with monitor:2x27-qhd",
     })
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
   if (Exit.isFailure(exit)) {
     const message = String(Cause.squash(exit.cause));
-    expect(message).toContain("tier:profi with monitor:2x27-qhd");
+    expect(message).toContain("Reserved Desk with monitor:2x27-qhd");
     expect(message).toContain("shard 1 of 3");
     expect(message).toContain("supported concurrency 3");
   }

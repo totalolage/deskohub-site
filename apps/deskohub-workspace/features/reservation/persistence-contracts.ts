@@ -1,4 +1,5 @@
 import { Match, Schema } from "effect";
+import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
 import {
   getStoredCoworkReservationDetails,
   storedCoworkReservationDetailsSchema,
@@ -27,7 +28,12 @@ export type StoredWorkspaceReservationDetails =
   typeof storedWorkspaceReservationDetailsSchema.Type;
 
 export const getStoredWorkspaceReservationDetails = (
-  reservation: ReservationOrderData
+  // Historical recovery paths pass full normalized orders, so every stored
+  // cowork tier stays decodable here even though public order issuance only
+  // produces the saleable offers.
+  reservation:
+    | NormalizedCoworkReservationOrder
+    | Exclude<ReservationOrderData, { readonly kind: "cowork" }>
 ): StoredWorkspaceReservationDetails =>
   Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({

@@ -2,10 +2,16 @@ import {
   type DotyposReservationId,
   DotyposReservationIdSchema,
   DotyposService,
+  type DotyposTable,
 } from "@deskohub/dotypos";
 import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  getWorkspaceTableCandidatesByPredicate,
+  getWorkspaceTableSeatCapacity,
+  isWorkspaceCoworkTableCandidate,
+} from "@/features/checkout/backend/reservation";
 import {
   getWorkspaceTableMap,
   type WorkspaceTableMap,
@@ -50,6 +56,7 @@ export type WorkspaceReservationDetails = Pick<
   readonly seats: number;
   readonly tableName?: string;
   readonly tableMap?: WorkspaceTableMap;
+  readonly openSpaceTableNames?: readonly string[];
 };
 
 export interface IWorkspaceReservationService {
@@ -166,6 +173,11 @@ export class WorkspaceReservationService extends Context.Service<
             dotyposReservationDetails.reservation,
             tables
           );
+          const openSpaceTableNames =
+            reservation.reservationDetails.kind === "cowork" &&
+            reservation.reservationDetails.entryTier === "open-space"
+              ? yield* getOpenSpaceTableNames(tables)
+              : undefined;
           const seatingMapEnabled = yield* seatingMapFeatureFlag.isEnabled;
           const tableMap = seatingMapEnabled
             ? getWorkspaceTableMap(
@@ -187,6 +199,7 @@ export class WorkspaceReservationService extends Context.Service<
             seats,
             ...(tableName && { tableName }),
             ...(tableMap && { tableMap }),
+            ...(openSpaceTableNames !== undefined && { openSpaceTableNames }),
           };
         }
       );
@@ -306,3 +319,17 @@ const getReservationTableName = (
 
   return tableName || tableId;
 };
+
+const getOpenSpaceTableNames = (tables: readonly DotyposTable[]) =>
+  Effect.forEach(
+    getWorkspaceTableCandidatesByPredicate(tables, (tableTags) =>
+      isWorkspaceCoworkTableCandidate(tableTags, { entryTier: "open-space" })
+    ),
+    (table) =>
+      getWorkspaceTableSeatCapacity(table).pipe(
+        Effect.as(table.name?.trim()),
+        Effect.orElseSucceed(() => undefined)
+      )
+  ).pipe(
+    Effect.map((names) => names.filter((name): name is string => Boolean(name)))
+  );

@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Predicate, Schema, SchemaGetter } from "effect";
 import { isValidPhoneNumber } from "libphonenumber-js";
 import isEmail from "validator/lib/isEmail.js";
 import { m } from "@/features/i18n";
@@ -7,7 +7,6 @@ export const RESERVATION_VALIDATION = {
   name: { min: 2, max: 100 },
   email: { max: 255 },
   phone: { max: 20 },
-  message: { max: 1000 },
 } as const;
 
 export const reservationCustomerNameSchema = Schema.Trim.check(
@@ -47,24 +46,35 @@ export const reservationCustomerPhoneSchema = Schema.Trim.check(
   })
 );
 
-export const reservationCustomerMessageSchema = Schema.Trim.check(
-  Schema.isMaxLength(RESERVATION_VALIDATION.message.max, {
-    message: m.contactValidationMessageMaximum({
-      max: RESERVATION_VALIDATION.message.max,
-    }),
-  })
-);
-
 export const reservationCustomerSchema = Schema.Struct({
   name: reservationCustomerNameSchema,
   email: reservationCustomerEmailSchema,
   phone: reservationCustomerPhoneSchema,
-  message: Schema.optional(reservationCustomerMessageSchema),
 });
 
 export const normalizedReservationCustomerSchema = Schema.Struct({
   name: Schema.toType(reservationCustomerNameSchema),
   email: Schema.toType(reservationCustomerEmailSchema),
   phone: Schema.toType(reservationCustomerPhoneSchema),
-  message: Schema.optional(Schema.toType(reservationCustomerMessageSchema)),
 });
+
+/**
+ * Decode a reservation payload while dropping the retired customer-message
+ * key so legacy signed Pay state remains restorable.
+ */
+export const droppingRetiredReservationCustomerMessage = <A, RD, RE>(
+  schema: Schema.Codec<A, unknown, RD, RE>
+): Schema.Codec<A, unknown, RD, RE> =>
+  Schema.Unknown.pipe(
+    Schema.decodeTo(schema, {
+      decode: SchemaGetter.transform((input) => {
+        if (Predicate.isObject(input) && !Array.isArray(input)) {
+          const rest = { ...input };
+          Reflect.deleteProperty(rest, "message");
+          return rest;
+        }
+        return input;
+      }),
+      encode: SchemaGetter.transform((value) => value),
+    })
+  );
