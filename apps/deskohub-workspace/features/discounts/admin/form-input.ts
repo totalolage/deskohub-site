@@ -1,4 +1,3 @@
-import { Predicate } from "effect";
 import {
   type WorkspaceProductTarget,
   workspaceProductTargets,
@@ -14,121 +13,108 @@ import type {
   CreateDiscountCodeAdminInput,
   CreateVoucherAdminInput,
 } from "./contracts";
+import type {
+  DiscountCodeConfigurationFormValues,
+  DiscountCodeFormValues,
+  DiscountDefinitionFormValues,
+  VoucherFormValues,
+} from "./form-schemas";
 
-export const readDiscountForm = (
-  formData: FormData
+export const toCreateDiscountInput = (
+  values: DiscountDefinitionFormValues
 ): CreateDiscountAdminInput => {
-  const kind = readString(formData, "adjustmentKind");
   const fixedCurrency = findWorkspaceCurrencyDefinition(
-    readString(formData, "fixedAmountCurrency").toUpperCase()
+    values.fixedAmountCurrency.toUpperCase()
   );
 
   return {
     labels: {
-      "cs-CZ": readString(formData, "labelCs"),
-      "en-US": readString(formData, "labelEn"),
+      "cs-CZ": values.labelCs,
+      "en-US": values.labelEn,
     },
     adjustment:
-      kind === "fixed"
+      values.adjustmentKind === "fixed"
         ? {
             kind: "fixed",
             amount: {
-              value: Number(readString(formData, "fixedAmountValue")),
+              value: Number(values.fixedAmountValue),
               exponent: fixedCurrency?.exponent ?? -1,
               currency: fixedCurrency?.code ?? "",
             },
           }
         : {
             kind: "percentage",
-            basisPoints: Math.round(
-              Number(readString(formData, "percentage")) * 100
-            ),
+            basisPoints: Math.round(Number(values.percentage) * 100),
           },
-    products: formData
-      .getAll("products")
-      .flatMap((value) =>
-        Predicate.isString(value) ? (productTargets[value] ?? []) : []
-      ) as [WorkspaceProductTarget, ...WorkspaceProductTarget[]],
+    products: values.products.flatMap((kind) => productTargets[kind] ?? []) as [
+      WorkspaceProductTarget,
+      ...WorkspaceProductTarget[],
+    ],
   };
 };
 
-export const readDiscountCodeForm = (
-  formData: FormData
+export const toCreateDiscountCodeInput = (
+  values: DiscountCodeFormValues
 ): CreateDiscountCodeAdminInput => ({
-  discountId: readString(
-    formData,
-    "discountId"
-  ) as CreateDiscountCodeAdminInput["discountId"],
-  ...readDiscountCodeConfigurationForm(formData),
+  discountId: values.discountId as CreateDiscountCodeAdminInput["discountId"],
+  ...toDiscountCodeConfigurationInput(values),
 });
 
-export const readDiscountCodeConfigurationForm = (
-  formData: FormData
+export const toDiscountCodeConfigurationInput = (
+  values: DiscountCodeConfigurationFormValues
 ): CreateCustomerDiscountCodeAdminInput["code"] => ({
-  code: readString(formData, "code")
+  code: values.code
     .trim()
     .toUpperCase() as CreateCustomerDiscountCodeAdminInput["code"]["code"],
-  enabled: formData.get("enabled") === "on",
-  validFrom: readOptionalLocalDateTime(
-    formData,
-    "validFrom"
+  enabled: values.enabled,
+  validFrom: toOptionalLocalDateTimeInstant(
+    values.validFrom
   ) as CreateCustomerDiscountCodeAdminInput["code"]["validFrom"],
-  validUntil: readOptionalLocalDateTime(
-    formData,
-    "validUntil"
+  validUntil: toOptionalLocalDateTimeInstant(
+    values.validUntil
   ) as CreateCustomerDiscountCodeAdminInput["code"]["validUntil"],
-  maxUses: readOptionalNumber(formData, "maxUses"),
-  maxUsesPerCustomer: readOptionalNumber(formData, "maxUsesPerCustomer"),
+  maxUses: toOptionalCount(values.maxUses),
+  maxUsesPerCustomer: toOptionalCount(values.maxUsesPerCustomer),
 });
 
-export const readVoucherCreditForm = (
-  formData: FormData
+export const toVoucherCreditInput = (
+  values: Pick<VoucherFormValues, "voucherValue" | "voucherCurrency">
 ): CreateVoucherAdminInput["credit"] => {
   const currency = findWorkspaceCurrencyDefinition(
-    readString(formData, "voucherCurrency").toUpperCase()
+    values.voucherCurrency.toUpperCase()
   );
   return {
-    value: Number(readString(formData, "voucherValue")),
+    value: Number(values.voucherValue),
     exponent: currency?.exponent ?? -1,
     currency: currency?.code ?? "",
   };
 };
 
-export const readVoucherConfigurationForm = (
-  formData: FormData
+export const toVoucherConfigurationInput = (
+  values: VoucherFormValues
 ): Omit<CreateVoucherAdminInput, "credit"> => {
   const {
     maxUses: _maxUses,
     maxUsesPerCustomer: _maxUsesPerCustomer,
     ...configuration
-  } = readDiscountCodeConfigurationForm(formData);
+  } = toDiscountCodeConfigurationInput({
+    ...values,
+    maxUses: "",
+    maxUsesPerCustomer: "",
+  });
   return configuration;
 };
 
-const readString = (formData: FormData, field: string) => {
-  const value = formData.get(field);
-  return Predicate.isString(value) ? value : "";
-};
-
-const readOptionalString = (formData: FormData, field: string) => {
-  const value = readString(formData, field).trim();
-  return value.length > 0 ? value : null;
-};
-
-const readOptionalLocalDateTime = (formData: FormData, field: string) => {
-  const value = readOptionalString(formData, field);
-  return value === null
+const toOptionalLocalDateTimeInstant = (value: string) =>
+  value.length === 0
     ? null
     : localDateTimeToTemporalInstantString({
         dateTime: value,
         timeZone: workspaceSiteConstants.location.timeZone,
       });
-};
 
-const readOptionalNumber = (formData: FormData, field: string) => {
-  const value = readOptionalString(formData, field);
-  return value === null ? null : Number(value);
-};
+const toOptionalCount = (value: string) =>
+  value.length === 0 ? null : Number(value);
 
 const productTargets: Readonly<
   Record<string, readonly WorkspaceProductTarget[]>
