@@ -6,15 +6,11 @@ import { GlassCard } from "@/shared/components/ui/glass-card";
 import { CensoredFounderName } from "./censored-founder-name";
 import { FounderProfileImage } from "./founder-profile-image";
 
-type LandingPageFoundersSectionProps = {
+type TeamPageProps = {
   locale: Locale;
-  foundersSectionId: string;
 };
 
-export function LandingPageFoundersSection({
-  locale,
-  foundersSectionId,
-}: LandingPageFoundersSectionProps) {
+export function TeamPage({ locale }: TeamPageProps) {
   const founders = [
     {
       imagePublicId: CloudinaryPublicIdSchema.make("founder-profile-danica"),
@@ -37,10 +33,7 @@ export function LandingPageFoundersSection({
   ];
 
   return (
-    <section
-      id={foundersSectionId}
-      className="relative overflow-hidden bg-navy-blue py-20 text-white sm:py-24"
-    >
+    <main className="relative overflow-hidden bg-navy-blue pb-20 pt-[calc(var(--site-header-height)+4rem)] text-white sm:pb-24 sm:pt-[calc(var(--site-header-height)+5rem)]">
       <div
         aria-hidden="true"
         className="absolute inset-0 bg-[radial-gradient(circle_at_8%_18%,rgba(236,164,35,0.22),transparent_23%),radial-gradient(circle_at_91%_81%,rgba(0,223,153,0.18),transparent_24%)]"
@@ -52,9 +45,9 @@ export function LandingPageFoundersSection({
 
       <Container className="relative z-10">
         <div className="max-w-3xl">
-          <h2 className="text-4xl leading-tight text-balance sm:text-5xl">
+          <h1 className="text-4xl leading-tight text-balance sm:text-5xl">
             {m.landingFoundersTitle({}, { locale })}
-          </h2>
+          </h1>
         </div>
 
         <div className="mt-10 grid max-w-4xl gap-8 xl:mt-12">
@@ -80,9 +73,9 @@ export function LandingPageFoundersSection({
                 </div>
 
                 <GlassCard className="relative -ml-14 min-w-0 flex-1 rounded-[1.5rem] border border-white/35 px-5 pb-5 pl-18 pt-14 text-white shadow-[0_20px_40px_-28px_rgba(0,0,0,0.5)] sm:-ml-20 sm:px-6 sm:pb-6 sm:pl-24 sm:pt-16">
-                  <h3 className="text-2xl leading-tight sm:text-3xl">
+                  <h2 className="text-2xl leading-tight sm:text-3xl">
                     {founder.role}
-                  </h3>
+                  </h2>
                   <p className="mt-2 text-sm leading-6 text-white/72 sm:mt-3 sm:leading-7">
                     {founder.description}
                   </p>
@@ -92,6 +85,6 @@ export function LandingPageFoundersSection({
           ))}
         </div>
       </Container>
-    </section>
+    </main>
   );
 }
