@@ -24,10 +24,19 @@ jobs:
           node --input-type=module <<'NODE'
           const token = process.env.WORKSPACE_E2E_VERCEL_TOKEN;
           const projectId = process.env.WORKSPACE_E2E_VERCEL_PROJECT;
+          const historyHost =
+            "deskohub-workspace-site-kxt1snit0-filip-kalny-projects.vercel.app";
+          const expectedSha = "44058705d869849a3a7789158aef93ee5a9a6880";
           const deadline = Date.now() + 105_000;
           const emit = (result) => process.stdout.write(`${JSON.stringify(result)}\n`);
           let metadataStatus = 0;
           let drainsStatus = null;
+          let historyDeploymentStatus = null;
+          let historyProjectMatches = false;
+          let historyCommitMatches = false;
+          let historyDeploymentIdValid = false;
+          let historyOwnerIdValid = false;
+          let historyStatus = null;
 
           const get = async (url) => {
             const remaining = deadline - Date.now();
@@ -48,30 +57,86 @@ jobs:
             }
           };
 
+          const discardBody = async (response) => {
+            if (!response?.body) return;
+            try {
+              await response.body.cancel();
+            } catch {
+              // The status is sufficient; response bodies are intentionally discarded.
+            }
+          };
+
           try {
             if (token && /^[A-Za-z0-9_-]+$/.test(projectId ?? "")) {
               const projectResult = await get(
                 `https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}`
               );
               metadataStatus = projectResult.status;
+              let projectMetadata = null;
               if (projectResult.status === 200) {
-                const metadata = await projectResult.response.json().catch(() => null);
-                const ownerId = metadata?.accountId;
-                if (
-                  metadata?.id === projectId &&
-                  typeof ownerId === "string" &&
-                  /^[A-Za-z0-9_-]+$/.test(ownerId)
-                ) {
-                  const query = new URLSearchParams({
-                    teamId: ownerId,
-                    projectId,
-                    includeMetadata: "false",
-                  });
-                  drainsStatus = (
-                    await get(`https://api.vercel.com/v1/drains?${query}`)
-                  ).status;
+                projectMetadata = await projectResult.response.json().catch(() => null);
+              } else {
+                await discardBody(projectResult.response);
+              }
 
+              const ownerId = projectMetadata?.accountId;
+              if (
+                projectMetadata?.id === projectId &&
+                typeof ownerId === "string" &&
+                /^[A-Za-z0-9_-]+$/.test(ownerId)
+              ) {
+                const query = new URLSearchParams({
+                  teamId: ownerId,
+                  projectId,
+                  includeMetadata: "false",
+                });
+                const drainsResult = await get(
+                  `https://api.vercel.com/v1/drains?${query}`
+                );
+                drainsStatus = drainsResult.status;
+                await discardBody(drainsResult.response);
+              }
+
+              const deploymentResult = await get(
+                `https://api.vercel.com/v13/deployments/${encodeURIComponent(historyHost)}`
+              );
+              historyDeploymentStatus = deploymentResult.status;
+              if (deploymentResult.status === 200) {
+                const deployment = await deploymentResult.response.json().catch(() => null);
+                historyProjectMatches = deployment?.projectId === projectId;
+                historyCommitMatches =
+                  deployment?.gitSource?.sha === expectedSha ||
+                  deployment?.meta?.githubCommitSha === expectedSha;
+                historyDeploymentIdValid =
+                  typeof deployment?.id === "string" &&
+                  /^[A-Za-z0-9_-]+$/.test(deployment.id);
+                historyOwnerIdValid =
+                  typeof deployment?.ownerId === "string" &&
+                  /^[A-Za-z0-9_-]+$/.test(deployment.ownerId);
+
+                if (
+                  historyProjectMatches &&
+                  historyCommitMatches &&
+                  historyDeploymentIdValid &&
+                  historyOwnerIdValid
+                ) {
+                  const historyQuery = new URLSearchParams({
+                    projectId,
+                    ownerId: deployment.ownerId,
+                    deploymentId: deployment.id,
+                    page: "1",
+                    startDate: String(Date.parse("2026-10-02T09:50:00Z")),
+                    endDate: String(Date.parse("2026-10-02T09:57:00Z")),
+                    search: "account.magic-link.preview-e2e",
+                  });
+                  const historyResult = await get(
+                    `https://vercel.com/api/logs/request-logs?${historyQuery}`
+                  );
+                  historyStatus = historyResult.status;
+                  await discardBody(historyResult.response);
                 }
+              } else {
+                await discardBody(deploymentResult.response);
               }
             }
           } catch {
@@ -82,5 +147,11 @@ jobs:
             token_present: Boolean(token),
             metadata_status: metadataStatus,
             scoped_drains_list_status: drainsStatus,
+            history_deployment_metadata_status: historyDeploymentStatus,
+            history_project_matches: historyProjectMatches,
+            history_commit_matches: historyCommitMatches,
+            history_deployment_id_valid: historyDeploymentIdValid,
+            history_owner_id_valid: historyOwnerIdValid,
+            history_status: historyStatus,
           });
           NODE
