@@ -740,6 +740,66 @@ describe("CreateStandaloneAccessCodeForm", () => {
     expect("providerCredentialRemovedAttemptId" in followUpInput).toBe(false);
   });
 
+  test("submits the restored complete window after cleanup confirmation", async () => {
+    withActionOptions();
+    const view = await renderForm();
+    await fillForm(view);
+    await submitForm(view);
+    const initialInput = execute.mock
+      .calls[0][0] as CreateStandaloneAccessCodeActionInput;
+
+    await clearWindowDate(view, "Starts date");
+    expect(
+      view.container.querySelector<HTMLInputElement>("input[name='startsAt']")!
+        .value
+    ).toBe("");
+
+    act(() => {
+      actionOptions?.onSuccess({
+        data: ambiguousFailure({ attemptId: priorAttemptId, name: "Booth A" }),
+      });
+    });
+
+    fireEvent.click(
+      view.getByRole("checkbox", {
+        name: standaloneAccessCodeCleanupConfirmationLabel,
+      })
+    );
+    await submitCleanupConfirmation(view);
+    await waitFor(() =>
+      expect(
+        view.getByRole("form", { name: "Create an access code" })
+      ).toBeDefined()
+    );
+
+    expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe(
+      initialInput.name
+    );
+    expect(
+      view.container.querySelector<HTMLInputElement>("input[name='startsAt']")!
+        .value
+    ).toBe(startWindowValue());
+    expect(
+      view.container.querySelector<HTMLInputElement>("input[name='endsAt']")!
+        .value
+    ).toBe(endWindowValue());
+
+    await submitForm(view);
+
+    expect(execute).toHaveBeenCalledTimes(2);
+    const confirmedInput = execute.mock
+      .calls[1][0] as CreateStandaloneAccessCodeActionInput;
+    expect(confirmedInput.startsAt).toBe(startWindowValue());
+    expect(confirmedInput.endsAt).toBe(endWindowValue());
+    expect(confirmedInput.attemptId).not.toBe(initialInput.attemptId);
+    expect(confirmedInput.providerCredentialRemovedAttemptId).toBe(
+      priorAttemptId
+    );
+    expect(confirmedInput.providerCredentialRemovedAttemptId).not.toBe(
+      confirmedInput.attemptId
+    );
+  });
+
   test("keeps the attempted form values when returning from the confirmation panel", async () => {
     withActionOptions();
     const view = await renderForm();

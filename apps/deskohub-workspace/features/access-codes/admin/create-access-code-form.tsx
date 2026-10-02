@@ -241,6 +241,7 @@ export function CreateStandaloneAccessCodeForm() {
       targetAttemptId: cleanupTarget.attemptId,
     };
     setNotice(null);
+    partialDateTimeDraftFieldsRef.current.clear();
     form.reset(attemptInput);
     setWindowSeed((seed) => ({ key: seed.key + 1, values: attemptInput }));
     setFocusNameOnReturn(true);
