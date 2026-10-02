@@ -155,9 +155,12 @@ type ReservationListInput = AdministrationReservationListInput & {
 };
 
 export type AdministrationCustomerListInput = {
+  readonly date?: string;
   readonly direction?: AdministrationSortDirection;
+  readonly from?: string;
   readonly page?: number;
   readonly sort?: AdministrationCustomerSort;
+  readonly to?: string;
 };
 
 export type AdministrationCustomerSort = "reservations" | "activity";
@@ -1293,6 +1296,7 @@ export class AdministrationService extends Context.Service<
       input: AdministrationCustomerListInput
     ) => Effect.Effect<
       {
+        readonly dateFilterUnavailable: boolean;
         readonly items: readonly AdministrationCustomerSummary[];
         readonly page: number;
         readonly pageCount: number;
@@ -2378,38 +2382,72 @@ export class AdministrationService extends Context.Service<
 
       const listCustomers = Effect.fn("AdministrationService.listCustomers")(
         function* (input: AdministrationCustomerListInput) {
-          const countRows = yield* db
-            .select({
-              value: countDistinct(workspaceReservations.dotyposCustomerId),
-            })
-            .from(workspaceReservations);
-          const total = Number(countRows[0]?.value ?? 0);
+          const dateRange = getAdministrationReservationDateRange(input);
+          const dateReservations = yield* loadReservationRangeMap(dateRange);
+          let matchingCustomerIdsCondition: SQL | undefined;
+          if (dateRange) {
+            if (!dateReservations || dateReservations.size === 0) {
+              matchingCustomerIdsCondition = sql`false`;
+            } else {
+              const reservationIds = [...dateReservations.keys()];
+              matchingCustomerIdsCondition = inArray(
+                workspaceReservations.dotyposCustomerId,
+                sql`(select distinct ${workspaceReservations.dotyposCustomerId}
+                    from ${workspaceReservations}
+                    where ${workspaceReservations.dotyposReservationId} = any(${sql.param(reservationIds)}::text[]))`
+              );
+            }
+          }
+          const reservationCount = successfulReservationCount;
+          const lastActivityAt = max(workspaceReservations.updatedAt);
+          const order = input.direction === "asc" ? asc : desc;
+          const selectCustomerRows = (offset: number) => {
+            const selected = {
+              matchingCustomerCount: sql<number>`count(*) over ()`,
+              customerId: workspaceReservations.dotyposCustomerId,
+              reservationCount,
+              lastActivityAt,
+            };
+            return db
+              .select(selected)
+              .from(workspaceReservations)
+              .where(matchingCustomerIdsCondition)
+              .groupBy(workspaceReservations.dotyposCustomerId)
+              .orderBy(
+                order(
+                  input.sort === "reservations"
+                    ? reservationCount
+                    : lastActivityAt
+                ),
+                asc(workspaceReservations.dotyposCustomerId)
+              )
+              .limit(customerPageSize)
+              .offset(offset);
+          };
+          const requestedOffset =
+            (Math.max(input.page ?? 1, 1) - 1) * customerPageSize;
+          let rows = yield* selectCustomerRows(requestedOffset);
+          let total: number;
+          const firstRow = rows[0];
+          if (firstRow) {
+            total = Number(firstRow.matchingCustomerCount);
+          } else {
+            const countRows = yield* db
+              .select({
+                value: countDistinct(workspaceReservations.dotyposCustomerId),
+              })
+              .from(workspaceReservations)
+              .where(matchingCustomerIdsCondition);
+            total = Number(countRows[0]?.value ?? 0);
+          }
           const pagination = getAdministrationPagination({
             pageSize: customerPageSize,
             requestedPage: input.page,
             total,
           });
-          const reservationCount = successfulReservationCount;
-          const lastActivityAt = max(workspaceReservations.updatedAt);
-          const order = input.direction === "asc" ? asc : desc;
-          const rows = yield* db
-            .select({
-              customerId: workspaceReservations.dotyposCustomerId,
-              reservationCount,
-              lastActivityAt,
-            })
-            .from(workspaceReservations)
-            .groupBy(workspaceReservations.dotyposCustomerId)
-            .orderBy(
-              order(
-                input.sort === "reservations"
-                  ? reservationCount
-                  : lastActivityAt
-              ),
-              asc(workspaceReservations.dotyposCustomerId)
-            )
-            .limit(customerPageSize)
-            .offset(pagination.offset);
+          if (pagination.offset !== requestedOffset) {
+            rows = yield* selectCustomerRows(pagination.offset);
+          }
           const customersById = yield* loadCustomers(
             rows.map(({ customerId }) => customerId)
           );
@@ -2425,6 +2463,7 @@ export class AdministrationService extends Context.Service<
             };
           });
           return {
+            dateFilterUnavailable: dateRange ? !dateReservations : false,
             items,
             page: pagination.page,
             pageCount: pagination.pageCount,

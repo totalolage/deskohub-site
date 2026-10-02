@@ -263,7 +263,13 @@ const getAdministrationCustomerListInput = async (
   searchParams: AdministrationSearchParams
 ) => {
   const params = await searchParams;
+  const dateRange = getAdministrationReservationDateRange({
+    date: firstParam(params.date),
+    from: firstParam(params.from),
+    to: firstParam(params.to),
+  });
   return {
+    ...dateRange,
     direction: parseSortDirection(firstParam(params.direction)),
     page: parsePage(firstParam(params.page)),
     sort: parseCustomerSort(firstParam(params.sort)),
