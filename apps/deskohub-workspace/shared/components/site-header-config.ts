@@ -9,12 +9,9 @@ import {
 
 const siteHeaderSectionIds = {
   overview: "overview",
-  teambuildings: "teambuildings",
   ttrpg: "ttrpg",
   events: "events",
-  founders: "founders",
   locationMap: "location-map",
-  faqContact: "faq-contact",
 } as const;
 
 export type SiteHeaderMenuItemId =
@@ -22,8 +19,8 @@ export type SiteHeaderMenuItemId =
   | "meetingRoom"
   | "office"
   | "gallery"
-  | "founders"
-  | "faqContact"
+  | "team"
+  | "faq"
   | "contact";
 
 export type SiteHeaderMenuItem = {
@@ -102,14 +99,14 @@ const createSiteHeaderConfig = (
       href: `${localePath}/gallery`,
     },
     {
-      id: "founders",
+      id: "team",
       label: m.landingNavOurTeam({}, { locale }),
-      href: localizedHash(`#${siteHeaderSectionIds.founders}`),
+      href: `${localePath}/team`,
     },
     {
-      id: "faqContact",
-      label: m.landingNavFaqContact({}, { locale }),
-      href: localizedHash(`#${siteHeaderSectionIds.faqContact}`),
+      id: "faq",
+      label: m.landingNavFaq({}, { locale }),
+      href: `${localePath}/faq`,
     },
     {
       id: "contact",

@@ -8,6 +8,7 @@ import {
 import type {
   Category,
   Customer,
+  DotyposClient,
   Reservation,
   Table,
 } from "../generated/effect.gen";
@@ -160,6 +161,39 @@ const runWithService = <A, E>(
 
   return Effect.runPromise(effect.pipe(Effect.provide(serviceLayer)));
 };
+
+const runWithServiceClient = <A, E>(
+  effect: Effect.Effect<A, E, DotyposService>,
+  client: DotyposClient
+) => {
+  const serviceLayer = DotyposService.Default.pipe(
+    Layer.provide(
+      Layer.merge(
+        Layer.succeed(DotyposGeneratedClient, { client }),
+        makeDotyposRuntimeConfigLayer(config)
+      )
+    )
+  );
+
+  return Effect.runPromise(effect.pipe(Effect.provide(serviceLayer)));
+};
+
+const makePaginatedClient = (
+  loadPage: (
+    operation: "getTables" | "listReservations",
+    page: number
+  ) => unknown
+): DotyposClient =>
+  // Bypass generated decoding to exercise this runtime boundary with invalid provider values.
+  ({
+    getTables: (_cloudId: string, options?: { params?: { page?: number } }) =>
+      Effect.succeed(loadPage("getTables", options?.params?.page ?? 1)),
+    listReservations: (
+      _cloudId: string,
+      options?: { params?: { page?: number } }
+    ) =>
+      Effect.succeed(loadPage("listReservations", options?.params?.page ?? 1)),
+  }) as unknown as DotyposClient;
 
 describe("DotyposService customer lookup", () => {
   test("retries rate-limited customer reads", async () => {
@@ -2296,5 +2330,95 @@ describe("DotyposService table listing", () => {
 
     expect(result).toEqual([firstTable, secondTable]);
     expect(requestedPages).toEqual(["1", "2"]);
+  });
+});
+
+describe("DotyposService paginated list responses", () => {
+  const providerPayloadMarker = "synthetic-provider-response-marker";
+  const malformedPages = [
+    { name: "missing data", response: {} },
+    {
+      name: "null data",
+      response: { data: null, detail: providerPayloadMarker },
+    },
+    {
+      name: "non-array data",
+      response: { data: providerPayloadMarker },
+    },
+  ] as const;
+
+  for (const operation of ["getTables", "listReservations"] as const) {
+    for (const { name, response } of malformedPages) {
+      test(`${operation} rejects ${name} without logging provider payloads`, async () => {
+        const logs: CapturedLog[] = [];
+        const client = makePaginatedClient(() => response);
+        const result = await (operation === "getTables"
+          ? runWithServiceClient(
+              Effect.gen(function* () {
+                const dotypos = yield* DotyposService;
+                return yield* dotypos.getTables().pipe(Effect.result);
+              }).pipe(Effect.provide(Logger.layer([captureLogs(logs)]))),
+              client
+            )
+          : runWithServiceClient(
+              Effect.gen(function* () {
+                const dotypos = yield* DotyposService;
+                return yield* dotypos.listReservations().pipe(Effect.result);
+              }).pipe(Effect.provide(Logger.layer([captureLogs(logs)]))),
+              client
+            ));
+
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "ExternalAPIError",
+            service: "Dotypos",
+            operation,
+            message: "Dotypos returned a malformed list response.",
+          },
+        });
+        expect(logText(logs)).not.toContain(providerPayloadMarker);
+      });
+    }
+  }
+
+  test("accepts explicit empty pages for tables and reservations", async () => {
+    const result = await runWithServiceClient(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* Effect.all([
+          dotypos.getTables(),
+          dotypos.listReservations(),
+        ]);
+      }),
+      makePaginatedClient(() => ({ data: [] }))
+    );
+
+    expect(result).toEqual([[], []]);
+  });
+
+  test("fails the whole reservation listing when a later page is malformed", async () => {
+    const firstReservation = reservation({ id: "reservation-1" });
+    const requestedPages: number[] = [];
+    const result = await runWithServiceClient(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations().pipe(Effect.result);
+      }),
+      makePaginatedClient((_operation, page) => {
+        requestedPages.push(page);
+        return page === 1 ? { data: [firstReservation], nextPage: "2" } : {};
+      })
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ExternalAPIError",
+        operation: "listReservations",
+        message: "Dotypos returned a malformed list response.",
+      },
+    });
+    expect(requestedPages).toEqual([1, 2]);
   });
 });
