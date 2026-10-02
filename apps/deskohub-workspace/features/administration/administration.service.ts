@@ -36,6 +36,7 @@ import {
 } from "drizzle-orm";
 import {
   Context,
+  Data,
   Effect,
   Array as EffectArray,
   Layer,
@@ -149,6 +150,12 @@ export type AdministrationSortDirection = "asc" | "desc";
 
 export type AdministrationReservationSortDirection =
   AdministrationSortDirection;
+
+export class ReservationExportRangeUnavailableError extends Data.TaggedError(
+  "ReservationExportRangeUnavailableError"
+)<{
+  readonly message: string;
+}> {}
 
 type ReservationListInput = AdministrationReservationListInput & {
   readonly pageSize?: number;
@@ -1268,6 +1275,9 @@ export class AdministrationService extends Context.Service<
       },
       unknown
     >;
+    readonly exportReservations: (
+      input: AdministrationReservationListInput
+    ) => Effect.Effect<readonly AdministrationReservationSummary[], unknown>;
     readonly loadReservation: (
       id: WorkspaceReservationId
     ) => Effect.Effect<AdministrationReservationDetail | null, unknown>;
@@ -1648,10 +1658,9 @@ export class AdministrationService extends Context.Service<
           );
       });
 
-      const listReservations = Effect.fn(
-        "AdministrationService.listReservations"
-      )(function* (input: ReservationListInput) {
-        const pageSize = input.pageSize ?? reservationPageSize;
+      const resolveReservationFilters = Effect.fn(
+        "AdministrationService.resolveReservationFilters"
+      )(function* (input: AdministrationReservationListInput) {
         const dateRange = getAdministrationReservationDateRange(input);
         const dateReservations = yield* loadReservationRangeMap(dateRange);
         const conditions: SQL[] = [];
@@ -1674,27 +1683,35 @@ export class AdministrationService extends Context.Service<
               : sql`false`
           );
         }
-        const where = conditions.length > 0 ? and(...conditions) : undefined;
+        return {
+          dateRange,
+          dateReservations,
+          where: conditions.length > 0 ? and(...conditions) : undefined,
+        };
+      });
 
-        const countRows = yield* db
-          .select({ value: count() })
-          .from(workspaceReservations)
-          .where(where);
-        const total = Number(countRows[0]?.value ?? 0);
-        const pagination = getAdministrationPagination({
-          pageSize,
-          requestedPage: input.page,
-          total,
-        });
+      const selectReservationRows = Effect.fn(
+        "AdministrationService.selectReservationRows"
+      )(function* (
+        input: AdministrationReservationListInput,
+        filters: {
+          readonly dateRange: AdministrationReservationDateRange | undefined;
+          readonly dateReservations:
+            | ReadonlyMap<DotyposReservationId, DotyposReservation>
+            | null
+            | undefined;
+          readonly where: SQL | undefined;
+        },
+        window?: { readonly limit: number; readonly offset: number }
+      ) {
         const orderedProviderIds =
           input.sort === "date"
             ? yield* loadReservationDateOrder(
                 input,
-                Boolean(dateRange),
-                dateReservations
+                Boolean(filters.dateRange),
+                filters.dateReservations
               )
             : undefined;
-        let rows: readonly SafeReservationRow[];
         if (orderedProviderIds) {
           const references = yield* db
             .select({
@@ -1702,11 +1719,11 @@ export class AdministrationService extends Context.Service<
               externalId: workspaceReservations.dotyposReservationId,
             })
             .from(workspaceReservations)
-            .where(where);
+            .where(filters.where);
           const pageIds = getAdministrationExternalOrderPageIds({
-            offset: pagination.offset,
+            offset: window?.offset ?? 0,
             orderedExternalIds: orderedProviderIds,
-            pageSize,
+            pageSize: window?.limit ?? references.length,
             references,
           });
           const pageRows =
@@ -1717,35 +1734,91 @@ export class AdministrationService extends Context.Service<
                   .from(workspaceReservations)
                   .where(inArray(workspaceReservations.id, pageIds));
           const rowById = new Map(pageRows.map((row) => [row.id, row]));
-          rows = pageIds.flatMap((id) => {
-            const row = rowById.get(id);
-            return row ? [row] : [];
-          });
-        } else {
-          rows = yield* db
+          return {
+            dateOrdered: true,
+            rows: pageIds.flatMap((id) => {
+              const row = rowById.get(id);
+              return row ? [row] : [];
+            }),
+          };
+        }
+        if (window) {
+          return {
+            dateOrdered: false,
+            rows: yield* db
+              .select(safeReservationSelection)
+              .from(workspaceReservations)
+              .where(filters.where)
+              .orderBy(
+                ...getReservationOrderBy({
+                  direction: input.direction,
+                  sort: input.sort === "date" ? "created" : input.sort,
+                })
+              )
+              .limit(window.limit)
+              .offset(window.offset),
+          };
+        }
+        return {
+          dateOrdered: false,
+          rows: yield* db
             .select(safeReservationSelection)
             .from(workspaceReservations)
-            .where(where)
+            .where(filters.where)
             .orderBy(
               ...getReservationOrderBy({
                 direction: input.direction,
                 sort: input.sort === "date" ? "created" : input.sort,
               })
-            )
-            .limit(pageSize)
-            .offset(pagination.offset);
-        }
+            ),
+        };
+      });
+
+      const listReservations = Effect.fn(
+        "AdministrationService.listReservations"
+      )(function* (input: ReservationListInput) {
+        const pageSize = input.pageSize ?? reservationPageSize;
+        const filters = yield* resolveReservationFilters(input);
+        const countRows = yield* db
+          .select({ value: count() })
+          .from(workspaceReservations)
+          .where(filters.where);
+        const total = Number(countRows[0]?.value ?? 0);
+        const pagination = getAdministrationPagination({
+          pageSize,
+          requestedPage: input.page,
+          total,
+        });
+        const { dateOrdered, rows } = yield* selectReservationRows(
+          input,
+          filters,
+          { limit: pageSize, offset: pagination.offset }
+        );
         return {
-          items: yield* enrichRows(rows, dateReservations ?? undefined),
+          items: yield* enrichRows(rows, filters.dateReservations ?? undefined),
           page: pagination.page,
           pageCount: pagination.pageCount,
           total,
           dateFilterUnavailable: Boolean(
-            dateRange && dateReservations === null
+            filters.dateRange && filters.dateReservations === null
           ),
-          dateSortUnavailable:
-            input.sort === "date" && orderedProviderIds === null,
+          dateSortUnavailable: input.sort === "date" && !dateOrdered,
         };
+      });
+
+      const exportReservations = Effect.fn(
+        "AdministrationService.exportReservations"
+      )(function* (input: AdministrationReservationListInput) {
+        const filters = yield* resolveReservationFilters(input);
+        if (filters.dateRange && filters.dateReservations === null) {
+          return yield* Effect.fail(
+            new ReservationExportRangeUnavailableError({
+              message: "Reservation booking dates are temporarily unavailable.",
+            })
+          );
+        }
+        const { rows } = yield* selectReservationRows(input, filters);
+        return yield* enrichRows(rows, filters.dateReservations ?? undefined);
       });
 
       const loadReservation = Effect.fn(
@@ -2949,6 +3022,7 @@ export class AdministrationService extends Context.Service<
         loadOverviewSource,
         loadOverview,
         listReservations,
+        exportReservations,
         loadReservation,
         loadReservationBreadcrumbLabel,
         findReservationId,

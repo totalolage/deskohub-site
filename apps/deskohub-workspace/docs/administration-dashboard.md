@@ -70,6 +70,16 @@ Overview activity counts show completed Workspace reservations first, followed b
 
 Overview customer activity covers the seven Prague calendar days ending today. A customer counts once only when at least one Workspace-linked live booking starting in the period is a qualifying completed reservation: complete under the same Workspace status group the Overview reservation metric uses for completed counts, with the live Dotypos booking CONFIRMED. Held, cancelled locally or in Dotypos, still-unconfirmed, and unfulfilled bookings never qualify, however much time has elapsed; fulfillment may precede the booking time. A customer with both qualifying and non-qualifying bookings still counts once. The counted identity is the live booking's current Dotypos customer, falling back to the stored Workspace customer when the live booking has none. New customers are the subset of qualifying customers whose Dotypos customer record was created in the period. Each metric shows up to three customer names. When the total exceeds three, it shows two names and the remaining count. If current booking dates or customer creation times are unavailable, the affected metric is unavailable rather than replaced with a local estimate.
 
+## Reservation exports
+
+From the reservations view, an administrator can download every reservation that matches the currently applied filters as a CSV file, not only the reservations shown on the current page. The download honors the same customer, business status, reservation family, and booking-date filters, plus the chosen sorting; the current page number does not limit the download.
+
+The file contains the same reservation details the table shows: the reservation identifier, booking date, business status, customer name, reservation family, creation time, and the latest payment state with its amount. Secrets, payment security values, and internal provider records are never included.
+
+CSV exports add the literal prefix `Customer: ` to names that start with an ASCII control character or, after leading whitespace, format, or control characters, one of `=`, `+`, `-`, `@`, `＝`, `＋`, `－`, or `＠`.
+
+The download is available only to authenticated administrators. If current booking dates are temporarily unavailable, a date-filtered export fails with a clear message instead of quietly exporting a different or broader set of reservations; an export that only sorts by booking date falls back to creation-time ordering. An invalid filter value is refused rather than silently ignored.
+
 ## History limitations
 
 The reservation timeline is an operational reconstruction, not an audit record. It may combine durable milestones with best-effort external or analytical observations, and those observations can be incomplete or unavailable.

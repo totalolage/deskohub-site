@@ -13,6 +13,7 @@ import {
   ReservationTable,
 } from "@/features/administration/components";
 import {
+  AdministrationActionLoading,
   AdministrationCollectionLoading,
   AdministrationCountLoading,
   AdministrationFiltersLoading,
@@ -26,6 +27,10 @@ import {
   type AdministrationReservationDateRange,
   getAdministrationReservationDateShortcuts,
 } from "@/features/administration/reservation-date-range";
+import {
+  AdministrationReservationExportAction,
+  AdministrationStreamedReservationExportAction,
+} from "@/features/administration/reservation-export-action";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { Button } from "@/shared/components/ui/button";
 
@@ -54,6 +59,11 @@ export default function ReservationsAdministrationPage({
         }
         itemLabel="reservation"
         search={<ReservationLookup variant="toolbar" />}
+        actions={
+          <Suspense fallback={<AdministrationActionLoading label="export" />}>
+            <ReservationExportAction input={input} />
+          </Suspense>
+        }
       />
       <Suspense
         fallback={
@@ -91,6 +101,14 @@ async function ReservationFiltersContent({
   return <ReservationFilters input={await input} />;
 }
 
+async function ReservationExportAction({
+  input,
+}: {
+  readonly input: Promise<ReservationsData["input"]>;
+}) {
+  return <AdministrationStreamedReservationExportAction input={input} />;
+}
+
 async function ReservationResultsContent({
   input,
   result,
@@ -116,6 +134,7 @@ export async function ReservationsAdministrationContent({
         filters={<ReservationFilters input={input} />}
         itemLabel="reservation"
         search={<ReservationLookup variant="toolbar" />}
+        actions={<AdministrationReservationExportAction input={input} />}
       />
       <ReservationResults input={input} result={result} />
     </>
