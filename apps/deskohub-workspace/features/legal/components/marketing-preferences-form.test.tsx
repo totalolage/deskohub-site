@@ -496,10 +496,10 @@ test("announces a rejected save request with localized copy and allows a success
       ).getAttribute("aria-checked")
     ).toBe("true");
     expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
+    ).toBeTruthy();
   });
-  expect(
-    view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
-  ).toBeTruthy();
 });
 
 test.each([
@@ -826,17 +826,17 @@ test.each(["en-US", "cs-CZ"] as const)(
       });
       expect(routerRefresh).toHaveBeenCalledTimes(1);
     });
-    await waitFor(() =>
+    await waitFor(() => {
       expect(
         getSwitch(
           view,
           m.marketingPreferencesFormRowTitle({}, { locale })
         ).hasAttribute("disabled")
-      ).toBe(false)
-    );
-    expect(
-      view.getByText(m.marketingPreferencesFormSaved({}, { locale }))
-    ).toBeTruthy();
+      ).toBe(false);
+      expect(
+        view.getByText(m.marketingPreferencesFormSaved({}, { locale }))
+      ).toBeTruthy();
+    });
   }
 );
 
@@ -860,10 +860,12 @@ test("keeps a pending dedicated link usable when accounts are disabled", async (
 
   await waitFor(() => {
     expect(confirmMarketingManagementAction).toHaveBeenCalledWith({ context });
+    expect(
+      view.getByText(
+        m.marketingPreferencesFormConfirmed({}, { locale: "en-US" })
+      )
+    ).toBeTruthy();
   });
-  expect(
-    view.getByText(m.marketingPreferencesFormConfirmed({}, { locale: "en-US" }))
-  ).toBeTruthy();
 });
 
 test("keeps an invalid dedicated link out of the account flow without a fallback", () => {
