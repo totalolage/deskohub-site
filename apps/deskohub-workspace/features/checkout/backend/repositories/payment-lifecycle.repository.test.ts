@@ -1,12 +1,12 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
-import { getTableColumns } from "drizzle-orm";
-import { Effect, Layer, Schema } from "effect";
 import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
+import { getTableColumns } from "drizzle-orm";
+import { Effect, Layer, Schema } from "effect";
 import { paymentAttempts } from "@/db/schema";
 import {
   type AccountingDocumentSnapshot,
@@ -75,27 +75,6 @@ const makeSource = (): AccountingDocumentSnapshot => {
     delivery: { email: "synthetic@example.test" },
   });
 };
-
-const makeRepository = async () => {
-  const recording = await makeRecordingWorkspaceDatabase();
-  const repository = await Effect.runPromise(
-    Effect.gen(function* () {
-      return yield* PaymentLifecycleRepository;
-    }).pipe(
-      Effect.provide(
-        PaymentLifecycleRepository.Default.pipe(Layer.provide(recording.layer))
-      )
-    )
-  );
-  return { recording, repository };
-};
-
-// The recording database answers in pg's array row mode: build positional
-// rows from the table's column order.
-const attemptRow = (): readonly unknown[] =>
-  Object.entries(getTableColumns(paymentAttempts)).map(([propertyKey]) =>
-    propertyKey === "id" ? "attempt-1" : null
-  );
 
 const makeAccountingSnapshot = (
   prepared: PreparedCustomerQuote
@@ -182,6 +161,27 @@ const makeMeetingRoomSnapshot = (input: {
     },
   });
 };
+
+const makeRepository = async () => {
+  const recording = await makeRecordingWorkspaceDatabase();
+  const repository = await Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* PaymentLifecycleRepository;
+    }).pipe(
+      Effect.provide(
+        PaymentLifecycleRepository.Default.pipe(Layer.provide(recording.layer))
+      )
+    )
+  );
+  return { recording, repository };
+};
+
+// The recording database answers in pg's array row mode: build positional
+// rows from the table's column order.
+const attemptRow = (): readonly unknown[] =>
+  Object.entries(getTableColumns(paymentAttempts)).map(([propertyKey]) =>
+    propertyKey === "id" ? "attempt-1" : null
+  );
 
 describe("PaymentLifecycleRepository", () => {
   test("owns attempt, reservation, and snapshot admission in one transaction", async () => {
