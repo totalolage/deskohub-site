@@ -49,8 +49,8 @@ import {
 } from "./review-targets";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
 import {
-  openWorkspaceE2EPreviewLogStream,
-  type WorkspaceE2EPreviewLogStream,
+  resolveWorkspaceE2EPreviewLogs,
+  type WorkspaceE2EPreviewLogs,
 } from "./vercel-log-retrieval";
 
 const accountReviewCaptureFailureMessage =
@@ -64,7 +64,7 @@ type WorkspaceE2EAccountLane = {
    * it stays in memory only and never joins the cleanup journal.
    */
   readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff;
-  readonly previewLogStream: WorkspaceE2EPreviewLogStream;
+  readonly previewLogs: WorkspaceE2EPreviewLogs;
   readonly journalRef: {
     readonly journal: WorkspaceE2EAccountJournal;
     readonly record: (update: {
@@ -130,14 +130,13 @@ const accountTest = runtimeTest.extend<
         await runEffect(
           Effect.scoped(
             Effect.gen(function* () {
-              const previewLogStream =
-                yield* openWorkspaceE2EPreviewLogStream(config);
+              const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(config);
               yield* Effect.promise(() =>
                 applyFixture({
                   config,
                   lifecycleHandoff,
                   journalRef,
-                  previewLogStream,
+                  previewLogs,
                   rateBudget: makeMagicLinkRateBudget(),
                   run,
                   session: `workspace-account-e2e-${runContext.runId}`,
@@ -168,7 +167,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         config: accountLane.config,
         datasourceConfig,
         lifecycleHandoff: accountLane.lifecycleHandoff,
-        previewLogStream: accountLane.previewLogStream,
+        previewLogs: accountLane.previewLogs,
         rateBudget: accountLane.rateBudget,
         run: accountLane.run,
         session: accountLane.session,

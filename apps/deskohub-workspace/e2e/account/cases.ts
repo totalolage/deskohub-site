@@ -60,7 +60,7 @@ import type {
   WorkspaceE2EAccountJournalRef,
   WorkspaceE2EAccountLifecycleHandoff,
 } from "./types";
-import type { WorkspaceE2EPreviewLogStream } from "./vercel-log-retrieval";
+import type { WorkspaceE2EPreviewLogs } from "./vercel-log-retrieval";
 
 const acceptedTitle = "Check your inbox";
 const acceptedBody =
@@ -140,7 +140,7 @@ export type WorkspaceE2EAccountCaseInputs = {
    * could never carry the completed lifecycle between the account cases.
    */
   readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff;
-  readonly previewLogStream: WorkspaceE2EPreviewLogStream;
+  readonly previewLogs: WorkspaceE2EPreviewLogs;
   readonly rateBudget: MagicLinkRateBudget;
   readonly run: Runner;
   readonly session: string;
@@ -156,7 +156,7 @@ export const makeWorkspaceE2EAccountCases = ({
   config,
   datasourceConfig,
   lifecycleHandoff,
-  previewLogStream,
+  previewLogs,
   rateBudget,
   run,
   session,
@@ -290,7 +290,7 @@ export const makeWorkspaceE2EAccountCases = ({
     observedLogEntryIds: readonly string[],
     startedAt: Date
   ) =>
-    previewLogStream.retrieveMagicLink({
+    previewLogs.retrieveMagicLink({
       callbackPath: `/${config.locale}${callbackSuffix}`,
       excludeLogEntryIds: observedLogEntryIds,
       recipient: email,
@@ -298,7 +298,7 @@ export const makeWorkspaceE2EAccountCases = ({
     });
 
   const observeDeliveredLogEntryIds = (email: string, startedAt: Date) =>
-    previewLogStream.listSyntheticLogEntryIds({
+    previewLogs.listSyntheticLogEntryIds({
       recipient: email,
       startedAt,
     });

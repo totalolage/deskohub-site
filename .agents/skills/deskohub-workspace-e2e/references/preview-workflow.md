@@ -519,6 +519,18 @@ pick from. The sensitive link is redacted from runner output and artifact
 files; the single Vercel runtime log line is the sole authorized place it
 remains visible.
 
+The account worker resolves the immutable deployment and queries the historical
+`https://vercel.com/api/logs/request-logs` route used by pinned Vercel CLI
+54.9.1, filtering by project, deployment, time, page, marker, baseline row IDs,
+and exact recipient. This is an internal CLI request-log contract rather than
+a documented public history API. The project-scoped
+`WORKSPACE_E2E_VERCEL_TOKEN` remains the required credential and is sent only
+in a Bearer header. The exact protected-preview check currently resolves
+matching deployment metadata but receives HTTP 403 from the history route; the
+denial reason is unknown, so this is not evidence that project tokens are
+unsupported or that broader credentials are required. Require an exact
+protected-preview E2E pass before treating log access as verified.
+
 The runner relies on Bun to load dotenv files before the entry module executes.
 `e2e/e2e-env.ts` is the only E2E boundary that reads `process.env`: it selects,
 validates, and decodes the exact runner configuration and the wrapper-propagated

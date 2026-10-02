@@ -29,7 +29,7 @@ import type {
   WorkspaceE2EAccountJournalRef,
   WorkspaceE2EAccountLifecycleHandoff,
 } from "./types";
-import type { WorkspaceE2EPreviewLogStream } from "./vercel-log-retrieval";
+import type { WorkspaceE2EPreviewLogs } from "./vercel-log-retrieval";
 
 const fixedNow = new Date("2026-09-11T12:00:00.000Z");
 const fixedNowMs = fixedNow.getTime();
@@ -1152,7 +1152,7 @@ const makeScenario = () => {
   const run: Runner = async () => {
     throw new Error("the account case bypassed the mocked browser boundary");
   };
-  const previewLogStream: WorkspaceE2EPreviewLogStream = {
+  const previewLogs: WorkspaceE2EPreviewLogs = {
     listSyntheticLogEntryIds: (request) =>
       Effect.sync(() => external.listMessageIds(request.recipient)),
     retrieveMagicLink: (request) =>
@@ -1174,7 +1174,7 @@ const makeScenario = () => {
     journalRef,
     lifecycleHandoff,
     operations,
-    previewLogStream,
+    previewLogs,
     rateBudget,
     retries,
     run,
@@ -1211,7 +1211,7 @@ const buildCase = async (
     config: scenario.config,
     datasourceConfig: scenario.datasourceConfig,
     lifecycleHandoff: scenario.lifecycleHandoff,
-    previewLogStream: scenario.previewLogStream,
+    previewLogs: scenario.previewLogs,
     rateBudget: scenario.rateBudget,
     run: scenario.run,
     session,
