@@ -191,13 +191,16 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         verifyPages = [
           {
             execute: Effect.tryPromise({
-              catch: () =>
-                workspaceE2EError(
-                  "verify profile navigation and unsaved changes failed",
-                  {
-                    operation: "verify profile navigation and unsaved changes",
-                  }
-                ),
+              catch: (cause) =>
+                cause instanceof WorkspaceE2EError
+                  ? cause
+                  : workspaceE2EError(
+                      "verify profile navigation and unsaved changes failed",
+                      {
+                        operation:
+                          "verify profile navigation and unsaved changes",
+                      }
+                    ),
               try: async () => {
                 await verifyProfileNavigation(
                   getOwnedPage(),
