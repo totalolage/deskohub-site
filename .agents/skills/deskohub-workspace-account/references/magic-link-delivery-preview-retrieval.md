@@ -235,6 +235,14 @@ domain.
   protected project token is authorized for this endpoint; require the exact
   protected-preview E2E before relying on that authorization. Keep response
   bodies, row contents, and request metadata out of spans and failure output.
+- A successful stream-open response does not prove that log rows arrived.
+  On a delivery timeout, inspect `vercel.http.status_code` on the request
+  spans and `e2e.account.magic_link.log_stream.*` on the retrieval step before
+  retrying. The latter records chunk and complete-line counts, retained tagged
+  rows, rows before the request, excluded rows, matching rows, and one of the
+  five defined stream states. Use these to distinguish transport, framing,
+  and filtering; keep every value numeric or a defined state, with no payload
+  or identifiers.
 - Match the one log line for the exact synthetic recipient, require a single
   unambiguous match, and reject zero or multiple matches.
 - Resolve the logged `callbackURL` against the immutable Preview origin and

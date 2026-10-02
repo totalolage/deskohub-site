@@ -261,8 +261,23 @@ describe("workspace e2e Vercel log retrieval", () => {
       ],
     });
     const body = previewE2ELine(magicLink("private-link-token"));
+    const staleRowId = "private-stale-row-id";
+    const excludedRowId = "private-excluded-row-id";
+    const matchRowId = "private-match-row-id";
     const harness = makeHttpHarness(() =>
-      makeStreamResponse(runtimeLogLine("row-match", body))
+      makeStreamResponse(
+        runtimeLogLine(
+          staleRowId,
+          previewE2ELine(magicLink("private-stale-link-token")),
+          startedAt.getTime() - 1
+        ) +
+          runtimeLogLine(
+            excludedRowId,
+            previewE2ELine(magicLink("private-excluded-link-token")),
+            startedAt.getTime() + 1
+          ) +
+          runtimeLogLine(matchRowId, body, startedAt.getTime() + 2)
+      )
     );
     const tracingLayer = createTracingLive({
       provider,
@@ -288,6 +303,7 @@ describe("workspace e2e Vercel log retrieval", () => {
                     yield* openWorkspaceE2EPreviewLogStream(config);
                   return yield* logStream.retrieveMagicLink({
                     callbackPath,
+                    excludeLogEntryIds: [excludedRowId],
                     recipient,
                     startedAt,
                     pollIntervalMs: 1,
@@ -304,21 +320,56 @@ describe("workspace e2e Vercel log retrieval", () => {
 
       const spans = exporter.getFinishedSpans();
       expect(spans.length).toBeGreaterThan(0);
+      const retrievalSpan = spans.find(
+        (span) =>
+          span.name === "e2e.step" &&
+          span.attributes["e2e.step.id"] ===
+            "retrieves-delivered-single-use-link"
+      );
+      expect(retrievalSpan).toBeDefined();
+      const attributes = retrievalSpan?.attributes ?? {};
       expect(
-        spans.some(
-          (span) =>
-            span.name === "e2e.step" &&
-            span.attributes["e2e.step.id"] ===
-              "retrieves-delivered-single-use-link"
-        )
-      ).toBe(true);
+        attributes["e2e.account.magic_link.log_stream.chunks_received"]
+      ).toBeGreaterThan(0);
+      expect(
+        attributes["e2e.account.magic_link.log_stream.complete_lines_received"]
+      ).toBe(3);
+      expect(
+        attributes["e2e.account.magic_link.log_stream.retained_tagged_rows"]
+      ).toBe(3);
+      expect(
+        attributes["e2e.account.magic_link.log_stream.rows_before_requested_at"]
+      ).toBe(1);
+      expect(
+        attributes["e2e.account.magic_link.log_stream.excluded_id_rows"]
+      ).toBe(1);
+      expect(
+        attributes["e2e.account.magic_link.log_stream.matching_rows"]
+      ).toBe(1);
+      expect(["open", "ended"]).toContain(
+        attributes["e2e.account.magic_link.log_stream.state"]
+      );
+      const requestStatuses = spans
+        .filter((span) => span.name === "vercelLogRetrieval.request")
+        .map((span) => span.attributes["vercel.http.status_code"]);
+      expect(requestStatuses).toHaveLength(2);
+      expect(requestStatuses).toEqual([200, 200]);
       const exported = JSON.stringify(spans);
       expect(exported).not.toContain(expectedHost);
+      expect(exported).not.toContain("api.vercel.com");
+      expect(exported).not.toContain(`Bearer ${config.vercelToken}`);
+      expect(exported).not.toContain(config.vercelToken);
       expect(exported).not.toContain(deployment.id);
       expect(exported).not.toContain(deployment.ownerId);
       expect(exported).not.toContain(deployment.projectId);
+      expect(exported).not.toContain(staleRowId);
+      expect(exported).not.toContain(excludedRowId);
+      expect(exported).not.toContain(matchRowId);
       expect(exported).not.toContain(body);
+      expect(exported).not.toContain(recipient);
       expect(exported).not.toContain("private-link-token");
+      expect(exported).not.toContain("private-stale-link-token");
+      expect(exported).not.toContain("private-excluded-link-token");
     } finally {
       await provider.shutdown();
     }

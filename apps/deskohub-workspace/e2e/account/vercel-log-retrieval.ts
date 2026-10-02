@@ -29,6 +29,8 @@ type VercelDeployment = {
 };
 
 type VercelLogStreamState = {
+  readonly chunksReceived: number;
+  readonly completeLinesReceived: number;
   readonly entries: readonly WorkspaceE2EVercelLogEntry[];
   readonly status: "open" | "ended" | "failed" | "invalid" | "overflow";
 };
@@ -94,6 +96,7 @@ const requestVercel = Effect.fn("vercelLogRetrieval.request")(function* (
         orElse: () => Effect.fail(vercelRequestFailure(operation, "timeout")),
       })
     );
+  yield* Effect.annotateCurrentSpan("vercel.http.status_code", response.status);
   if (response.status < 200 || response.status >= 300) {
     return yield* vercelRequestFailure(
       operation,
@@ -251,6 +254,10 @@ const consumeVercelLogStream = Effect.fn(function* (
   let unfinishedLine = "";
 
   const storeLine = Effect.fn(function* (line: string) {
+    yield* Ref.update(state, (current) => ({
+      ...current,
+      completeLinesReceived: current.completeLinesReceived + 1,
+    }));
     if (line.length === 0) return;
     const decoded = decodeVercelLogLine(line);
     if (decoded === "invalid") {
@@ -271,14 +278,18 @@ const consumeVercelLogStream = Effect.fn(function* (
       return yield* invalidVercelLogPayload();
     }
     yield* Ref.set(state, {
+      ...current,
       entries: [...current.entries, decoded],
-      status: current.status,
     });
   });
 
   const readChunks = Stream.runForEach(
     response.stream.pipe(Stream.decodeText),
     Effect.fn(function* (chunk) {
+      yield* Ref.update(state, (current) => ({
+        ...current,
+        chunksReceived: current.chunksReceived + 1,
+      }));
       let start = 0;
       while (start < chunk.length) {
         const newline = chunk.indexOf("\n", start);
@@ -454,13 +465,33 @@ const makeLogStream = (
       const deadline =
         Date.now() + (request.deadlineAfterMs ?? config.timeouts.authDelivery);
       const pollIntervalMs = request.pollIntervalMs ?? defaultPollIntervalMs;
+      const excludedIds = new Set(request.excludeLogEntryIds ?? []);
+      const requestedAt = request.startedAt.getTime();
 
       while (Date.now() < deadline) {
         const current = yield* Ref.get(state);
+        yield* Effect.annotateCurrentSpan({
+          "e2e.account.magic_link.log_stream.chunks_received":
+            current.chunksReceived,
+          "e2e.account.magic_link.log_stream.complete_lines_received":
+            current.completeLinesReceived,
+          "e2e.account.magic_link.log_stream.retained_tagged_rows":
+            current.entries.length,
+          "e2e.account.magic_link.log_stream.rows_before_requested_at":
+            current.entries.filter((entry) => entry.timestampInMs < requestedAt)
+              .length,
+          "e2e.account.magic_link.log_stream.excluded_id_rows":
+            current.entries.filter((entry) => excludedIds.has(entry.id)).length,
+          "e2e.account.magic_link.log_stream.state": current.status,
+        });
         if (current.status === "invalid" || current.status === "overflow") {
           return yield* streamStoppedFailure(current.status);
         }
         const matches = yield* readMatches(current.entries, request);
+        yield* Effect.annotateCurrentSpan(
+          "e2e.account.magic_link.log_stream.matching_rows",
+          matches.length
+        );
         if (matches.length > 1) {
           return yield* workspaceE2EError(
             "Vercel log retrieval matched multiple preview log entries within the query window",
@@ -518,6 +549,8 @@ export const openWorkspaceE2EPreviewLogStream = Effect.fn(
     const deployment = yield* resolveVercelDeployment(config);
     const response = yield* requestVercelLogStream(config, deployment);
     const state = yield* Ref.make<VercelLogStreamState>({
+      chunksReceived: 0,
+      completeLinesReceived: 0,
       entries: [],
       status: "open",
     });
