@@ -32,6 +32,13 @@ type VercelLogStreamState = {
   readonly chunksReceived: number;
   readonly completeLinesReceived: number;
   readonly entries: readonly WorkspaceE2EVercelLogEntry[];
+  readonly ignoredMarkerLines: number;
+  readonly ignoredNestedLogMessageMarkerRows: number;
+  readonly ignoredTopLevelCodeMarkerRows: number;
+  readonly ignoredTopLevelMessageObjectMarkerRows: number;
+  readonly ignoredTopLevelNumericTimestampRows: number;
+  readonly ignoredTopLevelStringIdRows: number;
+  readonly markerLinesReceived: number;
   readonly status: "open" | "ended" | "failed" | "invalid" | "overflow";
 };
 
@@ -247,6 +254,41 @@ const decodeVercelLogLine = (
   };
 };
 
+const inspectIgnoredMarkerLine = (line: string) => {
+  const candidate = JSON.parse(line) as {
+    code?: unknown;
+    id?: unknown;
+    logs?: unknown;
+    message?: unknown;
+    timestamp?: unknown;
+  };
+  const message = candidate.message;
+  const messageObjectHasMarker =
+    message !== null &&
+    typeof message === "object" &&
+    !Array.isArray(message) &&
+    (message as { code?: unknown }).code === workspaceE2EPreviewE2ELogCode;
+  const nestedLogMessageHasMarker =
+    Array.isArray(candidate.logs) &&
+    candidate.logs.some((log) => {
+      if (log === null || typeof log !== "object" || Array.isArray(log)) {
+        return false;
+      }
+      const logMessage = (log as { message?: unknown }).message;
+      return (
+        typeof logMessage === "string" &&
+        logMessage.includes(workspaceE2EPreviewE2ELogCode)
+      );
+    });
+  return {
+    nestedLogMessageHasMarker,
+    topLevelCodeHasMarker: candidate.code === workspaceE2EPreviewE2ELogCode,
+    topLevelMessageObjectHasMarker: messageObjectHasMarker,
+    topLevelNumericTimestamp: typeof candidate.timestamp === "number",
+    topLevelStringId: typeof candidate.id === "string",
+  };
+};
+
 const consumeVercelLogStream = Effect.fn(function* (
   response: Effect.Success<ReturnType<typeof requestVercel>>,
   state: Ref.Ref<VercelLogStreamState>
@@ -259,6 +301,13 @@ const consumeVercelLogStream = Effect.fn(function* (
       completeLinesReceived: current.completeLinesReceived + 1,
     }));
     if (line.length === 0) return;
+    const containsMarker = line.includes(workspaceE2EPreviewE2ELogCode);
+    if (containsMarker) {
+      yield* Ref.update(state, (current) => ({
+        ...current,
+        markerLinesReceived: current.markerLinesReceived + 1,
+      }));
+    }
     const decoded = decodeVercelLogLine(line);
     if (decoded === "invalid") {
       yield* Ref.update(state, (current) => ({
@@ -267,7 +316,31 @@ const consumeVercelLogStream = Effect.fn(function* (
       }));
       return yield* invalidVercelLogPayload();
     }
-    if (decoded === "ignored") return;
+    if (decoded === "ignored") {
+      if (containsMarker) {
+        const shape = inspectIgnoredMarkerLine(line);
+        yield* Ref.update(state, (current) => ({
+          ...current,
+          ignoredMarkerLines: current.ignoredMarkerLines + 1,
+          ignoredNestedLogMessageMarkerRows:
+            current.ignoredNestedLogMessageMarkerRows +
+            Number(shape.nestedLogMessageHasMarker),
+          ignoredTopLevelCodeMarkerRows:
+            current.ignoredTopLevelCodeMarkerRows +
+            Number(shape.topLevelCodeHasMarker),
+          ignoredTopLevelMessageObjectMarkerRows:
+            current.ignoredTopLevelMessageObjectMarkerRows +
+            Number(shape.topLevelMessageObjectHasMarker),
+          ignoredTopLevelNumericTimestampRows:
+            current.ignoredTopLevelNumericTimestampRows +
+            Number(shape.topLevelNumericTimestamp),
+          ignoredTopLevelStringIdRows:
+            current.ignoredTopLevelStringIdRows +
+            Number(shape.topLevelStringId),
+        }));
+      }
+      return;
+    }
 
     const current = yield* Ref.get(state);
     if (current.entries.length >= logLimit) {
@@ -475,6 +548,20 @@ const makeLogStream = (
             current.chunksReceived,
           "e2e.account.magic_link.log_stream.complete_lines_received":
             current.completeLinesReceived,
+          "e2e.account.magic_link.log_stream.marker_lines_received":
+            current.markerLinesReceived,
+          "e2e.account.magic_link.log_stream.ignored_marker_lines":
+            current.ignoredMarkerLines,
+          "e2e.account.magic_link.log_stream.ignored_nested_log_marker_rows":
+            current.ignoredNestedLogMessageMarkerRows,
+          "e2e.account.magic_link.log_stream.ignored_top_level_code_marker_rows":
+            current.ignoredTopLevelCodeMarkerRows,
+          "e2e.account.magic_link.log_stream.ignored_top_level_object_code_marker_rows":
+            current.ignoredTopLevelMessageObjectMarkerRows,
+          "e2e.account.magic_link.log_stream.ignored_top_level_string_id_rows":
+            current.ignoredTopLevelStringIdRows,
+          "e2e.account.magic_link.log_stream.ignored_top_level_numeric_timestamp_rows":
+            current.ignoredTopLevelNumericTimestampRows,
           "e2e.account.magic_link.log_stream.retained_tagged_rows":
             current.entries.length,
           "e2e.account.magic_link.log_stream.rows_before_requested_at":
@@ -552,6 +639,13 @@ export const openWorkspaceE2EPreviewLogStream = Effect.fn(
       chunksReceived: 0,
       completeLinesReceived: 0,
       entries: [],
+      ignoredMarkerLines: 0,
+      ignoredNestedLogMessageMarkerRows: 0,
+      ignoredTopLevelCodeMarkerRows: 0,
+      ignoredTopLevelMessageObjectMarkerRows: 0,
+      ignoredTopLevelNumericTimestampRows: 0,
+      ignoredTopLevelStringIdRows: 0,
+      markerLinesReceived: 0,
       status: "open",
     });
     yield* consumeVercelLogStream(response, state).pipe(Effect.forkScoped);

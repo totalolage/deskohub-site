@@ -243,6 +243,14 @@ domain.
   five defined stream states. Use these to distinguish transport, framing,
   and filtering; keep every value numeric or a defined state, with no payload
   or identifiers.
+- `marker_lines_received` counts the fixed marker before flat-row decoding;
+  `ignored_marker_lines` counts marker-bearing lines the decoder ignored.
+  The other `ignored_*_rows` attributes count known field shapes only, such
+  as nested log strings or structured code fields; they never export values.
+  Inspect these before treating a missing match as missing provider delivery.
+  Avoid `message` in counter attribute names because the span censor censors
+  those attributes even for counters. Verify numeric values survive the censored
+  exporter in the privacy regression.
 - Match the one log line for the exact synthetic recipient, require a single
   unambiguous match, and reject zero or multiple matches.
 - Resolve the logged `callbackURL` against the immutable Preview origin and

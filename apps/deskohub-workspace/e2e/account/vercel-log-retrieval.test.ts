@@ -261,16 +261,26 @@ describe("workspace e2e Vercel log retrieval", () => {
       ],
     });
     const body = previewE2ELine(magicLink("private-link-token"));
+    const wireEnvelopeId = "private-wire-envelope-id";
+    const wireEnvelopeMessage =
+      "private-wire-message-sentinel account.magic-link.preview-e2e";
     const staleRowId = "private-stale-row-id";
     const excludedRowId = "private-excluded-row-id";
     const matchRowId = "private-match-row-id";
     const harness = makeHttpHarness(() =>
       makeStreamResponse(
-        runtimeLogLine(
-          staleRowId,
-          previewE2ELine(magicLink("private-stale-link-token")),
-          startedAt.getTime() - 1
-        ) +
+        `${JSON.stringify({
+          code: "account.magic-link.preview-e2e",
+          id: wireEnvelopeId,
+          logs: [{ message: wireEnvelopeMessage }],
+          message: { code: "account.magic-link.preview-e2e" },
+          timestamp: startedAt.getTime() + 1,
+        })}\n` +
+          runtimeLogLine(
+            staleRowId,
+            previewE2ELine(magicLink("private-stale-link-token")),
+            startedAt.getTime() - 1
+          ) +
           runtimeLogLine(
             excludedRowId,
             previewE2ELine(magicLink("private-excluded-link-token")),
@@ -333,7 +343,38 @@ describe("workspace e2e Vercel log retrieval", () => {
       ).toBeGreaterThan(0);
       expect(
         attributes["e2e.account.magic_link.log_stream.complete_lines_received"]
-      ).toBe(3);
+      ).toBe(4);
+      expect(
+        attributes["e2e.account.magic_link.log_stream.marker_lines_received"]
+      ).toBe(4);
+      expect(
+        attributes["e2e.account.magic_link.log_stream.ignored_marker_lines"]
+      ).toBe(1);
+      expect(
+        attributes[
+          "e2e.account.magic_link.log_stream.ignored_nested_log_marker_rows"
+        ]
+      ).toBe(1);
+      expect(
+        attributes[
+          "e2e.account.magic_link.log_stream.ignored_top_level_code_marker_rows"
+        ]
+      ).toBe(1);
+      expect(
+        attributes[
+          "e2e.account.magic_link.log_stream.ignored_top_level_object_code_marker_rows"
+        ]
+      ).toBe(1);
+      expect(
+        attributes[
+          "e2e.account.magic_link.log_stream.ignored_top_level_string_id_rows"
+        ]
+      ).toBe(1);
+      expect(
+        attributes[
+          "e2e.account.magic_link.log_stream.ignored_top_level_numeric_timestamp_rows"
+        ]
+      ).toBe(1);
       expect(
         attributes["e2e.account.magic_link.log_stream.retained_tagged_rows"]
       ).toBe(3);
@@ -365,6 +406,8 @@ describe("workspace e2e Vercel log retrieval", () => {
       expect(exported).not.toContain(staleRowId);
       expect(exported).not.toContain(excludedRowId);
       expect(exported).not.toContain(matchRowId);
+      expect(exported).not.toContain(wireEnvelopeId);
+      expect(exported).not.toContain(wireEnvelopeMessage);
       expect(exported).not.toContain(body);
       expect(exported).not.toContain(recipient);
       expect(exported).not.toContain("private-link-token");
