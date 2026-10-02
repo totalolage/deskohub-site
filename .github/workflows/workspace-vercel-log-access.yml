@@ -1,0 +1,276 @@
+name: Temporary workspace Vercel log access probe
+
+on:
+  push:
+    branches:
+      - t3code/e2e-console-email-logging
+    paths:
+      - .github/workflows/workspace-vercel-log-access.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    environment: workspace-checkout-e2e
+    steps:
+      - name: Compare read-only access to the pinned preview log history
+        env:
+          WORKSPACE_E2E_VERCEL_TOKEN: ${{ secrets.WORKSPACE_E2E_VERCEL_TOKEN }}
+          WORKSPACE_E2E_VERCEL_PROJECT: ${{ vars.WORKSPACE_E2E_VERCEL_PROJECT }}
+        run: |
+          node --input-type=module <<'NODE'
+          import os from "node:os";
+
+          const expectedHost =
+            "deskohub-workspace-site-mguq6j7mi-filip-kalny-projects.vercel.app";
+          const expectedSha =
+            "70b264b51c06d0b68af966079595a6ace091a0b0";
+          const historicalSearch = "account.magic-link.preview-e2e";
+          const startDate = Date.parse("2026-10-02T06:19:00Z");
+          const endDate = Date.parse("2026-10-02T06:22:30Z");
+          const deadline = Date.now() + 105_000;
+          const maxBodyBytes = 512 * 1024;
+          const safeErrorCodes = new Set([
+            "forbidden",
+            "unauthorized",
+            "invalid_token",
+            "not_found",
+            "bad_request",
+          ]);
+
+          const emit = (value) => {
+            process.stdout.write(`${JSON.stringify(value)}\n`);
+          };
+
+          const readJson = async (response) => {
+            if (!response.body) return null;
+            const reader = response.body.getReader();
+            const chunks = [];
+            let size = 0;
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                size += value.byteLength;
+                if (size > maxBodyBytes) {
+                  await reader.cancel();
+                  return null;
+                }
+                chunks.push(value);
+              }
+            } finally {
+              reader.releaseLock();
+            }
+
+            const bytes = new Uint8Array(size);
+            let offset = 0;
+            for (const chunk of chunks) {
+              bytes.set(chunk, offset);
+              offset += chunk.byteLength;
+            }
+            try {
+              return JSON.parse(new TextDecoder().decode(bytes));
+            } catch {
+              return null;
+            }
+          };
+
+          const boundedGet = async (url, token, userAgent) => {
+            const parsedUrl = new URL(url);
+            if (
+              parsedUrl.protocol !== "https:" ||
+              !["api.vercel.com", "vercel.com"].includes(parsedUrl.hostname)
+            ) {
+              return { status: 0, body: null };
+            }
+
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) return { status: 0, body: null };
+
+            try {
+              const headers = {
+                Accept: "application/json",
+                Authorization: `Bearer ${token}`,
+              };
+              if (userAgent) headers["User-Agent"] = userAgent;
+              const response = await fetch(parsedUrl, {
+                method: "GET",
+                headers,
+                redirect: "error",
+                signal: AbortSignal.timeout(Math.min(20_000, remaining)),
+              });
+              return { status: response.status, body: await readJson(response) };
+            } catch {
+              return { status: 0, body: null };
+            }
+          };
+
+          const safeErrorCode = (body) => {
+            for (const candidate of [body?.error?.code, body?.err?.code]) {
+              if (typeof candidate === "string" && safeErrorCodes.has(candidate)) {
+                return candidate;
+              }
+            }
+            return "unknown";
+          };
+
+          const logQuery = ({ projectId, ownerId, deploymentId, teamId }) => {
+            const url = new URL("https://vercel.com/api/logs/request-logs");
+            url.searchParams.set("projectId", projectId);
+            url.searchParams.set("ownerId", ownerId);
+            url.searchParams.set("page", "0");
+            url.searchParams.set("startDate", String(startDate));
+            url.searchParams.set("endDate", String(endDate));
+            url.searchParams.set("deploymentId", deploymentId);
+            url.searchParams.set("search", historicalSearch);
+            if (teamId !== undefined) url.searchParams.set("teamId", teamId);
+            return url;
+          };
+
+          const probeLogs = async ({
+            label,
+            token,
+            projectId,
+            ownerId,
+            deploymentId,
+            teamId,
+            userAgent,
+          }) => {
+            const response = await boundedGet(
+              logQuery({ projectId, ownerId, deploymentId, teamId }),
+              token,
+              userAgent
+            );
+            return {
+              variant: label,
+              status: response.status,
+              rowCount:
+                Array.isArray(response.body?.rows) ? response.body.rows.length : 0,
+              errorCode:
+                response.status >= 400 || response.status === 0
+                  ? safeErrorCode(response.body)
+                  : "unknown",
+            };
+          };
+
+          const run = async () => {
+            const token = process.env.WORKSPACE_E2E_VERCEL_TOKEN;
+            const projectId = process.env.WORKSPACE_E2E_VERCEL_PROJECT;
+            if (!token || !projectId || !/^[A-Za-z0-9_-]+$/.test(projectId)) {
+              emit({ configured: false });
+              process.exitCode = 1;
+              return;
+            }
+
+            const deploymentResponse = await boundedGet(
+              `https://api.vercel.com/v13/deployments/${encodeURIComponent(expectedHost)}`,
+              token
+            );
+            const deployment = deploymentResponse.body;
+            const deploymentMatches = {
+              sha: deployment?.meta?.githubCommitSha === expectedSha,
+              project: deployment?.projectId === projectId,
+              immutableHost: deployment?.url === expectedHost,
+              deploymentId:
+                typeof deployment?.id === "string" &&
+                /^[A-Za-z0-9_-]+$/.test(deployment.id),
+              ownerId:
+                typeof deployment?.ownerId === "string" &&
+                /^[A-Za-z0-9_-]+$/.test(deployment.ownerId),
+            };
+
+            const projectResponse = await boundedGet(
+              `https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}`,
+              token
+            );
+            const project = projectResponse.body;
+            const projectMatches = {
+              id: project?.id === projectId,
+              accountId:
+                typeof project?.accountId === "string" &&
+                /^[A-Za-z0-9_-]+$/.test(project.accountId),
+              accountMatchesDeploymentOwner:
+                typeof project?.accountId === "string" &&
+                project.accountId === deployment?.ownerId,
+            };
+
+            const report = {
+              diagnostic: "prior_target_read_only",
+              deploymentStatus: deploymentResponse.status,
+              deploymentErrorCode:
+                deploymentResponse.status >= 400 || deploymentResponse.status === 0
+                  ? safeErrorCode(deployment)
+                  : "unknown",
+              deploymentMatches,
+              projectStatus: projectResponse.status,
+              projectErrorCode:
+                projectResponse.status >= 400 || projectResponse.status === 0
+                  ? safeErrorCode(project)
+                  : "unknown",
+              projectMatches,
+              logQueries: [],
+            };
+
+            const deploymentIsExact =
+              deploymentResponse.status === 200 &&
+              Object.values(deploymentMatches).every(Boolean);
+            const projectIsExact =
+              projectResponse.status === 200 &&
+              projectMatches.id &&
+              projectMatches.accountId;
+
+            if (!deploymentIsExact || !projectIsExact) {
+              emit(report);
+              process.exitCode = 1;
+              return;
+            }
+
+            const logInput = {
+              token,
+              projectId,
+              ownerId: deployment.ownerId,
+              deploymentId: deployment.id,
+            };
+            report.logQueries.push(
+              await probeLogs({ ...logInput, label: "baseline" })
+            );
+            report.logQueries.push(
+              await probeLogs({
+                ...logInput,
+                label: "team_id_only",
+                teamId: deployment.ownerId,
+              })
+            );
+
+            const pinnedCliUserAgent = `vercel 54.9.1 node-${process.version} ${os.platform()} (${os.arch()})`;
+            report.logQueries.push(
+              await probeLogs({
+                ...logInput,
+                label: "pinned_cli_user_agent_only",
+                userAgent: pinnedCliUserAgent,
+              })
+            );
+
+            if (project.accountId !== deployment.ownerId) {
+              report.logQueries.push(
+                await probeLogs({
+                  ...logInput,
+                  ownerId: project.accountId,
+                  label: "project_account_id_owner_only",
+                })
+              );
+            }
+
+            emit(report);
+          };
+
+          try {
+            await run();
+          } catch {
+            emit({ diagnostic: "prior_target_read_only", probeFailed: true });
+            process.exitCode = 1;
+          }
+          NODE
