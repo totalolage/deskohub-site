@@ -79,6 +79,7 @@ export const e2eEnvironmentSchema = Schema.Struct({
   GITHUB_STEP_SUMMARY: optionalNonEmptyString,
   LANG: optionalNonEmptyString,
   NEXI_API_ORIGIN: url,
+  PATH: optionalNonEmptyString,
   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: optionalNonEmptyString,
   TARGET_SHA: toEnvironmentSchema(
     Schema.optional(Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)))
@@ -132,6 +133,7 @@ export const makeE2EEnvironment = (
       GITHUB_STEP_SUMMARY: runtimeEnvironment.GITHUB_STEP_SUMMARY,
       LANG: runtimeEnvironment.LANG,
       NEXI_API_ORIGIN: runtimeEnvironment.NEXI_API_ORIGIN,
+      PATH: runtimeEnvironment.PATH,
       PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
         runtimeEnvironment.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
       TARGET_SHA: runtimeEnvironment.TARGET_SHA,

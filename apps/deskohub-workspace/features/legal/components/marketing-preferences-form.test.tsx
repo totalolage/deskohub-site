@@ -1,6 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
-import { useState } from "react";
 import { type Locale, m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -29,24 +28,6 @@ type ActionResult = {
   readonly validationErrors?: unknown;
 };
 
-type ActionInput =
-  | MarketingPreferenceSaveInput
-  | MarketingManagementConfirmInput
-  | MarketingManagementClearInput;
-type Action = (input: ActionInput) => Promise<ActionResult>;
-
-type ActionOptions = {
-  readonly onError?: (args: { readonly error: unknown }) => void;
-  readonly onSuccess?: (args: {
-    readonly data?: unknown;
-    readonly input: unknown;
-  }) => void;
-  readonly onTransportError?: (args: {
-    readonly error: unknown;
-    readonly input: unknown;
-  }) => void;
-};
-
 const saveMarketingPreferencesAction = mock(
   (_input: MarketingPreferenceSaveInput): Promise<ActionResult> =>
     Promise.resolve({ data: { status: "saved" } })
@@ -69,34 +50,6 @@ mock.module("@/features/legal/actions", () => ({
 
 mock.module("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefresh }),
-}));
-
-mock.module("@/shared/utils/use-workspace-action", () => ({
-  useWorkspaceAction: (action: Action, options: ActionOptions) => {
-    const [result, setResult] = useState<ActionResult>({});
-    const [isExecuting, setIsExecuting] = useState(false);
-
-    const reset = () => setResult({});
-    const execute = (input: ActionInput) => {
-      setIsExecuting(true);
-      void action(input)
-        .then((nextResult) => {
-          setResult(nextResult);
-          setIsExecuting(false);
-          if (nextResult.serverError || nextResult.validationErrors) {
-            options.onError?.({ error: nextResult });
-            return;
-          }
-          options.onSuccess?.({ data: nextResult.data, input });
-        })
-        .catch((error: Error) => {
-          setIsExecuting(false);
-          options.onTransportError?.({ error, input });
-        });
-    };
-
-    return { execute, isExecuting, reset, result };
-  },
 }));
 
 const { MarketingPreferencesForm } = await import(

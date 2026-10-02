@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { makeE2EEnvironment, makeWorkspaceE2EEnvironment } from "./e2e-env";
 import {
   makeTestE2EEnvironment,
@@ -32,6 +35,39 @@ describe("Workspace E2E environment", () => {
       "https://us.i.posthog.com"
     );
     expect(environment.WORKSPACE_E2E_PR_NUMBER).toBe(127);
+  });
+
+  test("keeps PATH for commands launched with the selected E2E environment", async () => {
+    const commandDirectory = mkdtempSync(join(tmpdir(), "workspace-e2e-path-"));
+    const commandPath = join(commandDirectory, "e2e-path-probe");
+    writeFileSync(commandPath, "#!/bin/sh\nprintf 'e2e-path-ok\\n'\n");
+    chmodSync(commandPath, 0o755);
+    try {
+      const environment = makeTestE2EEnvironment({ PATH: commandDirectory });
+      const childEnvironment = Object.fromEntries(
+        Object.entries(environment).flatMap(([key, value]) =>
+          value === undefined ? [] : [[key, String(value)]]
+        )
+      );
+      const child = Bun.spawn(["e2e-path-probe"], {
+        env: childEnvironment,
+        stderr: "pipe",
+        stdout: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+
+      expect({ exitCode, stderr, stdout }).toEqual({
+        exitCode: 0,
+        stderr: "",
+        stdout: "e2e-path-ok\n",
+      });
+    } finally {
+      rmSync(commandDirectory, { force: true, recursive: true });
+    }
   });
 
   test("treats empty optional values as absent", () => {
