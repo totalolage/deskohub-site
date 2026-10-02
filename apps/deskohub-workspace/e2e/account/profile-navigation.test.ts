@@ -4,6 +4,7 @@ import { access } from "node:fs/promises";
 import { createServer } from "node:http";
 import { normalizePhoneNumber } from "@deskohub/dotypos";
 import { chromium, type Page } from "@playwright/test";
+import { WorkspaceE2EError } from "../errors";
 import {
   accountSectionLabels,
   accountSectionLandmarks,
@@ -75,8 +76,15 @@ type ProfileNavigationFakePage = {
   readonly state: ProfileNavigationState;
 };
 
+type ProfileNavigationFailurePhase =
+  | "saved-profile-baseline"
+  | "draft-retention";
+
+const privateFailureDetails = "private profile navigation fixture details";
+
 const makeProfileNavigationFakePage = (
-  baseUrl: string
+  baseUrl: string,
+  failurePhase?: ProfileNavigationFailurePhase
 ): ProfileNavigationFakePage => {
   const homeUrl = `${baseUrl}/en-US`;
   const accountUrl = `${baseUrl}/en-US/account`;
@@ -191,6 +199,14 @@ const makeProfileNavigationFakePage = (
         expression: string,
         parameters: Record<string, unknown>
       ) => {
+        if (
+          failurePhase === "draft-retention" &&
+          expression === "to.have.value" &&
+          name === "#account-profile-first-name" &&
+          state.profile.firstName === "Ada draft"
+        ) {
+          throw new Error(privateFailureDetails);
+        }
         let actual: boolean | number | string;
         let matches: boolean;
         if (expression === "to.be.visible") {
@@ -275,7 +291,15 @@ const makeProfileNavigationFakePage = (
         if (options.name === "Account") return makeLocator("account-link");
         throw new Error(`unsupported banner link: ${options.name}`);
       },
-      inputValue: async () => valueFor(name),
+      inputValue: async () => {
+        if (
+          failurePhase === "saved-profile-baseline" &&
+          name === "#account-profile-first-name"
+        ) {
+          throw new Error(privateFailureDetails);
+        }
+        return valueFor(name);
+      },
       isVisible: async () => isVisible(name),
       toString: () => `Locator(${name})`,
       waitFor: async (options?: { readonly state?: string }) => {
@@ -499,6 +523,58 @@ test("keeps cached drafts through soft navigation and resets them on document re
   expect(fake.state.profile.phone).toBe(fake.serverPhone);
   expect(fake.state.billing.companyName).toBe("Original Company");
 });
+
+test("redacts a saved-profile baseline failure with its closed diagnostic", async () => {
+  const fake = makeProfileNavigationFakePage(
+    "https://account-navigation.example.test",
+    "saved-profile-baseline"
+  );
+  const failure = await verifyProfileNavigation(
+    fake.page,
+    "https://account-navigation.example.test"
+  ).then(
+    () => undefined,
+    (cause: unknown) => cause
+  );
+
+  expectProfileNavigationFailure(failure, "account_profile_baseline_failed");
+});
+
+test("redacts a draft-retention failure with its later-phase diagnostic", async () => {
+  const fake = makeProfileNavigationFakePage(
+    "https://account-navigation.example.test",
+    "draft-retention"
+  );
+  const failure = await verifyProfileNavigation(
+    fake.page,
+    "https://account-navigation.example.test"
+  ).then(
+    () => undefined,
+    (cause: unknown) => cause
+  );
+
+  expectProfileNavigationFailure(
+    failure,
+    "account_profile_draft_retention_failed"
+  );
+});
+
+const expectProfileNavigationFailure = (
+  failure: unknown,
+  diagnosticCode: string
+) => {
+  expect(failure).toBeInstanceOf(WorkspaceE2EError);
+  if (!(failure instanceof WorkspaceE2EError)) return;
+
+  expect(failure).toMatchObject({
+    diagnosticCode,
+    message: "Profile navigation verification failed",
+    operation: "verify profile navigation and unsaved changes",
+  });
+  expect(failure.cause).toBeUndefined();
+  expect(failure.causes).toBeUndefined();
+  expect(JSON.stringify(failure)).not.toContain(privateFailureDetails);
+};
 
 test.skipIf(!chromiumAvailable)(
   "resolves the evaluated trigger when the Navigation API cancels same-document back",

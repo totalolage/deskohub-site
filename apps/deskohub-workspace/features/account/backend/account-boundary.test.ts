@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import type { TSESTree } from "@typescript-eslint/types";
 import { isString } from "effect/Predicate";
 import {
+  containsNode,
   exportedNames,
   identifierNames,
   importSpecifiers,
@@ -232,19 +233,68 @@ describe("Customer-account boundary", () => {
       file.includes("/backend/")
     );
 
+    // Permit only the synthetic Preview bearer-link emitter in the account
+    // backend.
+    const authorizedEmitterFile = `${accountDirectory}/backend/auth/send-magic-link-email.ts`;
+    const authorizedEmitterName = "emitPreviewE2EConsoleDelivery";
+    const authorizedLogCode = "account.magic-link.preview-e2e";
+
+    const isAuthorizedPreviewE2EConsoleCall = (
+      file: string,
+      member: TSESTree.MemberExpression,
+      ast: TSESTree.Program
+    ): boolean => {
+      if (file !== authorizedEmitterFile) return false;
+      const property = member.property;
+      if (property.type !== "Identifier" || property.name !== "log")
+        return false;
+      const emitter = nodesOf(ast).find(
+        (node) =>
+          node.type === "VariableDeclarator" &&
+          node.id.type === "Identifier" &&
+          node.id.name === authorizedEmitterName
+      );
+      if (!emitter || !containsNode(emitter, member)) return false;
+      const call = nodesOf(ast).find(
+        (node) =>
+          node.type === "CallExpression" &&
+          node.callee.type === "MemberExpression" &&
+          node.callee.range[0] === member.range[0] &&
+          node.callee.range[1] === member.range[1]
+      );
+      if (call?.type !== "CallExpression") return false;
+      return (
+        identifierNames(call).has("magicLinkPreviewE2ELogCode") ||
+        stringLiterals(call).some(
+          (literal) => literal.value === authorizedLogCode
+        )
+      );
+    };
+
+    const consoleCalls: Array<{
+      readonly method: string;
+      readonly authorized: boolean;
+    }> = [];
+
     for (const file of backendFiles) {
       const { ast } = parseTrackedSource(file);
-      const consoleCalls = nodesOf(ast).flatMap((node) =>
-        node.type === "MemberExpression" &&
-        !node.computed &&
-        node.object.type === "Identifier" &&
-        node.object.name === "console" &&
-        node.property.type === "Identifier" &&
-        ["log", "info", "warn", "error"].includes(node.property.name)
-          ? [node.property.name]
-          : []
-      );
-      expect(consoleCalls).toEqual([]);
+      if (file.includes(".test.")) continue;
+      for (const node of nodesOf(ast)) {
+        if (
+          node.type !== "MemberExpression" ||
+          node.computed ||
+          node.object.type !== "Identifier" ||
+          node.object.name !== "console" ||
+          node.property.type !== "Identifier" ||
+          !["log", "info", "warn", "error"].includes(node.property.name)
+        ) {
+          continue;
+        }
+        consoleCalls.push({
+          method: node.property.name,
+          authorized: isAuthorizedPreviewE2EConsoleCall(file, node, ast),
+        });
+      }
 
       // A tagged logging helper must never receive the raw email or URL.
       const leakingLogCalls = nodesOf(ast).filter((node) => {
@@ -264,6 +314,9 @@ describe("Customer-account boundary", () => {
       });
       expect(leakingLogCalls).toEqual([]);
     }
+
+    expect(consoleCalls.length).toBeLessThanOrEqual(1);
+    expect(consoleCalls.filter((call) => !call.authorized)).toEqual([]);
   });
 
   test("profile input refuses an email field entirely", () => {

@@ -1,9 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   findViolations,
-  listTrackedTestFiles,
+  listAuditedTestFiles,
   repositoryRoot,
 } from "./shared/no-source-string-audit";
 import {
@@ -13,32 +22,72 @@ import {
 } from "./shared/source-ast";
 
 const repoRoot = repositoryRoot();
-const trackedFiles = listTrackedTestFiles().map((relativePath) => ({
+const auditedFiles = listAuditedTestFiles().map((relativePath) => ({
   path: relativePath,
   content: readFileSync(join(repoRoot, relativePath), "utf8"),
 }));
 
 describe("no source-as-string contract tests", () => {
   test("tracked tests never pin literal substrings of repository TS/TSX source", () => {
-    expect(findViolations(trackedFiles)).toEqual([]);
+    expect(findViolations(auditedFiles)).toEqual([]);
   });
 
   test("the enumeration is repository-wide, not app-scoped", () => {
-    const tracked = listTrackedTestFiles();
+    const audited = listAuditedTestFiles();
     // Every path is resolved from the repository root.
-    expect(tracked.length).toBeGreaterThan(0);
-    expect(tracked).toContain("apps/dhw/src/command.test.ts");
-    expect(tracked).toContain("packages/games/src/generate.test.ts");
+    expect(audited.length).toBeGreaterThan(0);
+    expect(audited).toContain("apps/dhw/src/command.test.ts");
+    expect(audited).toContain("packages/games/src/generate.test.ts");
     // Tests from other apps and packages are part of the audited set.
     expect(
-      tracked.some((path) => !path.startsWith("apps/deskohub-workspace/"))
+      audited.some((path) => !path.startsWith("apps/deskohub-workspace/"))
     ).toBe(true);
     expect(
-      tracked.some((path) => path.startsWith("apps/deskohub-boardgame-bar/"))
+      audited.some((path) => path.startsWith("apps/deskohub-boardgame-bar/"))
     ).toBe(true);
-    expect(tracked.some((path) => path.startsWith("packages/"))).toBe(true);
+    expect(audited.some((path) => path.startsWith("packages/"))).toBe(true);
     // The audit verdict itself runs over the full repository set.
-    expect(findViolations(trackedFiles)).toEqual([]);
+    expect(findViolations(auditedFiles)).toEqual([]);
+  });
+
+  test("the enumeration classifies tracked, deleted, untracked, ignored, and dangling-symlink test paths", () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), "audited-tests-"));
+    const git = (args: string) =>
+      execSync(`git ${args}`, { cwd: fixtureRoot, encoding: "utf8" });
+    try {
+      git("init -q");
+      writeFileSync(
+        join(fixtureRoot, "tracked-present.test.ts"),
+        "test('present', () => {});\n"
+      );
+      writeFileSync(
+        join(fixtureRoot, "tracked-deleted.test.ts"),
+        "test('deleted', () => {});\n"
+      );
+      writeFileSync(
+        join(fixtureRoot, "untracked file.test.tsx"),
+        "test('untracked', () => {});\n"
+      );
+      writeFileSync(
+        join(fixtureRoot, "ignored.test.ts"),
+        "test('ignored', () => {});\n"
+      );
+      writeFileSync(join(fixtureRoot, ".gitignore"), "ignored.test.ts\n");
+      git("add tracked-present.test.ts tracked-deleted.test.ts .gitignore");
+      unlinkSync(join(fixtureRoot, "tracked-deleted.test.ts"));
+      symlinkSync("missing-target.ts", join(fixtureRoot, "dangling.test.ts"));
+
+      expect(listAuditedTestFiles(fixtureRoot)).toEqual([
+        "dangling.test.ts",
+        "tracked-present.test.ts",
+        "untracked file.test.tsx",
+      ]);
+      expect(() =>
+        readFileSync(join(fixtureRoot, "dangling.test.ts"), "utf8")
+      ).toThrow();
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
   });
 
   test("the audit catches the rejected pattern when it is present", () => {
@@ -262,10 +311,10 @@ describe("no source-as-string contract tests", () => {
     expect(findViolations(structural)).toEqual([]);
   });
 
-  test("the audit resolves tracked files relative to the repository root", () => {
+  test("the audit resolves enumerated files relative to the repository root", () => {
     const root = repositoryRoot();
-    const tracked = listTrackedTestFiles();
-    for (const relativePath of tracked.slice(0, 25)) {
+    const audited = listAuditedTestFiles();
+    for (const relativePath of audited) {
       expect(() =>
         readFileSync(resolve(root, relativePath), "utf8")
       ).not.toThrow();

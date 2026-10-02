@@ -51,6 +51,8 @@ export interface EmailMessage {
   idempotencyKey?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;
+  /** Providers suppress recipient and content when this message may carry secrets. */
+  sensitiveContent?: boolean;
 }
 
 /**

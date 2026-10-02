@@ -29,6 +29,7 @@ import type {
   WorkspaceE2EAccountJournalRef,
   WorkspaceE2EAccountLifecycleHandoff,
 } from "./types";
+import type { WorkspaceE2EPreviewLogs } from "./vercel-log-retrieval";
 
 const fixedNow = new Date("2026-09-11T12:00:00.000Z");
 const fixedNowMs = fixedNow.getTime();
@@ -188,7 +189,7 @@ class FakeAccountExternalState {
   readonly reauthenticationObservations: ReauthenticationObservation[] = [];
   readonly reactivationObservations: ReactivationObservation[] = [];
   readonly retrieveCalls: Array<{
-    readonly excludedMessageIds: readonly string[];
+    readonly excludeLogEntryIds: readonly string[];
     readonly recipient: string;
   }> = [];
   readonly unlinkObservations: UnlinkObservation[] = [];
@@ -436,14 +437,14 @@ class FakeAccountExternalState {
 
   retrieveMessage(
     email: string,
-    excludedMessageIds: readonly string[],
+    excludeLogEntryIds: readonly string[],
     startedAt: Date
   ) {
     this.retrieveCalls.push({
-      excludedMessageIds: [...excludedMessageIds],
+      excludeLogEntryIds: [...excludeLogEntryIds],
       recipient: email,
     });
-    const excluded = new Set(excludedMessageIds);
+    const excluded = new Set(excludeLogEntryIds);
     const candidates = (this.messagesByRecipient.get(email) ?? []).filter(
       (message) =>
         !excluded.has(message.id) && message.createdAt >= startedAt.getTime()
@@ -1042,28 +1043,6 @@ mock.module("../browser", () => ({
   }) => Effect.sync(() => requireBrowser().waitForSnapshot(matches)),
 }));
 
-mock.module("./resend-retrieval", () => ({
-  listSyntheticMessageIds: (
-    _config: WorkspaceE2EAccountConfig,
-    recipient: string
-  ) => Effect.sync(() => requireExternal().listMessageIds(recipient)),
-  retrieveWorkspaceE2EMagicLink: (
-    _config: WorkspaceE2EAccountConfig,
-    request: {
-      readonly excludeMessageIds?: readonly string[];
-      readonly recipient: string;
-      readonly startedAt: Date;
-    }
-  ) =>
-    Effect.sync(() =>
-      requireExternal().retrieveMessage(
-        request.recipient,
-        request.excludeMessageIds ?? [],
-        request.startedAt
-      )
-    ),
-}));
-
 mock.module("./auth-rows", () => ({
   assertNoAuthRows: (userId: string) =>
     Effect.sync(() => requireExternal().assertNoAuthRows(userId)),
@@ -1117,9 +1096,10 @@ const makeConfig = (): WorkspaceE2EAccountConfig => ({
   bypassSecret: undefined,
   expectedHost,
   locale: "en-US",
-  resendApiKey: "synthetic-resend-retrieval-key",
   runId: syntheticRunId as WorkspaceE2EAccountConfig["runId"],
   timeouts: workspaceE2ETimeouts,
+  vercelProjectId: "workspace-e2e-project",
+  vercelToken: "synthetic-vercel-log-token",
 });
 
 const makeScenario = () => {
@@ -1172,6 +1152,18 @@ const makeScenario = () => {
   const run: Runner = async () => {
     throw new Error("the account case bypassed the mocked browser boundary");
   };
+  const previewLogs: WorkspaceE2EPreviewLogs = {
+    listSyntheticLogEntryIds: (request) =>
+      Effect.sync(() => external.listMessageIds(request.recipient)),
+    retrieveMagicLink: (request) =>
+      Effect.sync(() =>
+        external.retrieveMessage(
+          request.recipient,
+          request.excludeLogEntryIds ?? [],
+          request.startedAt
+        )
+      ),
+  };
   const datasourceConfig = {} as DatasourceConfig;
 
   return {
@@ -1182,6 +1174,7 @@ const makeScenario = () => {
     journalRef,
     lifecycleHandoff,
     operations,
+    previewLogs,
     rateBudget,
     retries,
     run,
@@ -1218,6 +1211,7 @@ const buildCase = async (
     config: scenario.config,
     datasourceConfig: scenario.datasourceConfig,
     lifecycleHandoff: scenario.lifecycleHandoff,
+    previewLogs: scenario.previewLogs,
     rateBudget: scenario.rateBudget,
     run: scenario.run,
     session,
@@ -1349,15 +1343,15 @@ test("executes the selected account lifecycle cases with a fresh factory per cas
   ]);
   expect(scenario.external.retrieveCalls).toEqual([
     {
-      excludedMessageIds: [],
+      excludeLogEntryIds: [],
       recipient: scenario.external.mainRecipient,
     },
     {
-      excludedMessageIds: [mainMessages[0]?.id ?? ""],
+      excludeLogEntryIds: [mainMessages[0]?.id ?? ""],
       recipient: scenario.external.mainRecipient,
     },
     {
-      excludedMessageIds: [
+      excludeLogEntryIds: [
         mainMessages[0]?.id ?? "",
         mainMessages[1]?.id ?? "",
       ],

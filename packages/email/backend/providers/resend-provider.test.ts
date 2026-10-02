@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Fiber, Layer } from "effect";
+import { Effect, Fiber, Layer, Tracer } from "effect";
 import { TestClock } from "effect/testing";
 import { EmailDeliveryIdSchema } from "../../types/email.types";
 
@@ -218,6 +218,25 @@ describe("ResendEmailProvider", () => {
     });
   });
 
+  test("maps the magic-link tags and surface metadata to Resend tags", async () => {
+    await runProvider(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        yield* provider.send({
+          ...message,
+          tags: ["account-magic-link"],
+          metadata: { surface: "workspace" },
+        });
+      })
+    );
+
+    const payload = send.mock.calls[0]?.[0] as { tags?: unknown } | undefined;
+    expect(payload?.tags).toEqual([
+      { name: "category", value: "account-magic-link" },
+      { name: "surface", value: "workspace" },
+    ]);
+  });
+
   test("verify fails when Resend returns an error", async () => {
     listDomains = mock<ListDomainsImplementation>(async () => ({
       error: { message: "Invalid API key" },
@@ -257,5 +276,194 @@ describe("ResendEmailProvider", () => {
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("EmailServiceError");
     }
+  });
+});
+
+/**
+ * Captures terminal span errors, including non-enumerable messages, for leak
+ * assertions.
+ */
+const serializeExitValue = (value: unknown, depth = 0): unknown => {
+  if (depth > 8 || value === null || typeof value !== "object") return value;
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: typeof value.stack === "string" ? value.stack : undefined,
+      cause:
+        "cause" in value && value.cause !== undefined
+          ? serializeExitValue(value.cause, depth + 1)
+          : undefined,
+    };
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => serializeExitValue(item, depth + 1));
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+      key,
+      serializeExitValue(item, depth + 1),
+    ])
+  );
+};
+
+const captureSpans = () => {
+  const ended: Array<{ exit?: unknown; name: string }> = [];
+  const tracer = Tracer.make({
+    span: (options) => ({
+      _tag: "Span" as const,
+      name: options.name,
+      spanId: "test-span-id",
+      traceId: "test-trace-id",
+      parent: options.parent,
+      annotations: options.annotations,
+      attributes: new Map<string, unknown>(),
+      links: options.links,
+      sampled: true,
+      kind: options.kind,
+      status: { _tag: "Started", startTime: 0n } as Tracer.SpanStatus,
+      end: (_endTime: bigint, exit: unknown) => {
+        ended.push({
+          exit: serializeExitValue(exit),
+          name: options.name,
+        });
+      },
+      attribute: () => {},
+      event: () => {},
+      addLinks: () => {},
+    }),
+  });
+  return { ended, tracer };
+};
+
+const rawProviderDetail = "raw provider detail: quota exceeded for key rk_123";
+
+const runTracedSend = (tracer: Tracer.Tracer) =>
+  Effect.gen(function* () {
+    const provider = yield* EmailProviderTag;
+    return yield* provider
+      .send({
+        ...message,
+        text: "bearer text with secret-token",
+      })
+      .pipe(Effect.withSpan("resend.send.test"), Effect.result);
+  }).pipe(
+    Effect.provide(
+      ResendEmailProviderLive.pipe(
+        Layer.provide(Layer.succeed(EmailConfigTag, config))
+      )
+    ),
+    Effect.provide(Layer.succeed(Tracer.Tracer, tracer))
+  );
+
+describe("ResendEmailProvider span censorship", () => {
+  test("provider rejection leaves no raw provider message, recipient, or body in traced spans", async () => {
+    send = mock<SendImplementation>(async () => ({
+      error: { message: rawProviderDetail, statusCode: 429 },
+    }));
+    const { ended, tracer } = captureSpans();
+
+    const result = await Effect.runPromise(runTracedSend(tracer));
+
+    expect(result._tag).toBe("Failure");
+    expect(ended.length).toBeGreaterThan(0);
+    const traced = JSON.stringify(ended);
+    expect(traced).not.toContain(rawProviderDetail);
+    expect(traced).not.toContain("quota");
+    expect(traced).not.toContain("rk_123");
+    expect(traced).not.toContain("ada@example.test");
+    expect(traced).not.toContain("secret-token");
+    expect(traced).not.toContain("bearer text");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("EmailServiceError");
+    }
+  });
+
+  test("transport failure leaves no raw error message, recipient, or body in traced spans", async () => {
+    const rawTransportDetail =
+      "raw transport failure: getaddrinfo ENOTFOUND api.resend.com";
+    send = mock<SendImplementation>(async () => {
+      throw new Error(rawTransportDetail);
+    });
+    const { ended, tracer } = captureSpans();
+
+    const result = await Effect.runPromise(runTracedSend(tracer));
+
+    expect(result._tag).toBe("Failure");
+    expect(ended.length).toBeGreaterThan(0);
+    const traced = JSON.stringify(ended);
+    expect(traced).not.toContain(rawTransportDetail);
+    expect(traced).not.toContain("getaddrinfo");
+    expect(traced).not.toContain("ENOTFOUND");
+    expect(traced).not.toContain("ada@example.test");
+    expect(traced).not.toContain("secret-token");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("NetworkError");
+    }
+  });
+
+  test("verification failure carries only the fixed message", async () => {
+    listDomains = mock<ListDomainsImplementation>(async () => ({
+      error: { message: rawProviderDetail },
+    }));
+
+    const result = await runProvider(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        return yield* provider.verify.pipe(Effect.result);
+      })
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toMatchObject({
+        _tag: "EmailServiceError",
+        message: "Failed to verify Resend API key",
+      });
+      expect(JSON.stringify(result.failure)).not.toContain(rawProviderDetail);
+    }
+  });
+
+  test("a rejected domains.list keeps only the fixed message in failure and spans", async () => {
+    const rawRejectDetail =
+      "raw rejection detail: fetch failed with ECONNRESET for key rk_123";
+    listDomains = mock<ListDomainsImplementation>(async () => {
+      throw new Error(rawRejectDetail);
+    });
+    const { ended, tracer } = captureSpans();
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        return yield* provider.verify.pipe(
+          Effect.withSpan("resend.verify.test"),
+          Effect.result
+        );
+      }).pipe(
+        Effect.provide(
+          ResendEmailProviderLive.pipe(
+            Layer.provide(Layer.succeed(EmailConfigTag, config))
+          )
+        ),
+        Effect.provide(Layer.succeed(Tracer.Tracer, tracer))
+      )
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toMatchObject({
+        _tag: "EmailServiceError",
+        message: "Failed to verify Resend API key",
+      });
+      const serialized = JSON.stringify(result.failure);
+      expect(serialized).not.toContain(rawRejectDetail);
+      expect(serialized).not.toContain("ECONNRESET");
+    }
+
+    expect(ended.length).toBeGreaterThan(0);
+    const traced = JSON.stringify(ended);
+    expect(traced).not.toContain(rawRejectDetail);
+    expect(traced).not.toContain("ECONNRESET");
+    expect(traced).not.toContain("rk_123");
   });
 });

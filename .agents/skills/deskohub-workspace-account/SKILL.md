@@ -105,14 +105,32 @@ description: Workspace customer account, Better Auth, magic link, auth persisten
   browser context for PR review; keep magic links, cookies, storage state, HTML,
   and traces out of artifacts, validate fixed page paths and URLs before
   capture, and upload PNGs only.
-- Deliver Preview magic links through the existing Resend team/domain: the
-  preview runtime keeps the existing send-only `EMAIL_API_KEY`, and
-  `WORKSPACE_E2E_RESEND_API_KEY` is a full-access retrieval key on the same
-  team that lives only in the protected `workspace-checkout-e2e` GitHub
-  environment and never enters Vercel or application configuration. Do not
-  provision an isolated synthetic tenant. Use synthetic recipients; keep
-  links and tokens in memory, register them with the E2E redactor, and never
-  expose the production email credential. No tunnels and no webhook capture.
+- Deliver auth magic links through the shared `@deskohub/email`
+  `EmailServiceTag`/provider machinery, which owns sending and retry. Auth
+  owns the recipient-based routing decision, the template, the synthetic
+  recipient pattern, and the gated raw-log envelope. Mark every magic-link
+  message `sensitiveContent` so bearer content stays suppressed in Console
+  output. When the runtime is Vercel Preview and the recipient exactly
+  matches `delivered+<run-id>-<label>@resend.dev` (strict pattern, arbitrary
+  domains rejected), the route forces the shared Console provider and, after
+  a successful send to exactly one synthetic recipient, the app feature emits
+  one gated raw-`console.log` line (outside the Effect/OTel censorship layer)
+  under `account.magic-link.preview-e2e` carrying the rendered TEXT body with
+  its bearer link. This is the single explicitly authorized exception to the
+  no-bearer-material logging rule, and only for non-PII synthetic preview
+  auth link material. Every other recipient — non-synthetic Preview,
+  development, and production — uses the `EmailConfigLayer` configured
+  default provider with the fixed censored delivery codes and no link
+  logging; a missing delivering credential fails closed to the fixed
+  unconfigured code only when the configured provider needs one. The runner
+  retrieves the link through the Vercel runtime log lookup using
+  `WORKSPACE_E2E_VERCEL_TOKEN`, which lives only in the protected
+  `workspace-checkout-e2e` GitHub environment and never enters Vercel or
+  application configuration. Use synthetic recipients, keep links and tokens
+  in memory, and register the synthetic recipient and the retrieved link
+  with the E2E redactor. Never expose the production email credential. Do not
+  provision an isolated synthetic tenant; do not use tunnels or webhook
+  capture.
 - The Playwright lifecycle must cover anonymous protection, invalid and
   replayed links, no-match profile completion, profile updates with immutable
   email, active and expired profile linking, the support state, current and

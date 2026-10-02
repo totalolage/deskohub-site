@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { makeE2EEnvironment, makeWorkspaceE2EEnvironment } from "./e2e-env";
 import {
   makeTestE2EEnvironment,
@@ -34,6 +37,39 @@ describe("Workspace E2E environment", () => {
     expect(environment.WORKSPACE_E2E_PR_NUMBER).toBe(127);
   });
 
+  test("keeps PATH for commands launched with the selected E2E environment", async () => {
+    const commandDirectory = mkdtempSync(join(tmpdir(), "workspace-e2e-path-"));
+    const commandPath = join(commandDirectory, "e2e-path-probe");
+    writeFileSync(commandPath, "#!/bin/sh\nprintf 'e2e-path-ok\\n'\n");
+    chmodSync(commandPath, 0o755);
+    try {
+      const environment = makeTestE2EEnvironment({ PATH: commandDirectory });
+      const childEnvironment = Object.fromEntries(
+        Object.entries(environment).flatMap(([key, value]) =>
+          value === undefined ? [] : [[key, String(value)]]
+        )
+      );
+      const child = Bun.spawn(["e2e-path-probe"], {
+        env: childEnvironment,
+        stderr: "pipe",
+        stdout: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+
+      expect({ exitCode, stderr, stdout }).toEqual({
+        exitCode: 0,
+        stderr: "",
+        stdout: "e2e-path-ok\n",
+      });
+    } finally {
+      rmSync(commandDirectory, { force: true, recursive: true });
+    }
+  });
+
   test("treats empty optional values as absent", () => {
     expect(
       makeTestE2EEnvironment({
@@ -42,20 +78,32 @@ describe("Workspace E2E environment", () => {
     ).toBeUndefined();
   });
 
-  test("decodes the GitHub-only Resend retrieval key when present", () => {
+  test("decodes the GitHub-only Vercel log retrieval variables when present", () => {
     const environment = makeTestE2EEnvironment({
-      WORKSPACE_E2E_RESEND_API_KEY: "re_e2e-retrieval-key",
+      WORKSPACE_E2E_VERCEL_PROJECT: "workspace-preview-project",
+      WORKSPACE_E2E_VERCEL_TOKEN: "vercel-log-read-token",
     });
 
-    expect(environment.WORKSPACE_E2E_RESEND_API_KEY).toBe(
-      "re_e2e-retrieval-key"
+    expect(environment.WORKSPACE_E2E_VERCEL_TOKEN).toBe(
+      "vercel-log-read-token"
+    );
+    expect(environment.WORKSPACE_E2E_VERCEL_PROJECT).toBe(
+      "workspace-preview-project"
     );
   });
 
-  test("treats a missing Resend retrieval key as absent instead of failing checkout cases", () => {
-    expect(
-      makeTestE2EEnvironment().WORKSPACE_E2E_RESEND_API_KEY
-    ).toBeUndefined();
+  test("treats missing Vercel log retrieval variables as absent instead of failing checkout cases", () => {
+    const environment = makeTestE2EEnvironment();
+    expect(environment.WORKSPACE_E2E_VERCEL_TOKEN).toBeUndefined();
+    expect(environment.WORKSPACE_E2E_VERCEL_PROJECT).toBeUndefined();
+  });
+
+  test("stops consuming the retired Resend retrieval key without failing on its presence", () => {
+    const environment = makeTestE2EEnvironment({
+      WORKSPACE_E2E_RESEND_API_KEY: "re_legacy-retrieval-key",
+    });
+
+    expect(environment).not.toHaveProperty("WORKSPACE_E2E_RESEND_API_KEY");
   });
 
   test("never exposes application mail authority through the E2E boundary", () => {
