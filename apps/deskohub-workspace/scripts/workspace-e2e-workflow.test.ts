@@ -419,7 +419,9 @@ describe("workspace E2E workflow", () => {
     expect(environment).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
     expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL");
     expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
-    expect(environment).toContain("WORKSPACE_E2E_RESEND_API_KEY");
+    expect(environment).toContain("WORKSPACE_E2E_VERCEL_TOKEN");
+    expect(environment).toContain("WORKSPACE_E2E_VERCEL_PROJECT");
+    expect(environment).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
   });
 
   test("generates the Igloohome client before Workspace E2E startup", () => {
@@ -493,19 +495,28 @@ describe("workspace E2E workflow", () => {
     expect(i18nTask?.directory).toBe("apps/deskohub-workspace");
   });
 
-  test("keeps the Resend retrieval key inside the account Playwright execution only", () => {
+  test("keeps the Vercel log-read secret inside the account Playwright execution only", () => {
     const runE2EEnv = stepByName("Run checkout E2E").env;
-    expect(runE2EEnv?.WORKSPACE_E2E_RESEND_API_KEY).toBe(
-      `\${{ secrets.WORKSPACE_E2E_RESEND_API_KEY }}`
+    expect(runE2EEnv?.WORKSPACE_E2E_VERCEL_TOKEN).toBe(
+      `\${{ secrets.WORKSPACE_E2E_VERCEL_TOKEN }}`
+    );
+    expect(runE2EEnv?.WORKSPACE_E2E_VERCEL_PROJECT).toBe(
+      `\${{ vars.WORKSPACE_E2E_VERCEL_PROJECT }}`
     );
 
     // Exactly the Playwright checkout step: one env key plus its secret
     // reference, counted over the serialized parsed workflow structure.
     expect(
-      serializedWorkflow.split("WORKSPACE_E2E_RESEND_API_KEY").length - 1
+      serializedWorkflow.split("WORKSPACE_E2E_VERCEL_TOKEN").length - 1
     ).toBe(2);
 
+    expect(serializedWorkflow.includes("WORKSPACE_E2E_RESEND_API_KEY")).toBe(
+      false
+    );
     expect(serializedWorkflow.includes("secrets.RESEND_API_KEY")).toBe(false);
+    expect(
+      serializedProductionWorkflow.includes("WORKSPACE_E2E_VERCEL_TOKEN")
+    ).toBe(false);
     expect(
       serializedProductionWorkflow.includes("WORKSPACE_E2E_RESEND_API_KEY")
     ).toBe(false);
@@ -516,6 +527,7 @@ describe("workspace E2E workflow", () => {
       readonly global?: { readonly passThroughEnv?: string[] };
     };
     const turboGlobal = turbo.global?.passThroughEnv ?? [];
+    expect(turboGlobal).not.toContain("WORKSPACE_E2E_VERCEL_TOKEN");
     expect(turboGlobal).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
   });
 

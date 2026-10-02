@@ -66,14 +66,18 @@ names. Inspect settings and deployment metadata without printing their values.
   stacked-discount and external-payment cases. The runner selects a usable
   group deterministically through the Dotypos API and fails closed when none
   exists.
-- GitHub Actions variables `WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN` and, when
-  using a non-default ingest region, `WORKSPACE_E2E_POSTHOG_HOST` in the
-  `workspace-checkout-e2e` environment. The token is the public project ingest
-  token, never a management API key or secret.
 - `EMAIL_PROVIDER=console` for Preview. Browser cases exercise the complete
   email workflow without making external delivery attempts or consuming the
-  Resend plan. Keep `EMAIL_PROVIDER=resend` and `EMAIL_API_KEY` scoped to
-  Production.
+  Resend plan. Checkout and reservation mail use that configured default.
+  Auth ignores the global selection only for exact synthetic E2E magic-link
+  recipients: they force the shared Console transport (zero Resend sends),
+  and the account app feature then emits the single gated
+  `account.magic-link.preview-e2e` raw console line whose
+  `{code, recipient, message, text}` envelope is the E2E parser's stable wire
+  format. Non-synthetic auth uses the `EmailConfigLayer` configured default
+  provider, which may be Console. Preview keeps a send-only `EMAIL_API_KEY`
+  for Resend webhook verification and for the configured default whenever it
+  is Resend; a missing key fails closed only when that provider needs one.
 - The non-sensitive Preview-only
   `POSTHOG_FEATURE_FLAG_OVERRIDES={"accounts":true,"calendar_sales":true,"customer_discounts":true,"discount_codes":true,"meeting_room_page":true,"office_page":true}`.
   Account navigation E2E requires `accounts:true` even when the production
@@ -86,6 +90,20 @@ names. Inspect settings and deployment metadata without printing their values.
   `454784dd-380b-43a1-bae7-cc070bf1aec2`. Keep that event immutable so parallel
   happy-path cases cannot interfere with one another.
 - `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.
+
+This Vercel list is separate from the GitHub Actions
+`workspace-checkout-e2e` protected-environment contract, which must provide:
+
+- `WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN` and, when using a non-default ingest
+  region, `WORKSPACE_E2E_POSTHOG_HOST` as environment variables. The token is
+  the public project ingest token, never a management API key or secret.
+- `WORKSPACE_E2E_VERCEL_TOKEN` as a protected-environment SECRET and
+  `WORKSPACE_E2E_VERCEL_PROJECT` as its environment variable. Neither enters
+  Vercel or application configuration. The accepted secret is a Workspace
+  team PAT with history-read access; the runner treats it as opaque and does
+  not validate its scope. The user accepts this team access, and no
+  full-account key is required. Prefer narrower project authority if the
+  historical route supports it.
 
 Do not use production Nexi, Dotypos, or database credentials in Preview.
 Do not add callback-origin or BotID test-bypass overrides. Non-production
@@ -500,8 +518,31 @@ and uses it for:
 `DATABASE_URL`, `WORKSPACE_E2E_DATABASE_URL_UNPOOLED`, and
 `WORKSPACE_E2E_DATABASE_ALLOWLIST` must identify the database backing that same
 preview. `NEXI_API_ORIGIN` must be supplied explicitly as the sandbox origin.
-The runner does not deploy, pull Vercel environment files, inspect deployments,
-or mutate aliases/domains.
+The runner reads immutable deployment metadata to validate auth log retrieval.
+It does not deploy, pull Vercel environment files, or mutate aliases/domains.
+
+For auth-dependent cases the runner retrieves verification links through an
+automated account retrieval step. The exact immutable deployment, fixed event
+code, and exact synthetic E2E recipient are required to resolve exactly one
+unambiguous match; an ambiguous or empty lookup is a failure, not a match to
+pick from. The sensitive link is redacted from runner output and artifact
+files; the single Vercel runtime log line is the sole authorized place it
+remains visible.
+
+The account worker resolves the immutable deployment and queries the historical
+`https://vercel.com/api/logs/request-logs` route used by pinned Vercel CLI
+54.9.1, filtering by project, deployment, time, page, marker, baseline row IDs,
+and exact recipient. This is an internal CLI request-log contract rather than
+a documented public history API. The protected GitHub secret
+`WORKSPACE_E2E_VERCEL_TOKEN` is opaque to the runner and is sent only in a
+Bearer header. In the final-440 probe, the configured same-account Workspace
+team PAT returned HTTP 200 after deployment project and commit metadata
+matched. An earlier project PAT returned HTTP 403 on this route; the denial
+reason and general project-token support remain unknown. The probe establishes
+history-read access for the current credential only; it did not test drain
+creation or deletion. Keep the exact project, deployment, time, marker,
+baseline-row, and recipient filters. Require an exact protected-preview E2E
+pass before treating a delivered link as verified.
 
 The runner relies on Bun to load dotenv files before the entry module executes.
 `e2e/e2e-env.ts` is the only E2E boundary that reads `process.env`: it selects,
@@ -654,6 +695,43 @@ In the Workspace PostHog project:
    with `e2e.timeout_ms`; do not derive duration from log timestamps.
 6. Use `e2e.execution_context` to separate `manual` and `ci` runs, and inspect
    `e2e.outcome` plus `e2e.failure.kind` when a span did not pass.
+
+If the CLI catalog or SQL explorer cannot query native spans, use PostHog's
+`POST /api/projects/204184/tracing/spans/query/` endpoint with the saved-login
+auth helper. Bound the time range and use the exact run-attempt correlation:
+
+```json
+{
+  "query": {
+    "kind": "TraceSpansQuery",
+    "dateRange": { "date_from": "<UTC start>", "date_to": "<UTC end>" },
+    "serviceNames": ["deskohub-workspace-e2e"],
+    "filterGroup": {
+      "type": "AND",
+      "values": [
+        {
+          "type": "AND",
+          "values": [
+            {
+              "key": "e2e.run.id",
+              "value": "<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>",
+              "operator": "exact",
+              "type": "span_attribute"
+            }
+          ]
+        }
+      ]
+    },
+    "flatSpans": true,
+    "limit": 1000
+  }
+}
+```
+
+This requires `tracing:read` permission; a public ingest token cannot read
+traces. See the
+[Tracing API](https://posthog.com/docs/api/tracing). Keep the response in
+memory and report only the safe fields listed below.
 
 ### Investigating a failed run
 

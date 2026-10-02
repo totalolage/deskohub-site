@@ -46,6 +46,14 @@ export const workspaceE2EAccountDiagnosticCodes = [
   "postgres_account_fixture_assertion_failed",
   "postgres_account_fixture_convergence_failed",
   "dotypos_account_fixture_mutation_failed",
+  "account_profile_baseline_failed",
+  "account_profile_clean_navigation_failed",
+  "account_profile_draft_retention_failed",
+  "account_profile_hidden_billing_validation_failed",
+  "account_profile_header_dismissal_failed",
+  "account_profile_history_dismissal_failed",
+  "account_profile_discard_confirmation_failed",
+  "account_profile_persisted_restore_failed",
 ] as const;
 
 export const workspaceE2EDiagnosticCodes = [

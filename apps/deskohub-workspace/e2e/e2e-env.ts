@@ -6,8 +6,8 @@ import {
 } from "@deskohub/dotypos";
 import { createEnv } from "@t3-oss/env-core";
 import { Schema } from "effect";
-import { isAdminBasicAuthCredentialPair } from "./admin-basic-auth";
 import { urlStringSchema } from "../shared/utils/url-schema";
+import { isAdminBasicAuthCredentialPair } from "./admin-basic-auth";
 
 const toEnvironmentSchema = <S extends Schema.Decoder<unknown>>(schema: S) =>
   Schema.toStandardSchemaV1(schema);
@@ -77,7 +77,6 @@ export const e2eEnvironmentSchema = Schema.Struct({
     Schema.optional(Schema.String.check(Schema.isPattern(/^[1-9][0-9]*$/)))
   ),
   GITHUB_STEP_SUMMARY: optionalNonEmptyString,
-  HOME: optionalNonEmptyString,
   LANG: optionalNonEmptyString,
   NEXI_API_ORIGIN: url,
   PATH: optionalNonEmptyString,
@@ -89,7 +88,8 @@ export const e2eEnvironmentSchema = Schema.Struct({
   USER: optionalNonEmptyString,
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalNonEmptyString,
   WORKSPACE_E2E_ADMIN_BASIC_AUTH: optionalAdminBasicAuthPair,
-  WORKSPACE_E2E_RESEND_API_KEY: optionalNonEmptyString,
+  WORKSPACE_E2E_VERCEL_TOKEN: optionalNonEmptyString,
+  WORKSPACE_E2E_VERCEL_PROJECT: optionalNonEmptyString,
   WORKSPACE_E2E_EXECUTION_CONTEXT: toEnvironmentSchema(
     Schema.optional(Schema.Literals(["ci", "manual"]))
   ),
@@ -131,7 +131,6 @@ export const makeE2EEnvironment = (
       GITHUB_RUN_ATTEMPT: runtimeEnvironment.GITHUB_RUN_ATTEMPT,
       GITHUB_RUN_ID: runtimeEnvironment.GITHUB_RUN_ID,
       GITHUB_STEP_SUMMARY: runtimeEnvironment.GITHUB_STEP_SUMMARY,
-      HOME: runtimeEnvironment.HOME,
       LANG: runtimeEnvironment.LANG,
       NEXI_API_ORIGIN: runtimeEnvironment.NEXI_API_ORIGIN,
       PATH: runtimeEnvironment.PATH,
@@ -144,8 +143,9 @@ export const makeE2EEnvironment = (
         runtimeEnvironment.VERCEL_AUTOMATION_BYPASS_SECRET,
       WORKSPACE_E2E_ADMIN_BASIC_AUTH:
         runtimeEnvironment.WORKSPACE_E2E_ADMIN_BASIC_AUTH,
-      WORKSPACE_E2E_RESEND_API_KEY:
-        runtimeEnvironment.WORKSPACE_E2E_RESEND_API_KEY,
+      WORKSPACE_E2E_VERCEL_TOKEN: runtimeEnvironment.WORKSPACE_E2E_VERCEL_TOKEN,
+      WORKSPACE_E2E_VERCEL_PROJECT:
+        runtimeEnvironment.WORKSPACE_E2E_VERCEL_PROJECT,
       WORKSPACE_E2E_BASE_URL: runtimeEnvironment.WORKSPACE_E2E_BASE_URL,
       WORKSPACE_E2E_ALLOCATION_SHARD:
         runtimeEnvironment.WORKSPACE_E2E_ALLOCATION_SHARD,

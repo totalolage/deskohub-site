@@ -55,15 +55,12 @@ import {
   readSyntheticCustomerProfile,
 } from "./fixtures";
 import type { MagicLinkRateBudget } from "./rate-budget";
-import {
-  listSyntheticMessageIds,
-  retrieveWorkspaceE2EMagicLink,
-} from "./resend-retrieval";
 import type {
   WorkspaceE2EAccountCase,
   WorkspaceE2EAccountJournalRef,
   WorkspaceE2EAccountLifecycleHandoff,
 } from "./types";
+import type { WorkspaceE2EPreviewLogs } from "./vercel-log-retrieval";
 
 const acceptedTitle = "Check your inbox";
 const acceptedBody =
@@ -143,6 +140,7 @@ export type WorkspaceE2EAccountCaseInputs = {
    * could never carry the completed lifecycle between the account cases.
    */
   readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff;
+  readonly previewLogs: WorkspaceE2EPreviewLogs;
   readonly rateBudget: MagicLinkRateBudget;
   readonly run: Runner;
   readonly session: string;
@@ -158,6 +156,7 @@ export const makeWorkspaceE2EAccountCases = ({
   config,
   datasourceConfig,
   lifecycleHandoff,
+  previewLogs,
   rateBudget,
   run,
   session,
@@ -284,24 +283,25 @@ export const makeWorkspaceE2EAccountCases = ({
     });
 
   /**
-   * Bounded Resend retrieval for one delivered link. The ids observed before
-   * the request exclude every earlier message to the same recipient, so
-   * repeated sign-ins never match a stale message.
+   * The baseline IDs prevent repeated sign-ins from matching a stale link.
    */
   const retrieveSignInLink = (
     email: string,
-    observedMessageIds: readonly string[],
+    observedLogEntryIds: readonly string[],
     startedAt: Date
   ) =>
-    retrieveWorkspaceE2EMagicLink(config, {
+    previewLogs.retrieveMagicLink({
       callbackPath: `/${config.locale}${callbackSuffix}`,
-      excludeMessageIds: observedMessageIds,
+      excludeLogEntryIds: observedLogEntryIds,
       recipient: email,
       startedAt,
     });
 
-  const observeDeliveredMessageIds = (email: string) =>
-    listSyntheticMessageIds(config, email);
+  const observeDeliveredLogEntryIds = (email: string, startedAt: Date) =>
+    previewLogs.listSyntheticLogEntryIds({
+      recipient: email,
+      startedAt,
+    });
 
   const requireAuthUserId = (email: string) =>
     Effect.gen(function* () {
@@ -928,10 +928,10 @@ export const makeWorkspaceE2EAccountCases = ({
             })
           )
         );
-        const observedMessageIds = yield* runStep(
+        const observedLogEntryIds = yield* runStep(
           step(
-            "records the delivered message baseline",
-            observeDeliveredMessageIds(recipient),
+            "records the delivered log baseline",
+            observeDeliveredLogEntryIds(recipient, startedAt),
             providerTransition
           )
         );
@@ -958,7 +958,7 @@ export const makeWorkspaceE2EAccountCases = ({
         const reauthenticationLink = yield* runStep(
           step(
             "retrieves the delivered reauthentication link",
-            retrieveSignInLink(recipient, observedMessageIds, startedAt),
+            retrieveSignInLink(recipient, observedLogEntryIds, startedAt),
             authDeliveryTimeout
           )
         );
@@ -1141,10 +1141,10 @@ export const makeWorkspaceE2EAccountCases = ({
           )
         );
         const startedAt = new Date();
-        const observedMessageIds = yield* runStep(
+        const observedLogEntryIds = yield* runStep(
           step(
-            "records the delivered message baseline",
-            observeDeliveredMessageIds(recipient),
+            "records the delivered log baseline",
+            observeDeliveredLogEntryIds(recipient, startedAt),
             providerTransition
           )
         );
@@ -1161,7 +1161,7 @@ export const makeWorkspaceE2EAccountCases = ({
         const link = yield* runStep(
           step(
             "retrieves the reactivation link",
-            retrieveSignInLink(recipient, observedMessageIds, startedAt),
+            retrieveSignInLink(recipient, observedLogEntryIds, startedAt),
             authDeliveryTimeout
           )
         );

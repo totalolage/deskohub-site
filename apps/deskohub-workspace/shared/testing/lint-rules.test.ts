@@ -78,6 +78,72 @@ const directGenValue =
 const tracedLazyValue = (effectConstructor: string, suffix = "") =>
   `export const loadValue = Effect.fn("Workspace.loadValue")(() => Effect.${effectConstructor}${suffix});\n`;
 
+const blockBodiedComposed = `export const deliver = (request: string): Effect.Effect<string> => {
+  const routed = Effect.succeed(request);
+  return routed.pipe(Effect.andThen((value) => value));
+};\n`;
+const blockBodiedDirectPiped = `export const deliverPiped = (request: string): Effect.Effect<string> => {
+  return Effect.succeed(request).pipe(Effect.andThen((value) => value));
+};\n`;
+const blockBodiedEffectGen = `export const deliverGen = (request: string): Effect.Effect<string> => {
+  return Effect.gen(function* () { return yield* Effect.succeed(request); });
+};\n`;
+const blockBodiedMethodProperty = `export const makeDelivery = () => ({
+  deliver: (request: string): Effect.Effect<string> => {
+    return Effect.succeed(request).pipe(Effect.andThen((value) => value));
+  }
+});\n`;
+const blockBodiedPromise = `export const fetchUser = (id: string): Promise<string> => {
+  return Promise.resolve(id);
+};\n`;
+const blockBodiedNonEffect = `export const formatId = (id: string): string => {
+  return \`value-\${id}\`;
+};\n`;
+const blockBodiedEffectFnCallback = `export const loadValue = Effect.fn("Workspace.loadValue")((input: string): Effect.Effect<string> => {
+  return Effect.succeed(input).pipe(Effect.andThen((value) => value));
+});\n`;
+const blockBodiedBareSucceed = `export const makeValue = (input: string): Effect.Effect<string> => {
+  return Effect.succeed(input);
+};\n`;
+
+const blockBodiedInferred = `export const deliver = (request: string) => {
+  const routed = Effect.succeed(request);
+  return routed.pipe(Effect.andThen((value) => value));
+};\n`;
+const blockBodiedInferredDirect = `export const deliver = (request: string) => {
+  return Effect.succeed(request).pipe(Effect.map(value => value));
+};\n`;
+const blockBodiedAsyncPromise = `export const deliver = async (request: string) => {
+  return await fetch(request);
+};\n`;
+const blockBodiedInferredNonEffect = `export const deliver = (request: string) => {
+  return request.toUpperCase();
+};\n`;
+const blockBodiedMethod = `export const service = {
+  deliver(request: string) {
+    return Effect.succeed(request).pipe(Effect.map(value => value));
+  },
+};\n`;
+
+const servicePropertyInferred = `const implementation = Effect.gen(function* () {
+  return {
+    deliver: (request: string) => {
+      return Effect.succeed(request).pipe(Effect.map(value => value));
+    },
+  };
+});\n`;
+const servicePropertyTyped = `const implementation = Effect.gen(function* () {
+  return {
+    deliver: (request: string): Effect.Effect<string> => {
+      return Effect.succeed(request).pipe(Effect.map(value => value));
+    },
+  };
+});\n`;
+const inlineCallback = `export const load = Effect.fn("Workspace.load")(() => Effect.succeed("value").pipe(Effect.map((value) => value)));\n`;
+const inlineCallbackMethod = `export const load = Effect.fn("Workspace.load")(function* () { return yield* Effect.succeed("value").pipe(Effect.map((value) => value)); });\n`;
+const blockBodiedInlineCallback = `export const run = Effect.succeed("value").pipe(Effect.map((value) => { return Effect.succeed(value).pipe(Effect.map(v => v)); }));\n`;
+const blockBodiedInlineHandler = `export const run = Effect.succeed("value").pipe(Effect.catchTag("NotFound", (error) => { return Effect.succeed(error).pipe(Effect.map(value => value)); }));\n`;
+
 const reservations = "apps/deskohub-workspace/features/reservations";
 const booking = `${reservations}/book-seat.ts`;
 const generated =
@@ -112,10 +178,29 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["rejects a generator with two trailing transforms", traced(piped, twoTransforms), true],
       ["rejects a generator with three trailing transforms", traced(gen, threeTransforms), true],
       ["rejects the original apply-discount-code wrapper", applyDiscountCodeOriginal, true],
+      ["rejects a block-bodied arrow returning composed Effects", blockBodiedComposed, true],
+      ["rejects a block-bodied arrow returning Effect.succeed(...).pipe(...)", blockBodiedDirectPiped, true],
+      ["rejects a block-bodied arrow returning Effect.gen", blockBodiedEffectGen, true],
+      ["rejects a block-bodied method property returning composed Effects", blockBodiedMethodProperty, true],
+      ["rejects a block-bodied arrow with inferred return type", blockBodiedInferred, true],
+      ["rejects a block-bodied arrow with inferred return type returning direct pipe", blockBodiedInferredDirect, true],
+      ["rejects an inferred-return service property nested in Effect.gen", servicePropertyInferred, true],
+      ["rejects a typed-return service property nested in Effect.gen", servicePropertyTyped, true],
       ["permits the canonical generator callback", traced("function* (input: string) { return yield* Effect.succeed(input); }"), false],
       ["permits the canonical callback with many transforms", traced("function* (input: string) { return yield* Effect.succeed(input); }", threeTransforms), false],
       ["permits a non-generator Effect callback", arrowGen('Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key: string) => Effect.succeed(key).pipe(Effect.andThen((value) => value)));'), false],
       ["permits an async server bridge", 'export const bridgeReservation = async (input: string) => { "use server"; return Effect.runPromise(Effect.succeed(input)); };\n', false],
+      ["permits a block-bodied arrow returning Promise", blockBodiedPromise, false],
+      ["permits a block-bodied non-Effect arrow", blockBodiedNonEffect, false],
+      ["permits a block-bodied arrow already using Effect.fn", blockBodiedEffectFnCallback, false],
+      ["permits a block-bodied arrow returning bare Effect.succeed without pipe", blockBodiedBareSucceed, false],
+      ["permits a block-bodied async arrow returning a Promise", blockBodiedAsyncPromise, false],
+      ["permits a block-bodied arrow with inferred non-Effect return", blockBodiedInferredNonEffect, false],
+      ["permits an object shorthand method returning composed Effects", blockBodiedMethod, false],
+      ["permits a direct inline callback", inlineCallback, false],
+      ["permits a direct inline generator callback", inlineCallbackMethod, false],
+      ["permits a block-bodied inline callback argument", blockBodiedInlineCallback, false],
+      ["permits a block-bodied inline handler argument", blockBodiedInlineHandler, false],
     ],
   },
   {

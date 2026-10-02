@@ -1,6 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
-import { useState } from "react";
 import { type Locale, m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -29,24 +28,6 @@ type ActionResult = {
   readonly validationErrors?: unknown;
 };
 
-type ActionInput =
-  | MarketingPreferenceSaveInput
-  | MarketingManagementConfirmInput
-  | MarketingManagementClearInput;
-type Action = (input: ActionInput) => Promise<ActionResult>;
-
-type ActionOptions = {
-  readonly onError?: (args: { readonly error: unknown }) => void;
-  readonly onSuccess?: (args: {
-    readonly data?: unknown;
-    readonly input: unknown;
-  }) => void;
-  readonly onTransportError?: (args: {
-    readonly error: unknown;
-    readonly input: unknown;
-  }) => void;
-};
-
 const saveMarketingPreferencesAction = mock(
   (_input: MarketingPreferenceSaveInput): Promise<ActionResult> =>
     Promise.resolve({ data: { status: "saved" } })
@@ -69,34 +50,6 @@ mock.module("@/features/legal/actions", () => ({
 
 mock.module("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefresh }),
-}));
-
-mock.module("@/shared/utils/use-workspace-action", () => ({
-  useWorkspaceAction: (action: Action, options: ActionOptions) => {
-    const [result, setResult] = useState<ActionResult>({});
-    const [isExecuting, setIsExecuting] = useState(false);
-
-    const reset = () => setResult({});
-    const execute = (input: ActionInput) => {
-      setIsExecuting(true);
-      void action(input)
-        .then((nextResult) => {
-          setResult(nextResult);
-          setIsExecuting(false);
-          if (nextResult.serverError || nextResult.validationErrors) {
-            options.onError?.({ error: nextResult });
-            return;
-          }
-          options.onSuccess?.({ data: nextResult.data, input });
-        })
-        .catch((error: Error) => {
-          setIsExecuting(false);
-          options.onTransportError?.({ error, input });
-        });
-    };
-
-    return { execute, isExecuting, reset, result };
-  },
 }));
 
 const { MarketingPreferencesForm } = await import(
@@ -127,7 +80,11 @@ beforeAll(registerWorkspaceComponentTestEnv);
 
 afterEach(() => {
   cleanup();
-  saveMarketingPreferencesAction.mockClear();
+  saveMarketingPreferencesAction.mockReset();
+  saveMarketingPreferencesAction.mockImplementation(
+    (_input: MarketingPreferenceSaveInput): Promise<ActionResult> =>
+      Promise.resolve({ data: { status: "saved" } })
+  );
   confirmMarketingManagementAction.mockClear();
   clearMarketingManagementAction.mockClear();
   routerRefresh.mockClear();
@@ -261,7 +218,6 @@ test("saves a grant immediately without a confirmation gate", async () => {
       source: "link",
     });
   });
-  expect(routerRefresh).toHaveBeenCalledTimes(1);
   await waitFor(() => {
     expect(
       view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
@@ -272,6 +228,7 @@ test("saves a grant immediately without a confirmation gate", async () => {
         m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
       ).getAttribute("aria-checked")
     ).toBe("true");
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -385,6 +342,59 @@ test("keeps a deferred save single-flight and announces the pending state", asyn
   });
 });
 
+test("permits a second toggle after a settled save and blocks duplicates while pending", async () => {
+  let resolveFirstSave!: (result: ActionResult) => void;
+  saveMarketingPreferencesAction.mockImplementationOnce(
+    () =>
+      new Promise<ActionResult>((resolve) => {
+        resolveFirstSave = resolve;
+      })
+  );
+  const context = "synthetic-account-context";
+  const view = renderForm({
+    context,
+    source: "account",
+    status: "absent",
+  });
+  const marketingSwitch = getSwitch(
+    view,
+    m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+  );
+
+  fireEvent.click(marketingSwitch);
+  await waitFor(() => {
+    expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
+    expect(marketingSwitch.hasAttribute("disabled")).toBe(true);
+  });
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(marketingSwitch);
+  expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
+
+  resolveFirstSave({ data: { status: "saved" } });
+  await waitFor(() =>
+    expect(marketingSwitch.hasAttribute("disabled")).toBe(false)
+  );
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
+
+  fireEvent.click(marketingSwitch);
+  await waitFor(() => {
+    expect(marketingSwitch.hasAttribute("disabled")).toBe(false);
+    expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(2);
+    expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
+      confirmed: true,
+      context,
+      granted: false,
+      locale: "en-US",
+      source: "account",
+    });
+    expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
+    expect(
+      view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
+    ).toBeTruthy();
+    expect(routerRefresh).toHaveBeenCalledTimes(2);
+  });
+});
+
 test("preserves the server-authoritative switch on a save failure and allows retry", async () => {
   let rejectFirst!: (result: ActionResult) => void;
   saveMarketingPreferencesAction.mockImplementationOnce(
@@ -460,12 +470,12 @@ test("announces a rejected save request with localized copy and allows a success
     expect(view.getByRole("alert").textContent).toBe(
       m.marketingPreferencesFormSaveError({}, { locale: "en-US" })
     );
+    expect(marketingSwitch.hasAttribute("disabled")).toBe(false);
   });
   // The feedback block renders inside the managed row's support column, not
   // as a loose sibling of the row article.
   expect(getArticle(view).contains(view.getByRole("alert"))).toBe(true);
   expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
-  expect(marketingSwitch.hasAttribute("disabled")).toBe(false);
   expect(routerRefresh).not.toHaveBeenCalled();
 
   fireEvent.click(
@@ -486,10 +496,10 @@ test("announces a rejected save request with localized copy and allows a success
       ).getAttribute("aria-checked")
     ).toBe("true");
     expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
+    ).toBeTruthy();
   });
-  expect(
-    view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
-  ).toBeTruthy();
 });
 
 test.each([
@@ -554,6 +564,14 @@ test.each([
         Promise.resolve({ serverError: "Synthetic preference save failure" })
       );
     }
+    await waitFor(() =>
+      expect(
+        getSwitch(
+          view,
+          m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+        ).hasAttribute("disabled")
+      ).toBe(false)
+    );
     fireEvent.click(
       getSwitch(
         view,
@@ -587,11 +605,13 @@ test("keeps a pending dedicated-link context inaccessible until Continue and pre
 
   await waitFor(() => {
     expect(confirmMarketingManagementAction).toHaveBeenCalledWith({ context });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      view.getByText(
+        m.marketingPreferencesFormConfirmed({}, { locale: "en-US" })
+      )
+    ).toBeTruthy();
   });
-  expect(routerRefresh).toHaveBeenCalledTimes(1);
-  expect(
-    view.getByText(m.marketingPreferencesFormConfirmed({}, { locale: "en-US" }))
-  ).toBeTruthy();
   expect(view.container.textContent).not.toContain(context);
 });
 
@@ -673,6 +693,14 @@ test("resets a stale save error when the dismissal context changes", async () =>
       "Synthetic stale save failure"
     );
   });
+  await waitFor(() =>
+    expect(
+      getSwitch(
+        view,
+        m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+      ).hasAttribute("disabled")
+    ).toBe(false)
+  );
 
   view.rerender(
     <MarketingPreferencesForm
@@ -798,9 +826,17 @@ test.each(["en-US", "cs-CZ"] as const)(
       });
       expect(routerRefresh).toHaveBeenCalledTimes(1);
     });
-    expect(
-      view.getByText(m.marketingPreferencesFormSaved({}, { locale }))
-    ).toBeTruthy();
+    await waitFor(() => {
+      expect(
+        getSwitch(
+          view,
+          m.marketingPreferencesFormRowTitle({}, { locale })
+        ).hasAttribute("disabled")
+      ).toBe(false);
+      expect(
+        view.getByText(m.marketingPreferencesFormSaved({}, { locale }))
+      ).toBeTruthy();
+    });
   }
 );
 
@@ -824,10 +860,12 @@ test("keeps a pending dedicated link usable when accounts are disabled", async (
 
   await waitFor(() => {
     expect(confirmMarketingManagementAction).toHaveBeenCalledWith({ context });
+    expect(
+      view.getByText(
+        m.marketingPreferencesFormConfirmed({}, { locale: "en-US" })
+      )
+    ).toBeTruthy();
   });
-  expect(
-    view.getByText(m.marketingPreferencesFormConfirmed({}, { locale: "en-US" }))
-  ).toBeTruthy();
 });
 
 test("keeps an invalid dedicated link out of the account flow without a fallback", () => {
@@ -902,8 +940,8 @@ test("offers an explicit clear action for a valid dedicated-link context", async
     expect(clearMarketingManagementAction).toHaveBeenCalledWith({
       context: dismissalContext,
     });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
   });
-  expect(routerRefresh).toHaveBeenCalledTimes(1);
 });
 
 test.each(["absent", "active", "withdrawn"] as const)(
@@ -956,11 +994,11 @@ test("clears a pending dedicated-link context with its dismissal context", async
     expect(clearMarketingManagementAction).toHaveBeenCalledWith({
       context: dismissalContext,
     });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
+    ).toBeTruthy();
   });
-  expect(routerRefresh).toHaveBeenCalledTimes(1);
-  expect(
-    view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
-  ).toBeTruthy();
 });
 
 test("keeps a pending dedicated link after clear failure and allows retry", async () => {
@@ -1031,13 +1069,13 @@ test("clears an invalid dedicated-link context without writing consent", async (
     expect(clearMarketingManagementAction).toHaveBeenCalledWith({
       context: dismissalContext,
     });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
+    ).toBeTruthy();
   });
   expect(saveMarketingPreferencesAction).not.toHaveBeenCalled();
   expect(confirmMarketingManagementAction).not.toHaveBeenCalled();
-  expect(routerRefresh).toHaveBeenCalledTimes(1);
-  expect(
-    view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
-  ).toBeTruthy();
 });
 
 test("disables the explicit invalid-link clear action while it is busy", async () => {
