@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
@@ -29,12 +30,16 @@ type CheckoutStepLink =
     };
 
 export const checkoutFlowSteps = [
+  { key: "chooseSpace", getLabel: m.checkoutOrderStepChooseSpace },
   { key: "order", getLabel: m.checkoutOrderStepReservation },
   { key: "pay", getLabel: m.checkoutOrderStepPayment },
   { key: "access", getLabel: m.checkoutOrderStepAccess },
 ] as const;
 
-export type CheckoutStepKey = (typeof checkoutFlowSteps)[number]["key"];
+export type CheckoutStepKey = Exclude<
+  (typeof checkoutFlowSteps)[number]["key"],
+  "chooseSpace"
+>;
 
 export function CheckoutSteps({
   activeStepKey,
@@ -43,31 +48,46 @@ export function CheckoutSteps({
 }: CheckoutStepsProps) {
   return (
     <ol
-      className="grid gap-2 sm:grid-cols-3"
+      className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
       aria-label={m.checkoutOrderStepsLabel({}, { locale })}
     >
       {checkoutFlowSteps.map((step, index) => {
+        const isAlwaysCompleted = step.key === "chooseSpace";
         const isCurrentStep = step.key === activeStepKey;
-        const link = stepLinks?.[step.key];
+        const link =
+          step.key === "chooseSpace" ? undefined : stepLinks?.[step.key];
         const content = (
           <>
             <span
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                isCurrentStep
-                  ? "bg-burned-orange text-white"
-                  : "border border-white/18 text-white/64"
+                isAlwaysCompleted && "bg-aquamarine-green text-aquamarine-ink",
+                !isAlwaysCompleted &&
+                  isCurrentStep &&
+                  "bg-burned-orange text-white",
+                !isAlwaysCompleted &&
+                  !isCurrentStep &&
+                  "border border-white/18 text-white/64"
               )}
             >
-              {index + 1}
+              {isAlwaysCompleted ? (
+                <Check aria-hidden="true" className="size-4" />
+              ) : (
+                index + 1
+              )}
             </span>
-            <span className={cn(isCurrentStep && "text-white")}>
+            <span className={cn("min-w-0", isCurrentStep && "text-white")}>
               {step.getLabel({}, { locale })}
             </span>
+            {isAlwaysCompleted && (
+              <span className="sr-only">
+                {m.checkoutOrderStepCompleted({}, { locale })}
+              </span>
+            )}
           </>
         );
         const className = cn(
-          "flex items-center gap-3 rounded-2xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/68",
+          "flex min-w-0 items-center gap-3 rounded-2xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/68 lg:gap-2 lg:px-3 lg:text-xs lg:tracking-[0.08em]",
           link &&
             "transition hover:border-white/28 hover:bg-white/12 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
         );
@@ -92,7 +112,11 @@ export function CheckoutSteps({
         }
 
         return (
-          <li key={step.key} aria-current={isCurrentStep ? "step" : undefined}>
+          <li
+            key={step.key}
+            className="min-w-0"
+            aria-current={isCurrentStep ? "step" : undefined}
+          >
             {stepContent}
           </li>
         );

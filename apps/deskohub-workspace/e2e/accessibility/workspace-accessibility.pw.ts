@@ -1,5 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, type TestInfo, test } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type TestInfo,
+  test,
+} from "@playwright/test";
+import { m } from "@/features/i18n";
 import { enablePreviewAccess } from "../instant-navigation/navigation-test-helpers";
 
 const axeTags = [
@@ -113,6 +120,71 @@ test("contact fields expose native required semantics", async ({ page }) => {
   );
 });
 
+const checkoutProgressPages = [
+  {
+    currentStepLabel: m.checkoutOrderStepReservation,
+    path: "/reservation/cowork",
+  },
+  {
+    currentStepLabel: m.checkoutOrderStepPayment,
+    path: "/checkout/pay",
+  },
+] as const;
+
+for (const locale of locales) {
+  for (const { currentStepLabel, path } of checkoutProgressPages) {
+    test(`checkout progress on ${locale} ${path}`, async ({ page }) => {
+      await openSettledPage(page, `/${locale}${path}`);
+
+      const stepsList = page.getByRole("list", {
+        name: m.checkoutOrderStepsLabel({}, { locale }),
+      });
+      await expect(stepsList).toBeVisible();
+      expect(await stepsList.evaluate((list) => list.tagName)).toBe("OL");
+
+      const items = stepsList.getByRole("listitem");
+      await expect(items).toHaveCount(4);
+
+      const chooseSpaceLabel = m.checkoutOrderStepChooseSpace({}, { locale });
+      const completedLabel = m.checkoutOrderStepCompleted({}, { locale });
+      const chooseSpaceItem = items.nth(0);
+      await expect(chooseSpaceItem).toContainText(chooseSpaceLabel);
+      await expect(chooseSpaceItem.locator("span.sr-only")).toHaveText(
+        completedLabel
+      );
+      await expect(chooseSpaceItem.locator("svg.lucide-check")).toHaveCount(1);
+      expect(await chooseSpaceItem.getAttribute("aria-current")).toBeNull();
+      await expect(chooseSpaceItem.getByRole("link")).toHaveCount(0);
+      await expect(stepsList.getByText("1", { exact: true })).toHaveCount(0);
+
+      const currentItems = stepsList.locator('[aria-current="step"]');
+      await expect(currentItems).toHaveCount(1);
+      await expect(currentItems).toContainText(
+        currentStepLabel({}, { locale })
+      );
+
+      const numberedSteps = [
+        {
+          label: m.checkoutOrderStepReservation({}, { locale }),
+          number: "2",
+        },
+        { label: m.checkoutOrderStepPayment({}, { locale }), number: "3" },
+        { label: m.checkoutOrderStepAccess({}, { locale }), number: "4" },
+      ] as const;
+      for (const [offset, { label, number }] of numberedSteps.entries()) {
+        const numberedItem = items.nth(offset + 1);
+        await expect(numberedItem.locator("span").first()).toHaveText(number);
+        await expect(numberedItem).toContainText(label);
+      }
+
+      await expectCheckoutProgressLabelsFit(page, stepsList, [
+        chooseSpaceLabel,
+        ...numberedSteps.map((step) => step.label),
+      ]);
+    });
+  }
+}
+
 async function openSettledPage(page: Page, path: string) {
   await page.goto(path, { waitUntil: "load" });
   await expect(page.locator("html")).toHaveAttribute("lang", /^(en-US|cs-CZ)$/);
@@ -120,6 +192,104 @@ async function openSettledPage(page: Page, path: string) {
   await expect(page.locator('[aria-busy="true"]')).toHaveCount(0, {
     timeout: 20_000,
   });
+}
+
+async function expectCheckoutProgressLabelsFit(
+  page: Page,
+  stepsList: Locator,
+  labels: readonly string[]
+) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+
+  const issues = await stepsList.evaluate((list, expectedLabels) => {
+    const tolerance = 1;
+    const labelSet = new Set(expectedLabels);
+    const listRect = list.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const foundIssues: string[] = [];
+
+    if (
+      listRect.left < -tolerance ||
+      listRect.right > viewportWidth + tolerance
+    ) {
+      foundIssues.push(
+        `progress list overflows the viewport (left=${listRect.left}, right=${listRect.right}, viewportWidth=${viewportWidth})`
+      );
+    }
+    if (
+      list instanceof HTMLElement &&
+      list.scrollWidth > list.clientWidth + tolerance
+    ) {
+      foundIssues.push(
+        `progress list content overflows (scrollWidth=${list.scrollWidth}, clientWidth=${list.clientWidth})`
+      );
+    }
+
+    for (const item of Array.from(list.querySelectorAll(":scope > li"))) {
+      const card = item.firstElementChild;
+      if (!(card instanceof HTMLElement)) {
+        foundIssues.push("progress step card is missing");
+        continue;
+      }
+      const cardRect = card.getBoundingClientRect();
+      if (
+        cardRect.left < listRect.left - tolerance ||
+        cardRect.right > listRect.right + tolerance ||
+        cardRect.top < listRect.top - tolerance ||
+        cardRect.bottom > listRect.bottom + tolerance
+      ) {
+        foundIssues.push("progress step card overflows the progress list");
+      }
+      if (card.scrollWidth > card.clientWidth + tolerance) {
+        foundIssues.push("progress step card content overflows its box");
+      }
+
+      const label = Array.from(card.querySelectorAll("span")).find(
+        (span) =>
+          !span.classList.contains("sr-only") &&
+          labelSet.has(span.textContent?.trim() ?? "")
+      );
+      if (!(label instanceof HTMLElement)) {
+        foundIssues.push("progress step label is missing");
+        continue;
+      }
+      const labelText = label.textContent?.trim() ?? "";
+      const labelRect = label.getBoundingClientRect();
+      if (label.scrollWidth > label.clientWidth + tolerance) {
+        foundIssues.push(
+          `label "${labelText}" content overflows its box (scrollWidth=${label.scrollWidth}, clientWidth=${label.clientWidth})`
+        );
+      }
+      if (
+        labelRect.left < cardRect.left - tolerance ||
+        labelRect.right > cardRect.right + tolerance ||
+        labelRect.top < cardRect.top - tolerance ||
+        labelRect.bottom > cardRect.bottom + tolerance
+      ) {
+        foundIssues.push(`label "${labelText}" overflows its progress card`);
+      }
+      if (
+        labelRect.left < listRect.left - tolerance ||
+        labelRect.right > listRect.right + tolerance ||
+        labelRect.top < listRect.top - tolerance ||
+        labelRect.bottom > listRect.bottom + tolerance
+      ) {
+        foundIssues.push(`label "${labelText}" overflows the progress list`);
+      }
+      if (
+        labelRect.left < -tolerance ||
+        labelRect.right > viewportWidth + tolerance
+      ) {
+        foundIssues.push(`label "${labelText}" overflows the viewport`);
+      }
+    }
+
+    return foundIssues;
+  }, labels);
+
+  expect(issues, issues.join("\n")).toEqual([]);
 }
 
 async function expectAxeClean(page: Page, testInfo: TestInfo) {
