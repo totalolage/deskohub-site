@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { getTableColumns } from "drizzle-orm";
 import { Effect, Layer } from "effect";
-import { workspaceReservations } from "@/db/schema";
+import { orders, workspaceReservations } from "@/db/schema";
 import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
 import {
   WorkspaceReservationRepository,
@@ -32,7 +32,7 @@ const makeRepository = async () => {
 // The recording database answers in pg's array row mode: build positional
 // rows from the table's column order.
 const reservationRowBase = {
-  id: "reservation-1",
+  id: "00000000-0000-4000-8000-000000000001",
   checkoutSessionKey: "session-1",
   checkoutAttemptKey: "attempt-key-1",
   correlationId: "correlation-1",
@@ -66,6 +66,27 @@ const sqlTextsOf = (
   recording: Awaited<ReturnType<typeof makeRecordingWorkspaceDatabase>>
 ) => recording.statements.map(({ sql }) => sql);
 
+/** Transactional transitions record BEGIN/COMMIT first; grab the update. */
+const reservationUpdateOf = (
+  recording: Awaited<ReturnType<typeof makeRecordingWorkspaceDatabase>>
+) =>
+  recording.statements.find(({ sql }) =>
+    sql.startsWith('update "workspace_reservations"')
+  ) ?? recording.statements[0]!;
+
+/**
+ * The order mirror upsert returns the mirrored order row; canned rows must be
+ * complete because the orders table decodes every column positionally.
+ */
+const orderRowValues = { kind: "reservation" };
+
+const orderRow = () =>
+  Object.entries(getTableColumns(orders)).map(([propertyKey]) =>
+    propertyKey === "id"
+      ? reservationRowBase.id
+      : (orderRowValues[propertyKey as keyof typeof orderRowValues] ?? null)
+  );
+
 describe("WorkspaceReservationRepository", () => {
   test("selects expired holds in a deterministic starvation-safe limited order", async () => {
     const { recording, repository } = await makeRepository();
@@ -97,7 +118,7 @@ describe("WorkspaceReservationRepository", () => {
     const error = await Effect.runPromise(
       Effect.flip(
         repository.recordHoldCleanupSkipped({
-          id: "reservation-1" as never,
+          id: "00000000-0000-4000-8000-000000000001" as never,
           holdExpiredAt: now,
           failureCode: "provider_unavailable",
         })
@@ -105,7 +126,9 @@ describe("WorkspaceReservationRepository", () => {
     );
 
     expect(error).toBeInstanceOf(WorkspaceReservationStateError);
-    const { sql, params } = recording.statements[0];
+    const { sql, params } = recording.statements.find(({ sql }) =>
+      sql.startsWith('update "workspace_reservations"')
+    )!;
     const setClause = sql.slice(0, sql.toLowerCase().indexOf(" where "));
     expect(setClause).toContain('"reservation_hold_expired_at" = $');
     expect(setClause).toContain('"failure_code" = $');
@@ -123,13 +146,13 @@ describe("WorkspaceReservationRepository", () => {
 
     const claimed = await Effect.runPromise(
       repository.claimPaidFulfillment({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         staleProcessingBefore: staleBefore,
       })
     );
 
     expect(claimed).toBeNull();
-    const { sql, params } = recording.statements[0];
+    const { sql, params } = reservationUpdateOf(recording);
     expect(sql).toContain('"fulfillment_state" = $');
     expect(params).toContain("processing");
     expect(params).toContain("paid");
@@ -145,11 +168,16 @@ describe("WorkspaceReservationRepository", () => {
   test("marks paid Nexi attempts as requiring a refund with admin cancellation fencing", async () => {
     const { recording, repository } = await makeRepository();
     const claimedAt = Temporal.Instant.from("2026-01-01T10:00:00.000Z");
-    recording.setRows([[["reservation-1"]], []]);
+    recording.setRows([
+      [["attempt-1"]], // paid Nexi attempts locked for refund handling
+      [reservationRow({ activePaymentAttemptId: "attempt-1" })],
+      [orderRow()], // order mirror upsert
+      [], // refund-required attempt update
+    ]);
 
     await Effect.runPromise(
       repository.markAdministrationCancelled({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         cancelledAt: now,
         claimedAt,
         failureCode: "operator_cancelled",
@@ -159,8 +187,10 @@ describe("WorkspaceReservationRepository", () => {
     const reservationUpdate = recording.statements.find(({ sql }) =>
       sql.startsWith('update "workspace_reservations"')
     );
-    const attemptUpdate = recording.statements.find(({ sql }) =>
-      sql.startsWith('update "payment_attempts"')
+    const attemptUpdate = recording.statements.find(
+      ({ sql }) =>
+        sql.startsWith('update "payment_attempts"') &&
+        sql.includes('"refund_state"')
     );
     expect(reservationUpdate).toBeDefined();
     expect(attemptUpdate).toBeDefined();
@@ -171,6 +201,15 @@ describe("WorkspaceReservationRepository", () => {
     expect(
       (reservationUpdate?.params ?? []).some((param) =>
         String(param).startsWith("2026-01-01T10:00:00")
+      )
+    ).toBe(true);
+    // The order mirror ran after the reservation update; it is
+    // reservation → order only and never touches payment attempts.
+    expect(
+      recording.statements.some(
+        ({ sql }) =>
+          sql.startsWith('insert into "orders"') &&
+          sql.includes('on conflict ("id")')
       )
     ).toBe(true);
     expect(attemptUpdate?.sql).toContain('"refund_state" = $');
@@ -187,7 +226,7 @@ describe("WorkspaceReservationRepository", () => {
     const error = await Effect.runPromise(
       Effect.flip(
         repository.markAdministrationCancellationFailed({
-          id: "reservation-1" as never,
+          id: "00000000-0000-4000-8000-000000000001" as never,
           claimedAt,
           failureCode: "provider_rejected_cancellation",
         })
@@ -195,7 +234,9 @@ describe("WorkspaceReservationRepository", () => {
     );
 
     expect(error).toBeInstanceOf(WorkspaceReservationStateError);
-    const { sql, params } = recording.statements[0];
+    const { sql, params } = recording.statements.find(({ sql }) =>
+      sql.startsWith('update "workspace_reservations"')
+    )!;
     expect(sql).toContain('"reservation_state" = $');
     expect(params).toContain("cancellation_failed");
     expect(params).toContain("provider_rejected_cancellation");
@@ -210,7 +251,7 @@ describe("WorkspaceReservationRepository", () => {
 
     const claimed = await Effect.runPromise(
       repository.claimAdministrationCancellation({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         providerCredentialRemoved: false,
         accessGrantUpdatedAt: null,
         staleCancellingBefore: staleBefore,
@@ -231,7 +272,9 @@ describe("WorkspaceReservationRepository", () => {
     const { recording, repository } = await makeRepository();
     recording.setRows([
       [], // access grant lookup
-      [reservationRow()], // claimed reservation row
+      [["attempt-1"]], // attempt-first lock before the reservation update
+      [reservationRow({ activePaymentAttemptId: "attempt-1" })], // claimed reservation row
+      [orderRow()], // order mirror upsert
       [["attempt-1"]], // cancelled payment attempt
       [], // discount claim lookup for release
       [], // voucher claim lookup for release
@@ -239,7 +282,7 @@ describe("WorkspaceReservationRepository", () => {
 
     await Effect.runPromise(
       repository.claimAdministrationCancellation({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         providerCredentialRemoved: true,
         accessGrantUpdatedAt: null,
         staleCancellingBefore: staleBefore,
@@ -258,8 +301,10 @@ describe("WorkspaceReservationRepository", () => {
     expect(guardStatement?.params).toContain("pending");
     expect(guardStatement?.params).toContain("attempt-1");
     expect(guardStatement?.params).toContain("provider_abandoned");
-    const attemptUpdate = recording.statements.find(({ sql }) =>
-      sql.startsWith('update "payment_attempts"')
+    const attemptUpdate = recording.statements.find(
+      ({ sql }) =>
+        sql.startsWith('update "payment_attempts"') &&
+        sql.includes('"state" = $')
     );
     expect(attemptUpdate?.sql).toContain('update "payment_attempts"');
     expect(attemptUpdate?.params).toContain("cancelled");
@@ -279,16 +324,18 @@ describe("WorkspaceReservationRepository", () => {
           "2026-01-01T09:59:00.000Z",
         ],
       ],
-      [reservationRow()],
-      [["attempt-1"]],
-      [],
+      [["attempt-1"]], // attempt-first lock before the reservation update
+      [reservationRow({ activePaymentAttemptId: "attempt-1" })],
+      [orderRow()], // order mirror upsert
+      [["attempt-1"]], // cancelled payment attempt
+      [], // discount claim lookup for release
       [],
       [["grant-1"]],
     ]);
 
     await Effect.runPromise(
       repository.claimAdministrationCancellation({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         providerCredentialRemoved: true,
         accessGrantUpdatedAt: "2026-01-01T09:59:00Z",
         staleCancellingBefore: staleBefore,
@@ -313,13 +360,13 @@ describe("WorkspaceReservationRepository", () => {
 
     const recovered = await Effect.runPromise(
       repository.recoverEmailDeliveryFailure({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         deliveredAt: now,
       })
     );
 
     expect(recovered).toBeNull();
-    const { sql, params } = recording.statements[0];
+    const { sql, params } = reservationUpdateOf(recording);
     expect(params).toContain("paid");
     expect(params).toContain("failed");
     expect(sql).toContain('"fulfillment_failed_at" is not null');
@@ -335,14 +382,14 @@ describe("WorkspaceReservationRepository", () => {
 
     const failed = await Effect.runPromise(
       repository.markFulfillmentDeliveryFailed({
-        id: "reservation-1" as never,
+        id: "00000000-0000-4000-8000-000000000001" as never,
         failureCode: "fulfillment_email_failed",
         failedAt: now,
       })
     );
 
     expect(failed).toBeNull();
-    const { sql, params } = recording.statements[0];
+    const { sql, params } = reservationUpdateOf(recording);
     expect(params).toContain("failed");
     expect(params).toContain("fulfillment_email_failed");
     expect(sql).toContain('"fulfilled_at" is not null');
@@ -359,18 +406,19 @@ describe("WorkspaceReservationRepository", () => {
     const error = await Effect.runPromise(
       Effect.flip(
         repository.markFulfilled({
-          id: "reservation-1" as never,
+          id: "00000000-0000-4000-8000-000000000001" as never,
           fulfilledAt: now,
         })
       )
     );
 
     expect(error).toBeInstanceOf(WorkspaceReservationStateError);
-    const { sql, params } = recording.statements[0];
-    expect(sql).toContain('"fulfillment_state" = $');
+    const { sql, params } = reservationUpdateOf(recording);
+    const setClause = sql.slice(0, sql.toLowerCase().indexOf(" where "));
+    expect(setClause).toContain('"fulfillment_state" = $');
     expect(params).toContain("processing");
     expect(params).not.toContain("failed");
-    expect(sql).not.toContain('"fulfillment_failure_code"');
+    expect(setClause).not.toContain('"fulfillment_failure_code"');
   });
 
   test("selects expired local Dotypos holds for availability filtering", async () => {

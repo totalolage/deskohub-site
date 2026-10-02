@@ -9,6 +9,7 @@ import {
   paymentAttempts,
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import { orderIdSchema } from "@/features/order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 
 export const toPaymentAttempt = (attempt: PaymentAttemptRow) => {
@@ -16,6 +17,11 @@ export const toPaymentAttempt = (attempt: PaymentAttemptRow) => {
 
   return {
     ...paymentAttempt,
+    // Reservation attempts mirror their ledger order one-to-one
+    // (orders.id = workspace_reservation_id); every writer attaches order_id.
+    orderId: orderIdSchema.make(
+      attempt.orderId ?? attempt.workspaceReservationId
+    ),
     amount: {
       value: amountValue,
       exponent: amountExponent,

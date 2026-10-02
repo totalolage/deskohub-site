@@ -112,7 +112,7 @@ const sendResendWebhook = async (input: {
 };
 
 const newRouteReservationId = () =>
-  workspaceReservationIdSchema.make(`reservation-${crypto.randomUUID()}`);
+  workspaceReservationIdSchema.make(crypto.randomUUID());
 const newRouteEmailId = () =>
   EmailDeliveryIdSchema.make(`resend-${crypto.randomUUID()}`);
 

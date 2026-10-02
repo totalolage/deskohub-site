@@ -7,7 +7,7 @@ import type {
   NexiOrderId,
   NexiWebhookEventId,
 } from "@deskohub/nexi";
-import { and, count, eq, inArray, sql } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -22,6 +22,7 @@ import {
   discountCodes,
   discountProductTargets,
   discounts,
+  latePaymentRecoveries,
   paymentAttempts,
   promotionCodeCustomers,
   promotionCodes,
@@ -71,6 +72,8 @@ import { getWorkspaceProductTarget } from "@/features/discounts/product-target";
 import { getPromotionTiming } from "@/features/discounts/promotion-code";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
 import { type Locale, m } from "@/features/i18n";
+import { orderIdSchema } from "@/features/order";
+import { ensureReservationOrder } from "@/features/order/backend/reservation-order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
@@ -99,6 +102,16 @@ export interface PaymentLifecycleTransition {
   readonly changed: boolean;
   readonly timestamp: Temporal.Instant;
 }
+
+/**
+ * Private rollback signal for markTerminal's insert-race retry: failing the
+ * transaction (instead of returning a sentinel) rolls back the attempt
+ * mutation the iteration already made, and the error is caught immediately
+ * outside db.transaction — it never escapes this repository.
+ */
+class TerminalReplayRetry extends Data.TaggedError("TerminalReplayRetry")<{
+  readonly reason: "recoveryRowAppeared";
+}> {}
 
 export type PaymentLifecycleRepositoryError =
   | AccountingDocumentSnapshotStorageError
@@ -210,19 +223,13 @@ export class PaymentLifecycleRepository extends Context.Service<
         const commitment = getDiscountCommitmentPayload(input.commitment);
         const claimedApplication =
           yield* validateDiscountCommitment(commitment);
+        const orderId = orderIdSchema.make(input.workspaceReservationId);
 
         return yield* db
           .transaction(
             Effect.fn(function* (tx) {
               const [reservation] = yield* tx
-                .select({
-                  id: workspaceReservations.id,
-                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-                  dotyposReservationId:
-                    workspaceReservations.dotyposReservationId,
-                  reservationHoldExpiresAt:
-                    workspaceReservations.reservationHoldExpiresAt,
-                })
+                .select()
                 .from(workspaceReservations)
                 .where(
                   and(
@@ -259,6 +266,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                 });
               }
 
+              yield* ensureReservationOrder({ tx, reservation });
+
               yield* validateAccountingDocumentSnapshotProviderIdentity({
                 snapshot: accountingSnapshot,
                 paymentReference: {
@@ -273,6 +282,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 .insert(paymentAttempts)
                 .values({
                   id: postgresUuidV7,
+                  orderId,
                   workspaceReservationId: input.workspaceReservationId,
                   provider: "nexi",
                   providerOrderId: input.providerOrderId,
@@ -316,7 +326,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                     ])
                   )
                 )
-                .returning({ id: workspaceReservations.id });
+                .returning();
 
               if (!linked) {
                 return yield* new PaymentLifecycleStateError({
@@ -330,6 +340,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                     "Payment attempts can only be linked to held unpaid reservations.",
                 });
               }
+              yield* ensureReservationOrder({ tx, reservation: linked });
 
               const applicationRows = yield* persistDiscountApplications({
                 tx,
@@ -402,45 +413,19 @@ export class PaymentLifecycleRepository extends Context.Service<
           );
         }
 
-        return yield* db
-          .transaction(
-            Effect.fn(function* (tx) {
-              const [reservation] = yield* tx
-                .select({
-                  id: workspaceReservations.id,
-                  activePaymentAttemptId:
-                    workspaceReservations.activePaymentAttemptId,
-                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-                  dotyposReservationId:
-                    workspaceReservations.dotyposReservationId,
-                  paidAt: workspaceReservations.paidAt,
-                  paymentState: workspaceReservations.paymentState,
-                  reservationHoldExpiresAt:
-                    workspaceReservations.reservationHoldExpiresAt,
-                  reservationState: workspaceReservations.reservationState,
-                })
-                .from(workspaceReservations)
-                .where(
-                  eq(workspaceReservations.id, input.workspaceReservationId)
-                )
-                .limit(1)
-                .for("update");
-
-              const paidAt = Temporal.Now.instant();
-
-              if (
-                reservation?.paymentState === "paid" &&
-                reservation.activePaymentAttemptId
-              ) {
-                const [existingAttempt] = yield* tx
-                  .select()
+        while (true) {
+          const result = yield* db
+            .transaction(
+              Effect.fn(function* (tx) {
+                // Lock all current paid internal attempts before the
+                // reservation. If a legacy writer makes a new attempt active
+                // after this scan, the locked-row check below restarts in a
+                // fresh transaction before mirroring or relinking.
+                const lockedInternalAttempts = yield* tx
+                  .select({ id: paymentAttempts.id })
                   .from(paymentAttempts)
                   .where(
                     and(
-                      eq(
-                        paymentAttempts.id,
-                        reservation.activePaymentAttemptId
-                      ),
                       eq(
                         paymentAttempts.workspaceReservationId,
                         input.workspaceReservationId
@@ -449,170 +434,237 @@ export class PaymentLifecycleRepository extends Context.Service<
                       eq(paymentAttempts.state, "paid")
                     )
                   )
-                  .limit(1);
+                  .for("no key update");
+                const lockedInternalAttemptIds = new Set(
+                  lockedInternalAttempts.map(({ id }) => id)
+                );
+
+                const [reservation] = yield* tx
+                  .select()
+                  .from(workspaceReservations)
+                  .where(
+                    eq(workspaceReservations.id, input.workspaceReservationId)
+                  )
+                  .limit(1)
+                  .for("update");
+
+                const paidAt = Temporal.Now.instant();
 
                 if (
-                  existingAttempt &&
-                  workspaceMoneyEquals(
-                    toPaymentAttempt(existingAttempt).amount,
-                    input.amount
+                  reservation?.paymentState === "paid" &&
+                  reservation.activePaymentAttemptId
+                ) {
+                  const [existingAttempt] = yield* tx
+                    .select()
+                    .from(paymentAttempts)
+                    .where(
+                      and(
+                        eq(
+                          paymentAttempts.id,
+                          reservation.activePaymentAttemptId
+                        ),
+                        eq(
+                          paymentAttempts.workspaceReservationId,
+                          input.workspaceReservationId
+                        ),
+                        eq(paymentAttempts.provider, "internal"),
+                        eq(paymentAttempts.state, "paid")
+                      )
+                    )
+                    .limit(1);
+
+                  if (
+                    existingAttempt &&
+                    workspaceMoneyEquals(
+                      toPaymentAttempt(existingAttempt).amount,
+                      input.amount
+                    )
+                  ) {
+                    if (
+                      existingAttempt.orderId === null &&
+                      !lockedInternalAttemptIds.has(existingAttempt.id)
+                    ) {
+                      return { retry: true as const };
+                    }
+
+                    yield* ensureReservationOrder({ tx, reservation });
+                    if (existingAttempt.orderId === null) {
+                      yield* relinkLegacyAttemptOrder(tx, {
+                        id: existingAttempt.id,
+                        workspaceReservationId: input.workspaceReservationId,
+                      });
+                    }
+                    return {
+                      attempt: toPaymentAttempt(existingAttempt),
+                      changed: false,
+                      timestamp:
+                        reservation.paidAt ?? existingAttempt.updatedAt,
+                    };
+                  }
+                }
+
+                if (
+                  reservation?.reservationState !== "held" ||
+                  !reservation.reservationHoldExpiresAt ||
+                  Temporal.Instant.compare(
+                    reservation.reservationHoldExpiresAt,
+                    paidAt
+                  ) <= 0 ||
+                  !["not_started", "failed", "cancelled", "expired"].includes(
+                    reservation.paymentState
                   )
                 ) {
-                  return {
-                    attempt: toPaymentAttempt(existingAttempt),
-                    changed: false,
-                    timestamp: reservation.paidAt ?? existingAttempt.updatedAt,
-                  };
+                  return yield* lifecycleStateError(
+                    "completeInternalPayment",
+                    {
+                      type: "workspaceReservationId",
+                      id: input.workspaceReservationId,
+                    },
+                    "Internal payments can only complete a current held unpaid reservation."
+                  );
                 }
-              }
 
-              if (
-                reservation?.reservationState !== "held" ||
-                !reservation.reservationHoldExpiresAt ||
-                Temporal.Instant.compare(
-                  reservation.reservationHoldExpiresAt,
-                  paidAt
-                ) <= 0 ||
-                !["not_started", "failed", "cancelled", "expired"].includes(
-                  reservation.paymentState
-                )
-              ) {
-                return yield* lifecycleStateError(
-                  "completeInternalPayment",
-                  {
+                yield* validateAccountingDocumentSnapshotProviderIdentity({
+                  snapshot: accountingSnapshot,
+                  paymentReference: {
                     type: "workspaceReservationId",
                     id: input.workspaceReservationId,
                   },
-                  "Internal payments can only complete a current held unpaid reservation."
-                );
-              }
+                  dotyposCustomerId: reservation.dotyposCustomerId,
+                  dotyposReservationId: reservation.dotyposReservationId,
+                });
 
-              yield* validateAccountingDocumentSnapshotProviderIdentity({
-                snapshot: accountingSnapshot,
-                paymentReference: {
-                  type: "workspaceReservationId",
-                  id: input.workspaceReservationId,
-                },
-                dotyposCustomerId: reservation.dotyposCustomerId,
-                dotyposReservationId: reservation.dotyposReservationId,
-              });
+                const accountingSnapshotKey =
+                  yield* accountingSnapshotKeys.getActive.pipe(
+                    Effect.mapError(
+                      () =>
+                        new AccountingDocumentSnapshotStorageError({
+                          operation: "encrypt",
+                          paymentReference: {
+                            type: "workspaceReservationId",
+                            id: input.workspaceReservationId,
+                          },
+                          message:
+                            "Accounting snapshot encryption key is unavailable.",
+                        })
+                    )
+                  );
 
-              const accountingSnapshotKey =
-                yield* accountingSnapshotKeys.getActive.pipe(
-                  Effect.mapError(
-                    () =>
-                      new AccountingDocumentSnapshotStorageError({
-                        operation: "encrypt",
-                        paymentReference: {
-                          type: "workspaceReservationId",
-                          id: input.workspaceReservationId,
-                        },
-                        message:
-                          "Accounting snapshot encryption key is unavailable.",
-                      })
-                  )
-                );
+                // Repair a missing order row before the attempt insert so the
+                // attempt's order foreign key cannot fail on legacy rows.
+                yield* ensureReservationOrder({ tx, reservation });
 
-              const [attemptRow] = yield* tx
-                .insert(paymentAttempts)
-                .values({
-                  id: postgresUuidV7,
+                const [attemptRow] = yield* tx
+                  .insert(paymentAttempts)
+                  .values({
+                    id: postgresUuidV7,
+                    orderId: orderIdSchema.make(input.workspaceReservationId),
+                    workspaceReservationId: input.workspaceReservationId,
+                    provider: "internal",
+                    providerOrderId: null,
+                    state: "paid",
+                    amountValue: input.amount.value,
+                    amountExponent: input.amount.exponent,
+                    currency: input.amount.currency,
+                    createdAt: paidAt,
+                    updatedAt: paidAt,
+                  })
+                  .returning();
+
+                if (!attemptRow) {
+                  return yield* Effect.die(
+                    "Internal payment attempt insert returned no row."
+                  );
+                }
+
+                yield* persistAccountingDocumentSnapshot({
+                  tx,
+                  paymentAttemptId: attemptRow.id,
                   workspaceReservationId: input.workspaceReservationId,
-                  provider: "internal",
-                  providerOrderId: null,
-                  state: "paid",
-                  amountValue: input.amount.value,
-                  amountExponent: input.amount.exponent,
-                  currency: input.amount.currency,
-                  createdAt: paidAt,
-                  updatedAt: paidAt,
-                })
-                .returning();
+                  snapshot: accountingSnapshot,
+                  key: accountingSnapshotKey,
+                });
 
-              if (!attemptRow) {
-                return yield* Effect.die(
-                  "Internal payment attempt insert returned no row."
-                );
-              }
-
-              yield* persistAccountingDocumentSnapshot({
-                tx,
-                paymentAttemptId: attemptRow.id,
-                workspaceReservationId: input.workspaceReservationId,
-                snapshot: accountingSnapshot,
-                key: accountingSnapshotKey,
-              });
-
-              const [completedReservation] = yield* tx
-                .update(workspaceReservations)
-                .set({
-                  activePaymentAttemptId: attemptRow.id,
-                  paymentState: "paid",
-                  paidAt,
-                  failureCode: null,
-                  updatedAt: paidAt,
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    inArray(workspaceReservations.paymentState, [
-                      "not_started",
-                      "failed",
-                      "cancelled",
-                      "expired",
-                    ])
+                const [completedReservation] = yield* tx
+                  .update(workspaceReservations)
+                  .set({
+                    activePaymentAttemptId: attemptRow.id,
+                    paymentState: "paid",
+                    paidAt,
+                    failureCode: null,
+                    updatedAt: paidAt,
+                  })
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.id,
+                        input.workspaceReservationId
+                      ),
+                      eq(workspaceReservations.reservationState, "held"),
+                      inArray(workspaceReservations.paymentState, [
+                        "not_started",
+                        "failed",
+                        "cancelled",
+                        "expired",
+                      ])
+                    )
                   )
-                )
-                .returning({ id: workspaceReservations.id });
+                  .returning();
 
-              if (!completedReservation) {
-                return yield* lifecycleStateError(
-                  "completeInternalPayment",
-                  { type: "paymentAttemptId", id: attemptRow.id },
-                  "Internal payment could not atomically complete the held reservation."
-                );
-              }
+                if (!completedReservation) {
+                  return yield* lifecycleStateError(
+                    "completeInternalPayment",
+                    { type: "paymentAttemptId", id: attemptRow.id },
+                    "Internal payment could not atomically complete the held reservation."
+                  );
+                }
+                yield* ensureReservationOrder({
+                  tx,
+                  reservation: completedReservation,
+                });
 
-              const applicationRows = yield* persistDiscountApplications({
-                tx,
-                commitment,
-                paymentAttemptId: attemptRow.id,
-                workspaceReservationId: input.workspaceReservationId,
-              });
-              const claimedAt = yield* reserveCommittedCodeClaim({
-                tx,
-                claimedApplication,
-                applicationRows,
-                paymentAttemptId: attemptRow.id,
-                locale: input.locale,
-                reservationCustomerId: reservation.dotyposCustomerId,
-                reservationExpiresAt: reservation.reservationHoldExpiresAt,
-              });
-              if (claimedAt) {
-                yield* redeemCodeClaim(tx, attemptRow.id, claimedAt);
-              }
+                const applicationRows = yield* persistDiscountApplications({
+                  tx,
+                  commitment,
+                  paymentAttemptId: attemptRow.id,
+                  workspaceReservationId: input.workspaceReservationId,
+                });
+                const claimedAt = yield* reserveCommittedCodeClaim({
+                  tx,
+                  claimedApplication,
+                  applicationRows,
+                  paymentAttemptId: attemptRow.id,
+                  locale: input.locale,
+                  reservationCustomerId: reservation.dotyposCustomerId,
+                  reservationExpiresAt: reservation.reservationHoldExpiresAt,
+                });
+                if (claimedAt) {
+                  yield* redeemCodeClaim(tx, attemptRow.id, claimedAt);
+                }
 
-              return {
-                attempt: toPaymentAttempt(attemptRow),
-                changed: true,
-                timestamp: paidAt,
-              };
-            })
-          )
-          .pipe(
-            Effect.catchIf(isActiveClaimUniqueViolation, (cause) =>
-              Effect.fail(
-                new DiscountClaimError({
-                  operation: "reserve",
-                  reason: "claim_conflict",
-                  message:
-                    "The discount code was claimed by another payment attempt.",
-                  cause,
-                })
-              )
+                return {
+                  attempt: toPaymentAttempt(attemptRow),
+                  changed: true,
+                  timestamp: paidAt,
+                };
+              })
             )
-          );
+            .pipe(
+              Effect.catchIf(isActiveClaimUniqueViolation, (cause) =>
+                Effect.fail(
+                  new DiscountClaimError({
+                    operation: "reserve",
+                    reason: "claim_conflict",
+                    message:
+                      "The discount code was claimed by another payment attempt.",
+                    cause,
+                  })
+                )
+              )
+            );
+          if ("retry" in result) continue;
+          return result;
+        }
       });
 
       const attachProviderSession = Effect.fn(
@@ -654,6 +706,36 @@ export class PaymentLifecycleRepository extends Context.Service<
         return toPaymentAttempt(attempt);
       });
 
+      // Old writers left their payment attempts without order linkage.
+      // Repair it here, while the caller already holds the attempt row lock
+      // and ensureReservationOrder has guaranteed the order row exists. The
+      // reservation id is the order id, so the persisted application-level
+      // linkage remains exact even though the mirrored active-attempt scalar
+      // has no database FK.
+      const relinkLegacyAttemptOrder = Effect.fn(
+        "PaymentLifecycleRepository.relinkLegacyAttemptOrder"
+      )(function* (
+        tx: Parameters<
+          Parameters<WorkspaceDatabaseClient["transaction"]>[0]
+        >[0],
+        input: {
+          readonly id: PaymentAttemptId;
+          readonly workspaceReservationId: WorkspaceReservationId;
+        }
+      ) {
+        yield* tx
+          .update(paymentAttempts)
+          .set({
+            orderId: orderIdSchema.make(input.workspaceReservationId) as never,
+          })
+          .where(
+            and(
+              eq(paymentAttempts.id, input.id),
+              isNull(paymentAttempts.orderId)
+            )
+          );
+      });
+
       const markPaid = Effect.fn("PaymentLifecycleRepository.markPaid")(
         function* (input: {
           readonly id: PaymentAttemptId;
@@ -665,6 +747,15 @@ export class PaymentLifecycleRepository extends Context.Service<
         }) {
           return yield* db.transaction(
             Effect.fn(function* (tx) {
+              // Lock-order contract: payment attempt → reservation → order.
+              // The attempt-first anchor matches the deployed old writers, so
+              // old-new overlap during a rolling deploy serializes instead of
+              // inverting into a deadlock.
+              // Lock mode: this leading UPDATE only writes non-key attempt
+              // columns (state, failure_code, webhook/provider bookkeeping),
+              // so Postgres takes a NO KEY UPDATE-strength row lock that
+              // conflicts with old FOR UPDATE writers and other new payment
+              // writers before this transaction locks the reservation.
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
@@ -699,59 +790,80 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              const [reservation] = yield* tx
-                .update(workspaceReservations)
-                .set({
-                  paymentState: "paid",
-                  paidAt: input.paidAt,
-                  failureCode: null,
-                  updatedAt: input.paidAt,
-                })
+              // The attempt row is locked, so these conditions cannot change
+              // underneath us between the check and the update.
+              const [locked] = yield* tx
+                .select()
+                .from(workspaceReservations)
                 .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    eq(workspaceReservations.paymentState, "pending"),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
+                  eq(workspaceReservations.id, input.workspaceReservationId)
                 )
-                .returning({ paidAt: workspaceReservations.paidAt });
+                .limit(1)
+                .for("update");
 
-              if (reservation) {
+              // The row is transaction-locked, so these conditions cannot
+              // change underneath us between the check and the update.
+              if (
+                locked?.reservationState === "held" &&
+                locked.paymentState === "pending" &&
+                locked.activePaymentAttemptId === input.id
+              ) {
+                const [reservation] = yield* tx
+                  .update(workspaceReservations)
+                  .set({
+                    paymentState: "paid",
+                    paidAt: input.paidAt,
+                    failureCode: null,
+                    updatedAt: input.paidAt,
+                  })
+                  .where(eq(workspaceReservations.id, locked.id))
+                  .returning();
+
+                yield* ensureReservationOrder({
+                  tx,
+                  reservation: reservation!,
+                });
+                yield* relinkLegacyAttemptOrder(tx, {
+                  id: input.id,
+                  workspaceReservationId: input.workspaceReservationId,
+                });
                 yield* redeemCodeClaim(tx, input.id, input.paidAt);
                 return {
                   attempt: toPaymentAttempt(attempt),
                   changed: true,
-                  timestamp: reservation.paidAt ?? input.paidAt,
+                  timestamp: reservation!.paidAt ?? input.paidAt,
                 };
               }
 
-              const [consistent] = yield* tx
-                .select({ paidAt: workspaceReservations.paidAt })
-                .from(workspaceReservations)
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.paymentState, "paid"),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
-                )
-                .limit(1);
+              // Idempotent replay: the locked authoritative row is also the
+              // repair point, so a missing or stale order mirror left by an
+              // old writer is repaired here too, before reporting that
+              // nothing changed.
+              if (
+                locked &&
+                locked.paymentState === "paid" &&
+                locked.activePaymentAttemptId === input.id
+              ) {
+                yield* ensureReservationOrder({ tx, reservation: locked });
 
-              if (!consistent) {
-                return yield* lifecycleStateError(
-                  "markPaid",
-                  { type: "paymentAttemptId", id: input.id },
-                  "Only the active pending attempt on a held reservation can mark payment paid."
-                );
+                yield* relinkLegacyAttemptOrder(tx, {
+                  id: input.id,
+                  workspaceReservationId: input.workspaceReservationId,
+                });
+
+                yield* redeemCodeClaim(tx, input.id, input.paidAt);
+                return {
+                  attempt: toPaymentAttempt(attempt),
+                  changed: false,
+                  timestamp: locked.paidAt ?? input.paidAt,
+                };
               }
 
-              yield* redeemCodeClaim(tx, input.id, input.paidAt);
-              return {
-                attempt: toPaymentAttempt(attempt),
-                changed: false,
-                timestamp: consistent.paidAt ?? input.paidAt,
-              };
+              return yield* lifecycleStateError(
+                "markPaid",
+                { type: "paymentAttemptId", id: input.id },
+                "Only the active pending attempt on a held reservation can mark payment paid."
+              );
             })
           );
         }
@@ -769,106 +881,197 @@ export class PaymentLifecycleRepository extends Context.Service<
         }) {
           const terminalAt = Temporal.Now.instant();
 
-          return yield* db.transaction(
-            Effect.fn(function* (tx) {
-              const [attempt] = yield* tx
-                .update(paymentAttempts)
-                .set({
-                  state: input.state,
-                  failureCode: input.failureCode,
-                  lastWebhookEventId: input.webhookEventId,
-                  lastProviderOperationId: input.providerOperationId,
-                  lastProviderStatus: input.providerStatus,
-                  updatedAt: terminalAt,
+          while (true) {
+            const result = yield* db
+              .transaction(
+                Effect.fn(function* (tx) {
+                  // Terminal-replay serialization: a deployed late-payment
+                  // settlement locks recovery row → reservation → attempt. A
+                  // matching-terminal replay that locked the attempt first would
+                  // invert that order into a mixed-version deadlock, so anchor on
+                  // any recovery row for this attempt BEFORE the attempt lock.
+                  // With no recovery row this select locks nothing and the
+                  // attempt-first payment order below is unchanged.
+                  // Lock mode: FOR NO KEY UPDATE — the replay never writes the
+                  // recovery row, so this is the weakest mode that still
+                  // serializes against the settlement's FOR UPDATE.
+                  const [recoveryAnchor] = yield* tx
+                    .select({
+                      paymentAttemptId: latePaymentRecoveries.paymentAttemptId,
+                    })
+                    .from(latePaymentRecoveries)
+                    .where(eq(latePaymentRecoveries.paymentAttemptId, input.id))
+                    .limit(1)
+                    .for("no key update");
+
+                  // Lock-order contract: payment attempt → reservation → order.
+                  // The attempt-first anchor matches the deployed old writers, so
+                  // old-new overlap during a rolling deploy serializes instead of
+                  // inverting into a deadlock.
+                  // Lock mode: same as markPaid — the leading UPDATE writes only
+                  // non-key attempt columns, so Postgres takes a NO KEY
+                  // UPDATE-strength row lock and serializes against old and new
+                  // payment writers before the reservation lock.
+                  const [attempt] = yield* tx
+                    .update(paymentAttempts)
+                    .set({
+                      state: input.state,
+                      failureCode: input.failureCode,
+                      lastWebhookEventId: input.webhookEventId,
+                      lastProviderOperationId: input.providerOperationId,
+                      lastProviderStatus: input.providerStatus,
+                      updatedAt: terminalAt,
+                    })
+                    .where(
+                      and(
+                        eq(paymentAttempts.id, input.id),
+                        eq(
+                          paymentAttempts.workspaceReservationId,
+                          input.workspaceReservationId
+                        ),
+                        inArray(paymentAttempts.state, [
+                          "created",
+                          "pending",
+                          input.state,
+                        ])
+                      )
+                    )
+                    .returning();
+
+                  if (!attempt) {
+                    return yield* lifecycleStateError(
+                      "markTerminal",
+                      { type: "paymentAttemptId", id: input.id },
+                      "Only a non-terminal or matching terminal attempt can mark a reservation terminal."
+                    );
+                  }
+
+                  // Insert race: when the anchor above found no recovery row, a
+                  // recovery start could still have committed between the anchor
+                  // and the attempt lock we now hold. Recheck WITHOUT taking a
+                  // recovery lock while holding the attempt: if a row appeared,
+                  // roll back and restart so the next iteration's anchor acquires
+                  // the recovery lock first (same retry shape as
+                  // completeInternalPayment). With the recovery row anchored, the
+                  // reservation work below serializes after old settlement
+                  // instead of inverting into a deadlock.
+                  if (!recoveryAnchor) {
+                    const [appeared] = yield* tx
+                      .select({
+                        paymentAttemptId:
+                          latePaymentRecoveries.paymentAttemptId,
+                      })
+                      .from(latePaymentRecoveries)
+                      .where(
+                        eq(latePaymentRecoveries.paymentAttemptId, input.id)
+                      )
+                      .limit(1);
+                    if (appeared) {
+                      // Fail (not return) so db.transaction ROLLS BACK the
+                      // attempt mutation this iteration already made instead of
+                      // committing it ahead of the retry.
+                      return yield* new TerminalReplayRetry({
+                        reason: "recoveryRowAppeared",
+                      });
+                    }
+                  }
+
+                  // The attempt row is locked, so these conditions cannot change
+                  // underneath us between the check and the update.
+                  const [locked] = yield* tx
+                    .select()
+                    .from(workspaceReservations)
+                    .where(
+                      eq(workspaceReservations.id, input.workspaceReservationId)
+                    )
+                    .limit(1)
+                    .for("update");
+
+                  // The row is transaction-locked, so these conditions cannot
+                  // change underneath us between the check and the update.
+                  if (
+                    locked?.reservationState === "held" &&
+                    locked.paymentState === "pending" &&
+                    locked.activePaymentAttemptId === input.id
+                  ) {
+                    const [reservation] = yield* tx
+                      .update(workspaceReservations)
+                      .set({
+                        paymentState: input.state,
+                        failureCode: input.failureCode,
+                        updatedAt: terminalAt,
+                      })
+                      .where(eq(workspaceReservations.id, locked.id))
+                      .returning();
+
+                    yield* ensureReservationOrder({
+                      tx,
+                      reservation: reservation!,
+                    });
+                    yield* relinkLegacyAttemptOrder(tx, {
+                      id: input.id,
+                      workspaceReservationId: input.workspaceReservationId,
+                    });
+                    yield* releaseCodeClaim(
+                      tx,
+                      input.id,
+                      terminalAt,
+                      input.failureCode
+                    );
+                    return {
+                      attempt: toPaymentAttempt(attempt),
+                      changed: true,
+                      timestamp: reservation!.updatedAt,
+                    };
+                  }
+
+                  // Idempotent replay: the locked authoritative row is also the
+                  // repair point, so a missing or stale order mirror left by an
+                  // old writer is repaired here too, before reporting that
+                  // nothing changed.
+                  if (
+                    locked &&
+                    locked.paymentState === input.state &&
+                    locked.activePaymentAttemptId === input.id
+                  ) {
+                    yield* ensureReservationOrder({ tx, reservation: locked });
+
+                    yield* relinkLegacyAttemptOrder(tx, {
+                      id: input.id,
+                      workspaceReservationId: input.workspaceReservationId,
+                    });
+
+                    yield* releaseCodeClaim(
+                      tx,
+                      input.id,
+                      terminalAt,
+                      input.failureCode
+                    );
+                    return {
+                      attempt: toPaymentAttempt(attempt),
+                      changed: false,
+                      timestamp: locked.updatedAt,
+                    };
+                  }
+
+                  return yield* lifecycleStateError(
+                    "markTerminal",
+                    { type: "paymentAttemptId", id: input.id },
+                    "Only the active pending attempt on a held reservation can mark payment terminal."
+                  );
                 })
-                .where(
-                  and(
-                    eq(paymentAttempts.id, input.id),
-                    eq(
-                      paymentAttempts.workspaceReservationId,
-                      input.workspaceReservationId
-                    ),
-                    inArray(paymentAttempts.state, [
-                      "created",
-                      "pending",
-                      input.state,
-                    ])
-                  )
+              )
+              .pipe(
+                // The rollback signal is private to this repository: convert it
+                // back into the retry sentinel once the transaction has rolled
+                // back.
+                Effect.catchTag("TerminalReplayRetry", () =>
+                  Effect.succeed({ retry: true as const })
                 )
-                .returning();
-
-              if (!attempt) {
-                return yield* lifecycleStateError(
-                  "markTerminal",
-                  { type: "paymentAttemptId", id: input.id },
-                  "Only a non-terminal or matching terminal attempt can mark a reservation terminal."
-                );
-              }
-
-              const [reservation] = yield* tx
-                .update(workspaceReservations)
-                .set({
-                  paymentState: input.state,
-                  failureCode: input.failureCode,
-                  updatedAt: terminalAt,
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    eq(workspaceReservations.paymentState, "pending"),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
-                )
-                .returning({ updatedAt: workspaceReservations.updatedAt });
-
-              if (reservation) {
-                yield* releaseCodeClaim(
-                  tx,
-                  input.id,
-                  terminalAt,
-                  input.failureCode
-                );
-                return {
-                  attempt: toPaymentAttempt(attempt),
-                  changed: true,
-                  timestamp: reservation.updatedAt,
-                };
-              }
-
-              const [consistent] = yield* tx
-                .select({ updatedAt: workspaceReservations.updatedAt })
-                .from(workspaceReservations)
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.paymentState, input.state),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
-                )
-                .limit(1);
-
-              if (!consistent) {
-                return yield* lifecycleStateError(
-                  "markTerminal",
-                  { type: "paymentAttemptId", id: input.id },
-                  "Only the active pending attempt on a held reservation can mark payment terminal."
-                );
-              }
-
-              yield* releaseCodeClaim(
-                tx,
-                input.id,
-                terminalAt,
-                input.failureCode
               );
-              return {
-                attempt: toPaymentAttempt(attempt),
-                changed: false,
-                timestamp: consistent.updatedAt,
-              };
-            })
-          );
+            if ("retry" in result) continue;
+            return result;
+          }
         }
       );
 

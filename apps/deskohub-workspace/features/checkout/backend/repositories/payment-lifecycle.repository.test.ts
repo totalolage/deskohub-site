@@ -3,7 +3,7 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { getTableColumns } from "drizzle-orm";
 import { Effect, Layer, Schema } from "effect";
-import { paymentAttempts } from "@/db/schema";
+import { orders, paymentAttempts, workspaceReservations } from "@/db/schema";
 import {
   type AccountingDocumentSnapshot,
   accountingDocumentSnapshotSchema,
@@ -38,6 +38,7 @@ const makeSource = (): AccountingDocumentSnapshot => {
   return Schema.decodeUnknownSync(accountingDocumentSnapshotSchema)({
     ...identity,
     supplier,
+    workspaceReservationId: "00000000-0000-4000-8000-000000000001",
     billing: {
       purpose: "personal",
       invoice: "none",
@@ -62,9 +63,57 @@ const makeRepository = async () => {
 
 // The recording database answers in pg's array row mode: build positional
 // rows from the table's column order.
+const attemptRowValues = {
+  id: "attempt-1",
+  workspaceReservationId: "00000000-0000-4000-8000-000000000001",
+  provider: "nexi",
+  state: "created",
+  amountValue: 35_000,
+  amountExponent: 2,
+  currency: "CZK",
+};
+
 const attemptRow = (): readonly unknown[] =>
-  Object.entries(getTableColumns(paymentAttempts)).map(([propertyKey]) =>
-    propertyKey === "id" ? "attempt-1" : null
+  Object.entries(getTableColumns(paymentAttempts)).map(
+    ([propertyKey]) =>
+      attemptRowValues[propertyKey as keyof typeof attemptRowValues] ?? null
+  );
+
+// The order mirror upsert returns the mirrored order row; the canned row must
+// be complete because the orders table decodes every column positionally.
+const orderRowValues = {
+  id: "00000000-0000-4000-8000-000000000001",
+  kind: "reservation",
+};
+
+const orderRow = (): readonly unknown[] =>
+  Object.entries(getTableColumns(orders)).map(
+    ([propertyKey]) =>
+      orderRowValues[propertyKey as keyof typeof orderRowValues] ?? null
+  );
+
+const heldReservationRowValues = {
+  id: "00000000-0000-4000-8000-000000000001",
+  checkoutSessionKey: "session-1",
+  checkoutAttemptKey: "attempt-key-1",
+  correlationId: "correlation-1",
+  dotyposCustomerId: "dotypos-customer-1",
+  dotyposReservationId: "dotypos-reservation-1",
+  reservationState: "held",
+  paymentState: "not_started",
+  fulfillmentState: "not_started",
+  locale: "en-US",
+  reservationHoldExpiresAt: "2099-01-01T00:00:00Z",
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
+
+const heldReservationRow = (): readonly unknown[] =>
+  Object.entries(getTableColumns(workspaceReservations)).map(
+    ([propertyKey]) =>
+      heldReservationRowValues[
+        propertyKey as keyof typeof heldReservationRowValues
+      ] ?? null
   );
 
 describe("PaymentLifecycleRepository", () => {
@@ -73,22 +122,17 @@ describe("PaymentLifecycleRepository", () => {
     const snapshot = makeSource();
     recording.setRows([
       // BEGIN
-      [
-        [
-          "reservation-1",
-          "dotypos-customer-1",
-          "dotypos-reservation-1",
-          "2099-01-01T00:00:00Z",
-        ],
-      ],
+      [heldReservationRow()], // locking the current held reservation
+      [orderRow()], // order mirror upsert
       [attemptRow()],
       [], // snapshot insert
-      [["reservation-1"]], // linking the attempt to the held reservation
+      [heldReservationRow()], // linking the attempt to the held reservation
+      [orderRow()], // order mirror upsert after linking
     ]);
 
     await Effect.runPromise(
       repository.createPendingNexiAttempt({
-        workspaceReservationId: "reservation-1" as never,
+        workspaceReservationId: "00000000-0000-4000-8000-000000000001" as never,
         providerOrderId: "order-1" as never,
         amount: snapshot.quote.payment.expectedPrice,
         commitment: makeDiscountCommitment({
