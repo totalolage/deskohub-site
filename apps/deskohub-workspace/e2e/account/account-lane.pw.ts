@@ -48,6 +48,10 @@ import {
   mobileAccountReviewTargetBySection,
 } from "./review-targets";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
+import {
+  openWorkspaceE2EPreviewLogStream,
+  type WorkspaceE2EPreviewLogStream,
+} from "./vercel-log-retrieval";
 
 const accountReviewCaptureFailureMessage =
   "Account review screenshot capture failed";
@@ -60,6 +64,7 @@ type WorkspaceE2EAccountLane = {
    * it stays in memory only and never joins the cleanup journal.
    */
   readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff;
+  readonly previewLogStream: WorkspaceE2EPreviewLogStream;
   readonly journalRef: {
     readonly journal: WorkspaceE2EAccountJournal;
     readonly record: (update: {
@@ -88,7 +93,7 @@ const accountTest = runtimeTest.extend<
   WorkspaceE2EAccountWorkerFixtures
 >({
   accountLane: [
-    async ({ browser, environment, runContext }, applyFixture) => {
+    async ({ browser, environment, runContext, runEffect }, applyFixture) => {
       const config = getAccountE2EConfig(environment, runContext.runId);
       const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
       const lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff = {};
@@ -122,14 +127,25 @@ const accountTest = runtimeTest.extend<
         },
       };
       try {
-        await applyFixture({
-          config,
-          lifecycleHandoff,
-          journalRef,
-          rateBudget: makeMagicLinkRateBudget(),
-          run,
-          session: `workspace-account-e2e-${runContext.runId}`,
-        });
+        await runEffect(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const previewLogStream =
+                yield* openWorkspaceE2EPreviewLogStream(config);
+              yield* Effect.promise(() =>
+                applyFixture({
+                  config,
+                  lifecycleHandoff,
+                  journalRef,
+                  previewLogStream,
+                  rateBudget: makeMagicLinkRateBudget(),
+                  run,
+                  session: `workspace-account-e2e-${runContext.runId}`,
+                })
+              );
+            })
+          )
+        );
       } finally {
         await run.close?.();
       }
@@ -152,6 +168,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         config: accountLane.config,
         datasourceConfig,
         lifecycleHandoff: accountLane.lifecycleHandoff,
+        previewLogStream: accountLane.previewLogStream,
         rateBudget: accountLane.rateBudget,
         run: accountLane.run,
         session: accountLane.session,

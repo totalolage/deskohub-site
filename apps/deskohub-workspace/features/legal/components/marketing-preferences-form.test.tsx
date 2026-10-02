@@ -218,7 +218,6 @@ test("saves a grant immediately without a confirmation gate", async () => {
       source: "link",
     });
   });
-  expect(routerRefresh).toHaveBeenCalledTimes(1);
   await waitFor(() => {
     expect(
       view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
@@ -229,6 +228,7 @@ test("saves a grant immediately without a confirmation gate", async () => {
         m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
       ).getAttribute("aria-checked")
     ).toBe("true");
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -605,11 +605,13 @@ test("keeps a pending dedicated-link context inaccessible until Continue and pre
 
   await waitFor(() => {
     expect(confirmMarketingManagementAction).toHaveBeenCalledWith({ context });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      view.getByText(
+        m.marketingPreferencesFormConfirmed({}, { locale: "en-US" })
+      )
+    ).toBeTruthy();
   });
-  expect(routerRefresh).toHaveBeenCalledTimes(1);
-  expect(
-    view.getByText(m.marketingPreferencesFormConfirmed({}, { locale: "en-US" }))
-  ).toBeTruthy();
   expect(view.container.textContent).not.toContain(context);
 });
 
@@ -936,8 +938,8 @@ test("offers an explicit clear action for a valid dedicated-link context", async
     expect(clearMarketingManagementAction).toHaveBeenCalledWith({
       context: dismissalContext,
     });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
   });
-  expect(routerRefresh).toHaveBeenCalledTimes(1);
 });
 
 test.each(["absent", "active", "withdrawn"] as const)(
@@ -990,11 +992,11 @@ test("clears a pending dedicated-link context with its dismissal context", async
     expect(clearMarketingManagementAction).toHaveBeenCalledWith({
       context: dismissalContext,
     });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
+    ).toBeTruthy();
   });
-  expect(routerRefresh).toHaveBeenCalledTimes(1);
-  expect(
-    view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
-  ).toBeTruthy();
 });
 
 test("keeps a pending dedicated link after clear failure and allows retry", async () => {
@@ -1065,13 +1067,13 @@ test("clears an invalid dedicated-link context without writing consent", async (
     expect(clearMarketingManagementAction).toHaveBeenCalledWith({
       context: dismissalContext,
     });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
+    ).toBeTruthy();
   });
   expect(saveMarketingPreferencesAction).not.toHaveBeenCalled();
   expect(confirmMarketingManagementAction).not.toHaveBeenCalled();
-  expect(routerRefresh).toHaveBeenCalledTimes(1);
-  expect(
-    view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
-  ).toBeTruthy();
 });
 
 test("disables the explicit invalid-link clear action while it is busy", async () => {

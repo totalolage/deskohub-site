@@ -29,6 +29,7 @@ import type {
   WorkspaceE2EAccountJournalRef,
   WorkspaceE2EAccountLifecycleHandoff,
 } from "./types";
+import type { WorkspaceE2EPreviewLogStream } from "./vercel-log-retrieval";
 
 const fixedNow = new Date("2026-09-11T12:00:00.000Z");
 const fixedNowMs = fixedNow.getTime();
@@ -1042,28 +1043,6 @@ mock.module("../browser", () => ({
   }) => Effect.sync(() => requireBrowser().waitForSnapshot(matches)),
 }));
 
-mock.module("./vercel-log-retrieval", () => ({
-  listSyntheticLogEntryIds: (
-    _config: WorkspaceE2EAccountConfig,
-    request: { readonly recipient: string; readonly startedAt: Date }
-  ) => Effect.sync(() => requireExternal().listMessageIds(request.recipient)),
-  retrieveWorkspaceE2EMagicLink: (
-    _config: WorkspaceE2EAccountConfig,
-    request: {
-      readonly excludeLogEntryIds?: readonly string[];
-      readonly recipient: string;
-      readonly startedAt: Date;
-    }
-  ) =>
-    Effect.sync(() =>
-      requireExternal().retrieveMessage(
-        request.recipient,
-        request.excludeLogEntryIds ?? [],
-        request.startedAt
-      )
-    ),
-}));
-
 mock.module("./auth-rows", () => ({
   assertNoAuthRows: (userId: string) =>
     Effect.sync(() => requireExternal().assertNoAuthRows(userId)),
@@ -1173,6 +1152,18 @@ const makeScenario = () => {
   const run: Runner = async () => {
     throw new Error("the account case bypassed the mocked browser boundary");
   };
+  const previewLogStream: WorkspaceE2EPreviewLogStream = {
+    listSyntheticLogEntryIds: (request) =>
+      Effect.sync(() => external.listMessageIds(request.recipient)),
+    retrieveMagicLink: (request) =>
+      Effect.sync(() =>
+        external.retrieveMessage(
+          request.recipient,
+          request.excludeLogEntryIds ?? [],
+          request.startedAt
+        )
+      ),
+  };
   const datasourceConfig = {} as DatasourceConfig;
 
   return {
@@ -1183,6 +1174,7 @@ const makeScenario = () => {
     journalRef,
     lifecycleHandoff,
     operations,
+    previewLogStream,
     rateBudget,
     retries,
     run,
@@ -1219,6 +1211,7 @@ const buildCase = async (
     config: scenario.config,
     datasourceConfig: scenario.datasourceConfig,
     lifecycleHandoff: scenario.lifecycleHandoff,
+    previewLogStream: scenario.previewLogStream,
     rateBudget: scenario.rateBudget,
     run: scenario.run,
     session,
