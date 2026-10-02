@@ -1,0 +1,86 @@
+name: Temporary workspace Vercel drain access probe
+
+on:
+  push:
+    branches:
+      - t3code/e2e-console-email-logging
+    paths:
+      - .github/workflows/workspace-vercel-drain-access.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    environment: workspace-checkout-e2e
+    steps:
+      - name: Check protected project and scoped drain access
+        env:
+          WORKSPACE_E2E_VERCEL_TOKEN: ${{ secrets.WORKSPACE_E2E_VERCEL_TOKEN }}
+          WORKSPACE_E2E_VERCEL_PROJECT: ${{ vars.WORKSPACE_E2E_VERCEL_PROJECT }}
+        run: |
+          node --input-type=module <<'NODE'
+          const token = process.env.WORKSPACE_E2E_VERCEL_TOKEN;
+          const projectId = process.env.WORKSPACE_E2E_VERCEL_PROJECT;
+          const deadline = Date.now() + 105_000;
+          const emit = (result) => process.stdout.write(`${JSON.stringify(result)}\n`);
+          let metadataStatus = 0;
+          let drainsStatus = null;
+
+          const get = async (url) => {
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) return { status: 0, response: null };
+            try {
+              const response = await fetch(url, {
+                method: "GET",
+                headers: {
+                  Accept: "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                redirect: "error",
+                signal: AbortSignal.timeout(Math.min(20_000, remaining)),
+              });
+              return { status: response.status, response };
+            } catch {
+              return { status: 0, response: null };
+            }
+          };
+
+          try {
+            if (token && /^[A-Za-z0-9_-]+$/.test(projectId ?? "")) {
+              const projectResult = await get(
+                `https://api.vercel.com/v9/projects/${encodeURIComponent(projectId)}`
+              );
+              metadataStatus = projectResult.status;
+              if (projectResult.status === 200) {
+                const metadata = await projectResult.response.json().catch(() => null);
+                const ownerId = metadata?.accountId;
+                if (
+                  metadata?.id === projectId &&
+                  typeof ownerId === "string" &&
+                  /^[A-Za-z0-9_-]+$/.test(ownerId)
+                ) {
+                  const query = new URLSearchParams({
+                    teamId: ownerId,
+                    projectId,
+                    includeMetadata: "false",
+                  });
+                  drainsStatus = (
+                    await get(`https://api.vercel.com/v1/drains?${query}`)
+                  ).status;
+
+                }
+              }
+            }
+          } catch {
+            // Keep the probe output limited to credential presence and HTTP statuses.
+          }
+
+          emit({
+            token_present: Boolean(token),
+            metadata_status: metadataStatus,
+            scoped_drains_list_status: drainsStatus,
+          });
+          NODE
