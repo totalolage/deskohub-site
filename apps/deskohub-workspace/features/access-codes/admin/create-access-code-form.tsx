@@ -66,6 +66,8 @@ type CreationState =
       readonly cleanupTarget: AdministrationStandaloneAccessCodeCleanupTargetType;
     };
 
+type AccessWindowField = "startsAt" | "endsAt";
+
 const focusOnMount = (node: HTMLDivElement | null) => {
   node?.focus();
 };
@@ -78,6 +80,7 @@ export function CreateStandaloneAccessCodeForm() {
   const attemptInputRef = useRef<CreateStandaloneAccessCodeFormValues | null>(
     null
   );
+  const partialDateTimeDraftFieldsRef = useRef(new Set<AccessWindowField>());
   const cleanupConfirmedRef = useRef<{
     readonly window: CreateStandaloneAccessCodeFormValues;
     readonly targetAttemptId: AdministrationStandaloneAccessCodeAttemptIdType;
@@ -105,6 +108,21 @@ export function CreateStandaloneAccessCodeForm() {
   });
   const startsAt = watchedStartsAt ?? "";
   const endsAt = watchedEndsAt ?? "";
+
+  const updatePartialDateTimeDraft = (
+    field: AccessWindowField,
+    isPartial: boolean
+  ) => {
+    if (isPartial) {
+      partialDateTimeDraftFieldsRef.current.add(field);
+      return;
+    }
+
+    partialDateTimeDraftFieldsRef.current.delete(field);
+    if (form.getFieldState(field).error?.type === "partial-date-time-draft") {
+      form.clearErrors(field);
+    }
+  };
 
   const { execute, isExecuting } = useWorkspaceAction(
     createStandaloneAccessCode,
@@ -174,6 +192,7 @@ export function CreateStandaloneAccessCodeForm() {
     attemptIdRef.current = createStandaloneAccessCodeAttemptId();
     attemptInputRef.current = null;
     cleanupConfirmedRef.current = null;
+    partialDateTimeDraftFieldsRef.current.clear();
     setNotice(null);
     form.reset(createStandaloneAccessCodeFormDefaults);
     setWindowSeed((seed) => ({
@@ -345,7 +364,28 @@ export function CreateStandaloneAccessCodeForm() {
         data-standalone-access-code-creation="editing"
         noValidate
         onSubmit={(event) => {
-          void form.handleSubmit(submit)(event);
+          const partialFields = (["startsAt", "endsAt"] as const).filter(
+            (field) => partialDateTimeDraftFieldsRef.current.has(field)
+          );
+          void form.handleSubmit((values) => {
+            const [firstPartialField] = partialFields;
+            if (!firstPartialField) {
+              submit(values);
+              return;
+            }
+
+            const partialDraftMessages = {
+              startsAt: "Complete the start date and time.",
+              endsAt: "Complete the end date and time.",
+            };
+            for (const field of partialFields) {
+              form.setError(field, {
+                type: "partial-date-time-draft",
+                message: partialDraftMessages[field],
+              });
+            }
+            form.setFocus(firstPartialField);
+          })(event);
         }}
       >
         <div className="grid gap-5">
@@ -389,6 +429,9 @@ export function CreateStandaloneAccessCodeForm() {
                         name="startsAt"
                         onBlur={onBlur}
                         onChange={(value) => onChange(value ?? "")}
+                        onPartialDraftChange={(isPartial) =>
+                          updatePartialDateTimeDraft("startsAt", isPartial)
+                        }
                         ref={ref}
                         required
                         timeLabel="Starts time"
@@ -415,6 +458,9 @@ export function CreateStandaloneAccessCodeForm() {
                         name="endsAt"
                         onBlur={onBlur}
                         onChange={(value) => onChange(value ?? "")}
+                        onPartialDraftChange={(isPartial) =>
+                          updatePartialDateTimeDraft("endsAt", isPartial)
+                        }
                         ref={ref}
                         required
                         timeLabel="Ends time"

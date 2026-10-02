@@ -160,11 +160,11 @@ export function DateInput({
           <div className="grid gap-2">
             <Calendar
               disabled={(date) =>
-                !isAccepted(getPlainDateFromCalendarDate(date))
+                disabled || !isAccepted(getPlainDateFromCalendarDate(date))
               }
               mode="single"
               onSelect={(date) => {
-                if (!date) return;
+                if (!date || disabled) return;
                 const plainDate = getPlainDateFromCalendarDate(date);
                 if (!isAccepted(plainDate)) return;
                 setSelectedDate(plainDate.toString());

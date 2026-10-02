@@ -40,6 +40,8 @@ export type DateTimeInputProps = {
   readonly name?: string;
   readonly onBlur?: () => void;
   readonly onChange?: (value: string | undefined) => void;
+  /** Reports a visible non-empty draft while either date or time is incomplete. */
+  readonly onPartialDraftChange?: (isPartial: boolean) => void;
   readonly placeholder?: string;
   readonly ref?: Ref<HTMLButtonElement>;
   readonly required?: boolean;
@@ -90,6 +92,7 @@ export function DateTimeInput({
   name,
   onBlur,
   onChange,
+  onPartialDraftChange,
   placeholder,
   ref,
   required = false,
@@ -166,10 +169,12 @@ export function DateTimeInput({
           (maximumDateTime && candidate > formatMinuteDateTime(maximumDateTime))
         ) {
           setDraft({ ...committed });
+          onPartialDraftChange?.(false);
           return;
         }
         if (!isControlled) setInternalCommitted(next);
         onChange?.(candidate);
+        onPartialDraftChange?.(false);
         // A controlled parent stays authoritative: unless it adopts the
         // reported value (the sync effect then follows the new value), the
         // draft reverts to the committed parts instead of leaving entered
@@ -180,6 +185,9 @@ export function DateTimeInput({
       if (isEmpty(next)) {
         if (!isControlled) setInternalCommitted(next);
         onChange?.(undefined);
+        onPartialDraftChange?.(false);
+      } else {
+        onPartialDraftChange?.(true);
       }
       setDraft(next);
     },
@@ -187,20 +195,25 @@ export function DateTimeInput({
       committed,
       isControlled,
       onChange,
+      onPartialDraftChange,
       resolveMaximumDateTime,
       resolveMinimumDateTime,
     ]
   );
 
-  const handleReset = useCallback((next: string) => {
-    const nextParts = parseParts(next);
-    resettingRef.current = true;
-    setDraft(nextParts);
-    setInternalCommitted(nextParts);
-    queueMicrotask(() => {
-      resettingRef.current = false;
-    });
-  }, []);
+  const handleReset = useCallback(
+    (next: string) => {
+      const nextParts = parseParts(next);
+      resettingRef.current = true;
+      setDraft(nextParts);
+      setInternalCommitted(nextParts);
+      onPartialDraftChange?.(false);
+      queueMicrotask(() => {
+        resettingRef.current = false;
+      });
+    },
+    [onPartialDraftChange]
+  );
   useFormReset({
     defaultCanonicalValue: defaultValue ?? "",
     fieldRef: canonicalFieldRef,
