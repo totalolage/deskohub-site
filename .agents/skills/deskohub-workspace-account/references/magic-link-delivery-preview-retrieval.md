@@ -1,8 +1,8 @@
 # Magic-link delivery and protected-preview retrieval
 
-Research date: 2026-09-02
+Research date: 2026-09-02; retrieval contract verified 2026-10-01
 
-> **Decision status (2026-09-03, updated 2026-09-28).** This is a restored
+> **Decision status (2026-09-03, updated 2026-10-01).** This is a restored
 > historical research note. Both of its Resend-based Preview options are
 > **superseded**: protected-preview E2E magic-link delivery for synthetic
 > recipients (`delivered+<run-id>-<label>@resend.dev`) makes **zero Resend
@@ -23,9 +23,8 @@ Research date: 2026-09-02
 > accurate.
 
 This note resolves the research question in
-[Research magic-link delivery and protected-preview retrieval](https://github.com/totalolage/deskohub-site/issues/343).
-It records current primary-source facts and viable arrangements; it does not
-implement or provision one.
+[Research magic-link delivery and protected-preview retrieval](https://github.com/totalolage/deskohub-site/issues/343)
+and records the current retrieval contract.
 
 ## Executive finding
 
@@ -216,6 +215,22 @@ domain.
   deployment with `WORKSPACE_E2E_VERCEL_TOKEN`. That token lives only in the
   protected Workspace E2E GitHub environment; it never enters Vercel or
   application configuration.
+- Resolve the immutable host with the project-authorized deployment resource,
+  `GET https://api.vercel.com/v13/deployments/<host>`, and require its
+  `projectId` to match the configured project. Use its `ownerId` and `id` in
+  the historical query to `GET https://vercel.com/api/logs/request-logs`,
+  with `projectId`, `ownerId`, numeric `page`, millisecond `startDate` and
+  `endDate`, `deploymentId`, and the fixed `account.magic-link.preview-e2e`
+  search marker. Read at most 100 request rows and retain each nested log's
+  message and truncation flag. Send the project token only as a Bearer header;
+  never put it in a URL. The runner calls this route directly because pinned
+  `vercel@54.9.1 logs` first requests `/v2/user`, which project-scoped tokens
+  cannot access. The history route is undocumented and may change without
+  notice; its response and query contract follow the
+  [pinned CLI implementation](https://github.com/vercel/vercel/blob/vercel@54.9.1/packages/cli/src/util/logs-v2.ts#L99-L256).
+  Reverify that source and the protected project-token E2E before changing this
+  contract. The public live-log route has no verified historical window, so
+  retain the historical query for delivery retrieval.
 - Match the one log line for the exact synthetic recipient, require a single
   unambiguous match, and reject zero or multiple matches.
 - Parse the one expected auth URL in memory from the logged TEXT body. Before

@@ -1121,11 +1121,6 @@ const makeConfig = (): WorkspaceE2EAccountConfig => ({
   timeouts: workspaceE2ETimeouts,
   vercelProjectId: "workspace-e2e-project",
   vercelToken: "synthetic-vercel-log-token",
-  vercelLogsProcess: async () => {
-    throw new Error(
-      "the selected account cases bypassed the mocked retrieval boundary"
-    );
-  },
 });
 
 const makeScenario = () => {

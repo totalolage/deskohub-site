@@ -6,8 +6,8 @@ import {
 } from "@deskohub/dotypos";
 import { createEnv } from "@t3-oss/env-core";
 import { Schema } from "effect";
-import { isAdminBasicAuthCredentialPair } from "./admin-basic-auth";
 import { urlStringSchema } from "../shared/utils/url-schema";
+import { isAdminBasicAuthCredentialPair } from "./admin-basic-auth";
 
 const toEnvironmentSchema = <S extends Schema.Decoder<unknown>>(schema: S) =>
   Schema.toStandardSchemaV1(schema);
@@ -77,10 +77,8 @@ export const e2eEnvironmentSchema = Schema.Struct({
     Schema.optional(Schema.String.check(Schema.isPattern(/^[1-9][0-9]*$/)))
   ),
   GITHUB_STEP_SUMMARY: optionalNonEmptyString,
-  HOME: optionalNonEmptyString,
   LANG: optionalNonEmptyString,
   NEXI_API_ORIGIN: url,
-  PATH: optionalNonEmptyString,
   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: optionalNonEmptyString,
   TARGET_SHA: toEnvironmentSchema(
     Schema.optional(Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)))
@@ -132,10 +130,8 @@ export const makeE2EEnvironment = (
       GITHUB_RUN_ATTEMPT: runtimeEnvironment.GITHUB_RUN_ATTEMPT,
       GITHUB_RUN_ID: runtimeEnvironment.GITHUB_RUN_ID,
       GITHUB_STEP_SUMMARY: runtimeEnvironment.GITHUB_STEP_SUMMARY,
-      HOME: runtimeEnvironment.HOME,
       LANG: runtimeEnvironment.LANG,
       NEXI_API_ORIGIN: runtimeEnvironment.NEXI_API_ORIGIN,
-      PATH: runtimeEnvironment.PATH,
       PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
         runtimeEnvironment.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
       TARGET_SHA: runtimeEnvironment.TARGET_SHA,

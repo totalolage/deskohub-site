@@ -1,7 +1,6 @@
-import { execFile } from "node:child_process";
 import { Effect } from "effect";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import {
-  toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
   workspaceE2EError,
@@ -11,52 +10,32 @@ import type { WorkspaceE2EAccountConfig } from "./config";
 
 export const workspaceE2EPreviewE2ELogCode = "account.magic-link.preview-e2e";
 
-const vercelCliVersion = "54.9.1";
 const logLimit = 100;
-const cliInvocationTimeoutMs = 30_000;
-const failureClassificationLimit = 8_192;
+const vercelRequestTimeoutMs = 30_000;
 const defaultPollIntervalMs = 5_000;
-/** Vercel token is passed to the CLI through its environment, never argv. */
-export type WorkspaceE2EVercelLogsProcess = (command: {
-  readonly args: readonly string[];
-  readonly env: Readonly<Record<string, string | undefined>>;
-  readonly timeoutMs: number;
-}) => Promise<{
-  readonly exitCode: number;
-  readonly stderr: string;
-  readonly stdout: string;
-}>;
-
-export const makeVercelLogsProcess =
-  (
-    baseEnv: Readonly<Record<string, string | undefined>>
-  ): WorkspaceE2EVercelLogsProcess =>
-  ({ args, env, timeoutMs }) =>
-    new Promise((resolve, reject) => {
-      execFile(
-        "bunx",
-        [`vercel@${vercelCliVersion}`, ...args],
-        {
-          encoding: "utf8",
-          env: { ...baseEnv, ...env } as NodeJS.ProcessEnv,
-          signal: AbortSignal.timeout(timeoutMs),
-        },
-        (error, stdout, stderr) => {
-          if (!error) {
-            resolve({ exitCode: 0, stderr, stdout });
-          } else if (typeof error.code === "number") {
-            resolve({ exitCode: error.code, stderr, stdout });
-          } else {
-            reject(error);
-          }
-        }
-      );
-    });
 
 type WorkspaceE2EVercelLogEntry = {
   readonly id: string;
   readonly message: string;
   readonly truncated: boolean;
+};
+
+type VercelDeployment = {
+  readonly id: string;
+  readonly ownerId: string;
+  readonly projectId: string;
+};
+
+type VercelLogPage = {
+  readonly hasMoreRows: boolean;
+  readonly rows: readonly {
+    readonly logs: readonly {
+      readonly message: string;
+      readonly messageTruncated: boolean;
+    }[];
+    readonly messageTruncated: boolean;
+    readonly requestId: string;
+  }[];
 };
 
 export type WorkspaceE2EMagicLinkRequest = {
@@ -69,217 +48,290 @@ export type WorkspaceE2EMagicLinkRequest = {
   readonly deadlineAfterMs?: number;
 };
 
-const vercelLogsArgs = (config: WorkspaceE2EAccountConfig, since: Date) => [
-  "logs",
-  "--deployment",
-  config.baseUrl,
-  "--json",
-  "--limit",
-  `${logLimit}`,
-  "--since",
-  since.toISOString(),
-  "--query",
-  workspaceE2EPreviewE2ELogCode,
-  "--no-branch",
-  "--project",
-  config.vercelProjectId,
-];
-
 const invalidVercelLogPayload = () =>
   workspaceE2EError("Vercel runtime log payload was invalid", {
     diagnosticCode: "auth_delivery_message_invalid",
     operation: "decode Vercel runtime log entries",
   });
 
-const classifyVercelLogsCliFailure = (stderr: string) => {
-  const statusPattern =
-    /\b(?:HTTP(?:\/\d+(?:\.\d+)?)?|status(?:\s+code)?)\s*[:=]?\s*(401|403|404|429|5\d{2})\b/gi;
-  const statuses = new Set(
-    Array.from(
-      stderr.slice(0, failureClassificationLimit).matchAll(statusPattern),
-      (match) => match[1]
-    )
+const vercelRequestFailure = (
+  operation: string,
+  reason: string,
+  status?: number
+) =>
+  workspaceE2EError(
+    `${operation} failed (${status === undefined ? reason : `HTTP ${status}`})`,
+    {
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      operation,
+    }
   );
-  if (statuses.size !== 1) return "cli-rejected";
 
-  const [status] = statuses;
-  switch (status) {
-    case "401":
-      return "cli-authentication-rejected";
-    case "403":
-      return "cli-access-forbidden";
-    case "404":
-      return "cli-resource-not-found";
-    case "429":
-      return "cli-rate-limited";
-    default:
-      return status?.startsWith("5") ? "cli-server-error" : "cli-rejected";
-  }
-};
-
-const classifyVercelLogsProcessMessage = (message: string) => {
-  const boundedMessage = message.slice(0, failureClassificationLimit);
-  if (/\bno such file or directory\b/i.test(boundedMessage)) {
-    return "process-executable-not-found";
-  }
-  if (
-    /\b(?:permission denied|operation not permitted)\b/i.test(boundedMessage)
-  ) {
-    return "process-permission-denied";
-  }
-  if (/\bresource temporarily unavailable\b/i.test(boundedMessage)) {
-    return "process-resource-unavailable";
-  }
-  if (/\btoo many open files\b/i.test(boundedMessage)) {
-    return "process-file-descriptors-exhausted";
-  }
-  if (
-    /\b(?:out of memory|cannot allocate memory|not enough memory)\b/i.test(
-      boundedMessage
-    )
-  ) {
-    return "process-memory-pressure";
-  }
-  if (/\b(?:timed out|timeout)\b/i.test(boundedMessage)) {
-    return "process-timeout";
-  }
-};
-
-const classifyVercelLogsProcessRejection = (cause: unknown) => {
-  let current = cause;
-  for (let causeDepth = 0; causeDepth <= 3; causeDepth += 1) {
-    if (
-      current === null ||
-      typeof current !== "object" ||
-      Array.isArray(current)
-    ) {
-      break;
-    }
-
-    const error = current as {
-      readonly cause?: unknown;
-      readonly code?: unknown;
-      readonly message?: unknown;
-      readonly name?: unknown;
-    };
-    switch (error.code) {
-      case "ENOENT":
-        return "process-executable-not-found";
-      case "EACCES":
-      case "EPERM":
-        return "process-permission-denied";
-      case "ETIMEDOUT":
-        return "process-timeout";
-      case "EAGAIN":
-        return "process-resource-unavailable";
-      case "EMFILE":
-        return "process-file-descriptors-exhausted";
-      case "ENOMEM":
-        return "process-memory-pressure";
-      default:
-        break;
-    }
-    if (error.name === "AbortError") return "process-timeout";
-    if (typeof error.message === "string") {
-      const messageCategory = classifyVercelLogsProcessMessage(error.message);
-      if (messageCategory) return messageCategory;
-    }
-
-    if (causeDepth === 3) break;
-    current = error.cause;
-  }
-  return "process-rejected";
-};
-
-const runLogQuery = (
+const requestVercel = Effect.fn("vercelLogRetrieval.request")(function* (
   config: WorkspaceE2EAccountConfig,
-  since: Date
-): Effect.Effect<readonly WorkspaceE2EVercelLogEntry[], WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    const result = yield* Effect.tryPromise({
-      catch: (cause) =>
-        workspaceE2EError(
-          `query Vercel preview runtime logs failed (${classifyVercelLogsProcessRejection(cause)})`,
-          {
-            diagnosticCode: "auth_delivery_message_retrieve_failed",
-            operation: "query Vercel preview runtime logs",
-          }
-        ),
-      try: () =>
-        config.vercelLogsProcess({
-          args: vercelLogsArgs(config, since),
-          env: { VERCEL_TOKEN: config.vercelToken },
-          timeoutMs: cliInvocationTimeoutMs,
-        }),
-    });
-    if (result.exitCode !== 0) {
-      return yield* workspaceE2EError(
-        `query Vercel preview runtime logs failed (${classifyVercelLogsCliFailure(result.stderr)})`,
-        {
-          diagnosticCode: "auth_delivery_message_retrieve_failed",
-          operation: "query Vercel preview runtime logs",
-        }
-      );
-    }
-    return yield* Effect.try({
-      catch: invalidVercelLogPayload,
-      try: () => decodeLogRequests(result.stdout),
-    });
+  url: URL,
+  operation: string,
+  timeoutMs: number
+) {
+  const httpClient = yield* HttpClient.HttpClient;
+  const request = HttpClientRequest.get(url).pipe(
+    HttpClientRequest.setHeaders({
+      Accept: "application/json",
+      Authorization: `Bearer ${config.vercelToken}`,
+    })
+  );
+  const response = yield* httpClient.execute(request).pipe(
+    Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
+    Effect.mapError(() => vercelRequestFailure(operation, "request-failed")),
+    Effect.timeoutOrElse({
+      duration: `${timeoutMs} millis`,
+      orElse: () => Effect.fail(vercelRequestFailure(operation, "timeout")),
+    })
+  );
+  if (response.status < 200 || response.status >= 300) {
+    return yield* vercelRequestFailure(
+      operation,
+      "request-failed",
+      response.status
+    );
+  }
+  return response;
+});
+
+const invalidVercelDeploymentPayload = () =>
+  workspaceE2EError("Vercel preview deployment metadata was invalid", {
+    diagnosticCode: "auth_delivery_message_retrieve_failed",
+    operation: "resolve Vercel preview deployment",
   });
 
-const decodeLogRequests = (
-  stdout: string
-): readonly WorkspaceE2EVercelLogEntry[] => {
-  const lines = stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  if (lines.length === 0) return [];
-
-  return lines.flatMap((line) => {
-    let payload: unknown;
-    try {
-      payload = JSON.parse(line);
-    } catch {
-      throw invalidVercelLogPayload();
+const vercelDeploymentProjectMismatch = () =>
+  workspaceE2EError(
+    "Vercel preview deployment did not match the configured project",
+    {
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      operation: "resolve Vercel preview deployment",
     }
-    return flattenLogRequest(payload);
-  });
-};
+  );
 
-const flattenLogRequest = (
-  payload: unknown
-): readonly WorkspaceE2EVercelLogEntry[] => {
+const decodeVercelDeployment = (
+  payload: unknown,
+  expectedProjectId: string
+):
+  | { readonly kind: "match"; readonly deployment: VercelDeployment }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "project-mismatch" } => {
   const candidate = payload as {
     id?: unknown;
-    messageTruncated?: unknown;
-    logs?: unknown;
+    ownerId?: unknown;
+    projectId?: unknown;
   } | null;
   if (
     typeof candidate?.id !== "string" ||
     candidate.id.length === 0 ||
-    !Array.isArray(candidate.logs)
+    typeof candidate.ownerId !== "string" ||
+    candidate.ownerId.length === 0
+  ) {
+    return { kind: "invalid" };
+  }
+  if (candidate.projectId !== expectedProjectId) {
+    return { kind: "project-mismatch" };
+  }
+  return {
+    deployment: {
+      id: candidate.id,
+      ownerId: candidate.ownerId,
+      projectId: candidate.projectId,
+    },
+    kind: "match",
+  };
+};
+
+const resolveVercelDeployment = (
+  config: WorkspaceE2EAccountConfig
+): Effect.Effect<VercelDeployment, WorkspaceE2EError, HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const url = new URL(
+      `https://api.vercel.com/v13/deployments/${encodeURIComponent(config.expectedHost)}`
+    );
+    const response = yield* requestVercel(
+      config,
+      url,
+      "resolve Vercel preview deployment",
+      vercelRequestTimeoutMs
+    );
+    const payload = yield* response.json.pipe(
+      Effect.mapError(invalidVercelDeploymentPayload)
+    );
+    const decoded = decodeVercelDeployment(payload, config.vercelProjectId);
+    if (decoded.kind === "invalid")
+      return yield* invalidVercelDeploymentPayload();
+    if (decoded.kind === "project-mismatch") {
+      return yield* vercelDeploymentProjectMismatch();
+    }
+    return decoded.deployment;
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: `${vercelRequestTimeoutMs} millis`,
+      orElse: () =>
+        Effect.fail(
+          vercelRequestFailure("resolve Vercel preview deployment", "timeout")
+        ),
+    })
+  );
+
+const decodeVercelLogPage = (
+  payload: unknown,
+  deploymentId: string
+): VercelLogPage => {
+  const candidate = payload as {
+    hasMoreRows?: unknown;
+    rows?: unknown;
+  } | null;
+  if (
+    candidate === null ||
+    typeof candidate !== "object" ||
+    Array.isArray(candidate)
   ) {
     throw invalidVercelLogPayload();
   }
-  // Vercel may omit this flag; only `true` marks an entry truncated.
-  const requestTruncated = candidate.messageTruncated === true;
-  return candidate.logs.map((log, logIndex) => {
-    const entry = log as {
-      message?: unknown;
-      messageTruncated?: unknown;
-    } | null;
-    if (typeof entry?.message !== "string") {
-      throw invalidVercelLogPayload();
-    }
-    return {
-      id: `${candidate.id}:${logIndex}`,
-      message: entry.message,
-      truncated: requestTruncated || entry.messageTruncated === true,
-    };
-  });
+  const hasMoreRows = candidate?.hasMoreRows ?? false;
+  const rows = candidate?.rows ?? [];
+  if (typeof hasMoreRows !== "boolean" || !Array.isArray(rows)) {
+    throw invalidVercelLogPayload();
+  }
+
+  return {
+    hasMoreRows,
+    rows: rows.map((row) => {
+      const request = row as {
+        deploymentId?: unknown;
+        logs?: unknown;
+        messageTruncated?: unknown;
+        requestId?: unknown;
+      } | null;
+      const logs = request?.logs ?? [];
+      if (
+        typeof request?.requestId !== "string" ||
+        request.requestId.length === 0 ||
+        request.deploymentId !== deploymentId ||
+        !Array.isArray(logs)
+      ) {
+        throw invalidVercelLogPayload();
+      }
+      return {
+        logs: logs.map((log) => {
+          const entry = log as {
+            message?: unknown;
+            messageTruncated?: unknown;
+          } | null;
+          if (typeof entry?.message !== "string") {
+            throw invalidVercelLogPayload();
+          }
+          return {
+            message: entry.message,
+            messageTruncated: entry.messageTruncated === true,
+          };
+        }),
+        messageTruncated: request.messageTruncated === true,
+        requestId: request.requestId,
+      };
+    }),
+  };
 };
+
+const requestVercelLogPage = (
+  config: WorkspaceE2EAccountConfig,
+  deployment: VercelDeployment,
+  since: Date,
+  endDate: number,
+  page: number,
+  timeoutMs: number
+): Effect.Effect<VercelLogPage, WorkspaceE2EError, HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const url = new URL("https://vercel.com/api/logs/request-logs");
+    url.searchParams.set("projectId", deployment.projectId);
+    url.searchParams.set("ownerId", deployment.ownerId);
+    url.searchParams.set("page", `${page}`);
+    url.searchParams.set("startDate", `${since.getTime()}`);
+    url.searchParams.set("endDate", `${endDate}`);
+    url.searchParams.set("deploymentId", deployment.id);
+    url.searchParams.set("search", workspaceE2EPreviewE2ELogCode);
+
+    const response = yield* requestVercel(
+      config,
+      url,
+      "query Vercel preview runtime logs",
+      timeoutMs
+    );
+    const payload = yield* response.json.pipe(
+      Effect.mapError(invalidVercelLogPayload)
+    );
+    return yield* Effect.try({
+      catch: invalidVercelLogPayload,
+      try: () => decodeVercelLogPage(payload, deployment.id),
+    });
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: `${timeoutMs} millis`,
+      orElse: () =>
+        Effect.fail(
+          vercelRequestFailure("query Vercel preview runtime logs", "timeout")
+        ),
+    })
+  );
+
+const runLogQuery = (
+  config: WorkspaceE2EAccountConfig,
+  deployment: VercelDeployment,
+  since: Date,
+  timeoutMs: number
+): Effect.Effect<
+  readonly WorkspaceE2EVercelLogEntry[],
+  WorkspaceE2EError,
+  HttpClient.HttpClient
+> =>
+  Effect.gen(function* () {
+    const endDate = Math.max(since.getTime(), Date.now());
+    let page = 0;
+    let requestRowCount = 0;
+    const entries: WorkspaceE2EVercelLogEntry[] = [];
+
+    while (requestRowCount < logLimit) {
+      const result = yield* requestVercelLogPage(
+        config,
+        deployment,
+        since,
+        endDate,
+        page,
+        timeoutMs
+      );
+      if (result.rows.length === 0) break;
+      const acceptedRows = result.rows.slice(0, logLimit - requestRowCount);
+      for (const row of acceptedRows) {
+        entries.push(
+          ...row.logs.map((log, logIndex) => ({
+            id: `${row.requestId}:${logIndex}`,
+            message: log.message,
+            truncated: row.messageTruncated || log.messageTruncated,
+          }))
+        );
+      }
+      requestRowCount += acceptedRows.length;
+      if (!result.hasMoreRows || acceptedRows.length < result.rows.length)
+        break;
+      page += 1;
+    }
+
+    return entries;
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: `${timeoutMs} millis`,
+      orElse: () =>
+        Effect.fail(
+          vercelRequestFailure("query Vercel preview runtime logs", "timeout")
+        ),
+    })
+  );
 
 type PreviewE2ELogLineParseResult =
   | { readonly kind: "match"; readonly text: string }
@@ -321,13 +373,14 @@ const parsePreviewE2ELogLine = (
 export const retrieveWorkspaceE2EMagicLink = (
   config: WorkspaceE2EAccountConfig,
   request: WorkspaceE2EMagicLinkRequest
-): Effect.Effect<string, WorkspaceE2EError> =>
+): Effect.Effect<string, WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const deadline =
       Date.now() + (request.deadlineAfterMs ?? config.timeouts.authDelivery);
     const pollIntervalMs = request.pollIntervalMs ?? defaultPollIntervalMs;
+    const deployment = yield* resolveVercelDeployment(config);
 
-    const body = yield* pollForLogMatch(config, {
+    const body = yield* pollForLogMatch(config, deployment, {
       deadline,
       excludeLogEntryIds: request.excludeLogEntryIds ?? [],
       pollIntervalMs,
@@ -347,16 +400,17 @@ export const retrieveWorkspaceE2EMagicLink = (
     });
   });
 
-/** Captures prior entry IDs so retrieval cannot reuse a stale link. */
 export const listSyntheticLogEntryIds = (
   config: WorkspaceE2EAccountConfig,
   request: WorkspaceE2EMagicLinkRequest
-): Effect.Effect<readonly string[], WorkspaceE2EError> =>
+): Effect.Effect<readonly string[], WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
-    const entries = yield* runLogQuery(config, request.startedAt).pipe(
-      Effect.mapError((cause) =>
-        toWorkspaceE2EError("list synthetic preview log entries", cause)
-      )
+    const deployment = yield* resolveVercelDeployment(config);
+    const entries = yield* runLogQuery(
+      config,
+      deployment,
+      request.startedAt,
+      vercelRequestTimeoutMs
     );
     return matchPreviewE2EEntries(entries, {
       excludeLogEntryIds: request.excludeLogEntryIds ?? [],
@@ -366,6 +420,7 @@ export const listSyntheticLogEntryIds = (
 
 const pollForLogMatch = (
   config: WorkspaceE2EAccountConfig,
+  deployment: VercelDeployment,
   bounds: {
     readonly deadline: number;
     readonly excludeLogEntryIds: readonly string[];
@@ -373,10 +428,18 @@ const pollForLogMatch = (
     readonly recipient: string;
     readonly startedAt: Date;
   }
-): Effect.Effect<string, WorkspaceE2EError> =>
+): Effect.Effect<string, WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     while (Date.now() < bounds.deadline) {
-      const entries = yield* runLogQuery(config, bounds.startedAt);
+      const entries = yield* runLogQuery(
+        config,
+        deployment,
+        bounds.startedAt,
+        Math.max(
+          1,
+          Math.min(vercelRequestTimeoutMs, bounds.deadline - Date.now())
+        )
+      );
       const matches = matchPreviewE2EEntries(entries, {
         excludeLogEntryIds: bounds.excludeLogEntryIds,
         recipient: bounds.recipient,
@@ -428,7 +491,6 @@ const matchPreviewE2EEntries = (
       !excluded.has(entry.id) &&
       entry.message.includes(workspaceE2EPreviewE2ELogCode)
   );
-  // Truncated matching entries fail closed.
   if (candidates.some((entry) => entry.truncated)) {
     throw workspaceE2EError(
       "Vercel log retrieval matched a truncated preview log entry",
@@ -438,7 +500,6 @@ const matchPreviewE2EEntries = (
       }
     );
   }
-  // Skip other recipients; unreadable matching entries fail closed.
   const matches: WorkspaceE2EVercelLogEntry[] = [];
   for (const entry of candidates) {
     const parsed = parsePreviewE2ELogLine(entry.message, bounds.recipient);

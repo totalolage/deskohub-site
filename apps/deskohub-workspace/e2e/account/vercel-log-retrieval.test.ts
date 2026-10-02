@@ -1,24 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { Effect, Schema } from "effect";
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import { Effect, Layer, Schema } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+import { createCensoredOtelSpanExporter } from "../../shared/backend/logging/censorship";
+import { createTracingLive } from "../../shared/backend/observability/otel-tracing";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
-import { validE2ERuntimeEnvironment } from "../e2e-env.test-fixture";
+import {
+  makeTestE2EEnvironment,
+  validE2ERuntimeEnvironment,
+} from "../e2e-env.test-fixture";
 import { workspaceE2ERunIdSchema } from "../run-identifiers";
 import { redact } from "../runtime";
+import {
+  E2ERunContextService,
+  E2ETelemetryService,
+} from "../services/telemetry";
 import {
   getAccountE2EConfig,
   makeWorkspaceE2EAccountRecipient,
 } from "./config";
-import type { WorkspaceE2EVercelLogsProcess } from "./vercel-log-retrieval";
 import {
   listSyntheticLogEntryIds,
   retrieveWorkspaceE2EMagicLink,
@@ -37,17 +41,11 @@ const recipient = makeWorkspaceE2EAccountRecipient(config, "retrieval");
 const expectedHost = config.expectedHost;
 const authOrigin = `https://${expectedHost}`;
 const callbackPath = `/${config.locale}/auth/callback`;
-const workspaceDir = fileURLToPath(new URL("../../", import.meta.url));
-const playwrightCliPath = join(
-  workspaceDir,
-  "node_modules/@playwright/test/cli.js"
-);
-const playwrightTestApiPath = fileURLToPath(
-  new URL("../../node_modules/@playwright/test/index.js", import.meta.url)
-);
-const vercelLogsProcessSourcePath = fileURLToPath(
-  new URL("./vercel-log-retrieval.ts", import.meta.url)
-);
+const deployment = {
+  id: "dpl-synthetic",
+  ownerId: "team-synthetic",
+  projectId: "workspace-preview-project",
+};
 
 const magicLink = (token: string) =>
   `${authOrigin}/api/auth/magic-link/verify?token=${token}&callbackURL=${encodeURIComponent(callbackPath)}`;
@@ -62,72 +60,89 @@ const previewE2ELine = (text: string, recipientOverride?: string | null) =>
     text,
   });
 
-type FakeLogEntry = {
-  readonly message: string;
-  readonly messageTruncated?: boolean;
-};
+type LogRow = Record<string, unknown>;
+type FetchHandler = (
+  request: Request,
+  historyCall: number
+) => Response | Promise<Response>;
 
-type FakeLogRequest = {
-  readonly id: string;
-  readonly logs: readonly FakeLogEntry[];
-  readonly message?: string;
-  readonly messageTruncated?: boolean;
-};
+const log = (message: unknown, messageTruncated?: unknown): LogRow => ({
+  message,
+  ...(messageTruncated === undefined ? {} : { messageTruncated }),
+});
 
-type CliInvocation = {
-  readonly args: readonly string[];
-  readonly env: Readonly<Record<string, string | undefined>>;
-};
-
-const jsonl = (requests: readonly FakeLogRequest[]): string =>
-  requests.map((request) => JSON.stringify(request)).join("\n");
-
-const matchingLogEntry = (
-  overrides: Partial<FakeLogEntry> = {}
-): FakeLogEntry => ({
-  message: previewE2ELine(magicLink("token")),
+const row = (
+  requestId: string,
+  logs: readonly LogRow[],
+  overrides: LogRow = {}
+): LogRow => ({
+  deploymentId: deployment.id,
+  logs,
+  requestId,
+  timestamp: "2026-10-01T12:00:00.000Z",
   ...overrides,
 });
 
-const infoLogEntry = (text: string): FakeLogEntry => ({ message: text });
+const page = (rows: readonly LogRow[], hasMoreRows = false) => ({
+  hasMoreRows,
+  rows,
+});
+
+const makeHttpHarness = (
+  handleHistory: FetchHandler,
+  deploymentPayload: unknown = deployment
+) => {
+  const requests: Request[] = [];
+  let historyCall = 0;
+  const fetch: typeof globalThis.fetch = async (
+    input: URL | RequestInfo,
+    init?: RequestInit
+  ) => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    requests.push(request.clone());
+    const url = new URL(request.url);
+    if (
+      url.origin === "https://api.vercel.com" &&
+      url.pathname === `/v13/deployments/${expectedHost}`
+    ) {
+      return Response.json(deploymentPayload);
+    }
+    if (
+      url.origin === "https://vercel.com" &&
+      url.pathname === "/api/logs/request-logs"
+    ) {
+      return handleHistory(request, historyCall++);
+    }
+    return new Response("synthetic private route response", { status: 404 });
+  };
+  const layer = FetchHttpClient.layer.pipe(
+    Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetch))
+  );
+  return { layer, requests };
+};
 
 const makeRetrieval = (
-  stdout: string,
-  options: {
-    readonly exitCode?: number;
-    readonly excludeLogEntryIds?: readonly string[];
-    readonly processRejection?: Error;
-    readonly stderr?: string;
-  } = {}
+  handleHistory: FetchHandler,
+  requestOverrides: Partial<
+    Parameters<typeof retrieveWorkspaceE2EMagicLink>[1]
+  > = {},
+  deploymentPayload: unknown = deployment
 ) => {
-  const invocations: CliInvocation[] = [];
-  const fakeProcess: WorkspaceE2EVercelLogsProcess = async (command) => {
-    invocations.push({ args: command.args, env: command.env });
-    if (options.processRejection) throw options.processRejection;
-    if (options.exitCode !== undefined) {
-      return {
-        exitCode: options.exitCode,
-        stderr: options.stderr ?? "cli failed",
-        stdout: "",
-      };
-    }
-    return { exitCode: 0, stderr: "", stdout };
+  const harness = makeHttpHarness(handleHistory, deploymentPayload);
+  const request = {
+    callbackPath,
+    deadlineAfterMs: 500,
+    pollIntervalMs: 5,
+    recipient,
+    startedAt: new Date("2026-10-01T12:00:00.000Z"),
+    ...requestOverrides,
   };
-
   const result = Effect.runPromise(
-    retrieveWorkspaceE2EMagicLink(
-      { ...config, vercelLogsProcess: fakeProcess },
-      {
-        callbackPath,
-        deadlineAfterMs: 200,
-        excludeLogEntryIds: options.excludeLogEntryIds,
-        pollIntervalMs: 10,
-        recipient,
-        startedAt: new Date(),
-      }
+    retrieveWorkspaceE2EMagicLink(config, request).pipe(
+      Effect.provide(harness.layer)
     )
   );
-  return { invocations, result };
+  return { ...harness, result };
 };
 
 const captureFailure = (result: Promise<string>) =>
@@ -139,715 +154,457 @@ const captureFailure = (result: Promise<string>) =>
   );
 
 describe("workspace e2e Vercel log retrieval", () => {
-  test("runs the Vercel process through the real Node Playwright worker", async () => {
-    const tempDirectory = mkdtempSync(
-      join(tmpdir(), "vercel-log-node-worker-")
+  test("uses only the selected deployment and project history resources", async () => {
+    const startedAt = new Date("2026-09-28T12:00:00.000Z");
+    const { requests, result } = makeRetrieval(
+      () =>
+        Response.json(
+          page([
+            row("req-synthetic", [log(previewE2ELine(magicLink("token")))]),
+          ])
+        ),
+      { startedAt }
     );
-    const fakeBin = join(tempDirectory, "bin");
-    const testDirectory = join(tempDirectory, "tests");
-    const fakeBunx = join(fakeBin, "bunx");
-    const configPath = join(tempDirectory, "playwright.config.mjs");
-    const specPath = join(testDirectory, "process-worker.pw.ts");
-    const childPath = `${fakeBin}${delimiter}${process.env.PATH ?? ""}`;
 
-    try {
-      mkdirSync(fakeBin);
-      mkdirSync(testDirectory);
-      writeFileSync(
-        fakeBunx,
-        `#!/usr/bin/env node
-const token = process.env.VERCEL_TOKEN;
-if (!token || process.argv.includes(token)) process.exit(91);
-if (process.env.PR466_PROCESS_MODE === "timeout") {
-  setTimeout(() => process.exit(0), 2000);
-} else if (process.env.PR466_PROCESS_MODE === "nonzero") {
-  process.stdout.write("synthetic stdout\\n");
-  process.stderr.write("synthetic stderr\\n");
-  process.exit(17);
-} else {
-  process.stdout.write("synthetic stdout\\n");
-  process.stderr.write("synthetic stderr\\n");
-}
-`
-      );
-      chmodSync(fakeBunx, 0o755);
-      writeFileSync(
-        configPath,
-        `export default { testDir: ${JSON.stringify(testDirectory)}, outputDir: ${JSON.stringify(join(tempDirectory, "results"))}, testMatch: "process-worker.pw.ts", workers: 1, reporter: "list" };\n`
-      );
-      writeFileSync(
-        specPath,
-        `import { expect, test } from ${JSON.stringify(playwrightTestApiPath)};
-import { makeVercelLogsProcess } from ${JSON.stringify(vercelLogsProcessSourcePath)};
+    await expect(result).resolves.toBe(magicLink("token"));
 
-test("captures output and status, and rejects a timed out CLI", async () => {
-  const run = (mode: string, timeoutMs = 2000) =>
-    makeVercelLogsProcess({
-      HOME: ${JSON.stringify(tmpdir())},
-      PATH: ${JSON.stringify(childPath)},
-    })({
-      args: ["logs", "--json"],
-      env: { PR466_PROCESS_MODE: mode, VERCEL_TOKEN: "synthetic-private-token" },
-      timeoutMs,
+    expect(
+      requests.map((request) => {
+        const url = new URL(request.url);
+        return `${request.method} ${url.origin}${url.pathname}`;
+      })
+    ).toEqual([
+      `GET https://api.vercel.com/v13/deployments/${expectedHost}`,
+      "GET https://vercel.com/api/logs/request-logs",
+    ]);
+    expect(
+      requests.every(
+        (request) =>
+          request.headers.get("authorization") ===
+            "Bearer vercel-log-read-token" &&
+          !request.url.includes("vercel-log-read-token")
+      )
+    ).toBe(true);
+    const query = new URL(requests[1]?.url ?? "https://vercel.com")
+      .searchParams;
+    expect(query.get("projectId")).toBe("workspace-preview-project");
+    expect(query.get("ownerId")).toBe("team-synthetic");
+    expect(query.get("deploymentId")).toBe(deployment.id);
+    expect(query.get("page")).toBe("0");
+    expect(query.get("search")).toBe("account.magic-link.preview-e2e");
+    expect(Number(query.get("startDate"))).toBe(startedAt.getTime());
+    expect(Number(query.get("endDate"))).toBeGreaterThanOrEqual(
+      startedAt.getTime()
+    );
+    expect(
+      requests.some((request) =>
+        /\/v2\/user|\/teams(?:\/|$)/.test(new URL(request.url).pathname)
+      )
+    ).toBe(false);
+  });
+
+  test("does not export preview URLs or Vercel identifiers in HTTP spans", async () => {
+    const exporter = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      spanProcessors: [
+        new SimpleSpanProcessor(createCensoredOtelSpanExporter(exporter)),
+      ],
     });
+    const body = previewE2ELine(magicLink("private-link-token"));
+    const harness = makeHttpHarness(() =>
+      Response.json(page([row("req-match", [log(body)])]))
+    );
+    const tracingLayer = createTracingLive({
+      provider,
+      serviceName: "deskohub-workspace-e2e-test",
+    });
+    const telemetryLayer = E2ETelemetryService.Default.pipe(
+      Layer.provide(E2ERunContextService.layer(makeTestE2EEnvironment()))
+    );
+    const e2eTelemetryLayer = Layer.merge(
+      Layer.merge(harness.layer, tracingLayer),
+      telemetryLayer
+    );
+    try {
+      await expect(
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const telemetry = yield* E2ETelemetryService;
+            return yield* telemetry.traceStep({
+              caseId: "account-magic-link",
+              effect: retrieveWorkspaceE2EMagicLink(config, {
+                callbackPath,
+                recipient,
+                startedAt: new Date("2026-10-01T12:00:00.000Z"),
+              }),
+              stepId: "retrieves-delivered-single-use-link",
+              timeoutMs: config.timeouts.authDelivery,
+            });
+          }).pipe(Effect.provide(e2eTelemetryLayer))
+        )
+      ).resolves.toBe(magicLink("private-link-token"));
+      await provider.forceFlush();
 
-  expect(typeof globalThis.Bun).toBe("undefined");
-  expect(await run("success")).toEqual({
-    exitCode: 0,
-    stderr: "synthetic stderr\\n",
-    stdout: "synthetic stdout\\n",
-  });
-  expect(await run("nonzero")).toEqual({
-    exitCode: 17,
-    stderr: "synthetic stderr\\n",
-    stdout: "synthetic stdout\\n",
-  });
-  await expect(run("timeout", 50)).rejects.toThrow();
-});
-`
-      );
-
-      const playwright = Bun.spawn(
-        ["node", playwrightCliPath, "test", "--config", configPath],
-        {
-          cwd: workspaceDir,
-          env: {
-            HOME: process.env.HOME,
-            PATH: process.env.PATH,
-            TMPDIR: process.env.TMPDIR,
-          },
-          signal: AbortSignal.timeout(15_000),
-          stderr: "pipe",
-          stdin: "ignore",
-          stdout: "pipe",
-        }
-      );
-      const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(playwright.stdout).text(),
-        new Response(playwright.stderr).text(),
-        playwright.exited,
-      ]);
-
-      if (exitCode !== 0) {
-        throw new Error(`Node Playwright worker failed: ${stdout}\n${stderr}`);
-      }
+      const spans = exporter.getFinishedSpans();
+      expect(spans.length).toBeGreaterThan(0);
+      expect(
+        spans.some(
+          (span) =>
+            span.name === "e2e.step" &&
+            span.attributes["e2e.step.id"] ===
+              "retrieves-delivered-single-use-link"
+        )
+      ).toBe(true);
+      const exported = JSON.stringify(spans);
+      expect(exported).not.toContain(expectedHost);
+      expect(exported).not.toContain(deployment.id);
+      expect(exported).not.toContain(deployment.ownerId);
+      expect(exported).not.toContain(deployment.projectId);
+      expect(exported).not.toContain(body);
+      expect(exported).not.toContain("private-link-token");
     } finally {
-      rmSync(tempDirectory, { force: true, recursive: true });
+      await provider.shutdown();
     }
   });
 
-  test("runs the pinned CLI with the bounded scoped query and returns the validated link", async () => {
-    const stdout = jsonl([
-      {
-        id: "req-1",
-        logs: [
-          infoLogEntry("GET /api/auth/sign-in/magic-link 200 in 42ms"),
-          matchingLogEntry(),
-          infoLogEntry("ERROR upstash ratelimit exceeded"),
-        ],
-      },
-    ]);
-    const { invocations, result } = makeRetrieval(stdout);
+  test("fails before log retrieval when the immutable host resolves to another project", async () => {
+    const { requests, result } = makeRetrieval(
+      () => Response.json(page([])),
+      {},
+      { ...deployment, projectId: "another-project" }
+    );
+
+    await expect(result).rejects.toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      message: "Vercel preview deployment did not match the configured project",
+      operation: "resolve Vercel preview deployment",
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  test("uses numeric HTTP status and discards the private response body", async () => {
+    const privateBody =
+      "sentinel-private-link https://private.example.test/?token=private-value";
+    const { requests, result } = makeRetrieval(
+      () => new Response(privateBody, { status: 403 })
+    );
+
+    const failure = await captureFailure(result);
+    expect(failure).toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      message: "query Vercel preview runtime logs failed (HTTP 403)",
+      operation: "query Vercel preview runtime logs",
+    });
+    expect(requests).toHaveLength(2);
+    expect((failure as { cause?: unknown }).cause).toBeUndefined();
+    const failureText = [
+      String(failure),
+      (failure as { message?: string }).message,
+      JSON.stringify(failure),
+    ].join(" ");
+    expect(failureText).not.toContain(privateBody);
+    expect(failureText).not.toContain("private-value");
+  });
+
+  test("discards transport failure details", async () => {
+    const privateDetail = "sentinel-private-transport-value";
+    const { result } = makeRetrieval(() => {
+      throw new Error(`private transport failure ${privateDetail}`);
+    });
+
+    const failure = await captureFailure(result);
+    expect(failure).toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      message: "query Vercel preview runtime logs failed (request-failed)",
+      operation: "query Vercel preview runtime logs",
+    });
+    expect((failure as { cause?: unknown }).cause).toBeUndefined();
+    expect(JSON.stringify(failure)).not.toContain(privateDetail);
+  });
+
+  test("bounds a stalled historical request by the retrieval deadline", async () => {
+    const { result } = makeRetrieval(
+      () => new Response(new ReadableStream({ start() {} })),
+      { deadlineAfterMs: 30 }
+    );
+
+    await expect(result).rejects.toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      message: "query Vercel preview runtime logs failed (timeout)",
+      operation: "query Vercel preview runtime logs",
+    });
+  });
+
+  test("reads later pages when the history response reports more rows", async () => {
+    const { requests, result } = makeRetrieval((request) => {
+      const pageNumber = Number(new URL(request.url).searchParams.get("page"));
+      return Response.json(
+        page(
+          pageNumber === 0
+            ? [row("req-older", [log("unrelated runtime log")])]
+            : [row("req-match", [log(previewE2ELine(magicLink("token")))])],
+          pageNumber === 0
+        )
+      );
+    });
 
     await expect(result).resolves.toBe(magicLink("token"));
-    expect(invocations).toHaveLength(1);
-    const invocation = invocations[0];
-    expect(invocation?.args.slice(0, 3)).toEqual([
-      "logs",
-      "--deployment",
-      config.baseUrl,
-    ]);
-    expect(invocation?.args).toContain("--json");
-    expect(invocation?.args).toContain("--limit");
-    expect(invocation?.args[invocation.args.indexOf("--limit") + 1]).toBe(
-      "100"
-    );
-    expect(invocation?.args).toContain("--since");
-    expect(invocation?.args).toContain("--query");
-    expect(invocation?.args).toContain("--no-branch");
-    expect(invocation?.args[invocation.args.indexOf("--project") + 1]).toBe(
-      "workspace-preview-project"
-    );
-    // The log-read token travels in the child environment, never in argv.
-    expect(invocation?.env.VERCEL_TOKEN).toBe("vercel-log-read-token");
-    expect(invocation?.args.join(" ")).not.toContain("vercel-log-read-token");
+    expect(
+      requests
+        .filter(
+          (request) =>
+            new URL(request.url).pathname === "/api/logs/request-logs"
+        )
+        .map((request) => new URL(request.url).searchParams.get("page"))
+    ).toEqual(["0", "1"]);
   });
 
-  test("matches the individual log entry, not the request-level message", async () => {
-    const stdout = jsonl([
-      {
-        id: "req-decoy",
-        logs: [infoLogEntry("unrelated runtime log line")],
-        message: previewE2ELine(magicLink("token")),
+  test("bounds all history pages by the remaining retrieval deadline", async () => {
+    const { requests, result } = makeRetrieval(
+      async (request) => {
+        const pageNumber = Number(
+          new URL(request.url).searchParams.get("page")
+        );
+        await new Promise((resolve) => globalThis.setTimeout(resolve, 80));
+        return Response.json(
+          page(
+            pageNumber === 0
+              ? [row("req-older", [log("unrelated runtime log")])]
+              : [row("req-match", [log(previewE2ELine(magicLink("token")))])],
+            pageNumber === 0
+          )
+        );
       },
-    ]);
-    const { result } = makeRetrieval(stdout);
+      { deadlineAfterMs: 120 }
+    );
+
+    await expect(result).rejects.toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      message: "query Vercel preview runtime logs failed (timeout)",
+      operation: "query Vercel preview runtime logs",
+    });
+    expect(
+      requests
+        .filter(
+          (request) =>
+            new URL(request.url).pathname === "/api/logs/request-logs"
+        )
+        .map((request) => new URL(request.url).searchParams.get("page"))
+    ).toEqual(["0", "1"]);
+  });
+
+  test("caps history traversal at one hundred request rows", async () => {
+    const hundredRows = Array.from({ length: 100 }, (_, index) =>
+      row(`req-${index}`, [log("unrelated runtime log")])
+    );
+    const { requests, result } = makeRetrieval(() =>
+      Response.json(page(hundredRows, true))
+    );
+
+    await expect(result).rejects.toThrow("before the deadline");
+    expect(
+      requests
+        .filter(
+          (request) =>
+            new URL(request.url).pathname === "/api/logs/request-logs"
+        )
+        .every(
+          (request) => new URL(request.url).searchParams.get("page") === "0"
+        )
+    ).toBe(true);
+  });
+
+  test("matches the individual nested log, not the request-level message", async () => {
+    const { result } = makeRetrieval(() =>
+      Response.json(
+        page([
+          row("req-decoy", [log("unrelated runtime log")], {
+            message: previewE2ELine(magicLink("decoy")),
+          }),
+        ])
+      )
+    );
 
     await expect(result).rejects.toThrow("before the deadline");
   });
 
-  test("treats empty stdout as zero entries", async () => {
-    const { result } = makeRetrieval("");
+  test("skips other recipients and returns only the requested recipient link", async () => {
+    const secondRecipient = makeWorkspaceE2EAccountRecipient(config, "second");
+    const { result } = makeRetrieval(() =>
+      Response.json(
+        page([
+          row("req-second", [
+            log(previewE2ELine(magicLink("second"), secondRecipient)),
+          ]),
+          row("req-main", [
+            log(previewE2ELine(magicLink("main"), recipient.toUpperCase())),
+          ]),
+        ])
+      )
+    );
+
+    await expect(result).resolves.toBe(magicLink("main"));
+  });
+
+  test("times out when only a different recipient is present", async () => {
+    const { result } = makeRetrieval(() =>
+      Response.json(
+        page([
+          row("req-other", [
+            log(previewE2ELine(magicLink("token"), "other@resend.dev")),
+          ]),
+        ])
+      )
+    );
 
     await expect(result).rejects.toThrow("before the deadline");
   });
 
-  test("rejects multiple valid matches for the exact recipient", async () => {
-    const stdout = jsonl([
-      {
-        id: "req-a",
-        logs: [matchingLogEntry()],
-      },
-      {
-        id: "req-b",
-        logs: [matchingLogEntry()],
-      },
-    ]);
-    const { result } = makeRetrieval(stdout);
+  test("rejects multiple matching links", async () => {
+    const { result } = makeRetrieval(() =>
+      Response.json(
+        page([
+          row("req-a", [log(previewE2ELine(magicLink("first")))]),
+          row("req-b", [log(previewE2ELine(magicLink("second")))]),
+        ])
+      )
+    );
 
     await expect(result).rejects.toThrow("multiple preview log entries");
   });
 
-  test("fails closed when the matching request record is truncated", async () => {
-    const stdout = jsonl([
-      { id: "req-t", logs: [matchingLogEntry()], messageTruncated: true },
-    ]);
-    const { result } = makeRetrieval(stdout);
-
-    await expect(result).rejects.toThrow("truncated preview log entry");
-  });
-
-  test("fails closed when the matching log entry is truncated", async () => {
-    const stdout = jsonl([
-      {
-        id: "req-t",
-        logs: [matchingLogEntry({ messageTruncated: true })],
-      },
-    ]);
-    const { result } = makeRetrieval(stdout);
-
-    await expect(result).rejects.toThrow("truncated preview log entry");
-  });
-
-  test("rejects a malformed JSONL line and fails closed", async () => {
-    const { result } = makeRetrieval(
-      `${jsonl([{ id: "req-ok", logs: [infoLogEntry("fine")] }])}\nnot json`
-    );
-
-    await expect(result).rejects.toMatchObject({
-      _tag: "WorkspaceE2EError",
-      diagnosticCode: "auth_delivery_message_invalid",
-      message: "Vercel runtime log payload was invalid",
-      operation: "decode Vercel runtime log entries",
-    });
-  });
-
-  test("rejects a JSONL request with an invalid log-entry shape", async () => {
-    const { result } = makeRetrieval(
-      JSON.stringify({ id: "req-invalid-shape", logs: [{ message: 1 }] })
-    );
-
-    await expect(result).rejects.toMatchObject({
-      _tag: "WorkspaceE2EError",
-      diagnosticCode: "auth_delivery_message_invalid",
-      message: "Vercel runtime log payload was invalid",
-      operation: "decode Vercel runtime log entries",
-    });
-  });
-
-  test("rejects a matching log line that is not valid JSON", async () => {
-    const stdout = jsonl([
-      {
-        id: "req-broken",
-        logs: [
-          {
-            message: `{"code":"account.magic-link.preview-e2e","recipient":"${recipient}","text":"http`,
-          },
-        ],
-      },
-    ]);
-    const { result } = makeRetrieval(stdout);
-
-    await expect(result).rejects.toThrow("unreadable preview log entry");
-  });
-
-  test("rejects a matching entry whose recipient is absent", async () => {
-    const noRecipient = jsonl([
-      {
-        id: "req-r",
-        logs: [{ message: previewE2ELine(magicLink("token"), null) }],
-      },
-    ]);
-    const { result } = makeRetrieval(noRecipient);
-
-    await expect(result).rejects.toThrow("unreadable preview log entry");
-  });
-
-  test("skips a well-formed entry whose recipient does not match exactly", async () => {
-    const stdout = jsonl([
-      {
-        id: "req-r",
-        logs: [
-          {
-            message: previewE2ELine(magicLink("token"), "other@resend.dev"),
-          },
-        ],
-      },
-    ]);
-    const { result } = makeRetrieval(stdout);
-
-    await expect(result).rejects.toThrow("before the deadline");
-  });
-
-  test("returns only the requested recipient's link when other synthetic recipients are present", async () => {
-    const secondRecipient = makeWorkspaceE2EAccountRecipient(config, "second");
-    const mainLink = magicLink("main-token");
-    const secondLink = magicLink("second-token");
-    const stdout = jsonl([
-      {
-        id: "req-main",
-        logs: [{ message: previewE2ELine(mainLink) }],
-      },
-      {
-        id: "req-second",
-        logs: [{ message: previewE2ELine(secondLink, secondRecipient) }],
-      },
-    ]);
-    const { result } = makeRetrieval(stdout);
-
-    await expect(result).resolves.toBe(mainLink);
-  });
-
-  test("matches a recipient case-insensitively", async () => {
-    const stdout = jsonl([
-      {
-        id: "req-ci",
-        logs: [
-          {
-            message: previewE2ELine(
-              magicLink("token"),
-              recipient.toUpperCase()
-            ),
-          },
-        ],
-      },
-    ]);
-    const { result } = makeRetrieval(stdout);
-
-    await expect(result).resolves.toBe(magicLink("token"));
-  });
-
-  test("ignores a log entry without the fixed preview-e2e code and times out instead", async () => {
-    const stdout = jsonl([
-      {
-        id: "req-wrong-code",
-        logs: [
-          {
-            message: JSON.stringify({
-              code: "other.code",
-              text: magicLink("t"),
-            }),
-          },
-        ],
-      },
-    ]);
-    const { result } = makeRetrieval(stdout);
-
-    await expect(result).rejects.toThrow("before the deadline");
-  });
-
-  test("passes the fixed preview-e2e code as the --query marker", async () => {
-    const { invocations, result } = makeRetrieval(
-      jsonl([{ id: "req-match", logs: [matchingLogEntry()] }])
-    );
-
-    await result;
-    const invocation = invocations[0];
-    expect(invocation?.args[invocation.args.indexOf("--query") + 1]).toBe(
-      "account.magic-link.preview-e2e"
-    );
-  });
-
-  test("categorizes a CLI HTTP failure without exposing raw CLI text", async () => {
-    const secretSentinel = "sentinel-vercel-token-value";
-    const urlSentinel = `https://private.example.test/logs?token=${secretSentinel}`;
-    const { result } = makeRetrieval("", {
-      exitCode: 1,
-      stderr: `Error: HTTP 401 at ${urlSentinel}; credential ${secretSentinel}`,
-    });
-
-    const failure = await captureFailure(result);
-    expect(failure).toMatchObject({
-      _tag: "WorkspaceE2EError",
-      diagnosticCode: "auth_delivery_message_retrieve_failed",
-      message:
-        "query Vercel preview runtime logs failed (cli-authentication-rejected)",
-      operation: "query Vercel preview runtime logs",
-    });
-    expect((failure as { cause?: unknown }).cause).toBeUndefined();
-    const failureText = [
-      String(failure),
-      (failure as { message?: string }).message,
-      JSON.stringify(failure),
-    ].join(" ");
-    expect(failureText).not.toContain(secretSentinel);
-    expect(failureText).not.toContain(urlSentinel);
-  });
-
-  test("maps only supported HTTP status classes to fixed CLI categories", async () => {
+  test("fails closed for request- or log-level truncation", async () => {
     const cases = [
-      {
-        stderr: "request failed with status code 403",
-        category: "cli-access-forbidden",
-      },
-      { stderr: "HTTP/2 404", category: "cli-resource-not-found" },
-      { stderr: "HTTP 429", category: "cli-rate-limited" },
-      { stderr: "HTTP 503", category: "cli-server-error" },
-      { stderr: "HTTP 418", category: "cli-rejected" },
-      { stderr: "HTTP 401 then HTTP 403", category: "cli-rejected" },
-    ] as const;
+      row("req-request-truncated", [log(previewE2ELine(magicLink("token")))], {
+        messageTruncated: true,
+      }),
+      row("req-log-truncated", [log(previewE2ELine(magicLink("token")), true)]),
+    ];
 
-    for (const { stderr, category } of cases) {
-      const { result } = makeRetrieval("", { exitCode: 1, stderr });
+    for (const candidate of cases) {
+      const { result } = makeRetrieval(() => Response.json(page([candidate])));
       await expect(result).rejects.toMatchObject({
         _tag: "WorkspaceE2EError",
-        diagnosticCode: "auth_delivery_message_retrieve_failed",
-        message: `query Vercel preview runtime logs failed (${category})`,
-        operation: "query Vercel preview runtime logs",
+        diagnosticCode: "auth_delivery_message_invalid",
+        message: "Vercel log retrieval matched a truncated preview log entry",
       });
     }
   });
 
-  test("categorizes process rejection without retaining raw cause text", async () => {
-    const secretSentinel = "sentinel-process-token-value";
-    const urlSentinel = `https://private.example.test/launch?token=${secretSentinel}`;
-    const { result } = makeRetrieval("", {
-      processRejection: new Error(`launch failed for ${urlSentinel}`),
-    });
-
-    const failure = await captureFailure(result);
-    expect(failure).toMatchObject({
+  test("fails closed on malformed history payloads or nested log entries", async () => {
+    const malformedJson = makeRetrieval(() => new Response("not json"));
+    await expect(malformedJson.result).rejects.toMatchObject({
       _tag: "WorkspaceE2EError",
-      diagnosticCode: "auth_delivery_message_retrieve_failed",
-      message: "query Vercel preview runtime logs failed (process-rejected)",
-      operation: "query Vercel preview runtime logs",
+      diagnosticCode: "auth_delivery_message_invalid",
+      message: "Vercel runtime log payload was invalid",
     });
-    expect((failure as { cause?: unknown }).cause).toBeUndefined();
-    const failureText = [
-      String(failure),
-      (failure as { message?: string }).message,
-      JSON.stringify(failure),
-    ].join(" ");
-    expect(failureText).not.toContain(secretSentinel);
-    expect(failureText).not.toContain(urlSentinel);
+
+    const malformedEnvelope = makeRetrieval(() => Response.json(null));
+    await expect(malformedEnvelope.result).rejects.toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_invalid",
+      message: "Vercel runtime log payload was invalid",
+    });
+
+    const malformedEntry = makeRetrieval(() =>
+      Response.json(page([row("req-invalid", [log(1)])]))
+    );
+    await expect(malformedEntry.result).rejects.toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_invalid",
+      message: "Vercel runtime log payload was invalid",
+    });
   });
 
-  test("classifies standard process error messages without exposing their text", async () => {
-    const secretSentinel = "sentinel-private-process-message";
-    const cases = [
-      {
-        message: `spawn bunx: No such file or directory (${secretSentinel})`,
-        category: "process-executable-not-found",
-      },
-      {
-        message: `spawn bunx: Permission denied (${secretSentinel})`,
-        category: "process-permission-denied",
-      },
-      {
-        message: `spawn bunx: Resource temporarily unavailable (${secretSentinel})`,
-        category: "process-resource-unavailable",
-      },
-      {
-        message: `spawn bunx: Too many open files (${secretSentinel})`,
-        category: "process-file-descriptors-exhausted",
-      },
-      {
-        message: `spawn bunx: Out of memory (${secretSentinel})`,
-        category: "process-memory-pressure",
-      },
-      {
-        message: `spawn bunx: operation timed out (${secretSentinel})`,
-        category: "process-timeout",
-      },
-    ] as const;
-
-    const failureMessages: unknown[] = [];
-    for (const { message } of cases) {
-      const { result } = makeRetrieval("", {
-        processRejection: new Error(message),
-      });
-      const failure = await captureFailure(result);
-
-      expect(failure).toMatchObject({
-        _tag: "WorkspaceE2EError",
-        diagnosticCode: "auth_delivery_message_retrieve_failed",
-        operation: "query Vercel preview runtime logs",
-      });
-      failureMessages.push((failure as { message?: unknown }).message);
-      expect((failure as { cause?: unknown }).cause).toBeUndefined();
-      const failureText = [
-        String(failure),
-        (failure as { message?: string }).message,
-        JSON.stringify(failure),
-      ].join(" ");
-      expect(failureText).not.toContain(secretSentinel);
-      expect(failureText).not.toContain(message);
-    }
-    expect(failureMessages).toEqual(
-      cases.map(
-        ({ category }) =>
-          `query Vercel preview runtime logs failed (${category})`
+  test("rejects malformed matching messages and entries without the recipient", async () => {
+    const malformedMessage = makeRetrieval(() =>
+      Response.json(
+        page([
+          row("req-broken", [
+            log(
+              `{"code":"account.magic-link.preview-e2e","recipient":"${recipient}","text":"http`
+            ),
+          ]),
+        ])
       )
     );
-  });
-
-  test("classifies structured process rejection fields without exposing error text", async () => {
-    const cases = [
-      { code: "ENOENT", category: "process-executable-not-found" },
-      { code: "EACCES", category: "process-permission-denied" },
-      { code: "EPERM", category: "process-permission-denied" },
-      { code: "ETIMEDOUT", category: "process-timeout" },
-      { code: "EAGAIN", category: "process-resource-unavailable" },
-      {
-        code: "EMFILE",
-        category: "process-file-descriptors-exhausted",
-      },
-      { code: "ENOMEM", category: "process-memory-pressure" },
-      { name: "AbortError", category: "process-timeout" },
-      { code: "UNKNOWN_CODE", category: "process-rejected" },
-    ] as const;
-
-    for (const rejection of cases) {
-      const sentinel = `sentinel-process-rejection-${rejection.code ?? rejection.name}`;
-      const error = Object.assign(
-        new Error(`${sentinel}: private process details`),
-        "code" in rejection ? { code: rejection.code } : {},
-        "name" in rejection ? { name: rejection.name } : {}
-      );
-      const { result } = makeRetrieval("", { processRejection: error });
-
-      const failure = await captureFailure(result);
-      expect(failure).toMatchObject({
-        _tag: "WorkspaceE2EError",
-        diagnosticCode: "auth_delivery_message_retrieve_failed",
-        message: `query Vercel preview runtime logs failed (${rejection.category})`,
-        operation: "query Vercel preview runtime logs",
-      });
-      expect((failure as { cause?: unknown }).cause).toBeUndefined();
-      const failureText = [
-        String(failure),
-        (failure as { message?: string }).message,
-        JSON.stringify(failure),
-      ].join(" ");
-      expect(failureText).not.toContain(sentinel);
-      expect(failureText).not.toContain("private process details");
-    }
-  });
-
-  test("classifies recognized structured fields up to three nested causes", async () => {
-    const cases = [
-      { code: "ENOENT", category: "process-executable-not-found" },
-      { code: "EACCES", category: "process-permission-denied" },
-      { code: "EPERM", category: "process-permission-denied" },
-      { code: "ETIMEDOUT", category: "process-timeout" },
-      { code: "EAGAIN", category: "process-resource-unavailable" },
-      {
-        code: "EMFILE",
-        category: "process-file-descriptors-exhausted",
-      },
-      { code: "ENOMEM", category: "process-memory-pressure" },
-      { name: "AbortError", category: "process-timeout" },
-      {
-        message: "Resource temporarily unavailable",
-        category: "process-resource-unavailable",
-      },
-    ] as const;
-
-    for (const rejection of cases) {
-      const sentinel = `sentinel-nested-rejection-${rejection.category}`;
-      const rejectionMessage =
-        "message" in rejection
-          ? `${rejection.message} (${sentinel})`
-          : `${sentinel}: private process details`;
-      let cause: unknown = Object.assign(
-        new Error(rejectionMessage),
-        "code" in rejection ? { code: rejection.code } : {},
-        "name" in rejection ? { name: rejection.name } : {}
-      );
-      for (let depth = 0; depth < 2; depth += 1) {
-        cause = Object.assign(
-          new Error(`${sentinel}: wrapped process details`),
-          { cause }
-        );
-      }
-      const processRejection = Object.assign(
-        new Error(`${sentinel}: root process details`),
-        { cause }
-      );
-      const { result } = makeRetrieval("", { processRejection });
-
-      const failure = await captureFailure(result);
-      expect(failure).toMatchObject({
-        _tag: "WorkspaceE2EError",
-        diagnosticCode: "auth_delivery_message_retrieve_failed",
-        message: `query Vercel preview runtime logs failed (${rejection.category})`,
-        operation: "query Vercel preview runtime logs",
-      });
-      expect((failure as { cause?: unknown }).cause).toBeUndefined();
-      const failureText = [
-        String(failure),
-        (failure as { message?: string }).message,
-        JSON.stringify(failure),
-      ].join(" ");
-      expect(failureText).not.toContain(sentinel);
-      expect(failureText).not.toContain("private process details");
-      expect(failureText).not.toContain("wrapped process details");
-      expect(failureText).not.toContain("root process details");
-    }
-  });
-
-  test("keeps over-depth, array, and string causes in the generic category", async () => {
-    const sentinel = "sentinel-untraversed-process-rejection";
-    let overDepthCause: unknown = Object.assign(
-      new Error(`${sentinel}: structured private details`),
-      { code: "ENOENT" }
+    await expect(malformedMessage.result).rejects.toThrow(
+      "unreadable preview log entry"
     );
-    for (let depth = 0; depth < 3; depth += 1) {
-      overDepthCause = Object.assign(
-        new Error(`${sentinel}: wrapped private details`),
-        { cause: overDepthCause }
-      );
-    }
-    const rejections = [
-      Object.assign(new Error(`${sentinel}: root private details`), {
-        cause: overDepthCause,
-      }),
-      Object.assign(new Error(`${sentinel}: array private details`), {
-        cause: [
-          Object.assign(new Error("nested private detail"), { code: "ENOENT" }),
-        ],
-      }),
-      Object.assign(new Error(`${sentinel}: string private details`), {
-        cause: "nested private detail: ENOENT",
-      }),
-    ];
 
-    for (const processRejection of rejections) {
-      const { result } = makeRetrieval("", { processRejection });
-      const failure = await captureFailure(result);
-
-      expect(failure).toMatchObject({
-        _tag: "WorkspaceE2EError",
-        diagnosticCode: "auth_delivery_message_retrieve_failed",
-        message: "query Vercel preview runtime logs failed (process-rejected)",
-        operation: "query Vercel preview runtime logs",
-      });
-      expect((failure as { cause?: unknown }).cause).toBeUndefined();
-      const failureText = [
-        String(failure),
-        (failure as { message?: string }).message,
-        JSON.stringify(failure),
-      ].join(" ");
-      expect(failureText).not.toContain(sentinel);
-      expect(failureText).not.toContain("nested private detail");
-    }
+    const noRecipient = makeRetrieval(() =>
+      Response.json(
+        page([
+          row("req-no-recipient", [
+            log(previewE2ELine(magicLink("token"), null)),
+          ]),
+        ])
+      )
+    );
+    await expect(noRecipient.result).rejects.toThrow(
+      "unreadable preview log entry"
+    );
   });
 
-  test("returns stable composite baseline ids and excludes them across poll iterations", async () => {
-    const staleRequest: FakeLogRequest = {
-      id: "req-baseline",
-      logs: [infoLogEntry("boot"), matchingLogEntry()],
-    };
-    // Distinct URLs expose stale-match bugs.
-    const freshToken = "fresh-token";
-    const freshRequest: FakeLogRequest = {
-      id: "req-fresh",
-      logs: [{ message: previewE2ELine(magicLink(freshToken)) }],
-    };
-
-    const invocations: CliInvocation[] = [];
-    let call = 0;
-    const stdouts = [
-      jsonl([staleRequest]),
-      jsonl([staleRequest, freshRequest]),
-    ];
-    const fakeProcess: WorkspaceE2EVercelLogsProcess = async (command) => {
-      invocations.push({ args: command.args, env: command.env });
-      const stdout = stdouts[Math.min(call, stdouts.length - 1)] ?? "";
-      call += 1;
-      return { exitCode: 0, stderr: "", stdout };
-    };
-
+  test("returns stable baseline ids and excludes stale links across polls", async () => {
+    const stale = row("req-baseline", [
+      log("boot"),
+      log(previewE2ELine(magicLink("stale"))),
+    ]);
+    const baselineHarness = makeHttpHarness(() => Response.json(page([stale])));
     const baseline = await Effect.runPromise(
-      listSyntheticLogEntryIds(
-        { ...config, vercelLogsProcess: fakeProcess },
-        {
-          callbackPath,
-          recipient,
-          startedAt: new Date(),
-        }
-      )
+      listSyntheticLogEntryIds(config, {
+        callbackPath,
+        recipient,
+        startedAt: new Date("2026-10-01T12:00:00.000Z"),
+      }).pipe(Effect.provide(baselineHarness.layer))
     );
     expect(baseline).toEqual(["req-baseline:1"]);
 
-    call = 0;
-    invocations.length = 0;
-
-    const link = await Effect.runPromise(
-      retrieveWorkspaceE2EMagicLink(
-        { ...config, vercelLogsProcess: fakeProcess },
-        {
-          callbackPath,
-          excludeLogEntryIds: baseline,
-          deadlineAfterMs: 200,
-          pollIntervalMs: 10,
-          recipient,
-          startedAt: new Date(),
-        }
-      )
+    const fresh = row("req-fresh", [log(previewE2ELine(magicLink("fresh")))]);
+    const retrievalHarness = makeHttpHarness((_request, call) =>
+      Response.json(page(call === 0 ? [stale] : [stale, fresh]))
     );
-    expect(invocations.length).toBeGreaterThanOrEqual(2);
-    expect(link).toBe(magicLink(freshToken));
+    const result = await Effect.runPromise(
+      retrieveWorkspaceE2EMagicLink(config, {
+        callbackPath,
+        excludeLogEntryIds: baseline,
+        deadlineAfterMs: 100,
+        pollIntervalMs: 5,
+        recipient,
+        startedAt: new Date("2026-10-01T12:00:00.000Z"),
+      }).pipe(Effect.provide(retrievalHarness.layer))
+    );
+    expect(result).toBe(magicLink("fresh"));
+    expect(retrievalHarness.requests).toHaveLength(3);
   });
 
-  test("rejects links whose host differs from the exact immutable preview", async () => {
-    const foreignLink = magicLink("token").replace(
+  test("rejects links outside the immutable host or expected callback", async () => {
+    const foreignHost = magicLink("token").replace(
       authOrigin,
       "https://other.vercel.app"
     );
-    const stdout = jsonl([
-      { id: "req-host", logs: [{ message: previewE2ELine(foreignLink) }] },
-    ]);
-    const { result } = makeRetrieval(stdout);
-
-    await expect(result).rejects.toThrow("exactly one auth link");
-  });
-
-  test("rejects links with a foreign callback target", async () => {
     const foreignCallback = `${authOrigin}/api/auth/magic-link/verify?token=token&callbackURL=${encodeURIComponent("https://evil.example.test/en-US/auth/callback")}`;
-    const stdout = jsonl([
-      {
-        id: "req-callback",
-        logs: [{ message: previewE2ELine(foreignCallback) }],
-      },
-    ]);
-    const { result } = makeRetrieval(stdout);
-
-    await expect(result).rejects.toThrow("exactly one auth link");
+    for (const invalidLink of [foreignHost, foreignCallback]) {
+      const { result } = makeRetrieval(() =>
+        Response.json(
+          page([row("req-invalid-link", [log(previewE2ELine(invalidLink))])])
+        )
+      );
+      await expect(result).rejects.toThrow("exactly one auth link");
+    }
   });
 
-  test("rejects bodies without a single auth link", async () => {
-    const stdout = jsonl([
-      { id: "req-nolink", logs: [{ message: previewE2ELine("no link here") }] },
-    ]);
-    const { result } = makeRetrieval(stdout);
-
-    await expect(result).rejects.toThrow("exactly one auth link");
-  });
-
-  test("registers the returned link and token with the process redactor", async () => {
-    const { result } = makeRetrieval(
-      jsonl([{ id: "req-match", logs: [matchingLogEntry()] }])
+  test("redacts the returned link and token immediately", async () => {
+    const { result } = makeRetrieval(() =>
+      Response.json(
+        page([row("req-match", [log(previewE2ELine(magicLink("token")))])])
+      )
     );
 
     await result;

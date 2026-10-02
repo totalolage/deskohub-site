@@ -5,8 +5,6 @@ import { workspaceE2EError } from "../errors";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
 import { addRedaction } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
-import type { WorkspaceE2EVercelLogsProcess } from "./vercel-log-retrieval";
-import { makeVercelLogsProcess } from "./vercel-log-retrieval";
 
 /** Resend synthetic test recipients ignore local parts; this host stays fixed. */
 const resendSyntheticRecipientHost = "resend.dev";
@@ -26,7 +24,6 @@ export type WorkspaceE2EAccountConfig = {
   /** GitHub-only project-scoped Vercel token; never enters Vercel or app config. */
   readonly vercelToken: string;
   readonly vercelProjectId: string;
-  readonly vercelLogsProcess: WorkspaceE2EVercelLogsProcess;
 };
 
 export const getAccountE2EConfig = (
@@ -64,10 +61,6 @@ export const getAccountE2EConfig = (
     timeouts: workspaceE2ETimeouts,
     vercelProjectId,
     vercelToken,
-    vercelLogsProcess: makeVercelLogsProcess({
-      HOME: environment.HOME,
-      PATH: environment.PATH,
-    }),
   };
 };
 

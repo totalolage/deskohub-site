@@ -508,8 +508,8 @@ and uses it for:
 `DATABASE_URL`, `WORKSPACE_E2E_DATABASE_URL_UNPOOLED`, and
 `WORKSPACE_E2E_DATABASE_ALLOWLIST` must identify the database backing that same
 preview. `NEXI_API_ORIGIN` must be supplied explicitly as the sandbox origin.
-The runner does not deploy, pull Vercel environment files, inspect deployments,
-or mutate aliases/domains.
+The runner reads immutable deployment metadata to validate auth log retrieval.
+It does not deploy, pull Vercel environment files, or mutate aliases/domains.
 
 For auth-dependent cases the runner retrieves verification links through an
 automated account retrieval step. The exact immutable deployment, fixed event
