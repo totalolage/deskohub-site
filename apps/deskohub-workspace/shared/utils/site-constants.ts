@@ -35,6 +35,7 @@ export const workspaceSiteConstants = {
   },
   company: {
     identificationNumber: "24531596",
+    taxIdentificationNumber: "CZ24531596",
     establishmentId: "1016069146",
     vatStatus: "not-vat-payer",
     commercialRegister: {
