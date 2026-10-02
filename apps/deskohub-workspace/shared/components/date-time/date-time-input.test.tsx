@@ -440,6 +440,24 @@ describe("DateTimeInput", () => {
     expect(currentMonthGridDay(view, 6)!.disabled).toBe(false);
   });
 
+  test("does not select a calendar day when disabled while the date-time popover is open", async () => {
+    const initial = `${dayInCurrentMonth(10).toString()}T16:00`;
+    const { onValueChange, readHidden, rerender, view } = renderStateful({
+      defaultValue: initial,
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Start date" }));
+    await view.findByRole("grid");
+    rerender({ disabled: true });
+
+    const dayButton = currentMonthGridDay(view, 15)!;
+    fireEvent.click(dayButton);
+
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(dayButton.disabled).toBe(true);
+    expect(readHidden().value).toBe(initial);
+  });
+
   test("rejects a calendar day a datetime callback minimum advanced past without a rerender", async () => {
     const day10 = dayInCurrentMonth(10);
     const day13 = dayInCurrentMonth(13);

@@ -154,6 +154,48 @@ describe("DateInput", () => {
     ).toContain("Pick a date");
   });
 
+  test("does not select a calendar day when disabled while the popover is open", async () => {
+    const onChange = mock(() => undefined);
+    const renderInput = (disabled: boolean) => (
+      <form aria-label="Bound form">
+        <DateInput
+          ariaLabel="Start date"
+          disabled={disabled}
+          locale="en-US"
+          name="startDate"
+          onChange={onChange}
+        />
+      </form>
+    );
+    const view = render(renderInput(false));
+
+    await openCalendar(view);
+    view.rerender(renderInput(true));
+
+    const currentMonth = dayInCurrentMonth(15).toLocaleString("en-US", {
+      month: "long",
+    });
+    const dayButton = [
+      ...view.baseElement.querySelectorAll<HTMLButtonElement>(
+        '[role="grid"] button'
+      ),
+    ].find(
+      (button) =>
+        button.textContent === "15" &&
+        (button.getAttribute("aria-label") ?? "").includes(currentMonth) &&
+        (button.getAttribute("aria-label") ?? "").includes(String(today.year))
+    );
+    expect(dayButton).toBeDefined();
+    fireEvent.click(dayButton!);
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(dayButton!.disabled).toBe(true);
+    expect(
+      view.container.querySelector<HTMLInputElement>('[name="startDate"]')!
+        .value
+    ).toBe("");
+  });
+
   test("treats malformed and non-canonical prop values as empty", () => {
     const { readHidden, view } = renderDateInput({
       props: { value: "2099-06-10T16:00" },

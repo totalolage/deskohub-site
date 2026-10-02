@@ -55,6 +55,15 @@ const pickWindowDay = async (
   fireEvent.click(dayButton);
 };
 
+const clearWindowDate = async (
+  view: ReturnType<typeof render>,
+  label: string
+) => {
+  fireEvent.click(view.getByRole("button", { name: label }));
+  await view.findByRole("grid");
+  fireEvent.click(view.getByRole("button", { name: `Clear ${label}` }));
+};
+
 const fillForm = async (view: ReturnType<typeof render>) => {
   fireEvent.input(view.getByLabelText("Name"), {
     target: { value: "Booth A" },
@@ -390,6 +399,58 @@ describe("CreateStandaloneAccessCodeForm", () => {
       view.getByRole("button", { name: "Starts date" })
     );
   });
+
+  for (const { field, label } of [
+    { field: "startsAt", label: "Starts date" },
+    { field: "endsAt", label: "Ends date" },
+  ] as const) {
+    test(`blocks creation while clearing ${field} leaves a partial date-time draft`, async () => {
+      withActionOptions();
+      const view = await renderForm();
+      await fillForm(view);
+
+      await clearWindowDate(view, label);
+      expect(
+        (
+          view.getByLabelText(
+            field === "startsAt" ? "Starts time" : "Ends time"
+          ) as HTMLInputElement
+        ).value
+      ).toBe(field === "startsAt" ? "10:00" : "12:00");
+      await submitForm(view);
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(
+        view.getByText(
+          field === "startsAt"
+            ? "Complete the start date and time."
+            : "Complete the end date and time."
+        )
+      ).toBeDefined();
+      expect(document.activeElement).toBe(
+        view.getByRole("button", { name: label })
+      );
+
+      // The visible time draft survives the clear. Completing the date again
+      // restores a valid form value and allows the intended creation.
+      await pickWindowDay(view, label);
+      await submitForm(view);
+
+      expect(
+        view.queryByText(
+          field === "startsAt"
+            ? "Complete the start date and time."
+            : "Complete the end date and time."
+        )
+      ).toBeNull();
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(execute.mock.calls[0]![0]).toMatchObject({
+        name: "Booth A",
+        startsAt: startWindowValue(),
+        endsAt: endWindowValue(),
+      });
+    });
+  }
 
   test("focuses each terminal result region after transition", async () => {
     withActionOptions();
