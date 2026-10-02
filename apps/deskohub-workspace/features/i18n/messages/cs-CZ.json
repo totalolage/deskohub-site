@@ -885,5 +885,13 @@
   "accountDeletedBody": "Jste odhlášeni a vaše přihlašování bylo smazáno. Pozdější přihlášení stejnou ověřenou e-mailovou adresou obnoví zachovaný zákaznický profil.",
   "accountDeletedSignInAgain": "Přihlásit se znovu",
   "accountSupportTitle": "Potřebujeme ověřit váš profil",
-  "accountSupportContact": "Pro tento e-mail se nepodařilo bezpečně vybrat jeden zákaznický profil, proto nezobrazujeme údaje profilu ani rezervace. <contact>Napište nám</contact> a propojíme správnou historii."
+  "accountSupportContact": "Pro tento e-mail se nepodařilo bezpečně vybrat jeden zákaznický profil, proto nezobrazujeme údaje profilu ani rezervace. <contact>Napište nám</contact> a propojíme správnou historii.",
+  "adminCustomersFilterConsentLabel": "Marketingový souhlas",
+  "adminCustomersFilterConsentAll": "Vše",
+  "adminCustomersFilterConsentGranted": "Poskytnut",
+  "adminCustomersFilterConsentWithdrawn": "Odvolán",
+  "adminCustomersFilterConsentNeverGranted": "Nikdy neposkytnut",
+  "adminCustomersFilterApply": "Použít filtry",
+  "adminCustomersPendingLabel": "Načítání zákazníků…",
+  "adminCustomersEmptyConsentFiltered": "Žádní zákazníci neodpovídají tomuto filtru marketingového souhlasu."
 }
