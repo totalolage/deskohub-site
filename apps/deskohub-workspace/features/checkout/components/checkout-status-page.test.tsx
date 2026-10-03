@@ -443,7 +443,7 @@ describe("CheckoutStatusPage", () => {
     ).toBe("/en-US/reservation/office?dayCount=3&seats=3");
   });
 
-  test("links step 1 to the cowork repeat start as a raw document anchor", () => {
+  test("links the completed order step to the cowork repeat start as a raw document anchor", () => {
     const view = render(
       <CheckoutStatusPage locale="en-US" status={reconstructedCoworkStatus} />
     );
@@ -451,13 +451,13 @@ describe("CheckoutStatusPage", () => {
     const ctaHref = view.container
       .querySelector("#checkout-status-reserve-again")
       ?.getAttribute("href");
-    const stepOne = view.container.querySelector(
-      "main ol > li:first-child > a"
+    const completedOrderStep = view.container.querySelector(
+      "main ol > li:nth-child(2) > a"
     );
-    expect(stepOne).not.toBeNull();
-    expect(stepOne?.getAttribute("href")).toBe(ctaHref);
-    expect(stepOne?.getAttribute("data-next-link")).toBeNull();
-    const stepHref = stepOne?.getAttribute("href");
+    expect(completedOrderStep).not.toBeNull();
+    expect(completedOrderStep?.getAttribute("href")).toBe(ctaHref);
+    expect(completedOrderStep?.getAttribute("data-next-link")).toBeNull();
+    const stepHref = completedOrderStep?.getAttribute("href");
     expect(capturedLinks.some(({ href }) => href === stepHref)).toBe(false);
 
     const url = new URL(stepHref ?? "", "https://deskohub.local");
@@ -474,7 +474,7 @@ describe("CheckoutStatusPage", () => {
     expect(defaults.marketingConsent).toBe(false);
   });
 
-  test("links step 1 to the office repeat start as a raw document anchor", () => {
+  test("links the completed order step to the office repeat start as a raw document anchor", () => {
     const view = render(
       <CheckoutStatusPage
         locale="en-US"
@@ -496,13 +496,13 @@ describe("CheckoutStatusPage", () => {
       .querySelector("#checkout-status-reserve-again")
       ?.getAttribute("href");
     expect(ctaHref).toBe("/en-US/reservation/office?dayCount=3&seats=3");
-    const stepOne = view.container.querySelector(
-      "main ol > li:first-child > a"
+    const completedOrderStep = view.container.querySelector(
+      "main ol > li:nth-child(2) > a"
     );
-    expect(stepOne).not.toBeNull();
-    expect(stepOne?.getAttribute("href")).toBe(ctaHref);
-    expect(stepOne?.getAttribute("data-next-link")).toBeNull();
-    const stepHref = stepOne?.getAttribute("href");
+    expect(completedOrderStep).not.toBeNull();
+    expect(completedOrderStep?.getAttribute("href")).toBe(ctaHref);
+    expect(completedOrderStep?.getAttribute("data-next-link")).toBeNull();
+    const stepHref = completedOrderStep?.getAttribute("href");
     expect(capturedLinks.some(({ href }) => href === stepHref)).toBe(false);
 
     const url = new URL(stepHref ?? "", "https://deskohub.local");
@@ -519,7 +519,7 @@ describe("CheckoutStatusPage", () => {
     expect(defaults.marketingConsent).toBe(false);
   });
 
-  test("links step 1 to the generic meeting-room start as a raw document anchor", () => {
+  test("links the completed order step to the generic meeting-room start as a raw document anchor", () => {
     const view = render(
       <CheckoutStatusPage
         locale="en-US"
@@ -540,13 +540,13 @@ describe("CheckoutStatusPage", () => {
       .querySelector("#checkout-status-reserve-again")
       ?.getAttribute("href");
     expect(ctaHref).toBe("/en-US/reservation/meeting-room");
-    const stepOne = view.container.querySelector(
-      "main ol > li:first-child > a"
+    const completedOrderStep = view.container.querySelector(
+      "main ol > li:nth-child(2) > a"
     );
-    expect(stepOne).not.toBeNull();
-    expect(stepOne?.getAttribute("href")).toBe(ctaHref);
-    expect(stepOne?.getAttribute("data-next-link")).toBeNull();
-    const stepHref = stepOne?.getAttribute("href");
+    expect(completedOrderStep).not.toBeNull();
+    expect(completedOrderStep?.getAttribute("href")).toBe(ctaHref);
+    expect(completedOrderStep?.getAttribute("data-next-link")).toBeNull();
+    const stepHref = completedOrderStep?.getAttribute("href");
     expect(capturedLinks.some(({ href }) => href === stepHref)).toBe(false);
 
     const url = new URL(stepHref ?? "", "https://deskohub.local");
@@ -563,7 +563,7 @@ describe("CheckoutStatusPage", () => {
     expect(defaults.startDateTime).not.toContain("2026-06-20");
   });
 
-  test("links step 1 to the generic start for non-fulfilled status as a raw document anchor", () => {
+  test("links the completed order step to the generic start for non-fulfilled status as a raw document anchor", () => {
     const view = render(
       <CheckoutStatusPage
         locale="en-US"
@@ -589,13 +589,13 @@ describe("CheckoutStatusPage", () => {
       .querySelector("#checkout-status-reserve-again")
       ?.getAttribute("href");
     expect(ctaHref).toBe("/en-US/reservation/cowork");
-    const stepOne = view.container.querySelector(
-      "main ol > li:first-child > a"
+    const completedOrderStep = view.container.querySelector(
+      "main ol > li:nth-child(2) > a"
     );
-    expect(stepOne).not.toBeNull();
-    expect(stepOne?.getAttribute("href")).toBe(ctaHref);
-    expect(stepOne?.getAttribute("data-next-link")).toBeNull();
-    const stepHref = stepOne?.getAttribute("href");
+    expect(completedOrderStep).not.toBeNull();
+    expect(completedOrderStep?.getAttribute("href")).toBe(ctaHref);
+    expect(completedOrderStep?.getAttribute("data-next-link")).toBeNull();
+    const stepHref = completedOrderStep?.getAttribute("href");
     expect(capturedLinks.some(({ href }) => href === stepHref)).toBe(false);
 
     const url = new URL(stepHref ?? "", "https://deskohub.local");
@@ -678,12 +678,11 @@ describe("CheckoutStatusPage", () => {
     expect(href).not.toContain("CZ12345678");
     expect(href).not.toContain("35000");
     expect(href).not.toContain("2026-06");
-    const stepOne = view.container.querySelector(
-      "main ol > li:first-child > a"
+    const completedOrderStep = view.container.querySelector(
+      "main ol > li:nth-child(2) > a"
     );
-    if (stepOne) {
-      expect(stepOne.getAttribute("href")).toBe(href);
-    }
+    expect(completedOrderStep).not.toBeNull();
+    expect(completedOrderStep?.getAttribute("href")).toBe(href);
   });
 
   test("keeps generic starts for non-fulfilled or unusable booking shapes", () => {
