@@ -12,33 +12,19 @@ type ContactPageProps = {
 export function ContactPage({ locale, initialValues }: ContactPageProps) {
   return (
     <main className="min-h-screen overflow-x-clip bg-navy-blue text-white">
-      <section className="relative isolate overflow-hidden pb-20 pt-28 sm:pb-24 sm:pt-36">
-        <div className="absolute inset-x-0 top-16 -z-10 h-56 bg-[radial-gradient(circle,rgba(221,72,10,0.18),transparent_60%)] blur-3xl" />
-
+      <section className="pb-20 pt-28 sm:pb-24 sm:pt-36">
         <Container>
-          <div className="mx-auto max-w-3xl text-center">
-            <div className="inline-flex rounded-full border border-white/12 bg-white/6 px-4 py-2 text-[0.72rem] uppercase tracking-[0.18em] text-sunset-yellow">
-              {m.contactHeroEyebrow({}, { locale })}
-            </div>
-            <h1 className="mt-6 text-balance text-5xl leading-none sm:text-6xl">
-              {m.contactHeroTitle({}, { locale })}
-            </h1>
-            <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-white/72">
-              {m.contactHeroLead({}, { locale })}
-            </p>
-          </div>
-
-          <div className="mt-14 grid items-start gap-12 lg:grid-cols-2 lg:gap-16">
+          <div className="grid items-start gap-12 lg:grid-cols-2 lg:gap-16">
             <section
               aria-labelledby="contact-details-title"
               className="lg:pt-6"
             >
-              <h2
+              <h1
                 id="contact-details-title"
                 className="text-3xl sm:text-[2.2rem]"
               >
                 {m.contactDetailsTitle({}, { locale })}
-              </h2>
+              </h1>
               <dl className="mt-8 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-5 text-base leading-7 sm:gap-x-6">
                 <dt className="text-white/72">
                   {m.contactCompanyLabel({}, { locale })}:
