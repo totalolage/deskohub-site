@@ -16,7 +16,6 @@ import { Button } from "@/shared/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
@@ -92,13 +91,10 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
       className="relative overflow-hidden rounded-4xl border-white/50 bg-white/92 shadow-[0_40px_120px_-52px_rgba(0,2,79,0.55)] backdrop-blur-sm"
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/70 to-transparent" />
-      <CardHeader className="space-y-3 pb-6">
+      <CardHeader className="pb-6">
         <CardTitle as="h2" className="text-3xl sm:text-[2.2rem]">
           {m.contactFormTitle({}, { locale })}
         </CardTitle>
-        <CardDescription className="max-w-xl text-base leading-7 text-navy-blue/72">
-          {m.contactFormDescription({}, { locale })}
-        </CardDescription>
       </CardHeader>
 
       <CardContent>
