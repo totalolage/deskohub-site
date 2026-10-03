@@ -42,18 +42,17 @@ const processWebhook = Effect.fn("processWebhook")(function* () {
   return response;
 });
 
-function processWebhookRequest(request: Request) {
-  const process = Effect.fn("processCloudinaryWebhookRequest")(function* () {
+const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
+  function* (request: Request) {
     yield* Effect.logInfo("Cloudinary webhook invoked");
 
     yield* verifyCloudinaryWebhookRequest(request);
     yield* Effect.logInfo("Cloudinary webhook verified");
 
     return yield* processWebhook();
-  });
-
-  return process().pipe(Effect.scoped);
-}
+  },
+  Effect.scoped
+);
 
 /**
  * POST /api/webhooks/cloudinary
