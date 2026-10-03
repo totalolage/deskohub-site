@@ -35,7 +35,7 @@ export function FaqPage({
       value: "location",
       question: m.faqQuestionLocation({}, { locale }),
       answer: (
-        <address className="not-italic leading-8 text-navy-blue/76">
+        <address className="not-italic leading-8 text-white/76">
           {formattedAddress}
         </address>
       ),
@@ -74,14 +74,11 @@ export function FaqPage({
           {m.faqPageTitle({}, { locale })}
         </h1>
 
-        <div className="mt-8 grid gap-4">
+        <div className="mt-8 divide-y divide-white/14">
           {questions.map((item) => (
-            <details
-              key={item.value}
-              className="group rounded-[1.8rem] bg-[#f4f1ea] shadow-[0_24px_60px_-46px_rgba(0,2,79,0.45)]"
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-md px-6 py-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2 focus-visible:ring-offset-[#f4f1ea]">
-                <h2 className="text-xl font-semibold text-navy-blue sm:text-[1.85rem]">
+            <details key={item.value} className="group py-1">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-md py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chilean-fire focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d1258]">
+                <h2 className="text-base font-semibold text-white sm:text-lg">
                   {item.question}
                 </h2>
                 <ChevronDown
@@ -89,7 +86,7 @@ export function FaqPage({
                   className="size-5 shrink-0 text-burned-orange transition-transform duration-200 group-open:rotate-180"
                 />
               </summary>
-              <div className="px-6 pb-6 text-base leading-8 text-navy-blue/76">
+              <div className="pb-5 text-base leading-8 text-white/76">
                 {item.answer}
               </div>
             </details>
