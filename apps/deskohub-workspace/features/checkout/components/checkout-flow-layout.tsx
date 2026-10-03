@@ -46,13 +46,17 @@ export function CheckoutSteps({
   locale,
   stepLinks,
 }: CheckoutStepsProps) {
+  const activeStepIndex = checkoutFlowSteps.findIndex(
+    (step) => step.key === activeStepKey
+  );
+
   return (
     <ol
       className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
       aria-label={m.checkoutOrderStepsLabel({}, { locale })}
     >
       {checkoutFlowSteps.map((step, index) => {
-        const isAlwaysCompleted = step.key === "chooseSpace";
+        const isCompleted = index < activeStepIndex;
         const isCurrentStep = step.key === activeStepKey;
         const link =
           step.key === "chooseSpace" ? undefined : stepLinks?.[step.key];
@@ -61,16 +65,14 @@ export function CheckoutSteps({
             <span
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                isAlwaysCompleted && "bg-aquamarine-green text-aquamarine-ink",
-                !isAlwaysCompleted &&
-                  isCurrentStep &&
-                  "bg-burned-orange text-white",
-                !isAlwaysCompleted &&
+                isCompleted && "bg-aquamarine-green text-aquamarine-ink",
+                isCurrentStep && "bg-burned-orange text-white",
+                !isCompleted &&
                   !isCurrentStep &&
                   "border border-white/18 text-white/64"
               )}
             >
-              {isAlwaysCompleted ? (
+              {isCompleted ? (
                 <Check aria-hidden="true" className="size-4" />
               ) : (
                 index + 1
@@ -79,7 +81,7 @@ export function CheckoutSteps({
             <span className={cn("min-w-0", isCurrentStep && "text-white")}>
               {step.getLabel({}, { locale })}
             </span>
-            {isAlwaysCompleted && (
+            {isCompleted && (
               <span className="sr-only">
                 {m.checkoutOrderStepCompleted({}, { locale })}
               </span>

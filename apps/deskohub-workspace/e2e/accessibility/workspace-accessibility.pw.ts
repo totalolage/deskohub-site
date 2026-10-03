@@ -123,16 +123,27 @@ test("contact fields expose native required semantics", async ({ page }) => {
 const checkoutProgressPages = [
   {
     currentStepLabel: m.checkoutOrderStepReservation,
+    currentStepIndex: 1,
     path: "/reservation/cowork",
   },
   {
     currentStepLabel: m.checkoutOrderStepPayment,
+    currentStepIndex: 2,
     path: "/checkout/pay",
+  },
+  {
+    currentStepLabel: m.checkoutOrderStepAccess,
+    currentStepIndex: 3,
+    path: "/reservation/access/instant-navigation-missing-order",
   },
 ] as const;
 
 for (const locale of locales) {
-  for (const { currentStepLabel, path } of checkoutProgressPages) {
+  for (const {
+    currentStepLabel,
+    currentStepIndex,
+    path,
+  } of checkoutProgressPages) {
     test(`checkout progress on ${locale} ${path}`, async ({ page }) => {
       await openSettledPage(page, `/${locale}${path}`);
 
@@ -147,7 +158,18 @@ for (const locale of locales) {
 
       const chooseSpaceLabel = m.checkoutOrderStepChooseSpace({}, { locale });
       const completedLabel = m.checkoutOrderStepCompleted({}, { locale });
+      const stepLabels = [
+        chooseSpaceLabel,
+        m.checkoutOrderStepReservation({}, { locale }),
+        m.checkoutOrderStepPayment({}, { locale }),
+        m.checkoutOrderStepAccess({}, { locale }),
+      ];
       const chooseSpaceItem = items.nth(0);
+      const completedBadgeClass = await chooseSpaceItem
+        .locator("span")
+        .first()
+        .getAttribute("class");
+
       await expect(chooseSpaceItem).toContainText(chooseSpaceLabel);
       await expect(chooseSpaceItem.locator("span.sr-only")).toHaveText(
         completedLabel
@@ -157,30 +179,49 @@ for (const locale of locales) {
       await expect(chooseSpaceItem.getByRole("link")).toHaveCount(0);
       await expect(stepsList.getByText("1", { exact: true })).toHaveCount(0);
 
+      for (let index = 0; index < currentStepIndex; index += 1) {
+        const completedItem = items.nth(index);
+        const badge = completedItem.locator("span").first();
+
+        await expect(completedItem).toContainText(stepLabels[index] ?? "");
+        await expect(badge).toHaveClass(/bg-aquamarine-green/);
+        await expect(badge).toHaveClass(/text-aquamarine-ink/);
+        expect(await badge.getAttribute("class")).toBe(completedBadgeClass);
+        await expect(badge).toHaveText("");
+        await expect(completedItem.locator("svg.lucide-check")).toHaveCount(1);
+        await expect(completedItem.locator("span.sr-only")).toHaveText(
+          completedLabel
+        );
+        expect(await completedItem.getAttribute("aria-current")).toBeNull();
+      }
+
       const currentItems = stepsList.locator('[aria-current="step"]');
       await expect(currentItems).toHaveCount(1);
       await expect(currentItems).toContainText(
         currentStepLabel({}, { locale })
       );
+      const currentItem = items.nth(currentStepIndex);
+      const currentBadge = currentItem.locator("span").first();
 
-      const numberedSteps = [
-        {
-          label: m.checkoutOrderStepReservation({}, { locale }),
-          number: "2",
-        },
-        { label: m.checkoutOrderStepPayment({}, { locale }), number: "3" },
-        { label: m.checkoutOrderStepAccess({}, { locale }), number: "4" },
-      ] as const;
-      for (const [offset, { label, number }] of numberedSteps.entries()) {
-        const numberedItem = items.nth(offset + 1);
-        await expect(numberedItem.locator("span").first()).toHaveText(number);
-        await expect(numberedItem).toContainText(label);
+      await expect(currentBadge).toHaveText(String(currentStepIndex + 1));
+      await expect(currentBadge).toHaveClass(/bg-burned-orange/);
+      await expect(currentItem.locator("svg.lucide-check")).toHaveCount(0);
+      await expect(currentItem.locator("span.sr-only")).toHaveCount(0);
+
+      for (let index = currentStepIndex + 1; index < 4; index += 1) {
+        const futureItem = items.nth(index);
+        const badge = futureItem.locator("span").first();
+
+        await expect(futureItem).toContainText(stepLabels[index] ?? "");
+        await expect(badge).toHaveText(String(index + 1));
+        await expect(badge).toHaveClass(/border-white\/18/);
+        await expect(badge).toHaveClass(/text-white\/64/);
+        await expect(futureItem.locator("svg.lucide-check")).toHaveCount(0);
+        await expect(futureItem.locator("span.sr-only")).toHaveCount(0);
+        expect(await futureItem.getAttribute("aria-current")).toBeNull();
       }
 
-      await expectCheckoutProgressLabelsFit(page, stepsList, [
-        chooseSpaceLabel,
-        ...numberedSteps.map((step) => step.label),
-      ]);
+      await expectCheckoutProgressLabelsFit(page, stepsList, stepLabels);
     });
   }
 }
