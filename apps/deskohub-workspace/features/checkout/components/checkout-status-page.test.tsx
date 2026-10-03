@@ -14,6 +14,11 @@ import { cleanup, render } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout";
 import {
+  getMeetingRoomReservationDefaultValuesFromSearchParams,
+  getOfficeReservationDefaultValuesFromSearchParams,
+  getReservationDefaultValuesFromSearchParams,
+} from "@/features/reservation/reservation-checkout-query";
+import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
@@ -438,6 +443,191 @@ describe("CheckoutStatusPage", () => {
     ).toBe("/en-US/reservation/office?dayCount=3&seats=3");
   });
 
+  test("links step 1 to the cowork repeat start as a raw document anchor", () => {
+    const view = render(
+      <CheckoutStatusPage locale="en-US" status={reconstructedCoworkStatus} />
+    );
+
+    const ctaHref = view.container
+      .querySelector("#checkout-status-reserve-again")
+      ?.getAttribute("href");
+    const stepOne = view.container.querySelector(
+      "main ol > li:first-child > a"
+    );
+    expect(stepOne).not.toBeNull();
+    expect(stepOne?.getAttribute("href")).toBe(ctaHref);
+    expect(stepOne?.getAttribute("data-next-link")).toBeNull();
+    const stepHref = stepOne?.getAttribute("href");
+    expect(capturedLinks.some(({ href }) => href === stepHref)).toBe(false);
+
+    const url = new URL(stepHref ?? "", "https://deskohub.local");
+    const defaults = getReservationDefaultValuesFromSearchParams(
+      url.searchParams
+    );
+    expect(defaults.entryTier).toBe("profi");
+    expect(defaults.coffee).toBe(true);
+    expect(defaults.monitorOption).toBe("2x27-qhd");
+    expect(defaults.date).toBe("");
+    expect(defaults.name).toBe("");
+    expect(defaults.email).toBe("");
+    expect(defaults.phone).toBe("");
+    expect(defaults.marketingConsent).toBe(false);
+  });
+
+  test("links step 1 to the office repeat start as a raw document anchor", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          kind: "office",
+          summary: {
+            kind: "office",
+            reservedFrom: Temporal.Instant.from("2026-06-11T22:00:00Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-14T22:00:00Z"),
+            seats: 3,
+            price: { value: 442_500, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+
+    const ctaHref = view.container
+      .querySelector("#checkout-status-reserve-again")
+      ?.getAttribute("href");
+    expect(ctaHref).toBe("/en-US/reservation/office?dayCount=3&seats=3");
+    const stepOne = view.container.querySelector(
+      "main ol > li:first-child > a"
+    );
+    expect(stepOne).not.toBeNull();
+    expect(stepOne?.getAttribute("href")).toBe(ctaHref);
+    expect(stepOne?.getAttribute("data-next-link")).toBeNull();
+    const stepHref = stepOne?.getAttribute("href");
+    expect(capturedLinks.some(({ href }) => href === stepHref)).toBe(false);
+
+    const url = new URL(stepHref ?? "", "https://deskohub.local");
+    const defaults = getOfficeReservationDefaultValuesFromSearchParams(
+      url.searchParams,
+      { seatCapacity: 8, startsOn: "2026-06-25" }
+    );
+    expect(defaults.dayCount).toBe(3);
+    expect(defaults.seats).toBe(3);
+    expect(defaults.startsOn).toBe("2026-06-25");
+    expect(defaults.name).toBe("");
+    expect(defaults.email).toBe("");
+    expect(defaults.phone).toBe("");
+    expect(defaults.marketingConsent).toBe(false);
+  });
+
+  test("links step 1 to the generic meeting-room start as a raw document anchor", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          kind: "meeting-room",
+          summary: {
+            kind: "meeting-room",
+            reservedFrom: Temporal.Instant.from("2026-06-20T07:00:00.000Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-20T11:00:00.000Z"),
+            price: { value: 155_000, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+
+    const ctaHref = view.container
+      .querySelector("#checkout-status-reserve-again")
+      ?.getAttribute("href");
+    expect(ctaHref).toBe("/en-US/reservation/meeting-room");
+    const stepOne = view.container.querySelector(
+      "main ol > li:first-child > a"
+    );
+    expect(stepOne).not.toBeNull();
+    expect(stepOne?.getAttribute("href")).toBe(ctaHref);
+    expect(stepOne?.getAttribute("data-next-link")).toBeNull();
+    const stepHref = stepOne?.getAttribute("href");
+    expect(capturedLinks.some(({ href }) => href === stepHref)).toBe(false);
+
+    const url = new URL(stepHref ?? "", "https://deskohub.local");
+    expect(url.search).toBe("");
+    const defaults = getMeetingRoomReservationDefaultValuesFromSearchParams(
+      url.searchParams
+    );
+    expect(defaults.name).toBe("");
+    expect(defaults.email).toBe("");
+    expect(defaults.phone).toBe("");
+    expect(defaults.marketingConsent).toBe(false);
+    expect(defaults.duration).toBe("hour:1");
+    expect(defaults.startDateTime).not.toBe("2026-06-20T07:00:00.000Z");
+    expect(defaults.startDateTime).not.toContain("2026-06-20");
+  });
+
+  test("links step 1 to the generic start for non-fulfilled status as a raw document anchor", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          status: "payment_failed",
+          paymentStatus: "failed",
+          fulfillmentStatus: "not_started",
+          summary: {
+            kind: "cowork",
+            entryTier: "profi",
+            coffee: true,
+            monitorOption: "2x27-qhd",
+            reservedFrom: Temporal.Instant.from("2026-06-19T22:00:00Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-20T22:00:00Z"),
+            price: { value: 55_000, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+
+    const ctaHref = view.container
+      .querySelector("#checkout-status-reserve-again")
+      ?.getAttribute("href");
+    expect(ctaHref).toBe("/en-US/reservation/cowork");
+    const stepOne = view.container.querySelector(
+      "main ol > li:first-child > a"
+    );
+    expect(stepOne).not.toBeNull();
+    expect(stepOne?.getAttribute("href")).toBe(ctaHref);
+    expect(stepOne?.getAttribute("data-next-link")).toBeNull();
+    const stepHref = stepOne?.getAttribute("href");
+    expect(capturedLinks.some(({ href }) => href === stepHref)).toBe(false);
+
+    const url = new URL(stepHref ?? "", "https://deskohub.local");
+    expect(url.search).toBe("");
+    const defaults = getReservationDefaultValuesFromSearchParams(
+      url.searchParams
+    );
+    expect(defaults.entryTier).toBe("basic");
+    expect(defaults.coffee).toBe(false);
+    expect(defaults.monitorOption).toBeUndefined();
+    expect(defaults.date).toBe("");
+    expect(defaults.name).toBe("");
+    expect(defaults.email).toBe("");
+    expect(defaults.phone).toBe("");
+    expect(defaults.marketingConsent).toBe(false);
+  });
+
+  test("omits the step 1 link in modal presentation", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        presentation="modal"
+        status={reconstructedCoworkStatus}
+      />
+    );
+
+    expect(view.container.querySelector("main ol")).toBeNull();
+    expect(
+      view.container.querySelector("main ol > li:first-child > a")
+    ).toBeNull();
+  });
+
   test("propagates only allowlisted booking shape", () => {
     const view = render(
       <CheckoutStatusPage
@@ -488,6 +678,12 @@ describe("CheckoutStatusPage", () => {
     expect(href).not.toContain("CZ12345678");
     expect(href).not.toContain("35000");
     expect(href).not.toContain("2026-06");
+    const stepOne = view.container.querySelector(
+      "main ol > li:first-child > a"
+    );
+    if (stepOne) {
+      expect(stepOne.getAttribute("href")).toBe(href);
+    }
   });
 
   test("keeps generic starts for non-fulfilled or unusable booking shapes", () => {
