@@ -423,7 +423,16 @@ export function CheckoutStatusPage({
   return presentation === "modal" ? (
     content
   ) : (
-    <CheckoutFlowLayout activeStepKey="access" locale={locale}>
+    <CheckoutFlowLayout
+      activeStepKey="access"
+      locale={locale}
+      stepLinks={{
+        order: {
+          href: reserveAgainPath,
+          navigation: "document",
+        },
+      }}
+    >
       {content}
     </CheckoutFlowLayout>
   );
