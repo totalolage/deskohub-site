@@ -64,6 +64,7 @@ let storedAssets: Set<string> = new Set();
 /** Immutable provider asset identities keyed by public ID. */
 let assetIdByPublicId: Map<string, string> = new Map();
 let lastUploadedBytes: Uint8Array | null = null;
+let lastUploadedAssetId: string | null = null;
 let currentSession: CustomerAccountSession | null = null;
 
 const makeSession = (account: string): CustomerAccountSession => ({
@@ -152,7 +153,8 @@ const CloudinaryLayer = Layer.succeed(Cloudinary, {
       });
       storedAssets.add(fullId);
       // A fresh immutable provider identity per upload, like the real one.
-      assetIdByPublicId.set(fullId, `asset-upload-${crypto.randomUUID()}`);
+      lastUploadedAssetId = `asset-upload-${crypto.randomUUID()}`;
+      assetIdByPublicId.set(fullId, lastUploadedAssetId);
       lastUploadedBytes = input.bytes;
       if (uploadStoreThenFail) {
         return Effect.fail({ _tag: "CloudinaryUploadError" });
@@ -228,6 +230,7 @@ const renameOutcome = (
     });
   }
   if (commitButLoseRenameResponse) {
+    commitButLoseRenameResponse = false;
     // The provider committed the rename but lost the response: the
     // staged source is gone and the live asset exists with the promoted
     // upload's immutable identity.
@@ -236,9 +239,23 @@ const renameOutcome = (
     const assetId = assetIdByPublicId.get(from);
     assetIdByPublicId.delete(from);
     if (assetId !== undefined) assetIdByPublicId.set(to, assetId);
+    if (renameFailureHttpCode !== undefined) {
+      return Effect.fail({
+        _tag: "CloudinaryRenameError",
+        reason: renameFailureReason,
+        httpCode: renameFailureHttpCode,
+      });
+    }
     return Effect.fail({
       _tag: "CloudinaryRenameError",
       reason: "source-missing",
+    });
+  }
+  if (!storedAssets.has(from)) {
+    return Effect.fail({
+      _tag: "CloudinaryRenameError",
+      reason: "source-missing",
+      httpCode: 404,
     });
   }
   if (renameFailuresRemaining > 0) {
@@ -385,6 +402,7 @@ const resetFakes = () => {
   storedAssets = new Set();
   assetIdByPublicId = new Map();
   lastUploadedBytes = null;
+  lastUploadedAssetId = null;
   linkActivity = "active";
   deletionRequestedAt = null;
   currentSession = makeSession(accountId);
@@ -1042,6 +1060,62 @@ describe("CustomerAvatarService", () => {
     ]);
     // The previous avatar stays live.
     expect(storedAssets.has("avatars/test/acct-avatar-1")).toBe(true);
+  });
+
+  test("retains staging for a 499 timeout when no live asset identity can be confirmed", async () => {
+    resetFakes();
+    renameFailuresRemaining = 2;
+    renameFailureHttpCode = 499;
+    const bytes = await pngBytes(100, 100);
+
+    const outcome = await runWith(
+      Effect.flatMap(CustomerAvatarService, (avatars) =>
+        avatars.upload(accountId, uploadInput(bytes)).pipe(Effect.result)
+      )
+    );
+
+    expect(outcome).toMatchObject({
+      failure: { _tag: "CustomerAvatarProviderError" },
+    });
+    expect(calls.filter((call) => call.op === "rename")).toHaveLength(2);
+    expect([...storedAssets]).toHaveLength(1);
+    expect([...storedAssets][0]).toMatch(
+      /^avatars\/test-staging\/acct-avatar-1\//
+    );
+    expect(storedAssets.has("avatars/test/acct-avatar-1")).toBe(false);
+    expect(calls.some((call) => call.op === "destroy")).toBe(false);
+  });
+
+  test("reconciles a committed 499 timeout against the matching live asset identity", async () => {
+    resetFakes();
+    commitButLoseRenameResponse = true;
+    renameFailureHttpCode = 499;
+    const bytes = await pngBytes(100, 100);
+
+    const outcome = await runWith(
+      Effect.flatMap(CustomerAvatarService, (avatars) =>
+        avatars.upload(accountId, uploadInput(bytes))
+      )
+    );
+
+    expect(outcome).toMatchObject({
+      url: expect.stringContaining("/upload/"),
+      version: 42,
+    });
+    expect(calls.map(({ op }) => op)).toEqual([
+      "get",
+      "search",
+      "upload",
+      "rename",
+      "rename",
+      "get",
+      "destroy",
+    ]);
+    expect(storedAssets).toEqual(new Set(["avatars/test/acct-avatar-1"]));
+    expect(lastUploadedAssetId).not.toBeNull();
+    expect(assetIdByPublicId.get("avatars/test/acct-avatar-1")).toBe(
+      lastUploadedAssetId
+    );
   });
 
   test("cleans staging after a definitive promotion rejection without changing the previous avatar", async () => {

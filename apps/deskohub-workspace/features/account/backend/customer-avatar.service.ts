@@ -599,7 +599,8 @@ const promoteStaged = (
     (error.reason === "failed" &&
       error.httpCode !== undefined &&
       error.httpCode >= 400 &&
-      error.httpCode < 500);
+      error.httpCode < 500 &&
+      error.httpCode !== 499);
   const failAfterKnownFailure = () =>
     Effect.andThen(
       destroyStagedBestEffort(cloudinary, stagedId),
