@@ -1,7 +1,7 @@
 "use server";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Effect, Layer, Result } from "effect";
+import { Effect, Layer } from "effect";
 import { revalidatePath } from "next/cache";
 import {
   accountActionError,
@@ -87,13 +87,8 @@ const uploadAvatarMutation = Effect.fn(
     yield* requireAccountsEnabled(locale);
     yield* requireVerifiedSession;
 
-    const resolution = yield* Effect.flatMap(
-      CustomerAccountResolver,
-      (resolver) => resolver.resolve
-    ).pipe(Effect.result);
-    if (Result.isFailure(resolution)) {
-      return yield* Effect.fail(resolution.failure);
-    }
+    const resolver = yield* CustomerAccountResolver;
+    const resolution = yield* resolver.resolve;
 
     const buffer = yield* Effect.tryPromise({
       try: () => file.arrayBuffer(),
@@ -105,7 +100,7 @@ const uploadAvatarMutation = Effect.fn(
     });
 
     const outcome = yield* Effect.flatMap(CustomerAvatarService, (avatars) =>
-      avatars.upload(resolution.success.accountId, {
+      avatars.upload(resolution.accountId, {
         bytes: new Uint8Array(buffer),
         declaredSize: file.size,
         declaredMediaType: file.type,
@@ -153,16 +148,11 @@ const removeAvatarMutation = Effect.fn(
     yield* requireAccountsEnabled(locale);
     yield* requireVerifiedSession;
 
-    const resolution = yield* Effect.flatMap(
-      CustomerAccountResolver,
-      (resolver) => resolver.resolve
-    ).pipe(Effect.result);
-    if (Result.isFailure(resolution)) {
-      return yield* Effect.fail(resolution.failure);
-    }
+    const resolver = yield* CustomerAccountResolver;
+    const resolution = yield* resolver.resolve;
 
     const outcome = yield* Effect.flatMap(CustomerAvatarService, (avatars) =>
-      avatars.remove(resolution.success.accountId)
+      avatars.remove(resolution.accountId)
     ).pipe(
       Effect.map(() => ({ status: "removed" }) as const),
       Effect.catchTag("CustomerAvatarProviderError", () =>

@@ -258,31 +258,44 @@ describe("customer avatar actions", () => {
 
   test("fails with a public-safe error when the session is missing and never calls the provider", async () => {
     currentUser = Effect.succeed(null);
-    const { uploadCustomerAvatar } = await importActions();
+    const { uploadCustomerAvatar, removeCustomerAvatar } =
+      await importActions();
 
-    const result = await uploadCustomerAvatar(uploadForm());
+    const uploadResult = await uploadCustomerAvatar(uploadForm());
+    const removeResult = await removeCustomerAvatar();
 
-    expect(result.serverError).toBe(
+    expect(uploadResult.serverError).toBe(
+      "Your session has expired. Please sign in again."
+    );
+    expect(removeResult.serverError).toBe(
       "Your session has expired. Please sign in again."
     );
     expect(uploadCalls).toHaveLength(0);
+    expect(removeCalls).toHaveLength(0);
   });
 
-  test("blocks the upload with the deletion-pending error when the resolver reports the marker", async () => {
+  test("blocks upload and removal with the deletion-pending error when the resolver reports the marker", async () => {
     resolve = Effect.fail(
       new CustomerAccountAccessError({
         reason: "link-required",
         linkReason: "deletion-requested",
       })
     );
-    const { uploadCustomerAvatar } = await importActions();
+    const { uploadCustomerAvatar, removeCustomerAvatar } =
+      await importActions();
 
-    const result = await uploadCustomerAvatar(uploadForm());
+    const uploadResult = await uploadCustomerAvatar(uploadForm());
+    const removeResult = await removeCustomerAvatar();
 
-    expect(result.serverError).toBe(
+    expect(uploadResult.serverError).toBe(
+      "Your account is already being deleted, so the profile cannot be changed."
+    );
+    expect(removeResult.serverError).toBe(
       "Your account is already being deleted, so the profile cannot be changed."
     );
     expect(uploadCalls).toHaveLength(0);
+    expect(removeCalls).toHaveLength(0);
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   test("blocks avatar mutations when accounts are disabled", async () => {
