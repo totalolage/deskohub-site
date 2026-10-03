@@ -233,7 +233,7 @@ async function expectContactPage(page: Page) {
   await expect(
     page.getByRole("heading", {
       level: 1,
-      name: "Tell us what kind of day you want to build.",
+      name: "Contact details",
     })
   ).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Name" })).toBeVisible();
