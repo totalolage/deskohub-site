@@ -2,7 +2,6 @@ import { Suspense } from "react";
 import {
   AdministrationFilterField,
   AdministrationFilterForm,
-  AdministrationFilterInput,
   AdministrationPage,
   AdministrationTableCount,
   AdministrationTableToolbar,
@@ -19,6 +18,7 @@ import {
   type loadAdministrationBookings,
   loadAdministrationBookingsPage,
 } from "@/features/administration/page-data.server";
+import { DateInput } from "@/shared/components/date-time/date-input";
 import { Button } from "@/shared/components/ui/button";
 
 export default function BookingsAdministrationPage({
@@ -93,12 +93,12 @@ function BookingFilters({ input }: { readonly input: BookingsData["input"] }) {
   return (
     <AdministrationFilterForm variant="standalone">
       <AdministrationFilterField htmlFor="booking-date" label="Booking date">
-        <AdministrationFilterInput
+        <DateInput
+          ariaLabel="Booking date"
           defaultValue={input.date}
           id="booking-date"
           name="date"
           required
-          type="date"
         />
       </AdministrationFilterField>
       <input name="sort" type="hidden" value={input.sort} />

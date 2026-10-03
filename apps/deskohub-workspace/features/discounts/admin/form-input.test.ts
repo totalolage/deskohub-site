@@ -4,10 +4,44 @@ import { workspaceProductTargets } from "@/features/discounts/product-target";
 import {
   readDiscountCodeForm,
   readDiscountForm,
+  readVoucherConfigurationForm,
   readVoucherCreditForm,
 } from "./form-input";
 
 describe("discount administration form input", () => {
+  test("reads a bounded window and clears both blank fields", () => {
+    const form = new FormData();
+    form.set("discountId", "019c91dd-c560-7e55-b9d8-c95065efd51d");
+    form.set("code", "summer10");
+    form.set("enabled", "on");
+    form.set("serviceDateFrom", "2026-03-29");
+    form.set("serviceDateUntil", "2026-03-30");
+    expect(readDiscountCodeForm(form)).toMatchObject({
+      serviceDateFrom: "2026-03-29",
+      serviceDateUntil: "2026-03-30",
+    });
+
+    form.set("serviceDateFrom", "");
+    form.set("serviceDateUntil", "");
+    expect(readDiscountCodeForm(form)).toMatchObject({
+      serviceDateFrom: null,
+      serviceDateUntil: null,
+    });
+  });
+
+  test("does not read service-date fields for vouchers", () => {
+    const form = new FormData();
+    form.set("code", "gift100");
+    form.set("serviceDateFrom", "2026-03-29");
+    form.set("serviceDateUntil", "2026-03-30");
+
+    expect(readVoucherConfigurationForm(form)).not.toHaveProperty(
+      "serviceDateFrom"
+    );
+    expect(readVoucherConfigurationForm(form)).not.toHaveProperty(
+      "serviceDateUntil"
+    );
+  });
   test("converts a percentage value to stored basis points", () => {
     const formData = new FormData();
     formData.set("adjustmentKind", "percentage");

@@ -12,6 +12,8 @@ import {
   AdministrationCustomerSearchQuery,
   AdministrationDiscountCode,
   AdministrationDiscountCodeClaim,
+  AdministrationDiscountCodeConfigurationInput,
+  AdministrationDiscountCodeUpdateInput,
   AdministrationDiscountDashboard,
   AdministrationDiscountMutation,
   AdministrationDiscountMutationResult,
@@ -550,6 +552,145 @@ describe("standalone access-code CLI endpoint contract", () => {
   });
 });
 
+describe("discount code service-date window contract", () => {
+  const decodeUpdate = Schema.decodeUnknownSync(
+    AdministrationDiscountCodeUpdateInput
+  );
+  const decodeConfiguration = Schema.decodeUnknownSync(
+    AdministrationDiscountCodeConfigurationInput
+  );
+  const base = {
+    code: "SUMMER10",
+    enabled: true,
+    validFrom: null,
+    validUntil: null,
+    maxUses: null,
+  };
+
+  test("accepts an omitted pair, an explicit null pair, and a valid bounded pair", () => {
+    const omitted = decodeConfiguration(base);
+    expect("serviceDateFrom" in omitted).toBe(false);
+    expect("serviceDateUntil" in omitted).toBe(false);
+
+    expect(
+      decodeConfiguration({
+        ...base,
+        serviceDateFrom: null,
+        serviceDateUntil: null,
+      })
+    ).toMatchObject({
+      serviceDateFrom: null,
+      serviceDateUntil: null,
+    });
+
+    expect(
+      decodeConfiguration({
+        ...base,
+        serviceDateFrom: "2026-08-10",
+        serviceDateUntil: "2026-08-12",
+      })
+    ).toMatchObject({
+      serviceDateFrom: "2026-08-10",
+      serviceDateUntil: "2026-08-12",
+    });
+  });
+
+  test("accepts a bounded pair spanning a real leap day", () => {
+    expect(
+      decodeConfiguration({
+        ...base,
+        serviceDateFrom: "2024-02-28",
+        serviceDateUntil: "2024-03-01",
+      })
+    ).toMatchObject({
+      serviceDateFrom: "2024-02-28",
+      serviceDateUntil: "2024-03-01",
+    });
+  });
+
+  test("rejects non-canonical and invalid dates including a non-leap leap day", () => {
+    for (const serviceDateFrom of [
+      "2026-13-01",
+      "2026-02-30",
+      "2026-02-29",
+      "10-08-2026",
+      "2026-08-10T00:00:00Z",
+    ]) {
+      expect(() =>
+        decodeConfiguration({
+          ...base,
+          serviceDateFrom,
+          serviceDateUntil: "2026-09-01",
+        })
+      ).toThrow();
+      expect(() =>
+        decodeConfiguration({
+          ...base,
+          serviceDateFrom: "2026-08-01",
+          serviceDateUntil: serviceDateFrom,
+        })
+      ).toThrow();
+    }
+  });
+
+  test("rejects one-sided and mixed half ranges", () => {
+    expect(() =>
+      decodeConfiguration({ ...base, serviceDateFrom: "2026-08-10" })
+    ).toThrow();
+    expect(() =>
+      decodeConfiguration({ ...base, serviceDateUntil: "2026-08-10" })
+    ).toThrow();
+    expect(() =>
+      decodeConfiguration({
+        ...base,
+        serviceDateFrom: null,
+        serviceDateUntil: "2026-08-10",
+      })
+    ).toThrow();
+    expect(() =>
+      decodeConfiguration({
+        ...base,
+        serviceDateFrom: "2026-08-10",
+        serviceDateUntil: null,
+      })
+    ).toThrow();
+  });
+
+  test("rejects equal and reversed bounded pairs", () => {
+    expect(() =>
+      decodeConfiguration({
+        ...base,
+        serviceDateFrom: "2026-08-10",
+        serviceDateUntil: "2026-08-10",
+      })
+    ).toThrow();
+    expect(() =>
+      decodeConfiguration({
+        ...base,
+        serviceDateFrom: "2026-08-12",
+        serviceDateUntil: "2026-08-10",
+      })
+    ).toThrow();
+  });
+
+  test("rejects lone null bounds on configuration and update", () => {
+    for (const pair of [
+      { serviceDateFrom: null },
+      { serviceDateUntil: null },
+    ]) {
+      expect(() => decodeConfiguration({ ...base, ...pair })).toThrow();
+      expect(() =>
+        decodeUpdate({
+          ...base,
+          id: "01980000-0000-7000-8000-000000000001",
+          discountId: "01980000-0000-7000-8000-000000000002",
+          ...pair,
+        })
+      ).toThrow();
+    }
+  });
+});
+
 describe("administration contract", () => {
   test("strictly decodes manual invoice input without restricting signed prices", () => {
     const input = {
@@ -680,8 +821,30 @@ describe("administration contract", () => {
         maxUses: null,
         maxUsesPerCustomer: null,
         remainingUses: null,
+        serviceDateFrom: null,
+        serviceDateUntil: null,
       })
-    ).toMatchObject({ code: "GIFT100", maxUses: null });
+    ).toMatchObject({ code: "GIFT100", maxUses: null, serviceDateFrom: null });
+    expect(() =>
+      decodeCode({
+        ...common,
+        discountId: "01980000-0000-7000-8000-000000000002",
+        maxUses: null,
+        maxUsesPerCustomer: null,
+        remainingUses: null,
+      })
+    ).toThrow();
+    expect(() =>
+      decodeCode({
+        ...common,
+        discountId: "01980000-0000-7000-8000-000000000002",
+        maxUses: null,
+        maxUsesPerCustomer: null,
+        remainingUses: null,
+        serviceDateFrom: null,
+        serviceDateUntil: "2026-02-29",
+      })
+    ).toThrow();
     expect(
       decodeVoucher({
         ...common,

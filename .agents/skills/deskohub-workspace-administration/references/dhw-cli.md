@@ -116,7 +116,12 @@ dhw discounts update percentage <discount-id> \
   --percentage 15 --product cowork
 dhw discounts delete <discount-id>
 
-dhw codes create existing SUMMER10 <discount-id>
+dhw codes create existing SUMMER10 <discount-id> \
+  --service-date-from 2026-08-10 --service-date-until 2026-08-12
+dhw codes update <code-id> SUMMER15 <discount-id> --enabled true \
+  --service-date-from 2026-08-10 --service-date-until 2026-08-12
+dhw codes update <code-id> SUMMER15 <discount-id> --enabled true --clear-service-dates
+
 dhw codes create percentage VIP15 --customer <customer-id> \
   --max-uses-per-customer 2 \
   --label-en "VIP discount" --label-cs "VIP sleva" \
@@ -156,8 +161,12 @@ together with every reserved, redeemed, or released claim. Add `--customer` to
 either create command to restrict the new resource to one customer. Fixed and
 credit values use minor currency units. Validity bounds use ISO instants;
 omitted bounds and global or per-customer code maximum uses are stored as
-unrestricted values. Update commands replace the editable resource fields,
-matching the corresponding Admin UI forms.
+unrestricted values. Service-date flags use ordered `YYYY-MM-DD` dates, with the
+start inclusive and the end exclusive; they apply only to the reservation start
+date. On create, omitting both flags is unrestricted. On code update, omitting
+both flags preserves the existing pair; use `--clear-service-dates` to clear it.
+Update commands replace the editable resource fields, matching the corresponding
+Admin UI forms.
 
 Commands that cancel reservations, create an access code, delete resources, remove restrictions, revoke sessions, change a
 customer's discount group, or add a code-audience member ask for confirmation.

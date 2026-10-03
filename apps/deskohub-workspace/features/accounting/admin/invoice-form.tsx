@@ -5,6 +5,7 @@ import { CircleAlert, Minus, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useId, useRef, useState } from "react";
 import { AdministrationAlert } from "@/features/administration/components";
+import { DateInput } from "@/shared/components/date-time/date-input";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
@@ -478,32 +479,32 @@ export function InvoiceCreationForm({
           </label>
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <FormField label="Service date" name="serviceDate">
-              <Input
+              <DateInput
+                ariaLabel="Service date"
                 defaultValue={defaultServiceDate}
                 id="serviceDate"
                 name="serviceDate"
                 required
-                type="date"
               />
             </FormField>
             {paid ? (
               <FormField key="paid" label="Paid on" name="paidOn">
-                <Input
+                <DateInput
+                  ariaLabel="Paid on"
                   defaultValue={defaultServiceDate}
                   id="paidOn"
                   name="paidOn"
                   required
-                  type="date"
                 />
               </FormField>
             ) : (
               <FormField key="due" label="Due date" name="dueDate">
-                <Input
+                <DateInput
+                  ariaLabel="Due date"
                   defaultValue={defaultDueDate}
                   id="dueDate"
                   name="dueDate"
                   required
-                  type="date"
                 />
               </FormField>
             )}

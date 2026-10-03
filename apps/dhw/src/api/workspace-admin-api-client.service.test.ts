@@ -805,6 +805,8 @@ describe("WorkspaceAdminApiClient", () => {
               maxUses: null,
               maxUsesPerCustomer: null,
               audienceSize: 0,
+              serviceDateFrom: "2026-09-21",
+              serviceDateUntil: "2026-09-22",
               reservedUses: 0,
               redeemedUses: 0,
               releasedUses: 0,

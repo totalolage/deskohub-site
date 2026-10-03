@@ -32,6 +32,32 @@ import type {
 const refresh = mock();
 const back = mock();
 const replace = mock();
+
+const pickDateFieldDay = async (
+  view: ReturnType<typeof render>,
+  label: string,
+  day = "10"
+) => {
+  fireEvent.click(view.getByRole("button", { name: label }));
+  const grid = await view.findByRole("grid");
+  const dayButton = [...grid.querySelectorAll("button")].find(
+    (button) => button.textContent === day && !button.disabled
+  );
+  if (!dayButton) throw new Error(`Day ${day} not offered for ${label}`);
+  fireEvent.click(dayButton);
+};
+
+// The calendar renders the current month, so picked days resolve within it.
+const currentMonthDay = (day: string) => {
+  const now = new Date();
+  const month = `${now.getMonth() + 1}`.padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+};
+
+const readHiddenTemporalValue = (container: HTMLElement, name: string) =>
+  container.querySelector<HTMLInputElement>(`input[name="${name}"]`)?.value ??
+  null;
+
 const emptyReservationActivity = {
   from: "2025-08-25",
   to: "2026-08-24",
@@ -82,6 +108,8 @@ const dashboard: DiscountAdminDashboard = {
       validUntil: Temporal.Instant.from("2026-09-01T08:00:00Z"),
       maxUses: 100,
       maxUsesPerCustomer: 2,
+      serviceDateFrom: "2026-08-10",
+      serviceDateUntil: "2026-08-11",
       audienceSize: 2,
       reservedUses: 1,
       redeemedUses: 3,
@@ -115,6 +143,14 @@ const dashboard: DiscountAdminDashboard = {
     to: "2027-07-01",
   },
 };
+
+function findConfigurationGrid(control: Element) {
+  const grid = [
+    ...document.querySelectorAll<HTMLElement>(".md\\:grid-cols-4"),
+  ].find((candidate) => candidate.contains(control));
+  if (!grid) throw new Error("Configuration grid not found for control");
+  return grid;
+}
 
 describe("discount administration pages", () => {
   beforeAll(() => {
@@ -315,9 +351,28 @@ describe("discount administration pages", () => {
 
     const validFrom = view.container.querySelector(
       "#validFrom-019c91dd-c560-7e55-b9d8-c95065efd52d"
-    ) as HTMLInputElement;
-    expect(validFrom.type).toBe("datetime-local");
-    expect(validFrom.value).toBe("2026-08-01T10:00");
+    ) as HTMLButtonElement;
+    expect(validFrom.type).toBe("button");
+    expect(validFrom.textContent).not.toContain("Not set");
+    expect(
+      (view.getByLabelText("Valid from time") as HTMLInputElement).value
+    ).toBe("10:00");
+    expect(readHiddenTemporalValue(view.container, "validFrom")).toBe(
+      "2026-08-01T10:00"
+    );
+    expect(view.getByLabelText("Service date from (inclusive)")).toHaveProperty(
+      "type",
+      "button"
+    );
+    expect(
+      view.getByLabelText("Service date until (exclusive)")
+    ).toHaveProperty("type", "button");
+    expect(readHiddenTemporalValue(view.container, "serviceDateFrom")).toBe(
+      "2026-08-10"
+    );
+    expect(readHiddenTemporalValue(view.container, "serviceDateUntil")).toBe(
+      "2026-08-11"
+    );
     expect(
       view.container.querySelector(
         "#labelEn-019c91dd-c560-7e55-b9d8-c95065efd51d"
@@ -338,7 +393,163 @@ describe("discount administration pages", () => {
         "A code with this value already exists."
       )
     );
-    expect(validFrom).toHaveProperty("value", "2026-08-01T10:00");
+    expect(validFrom).toBeInstanceOf(HTMLButtonElement);
+    expect(readHiddenTemporalValue(view.container, "validFrom")).toBe(
+      "2026-08-01T10:00"
+    );
+  });
+
+  test("creates a code with a bounded reservation-start window", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { CodesAdministrationActions } = await import("./components");
+    const view = render(<CodesAdministrationActions dashboard={dashboard} />);
+
+    fireEvent.click(view.getByText("Create a discount code"));
+    const form = view.getByRole("form", { name: "Create discount code" });
+    await pickDateFieldDay(view, "Service date from (inclusive)");
+    await pickDateFieldDay(view, "Service date until (exclusive)", "12");
+    fireEvent.input(within(form).getByRole("textbox", { name: "Code" }), {
+      target: { value: "summer-august" },
+    });
+    await act(async () => {
+      fireEvent.submit(form);
+      await Promise.resolve();
+    });
+
+    expect(execute).toHaveBeenCalledWith({
+      kind: "create-code",
+      code: {
+        code: "SUMMER-AUGUST",
+        enabled: true,
+        validFrom: null,
+        validUntil: null,
+        maxUses: null,
+        maxUsesPerCustomer: null,
+        serviceDateFrom: currentMonthDay("10"),
+        serviceDateUntil: currentMonthDay("12"),
+      },
+      discount: {
+        kind: "existing",
+        discountId: dashboard.discounts[0]!.id,
+      },
+    });
+  });
+
+  test("clears both service-date fields when saving an edited code", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const form = view
+      .getByRole("button", { name: "Save code" })
+      .closest("form") as HTMLFormElement;
+    expect(form).not.toBeNull();
+    if (!form) return;
+    for (const label of [
+      "Service date from (inclusive)",
+      "Service date until (exclusive)",
+    ]) {
+      await pickDateFieldDay(view, label);
+      // Picking a day closes the popover; reopen it to reach the clear action.
+      fireEvent.click(view.getByRole("button", { name: label }));
+      fireEvent.click(
+        await view.findByRole("button", { name: `Clear ${label}` })
+      );
+    }
+    expect(readHiddenTemporalValue(view.container, "serviceDateFrom")).toBe("");
+    expect(readHiddenTemporalValue(view.container, "serviceDateUntil")).toBe(
+      ""
+    );
+    await waitFor(() =>
+      expect(view.getByRole("button", { name: "Save code" })).toHaveProperty(
+        "disabled",
+        false
+      )
+    );
+    await act(async () => {
+      fireEvent.submit(form);
+      await Promise.resolve();
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "update-code",
+        code: expect.objectContaining({
+          id: dashboard.codes[0]!.id,
+          serviceDateFrom: null,
+          serviceDateUntil: null,
+        }),
+      })
+    );
+  });
+
+  test("enables Save and submits a cleared bound when only one service date is cleared", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const form = view
+      .getByRole("button", { name: "Save code" })
+      .closest("form") as HTMLFormElement;
+    expect(form).not.toBeNull();
+    if (!form) return;
+
+    await pickDateFieldDay(view, "Service date from (inclusive)");
+    fireEvent.click(
+      view.getByRole("button", { name: "Service date from (inclusive)" })
+    );
+    fireEvent.click(
+      await view.findByRole("button", {
+        name: "Clear Service date from (inclusive)",
+      })
+    );
+
+    expect(readHiddenTemporalValue(view.container, "serviceDateFrom")).toBe("");
+    expect(readHiddenTemporalValue(view.container, "serviceDateUntil")).toBe(
+      "2026-08-11"
+    );
+    await waitFor(() =>
+      expect(view.getByRole("button", { name: "Save code" })).toHaveProperty(
+        "disabled",
+        false
+      )
+    );
+    await act(async () => {
+      fireEvent.submit(form);
+      await Promise.resolve();
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "update-code",
+        code: expect.objectContaining({
+          id: dashboard.codes[0]!.id,
+          serviceDateFrom: null,
+          serviceDateUntil: "2026-08-11",
+        }),
+      })
+    );
   });
 
   test("lists and updates voucher credit without discount or use fields", async () => {
@@ -381,6 +592,8 @@ describe("discount administration pages", () => {
     expect(credit).toHaveProperty("value", "10000");
     expect(view.queryByRole("combobox", { name: "Discount" })).toBeNull();
     expect(view.queryByRole("spinbutton", { name: "Maximum uses" })).toBeNull();
+    expect(view.queryByLabelText("Service date from (inclusive)")).toBeNull();
+    expect(view.queryByLabelText("Service date until (exclusive)")).toBeNull();
 
     fireEvent.input(credit, { target: { value: "15000" } });
     fireEvent.submit(
@@ -410,10 +623,13 @@ describe("discount administration pages", () => {
     const view = render(<VouchersAdministrationActions />);
 
     fireEvent.click(view.getByRole("button", { name: "Create a voucher" }));
-    expect(
-      view.getByLabelText("Valid from").closest("label")?.parentElement
-        ?.className
-    ).toContain("md:grid-cols-2");
+    expect(view.queryByLabelText("Service date from (inclusive)")).toBeNull();
+    expect(view.queryByLabelText("Service date until (exclusive)")).toBeNull();
+    const voucherDateGroup = findConfigurationGrid(
+      view.getByLabelText("Valid from")
+    );
+    expect(voucherDateGroup.className).toContain("grid-cols-2");
+    expect(voucherDateGroup.className).toContain("md:grid-cols-4");
     fireEvent.change(view.getByRole("textbox", { name: "Code" }), {
       target: { value: "gift100" },
     });
@@ -431,6 +647,188 @@ describe("discount administration pages", () => {
         validUntil: null,
       },
     });
+  });
+
+  test("lays out code configuration on one responsive grid without a reservation heading", async () => {
+    const { CodesAdministrationActions, CodesAdministrationCollection } =
+      await import("./components");
+    const readGridOrder = (grid: HTMLElement) =>
+      [...grid.querySelectorAll("input, select")]
+        .filter((control) => control.getAttribute("name") !== null)
+        .map((control) => control.getAttribute("name"));
+    const readGridItems = (grid: HTMLElement) =>
+      [...grid.querySelectorAll("input, select")]
+        .filter((control) => control.getAttribute("name") !== null)
+        .map((control) => {
+          let item: HTMLElement = control;
+          while (item.parentElement !== grid) {
+            const parent = item.parentElement;
+            if (!parent) throw new Error("Control is outside the config grid");
+            item = parent;
+          }
+          return [...item.classList];
+        });
+    const readGridItemElement = (grid: HTMLElement, name: string) => {
+      const control = [...grid.querySelectorAll("input, select")].find(
+        (candidate) => candidate.getAttribute("name") === name
+      );
+      if (!control) throw new Error(`No named control ${name} in config grid`);
+      let item: HTMLElement = control;
+      while (item.parentElement !== grid) {
+        const parent = item.parentElement;
+        if (!parent) throw new Error(`Control ${name} is outside the grid`);
+        item = parent;
+      }
+      return item;
+    };
+    const readConfigurationGrid = (
+      view: Pick<ReturnType<typeof render>, "getByLabelText">
+    ) => findConfigurationGrid(view.getByLabelText("Valid from"));
+
+    const editorView = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
+    fireEvent.click(editorView.getByRole("button", { name: "Edit SUMMER10" }));
+    const editGrid = readConfigurationGrid(editorView);
+    expect(editGrid.className).toContain("grid-cols-2");
+    expect(editGrid.className).toContain("md:grid-cols-4");
+    expect(readGridOrder(editGrid)).toEqual([
+      "discountId",
+      "code",
+      "enabled",
+      "validFrom",
+      "validUntil",
+      "serviceDateFrom",
+      "serviceDateUntil",
+      "maxUses",
+      "maxUsesPerCustomer",
+    ]);
+    const editItems = readGridItems(editGrid);
+    expect(editItems[0]).toContain("col-span-2");
+    expect(editItems[7]).toContain("md:col-span-2");
+    expect(editItems[7]).not.toContain("col-span-2");
+    expect(editItems[8]).toContain("md:col-span-2");
+    expect(editItems[8]).not.toContain("col-span-2");
+    // The paired valid-from/valid-until datetime fields share one
+    // full-width group that lays both fields out side-by-side as a single
+    // row on the narrow two-column grid, and splits into two compact
+    // columns on the wide four-column grid.
+    for (const item of [editItems[3], editItems[4]]) {
+      expect(item).toContain("col-span-2");
+      expect(item).toContain("grid-cols-2");
+      expect(item).not.toContain("grid-cols-1");
+      expect(item).toContain("md:col-span-2");
+      expect(item).toContain("md:grid-cols-2");
+    }
+    for (const item of [editItems[1], editItems[2]]) {
+      expect(item).not.toContain("col-span-2");
+    }
+    for (const item of [editItems[5], editItems[6]]) {
+      expect(item).not.toContain("col-span-2");
+    }
+    expect(editorView.queryByText("Reservation start dates")).toBeNull();
+
+    cleanup();
+    const createView = render(
+      <CodesAdministrationActions dashboard={dashboard} />
+    );
+    fireEvent.click(createView.getByText("Create a discount code"));
+    const createGrid = readConfigurationGrid(createView);
+    expect(createGrid.className).toContain("grid-cols-2");
+    expect(createGrid.className).toContain("md:grid-cols-4");
+    expect(readGridOrder(createGrid)).toEqual([
+      "discountId",
+      "code",
+      "enabled",
+      "validFrom",
+      "validUntil",
+      "serviceDateFrom",
+      "serviceDateUntil",
+      "maxUses",
+      "maxUsesPerCustomer",
+    ]);
+    const createItems = readGridItems(createGrid);
+    expect(createItems[0]).toContain("col-span-2");
+    expect(createItems[0]).not.toContain("md:col-span-2");
+    expect(createItems[1]).not.toContain("col-span-2");
+    expect(createItems[2]).not.toContain("col-span-2");
+    for (const item of [createItems[3], createItems[4]]) {
+      expect(item).toContain("col-span-2");
+      expect(item).toContain("grid-cols-2");
+      expect(item).not.toContain("grid-cols-1");
+      expect(item).toContain("md:col-span-2");
+      expect(item).toContain("md:grid-cols-2");
+    }
+    expect(createItems.at(-2)).toContain("md:col-span-2");
+    expect(createItems.at(-1)).toContain("md:col-span-2");
+    expect(createView.queryByText("Reservation start dates")).toBeNull();
+
+    cleanup();
+    const { DiscountCodeCreationForm } = await import(
+      "./customer-code-creation"
+    );
+    const slotlessView = render(<DiscountCodeCreationForm discounts={[]} />);
+    const slotlessGrid = readConfigurationGrid(slotlessView);
+    const slotlessItems = readGridItems(slotlessGrid);
+    expect(readGridOrder(slotlessGrid).slice(0, 2)).toEqual([
+      "code",
+      "enabled",
+    ]);
+    expect(slotlessItems[0]).toContain("md:col-span-2");
+    expect(slotlessItems[0]).not.toContain("col-span-2");
+    expect(slotlessItems[1]).toContain("md:col-span-2");
+    expect(slotlessItems[1]).not.toContain("col-span-2");
+
+    cleanup();
+    const { VouchersAdminTable } = await import("./admin-tables");
+    const voucherView = render(
+      <VouchersAdminTable
+        vouchers={[
+          {
+            id: "019c91dd-c560-7e55-b9d8-c95065efd53d",
+            issuedCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+            remainingCredit: { value: 6500, exponent: 2, currency: "CZK" },
+            code: "GIFT100",
+            enabled: true,
+            validFrom: null,
+            validUntil: null,
+            audienceSize: 0,
+            reservedUses: 0,
+            redeemedUses: 0,
+          },
+        ]}
+      />
+    );
+    fireEvent.click(voucherView.getByRole("button", { name: "Edit GIFT100" }));
+    const voucherGrid = readConfigurationGrid(voucherView);
+    expect(voucherGrid.className).toContain("grid-cols-2");
+    expect(voucherGrid.className).toContain("md:grid-cols-4");
+    expect(readGridOrder(voucherGrid)).toEqual([
+      "code",
+      "enabled",
+      "validFrom",
+      "validUntil",
+    ]);
+    const voucherItems = readGridItems(voucherGrid);
+    expect(voucherItems[0]).toContain("md:col-span-2");
+    expect(voucherItems[1]).toContain("md:col-span-2");
+    // Both datetime controls share one wrapper, and the voucher variant
+    // spans all four outer columns on wide screens (its two inner columns
+    // hold the pair) while the pair still sits side-by-side in one row on
+    // the narrow two-column grid.
+    const voucherValidFromItem = readGridItemElement(voucherGrid, "validFrom");
+    const voucherValidUntilItem = readGridItemElement(
+      voucherGrid,
+      "validUntil"
+    );
+    expect(voucherValidUntilItem).toBe(voucherValidFromItem);
+    for (const item of [voucherItems[2], voucherItems[3]]) {
+      expect(item).toContain("md:col-span-4");
+      expect(item).toContain("col-span-2");
+      expect(item).toContain("grid-cols-2");
+      expect(item).not.toContain("grid-cols-1");
+      expect(item).toContain("md:grid-cols-2");
+    }
   });
 
   test("links codes to audience management and shows live capacity", async () => {
@@ -1157,6 +1555,8 @@ describe("discount administration pages", () => {
       code: {
         code: "PERSONAL10",
         enabled: true,
+        serviceDateFrom: null,
+        serviceDateUntil: null,
         validFrom: null,
         validUntil: null,
         maxUses: null,

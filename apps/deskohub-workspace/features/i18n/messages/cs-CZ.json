@@ -882,6 +882,7 @@
   "accountDeletedMetadataTitle": "Účet byl smazán | Deskohub Workspace",
   "accountDeletedMetadataDescription": "Váš zákaznický účet Deskohub Workspace byl smazán.",
   "accountDeletedTitle": "Váš účet byl smazán",
+  "discountAdminGenerateCode": "Vygenerovat kód",
   "accountDeletedBody": "Jste odhlášeni a vaše přihlašování bylo smazáno. Pozdější přihlášení stejnou ověřenou e-mailovou adresou obnoví zachovaný zákaznický profil.",
   "accountDeletedSignInAgain": "Přihlásit se znovu",
   "accountSupportTitle": "Potřebujeme ověřit váš profil",

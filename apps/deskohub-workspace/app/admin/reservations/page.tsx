@@ -4,7 +4,6 @@ import {
   AdministrationAlert,
   AdministrationFilterField,
   AdministrationFilterForm,
-  AdministrationFilterInput,
   AdministrationFilterSelect,
   AdministrationPage,
   AdministrationTableCount,
@@ -27,6 +26,7 @@ import {
   getAdministrationReservationDateShortcuts,
 } from "@/features/administration/reservation-date-range";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
+import { DateInput } from "@/shared/components/date-time/date-input";
 import { Button } from "@/shared/components/ui/button";
 
 export default function ReservationsAdministrationPage({
@@ -179,22 +179,22 @@ function ReservationFilters({
         htmlFor="reservation-date-from"
         label="Start date from"
       >
-        <AdministrationFilterInput
+        <DateInput
+          ariaLabel="Start date from"
           defaultValue={input.from ?? ""}
           id="reservation-date-from"
           name="from"
-          type="date"
         />
       </AdministrationFilterField>
       <AdministrationFilterField
         htmlFor="reservation-date-to"
         label="Start date to"
       >
-        <AdministrationFilterInput
+        <DateInput
+          ariaLabel="Start date to"
           defaultValue={input.to ?? ""}
           id="reservation-date-to"
           name="to"
-          type="date"
         />
       </AdministrationFilterField>
       {input.customerId && (
