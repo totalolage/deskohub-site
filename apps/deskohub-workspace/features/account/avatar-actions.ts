@@ -1,10 +1,11 @@
 "use server";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { revalidatePath } from "next/cache";
 import {
   accountActionError,
+  requireAccountAvatarsEnabled,
   requireAccountsEnabled,
   requireVerifiedSession,
 } from "@/features/account/account-action-guards";
@@ -86,9 +87,12 @@ const uploadAvatarMutation = Effect.fn(
   function* (file: File, locale: Locale) {
     yield* requireAccountsEnabled(locale);
     yield* requireVerifiedSession;
+    yield* requireAccountAvatarsEnabled(locale);
 
-    const resolver = yield* CustomerAccountResolver;
-    const resolution = yield* resolver.resolve;
+    const resolution = yield* CustomerAccountResolver.pipe(
+      Effect.flatMap((resolver) => resolver.resolve),
+      Effect.provide(CustomerAccountResolver.Live)
+    );
 
     const buffer = yield* Effect.tryPromise({
       try: () => file.arrayBuffer(),
@@ -118,7 +122,8 @@ const uploadAvatarMutation = Effect.fn(
       ),
       Effect.catchTag("CustomerAvatarUnavailableError", () =>
         Effect.fail(unavailableError(locale))
-      )
+      ),
+      Effect.provide(CustomerAvatarService.Live)
     );
 
     if (outcome.status === "uploaded") {
@@ -133,13 +138,7 @@ const uploadAvatarMutation = Effect.fn(
           ? error
           : accountActionError(locale)(error)
       ),
-      Effect.provide(
-        Layer.mergeAll(
-          CustomerAuthentication.Default,
-          CustomerAccountResolver.Live,
-          CustomerAvatarService.Live
-        )
-      )
+      Effect.provide(CustomerAuthentication.Default)
     )
 );
 
@@ -147,9 +146,12 @@ const removeAvatarMutation = Effect.fn(
   function* (_input: undefined, locale: Locale) {
     yield* requireAccountsEnabled(locale);
     yield* requireVerifiedSession;
+    yield* requireAccountAvatarsEnabled(locale);
 
-    const resolver = yield* CustomerAccountResolver;
-    const resolution = yield* resolver.resolve;
+    const resolution = yield* CustomerAccountResolver.pipe(
+      Effect.flatMap((resolver) => resolver.resolve),
+      Effect.provide(CustomerAccountResolver.Live)
+    );
 
     const outcome = yield* Effect.flatMap(CustomerAvatarService, (avatars) =>
       avatars.remove(resolution.accountId)
@@ -160,7 +162,8 @@ const removeAvatarMutation = Effect.fn(
       ),
       Effect.catchTag("CustomerAvatarUnavailableError", () =>
         Effect.fail(unavailableError(locale))
-      )
+      ),
+      Effect.provide(CustomerAvatarService.Live)
     );
 
     if (outcome.status === "removed") {
@@ -175,13 +178,7 @@ const removeAvatarMutation = Effect.fn(
           ? error
           : accountActionError(locale)(error)
       ),
-      Effect.provide(
-        Layer.mergeAll(
-          CustomerAuthentication.Default,
-          CustomerAccountResolver.Live,
-          CustomerAvatarService.Live
-        )
-      )
+      Effect.provide(CustomerAuthentication.Default)
     )
 );
 

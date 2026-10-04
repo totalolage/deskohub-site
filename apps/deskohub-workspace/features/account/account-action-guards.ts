@@ -4,7 +4,10 @@ import { m } from "@/features/i18n";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { CustomerAuthentication } from "./backend/customer-authentication.service";
 import { CustomerAccountAccessError } from "./customer-account";
-import { areAccountsEnabled } from "./server/account-feature-flag.server";
+import {
+  areAccountAvatarsEnabled,
+  areAccountsEnabled,
+} from "./server/account-feature-flag.server";
 
 export const requireVerifiedSession = Effect.flatMap(
   CustomerAuthentication,
@@ -45,6 +48,22 @@ export const accountActionErrorMessage = (
 
 export const requireAccountsEnabled = (locale: Locale) =>
   Effect.promise(areAccountsEnabled).pipe(
+    Effect.filterOrFail(
+      (enabled) => enabled,
+      () =>
+        new PublicSafeActionError({
+          message: m.accountUnavailableDescription({}, { locale }),
+        })
+    ),
+    Effect.asVoid
+  );
+
+export const requireAccountAvatarsEnabled = (locale: Locale) =>
+  Effect.tryPromise({
+    try: areAccountAvatarsEnabled,
+    catch: () => false,
+  }).pipe(
+    Effect.orElseSucceed(() => false),
     Effect.filterOrFail(
       (enabled) => enabled,
       () =>

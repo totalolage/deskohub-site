@@ -47,6 +47,7 @@ let resolveEffect: Effect.Effect<
 let resolverCalls = 0;
 let profileLoadCalls = 0;
 let historyLoadCalls = 0;
+let avatarLookupCalls = 0;
 
 const Resolver = Context.Service<
   Resolver,
@@ -168,12 +169,19 @@ const Avatar = Context.Service<
 >()("@test/AccountAvatar");
 
 const AvatarLayer = Layer.succeed(Avatar, {
-  lookup: () => avatarLookupEffect,
+  lookup: () => {
+    avatarLookupCalls += 1;
+    return avatarLookupEffect;
+  },
 });
 Object.assign(Avatar, { Live: AvatarLayer });
 
 mock.module("@/features/account/backend/customer-avatar.service", () => ({
   CustomerAvatarService: Avatar,
+}));
+const areAccountAvatarsEnabled = mock(() => Promise.resolve(true));
+mock.module("@/features/account/server/account-feature-flag.server", () => ({
+  areAccountAvatarsEnabled,
 }));
 mock.module("@/shared/backend/workspace-effect", () => ({
   runWorkspaceEffect:
@@ -189,7 +197,10 @@ describe("loadCustomerAccountPage", () => {
     resolverCalls = 0;
     profileLoadCalls = 0;
     historyLoadCalls = 0;
+    avatarLookupCalls = 0;
     avatarLookupEffect = Effect.succeed(null);
+    areAccountAvatarsEnabled.mockReset();
+    areAccountAvatarsEnabled.mockResolvedValue(true);
     historyEffect = Effect.succeed({
       kind: "available",
       groups: { current: [], past: [], unavailable: [] },
@@ -303,7 +314,7 @@ describe("loadCustomerAccountPage", () => {
       kind: "linked",
       email: "ada@example.test",
       profile: { firstName: "Ada" },
-      avatar: null,
+      avatar: { kind: "available", avatar: null },
       history: { kind: "available" },
     });
   });
@@ -320,7 +331,7 @@ describe("loadCustomerAccountPage", () => {
         phone: null,
         billing: null,
       },
-      avatar: null,
+      avatar: { kind: "available", avatar: null },
       history: { kind: "unavailable", reason: "provider-unavailable" },
     });
   });
@@ -334,10 +345,14 @@ describe("loadCustomerAccountPage", () => {
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "linked",
       avatar: {
-        url: "https://res.cloudinary.test/avatar.webp",
-        version: 1735689600,
+        kind: "available",
+        avatar: {
+          url: "https://res.cloudinary.test/avatar.webp",
+          version: 1735689600,
+        },
       },
     });
+    expect(avatarLookupCalls).toBe(1);
   });
 
   test("falls back to no avatar when the avatar read fails", async () => {
@@ -345,8 +360,44 @@ describe("loadCustomerAccountPage", () => {
 
     await expect(loadPageState()).resolves.toMatchObject({
       kind: "linked",
-      avatar: null,
+      avatar: { kind: "available", avatar: null },
     });
+    expect(avatarLookupCalls).toBe(1);
+  });
+
+  test("keeps profile and history available while hiding avatars and skipping lookup when disabled", async () => {
+    areAccountAvatarsEnabled.mockResolvedValue(false);
+
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "linked",
+      email: "ada@example.test",
+      profile: {
+        firstName: "Ada",
+        lastName: "Lovelace",
+        phone: null,
+        billing: null,
+      },
+      avatar: { kind: "hidden" },
+      history: {
+        kind: "available",
+        groups: { current: [], past: [], unavailable: [] },
+      },
+    });
+    expect(avatarLookupCalls).toBe(0);
+    expect(profileLoadCalls).toBe(1);
+    expect(historyLoadCalls).toBe(1);
+  });
+
+  test("fails closed without avatar lookup when avatar capability evaluation is unavailable", async () => {
+    areAccountAvatarsEnabled.mockRejectedValue(new Error("flag unavailable"));
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      avatar: { kind: "hidden" },
+      profile: { firstName: "Ada" },
+      history: { kind: "available" },
+    });
+    expect(avatarLookupCalls).toBe(0);
   });
 
   test("renders the authenticated unavailable state when the profile read fails after a successful link", async () => {

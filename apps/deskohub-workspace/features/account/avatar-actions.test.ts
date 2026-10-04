@@ -26,8 +26,10 @@ mock.module("botid/server", () => ({
 }));
 
 const areAccountsEnabled = mock(() => Promise.resolve(true));
+const areAccountAvatarsEnabled = mock(() => Promise.resolve(true));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
   areAccountsEnabled,
+  areAccountAvatarsEnabled,
 }));
 
 let currentUser: Effect.Effect<
@@ -77,6 +79,7 @@ let resolve: Effect.Effect<
   Extract<Resolution, { accountId: string }>,
   Extract<Resolution, { reason: string }>
 >;
+let resolverCalls = 0;
 const Resolver = Context.Service<
   Resolver,
   { readonly resolve: typeof resolve }
@@ -84,6 +87,7 @@ const Resolver = Context.Service<
 Object.assign(Resolver, {
   Live: Layer.succeed(Resolver, {
     get resolve() {
+      resolverCalls += 1;
       return resolve;
     },
   }),
@@ -187,7 +191,10 @@ describe("customer avatar actions", () => {
     revalidatePath.mockClear();
     areAccountsEnabled.mockReset();
     areAccountsEnabled.mockResolvedValue(true);
+    areAccountAvatarsEnabled.mockReset();
+    areAccountAvatarsEnabled.mockResolvedValue(true);
     currentUser = Effect.succeed(activeSession);
+    resolverCalls = 0;
     resolve = Effect.succeed({
       accountId: "@test/account-id",
       dotyposCustomerId: "60111",
@@ -270,6 +277,7 @@ describe("customer avatar actions", () => {
     expect(removeResult.serverError).toBe(
       "Your session has expired. Please sign in again."
     );
+    expect(areAccountAvatarsEnabled).not.toHaveBeenCalled();
     expect(uploadCalls).toHaveLength(0);
     expect(removeCalls).toHaveLength(0);
   });
@@ -308,6 +316,62 @@ describe("customer avatar actions", () => {
 
     expect(uploadResult.serverError).toBeTruthy();
     expect(removeResult.serverError).toBeTruthy();
+    expect(areAccountAvatarsEnabled).not.toHaveBeenCalled();
+    expect(uploadCalls).toHaveLength(0);
+    expect(removeCalls).toHaveLength(0);
+  });
+
+  test("rejects direct upload and removal before resolution or media work when avatars are disabled", async () => {
+    areAccountAvatarsEnabled.mockResolvedValue(false);
+    const form = uploadForm();
+    const file = form.get("file");
+    if (!(file instanceof File)) throw new Error("Missing test upload file");
+    const arrayBuffer = mock(() => Promise.resolve(new ArrayBuffer(0)));
+    Object.defineProperty(file, "arrayBuffer", {
+      configurable: true,
+      value: arrayBuffer,
+    });
+    const { uploadCustomerAvatar, removeCustomerAvatar } =
+      await importActions();
+
+    const uploadResult = await uploadCustomerAvatar(form);
+    const removeResult = await removeCustomerAvatar();
+
+    const unavailableMessage =
+      "We cannot reach your account right now. Reservations can still be made without an account.";
+    expect(uploadResult.serverError).toBe(unavailableMessage);
+    expect(removeResult.serverError).toBe(unavailableMessage);
+    expect(areAccountsEnabled).toHaveBeenCalledTimes(2);
+    expect(areAccountAvatarsEnabled).toHaveBeenCalledTimes(2);
+    expect(resolverCalls).toBe(0);
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    expect(uploadCalls).toHaveLength(0);
+    expect(removeCalls).toHaveLength(0);
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  test("treats avatar capability evaluation failure as the same safe unavailable response", async () => {
+    areAccountAvatarsEnabled.mockRejectedValue(new Error("flag unavailable"));
+    const form = uploadForm();
+    const file = form.get("file");
+    if (!(file instanceof File)) throw new Error("Missing test upload file");
+    const arrayBuffer = mock(() => Promise.resolve(new ArrayBuffer(0)));
+    Object.defineProperty(file, "arrayBuffer", {
+      configurable: true,
+      value: arrayBuffer,
+    });
+    const { uploadCustomerAvatar, removeCustomerAvatar } =
+      await importActions();
+
+    const uploadResult = await uploadCustomerAvatar(form);
+    const removeResult = await removeCustomerAvatar();
+
+    const unavailableMessage =
+      "We cannot reach your account right now. Reservations can still be made without an account.";
+    expect(uploadResult.serverError).toBe(unavailableMessage);
+    expect(removeResult.serverError).toBe(unavailableMessage);
+    expect(resolverCalls).toBe(0);
+    expect(arrayBuffer).not.toHaveBeenCalled();
     expect(uploadCalls).toHaveLength(0);
     expect(removeCalls).toHaveLength(0);
   });
