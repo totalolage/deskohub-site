@@ -1,14 +1,27 @@
 "use client";
 
+import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { Button } from "@/shared/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { Label } from "@/shared/components/ui/label";
 import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { getAdministrationReservation } from "./actions";
+import {
+  type ReservationLookupInput,
+  reservationLookupStandardSchema,
+} from "./contracts";
 import { AdministrationAlert } from "./notice";
 
 export function ReservationLookup({
@@ -16,9 +29,16 @@ export function ReservationLookup({
 }: {
   readonly variant?: "card" | "toolbar";
 }) {
-  const identifierId = useId();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const form = useForm<ReservationLookupInput, unknown, ReservationLookupInput>(
+    {
+      defaultValues: { identifier: "" },
+      mode: "onSubmit",
+      reValidateMode: "onChange",
+      resolver: standardSchemaResolver(reservationLookupStandardSchema),
+    }
+  );
   const { execute, isExecuting } = useWorkspaceAction(
     getAdministrationReservation,
     {
@@ -46,40 +66,49 @@ export function ReservationLookup({
 
   return (
     <div className="space-y-4">
-      <form
-        className={cn(
-          "grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
-          variant === "card" &&
-            "rounded-xl border border-navy-blue/10 bg-white p-5"
-        )}
-        onSubmit={(event) => {
-          event.preventDefault();
-          setError(null);
-          const identifier = new FormData(event.currentTarget)
-            .get("identifier")
-            ?.toString()
-            .trim();
-          if (!identifier) return;
-          execute({ identifier });
-        }}
-      >
-        <div className="grid gap-1.5">
-          <Label htmlFor={identifierId}>Reservation or payment ID</Label>
-          <Input
-            autoComplete="off"
-            id={identifierId}
-            maxLength={256}
+      <Form {...form}>
+        <form
+          className={cn(
+            "grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
+            variant === "card" &&
+              "rounded-xl border border-navy-blue/10 bg-white p-5"
+          )}
+          noValidate
+          onSubmit={(event) => {
+            void form.handleSubmit(({ identifier }) => {
+              setError(null);
+              execute({ identifier });
+            })(event);
+          }}
+        >
+          <FormField
+            control={form.control}
             name="identifier"
-            placeholder="Paste any associated ID"
-            required
-            type="search"
+            render={({ field: { onChange, ...field }, fieldState }) => (
+              <FormItem>
+                <FormLabel>Reservation or payment ID</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    autoComplete="off"
+                    maxLength={256}
+                    onInput={onChange}
+                    placeholder="Paste any associated ID"
+                    required
+                    type="search"
+                    variant={fieldState.error ? "error" : "default"}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
-        <Button disabled={isExecuting} type="submit">
-          <Search aria-hidden className="size-4" />
-          {isExecuting ? "Looking up…" : "Get reservation"}
-        </Button>
-      </form>
+          <Button disabled={isExecuting} type="submit">
+            <Search aria-hidden className="size-4" />
+            {isExecuting ? "Looking up…" : "Get reservation"}
+          </Button>
+        </form>
+      </Form>
 
       {error && (
         <AdministrationAlert

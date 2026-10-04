@@ -502,6 +502,61 @@ describe("ProfileForm ARES business lookup", () => {
     ).toBeNull();
   });
 
+  test("a superseded found response can never be applied over the newer edit", async () => {
+    const view = renderForm();
+    let resolveLookup!: (outcome: LookupOutcome) => void;
+    lookupAresBusiness.mockImplementationOnce(
+      () =>
+        new Promise<LookupOutcome>((resolve) => {
+          resolveLookup = resolve;
+        })
+    );
+
+    fireEvent.input(companyIdInput(view), { target: { value: "27121043" } });
+    await act(async () => {
+      fireEvent.click(lookupButton(view));
+      await Promise.resolve();
+    });
+
+    // The IČO changes while the lookup is in flight: the later response is
+    // superseded, so no review panel or apply control may appear at all.
+    await act(async () => {
+      fireEvent.input(companyIdInput(view), {
+        target: { value: "27082440" },
+      });
+      resolveLookup({
+        data: { status: "found", company: { ...foundCompany } },
+      });
+      await Promise.resolve();
+    });
+
+    expect(statusRegion(view).textContent).toBe("");
+    expect(
+      view.queryByText(m.accountAresLookupReviewTitle({}, { locale: "en-US" }))
+    ).toBeNull();
+    expect(
+      view.queryByRole("button", {
+        name: m.accountAresLookupApply({}, { locale: "en-US" }),
+      })
+    ).toBeNull();
+
+    // The draft fields keep the customer's own values; submitting cannot
+    // resurrect the discarded registry data either.
+    await act(async () => {
+      fireEvent.input(view.getByLabelText("First name"), {
+        target: { value: "Grace" },
+      });
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+      await Promise.resolve();
+    });
+    expect(updateCustomerProfile).toHaveBeenCalledTimes(1);
+    const input = updateCustomerProfile.mock.calls[0]![0] as {
+      billing?: { companyId?: string; companyName?: string };
+    };
+    expect(input.billing?.companyId).toBe("27082440");
+    expect(input.billing?.companyName).toBe("Original Company");
+  });
+
   test.each(["en-US", "cs-CZ"] as const)(
     "surfaces the resolved server error in the live region for %s",
     async (locale) => {
