@@ -195,7 +195,7 @@ export function AvatarControl({
             ? null
             : initials || <UserRound className="size-9" strokeWidth={1.8} />}
         </div>
-        {showImage ? (
+        {showImage && (
           // biome-ignore lint/performance/noImgElement: provider-delivered, already-normalized 512px WebP avatar; next/image optimization does not apply
           <img
             alt={m.accountProfileAvatarAlt({}, { locale })}
@@ -203,7 +203,7 @@ export function AvatarControl({
             onError={() => setImageFailed(true)}
             src={displayAvatar.url}
           />
-        ) : null}
+        )}
         <span className="absolute -right-1 -bottom-1 inline-flex size-10">
           <Button
             aria-label={m.accountProfileAvatarChange({}, { locale })}
@@ -227,7 +227,7 @@ export function AvatarControl({
           type="file"
         />
       </div>
-      {displayAvatar !== null ? (
+      {displayAvatar !== null && (
         <Button
           className="h-auto min-h-8 whitespace-normal rounded-xl border border-[#dfe4ec] bg-white px-3 text-left text-xs uppercase leading-4 tracking-[0.08em] text-[#344258] hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
           disabled={isPending}
@@ -240,12 +240,12 @@ export function AvatarControl({
             ? m.accountProfileAvatarRemoving({}, { locale })
             : m.accountProfileAvatarRemove({}, { locale })}
         </Button>
-      ) : null}
+      )}
       <p className="max-w-48 text-xs leading-4 text-[#52647c]">
         {m.accountProfileAvatarHint({}, { locale })}
       </p>
       <div aria-live="polite" className="min-h-5 text-sm" role="status">
-        {statusMessage ? (
+        {statusMessage && (
           <p
             className={
               serverError || status.kind === "failed"
@@ -255,7 +255,7 @@ export function AvatarControl({
           >
             {statusMessage}
           </p>
-        ) : null}
+        )}
       </div>
     </div>
   );
