@@ -1378,6 +1378,7 @@ export const buildBundle = async (
   const inputNames = Object.keys(metadataInputs.inputs ?? {});
   const inputPaths = new Set<string>([
     buildEntryPath,
+    resolve(adapterPath),
     rendererEntryPath,
     defaultAdapterPath,
     actualAccountPagePath,

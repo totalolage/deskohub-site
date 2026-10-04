@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 import {
   type Browser,
   type BrowserContext,
@@ -79,6 +79,7 @@ afterAll(async () => {
 });
 
 const outputRoot = "/tmp/opencode/pr239-account-redesign/visual";
+const repoRoot = resolve(import.meta.dir, "../../../..");
 const expectedRendererPort = parseRendererPort(
   process.env.WORKSPACE_ACCOUNT_VISUAL_PORT
 );
@@ -4151,10 +4152,12 @@ const assertPublicLegalCliRun = async ({
       targetVisible: true,
     });
 
-    expect(
-      sourceManifest.bundleInputs.map(({ path }: { path: string }) => path)
-    ).toEqual(
+    const bundleInputPaths = sourceManifest.bundleInputs.map(
+      ({ path }: { path: string }) => path
+    );
+    expect(bundleInputPaths).toEqual(
       expect.arrayContaining([
+        relative(repoRoot, adapterPath),
         "apps/deskohub-workspace/features/account/components/public-account-legal.tsx",
         "apps/deskohub-workspace/features/cookie-consent/components/cookie-settings-page.tsx",
         "apps/deskohub-workspace/features/account/components/linked-account.tsx",
