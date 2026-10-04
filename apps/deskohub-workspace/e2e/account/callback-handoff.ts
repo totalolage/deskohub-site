@@ -132,9 +132,7 @@ const waitForCallbackLoading = async (
     exact: true,
     name: callbackLoadingName,
   });
-  const loadingText = loadingCard.getByText(callbackLoadingName, {
-    exact: true,
-  });
+  const loadingSkeleton = loadingCard.locator('[data-slot="skeleton"]').first();
   const banner = page.getByRole("banner");
   const footer = page.getByRole("contentinfo");
 
@@ -166,7 +164,7 @@ const waitForCallbackLoading = async (
   );
   await waitForCallbackOperation(
     () =>
-      loadingText.waitFor({
+      loadingSkeleton.waitFor({
         state: "visible",
         timeout: remainingBrowserActionBudget(deadline),
       }),

@@ -46,9 +46,6 @@ export default async function CustomerAccountDeletedPage() {
               <h1 className="text-3xl text-navy-blue sm:text-4xl">
                 {m.accountDeletedTitle({}, { locale })}
               </h1>
-              <p className="mt-4 leading-7 text-navy-blue/68">
-                {m.accountDeletedBody({}, { locale })}
-              </p>
               <Button asChild className="mt-8">
                 <Link href={`/${locale}/auth/sign-in`} prefetch={false}>
                   {m.accountDeletedSignInAgain({}, { locale })}

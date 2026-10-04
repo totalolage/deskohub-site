@@ -66,7 +66,6 @@
   "accountReservationCheckIn": "Check in",
   "accountReservationDate": "Date",
   "accountReservationMoreCurrent": "More current and upcoming reservations",
-  "accountReservationNfcAccess": "NFC access",
   "accountReservationProduct": "Product",
   "accountReservationSeatsLabel": "Seats",
   "accountReservationShowPinCode": "Show PIN code",
@@ -889,7 +888,6 @@
   "accountDeletedMetadataTitle": "Account deleted | Deskohub Workspace",
   "accountDeletedMetadataDescription": "Your Deskohub Workspace customer account was deleted.",
   "accountDeletedTitle": "Your account was deleted",
-  "accountDeletedBody": "You are signed out and your login was deleted. Signing in again later with the same verified email reactivates your retained customer profile.",
   "accountDeletedSignInAgain": "Sign in again",
   "accountSupportTitle": "We need to verify your profile",
   "accountSupportContact": "We could not safely choose one customer profile for this email, so no profile details or reservations are shown. <contact>Contact us</contact> and we will connect the correct history."

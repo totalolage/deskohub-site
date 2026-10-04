@@ -135,6 +135,7 @@ export const collectCallbackDocumentSnapshot = (config: {
   readonly uuidPatternSource: string;
   readonly callbackPath: string;
   readonly loadingSelector: string;
+  readonly loadingSkeletonSelector: string;
   readonly loadingAriaLabel: string;
   readonly mainSelector: string;
   readonly bannerSelector: string;
@@ -248,8 +249,23 @@ export const collectCallbackDocumentSnapshot = (config: {
     if (card.getAttribute("aria-busy") !== "true") fail("busy");
     if (card.getAttribute("aria-label") !== config.loadingAriaLabel)
       fail("label");
-    const text = (card.textContent || "").trim();
-    if (!text.includes(config.loadingAriaLabel)) fail("text");
+    const skeletons = card.querySelectorAll(config.loadingSkeletonSelector);
+    if (skeletons.length === 0) {
+      fail("skeletons");
+    } else if (
+      ![...skeletons].some((skeleton) => {
+        const skeletonStyle = getComputedStyle(skeleton);
+        const skeletonRect = skeleton.getBoundingClientRect();
+        return (
+          skeletonStyle.display !== "none" &&
+          skeletonStyle.visibility !== "hidden" &&
+          skeletonRect.width > 0 &&
+          skeletonRect.height > 0
+        );
+      })
+    ) {
+      fail("skeletonVisible");
+    }
     if (hiddenByAriaAncestor(card)) fail("cardHidden");
     const style = getComputedStyle(card);
     const cardRect = card.getBoundingClientRect();
@@ -576,6 +592,7 @@ export const prepareCallbackDocumentReview = async (
                 "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
               callbackPath: "/en-US/auth/callback",
               loadingSelector: callbackLoadingSelector,
+              loadingSkeletonSelector: '[data-slot="skeleton"]',
               loadingAriaLabel: callbackLoadingAriaLabel,
               mainSelector,
               bannerSelector,

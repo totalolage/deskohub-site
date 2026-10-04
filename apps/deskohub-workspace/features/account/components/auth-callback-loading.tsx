@@ -16,9 +16,6 @@ export function AuthCallbackLoading({ locale }: { readonly locale: Locale }) {
           role="status"
         >
           <CardContent className="p-8 sm:p-10">
-            <p className="mb-5 font-medium text-navy-blue">
-              {m.accountSignInLoading({}, { locale })}
-            </p>
             <div aria-hidden="true" className="space-y-5">
               <Skeleton className="h-4 w-32 rounded-full" />
               <Skeleton className="h-10 w-4/5 rounded-2xl" />

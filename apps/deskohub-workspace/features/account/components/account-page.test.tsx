@@ -151,7 +151,6 @@ const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
     checkIn: "Check in",
     date: "Date",
     moreCurrent: "More upcoming reservations",
-    nfcAccess: "NFC access",
     product: "Product",
     seats: "Seats",
     showPinCode: "Show PIN code",

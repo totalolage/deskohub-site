@@ -57,7 +57,6 @@ const historyCopy = {
     checkIn: "Check in",
     date: "Date",
     moreCurrent: "More current and upcoming reservations",
-    nfcAccess: "NFC access",
     product: "Product",
     seats: "Seats",
     showPinCode: "Show PIN code",
@@ -73,7 +72,6 @@ const historyCopy = {
     checkIn: "Odbavit se",
     date: "Datum",
     moreCurrent: "Další aktuální a nadcházející rezervace",
-    nfcAccess: "NFC přístup",
     product: "Produkt",
     seats: "Místa",
     showPinCode: "Zobrazit PIN kód",
@@ -297,14 +295,12 @@ describe("ReservationHistory", () => {
     }
     expect(view.queryByText("Checked in")).toBeNull();
 
-    for (const label of [
-      copyFor("en-US").checkIn,
-      copyFor("en-US").nfcAccess,
-    ]) {
-      expect(
-        view.getByRole("button", { name: label }).hasAttribute("disabled")
-      ).toBe(true);
-    }
+    expect(
+      view
+        .getByRole("button", { name: copyFor("en-US").checkIn })
+        .hasAttribute("disabled")
+    ).toBe(true);
+    expect(view.queryByRole("button", { name: /nfc/i })).toBeNull();
     expect(
       view.getByRole("link", { name: copyFor("en-US").showPinCode })
     ).toBeTruthy();

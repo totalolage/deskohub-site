@@ -148,7 +148,8 @@ const makeSnapshotGlobals = (
       role: string | null;
       ariaBusy: string | null;
       ariaLabel: string | null;
-      text: string;
+      skeletonCount: number;
+      skeletonVisible: boolean;
       hidden: boolean;
       width: number;
       height: number;
@@ -171,9 +172,19 @@ const makeSnapshotGlobals = (
       if (name === "aria-busy") return overrides.card?.ariaBusy ?? "true";
       return overrides.card?.ariaLabel ?? "Loading sign-in…";
     },
-    get textContent() {
-      return overrides.card?.text ?? "  Loading sign-in…  ";
-    },
+    querySelectorAll: (selector: string) =>
+      selector.includes('data-slot="skeleton"')
+        ? Array.from(
+            { length: overrides.card?.skeletonCount ?? 7 },
+            () => ({
+              getBoundingClientRect: () =>
+                rect(
+                  overrides.card?.skeletonVisible === false ? 0 : 100,
+                  overrides.card?.skeletonVisible === false ? 0 : 12
+                ),
+            })
+          )
+        : [],
     getBoundingClientRect: () =>
       rect(overrides.card?.width ?? 600, overrides.card?.height ?? 300),
     parentElement: overrides.card?.hidden
@@ -241,6 +252,7 @@ const snapshotConfig = {
     "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
   callbackPath: "/en-US/auth/callback",
   loadingSelector: '[data-slot="auth-callback-loading"]',
+  loadingSkeletonSelector: '[data-slot="skeleton"]',
   loadingAriaLabel: "Loading sign-in…",
   mainSelector: 'main, [role="main"]',
   bannerSelector: '[role="banner"], body > header',
@@ -293,6 +305,8 @@ describe("collectCallbackDocumentSnapshot", () => {
       ["wrong-card-role", { card: { role: "none" } }],
       ["card-not-busy", { card: { ariaBusy: "false" } }],
       ["card-wrong-label", { card: { ariaLabel: "Other" } }],
+      ["card-skeletons-missing", { card: { skeletonCount: 0 } }],
+      ["card-skeletons-invisible", { card: { skeletonVisible: false } }],
       ["card-invisible", { card: { width: 0, height: 0 } }],
       ["card-aria-hidden-ancestor", { card: { hidden: true } }],
       ["main-missing", { main: null }],

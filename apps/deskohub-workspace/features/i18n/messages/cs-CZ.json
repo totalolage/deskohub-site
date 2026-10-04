@@ -66,7 +66,6 @@
   "accountReservationCheckIn": "Odbavit se",
   "accountReservationDate": "Datum",
   "accountReservationMoreCurrent": "Další aktuální a nadcházející rezervace",
-  "accountReservationNfcAccess": "NFC přístup",
   "accountReservationProduct": "Produkt",
   "accountReservationSeatsLabel": "Místa",
   "accountReservationShowPinCode": "Zobrazit PIN kód",
@@ -897,7 +896,6 @@
   "accountDeletedMetadataTitle": "Účet byl smazán | Deskohub Workspace",
   "accountDeletedMetadataDescription": "Váš zákaznický účet Deskohub Workspace byl smazán.",
   "accountDeletedTitle": "Váš účet byl smazán",
-  "accountDeletedBody": "Jste odhlášeni a vaše přihlašování bylo smazáno. Pozdější přihlášení stejnou ověřenou e-mailovou adresou obnoví zachovaný zákaznický profil.",
   "accountDeletedSignInAgain": "Přihlásit se znovu",
   "accountSupportTitle": "Potřebujeme ověřit váš profil",
   "accountSupportContact": "Pro tento e-mail se nepodařilo bezpečně vybrat jeden zákaznický profil, proto nezobrazujeme údaje profilu ani rezervace. <contact>Napište nám</contact> a propojíme správnou historii."
