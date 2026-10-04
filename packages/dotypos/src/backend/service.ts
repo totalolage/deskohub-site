@@ -440,10 +440,21 @@ const makeDotyposService = Effect.gen(function* () {
     schema: Schema.Decoder<A>,
     page: DotyposPage<unknown>,
     operation: string
-  ) =>
-    decodeProviderEntities(schema, page.data ?? [], operation).pipe(
+  ): Effect.Effect<DotyposPage<A>, ExternalAPIError> => {
+    if (!Array.isArray(page.data)) {
+      return Effect.fail(
+        new ExternalAPIError({
+          service: "Dotypos",
+          operation,
+          message: "Dotypos returned a malformed list response.",
+        })
+      );
+    }
+
+    return decodeProviderEntities(schema, page.data, operation).pipe(
       Effect.map((data) => ({ ...page, data }))
     );
+  };
 
   const getReservation = Effect.fn("getReservation")(
     function* (id: DotyposReservationId) {

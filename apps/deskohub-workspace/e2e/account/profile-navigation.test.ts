@@ -4,7 +4,12 @@ import { access } from "node:fs/promises";
 import { createServer } from "node:http";
 import { normalizePhoneNumber } from "@deskohub/dotypos";
 import { chromium, type Page } from "@playwright/test";
-import { WorkspaceE2EError } from "../errors";
+import {
+  isWorkspaceE2EDiagnosticCode,
+  WorkspaceE2EError,
+  type WorkspaceE2EProfileNavigationDiagnosticCode,
+} from "../errors";
+import { formatWorkspaceE2EFailureAnnotation } from "../github-actions";
 import {
   accountSectionLabels,
   accountSectionLandmarks,
@@ -76,9 +81,22 @@ type ProfileNavigationFakePage = {
   readonly state: ProfileNavigationState;
 };
 
+type PersistedRestoreFailureStage =
+  | "document-reload"
+  | "profile-navigation"
+  | "first-name-restore"
+  | "last-name-restore"
+  | "phone-restore"
+  | "billing-navigation"
+  | "billing-kind-restore"
+  | "billing-company-restore"
+  | "return-profile-navigation"
+  | "unavailable-heading-expectation";
+
 type ProfileNavigationFailurePhase =
   | "saved-profile-baseline"
-  | "draft-retention";
+  | "draft-retention"
+  | PersistedRestoreFailureStage;
 
 const privateFailureDetails = "private profile navigation fixture details";
 
@@ -119,6 +137,9 @@ const makeProfileNavigationFakePage = (
         readonly type: () => string;
       }) => void)
     | undefined;
+  let documentReloaded = false;
+  let restoredProfileNavigationCount = 0;
+  let restoredBillingNavigationCount = 0;
 
   const isProfileFormVisible = () =>
     state.section === "profile" || state.section === "billing";
@@ -207,6 +228,30 @@ const makeProfileNavigationFakePage = (
         ) {
           throw new Error(privateFailureDetails);
         }
+        if (
+          documentReloaded &&
+          expression === "to.have.value" &&
+          ((failurePhase === "first-name-restore" &&
+            name === "#account-profile-first-name") ||
+            (failurePhase === "last-name-restore" &&
+              name === "#account-profile-last-name") ||
+            (failurePhase === "phone-restore" &&
+              name === "#account-profile-phone") ||
+            (failurePhase === "billing-kind-restore" &&
+              name === "#account-profile-billing-kind") ||
+            (failurePhase === "billing-company-restore" &&
+              name === "#account-profile-billing-company-name"))
+        ) {
+          throw new Error(privateFailureDetails);
+        }
+        if (
+          documentReloaded &&
+          failurePhase === "unavailable-heading-expectation" &&
+          expression === "to.have.count" &&
+          name === "heading:Customer accounts are temporarily unavailable"
+        ) {
+          throw new Error(privateFailureDetails);
+        }
         let actual: boolean | number | string;
         let matches: boolean;
         if (expression === "to.be.visible") {
@@ -232,6 +277,26 @@ const makeProfileNavigationFakePage = (
       click: async () => {
         actions.push(`click:${name}`);
         if (name.startsWith("section:")) {
+          if (documentReloaded && name === "section:profile") {
+            restoredProfileNavigationCount += 1;
+            if (
+              (failurePhase === "profile-navigation" &&
+                restoredProfileNavigationCount === 1) ||
+              (failurePhase === "return-profile-navigation" &&
+                restoredProfileNavigationCount === 2)
+            ) {
+              throw new Error(privateFailureDetails);
+            }
+          }
+          if (documentReloaded && name === "section:billing") {
+            restoredBillingNavigationCount += 1;
+            if (
+              failurePhase === "billing-navigation" &&
+              restoredBillingNavigationCount === 1
+            ) {
+              throw new Error(privateFailureDetails);
+            }
+          }
           state.section = name.slice(
             "section:".length
           ) as ProfileNavigationSection;
@@ -341,11 +406,15 @@ const makeProfileNavigationFakePage = (
     goto: async (url: string) => {
       if (url !== accountUrl)
         throw new Error(`unsupported document URL: ${url}`);
+      if (failurePhase === "document-reload") {
+        throw new Error(privateFailureDetails);
+      }
       state.url = url;
       state.section = "reservations";
       state.dirty = false;
       state.profile = { ...serverSnapshot };
       state.billing = { ...originalBilling };
+      documentReloaded = true;
       actions.push("document-remount:account");
     },
     locator: (selector: string) => makeLocator(selector),
@@ -559,13 +628,81 @@ test("redacts a draft-retention failure with its later-phase diagnostic", async 
   );
 });
 
+const persistedRestoreFailureStages = [
+  {
+    phase: "document-reload",
+    diagnosticCode: "account_profile_persisted_document_reload_failed",
+  },
+  {
+    phase: "profile-navigation",
+    diagnosticCode: "account_profile_persisted_profile_navigation_failed",
+  },
+  {
+    phase: "first-name-restore",
+    diagnosticCode: "account_profile_persisted_first_name_restore_failed",
+  },
+  {
+    phase: "last-name-restore",
+    diagnosticCode: "account_profile_persisted_last_name_restore_failed",
+  },
+  {
+    phase: "phone-restore",
+    diagnosticCode: "account_profile_persisted_phone_restore_failed",
+  },
+  {
+    phase: "billing-navigation",
+    diagnosticCode: "account_profile_persisted_billing_navigation_failed",
+  },
+  {
+    phase: "billing-kind-restore",
+    diagnosticCode: "account_profile_persisted_billing_kind_restore_failed",
+  },
+  {
+    phase: "billing-company-restore",
+    diagnosticCode: "account_profile_persisted_billing_company_restore_failed",
+  },
+  {
+    phase: "return-profile-navigation",
+    diagnosticCode:
+      "account_profile_persisted_return_profile_navigation_failed",
+  },
+  {
+    phase: "unavailable-heading-expectation",
+    diagnosticCode:
+      "account_profile_persisted_unavailable_heading_expectation_failed",
+  },
+] as const satisfies readonly {
+  readonly phase: PersistedRestoreFailureStage;
+  readonly diagnosticCode: WorkspaceE2EProfileNavigationDiagnosticCode;
+}[];
+
+test("reports a closed stage-specific diagnostic for persisted profile restore failures", async () => {
+  for (const { phase, diagnosticCode } of persistedRestoreFailureStages) {
+    const fake = makeProfileNavigationFakePage(
+      "https://account-navigation.example.test",
+      phase
+    );
+    const failure = await verifyProfileNavigation(
+      fake.page,
+      "https://account-navigation.example.test"
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause
+    );
+
+    expectProfileNavigationFailure(failure, diagnosticCode);
+  }
+});
+
 const expectProfileNavigationFailure = (
   failure: unknown,
-  diagnosticCode: string
+  diagnosticCode: WorkspaceE2EProfileNavigationDiagnosticCode
 ) => {
   expect(failure).toBeInstanceOf(WorkspaceE2EError);
   if (!(failure instanceof WorkspaceE2EError)) return;
 
+  expect(failure.diagnosticCode).toBe(diagnosticCode);
+  expect(isWorkspaceE2EDiagnosticCode(failure.diagnosticCode)).toBe(true);
   expect(failure).toMatchObject({
     diagnosticCode,
     message: "Profile navigation verification failed",
@@ -573,7 +710,17 @@ const expectProfileNavigationFailure = (
   });
   expect(failure.cause).toBeUndefined();
   expect(failure.causes).toBeUndefined();
+  expect(failure.message).not.toContain(privateFailureDetails);
   expect(JSON.stringify(failure)).not.toContain(privateFailureDetails);
+  const annotation = formatWorkspaceE2EFailureAnnotation({
+    caseId: "account-profile-completion",
+    diagnosticCode: failure.diagnosticCode,
+    failureKind: "error",
+    outcome: "failed",
+    stepId: "verifyPages",
+  });
+  expect(annotation).toContain(`diagnostic_code=${diagnosticCode}`);
+  expect(annotation).not.toContain(privateFailureDetails);
 };
 
 test.skipIf(!chromiumAvailable)(
