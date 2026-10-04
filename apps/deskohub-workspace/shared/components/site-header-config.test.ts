@@ -85,6 +85,25 @@ describe("getSiteHeaderConfig", () => {
     ]);
   });
 
+  test("links Team and FAQ to their localized standalone pages", async () => {
+    const { getSiteHeaderConfig } = await import("./site-header-config");
+    const en = await getSiteHeaderConfig("en-US");
+    const cs = await getSiteHeaderConfig("cs-CZ");
+
+    expect(en.links).toContainEqual(
+      expect.objectContaining({ id: "team", href: "/en-US/team" })
+    );
+    expect(en.links).toContainEqual(
+      expect.objectContaining({ id: "faq", href: "/en-US/faq" })
+    );
+    expect(cs.links).toContainEqual(
+      expect.objectContaining({ id: "team", href: "/cs-CZ/team" })
+    );
+    expect(cs.links).toContainEqual(
+      expect.objectContaining({ id: "faq", href: "/cs-CZ/faq" })
+    );
+  });
+
   test("omits the Private Office link when its release flag is disabled", async () => {
     const { getSiteHeaderConfig } = await import("./site-header-config");
     const config = await getSiteHeaderConfig("cs-CZ");

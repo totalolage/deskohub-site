@@ -34,6 +34,29 @@ export const workspaceE2ERunnerDiagnosticCodes = [
   "postgres_local_pii_validation_failed",
 ] as const;
 
+export const workspaceE2EProfileNavigationDiagnosticCodes = [
+  "account_profile_baseline_failed",
+  "account_profile_clean_navigation_failed",
+  "account_profile_draft_retention_failed",
+  "account_profile_hidden_billing_validation_failed",
+  "account_profile_header_dismissal_failed",
+  "account_profile_history_dismissal_failed",
+  "account_profile_discard_confirmation_failed",
+  "account_profile_persisted_document_reload_failed",
+  "account_profile_persisted_profile_navigation_failed",
+  "account_profile_persisted_first_name_restore_failed",
+  "account_profile_persisted_last_name_restore_failed",
+  "account_profile_persisted_phone_restore_failed",
+  "account_profile_persisted_billing_navigation_failed",
+  "account_profile_persisted_billing_kind_restore_failed",
+  "account_profile_persisted_billing_company_restore_failed",
+  "account_profile_persisted_return_profile_navigation_failed",
+  "account_profile_persisted_unavailable_heading_expectation_failed",
+] as const;
+
+export type WorkspaceE2EProfileNavigationDiagnosticCode =
+  (typeof workspaceE2EProfileNavigationDiagnosticCodes)[number];
+
 export const workspaceE2EAccountDiagnosticCodes = [
   "auth_delivery_request_rejected",
   "auth_delivery_message_not_observed",
@@ -46,14 +69,7 @@ export const workspaceE2EAccountDiagnosticCodes = [
   "postgres_account_fixture_assertion_failed",
   "postgres_account_fixture_convergence_failed",
   "dotypos_account_fixture_mutation_failed",
-  "account_profile_baseline_failed",
-  "account_profile_clean_navigation_failed",
-  "account_profile_draft_retention_failed",
-  "account_profile_hidden_billing_validation_failed",
-  "account_profile_header_dismissal_failed",
-  "account_profile_history_dismissal_failed",
-  "account_profile_discard_confirmation_failed",
-  "account_profile_persisted_restore_failed",
+  ...workspaceE2EProfileNavigationDiagnosticCodes,
 ] as const;
 
 export const workspaceE2EDiagnosticCodes = [
