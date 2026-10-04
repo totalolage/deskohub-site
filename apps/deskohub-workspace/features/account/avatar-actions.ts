@@ -1,7 +1,8 @@
 "use server";
 
+import type { CloudinaryConfigError } from "@deskohub/cloudinary";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Effect } from "effect";
+import { Effect, type Schema } from "effect";
 import { revalidatePath } from "next/cache";
 import {
   accountActionError,
@@ -15,6 +16,7 @@ import {
   type CustomerAvatarRejectionReason,
   CustomerAvatarService,
 } from "@/features/account/backend/customer-avatar.service";
+import { CustomerAccountAccessError } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
@@ -78,6 +80,22 @@ const unavailableError = (locale: Locale) =>
     message: m.accountUnavailableDescription({}, { locale }),
   });
 
+type AvatarActionError =
+  | CloudinaryConfigError
+  | CustomerAccountAccessError
+  | PublicSafeActionError
+  | Schema.SchemaError;
+
+const mapAvatarActionError =
+  (locale: Locale) =>
+  (error: AvatarActionError): PublicSafeActionError => {
+    if (error instanceof PublicSafeActionError) return error;
+    if (error instanceof CustomerAccountAccessError) {
+      return accountActionError(locale)(error);
+    }
+    return unavailableError(locale);
+  };
+
 /**
  * Uploads the customer avatar from the verified session only: the account
  * comes from the authoritative resolver, never from client-supplied state,
@@ -133,11 +151,7 @@ const uploadAvatarMutation = Effect.fn(
   },
   (effect, _file, locale) =>
     effect.pipe(
-      Effect.mapError((error) =>
-        error instanceof PublicSafeActionError
-          ? error
-          : accountActionError(locale)(error)
-      ),
+      Effect.mapError(mapAvatarActionError(locale)),
       Effect.provide(CustomerAuthentication.Default)
     )
 );
@@ -173,11 +187,7 @@ const removeAvatarMutation = Effect.fn(
   },
   (effect, _input, locale) =>
     effect.pipe(
-      Effect.mapError((error) =>
-        error instanceof PublicSafeActionError
-          ? error
-          : accountActionError(locale)(error)
-      ),
+      Effect.mapError(mapAvatarActionError(locale)),
       Effect.provide(CustomerAuthentication.Default)
     )
 );
