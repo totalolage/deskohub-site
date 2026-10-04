@@ -132,6 +132,7 @@ const syntheticReferencePng = await sharp(
   .toBuffer();
 const expectedOwnedSourcePaths = [
   "apps/deskohub-workspace/scripts/account-visual/account-route.tsx",
+  "apps/deskohub-workspace/scripts/account-visual/avatar-hidden-adapter.tsx",
   "apps/deskohub-workspace/scripts/account-visual/browser-entry.tsx",
   "apps/deskohub-workspace/scripts/account-visual/capture-ares-states.ts",
   "apps/deskohub-workspace/scripts/account-visual/capture-avatar-states.test.ts",

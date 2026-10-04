@@ -47,6 +47,7 @@ type AccountVisualAvatarOutcome =
   | "pending-remove"
   | "uploaded"
   | "removed"
+  | "retryable-upload"
   | "unavailable";
 
 const setAvatarOutcome = (outcome: AccountVisualAvatarOutcome | undefined) => {
@@ -70,14 +71,18 @@ test("avatar stub fallback counts exactly one invocation per call", async () => 
 });
 
 test("avatar stubs count one invocation and hold or resolve per outcome", async () => {
-  const outcomes: readonly AccountVisualAvatarOutcome[] = [
-    "pending-upload",
-    "uploaded",
-    "pending-remove",
-    "removed",
+  const outcomes: readonly {
+    readonly outcome: AccountVisualAvatarOutcome;
+    readonly expectedStatus?: string;
+  }[] = [
+    { outcome: "pending-upload" },
+    { outcome: "uploaded", expectedStatus: "uploaded" },
+    { outcome: "pending-remove" },
+    { outcome: "removed", expectedStatus: "removed" },
+    { outcome: "retryable-upload", expectedStatus: "retryable" },
   ];
   let expectedInvocationCount = actionTracker.invocationCount;
-  for (const outcome of outcomes) {
+  for (const { outcome, expectedStatus } of outcomes) {
     setAvatarOutcome(outcome);
     const action = outcome.includes("upload")
       ? uploadCustomerAvatar
@@ -101,7 +106,7 @@ test("avatar stubs count one invocation and hold or resolve per outcome", async 
       expect(settlement).toBe("still-pending");
     } else {
       expect(await resultPromise).toEqual({
-        data: expect.objectContaining({ status: outcome }),
+        data: expect.objectContaining({ status: expectedStatus }),
       });
     }
     expect(actionTracker.invocationCount).toBe(expectedInvocationCount);

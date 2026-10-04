@@ -123,6 +123,7 @@ type AccountVisualAvatarOutcome =
   | "pending-remove"
   | "uploaded"
   | "removed"
+  | "retryable-upload"
   | "unavailable";
 
 const globalScopeWithAvatar = globalThis as typeof globalThis & {
@@ -151,6 +152,9 @@ export const uploadCustomerAvatar = async (): Promise<unknown> => {
     return {
       data: { status: "uploaded", avatar: { url: syntheticAvatarDataUrl } },
     };
+  }
+  if (outcome === "retryable-upload") {
+    return { data: { status: "retryable" } };
   }
   return unavailableAvatarResult;
 };

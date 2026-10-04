@@ -8,7 +8,11 @@ import {
   test,
 } from "bun:test";
 import React, { Activity, type ComponentPropsWithoutRef } from "react";
-import type { CustomerProfileInput } from "@/features/account/contracts";
+import type {
+  CustomerAvatarPresentation,
+  CustomerProfileInput,
+} from "@/features/account/contracts";
+import { m } from "@/features/i18n";
 import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -1949,6 +1953,7 @@ describe("ProfileForm", () => {
       );
       return render(
         <ProfileFormComponent
+          avatarPresentation={{ kind: "available", avatar: null }}
           email="ada@example.test"
           locale="en-US"
           mode="edit"
@@ -1987,8 +1992,50 @@ describe("ProfileForm", () => {
       expect(view.getByText("JPG, PNG or WebP, up to 2 MB.")).toBeTruthy();
     });
 
+    test("omits the avatar control entirely when presentation is hidden", async () => {
+      const view = await renderEditProfile({
+        avatarPresentation: { kind: "hidden" },
+      });
+      const locale = "en-US";
+      const changeLabel = m.accountProfileAvatarChange({}, { locale });
+      const removeLabel = m.accountProfileAvatarRemove({}, { locale });
+      const avatarCopy = [
+        m.accountProfileAvatarAlt({}, { locale }),
+        changeLabel,
+        removeLabel,
+        m.accountProfileAvatarHint({}, { locale }),
+        m.accountProfileAvatarUploading({}, { locale }),
+        m.accountProfileAvatarRemoving({}, { locale }),
+        m.accountProfileAvatarUpdated({}, { locale }),
+        m.accountProfileAvatarRemoved({}, { locale }),
+        m.accountProfileAvatarErrorRetryable({}, { locale }),
+        m.accountProfileAvatarErrorGeneric({}, { locale }),
+        m.accountProfileAvatarErrorFileMissing({}, { locale }),
+        m.accountProfileAvatarErrorFileTooLarge({}, { locale }),
+        m.accountProfileAvatarErrorDimensions({}, { locale }),
+        m.accountProfileAvatarErrorUndecodable({}, { locale }),
+        m.accountProfileAvatarErrorUnsupportedFormat({}, { locale }),
+      ];
+
+      expect(view.getByText("Ada Lovelace")).toBeTruthy();
+      expect(view.getByText("ada@example.test")).toBeTruthy();
+      expect(view.getByLabelText("First name")).toBeTruthy();
+      expect(view.container.querySelector("img")).toBeNull();
+      expect(view.container.querySelector("input[type='file']")).toBeNull();
+      expect(view.container.querySelector("svg.lucide-user-round")).toBeNull();
+      expect(view.queryByText("AL")).toBeNull();
+      expect(view.queryByRole("status")).toBeNull();
+      expect(view.queryByRole("button", { name: changeLabel })).toBeNull();
+      expect(view.queryByRole("button", { name: removeLabel })).toBeNull();
+      for (const copy of avatarCopy) {
+        expect(view.queryByText(copy)).toBeNull();
+      }
+    });
+
     test("renders the stored avatar with localized alt text and a remove control", async () => {
-      const view = await renderEditProfile({ avatar: existingAvatar });
+      const view = await renderEditProfile({
+        avatarPresentation: { kind: "available", avatar: existingAvatar },
+      });
 
       const image = view.getByAltText("Your profile picture");
       expect((image as HTMLImageElement).src).toBe(existingAvatar.url);
@@ -1999,7 +2046,9 @@ describe("ProfileForm", () => {
     });
 
     test("falls back to initials when the avatar image fails to load", async () => {
-      const view = await renderEditProfile({ avatar: existingAvatar });
+      const view = await renderEditProfile({
+        avatarPresentation: { kind: "available", avatar: existingAvatar },
+      });
       const image = view.getByAltText("Your profile picture");
 
       await act(async () => {
@@ -2011,7 +2060,9 @@ describe("ProfileForm", () => {
     });
 
     test("reaches and activates upload and remove from the keyboard", async () => {
-      const view = await renderEditProfile({ avatar: existingAvatar });
+      const view = await renderEditProfile({
+        avatarPresentation: { kind: "available", avatar: existingAvatar },
+      });
       const input = fileInput(view);
       const openPicker = mock(() => undefined);
       input.click = openPicker;
@@ -2054,7 +2105,9 @@ describe("ProfileForm", () => {
             resolveUpload = resolve;
           })
       );
-      const view = await renderEditProfile({ avatar: existingAvatar });
+      const view = await renderEditProfile({
+        avatarPresentation: { kind: "available", avatar: existingAvatar },
+      });
 
       pickAvatarFile(view);
 
@@ -2104,10 +2157,11 @@ describe("ProfileForm", () => {
 
       function RefreshHarness() {
         const [profile, setProfile] = React.useState(businessProfile);
-        const [avatar, setAvatar] = React.useState<{
-          url: string;
-          version: number;
-        } | null>(null);
+        const [avatarPresentation, setAvatarPresentation] =
+          React.useState<CustomerAvatarPresentation>({
+            kind: "available",
+            avatar: null,
+          });
         const [section, setSection] = React.useState<"profile" | "billing">(
           "profile"
         );
@@ -2129,7 +2183,10 @@ describe("ProfileForm", () => {
                   firstName: "Server",
                   lastName: "Refreshed",
                 });
-                setAvatar(refreshedAvatar);
+                setAvatarPresentation({
+                  kind: "available",
+                  avatar: refreshedAvatar,
+                });
               }}
             >
               Apply server refresh
@@ -2139,7 +2196,7 @@ describe("ProfileForm", () => {
               locale="en-US"
               mode="edit"
               profile={profile}
-              avatar={avatar}
+              avatarPresentation={avatarPresentation}
               section={section}
               onSectionChange={setSection}
             />
@@ -2204,7 +2261,9 @@ describe("ProfileForm", () => {
           data: { status: "rejected", reason: "file-too-large" },
         })
       );
-      const view = await renderEditProfile({ avatar: existingAvatar });
+      const view = await renderEditProfile({
+        avatarPresentation: { kind: "available", avatar: existingAvatar },
+      });
 
       pickAvatarFile(view);
       await view.findByText(
@@ -2222,7 +2281,9 @@ describe("ProfileForm", () => {
       uploadCustomerAvatar.mockImplementationOnce(() =>
         Promise.resolve({ data: { status: "retryable" } })
       );
-      const view = await renderEditProfile({ avatar: existingAvatar });
+      const view = await renderEditProfile({
+        avatarPresentation: { kind: "available", avatar: existingAvatar },
+      });
 
       pickAvatarFile(view);
       await view.findByText(
@@ -2241,7 +2302,9 @@ describe("ProfileForm", () => {
           serverError: "Your session has expired. Sign in again.",
         })
       );
-      const view = await renderEditProfile({ avatar: existingAvatar });
+      const view = await renderEditProfile({
+        avatarPresentation: { kind: "available", avatar: existingAvatar },
+      });
 
       pickAvatarFile(view);
       await view.findByText("Your session has expired. Sign in again.");
@@ -2252,7 +2315,9 @@ describe("ProfileForm", () => {
     });
 
     test("returns to initials after a successful removal", async () => {
-      const view = await renderEditProfile({ avatar: existingAvatar });
+      const view = await renderEditProfile({
+        avatarPresentation: { kind: "available", avatar: existingAvatar },
+      });
 
       await act(async () => {
         fireEvent.click(
@@ -2273,7 +2338,9 @@ describe("ProfileForm", () => {
       removeCustomerAvatar.mockImplementationOnce(() =>
         Promise.resolve({ data: { status: "retryable" } })
       );
-      const view = await renderEditProfile({ avatar: existingAvatar });
+      const view = await renderEditProfile({
+        avatarPresentation: { kind: "available", avatar: existingAvatar },
+      });
 
       await act(async () => {
         fireEvent.click(

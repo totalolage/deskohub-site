@@ -30,8 +30,11 @@ const populatedFixture = {
     },
   },
   avatar: {
-    url: syntheticAvatarUrl,
-    version: 1,
+    kind: "available",
+    avatar: {
+      url: syntheticAvatarUrl,
+      version: 1,
+    },
   },
   history: {
     kind: "available",
@@ -102,7 +105,7 @@ export const accountVisualFixture = populatedFixture;
 export const accountVisualAdapterMetadata = {
   owner: "account-visual populated adapter",
   fixture:
-    "synthetic Ada Example business billing with avatar, three current and two past reservations",
+    "synthetic Ada Example business billing with a synthetic avatar image, three current and two past reservations",
 } as const;
 
 export function PopulatedAccountAdapter({ locale }: AccountVisualAdapterProps) {

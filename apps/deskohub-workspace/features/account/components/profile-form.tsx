@@ -33,6 +33,7 @@ import {
   profileFieldPathFromDomName,
   toCustomerProfileInput,
 } from "@/features/account/components/profile-form-schema";
+import type { CustomerAvatarPresentation } from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -60,10 +61,7 @@ type ProfileFormProps = {
     readonly phone: string | null;
     readonly billing: CustomerProfileBilling | null;
   };
-  readonly avatar?: {
-    readonly url: string;
-    readonly version?: number;
-  } | null;
+  readonly avatarPresentation?: CustomerAvatarPresentation;
   readonly section?: "profile" | "billing";
 };
 
@@ -107,7 +105,7 @@ const profileFieldLayoutClass = (name: keyof ProfileFormValues) => {
 };
 
 export function ProfileForm({
-  avatar = null,
+  avatarPresentation = { kind: "available", avatar: null },
   email,
   locale,
   mode,
@@ -883,12 +881,14 @@ export function ProfileForm({
               <div hidden={section !== "profile"}>
                 <ProfileScreen
                   avatar={
-                    <AvatarControl
-                      avatar={avatar}
-                      firstName={savedIdentity.firstName}
-                      lastName={savedIdentity.lastName}
-                      locale={locale}
-                    />
+                    avatarPresentation.kind === "available" ? (
+                      <AvatarControl
+                        avatar={avatarPresentation.avatar}
+                        firstName={savedIdentity.firstName}
+                        lastName={savedIdentity.lastName}
+                        locale={locale}
+                      />
+                    ) : undefined
                   }
                   copy={screenCopy.profile}
                   email={email}

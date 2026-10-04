@@ -5,8 +5,29 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertCapturedSourcesMatchHead,
+  avatarVisualCaptureChecklist,
   gitStatusPorcelainLines,
 } from "./capture-avatar-states";
+
+test("avatar visual checklist covers hidden, fallback, and mutation states responsively", () => {
+  expect(avatarVisualCaptureChecklist.hidden).toMatchObject({
+    states: ["hidden-profile"],
+    viewports: ["desktop", "tablet", "mobile"],
+    locales: ["en-US", "cs-CZ"],
+  });
+  expect(avatarVisualCaptureChecklist.available).toMatchObject({
+    states: [
+      "fallback",
+      "pending-upload",
+      "uploaded",
+      "upload-error",
+      "pending-remove",
+      "removed",
+    ],
+    viewports: ["desktop", "tablet", "mobile"],
+    locales: ["en-US", "cs-CZ"],
+  });
+});
 
 test("capture refuses a dirty working tree attributed to a clean commit", () => {
   expect(() =>
