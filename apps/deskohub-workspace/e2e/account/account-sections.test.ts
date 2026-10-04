@@ -128,13 +128,19 @@ function AccountShellHarness({
 
 type FakeLocator = {
   readonly click: (options?: { readonly timeout?: number }) => Promise<void>;
+  readonly elementHandle: () => Promise<FakeElementHandle>;
   readonly isVisible: () => Promise<boolean>;
+};
+
+type FakeElementHandle = {
+  readonly dispose: () => Promise<void>;
+  readonly element: Element;
 };
 
 type FakePageOptions = {
   readonly onClick?: (options?: { readonly timeout?: number }) => void;
   readonly onIsVisible?: () => void;
-  readonly onWait?: () => void;
+  readonly onWait?: (argument: unknown) => void | Promise<void>;
 };
 
 const desktopBreakpoint = 768;
@@ -172,6 +178,10 @@ const fakeLocator = (
     options.onClick?.(clickOptions);
     fireEvent.click(element);
   },
+  elementHandle: async () => ({
+    dispose: async () => {},
+    element,
+  }),
   isVisible: async () => {
     options.onIsVisible?.();
     return elementIsVisible(element, width);
@@ -182,7 +192,7 @@ const makeFakePage = (
   width: number | null,
   pageOptions: FakePageOptions = {}
 ): AccountSectionPage => {
-  const page = {
+  const page = Object.assign({} as AccountSectionPage, {
     getByRole: (role: string, roleOptions?: unknown) => {
       const name =
         typeof roleOptions === "object" &&
@@ -212,12 +222,16 @@ const makeFakePage = (
     waitForFunction: async (pageFunction: unknown, arg: unknown) => {
       if (typeof pageFunction !== "function")
         throw new Error("fake wait predicate was not a function");
-      pageOptions.onWait?.();
-      if (!(pageFunction as (value: unknown) => boolean)(arg)) {
+      const predicateArgument =
+        typeof arg === "object" && arg !== null && "element" in arg
+          ? (arg as FakeElementHandle).element
+          : arg;
+      await pageOptions.onWait?.(predicateArgument);
+      if (!(pageFunction as (value: unknown) => boolean)(predicateArgument)) {
         throw new Error("fake account section did not settle");
       }
     },
-  };
+  });
   return page;
 };
 
@@ -394,7 +408,7 @@ test("resolves the responsive section variant when viewport size is unavailable"
   }
 });
 
-test("lets the section click own delayed actionability before checking readiness", async () => {
+test("checks the handler before letting the section click own actionability", async () => {
   const calls: string[] = [];
   const page = makeFakePage(1440, {
     onClick: (options) => {
@@ -412,9 +426,70 @@ test("lets the section click own delayed actionability before checking readiness
   await selectAccountSection(page, "billing");
 
   expect(calls).toEqual([
+    "wait",
     `click:${workspaceE2ETimeouts.browserAction}`,
     "wait",
   ]);
+});
+
+test("waits for the rendered section button handler before clicking it", async () => {
+  const calls: string[] = [];
+  let buttonHandlerAttached = false;
+  let restoreButtonHandler = () => {};
+  const page = makeFakePage(1440, {
+    onClick: () => {
+      calls.push("click");
+      if (!buttonHandlerAttached) {
+        throw new Error("account section button handler was not attached");
+      }
+    },
+    onWait: async (argument) => {
+      if (argument instanceof Element) {
+        calls.push("wait:button-handler");
+        await Promise.resolve();
+        restoreButtonHandler();
+        return;
+      }
+      calls.push("wait:section-ready");
+    },
+  });
+  render(createElement(AccountShellHarness));
+
+  const billingButton = Array.from(
+    document.querySelectorAll<HTMLButtonElement>("button")
+  ).find((button) =>
+    button.textContent
+      ?.replaceAll(/\s+/g, " ")
+      .trim()
+      .includes("Billing & Invoices")
+  );
+  if (billingButton === undefined)
+    throw new Error("rendered Billing button was not found");
+  const reactPropsKey = Object.keys(billingButton).find((key) =>
+    key.startsWith("__reactProps$")
+  );
+  if (reactPropsKey === undefined)
+    throw new Error("rendered Billing button has no React props");
+  const reactPropsDescriptor = Object.getOwnPropertyDescriptor(
+    billingButton,
+    reactPropsKey
+  );
+  if (reactPropsDescriptor === undefined)
+    throw new Error(
+      "rendered Billing button React props descriptor is missing"
+    );
+
+  if (!Reflect.deleteProperty(billingButton, reactPropsKey))
+    throw new Error("could not defer the rendered Billing button handler");
+  restoreButtonHandler = () => {
+    Object.defineProperty(billingButton, reactPropsKey, reactPropsDescriptor);
+    buttonHandlerAttached = true;
+  };
+
+  await selectAccountSection(page, "billing");
+
+  expect(calls).toEqual(["wait:button-handler", "click", "wait:section-ready"]);
+  expect(billingButton.getAttribute("aria-current")).toBe("page");
 });
 
 test("uses a visible desktop button and waits for its visible landmark in the Runner adapter", async () => {

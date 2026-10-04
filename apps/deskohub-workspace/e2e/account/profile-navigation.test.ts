@@ -195,6 +195,10 @@ const makeProfileNavigationFakePage = (
   const makeLocator = (name: string) => {
     const locator = {
       _apiName: "Locator",
+      elementHandle: async () => ({
+        dispose: async () => {},
+        sectionButton: name,
+      }),
       _expect: async (
         expression: string,
         parameters: Record<string, unknown>
@@ -369,14 +373,28 @@ const makeProfileNavigationFakePage = (
       new Promise((resolve) => {
         dialogResolver = resolve;
       }),
-    waitForFunction: async (
-      _predicate: unknown,
-      argument: { readonly section?: string }
-    ) => {
-      if (argument.section) {
-        actions.push(`section-ready:${argument.section}`);
-        if (state.section !== argument.section) {
-          throw new Error(`section did not become ready: ${argument.section}`);
+    waitForFunction: async (_predicate: unknown, argument: unknown) => {
+      if (
+        typeof argument === "object" &&
+        argument !== null &&
+        "sectionButton" in argument
+      ) {
+        actions.push(
+          `handler-ready:${String(
+            (argument as { readonly sectionButton: unknown }).sectionButton
+          )}`
+        );
+        return;
+      }
+      if (
+        typeof argument === "object" &&
+        argument !== null &&
+        "section" in argument
+      ) {
+        const section = (argument as { readonly section: string }).section;
+        actions.push(`section-ready:${section}`);
+        if (state.section !== section) {
+          throw new Error(`section did not become ready: ${section}`);
         }
       }
     },

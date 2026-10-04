@@ -1,3 +1,4 @@
+import type { Locator, Page } from "@playwright/test";
 import { Effect } from "effect";
 import type { AccountSection } from "@/features/account/components/shell/account-shell";
 import {
@@ -43,26 +44,10 @@ type AccountSectionWaitInput = {
   readonly section: AccountSection;
 };
 
-export type AccountSectionPage = {
-  readonly getByRole: (
-    role: "button",
-    options?: { readonly exact?: boolean; readonly name?: string }
-  ) => AccountSectionLocator;
-  readonly viewportSize: () => {
-    readonly height: number;
-    readonly width: number;
-  } | null;
-  readonly waitForFunction: (
-    pageFunction: (input: AccountSectionWaitInput) => boolean,
-    arg: AccountSectionWaitInput,
-    options: { readonly timeout: number }
-  ) => Promise<unknown>;
-};
-
-type AccountSectionLocator = {
-  readonly click: (options?: { readonly timeout?: number }) => Promise<void>;
-  readonly isVisible: () => Promise<boolean>;
-};
+export type AccountSectionPage = Pick<
+  Page,
+  "getByRole" | "viewportSize" | "waitForFunction"
+>;
 
 const accountSectionIsReady = ({
   desktop,
@@ -142,6 +127,46 @@ const makeAccountSectionWaitCondition = (
 ) =>
   `(${accountSectionIsReady.toString()})(${JSON.stringify(makeAccountSectionWaitInput(section, desktop))})`;
 
+const accountSectionButtonHasReactClickHandler = (
+  element: Element | null
+): boolean => {
+  if (element === null) return false;
+  const reactPropsKey = Object.keys(element).find((key) =>
+    key.startsWith("__reactProps$")
+  );
+  if (reactPropsKey === undefined) return false;
+
+  const reactProps = Object.getOwnPropertyDescriptor(
+    element,
+    reactPropsKey
+  )?.value;
+  if (typeof reactProps !== "object" || reactProps === null) return false;
+
+  return (
+    "onClick" in reactProps &&
+    typeof (reactProps as { readonly onClick?: unknown }).onClick === "function"
+  );
+};
+
+export const waitForAccountSectionButtonHandler = async (
+  page: Pick<Page, "waitForFunction">,
+  button: Pick<Locator, "elementHandle">
+): Promise<void> => {
+  const element = await button.elementHandle();
+  if (element === null)
+    throw new Error("account section button was not rendered");
+
+  try {
+    await page.waitForFunction(
+      accountSectionButtonHasReactClickHandler,
+      element,
+      { timeout: 15_000 }
+    );
+  } finally {
+    await element.dispose();
+  }
+};
+
 const accountSectionButtonSelector = (section: AccountSection) =>
   `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] button:not([data-account-section]):has-text(${JSON.stringify(accountSectionLabels[section])})`;
 
@@ -183,6 +208,8 @@ export const selectAccountSection = async (
   const viewport = page.viewportSize();
   const desktop =
     viewport === null ? null : viewport.width >= desktopBreakpoint;
+
+  await waitForAccountSectionButtonHandler(page, sectionButton);
 
   await sectionButton.click({ timeout });
 
