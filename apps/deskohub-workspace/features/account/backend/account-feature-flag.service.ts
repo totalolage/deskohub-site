@@ -1,8 +1,18 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
+
+export class AccountAvatarFeatureFlagUnavailableError extends Data.TaggedError(
+  "AccountAvatarFeatureFlagUnavailableError"
+)<{
+  readonly message: "Account avatar feature flag evaluation unavailable";
+}> {}
 
 export interface IAccountFeatureFlagService {
   readonly isEnabled: Effect.Effect<boolean>;
+  readonly isAvatarEnabled: Effect.Effect<
+    boolean,
+    AccountAvatarFeatureFlagUnavailableError
+  >;
 }
 
 export class AccountFeatureFlagService extends Context.Service<
@@ -21,6 +31,11 @@ export class AccountFeatureFlagService extends Context.Service<
             Effect.logWarning("Account feature flag evaluation unavailable")
           ),
           Effect.orElseSucceed(() => false)
+        ),
+        isAvatarEnabled: Effect.fail(
+          new AccountAvatarFeatureFlagUnavailableError({
+            message: "Account avatar feature flag evaluation unavailable",
+          })
         ),
       } satisfies IAccountFeatureFlagService;
     })

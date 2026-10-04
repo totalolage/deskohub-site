@@ -5,7 +5,10 @@ import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-fla
 import { type Context, Effect, Logger, References } from "effect";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
-import { AccountFeatureFlagService } from "./account-feature-flag.service";
+import {
+  AccountAvatarFeatureFlagUnavailableError,
+  AccountFeatureFlagService,
+} from "./account-feature-flag.service";
 
 type LogRecord = {
   readonly level: string;
@@ -110,5 +113,35 @@ describe("AccountFeatureFlagService", () => {
       annotations: expect.anything(),
     });
     expect(JSON.stringify(logRecords)).not.toContain("private provider detail");
+  });
+
+  test("keeps the avatar capability unavailable until its generated contract exists", async () => {
+    let isEnabledEffectRan = false;
+    const isEnabled = mock(() =>
+      Effect.sync(() => {
+        isEnabledEffectRan = true;
+        return false;
+      })
+    );
+    const outcome = await Effect.gen(function* () {
+      const featureFlag = yield* AccountFeatureFlagService;
+      return yield* featureFlag.isAvatarEnabled.pipe(Effect.result);
+    }).pipe(
+      Effect.provide(AccountFeatureFlagService.Default),
+      Effect.provide(WorkspaceFeatureFlagServiceMock({ isEnabled })),
+      Effect.runPromise
+    );
+
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag === "Failure") {
+      expect(outcome.failure).toBeInstanceOf(
+        AccountAvatarFeatureFlagUnavailableError
+      );
+      expect(outcome.failure.message).toBe(
+        "Account avatar feature flag evaluation unavailable"
+      );
+    }
+    expect(isEnabled).toHaveBeenCalledWith("accounts");
+    expect(isEnabledEffectRan).toBe(false);
   });
 });
