@@ -5,10 +5,7 @@ import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-fla
 import { type Context, Effect, Logger, References } from "effect";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
-import {
-  AccountAvatarFeatureFlagUnavailableError,
-  AccountFeatureFlagService,
-} from "./account-feature-flag.service";
+import { AccountFeatureFlagService } from "./account-feature-flag.service";
 
 type LogRecord = {
   readonly level: string;
@@ -26,6 +23,19 @@ const readAccountFlag = (
   Effect.gen(function* () {
     const featureFlag = yield* AccountFeatureFlagService;
     return yield* featureFlag.isEnabled;
+  }).pipe(
+    Effect.provide(AccountFeatureFlagService.Default),
+    Effect.provide(WorkspaceFeatureFlagServiceMock({ isEnabled }))
+  );
+
+const readAccountAvatarFlag = (
+  isEnabled: (
+    key: PostHogFeatureFlagKey
+  ) => Effect.Effect<boolean, PostHogFeatureFlagEvaluationError>
+) =>
+  Effect.gen(function* () {
+    const featureFlag = yield* AccountFeatureFlagService;
+    return yield* featureFlag.isAvatarEnabled;
   }).pipe(
     Effect.provide(AccountFeatureFlagService.Default),
     Effect.provide(WorkspaceFeatureFlagServiceMock({ isEnabled }))
@@ -115,33 +125,25 @@ describe("AccountFeatureFlagService", () => {
     expect(JSON.stringify(logRecords)).not.toContain("private provider detail");
   });
 
-  test("keeps the avatar capability unavailable until its generated contract exists", async () => {
-    let isEnabledEffectRan = false;
-    const isEnabled = mock(() =>
-      Effect.sync(() => {
-        isEnabledEffectRan = true;
-        return false;
-      })
-    );
-    const outcome = await Effect.gen(function* () {
-      const featureFlag = yield* AccountFeatureFlagService;
-      return yield* featureFlag.isAvatarEnabled.pipe(Effect.result);
-    }).pipe(
-      Effect.provide(AccountFeatureFlagService.Default),
-      Effect.provide(WorkspaceFeatureFlagServiceMock({ isEnabled })),
+  test("enables avatars only from the generated Boolean flag", async () => {
+    const isEnabled = mock(() => Effect.succeed(true));
+
+    const enabled = await readAccountAvatarFlag(isEnabled).pipe(
       Effect.runPromise
     );
 
-    expect(outcome._tag).toBe("Failure");
-    if (outcome._tag === "Failure") {
-      expect(outcome.failure).toBeInstanceOf(
-        AccountAvatarFeatureFlagUnavailableError
-      );
-      expect(outcome.failure.message).toBe(
-        "Account avatar feature flag evaluation unavailable"
-      );
-    }
-    expect(isEnabled).toHaveBeenCalledWith("accounts");
-    expect(isEnabledEffectRan).toBe(false);
+    expect(enabled).toBe(true);
+    expect(isEnabled).toHaveBeenCalledWith("account_avatars");
+  });
+
+  test("keeps a generated false avatar flag disabled", async () => {
+    const isEnabled = mock(() => Effect.succeed(false));
+
+    const enabled = await readAccountAvatarFlag(isEnabled).pipe(
+      Effect.runPromise
+    );
+
+    expect(enabled).toBe(false);
+    expect(isEnabled).toHaveBeenCalledWith("account_avatars");
   });
 });
