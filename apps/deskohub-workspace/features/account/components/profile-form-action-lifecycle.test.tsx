@@ -7,14 +7,6 @@ import {
   mock,
   test,
 } from "bun:test";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-  within,
-} from "@testing-library/react";
 import React, { Activity } from "react";
 import type { CustomerProfileInput } from "@/features/account/contracts";
 import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
@@ -24,6 +16,11 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 registerWorkspaceComponentTestEnv();
+// @testing-library/react must load after the happy-dom registration, or
+// React's synthetic change events never fire against controlled inputs.
+const { act, cleanup, fireEvent, render, waitFor, within } = await import(
+  "@testing-library/react"
+);
 
 type ActionResult = {
   readonly data?: { readonly status?: string };
@@ -498,6 +495,66 @@ describe("ProfileForm action lifecycle", () => {
       });
     });
     expectDirty();
+  });
+
+  test("reveals profile when a billing-view save reports a last-name error", async () => {
+    updateCustomerProfile.mockImplementationOnce(() =>
+      Promise.resolve({
+        validationErrors: {
+          formErrors: [],
+          fieldErrors: { lastName: ["Enter your last name."] },
+        },
+      })
+    );
+
+    const view = render(<ProfileFixture initialSection="billing" />);
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+
+    await waitFor(() => expect(updateCustomerProfile).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(view.getByTestId("active-section").textContent).toBe("profile")
+    );
+    const lastName = view.getByLabelText("Last name");
+    expect(lastName.getAttribute("aria-invalid")).toBe("true");
+    expect(lastName.getAttribute("aria-describedby")).toBe(
+      "account-profile-last-name-error"
+    );
+    expect(
+      view.container.querySelector("#account-profile-last-name-error")
+        ?.textContent
+    ).toBe("Please review the highlighted fields and try again.");
+  });
+
+  test("prioritizes profile when a last-name error arrives with billing errors", async () => {
+    updateCustomerProfile.mockImplementationOnce(() =>
+      Promise.resolve({
+        validationErrors: {
+          formErrors: [],
+          fieldErrors: {
+            lastName: ["Enter your last name."],
+            billing: ["companyName: Company name is required."],
+          },
+        },
+      })
+    );
+
+    const view = render(<ProfileFixture initialSection="billing" />);
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+
+    await waitFor(() => expect(updateCustomerProfile).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(view.getByTestId("active-section").textContent).toBe("profile")
+    );
+    expect(view.getByLabelText("Last name").getAttribute("aria-invalid")).toBe(
+      "true"
+    );
+    expect(
+      view.getByLabelText("Company name").getAttribute("aria-invalid")
+    ).toBe("true");
   });
 
   test("derives native invalid section priority from the current first invalid field", async () => {
