@@ -1,6 +1,9 @@
 import { normalizePhoneNumber } from "@deskohub/dotypos";
 import { expect, type Page } from "@playwright/test";
-import { type WorkspaceE2EDiagnosticCode, workspaceE2EError } from "../errors";
+import {
+  type WorkspaceE2EProfileNavigationDiagnosticCode,
+  workspaceE2EError,
+} from "../errors";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   accountSectionLabels,
@@ -29,7 +32,7 @@ export async function verifyProfileNavigation(
   page: Page,
   baseUrl: string
 ): Promise<void> {
-  let diagnosticCode: WorkspaceE2EDiagnosticCode =
+  let diagnosticCode: WorkspaceE2EProfileNavigationDiagnosticCode =
     "account_profile_baseline_failed";
 
   try {
@@ -228,33 +231,53 @@ export async function verifyProfileNavigation(
       timeout: workspaceE2ETimeouts.browserNavigation,
     });
 
-    diagnosticCode = "account_profile_persisted_restore_failed";
+    diagnosticCode = "account_profile_persisted_document_reload_failed";
     await page.goto(accountUrl, {
       waitUntil: "load",
       timeout: workspaceE2ETimeouts.browserNavigation,
     });
+
+    diagnosticCode = "account_profile_persisted_profile_navigation_failed";
     await selectProfileSection();
+
+    diagnosticCode = "account_profile_persisted_first_name_restore_failed";
     await expect(firstName).toHaveValue(originalProfile.firstName, {
       timeout: workspaceE2ETimeouts.browserAction,
     });
+
+    diagnosticCode = "account_profile_persisted_last_name_restore_failed";
     await expect(page.locator(profileLastNameSelector)).toHaveValue(
       originalProfile.lastName,
       { timeout: workspaceE2ETimeouts.browserAction }
     );
+
+    diagnosticCode = "account_profile_persisted_phone_restore_failed";
     await expect(page.locator(profilePhoneSelector)).toHaveValue(
       canonicalOriginalPhone,
       { timeout: workspaceE2ETimeouts.browserAction }
     );
+
+    diagnosticCode = "account_profile_persisted_billing_navigation_failed";
     await selectAccountSection(page, "billing");
+
+    diagnosticCode = "account_profile_persisted_billing_kind_restore_failed";
     await expect(page.locator(billingKindSelector)).toHaveValue(
       originalBilling.kind,
       { timeout: workspaceE2ETimeouts.browserAction }
     );
+
+    diagnosticCode = "account_profile_persisted_billing_company_restore_failed";
     await expect(page.locator(billingCompanyNameSelector)).toHaveValue(
       originalBilling.companyName,
       { timeout: workspaceE2ETimeouts.browserAction }
     );
+
+    diagnosticCode =
+      "account_profile_persisted_return_profile_navigation_failed";
     await selectProfileSection();
+
+    diagnosticCode =
+      "account_profile_persisted_unavailable_heading_expectation_failed";
     await expect(
       page.getByRole("heading", {
         exact: true,
