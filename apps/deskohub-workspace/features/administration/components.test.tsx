@@ -9,7 +9,13 @@ import {
   test,
 } from "bun:test";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  within,
+} from "@testing-library/react";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import {
   workspaceRouterPush,
@@ -739,12 +745,197 @@ describe("administration reservation components", () => {
       view.getByRole("searchbox", { name: "Reservation or payment ID" }),
       { target: { value: "  payment-123  " } }
     );
-    fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    await act(async () => {
+      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    });
 
     expect(execute).toHaveBeenCalledWith({ identifier: "payment-123" });
     onSuccess?.({ data: { reservationId: "reservation-456" } });
     expect(workspaceRouterPush).toHaveBeenCalledWith(
       "/admin/reservations/reservation-456"
     );
+  });
+
+  test("reports a field error for whitespace-only input without calling the action", async () => {
+    const execute = mock();
+    workspaceUseAction.mockImplementation(() => ({
+      execute,
+      isExecuting: false,
+    }));
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    const input = view.getByRole("searchbox", {
+      name: "Reservation or payment ID",
+    });
+    fireEvent.input(input, { target: { value: "   " } });
+    await act(async () => {
+      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    });
+
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      view.getByText('Expected a value with a length of at least 1, got ""')
+    ).toBeDefined();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test("reports a field error for an empty identifier without calling the action", async () => {
+    const execute = mock();
+    workspaceUseAction.mockImplementation(() => ({
+      execute,
+      isExecuting: false,
+    }));
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    const form = view.container.querySelector("form");
+    expect(form).not.toBeNull();
+    expect(form?.hasAttribute("noValidate")).toBe(true);
+
+    const input = view.getByRole("searchbox", {
+      name: "Reservation or payment ID",
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Get reservation" }));
+    });
+
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      view.getByText('Expected a value with a length of at least 1, got ""')
+    ).toBeDefined();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test("accepts an identifier at the maximum length and passes it through", async () => {
+    const execute = mock();
+    workspaceUseAction.mockImplementation(() => ({
+      execute,
+      isExecuting: false,
+    }));
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    const input = view.getByRole("searchbox", {
+      name: "Reservation or payment ID",
+    });
+    fireEvent.input(input, { target: { value: "a".repeat(256) } });
+    await act(async () => {
+      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    });
+
+    expect(input.getAttribute("aria-invalid")).not.toBe("true");
+    expect(execute).toHaveBeenCalledWith({ identifier: "a".repeat(256) });
+  });
+
+  test("reports a field error for an identifier past the maximum length", async () => {
+    const execute = mock();
+    workspaceUseAction.mockImplementation(() => ({
+      execute,
+      isExecuting: false,
+    }));
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    const input = view.getByRole("searchbox", {
+      name: "Reservation or payment ID",
+    });
+    fireEvent.input(input, { target: { value: "a".repeat(257) } });
+    await act(async () => {
+      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    });
+
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(view.getByText(/at most 256/)).toBeDefined();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test("shows the unavailable notice when the lookup action fails", async () => {
+    const execute = mock();
+    let onError:
+      | ((result: {
+          readonly error: { readonly serverError?: string };
+        }) => void)
+      | undefined;
+    workspaceUseAction.mockImplementation((_action, options) => {
+      onError = (
+        options as {
+          readonly onError?: (result: {
+            readonly error: { readonly serverError?: string };
+          }) => void;
+        }
+      ).onError;
+      return { execute, isExecuting: false };
+    });
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    fireEvent.input(
+      view.getByRole("searchbox", { name: "Reservation or payment ID" }),
+      { target: { value: "payment-500" } }
+    );
+    await act(async () => {
+      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    });
+    act(() => {
+      onError?.({
+        error: {
+          serverError: "The reservation lookup is temporarily unavailable.",
+        },
+      });
+    });
+
+    expect(
+      view.getByText("The reservation lookup is temporarily unavailable.")
+    ).toBeDefined();
+    expect(workspaceRouterPush).not.toHaveBeenCalled();
+  });
+
+  test("disables the submit button while the lookup is in flight", async () => {
+    const execute = mock();
+    workspaceUseAction.mockImplementation(() => ({
+      execute,
+      isExecuting: true,
+    }));
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    const button = view.getByRole("button", { name: "Looking up…" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("shows the not-found notice when no reservation matched", async () => {
+    const execute = mock();
+    let onSuccess:
+      | ((result: {
+          readonly data?: { readonly reservationId: string | null };
+        }) => void)
+      | undefined;
+    workspaceUseAction.mockImplementation((_action, options) => {
+      onSuccess = (
+        options as {
+          readonly onSuccess?: (result: {
+            readonly data?: { readonly reservationId: string | null };
+          }) => void;
+        }
+      ).onSuccess;
+      return { execute, isExecuting: false };
+    });
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    fireEvent.input(
+      view.getByRole("searchbox", { name: "Reservation or payment ID" }),
+      { target: { value: "payment-404" } }
+    );
+    await act(async () => {
+      fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+    });
+
+    act(() => {
+      onSuccess?.({ data: { reservationId: null } });
+    });
+    expect(view.getByText("No reservation matched that ID.")).toBeDefined();
+    expect(workspaceRouterPush).not.toHaveBeenCalled();
   });
 });
