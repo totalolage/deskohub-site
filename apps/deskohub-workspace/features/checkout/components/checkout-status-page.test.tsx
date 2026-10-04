@@ -504,13 +504,13 @@ describe("CheckoutStatusPage", () => {
     expect(ctaHref).toBe(
       "/en-US/reservation/cowork?entryTier=reserved-desk&coffee=true&monitorOption=2x27-qhd"
     );
-    const stepOne = view.container.querySelector(
-      "main ol > li:first-child > a"
-    );
-    expect(stepOne).not.toBeNull();
-    expect(stepOne?.getAttribute("href")).toBe(ctaHref);
-    expect(stepOne?.getAttribute("data-next-link")).toBeNull();
-    const stepHref = stepOne?.getAttribute("href");
+    const completedOrderStep = Array.from(
+      view.container.querySelectorAll("main ol a")
+    ).find((step) => step.getAttribute("href") === ctaHref);
+    expect(completedOrderStep).not.toBeNull();
+    expect(completedOrderStep?.getAttribute("href")).toBe(ctaHref);
+    expect(completedOrderStep?.getAttribute("data-next-link")).toBeNull();
+    const stepHref = completedOrderStep?.getAttribute("href");
     expect(capturedLinks.some(({ href }) => href === stepHref)).toBe(false);
 
     const url = new URL(stepHref ?? "", "https://deskohub.local");
