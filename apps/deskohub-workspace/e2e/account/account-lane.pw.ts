@@ -1,10 +1,12 @@
 import "../../shared/polyfills/temporal";
 
+import { readFile } from "node:fs/promises";
 import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
+import { unzipSync } from "fflate";
 import { WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import type { E2EDatabase } from "../integrations/database.service";
@@ -24,6 +26,10 @@ import {
   makeWorkspaceE2EAccountRecipient,
   workspaceE2EAccountMainRecipientLabel,
 } from "./config";
+import {
+  accountDataExportActionMessage,
+  accountDataExportDeliveredStatusMessage,
+} from "./export-status";
 import {
   emptyWorkspaceE2EAccountJournal,
   type WorkspaceE2EAccountJournal,
@@ -55,6 +61,35 @@ import {
 
 const accountReviewCaptureFailureMessage =
   "Account review screenshot capture failed";
+
+/**
+ * The attachment filename the export route announces through
+ * Content-Disposition and the component forwards to the browser download.
+ * Only the date stamp varies, so the shape pins the contract.
+ */
+const accountDataExportFilenamePattern =
+  /^deskohub-account-data-\d{4}-\d{2}-\d{2}\.zip$/;
+
+/** The exact allowlisted entry set of the export archive, in catalog order. */
+const accountDataExportExpectedEntries = [
+  "manifest.json",
+  "identity.json",
+  "dotypos-profile.json",
+  "reservation-history.json",
+  "workspace-reservations.json",
+  "payments.json",
+  "discount-applications.json",
+  "invoices.json",
+  "consents.json",
+  "access-grants.json",
+] as const;
+
+/**
+ * A deliberately raised lane assertion, distinguishable from an accidental
+ * TypeError so the download guard can re-raise these untouched while
+ * converting every other failure into the fixed malformed-download error.
+ */
+class AccountDataExportLaneAssertion extends Error {}
 
 type WorkspaceE2EAccountLane = {
   readonly config: ReturnType<typeof getAccountE2EConfig>;
@@ -377,6 +412,191 @@ for (const caseId of workspaceE2EAccountCaseIds) {
 
       const target = accountReviewTargetByCaseId[caseId];
       if (!target) return;
+
+      if (caseId === "account-data-export") {
+        const baseUrl = accountLane.config.baseUrl;
+        const page = getOwnedPage();
+        await accountTest.step(
+          "capture account data export pending, delivered, and error states",
+          async () => {
+            await page.goto(
+              new URL("/en-US/account/legal", baseUrl).toString(),
+              {
+                timeout: workspaceE2ETimeouts.browserNavigation,
+              }
+            );
+            const exportButton = page.getByRole("button", {
+              exact: true,
+              name: accountDataExportActionMessage(),
+            });
+            await exportButton.waitFor({
+              state: "visible",
+              timeout: workspaceE2ETimeouts.browserAction,
+            });
+
+            // Pending and delivered share one deliberately delayed response.
+            await page.route(
+              "**/account/data-export",
+              async (route) => {
+                await new Promise((resolve) => setTimeout(resolve, 10_000));
+                await route.continue();
+              },
+              { times: 1 }
+            );
+            // The delivered state must end in a real browser download, not
+            // only a status message. The wait attaches before the click so
+            // the event cannot slip past while the response is still delayed.
+            const downloadPromise = page.waitForEvent("download", {
+              timeout: workspaceE2ETimeouts.browserAction,
+            });
+            await exportButton.click({
+              timeout: workspaceE2ETimeouts.browserAction,
+            });
+            await page
+              .locator("#account-data-export[aria-busy='true']")
+              .waitFor({
+                state: "visible",
+                timeout: workspaceE2ETimeouts.browserAction,
+              });
+            await captureAccountReview(
+              page,
+              baseUrl,
+              "legal-export-pending-desktop"
+            );
+            await page
+              .getByText(accountDataExportDeliveredStatusMessage(), {
+                exact: true,
+              })
+              .waitFor({
+                state: "visible",
+                timeout: workspaceE2ETimeouts.browserAction,
+              });
+            await captureAccountReview(
+              page,
+              baseUrl,
+              "legal-export-delivered-desktop"
+            );
+
+            // The browser download itself must complete with the expected
+            // attachment name and an allowlisted archive. Only structural
+            // facts are asserted; the archive entries never reach this output.
+            const download = await downloadPromise;
+            if ((await download.failure()) !== null) {
+              throw new Error("the account data download did not complete");
+            }
+            if (
+              !accountDataExportFilenamePattern.test(
+                download.suggestedFilename()
+              )
+            ) {
+              throw new Error(
+                "the account data download carried an unexpected filename"
+              );
+            }
+            const recipient = makeWorkspaceE2EAccountRecipient(
+              accountLane.config,
+              workspaceE2EAccountMainRecipientLabel
+            );
+            // Parsing and every derived value stay inside this guard so a
+            // malformed body can only raise the fixed malformed-download
+            // error; a native parse error or an accidental TypeError would
+            // otherwise leak an archive excerpt to the reporter.
+            try {
+              const archive = unzipSync(
+                new Uint8Array(await readFile(await download.path()))
+              );
+              const entryNames = Object.keys(archive).sort();
+              if (
+                entryNames.length !== accountDataExportExpectedEntries.length ||
+                !accountDataExportExpectedEntries.every((entry) =>
+                  entryNames.includes(entry)
+                )
+              ) {
+                throw new AccountDataExportLaneAssertion(
+                  "the downloaded export exposed entries outside the allowlist"
+                );
+              }
+              const manifest = JSON.parse(
+                new TextDecoder().decode(archive["manifest.json"]!)
+              ) as {
+                readonly schemaVersion: number;
+                readonly sections: readonly { readonly path: string }[];
+              };
+              if (manifest.schemaVersion !== 2) {
+                throw new AccountDataExportLaneAssertion(
+                  "the downloaded export used an unexpected schema version"
+                );
+              }
+              const sectionPaths = manifest.sections.map(
+                (section) => section.path
+              );
+              if (
+                sectionPaths.length !==
+                  accountDataExportExpectedEntries.filter(
+                    (entry) => entry !== "manifest.json"
+                  ).length ||
+                !accountDataExportExpectedEntries
+                  .filter((entry) => entry !== "manifest.json")
+                  .every((entry, index) => sectionPaths[index] === entry)
+              ) {
+                throw new AccountDataExportLaneAssertion(
+                  "the downloaded export manifest drifted from the contractual sections"
+                );
+              }
+              const identity = JSON.parse(
+                new TextDecoder().decode(archive["identity.json"]!)
+              ) as {
+                readonly accountId: string;
+                readonly email: string;
+              };
+              if (identity.email !== recipient) {
+                throw new AccountDataExportLaneAssertion(
+                  "the downloaded export identity did not match the synthetic recipient"
+                );
+              }
+              if (
+                !accountLane.journalRef.journal.authUserIds.includes(
+                  identity.accountId
+                )
+              ) {
+                throw new AccountDataExportLaneAssertion(
+                  "the downloaded export identity was not the journaled synthetic account"
+                );
+              }
+            } catch (error) {
+              if (error instanceof AccountDataExportLaneAssertion) throw error;
+              throw new Error(
+                "the account data download was not the expected ZIP archive"
+              );
+            }
+
+            // The error state must recover into a retryable idle control.
+            await page.route(
+              "**/account/data-export",
+              (route) => route.abort(),
+              { times: 1 }
+            );
+            await exportButton.click({
+              timeout: workspaceE2ETimeouts.browserAction,
+            });
+            await page
+              .getByText(
+                "We could not prepare your account data download. Please try again.",
+                { exact: true }
+              )
+              .waitFor({
+                state: "visible",
+                timeout: workspaceE2ETimeouts.browserAction,
+              });
+            await captureAccountReview(
+              page,
+              baseUrl,
+              "legal-export-error-desktop"
+            );
+          }
+        );
+        return;
+      }
 
       const pages = browser.contexts().flatMap((context) => context.pages());
       if (pages.length !== 1)

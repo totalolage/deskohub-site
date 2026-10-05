@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import {
@@ -86,19 +86,46 @@ function MarketingPreferencesFormContent({
 
   const revertToConfirmed = () => setChecked(confirmedActive);
 
+  // Settlement bookkeeping for the optimistic switch. `actionInFlight` is the
+  // synchronous same-tick guard (state updates are not visible to a second
+  // click handler in the same batch); `settlePending` mirrors it into render
+  // so a control stays disabled until the hook's settlement callbacks have
+  // actually run — next-safe-action delivers onSuccess/onError from a
+  // passive effect after the result commit, and a click on a rendered-enabled
+  // control in that window would be silently dropped.
+  const actionInFlight = useRef(false);
+  const [settlePending, setSettlePending] = useState(false);
+  const settle = () => {
+    actionInFlight.current = false;
+    setSettlePending(false);
+  };
+
+  // Transport errors are settled synchronously by onTransportError;
+  // next-safe-action's passive effect re-delivers them through onError with
+  // thrownError set. That duplicate must not run after a newer action has
+  // been dispatched, where it would release the newer action's settlement
+  // gate and resurface stale feedback.
+  const isLateTransportRedelivery = (error: {
+    readonly serverError?: string;
+  }) => "thrownError" in error;
+
   const { execute: executeSave, isExecuting: isSaving } = useWorkspaceAction(
     saveMarketingPreferencesAction,
     {
       actionName: "legal.marketing-preferences.save",
       onSuccess: ({ input }) => {
+        settle();
         setConfirmedActive(input.granted);
         markSuccess("save");
       },
       onError: ({ error }) => {
+        if (isLateTransportRedelivery(error)) return;
+        settle();
         revertToConfirmed();
         markError("save", error.serverError);
       },
       onTransportError: () => {
+        settle();
         revertToConfirmed();
         markError("save");
       },
@@ -107,26 +134,44 @@ function MarketingPreferencesFormContent({
   const { execute: executeConfirm, isExecuting: isConfirming } =
     useWorkspaceAction(confirmMarketingManagementAction, {
       actionName: "legal.marketing-preferences.confirm",
-      onSuccess: () => markSuccess("confirm"),
-      onError: ({ error }) => markError("confirm", error.serverError),
-      onTransportError: () => markError("confirm"),
+      onSuccess: () => {
+        settle();
+        markSuccess("confirm");
+      },
+      onError: ({ error }) => {
+        if (isLateTransportRedelivery(error)) return;
+        settle();
+        markError("confirm", error.serverError);
+      },
+      onTransportError: () => {
+        settle();
+        markError("confirm");
+      },
     });
   const { execute: executeClear, isExecuting: isClearing } = useWorkspaceAction(
     clearMarketingManagementAction,
     {
       actionName: "legal.marketing-preferences.clear",
-      onSuccess: () => markSuccess("clear"),
-      onError: ({ error }) => markError("clear", error.serverError),
-      onTransportError: () => markError("clear"),
+      onSuccess: () => {
+        settle();
+        markSuccess("clear");
+      },
+      onError: ({ error }) => {
+        if (isLateTransportRedelivery(error)) return;
+        settle();
+        markError("clear", error.serverError);
+      },
+      onTransportError: () => {
+        settle();
+        markError("clear");
+      },
     }
   );
 
   const busy = isSaving || isConfirming || isClearing;
-  const actionInFlight = useRef(false);
-
-  useEffect(() => {
-    if (!busy) actionInFlight.current = false;
-  }, [busy]);
+  // Rendered controls must not look interactive while a dispatch is in
+  // flight or its settlement has not been processed yet.
+  const controlsBusy = busy || settlePending;
 
   const titleId = "marketing-preferences-title";
   const descriptionId = "marketing-preferences-description";
@@ -199,6 +244,7 @@ function MarketingPreferencesFormContent({
         data-marketing-preferences-source={source}
       >
         <InvalidLinkState
+          busy={controlsBusy}
           isClearing={isClearing}
           locale={locale}
           onClear={clearManagement}
@@ -216,7 +262,7 @@ function MarketingPreferencesFormContent({
         data-marketing-preferences-source={source}
       >
         <PendingLinkState
-          busy={busy}
+          busy={controlsBusy}
           isClearing={isClearing}
           isConfirming={isConfirming}
           locale={locale}
@@ -230,14 +276,14 @@ function MarketingPreferencesFormContent({
 
   return (
     <PreferenceRow
-      busy={isSaving}
+      busy={controlsBusy}
       control={
         <Switch
           aria-describedby={descriptionId}
           aria-labelledby={titleId}
           checked={checked}
           className="shrink-0"
-          disabled={busy}
+          disabled={controlsBusy}
           id={switchId}
           onCheckedChange={handleToggle}
         />
@@ -258,7 +304,7 @@ function MarketingPreferencesFormContent({
           <Button
             aria-busy={isClearing}
             className="h-auto min-h-11 min-w-0 max-w-full whitespace-normal! self-start px-4 py-2 leading-5"
-            disabled={busy}
+            disabled={controlsBusy}
             onClick={clearManagement}
             type="button"
             variant="secondary"
@@ -279,12 +325,14 @@ function MarketingPreferencesFormContent({
       context === undefined ||
       busy ||
       actionInFlight.current ||
+      settlePending ||
       nextChecked === checked
     ) {
       return;
     }
 
     actionInFlight.current = true;
+    setSettlePending(true);
     setFeedback(null);
     setChecked(nextChecked);
     executeSave({
@@ -301,12 +349,14 @@ function MarketingPreferencesFormContent({
       pendingState === undefined ||
       context === undefined ||
       busy ||
-      actionInFlight.current
+      actionInFlight.current ||
+      settlePending
     ) {
       return;
     }
 
     actionInFlight.current = true;
+    setSettlePending(true);
     setFeedback(null);
     executeConfirm({ context });
   }
@@ -318,12 +368,14 @@ function MarketingPreferencesFormContent({
         pendingState === undefined &&
         state.status !== "invalid-link") ||
       busy ||
-      actionInFlight.current
+      actionInFlight.current ||
+      settlePending
     ) {
       return;
     }
 
     actionInFlight.current = true;
+    setSettlePending(true);
     setFeedback(null);
     executeClear({ context: dismissalContext });
   }
@@ -414,10 +466,12 @@ function UnavailableState({
 }
 
 function InvalidLinkState({
+  busy,
   isClearing,
   locale,
   onClear,
 }: {
+  readonly busy: boolean;
   readonly isClearing: boolean;
   readonly locale: Locale;
   readonly onClear: () => void;
@@ -433,7 +487,7 @@ function InvalidLinkState({
       <Button
         aria-busy={isClearing}
         className="h-auto min-h-11 min-w-0 max-w-full whitespace-normal! px-4 py-2 text-left leading-5 sm:text-center"
-        disabled={isClearing}
+        disabled={busy || isClearing}
         onClick={onClear}
         type="button"
         variant="secondary"

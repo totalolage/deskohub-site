@@ -20,12 +20,17 @@ import {
 /**
  * The closed account-domain view of an authoritative Better Auth session.
  * Better Auth user, provider, and session field types never cross this
- * adapter, so domain code sees only these three facts.
+ * adapter, so domain code sees only these facts: the linking identity, the
+ * verified email, deletion status, and the optional profile facts the export
+ * needs (display name, account creation and update timestamps).
  */
 export type CustomerAccountSession = {
   readonly accountId: CustomerAccountId;
   readonly email: typeof reservationCustomerEmailSchema.Type;
   readonly deletionRequested: boolean;
+  readonly displayName: string | null;
+  readonly accountCreatedAt: Date | null;
+  readonly accountUpdatedAt: Date | null;
 };
 
 const accessError = (reason: CustomerAccountAccessError["reason"]) =>
@@ -54,10 +59,16 @@ export const decodeCustomerAccountSession = (
       deletionRequestedAt?: Date | null;
     };
 
+    const storedName =
+      session.user.name.trim() !== "" ? session.user.name : null;
+
     return {
       accountId,
       email,
       deletionRequested: withDeletionMarker.deletionRequestedAt != null,
+      displayName: storedName,
+      accountCreatedAt: session.user.createdAt ?? null,
+      accountUpdatedAt: session.user.updatedAt ?? null,
     } satisfies CustomerAccountSession;
   });
 

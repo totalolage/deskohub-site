@@ -4198,7 +4198,7 @@ const assertPublicLegalCliRun = async ({
         authentication: "not-proved",
         legalPathname: `/${locale}/account/legal`,
         cookiePreferencesVisible: true,
-        archiveDisabled: true,
+        exportEnabled: true,
         consentChanges: {
           analyticsEnabled: true,
           analyticsDisabled: true,

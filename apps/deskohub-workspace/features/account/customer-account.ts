@@ -37,6 +37,7 @@ export type CustomerAccountFailureCode =
   | "account-link.lock"
   | "account-link.read"
   | "account-link.unlink"
+  | "account.data-export"
   | "account.deletion-state"
   | "authentication.session"
   | "dotypos.customer-expiration"

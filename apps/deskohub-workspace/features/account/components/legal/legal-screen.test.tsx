@@ -10,11 +10,43 @@ import {
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import type { ComponentPropsWithoutRef, Ref } from "react";
 import { useState } from "react";
+import { accountSectionLandmarks } from "@/e2e/account/account-sections";
+import { accountDataExportSections } from "@/features/account/account-data-export-sections";
 import { type Locale, m } from "@/features/i18n";
+import { buildZipArchive } from "@/shared/backend/utils/zip-archive";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+
+/**
+ * Mirrors the component's path-to-message mapping so the test asserts the
+ * real catalog copy for every archive section.
+ */
+const sectionTestName = (path: string, locale: Locale): string => {
+  switch (path) {
+    case "identity.json":
+      return m.legalScreenExportSectionIdentity({}, { locale });
+    case "dotypos-profile.json":
+      return m.legalScreenExportSectionDotyposProfile({}, { locale });
+    case "reservation-history.json":
+      return m.legalScreenExportSectionReservationHistory({}, { locale });
+    case "workspace-reservations.json":
+      return m.legalScreenExportSectionWorkspaceReservations({}, { locale });
+    case "payments.json":
+      return m.legalScreenExportSectionPayments({}, { locale });
+    case "discount-applications.json":
+      return m.legalScreenExportSectionDiscountApplications({}, { locale });
+    case "invoices.json":
+      return m.legalScreenExportSectionInvoices({}, { locale });
+    case "consents.json":
+      return m.legalScreenExportSectionConsents({}, { locale });
+    case "access-grants.json":
+      return m.legalScreenExportSectionAccessGrants({}, { locale });
+    default:
+      return path;
+  }
+};
 
 type MockNextLinkProps = ComponentPropsWithoutRef<"a"> & {
   readonly href: string;
@@ -182,19 +214,255 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
     expect(
       view.getByRole("heading", {
         level: 3,
-        name: m.legalScreenArchiveTitle({}, { locale }),
+        name: m.legalScreenExportTitle({}, { locale }),
       })
     ).toBeTruthy();
     expect(
-      view.getByText(m.legalScreenArchiveDescription({}, { locale }))
+      view.getByText(m.legalScreenExportDescription({}, { locale }))
     ).toBeTruthy();
-    const archiveAction = view.getByRole("button", {
-      name: m.legalScreenArchiveAction({}, { locale }),
+    expect(
+      view.getByText(m.legalScreenExportNotStatutory({}, { locale }))
+    ).toBeTruthy();
+
+    // The download action is available without expanding anything, and the
+    // full itemization is a secondary disclosure that starts collapsed.
+    const disclosure = view.getByRole("button", {
+      name: m.legalScreenExportSectionsLabel(
+        { count: accountDataExportSections.length },
+        { locale }
+      ),
     });
-    expect((archiveAction as HTMLButtonElement).disabled).toBe(true);
-    expect(archiveAction.getAttribute("type")).toBe("button");
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    const detailsId = disclosure.getAttribute("aria-controls");
+    expect(detailsId).toBeTruthy();
+    const details = view.container.querySelector(`#${CSS.escape(detailsId!)}`);
+    expect(details?.hasAttribute("hidden")).toBe(true);
+    const exportAction = view.getByRole("button", {
+      name: m.legalScreenExportAction({}, { locale }),
+    });
+    expect((exportAction as HTMLButtonElement).disabled).toBe(false);
+    expect(exportAction.getAttribute("type")).toBe("button");
+    expect(exportAction.getAttribute("aria-live")).toBeNull();
+    // The action sits before the disclosure in DOM order.
+    expect(
+      exportAction.compareDocumentPosition(disclosure) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 }
+
+for (const locale of ["en-US", "cs-CZ"] as const) {
+  test(`${locale} expands the collapsible archive itemization in catalog order`, () => {
+    const view = renderLegalScreen(locale);
+    const disclosure = view.getByRole("button", {
+      name: m.legalScreenExportSectionsLabel(
+        { count: accountDataExportSections.length },
+        { locale }
+      ),
+    });
+
+    fireEvent.click(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+
+    const sectionNames = [
+      ...accountDataExportSections.map((section) =>
+        sectionTestName(section.path, locale)
+      ),
+      m.legalScreenExportSectionManifest({}, { locale }),
+    ];
+    const listedItems = Array.from(
+      view.container.querySelectorAll("ul li")
+    ).map((item) => item.textContent);
+    expect(listedItems).toEqual(sectionNames);
+
+    fireEvent.click(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    const detailsId = disclosure.getAttribute("aria-controls");
+    expect(
+      view.container
+        .querySelector(`#${CSS.escape(detailsId!)}`)
+        ?.hasAttribute("hidden")
+    ).toBe(true);
+  });
+}
+
+for (const locale of ["en-US", "cs-CZ"] as const) {
+  test(`${locale} stacks the export action after the scope copy and before the full-access path`, () => {
+    const view = renderLegalScreen(locale);
+    const exportAction = view.getByRole("button", {
+      name: m.legalScreenExportAction({}, { locale }),
+    });
+
+    // Structural placement: the action follows the title and scope sentence,
+    // and the statutory full-access path closes the block after the action
+    // and the collapsible itemization — the caveat never gates the action.
+    const exportTitle = view.getByRole("heading", {
+      level: 3,
+      name: m.legalScreenExportTitle({}, { locale }),
+    });
+    const description = view.getByText(
+      m.legalScreenExportDescription({}, { locale })
+    );
+    const notStatutory = view.getByText(
+      m.legalScreenExportNotStatutory({}, { locale })
+    );
+    for (const preceding of [exportTitle, description]) {
+      expect(
+        preceding.compareDocumentPosition(exportAction) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    }
+    expect(
+      exportAction.compareDocumentPosition(notStatutory) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    const disclosure = view.getByRole("button", {
+      name: m.legalScreenExportSectionsLabel(
+        { count: accountDataExportSections.length },
+        { locale }
+      ),
+    });
+    expect(
+      disclosure.compareDocumentPosition(notStatutory) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    // No oval-inducing flex-shrink fighters on the action: it sizes to its
+    // content and may wrap naturally only at extreme narrow widths.
+    expect(exportAction.className).not.toContain("min-w-0");
+    expect(exportAction.closest(".lg\\:flex-row")).toBeNull();
+
+    // The pending/delivered/error status region stays announced politely.
+    const statusRegion = view.container.querySelector('[aria-live="polite"]');
+    expect(statusRegion?.getAttribute("role")).toBe("status");
+    expect(exportAction.getAttribute("aria-controls")).toBe(
+      statusRegion?.getAttribute("id")
+    );
+  });
+}
+
+for (const locale of ["en-US", "cs-CZ"] as const) {
+  test(`${locale} export control reports pending, delivered, and error states accessibly`, async () => {
+    let resolveFetch!: (response: Response) => void;
+    const pendingFetch = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = () => pendingFetch;
+    try {
+      const view = renderLegalScreen(locale);
+      const exportAction = view.getByRole("button", {
+        name: m.legalScreenExportAction({}, { locale }),
+      }) as HTMLButtonElement;
+
+      fireEvent.click(exportAction);
+      expect(exportAction.disabled).toBe(true);
+      expect(exportAction.getAttribute("aria-busy")).toBe("true");
+      const statusRegion = await view.findByRole("status");
+      expect(statusRegion.getAttribute("aria-live")).toBe("polite");
+      expect(statusRegion.textContent).toContain(
+        m.legalScreenExportPendingStatus({}, { locale })
+      );
+
+      resolveFetch(
+        new Response(
+          Buffer.from(
+            buildZipArchive([
+              {
+                path: "manifest.json",
+                content: JSON.stringify({ schemaVersion: 2 }),
+              },
+              { path: "identity.json", content: "{}" },
+            ])
+          ),
+          {
+            headers: {
+              "Content-Type": "application/zip",
+              "Content-Disposition":
+                'attachment; filename="deskohub-account-data-2026-09-26.zip"',
+            },
+          }
+        )
+      );
+      await waitFor(() =>
+        expect(view.getByRole("status").textContent).toContain(
+          m.legalScreenExportDeliveredStatus({}, { locale })
+        )
+      );
+      expect(
+        view
+          .getByRole("button", {
+            name: m.legalScreenExportAction({}, { locale }),
+          })
+          .getAttribute("aria-busy")
+      ).toBe("false");
+      view.unmount();
+      cleanup();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const errorView = renderLegalScreen(locale);
+    const failingAction = errorView.getByRole("button", {
+      name: m.legalScreenExportAction({}, { locale }),
+    });
+    const originalFetchForError = globalThis.fetch;
+    globalThis.fetch = () => Promise.reject(new Error("network-down"));
+    try {
+      fireEvent.click(failingAction);
+      await waitFor(() =>
+        expect(errorView.getByRole("status").textContent).toContain(
+          m.legalScreenExportErrorStatus({}, { locale })
+        )
+      );
+      expect((failingAction as HTMLButtonElement).disabled).toBe(false);
+      expect(failingAction.getAttribute("aria-busy")).toBe("false");
+    } finally {
+      globalThis.fetch = originalFetchForError;
+    }
+  });
+}
+
+test("resolves the account legal landmark to exactly the legal navigation policy link", () => {
+  const locale = "en-US" as const;
+  // The account shell renders the active panel inside <main>; mirror that so
+  // the landmark selector is exercised the way the real page composes it.
+  const view = render(
+    <main>
+      <CookieConsentProvider locale={locale} />
+      <LegalScreen accountsEnabled={true} locale={locale} />
+    </main>
+  );
+  expect(view.container.querySelector("main")).not.toBeNull();
+
+  const matches = Array.from(
+    document.querySelectorAll(accountSectionLandmarks.legal)
+  );
+  expect(matches).toHaveLength(1);
+  expect(matches[0]?.closest("nav")).not.toBeNull();
+  expect(
+    Array.from(document.querySelectorAll("main a[href$='/privacy-policy']"))
+  ).toHaveLength(2);
+});
+
+test("hides the export control when accounts are disabled", () => {
+  const locale = "en-US" as const;
+  const view = render(
+    <>
+      <CookieConsentProvider locale={locale} />
+      <LegalScreen accountsEnabled={false} locale={locale} />
+    </>
+  );
+
+  expect(
+    view.queryByRole("button", {
+      name: m.legalScreenExportAction({}, { locale }),
+    })
+  ).toBeNull();
+  expect(
+    view.queryByText(m.legalScreenExportNotStatutory({}, { locale }))
+  ).toBeNull();
+});
 
 test("renders immutable necessary consent and functional optional controls", async () => {
   const locale = "en-US" as const;
@@ -241,13 +509,18 @@ test("renders immutable necessary consent and functional optional controls", asy
     view.queryByText(m.legalScreenPreferencesUnavailable({}, { locale }))
   ).toBeNull();
 
-  const archiveAction = view.getByRole("button", {
-    name: m.legalScreenArchiveAction({}, { locale }),
-  });
-  expect(archiveAction.closest("[role='group'][tabindex='0']")).not.toBeNull();
+  // The archive placeholder is gone: no focus-tooltip group remains.
+  const futureFeatureWrappers = view.container.querySelectorAll(
+    "[role='group'][tabindex='0']"
+  );
+  expect(futureFeatureWrappers).toHaveLength(0);
   expect(
-    view.container.querySelectorAll("[role='group'][tabindex='0']")
-  ).toHaveLength(1);
+    view
+      .getByRole("button", {
+        name: m.legalScreenExportAction({}, { locale }),
+      })
+      .closest("[role='group'][tabindex='0']")
+  ).toBeNull();
 
   for (const optionalSwitch of [analytics, marketing, preferences]) {
     expect(optionalSwitch.getAttribute("aria-checked")).toBe("false");
@@ -374,12 +647,12 @@ test.each(["en-US", "cs-CZ"] as const)(
     expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
     expect((marketingSwitch as HTMLButtonElement).disabled).toBe(false);
 
-    // The archive block stays outside the preference group at its own level.
-    const archiveHeading = view.getByRole("heading", {
+    // The export block stays outside the preference group at its own level.
+    const exportHeading = view.getByRole("heading", {
       level: 3,
-      name: m.legalScreenArchiveTitle({}, { locale }),
+      name: m.legalScreenExportTitle({}, { locale }),
     });
-    expect(group.contains(archiveHeading)).toBe(false);
+    expect(group.contains(exportHeading)).toBe(false);
   }
 );
 

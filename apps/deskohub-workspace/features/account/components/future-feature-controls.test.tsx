@@ -293,7 +293,6 @@ registerWorkspaceComponentTestEnv();
 const { AccountLoading } = await import("./account-loading");
 const { BillingScreen } = await import("./billing/billing-screen");
 const { DeleteAccountCard } = await import("./delete-account-card");
-const { LegalScreen } = await import("./legal/legal-screen");
 const { ProfileForm } = await import("./profile-form");
 const { ProfileScreen } = await import("./profile/profile-screen");
 const { ReservationHistory } = await import("./reservation-history");
@@ -371,10 +370,6 @@ function renderBillingScreen(locale: Locale): ScreenView {
       <div>Caller-owned billing fields</div>
     </BillingScreen>
   );
-}
-
-function renderLegalScreen(locale: Locale): ScreenView {
-  return render(<LegalScreen locale={locale} />);
 }
 
 function renderReservationHistory(locale: Locale): ScreenView {
@@ -481,11 +476,6 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
     label: (locale) => reservationCopy[locale].nfcAccess,
     name: "NFC control",
     render: renderReservationHistory,
-  },
-  {
-    label: (locale) => m.legalScreenArchiveAction({}, { locale }),
-    name: "GDPR archive control",
-    render: renderLegalScreen,
   },
 ];
 

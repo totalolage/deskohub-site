@@ -70,8 +70,11 @@ describe("CustomerAuthentication session adapter", () => {
     if (outcome._tag === "Success") {
       expect(outcome.success!.deletionRequested).toBe(true);
       expect(Object.keys(outcome.success!).sort()).toEqual([
+        "accountCreatedAt",
         "accountId",
+        "accountUpdatedAt",
         "deletionRequested",
+        "displayName",
         "email",
       ]);
     }

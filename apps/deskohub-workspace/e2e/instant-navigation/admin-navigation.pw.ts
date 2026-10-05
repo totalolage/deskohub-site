@@ -2,6 +2,7 @@ import { instant } from "@next/playwright";
 import { expect, test } from "@playwright/test";
 import { workspaceTestAdminCredentials } from "@/shared/testing/workspace-test-environment";
 import { resolveInstantNavigationAdminCredentials } from "../admin-basic-auth";
+import { workspaceE2ETimeouts } from "../timeouts";
 import { enablePreviewAccess, requireBaseUrl } from "./navigation-test-helpers";
 
 const remoteBaseUrl = process.env.WORKSPACE_E2E_BASE_URL;
@@ -63,11 +64,25 @@ test("serves the administration shell and granular loading regions", async ({
         path: screenshotPath,
       });
       await page.emulateMedia({ reducedMotion: "reduce" });
-      expect(
-        await skeleton.evaluate(
-          (element) => getComputedStyle(element, "::after").display
+      // A locator resolves per operation, so a recreated locator can still
+      // target a node that hydration detaches between toBeAttached() and the
+      // computed-style read. The instant() navigation lock is what keeps the
+      // loading shell mounted; query live and read synchronously inside one
+      // browser evaluation. A missing skeleton returns a sentinel so the
+      // poll never passes vacuously, and the display requirement stays strict.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => {
+              const skeleton = document.querySelector<HTMLElement>(
+                '[data-slot="skeleton"]'
+              );
+              if (!skeleton) return "no-skeleton";
+              return getComputedStyle(skeleton, "::after").display;
+            }),
+          { timeout: workspaceE2ETimeouts.browserAction }
         )
-      ).toBe("none");
+        .toBe("none");
       await page.close();
     },
     { baseURL: requireBaseUrl(baseURL) }

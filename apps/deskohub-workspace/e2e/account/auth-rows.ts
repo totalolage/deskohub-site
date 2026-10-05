@@ -33,6 +33,27 @@ export const findAuthUserIdByEmail = (
     return rows[0]?.id;
   });
 
+/**
+ * Reads the exact email stored on one journaled synthetic auth row, keyed by
+ * that row's id alone. The returned string stays inside the runner and only
+ * ever feeds in-page boolean comparisons; it is redacted and never logged,
+ * asserted by value, or written to a message.
+ */
+export const findAuthUserEmailById = (
+  accountId: string
+): Effect.Effect<string | undefined, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runDatabaseOperation(
+      "read synthetic auth user email",
+      db
+        .select({ email: authUser.email })
+        .from(authUser)
+        .where(eq(authUser.id, accountId))
+    );
+    return rows[0]?.email;
+  });
+
 export const findLinkedDotyposCustomerId = (
   accountId: string
 ): Effect.Effect<string | undefined, WorkspaceE2EError, E2EDatabase> =>

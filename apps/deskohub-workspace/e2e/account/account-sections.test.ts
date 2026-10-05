@@ -65,13 +65,19 @@ const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
         createElement("select", { id: "account-profile-billing-kind" })
       );
     case "legal":
-      return includeLegalLink
-        ? createElement(
-            "a",
-            { href: "/en-US/privacy-policy" },
-            "Privacy policy"
-          )
-        : null;
+      return createElement(
+        // Mirror the real LegalScreen: the landmark policy link lives inside
+        // the legal navigation, never as a bare panel link.
+        "nav",
+        null,
+        includeLegalLink
+          ? createElement(
+              "a",
+              { href: "/en-US/privacy-policy" },
+              "Privacy policy"
+            )
+          : null
+      );
     case "danger":
       return createElement(
         "button",
