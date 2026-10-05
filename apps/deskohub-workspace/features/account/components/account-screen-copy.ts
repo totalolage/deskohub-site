@@ -26,12 +26,6 @@ export function getAccountScreenCopy(locale: Locale) {
         verified: m.accountProfileEmailVerificationVerified({}, { locale }),
         unverified: m.accountProfileEmailVerificationUnverified({}, { locale }),
       },
-      avatarUnavailableLabel: m.accountProfileScreenAvatarUnavailableLabel(
-        {},
-        { locale }
-      ),
-      avatarUnavailableDescription:
-        m.accountProfileScreenAvatarUnavailableDescription({}, { locale }),
       languageLabel: m.accountProfileScreenLanguageLabel({}, { locale }),
       languageUnavailableValue: m.accountProfileScreenLanguageUnavailableValue(
         {},

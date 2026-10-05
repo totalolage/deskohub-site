@@ -829,6 +829,7 @@ type DesktopEvidence = {
   readonly actionAvailability: readonly UnavailableActionStatus[];
   readonly browserProblems: readonly BrowserProblem[];
   readonly functionalFailures: readonly string[];
+  readonly tabletDocumentScrollWidth: number | null;
 };
 
 type MobileEvidence = {
@@ -1249,6 +1250,7 @@ const createBuildPlugin = (): Bun.BunPlugin => ({
   setup(build) {
     const exactAliases = new Map([
       ["@/features/account/actions", accountActionsStubPath],
+      ["@/features/account/avatar-actions", accountActionsStubPath],
       ["@/features/legal/actions", accountActionsStubPath],
       ["@/features/account/analytics-identity", analyticsIdentityStubPath],
       ["@/features/account/auth.client", authClientStubPath],
@@ -1376,6 +1378,7 @@ export const buildBundle = async (
   const inputNames = Object.keys(metadataInputs.inputs ?? {});
   const inputPaths = new Set<string>([
     buildEntryPath,
+    resolve(adapterPath),
     rendererEntryPath,
     defaultAdapterPath,
     actualAccountPagePath,
@@ -4257,6 +4260,10 @@ const runDesktopCapture = async ({
       height: imageEvidence.actual.height,
     };
     const actionAvailability = await readActionAvailability(page);
+    const tabletDocumentScrollWidth =
+      desktop.mode === "tablet"
+        ? await page.evaluate(() => document.documentElement.scrollWidth)
+        : null;
     const functionalFailures = [
       ...initialDomProbe.failures.map(
         (failure) => `initial DOM probe: ${failure}`
@@ -4314,6 +4321,7 @@ const runDesktopCapture = async ({
       actionAvailability,
       browserProblems: problems,
       functionalFailures,
+      tabletDocumentScrollWidth,
     } as const;
   } finally {
     await context.close();

@@ -9,7 +9,10 @@ import { DeleteAccountCard } from "@/features/account/components/delete-account-
 import { LegalScreen } from "@/features/account/components/legal/legal-screen";
 import { ProfileForm } from "@/features/account/components/profile-form";
 import { ReservationHistory } from "@/features/account/components/reservation-history";
-import type { CustomerReservationHistory } from "@/features/account/contracts";
+import type {
+  CustomerAvatarPresentation,
+  CustomerReservationHistory,
+} from "@/features/account/contracts";
 import type { Locale } from "@/features/i18n";
 
 type LinkedAccountProps = {
@@ -17,9 +20,11 @@ type LinkedAccountProps = {
   readonly history: CustomerReservationHistory;
   readonly locale: Locale;
   readonly profile: CustomerProfile;
+  readonly avatarPresentation: CustomerAvatarPresentation;
 };
 
 export function LinkedAccount({
+  avatarPresentation,
   email,
   history,
   locale,
@@ -53,6 +58,7 @@ export function LinkedAccount({
 
       <div hidden={activeSection !== "profile" && activeSection !== "billing"}>
         <ProfileForm
+          avatarPresentation={avatarPresentation}
           email={email}
           locale={locale}
           mode="edit"

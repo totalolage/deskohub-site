@@ -28,6 +28,19 @@ const readAccountFlag = (
     Effect.provide(WorkspaceFeatureFlagServiceMock({ isEnabled }))
   );
 
+const readAccountAvatarFlag = (
+  isEnabled: (
+    key: PostHogFeatureFlagKey
+  ) => Effect.Effect<boolean, PostHogFeatureFlagEvaluationError>
+) =>
+  Effect.gen(function* () {
+    const featureFlag = yield* AccountFeatureFlagService;
+    return yield* featureFlag.isAvatarEnabled;
+  }).pipe(
+    Effect.provide(AccountFeatureFlagService.Default),
+    Effect.provide(WorkspaceFeatureFlagServiceMock({ isEnabled }))
+  );
+
 const captureLogger = (records: LogRecord[]) =>
   Logger.make((options) => {
     records.push({
@@ -110,5 +123,27 @@ describe("AccountFeatureFlagService", () => {
       annotations: expect.anything(),
     });
     expect(JSON.stringify(logRecords)).not.toContain("private provider detail");
+  });
+
+  test("enables avatars only from the generated Boolean flag", async () => {
+    const isEnabled = mock(() => Effect.succeed(true));
+
+    const enabled = await readAccountAvatarFlag(isEnabled).pipe(
+      Effect.runPromise
+    );
+
+    expect(enabled).toBe(true);
+    expect(isEnabled).toHaveBeenCalledWith("account_avatars");
+  });
+
+  test("keeps a generated false avatar flag disabled", async () => {
+    const isEnabled = mock(() => Effect.succeed(false));
+
+    const enabled = await readAccountAvatarFlag(isEnabled).pipe(
+      Effect.runPromise
+    );
+
+    expect(enabled).toBe(false);
+    expect(isEnabled).toHaveBeenCalledWith("account_avatars");
   });
 });

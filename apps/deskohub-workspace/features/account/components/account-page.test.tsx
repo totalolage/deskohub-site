@@ -68,6 +68,17 @@ mock.module("@/features/account/actions", () => ({
   updateCustomerProfile: () => Promise.resolve({ data: { status: "updated" } }),
   deleteCustomerAccount: () => Promise.resolve({ data: { status: "deleted" } }),
 }));
+
+mock.module("@/features/account/avatar-actions", () => ({
+  removeCustomerAvatar: () => Promise.resolve({ data: { status: "removed" } }),
+  uploadCustomerAvatar: () =>
+    Promise.resolve({
+      data: {
+        avatar: { url: "https://res.cloudinary.test/avatar.webp", version: 1 },
+        status: "uploaded",
+      },
+    }),
+}));
 type MarketingPreferenceSaveInput = {
   readonly confirmed: true;
   readonly context: string;
@@ -117,8 +128,6 @@ const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
     },
   },
   profile: {
-    avatarUnavailableDescription: "Profile photos are not available here.",
-    avatarUnavailableLabel: "Profile photo unavailable",
     emailLabel: "Email",
     emailVerification: {
       unverified: "This email still needs verification.",
@@ -204,6 +213,7 @@ const linkedState = {
     kind: "available",
     groups: { current: [], past: [], unavailable: [] },
   },
+  avatar: { kind: "hidden" },
 } as const;
 
 describe("AccountPage states", () => {
@@ -303,6 +313,28 @@ describe("AccountPage states", () => {
       sectionNavigation.getByRole("button", { name: "Profile & identity" })
     );
     expect(view.getByText("Save profile")).toBeTruthy();
+    expect(view.getByText("Ada Lovelace")).toBeTruthy();
+    expect(view.getByText("ada@example.test")).toBeTruthy();
+    expect(view.container.querySelector("img")).toBeNull();
+    expect(view.container.querySelector("input[type='file']")).toBeNull();
+    expect(
+      view.queryByRole("button", {
+        name: m.accountProfileAvatarChange({}, { locale: "en-US" }),
+      })
+    ).toBeNull();
+    expect(
+      view.queryByRole("button", {
+        name: m.accountProfileAvatarRemove({}, { locale: "en-US" }),
+      })
+    ).toBeNull();
+    expect(
+      view.container.querySelector(
+        "[data-screen='profile-screen'] [role='status']"
+      )
+    ).toBeNull();
+    expect(view.container.textContent).not.toContain(
+      m.accountProfileAvatarHint({}, { locale: "en-US" })
+    );
 
     fireEvent.click(
       sectionNavigation.getByRole("button", { name: "Billing & invoices" })

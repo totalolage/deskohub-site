@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";

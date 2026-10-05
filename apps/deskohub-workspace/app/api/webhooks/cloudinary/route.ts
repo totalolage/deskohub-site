@@ -1,7 +1,6 @@
 import {
   CloudinaryWebhookVerifier,
   makeCloudinaryRuntimeConfigLayer,
-  type VerifiedCloudinaryWebhook,
   verifyCloudinaryWebhookRequest,
 } from "@deskohub/cloudinary/server";
 import { Effect, Layer } from "effect";
@@ -26,40 +25,31 @@ const WorkspaceCloudinaryWebhookVerifierLayer =
     )
   );
 
-const processWebhook = Effect.fn("processWebhook")(function* (
-  webhook: VerifiedCloudinaryWebhook
-) {
-  yield* Effect.annotateLogsScoped({ webhook });
+const processWebhook = Effect.fn("processWebhook")(function* () {
   yield* Effect.logInfo("Processing Cloudinary webhook");
 
   const tagToRevalidate = cloudinaryTags.all();
-  yield* Effect.annotateLogsScoped({ tagToRevalidate });
   yield* Effect.logInfo("Cloudinary webhook cache invalidation started");
   revalidateTag(tagToRevalidate, "max");
 
-  yield* Effect.logInfo("Cloudinary webhook cache invalidation completed", {
-    invalidatedTag: tagToRevalidate,
-    webhookTimestamp: webhook.timestamp,
-  });
+  yield* Effect.logInfo("Cloudinary webhook cache invalidation completed");
 
-  const result = NextResponse.json({
+  const response = NextResponse.json({
     message: "Webhook received",
   });
-  yield* Effect.annotateLogsScoped({ result });
   yield* Effect.logInfo("Cloudinary webhook processed");
 
-  return result;
+  return response;
 });
 
 const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
   function* (request: Request) {
     yield* Effect.logInfo("Cloudinary webhook invoked");
 
-    const webhook = yield* verifyCloudinaryWebhookRequest(request);
-    yield* Effect.annotateLogsScoped({ webhook });
+    yield* verifyCloudinaryWebhookRequest(request);
     yield* Effect.logInfo("Cloudinary webhook verified");
 
-    return yield* processWebhook(webhook);
+    return yield* processWebhook();
   },
   Effect.scoped
 );
@@ -77,27 +67,14 @@ export const POST = defineWorkspaceRoute(
   (request) =>
     processWebhookRequest(request).pipe(
       Effect.catchTags({
-        CloudinaryWebhookAuthError: Effect.fn("logCloudinaryWebhookAuthError")(
-          function* (error) {
-            yield* Effect.logWarning(
-              "Cloudinary webhook authentication failed",
-              {
-                error,
-              }
-            );
-
-            return yield* error;
-          }
-        ),
-        CloudinaryWebhookValidationError: Effect.fn(
-          "logCloudinaryWebhookValidationError"
-        )(function* (error) {
-          yield* Effect.logWarning("Cloudinary webhook validation failed", {
-            error,
-          });
-
-          return yield* error;
-        }),
+        CloudinaryWebhookAuthError: (error) =>
+          Effect.logWarning("Cloudinary webhook authentication failed").pipe(
+            Effect.andThen(Effect.fail(error))
+          ),
+        CloudinaryWebhookValidationError: (error) =>
+          Effect.logWarning("Cloudinary webhook validation failed").pipe(
+            Effect.andThen(Effect.fail(error))
+          ),
       }),
       Effect.catchTags({
         CloudinaryWebhookAuthError: (error) =>

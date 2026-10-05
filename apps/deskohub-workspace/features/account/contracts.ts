@@ -131,6 +131,16 @@ export type CustomerReservationHistory =
         | "provider-unavailable";
     };
 
+export type CustomerAvatarPresentation =
+  | { readonly kind: "hidden" }
+  | {
+      readonly kind: "available";
+      readonly avatar: {
+        readonly url: string;
+        readonly version?: number;
+      } | null;
+    };
+
 const toInstantOrNull = (value: string): Temporal.Instant | null => {
   try {
     return Temporal.Instant.from(value);

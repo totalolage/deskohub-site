@@ -58,7 +58,7 @@ mock.module("@/features/landing-page/landing-page-sale-banner.server", () => ({
 mock.module("@/shared/backend/workspace-effect", () => ({
   runWorkspaceEffect: () => passthrough,
 }));
-mock.module("@/features/gallery/actions/get-cloudinary-images", () => ({
+mock.module("@/features/gallery/backend/get-cloudinary-images.server", () => ({
   getCloudinaryImages: async () => syntheticPhotos,
 }));
 const syntheticHeroImageUrl =

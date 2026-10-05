@@ -80,7 +80,7 @@ function SyntheticContent({
       break;
     }
     case "profile": {
-      description = copy.profile.avatarUnavailableDescription;
+      description = copy.profile.verifiedEmail;
       break;
     }
     case "reservations": {
