@@ -1,23 +1,18 @@
 import "server-only";
 
-import { Effect } from "effect";
-import { z } from "zod/v4";
+import { Effect, Schema } from "effect";
 import { ContactService } from "@/features/contact/backend/contact.service";
+import type { ContactFormValues } from "@/features/contact/schemas/contact";
 import { getContactSchema } from "@/features/contact/schemas/contact";
 import { type Locale, m } from "@/features/i18n";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 
-export type ContactFormValues = {
-  name: string;
-  email: string;
-  phone: string;
-  message: string;
-};
+export type { ContactFormValues } from "@/features/contact/schemas/contact";
 
 export type ContactFormState = {
   status: "idle" | "success" | "error";
   message?: string;
-  fieldErrors?: Partial<Record<"name" | "email" | "phone" | "message", string>>;
+  fieldErrors?: Partial<Record<keyof ContactFormValues, string>>;
   values?: ContactFormValues;
 };
 
@@ -34,32 +29,47 @@ export const processContactSubmission = Effect.fn("submitContactForm")(
     yield* Effect.annotateLogsScoped({ submittedValues, locale });
     yield* Effect.logInfo("Workspace contact form action received");
 
-    const parsedInput = getContactSchema().safeParse(submittedValues);
-    yield* Effect.annotateLogsScoped({ parsedInput });
+    const validation = yield* Effect.promise(
+      async () =>
+        await Schema.toStandardSchemaV1(getContactSchema(locale), {
+          parseOptions: { errors: "all" },
+        })["~standard"].validate(submittedValues)
+    );
 
-    if (!parsedInput.success) {
-      const flattened = z.flattenError(parsedInput.error).fieldErrors;
+    if (validation.issues) {
+      const fieldErrors: ContactFormState["fieldErrors"] = {};
+      for (const issue of validation.issues) {
+        switch (issue.path?.[0]) {
+          case "name":
+            fieldErrors.name ??= issue.message;
+            break;
+          case "email":
+            fieldErrors.email ??= issue.message;
+            break;
+          case "phone":
+            fieldErrors.phone ??= issue.message;
+            break;
+          case "message":
+            fieldErrors.message ??= issue.message;
+            break;
+        }
+      }
       yield* Effect.logWarning("Workspace contact form validation failed", {
-        flattened,
+        fieldErrors,
       });
 
       return {
         status: "error" as const,
         message: m.contactValidationReviewMessage({}, { locale }),
         values: submittedValues,
-        fieldErrors: {
-          name: flattened.name?.[0],
-          email: flattened.email?.[0],
-          phone: flattened.phone?.[0],
-          message: flattened.message?.[0],
-        },
+        fieldErrors,
       };
     }
 
     yield* Effect.logInfo("Workspace contact form validation passed");
 
     const service = yield* ContactService;
-    yield* service.submit(parsedInput.data, locale);
+    yield* service.submit(validation.value, locale);
     yield* Effect.logInfo("Workspace contact form submit completed");
 
     return {

@@ -1,4 +1,10 @@
+"use client";
+
+import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
+import { Schema } from "effect";
 import { AlertTriangle } from "lucide-react";
+import { type FormEvent, useEffect, useRef } from "react";
+import { useForm } from "react-hook-form";
 import { applyDiscountCodeForm } from "@/features/checkout/actions/apply-discount-code";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
@@ -7,6 +13,17 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { CheckoutDiscountCodeSubmitButton } from "./checkout-discount-code-submit-button";
 import { DiscountRejectionAnalytics } from "./discount-rejection-analytics";
+
+const checkoutDiscountCodeFormInputSchema = Schema.Struct({
+  submittedCode: Schema.String,
+});
+
+const checkoutDiscountCodeFormSchema = Schema.toStandardSchemaV1(
+  checkoutDiscountCodeFormInputSchema
+);
+
+type CheckoutDiscountCodeFormValues =
+  typeof checkoutDiscountCodeFormInputSchema.Type;
 
 type CheckoutDiscountCodeFormProps = {
   readonly appliedAdjustment?: DiscountAdjustment;
@@ -27,6 +44,20 @@ export function CheckoutDiscountCodeForm({
   payStateToken,
   rejectionId,
 }: CheckoutDiscountCodeFormProps) {
+  const form = useForm<CheckoutDiscountCodeFormValues>({
+    defaultValues: { submittedCode: defaultCode ?? "" },
+    mode: "onSubmit",
+    resolver: standardSchemaResolver(checkoutDiscountCodeFormSchema),
+  });
+  const { isSubmitting } = form.formState;
+  const previousDefaultCode = useRef(defaultCode);
+
+  useEffect(() => {
+    if (previousDefaultCode.current === defaultCode) return;
+    previousDefaultCode.current = defaultCode;
+    form.reset({ submittedCode: defaultCode ?? "" });
+  }, [defaultCode, form]);
+
   if (appliedAdjustment) {
     return (
       <output className="block rounded-2xl border border-aquamarine-green/40 bg-aquamarine-green/12 px-4 py-3 text-sm font-semibold text-aquamarine-ink ring-1 ring-aquamarine-green/10">
@@ -44,22 +75,26 @@ export function CheckoutDiscountCodeForm({
 
   const errorId = fieldError ? "checkout-discount-code-error" : undefined;
   const action = applyDiscountCodeForm.bind(null, locale, payStateToken);
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    const formData = new FormData(event.currentTarget);
+    void form.handleSubmit(async () => action(formData))(event);
+  };
 
   return (
     <form
       action={action}
       className="space-y-3"
       id="checkout-discount-code-form"
-      // The input is uncontrolled, so rekey by the requested code to let a
-      // fresh signed state after a rejected attempt refresh the prefill,
-      // while normal local edits before submission are never disturbed.
-      key={defaultCode}
+      noValidate
+      onSubmit={submit}
     >
       <Label htmlFor="checkout-discount-code">
         {m.checkoutDiscountCodeLabel({}, { locale })}
       </Label>
       <div className="flex flex-col gap-3 sm:flex-row">
         <Input
+          {...form.register("submittedCode")}
+          defaultValue={defaultCode ?? ""}
           id="checkout-discount-code"
           aria-describedby={errorId}
           aria-invalid={fieldError ? true : undefined}
@@ -67,12 +102,13 @@ export function CheckoutDiscountCodeForm({
           autoComplete="off"
           className="h-12 rounded-full px-5 uppercase"
           data-ph-mask
-          defaultValue={defaultCode}
-          name="submittedCode"
           placeholder={m.checkoutDiscountCodePlaceholder({}, { locale })}
           spellCheck={false}
         />
-        <CheckoutDiscountCodeSubmitButton locale={locale} />
+        <CheckoutDiscountCodeSubmitButton
+          locale={locale}
+          pending={isSubmitting}
+        />
       </div>
       {fieldError && (
         <>
