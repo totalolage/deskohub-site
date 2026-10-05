@@ -53,6 +53,18 @@ test("waits for the hydrated contact submit handler before native activation", a
   expect(waitArgs?.[2]).not.toContain(
     'typeof reactProps?.action === "function"'
   );
+  for (const selector of [
+    "#contact-name",
+    "#contact-phone",
+    "#contact-email",
+    "#contact-message",
+  ]) {
+    expect(waitArgs?.[2]).toContain(JSON.stringify(selector));
+  }
+  expect(waitArgs?.[2]).toContain(
+    'typeof fieldProps?.onChange === "function"'
+  );
+  expect(waitArgs?.[2]).toContain('field.type === "hidden"');
   expect(calls.some(({ args }) => args.includes("click"))).toBe(false);
   expect(
     calls.find(({ args }) => args.includes("focus"))?.args.slice(2)

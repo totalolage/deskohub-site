@@ -70,6 +70,7 @@ export const submitDiscountCode = ({
       run,
       session,
       "#checkout-discount-code-form",
+      ["#checkout-discount-code"],
       { timeoutMs: config.timeouts.uiTransition }
     );
     yield* fillBrowserField(run, session, "#checkout-discount-code", code, {

@@ -179,7 +179,10 @@ type ConsumeResult = {
 class FakeAccountExternalState {
   readonly acceptedResponses: string[] = [];
   readonly browserActions: FakeBrowserAction[] = [];
-  readonly formSubmitWaits: string[] = [];
+  readonly formSubmitWaits: Array<{
+    readonly fieldSelectors: readonly string[];
+    readonly formSelector: string;
+  }> = [];
   readonly createdAuthIds: string[] = [];
   readonly deletionObservations: DeletionObservation[] = [];
   readonly events: FakeEvent[] = [];
@@ -892,10 +895,22 @@ class FakeBrowser {
     throw new Error("the synthetic browser evaluated an unexpected script");
   }
 
-  waitForFormSubmitHandler(selector: string) {
-    this.external.formSubmitWaits.push(selector);
+  waitForFormSubmitHandler(
+    selector: string,
+    fieldSelectors: readonly string[]
+  ) {
+    this.external.formSubmitWaits.push({
+      fieldSelectors: [...fieldSelectors],
+      formSelector: selector,
+    });
     if (selector !== signInFormSelector || !this.formReady) {
       throw new Error("the sign-in form submit handler is not ready");
+    }
+    if (
+      fieldSelectors.length !== 1 ||
+      fieldSelectors[0] !== signInEmailSelector
+    ) {
+      throw new Error("the sign-in readiness wait omitted its email field");
     }
   }
 
@@ -1031,8 +1046,12 @@ mock.module("../browser", () => ({
   waitForBrowserReactFormSubmit: (
     _run: Runner,
     _session: string,
-    selector: string
-  ) => Effect.sync(() => requireBrowser().waitForFormSubmitHandler(selector)),
+    selector: string,
+    fieldSelectors: readonly string[]
+  ) =>
+    Effect.sync(() =>
+      requireBrowser().waitForFormSubmitHandler(selector, fieldSelectors)
+    ),
   waitForBrowserText: ({
     matches,
   }: {
@@ -1256,9 +1275,18 @@ test("executes the selected account lifecycle cases with a fresh factory per cas
     await executeCase(selected, scenario, stepIds);
     if (caseId === "account-sign-in-form") {
       expect(scenario.external.formSubmitWaits).toEqual([
-        signInFormSelector,
-        signInFormSelector,
-        signInFormSelector,
+        {
+          fieldSelectors: [signInEmailSelector],
+          formSelector: signInFormSelector,
+        },
+        {
+          fieldSelectors: [signInEmailSelector],
+          formSelector: signInFormSelector,
+        },
+        {
+          fieldSelectors: [signInEmailSelector],
+          formSelector: signInFormSelector,
+        },
       ]);
     }
 

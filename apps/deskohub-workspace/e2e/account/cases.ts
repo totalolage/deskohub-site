@@ -254,9 +254,13 @@ export const makeWorkspaceE2EAccountCases = ({
     readBrowserText(run, session).pipe(Effect.map(normalizeBrowserText));
 
   const waitSignInForm = () =>
-    waitForBrowserReactFormSubmit(run, session, signInFormSelector, {
-      timeoutMs: browserTimeout,
-    });
+    waitForBrowserReactFormSubmit(
+      run,
+      session,
+      signInFormSelector,
+      [signInEmailSelector],
+      { timeoutMs: browserTimeout }
+    );
 
   const fillAndSubmitEmail = (email: string) =>
     Effect.gen(function* () {

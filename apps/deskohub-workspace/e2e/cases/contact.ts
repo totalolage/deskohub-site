@@ -53,6 +53,12 @@ export const assertContactForm = ({
         run,
         session,
         "#contact-form form",
+        [
+          "#contact-name",
+          "#contact-phone",
+          "#contact-email",
+          "#contact-message",
+        ],
         { timeoutMs: config.timeouts.uiTransition }
       ),
       id: "wait-for-contact-form-hydration",

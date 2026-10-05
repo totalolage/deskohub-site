@@ -112,8 +112,11 @@ test("waits for the discount form submit handler before native activation", asyn
 
   const waitScript = calls.find(({ args }) => args.includes("wait"))?.args[4];
   expect(waitScript).toContain("#checkout-discount-code-form");
+  expect(waitScript).toContain("#checkout-discount-code");
   expect(waitScript).toContain("__reactProps$");
   expect(waitScript).toContain('typeof reactProps?.onSubmit === "function"');
+  expect(waitScript).toContain('typeof fieldProps?.onChange === "function"');
+  expect(waitScript).toContain('field.type === "hidden"');
   expect(waitScript).not.toContain('typeof reactProps?.action === "function"');
   expect(calls.map(({ args }) => args[2])).toEqual([
     "wait",
