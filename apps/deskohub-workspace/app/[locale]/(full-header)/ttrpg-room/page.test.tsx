@@ -19,7 +19,7 @@ mock.module("next/root-params", () => ({
   locale: () => Promise.resolve("en-US"),
 }));
 
-mock.module("@/features/gallery/actions/get-cloudinary-images", () => ({
+mock.module("@/features/gallery/backend/get-cloudinary-images.server", () => ({
   getCloudinaryImages: () => Promise.resolve([]),
 }));
 

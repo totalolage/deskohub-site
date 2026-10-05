@@ -27,8 +27,10 @@ mock.module("botid/server", () => ({
 }));
 
 const areAccountsEnabled = mock(() => Promise.resolve(true));
+const areAccountAvatarsEnabled = mock(() => Promise.resolve(true));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
   areAccountsEnabled,
+  areAccountAvatarsEnabled,
 }));
 
 let deleteUser: (args: { body: object; headers: Headers }) => Promise<unknown>;

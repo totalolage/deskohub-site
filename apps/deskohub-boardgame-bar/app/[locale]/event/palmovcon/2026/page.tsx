@@ -2,7 +2,7 @@ import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { generateBlurDataUrlCached } from "@/features/gallery/actions/generate-blur-data-url";
-import { getCloudinaryImageByPublicId } from "@/features/gallery/actions/get-cloudinary-image-by-public-id";
+import { getCloudinaryImageByPublicId } from "@/features/gallery/backend/get-cloudinary-image-by-public-id.server";
 import { m, setLocale } from "@/features/i18n";
 import { LocalizedLink } from "@/features/i18n/components/localized-link";
 import { Button } from "@/shared/components/ui/button";

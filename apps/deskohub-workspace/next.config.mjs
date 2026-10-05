@@ -40,6 +40,12 @@ const nextConfig = {
   experimental: {
     // Next's TS CLI integration needs bin tsc, which the official TS6 wrapper (tsc6-only) must not provide; API-worker type checking still runs.
     useTypeScriptCli: false,
+    // Customer avatar uploads carry up to 2 MiB of raw image bytes plus the
+    // Server Action / multipart envelope, so the 1 MiB default body limit is
+    // too small; oversized images are rejected by the avatar policy itself.
+    serverActions: {
+      bodySizeLimit: "4mb",
+    },
     exposeTestingApiInProductionBuild:
       workspaceBotIdVercelEnvironment === "preview",
     instantInsights: {

@@ -22,6 +22,7 @@ import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-b
 import type { CustomerProfileBilling } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { BillingScreen } from "@/features/account/components/billing/billing-screen";
+import { AvatarControl } from "@/features/account/components/profile/avatar-control";
 import { ProfileScreen } from "@/features/account/components/profile/profile-screen";
 import {
   createProfileFormResolver,
@@ -32,6 +33,7 @@ import {
   profileFieldPathFromDomName,
   toCustomerProfileInput,
 } from "@/features/account/components/profile-form-schema";
+import type { CustomerAvatarPresentation } from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -59,6 +61,7 @@ type ProfileFormProps = {
     readonly phone: string | null;
     readonly billing: CustomerProfileBilling | null;
   };
+  readonly avatarPresentation?: CustomerAvatarPresentation;
   readonly section?: "profile" | "billing";
 };
 
@@ -102,6 +105,7 @@ const profileFieldLayoutClass = (name: keyof ProfileFormValues) => {
 };
 
 export function ProfileForm({
+  avatarPresentation = { kind: "available", avatar: null },
   email,
   locale,
   mode,
@@ -876,6 +880,16 @@ export function ProfileForm({
             <>
               <div hidden={section !== "profile"}>
                 <ProfileScreen
+                  avatar={
+                    avatarPresentation.kind === "available" ? (
+                      <AvatarControl
+                        avatar={avatarPresentation.avatar}
+                        firstName={savedIdentity.firstName}
+                        lastName={savedIdentity.lastName}
+                        locale={locale}
+                      />
+                    ) : undefined
+                  }
                   copy={screenCopy.profile}
                   email={email}
                   firstName={savedIdentity.firstName}

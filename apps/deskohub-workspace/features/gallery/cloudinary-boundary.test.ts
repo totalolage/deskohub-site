@@ -7,9 +7,24 @@ const cloudinaryServerModule = "@deskohub/cloudinary" + "/server";
 
 const allowedServerImports = new Set([
   "app/api/webhooks/cloudinary/route.ts",
-  "features/gallery/actions/get-cloudinary-images.ts",
+  "app/api/webhooks/cloudinary/route.test.ts",
+  "features/account/backend/customer-avatar.service.ts",
   "features/gallery/backend/cloudinary.service.ts",
+  "features/gallery/backend/get-cloudinary-images.server.ts",
 ]);
+
+const gallerySearchModule =
+  "features/gallery/backend/get-cloudinary-images.server.ts";
+const gallerySearchModuleSpecifier =
+  "@/features/gallery/backend/get-cloudinary-images.server";
+const gallerySearchCallers = [
+  "app/[locale]/(full-header)/gallery/page.tsx",
+  "app/[locale]/(full-header)/meeting-room/page.tsx",
+  "app/[locale]/(full-header)/ttrpg-room/page.tsx",
+  "features/landing-page/components/landing-page-photo-carousel-section.tsx",
+];
+const customerAvatarService =
+  "features/account/backend/customer-avatar.service.ts";
 
 test("Cloudinary server reads stay behind cached workspace boundaries", async () => {
   const offenders: string[] = [];
@@ -25,6 +40,60 @@ test("Cloudinary server reads stay behind cached workspace boundaries", async ()
 
   expect(offenders).toEqual([]);
 });
+
+test("gallery searches stay server-only and cannot enumerate avatar assets", async () => {
+  const gallerySource = await readWorkspaceSource(gallerySearchModule);
+  expect(gallerySource).toContain('import "server-only";');
+  expect(gallerySource).not.toMatch(/(^|\n)\s*["']use server["'];?/);
+
+  const galleryCallers: string[] = [];
+  const galleryProviderCalls: string[] = [];
+  const avatarStagingListings: string[] = [];
+  const broadSearches: string[] = [];
+
+  for (const filePath of await listSourceFiles(workspaceRoot)) {
+    const relativePath = relative(workspaceRoot, filePath);
+    if (
+      relativePath.endsWith(".test.ts") ||
+      relativePath.endsWith(".test.tsx")
+    ) {
+      continue;
+    }
+
+    const contents = await readFile(filePath, "utf8");
+    if (contents.includes(gallerySearchModuleSpecifier)) {
+      galleryCallers.push(relativePath);
+      expect(contents).not.toMatch(/(^|\n)\s*["']use client["'];?/);
+      expect(contents).not.toMatch(/(^|\n)\s*["']use server["'];?/);
+    }
+    if (/\bgetGalleryImages\s*\(/.test(contents)) {
+      galleryProviderCalls.push(relativePath);
+    }
+    if (/\blistFolderAssets\s*\(/.test(contents)) {
+      avatarStagingListings.push(relativePath);
+    }
+    if (
+      /\.(?:searchAll|searchByExpression|searchByFolder|searchByTag|searchWithTags)\s*\(/.test(
+        contents
+      )
+    ) {
+      broadSearches.push(relativePath);
+    }
+  }
+
+  expect(galleryCallers.sort()).toEqual(gallerySearchCallers);
+  expect(galleryProviderCalls).toEqual([gallerySearchModule]);
+  expect(avatarStagingListings).toEqual([customerAvatarService]);
+  expect(broadSearches).toEqual([]);
+
+  const avatarSource = await readWorkspaceSource(customerAvatarService);
+  expect(avatarSource).toContain('import "server-only";');
+  expect(avatarSource).toContain("accountStagingFolder(namespace, accountId)");
+});
+
+async function readWorkspaceSource(relativePath: string): Promise<string> {
+  return readFile(resolve(workspaceRoot, relativePath), "utf8");
+}
 
 async function listSourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });

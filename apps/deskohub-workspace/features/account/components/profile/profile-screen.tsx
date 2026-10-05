@@ -1,9 +1,8 @@
-import { Camera, Check, UserRound } from "lucide-react";
+import { Check } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import type { Locale } from "@/features/i18n";
-import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 import {
   Select,
@@ -18,7 +17,9 @@ import {
 /*
  * Direction: extend the account's quiet Sculpin operate surface with a white
  * profile card. Identity is factual, while unavailable settings stay visibly
- * non-interactive and all editable fields remain caller-owned.
+ * non-interactive and all editable fields remain caller-owned. The avatar
+ * media and its controls are caller-owned so the profile form owns their
+ * mutation state.
  */
 
 export interface ProfileScreenCopy {
@@ -27,8 +28,6 @@ export interface ProfileScreenCopy {
   readonly verifiedEmail: string;
   readonly emailLabel: string;
   readonly emailVerification: EmailVerificationStatusCopy;
-  readonly avatarUnavailableLabel: string;
-  readonly avatarUnavailableDescription: string;
   readonly languageLabel: string;
   readonly languageUnavailableValue: string;
 }
@@ -41,9 +40,11 @@ export interface ProfileScreenProps {
   readonly copy: ProfileScreenCopy;
   readonly children: ReactNode;
   readonly footer?: ReactNode;
+  readonly avatar?: ReactNode;
 }
 
 export function ProfileScreen({
+  avatar,
   children,
   copy,
   email,
@@ -54,15 +55,10 @@ export function ProfileScreen({
 }: ProfileScreenProps) {
   const titleId = useId();
   const languageId = useId();
-  const avatarDescriptionId = `${languageId}-avatar-description`;
   const nameParts = [firstName, lastName ?? ""]
     .map((name) => name.trim())
     .filter((name) => name.length > 0);
   const displayName = nameParts.join(" ") || copy.memberFallback;
-  const initials = nameParts
-    .map((name) => Array.from(name)[0])
-    .filter((initial): initial is string => initial !== undefined)
-    .join("");
 
   return (
     <AccountSectionPanel
@@ -72,35 +68,8 @@ export function ProfileScreen({
       title={copy.title}
       titleId={titleId}
     >
-      <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
-        <div className="relative size-20 shrink-0">
-          <div
-            aria-hidden="true"
-            className="flex size-20 items-center justify-center rounded-full bg-[linear-gradient(135deg,#cf7253_0%,#00024f_100%)] text-2xl font-bold text-white"
-          >
-            {initials ? (
-              initials
-            ) : (
-              <UserRound className="size-9" strokeWidth={1.8} />
-            )}
-          </div>
-          <span className="absolute -right-1 -bottom-1 inline-flex size-10">
-            <FutureFeatureTooltip locale={locale}>
-              <Button
-                aria-describedby={avatarDescriptionId}
-                aria-label={copy.avatarUnavailableLabel}
-                className="size-10 rounded-full border border-[#dfe4ec] bg-white p-0 text-[#344258] shadow-[0_3px_10px_rgba(0,2,79,0.14)] disabled:cursor-not-allowed"
-                disabled
-                size="icon"
-                type="button"
-                variant="secondary"
-              >
-                <Camera aria-hidden="true" className="size-4" strokeWidth={2} />
-              </Button>
-            </FutureFeatureTooltip>
-          </span>
-        </div>
-
+      <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-start">
+        {avatar}
         <div className="min-w-0">
           <p className="break-words text-2xl font-semibold leading-tight text-[#202b3d]">
             {displayName}
@@ -109,12 +78,6 @@ export function ProfileScreen({
             <Check aria-hidden="true" className="size-4 shrink-0" />
             <span className="break-words">{copy.verifiedEmail}</span>
           </span>
-          <p
-            className="mt-2 max-w-prose text-sm leading-5 text-[#52647c]"
-            id={avatarDescriptionId}
-          >
-            {copy.avatarUnavailableDescription}
-          </p>
         </div>
       </div>
 

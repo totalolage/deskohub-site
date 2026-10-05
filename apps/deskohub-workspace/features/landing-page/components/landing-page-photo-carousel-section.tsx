@@ -1,4 +1,4 @@
-import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
+import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
 import { type Locale, m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { cn } from "@/shared/utils";
