@@ -4,7 +4,7 @@ import {
   focusBrowserElement,
   openBrowserPage,
   pressBrowserKey,
-  waitForBrowserReactFormAction,
+  waitForBrowserReactFormSubmit,
   waitForBrowserText,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
@@ -49,7 +49,7 @@ export const assertContactForm = ({
       timeoutMs: config.timeouts.browserNavigation,
     });
     yield* runStep({
-      execute: waitForBrowserReactFormAction(
+      execute: waitForBrowserReactFormSubmit(
         run,
         session,
         "#contact-form form",

@@ -179,6 +179,7 @@ type ConsumeResult = {
 class FakeAccountExternalState {
   readonly acceptedResponses: string[] = [];
   readonly browserActions: FakeBrowserAction[] = [];
+  readonly formSubmitWaits: string[] = [];
   readonly createdAuthIds: string[] = [];
   readonly deletionObservations: DeletionObservation[] = [];
   readonly events: FakeEvent[] = [];
@@ -891,9 +892,10 @@ class FakeBrowser {
     throw new Error("the synthetic browser evaluated an unexpected script");
   }
 
-  waitForFormAction(selector: string) {
+  waitForFormSubmitHandler(selector: string) {
+    this.external.formSubmitWaits.push(selector);
     if (selector !== signInFormSelector || !this.formReady) {
-      throw new Error("the sign-in form action is not ready");
+      throw new Error("the sign-in form submit handler is not ready");
     }
   }
 
@@ -1026,11 +1028,11 @@ mock.module("../browser", () => ({
     Effect.sync(() =>
       requireBrowser().waitForCondition(description, condition)
     ),
-  waitForBrowserReactFormAction: (
+  waitForBrowserReactFormSubmit: (
     _run: Runner,
     _session: string,
     selector: string
-  ) => Effect.sync(() => requireBrowser().waitForFormAction(selector)),
+  ) => Effect.sync(() => requireBrowser().waitForFormSubmitHandler(selector)),
   waitForBrowserText: ({
     matches,
   }: {
@@ -1252,6 +1254,13 @@ test("executes the selected account lifecycle cases with a fresh factory per cas
     const previous = builtCases.at(-2);
     if (previous) expect(selected).not.toBe(previous);
     await executeCase(selected, scenario, stepIds);
+    if (caseId === "account-sign-in-form") {
+      expect(scenario.external.formSubmitWaits).toEqual([
+        signInFormSelector,
+        signInFormSelector,
+        signInFormSelector,
+      ]);
+    }
 
     if (caseId === "account-magic-link-delivery") {
       // Profile completion and reservation transitions intentionally retain

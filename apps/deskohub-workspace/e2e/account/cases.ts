@@ -15,7 +15,7 @@ import {
   readBrowserText,
   readBrowserUrl,
   waitForBrowserCondition,
-  waitForBrowserReactFormAction,
+  waitForBrowserReactFormSubmit,
   waitForBrowserText,
   waitForInteractiveSnapshot,
 } from "../browser";
@@ -254,7 +254,7 @@ export const makeWorkspaceE2EAccountCases = ({
     readBrowserText(run, session).pipe(Effect.map(normalizeBrowserText));
 
   const waitSignInForm = () =>
-    waitForBrowserReactFormAction(run, session, signInFormSelector, {
+    waitForBrowserReactFormSubmit(run, session, signInFormSelector, {
       timeoutMs: browserTimeout,
     });
 

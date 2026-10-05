@@ -228,7 +228,7 @@ export const waitForBrowserTextContent = (
   ).pipe(Effect.asVoid);
 };
 
-export const waitForBrowserReactFormAction = (
+export const waitForBrowserReactFormSubmit = (
   run: Runner,
   session: string,
   selector: string,
@@ -241,11 +241,11 @@ export const waitForBrowserReactFormAction = (
       ? undefined
       : Object.keys(form).find((key) => key.startsWith("__reactProps$"));
     const reactProps = reactPropsKey === undefined ? undefined : form[reactPropsKey];
-    return typeof reactProps?.action === "function";
+    return typeof reactProps?.onSubmit === "function";
   })()`;
 
   return runBrowserCommand(
-    "wait for browser React form action",
+    "wait for browser React form submit handler",
     run,
     session,
     ["wait", "--fn", hydrationCheck],

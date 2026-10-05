@@ -3,7 +3,7 @@ import {
   fillBrowserField,
   focusBrowserElement,
   pressBrowserKey,
-  waitForBrowserReactFormAction,
+  waitForBrowserReactFormSubmit,
   waitForBrowserTextContent,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
@@ -66,7 +66,7 @@ export const submitDiscountCode = ({
 }) =>
   Effect.gen(function* () {
     addRedaction(code, true);
-    yield* waitForBrowserReactFormAction(
+    yield* waitForBrowserReactFormSubmit(
       run,
       session,
       "#checkout-discount-code-form",

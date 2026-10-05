@@ -6,7 +6,7 @@ import { workspaceE2ETimeouts } from "../timeouts";
 import type { WorkspaceE2EStepRunner } from "../types";
 import { assertContactForm } from "./contact";
 
-test("activates the hydrated contact form action through its stable selector", async () => {
+test("waits for the hydrated contact submit handler before native activation", async () => {
   const calls: Array<{
     readonly args: string[];
     readonly input?: string;
@@ -49,7 +49,10 @@ test("activates the hydrated contact form action through its stable selector", a
   expect(waitArgs?.slice(0, 2)).toEqual(["wait", "--fn"]);
   expect(waitArgs?.[2]).toContain("#contact-form form");
   expect(waitArgs?.[2]).toContain("__reactProps$");
-  expect(waitArgs?.[2]).toContain('typeof reactProps?.action === "function"');
+  expect(waitArgs?.[2]).toContain('typeof reactProps?.onSubmit === "function"');
+  expect(waitArgs?.[2]).not.toContain(
+    'typeof reactProps?.action === "function"'
+  );
   expect(calls.some(({ args }) => args.includes("click"))).toBe(false);
   expect(
     calls.find(({ args }) => args.includes("focus"))?.args.slice(2)
