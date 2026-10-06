@@ -3,6 +3,11 @@
 import { type AresLookupFailure, AresLookupService } from "@deskohub/ares";
 import { Effect, Layer, Match, Result, Schema } from "effect";
 import { revalidatePath } from "next/cache";
+import {
+  accountActionError,
+  requireAccountsEnabled,
+  requireVerifiedSession,
+} from "@/features/account/account-action-guards";
 import type { AresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import { toAresBusinessBillingDraft } from "@/features/account/backend/ares-business-draft";
 import { deleteCurrentAccountThroughAuthEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
@@ -14,65 +19,16 @@ import {
   updateCustomerProfileStandardSchema,
 } from "@/features/account/contracts";
 import { CustomerAccountAccessError } from "@/features/account/customer-account";
-import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
-import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
 const deleteCustomerAccountConfirmedSchema = Schema.toStandardSchemaV1(
   Schema.Struct({ confirmed: Schema.Literal(true) }),
   { parseOptions: { errors: "all", onExcessProperty: "error" } }
 );
 
-const requireVerifiedSession = Effect.flatMap(
-  CustomerAuthentication,
-  (authentication) => authentication.currentUser
-).pipe(
-  Effect.flatMap((user) =>
-    user
-      ? Effect.succeed(user)
-      : Effect.fail(
-          new CustomerAccountAccessError({ reason: "unauthenticated" })
-        )
-  )
-);
-
-const profileActionErrorMessage = (
-  cause: CustomerAccountAccessError,
-  locale: Locale
-) => {
-  if (cause.reason === "unauthenticated") {
-    return m.accountSessionExpired({}, { locale });
-  }
-  if (
-    cause.reason === "link-required" &&
-    cause.linkReason === "deletion-requested"
-  ) {
-    return m.accountDeletionPendingError({}, { locale });
-  }
-  return m.accountProfileError({}, { locale });
-};
-
-const profileActionError =
-  (locale: Locale) =>
-  (cause: CustomerAccountAccessError): PublicSafeActionError =>
-    new PublicSafeActionError({
-      message: profileActionErrorMessage(cause, locale),
-      cause,
-    });
-
-const requireAccountsEnabled = (locale: Locale) =>
-  Effect.promise(areAccountsEnabled).pipe(
-    Effect.filterOrFail(
-      (enabled) => enabled,
-      () =>
-        new PublicSafeActionError({
-          message: m.accountUnavailableDescription({}, { locale }),
-        })
-    ),
-    Effect.asVoid
-  );
+const profileActionError = accountActionError;
 
 /**
  * Saves the Dotypos-owned profile for the verified account: a not-yet-linked

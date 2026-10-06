@@ -48,7 +48,8 @@ export type AccountVisualComparisonMetadata = {
 
 export const defaultAccountVisualAdapterMetadata = {
   owner: "account-visual default adapter",
-  fixture: "linked synthetic customer account: ada@example.test",
+  fixture:
+    "linked synthetic customer account with avatar enabled and no image: ada@example.test",
 } as const satisfies AccountVisualAdapterMetadata;
 
 /**

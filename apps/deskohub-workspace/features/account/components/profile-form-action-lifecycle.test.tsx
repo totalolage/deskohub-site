@@ -54,6 +54,11 @@ mock.module("@/features/account/actions", () => ({
   updateCustomerProfile,
 }));
 
+mock.module("@/features/account/avatar-actions", () => ({
+  removeCustomerAvatar: () => Promise.resolve({ data: { status: "removed" } }),
+  uploadCustomerAvatar: () => Promise.resolve({ data: { status: "removed" } }),
+}));
+
 const businessProfile = {
   firstName: "Ada",
   lastName: "Lovelace",

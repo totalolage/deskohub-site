@@ -7,13 +7,20 @@ import {
   CustomerAccountLinkRepository,
 } from "./customer-account-link.repository";
 import {
+  type CustomerAvatarProviderError,
+  CustomerAvatarService,
+  type CustomerAvatarUnavailableError,
+} from "./customer-avatar.service";
+import {
   CustomerDotyposAdapter,
   type DotyposCustomerError,
 } from "./customer-dotypos-adapter.service";
 
 export type CustomerAccountDeletionError =
   | CustomerAccountLinkError
-  | DotyposCustomerError;
+  | DotyposCustomerError
+  | CustomerAvatarProviderError
+  | CustomerAvatarUnavailableError;
 
 export type CustomerAccountDeletionDependencies = {
   readonly markDeletionRequested: (
@@ -26,6 +33,12 @@ export type CustomerAccountDeletionDependencies = {
   readonly expireCustomer: (
     customerId: DotyposCustomerId
   ) => Effect.Effect<void, DotyposCustomerError>;
+  readonly destroyAvatar: (
+    accountId: CustomerAccountId
+  ) => Effect.Effect<
+    void,
+    CustomerAvatarProviderError | CustomerAvatarUnavailableError
+  >;
   readonly withAccountLock: <A, E, R>(
     accountId: CustomerAccountId,
     effect: Effect.Effect<A, E, R>
@@ -49,20 +62,25 @@ export const expireLinkedDotyposProfile = (
           yield* dependencies.markDeletionRequested(accountId, new Date());
 
           const linkedCustomerId = yield* dependencies.findLink(accountId);
-          if (!linkedCustomerId) return;
+          if (linkedCustomerId) {
+            yield* dependencies
+              .expireCustomer(linkedCustomerId)
+              .pipe(
+                Effect.catchTag("ExternalAPIError", (error) =>
+                  error.statusCode === 404
+                    ? Effect.logWarning(
+                        "Customer account deletion: Dotypos profile already missing.",
+                        { code: "dotypos.customer-expiration.missing" }
+                      )
+                    : Effect.fail(error)
+                )
+              );
+          }
 
-          return yield* dependencies
-            .expireCustomer(linkedCustomerId)
-            .pipe(
-              Effect.catchTag("ExternalAPIError", (error) =>
-                error.statusCode === 404
-                  ? Effect.logWarning(
-                      "Customer account deletion: Dotypos profile already missing.",
-                      { code: "dotypos.customer-expiration.missing" }
-                    )
-                  : Effect.fail(error)
-              )
-            );
+          // The media asset goes before identity removal: an uncertain
+          // provider outcome fails retryably so deletion stays retryable,
+          // and a missing asset is idempotent success.
+          yield* dependencies.destroyAvatar(accountId);
         })
       )
   );
@@ -82,11 +100,13 @@ export class CustomerAccountDeletionService extends Context.Service<
     Effect.gen(function* () {
       const links = yield* CustomerAccountLinkRepository;
       const dotypos = yield* CustomerDotyposAdapter;
+      const avatars = yield* CustomerAvatarService;
 
       const requestDeletion = expireLinkedDotyposProfile({
         markDeletionRequested: links.markDeletionRequested,
         findLink: links.find,
         expireCustomer: dotypos.expireCustomer,
+        destroyAvatar: avatars.destroy,
         withAccountLock: links.withAccountLock,
       });
 
@@ -98,7 +118,8 @@ export class CustomerAccountDeletionService extends Context.Service<
     Layer.provide(
       Layer.mergeAll(
         CustomerAccountLinkRepository.Live,
-        CustomerDotyposAdapter.Live
+        CustomerDotyposAdapter.Live,
+        CustomerAvatarService.Live
       )
     )
   );

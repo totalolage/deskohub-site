@@ -4,6 +4,7 @@ import { definePostHogFeatureFlags } from "@deskohub/posthog/feature-flags";
 export const postHogFeatureFlags = definePostHogFeatureFlags<
   PostHogFeatureFlagDefinitions
 >([
+  "account_avatars",
   "accounts",
   "calendar_sales",
   "customer_discounts",
@@ -17,6 +18,10 @@ export type PostHogFeatureFlagKey =
   (typeof postHogFeatureFlags.keys)[number];
 
 export interface PostHogFeatureFlagDefinitions {
+  readonly "account_avatars": {
+    readonly value: boolean;
+    readonly payload: undefined;
+  };
   readonly "accounts": {
     readonly value: boolean;
     readonly payload: undefined;

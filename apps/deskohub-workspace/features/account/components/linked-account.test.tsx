@@ -68,6 +68,17 @@ mock.module("@/features/account/actions", () => ({
   updateCustomerProfile,
 }));
 
+mock.module("@/features/account/avatar-actions", () => ({
+  removeCustomerAvatar: () => Promise.resolve({ data: { status: "removed" } }),
+  uploadCustomerAvatar: () =>
+    Promise.resolve({
+      data: {
+        avatar: { url: "https://res.cloudinary.test/avatar.webp", version: 1 },
+        status: "uploaded",
+      },
+    }),
+}));
+
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
     signIn: { magicLink: () => Promise.resolve({ error: null }) },
@@ -89,8 +100,6 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
       },
     },
     profile: {
-      avatarUnavailableDescription: "Profile photos are not available here.",
-      avatarUnavailableLabel: "Profile photo unavailable",
       emailLabel: "Email",
       emailVerification: {
         unverified: "This email still needs verification.",
@@ -222,6 +231,7 @@ const profile = {
     vatId: "CZ12345678",
   },
 };
+const hiddenAvatarPresentation = { kind: "hidden" } as const;
 
 const history = {
   kind: "available" as const,
@@ -289,6 +299,7 @@ describe("LinkedAccount", () => {
     const view = render(
       withAccountLayout(
         <LinkedAccount
+          avatarPresentation={hiddenAvatarPresentation}
           email="ada@example.test"
           history={history}
           locale="en-US"
@@ -391,6 +402,7 @@ describe("LinkedAccount", () => {
     const view = render(
       withAccountLayout(
         <LinkedAccount
+          avatarPresentation={hiddenAvatarPresentation}
           email="ada@example.test"
           history={history}
           locale="en-US"
@@ -428,6 +440,7 @@ describe("LinkedAccount", () => {
       const view = render(
         withAccountLayout(
           <LinkedAccount
+            avatarPresentation={hiddenAvatarPresentation}
             email="ada@example.test"
             history={history}
             locale="en-US"
@@ -446,6 +459,7 @@ describe("LinkedAccount", () => {
     render(
       withAccountLayout(
         <LinkedAccount
+          avatarPresentation={hiddenAvatarPresentation}
           email="ada@example.test"
           history={history}
           locale="en-US"
@@ -473,6 +487,7 @@ describe("LinkedAccount", () => {
       const privateAccount = (
         <div data-testid="cached-private-account">
           <LinkedAccount
+            avatarPresentation={hiddenAvatarPresentation}
             email="ada@example.test"
             history={history}
             locale={locale}
@@ -543,6 +558,7 @@ describe("LinkedAccount", () => {
         <UnsavedChangesProvider>
           {withAccountLayout(
             <LinkedAccount
+              avatarPresentation={hiddenAvatarPresentation}
               email="ada@example.test"
               history={history}
               locale="en-US"
@@ -604,6 +620,7 @@ describe("LinkedAccount", () => {
       <UnsavedChangesProvider>
         {withAccountLayout(
           <LinkedAccount
+            avatarPresentation={hiddenAvatarPresentation}
             email="ada@example.test"
             history={history}
             locale="en-US"
@@ -670,6 +687,7 @@ describe("LinkedAccount", () => {
       const view = render(
         withAccountLayout(
           <LinkedAccount
+            avatarPresentation={hiddenAvatarPresentation}
             email="ada@example.test"
             history={history}
             locale="en-US"
@@ -695,6 +713,7 @@ describe("LinkedAccount", () => {
     const view = render(
       withAccountLayout(
         <LinkedAccount
+          avatarPresentation={hiddenAvatarPresentation}
           email="ada@example.test"
           history={history}
           locale="en-US"
@@ -716,6 +735,7 @@ describe("LinkedAccount", () => {
     const view = render(
       withAccountLayout(
         <LinkedAccount
+          avatarPresentation={hiddenAvatarPresentation}
           email="ada@example.test"
           history={history}
           locale="en-US"
@@ -767,6 +787,7 @@ describe("LinkedAccount", () => {
         <UnsavedChangesProvider>
           {withAccountLayout(
             <LinkedAccount
+              avatarPresentation={hiddenAvatarPresentation}
               email="ada@example.test"
               history={history}
               locale="en-US"
