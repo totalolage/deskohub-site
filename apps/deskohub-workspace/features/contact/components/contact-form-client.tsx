@@ -7,7 +7,15 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useStateAction } from "next-safe-action/stateful-hooks";
 import type { FormEvent } from "react";
-import { Suspense, useActionState, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  useActionState,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { type UseFormRegisterReturn, useForm } from "react-hook-form";
 import type { ContactFormState } from "@/features/contact/actions/contact";
 import type { submitContactForm } from "@/features/contact/actions/submit-contact";
@@ -92,18 +100,30 @@ export function ContactFormClient({
   const [clientValidationMessage, setClientValidationMessage] = useState<
     string | undefined
   >();
-  const [isRHFReady, setIsRHFReady] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const rhfResetPending = useRef(false);
 
   useEffect(() => {
+    const resetAndInvalidateReadiness = (values: ContactFormValues) => {
+      rhfResetPending.current = true;
+      formRef.current?.removeAttribute("data-rhf-ready");
+      reset(values);
+    };
+
     if (state.status === "success") {
-      reset(contactDefaultValues);
+      resetAndInvalidateReadiness(contactDefaultValues);
     } else if (state.status === "error" && state.values) {
-      reset(state.values);
+      resetAndInvalidateReadiness(state.values);
     } else if (state.status === "idle") {
-      reset({ ...contactDefaultValues, ...fieldValues });
+      resetAndInvalidateReadiness({ ...contactDefaultValues, ...fieldValues });
     }
-    setIsRHFReady(true);
   }, [fieldValues, reset, state.status, state.values]);
+
+  useLayoutEffect(() => {
+    if (!rhfResetPending.current || !formState.isReady) return;
+    rhfResetPending.current = false;
+    formRef.current?.setAttribute("data-rhf-ready", "true");
+  }, [formState]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     const formData = new FormData(event.currentTarget);
@@ -145,10 +165,10 @@ export function ContactFormClient({
         <form
           action={nativeFormAction}
           className="space-y-5"
-          data-rhf-ready={isRHFReady ? "true" : undefined}
           method="post"
           noValidate
           onSubmit={handleSubmit}
+          ref={formRef}
         >
           <input type="hidden" name="locale" value={locale} />
           <div className="space-y-5">
