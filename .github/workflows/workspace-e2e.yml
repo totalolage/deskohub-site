@@ -559,17 +559,6 @@ jobs:
             echo "Resolved runtime target is not the original failed PR preview" >&2
             exit 1
           fi
-          {
-            echo "## Workspace E2E cleanup-only recovery"
-            echo "- Recovery action run: $GITHUB_RUN_ID attempt $GITHUB_RUN_ATTEMPT"
-            echo "- Recovery code ref/SHA: $GITHUB_REF / $actual_code_sha"
-            echo "- Restored source E2E run: $EXPECTED_SOURCE_RUN_ID attempt $EXPECTED_SOURCE_RUN_ATTEMPT"
-            echo "- Runtime target SHA/ref: $RUNTIME_TARGET_SHA / $RUNTIME_TARGET_REF"
-            echo "- Runtime target: $RUNTIME_TARGET_URL"
-            echo "- Cleanup telemetry uses the restored source run context and its suite-cleanup phase."
-            echo "- PR status publication and ordinary E2E jobs are disabled for this mode."
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
@@ -942,12 +931,10 @@ jobs:
             fi
             echo "Cleanup-only project passed for source run $EXPECTED_SOURCE_RUN_ID attempt $EXPECTED_SOURCE_RUN_ATTEMPT using runtime target $RUNTIME_TARGET_SHA."
             echo "recovery_outcome=success" >> "$GITHUB_OUTPUT"
-            echo "- Cleanup-only project: passed; the suite-cleanup phase remained correlated to source run $EXPECTED_SOURCE_RUN_ID attempt $EXPECTED_SOURCE_RUN_ATTEMPT and its original run context." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           echo "Cleanup-only project failed for source run $EXPECTED_SOURCE_RUN_ID attempt $EXPECTED_SOURCE_RUN_ATTEMPT; the source run remains failed." >&2
           echo "recovery_outcome=failure" >> "$GITHUB_OUTPUT"
-          echo "- Cleanup-only project: failed; the original source run remains failed." >> "$GITHUB_STEP_SUMMARY"
           exit "$cleanup_exit"
 
   publish-final-status:
