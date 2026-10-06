@@ -1,12 +1,29 @@
 import { expect, test } from "bun:test";
+import type {
+  DotyposCustomerId,
+  DotyposReservationId,
+} from "@deskohub/dotypos";
+import { ExternalAPIError } from "@deskohub/dotypos";
+import type { Customer } from "@deskohub/dotypos/generated";
+import { Effect } from "effect";
 import {
   emptyWorkspaceE2EAccountJournal,
   parseWorkspaceE2EAccountJournal,
 } from "../account/journal";
 import {
+  prepareWorkspaceE2EAccountLaneReconciliation,
   validateWorkspaceE2EAccountLaneJournalOwnership,
   type WorkspaceE2EAccountLaneReconciliation,
 } from "../account/reconcile";
+import {
+  type PreparedCheckoutFlowCleanup,
+  prepareCheckoutFlowCleanup,
+} from "../cleanup";
+import type { DatasourceConfig } from "../config";
+import { workspaceE2EError } from "../errors";
+import { E2EDatabase } from "../integrations/database.service";
+import type { WorkspaceE2ERunId } from "../run-identifiers";
+import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "../types";
 import { runWorkspaceE2ECleanupWithPreparedCandidates } from "./cleanup-plan";
 
 test("does not start checkout cleanup when account journal validation fails", async () => {
@@ -17,7 +34,7 @@ test("does not start checkout cleanup when account journal validation fails", as
       readAccountLaneJournal: async () => {
         throw new Error("invalid account lane journal");
       },
-      readCheckoutFlowStates: async () => [],
+      readCheckoutCleanup: async () => emptyCheckoutCleanup(),
       reconcile: async () => {
         checkoutCleanupStarted = true;
       },
@@ -38,7 +55,7 @@ test("passes both prevalidated journal scopes to the existing cleanup", async ()
 
   await runWorkspaceE2ECleanupWithPreparedCandidates({
     readAccountLaneJournal: async () => accountLaneJournal,
-    readCheckoutFlowStates: async () => [],
+    readCheckoutCleanup: async () => emptyCheckoutCleanup(),
     reconcile: async ({ accountLaneJournal: preparedAccountJournal }) => {
       reconciledScopes = [
         "checkout-journals",
@@ -71,7 +88,7 @@ test("rejects a parsed account candidate owned by another run before checkout cl
           customerOwners: new Map(),
           reservationOwners: new Map(),
         }),
-      readCheckoutFlowStates: async () => [],
+      readCheckoutCleanup: async () => emptyCheckoutCleanup(),
       reconcile: async () => {
         checkoutCleanupStarted = true;
       },
@@ -104,4 +121,238 @@ test("drops already-absent account candidates before idempotent reconciliation",
     dotyposCustomerIds: [],
     dotyposReservationIds: [],
   });
+});
+
+test("rejects a present account profile without email before either cleanup scope mutates", async () => {
+  const journal = parseWorkspaceE2EAccountJournal(
+    JSON.stringify({
+      ...emptyWorkspaceE2EAccountJournal(),
+      dotyposCustomerIds: ["present-customer"],
+    })
+  );
+  let checkoutMutationCount = 0;
+  let accountMutationCount = 0;
+  const readCustomerIds: string[] = [];
+
+  const accountPreparation = prepareWorkspaceE2EAccountLaneReconciliation(
+    {} as DatasourceConfig,
+    "source-run" as WorkspaceE2ERunId,
+    {
+      readJournal: async () => journal,
+      findAuthUserEmailById: () => Effect.succeed(undefined),
+      readSyntheticCustomerProfile: (_config, customerId) => {
+        readCustomerIds.push(customerId);
+        return Effect.succeed({
+          _cloudId: "synthetic-cloud",
+          deleted: false,
+          display: true,
+          id: customerId,
+          flags: "",
+          points: null,
+        } satisfies Customer);
+      },
+      readReservationOwner: () =>
+        Effect.succeed({ customerId: undefined, email: undefined }),
+    }
+  );
+
+  await expect(
+    runWorkspaceE2ECleanupWithPreparedCandidates({
+      readAccountLaneJournal: () =>
+        Effect.runPromise(
+          accountPreparation.pipe(
+            Effect.provideService(
+              E2EDatabase,
+              E2EDatabase.of({ db: {} as never })
+            )
+          )
+        ),
+      readCheckoutCleanup: async () => emptyCheckoutCleanup(),
+      reconcile: async () => {
+        checkoutMutationCount += 1;
+        accountMutationCount += 1;
+      },
+    })
+  ).rejects.toThrow(
+    "Workspace account e2e journal ownership validation failed"
+  );
+
+  expect(checkoutMutationCount).toBe(0);
+  expect(accountMutationCount).toBe(0);
+  expect(readCustomerIds).toEqual(["present-customer"]);
+});
+
+test("does not treat a present account reservation with a missing customer as absent", async () => {
+  const journal = parseWorkspaceE2EAccountJournal(
+    JSON.stringify({
+      ...emptyWorkspaceE2EAccountJournal(),
+      dotyposReservationIds: ["present-reservation"],
+    })
+  );
+  const customerReadError = workspaceE2EError(
+    "read reservation customer failed",
+    {
+      cause: new ExternalAPIError({
+        operation: "getCustomer",
+        service: "Dotypos",
+        statusCode: 404,
+      }),
+      operation: "read account reservation owner",
+    }
+  );
+  let mutationCount = 0;
+  const accountPreparation = prepareWorkspaceE2EAccountLaneReconciliation(
+    {} as DatasourceConfig,
+    "source-run" as WorkspaceE2ERunId,
+    {
+      readJournal: async () => journal,
+      findAuthUserEmailById: () => Effect.succeed(undefined),
+      readSyntheticCustomerProfile: () =>
+        Effect.succeed({
+          _cloudId: "unused-cloud",
+          deleted: false,
+          display: true,
+          flags: "",
+          points: null,
+        } satisfies Customer),
+      readReservationOwner: () => Effect.fail(customerReadError),
+    }
+  );
+
+  await expect(
+    runWorkspaceE2ECleanupWithPreparedCandidates({
+      readAccountLaneJournal: () =>
+        Effect.runPromise(
+          accountPreparation.pipe(
+            Effect.provideService(
+              E2EDatabase,
+              E2EDatabase.of({ db: {} as never })
+            )
+          )
+        ),
+      readCheckoutCleanup: async () => emptyCheckoutCleanup(),
+      reconcile: async () => {
+        mutationCount += 1;
+      },
+    })
+  ).rejects.toBe(customerReadError);
+
+  expect(mutationCount).toBe(0);
+});
+
+test("does not mutate either cleanup scope when checkout ownership preparation fails", async () => {
+  let checkoutMutationCount = 0;
+  let accountMutationCount = 0;
+
+  await expect(
+    runWorkspaceE2ECleanupWithPreparedCandidates({
+      readAccountLaneJournal: async () => undefined,
+      readCheckoutCleanup: async () => {
+        throw new Error(
+          "Workspace checkout cleanup recipient ownership mismatch"
+        );
+      },
+      reconcile: async () => {
+        checkoutMutationCount += 1;
+        accountMutationCount += 1;
+      },
+    })
+  ).rejects.toThrow("Workspace checkout cleanup recipient ownership mismatch");
+
+  expect(checkoutMutationCount).toBe(0);
+  expect(accountMutationCount).toBe(0);
+});
+
+test("rejects an unrelated fallback owner before checkout or account mutation", async () => {
+  const exactOrderData = {
+    date: "2026-08-04",
+    email: "delivered+source-checkout@resend.dev",
+    expectedReservationDetails: {
+      kind: "cowork",
+      entryTier: "basic",
+      coffee: false,
+    },
+    locale: "en-US",
+  } as CheckoutData;
+  const fallbackData = {
+    ...exactOrderData,
+    email: "delivered+fallback-checkout@resend.dev",
+  };
+  const exactOrderState: CheckoutFlowState = {
+    data: exactOrderData,
+    orderId: "source-order" as CheckoutFlowState["orderId"],
+    startedAt: new Date("2026-07-26T12:00:00.000Z"),
+  };
+  const fallbackState: CheckoutFlowState = {
+    data: fallbackData,
+    startedAt: new Date("2026-07-26T12:00:01.000Z"),
+  };
+  const exactOrderRow = {
+    reservation_id: exactOrderState.orderId,
+    dotypos_customer_id: "source-customer" as DotyposCustomerId,
+    dotypos_reservation_id: "source-reservation" as DotyposReservationId,
+  } as CheckoutRow;
+  const unrelatedFallbackRow = {
+    reservation_id: "unrelated-order",
+    dotypos_customer_id: "foreign-customer" as DotyposCustomerId,
+    dotypos_reservation_id: "foreign-reservation" as DotyposReservationId,
+  } as CheckoutRow;
+  let checkoutMutationCount = 0;
+  let accountMutationCount = 0;
+  let cancellationCount = 0;
+  const checkoutPreparation = prepareCheckoutFlowCleanup(
+    {
+      datasourceConfig: {} as DatasourceConfig,
+      flowStates: [exactOrderState, fallbackState],
+    },
+    {
+      cancelDotyposReservation: () =>
+        Effect.sync(() => {
+          cancellationCount += 1;
+        }),
+      readCheckoutRow: () => Effect.succeed(exactOrderRow),
+      readCleanupCheckoutRows: () => Effect.succeed([unrelatedFallbackRow]),
+      readDotyposReservationOwner: (_config, reservationId) =>
+        Effect.succeed(
+          reservationId === exactOrderRow.dotypos_reservation_id
+            ? {
+                customerId: "source-customer" as DotyposCustomerId,
+                email: exactOrderData.email,
+              }
+            : {
+                customerId: "foreign-customer" as DotyposCustomerId,
+                email: "delivered+other-run@resend.dev",
+              }
+        ),
+    }
+  );
+
+  await expect(
+    runWorkspaceE2ECleanupWithPreparedCandidates({
+      readAccountLaneJournal: async () => undefined,
+      readCheckoutCleanup: () =>
+        Effect.runPromise(
+          checkoutPreparation.pipe(
+            Effect.provideService(
+              E2EDatabase,
+              E2EDatabase.of({ db: {} as never })
+            )
+          )
+        ),
+      reconcile: async () => {
+        checkoutMutationCount += 1;
+        accountMutationCount += 1;
+      },
+    })
+  ).rejects.toThrow("Workspace checkout cleanup recipient ownership mismatch");
+
+  expect(checkoutMutationCount).toBe(0);
+  expect(accountMutationCount).toBe(0);
+  expect(cancellationCount).toBe(0);
+});
+
+const emptyCheckoutCleanup = (): PreparedCheckoutFlowCleanup => ({
+  checkoutRows: [],
+  completedReservationIds: new Set<DotyposReservationId>(),
+  flowStates: [],
 });

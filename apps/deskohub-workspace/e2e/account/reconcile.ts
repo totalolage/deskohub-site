@@ -141,6 +141,13 @@ export const reconcileWorkspaceE2EAccountLane = (
 
 const accountLaneRecipientLabels = ["main", "accepted-b"] as const;
 
+type AccountLanePreparationDependencies = {
+  readonly readJournal: typeof readWorkspaceE2EAccountJournal;
+  readonly findAuthUserEmailById: typeof findAuthUserEmailById;
+  readonly readSyntheticCustomerProfile: typeof readSyntheticCustomerProfile;
+  readonly readReservationOwner: typeof readAccountReservationOwner;
+};
+
 const readAccountReservationOwner = Effect.fn(
   "readWorkspaceE2EAccountReservationOwner"
 )(function* (datasourceConfig: DatasourceConfig, id: string) {
@@ -153,7 +160,7 @@ const readAccountReservationOwner = Effect.fn(
       toWorkspaceE2EError("read synthetic account reservation owner", cause)
     )
   );
-  return customer.email ?? undefined;
+  return customer.email ?? null;
 });
 
 export const validateWorkspaceE2EAccountLaneJournalOwnership = ({
@@ -165,13 +172,13 @@ export const validateWorkspaceE2EAccountLaneJournalOwnership = ({
 }: {
   readonly journal: WorkspaceE2EAccountJournal;
   readonly recipientEmails: ReadonlySet<string>;
-  readonly authUserOwners: ReadonlyMap<string, string | undefined>;
-  readonly customerOwners: ReadonlyMap<string, string | undefined>;
-  readonly reservationOwners: ReadonlyMap<string, string | undefined>;
+  readonly authUserOwners: ReadonlyMap<string, string | null | undefined>;
+  readonly customerOwners: ReadonlyMap<string, string | null | undefined>;
+  readonly reservationOwners: ReadonlyMap<string, string | null | undefined>;
 }): WorkspaceE2EAccountLaneReconciliation => {
   const validateCandidates = (
     ids: readonly string[],
-    owners: ReadonlyMap<string, string | undefined>
+    owners: ReadonlyMap<string, string | null | undefined>
   ) =>
     ids.flatMap((id) => {
       if (!owners.has(id)) {
@@ -179,6 +186,11 @@ export const validateWorkspaceE2EAccountLaneJournalOwnership = ({
       }
       const email = owners.get(id);
       if (email === undefined) return [];
+      if (email === null) {
+        throw new Error(
+          "Workspace account e2e candidate owner email is unavailable"
+        );
+      }
       if (!recipientEmails.has(email)) {
         throw new Error("Workspace account e2e journal ownership mismatch");
       }
@@ -201,7 +213,13 @@ export const validateWorkspaceE2EAccountLaneJournalOwnership = ({
 
 export const prepareWorkspaceE2EAccountLaneReconciliation = (
   datasourceConfig: DatasourceConfig,
-  runId: WorkspaceE2ERunId
+  runId: WorkspaceE2ERunId,
+  dependencies: AccountLanePreparationDependencies = {
+    readJournal: readWorkspaceE2EAccountJournal,
+    findAuthUserEmailById,
+    readSyntheticCustomerProfile,
+    readReservationOwner: readAccountReservationOwner,
+  }
 ): Effect.Effect<
   WorkspaceE2EAccountLaneReconciliation | undefined,
   WorkspaceE2EError,
@@ -214,7 +232,7 @@ export const prepareWorkspaceE2EAccountLaneReconciliation = (
           cause,
           operation: "read workspace account e2e lane journal",
         }),
-      try: () => readWorkspaceE2EAccountJournal(),
+      try: () => dependencies.readJournal(),
     });
     if (!journal) return undefined;
 
@@ -225,27 +243,29 @@ export const prepareWorkspaceE2EAccountLaneReconciliation = (
     );
 
     const authUserOwners = yield* Effect.forEach(journal.authUserIds, (id) =>
-      findAuthUserEmailById(id).pipe(
-        Effect.map((email) => [id, email] as const)
-      )
+      dependencies
+        .findAuthUserEmailById(id)
+        .pipe(Effect.map((email) => [id, email] as const))
     );
     const customerOwners = yield* Effect.forEach(
       journal.dotyposCustomerIds,
       (id) =>
-        readSyntheticCustomerProfile(
-          datasourceConfig,
-          id as DotyposCustomerId
-        ).pipe(
-          Effect.map((customer) => [id, customer.email ?? undefined] as const),
-          Effect.catchIf(isNotFound("getCustomer"), () =>
-            Effect.succeed([id, undefined] as const)
+        dependencies
+          .readSyntheticCustomerProfile(
+            datasourceConfig,
+            id as DotyposCustomerId
           )
-        )
+          .pipe(
+            Effect.map((customer) => [id, customer.email ?? null] as const),
+            Effect.catchIf(isNotFound("getCustomer"), () =>
+              Effect.succeed([id, undefined] as const)
+            )
+          )
     );
     const reservationOwners = yield* Effect.forEach(
       journal.dotyposReservationIds,
       (id) =>
-        readAccountReservationOwner(datasourceConfig, id).pipe(
+        dependencies.readReservationOwner(datasourceConfig, id).pipe(
           Effect.map((email) => [id, email] as const),
           Effect.catchIf(isNotFound("getReservation"), () =>
             Effect.succeed([id, undefined] as const)

@@ -3,7 +3,10 @@ import {
   prepareWorkspaceE2EAccountLaneReconciliation,
   reconcileWorkspaceE2EAccountLane,
 } from "../account/reconcile";
-import { cleanupCheckoutFlowStates } from "../cleanup";
+import {
+  cleanupPreparedCheckoutFlowStates,
+  prepareCheckoutFlowCleanup,
+} from "../cleanup";
 import { getDatasourceConfig } from "../config";
 import { E2ETelemetryService } from "../services/telemetry";
 import { workspaceE2ECaseIds } from "./case-catalog";
@@ -25,17 +28,22 @@ test("reconcile workspace checkout reservations", async ({
           runContext.runId
         )
       ),
-    readCheckoutFlowStates: () =>
-      readWorkspaceE2ECaseJournals(workspaceE2ECaseIds),
-    reconcile: ({ accountLaneJournal, checkoutFlowStates }) =>
+    readCheckoutCleanup: async () => {
+      const flowStates =
+        await readWorkspaceE2ECaseJournals(workspaceE2ECaseIds);
+      return runEffect(
+        prepareCheckoutFlowCleanup({ datasourceConfig, flowStates })
+      );
+    },
+    reconcile: ({ accountLaneJournal, checkoutCleanup }) =>
       runEffect(
         Effect.gen(function* () {
           const telemetry = yield* E2ETelemetryService;
           return yield* telemetry.tracePhase({
             effect: Effect.gen(function* () {
-              const checkoutError = yield* cleanupCheckoutFlowStates({
+              const checkoutError = yield* cleanupPreparedCheckoutFlowStates({
                 datasourceConfig,
-                flowStates: checkoutFlowStates,
+                prepared: checkoutCleanup,
                 workflowError: undefined,
               });
               yield* reconcileWorkspaceE2EAccountLane(

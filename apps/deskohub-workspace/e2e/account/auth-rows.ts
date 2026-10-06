@@ -35,7 +35,7 @@ export const findAuthUserIdByEmail = (
 
 export const findAuthUserEmailById = (
   accountId: string
-): Effect.Effect<string | undefined, WorkspaceE2EError, E2EDatabase> =>
+): Effect.Effect<string | null | undefined, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
     const rows = yield* runDatabaseOperation(
@@ -45,7 +45,7 @@ export const findAuthUserEmailById = (
         .from(authUser)
         .where(eq(authUser.id, sensitiveDatabaseParameter(accountId)))
     );
-    return rows[0]?.email ?? undefined;
+    return rows[0] ? rows[0].email : undefined;
   });
 
 export const findLinkedDotyposCustomerId = (
