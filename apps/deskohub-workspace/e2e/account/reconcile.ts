@@ -1,16 +1,26 @@
-import type {
-  DotyposCustomerId,
-  DotyposReservationId,
+import {
+  type DotyposCustomerId,
+  type DotyposReservationId,
+  DotyposService,
+  ExternalAPIError,
 } from "@deskohub/dotypos";
 import { Cause, Effect, Exit } from "effect";
 import type { DatasourceConfig } from "../config";
-import type { WorkspaceE2EError } from "../errors";
-import { toWorkspaceE2EError, workspaceE2EError } from "../errors";
+import {
+  toWorkspaceE2EError,
+  WorkspaceE2EError,
+  workspaceE2EError,
+} from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
-import { waitForCancelledDotyposReservations } from "../integrations/dotypos";
+import {
+  getDotyposLayer,
+  waitForCancelledDotyposReservations,
+} from "../integrations/dotypos";
 import { pollUntil } from "../polling";
+import type { WorkspaceE2ERunId } from "../run-identifiers";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
-import { removeSyntheticAuthUser } from "./auth-rows";
+import { findAuthUserEmailById, removeSyntheticAuthUser } from "./auth-rows";
+import { makeWorkspaceE2EAccountRecipientForRunId } from "./config";
 import {
   cancelSyntheticReservation,
   expireSyntheticCustomerProfile,
@@ -21,6 +31,22 @@ import {
   type WorkspaceE2EAccountJournal,
   writeWorkspaceE2EAccountJournal,
 } from "./journal";
+
+type WorkspaceE2EAccountCleanupIds = Pick<
+  WorkspaceE2EAccountJournal,
+  "authUserIds" | "dotyposCustomerIds" | "dotyposReservationIds"
+>;
+
+export type WorkspaceE2EAccountLaneReconciliation =
+  WorkspaceE2EAccountCleanupIds & {
+    readonly journal: WorkspaceE2EAccountJournal;
+  };
+
+/*
+ * The prepared IDs are the currently existing, owner-checked subset. The
+ * original journal remains immutable and is what completion persists.
+ */
+type WorkspaceE2EAccountLaneCandidates = WorkspaceE2EAccountCleanupIds;
 
 const toWorkspaceE2EFailure = (cause: unknown): WorkspaceE2EError =>
   toWorkspaceE2EError("workspace account e2e finalizer step", cause);
@@ -36,21 +62,23 @@ const toWorkspaceE2EFailure = (cause: unknown): WorkspaceE2EError =>
 export const reconcileWorkspaceE2EAccountJournal = ({
   datasourceConfig,
   journal,
+  candidates = journal,
 }: {
   readonly datasourceConfig: DatasourceConfig;
   readonly journal: WorkspaceE2EAccountJournal;
+  readonly candidates?: WorkspaceE2EAccountLaneCandidates;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const failures: WorkspaceE2EError[] = [];
 
     const reservationExit = yield* Effect.exit(
-      reconcileReservations(datasourceConfig, journal)
+      reconcileReservations(datasourceConfig, candidates.dotyposReservationIds)
     );
     if (Exit.isFailure(reservationExit)) {
       failures.push(toWorkspaceE2EFailure(Cause.squash(reservationExit.cause)));
     }
 
-    for (const customerId of journal.dotyposCustomerIds) {
+    for (const customerId of candidates.dotyposCustomerIds) {
       const exit = yield* Effect.exit(
         expireAndConvergeProfile(datasourceConfig, customerId)
       );
@@ -60,7 +88,7 @@ export const reconcileWorkspaceE2EAccountJournal = ({
     }
 
     const authExit = yield* Effect.exit(
-      Effect.forEach(journal.authUserIds, removeSyntheticAuthUser, {
+      Effect.forEach(candidates.authUserIds, removeSyntheticAuthUser, {
         discard: true,
       })
     );
@@ -99,8 +127,86 @@ export const reconcileWorkspaceE2EAccountJournal = ({
  * IDs, even when the lane already finished.
  */
 export const reconcileWorkspaceE2EAccountLane = (
-  datasourceConfig: DatasourceConfig
+  datasourceConfig: DatasourceConfig,
+  prepared: WorkspaceE2EAccountLaneReconciliation | undefined
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    if (!prepared) return;
+    yield* reconcileWorkspaceE2EAccountJournal({
+      datasourceConfig,
+      candidates: prepared,
+      journal: prepared.journal,
+    });
+  });
+
+const accountLaneRecipientLabels = ["main", "accepted-b"] as const;
+
+const readAccountReservationOwner = Effect.fn(
+  "readWorkspaceE2EAccountReservationOwner"
+)(function* (datasourceConfig: DatasourceConfig, id: string) {
+  const { customer } = yield* Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    return yield* dotypos.getReservation(id as DotyposReservationId);
+  }).pipe(
+    Effect.provide(getDotyposLayer(datasourceConfig)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("read synthetic account reservation owner", cause)
+    )
+  );
+  return customer.email ?? undefined;
+});
+
+export const validateWorkspaceE2EAccountLaneJournalOwnership = ({
+  journal,
+  recipientEmails,
+  authUserOwners,
+  customerOwners,
+  reservationOwners,
+}: {
+  readonly journal: WorkspaceE2EAccountJournal;
+  readonly recipientEmails: ReadonlySet<string>;
+  readonly authUserOwners: ReadonlyMap<string, string | undefined>;
+  readonly customerOwners: ReadonlyMap<string, string | undefined>;
+  readonly reservationOwners: ReadonlyMap<string, string | undefined>;
+}): WorkspaceE2EAccountLaneReconciliation => {
+  const validateCandidates = (
+    ids: readonly string[],
+    owners: ReadonlyMap<string, string | undefined>
+  ) =>
+    ids.flatMap((id) => {
+      if (!owners.has(id)) {
+        throw new Error("Workspace account e2e ownership preflight incomplete");
+      }
+      const email = owners.get(id);
+      if (email === undefined) return [];
+      if (!recipientEmails.has(email)) {
+        throw new Error("Workspace account e2e journal ownership mismatch");
+      }
+      return [id];
+    });
+
+  return {
+    journal,
+    authUserIds: validateCandidates(journal.authUserIds, authUserOwners),
+    dotyposCustomerIds: validateCandidates(
+      journal.dotyposCustomerIds,
+      customerOwners
+    ),
+    dotyposReservationIds: validateCandidates(
+      journal.dotyposReservationIds,
+      reservationOwners
+    ),
+  };
+};
+
+export const prepareWorkspaceE2EAccountLaneReconciliation = (
+  datasourceConfig: DatasourceConfig,
+  runId: WorkspaceE2ERunId
+): Effect.Effect<
+  WorkspaceE2EAccountLaneReconciliation | undefined,
+  WorkspaceE2EError,
+  E2EDatabase
+> =>
   Effect.gen(function* () {
     const journal = yield* Effect.tryPromise({
       catch: (cause) =>
@@ -110,31 +216,89 @@ export const reconcileWorkspaceE2EAccountLane = (
         }),
       try: () => readWorkspaceE2EAccountJournal(),
     });
-    if (!journal) return;
-    yield* reconcileWorkspaceE2EAccountJournal({
-      datasourceConfig,
-      journal,
-    });
+    if (!journal) return undefined;
+
+    const recipientEmails = new Set(
+      accountLaneRecipientLabels.map((label) =>
+        makeWorkspaceE2EAccountRecipientForRunId(runId, label)
+      )
+    );
+
+    const authUserOwners = yield* Effect.forEach(journal.authUserIds, (id) =>
+      findAuthUserEmailById(id).pipe(
+        Effect.map((email) => [id, email] as const)
+      )
+    );
+    const customerOwners = yield* Effect.forEach(
+      journal.dotyposCustomerIds,
+      (id) =>
+        readSyntheticCustomerProfile(
+          datasourceConfig,
+          id as DotyposCustomerId
+        ).pipe(
+          Effect.map((customer) => [id, customer.email ?? undefined] as const),
+          Effect.catchIf(isNotFound("getCustomer"), () =>
+            Effect.succeed([id, undefined] as const)
+          )
+        )
+    );
+    const reservationOwners = yield* Effect.forEach(
+      journal.dotyposReservationIds,
+      (id) =>
+        readAccountReservationOwner(datasourceConfig, id).pipe(
+          Effect.map((email) => [id, email] as const),
+          Effect.catchIf(isNotFound("getReservation"), () =>
+            Effect.succeed([id, undefined] as const)
+          )
+        )
+    );
+    try {
+      return validateWorkspaceE2EAccountLaneJournalOwnership({
+        journal,
+        recipientEmails,
+        authUserOwners: new Map(authUserOwners),
+        customerOwners: new Map(customerOwners),
+        reservationOwners: new Map(reservationOwners),
+      });
+    } catch (cause) {
+      return yield* workspaceE2EError(
+        "Workspace account e2e journal ownership validation failed",
+        { cause, operation: "validate workspace account e2e journal ownership" }
+      );
+    }
   });
+
+const isNotFound =
+  (operation: string) =>
+  (cause: unknown): boolean => {
+    if (cause instanceof WorkspaceE2EError) {
+      return isNotFound(operation)(cause.cause);
+    }
+    return (
+      cause instanceof ExternalAPIError &&
+      cause.operation === operation &&
+      cause.statusCode === 404
+    );
+  };
 
 const reconcileReservations = (
   datasourceConfig: DatasourceConfig,
-  journal: WorkspaceE2EAccountJournal
+  reservationIds: readonly string[]
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    if (journal.dotyposReservationIds.length === 0) return;
-    const reservationIds = journal.dotyposReservationIds.map(
+    if (reservationIds.length === 0) return;
+    const dotyposReservationIds = reservationIds.map(
       (value) => value as DotyposReservationId
     );
     yield* Effect.forEach(
-      reservationIds,
+      dotyposReservationIds,
       (reservationId) =>
         cancelSyntheticReservation(datasourceConfig, reservationId),
       { concurrency: "unbounded", discard: true }
     );
     yield* waitForCancelledDotyposReservations(
       datasourceConfig,
-      reservationIds,
+      dotyposReservationIds,
       {
         endDate: new Date(Date.now() + 400 * 24 * 60 * 60 * 1000),
         startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),

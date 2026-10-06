@@ -83,7 +83,10 @@ type ProfileNavigationFakePage = {
 
 type PersistedRestoreFailureStage =
   | "document-reload"
-  | "profile-navigation"
+  | "profile-handler-wait"
+  | "profile-native-click"
+  | "profile-selected-landmark"
+  | "profile-form-visibility"
   | "first-name-restore"
   | "last-name-restore"
   | "phone-restore"
@@ -142,7 +145,12 @@ const makeProfileNavigationFakePage = (
   let restoredBillingNavigationCount = 0;
 
   const isProfileFormVisible = () =>
-    state.section === "profile" || state.section === "billing";
+    (state.section === "profile" || state.section === "billing") &&
+    !(
+      documentReloaded &&
+      failurePhase === "profile-form-visibility" &&
+      state.section === "profile"
+    );
   const isVisible = (name: string) => {
     if (name === "#account-profile-form") return isProfileFormVisible();
     if (name === accountSectionLandmarks.profile)
@@ -284,7 +292,7 @@ const makeProfileNavigationFakePage = (
           if (documentReloaded && name === "section:profile") {
             restoredProfileNavigationCount += 1;
             if (
-              (failurePhase === "profile-navigation" &&
+              (failurePhase === "profile-native-click" &&
                 restoredProfileNavigationCount === 1) ||
               (failurePhase === "return-profile-navigation" &&
                 restoredProfileNavigationCount === 2)
@@ -300,6 +308,14 @@ const makeProfileNavigationFakePage = (
             ) {
               throw new Error(privateFailureDetails);
             }
+          }
+          if (
+            documentReloaded &&
+            name === "section:profile" &&
+            failurePhase === "profile-selected-landmark" &&
+            restoredProfileNavigationCount === 1
+          ) {
+            return;
           }
           state.section = name.slice(
             "section:".length
@@ -448,6 +464,14 @@ const makeProfileNavigationFakePage = (
         argument !== null &&
         "sectionButton" in argument
       ) {
+        if (
+          documentReloaded &&
+          failurePhase === "profile-handler-wait" &&
+          (argument as { readonly sectionButton: string }).sectionButton ===
+            "section:profile"
+        ) {
+          throw new Error(privateFailureDetails);
+        }
         actions.push(
           `handler-ready:${String(
             (argument as { readonly sectionButton: unknown }).sectionButton
@@ -652,8 +676,20 @@ const persistedRestoreFailureStages = [
     diagnosticCode: "account_profile_persisted_document_reload_failed",
   },
   {
-    phase: "profile-navigation",
-    diagnosticCode: "account_profile_persisted_profile_navigation_failed",
+    phase: "profile-handler-wait",
+    diagnosticCode: "account_profile_persisted_profile_handler_wait_failed",
+  },
+  {
+    phase: "profile-native-click",
+    diagnosticCode: "account_profile_persisted_profile_click_failed",
+  },
+  {
+    phase: "profile-selected-landmark",
+    diagnosticCode: "account_profile_persisted_profile_landmark_wait_failed",
+  },
+  {
+    phase: "profile-form-visibility",
+    diagnosticCode: "account_profile_persisted_profile_form_visibility_failed",
   },
   {
     phase: "first-name-restore",

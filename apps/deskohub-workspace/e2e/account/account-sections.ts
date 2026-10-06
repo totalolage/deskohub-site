@@ -49,6 +49,11 @@ export type AccountSectionPage = Pick<
   "getByRole" | "viewportSize" | "waitForFunction"
 >;
 
+export type AccountSectionSelectionStage =
+  | "button-handler-wait"
+  | "native-button-click"
+  | "selected-landmark-wait";
+
 const accountSectionIsReady = ({
   desktop,
   landmark,
@@ -197,7 +202,8 @@ const readDesktopMode = (
 
 export const selectAccountSection = async (
   page: AccountSectionPage,
-  section: AccountSection
+  section: AccountSection,
+  onStage?: (stage: AccountSectionSelectionStage) => void
 ): Promise<void> => {
   const timeout = workspaceE2ETimeouts.browserAction;
   const label = accountSectionLabels[section];
@@ -209,10 +215,13 @@ export const selectAccountSection = async (
   const desktop =
     viewport === null ? null : viewport.width >= desktopBreakpoint;
 
+  onStage?.("button-handler-wait");
   await waitForAccountSectionButtonHandler(page, sectionButton);
 
+  onStage?.("native-button-click");
   await sectionButton.click({ timeout });
 
+  onStage?.("selected-landmark-wait");
   await page.waitForFunction(
     accountSectionIsReady,
     makeAccountSectionWaitInput(section, desktop),

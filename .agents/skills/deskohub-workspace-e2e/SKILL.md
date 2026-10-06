@@ -164,7 +164,12 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   locale/product/time fallback for states whose exact finalizer did not finish,
   after every dependent project has stopped. Keep Playwright's outer watchdog
   longer than the longest semantic case plus artifact and cleanup budgets so
-  Effect finalizers win every timeout race.
+  Effect finalizers win every timeout race. A fail-fast suite can exit before
+  Playwright schedules its teardown project; after a nonzero suite exit, the
+  existing runner must invoke the cleanup-only project once with `--no-deps`
+  and a fresh output directory, while preserving the original run context and
+  cleanup journals. Keep the suite's nonzero exit even if that fallback cleanup
+  passes, and never rerun the ordinary cases as part of cleanup recovery.
 - Keep interval-based availability pending while a user is rapidly editing its inputs, and coalesce intermediate queries before they reach the provider-backed route. Parallel meeting-room browsers can otherwise multiply a date, time, and duration change into enough overlapping Dotypos and Calendar inventory loads to strand the final availability request. Preserve the immediate initial query and the final selected interval rather than serializing whole E2E cases or weakening the readiness assertion.
 - Seed source-neutral discount definitions and codes only in the exact preview database before Playwright admits availability preparation or cases. Calendar-backed availability resolves the long-lived event's stored discount definition, so it reads those seeded rows even though provider discovery itself is read-only. After the seed project commits, let Playwright run cowork, meeting-room, and office availability tests in parallel while provider preparation runs in its sibling project. Keep the dedicated long-lived Calendar event immutable. When a pricing-change case must mutate its stored definition, isolate it on a product identity unused by happy paths, keep it in the Playwright project that depends on every independent-case project, serialize the related mutations inside that case, and restore the target with an interruption-safe finalizer. Calendar discovery caches resolved definitions by date, so a concurrent request for another product can otherwise preserve the transient target state. Never mutate a target consumed by another parallel case.
 - Lease one partition of the fixed 14-to-90-day candidate range before

@@ -486,9 +486,18 @@ test("waits for the rendered section button handler before clicking it", async (
     buttonHandlerAttached = true;
   };
 
-  await selectAccountSection(page, "billing");
+  await selectAccountSection(page, "billing", (stage) =>
+    calls.push(`stage:${stage}`)
+  );
 
-  expect(calls).toEqual(["wait:button-handler", "click", "wait:section-ready"]);
+  expect(calls).toEqual([
+    "stage:button-handler-wait",
+    "wait:button-handler",
+    "stage:native-button-click",
+    "click",
+    "stage:selected-landmark-wait",
+    "wait:section-ready",
+  ]);
   expect(billingButton.getAttribute("aria-current")).toBe("page");
 });
 

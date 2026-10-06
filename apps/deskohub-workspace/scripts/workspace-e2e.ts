@@ -1,8 +1,10 @@
 import "../shared/polyfills/temporal";
 
+import { randomUUID } from "node:crypto";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { makeWorkspaceE2EEnvironment } from "../e2e/e2e-env";
 import { formatWorkspaceE2EFailure, workspaceE2EError } from "../e2e/errors";
+import { runWorkspacePlaywrightWithFailureCleanup } from "../e2e/playwright-runner";
 import { workspaceDir } from "../e2e/runtime";
 import {
   E2ERunContextService,
@@ -30,22 +32,29 @@ const runPlaywright = Effect.gen(function* () {
   yield* e2eTelemetry.traceRun(
     Effect.gen(function* () {
       const span = yield* Effect.currentSpan;
-      const exitCode = yield* Effect.tryPromise({
+      const result = yield* Effect.tryPromise({
         catch: (cause) =>
           workspaceE2EError("Could not launch Playwright checkout E2E", {
             cause,
             operation: "launch Playwright checkout E2E",
           }),
-        try: async () => {
-          const child = Bun.spawn(
-            [
+        try: () =>
+          runWorkspacePlaywrightWithFailureCleanup(async (invocation) => {
+            const args = [
               "bunx",
               "playwright",
               "test",
               "--config",
               "playwright.e2e.config.ts",
-            ],
-            {
+              ...(invocation === "failure-cleanup"
+                ? [
+                    "--project=checkout-cleanup",
+                    "--no-deps",
+                    `--output=e2e-artifacts/checkout-cleanup-recovery-${randomUUID()}`,
+                  ]
+                : []),
+            ];
+            const child = Bun.spawn(args, {
               cwd: workspaceDir,
               env: {
                 ...playwrightEnvironment,
@@ -55,14 +64,25 @@ const runPlaywright = Effect.gen(function* () {
               stderr: "inherit",
               stdin: "inherit",
               stdout: "inherit",
-            }
-          );
-          return child.exited;
-        },
+            });
+            return child.exited;
+          }),
       });
-      if (exitCode !== 0) {
+      if (result.cleanupCouldNotStart) {
+        process.stderr.write(
+          "Workspace E2E cleanup-only project could not start after the main suite failed.\n"
+        );
+      } else if (
+        result.cleanupExitCode !== undefined &&
+        result.cleanupExitCode !== 0
+      ) {
+        process.stderr.write(
+          `Workspace E2E cleanup-only project exited with ${result.cleanupExitCode} after the main suite failed.\n`
+        );
+      }
+      if (result.suiteExitCode !== 0) {
         return yield* workspaceE2EError(
-          `Playwright checkout E2E exited with ${exitCode}`,
+          `Playwright checkout E2E exited with ${result.suiteExitCode}`,
           { operation: "run Playwright checkout E2E" }
         );
       }
