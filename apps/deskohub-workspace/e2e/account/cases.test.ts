@@ -182,6 +182,7 @@ class FakeAccountExternalState {
   readonly formSubmitWaits: Array<{
     readonly fieldSelectors: readonly string[];
     readonly formSelector: string;
+    readonly requiresReadyAttribute: boolean;
   }> = [];
   readonly createdAuthIds: string[] = [];
   readonly deletionObservations: DeletionObservation[] = [];
@@ -897,11 +898,18 @@ class FakeBrowser {
 
   waitForFormSubmitHandler(
     selector: string,
-    fieldSelectors: readonly string[]
+    fieldSelectors: readonly string[],
+    options?: {
+      readonly requiredReadyAttribute?: {
+        readonly name: string;
+        readonly value: string;
+      };
+    }
   ) {
     this.external.formSubmitWaits.push({
       fieldSelectors: [...fieldSelectors],
       formSelector: selector,
+      requiresReadyAttribute: options?.requiredReadyAttribute !== undefined,
     });
     if (selector !== signInFormSelector || !this.formReady) {
       throw new Error("the sign-in form submit handler is not ready");
@@ -1047,10 +1055,20 @@ mock.module("../browser", () => ({
     _run: Runner,
     _session: string,
     selector: string,
-    fieldSelectors: readonly string[]
+    fieldSelectors: readonly string[],
+    options?: {
+      readonly requiredReadyAttribute?: {
+        readonly name: string;
+        readonly value: string;
+      };
+    }
   ) =>
     Effect.sync(() =>
-      requireBrowser().waitForFormSubmitHandler(selector, fieldSelectors)
+      requireBrowser().waitForFormSubmitHandler(
+        selector,
+        fieldSelectors,
+        options
+      )
     ),
   waitForBrowserText: ({
     matches,
@@ -1278,14 +1296,17 @@ test("executes the selected account lifecycle cases with a fresh factory per cas
         {
           fieldSelectors: [signInEmailSelector],
           formSelector: signInFormSelector,
+          requiresReadyAttribute: false,
         },
         {
           fieldSelectors: [signInEmailSelector],
           formSelector: signInFormSelector,
+          requiresReadyAttribute: false,
         },
         {
           fieldSelectors: [signInEmailSelector],
           formSelector: signInFormSelector,
+          requiresReadyAttribute: false,
         },
       ]);
     }

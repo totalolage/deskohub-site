@@ -233,10 +233,21 @@ export const waitForBrowserReactFormSubmit = (
   session: string,
   selector: string,
   visibleFieldSelectors: readonly string[],
-  options: { readonly timeoutMs?: number } = {}
+  options: {
+    readonly requiredReadyAttribute?: {
+      readonly name: string;
+      readonly value: string;
+    };
+    readonly timeoutMs?: number;
+  } = {}
 ): Effect.Effect<void, WorkspaceE2EError> => {
   const selectorLiteral = JSON.stringify(selector);
   const fieldSelectorsLiteral = JSON.stringify(visibleFieldSelectors);
+  const requiredReadyAttribute = options.requiredReadyAttribute;
+  const readyAttributeCheck =
+    requiredReadyAttribute === undefined
+      ? "true"
+      : `form.getAttribute(${JSON.stringify(requiredReadyAttribute.name)}) === ${JSON.stringify(requiredReadyAttribute.value)}`;
   const handlersCheck = `(() => {
     const form = document.querySelector(${selectorLiteral});
     const reactPropsKey = form === null
@@ -245,6 +256,7 @@ export const waitForBrowserReactFormSubmit = (
     const reactProps = reactPropsKey === undefined ? undefined : form[reactPropsKey];
     const formHasSubmitHandler = typeof reactProps?.onSubmit === "function";
     if (!formHasSubmitHandler) return false;
+    if (!(${readyAttributeCheck})) return false;
     const fieldSelectors = ${fieldSelectorsLiteral};
     if (fieldSelectors.length === 0) return false;
     return fieldSelectors.every((fieldSelector) => {

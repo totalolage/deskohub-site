@@ -92,6 +92,7 @@ export function ContactFormClient({
   const [clientValidationMessage, setClientValidationMessage] = useState<
     string | undefined
   >();
+  const [isRHFReady, setIsRHFReady] = useState(false);
 
   useEffect(() => {
     if (state.status === "success") {
@@ -101,6 +102,7 @@ export function ContactFormClient({
     } else if (state.status === "idle") {
       reset({ ...contactDefaultValues, ...fieldValues });
     }
+    setIsRHFReady(true);
   }, [fieldValues, reset, state.status, state.values]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -143,6 +145,7 @@ export function ContactFormClient({
         <form
           action={nativeFormAction}
           className="space-y-5"
+          data-rhf-ready={isRHFReady ? "true" : undefined}
           method="post"
           noValidate
           onSubmit={handleSubmit}

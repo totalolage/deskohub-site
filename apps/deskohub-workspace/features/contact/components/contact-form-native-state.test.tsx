@@ -10,6 +10,7 @@ import {
 } from "bun:test";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { ContactFormState } from "@/features/contact/actions/contact";
 import type { submitContactForm } from "@/features/contact/actions/submit-contact";
 import { m } from "@/features/i18n";
@@ -74,6 +75,32 @@ describe("ContactForm native action state", () => {
   });
   afterEach(cleanup);
   afterAll(unregisterWorkspaceComponentTestEnv);
+
+  test("marks RHF ready after reset while keeping server markup on native POST", async () => {
+    const { ContactFormClient } = await import("./contact-form-client");
+    const props = {
+      initialValues,
+      locale: "en-US" as const,
+      submitAction: submitContactFormMock as unknown as typeof submitContactForm,
+    };
+    const serverMarkup = renderToStaticMarkup(
+      <ContactFormClient {...props} />
+    );
+
+    expect(serverMarkup).not.toContain('data-rhf-ready="true"');
+    expect(serverMarkup).toContain("<form");
+    expect(serverMarkup.toLowerCase()).toContain('method="post"');
+    expect(serverMarkup).toContain("action=");
+
+    const view = render(<ContactFormClient {...props} />);
+    const form = view.container.querySelector("form");
+    if (!form) throw new Error("Contact form did not render.");
+    await waitFor(() =>
+      expect(form.getAttribute("data-rhf-ready")).toBe("true")
+    );
+    expect(form.getAttribute("method")).toBe("post");
+    expect(form.getAttribute("action")).toBeTruthy();
+  });
 
   test("resets fields and shows success after a native Server Action result", async () => {
     const locale = "en-US";

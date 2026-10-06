@@ -48,6 +48,9 @@ test("waits for the hydrated contact submit handler before native activation", a
     ?.args.slice(2);
   expect(waitArgs?.slice(0, 2)).toEqual(["wait", "--fn"]);
   expect(waitArgs?.[2]).toContain("#contact-form form");
+  expect(waitArgs?.[2]).toContain(
+    'form.getAttribute("data-rhf-ready") === "true"'
+  );
   expect(waitArgs?.[2]).toContain("__reactProps$");
   expect(waitArgs?.[2]).toContain('typeof reactProps?.onSubmit === "function"');
   expect(waitArgs?.[2]).not.toContain(

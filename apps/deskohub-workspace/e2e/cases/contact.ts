@@ -59,7 +59,13 @@ export const assertContactForm = ({
           "#contact-email",
           "#contact-message",
         ],
-        { timeoutMs: config.timeouts.uiTransition }
+        {
+          requiredReadyAttribute: {
+            name: "data-rhf-ready",
+            value: "true",
+          },
+          timeoutMs: config.timeouts.uiTransition,
+        }
       ),
       id: "wait-for-contact-form-hydration",
       timeoutMs: config.timeouts.uiTransition,
