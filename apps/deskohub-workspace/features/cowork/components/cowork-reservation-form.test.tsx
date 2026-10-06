@@ -48,6 +48,10 @@ import {
 
 registerWorkspaceComponentTestEnv();
 
+mock.module("next/image", () => ({
+  default: () => null,
+}));
+
 const execute = mock(() => undefined);
 const getAdvertisedPrices = mock(
   (requests: ReadonlyArray<AdvertisedPriceRequest>) =>
@@ -542,6 +546,7 @@ describe("CoworkReservationForm advertised pricing", () => {
       '[data-reservation-type-price="open-space"]'
     );
     expect(openSpacePrice?.className).toContain("flex-col");
+    expect(openSpacePrice?.textContent).toContain("/ day");
     expect(openSpacePrice?.querySelector("del")?.className).toContain(
       "text-navy-blue/45"
     );
@@ -644,7 +649,6 @@ describe("CoworkReservationForm advertised pricing", () => {
       const option = view.container.querySelector(
         `[data-reservation-type-option="${tier}"]`
       );
-      expect(option?.className).toContain("lg:row-span-4");
       expect(option?.className).not.toContain("glow-border");
       expect(
         option?.querySelector("[data-reservation-type-discount-banner]")
@@ -1344,7 +1348,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     await act(async () => {});
   });
 
-  test("renders the two cowork offers as equal half-width desktop columns with no empty third column", () => {
+  test("renders cowork offers in the illustrated stacked selection presentation", () => {
     workspaceUseSearchParams.mockReturnValue(
       new URLSearchParams("entryTier=open-space")
     );
@@ -1359,24 +1363,21 @@ describe("CoworkReservationForm advertised pricing", () => {
     const offerGrid = offers[0]?.parentElement;
     expect(offerGrid).not.toBeNull();
 
-    // Effective grid composition: the shared lg:grid-cols-3 default is
-    // overridden by the cowork-only lg:grid-cols-2, so only two column
-    // tracks exist and neither is an empty third one.
-    expect(offerGrid?.classList.contains("lg:grid-cols-2")).toBe(true);
+    expect(offerGrid?.getAttribute("data-reservation-type-presentation")).toBe(
+      "illustrated"
+    );
+    expect(offerGrid?.classList.contains("grid")).toBe(true);
+    expect(offerGrid?.classList.contains("gap-4")).toBe(true);
     expect(offerGrid?.classList.contains("lg:grid-cols-3")).toBe(false);
-    expect(offerGrid?.classList.contains("grid-cols-3")).toBe(false);
 
-    // Both cards span the full four-row subgrid, so the two cards sit in one
-    // row with equal width class composition and no per-card width overrides.
     for (const offer of offers) {
-      expect(offer.classList.contains("lg:row-span-4")).toBe(true);
-      expect(offer.classList.contains("lg:grid-rows-subgrid")).toBe(true);
-      const widthOverrides = String(offer.className)
-        .split(/\s+/)
-        .filter((className) =>
-          /(?:^|:)(?:col-start|col-span|w-)/.test(className)
-        );
-      expect(widthOverrides).toEqual([]);
+      expect(offer.querySelector('input[type="radio"]')).not.toBeNull();
+      expect(
+        offer.querySelector("[data-reservation-type-description]")
+      ).not.toBeNull();
+      expect(
+        offer.querySelector("[data-reservation-type-perks]")
+      ).not.toBeNull();
     }
     view.unmount();
   });
@@ -1393,15 +1394,14 @@ describe("CoworkReservationForm advertised pricing", () => {
     )?.parentElement;
     expect(offerGrid).not.toBeNull();
 
-    // 320px and 768px stay a single stacked column: only lg: (1024px and up)
-    // may open a second track, so nothing forces a side-by-side at small
-    // viewports.
+    // Offers remain stacked at the group level across breakpoints. The card
+    // itself owns the responsive illustration and copy layout.
     expect(offerGrid?.classList.contains("grid")).toBe(true);
-    expect(offerGrid?.classList.contains("space-y-3")).toBe(true);
+    expect(offerGrid?.classList.contains("gap-4")).toBe(true);
     expect(offerGrid?.classList.contains("grid-cols-2")).toBe(false);
     expect(offerGrid?.classList.contains("sm:grid-cols-2")).toBe(false);
     expect(offerGrid?.classList.contains("md:grid-cols-2")).toBe(false);
-    expect(offerGrid?.classList.contains("lg:grid-cols-2")).toBe(true);
+    expect(offerGrid?.classList.contains("lg:grid-cols-2")).toBe(false);
     view.unmount();
   });
 

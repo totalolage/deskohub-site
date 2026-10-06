@@ -2,7 +2,8 @@
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Match, Schema } from "effect";
-import { AlertTriangle, Coffee, Monitor } from "lucide-react";
+import { AlertTriangle, Clock3, Coffee, Monitor, Wifi } from "lucide-react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useMemo, useRef } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
@@ -31,8 +32,8 @@ import {
   workspaceProductTierMessages,
 } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
-import officeChairArtwork from "@/features/cowork/assets/office-chair.svg";
-import roundTableArtwork from "@/features/cowork/assets/round-table.svg";
+import openSpaceArtwork from "@/features/cowork/assets/open-space.png";
+import reservedDeskArtwork from "@/features/cowork/assets/reserved-desk.png";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
@@ -643,18 +644,18 @@ export function CoworkReservationForm({
             <FormControl>
               <ReservationTypeInput
                 aria-required="true"
-                className="lg:grid-cols-2"
                 idPrefix="reservation-entry-tier"
                 inputRef={field.ref}
                 name={field.name}
                 onBlur={field.onBlur}
                 onChange={field.onChange}
+                presentation="illustrated"
                 value={field.value}
               >
                 {tierOptions.map((option) => {
                   const artworkSource = {
-                    "open-space": roundTableArtwork.src,
-                    "reserved-desk": officeChairArtwork.src,
+                    "open-space": openSpaceArtwork,
+                    "reserved-desk": reservedDeskArtwork,
                   }[option.value];
                   const optionTitle = getWorkspaceProductMessage(
                     option.title,
@@ -675,7 +676,6 @@ export function CoworkReservationForm({
                   return (
                     <ReservationTypeOption
                       key={option.value}
-                      className="relative isolate"
                       disabled={isUnavailable}
                       price={
                         advertisedProductItem ? (
@@ -687,10 +687,14 @@ export function CoworkReservationForm({
                                 ? advertisedProductItem.originalAmount
                                 : undefined
                             }
-                            suffix={m.coworkReservationPricePeriodSuffix(
-                              {},
-                              { locale }
-                            )}
+                            suffix={
+                              <span className="ml-1 text-sm font-normal normal-case tracking-normal text-navy-blue/60 sm:text-base">
+                                {m.coworkReservationPricePeriodSuffix(
+                                  {},
+                                  { locale }
+                                )}
+                              </span>
+                            }
                           />
                         ) : (
                           <ReservationSkeletonBlock className="h-4 w-24 bg-aquamarine-green/15" />
@@ -700,21 +704,14 @@ export function CoworkReservationForm({
                       title={optionTitle}
                       value={option.value}
                     >
-                      <span
+                      <Image
                         aria-hidden="true"
-                        className="pointer-events-none absolute inset-4 z-[-1] overflow-clip rounded-2xl"
-                        style={{
-                          backgroundColor: "var(--brand-navy-blue)",
-                          opacity: 0.07,
-                          maskImage: `url(${artworkSource})`,
-                          maskPosition: "center",
-                          maskRepeat: "no-repeat",
-                          maskSize: "contain",
-                          WebkitMaskImage: `url(${artworkSource})`,
-                          WebkitMaskPosition: "center",
-                          WebkitMaskRepeat: "no-repeat",
-                          WebkitMaskSize: "contain",
-                        }}
+                        alt=""
+                        className="pointer-events-none relative z-[1] col-start-2 row-start-3 h-auto w-[180%] max-w-none self-start justify-self-end object-contain object-right-top sm:absolute sm:right-0 sm:bottom-0 sm:top-auto sm:col-auto sm:row-auto sm:w-[74%] sm:object-right-bottom"
+                        height={941}
+                        sizes="(min-width: 640px) 560px, 240px"
+                        src={artworkSource}
+                        width={1672}
                       />
                       <CoworkTierDescription
                         locale={locale}
@@ -801,7 +798,7 @@ function CoworkTierDescription({
 }) {
   return (
     <div
-      className="mb-3 text-sm leading-5 text-navy-blue/62"
+      className="relative z-10 col-start-1 row-start-3 mb-3 text-base leading-6 text-navy-blue/70 sm:mb-5 sm:text-lg sm:leading-7"
       data-reservation-type-description={tier}
     >
       {getWorkspaceProductMessage(
@@ -821,31 +818,39 @@ function CoworkTierPerks({
 }) {
   const content: WorkspaceProductTierCardMessages =
     workspaceProductTierCardMessages[tier];
+  const perkIcons = {
+    "open-space": [Wifi],
+    "reserved-desk": [Clock3, Coffee, Monitor],
+  }[tier];
 
   return (
     <div
-      className="space-y-1 pb-4 text-sm leading-5 text-navy-blue/62"
+      className="relative z-10 col-span-2 row-start-4 pb-1 text-base leading-6 text-navy-blue/70 sm:col-span-1 sm:col-start-1"
       data-reservation-type-perks={tier}
     >
-      <span className="block font-semibold leading-5 text-navy-blue/72">
+      <span className="mb-2 block text-[0.7rem] font-semibold uppercase leading-4 tracking-[0.2em] text-navy-blue/75 sm:mb-3">
         {getWorkspaceProductMessage(content.perksLabel, locale)}
       </span>
-      <ul className="space-y-0.5">
-        {content.perks.map((perk) => {
+      <ul className="space-y-2">
+        {content.perks.map((perk, index) => {
           const text = getWorkspaceProductMessage(perk.message, locale);
+          const PerkIcon = perkIcons[index];
 
           return (
             <li
               key={`${perk.marker ?? "bullet"}-${text}`}
               className={cn(
-                "flex gap-1.5 leading-5",
+                "flex items-start gap-3 leading-5 sm:leading-6",
                 perk.highlighted && "text-burned-orange"
               )}
             >
-              <span aria-hidden="true" className="w-3 shrink-0 text-center">
-                {perk.marker === "plus" ? "+" : "\u2022"}
+              <span
+                aria-hidden="true"
+                className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy-blue/7 text-navy-blue"
+              >
+                {PerkIcon && <PerkIcon className="h-4 w-4" focusable="false" />}
               </span>
-              <span>{text}</span>
+              <span className="pt-1">{text}</span>
             </li>
           );
         })}
