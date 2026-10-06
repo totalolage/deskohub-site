@@ -566,6 +566,12 @@ jobs:
       - name: Install repository dependencies
         run: bun install --frozen-lockfile
 
+      - name: Generate cleanup-only Playwright prerequisites
+        run: |
+          set -euo pipefail
+          bun turbo run i18n:compile --filter=deskohub-workspace
+          bun turbo run generate --filter=@deskohub/igloohome
+
       - name: Verify hosted browser runtime
         run: |
           set -euo pipefail
