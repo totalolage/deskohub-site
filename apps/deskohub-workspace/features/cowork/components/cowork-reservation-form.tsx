@@ -31,6 +31,8 @@ import {
   workspaceProductTierMessages,
 } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import officeChairArtwork from "@/features/cowork/assets/office-chair.svg";
+import roundTableArtwork from "@/features/cowork/assets/round-table.svg";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
@@ -650,6 +652,10 @@ export function CoworkReservationForm({
                 value={field.value}
               >
                 {tierOptions.map((option) => {
+                  const artworkSource = {
+                    "open-space": roundTableArtwork.src,
+                    "reserved-desk": officeChairArtwork.src,
+                  }[option.value];
                   const optionTitle = getWorkspaceProductMessage(
                     option.title,
                     locale
@@ -669,6 +675,7 @@ export function CoworkReservationForm({
                   return (
                     <ReservationTypeOption
                       key={option.value}
+                      className="relative isolate"
                       disabled={isUnavailable}
                       price={
                         advertisedProductItem ? (
@@ -693,6 +700,21 @@ export function CoworkReservationForm({
                       title={optionTitle}
                       value={option.value}
                     >
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-4 z-[-1] overflow-clip rounded-2xl opacity-10"
+                        style={{
+                          backgroundColor: "var(--brand-navy-blue)",
+                          maskImage: `url(${artworkSource})`,
+                          maskPosition: "center",
+                          maskRepeat: "no-repeat",
+                          maskSize: "contain",
+                          WebkitMaskImage: `url(${artworkSource})`,
+                          WebkitMaskPosition: "center",
+                          WebkitMaskRepeat: "no-repeat",
+                          WebkitMaskSize: "contain",
+                        }}
+                      />
                       <CoworkTierDescription
                         locale={locale}
                         tier={option.value}
