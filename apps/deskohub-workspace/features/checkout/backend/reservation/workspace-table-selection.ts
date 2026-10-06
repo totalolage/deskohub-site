@@ -195,7 +195,11 @@ export const selectWorkspaceTableFromCandidates = (
   allTables: readonly DotyposTable[],
   occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
   seats = workspaceBookingSeatCount,
-  requireEmpty = false
+  requireEmpty = false,
+  rankingOccupancyByTableId: ReadonlyMap<
+    DotyposTableId,
+    number
+  > = occupancyByTableId
 ) =>
   decodeWorkspaceTableCandidates(candidates).pipe(
     Effect.map((decodedCandidates) =>
@@ -203,6 +207,7 @@ export const selectWorkspaceTableFromCandidates = (
         decodedCandidates,
         allTables,
         occupancyByTableId,
+        rankingOccupancyByTableId,
         seats,
         requireEmpty
       )
@@ -229,6 +234,7 @@ const selectDecodedWorkspaceTableFromCandidates = (
   candidates: readonly WorkspaceTableCandidate[],
   allTables: readonly DotyposTable[],
   occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
+  rankingOccupancyByTableId: ReadonlyMap<DotyposTableId, number>,
   seats: number,
   requireEmpty: boolean
 ) => {
@@ -255,7 +261,7 @@ const selectDecodedWorkspaceTableFromCandidates = (
       table,
       scoringTablesByRoom.get(getWorkspaceTableRoomKey(table)) ?? [],
       maxDistanceByRoom.get(getWorkspaceTableRoomKey(table)) ?? 0,
-      occupancyByTableId
+      rankingOccupancyByTableId
     );
     const scoreComparison = score - selectedScore;
 

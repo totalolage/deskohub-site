@@ -325,7 +325,7 @@
   "reservationReservedDeskBulletDesk": "Vyhrazené místo",
   "reservationReservedDeskPerkAccess": "24/7 přístup v den tvé rezervace",
   "reservationReservedDeskPerkCoffee": "Káva v ceně",
-  "reservationReservedDeskPerkMonitor": "Volitelná stanice s monitory",
+  "reservationReservedDeskPerkMonitor": "Možnost přidat monitory a dock",
   "reservationWorkstationLabel": "Pracovní stanice s monitory",
   "reservationWorkstationToggleLabel": "Přidat pracovní stanici s monitory",
   "reservationWorkstationRequiredTooltipContent": "Všechna místa bez pracovní stanice jsou pro toto datum plně obsazená. Pracovní stanice je povinná.",

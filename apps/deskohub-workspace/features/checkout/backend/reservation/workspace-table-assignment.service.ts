@@ -37,6 +37,7 @@ import {
 } from "./workspace-table-occupancy";
 import {
   getWorkspaceTableCandidatesByPredicate,
+  getWorkspaceTableSeatCapacity,
   isWorkspaceCoworkTableCandidate,
   selectWorkspaceTableFromCandidates,
   workspaceCoworkOpenSpaceTableTag,
@@ -57,6 +58,7 @@ export type WorkspaceTableAssignment = {
   readonly requiredTags: readonly string[];
   readonly isCandidateTable: (tableTags: ReadonlySet<string>) => boolean;
   readonly requireEmptyTable: boolean;
+  readonly scoreCoworkOpenSpaceCapacity?: true;
 };
 
 const getRequiredTagsAssignment = (
@@ -67,6 +69,35 @@ const getRequiredTagsAssignment = (
   isCandidateTable: (tableTags: ReadonlySet<string>) =>
     requiredTags.every((tag) => tableTags.has(tag)),
   requireEmptyTable,
+});
+
+const getReservedDeskScoringOccupancyById = Effect.fn(
+  "workspaceTableAssignment.getReservedDeskScoringOccupancyById"
+)(function* (
+  tables: readonly DotyposTable[],
+  actualOccupancyByTableId: ReadonlyMap<DotyposTableId, number>
+) {
+  const rankingOccupancyByTableId = new Map(actualOccupancyByTableId);
+
+  for (const table of tables) {
+    const tableId = getAssignableDotyposTableId(table);
+    if (
+      !tableId ||
+      table.enabled !== true ||
+      table.display !== true ||
+      !table.tags?.includes(workspaceCoworkOpenSpaceTableTag)
+    ) {
+      continue;
+    }
+
+    const seatCapacity = yield* getWorkspaceTableSeatCapacity(table);
+    rankingOccupancyByTableId.set(
+      tableId,
+      Math.max(actualOccupancyByTableId.get(tableId) ?? 0, seatCapacity)
+    );
+  }
+
+  return rankingOccupancyByTableId;
 });
 
 export const getWorkspaceReservationInterval = (
@@ -166,6 +197,16 @@ export class WorkspaceTableAssignmentService extends Context.Service<
             ({ activeReservations, occupancyInput }) =>
               getWorkspaceTableOccupancyById(activeReservations, occupancyInput)
           ),
+          Effect.bind(
+            "rankingOccupancyByTableId",
+            ({ assignment, inventory, occupancyByTableId }) =>
+              assignment.scoreCoworkOpenSpaceCapacity
+                ? getReservedDeskScoringOccupancyById(
+                    inventory.tables,
+                    occupancyByTableId
+                  )
+                : Effect.succeed(occupancyByTableId)
+          ),
           Effect.tap(({ occupancyByTableId }) =>
             Effect.logDebug("Workspace table occupancy calculated", {
               occupancyByTableId: Object.fromEntries(occupancyByTableId),
@@ -185,13 +226,15 @@ export class WorkspaceTableAssignmentService extends Context.Service<
               inventory,
               matchingTables,
               occupancyByTableId,
+              rankingOccupancyByTableId,
             }) =>
               selectWorkspaceTableFromCandidates(
                 matchingTables,
                 inventory.tables,
                 occupancyByTableId,
                 seats,
-                assignment.requireEmptyTable
+                assignment.requireEmptyTable,
+                rankingOccupancyByTableId
               )
           ),
           Effect.bind("matchingTableId", validateTableAssignment),
@@ -233,6 +276,7 @@ const getReservationAssignment = (
                   ...(monitorOption && { monitorOption }),
                 }),
               requireEmptyTable: false,
+              scoreCoworkOpenSpaceCapacity: true as const,
             }),
             basic: ({ entryTier }) =>
               getRequiredTagsAssignment([`tier:${entryTier}`], false),

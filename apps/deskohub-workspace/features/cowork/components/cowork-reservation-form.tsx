@@ -702,9 +702,10 @@ export function CoworkReservationForm({
                     >
                       <span
                         aria-hidden="true"
-                        className="pointer-events-none absolute inset-4 z-[-1] overflow-clip rounded-2xl opacity-10"
+                        className="pointer-events-none absolute inset-4 z-[-1] overflow-clip rounded-2xl"
                         style={{
                           backgroundColor: "var(--brand-navy-blue)",
+                          opacity: 0.07,
                           maskImage: `url(${artworkSource})`,
                           maskPosition: "center",
                           maskRepeat: "no-repeat",

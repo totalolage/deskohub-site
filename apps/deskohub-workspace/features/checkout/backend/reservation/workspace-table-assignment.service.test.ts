@@ -684,6 +684,169 @@ describe("WorkspaceTableAssignmentService", () => {
     ).resolves.toBe("far");
   });
 
+  test("ranks Reserved Desk away from an otherwise empty Open Space table", async () => {
+    await expect(
+      assignTableId(makeReservation({ entryTier: "reserved-desk" }), [
+        makeTable({
+          id: "open-space",
+          name: "1 Open Space",
+          tags: ["cowork:open-space"],
+          seats: "4",
+          positionX: "0",
+          positionY: "0",
+          locationName: "main",
+        }),
+        makeTable({
+          id: "reserved-near",
+          name: "2 Reserved Near",
+          tags: ["cowork:reserved-desk"],
+          seats: "2",
+          positionX: "1",
+          positionY: "0",
+          locationName: "main",
+        }),
+        makeTable({
+          id: "reserved-far",
+          name: "3 Reserved Far",
+          tags: ["cowork:reserved-desk"],
+          seats: "2",
+          positionX: "10",
+          positionY: "0",
+          locationName: "main",
+        }),
+      ])
+    ).resolves.toBe("reserved-far");
+  });
+
+  test("weights Open Space ranking by max(actual occupancy, seat capacity)", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ entryTier: "reserved-desk" }),
+        [
+          makeTable({
+            id: "open-high-capacity",
+            name: "1 Open High Capacity",
+            tags: ["cowork:open-space"],
+            seats: "4",
+            positionX: "0",
+            positionY: "0",
+            locationName: "main",
+          }),
+          makeTable({
+            id: "open-low-capacity",
+            name: "2 Open Low Capacity",
+            tags: ["cowork:open-space"],
+            seats: "1",
+            positionX: "10",
+            positionY: "0",
+            locationName: "main",
+          }),
+          makeTable({
+            id: "reserved-near-high-capacity",
+            name: "3 Reserved Near High Capacity",
+            tags: ["cowork:reserved-desk"],
+            seats: "2",
+            positionX: "2.4",
+            positionY: "0",
+            locationName: "main",
+          }),
+          makeTable({
+            id: "reserved-near-low-capacity",
+            name: "4 Reserved Near Low Capacity",
+            tags: ["cowork:reserved-desk"],
+            seats: "2",
+            positionX: "2.0",
+            positionY: "0",
+            locationName: "main",
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "open-high-capacity",
+            status: "CONFIRMED",
+            seats: "3",
+          }),
+        ]
+      )
+    ).resolves.toBe("reserved-near-high-capacity");
+  });
+
+  test("preserves actual Open Space occupancy above its configured capacity for ranking", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ entryTier: "reserved-desk" }),
+        [
+          makeTable({
+            id: "open-high-capacity",
+            name: "1 Open High Capacity",
+            tags: ["cowork:open-space"],
+            seats: "4",
+            positionX: "0",
+            positionY: "0",
+            locationName: "main",
+          }),
+          makeTable({
+            id: "open-low-capacity",
+            name: "2 Open Low Capacity",
+            tags: ["cowork:open-space"],
+            seats: "1",
+            positionX: "10",
+            positionY: "0",
+            locationName: "main",
+          }),
+          makeTable({
+            id: "reserved-near-high-capacity",
+            name: "3 Reserved Near High Capacity",
+            tags: ["cowork:reserved-desk"],
+            seats: "2",
+            positionX: "1.7",
+            positionY: "0",
+            locationName: "main",
+          }),
+          makeTable({
+            id: "reserved-near-low-capacity",
+            name: "4 Reserved Near Low Capacity",
+            tags: ["cowork:reserved-desk"],
+            seats: "2",
+            positionX: "1.3",
+            positionY: "0",
+            locationName: "main",
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "open-high-capacity",
+            status: "CONFIRMED",
+            seats: "6",
+          }),
+        ]
+      )
+    ).resolves.toBe("reserved-near-high-capacity");
+  });
+
+  test("keeps a dual-tag Reserved Desk assignable using actual remaining capacity", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ entryTier: "reserved-desk" }),
+        [
+          makeTable({
+            id: "dual-tag",
+            name: "Dual-tag table",
+            tags: ["cowork:open-space", "cowork:reserved-desk"],
+            seats: "2",
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "dual-tag",
+            status: "CONFIRMED",
+            seats: "1",
+          }),
+        ]
+      )
+    ).resolves.toBe("dual-tag");
+  });
+
   test("scores against non-matching same-room workspace tables", async () => {
     await expect(
       assignTableId(

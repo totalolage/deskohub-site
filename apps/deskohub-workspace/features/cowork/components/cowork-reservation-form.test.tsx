@@ -1931,7 +1931,7 @@ describe("CoworkReservationForm advertised pricing", () => {
         reservedDeskDescription: "Vyhrazené místo",
         reservedDeskAccess: "24/7 přístup v den tvé rezervace",
         reservedDeskCoffee: "Káva v ceně",
-        reservedDeskMonitor: "Volitelná stanice s monitory",
+        reservedDeskMonitor: "Možnost přidat monitory a dock",
         currency: "Kč",
       },
     ] as const;

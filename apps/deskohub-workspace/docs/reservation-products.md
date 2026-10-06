@@ -28,6 +28,14 @@ reservations and reporting but are no longer saleable. A cowork discount
 applies to the base price of both current offers; coffee and workstation
 addons stay outside the discountable subtotal.
 
+When assigning Reserved Desk, Workspace ranks tables as though every enabled,
+visible, assignable Open Space table were occupied up to its configured seat
+capacity. Ranking uses the greater of actual occupancy and that capacity;
+actual occupancy is not added to capacity. Actual occupancy alone determines
+whether the selected table has room and what public availability reports. A
+table configured for both offers remains eligible for Reserved Desk whenever
+its actual capacity permits.
+
 ## Meeting room
 
 Meeting-room products are exactly:
