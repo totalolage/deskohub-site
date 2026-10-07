@@ -24,6 +24,10 @@ const checkoutCaseProjects = [
   "checkout-payment-2",
   "checkout-payment-3",
 ] as const;
+const diagnosticProjects =
+  process.env.WORKSPACE_E2E_DIAGNOSTIC_MODE === "true"
+    ? [{ name: "checkout-diagnostic", testMatch: "diagnostic.pw.ts" }]
+    : [];
 
 export default defineConfig({
   expect: { timeout: workspaceE2ETimeouts.browserAction },
@@ -120,6 +124,7 @@ export default defineConfig({
       name: "checkout-cleanup",
       testMatch: "cleanup.pw.ts",
     },
+    ...diagnosticProjects,
   ],
   reporter: [
     ["line"],

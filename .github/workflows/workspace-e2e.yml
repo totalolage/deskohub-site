@@ -15,6 +15,11 @@ on:
         required: false
         default: false
         type: boolean
+      diagnose_failed_e2e_run:
+        description: Read source-owned reservation statuses without changing fixtures
+        required: false
+        default: false
+        type: boolean
       sha:
         description: Exact commit SHA to test
         required: true
@@ -32,8 +37,8 @@ permissions:
   statuses: write
 
 concurrency:
-  group: workspace-e2e-${{ github.event_name == 'workflow_dispatch' && 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' || github.event.client_payload.project.id }}-pr-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.recover_failed_e2e_run == true && '-recovery' || '' }}
-  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.recover_failed_e2e_run == true) && (github.event_name != 'repository_dispatch' || github.event.client_payload.state.type != 'skipped') }}
+  group: workspace-e2e-${{ github.event_name == 'workflow_dispatch' && 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' || github.event.client_payload.project.id }}-pr-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.recover_failed_e2e_run == true && '-recovery' || github.event_name == 'workflow_dispatch' && inputs.diagnose_failed_e2e_run == true && '-diagnostic' || '' }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.recover_failed_e2e_run == true || inputs.diagnose_failed_e2e_run == true)) && (github.event_name != 'repository_dispatch' || github.event.client_payload.state.type != 'skipped') }}
 
 jobs:
   resolve-target:
@@ -59,9 +64,17 @@ jobs:
           TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
           TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.event.client_payload.git.sha }}
           TARGET_SKIPPED: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.state.type == 'skipped' }}
+          DIAGNOSE_FAILED_E2E_RUN: ${{ inputs.diagnose_failed_e2e_run == true }}
+          RECOVER_FAILED_E2E_RUN: ${{ inputs.recover_failed_e2e_run == true }}
+          CLEANUP_STALE_E2E_RESERVATIONS: ${{ inputs.cleanup_stale_e2e_reservations == true }}
           TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.url || github.event.client_payload.url }}
         run: |
           set -euo pipefail
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$DIAGNOSE_FAILED_E2E_RUN" == "true" && ( "$RECOVER_FAILED_E2E_RUN" == "true" || "$CLEANUP_STALE_E2E_RESERVATIONS" == "true" ) ]]; then
+            echo "Read-only diagnosis cannot be combined with recovery or stale cleanup" >&2
+            exit 1
+          fi
 
           if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "Target SHA is not a full Git commit SHA" >&2
@@ -219,7 +232,7 @@ jobs:
 
   test-e2e:
     needs: resolve-target
-    if: inputs.recover_failed_e2e_run != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
+    if: inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     environment: workspace-checkout-e2e
@@ -943,9 +956,255 @@ jobs:
           echo "recovery_outcome=failure" >> "$GITHUB_OUTPUT"
           exit "$cleanup_exit"
 
+  diagnose-failed-e2e-reservations:
+    needs: resolve-target
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.diagnose_failed_e2e_run == true &&
+      inputs.recover_failed_e2e_run != true &&
+      inputs.cleanup_stale_e2e_reservations != true &&
+      needs.resolve-target.outputs.eligible == 'true' &&
+      needs.resolve-target.outputs.skipped != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: workspace-checkout-e2e
+    permissions:
+      actions: read
+      contents: read
+    env:
+      EXPECTED_SOURCE_RUN_ID: "37580940745"
+      EXPECTED_SOURCE_RUN_ATTEMPT: "1"
+      EXPECTED_TARGET_SHA: d027de04a101a7f018960b81e164d53eb36d26cc
+      EXPECTED_TARGET_REF: t3code/reorder-cowork-packages
+      EXPECTED_TARGET_URL: https://deskohub-workspace-site-a8nzc5sdh-filip-kalny-projects.vercel.app
+      EXPECTED_NEON_BRANCH_ID_SHA256: c4c75eb338e2522aa98c7312513391d5053c7246f1400ca45684374499a9a987
+      DIAGNOSTIC_CODE_REF: t3code/pr464-e2e-diagnostic-37580940745
+      DIAGNOSTIC_CODE_SHA: ${{ github.sha }}
+      RUNTIME_TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+      RUNTIME_TARGET_REF: ${{ needs.resolve-target.outputs.head_ref }}
+      RUNTIME_TARGET_URL: ${{ needs.resolve-target.outputs.url }}
+      RUNTIME_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+    steps:
+      - name: Checkout the reviewed diagnostic code ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Confirm diagnostic code and exact source runtime target
+        run: |
+          set -euo pipefail
+          actual_code_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_code_sha" != "$DIAGNOSTIC_CODE_SHA" || "$actual_code_sha" != "$GITHUB_SHA" ]]; then
+            echo "Checked-out diagnostic code does not match this reviewed workflow run" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != "refs/heads/$DIAGNOSTIC_CODE_REF" ]]; then
+            echo "Read-only diagnosis must run from its reviewed temporary code ref" >&2
+            exit 1
+          fi
+          if [[ "$RUNTIME_TARGET_SHA" != "$EXPECTED_TARGET_SHA" ||
+                "$RUNTIME_TARGET_REF" != "$EXPECTED_TARGET_REF" ||
+                "$RUNTIME_TARGET_URL" != "$EXPECTED_TARGET_URL" ||
+                "$RUNTIME_PR_NUMBER" != "464" ]]; then
+            echo "Resolved runtime target is not the original failed PR preview" >&2
+            exit 1
+          fi
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install repository dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate read-only diagnostic prerequisites
+        run: |
+          set -euo pipefail
+          bun turbo run i18n:compile --filter=deskohub-workspace
+          bun turbo run generate --filter=@deskohub/igloohome
+
+      - name: Validate source run and restore its pinned cleanup records
+        id: source-artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ env.EXPECTED_SOURCE_RUN_ID }}
+          SOURCE_RUN_ATTEMPT: ${{ env.EXPECTED_SOURCE_RUN_ATTEMPT }}
+          SOURCE_ARTIFACT_DIR: ${{ runner.temp }}/workspace-e2e-diagnostic-source-${{ env.EXPECTED_SOURCE_RUN_ID }}-${{ env.EXPECTED_SOURCE_RUN_ATTEMPT }}
+          SOURCE_BACKUP_CHECKOUT_DIR: ${{ runner.temp }}/workspace-e2e-diagnostic-validated-${{ env.EXPECTED_SOURCE_RUN_ID }}-${{ env.EXPECTED_SOURCE_RUN_ATTEMPT }}/checkout
+          RESTORED_CHECKOUT_DIR: apps/deskohub-workspace/e2e-artifacts/checkout
+        run: |
+          set -euo pipefail
+          source_run="$(gh api -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID")"
+          if ! jq -e \
+            --argjson source_run_id "$SOURCE_RUN_ID" \
+            --argjson source_run_attempt "$SOURCE_RUN_ATTEMPT" \
+            '.id == $source_run_id and
+             .run_attempt == $source_run_attempt and
+             .name == "Workspace E2E" and
+             .path == ".github/workflows/workspace-e2e.yml" and
+             .event == "repository_dispatch" and
+             .status == "completed" and
+             .conclusion == "failure"' \
+            <<<"$source_run" >/dev/null; then
+            echo "The exact source run is not the expected completed failed Workspace E2E run" >&2
+            exit 1
+          fi
+
+          expected_artifact="workspace-e2e-artifacts-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT"
+          source_artifacts="$(gh api -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100")"
+          artifact_count="$(jq --arg expected "$expected_artifact" \
+            '[.artifacts[] | select(.name == $expected and .expired == false and .size_in_bytes > 0)] | length' \
+            <<<"$source_artifacts")"
+          if [[ "$artifact_count" != "1" ]]; then
+            echo "The exact source-run cleanup artifact is missing or ambiguous" >&2
+            exit 1
+          fi
+          if [[ -e "$SOURCE_ARTIFACT_DIR" || -e "$SOURCE_BACKUP_CHECKOUT_DIR" || -e "$RESTORED_CHECKOUT_DIR" ]]; then
+            echo "A source artifact staging path already exists" >&2
+            exit 1
+          fi
+          mkdir -p "$SOURCE_ARTIFACT_DIR"
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$expected_artifact" \
+            --dir "$SOURCE_ARTIFACT_DIR"
+          bun apps/deskohub-workspace/scripts/workspace-e2e-readonly-source-artifact.ts restore
+
+      - name: Resolve only the original Neon preview branch
+        id: preview-database
+        env:
+          HEAD_REF: ${{ needs.resolve-target.outputs.head_ref }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ "$HEAD_REF" != "$EXPECTED_TARGET_REF" ]]; then
+            echo "Resolved Neon branch is not the original failed run branch" >&2
+            exit 1
+          fi
+          branch_name="preview/$HEAD_REF"
+          branches="$(bunx neonctl@2.30.1 branches list \
+            --project-id "$NEON_PROJECT_ID" \
+            --api-key "$NEON_API_KEY" \
+            --output json)"
+          matches="$(jq --arg name "$branch_name" \
+            '[(if type == "array" then . else .branches end)[] | select(.name == $name and .primary != true)]' \
+            <<<"$branches")"
+          if [[ "$(jq 'length' <<<"$matches")" != "1" ]]; then
+            echo "The original failed-run Neon preview branch is missing or ambiguous" >&2
+            exit 1
+          fi
+          branch_id="$(jq -r '.[0].id' <<<"$matches")"
+          if [[ ! "$branch_id" =~ ^br-[A-Za-z0-9-]+$ ]]; then
+            echo "The original failed-run Neon preview branch identity is invalid" >&2
+            exit 1
+          fi
+          branch_id_sha256="$(printf '%s' "$branch_id" | sha256sum | cut -d ' ' -f1)"
+          if [[ "$branch_id_sha256" != "$EXPECTED_NEON_BRANCH_ID_SHA256" ]]; then
+            echo "The resolved Neon preview is not the original source-run branch" >&2
+            exit 1
+          fi
+          direct_url="$(bunx neonctl@2.30.1 connection-string "$branch_id" \
+            --project-id "$NEON_PROJECT_ID" --role-name neondb_owner \
+            --database-name neondb --api-key "$NEON_API_KEY")"
+          echo "::add-mask::$direct_url"
+          echo "branch_id_sha256=$branch_id_sha256" >> "$GITHUB_OUTPUT"
+          echo "direct_url=$direct_url" >> "$GITHUB_OUTPUT"
+          echo "Resolved the unique original preview branch for read-only diagnosis."
+
+      - name: Confirm the diagnostic Playwright selection is exactly one test
+        working-directory: apps/deskohub-workspace
+        env:
+          WORKSPACE_E2E_DIAGNOSTIC_MODE: "true"
+          WORKSPACE_E2E_BASE_URL: ${{ needs.resolve-target.outputs.url }}
+        run: |
+          set -euo pipefail
+          listing="$(bunx playwright test \
+            --config playwright.e2e.config.ts \
+            --project=checkout-diagnostic \
+            --no-deps \
+            --list \
+            e2e/playwright-checkout/diagnostic.pw.ts)"
+          if [[ "$(grep -Fc 'diagnose pinned source reservation convergence without mutation' <<<"$listing")" != "1" ||
+                "$(grep -Fc 'Total: 1 test in 1 file' <<<"$listing")" != "1" ]]; then
+            echo "The read-only diagnostic project did not resolve to exactly its single diagnostic test" >&2
+            exit 1
+          fi
+          echo "The exact read-only diagnostic test is the only selected test."
+
+      - name: Run the pinned source status-only diagnostic
+        id: diagnostic
+        working-directory: apps/deskohub-workspace
+        env:
+          CI: "true"
+          GITHUB_ACTIONS: "true"
+          GITHUB_EVENT_NAME: workflow_dispatch
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          NEXI_API_ORIGIN: https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
+          TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+          DATABASE_URL: ${{ steps.preview-database.outputs.direct_url }}
+          WORKSPACE_E2E_BASE_URL: ${{ needs.resolve-target.outputs.url }}
+          WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
+          WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.preview-database.outputs.direct_url }}
+          WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
+          WORKSPACE_E2E_EXPECTED_TARGET_REF: ${{ env.EXPECTED_TARGET_REF }}
+          WORKSPACE_E2E_EXPECTED_TARGET_URL: ${{ env.EXPECTED_TARGET_URL }}
+          WORKSPACE_E2E_EXPECTED_NEON_BRANCH_ID_SHA256: ${{ steps.preview-database.outputs.branch_id_sha256 }}
+          WORKSPACE_E2E_DIAGNOSTIC_CODE_REF: ${{ env.DIAGNOSTIC_CODE_REF }}
+          WORKSPACE_E2E_DIAGNOSTIC_MODE: "true"
+          WORKSPACE_E2E_SOURCE_CLEANUP_MANIFEST_SHA256: ${{ steps.source-artifact.outputs.manifest_sha256 }}
+          WORKSPACE_E2E_SOURCE_ARTIFACT_FILE_COUNT: ${{ steps.source-artifact.outputs.file_count }}
+          WORKSPACE_E2E_SOURCE_ARTIFACT_STATE_COUNT: ${{ steps.source-artifact.outputs.state_count }}
+          SOURCE_BACKUP_CHECKOUT_DIR: ${{ runner.temp }}/workspace-e2e-diagnostic-validated-${{ env.EXPECTED_SOURCE_RUN_ID }}-${{ env.EXPECTED_SOURCE_RUN_ATTEMPT }}/checkout
+          RESTORED_CHECKOUT_DIR: e2e-artifacts/checkout
+          WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: ${{ secrets.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL }}
+          DOTYPOS_API_URL: ${{ secrets.WORKSPACE_E2E_DOTYPOS_API_URL }}
+          DOTYPOS_CLIENT_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_ID }}
+          DOTYPOS_CLIENT_SECRET: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET }}
+          DOTYPOS_REFRESH_TOKEN: ${{ secrets.WORKSPACE_E2E_DOTYPOS_REFRESH_TOKEN }}
+          DOTYPOS_CLOUD_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLOUD_ID }}
+          DOTYPOS_BRANCH_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_BRANCH_ID }}
+          DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
+        run: |
+          set -uo pipefail
+          output_dir="e2e-artifacts/checkout-readonly-diagnostic-output-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if [[ -e "$output_dir" ]]; then
+            echo "The read-only diagnostic output path already exists" >&2
+            exit 1
+          fi
+          set +e
+          bunx playwright test \
+            --config playwright.e2e.config.ts \
+            --project=checkout-diagnostic \
+            --no-deps \
+            --output="$output_dir" \
+            e2e/playwright-checkout/diagnostic.pw.ts
+          diagnostic_exit=$?
+          set -e
+
+          bun scripts/workspace-e2e-readonly-source-artifact.ts verify
+          if [[ "$diagnostic_exit" != "0" ]]; then
+            echo "The pinned read-only diagnostic failed closed; no fixture mutation was run." >&2
+            exit "$diagnostic_exit"
+          fi
+
+      - name: Upload the bounded reservation count receipt
+        if: always() && hashFiles(format('apps/deskohub-workspace/e2e-artifacts/checkout-readonly-diagnostic-{0}-{1}/reservation-convergence-counts.json', github.run_id, github.run_attempt)) != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-e2e-readonly-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/deskohub-workspace/e2e-artifacts/checkout-readonly-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}/reservation-convergence-counts.json
+          if-no-files-found: error
+          retention-days: 7
+
   publish-final-status:
     needs: [resolve-target, test-e2e]
-    if: always() && inputs.recover_failed_e2e_run != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
+    if: always() && inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -986,7 +1245,7 @@ jobs:
 
   publish-skipped-status:
     needs: resolve-target
-    if: inputs.recover_failed_e2e_run != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped == 'true'
+    if: inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -36,6 +36,7 @@ const playwrightConfigStructure = (): PlaywrightCheckoutConfig => {
         'const config = (await import("./playwright.e2e.config")).default; console.log(JSON.stringify(config));',
       ],
       cwd: resolve(import.meta.dir, ".."),
+      env: { ...process.env, WORKSPACE_E2E_DIAGNOSTIC_MODE: "" },
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -47,6 +48,26 @@ const playwrightConfigStructure = (): PlaywrightCheckoutConfig => {
     ) as PlaywrightCheckoutConfig;
   }
   return cachedConfigStructure;
+};
+
+const diagnosticPlaywrightConfigStructure = (): PlaywrightCheckoutConfig => {
+  const result = Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "-e",
+      'const config = (await import("./playwright.e2e.config")).default; console.log(JSON.stringify(config));',
+    ],
+    cwd: resolve(import.meta.dir, ".."),
+    env: { ...process.env, WORKSPACE_E2E_DIAGNOSTIC_MODE: "true" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(new TextDecoder().decode(result.stderr));
+  }
+  return JSON.parse(
+    new TextDecoder().decode(result.stdout)
+  ) as PlaywrightCheckoutConfig;
 };
 
 const workflowPath = resolve(
@@ -811,6 +832,52 @@ describe("workspace E2E workflow", () => {
     expect(playwrightConfig.workers).toBe(6);
     expect(packageJson.scripts["test:instant-navigation"]).toContain(
       "--project=instant-navigation"
+    );
+  });
+
+  test("registers the diagnostic project only in explicit diagnostic mode", () => {
+    const normalConfig = playwrightConfigStructure();
+    const diagnosticConfig = diagnosticPlaywrightConfigStructure();
+
+    expect(projectByName(normalConfig, "checkout-diagnostic")).toBeUndefined();
+    expect(projectByName(diagnosticConfig, "checkout-diagnostic")).toEqual({
+      name: "checkout-diagnostic",
+      testMatch: "diagnostic.pw.ts",
+    });
+    expect(
+      diagnosticConfig.projects?.filter(
+        (project) => project.name === "checkout-diagnostic"
+      )
+    ).toHaveLength(1);
+  });
+
+  test("keeps the protected diagnostic mode isolated from ordinary E2E", () => {
+    const diagnosticJob = doc.jobs["diagnose-failed-e2e-reservations"];
+    const diagnosticSteps = diagnosticJob?.steps ?? [];
+    const listStep = diagnosticSteps.find(
+      (step) =>
+        step.name ===
+        "Confirm the diagnostic Playwright selection is exactly one test"
+    );
+    const diagnosticRunStep = diagnosticSteps.find(
+      (step) => step.name === "Run the pinned source status-only diagnostic"
+    );
+    const normalRunStep = stepByName("Run checkout E2E");
+
+    expect(diagnosticJob?.if).toContain(
+      "inputs.diagnose_failed_e2e_run == true"
+    );
+    expect(listStep?.env?.WORKSPACE_E2E_DIAGNOSTIC_MODE).toBe("true");
+    expect(listStep?.run).toContain("--project=checkout-diagnostic");
+    expect(listStep?.run).toContain("--no-deps");
+    expect(listStep?.run).toContain("e2e/playwright-checkout/diagnostic.pw.ts");
+    expect(diagnosticRunStep?.env?.WORKSPACE_E2E_DIAGNOSTIC_MODE).toBe("true");
+    expect(diagnosticRunStep?.run).toContain("--project=checkout-diagnostic");
+    expect(diagnosticRunStep?.run).toContain("--no-deps");
+    expect(normalRunStep.env?.WORKSPACE_E2E_DIAGNOSTIC_MODE).toBeUndefined();
+    expect(testJob.if).toContain("inputs.diagnose_failed_e2e_run != true");
+    expect(doc.jobs["publish-final-status"].if).toContain(
+      "inputs.diagnose_failed_e2e_run != true"
     );
   });
 

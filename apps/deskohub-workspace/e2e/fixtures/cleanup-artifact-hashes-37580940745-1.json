@@ -1,0 +1,187 @@
+{
+  "runId": "37580940745-1",
+  "targetSha": "d027de04a101a7f018960b81e164d53eb36d26cc",
+  "fileCount": 36,
+  "files": [
+    {
+      "path": "run-context.json",
+      "sizeBytes": 308,
+      "sha256": "ddb6ed9953540c670dceaebbea59c9124dc91bc9ceb373432c8208c7c58dadf8"
+    },
+    {
+      "path": "run-plan.json",
+      "sizeBytes": 4858,
+      "sha256": "7651617e6b3d060f8f16e5deb75e3103fec63102129359c7d88e04bbf4cb2615"
+    },
+    {
+      "path": "cleanup-journals/account-lane.json",
+      "sizeBytes": 259,
+      "sha256": "8d90c0afa4d40e9a9ac964b298ff0493f2d867dc820082a7ee0cc43c2a48eb26"
+    },
+    {
+      "path": "cleanup-journals/checkout-calendar-and-customer-discount.json",
+      "sizeBytes": 1145,
+      "sha256": "c354cfbafbf03cc42aec7dede7e16554628b4f47778d620c07282a69462c5eb0"
+    },
+    {
+      "path": "cleanup-journals/checkout-calendar-sale-and-code.json",
+      "sizeBytes": 1121,
+      "sha256": "95ee8f4fa46b79c6a2a02e813f3e98343453d3f80b94fd40df9af0bca9a2e74c"
+    },
+    {
+      "path": "cleanup-journals/checkout-calendar-sale.json",
+      "sizeBytes": 1080,
+      "sha256": "4d6f33e72bbf2c9f0e11ff9ad9a735f02a565a1f6e09497acdb4abc2404ceaaa"
+    },
+    {
+      "path": "cleanup-journals/checkout-cowork-basic.json",
+      "sizeBytes": 1047,
+      "sha256": "0b6fc32de75c7eb9101bbc55aa3405988023cba0a306aca865f908c21af68475"
+    },
+    {
+      "path": "cleanup-journals/checkout-customer-discount-and-code.json",
+      "sizeBytes": 1133,
+      "sha256": "3274bb2a80b7d23708d9ad43de0e8253595fd6968f235a1cbd9f16966eb81860"
+    },
+    {
+      "path": "cleanup-journals/checkout-meeting-room-paid-one-hour.json",
+      "sizeBytes": 1105,
+      "sha256": "7bf0a37f54efbb68d7d5447397ce5cc5e4400403bf9d57aadd65a9a5163e1032"
+    },
+    {
+      "path": "cleanup-journals/checkout-meeting-room-paid-whole-day.json",
+      "sizeBytes": 1107,
+      "sha256": "c9136cb232f0b9c371524a7aaf722ea22123a28573c80b10772daa72867d1c3f"
+    },
+    {
+      "path": "cleanup-journals/checkout-meeting-room-zero-total-four-hours.json",
+      "sizeBytes": 1122,
+      "sha256": "4c81377986c5f5496d5c64d605d5b5165d9b036f265a03903dd25fa202a51e02"
+    },
+    {
+      "path": "cleanup-journals/checkout-zero-total.json",
+      "sizeBytes": 1065,
+      "sha256": "1dcda8c376d6fb1e3cd62b071cb69a36b1ead973452b181dc799b2ebca09a575"
+    },
+    {
+      "path": "cleanup-journals/contact-form.json",
+      "sizeBytes": 114,
+      "sha256": "ac8e84ffadeb765594b8dcb77c4ee02e98c1b0e2aff948e9a3f257d6e07e9b9a"
+    },
+    {
+      "path": "cleanup-journals/customer-discount-changes-before-payment.json",
+      "sizeBytes": 1166,
+      "sha256": "7c25ffe5d678ff0fa7f2922f511f0a506e60e2150dff6f14e40c5756eed0d8a5"
+    },
+    {
+      "path": "cleanup-journals/discount-code-already-redeemed.json",
+      "sizeBytes": 2102,
+      "sha256": "b5e7994339d739c72e659681382e7d151fae83dd339777361233973bc9690e0c"
+    },
+    {
+      "path": "cleanup-journals/discount-code-capacity-reached.json",
+      "sizeBytes": 2100,
+      "sha256": "f1256507920a8599b36cbf08cb7f4fb394f15065a76180392b9571f019aced72"
+    },
+    {
+      "path": "cleanup-journals/discount-code-customer-ineligible.json",
+      "sizeBytes": 1127,
+      "sha256": "28c67581e2015c9a0cde3ba12d7a9490cda35c78873e0542c73458f8dda21373"
+    },
+    {
+      "path": "cleanup-journals/discount-code-expired.json",
+      "sizeBytes": 1075,
+      "sha256": "163dffd5c543780c250719d80bd60bdaedaa71bd7a275a79593d9bd56af043ef"
+    },
+    {
+      "path": "cleanup-journals/discount-code-expires-before-payment.json",
+      "sizeBytes": 1136,
+      "sha256": "1408a7799db63929ad0f8daf8111f01628460c36f90c300717c6f57bb09daff1"
+    },
+    {
+      "path": "cleanup-journals/discount-code-inactive.json",
+      "sizeBytes": 1080,
+      "sha256": "0307ace0dbf9052535c475bc89e774e63db5c8d910e2b7fee7cc334041b56180"
+    },
+    {
+      "path": "cleanup-journals/discount-code-invalid-syntax.json",
+      "sizeBytes": 1110,
+      "sha256": "dc72c35bd888c675059ce091d25444da5eb3b570a20e554ec83577acb60e0000"
+    },
+    {
+      "path": "cleanup-journals/discount-code-not-started.json",
+      "sizeBytes": 1095,
+      "sha256": "dc0a413ffff6668a031c2f98cf5673a76965fad081e8e61ee60cc732da2bb221"
+    },
+    {
+      "path": "cleanup-journals/discount-code-product-ineligible.json",
+      "sizeBytes": 1124,
+      "sha256": "f27ab72d30b7210f338f71e971d6b3008b81a919e339ae481dacaa14e88dae1a"
+    },
+    {
+      "path": "cleanup-journals/discount-code-unknown.json",
+      "sizeBytes": 1075,
+      "sha256": "7342835b4a21b623316c6a85bc6e5ba1e14ea34de077db51af8e64d023a4a3e3"
+    },
+    {
+      "path": "cleanup-journals/locale-switch.json",
+      "sizeBytes": 115,
+      "sha256": "aaf4cfe41b9e6197fc89070805d8a05332b0b58df44118be301253428690747b"
+    },
+    {
+      "path": "cleanup-journals/meeting-room-reservation-replacement.json",
+      "sizeBytes": 1102,
+      "sha256": "acf09ae7701143f083486bfbf5dc37a84e01a9fcb02fdb6d7968f93903769ddc"
+    },
+    {
+      "path": "cleanup-journals/payment-cancelled.json",
+      "sizeBytes": 1059,
+      "sha256": "68165106d301efd3297e39c6e38c73c1b0b2bf77e4b27446fa4884139083865a"
+    },
+    {
+      "path": "cleanup-journals/payment-failed.json",
+      "sizeBytes": 1044,
+      "sha256": "d6f7268137cbbfe67509bdbace903ea688ee5cf335177e0db42d8faa1ba994ac"
+    },
+    {
+      "path": "cleanup-journals/payment-late-recovery-recreated.json",
+      "sizeBytes": 1125,
+      "sha256": "228037e86d003a6472ce1ac656a8c20a64e151157ff61177fd7fcc6381842e06"
+    },
+    {
+      "path": "cleanup-journals/payment-late-recovery-refund-required.json",
+      "sizeBytes": 1143,
+      "sha256": "9096699daf5179f1c91c59cd168243f7268ae28d39da101b317e7b573a77e793"
+    },
+    {
+      "path": "cleanup-journals/payment-meeting-room-cancelled.json",
+      "sizeBytes": 1092,
+      "sha256": "4879654b91a137901291366860f1e7f9c305a99c48fac928e5deead26bfd369a"
+    },
+    {
+      "path": "cleanup-journals/reservation-link-meeting-room-unknown-code-en-US.json",
+      "sizeBytes": 1392,
+      "sha256": "ae367aeb19c8ce93af22999d8777c3835049232ef99b163e094dea8435435fcc"
+    },
+    {
+      "path": "cleanup-journals/reservation-link-meeting-room-zero-total-cs-CZ.json",
+      "sizeBytes": 1384,
+      "sha256": "e3d5857f509a57f684f796a2dc5d7cf0de8ca10f0417c6b7014b8b0c8308c8c5"
+    },
+    {
+      "path": "cleanup-journals/reservation-link-meeting-room-zero-total-en-US.json",
+      "sizeBytes": 2359,
+      "sha256": "efd0400bc440aee3af2a5a87be7863d4eb84364afc7619fbb2a5a2778cadd361"
+    },
+    {
+      "path": "cleanup-journals/reservation-replacement.json",
+      "sizeBytes": 1115,
+      "sha256": "ca225ca16d2fea62f8f7fa66715da7e754c47ddbd954522336fa0c1cfa4a8d67"
+    },
+    {
+      "path": "cleanup-journals/voucher-reuse-and-exhaustion.json",
+      "sizeBytes": 3102,
+      "sha256": "f85b39277269fe38fcca7b47c6b3644cf6770e8d2080ac9e5ecef1ef98017b0c"
+    }
+  ]
+}
