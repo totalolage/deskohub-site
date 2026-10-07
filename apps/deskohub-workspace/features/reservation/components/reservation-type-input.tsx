@@ -153,7 +153,7 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
       className={cn(
         "group grid cursor-pointer outline -outline-offset-1 outline-1 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)]",
         isIllustrated
-          ? "relative isolate content-start grid-cols-[minmax(0,3fr)_minmax(0,2fr)] grid-rows-[auto_auto_minmax(7.5rem,auto)_auto] gap-0 overflow-hidden rounded-[1.4rem] px-4 py-5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-burned-orange sm:px-6 sm:py-6 lg:grid-rows-[minmax(3.75rem,auto)_auto_minmax(9rem,auto)_auto]"
+          ? "relative isolate content-start grid-cols-[minmax(0,3fr)_minmax(0,2fr)] grid-rows-[auto_auto_minmax(5.625rem,auto)_auto] gap-0 overflow-hidden rounded-[1.4rem] px-4 py-5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-burned-orange sm:px-6 sm:py-6 lg:grid-rows-[minmax(3.75rem,auto)_auto_minmax(6.75rem,auto)_auto]"
           : "rounded-[1.4rem] px-4 lg:grid-rows-subgrid lg:row-span-4",
         disabled &&
           "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",

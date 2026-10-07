@@ -1412,9 +1412,9 @@ describe("CoworkReservationForm advertised pricing", () => {
           .querySelector("[data-reservation-type-illustration]")
           ?.getAttribute("aria-hidden")
       ).toBe("true");
-      expect(
-        perks?.querySelector("li > span")?.classList.contains("h-11")
-      ).toBe(true);
+      expect(perks?.querySelector("li > span")?.classList.contains("h-8")).toBe(
+        true
+      );
     }
     view.unmount();
   });

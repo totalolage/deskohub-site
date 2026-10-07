@@ -686,7 +686,7 @@ export function CoworkReservationForm({
                         <Image
                           aria-hidden="true"
                           alt=""
-                          className="absolute top-0 right-0 h-auto w-[280%] max-w-[440px] object-contain object-right-top"
+                          className="absolute top-0 right-0 h-auto w-[280%] max-w-[440px] translate-x-[20%] -translate-y-[25%] object-contain object-right-top"
                           height={941}
                           sizes="(min-width: 1024px) 440px, 280px"
                           src={artworkSource}
@@ -804,7 +804,7 @@ function CoworkTierDescription({
 }) {
   return (
     <div
-      className="relative z-10 col-start-1 row-start-3 mb-3 min-h-[7.5rem] max-w-full break-words pt-1 text-sm leading-5 text-navy-blue/70"
+      className="relative z-10 col-start-1 row-start-3 mb-3 min-h-[5.625rem] max-w-full break-words pt-1 text-sm leading-5 text-navy-blue/70"
       data-cowork-tier-showcase={tier}
       data-reservation-type-description={tier}
     >
@@ -841,7 +841,7 @@ function CoworkTierPerks({
       <span id={perksLabelId} className="sr-only">
         {getWorkspaceProductMessage(content.perksLabel, locale)}
       </span>
-      <ul aria-labelledby={perksLabelId} className="space-y-3">
+      <ul aria-labelledby={perksLabelId} className="space-y-2">
         {content.perks.map((perk, index) => {
           const text = getWorkspaceProductMessage(perk.message, locale);
           const PerkIcon = perkIcons[index];
@@ -850,15 +850,15 @@ function CoworkTierPerks({
             <li
               key={`${perk.marker ?? "bullet"}-${text}`}
               className={cn(
-                "flex items-center gap-3 leading-6",
+                "flex items-center gap-2 leading-6",
                 perk.highlighted && "text-burned-orange"
               )}
             >
               <span
                 aria-hidden="true"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-navy-blue/7 text-navy-blue"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy-blue/7 text-navy-blue"
               >
-                {PerkIcon && <PerkIcon className="h-5 w-5" focusable="false" />}
+                {PerkIcon && <PerkIcon className="h-4 w-4" focusable="false" />}
               </span>
               <span className="min-w-0 break-words">{text}</span>
             </li>
