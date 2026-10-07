@@ -24,7 +24,7 @@ Read-only inspection on 2026-08-28 found:
 - Git 2.53.0 with linked worktree support.
 - GitHub CLI 2.96.0 with non-interactive draft PR creation, PR editing, required-check inspection, and draft-to-ready transitions.
 - systemd 259. The per-user manager is running and `Linger=yes`, so user timers can run after logout and start at boot. systemd documents that lingering starts the user's manager at boot and retains it after logout. [loginctl](https://www.freedesktop.org/software/systemd/man/latest/loginctl.html#enable-linger%20USER%E2%80%A6)
-- Bun 1.3.14, matching the repository's pinned package manager. `bun.lock` exists and this Bun supports `bun install --frozen-lockfile`.
+- Bun 1.3.14 at inspection time. For current work, use the package manager pinned in the root `package.json`. `bun.lock` exists and installs use `bun install --frozen-lockfile`.
 - Codex CLI currently reports a valid ChatGPT login. No credential file or token value was read.
 
 The repository requires new work in this secondary checkout to branch directly from `origin/main`. Focused repository checks use root Turborepo commands such as `bun turbo lint --filter=<package>` and the matching `typecheck`, `test`, or `build` task.
