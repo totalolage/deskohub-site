@@ -2,7 +2,7 @@
 
 ## Toolchain
 
-- Use Bun from the repository's pinned version. Bun is pinned to 1.4.0: empirically verified that 1.3.14 misresolves the official `@typescript/typescript6` wrapper's internal `@typescript/old` alias into the root alias (self-referential lock record), while the released 1.4.0 binary resolves it correctly (reproducible two-binary install matrix); do not downgrade the pin and only regenerate bun.lock with ≥1.4.0 (an existing lock keeps a bad record even across `bun install --force`).
+- Use Bun from the repository's pinned version. Bun is pinned to 1.4.2: empirically verified that 1.3.14 misresolves the official `@typescript/typescript6` wrapper's internal `@typescript/old` alias into the root alias (self-referential lock record), while the released 1.4.0 binary resolves it correctly (reproducible two-binary install matrix); do not downgrade the pin and only regenerate bun.lock with ≥1.4.0 (an existing lock keeps a bad record even across `bun install --force`).
 - Run workspace orchestration through Turborepo from the repository root when task dependencies or generated outputs matter.
 - Declare task dependencies with Turbo `dependsOn`. Keep package scripts as leaf commands; compose lint checks and generation prerequisites in the Turbo graph rather than shell chains or script-to-script calls.
 - Every package containing checked-in source must expose a lint task so the root lint graph covers it.
