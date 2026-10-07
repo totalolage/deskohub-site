@@ -1949,10 +1949,9 @@ describe("CoworkReservationForm advertised pricing", () => {
     const expectations = [
       {
         locale: "en-US",
-        openSpaceDescription:
-          "Shared desk, available until 17:00 on your reserved day.",
+        openSpaceDescription: "Sit wherever you like, available until 17:00.",
         openSpaceWifi: "High-speed Wi-Fi",
-        reservedDeskDescription: "Reserved desk",
+        reservedDeskDescription: "Your own desk for uninterrupted flow.",
         reservedDeskAccess: "24/7 access on your reserved day",
         reservedDeskCoffee: "Coffee included",
         reservedDeskMonitor: "Optional monitor workstation",
@@ -1960,10 +1959,9 @@ describe("CoworkReservationForm advertised pricing", () => {
       },
       {
         locale: "cs-CZ",
-        openSpaceDescription:
-          "Sdílené místo v open space, k dispozici do 17:00 v den tvé rezervace.",
+        openSpaceDescription: "Seďte, kde chcete, k dispozici do 17:00.",
         openSpaceWifi: "Vysokorychlostní Wi-Fi",
-        reservedDeskDescription: "Vyhrazené místo",
+        reservedDeskDescription: "Váš vlastní stůl pro nepřetržitý flow.",
         reservedDeskAccess: "24/7 přístup v den tvé rezervace",
         reservedDeskCoffee: "Káva v ceně",
         reservedDeskMonitor: "Možnost přidat monitory a dock",

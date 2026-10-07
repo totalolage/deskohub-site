@@ -686,7 +686,13 @@ export function CoworkReservationForm({
                         <Image
                           aria-hidden="true"
                           alt=""
-                          className="absolute top-0 right-0 h-auto w-[280%] max-w-[440px] translate-x-[10%] -translate-y-[25%] object-contain object-right-top"
+                          className={cn(
+                            "absolute top-0 right-0 h-auto w-[280%] max-w-[440px] -translate-y-[25%] object-contain object-right-top",
+                            {
+                              "open-space": "translate-x-[10%]",
+                              "reserved-desk": "translate-x-[20%]",
+                            }[option.value]
+                          )}
                           height={941}
                           sizes="(min-width: 1024px) 440px, 280px"
                           src={artworkSource}
