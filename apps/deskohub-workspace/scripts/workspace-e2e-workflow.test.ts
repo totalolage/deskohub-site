@@ -36,7 +36,11 @@ const playwrightConfigStructure = (): PlaywrightCheckoutConfig => {
         'const config = (await import("./playwright.e2e.config")).default; console.log(JSON.stringify(config));',
       ],
       cwd: resolve(import.meta.dir, ".."),
-      env: { ...process.env, WORKSPACE_E2E_DIAGNOSTIC_MODE: "" },
+      env: {
+        ...process.env,
+        WORKSPACE_E2E_DIAGNOSTIC_MODE: "",
+        WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE: "",
+      },
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -58,7 +62,11 @@ const diagnosticPlaywrightConfigStructure = (): PlaywrightCheckoutConfig => {
       'const config = (await import("./playwright.e2e.config")).default; console.log(JSON.stringify(config));',
     ],
     cwd: resolve(import.meta.dir, ".."),
-    env: { ...process.env, WORKSPACE_E2E_DIAGNOSTIC_MODE: "true" },
+    env: {
+      ...process.env,
+      WORKSPACE_E2E_DIAGNOSTIC_MODE: "true",
+      WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE: "",
+    },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -69,6 +77,31 @@ const diagnosticPlaywrightConfigStructure = (): PlaywrightCheckoutConfig => {
     new TextDecoder().decode(result.stdout)
   ) as PlaywrightCheckoutConfig;
 };
+
+const singleMarkerRepairPlaywrightConfigStructure =
+  (): PlaywrightCheckoutConfig => {
+    const result = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        "-e",
+        'const config = (await import("./playwright.e2e.config")).default; console.log(JSON.stringify(config));',
+      ],
+      cwd: resolve(import.meta.dir, ".."),
+      env: {
+        ...process.env,
+        WORKSPACE_E2E_DIAGNOSTIC_MODE: "",
+        WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE: "true",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(new TextDecoder().decode(result.stderr));
+    }
+    return JSON.parse(
+      new TextDecoder().decode(result.stdout)
+    ) as PlaywrightCheckoutConfig;
+  };
 
 const workflowPath = resolve(
   import.meta.dir,
@@ -81,6 +114,14 @@ const productionWorkflowPath = resolve(
 
 const doc = parseWorkflow(workflowPath);
 const productionDoc = parseWorkflow(productionWorkflowPath);
+const workflowConcurrency = (
+  doc as typeof doc & {
+    readonly concurrency?: {
+      readonly group?: string;
+      readonly "cancel-in-progress"?: boolean | string;
+    };
+  }
+).concurrency;
 // Format-insensitive view of the parsed workflow used for document-level
 // token presence/absence checks; assertions never touch raw file text.
 const serializedWorkflow = JSON.stringify(doc);
@@ -851,6 +892,109 @@ describe("workspace E2E workflow", () => {
     ).toHaveLength(1);
   });
 
+  test("registers single-marker repair only in its exclusive mode", () => {
+    const normalConfig = playwrightConfigStructure();
+    const repairConfig = singleMarkerRepairPlaywrightConfigStructure();
+
+    expect(
+      projectByName(normalConfig, "checkout-single-marker-repair")
+    ).toBeUndefined();
+    expect(
+      projectByName(repairConfig, "checkout-single-marker-repair")
+    ).toEqual({
+      name: "checkout-single-marker-repair",
+      testMatch: "single-marker-repair.pw.ts",
+    });
+    expect(
+      repairConfig.projects?.filter(
+        (project) => project.name === "checkout-single-marker-repair"
+      )
+    ).toHaveLength(1);
+
+    const conflictingMode = Bun.spawnSync({
+      cmd: [process.execPath, "-e", 'await import("./playwright.e2e.config");'],
+      cwd: resolve(import.meta.dir, ".."),
+      env: {
+        ...process.env,
+        WORKSPACE_E2E_DIAGNOSTIC_MODE: "true",
+        WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE: "true",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(conflictingMode.exitCode).not.toBe(0);
+    expect(new TextDecoder().decode(conflictingMode.stderr)).toContain(
+      "Workspace E2E operations are mutually exclusive"
+    );
+  });
+
+  test("keeps single-marker repair isolated from ordinary E2E and cleanup", () => {
+    const repairJob = doc.jobs["recover-failed-e2e"];
+    const repairSteps = repairJob?.steps ?? [];
+    const resolveStep = doc.jobs["resolve-target"]?.steps?.find(
+      (step) => step.name === "Resolve eligible PR and immutable preview"
+    );
+    const repairRunStep = repairSteps.find(
+      (step) =>
+        step.name ===
+        "Run cleanup-only recovery against the restored source run"
+    );
+
+    expect(repairJob?.if).toContain(
+      "inputs.repair_single_confirmed_marker_e2e_reservation == true"
+    );
+    expect(repairRunStep?.env?.REPAIR_SINGLE_CONFIRMED_MARKER).toBe(
+      "$" +
+        "{{ inputs.repair_single_confirmed_marker_e2e_reservation == true }}"
+    );
+    expect(repairRunStep?.env?.WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE).toBe(
+      "$" +
+        "{{ inputs.repair_single_confirmed_marker_e2e_reservation == true && 'true' || 'false' }}"
+    );
+    expect(repairRunStep?.run).toContain(
+      "--project=checkout-single-marker-repair"
+    );
+    expect(repairRunStep?.run).toContain("--no-deps");
+    expect(repairRunStep?.run).toContain(
+      "e2e/playwright-checkout/single-marker-repair.pw.ts"
+    );
+    expect(repairRunStep?.run).toContain("verify-backup");
+    expect(repairRunStep?.run).not.toContain("e2e:cleanup-stale");
+    expect(resolveStep?.run).toContain(
+      "Workspace E2E operation modes cannot be combined"
+    );
+    expect(resolveStep?.run).toContain("$DIAGNOSE_FAILED_E2E_RUN");
+    expect(resolveStep?.run).toContain("$RECOVER_FAILED_E2E_RUN");
+    expect(resolveStep?.run).toContain("$CLEANUP_STALE_E2E_RESERVATIONS");
+    expect(resolveStep?.run).toContain("$REPAIR_SINGLE_CONFIRMED_MARKER");
+    expect(workflowConcurrency?.group).toContain("-single-marker-repair");
+    expect(workflowConcurrency?.["cancel-in-progress"]).toContain(
+      "inputs.repair_single_confirmed_marker_e2e_reservation == true"
+    );
+
+    expect(testJob.if).toContain(
+      "inputs.repair_single_confirmed_marker_e2e_reservation != true"
+    );
+    expect(doc.jobs["publish-final-status"].if).toContain(
+      "inputs.repair_single_confirmed_marker_e2e_reservation != true"
+    );
+    expect(doc.jobs["publish-skipped-status"].if).toContain(
+      "inputs.repair_single_confirmed_marker_e2e_reservation != true"
+    );
+    expect(
+      repairSteps.some(
+        (step) => step.name === "Reconcile stale Workspace E2E reservations"
+      )
+    ).toBe(false);
+    expect(
+      testJob.steps?.find(
+        (step) => step.name === "Reconcile stale Workspace E2E reservations"
+      )?.if
+    ).toBe(
+      "github.event_name == 'workflow_dispatch' && inputs.cleanup_stale_e2e_reservations"
+    );
+  });
+
   test("keeps the protected diagnostic mode isolated from ordinary E2E", () => {
     const diagnosticJob = doc.jobs["diagnose-failed-e2e-reservations"];
     const diagnosticSteps = diagnosticJob?.steps ?? [];
@@ -878,6 +1022,37 @@ describe("workspace E2E workflow", () => {
     expect(testJob.if).toContain("inputs.diagnose_failed_e2e_run != true");
     expect(doc.jobs["publish-final-status"].if).toContain(
       "inputs.diagnose_failed_e2e_run != true"
+    );
+  });
+
+  test("passes the guarded Neon branch hash into single-marker repair", () => {
+    const recoveryJob = doc.jobs["recover-failed-e2e"];
+    const resolver = recoveryJob?.steps?.find(
+      (step) => step.id === "preview-database"
+    );
+    const repairStep = recoveryJob?.steps?.find(
+      (step) =>
+        step.name ===
+        "Run cleanup-only recovery against the restored source run"
+    );
+
+    expect(recoveryJob?.env?.EXPECTED_NEON_BRANCH_ID_SHA256).toBe(
+      "c4c75eb338e2522aa98c7312513391d5053c7246f1400ca45684374499a9a987"
+    );
+    expect(recoveryJob?.env?.EXPECTED_CANDIDATE_SET_SHA256).toBe(
+      "70628d48020610f47c9292bb5cbb6fd7eaac92ac5d77cdd1eec0eeafb5a7d55a"
+    );
+    expect(resolver?.run).toContain(
+      "branch_id_sha256=\"$(printf '%s' \"$branch_id\" | sha256sum | cut -d ' ' -f1)\""
+    );
+    expect(resolver?.run).toContain(
+      'echo "branch_id_sha256=$branch_id_sha256"'
+    );
+    expect(repairStep?.env?.WORKSPACE_E2E_EXPECTED_NEON_BRANCH_ID_SHA256).toBe(
+      "$" + "{{ steps.preview-database.outputs.branch_id_sha256 }}"
+    );
+    expect(repairStep?.env?.WORKSPACE_E2E_EXPECTED_CANDIDATE_SET_SHA256).toBe(
+      "$" + "{{ env.EXPECTED_CANDIDATE_SET_SHA256 }}"
     );
   });
 

@@ -7,6 +7,7 @@ import {
   assertExactStagingLayout,
   decodeFrozenManifestText,
   selectedPinnedFiles,
+  verifyPinnedSourceBackup,
 } from "./workspace-e2e-readonly-source-artifact";
 
 const frozenManifestText = readFileSync(
@@ -137,6 +138,17 @@ describe("pinned read-only source artifact manifest", () => {
       await expect(
         assertExactStagingLayout(checkout, frozenManifest)
       ).rejects.toThrow("restored_source_root_entries_invalid");
+    });
+  });
+
+  test("rejects a preserved backup whose pinned bytes changed", async () => {
+    await withTemporaryDirectory(async (root) => {
+      const checkout = join(root, "checkout");
+      await createCheckout(checkout);
+
+      await expect(verifyPinnedSourceBackup(checkout)).rejects.toThrow(
+        "source_artifact_hash_pin_mismatch"
+      );
     });
   });
 });

@@ -20,6 +20,11 @@ on:
         required: false
         default: false
         type: boolean
+      repair_single_confirmed_marker_e2e_reservation:
+        description: Repair only the pinned source run's single confirmed synthetic reservation
+        required: false
+        default: false
+        type: boolean
       sha:
         description: Exact commit SHA to test
         required: true
@@ -37,8 +42,8 @@ permissions:
   statuses: write
 
 concurrency:
-  group: workspace-e2e-${{ github.event_name == 'workflow_dispatch' && 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' || github.event.client_payload.project.id }}-pr-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.recover_failed_e2e_run == true && '-recovery' || github.event_name == 'workflow_dispatch' && inputs.diagnose_failed_e2e_run == true && '-diagnostic' || '' }}
-  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.recover_failed_e2e_run == true || inputs.diagnose_failed_e2e_run == true)) && (github.event_name != 'repository_dispatch' || github.event.client_payload.state.type != 'skipped') }}
+  group: workspace-e2e-${{ github.event_name == 'workflow_dispatch' && 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' || github.event.client_payload.project.id }}-pr-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.recover_failed_e2e_run == true && '-recovery' || github.event_name == 'workflow_dispatch' && inputs.diagnose_failed_e2e_run == true && '-diagnostic' || github.event_name == 'workflow_dispatch' && inputs.repair_single_confirmed_marker_e2e_reservation == true && '-single-marker-repair' || '' }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.recover_failed_e2e_run == true || inputs.diagnose_failed_e2e_run == true || inputs.repair_single_confirmed_marker_e2e_reservation == true)) && (github.event_name != 'repository_dispatch' || github.event.client_payload.state.type != 'skipped') }}
 
 jobs:
   resolve-target:
@@ -66,13 +71,18 @@ jobs:
           TARGET_SKIPPED: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.state.type == 'skipped' }}
           DIAGNOSE_FAILED_E2E_RUN: ${{ inputs.diagnose_failed_e2e_run == true }}
           RECOVER_FAILED_E2E_RUN: ${{ inputs.recover_failed_e2e_run == true }}
+          REPAIR_SINGLE_CONFIRMED_MARKER: ${{ inputs.repair_single_confirmed_marker_e2e_reservation == true }}
           CLEANUP_STALE_E2E_RESERVATIONS: ${{ inputs.cleanup_stale_e2e_reservations == true }}
           TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.url || github.event.client_payload.url }}
         run: |
           set -euo pipefail
 
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$DIAGNOSE_FAILED_E2E_RUN" == "true" && ( "$RECOVER_FAILED_E2E_RUN" == "true" || "$CLEANUP_STALE_E2E_RESERVATIONS" == "true" ) ]]; then
-            echo "Read-only diagnosis cannot be combined with recovery or stale cleanup" >&2
+          operation_count=0
+          for operation in "$DIAGNOSE_FAILED_E2E_RUN" "$RECOVER_FAILED_E2E_RUN" "$CLEANUP_STALE_E2E_RESERVATIONS" "$REPAIR_SINGLE_CONFIRMED_MARKER"; do
+            [[ "$operation" != "true" ]] || operation_count=$((operation_count + 1))
+          done
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$operation_count" -gt 1 ]]; then
+            echo "Workspace E2E operation modes cannot be combined" >&2
             exit 1
           fi
 
@@ -232,7 +242,7 @@ jobs:
 
   test-e2e:
     needs: resolve-target
-    if: inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
+    if: inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && inputs.repair_single_confirmed_marker_e2e_reservation != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     environment: workspace-checkout-e2e
@@ -522,7 +532,7 @@ jobs:
     needs: resolve-target
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      inputs.recover_failed_e2e_run == true &&
+      (inputs.recover_failed_e2e_run == true || inputs.repair_single_confirmed_marker_e2e_reservation == true) &&
       needs.resolve-target.outputs.eligible == 'true' &&
       needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
@@ -538,7 +548,8 @@ jobs:
       EXPECTED_TARGET_REF: t3code/reorder-cowork-packages
       EXPECTED_TARGET_URL: https://deskohub-workspace-site-a8nzc5sdh-filip-kalny-projects.vercel.app
       EXPECTED_NEON_BRANCH_ID_SHA256: c4c75eb338e2522aa98c7312513391d5053c7246f1400ca45684374499a9a987
-      RECOVERY_CODE_REF: t3code/pr464-e2e-recovery-37580940745
+      EXPECTED_CANDIDATE_SET_SHA256: "70628d48020610f47c9292bb5cbb6fd7eaac92ac5d77cdd1eec0eeafb5a7d55a"
+      RECOVERY_CODE_REF: ${{ inputs.repair_single_confirmed_marker_e2e_reservation == true && 't3code/pr464-e2e-single-marker-repair-37580940745' || 't3code/pr464-e2e-recovery-37580940745' }}
       RECOVERY_CODE_SHA: ${{ github.sha }}
       RUNTIME_TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
       RUNTIME_TARGET_REF: ${{ needs.resolve-target.outputs.head_ref }}
@@ -597,10 +608,12 @@ jobs:
           echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$browser_path" >> "$GITHUB_ENV"
 
       - name: Validate and download the exact failed source run
+        id: source-artifact
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ env.EXPECTED_SOURCE_RUN_ID }}
           SOURCE_RUN_ATTEMPT: ${{ env.EXPECTED_SOURCE_RUN_ATTEMPT }}
+          REPAIR_SINGLE_CONFIRMED_MARKER: ${{ inputs.repair_single_confirmed_marker_e2e_reservation == true }}
         run: |
           set -euo pipefail
           source_run="$(gh api -H "Accept: application/vnd.github+json" \
@@ -641,6 +654,21 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --name "$expected_artifact" \
             --dir "$source_dir"
+
+          if [[ "$REPAIR_SINGLE_CONFIRMED_MARKER" == "true" ]]; then
+            source_backup="$RUNNER_TEMP/workspace-e2e-single-marker-repair-validated-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT/checkout"
+            restored_checkout="apps/deskohub-workspace/e2e-artifacts/checkout"
+            SOURCE_ARTIFACT_DIR="$source_dir" \
+            SOURCE_BACKUP_CHECKOUT_DIR="$source_backup" \
+            RESTORED_CHECKOUT_DIR="$restored_checkout" \
+              bun apps/deskohub-workspace/scripts/workspace-e2e-readonly-source-artifact.ts restore
+            {
+              echo "SOURCE_ARTIFACT_DIR=$source_dir"
+              echo "SOURCE_BACKUP_CHECKOUT_DIR=$source_backup"
+              echo "RESTORED_CHECKOUT_DIR=$restored_checkout"
+            } >> "$GITHUB_ENV"
+            exit 0
+          fi
 
           context_paths=()
           while IFS= read -r path; do context_paths+=("$path"); done < <(
@@ -831,6 +859,7 @@ jobs:
             --database-name neondb --pooled --api-key "$NEON_API_KEY")"
           echo "::add-mask::$pooled_url"
           {
+            echo "branch_id_sha256=$branch_id_sha256"
             echo "branch_name=$branch_name"
             echo "direct_url=$direct_url"
             echo "pooled_url=$pooled_url"
@@ -855,6 +884,16 @@ jobs:
           WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: "true"
           WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: ${{ secrets.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL }}
           WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
+          WORKSPACE_E2E_EXPECTED_TARGET_REF: ${{ env.EXPECTED_TARGET_REF }}
+          WORKSPACE_E2E_EXPECTED_TARGET_URL: ${{ env.EXPECTED_TARGET_URL }}
+          WORKSPACE_E2E_EXPECTED_NEON_BRANCH_ID_SHA256: ${{ steps.preview-database.outputs.branch_id_sha256 }}
+          WORKSPACE_E2E_EXPECTED_CANDIDATE_SET_SHA256: ${{ env.EXPECTED_CANDIDATE_SET_SHA256 }}
+          WORKSPACE_E2E_SOURCE_CLEANUP_MANIFEST_SHA256: ${{ steps.source-artifact.outputs.manifest_sha256 }}
+          WORKSPACE_E2E_SOURCE_ARTIFACT_FILE_COUNT: ${{ steps.source-artifact.outputs.file_count }}
+          WORKSPACE_E2E_SOURCE_ARTIFACT_STATE_COUNT: ${{ steps.source-artifact.outputs.state_count }}
+          WORKSPACE_E2E_SINGLE_MARKER_REPAIR_CODE_REF: ${{ env.RECOVERY_CODE_REF }}
+          WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE: ${{ inputs.repair_single_confirmed_marker_e2e_reservation == true && 'true' || 'false' }}
+          REPAIR_SINGLE_CONFIRMED_MARKER: ${{ inputs.repair_single_confirmed_marker_e2e_reservation == true }}
           WORKSPACE_E2E_POSTHOG_HOST: ${{ vars.WORKSPACE_E2E_POSTHOG_HOST }}
           WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: ${{ vars.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN }}
           DOTYPOS_API_URL: ${{ secrets.WORKSPACE_E2E_DOTYPOS_API_URL }}
@@ -867,11 +906,12 @@ jobs:
         run: |
           set -uo pipefail
           restored_context="e2e-artifacts/checkout/run-context.json"
-          backup_context="$RUNNER_TEMP/workspace-e2e-recovery-validated-$EXPECTED_SOURCE_RUN_ID-$EXPECTED_SOURCE_RUN_ATTEMPT/checkout/run-context.json"
+          backup_root="${SOURCE_BACKUP_CHECKOUT_DIR:-$RUNNER_TEMP/workspace-e2e-recovery-validated-$EXPECTED_SOURCE_RUN_ID-$EXPECTED_SOURCE_RUN_ATTEMPT/checkout}"
+          backup_context="$backup_root/run-context.json"
           restored_plan="e2e-artifacts/checkout/run-plan.json"
-          backup_plan="$RUNNER_TEMP/workspace-e2e-recovery-validated-$EXPECTED_SOURCE_RUN_ID-$EXPECTED_SOURCE_RUN_ATTEMPT/checkout/run-plan.json"
+          backup_plan="$backup_root/run-plan.json"
           restored_account="e2e-artifacts/checkout/cleanup-journals/account-lane.json"
-          backup_account="$RUNNER_TEMP/workspace-e2e-recovery-validated-$EXPECTED_SOURCE_RUN_ID-$EXPECTED_SOURCE_RUN_ATTEMPT/checkout/cleanup-journals/account-lane.json"
+          backup_account="$backup_root/cleanup-journals/account-lane.json"
           if [[ ! -f "$restored_context" || ! -f "$restored_plan" || ! -f "$restored_account" ]]; then
             echo "The exact source run identity files were not restored" >&2
             exit 1
@@ -895,14 +935,43 @@ jobs:
             echo "The cleanup-only output path already exists" >&2
             exit 1
           fi
+          if [[ "$REPAIR_SINGLE_CONFIRMED_MARKER" == "true" ]]; then
+            listing="$(WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE=true bunx playwright test \
+              --config playwright.e2e.config.ts \
+              --project=checkout-single-marker-repair \
+              --no-deps \
+              --list \
+              e2e/playwright-checkout/single-marker-repair.pw.ts)"
+            if [[ "$(grep -Fc 'repair one pinned confirmed marker after source ownership and convergence' <<<"$listing")" != "1" ||
+                  "$(grep -Fc 'Total: 1 test in 1 file' <<<"$listing")" != "1" ]]; then
+              echo "The repair project did not resolve to its single scoped test" >&2
+              exit 1
+            fi
+            echo "The repair Playwright selection contains exactly one test and has no project dependencies."
+            output_dir="e2e-artifacts/checkout-single-marker-repair-output-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
           set +e
-          bunx playwright test \
-            --config playwright.e2e.config.ts \
-            --project=checkout-cleanup \
-            --no-deps \
-            --output="$output_dir"
+          if [[ "$REPAIR_SINGLE_CONFIRMED_MARKER" == "true" ]]; then
+            WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE=true \
+              bunx playwright test \
+                --config playwright.e2e.config.ts \
+                --project=checkout-single-marker-repair \
+                --no-deps \
+                --output="$output_dir" \
+                e2e/playwright-checkout/single-marker-repair.pw.ts
+          else
+            bunx playwright test \
+              --config playwright.e2e.config.ts \
+              --project=checkout-cleanup \
+              --no-deps \
+              --output="$output_dir"
+          fi
           cleanup_exit=$?
           set -e
+
+          if [[ "$REPAIR_SINGLE_CONFIRMED_MARKER" == "true" ]]; then
+            bun scripts/workspace-e2e-readonly-source-artifact.ts verify-backup
+          fi
 
           restored_context_sha="$(sha256sum "$restored_context" | cut -d ' ' -f1)"
           backup_context_sha="$(sha256sum "$backup_context" | cut -d ' ' -f1)"
@@ -918,7 +987,7 @@ jobs:
             echo "Cleanup changed the restored account journal candidate identities" >&2
             exit 1
           fi
-          backup_journals="$RUNNER_TEMP/workspace-e2e-recovery-validated-$EXPECTED_SOURCE_RUN_ID-$EXPECTED_SOURCE_RUN_ATTEMPT/checkout/cleanup-journals"
+          backup_journals="$backup_root/cleanup-journals"
           restored_journals="e2e-artifacts/checkout/cleanup-journals"
           backup_journal_count="$(find "$backup_journals" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')"
           restored_journal_count="$(find "$restored_journals" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')"
@@ -955,6 +1024,15 @@ jobs:
           echo "Cleanup-only project failed for source run $EXPECTED_SOURCE_RUN_ID attempt $EXPECTED_SOURCE_RUN_ATTEMPT; the source run remains failed." >&2
           echo "recovery_outcome=failure" >> "$GITHUB_OUTPUT"
           exit "$cleanup_exit"
+
+      - name: Upload the bounded single-marker repair receipt
+        if: always() && inputs.repair_single_confirmed_marker_e2e_reservation == true && hashFiles(format('apps/deskohub-workspace/e2e-artifacts/checkout-single-marker-repair-{0}-{1}/repair-counts.json', github.run_id, github.run_attempt)) != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-e2e-single-marker-repair-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/deskohub-workspace/e2e-artifacts/checkout-single-marker-repair-${{ github.run_id }}-${{ github.run_attempt }}/repair-counts.json
+          if-no-files-found: error
+          retention-days: 7
 
   diagnose-failed-e2e-reservations:
     needs: resolve-target
@@ -1204,7 +1282,7 @@ jobs:
 
   publish-final-status:
     needs: [resolve-target, test-e2e]
-    if: always() && inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
+    if: always() && inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && inputs.repair_single_confirmed_marker_e2e_reservation != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1245,7 +1323,7 @@ jobs:
 
   publish-skipped-status:
     needs: resolve-target
-    if: inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped == 'true'
+    if: inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && inputs.repair_single_confirmed_marker_e2e_reservation != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

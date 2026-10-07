@@ -24,10 +24,26 @@ const checkoutCaseProjects = [
   "checkout-payment-2",
   "checkout-payment-3",
 ] as const;
-const diagnosticProjects =
-  process.env.WORKSPACE_E2E_DIAGNOSTIC_MODE === "true"
-    ? [{ name: "checkout-diagnostic", testMatch: "diagnostic.pw.ts" }]
-    : [];
+const diagnosticMode = process.env.WORKSPACE_E2E_DIAGNOSTIC_MODE === "true";
+const singleMarkerRepairMode =
+  process.env.WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE === "true";
+if (diagnosticMode && singleMarkerRepairMode) {
+  throw new Error("Workspace E2E operations are mutually exclusive");
+}
+const operationProjects = (() => {
+  if (diagnosticMode) {
+    return [{ name: "checkout-diagnostic", testMatch: "diagnostic.pw.ts" }];
+  }
+  if (singleMarkerRepairMode) {
+    return [
+      {
+        name: "checkout-single-marker-repair",
+        testMatch: "single-marker-repair.pw.ts",
+      },
+    ];
+  }
+  return [];
+})();
 
 export default defineConfig({
   expect: { timeout: workspaceE2ETimeouts.browserAction },
@@ -124,7 +140,7 @@ export default defineConfig({
       name: "checkout-cleanup",
       testMatch: "cleanup.pw.ts",
     },
-    ...diagnosticProjects,
+    ...operationProjects,
   ],
   reporter: [
     ["line"],

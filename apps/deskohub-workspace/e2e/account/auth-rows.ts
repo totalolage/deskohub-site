@@ -1,7 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import { authSession, authUser } from "@/db/schema/auth";
+import { authAccount, authSession, authUser } from "@/db/schema/auth";
 import { customerAccountLinks } from "@/db/schema/customer-account-links";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type { WorkspaceE2EError } from "../errors";
@@ -169,12 +169,23 @@ export const assertNoAuthRows = (
         .from(authSession)
         .where(eq(authSession.userId, accountId))
     );
-    if (users.length > 0 || (sessions[0]?.count ?? 0) > 0) {
+    const accounts = yield* runDatabaseOperation(
+      "count synthetic auth accounts",
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(authAccount)
+        .where(eq(authAccount.userId, accountId))
+    );
+    if (
+      users.length > 0 ||
+      (sessions[0]?.count ?? 0) > 0 ||
+      (accounts[0]?.count ?? 0) > 0
+    ) {
       return yield* workspaceE2EError(
         "Synthetic auth rows survived identity removal",
         {
           diagnosticCode: "postgres_account_fixture_assertion_failed",
-          operation: "assert synthetic auth rows removed",
+          operation: "assert synthetic auth identity rows removed",
         }
       );
     }

@@ -440,10 +440,25 @@ const verify = async () => {
   );
 };
 
+export const verifyPinnedSourceBackup = async (checkoutRoot: string) => {
+  const frozenManifest = await readFrozenManifest();
+  const selected = await assertExactStagingLayout(checkoutRoot, frozenManifest);
+  await assertFilesMatchManifest(checkoutRoot, selected.files, frozenManifest);
+  return {
+    fileCount: selected.files.length,
+    manifestSha256: expectedManifestSha256,
+  };
+};
+
+const verifyBackup = async () => {
+  await verifyPinnedSourceBackup(requiredPath("SOURCE_BACKUP_CHECKOUT_DIR"));
+};
+
 const operation = process.argv[2];
 let main: (() => Promise<void>) | undefined;
 if (operation === "restore") main = restore;
 else if (operation === "verify") main = verify;
+else if (operation === "verify-backup") main = verifyBackup;
 if (import.meta.main) {
   if (!main) {
     process.stderr.write("Read-only source artifact helper mode is invalid.\n");

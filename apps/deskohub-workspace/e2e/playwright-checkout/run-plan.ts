@@ -122,33 +122,42 @@ export const writeWorkspaceE2ECaseJournal = async (
     version: formatVersion,
   } satisfies WorkspaceE2ECleanupJournal);
 
-export const readWorkspaceE2ECaseJournals = async (
+export type WorkspaceE2ECaseJournalState = {
+  readonly caseId: WorkspaceE2ECaseId;
+  readonly state: CheckoutFlowState;
+};
+
+export const readWorkspaceE2ECaseJournalStates = async (
   caseIds: readonly WorkspaceE2ECaseId[]
-): Promise<readonly CheckoutFlowState[]> => {
+): Promise<readonly WorkspaceE2ECaseJournalState[]> => {
   const journals = await Promise.all(
     caseIds.map(async (caseId) => {
       try {
-        return parseCleanupJournal(
-          await readFile(resolve(journalRoot, `${caseId}.json`), "utf8")
-        );
+        return {
+          caseId,
+          journal: parseCleanupJournal(
+            await readFile(resolve(journalRoot, `${caseId}.json`), "utf8")
+          ),
+        };
       } catch (cause) {
         if (
           cause instanceof Error &&
           "code" in cause &&
           cause.code === "ENOENT"
         ) {
-          return undefined;
+          return { caseId, journal: undefined };
         }
         throw cause;
       }
     })
   );
 
-  return journals.flatMap((journal) =>
+  return journals.flatMap(({ caseId, journal }) =>
     journal
       ? journal.checkoutStates.map(
-          ({ completedDotyposReservationId, data, orderId, startedAt }) =>
-            ({
+          ({ completedDotyposReservationId, data, orderId, startedAt }) => ({
+            caseId,
+            state: {
               cleanupComplete: completedDotyposReservationId !== undefined,
               ...(completedDotyposReservationId
                 ? { completedDotyposReservationId }
@@ -156,11 +165,17 @@ export const readWorkspaceE2ECaseJournals = async (
               data,
               ...(orderId ? { orderId } : {}),
               startedAt: new Date(startedAt ?? journal.startedAt),
-            }) as CheckoutFlowState
+            } as CheckoutFlowState,
+          })
         )
       : []
   );
 };
+
+export const readWorkspaceE2ECaseJournals = async (
+  caseIds: readonly WorkspaceE2ECaseId[]
+): Promise<readonly CheckoutFlowState[]> =>
+  (await readWorkspaceE2ECaseJournalStates(caseIds)).map(({ state }) => state);
 
 const parseRunPlan = (serialized: string): WorkspaceE2ERunPlan => {
   const value: unknown = JSON.parse(serialized);
