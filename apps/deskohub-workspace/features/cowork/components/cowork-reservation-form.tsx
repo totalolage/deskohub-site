@@ -687,7 +687,7 @@ export function CoworkReservationForm({
                           aria-hidden="true"
                           alt=""
                           className={cn(
-                            "absolute top-0 right-0 h-auto w-[280%] max-w-[440px] -translate-y-[25%] object-contain object-right-top",
+                            "absolute top-0 right-0 h-auto w-[280%] max-w-[440px] -translate-y-[25%] object-contain object-right-top @min-[400px]/card:translate-x-0",
                             {
                               "open-space": "translate-x-[10%]",
                               "reserved-desk": "translate-x-[20%]",

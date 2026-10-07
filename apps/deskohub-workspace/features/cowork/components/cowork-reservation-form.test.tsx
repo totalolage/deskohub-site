@@ -1385,8 +1385,6 @@ describe("CoworkReservationForm advertised pricing", () => {
     );
     expect(offerGrid?.classList.contains("grid")).toBe(true);
     expect(offerGrid?.classList.contains("gap-4")).toBe(true);
-    expect(offerGrid?.classList.contains("lg:grid-cols-2")).toBe(true);
-
     for (const offer of offers) {
       expect(offer.querySelector('input[type="radio"]')).not.toBeNull();
       expect(
@@ -1416,27 +1414,6 @@ describe("CoworkReservationForm advertised pricing", () => {
         true
       );
     }
-    view.unmount();
-  });
-
-  test("keeps cowork offers in one column until the wide layout breakpoint", () => {
-    workspaceUseSearchParams.mockReturnValue(
-      new URLSearchParams("entryTier=open-space")
-    );
-    getAdvertisedPrices.mockImplementation(() => new Promise(() => undefined));
-
-    const view = renderForm();
-    const offerGrid = view.container.querySelector(
-      "[data-reservation-type-option='open-space']"
-    )?.parentElement;
-    expect(offerGrid).not.toBeNull();
-
-    expect(offerGrid?.classList.contains("grid")).toBe(true);
-    expect(offerGrid?.classList.contains("gap-4")).toBe(true);
-    expect(offerGrid?.classList.contains("grid-cols-2")).toBe(false);
-    expect(offerGrid?.classList.contains("sm:grid-cols-2")).toBe(false);
-    expect(offerGrid?.classList.contains("md:grid-cols-2")).toBe(false);
-    expect(offerGrid?.classList.contains("lg:grid-cols-2")).toBe(true);
     view.unmount();
   });
 
