@@ -4,6 +4,7 @@ import {
   type ReservationStatus,
   type ReservationStatusCounts,
 } from "./diagnostic-counts";
+import { hashWorkspaceE2ECandidateIds } from "./source-candidate-set";
 
 const emptyCounts = (): ReservationStatusCounts => ({
   CANCELLED: 0,
@@ -95,4 +96,32 @@ describe("reservation diagnostic count partitions", () => {
       ).toEqual(expectedCandidateTotal);
     }
   );
+});
+
+describe("workspace E2E candidate-set hash", () => {
+  const candidateIds = Array.from(
+    { length: 38 },
+    (_, index) => `synthetic-reservation-${index}`
+  );
+
+  test("hashes a sorted unique candidate set deterministically", () => {
+    expect(hashWorkspaceE2ECandidateIds(candidateIds)).toBe(
+      hashWorkspaceE2ECandidateIds([...candidateIds].reverse())
+    );
+    expect(hashWorkspaceE2ECandidateIds(candidateIds)).toBe(
+      hashWorkspaceE2ECandidateIds([...candidateIds, candidateIds[0]!])
+    );
+  });
+
+  test("changes the hash when one ID is replaced without changing the count", () => {
+    const replacement = [
+      ...candidateIds.slice(0, -1),
+      "synthetic-reservation-replacement",
+    ];
+
+    expect(replacement).toHaveLength(candidateIds.length);
+    expect(hashWorkspaceE2ECandidateIds(replacement)).not.toBe(
+      hashWorkspaceE2ECandidateIds(candidateIds)
+    );
+  });
 });

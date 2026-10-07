@@ -27,6 +27,7 @@ import {
   reservationStatuses,
 } from "./diagnostic-counts";
 import { readWorkspaceE2ECaseJournals } from "./run-plan";
+import { hashWorkspaceE2ECandidateIds } from "./source-candidate-set";
 
 const expectedSourceRunId = "37580940745-1";
 const expectedTargetSha = "d027de04a101a7f018960b81e164d53eb36d26cc";
@@ -43,6 +44,8 @@ const maximumConcurrentStatusReads = 4;
 const expectedSourceArtifactFileCount = 36;
 const expectedSourceStateCount = 36;
 const expectedSourceCompletedMarkerCount = 36;
+const expectedCheckoutRowCandidateCount = 38;
+const expectedOtherCandidateCount = 2;
 const allowedStatuses = reservationStatuses;
 
 const decodeReservationId = Schema.decodeUnknownOption(
@@ -69,11 +72,14 @@ type ReadonlyDiagnosticReceipt = {
   readonly accountReservationCandidates: number;
   readonly activeInventoryIntersection: Record<ReservationStatus, number>;
   readonly activeInventoryIntersectionPartitions: ReservationStatusPartitions;
+  readonly candidateIdSetSha256: string;
   readonly candidateStatuses: Record<ReservationStatus, number>;
   readonly candidateStatusPartitions: ReservationStatusPartitions;
   readonly checkoutRowCandidates: number;
   readonly completedAt: string;
   readonly completedSourceMarkers: number;
+  readonly otherCandidateIdSetSha256: string;
+  readonly otherUniqueCandidateCount: number;
   readonly source: {
     readonly artifactFileCount: number;
     readonly artifactCleanupManifestSha256: string;
@@ -91,6 +97,7 @@ type ReadonlyDiagnosticReceipt = {
     readonly targetRef: string;
     readonly targetSha: string;
     readonly targetUrl: string;
+    readonly sourceMarkerIdSetSha256: string;
   };
   readonly startedAt: string;
   readonly uniqueCandidateCount: number;
@@ -140,12 +147,28 @@ const makeDiagnostic = (
     ...checkoutRowIds,
     ...accountReservationIds,
   ]);
+  const otherCandidateIds = new Set(
+    [...candidateIds].filter((id) => !sourceMarkerIds.has(id))
+  );
+  if (
+    sourceMarkerIds.size !== expectedSourceCompletedMarkerCount ||
+    checkoutRowIds.size !== expectedCheckoutRowCandidateCount ||
+    accountReservationIds.size !== 0 ||
+    candidateIds.size !== expectedCheckoutRowCandidateCount ||
+    otherCandidateIds.size !== expectedOtherCandidateCount
+  ) {
+    throw new Error("source_candidate_counts_mismatch");
+  }
+  const candidateIdSetSha256 = hashWorkspaceE2ECandidateIds(candidateIds);
+  const otherCandidateIdSetSha256 =
+    hashWorkspaceE2ECandidateIds(otherCandidateIds);
+  const sourceMarkerIdSetSha256 = hashWorkspaceE2ECandidateIds(sourceMarkerIds);
   const flowDates = checkoutCleanup.flowStates
     .map(({ data }) => data.date)
     .sort();
   const fromDate = flowDates[0];
   const toDate = flowDates.at(-1);
-  if (!fromDate || !toDate || candidateIds.size === 0) {
+  if (!fromDate || !toDate) {
     throw new Error("source_candidates_missing");
   }
 
@@ -218,11 +241,14 @@ const makeDiagnostic = (
         activeInventoryIntersection: intersectionCounts,
         activeInventoryIntersectionPartitions:
           partitions.activeInventoryIntersectionPartitions,
+        candidateIdSetSha256,
         checkoutRowCandidates: checkoutRowIds.size,
         completedSourceMarkers: sourceMarkerIds.size,
         completedAt: new Date().toISOString(),
         candidateStatuses: countStatuses(statusValues),
         candidateStatusPartitions: partitions.candidateStatusPartitions,
+        otherCandidateIdSetSha256,
+        otherUniqueCandidateCount: otherCandidateIds.size,
         source: {
           artifactFileCount: expectedSourceStateCount,
           artifactCleanupManifestSha256: sourceArtifactManifestSha256,
@@ -240,6 +266,7 @@ const makeDiagnostic = (
           targetRef: expectedTargetRef,
           targetSha: expectedTargetSha,
           targetUrl: expectedTargetUrl,
+          sourceMarkerIdSetSha256,
         },
         startedAt,
         uniqueCandidateCount: candidateIds.size,
