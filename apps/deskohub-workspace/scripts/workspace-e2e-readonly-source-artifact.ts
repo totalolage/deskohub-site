@@ -97,6 +97,11 @@ const readJson = async <S extends Schema.Decoder<unknown>>(
 const sha256 = (value: Uint8Array | string) =>
   createHash("sha256").update(value).digest("hex");
 
+const isPinnedArtifactPath = (path: string) =>
+  /^(?:run-context|run-plan)\.json$|^cleanup-journals\/[A-Za-z0-9-]+\.json$/.test(
+    path
+  );
+
 export const decodeFrozenManifestText = (manifestText: string) => {
   if (sha256(manifestText) !== expectedManifestSha256) {
     throw new Error("frozen_source_manifest_pin_mismatch");
@@ -110,9 +115,7 @@ export const decodeFrozenManifestText = (manifestText: string) => {
     new Set(paths).size !== paths.length ||
     manifest.files.some(
       ({ path, sha256: fileHash, sizeBytes }) =>
-        !/^(?:run-context|run-plan)\.json$|^cleanup-journals\/[A-Za-z0-9-]+\.json$/.test(
-          path
-        ) ||
+        !isPinnedArtifactPath(path) ||
         !/^[0-9a-f]{64}$/.test(fileHash) ||
         !Number.isSafeInteger(sizeBytes) ||
         sizeBytes < 0
@@ -126,22 +129,27 @@ export const decodeFrozenManifestText = (manifestText: string) => {
 const readFrozenManifest = async () =>
   decodeFrozenManifestText(await readFile(expectedManifestPath, "utf8"));
 
-const selectedFiles = async (checkoutRoot: string) => {
-  const checkoutEntries = (await readdir(checkoutRoot)).toSorted();
-  if (
-    !isDeepStrictEqual(checkoutEntries, [
-      "cleanup-journals",
-      "run-context.json",
-      "run-plan.json",
-    ])
-  ) {
-    throw new Error("source_checkout_entries_invalid");
+export const selectedPinnedFiles = async (
+  checkoutRoot: string,
+  frozenManifest: Schema.Schema.Type<typeof frozenManifestSchema>
+) => {
+  const checkoutMetadata = await lstat(checkoutRoot);
+  if (!checkoutMetadata.isDirectory() || checkoutMetadata.isSymbolicLink()) {
+    throw new Error("source_checkout_root_invalid");
   }
 
   const contextPath = join(checkoutRoot, "run-context.json");
   const planPath = join(checkoutRoot, "run-plan.json");
   const journalRoot = join(checkoutRoot, "cleanup-journals");
-  const journalNames = (await readdir(journalRoot)).toSorted();
+  const journalMetadata = await lstat(journalRoot);
+  if (!journalMetadata.isDirectory() || journalMetadata.isSymbolicLink()) {
+    throw new Error("source_journal_directory_invalid");
+  }
+  const journalNames = frozenManifest.files
+    .map(({ path }) => path)
+    .filter((path) => path.startsWith("cleanup-journals/"))
+    .map((path) => path.slice("cleanup-journals/".length))
+    .toSorted();
   const expectedCaseIds = new Set(workspaceE2ECaseIds);
   if (
     journalNames.length !== expectedCheckoutJournalCount + 1 ||
@@ -167,11 +175,14 @@ const selectedFiles = async (checkoutRoot: string) => {
     throw new Error("source_journal_count_invalid");
   }
 
-  const files = [
-    contextPath,
-    planPath,
-    ...journalNames.map((name) => join(journalRoot, name)),
-  ].toSorted();
+  const files = frozenManifest.files
+    .map(({ path }) => {
+      if (!isPinnedArtifactPath(path)) {
+        throw new Error("source_manifest_path_invalid");
+      }
+      return join(checkoutRoot, ...path.split("/"));
+    })
+    .toSorted();
   for (const path of files) {
     const metadata = await lstat(path);
     if (!metadata.isFile() || metadata.isSymbolicLink()) {
@@ -182,6 +193,28 @@ const selectedFiles = async (checkoutRoot: string) => {
     throw new Error("source_file_count_invalid");
   }
   return { files, journalRoot, journalNames, planPath, contextPath };
+};
+
+export const assertExactStagingLayout = async (
+  checkoutRoot: string,
+  frozenManifest: Schema.Schema.Type<typeof frozenManifestSchema>
+) => {
+  const selected = await selectedPinnedFiles(checkoutRoot, frozenManifest);
+  const checkoutEntries = (await readdir(checkoutRoot)).toSorted();
+  if (
+    !isDeepStrictEqual(checkoutEntries, [
+      "cleanup-journals",
+      "run-context.json",
+      "run-plan.json",
+    ])
+  ) {
+    throw new Error("restored_source_root_entries_invalid");
+  }
+  const journalEntries = (await readdir(selected.journalRoot)).toSorted();
+  if (!isDeepStrictEqual(journalEntries, selected.journalNames)) {
+    throw new Error("restored_source_journal_entries_invalid");
+  }
+  return selected;
 };
 
 const assertFilesMatchManifest = async (
@@ -215,9 +248,9 @@ const assertFilesMatchManifest = async (
 };
 
 const validateSource = async (checkoutRoot: string) => {
-  const { files, journalRoot, journalNames, planPath, contextPath } =
-    await selectedFiles(checkoutRoot);
   const frozenManifest = await readFrozenManifest();
+  const { files, journalRoot, journalNames, planPath, contextPath } =
+    await selectedPinnedFiles(checkoutRoot, frozenManifest);
   await assertFilesMatchManifest(checkoutRoot, files, frozenManifest);
 
   // Treat the frozen byte-level manifest as the trust boundary. No source
@@ -285,6 +318,10 @@ const restore = async () => {
   const restoredRoot = requiredPath("RESTORED_CHECKOUT_DIR");
   const backupRoot = requiredPath("SOURCE_BACKUP_CHECKOUT_DIR");
   const contextMatches: string[] = [];
+  const sourceMetadata = await lstat(sourceRoot);
+  if (!sourceMetadata.isDirectory() || sourceMetadata.isSymbolicLink()) {
+    throw new Error("source_artifact_root_invalid");
+  }
   const walk = async (directory: string) => {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
@@ -324,19 +361,7 @@ const restore = async () => {
     await chmod(backupFile, 0o600);
     await chmod(restoredFile, 0o600);
   }
-  const backupFiles = await selectedFiles(backupRoot);
-  const restoredFiles = await selectedFiles(restoredRoot);
-  await assertFilesMatchManifest(
-    backupRoot,
-    backupFiles.files,
-    validated.frozenManifest
-  );
-  await assertFilesMatchManifest(
-    restoredRoot,
-    restoredFiles.files,
-    validated.frozenManifest
-  );
-  await verifyCopies(backupRoot, restoredRoot);
+  await verifyCopies(backupRoot, restoredRoot, validated.frozenManifest);
 
   const output = process.env.GITHUB_OUTPUT;
   if (!output) throw new Error("workflow_output_missing");
@@ -370,7 +395,25 @@ const collectFiles = async (root: string) => {
   return files;
 };
 
-const verifyCopies = async (leftRoot: string, rightRoot: string) => {
+const verifyCopies = async (
+  leftRoot: string,
+  rightRoot: string,
+  frozenManifest: Schema.Schema.Type<typeof frozenManifestSchema>
+) => {
+  const leftSelection = await assertExactStagingLayout(
+    leftRoot,
+    frozenManifest
+  );
+  const rightSelection = await assertExactStagingLayout(
+    rightRoot,
+    frozenManifest
+  );
+  await assertFilesMatchManifest(leftRoot, leftSelection.files, frozenManifest);
+  await assertFilesMatchManifest(
+    rightRoot,
+    rightSelection.files,
+    frozenManifest
+  );
   const left = await collectFiles(leftRoot);
   const right = await collectFiles(rightRoot);
   if (
@@ -389,9 +432,11 @@ const verifyCopies = async (leftRoot: string, rightRoot: string) => {
 };
 
 const verify = async () => {
+  const frozenManifest = await readFrozenManifest();
   await verifyCopies(
     requiredPath("SOURCE_BACKUP_CHECKOUT_DIR"),
-    requiredPath("RESTORED_CHECKOUT_DIR")
+    requiredPath("RESTORED_CHECKOUT_DIR"),
+    frozenManifest
   );
 };
 
