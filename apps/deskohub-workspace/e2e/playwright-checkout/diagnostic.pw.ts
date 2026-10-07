@@ -19,6 +19,13 @@ import {
   type WorkspaceE2ECleanupCandidates,
 } from "./cleanup-plan";
 import { cleanupTest as test } from "./cleanup-runtime-fixtures";
+import {
+  countReservationStatusPartitions,
+  type ReservationStatus,
+  type ReservationStatusCounts,
+  type ReservationStatusPartitions,
+  reservationStatuses,
+} from "./diagnostic-counts";
 import { readWorkspaceE2ECaseJournals } from "./run-plan";
 
 const expectedSourceRunId = "37580940745-1";
@@ -36,8 +43,7 @@ const maximumConcurrentStatusReads = 4;
 const expectedSourceArtifactFileCount = 36;
 const expectedSourceStateCount = 36;
 const expectedSourceCompletedMarkerCount = 36;
-const allowedStatuses = ["CANCELLED", "CONFIRMED", "NEW"] as const;
-type ReservationStatus = (typeof allowedStatuses)[number];
+const allowedStatuses = reservationStatuses;
 
 const decodeReservationId = Schema.decodeUnknownOption(
   DotyposReservationIdSchema
@@ -50,7 +56,7 @@ const withoutEffectLogs = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.provide(Logger.layer([Logger.make(() => undefined)])));
 
 const countStatuses = (statuses: readonly ReservationStatus[]) => {
-  const counts: Record<ReservationStatus, number> = {
+  const counts: ReservationStatusCounts = {
     CANCELLED: 0,
     CONFIRMED: 0,
     NEW: 0,
@@ -62,7 +68,9 @@ const countStatuses = (statuses: readonly ReservationStatus[]) => {
 type ReadonlyDiagnosticReceipt = {
   readonly accountReservationCandidates: number;
   readonly activeInventoryIntersection: Record<ReservationStatus, number>;
+  readonly activeInventoryIntersectionPartitions: ReservationStatusPartitions;
   readonly candidateStatuses: Record<ReservationStatus, number>;
+  readonly candidateStatusPartitions: ReservationStatusPartitions;
   readonly checkoutRowCandidates: number;
   readonly completedAt: string;
   readonly completedSourceMarkers: number;
@@ -145,7 +153,7 @@ const makeDiagnostic = (
 
   return readEffect(
     Effect.gen(function* () {
-      const statusValues = yield* Effect.forEach(
+      const candidateStatusEntries = yield* Effect.forEach(
         [...candidateIds],
         (id) =>
           readDotyposReservationStatus(datasourceConfig, id).pipe(
@@ -153,11 +161,13 @@ const makeDiagnostic = (
               if (!isReservationStatus(status)) {
                 throw new Error("reservation_status_unknown");
               }
-              return status;
+              return [id, status] as const;
             })
           ),
         { concurrency: maximumConcurrentStatusReads }
       );
+      const statusByCandidateId = new Map(candidateStatusEntries);
+      const statusValues = candidateStatusEntries.map(([, status]) => status);
 
       const interval = getWorkspaceE2EDateInterval({ fromDate, toDate });
       const activeReservations = yield* Effect.gen(function* () {
@@ -198,13 +208,21 @@ const makeDiagnostic = (
           activeIdsByStatus[status].size,
         ])
       ) as Record<ReservationStatus, number>;
+      const partitions = countReservationStatusPartitions(
+        statusByCandidateId,
+        sourceMarkerIds,
+        activeIdsByStatus
+      );
       return {
         accountReservationCandidates: accountReservationIds.size,
         activeInventoryIntersection: intersectionCounts,
+        activeInventoryIntersectionPartitions:
+          partitions.activeInventoryIntersectionPartitions,
         checkoutRowCandidates: checkoutRowIds.size,
         completedSourceMarkers: sourceMarkerIds.size,
         completedAt: new Date().toISOString(),
         candidateStatuses: countStatuses(statusValues),
+        candidateStatusPartitions: partitions.candidateStatusPartitions,
         source: {
           artifactFileCount: expectedSourceStateCount,
           artifactCleanupManifestSha256: sourceArtifactManifestSha256,
