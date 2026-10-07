@@ -45,10 +45,15 @@ import {
   type SingleMarkerRepairReservationStatus,
   type SingleMarkerRepairSourceMarker,
   singleMarkerRepairReservationStatuses,
+  singleMarkerRepairSourceOwnershipFailureReasons,
 } from "./single-marker-repair";
-import { hashWorkspaceE2ECandidateIds } from "./source-candidate-set";
+import {
+  prepareSingleMarkerRepairSource,
+  type SingleMarkerRepairSourceCounts,
+  singleMarkerRepairSourcePins,
+} from "./single-marker-repair-source";
 
-const expectedSourceRunId = "37580940745-1";
+const expectedSourceRunId = singleMarkerRepairSourcePins.sourceRunId;
 const expectedTargetSha = "d027de04a101a7f018960b81e164d53eb36d26cc";
 const expectedTargetRef = "t3code/reorder-cowork-packages";
 const expectedTargetUrl =
@@ -58,15 +63,16 @@ const expectedNeonBranchIdSha256 =
   "c4c75eb338e2522aa98c7312513391d5053c7246f1400ca45684374499a9a987";
 // Replaced only after a reviewed fresh read-only candidate-set anchor.
 const expectedCandidateSetSha256 =
-  "70628d48020610f47c9292bb5cbb6fd7eaac92ac5d77cdd1eec0eeafb5a7d55a";
+  singleMarkerRepairSourcePins.candidateSetSha256;
 const expectedRepairCodeRef =
   "t3code/pr464-e2e-single-marker-repair-37580940745";
 const expectedSourceArtifactManifestSha256 =
-  "7736b918ac4c6a45675c997cbbf226e9dfd9e8047454bc9a492226f34b5e30e1";
-const expectedSourceArtifactFileCount = 36;
-const expectedSourceStateCount = 36;
-const expectedSourceCompletedMarkerCount = 36;
-const expectedCandidateCount = 38;
+  singleMarkerRepairSourcePins.sourceArtifactManifestSha256;
+const expectedSourceArtifactFileCount =
+  singleMarkerRepairSourcePins.sourceArtifactFileCount;
+const expectedSourceStateCount = singleMarkerRepairSourcePins.sourceStateCount;
+const expectedSourceCompletedMarkerCount =
+  singleMarkerRepairSourcePins.completedMarkerCount;
 const maximumConcurrentReads = 4;
 
 type RepairReceipt = {
@@ -113,6 +119,65 @@ type RepairReceipt = {
   readonly startedAt: string;
   readonly targetSourceCaseId: string;
   readonly version: 1;
+};
+
+type RepairPhase =
+  | "source_ownership_preflight"
+  | "reservation_status_preflight"
+  | "target_ownership_preflight"
+  | "single_reservation_cancel"
+  | "checkout_convergence"
+  | "account_reconciliation"
+  | "account_postconditions";
+
+type RepairFailureReceipt = {
+  readonly completedAt: string;
+  readonly failure: {
+    readonly phase: RepairPhase;
+    readonly reason: string;
+  };
+  readonly mutation: {
+    readonly accountReconciliationStarted: boolean;
+    readonly cancellationAttempted: boolean;
+    readonly cancellationSucceeded: boolean;
+  };
+  readonly outcome: "repair_failed";
+  readonly sourcePreflightCounts: SingleMarkerRepairSourceCounts | null;
+  readonly source: {
+    readonly artifactCleanupManifestSha256: string;
+    readonly artifactFileCount: number;
+    readonly codeRef: string;
+    readonly codeSha: string;
+    readonly executionRunAttempt: number;
+    readonly executionRunId: string;
+    readonly neonBranchIdSha256: string;
+    readonly prNumber: number;
+    readonly runId: string;
+    readonly sourceCompletedMarkerCount: number;
+    readonly sourceStateCount: number;
+    readonly targetRef: string;
+    readonly targetSha: string;
+    readonly targetUrl: string;
+  };
+  readonly startedAt: string;
+  readonly version: 1;
+};
+
+const phaseFailureReasons: Record<RepairPhase, string> = {
+  source_ownership_preflight: "source_preflight_failed",
+  reservation_status_preflight: "reservation_status_preflight_failed",
+  target_ownership_preflight: "target_ownership_preflight_failed",
+  single_reservation_cancel: "reservation_cancel_failed",
+  checkout_convergence: "reservation_convergence_failed",
+  account_reconciliation: "account_reconciliation_failed",
+  account_postconditions: "account_postconditions_failed",
+};
+
+const safeOwnershipFailureReason = (cause: unknown): string | undefined => {
+  if (!(cause instanceof Error)) return undefined;
+  return singleMarkerRepairSourceOwnershipFailureReasons.find(
+    (reason) => cause.message === `single_marker_repair_${reason}`
+  );
 };
 
 const decodeReservationId = Schema.decodeUnknownOption(
@@ -187,7 +252,9 @@ const toSafeReservationId = (value: string): DotyposReservationId => {
   return id;
 };
 
-const writeRepairReceipt = async (receipt: RepairReceipt) => {
+const writeRepairReceipt = async (
+  receipt: RepairReceipt | RepairFailureReceipt
+) => {
   const runId = process.env.GITHUB_RUN_ID;
   const attempt = process.env.GITHUB_RUN_ATTEMPT;
   if (!runId || !/^\d+$/.test(runId) || !attempt || !/^\d+$/.test(attempt)) {
@@ -216,91 +283,43 @@ test("repair one pinned confirmed marker after source ownership and convergence"
   const runSafely = <A, E>(effect: Effect.Effect<A, E, E2EDatabase>) =>
     runEffect(withoutEffectLogs(effect));
   const startedAt = new Date().toISOString();
-  let phase = "source_ownership_preflight";
+  let phase: RepairPhase = "source_ownership_preflight";
+  let sourcePreflightCounts: SingleMarkerRepairSourceCounts | undefined;
+  let failureReason: string | undefined;
+  let cancellationAttempted = false;
+  let cancellationSucceeded = false;
+  let accountReconciliationStarted = false;
 
   try {
-    const [accountLane, journalStates] = await Promise.all([
-      runSafely(
-        prepareWorkspaceE2EAccountLaneReconciliation(
-          datasourceConfig,
-          runContext.runId
-        )
-      ),
-      readWorkspaceE2ECaseJournalStates(workspaceE2ECaseIds),
-    ]);
-    if (accountLane?.journal.dotyposReservationIds.length !== 0) {
-      throw new Error("single_marker_repair_account_scope_invalid");
-    }
-
-    const sourceMarkers: SingleMarkerRepairSourceMarker[] =
-      journalStates.flatMap(({ caseId, state }) =>
-        state.completedDotyposReservationId
-          ? [
-              {
-                caseId,
-                expectedEmail: state.data.email,
-                orderId: state.orderId,
-                reservationId: toSafeReservationId(
-                  state.completedDotyposReservationId
-                ),
-              },
-            ]
-          : []
-      );
-    if (
-      journalStates.length !== expectedSourceStateCount ||
-      sourceMarkers.length !== expectedSourceCompletedMarkerCount
-    ) {
-      throw new Error("single_marker_repair_source_state_count_mismatch");
-    }
-
-    const orderIds = [
-      ...new Set(
-        journalStates.flatMap(({ state }) =>
-          state.orderId ? [state.orderId] : []
-        )
-      ),
-    ];
-    const orderRows = await runSafely(
-      Effect.forEach(
-        orderIds,
-        (orderId) =>
-          readCheckoutRow(orderId).pipe(
-            Effect.map((row) => [orderId, row] as const)
-          ),
-        { concurrency: maximumConcurrentReads }
-      )
-    );
-    const rowByOrderId = new Map<string, CheckoutRow | undefined>(orderRows);
-    const candidateIds = [
-      ...new Set([
-        ...sourceMarkers.map(({ reservationId }) => reservationId),
-        ...orderRows.flatMap(([, row]) =>
-          row?.dotypos_reservation_id ? [row.dotypos_reservation_id] : []
+    const source = await prepareSingleMarkerRepairSource({
+      readAccountLane: () =>
+        runSafely(
+          prepareWorkspaceE2EAccountLaneReconciliation(
+            datasourceConfig,
+            runContext.runId
+          )
         ),
-      ]),
-    ].toSorted();
-    const sourceMarkerIds = new Set(
-      sourceMarkers.map(({ reservationId }) => reservationId)
-    );
-    const otherCandidateIds = new Set(
-      candidateIds.filter((id) => !sourceMarkerIds.has(id))
-    );
-    const candidateIdSetSha256 = hashWorkspaceE2ECandidateIds(candidateIds);
-    const sourceMarkerIdSetSha256 =
-      hashWorkspaceE2ECandidateIds(sourceMarkerIds);
-    const otherCandidateIdSetSha256 =
-      hashWorkspaceE2ECandidateIds(otherCandidateIds);
-    if (
-      candidateIds.length !== expectedCandidateCount ||
-      sourceMarkerIds.size !== expectedSourceCompletedMarkerCount ||
-      otherCandidateIds.size !== 2
-    ) {
-      throw new Error("single_marker_repair_candidate_count_mismatch");
+      readJournalStates: () =>
+        readWorkspaceE2ECaseJournalStates(workspaceE2ECaseIds),
+      readCheckoutRow: (orderId) =>
+        runSafely(readCheckoutRow(orderId as CheckoutRow["reservation_id"])),
+    });
+    sourcePreflightCounts = source.counts;
+    if (source.outcome === "failed") {
+      failureReason = source.reason;
+      throw new Error(`single_marker_repair_${source.reason}`);
     }
-    if (candidateIdSetSha256 !== expectedCandidateSetSha256) {
-      throw new Error("single_marker_repair_candidate_set_mismatch");
-    }
+    const {
+      accountLane,
+      candidateIds,
+      candidateIdSetSha256,
+      journalStates,
+      otherCandidateIdSetSha256,
+      rowByOrderId,
+      sourceMarkerIdSetSha256,
+      sourceMarkerIds,
+      sourceMarkers,
+    } = source;
 
     phase = "reservation_status_preflight";
     const statusEntries = await runSafely(
@@ -395,7 +414,7 @@ test("repair one pinned confirmed marker after source ownership and convergence"
           ? await runSafely(
               readSyntheticCustomerProfile(
                 datasourceConfig,
-                row.dotypos_customer_id
+                row.dotypos_customer_id as DotyposCustomerId
               )
             )
           : undefined;
@@ -425,12 +444,15 @@ test("repair one pinned confirmed marker after source ownership and convergence"
       },
       cancelTarget: (marker) => {
         phase = "single_reservation_cancel";
+        cancellationAttempted = true;
         return runSafely(
           cancelSyntheticReservation(
             datasourceConfig,
             toSafeReservationId(marker.reservationId)
           )
-        );
+        ).then(() => {
+          cancellationSucceeded = true;
+        });
       },
       convergeAllCandidates: async (ids) => {
         phase = "checkout_convergence";
@@ -478,6 +500,7 @@ test("repair one pinned confirmed marker after source ownership and convergence"
       },
       reconcileAccountLane: async () => {
         phase = "account_reconciliation";
+        accountReconciliationStarted = true;
         await runSafely(
           reconcileWorkspaceE2EAccountLane(datasourceConfig, accountLane)
         );
@@ -567,7 +590,52 @@ test("repair one pinned confirmed marker after source ownership and convergence"
       version: 1,
     };
     await writeRepairReceipt(receipt);
-  } catch {
+  } catch (cause) {
+    const executionRunId = process.env.GITHUB_RUN_ID;
+    const executionRunAttempt = process.env.GITHUB_RUN_ATTEMPT;
+    const reason =
+      failureReason ??
+      safeOwnershipFailureReason(cause) ??
+      phaseFailureReasons[phase];
+    await writeRepairReceipt({
+      completedAt: new Date().toISOString(),
+      failure: { phase, reason },
+      mutation: {
+        accountReconciliationStarted,
+        cancellationAttempted,
+        cancellationSucceeded,
+      },
+      outcome: "repair_failed",
+      sourcePreflightCounts: sourcePreflightCounts ?? null,
+      source: {
+        artifactCleanupManifestSha256: expectedSourceArtifactManifestSha256,
+        artifactFileCount: expectedSourceArtifactFileCount,
+        codeRef: expectedRepairCodeRef,
+        codeSha:
+          process.env.GITHUB_SHA &&
+          /^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA)
+            ? process.env.GITHUB_SHA
+            : "unavailable",
+        executionRunAttempt:
+          executionRunAttempt && /^\d+$/.test(executionRunAttempt)
+            ? Number(executionRunAttempt)
+            : 0,
+        executionRunId:
+          executionRunId && /^\d+$/.test(executionRunId)
+            ? executionRunId
+            : "unavailable",
+        neonBranchIdSha256: expectedNeonBranchIdSha256,
+        prNumber: expectedPrNumber,
+        runId: expectedSourceRunId,
+        sourceCompletedMarkerCount: expectedSourceCompletedMarkerCount,
+        sourceStateCount: expectedSourceStateCount,
+        targetRef: expectedTargetRef,
+        targetSha: expectedTargetSha,
+        targetUrl: expectedTargetUrl,
+      },
+      startedAt,
+      version: 1,
+    });
     throw new Error(`single_marker_repair_${phase}_failed`);
   }
 });

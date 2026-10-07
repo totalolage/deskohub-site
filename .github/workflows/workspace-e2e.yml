@@ -25,6 +25,11 @@ on:
         required: false
         default: false
         type: boolean
+      diagnose_single_marker_repair_source_preflight:
+        description: Read the exact pinned source ownership preflight without changing fixtures
+        required: false
+        default: false
+        type: boolean
       sha:
         description: Exact commit SHA to test
         required: true
@@ -42,8 +47,8 @@ permissions:
   statuses: write
 
 concurrency:
-  group: workspace-e2e-${{ github.event_name == 'workflow_dispatch' && 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' || github.event.client_payload.project.id }}-pr-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.recover_failed_e2e_run == true && '-recovery' || github.event_name == 'workflow_dispatch' && inputs.diagnose_failed_e2e_run == true && '-diagnostic' || github.event_name == 'workflow_dispatch' && inputs.repair_single_confirmed_marker_e2e_reservation == true && '-single-marker-repair' || '' }}
-  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.recover_failed_e2e_run == true || inputs.diagnose_failed_e2e_run == true || inputs.repair_single_confirmed_marker_e2e_reservation == true)) && (github.event_name != 'repository_dispatch' || github.event.client_payload.state.type != 'skipped') }}
+  group: workspace-e2e-${{ github.event_name == 'workflow_dispatch' && 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' || github.event.client_payload.project.id }}-pr-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.recover_failed_e2e_run == true && '-recovery' || github.event_name == 'workflow_dispatch' && inputs.diagnose_failed_e2e_run == true && '-diagnostic' || github.event_name == 'workflow_dispatch' && inputs.repair_single_confirmed_marker_e2e_reservation == true && '-single-marker-repair' || github.event_name == 'workflow_dispatch' && inputs.diagnose_single_marker_repair_source_preflight == true && '-single-marker-preflight' || '' }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.recover_failed_e2e_run == true || inputs.diagnose_failed_e2e_run == true || inputs.repair_single_confirmed_marker_e2e_reservation == true || inputs.diagnose_single_marker_repair_source_preflight == true)) && (github.event_name != 'repository_dispatch' || github.event.client_payload.state.type != 'skipped') }}
 
 jobs:
   resolve-target:
@@ -72,13 +77,14 @@ jobs:
           DIAGNOSE_FAILED_E2E_RUN: ${{ inputs.diagnose_failed_e2e_run == true }}
           RECOVER_FAILED_E2E_RUN: ${{ inputs.recover_failed_e2e_run == true }}
           REPAIR_SINGLE_CONFIRMED_MARKER: ${{ inputs.repair_single_confirmed_marker_e2e_reservation == true }}
+          DIAGNOSE_SINGLE_MARKER_PREFLIGHT: ${{ inputs.diagnose_single_marker_repair_source_preflight == true }}
           CLEANUP_STALE_E2E_RESERVATIONS: ${{ inputs.cleanup_stale_e2e_reservations == true }}
           TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.url || github.event.client_payload.url }}
         run: |
           set -euo pipefail
 
           operation_count=0
-          for operation in "$DIAGNOSE_FAILED_E2E_RUN" "$RECOVER_FAILED_E2E_RUN" "$CLEANUP_STALE_E2E_RESERVATIONS" "$REPAIR_SINGLE_CONFIRMED_MARKER"; do
+          for operation in "$DIAGNOSE_FAILED_E2E_RUN" "$RECOVER_FAILED_E2E_RUN" "$CLEANUP_STALE_E2E_RESERVATIONS" "$REPAIR_SINGLE_CONFIRMED_MARKER" "$DIAGNOSE_SINGLE_MARKER_PREFLIGHT"; do
             [[ "$operation" != "true" ]] || operation_count=$((operation_count + 1))
           done
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$operation_count" -gt 1 ]]; then
@@ -242,7 +248,7 @@ jobs:
 
   test-e2e:
     needs: resolve-target
-    if: inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && inputs.repair_single_confirmed_marker_e2e_reservation != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
+    if: inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && inputs.repair_single_confirmed_marker_e2e_reservation != true && inputs.diagnose_single_marker_repair_source_preflight != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     environment: workspace-checkout-e2e
@@ -1038,8 +1044,9 @@ jobs:
     needs: resolve-target
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      inputs.diagnose_failed_e2e_run == true &&
+      (inputs.diagnose_failed_e2e_run == true || inputs.diagnose_single_marker_repair_source_preflight == true) &&
       inputs.recover_failed_e2e_run != true &&
+      inputs.repair_single_confirmed_marker_e2e_reservation != true &&
       inputs.cleanup_stale_e2e_reservations != true &&
       needs.resolve-target.outputs.eligible == 'true' &&
       needs.resolve-target.outputs.skipped != 'true'
@@ -1056,7 +1063,10 @@ jobs:
       EXPECTED_TARGET_REF: t3code/reorder-cowork-packages
       EXPECTED_TARGET_URL: https://deskohub-workspace-site-a8nzc5sdh-filip-kalny-projects.vercel.app
       EXPECTED_NEON_BRANCH_ID_SHA256: c4c75eb338e2522aa98c7312513391d5053c7246f1400ca45684374499a9a987
+      EXPECTED_CANDIDATE_SET_SHA256: 70628d48020610f47c9292bb5cbb6fd7eaac92ac5d77cdd1eec0eeafb5a7d55a
       DIAGNOSTIC_CODE_REF: t3code/pr464-e2e-diagnostic-37580940745
+      PREFLIGHT_CODE_REF: t3code/pr464-e2e-single-marker-repair-37580940745
+      READONLY_CODE_REF: ${{ inputs.diagnose_single_marker_repair_source_preflight == true && 't3code/pr464-e2e-single-marker-repair-37580940745' || 't3code/pr464-e2e-diagnostic-37580940745' }}
       DIAGNOSTIC_CODE_SHA: ${{ github.sha }}
       RUNTIME_TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
       RUNTIME_TARGET_REF: ${{ needs.resolve-target.outputs.head_ref }}
@@ -1064,14 +1074,14 @@ jobs:
       RUNTIME_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
       NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
     steps:
-      - name: Checkout the reviewed diagnostic code ref
+      - name: Checkout the reviewed read-only code ref
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Confirm diagnostic code and exact source runtime target
+      - name: Confirm read-only code and exact source runtime target
         run: |
           set -euo pipefail
           actual_code_sha="$(git rev-parse HEAD)"
@@ -1079,7 +1089,7 @@ jobs:
             echo "Checked-out diagnostic code does not match this reviewed workflow run" >&2
             exit 1
           fi
-          if [[ "$GITHUB_REF" != "refs/heads/$DIAGNOSTIC_CODE_REF" ]]; then
+          if [[ "$GITHUB_REF" != "refs/heads/$READONLY_CODE_REF" ]]; then
             echo "Read-only diagnosis must run from its reviewed temporary code ref" >&2
             exit 1
           fi
@@ -1197,22 +1207,32 @@ jobs:
       - name: Confirm the diagnostic Playwright selection is exactly one test
         working-directory: apps/deskohub-workspace
         env:
-          WORKSPACE_E2E_DIAGNOSTIC_MODE: "true"
+          WORKSPACE_E2E_DIAGNOSTIC_MODE: ${{ inputs.diagnose_failed_e2e_run == true && 'true' || 'false' }}
+          WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE: ${{ inputs.diagnose_single_marker_repair_source_preflight == true && 'true' || 'false' }}
           WORKSPACE_E2E_BASE_URL: ${{ needs.resolve-target.outputs.url }}
         run: |
           set -euo pipefail
+          if [[ "$WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE" == "true" ]]; then
+            project="checkout-single-marker-preflight"
+            test_file="e2e/playwright-checkout/single-marker-repair-preflight.pw.ts"
+            test_name="classify pinned source ownership preflight without fixture mutation"
+          else
+            project="checkout-diagnostic"
+            test_file="e2e/playwright-checkout/diagnostic.pw.ts"
+            test_name="diagnose pinned source reservation convergence without mutation"
+          fi
           listing="$(bunx playwright test \
             --config playwright.e2e.config.ts \
-            --project=checkout-diagnostic \
+            --project="$project" \
             --no-deps \
             --list \
-            e2e/playwright-checkout/diagnostic.pw.ts)"
-          if [[ "$(grep -Fc 'diagnose pinned source reservation convergence without mutation' <<<"$listing")" != "1" ||
+            "$test_file")"
+          if [[ "$(grep -Fc "$test_name" <<<"$listing")" != "1" ||
                 "$(grep -Fc 'Total: 1 test in 1 file' <<<"$listing")" != "1" ]]; then
-            echo "The read-only diagnostic project did not resolve to exactly its single diagnostic test" >&2
+            echo "The selected read-only project did not resolve to exactly its single test" >&2
             exit 1
           fi
-          echo "The exact read-only diagnostic test is the only selected test."
+          echo "The exact read-only test is the only selected test."
 
       - name: Run the pinned source status-only diagnostic
         id: diagnostic
@@ -1233,8 +1253,11 @@ jobs:
           WORKSPACE_E2E_EXPECTED_TARGET_REF: ${{ env.EXPECTED_TARGET_REF }}
           WORKSPACE_E2E_EXPECTED_TARGET_URL: ${{ env.EXPECTED_TARGET_URL }}
           WORKSPACE_E2E_EXPECTED_NEON_BRANCH_ID_SHA256: ${{ steps.preview-database.outputs.branch_id_sha256 }}
+          WORKSPACE_E2E_EXPECTED_CANDIDATE_SET_SHA256: ${{ env.EXPECTED_CANDIDATE_SET_SHA256 }}
           WORKSPACE_E2E_DIAGNOSTIC_CODE_REF: ${{ env.DIAGNOSTIC_CODE_REF }}
-          WORKSPACE_E2E_DIAGNOSTIC_MODE: "true"
+          WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_CODE_REF: ${{ env.PREFLIGHT_CODE_REF }}
+          WORKSPACE_E2E_DIAGNOSTIC_MODE: ${{ inputs.diagnose_failed_e2e_run == true && 'true' || 'false' }}
+          WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE: ${{ inputs.diagnose_single_marker_repair_source_preflight == true && 'true' || 'false' }}
           WORKSPACE_E2E_SOURCE_CLEANUP_MANIFEST_SHA256: ${{ steps.source-artifact.outputs.manifest_sha256 }}
           WORKSPACE_E2E_SOURCE_ARTIFACT_FILE_COUNT: ${{ steps.source-artifact.outputs.file_count }}
           WORKSPACE_E2E_SOURCE_ARTIFACT_STATE_COUNT: ${{ steps.source-artifact.outputs.state_count }}
@@ -1250,18 +1273,26 @@ jobs:
           DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
         run: |
           set -uo pipefail
-          output_dir="e2e-artifacts/checkout-readonly-diagnostic-output-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if [[ "$WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE" == "true" ]]; then
+            project="checkout-single-marker-preflight"
+            test_file="e2e/playwright-checkout/single-marker-repair-preflight.pw.ts"
+            output_dir="e2e-artifacts/checkout-single-marker-preflight-output-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          else
+            project="checkout-diagnostic"
+            test_file="e2e/playwright-checkout/diagnostic.pw.ts"
+            output_dir="e2e-artifacts/checkout-readonly-diagnostic-output-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
           if [[ -e "$output_dir" ]]; then
-            echo "The read-only diagnostic output path already exists" >&2
+            echo "The read-only output path already exists" >&2
             exit 1
           fi
           set +e
           bunx playwright test \
             --config playwright.e2e.config.ts \
-            --project=checkout-diagnostic \
+            --project="$project" \
             --no-deps \
             --output="$output_dir" \
-            e2e/playwright-checkout/diagnostic.pw.ts
+            "$test_file"
           diagnostic_exit=$?
           set -e
 
@@ -1272,7 +1303,7 @@ jobs:
           fi
 
       - name: Upload the bounded reservation count receipt
-        if: always() && hashFiles(format('apps/deskohub-workspace/e2e-artifacts/checkout-readonly-diagnostic-{0}-{1}/reservation-convergence-counts.json', github.run_id, github.run_attempt)) != ''
+        if: always() && inputs.diagnose_failed_e2e_run == true && hashFiles(format('apps/deskohub-workspace/e2e-artifacts/checkout-readonly-diagnostic-{0}-{1}/reservation-convergence-counts.json', github.run_id, github.run_attempt)) != ''
         uses: actions/upload-artifact@v4
         with:
           name: workspace-e2e-readonly-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1280,9 +1311,18 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload the bounded source preflight receipt
+        if: always() && inputs.diagnose_single_marker_repair_source_preflight == true && hashFiles(format('apps/deskohub-workspace/e2e-artifacts/checkout-single-marker-preflight-{0}-{1}/preflight-counts.json', github.run_id, github.run_attempt)) != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-e2e-single-marker-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/deskohub-workspace/e2e-artifacts/checkout-single-marker-preflight-${{ github.run_id }}-${{ github.run_attempt }}/preflight-counts.json
+          if-no-files-found: error
+          retention-days: 7
+
   publish-final-status:
     needs: [resolve-target, test-e2e]
-    if: always() && inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && inputs.repair_single_confirmed_marker_e2e_reservation != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
+    if: always() && inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && inputs.repair_single_confirmed_marker_e2e_reservation != true && inputs.diagnose_single_marker_repair_source_preflight != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1323,7 +1363,7 @@ jobs:
 
   publish-skipped-status:
     needs: resolve-target
-    if: inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && inputs.repair_single_confirmed_marker_e2e_reservation != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped == 'true'
+    if: inputs.recover_failed_e2e_run != true && inputs.diagnose_failed_e2e_run != true && inputs.repair_single_confirmed_marker_e2e_reservation != true && inputs.diagnose_single_marker_repair_source_preflight != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

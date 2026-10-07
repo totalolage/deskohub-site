@@ -40,6 +40,7 @@ const playwrightConfigStructure = (): PlaywrightCheckoutConfig => {
         ...process.env,
         WORKSPACE_E2E_DIAGNOSTIC_MODE: "",
         WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE: "",
+        WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE: "",
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -66,6 +67,7 @@ const diagnosticPlaywrightConfigStructure = (): PlaywrightCheckoutConfig => {
       ...process.env,
       WORKSPACE_E2E_DIAGNOSTIC_MODE: "true",
       WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE: "",
+      WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE: "",
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -91,6 +93,33 @@ const singleMarkerRepairPlaywrightConfigStructure =
         ...process.env,
         WORKSPACE_E2E_DIAGNOSTIC_MODE: "",
         WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE: "true",
+        WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE: "",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(new TextDecoder().decode(result.stderr));
+    }
+    return JSON.parse(
+      new TextDecoder().decode(result.stdout)
+    ) as PlaywrightCheckoutConfig;
+  };
+
+const singleMarkerPreflightPlaywrightConfigStructure =
+  (): PlaywrightCheckoutConfig => {
+    const result = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        "-e",
+        'const config = (await import("./playwright.e2e.config")).default; console.log(JSON.stringify(config));',
+      ],
+      cwd: resolve(import.meta.dir, ".."),
+      env: {
+        ...process.env,
+        WORKSPACE_E2E_DIAGNOSTIC_MODE: "",
+        WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE: "",
+        WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE: "true",
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -918,6 +947,44 @@ describe("workspace E2E workflow", () => {
         ...process.env,
         WORKSPACE_E2E_DIAGNOSTIC_MODE: "true",
         WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE: "true",
+        WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE: "true",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(conflictingMode.exitCode).not.toBe(0);
+    expect(new TextDecoder().decode(conflictingMode.stderr)).toContain(
+      "Workspace E2E operations are mutually exclusive"
+    );
+  });
+
+  test("registers source preflight only in its explicit isolated mode", () => {
+    const normalConfig = playwrightConfigStructure();
+    const preflightConfig = singleMarkerPreflightPlaywrightConfigStructure();
+
+    expect(
+      projectByName(normalConfig, "checkout-single-marker-preflight")
+    ).toBeUndefined();
+    expect(
+      projectByName(preflightConfig, "checkout-single-marker-preflight")
+    ).toEqual({
+      name: "checkout-single-marker-preflight",
+      testMatch: "single-marker-repair-preflight.pw.ts",
+    });
+    expect(
+      preflightConfig.projects?.filter(
+        (project) => project.name === "checkout-single-marker-preflight"
+      )
+    ).toHaveLength(1);
+
+    const conflictingMode = Bun.spawnSync({
+      cmd: [process.execPath, "-e", 'await import("./playwright.e2e.config");'],
+      cwd: resolve(import.meta.dir, ".."),
+      env: {
+        ...process.env,
+        WORKSPACE_E2E_DIAGNOSTIC_MODE: "",
+        WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE: "true",
+        WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE: "true",
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -1011,18 +1078,97 @@ describe("workspace E2E workflow", () => {
     expect(diagnosticJob?.if).toContain(
       "inputs.diagnose_failed_e2e_run == true"
     );
-    expect(listStep?.env?.WORKSPACE_E2E_DIAGNOSTIC_MODE).toBe("true");
-    expect(listStep?.run).toContain("--project=checkout-diagnostic");
+    expect(listStep?.env?.WORKSPACE_E2E_DIAGNOSTIC_MODE).toContain(
+      "inputs.diagnose_failed_e2e_run == true"
+    );
+    expect(listStep?.run).toContain('project="checkout-diagnostic"');
     expect(listStep?.run).toContain("--no-deps");
     expect(listStep?.run).toContain("e2e/playwright-checkout/diagnostic.pw.ts");
-    expect(diagnosticRunStep?.env?.WORKSPACE_E2E_DIAGNOSTIC_MODE).toBe("true");
-    expect(diagnosticRunStep?.run).toContain("--project=checkout-diagnostic");
+    expect(diagnosticRunStep?.env?.WORKSPACE_E2E_DIAGNOSTIC_MODE).toContain(
+      "inputs.diagnose_failed_e2e_run == true"
+    );
+    expect(diagnosticRunStep?.run).toContain('project="checkout-diagnostic"');
     expect(diagnosticRunStep?.run).toContain("--no-deps");
     expect(normalRunStep.env?.WORKSPACE_E2E_DIAGNOSTIC_MODE).toBeUndefined();
     expect(testJob.if).toContain("inputs.diagnose_failed_e2e_run != true");
     expect(doc.jobs["publish-final-status"].if).toContain(
       "inputs.diagnose_failed_e2e_run != true"
     );
+  });
+
+  test("keeps source preflight read-only and outside ordinary jobs", () => {
+    const preflightJob = doc.jobs["diagnose-failed-e2e-reservations"];
+    const preflightSteps = preflightJob?.steps ?? [];
+    const preflightSource = readFileSync(
+      resolve(
+        import.meta.dir,
+        "../e2e/playwright-checkout/single-marker-repair-preflight.pw.ts"
+      ),
+      "utf8"
+    );
+    const sharedSource = readFileSync(
+      resolve(
+        import.meta.dir,
+        "../e2e/playwright-checkout/single-marker-repair-source.ts"
+      ),
+      "utf8"
+    );
+    const selectionStep = preflightSteps.find(
+      (step) =>
+        step.name ===
+        "Confirm the diagnostic Playwright selection is exactly one test"
+    );
+    const runStep = preflightSteps.find(
+      (step) => step.name === "Run the pinned source status-only diagnostic"
+    );
+    const normalRunStep = stepByName("Run checkout E2E");
+
+    expect(preflightJob?.if).toContain(
+      "inputs.diagnose_single_marker_repair_source_preflight == true"
+    );
+    expect(preflightJob?.env?.READONLY_CODE_REF).toContain(
+      "t3code/pr464-e2e-single-marker-repair-37580940745"
+    );
+    expect(
+      selectionStep?.env?.WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE
+    ).toContain("diagnose_single_marker_repair_source_preflight");
+    expect(selectionStep?.run).toContain('--project="$project"');
+    expect(selectionStep?.run).toContain("--no-deps");
+    expect(selectionStep?.run).toContain(
+      "single-marker-repair-preflight.pw.ts"
+    );
+    expect(runStep?.run).toContain("--no-deps");
+    expect(runStep?.run).toContain("$test_file");
+    expect(runStep?.run).toContain("verify");
+    expect(
+      normalRunStep.env?.WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE
+    ).toBeUndefined();
+    expect(testJob.if).toContain(
+      "inputs.diagnose_single_marker_repair_source_preflight != true"
+    );
+    expect(doc.jobs["publish-final-status"].if).toContain(
+      "inputs.diagnose_single_marker_repair_source_preflight != true"
+    );
+    expect(doc.jobs["publish-skipped-status"].if).toContain(
+      "inputs.diagnose_single_marker_repair_source_preflight != true"
+    );
+    expect(workflowConcurrency?.group).toContain("-single-marker-preflight");
+    expect(workflowConcurrency?.["cancel-in-progress"]).toContain(
+      "inputs.diagnose_single_marker_repair_source_preflight == true"
+    );
+
+    for (const forbidden of [
+      "cancelSyntheticReservation",
+      "waitForCancelledDotyposReservations",
+      "reconcileWorkspaceE2EAccountLane",
+      "runSingleMarkerRepair",
+      "readDotyposReservationStatus",
+      "listActiveReservationsOverlapping",
+    ]) {
+      expect(preflightSource).not.toContain(forbidden);
+      expect(sharedSource).not.toContain(forbidden);
+    }
+    expect(preflightSource).toContain("prepareSingleMarkerRepairSource");
   });
 
   test("passes the guarded Neon branch hash into single-marker repair", () => {

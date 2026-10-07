@@ -158,25 +158,67 @@ export const prepareSingleMarkerRepairPlan = (input: {
   };
 };
 
+export const singleMarkerRepairSourceOwnershipFailureReasons = [
+  "source_order_id_missing",
+  "checkout_row_missing",
+  "checkout_row_order_id_mismatch",
+  "checkout_row_reservation_id_mismatch",
+  "checkout_row_customer_id_missing",
+  "provider_reservation_missing",
+  "provider_reservation_id_mismatch",
+  "provider_reservation_customer_id_missing",
+  "provider_reservation_customer_id_mismatch",
+  "provider_reservation_email_mismatch",
+  "customer_profile_missing",
+  "customer_profile_id_mismatch",
+  "customer_profile_email_mismatch",
+] as const;
+
+export type SingleMarkerRepairSourceOwnershipFailureReason =
+  (typeof singleMarkerRepairSourceOwnershipFailureReasons)[number];
+
+export const getSingleMarkerRepairSourceOwnershipFailure = (
+  input: SingleMarkerRepairSourceOwnership
+): SingleMarkerRepairSourceOwnershipFailureReason | undefined => {
+  const { checkoutRow, customer, marker, reservation } = input;
+  if (!marker.orderId) return "source_order_id_missing";
+  if (!checkoutRow) return "checkout_row_missing";
+  if (checkoutRow.orderId !== marker.orderId) {
+    return "checkout_row_order_id_mismatch";
+  }
+  if (checkoutRow.reservationId !== marker.reservationId) {
+    return "checkout_row_reservation_id_mismatch";
+  }
+  if (!checkoutRow.customerId) return "checkout_row_customer_id_missing";
+  if (!reservation) return "provider_reservation_missing";
+  if (reservation.reservationId !== marker.reservationId) {
+    return "provider_reservation_id_mismatch";
+  }
+  if (!reservation.customerId) {
+    return "provider_reservation_customer_id_missing";
+  }
+  if (reservation.customerId !== checkoutRow.customerId) {
+    return "provider_reservation_customer_id_mismatch";
+  }
+  if (reservation.customerEmail !== marker.expectedEmail) {
+    return "provider_reservation_email_mismatch";
+  }
+  if (!customer) return "customer_profile_missing";
+  if (customer.customerId !== checkoutRow.customerId) {
+    return "customer_profile_id_mismatch";
+  }
+  if (customer.email !== marker.expectedEmail) {
+    return "customer_profile_email_mismatch";
+  }
+  return undefined;
+};
+
 export const assertSingleMarkerRepairSourceOwnership = (
   input: SingleMarkerRepairSourceOwnership
 ): void => {
-  const { checkoutRow, customer, marker, reservation } = input;
-  if (
-    !marker.orderId ||
-    !checkoutRow ||
-    checkoutRow.orderId !== marker.orderId ||
-    checkoutRow.reservationId !== marker.reservationId ||
-    !checkoutRow.customerId ||
-    !reservation ||
-    reservation.reservationId !== marker.reservationId ||
-    reservation.customerId !== checkoutRow.customerId ||
-    reservation.customerEmail !== marker.expectedEmail ||
-    !customer ||
-    customer.customerId !== checkoutRow.customerId ||
-    customer.email !== marker.expectedEmail
-  ) {
-    throw new Error("single_marker_repair_source_ownership_invalid");
+  const failureReason = getSingleMarkerRepairSourceOwnershipFailure(input);
+  if (failureReason) {
+    throw new Error(`single_marker_repair_${failureReason}`);
   }
 };
 

@@ -182,7 +182,38 @@ describe("assertSingleMarkerRepairSourceOwnership", () => {
           email: marker.expectedEmail,
         },
       })
-    ).toThrow("single_marker_repair_source_ownership_invalid");
+    ).toThrow("single_marker_repair_provider_reservation_customer_id_mismatch");
+  });
+
+  test("returns closed ownership field codes without embedding source values", () => {
+    const failure = (() => {
+      try {
+        assertSingleMarkerRepairSourceOwnership({
+          marker,
+          checkoutRow: {
+            customerId: "synthetic-customer-id",
+            orderId: marker.orderId,
+            reservationId: marker.reservationId,
+          },
+          reservation: {
+            customerEmail: marker.expectedEmail,
+            customerId: null,
+            reservationId: marker.reservationId,
+          },
+          customer: undefined,
+        });
+      } catch (error) {
+        return error;
+      }
+      throw new Error("Expected ownership failure");
+    })();
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe(
+      "single_marker_repair_provider_reservation_customer_id_missing"
+    );
+    expect((failure as Error).message).not.toContain("synthetic-customer-id");
+    expect((failure as Error).message).not.toContain(marker.expectedEmail);
   });
 });
 

@@ -27,7 +27,13 @@ const checkoutCaseProjects = [
 const diagnosticMode = process.env.WORKSPACE_E2E_DIAGNOSTIC_MODE === "true";
 const singleMarkerRepairMode =
   process.env.WORKSPACE_E2E_SINGLE_MARKER_REPAIR_MODE === "true";
-if (diagnosticMode && singleMarkerRepairMode) {
+const singleMarkerPreflightMode =
+  process.env.WORKSPACE_E2E_SINGLE_MARKER_PREFLIGHT_MODE === "true";
+if (
+  [diagnosticMode, singleMarkerRepairMode, singleMarkerPreflightMode].filter(
+    Boolean
+  ).length > 1
+) {
   throw new Error("Workspace E2E operations are mutually exclusive");
 }
 const operationProjects = (() => {
@@ -39,6 +45,14 @@ const operationProjects = (() => {
       {
         name: "checkout-single-marker-repair",
         testMatch: "single-marker-repair.pw.ts",
+      },
+    ];
+  }
+  if (singleMarkerPreflightMode) {
+    return [
+      {
+        name: "checkout-single-marker-preflight",
+        testMatch: "single-marker-repair-preflight.pw.ts",
       },
     ];
   }
