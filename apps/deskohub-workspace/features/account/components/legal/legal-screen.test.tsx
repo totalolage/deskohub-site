@@ -12,6 +12,7 @@ import type { ComponentPropsWithoutRef, Ref } from "react";
 import { useState } from "react";
 import { type Locale, m } from "@/features/i18n";
 import {
+  flushWorkspaceComponentWork,
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
@@ -142,7 +143,11 @@ afterEach(() => {
   cleanup();
   routerRefresh.mockClear();
 });
-afterAll(unregisterWorkspaceComponentTestEnv);
+afterAll(async () => {
+  cleanup();
+  await flushWorkspaceComponentWork();
+  unregisterWorkspaceComponentTestEnv();
+});
 
 function renderLegalScreen(locale: Locale) {
   return render(

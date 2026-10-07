@@ -673,22 +673,37 @@ export function CoworkReservationForm({
                         item.product.kind === "cowork" &&
                         item.product.tier === option.value
                     );
+                  const originalAmount =
+                    advertisedProductItem &&
+                    "originalAmount" in advertisedProductItem
+                      ? advertisedProductItem.originalAmount
+                      : undefined;
                   return (
                     <ReservationTypeOption
                       key={option.value}
                       disabled={isUnavailable}
+                      illustration={
+                        <Image
+                          aria-hidden="true"
+                          alt=""
+                          className="absolute top-0 right-0 h-auto w-[280%] max-w-[440px] object-contain object-right-top"
+                          height={941}
+                          sizes="(min-width: 1024px) 440px, 280px"
+                          src={artworkSource}
+                          width={1672}
+                        />
+                      }
                       price={
                         advertisedProductItem ? (
                           <ReservationAdvertisedPrice
                             amount={advertisedProductItem.amount}
-                            locale={locale}
-                            originalAmount={
-                              "originalAmount" in advertisedProductItem
-                                ? advertisedProductItem.originalAmount
-                                : undefined
+                            originalAmountClassName={
+                              originalAmount ? "text-[0.6em]" : undefined
                             }
+                            locale={locale}
+                            originalAmount={originalAmount}
                             suffix={
-                              <span className="ml-1 text-sm font-normal normal-case tracking-normal text-navy-blue/60 sm:text-base">
+                              <span className="ml-1 text-sm font-normal normal-case tracking-normal text-navy-blue/60">
                                 {m.coworkReservationPricePeriodSuffix(
                                   {},
                                   { locale }
@@ -704,32 +719,10 @@ export function CoworkReservationForm({
                       title={optionTitle}
                       value={option.value}
                     >
-                      <div
-                        className={cn(
-                          "relative col-span-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start max-[240px]:grid-cols-1 max-[240px]:min-h-0",
-                          option.value === "open-space"
-                            ? "min-h-[22rem]"
-                            : "min-h-[13rem]"
-                        )}
-                        data-cowork-tier-showcase={option.value}
-                      >
-                        <CoworkTierDescription
-                          locale={locale}
-                          tier={option.value}
-                        />
-                        <Image
-                          aria-hidden="true"
-                          alt=""
-                          className={cn(
-                            "pointer-events-none relative z-[1] col-start-2 row-start-1 h-auto w-[230%] max-w-none justify-self-end object-contain object-right-top max-[240px]:col-start-1 max-[240px]:row-start-2 max-[240px]:mt-0 max-[240px]:w-[150%]",
-                            option.value === "open-space" ? "mt-40" : "mt-10"
-                          )}
-                          height={941}
-                          sizes="(min-width: 1024px) 360px, (min-width: 640px) 775px, 300px"
-                          src={artworkSource}
-                          width={1672}
-                        />
-                      </div>
+                      <CoworkTierDescription
+                        locale={locale}
+                        tier={option.value}
+                      />
                       <CoworkTierPerks locale={locale} tier={option.value} />
                     </ReservationTypeOption>
                   );
@@ -811,13 +804,16 @@ function CoworkTierDescription({
 }) {
   return (
     <div
-      className="relative z-10 col-start-1 col-span-2 row-start-1 mb-0 max-w-[62%] break-words pt-1 text-base leading-6 text-navy-blue/70 max-[240px]:col-span-1 max-[240px]:max-w-full"
+      className="relative z-10 col-start-1 row-start-3 mb-3 min-h-[7.5rem] max-w-full break-words pt-1 text-sm leading-5 text-navy-blue/70"
+      data-cowork-tier-showcase={tier}
       data-reservation-type-description={tier}
     >
-      {getWorkspaceProductMessage(
-        workspaceProductTierCardMessages[tier].description,
-        locale
-      )}
+      <span className="box-decoration-clone rounded-sm bg-white/85 px-1 py-0.5">
+        {getWorkspaceProductMessage(
+          workspaceProductTierCardMessages[tier].description,
+          locale
+        )}
+      </span>
     </div>
   );
 }
@@ -839,7 +835,7 @@ function CoworkTierPerks({
 
   return (
     <div
-      className="relative z-10 col-span-2 pb-1 text-base leading-6 text-navy-blue/70"
+      className="relative z-10 col-start-1 col-end-3 row-start-4 pb-1 text-sm leading-5 text-navy-blue/70"
       data-reservation-type-perks={tier}
     >
       <span id={perksLabelId} className="sr-only">

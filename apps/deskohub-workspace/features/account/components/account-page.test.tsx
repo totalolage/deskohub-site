@@ -22,6 +22,7 @@ import {
   workspaceUseSearchParams,
 } from "@/shared/testing/workspace-component-module-mocks";
 import {
+  flushWorkspaceComponentWork,
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
@@ -232,7 +233,9 @@ describe("AccountPage states", () => {
     getSession.mockClear();
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    cleanup();
+    await flushWorkspaceComponentWork();
     globalThis.ResizeObserver = originalResizeObserver;
     unregisterWorkspaceComponentTestEnv();
   });

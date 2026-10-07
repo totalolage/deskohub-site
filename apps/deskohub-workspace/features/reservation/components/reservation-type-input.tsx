@@ -43,6 +43,7 @@ type ReservationTypeOptionProps<Value extends ReservationTypeValue> = {
   readonly children?: ReactNode;
   readonly className?: string;
   readonly disabled?: boolean;
+  readonly illustration?: ReactNode;
   readonly price: ReactNode;
   readonly priceReady?: boolean;
   readonly title: ReactNode;
@@ -125,6 +126,7 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
   children,
   className,
   disabled = false,
+  illustration,
   price,
   priceReady = true,
   title,
@@ -151,7 +153,7 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
       className={cn(
         "group grid cursor-pointer outline -outline-offset-1 outline-1 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)]",
         isIllustrated
-          ? "relative isolate grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-3 overflow-hidden rounded-[1.4rem] px-4 py-5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-burned-orange sm:px-6 sm:py-6 lg:grid-rows-[auto_auto_1fr_auto]"
+          ? "relative isolate content-start grid-cols-[minmax(0,3fr)_minmax(0,2fr)] grid-rows-[auto_auto_minmax(7.5rem,auto)_auto] gap-0 overflow-hidden rounded-[1.4rem] px-4 py-5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-burned-orange sm:px-6 sm:py-6 lg:grid-rows-[minmax(3.75rem,auto)_auto_minmax(9rem,auto)_auto]"
           : "rounded-[1.4rem] px-4 lg:grid-rows-subgrid lg:row-span-4",
         disabled &&
           "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",
@@ -185,7 +187,8 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
         id={titleId}
         className={cn(
           "mt-4 mb-3 flex items-start justify-between gap-2",
-          isIllustrated && "relative z-10 col-span-2 mt-0 mb-2"
+          isIllustrated &&
+            "relative z-10 col-start-1 col-end-3 row-start-1 mt-0 mb-2"
         )}
         data-reservation-type-title={value}
       >
@@ -193,7 +196,7 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
           className={cn(
             "text-lg leading-6",
             isIllustrated &&
-              "min-w-0 flex-1 break-words text-2xl font-semibold leading-8 sm:text-3xl sm:leading-9"
+              "min-w-0 flex-1 break-words text-[1.375rem] font-semibold leading-7 lg:text-2xl lg:leading-8"
           )}
         >
           {title}
@@ -209,11 +212,20 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
           )}
         />
       </span>
+      {isIllustrated && illustration && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none relative z-0 col-start-2 row-start-2 row-span-2 min-w-0"
+          data-reservation-type-illustration=""
+        >
+          {illustration}
+        </div>
+      )}
       <div
         className={cn(
           "mb-3 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-navy-blue",
           isIllustrated &&
-            "relative z-10 col-span-2 mb-2 min-w-0 break-words text-[2rem] normal-case leading-9 tracking-normal sm:mb-3 sm:text-4xl sm:leading-10 max-[240px]:text-lg max-[240px]:leading-6"
+            "relative z-20 col-start-1 col-end-3 row-start-2 mb-2 min-w-0 break-words text-[1.75rem] normal-case leading-8 tracking-normal lg:text-[1.875rem] lg:leading-9"
         )}
         data-reservation-type-price-row={value}
       >
@@ -221,7 +233,8 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
           id={priceId}
           className={cn(
             "flex flex-col items-start gap-0.5",
-            isIllustrated && "min-w-0 gap-0 break-words"
+            isIllustrated &&
+              "min-w-0 w-fit max-w-full gap-0 break-words rounded-lg bg-white/90 px-2 py-1 backdrop-blur-[1px]"
           )}
           data-reservation-type-price={value}
           data-reservation-type-price-ready={priceReady}

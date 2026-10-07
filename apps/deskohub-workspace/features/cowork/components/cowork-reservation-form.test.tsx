@@ -397,6 +397,15 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
 
     expect(view.getByText(/discounted price.*145/i)).toBeDefined();
+    const reservedDeskPrice = view.container.querySelector(
+      '[data-reservation-type-price="reserved-desk"]'
+    );
+    expect(reservedDeskPrice?.querySelector("del")?.className).toContain(
+      "text-[0.6em]"
+    );
+    expect(
+      reservedDeskPrice?.querySelector(".text-aquamarine-ink")?.className
+    ).not.toContain("text-[0.6em]");
     const coffeePrice = view.container.querySelector(
       "[data-reservation-coffee-price]"
     );
@@ -550,11 +559,19 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(openSpacePrice?.querySelector("del")?.className).toContain(
       "text-navy-blue/45"
     );
+    expect(openSpacePrice?.querySelector("del")?.className).toContain(
+      "text-[0.6em]"
+    );
     expect(
       Array.from(openSpacePrice?.querySelectorAll("span") ?? []).some(
         (element) => element.className.includes("text-aquamarine-ink")
       )
     ).toBe(true);
+    expect(
+      Array.from(openSpacePrice?.querySelectorAll("span") ?? []).find(
+        (element) => element.className.includes("text-aquamarine-ink")
+      )?.className
+    ).not.toContain("text-[0.6em]");
 
     await act(async () => {
       fireEvent.click(
@@ -1376,6 +1393,9 @@ describe("CoworkReservationForm advertised pricing", () => {
         offer.querySelector("[data-reservation-type-description]")
       ).not.toBeNull();
       expect(
+        offer.querySelector("[data-reservation-type-illustration]")
+      ).not.toBeNull();
+      expect(
         offer.querySelector("[data-reservation-type-perks]")
       ).not.toBeNull();
       const showcase = offer.querySelector("[data-cowork-tier-showcase]");
@@ -1387,6 +1407,11 @@ describe("CoworkReservationForm advertised pricing", () => {
       expect(perks?.querySelector("ul")?.getAttribute("aria-labelledby")).toBe(
         perksLabelId
       );
+      expect(
+        offer
+          .querySelector("[data-reservation-type-illustration]")
+          ?.getAttribute("aria-hidden")
+      ).toBe("true");
       expect(
         perks?.querySelector("li > span")?.classList.contains("h-11")
       ).toBe(true);
