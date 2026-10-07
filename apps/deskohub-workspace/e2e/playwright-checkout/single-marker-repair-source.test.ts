@@ -3,6 +3,7 @@ import { emptyWorkspaceE2EAccountJournal } from "../account/journal";
 import type { WorkspaceE2EAccountLaneReconciliation } from "../account/reconcile";
 import type {
   SingleMarkerRepairCheckoutRow,
+  SingleMarkerRepairSourceCheckoutPreparation,
   SingleMarkerRepairSourceState,
 } from "./single-marker-repair-source";
 import {
@@ -12,7 +13,7 @@ import {
 import { hashWorkspaceE2ECandidateIds } from "./source-candidate-set";
 
 const makeFixture = () => {
-  const states = Array.from({ length: 36 }, (_, index) => ({
+  const journalStates = Array.from({ length: 36 }, (_, index) => ({
     caseId: `case-${index}`,
     state: {
       completedDotyposReservationId: `source-marker-${index}`,
@@ -23,10 +24,28 @@ const makeFixture = () => {
       orderId: `source-order-${index}`,
     },
   })) satisfies readonly SingleMarkerRepairSourceState[];
+  const sourceRows = journalStates.map(({ state }) => ({
+    reservation_id: state.orderId as string,
+    dotypos_customer_id: "synthetic-customer",
+    dotypos_reservation_id: state.completedDotyposReservationId as string,
+  })) satisfies readonly SingleMarkerRepairCheckoutRow[];
+  const fallbackRows = [
+    {
+      reservation_id: "fallback-order-a",
+      dotypos_customer_id: "synthetic-customer",
+      dotypos_reservation_id: "fallback-reservation-a",
+    },
+    {
+      reservation_id: "fallback-order-b",
+      dotypos_customer_id: "synthetic-customer",
+      dotypos_reservation_id: "fallback-reservation-b",
+    },
+  ] satisfies readonly SingleMarkerRepairCheckoutRow[];
   const candidates = [
-    ...states.map(({ state }) => state.completedDotyposReservationId as string),
-    "extra-reservation-a",
-    "extra-reservation-b",
+    ...journalStates.map(
+      ({ state }) => state.completedDotyposReservationId as string
+    ),
+    ...fallbackRows.map((row) => row.dotypos_reservation_id as string),
   ];
   const accountJournal = emptyWorkspaceE2EAccountJournal();
   const accountLane: WorkspaceE2EAccountLaneReconciliation = {
@@ -39,23 +58,17 @@ const makeFixture = () => {
       dotyposCustomerIds: ["synthetic-customer"],
     },
   };
-  const readCheckoutRow = async (orderId: string) => {
-    const index = Number(orderId.slice("source-order-".length));
-    const sourceMarker = `source-marker-${index}`;
-    let dotyposReservationId = sourceMarker;
-    if (index === 0) dotyposReservationId = "extra-reservation-a";
-    if (index === 1) dotyposReservationId = "extra-reservation-b";
-    return {
-      reservation_id: orderId,
-      dotypos_customer_id: `synthetic-customer-${index}`,
-      dotypos_reservation_id: dotyposReservationId,
-    } satisfies SingleMarkerRepairCheckoutRow;
+  const checkoutCleanup: SingleMarkerRepairSourceCheckoutPreparation = {
+    journalStates,
+    checkoutRows: [...sourceRows, ...fallbackRows],
+    orderRows: sourceRows.map((row) => [row.reservation_id, row] as const),
   };
   return {
     accountLane,
     candidates,
-    readCheckoutRow,
-    states,
+    checkoutCleanup,
+    fallbackRows,
+    sourceRows,
     expectedCandidateSetSha256: hashWorkspaceE2ECandidateIds(candidates),
   };
 };
@@ -66,45 +79,45 @@ const runPreflight = (
     readonly readAccountLane?: () => Promise<
       WorkspaceE2EAccountLaneReconciliation | undefined
     >;
-    readonly readJournalStates?: () => Promise<
-      readonly SingleMarkerRepairSourceState[]
-    >;
-    readonly readCheckoutRow?: (
-      orderId: string
-    ) => Promise<SingleMarkerRepairCheckoutRow | undefined>;
+    readonly readCheckoutCleanup?: () => Promise<SingleMarkerRepairSourceCheckoutPreparation>;
+    readonly expectedCandidateSetSha256?: string;
   } = {}
 ) =>
   prepareSingleMarkerRepairSource({
-    expectedCandidateSetSha256: fixture.expectedCandidateSetSha256,
+    expectedCandidateSetSha256:
+      overrides.expectedCandidateSetSha256 ??
+      fixture.expectedCandidateSetSha256,
     readAccountLane:
       overrides.readAccountLane ?? (() => Promise.resolve(fixture.accountLane)),
-    readJournalStates:
-      overrides.readJournalStates ?? (() => Promise.resolve(fixture.states)),
-    readCheckoutRow: overrides.readCheckoutRow ?? fixture.readCheckoutRow,
+    readCheckoutCleanup:
+      overrides.readCheckoutCleanup ??
+      (() => Promise.resolve(fixture.checkoutCleanup)),
   });
 
+const receiptSource = {
+  artifactCleanupManifestSha256: "a".repeat(64),
+  artifactFileCount: 36,
+  codeRef: "synthetic-code-ref",
+  codeSha: "b".repeat(40),
+  executionRunAttempt: 1,
+  executionRunId: "123456",
+  neonBranchIdSha256: "c".repeat(64),
+  prNumber: 464,
+  runId: "synthetic-source-run-1",
+  targetRef: "synthetic-target-ref",
+  targetSha: "d".repeat(40),
+  targetUrl: "https://synthetic-preview.example.test",
+} as const;
+
 describe("prepareSingleMarkerRepairSource", () => {
-  test("uses bounded exact-row reads and returns a count-only receipt", async () => {
+  test("unions source markers with already ownership-prepared cleanup rows", async () => {
     const fixture = makeFixture();
-    let activeReads = 0;
-    let maximumActiveReads = 0;
-    const result = await runPreflight(fixture, {
-      readCheckoutRow: async (orderId) => {
-        activeReads += 1;
-        maximumActiveReads = Math.max(maximumActiveReads, activeReads);
-        try {
-          return await fixture.readCheckoutRow(orderId);
-        } finally {
-          activeReads -= 1;
-        }
-      },
-    });
+    const result = await runPreflight(fixture);
 
     expect(result.outcome).toBe("ready");
     if (result.outcome !== "ready") {
       throw new Error("Expected source preflight");
     }
-    expect(maximumActiveReads).toBeLessThanOrEqual(4);
     expect(result.counts).toMatchObject({
       accountLanePresent: true,
       accountReservationCandidateCount: 0,
@@ -112,26 +125,18 @@ describe("prepareSingleMarkerRepairSource", () => {
       completedMarkerCount: 36,
       exactOrderRowReadCount: 36,
       candidateCount: 38,
-      sourceMarkerRowReservationMismatchCount: 2,
+      sourceMarkerRowReservationMismatchCount: 0,
     });
+    expect(result.candidateIdSetSha256).toBe(
+      fixture.expectedCandidateSetSha256
+    );
+    expect(result.otherCandidateIds.size).toBe(2);
+
     const receipt = makeSingleMarkerRepairSourcePreflightReceipt({
       preflight: result,
       startedAt: "2026-10-01T00:00:00.000Z",
       completedAt: "2026-10-01T00:00:01.000Z",
-      source: {
-        artifactCleanupManifestSha256: "a".repeat(64),
-        artifactFileCount: 36,
-        codeRef: "synthetic-code-ref",
-        codeSha: "b".repeat(40),
-        executionRunAttempt: 1,
-        executionRunId: "123456",
-        neonBranchIdSha256: "c".repeat(64),
-        prNumber: 464,
-        runId: "37580940745-1",
-        targetRef: "synthetic-target-ref",
-        targetSha: "d".repeat(40),
-        targetUrl: "https://synthetic-preview.vercel.app",
-      },
+      source: receiptSource,
     });
     const serialized = JSON.stringify(receipt);
     expect(serialized).not.toContain("synthetic-auth-user");
@@ -139,7 +144,48 @@ describe("prepareSingleMarkerRepairSource", () => {
     expect(serialized).not.toContain("source-marker-");
     expect(serialized).not.toContain("source-order-");
     expect(serialized).not.toContain("@example.test");
-    expect(serialized).not.toContain("extra-reservation-");
+    expect(serialized).not.toContain("fallback-reservation-");
+  });
+
+  test("rejects a 36-marker-only set against the pinned 38-candidate scope", async () => {
+    const fixture = makeFixture();
+    const result = await runPreflight(fixture, {
+      readCheckoutCleanup: () =>
+        Promise.resolve({
+          ...fixture.checkoutCleanup,
+          checkoutRows: fixture.sourceRows,
+        }),
+    });
+
+    expect(result).toMatchObject({
+      outcome: "failed",
+      reason: "candidate_count_mismatch",
+      counts: { completedMarkerCount: 36, candidateCount: 36 },
+    });
+  });
+
+  test("rejects a same-count replacement of an ownership-prepared fallback row", async () => {
+    const fixture = makeFixture();
+    const replacementRows = [
+      fixture.fallbackRows[0],
+      {
+        ...fixture.fallbackRows[1],
+        dotypos_reservation_id: "replacement-reservation",
+      },
+    ];
+    const result = await runPreflight(fixture, {
+      readCheckoutCleanup: () =>
+        Promise.resolve({
+          ...fixture.checkoutCleanup,
+          checkoutRows: [...fixture.sourceRows, ...replacementRows],
+        }),
+    });
+
+    expect(result).toMatchObject({
+      outcome: "failed",
+      reason: "candidate_set_mismatch",
+      counts: { candidateCount: 38 },
+    });
   });
 
   test("classifies account preparation without exposing the thrown error", async () => {
@@ -159,20 +205,7 @@ describe("prepareSingleMarkerRepairSource", () => {
       preflight: result,
       startedAt: "2026-10-01T00:00:00.000Z",
       completedAt: "2026-10-01T00:00:01.000Z",
-      source: {
-        artifactCleanupManifestSha256: "a".repeat(64),
-        artifactFileCount: 36,
-        codeRef: "synthetic-code-ref",
-        codeSha: "b".repeat(40),
-        executionRunAttempt: 1,
-        executionRunId: "123456",
-        neonBranchIdSha256: "c".repeat(64),
-        prNumber: 464,
-        runId: "37580940745-1",
-        targetRef: "synthetic-target-ref",
-        targetSha: "d".repeat(40),
-        targetUrl: "https://synthetic-preview.vercel.app",
-      },
+      source: receiptSource,
     });
     expect(receipt).toMatchObject({
       failureReason: "account_preparation_failed",
@@ -185,142 +218,73 @@ describe("prepareSingleMarkerRepairSource", () => {
     });
   });
 
-  test("counts exact-row query failures without exposing error text", async () => {
+  test("classifies cleanup preparation failure without exposing its error", async () => {
     const fixture = makeFixture();
     const result = await runPreflight(fixture, {
-      readCheckoutRow: async (orderId) => {
-        if (orderId === "source-order-0") {
-          throw new Error("synthetic private database detail");
-        }
-        return fixture.readCheckoutRow(orderId);
+      readCheckoutCleanup: async () => {
+        throw new Error("synthetic private database detail");
       },
     });
 
     expect(result).toMatchObject({
       outcome: "failed",
-      reason: "exact_order_row_query_failed",
-      counts: {
-        exactOrderRowQueryFailureCount: 1,
-        exactOrderRowReadCount: 35,
-      },
+      reason: "checkout_cleanup_preparation_failed",
     });
     expect(JSON.stringify(result)).not.toContain("private database detail");
   });
 
-  test("preserves the original optional exact-row behavior", async () => {
+  test("keeps prepared order rows optional and maps duplicate journal orders", async () => {
     const fixture = makeFixture();
-    const result = await runPreflight(fixture, {
-      readCheckoutRow: async (orderId) =>
-        orderId === "source-order-2"
-          ? undefined
-          : fixture.readCheckoutRow(orderId),
-    });
-
-    expect(result).toMatchObject({
-      outcome: "ready",
-      counts: {
-        exactOrderRowQueryFailureCount: 0,
-        exactOrderRowMissingCount: 1,
-      },
-    });
-  });
-
-  test("does not add a returned order identity guard to optional rows", async () => {
-    const fixture = makeFixture();
-    const result = await runPreflight(fixture, {
-      readCheckoutRow: async (orderId) => {
-        const row = await fixture.readCheckoutRow(orderId);
-        return orderId === "source-order-2"
-          ? { ...row, reservation_id: "different-order" }
-          : row;
-      },
-    });
-
-    expect(result.outcome).toBe("ready");
-  });
-
-  test("matches the original candidate union despite optional row fields", async () => {
-    const fixture = makeFixture();
-    const journalStates = fixture.states.map((entry, index) => {
-      if (index === 2)
-        return { ...entry, state: { ...entry.state, orderId: undefined } };
-      if (index === 3)
-        return {
-          ...entry,
-          state: { ...entry.state, orderId: "source-order-4" },
-        };
-      return entry;
-    });
-    const readCheckoutRow = async (orderId: string) => {
-      const row = await fixture.readCheckoutRow(orderId);
-      if (orderId === "source-order-5") {
-        return {
-          ...row,
-          reservation_id: "different-order",
-          dotypos_customer_id: null,
-          dotypos_reservation_id: null,
-        };
+    const journalStates = fixture.checkoutCleanup.journalStates.map(
+      (entry, index) => {
+        if (index === 2) {
+          return { ...entry, state: { ...entry.state, orderId: undefined } };
+        }
+        if (index === 3) {
+          return {
+            ...entry,
+            state: { ...entry.state, orderId: "source-order-4" },
+          };
+        }
+        return entry;
       }
-      if (orderId === "source-order-6") return undefined;
-      return row;
-    };
-    const sourceMarkerIds = journalStates.flatMap(({ state }) =>
-      state.completedDotyposReservationId
-        ? [state.completedDotyposReservationId]
-        : []
     );
-    const orderIds = [
-      ...new Set(
-        journalStates.flatMap(({ state }) =>
-          state.orderId ? [state.orderId] : []
-        )
-      ),
-    ];
-    const rows = await Promise.all(orderIds.map(readCheckoutRow));
-    const originalCandidateIds = [
-      ...new Set([
-        ...sourceMarkerIds,
-        ...rows.flatMap((row) =>
-          row?.dotypos_reservation_id ? [row.dotypos_reservation_id] : []
-        ),
-      ]),
-    ].toSorted();
-    const result = await prepareSingleMarkerRepairSource({
-      expectedCandidateSetSha256: fixture.expectedCandidateSetSha256,
-      readAccountLane: () => Promise.resolve(fixture.accountLane),
-      readJournalStates: () => Promise.resolve(journalStates),
-      readCheckoutRow,
+    const orderRows = fixture.checkoutCleanup.orderRows.map(
+      ([orderId, row]) => {
+        if (orderId === "source-order-2") return [orderId, undefined] as const;
+        if (orderId === "source-order-5") {
+          return [
+            orderId,
+            {
+              ...row,
+              reservation_id: "different-order",
+              dotypos_customer_id: null,
+              dotypos_reservation_id: null,
+            },
+          ] as const;
+        }
+        return [orderId, row] as const;
+      }
+    );
+    const result = await runPreflight(fixture, {
+      readCheckoutCleanup: () =>
+        Promise.resolve({
+          ...fixture.checkoutCleanup,
+          journalStates,
+          orderRows,
+        }),
     });
 
     expect(result.outcome).toBe("ready");
     if (result.outcome !== "ready") {
-      throw new Error("Expected original candidate admission");
+      throw new Error("Expected source preflight");
     }
-    expect(result.candidateIds).toEqual(originalCandidateIds);
-    expect(result.candidateIdSetSha256).toBe(
-      fixture.expectedCandidateSetSha256
-    );
     expect(result.counts).toMatchObject({
       candidateCount: 38,
       exactOrderRowMissingCount: 1,
       missingOrderIdCount: 1,
+      sourceMarkerRowReservationMismatchCount: 2,
       uniqueOrderIdCount: 34,
-    });
-  });
-
-  test("rejects a same-count candidate replacement against the frozen digest", async () => {
-    const fixture = makeFixture();
-    const result = await prepareSingleMarkerRepairSource({
-      expectedCandidateSetSha256: "0".repeat(64),
-      readAccountLane: () => Promise.resolve(fixture.accountLane),
-      readJournalStates: () => Promise.resolve(fixture.states),
-      readCheckoutRow: fixture.readCheckoutRow,
-    });
-
-    expect(result).toMatchObject({
-      outcome: "failed",
-      reason: "candidate_set_mismatch",
-      counts: { candidateCount: 38 },
     });
   });
 });

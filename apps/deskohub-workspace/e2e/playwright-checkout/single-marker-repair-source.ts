@@ -20,11 +20,10 @@ export const singleMarkerRepairSourceFailureReasons = [
   "account_preparation_failed",
   "account_lane_missing",
   "account_reservation_scope_invalid",
-  "source_journal_read_failed",
   "source_state_count_mismatch",
   "source_marker_count_mismatch",
   "source_marker_invalid",
-  "exact_order_row_query_failed",
+  "checkout_cleanup_preparation_failed",
   "candidate_count_mismatch",
   "candidate_set_mismatch",
 ] as const;
@@ -42,6 +41,15 @@ export type SingleMarkerRepairCheckoutRow = {
   readonly reservation_id: string;
   readonly dotypos_customer_id: string | null;
   readonly dotypos_reservation_id: string | null;
+};
+
+export type SingleMarkerRepairSourceCheckoutPreparation = {
+  readonly journalStates: readonly SingleMarkerRepairSourceState[];
+  readonly checkoutRows: readonly SingleMarkerRepairCheckoutRow[];
+  readonly orderRows: readonly (readonly [
+    string,
+    SingleMarkerRepairCheckoutRow | undefined,
+  ])[];
 };
 
 export type SingleMarkerRepairSourceFailureReason =
@@ -69,7 +77,7 @@ export type SingleMarkerRepairSourceCounts = {
   readonly missingOrderIdCount: number;
   readonly uniqueOrderIdCount: number;
   readonly exactOrderRowReadCount: number;
-  readonly exactOrderRowQueryFailureCount: number;
+  readonly exactOrderRowQueryFailureCount: number | null;
   readonly exactOrderRowMissingCount: number;
   readonly sourceMarkerRowReservationMismatchCount: number;
   readonly candidateCount: number;
@@ -176,7 +184,7 @@ export const emptySingleMarkerRepairSourceCounts =
     missingOrderIdCount: 0,
     uniqueOrderIdCount: 0,
     exactOrderRowReadCount: 0,
-    exactOrderRowQueryFailureCount: 0,
+    exactOrderRowQueryFailureCount: null,
     exactOrderRowMissingCount: 0,
     sourceMarkerRowReservationMismatchCount: 0,
     candidateCount: 0,
@@ -187,73 +195,30 @@ const decodeReservationId = Schema.decodeUnknownOption(
   DotyposReservationIdSchema
 );
 
-const readExactRows = async (
-  orderIds: readonly string[],
-  readCheckoutRow: (
-    orderId: string
-  ) => Promise<SingleMarkerRepairCheckoutRow | undefined>
-): Promise<{
-  readonly rows: readonly (readonly [
-    string,
-    SingleMarkerRepairCheckoutRow | undefined,
-  ])[];
-  readonly queryFailureCount: number;
-}> => {
-  const results: (readonly [
-    string,
-    SingleMarkerRepairCheckoutRow | undefined,
-  ])[] = new Array(orderIds.length);
-  let queryFailureCount = 0;
-  let nextIndex = 0;
-  const worker = async () => {
-    while (nextIndex < orderIds.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const orderId = orderIds[index];
-      if (orderId === undefined) continue;
-      try {
-        results[index] = [orderId, await readCheckoutRow(orderId)];
-      } catch {
-        queryFailureCount += 1;
-        results[index] = [orderId, undefined];
-      }
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(4, orderIds.length) }, () => worker())
-  );
-  return { queryFailureCount, rows: results };
-};
-
 export const prepareSingleMarkerRepairSource = async (input: {
   readonly readAccountLane: () => Promise<
     WorkspaceE2EAccountLaneReconciliation | undefined
   >;
-  readonly readJournalStates: () => Promise<
-    readonly SingleMarkerRepairSourceState[]
-  >;
-  readonly readCheckoutRow: (
-    orderId: string
-  ) => Promise<SingleMarkerRepairCheckoutRow | undefined>;
+  readonly readCheckoutCleanup: () => Promise<SingleMarkerRepairSourceCheckoutPreparation>;
   readonly expectedCandidateSetSha256?: string;
 }): Promise<SingleMarkerRepairSourcePreflight> => {
   let counts = emptySingleMarkerRepairSourceCounts();
-  const [accountResult, journalResult] = await Promise.all([
+  const [accountResult, checkoutResult] = await Promise.all([
     input.readAccountLane().then(
       (accountLane) => ({ ok: true as const, accountLane }),
       () => ({ ok: false as const })
     ),
-    input.readJournalStates().then(
-      (journalStates) => ({ ok: true as const, journalStates }),
+    input.readCheckoutCleanup().then(
+      (checkoutCleanup) => ({ ok: true as const, checkoutCleanup }),
       () => ({ ok: false as const })
     ),
   ]);
 
   if (!accountResult.ok) {
-    if (journalResult.ok) {
+    if (checkoutResult.ok) {
       counts = {
         ...counts,
-        sourceStateCount: journalResult.journalStates.length,
+        sourceStateCount: checkoutResult.checkoutCleanup.journalStates.length,
       };
     }
     return { outcome: "failed", reason: "account_preparation_failed", counts };
@@ -277,11 +242,16 @@ export const prepareSingleMarkerRepairSource = async (input: {
       counts,
     };
   }
-  if (!journalResult.ok) {
-    return { outcome: "failed", reason: "source_journal_read_failed", counts };
+  if (!checkoutResult.ok) {
+    return {
+      outcome: "failed",
+      reason: "checkout_cleanup_preparation_failed",
+      counts,
+    };
   }
 
-  const journalStates = journalResult.journalStates;
+  const { checkoutCleanup } = checkoutResult;
+  const journalStates = checkoutCleanup.journalStates;
   counts = { ...counts, sourceStateCount: journalStates.length };
   if (journalStates.length !== singleMarkerRepairSourcePins.sourceStateCount) {
     return { outcome: "failed", reason: "source_state_count_mismatch", counts };
@@ -336,10 +306,7 @@ export const prepareSingleMarkerRepairSource = async (input: {
     uniqueOrderIdCount: orderIds.length,
   };
 
-  const { rows: orderRows, queryFailureCount } = await readExactRows(
-    orderIds,
-    input.readCheckoutRow
-  );
+  const orderRows = checkoutCleanup.orderRows;
   const rowByOrderId = new Map(orderRows);
   let exactOrderRowMissingCount = 0;
   for (const [, row] of orderRows) if (!row) exactOrderRowMissingCount += 1;
@@ -350,28 +317,21 @@ export const prepareSingleMarkerRepairSource = async (input: {
   ).length;
   counts = {
     ...counts,
-    exactOrderRowReadCount: orderRows.length - queryFailureCount,
-    exactOrderRowQueryFailureCount: queryFailureCount,
+    exactOrderRowReadCount: orderRows.length,
+    exactOrderRowQueryFailureCount: 0,
     exactOrderRowMissingCount,
     sourceMarkerRowReservationMismatchCount,
   };
-  if (queryFailureCount > 0) {
-    return {
-      outcome: "failed",
-      reason: "exact_order_row_query_failed",
-      counts,
-    };
-  }
-
   const sourceMarkerIds = new Set(
     sourceMarkers.map(({ reservationId }) => reservationId)
   );
   const candidateIds = [
     ...new Set([
       ...sourceMarkerIds,
-      ...orderRows.flatMap(([, row]) =>
+      ...checkoutCleanup.checkoutRows.flatMap((row) =>
         row?.dotypos_reservation_id ? [row.dotypos_reservation_id] : []
       ),
+      ...accountLane.dotyposReservationIds,
     ]),
   ].toSorted();
   const otherCandidateIds = new Set(

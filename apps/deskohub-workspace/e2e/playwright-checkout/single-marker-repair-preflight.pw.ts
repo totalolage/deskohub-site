@@ -2,12 +2,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Effect, Logger } from "effect";
 import { prepareWorkspaceE2EAccountLaneReconciliation } from "../account/reconcile";
+import { prepareCheckoutFlowCleanup } from "../cleanup";
 import { getDatasourceConfig } from "../config";
-import { readCheckoutRow } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import { workspaceDir } from "../runtime";
 import type { E2ERunContext } from "../services/telemetry";
-import type { CheckoutRow } from "../types";
 import { workspaceE2ECaseIds } from "./case-catalog";
 import { cleanupTest as test } from "./cleanup-runtime-fixtures";
 import { readWorkspaceE2ECaseJournalStates } from "./run-plan";
@@ -145,10 +144,33 @@ test("classify pinned source ownership preflight without fixture mutation", asyn
               runContext.runId
             )
           ),
-        readJournalStates: () =>
-          readWorkspaceE2ECaseJournalStates(workspaceE2ECaseIds),
-        readCheckoutRow: (orderId) =>
-          runSafely(readCheckoutRow(orderId as CheckoutRow["reservation_id"])),
+        readCheckoutCleanup: async () => {
+          const journalStates =
+            await readWorkspaceE2ECaseJournalStates(workspaceE2ECaseIds);
+          const prepared = await runSafely(
+            prepareCheckoutFlowCleanup({
+              datasourceConfig,
+              flowStates: journalStates.map(({ state }) => state),
+            })
+          );
+          const orderRowsById = new Map<
+            string,
+            (typeof prepared.checkoutRows)[number] | undefined
+          >();
+          journalStates.forEach(({ state }, index) => {
+            if (state.orderId) {
+              orderRowsById.set(
+                state.orderId,
+                prepared.flowStates[index]?.checkoutRow
+              );
+            }
+          });
+          return {
+            journalStates,
+            checkoutRows: prepared.checkoutRows,
+            orderRows: [...orderRowsById],
+          };
+        },
       });
       if (preflight.outcome === "failed") {
         failureReason = preflight.reason;

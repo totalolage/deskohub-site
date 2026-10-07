@@ -21,8 +21,8 @@ import {
   reconcileWorkspaceE2EAccountLane,
 } from "../account/reconcile";
 import { getWorkspaceE2EDateInterval } from "../capacity";
+import { prepareCheckoutFlowCleanup } from "../cleanup";
 import { getDatasourceConfig } from "../config";
-import { readCheckoutRow } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import {
   getDotyposLayer,
@@ -33,7 +33,6 @@ import { pollUntil } from "../polling";
 import { workspaceDir } from "../runtime";
 import type { E2ERunContext } from "../services/telemetry";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
-import type { CheckoutRow } from "../types";
 import { workspaceE2ECaseIds } from "./case-catalog";
 import { cleanupTest as test } from "./cleanup-runtime-fixtures";
 import { readWorkspaceE2ECaseJournalStates } from "./run-plan";
@@ -299,10 +298,33 @@ test("repair one pinned confirmed marker after source ownership and convergence"
             runContext.runId
           )
         ),
-      readJournalStates: () =>
-        readWorkspaceE2ECaseJournalStates(workspaceE2ECaseIds),
-      readCheckoutRow: (orderId) =>
-        runSafely(readCheckoutRow(orderId as CheckoutRow["reservation_id"])),
+      readCheckoutCleanup: async () => {
+        const journalStates =
+          await readWorkspaceE2ECaseJournalStates(workspaceE2ECaseIds);
+        const prepared = await runSafely(
+          prepareCheckoutFlowCleanup({
+            datasourceConfig,
+            flowStates: journalStates.map(({ state }) => state),
+          })
+        );
+        const orderRowsById = new Map<
+          string,
+          (typeof prepared.checkoutRows)[number] | undefined
+        >();
+        journalStates.forEach(({ state }, index) => {
+          if (state.orderId) {
+            orderRowsById.set(
+              state.orderId,
+              prepared.flowStates[index]?.checkoutRow
+            );
+          }
+        });
+        return {
+          journalStates,
+          checkoutRows: prepared.checkoutRows,
+          orderRows: [...orderRowsById],
+        };
+      },
     });
     sourcePreflightCounts = source.counts;
     if (source.outcome === "failed") {
