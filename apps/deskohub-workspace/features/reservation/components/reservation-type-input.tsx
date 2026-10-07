@@ -237,7 +237,7 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
           className={cn(
             "flex flex-col items-start gap-0.5",
             isIllustrated &&
-              "min-w-0 w-fit max-w-full gap-0 break-words rounded-lg bg-white/90 px-2 py-1 backdrop-blur-[1px]"
+              "-ml-2 min-w-0 w-fit max-w-full gap-0 break-words rounded-lg bg-white/90 px-2 py-1 backdrop-blur-[1px] group-has-[input:checked]:bg-[color:color-mix(in_srgb,var(--color-burned-orange)_8%,white)]/90"
           )}
           data-reservation-type-price={value}
           data-reservation-type-price-ready={priceReady}

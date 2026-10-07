@@ -814,7 +814,7 @@ function CoworkTierDescription({
       data-cowork-tier-showcase={tier}
       data-reservation-type-description={tier}
     >
-      <span className="box-decoration-clone rounded-sm bg-white/85 px-1 py-0.5">
+      <span className="box-decoration-clone rounded-sm bg-white/85 px-1 py-0.5 group-has-[input:checked]:bg-[color:color-mix(in_srgb,var(--color-burned-orange)_8%,white)]/85">
         {getWorkspaceProductMessage(
           workspaceProductTierCardMessages[tier].description,
           locale
@@ -1106,7 +1106,7 @@ export function CoworkReservationFormFallback({
     >
       <div className="space-y-2">
         <ReservationSkeletonBlock className="h-4 w-28" />
-        <div className="grid gap-3 lg:grid-cols-2 lg:gap-x-3 lg:gap-y-3">
+        <div className="grid gap-4 md:grid-cols-2">
           {fallbackTierCards.map((tierCard) => (
             <div
               className="rounded-[1.4rem] border border-navy-blue/10 bg-white p-4"
