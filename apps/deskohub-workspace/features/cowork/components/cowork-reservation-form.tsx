@@ -704,19 +704,32 @@ export function CoworkReservationForm({
                       title={optionTitle}
                       value={option.value}
                     >
-                      <Image
-                        aria-hidden="true"
-                        alt=""
-                        className="pointer-events-none relative z-[1] col-start-2 row-start-3 h-auto w-[180%] max-w-none self-start justify-self-end object-contain object-right-top sm:absolute sm:right-0 sm:bottom-0 sm:top-auto sm:col-auto sm:row-auto sm:w-[74%] sm:object-right-bottom"
-                        height={941}
-                        sizes="(min-width: 640px) 560px, 240px"
-                        src={artworkSource}
-                        width={1672}
-                      />
-                      <CoworkTierDescription
-                        locale={locale}
-                        tier={option.value}
-                      />
+                      <div
+                        className={cn(
+                          "relative col-span-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start max-[240px]:grid-cols-1 max-[240px]:min-h-0",
+                          option.value === "open-space"
+                            ? "min-h-[22rem]"
+                            : "min-h-[13rem]"
+                        )}
+                        data-cowork-tier-showcase={option.value}
+                      >
+                        <CoworkTierDescription
+                          locale={locale}
+                          tier={option.value}
+                        />
+                        <Image
+                          aria-hidden="true"
+                          alt=""
+                          className={cn(
+                            "pointer-events-none relative z-[1] col-start-2 row-start-1 h-auto w-[230%] max-w-none justify-self-end object-contain object-right-top max-[240px]:col-start-1 max-[240px]:row-start-2 max-[240px]:mt-0 max-[240px]:w-[150%]",
+                            option.value === "open-space" ? "mt-40" : "mt-10"
+                          )}
+                          height={941}
+                          sizes="(min-width: 1024px) 360px, (min-width: 640px) 775px, 300px"
+                          src={artworkSource}
+                          width={1672}
+                        />
+                      </div>
                       <CoworkTierPerks locale={locale} tier={option.value} />
                     </ReservationTypeOption>
                   );
@@ -798,7 +811,7 @@ function CoworkTierDescription({
 }) {
   return (
     <div
-      className="relative z-10 col-start-1 row-start-3 mb-3 text-base leading-6 text-navy-blue/70 sm:mb-5 sm:text-lg sm:leading-7"
+      className="relative z-10 col-start-1 col-span-2 row-start-1 mb-0 max-w-[62%] break-words pt-1 text-base leading-6 text-navy-blue/70 max-[240px]:col-span-1 max-[240px]:max-w-full"
       data-reservation-type-description={tier}
     >
       {getWorkspaceProductMessage(
@@ -822,16 +835,17 @@ function CoworkTierPerks({
     "open-space": [Wifi],
     "reserved-desk": [Clock3, Coffee, Monitor],
   }[tier];
+  const perksLabelId = `cowork-tier-perks-label-${tier}`;
 
   return (
     <div
-      className="relative z-10 col-span-2 row-start-4 pb-1 text-base leading-6 text-navy-blue/70 sm:col-span-1 sm:col-start-1"
+      className="relative z-10 col-span-2 pb-1 text-base leading-6 text-navy-blue/70"
       data-reservation-type-perks={tier}
     >
-      <span className="mb-2 block text-[0.7rem] font-semibold uppercase leading-4 tracking-[0.2em] text-navy-blue/75 sm:mb-3">
+      <span id={perksLabelId} className="sr-only">
         {getWorkspaceProductMessage(content.perksLabel, locale)}
       </span>
-      <ul className="space-y-2">
+      <ul aria-labelledby={perksLabelId} className="space-y-3">
         {content.perks.map((perk, index) => {
           const text = getWorkspaceProductMessage(perk.message, locale);
           const PerkIcon = perkIcons[index];
@@ -840,17 +854,17 @@ function CoworkTierPerks({
             <li
               key={`${perk.marker ?? "bullet"}-${text}`}
               className={cn(
-                "flex items-start gap-3 leading-5 sm:leading-6",
+                "flex items-center gap-3 leading-6",
                 perk.highlighted && "text-burned-orange"
               )}
             >
               <span
                 aria-hidden="true"
-                className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy-blue/7 text-navy-blue"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-navy-blue/7 text-navy-blue"
               >
-                {PerkIcon && <PerkIcon className="h-4 w-4" focusable="false" />}
+                {PerkIcon && <PerkIcon className="h-5 w-5" focusable="false" />}
               </span>
-              <span className="pt-1">{text}</span>
+              <span className="min-w-0 break-words">{text}</span>
             </li>
           );
         })}

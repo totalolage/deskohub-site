@@ -1348,7 +1348,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     await act(async () => {});
   });
 
-  test("renders cowork offers in the illustrated stacked selection presentation", () => {
+  test("renders cowork offers as portrait illustrated choices", () => {
     workspaceUseSearchParams.mockReturnValue(
       new URLSearchParams("entryTier=open-space")
     );
@@ -1368,7 +1368,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     );
     expect(offerGrid?.classList.contains("grid")).toBe(true);
     expect(offerGrid?.classList.contains("gap-4")).toBe(true);
-    expect(offerGrid?.classList.contains("lg:grid-cols-3")).toBe(false);
+    expect(offerGrid?.classList.contains("lg:grid-cols-2")).toBe(true);
 
     for (const offer of offers) {
       expect(offer.querySelector('input[type="radio"]')).not.toBeNull();
@@ -1378,11 +1378,23 @@ describe("CoworkReservationForm advertised pricing", () => {
       expect(
         offer.querySelector("[data-reservation-type-perks]")
       ).not.toBeNull();
+      const showcase = offer.querySelector("[data-cowork-tier-showcase]");
+      const perks = offer.querySelector("[data-reservation-type-perks]");
+      expect(showcase).not.toBeNull();
+      expect(perks).not.toBeNull();
+      expect(showcase?.nextElementSibling).toBe(perks);
+      const perksLabelId = perks?.querySelector(".sr-only")?.getAttribute("id");
+      expect(perks?.querySelector("ul")?.getAttribute("aria-labelledby")).toBe(
+        perksLabelId
+      );
+      expect(
+        perks?.querySelector("li > span")?.classList.contains("h-11")
+      ).toBe(true);
     }
     view.unmount();
   });
 
-  test("stacks the two cowork offers into one column below the desktop breakpoint", () => {
+  test("keeps cowork offers in one column until the wide layout breakpoint", () => {
     workspaceUseSearchParams.mockReturnValue(
       new URLSearchParams("entryTier=open-space")
     );
@@ -1394,14 +1406,12 @@ describe("CoworkReservationForm advertised pricing", () => {
     )?.parentElement;
     expect(offerGrid).not.toBeNull();
 
-    // Offers remain stacked at the group level across breakpoints. The card
-    // itself owns the responsive illustration and copy layout.
     expect(offerGrid?.classList.contains("grid")).toBe(true);
     expect(offerGrid?.classList.contains("gap-4")).toBe(true);
     expect(offerGrid?.classList.contains("grid-cols-2")).toBe(false);
     expect(offerGrid?.classList.contains("sm:grid-cols-2")).toBe(false);
     expect(offerGrid?.classList.contains("md:grid-cols-2")).toBe(false);
-    expect(offerGrid?.classList.contains("lg:grid-cols-2")).toBe(false);
+    expect(offerGrid?.classList.contains("lg:grid-cols-2")).toBe(true);
     view.unmount();
   });
 
