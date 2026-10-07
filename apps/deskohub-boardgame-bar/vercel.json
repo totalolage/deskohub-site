@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "bun turbo build",
-  "bunVersion": "1.4.0",
+  "bunVersion": "1.4.2",
   "crons": [
     {
       "path": "/api/cron/opening-hours",
