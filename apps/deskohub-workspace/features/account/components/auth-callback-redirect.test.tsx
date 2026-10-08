@@ -83,7 +83,7 @@ describe("AuthCallbackRedirect", () => {
     ["en-US", "/en-US/account", "Loading sign-in…", "My Workspace"],
     ["cs-CZ", "/cs-CZ/account", "Načítání přihlášení…", "Můj Workspace"],
   ] as const)(
-    "keeps the visible fallback after replacing %s with the account page",
+    "keeps the accessible loading fallback after replacing %s with the account page",
     async (locale, target, label, accountLabel) => {
       const replace = mock((_href: string) => undefined);
       window.location.replace = replace as typeof window.location.replace;
@@ -99,6 +99,8 @@ describe("AuthCallbackRedirect", () => {
       expect(status).toBeTruthy();
       expect(status.getAttribute("aria-busy")).toBe("true");
       expect(status.getAttribute("hidden")).toBeNull();
+      expect(status.querySelector("p")).toBeNull();
+      expect(status.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(7);
       expect(staticMarkup).toContain('role="status"');
       expect(staticMarkup).toContain(label);
       expect(staticMarkup).toContain(

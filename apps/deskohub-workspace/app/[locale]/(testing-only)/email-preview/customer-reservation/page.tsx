@@ -5,7 +5,7 @@ import { createWorkspaceReservationCustomerEmailPreviewHtml } from "@/features/c
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-workspace-effect";
 import { EmailPreviewFrame } from "../_components/email-preview-frame";
-import { createWorkspaceReservationEmailPreviewReservation } from "../_lib/mock-reservation-email-preview";
+import { createWorkspaceOpenSpaceReservationEmailPreviewReservation } from "../_lib/mock-reservation-email-preview";
 
 export const metadata: Metadata = {
   title: "Workspace customer reservation email preview",
@@ -30,7 +30,8 @@ async function WorkspaceReservationEmailPreviewContent() {
     createWorkspaceReservationCustomerEmailPreviewHtml({
       accessUrl: `https://workspace.deskohub.cz/${locale}/reservation/access/preview-reservation?accessToken=preview-token`,
       invoiceUrl: `https://workspace.deskohub.cz/${locale}/reservation/invoice/preview-reservation?accessToken=preview-token`,
-      reservation: createWorkspaceReservationEmailPreviewReservation(locale),
+      reservation:
+        createWorkspaceOpenSpaceReservationEmailPreviewReservation(locale),
     }).pipe(
       runStandaloneWorkspaceEffect("workspaceReservationEmail.previewCustomer")
     )

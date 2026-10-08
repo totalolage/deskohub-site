@@ -20,6 +20,7 @@ import {
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { magicLink } from "better-auth/plugins";
 import { withCallbackHandoffReview } from "../../../../e2e/account/callback-handoff";
+import { transformGlobalsCss } from "../../../../scripts/shared/app-module-build";
 
 const APP_ROOT = resolve(import.meta.dir, "../../../..");
 const AUTH_RETURN_SOURCE = resolve(import.meta.dir, "../../auth-return.ts");
@@ -34,6 +35,7 @@ const REACT_DOM_CLIENT_SOURCE = resolve(
   "node_modules/react-dom/client.js"
 );
 const FIXTURE_BUNDLE_NAME = "/auth-return-browser.fixture.js";
+const FIXTURE_STYLESHEET_NAME = "/auth-return-browser.fixture.css";
 const ACCOUNT_PATH = "/en-US/account";
 const CALLBACK_PATH = "/en-US/auth/callback";
 const SESSION_FRESHNESS_WINDOW_MS = 10 * 60 * 1000;
@@ -118,6 +120,7 @@ const fixtureEmail = {
 
 let fixtureDirectory: string | undefined;
 let fixtureBundle = "";
+let fixtureStylesheet = "";
 let browser: Browser | undefined;
 
 const wait = (milliseconds: number) =>
@@ -209,7 +212,11 @@ const makeFixtureServer = async (
   const observations = makeObservations();
   const document = `<!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8"><title>Deskohub auth return fixture</title></head>
+  <head>
+    <meta charset="utf-8">
+    <title>Deskohub auth return fixture</title>
+    <link rel="stylesheet" href="${FIXTURE_STYLESHEET_NAME}">
+  </head>
   <body>
     <header data-fixture="banner">Deskohub Workspace</header>
     <main><div id="root"></div></main>
@@ -230,6 +237,15 @@ const makeFixtureServer = async (
           headers: {
             "cache-control": "no-store",
             "content-type": "application/javascript; charset=utf-8",
+          },
+        });
+      }
+
+      if (url.pathname === FIXTURE_STYLESHEET_NAME) {
+        return new Response(fixtureStylesheet, {
+          headers: {
+            "cache-control": "no-store",
+            "content-type": "text/css; charset=utf-8",
           },
         });
       }
@@ -377,6 +393,9 @@ const makeFixtureServer = async (
 };
 
 const createFixtureBundle = async () => {
+  fixtureStylesheet = (
+    await transformGlobalsCss(resolve(APP_ROOT, "app/globals.css"), APP_ROOT)
+  ).contents;
   fixtureDirectory = await mkdtemp(
     join(tmpdir(), "deskohub-auth-return-browser-")
   );

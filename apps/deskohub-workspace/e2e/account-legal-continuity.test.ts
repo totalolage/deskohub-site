@@ -21,13 +21,13 @@ import {
   type BrowserContextOptions,
   chromium,
   expect as expectLocator,
-  type Locator,
   type Page,
   type Route,
 } from "@playwright/test";
 import postcss from "postcss";
 import loadPostCssConfig from "postcss-load-config";
 import { type Locale, m } from "@/features/i18n";
+import { waitForAccountSectionButtonHandler } from "./account/account-sections";
 import {
   type CookieCategory,
   expectNoAuthSessionCookie,
@@ -851,42 +851,6 @@ const holdRscNavigation = async (
     },
   };
 };
-
-const waitForAccountSectionButtonHandler = async (
-  page: Page,
-  button: Locator
-) => {
-  const element = await button.elementHandle();
-  if (element === null)
-    throw new Error("account section button was not rendered");
-
-  try {
-    await page.waitForFunction(hasReactClickHandler, element, {
-      timeout: 15_000,
-    });
-  } finally {
-    await element.dispose();
-  }
-};
-
-function hasReactClickHandler(element: Element | null): boolean {
-  if (element === null) return false;
-  const reactPropsKey = Object.keys(element).find((key) =>
-    key.startsWith("__reactProps$")
-  );
-  if (reactPropsKey === undefined) return false;
-
-  const reactProps = Object.getOwnPropertyDescriptor(
-    element,
-    reactPropsKey
-  )?.value;
-  if (typeof reactProps !== "object" || reactProps === null) return false;
-
-  return (
-    "onClick" in reactProps &&
-    typeof (reactProps as { readonly onClick?: unknown }).onClick === "function"
-  );
-}
 
 const accountSectionLabels = (locale: Locale) => ({
   billing: m.accountSectionBilling({}, { locale }),

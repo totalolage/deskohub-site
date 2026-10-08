@@ -13,6 +13,7 @@ import {
   getStoredOfficeReservationDetails,
   getWorkspaceOfficeProductKey,
   isOfficeReservationWithinMaximumDuration,
+  normalizedOfficeReservationOrderSchema,
   officeReservationDetailsSchema,
   officeReservationOrderSchema,
   officeReservationSchema,
@@ -35,7 +36,6 @@ const validCustomer = {
   name: "Ada Lovelace",
   email: "ada@example.com",
   phone: "+420777777777",
-  message: "",
   marketingConsent: false,
 };
 
@@ -226,7 +226,6 @@ describe("office reservation", () => {
           name: validCustomer.name,
           email: validCustomer.email,
           phone: validCustomer.phone,
-          message: validCustomer.message,
           startsOn,
           endsOn,
           seats: 1,
@@ -245,7 +244,6 @@ describe("office reservation", () => {
           name: validCustomer.name,
           email: validCustomer.email,
           phone: validCustomer.phone,
-          message: validCustomer.message,
           startsOn: today.subtract({ days: 1 }).toString(),
           endsOn: today.toString(),
           seats: 1,
@@ -310,5 +308,45 @@ describe("office reservation", () => {
         })
       )
     ).toBe(true);
+  });
+});
+
+describe("retired reservation customer message", () => {
+  test("omits the message field from new normalized orders", () => {
+    const today = getCurrentWorkspaceDate();
+    const result = safeParseForm({
+      ...validCustomer,
+      startsOn: today.add({ days: 1 }).toString(),
+      dayCount: 1,
+      seats: 1,
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success).not.toHaveProperty("message");
+    }
+  });
+
+  test("drops a legacy customer message on strict normalized decode", () => {
+    const startsOn = getCurrentWorkspaceDate().add({ days: 1 });
+    const reservation = Schema.decodeUnknownSync(
+      normalizedOfficeReservationOrderSchema,
+      { onExcessProperty: "error" }
+    )({
+      kind: "office",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+      message: "Legacy office note.",
+      startsOn: startsOn.toString(),
+      endsOn: startsOn.add({ days: 1 }).toString(),
+      seats: 2,
+    });
+
+    expect(reservation).not.toHaveProperty("message");
+    expect(reservation.name).toBe("Ada Lovelace");
+    expect(getOfficeReservationDefaultValues(reservation)).not.toHaveProperty(
+      "message"
+    );
   });
 });

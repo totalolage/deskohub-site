@@ -1,5 +1,11 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import { type Locale, m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -361,7 +367,10 @@ test("permits a second toggle after a settled save and blocks duplicates while p
     m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
   );
 
-  fireEvent.click(marketingSwitch);
+  act(() => {
+    marketingSwitch.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    marketingSwitch.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
   await waitFor(() => {
     expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
     expect(marketingSwitch.hasAttribute("disabled")).toBe(true);
@@ -615,7 +624,7 @@ test("keeps a pending dedicated-link context inaccessible until Continue and pre
   expect(view.container.textContent).not.toContain(context);
 });
 
-test("keeps a pending context after a continuation failure", async () => {
+test("keeps a pending context after a continuation failure and allows retry", async () => {
   confirmMarketingManagementAction.mockImplementationOnce(() =>
     Promise.resolve({ serverError: "Synthetic continuation failure" })
   );
@@ -647,6 +656,21 @@ test("keeps a pending context after a continuation failure", async () => {
       name: m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }),
     })
   ).toBeNull();
+
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
+    })
+  );
+  await waitFor(() => {
+    expect(confirmMarketingManagementAction).toHaveBeenCalledTimes(2);
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      view.getByText(
+        m.marketingPreferencesFormConfirmed({}, { locale: "en-US" })
+      )
+    ).toBeTruthy();
+  });
 });
 
 test("uses signed-in account copy and no link-clear control for account source", () => {

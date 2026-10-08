@@ -1,189 +1,87 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
-import type { ICheckoutStatusService } from "./checkout-status.service";
-
-mock.module("server-only", () => ({}));
-
-let requestCookie: string | undefined;
-mock.module("next/headers", () => ({
-  cookies: async () => ({
-    get: () => (requestCookie ? { value: requestCookie } : undefined),
-  }),
-  headers: async () => new Headers(),
-}));
-
-const { CheckoutStatusService } = await import("./checkout-status.service");
-const { makeCheckoutPaymentReturnGet } = await import(
-  "./checkout-payment-return-route.server"
-);
-const { ReservationAuthorizationService } = await import(
-  "@/features/reservation/backend/reservation-authorization.service"
-);
-
-const makeStatusServiceLayer = (
-  refreshStatus: ICheckoutStatusService["refreshStatus"]
-) =>
-  Layer.succeed(CheckoutStatusService, {
-    getStatus: () => Effect.die("unused"),
-    refreshStatus,
-  });
-
-const makeAuthorizationServiceLayer = (isAuthorized: ReturnType<typeof mock>) =>
-  Layer.succeed(ReservationAuthorizationService, {
-    isAuthorized,
-  });
+import { Effect } from "effect";
+import { checkoutPaymentReturnGet } from "./checkout-payment-return-route.server";
+import { loadCheckoutStatusPage } from "./checkout-status-page.server";
 
 const invoke = (
-  refreshStatus: ICheckoutStatusService["refreshStatus"],
-  isAuthorized = mock(() => Effect.succeed(true))
-) => {
-  const GET = makeCheckoutPaymentReturnGet(
-    makeStatusServiceLayer(refreshStatus),
-    makeAuthorizationServiceLayer(isAuthorized)
-  );
-
-  return invokeGet(GET);
-};
-
-const invokeGet = (
-  GET: ReturnType<typeof makeCheckoutPaymentReturnGet>,
+  search = "",
   params = { locale: "en-US", orderId: "order-id" }
 ) =>
-  GET(
+  checkoutPaymentReturnGet(
     new Request(
-      "https://deskohub.test/en-US/checkout/pay/return/order-id?outcome=success"
+      `https://deskohub.test/en-US/checkout/pay/return/order-id${search}`
     ),
     { params: Promise.resolve(params) }
   );
 
 describe("checkout pay return route", () => {
-  test("authorizes from the reservation access cookie before refreshing", async () => {
-    requestCookie = "reservation-access-cookie";
-    const isAuthorized = mock(() => Effect.succeed(true));
-    const refreshStatus = mock(() =>
-      Effect.succeed({
-        orderId: "order-id",
-        returnOutcome: "success" as const,
-        status: "fulfilled" as const,
-      })
-    );
-
-    await invoke(refreshStatus, isAuthorized);
-
-    expect(isAuthorized).toHaveBeenCalledWith({
-      accessCookie: requestCookie,
-      locale: "en-US",
-      orderId: "order-id",
-    });
-    requestCookie = undefined;
-  });
-
-  test("refreshes the provider state and redirects to reservation status", async () => {
-    const refreshStatus = mock(() =>
-      Effect.succeed({
-        orderId: "order-id",
-        returnOutcome: "success" as const,
-        status: "fulfilled" as const,
-      })
-    );
-
-    const response = await invoke(refreshStatus);
+  test("hands a cookie-less provider return to the protected status page", async () => {
+    const response = await invoke("?paymentid=synthetic-payment");
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "/en-US/reservation/status/order-id?outcome=success"
+    expect(response.headers.get("location")).toBe(
+      "https://deskohub.test/en-US/reservation/status/order-id"
     );
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
-    expect(refreshStatus).toHaveBeenCalledWith({
-      orderId: "order-id",
-      returnOutcome: "success",
-    });
+    expect(await response.text()).toBe("");
+    expect(response.headers.has("set-cookie")).toBe(false);
   });
 
-  test("briefly retries while provider settlement is not yet visible", async () => {
-    const refreshStatus = mock()
-      .mockReturnValueOnce(
-        Effect.succeed({
-          orderId: "order-id",
-          returnOutcome: "success" as const,
-          status: "created" as const,
-        })
-      )
-      .mockReturnValueOnce(
-        Effect.succeed({
-          orderId: "order-id",
-          returnOutcome: "success" as const,
-          status: "pending" as const,
-        })
-      )
-      .mockReturnValueOnce(
-        Effect.succeed({
-          orderId: "order-id",
-          returnOutcome: "success" as const,
-          status: "fulfilled" as const,
-        })
+  test("preserves explicit return outcomes for status reconciliation", async () => {
+    for (const outcome of ["success", "cancelled"]) {
+      const response = await invoke(`?outcome=${outcome}`);
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe(
+        `https://deskohub.test/en-US/reservation/status/order-id?outcome=${outcome}`
       );
-
-    const response = await invoke(refreshStatus);
-
-    expect(response.status).toBe(307);
-    expect(refreshStatus).toHaveBeenCalledTimes(3);
-  }, 30_000);
-
-  test("preserves the fail-open redirect when refresh fails", async () => {
-    const response = await invoke(() => Effect.fail(new Error("unavailable")));
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      "/en-US/reservation/status/order-id?outcome=success"
-    );
-  }, 30_000);
-
-  test("does not hide refresh defects behind the fail-open redirect", async () => {
-    const defect = new Error("unexpected defect");
-
-    await expect(invoke(() => Effect.die(defect))).rejects.toBe(defect);
+    }
   });
 
-  test("does not refresh or redirect when reservation access is unauthorized", async () => {
-    const refreshStatus = mock(() =>
-      Effect.fail(new Error("must not refresh"))
+  test("discards unknown outcomes and provider query parameters", async () => {
+    const response = await invoke(
+      "?outcome=untrusted&paymentid=synthetic-payment&redirectUrl=https://elsewhere.test&accessToken=untrusted"
     );
+
+    expect(response.headers.get("location")).toBe(
+      "https://deskohub.test/en-US/reservation/status/order-id"
+    );
+  });
+
+  test("keeps reconciliation behind status-page authorization after the public handoff", async () => {
+    const response = await invoke("?outcome=success");
+    expect(response.status).toBe(307);
+
+    const refreshStatus = mock(() => Effect.die("must not refresh"));
+    const getStatus = mock(() => Effect.die("must not read"));
     const isAuthorized = mock(() => Effect.succeed(false));
-
-    const response = await invoke(refreshStatus, isAuthorized);
-
-    expect(response.status).toBe(404);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
-    expect(refreshStatus).not.toHaveBeenCalled();
-  });
-
-  test("rejects invalid params before acquiring the status service", async () => {
-    let acquisitions = 0;
-    const GET = makeCheckoutPaymentReturnGet(
-      Layer.sync(CheckoutStatusService, () => {
-        acquisitions += 1;
-        return {
-          getStatus: () => Effect.die("unused"),
-          refreshStatus: () => Effect.die("unused"),
-        };
-      }),
-      makeAuthorizationServiceLayer(mock(() => Effect.die("unused")))
+    const status = await Effect.runPromise(
+      loadCheckoutStatusPage(
+        { getStatus, refreshStatus },
+        { isAuthorized },
+        {
+          locale: "en-US",
+          orderId: "order-id",
+          returnOutcome: "success",
+        }
+      )
     );
 
-    const invalidParams = [
+    expect(status.status).toBe("not_found");
+    expect(refreshStatus).not.toHaveBeenCalled();
+    expect(getStatus).not.toHaveBeenCalled();
+  });
+
+  test("rejects invalid route params", async () => {
+    for (const params of [
       { locale: "en-US", orderId: "" },
       { locale: "sk-SK", orderId: "order-id" },
-    ];
-
-    for (const params of invalidParams) {
-      const response = await invokeGet(GET, params);
+    ]) {
+      const response = await invoke("", params);
       expect(response.status).toBe(404);
     }
-    expect(acquisitions).toBe(0);
   });
 });

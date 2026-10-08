@@ -2,7 +2,7 @@ import { Match } from "effect";
 import type { ReservationQuote } from "@/features/checkout/reservation-quote";
 import type {
   CanonicalCoworkReservation,
-  CoworkReservationPricingInput,
+  CoworkReservationQuoteInput,
 } from "@/features/checkout/reservation-quote-cowork";
 import {
   type CanonicalMeetingRoomReservation,
@@ -35,7 +35,7 @@ type CanonicalReservation =
   | CanonicalOfficeReservation;
 type ReservationQuoteFingerprintReservation =
   | CoworkReservationDetails
-  | CoworkReservationPricingInput
+  | CoworkReservationQuoteInput
   | MeetingRoomReservationPricingInput
   | OfficeReservationPricingInput;
 

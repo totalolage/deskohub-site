@@ -3,7 +3,7 @@ import {
   DotyposReservationIdSchema,
   DotyposService,
 } from "@deskohub/dotypos";
-import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
+import type { Customer, Reservation } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -22,6 +22,11 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+
+import {
+  getOpenSpaceTableNames,
+  getReservationTableName,
+} from "./reservation-table";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
   "WorkspaceReservationDetailsError"
@@ -50,6 +55,7 @@ export type WorkspaceReservationDetails = Pick<
   readonly seats: number;
   readonly tableName?: string;
   readonly tableMap?: WorkspaceTableMap;
+  readonly openSpaceTableNames?: readonly string[];
 };
 
 export interface IWorkspaceReservationService {
@@ -166,6 +172,11 @@ export class WorkspaceReservationService extends Context.Service<
             dotyposReservationDetails.reservation,
             tables
           );
+          const openSpaceTableNames =
+            reservation.reservationDetails.kind === "cowork" &&
+            reservation.reservationDetails.entryTier === "open-space"
+              ? yield* getOpenSpaceTableNames(tables)
+              : undefined;
           const seatingMapEnabled = yield* seatingMapFeatureFlag.isEnabled;
           const tableMap = seatingMapEnabled
             ? getWorkspaceTableMap(
@@ -187,6 +198,7 @@ export class WorkspaceReservationService extends Context.Service<
             seats,
             ...(tableName && { tableName }),
             ...(tableMap && { tableMap }),
+            ...(openSpaceTableNames !== undefined && { openSpaceTableNames }),
           };
         }
       );
@@ -292,17 +304,3 @@ export const getDotyposReservationTiming = Effect.fn(
     reservedUntil: Temporal.Instant.from(endsAt),
   };
 });
-
-const getReservationTableName = (
-  reservation: Reservation,
-  tables: readonly Table[]
-) => {
-  const tableId = reservation._tableId?.trim();
-  if (!tableId) return undefined;
-
-  const tableName = tables
-    .find((table) => table.id?.trim() === tableId)
-    ?.name?.trim();
-
-  return tableName || tableId;
-};

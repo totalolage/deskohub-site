@@ -57,6 +57,7 @@ describe("Workspace React Email templates", () => {
     );
     expect(customerReservation).toContain("/reservation/access/");
     expect(customerReservation).toContain("accessToken=preview-token");
+    expect(customerReservation).toContain("font-size:48px");
     expect(customerReservation).not.toContain("statusToken=");
     expect(customerReservation).not.toContain("4829");
     expect(customerReservation).toContain('bgcolor="#00024f"');

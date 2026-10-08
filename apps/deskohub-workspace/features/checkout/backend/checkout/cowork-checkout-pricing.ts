@@ -13,6 +13,7 @@ import type {
 import type {
   CoworkAdvertisedPriceDetails,
   CoworkAdvertisedPriceReservation,
+  CoworkReservationDetails,
   NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import {
@@ -84,7 +85,7 @@ export type CoworkDiscountCodePriceResult = ReservationDiscountCodePriceResult<
 
 const getCoworkPricingContext = Effect.fn(
   "CoworkCheckoutPricing.getPricingContext"
-)((reservation: CoworkAdvertisedPriceDetails) => {
+)((reservation: CoworkPricingSelection) => {
   const product = getWorkspaceProductByTier(reservation.entryTier);
 
   return Effect.succeed({
@@ -96,6 +97,16 @@ const getCoworkPricingContext = Effect.fn(
     },
   });
 });
+
+/**
+ * PII-free cowork selection that pricing accepts: advertised-price inputs or
+ * the reservation domain's details projection. A full order satisfies it
+ * structurally through `CoworkReservationDetails`, so the pricing selection
+ * concept never names customer identity.
+ */
+type CoworkPricingSelection =
+  | CoworkAdvertisedPriceDetails
+  | CoworkReservationDetails;
 
 type CoworkPricingContext = Effect.Success<
   ReturnType<typeof getCoworkPricingContext>
@@ -110,9 +121,8 @@ const buildCoworkQuote = Effect.fn("CoworkCheckoutPricing.buildQuote")(
       discountQuote: input.discountQuote,
     })
 );
-
 export const coworkCheckoutPricing = reservationCheckoutPricing<
-  CoworkAdvertisedPriceDetails,
+  CoworkPricingSelection,
   CoworkAdvertisedPriceReservation,
   NormalizedCoworkReservationOrder,
   CoworkPricingContext,

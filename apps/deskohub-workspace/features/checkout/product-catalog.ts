@@ -15,7 +15,19 @@ export {
   workspaceMeetingRoomProductsByDurationKey,
 } from "./meeting-room-product-catalog";
 
-export const workspaceCoworkTiers = ["basic", "plus", "profi"] as const;
+export const workspaceCoworkHistoricalTiers = [
+  "basic",
+  "plus",
+  "profi",
+] as const;
+export const workspaceCoworkCurrentTiers = [
+  "open-space",
+  "reserved-desk",
+] as const;
+export const workspaceCoworkTiers = [
+  ...workspaceCoworkHistoricalTiers,
+  ...workspaceCoworkCurrentTiers,
+] as const;
 export const workspaceCoworkProductTiers = workspaceCoworkTiers;
 export const workspaceProductTiers = workspaceCoworkTiers;
 
@@ -26,10 +38,23 @@ export const workspaceProductMonitorOptions = [
   "2x32-4k",
 ] as const;
 
+export type WorkspaceCoworkHistoricalTier =
+  (typeof workspaceCoworkHistoricalTiers)[number];
+export type WorkspaceCoworkCurrentTier =
+  (typeof workspaceCoworkCurrentTiers)[number];
 export type WorkspaceCoworkProductTier = (typeof workspaceCoworkTiers)[number];
 export type WorkspaceProductTier = WorkspaceCoworkProductTier;
 export type WorkspaceProductMonitorOption =
   (typeof workspaceProductMonitorOptions)[number];
+
+export type CoworkCoffeeAddonAvailability =
+  | "included"
+  | "optional"
+  | "unavailable";
+export type CoworkWorkstationAddonAvailability =
+  | "required"
+  | "optional"
+  | "unavailable";
 
 export const workspaceProductMonitorOptionTableTags = {
   "2x27-qhd": ["monitor:count:2", "monitor:size:27", "monitor:resolution:qhd"],
@@ -42,9 +67,8 @@ export type WorkspaceProductCatalogItem = {
   readonly tier: WorkspaceCoworkProductTier;
   readonly label: string;
   readonly price: WorkspaceMoney;
-  readonly includesCourtesyCoffee: boolean;
-  readonly requiresCoffee: boolean;
-  readonly requiresMonitorOption: boolean;
+  readonly coffeeAddon: CoworkCoffeeAddonAvailability;
+  readonly workstationAddon: CoworkWorkstationAddonAvailability;
   readonly allowedMonitorOptions: readonly WorkspaceProductMonitorOption[];
 };
 
@@ -53,30 +77,47 @@ const workspaceCoworkProductsByTier = {
     tier: "basic",
     label: "Basic Day Pass",
     price: currencyCZK(35_000),
-    includesCourtesyCoffee: false,
-    requiresCoffee: false,
-    requiresMonitorOption: false,
+    coffeeAddon: "optional",
+    workstationAddon: "unavailable",
     allowedMonitorOptions: [],
   },
   plus: {
     tier: "plus",
     label: "Cowork Plus",
     price: currencyCZK(49_000),
-    includesCourtesyCoffee: true,
-    requiresCoffee: true,
-    requiresMonitorOption: false,
+    coffeeAddon: "included",
+    workstationAddon: "unavailable",
     allowedMonitorOptions: [],
   },
   profi: {
     tier: "profi",
     label: "Profi Workstation",
     price: currencyCZK(55_000),
-    includesCourtesyCoffee: true,
-    requiresCoffee: true,
-    requiresMonitorOption: true,
+    coffeeAddon: "included",
+    workstationAddon: "required",
+    allowedMonitorOptions: workspaceProductMonitorOptions,
+  },
+  "open-space": {
+    tier: "open-space",
+    label: "Open Space",
+    price: currencyCZK(29_000),
+    coffeeAddon: "optional",
+    workstationAddon: "unavailable",
+    allowedMonitorOptions: [],
+  },
+  "reserved-desk": {
+    tier: "reserved-desk",
+    label: "Reserved Desk",
+    price: currencyCZK(41_000),
+    coffeeAddon: "included",
+    workstationAddon: "optional",
     allowedMonitorOptions: workspaceProductMonitorOptions,
   },
 } satisfies Record<WorkspaceCoworkProductTier, WorkspaceProductCatalogItem>;
+
+export const workspaceCoworkCurrentCatalog = workspaceCoworkCurrentTiers.map(
+  (tier) => workspaceCoworkProductsByTier[tier]
+);
 
 export const workspaceCoworkCatalog = workspaceCoworkTiers.map(
   (tier) => workspaceCoworkProductsByTier[tier]
@@ -121,6 +162,39 @@ export function isWorkspaceProductMonitorOption(
   );
 }
 
+export function isWorkspaceCoworkCurrentProductTier(
+  value: string | undefined
+): value is WorkspaceCoworkCurrentTier {
+  return (
+    value !== undefined &&
+    workspaceCoworkCurrentTiers.includes(value as WorkspaceCoworkCurrentTier)
+  );
+}
+
+export function getCoworkTierCoffeeAddon(
+  tier: WorkspaceCoworkProductTier
+): CoworkCoffeeAddonAvailability {
+  return getWorkspaceProductByTier(tier).coffeeAddon;
+}
+
+export function getCoworkTierWorkstationAddon(
+  tier: WorkspaceCoworkProductTier
+): CoworkWorkstationAddonAvailability {
+  return getWorkspaceProductByTier(tier).workstationAddon;
+}
+
+export function getCoworkTierIncludesCourtesyCoffee(
+  tier: WorkspaceCoworkProductTier
+) {
+  return getCoworkTierCoffeeAddon(tier) === "included";
+}
+
+export function getCoworkTierRequiresMonitorOption(
+  tier: WorkspaceCoworkProductTier
+) {
+  return getCoworkTierWorkstationAddon(tier) === "required";
+}
+
 export function formatWorkspaceProductCurrencyAmount(
   product: WorkspaceProductCatalogItem,
   locale: Locale
@@ -131,13 +205,16 @@ export function formatWorkspaceProductCurrencyAmount(
 export function getWorkspaceProductCoffeeLinePriceForTier(
   tier: WorkspaceCoworkProductTier
 ) {
-  if (getWorkspaceProductByTier(tier).includesCourtesyCoffee)
+  if (getCoworkTierIncludesCourtesyCoffee(tier))
     return {
       ...workspaceProductCoffeePrice,
       value: 0,
     };
   return workspaceProductCoffeePrice;
 }
+
+export const workspaceProductWorkstationAddonPrice: WorkspaceMoney =
+  currencyCZK(12_000);
 
 export function getWorkspaceMeetingRoomPriceForDuration(
   duration: MeetingRoomReservationDuration

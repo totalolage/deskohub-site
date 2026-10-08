@@ -132,7 +132,6 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
       checkIn: "Check in",
       date: "Date",
       moreCurrent: "More upcoming reservations",
-      nfcAccess: "NFC access",
       product: "Product",
       seats: "Seats",
       showPinCode: "Show PIN code",

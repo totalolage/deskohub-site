@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import type { TSESTree } from "@typescript-eslint/types";
-import { isString } from "effect/Predicate";
 import { workspaceE2EAccountCaseIds } from "../e2e/account/catalog";
 import { accountReviewTargetByCaseId } from "../e2e/account/review-targets";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "../e2e/account/types";

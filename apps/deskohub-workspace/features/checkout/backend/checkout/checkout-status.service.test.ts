@@ -361,6 +361,7 @@ describe("CheckoutStatusService", () => {
     expect(status).toMatchObject({
       kind: "cowork",
       status: "fulfilled",
+      table: { mode: "assigned", name: "Desk 1" },
       summary: {
         kind: "cowork",
         entryTier: "profi",
@@ -395,15 +396,201 @@ describe("CheckoutStatusService", () => {
     const statusWithoutSeatingMap = await loadStatus(false);
 
     expect(statusWithoutSeatingMap.summary).toEqual(status.summary);
+    expect(statusWithoutSeatingMap.table).toEqual({
+      mode: "assigned",
+      name: "Desk 1",
+    });
     expect(statusWithoutSeatingMap.tableMap).toBeUndefined();
-    expect(getTables).toHaveBeenCalledTimes(1);
+    expect(getTables).toHaveBeenCalledTimes(2);
 
     failTableLookup = true;
     const statusWithoutTables = await loadStatus(true);
 
     expect(statusWithoutTables.summary).toEqual(status.summary);
+    expect(statusWithoutTables.table).toEqual({
+      mode: "assigned",
+      name: "assigned-table",
+    });
     expect(statusWithoutTables.tableMap).toBeUndefined();
-    expect(getTables).toHaveBeenCalledTimes(2);
+    expect(getTables).toHaveBeenCalledTimes(3);
+  });
+
+  test("uses the shared Open Space table list instead of its assigned table", async () => {
+    const { CheckoutStatusService } = await import("./checkout-status.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "../holds/reservation-hold-cleanup.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed(
+          makeReservation({
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "open-space",
+              coffee: false,
+            },
+            productTier: "open-space",
+            productCoffee: false,
+            productMonitorOption: null,
+            paymentState: "paid",
+            fulfillmentState: "fulfilled",
+          })
+        )
+      ),
+    };
+    const paymentAttempts = {
+      findDisplayableForReservation: mock(() =>
+        Effect.succeed(makePaymentAttempt())
+      ),
+    };
+    const finalization: ProviderPaymentFinalizationServiceType = {
+      finalizePendingProviderPayment: mock(() => Effect.die("not used")),
+    };
+    const holdCleanup: ReservationHoldCleanupServiceType = {
+      cancelOrderHold: mock(() => Effect.die("not used")),
+      sweepExpiredHolds: mock(() => Effect.die("not used")),
+    };
+    const dotypos = makeDotypos({
+      getReservation: mock(() =>
+        Effect.succeed({
+          reservation: {
+            id: "dotypos-reservation-id",
+            _customerId: "customer-id",
+            _tableId: "assigned-only-table-id",
+            startDate: "2026-06-19T22:00:00.000Z",
+            endDate: "2026-06-20T22:00:00.000Z",
+            seats: "1",
+            status: "CONFIRMED",
+          },
+          customer: { id: "customer-id" },
+        })
+      ),
+      getTables: mock(() =>
+        Effect.succeed([
+          {
+            _cloudId: "cloud-id",
+            display: true,
+            enabled: true,
+            id: "open-space-12",
+            name: "12",
+            seats: "1",
+            tags: ["cowork:open-space"],
+          },
+          {
+            _cloudId: "cloud-id",
+            display: true,
+            enabled: true,
+            id: "open-space-10",
+            name: "10",
+            seats: "1",
+            tags: ["cowork:open-space"],
+          },
+          {
+            _cloudId: "cloud-id",
+            display: true,
+            enabled: true,
+            id: "open-space-11",
+            name: "11",
+            seats: "1",
+            tags: ["cowork:open-space"],
+          },
+          {
+            _cloudId: "cloud-id",
+            display: true,
+            enabled: true,
+            id: "open-space-9",
+            name: "9",
+            seats: "1",
+            tags: ["cowork:open-space"],
+          },
+          {
+            _cloudId: "cloud-id",
+            display: true,
+            enabled: true,
+            id: "open-space-15",
+            name: "15",
+            seats: "1",
+            tags: ["cowork:open-space"],
+          },
+          {
+            _cloudId: "cloud-id",
+            display: true,
+            enabled: true,
+            id: "open-space-16",
+            name: "16",
+            seats: "1",
+            tags: ["cowork:open-space"],
+          },
+          {
+            _cloudId: "cloud-id",
+            display: true,
+            enabled: true,
+            id: "assigned-only-table-id",
+            name: "Assigned-only sentinel",
+            seats: "1",
+            tags: ["cowork:reserved-desk"],
+          },
+          {
+            _cloudId: "cloud-id",
+            display: true,
+            enabled: true,
+            id: "monitored-open-space",
+            name: "Monitored sentinel",
+            seats: "1",
+            tags: ["cowork:open-space", "monitor:2x27-qhd"],
+          },
+        ])
+      ),
+    });
+
+    const status = await Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* service.getStatus({
+        orderId: "reservation-provider-return",
+        returnOutcome: "success",
+      });
+    }).pipe(
+      Effect.provide(
+        CheckoutStatusService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ProviderPaymentFinalizationService, finalization),
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              Layer.mock(DotyposService, dotypos),
+              Layer.mock(ReservationHoldCleanupService, holdCleanup),
+              SeatingMapFeatureFlagServiceMock({
+                isEnabled: Effect.succeed(false),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(status).toMatchObject({
+      kind: "cowork",
+      status: "fulfilled",
+      table: { mode: "shared", name: "9-12, 15, 16" },
+      summary: {
+        kind: "cowork",
+        entryTier: "open-space",
+        coffee: false,
+      },
+    });
+    expect(status.table?.name).not.toContain("Assigned-only sentinel");
+    expect(status.table?.name).not.toContain("Monitored sentinel");
   });
 
   test("reconstructs meeting-room timing from Dotypos", async () => {

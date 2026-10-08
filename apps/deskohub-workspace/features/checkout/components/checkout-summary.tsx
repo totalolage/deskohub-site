@@ -34,6 +34,9 @@ const getSummaryItemLabel = (
   if (key === "addon:coffee")
     return m.checkoutSummaryItemCoffee({}, { locale });
 
+  if (key === "addon:workstation")
+    return m.checkoutSummaryItemWorkstation({}, { locale });
+
   if (key.startsWith("monitor:")) {
     const monitorOption = key.slice("monitor:".length);
     if (isWorkspaceProductMonitorOption(monitorOption)) {

@@ -220,7 +220,8 @@ const makeCallbackFakePage = (
       },
       count: async () => 1,
       elementHandle: async () => loadingElement,
-      getByText: () => makeLocator("loading-text"),
+      first: () => makeLocator(kind),
+      locator: () => makeLocator("loading-skeleton"),
       waitFor: async (waitOptions: { readonly timeout?: number }) => {
         events.push(`wait:${kind}`);
         waitTimeouts.push(waitOptions.timeout ?? -1);

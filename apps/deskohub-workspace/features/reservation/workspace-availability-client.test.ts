@@ -59,6 +59,7 @@ describe("getWorkspaceAvailabilityUrl", () => {
           from: "2099-07-30",
           to: "2099-07-30",
           unavailableDates: [],
+          reservedDeskWorkstationRequiredDates: [],
           unavailableCoworkTiers: [],
           meetingRoomUnavailable: false,
           officeUnavailable: false,

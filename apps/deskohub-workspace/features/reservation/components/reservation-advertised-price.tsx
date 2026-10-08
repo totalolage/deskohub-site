@@ -11,6 +11,7 @@ type ReservationAdvertisedPriceProps = {
   readonly className?: string;
   readonly locale: Locale;
   readonly originalAmount?: WorkspaceMoney;
+  readonly originalAmountClassName?: string;
   readonly suffix?: ReactNode;
 };
 
@@ -19,6 +20,7 @@ export function ReservationAdvertisedPrice({
   className,
   locale,
   originalAmount,
+  originalAmountClassName,
   suffix,
 }: ReservationAdvertisedPriceProps) {
   if (!originalAmount) {
@@ -40,7 +42,10 @@ export function ReservationAdvertisedPrice({
       </span>
       <del
         aria-hidden="true"
-        className="text-navy-blue/45 decoration-navy-blue/40"
+        className={cn(
+          "text-navy-blue/45 decoration-navy-blue/40",
+          originalAmountClassName
+        )}
       >
         {formatWorkspaceMoney(originalAmount, locale)}
       </del>

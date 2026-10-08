@@ -17,6 +17,15 @@
 
 Keep reservation-family-specific schemas and projections in the corresponding cowork, meeting-room, or office domain modules. Generic checkout and reservation modules compose those family contracts instead of redeclaring family rules.
 
+For current cowork `reserved-desk` assignments, with or without a workstation
+addon, rank each enabled, displayable, assignable `cowork:open-space` table as
+occupied to `max(actual occupancy, configured seat capacity)`. This is a
+ranking-only projection: keep actual occupancy for candidate capacity and
+public availability, and never add actual occupancy to seat capacity. A table
+tagged for both offers remains a Reserved Desk candidate when actual capacity
+permits. Do not apply this ranking policy to Open Space, historical cowork
+tiers, meeting rooms, or offices.
+
 Office reservations span an inclusive range of Prague calendar dates. They
 always start at Prague midnight on the first date and end at Prague midnight
 after the last date, so DST days remain whole calendar days rather than fixed

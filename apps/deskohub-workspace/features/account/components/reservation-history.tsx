@@ -34,7 +34,6 @@ export type ReservationHistoryCopy = {
   readonly wifi: string;
   readonly unavailable: string;
   readonly checkIn: string;
-  readonly nfcAccess: string;
   readonly showPinCode: string;
   readonly unsupportedDescription: string;
   readonly viewReservation: string;
@@ -348,17 +347,6 @@ function FeaturedReservationItem({
                 variant="secondary"
               >
                 {copy.checkIn}
-              </Button>
-            </FutureFeatureTooltip>
-            <FutureFeatureTooltip locale={locale}>
-              <Button
-                className="w-full sm:w-auto"
-                disabled
-                size="sm"
-                type="button"
-                variant="secondary"
-              >
-                {copy.nfcAccess}
               </Button>
             </FutureFeatureTooltip>
             {reservation.workspaceReservationId ? (

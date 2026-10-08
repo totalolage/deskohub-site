@@ -2,7 +2,12 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import type { Customer } from "@deskohub/dotypos/generated";
+import { DotyposService } from "@deskohub/dotypos";
+import type {
+  Customer,
+  Reservation as DotyposReservation,
+  Table as DotyposTable,
+} from "@deskohub/dotypos/generated";
 import {
   EmailDeliveryIdSchema,
   type EmailMessage,
@@ -11,7 +16,15 @@ import {
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
 import { Effect, Layer } from "effect";
-import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
+import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
+import {
+  type WorkspaceReservation,
+  WorkspaceReservationRepository,
+} from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  type WorkspaceReservationDetails,
+  WorkspaceReservationService,
+} from "@/features/reservation/backend/workspace-reservation.service";
 
 mock.module("server-only", () => ({}));
 
@@ -69,6 +82,152 @@ const sentResult = (id: string): EmailSendResult => ({
   timestamp: new Date(),
 });
 
+const sendPaidReservationEmail = async (
+  reservation: WorkspaceReservationDetails
+) => {
+  const { EmailConfigTag, EmailServiceTag } = await import(
+    "@deskohub/email/backend/service"
+  );
+  const { WorkspaceCheckoutNetworkDetailsService } = await import(
+    "./network-details.service"
+  );
+  const { WorkspaceReservationEmailService } = await import(
+    "./workspace-reservation-email.service"
+  );
+  const sentMessages: EmailMessage[] = [];
+  const emailService: EmailService = {
+    send: mock((message: EmailMessage) => {
+      sentMessages.push(message);
+      return Effect.succeed(sentResult(`email-${sentMessages.length}`));
+    }),
+    sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
+    verify: Effect.succeed(true),
+  };
+  const emailConfig: EmailProviderConfig = {
+    provider: "console",
+    defaultFrom: {
+      email: "reservations@workspace.deskohub.cz",
+      name: "Deskohub Workspace",
+    },
+  };
+  const { env } = await import("@/env");
+  const previousPreviewBypassSecret = env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  Object.assign(env, {
+    VERCEL_AUTOMATION_BYPASS_SECRET: "synthetic-preview-bypass",
+  });
+
+  try {
+    await Effect.gen(function* () {
+      const service = yield* WorkspaceReservationEmailService;
+      yield* service.sendPaidReservationEmails({ reservation });
+    }).pipe(
+      Effect.provide(
+        WorkspaceReservationEmailService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(EmailServiceTag, emailService),
+              Layer.succeed(EmailConfigTag, emailConfig),
+              WorkspaceCheckoutNetworkDetailsService.Default
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+  } finally {
+    Object.assign(env, {
+      VERCEL_AUTOMATION_BYPASS_SECRET: previousPreviewBypassSecret,
+    });
+  }
+
+  const customerMessage = sentMessages.find((message) =>
+    message.tags?.includes("workspace-paid-reservation-access")
+  );
+  if (!customerMessage) {
+    throw new Error("mock customer reservation email was not sent");
+  }
+
+  return customerMessage;
+};
+
+const makeOpenSpaceSnapshotTable = (
+  name: string,
+  index: number
+): DotyposTable => ({
+  _cloudId: "synthetic-cloud-id",
+  id: `synthetic-table-${index}`,
+  name,
+  display: true,
+  enabled: true,
+  locationName: "Main room",
+  seats: "2",
+  tags: ["cowork:open-space"],
+});
+
+const loadOpenSpaceReservationFromSyntheticSnapshot = async () => {
+  const providerReads: string[] = [];
+  const names = ["9", "10", "11", "12", "15", "16", "wallee", "gromice"];
+  const tables = names.map(makeOpenSpaceSnapshotTable);
+  const dotyposReservation: DotyposReservation = {
+    _branchId: "synthetic-branch-id",
+    _cloudId: "synthetic-cloud-id",
+    _customerId: "customer-id",
+    _tableId: "assigned-only-sentinel-raw-table-id",
+    startDate: "2026-06-12T07:00:00.000Z",
+    endDate: "2026-06-12T11:00:00.000Z",
+    seats: "1",
+    status: "CONFIRMED",
+  };
+  const workspaceReservation = {
+    id: "reservation-id",
+    dotyposCustomerId: "dotypos-customer-id",
+    dotyposReservationId: "dotypos-reservation-id",
+    reservationState: "confirmed",
+    paymentState: "paid",
+    reservationDetails: {
+      kind: "cowork",
+      entryTier: "open-space",
+      coffee: false,
+    },
+    locale: "en-US",
+  } as WorkspaceReservation;
+  const details = await Effect.gen(function* () {
+    const service = yield* WorkspaceReservationService;
+    return yield* service.getReservation("reservation-id");
+  }).pipe(
+    Effect.provide(
+      WorkspaceReservationService.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(WorkspaceReservationRepository, {
+              findById: mock(() => Effect.succeed(workspaceReservation)),
+            }),
+            Layer.mock(DotyposService, {
+              getReservation: mock(() => {
+                providerReads.push("getReservation");
+                return Effect.succeed({
+                  reservation: dotyposReservation,
+                  customer,
+                });
+              }),
+              getTables: mock(() => {
+                providerReads.push("getTables");
+                return Effect.succeed(tables);
+              }),
+            }),
+            SeatingMapFeatureFlagServiceMock({
+              isEnabled: Effect.succeed(false),
+            })
+          )
+        )
+      )
+    ),
+    Effect.runPromise
+  );
+
+  return { details, providerReads, names };
+};
+
 const extractEmailUrls = (body: string) => {
   const hrefs = [...body.matchAll(/\bhref\s*=\s*(['"])(https?:\/\/.*?)\1/gi)]
     .map((match) => match[2])
@@ -114,6 +273,19 @@ const extractReservationEmailUrl = (
   }
 
   return candidate;
+};
+
+const getHtmlParagraphTexts = (html: string) =>
+  [...html.matchAll(/<p\b[^>]*>([^<]*)<\/p>/g)].map((match) => match[1]);
+
+const getTextValueAfterLabel = (text: string, label: string) => {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const labelIndex = lines.indexOf(label);
+
+  return labelIndex === -1 ? undefined : lines[labelIndex + 1];
 };
 
 describe("createCustomerEmailInitialIdempotencyKey", () => {
@@ -175,6 +347,133 @@ describe("createCustomerEmailRecoveryIdempotencyKey", () => {
     expect(secondKey).toBe(
       createCustomerEmailRecoveryIdempotencyKey(secondPriorDeliveryId)
     );
+  });
+});
+
+describe("Open Space customer reservation emails", () => {
+  test("renders the eligible table names from loaded reservation details in HTML and text", async () => {
+    const { details, names, providerReads } =
+      await loadOpenSpaceReservationFromSyntheticSnapshot();
+    const message = await sendPaidReservationEmail(details);
+    const { createWorkspaceReservationCustomerEmailPreviewHtml } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const previewHtml =
+      await createWorkspaceReservationCustomerEmailPreviewHtml({
+        accessUrl:
+          "https://workspace.deskohub.cz/en-US/reservation/access/preview",
+        invoiceUrl:
+          "https://workspace.deskohub.cz/en-US/reservation/invoice/preview",
+        reservation: details,
+      }).pipe(Effect.runPromise);
+    const expectedTableNames = "9-12, 15, 16, wallee, gromice";
+
+    expect(details.openSpaceTableNames).toEqual(names);
+    expect(details.tableName).toBe("assigned-only-sentinel-raw-table-id");
+    expect(providerReads.toSorted()).toEqual(["getReservation", "getTables"]);
+    expect(message.html).toContain("Tables");
+    expect(message.text).toContain("Tables");
+    expect(getHtmlParagraphTexts(message.html)).toContain(expectedTableNames);
+    expect(getTextValueAfterLabel(message.text ?? "", "Tables")).toBe(
+      expectedTableNames
+    );
+    expect(message.html).not.toContain("assigned-only-sentinel-raw-table-id");
+    expect(message.text).not.toContain("assigned-only-sentinel-raw-table-id");
+    expect(message.html).toContain("font-size:18px");
+    expect(message.html).toContain("overflow-wrap:anywhere");
+    expect(previewHtml).toContain("Tables");
+    expect(previewHtml).toContain(expectedTableNames);
+    expect(previewHtml).not.toContain("assigned-only-sentinel-raw-table-id");
+  });
+
+  test("does not fall back to the assigned name or raw ID when no eligible name is loaded", async () => {
+    const message = await sendPaidReservationEmail(
+      makeReservation({
+        reservationDetails: {
+          kind: "cowork",
+          entryTier: "open-space",
+          coffee: false,
+        },
+        tableName: "assigned-only-sentinel-raw-table-id",
+        openSpaceTableNames: [],
+      })
+    );
+
+    expect(message.html).not.toContain(">Table<");
+    expect(message.html).not.toContain("Tables");
+    expect(message.text).not.toContain("Table");
+    expect(message.text).not.toContain("Tables");
+    expect(message.html).not.toContain("assigned-only-sentinel-raw-table-id");
+    expect(message.text).not.toContain("assigned-only-sentinel-raw-table-id");
+  });
+
+  test("keeps one assigned table label and its existing large sizing for other products", async () => {
+    const assignedProducts = [
+      {
+        kind: "cowork",
+        entryTier: "reserved-desk",
+        coffee: true,
+        monitorOption: "2x27-qhd",
+      },
+      { kind: "cowork", entryTier: "basic", coffee: false },
+      { kind: "cowork", entryTier: "plus", coffee: true },
+      {
+        kind: "cowork",
+        entryTier: "profi",
+        coffee: true,
+        monitorOption: "2x27-qhd",
+      },
+      { kind: "meeting-room" },
+      { kind: "office" },
+    ] satisfies readonly WorkspaceReservationDetails["reservationDetails"][];
+
+    for (const reservationDetails of assignedProducts) {
+      const message = await sendPaidReservationEmail(
+        makeReservation({ reservationDetails, tableName: "12" })
+      );
+
+      expect(message.html).toContain(">Table<");
+      expect(message.text).toContain("Table");
+      expect(message.html).toContain(">12<");
+      expect(message.text).toContain("12");
+      expect(message.html).toContain("font-size:48px");
+      expect(message.html).not.toContain("Tables");
+    }
+  });
+
+  test("localizes the shared table label in Czech", async () => {
+    const message = await sendPaidReservationEmail(
+      makeReservation({
+        reservationDetails: {
+          kind: "cowork",
+          entryTier: "open-space",
+          coffee: false,
+        },
+        locale: "cs-CZ",
+        tableName: "assigned-only-sentinel-raw-table-id",
+        openSpaceTableNames: [
+          "9",
+          "10",
+          "11",
+          "12",
+          "15",
+          "16",
+          "wallee",
+          "gromice",
+        ],
+      })
+    );
+
+    expect(message.html).toContain("Stoly");
+    expect(message.text).toContain("Stoly");
+    expect(getHtmlParagraphTexts(message.html)).toContain(
+      "9-12, 15, 16, wallee, gromice"
+    );
+    expect(getTextValueAfterLabel(message.text ?? "", "Stoly")).toBe(
+      "9-12, 15, 16, wallee, gromice"
+    );
+    expect(message.html).not.toContain("assigned-only-sentinel-raw-table-id");
+    expect(message.text).not.toContain("assigned-only-sentinel-raw-table-id");
   });
 });
 
@@ -499,7 +798,8 @@ describe("sendPaidReservationEmails idempotent retry stability", () => {
     const { WorkspaceCheckoutNetworkDetailsService } = await import(
       "./network-details.service"
     );
-    const reservation = makeReservation({});
+    const { details: reservation } =
+      await loadOpenSpaceReservationFromSyntheticSnapshot();
     const idempotencyKey = createCustomerEmailInitialIdempotencyKey(
       reservation.id
     );
@@ -569,6 +869,8 @@ describe("sendPaidReservationEmails idempotent retry stability", () => {
     expect(secondCustomer?.idempotencyKey).toBe(idempotencyKey);
     expect(firstCustomer?.html).toContain("accessToken=");
     expect(firstCustomer?.text).toContain("accessToken=");
+    expect(firstCustomer?.html).toContain("9-12, 15, 16, wallee, gromice");
+    expect(firstCustomer?.text).toContain("9-12, 15, 16, wallee, gromice");
     expect(secondCustomer).toEqual(firstCustomer);
     expect(secondInternal).toEqual(firstInternal);
     const firstQr = firstCustomer?.attachments?.find(

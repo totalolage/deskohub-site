@@ -1546,7 +1546,7 @@ const assertNoLocalPii = (
   data: CheckoutData
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const patterns = [data.email, data.phone, data.name, data.message].map(
+    const patterns = [data.email, data.phone, data.name].map(
       (value) => `%${value}%`
     );
     const [

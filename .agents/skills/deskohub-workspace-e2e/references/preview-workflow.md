@@ -110,6 +110,14 @@ Do not add callback-origin or BotID test-bypass overrides. Non-production
 callback origins derive from the deployment's `VERCEL_URL`; production derives
 from `VERCEL_PROJECT_PRODUCTION_URL`.
 
+Preview visitor GET/HEAD navigation redirects to that immutable callback origin
+before sign-in and reservation preparation. This keeps host-only account sessions
+and checkout access cookies on the host Nexi returns to, including when a customer
+starts on a branch alias. Keep the existing administration boundary and API/static
+matcher exclusions. When changing this boundary, check direct alias page loads
+and client navigation; the normal immutable-host E2E suite does not cover that
+host transition.
+
 Workspace appends the protection-bypass query parameter to preview Nexi result
 and notification URLs when configured. Browser navigation establishes the
 bypass cookie, readiness checks use the bypass header, and direct Nexi webhook

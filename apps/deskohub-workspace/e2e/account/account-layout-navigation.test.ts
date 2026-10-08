@@ -121,8 +121,14 @@ function AccountShellHarness() {
 
 type FakeLocator = {
   readonly click: () => Promise<void>;
+  readonly elementHandle: () => Promise<FakeElementHandle>;
   readonly isVisible: () => Promise<boolean>;
   readonly waitFor: (options?: { readonly state?: string }) => Promise<void>;
+};
+
+type FakeElementHandle = {
+  readonly dispose: () => Promise<void>;
+  readonly element: Element;
 };
 
 type FakePageOptions = {
@@ -161,6 +167,10 @@ const fakeLocator = (element: Element): FakeLocator => ({
     if (!elementIsVisible(element)) throw new Error("fake target is hidden");
     fireEvent.click(element);
   },
+  elementHandle: async () => ({
+    dispose: async () => {},
+    element,
+  }),
   isVisible: async () => elementIsVisible(element),
   waitFor: async (waitOptions = {}) => {
     if (waitOptions.state === "visible" && !elementIsVisible(element))
@@ -227,7 +237,11 @@ const makeFakePage = (options: FakePageOptions = {}): Page => {
     waitForFunction: async (pageFunction: unknown, arg: unknown) => {
       if (typeof pageFunction !== "function")
         throw new Error("fake wait predicate was not a function");
-      if (!(pageFunction as (value: unknown) => boolean)(arg))
+      const predicateArgument =
+        typeof arg === "object" && arg !== null && "element" in arg
+          ? arg.element
+          : arg;
+      if (!(pageFunction as (value: unknown) => boolean)(predicateArgument))
         throw new Error("fake account section did not settle");
     },
   });

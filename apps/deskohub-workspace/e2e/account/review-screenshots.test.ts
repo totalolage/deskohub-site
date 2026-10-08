@@ -353,12 +353,13 @@ const makeFakePage = (
       },
       count: async () =>
         kind === "loading-card" && !callbackLoadingPresent ? 0 : 1,
-      getByText: () => makeLocator("loading-text"),
+      first: () => makeLocator(kind),
+      locator: () => makeLocator("loading-skeleton"),
       waitFor: async () => {
         if (
           (kind === "loading-card" ||
             kind === "loading-status" ||
-            kind === "loading-text") &&
+            kind === "loading-skeleton") &&
           !callbackLoadingPresent
         )
           throw new Error("callback loading state is not visible");
