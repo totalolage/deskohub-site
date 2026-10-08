@@ -61,6 +61,62 @@ export const workspaceE2EProfileNavigationDiagnosticCodes = [
 export type WorkspaceE2EProfileNavigationDiagnosticCode =
   (typeof workspaceE2EProfileNavigationDiagnosticCodes)[number];
 
+const accountLayoutNavigationPhases = [
+  "select",
+  "landmark",
+  "geometry",
+  "capture",
+] as const;
+const accountLayoutSections = [
+  "reservations",
+  "referrals",
+  "profile",
+  "billing",
+  "legal",
+  "danger",
+] as const;
+
+export type WorkspaceE2EAccountLayoutDiagnosticCode =
+  `account_layout_${(typeof accountLayoutNavigationPhases)[number]}_${(typeof accountLayoutSections)[number]}_failed`;
+
+export const workspaceE2EAccountLayoutDiagnosticCodes =
+  accountLayoutNavigationPhases.flatMap((phase) =>
+    accountLayoutSections.map(
+      (section) => `account_layout_${phase}_${section}_failed` as const
+    )
+  ) as WorkspaceE2EAccountLayoutDiagnosticCode[];
+
+const hostedPaymentDiagnosticTargets = [
+  "continue",
+  "pay",
+  "challenge",
+  "return",
+] as const;
+const hostedPaymentDiagnosticStates = [
+  "card_entry_incomplete",
+  "card_entry_ready",
+  "continue_enabled",
+  "continue_disabled",
+  "pay_enabled",
+  "pay_disabled",
+  "challenge_enabled",
+  "challenge_disabled",
+  "return_enabled",
+  "return_disabled",
+  "unknown",
+  "snapshot_unavailable",
+] as const;
+
+export type WorkspaceE2EHostedPaymentDiagnosticCode =
+  `nexi_hosted_${(typeof hostedPaymentDiagnosticTargets)[number]}_${(typeof hostedPaymentDiagnosticStates)[number]}`;
+
+export const workspaceE2EHostedPaymentDiagnosticCodes =
+  hostedPaymentDiagnosticTargets.flatMap((target) =>
+    hostedPaymentDiagnosticStates.map(
+      (state) => `nexi_hosted_${target}_${state}` as const
+    )
+  ) as WorkspaceE2EHostedPaymentDiagnosticCode[];
+
 export const workspaceE2EAccountDiagnosticCodes = [
   "auth_delivery_request_rejected",
   "auth_delivery_message_not_observed",
@@ -74,12 +130,14 @@ export const workspaceE2EAccountDiagnosticCodes = [
   "postgres_account_fixture_convergence_failed",
   "dotypos_account_fixture_mutation_failed",
   ...workspaceE2EProfileNavigationDiagnosticCodes,
+  ...workspaceE2EAccountLayoutDiagnosticCodes,
 ] as const;
 
 export const workspaceE2EDiagnosticCodes = [
   ...nexiWebhookDiagnosticCodes,
   ...workspaceE2ERunnerDiagnosticCodes,
   ...workspaceE2EAccountDiagnosticCodes,
+  ...workspaceE2EHostedPaymentDiagnosticCodes,
 ] as const;
 
 export type WorkspaceE2EDiagnosticCode =

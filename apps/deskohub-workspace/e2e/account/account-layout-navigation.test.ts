@@ -13,7 +13,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { WorkspaceE2EError } from "../errors";
+import { isWorkspaceE2EDiagnosticCode, WorkspaceE2EError } from "../errors";
 import {
   accountLayoutNavigationPhases,
   runAccountLayoutNavigationPhase,
@@ -410,6 +410,42 @@ test("keeps every account layout phase diagnostic-safe", async () => {
       );
     }
   }
+});
+
+test("codes every account navigation phase and section with a closed diagnostic", async () => {
+  const diagnosticCodes = new Set<string>();
+
+  for (const phase of accountLayoutNavigationPhases) {
+    for (const section of sections) {
+      const failure = await runAccountLayoutNavigationPhase(
+        phase,
+        section,
+        diagnosticViewport,
+        async () => {
+          throw new Error(accountLayoutFailureMarker);
+        }
+      ).then(
+        () => {
+          throw new Error("expected account layout phase to fail");
+        },
+        (cause) => cause
+      );
+
+      expect(failure).toBeInstanceOf(WorkspaceE2EError);
+      if (!(failure instanceof WorkspaceE2EError))
+        throw new Error("expected a Workspace E2E error");
+
+      const expectedCode = `account_layout_${phase}_${section}_failed`;
+      expect(failure.diagnosticCode).toBe(expectedCode);
+      expect(isWorkspaceE2EDiagnosticCode(failure.diagnosticCode)).toBe(true);
+      expect(failure.diagnosticCode).not.toContain(accountLayoutFailureMarker);
+      diagnosticCodes.add(failure.diagnosticCode ?? "");
+    }
+  }
+
+  expect(diagnosticCodes.size).toBe(
+    accountLayoutNavigationPhases.length * sections.length
+  );
 });
 
 const runLayoutVerificationFailure = async (

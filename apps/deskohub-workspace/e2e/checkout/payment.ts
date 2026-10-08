@@ -33,10 +33,13 @@ import {
 } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import {
+  isWorkspaceE2EDiagnosticCode,
   toWorkspaceE2EError,
   tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  type WorkspaceE2EHostedPaymentDiagnosticCode,
+  withWorkspaceE2EDiagnosticCode,
 } from "../errors";
 import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
@@ -1082,10 +1085,137 @@ type HostedPaymentClickTarget = {
   readonly value: string;
 };
 
+type HostedPaymentDiagnosticTarget =
+  | "continue"
+  | "pay"
+  | "challenge"
+  | "return";
+type HostedPaymentClickLabel =
+  | "continue"
+  | "pay"
+  | "3DS success"
+  | "back to shop";
+
+type HostedPaymentDiagnosticState =
+  | "card_entry_incomplete"
+  | "card_entry_ready"
+  | "continue_enabled"
+  | "continue_disabled"
+  | "pay_enabled"
+  | "pay_disabled"
+  | "challenge_enabled"
+  | "challenge_disabled"
+  | "return_enabled"
+  | "return_disabled"
+  | "unknown"
+  | "snapshot_unavailable";
+
+const hostedPaymentDiagnosticTargets: Readonly<
+  Record<HostedPaymentClickLabel, HostedPaymentDiagnosticTarget>
+> = {
+  continue: "continue",
+  pay: "pay",
+  "3DS success": "challenge",
+  "back to shop": "return",
+};
+
+const hostedPaymentDiagnosticButtons = [
+  {
+    labels: ["BACK TO THE SHOP", "Back to the shop", "TORNA AL NEGOZIO"],
+    state: "return",
+  },
+  {
+    labels: ["AUTENTICAZIONE RIUSCITA", "Authentication successful"],
+    state: "challenge",
+  },
+  { labels: ["PAY", "Pay", "PAGA"], state: "pay" },
+] as const;
+
+const hostedPaymentCardFields = [
+  ["Card number", "Numero carta", "Numero della carta"],
+  ["Expiration date", "Scadenza", "Data scadenza"],
+  ["CVV", "CVC", "Codice sicurezza"],
+] as const;
+
+const findExactHostedPaymentControl = (
+  snapshot: string,
+  labels: readonly string[],
+  roles: readonly string[]
+): { readonly enabled: boolean } | undefined => {
+  for (const role of roles) {
+    const ref = findSnapshotRef(snapshot, labels, role);
+    if (!ref) continue;
+
+    const exactLine = snapshot.split("\n").find((line) => {
+      if (getSnapshotRef(line) !== ref) return false;
+      const lineRole = line.match(/^\s*-\s+(\S+)/)?.[1]?.toLowerCase();
+      const accessibleName = line
+        .match(/^\s*-\s+\S+\s+"([^"]+)"/)?.[1]
+        ?.trim()
+        .toLowerCase();
+      return (
+        lineRole === role.toLowerCase() &&
+        accessibleName !== undefined &&
+        labels.some((label) => label.toLowerCase() === accessibleName)
+      );
+    });
+    if (!exactLine) continue;
+
+    return {
+      enabled: findEnabledSnapshotRef(snapshot, labels, role) === ref,
+    };
+  }
+};
+
+const classifyHostedPaymentSnapshot = (
+  snapshot: string
+): HostedPaymentDiagnosticState => {
+  if (!snapshot.trim()) return "snapshot_unavailable";
+
+  for (const button of hostedPaymentDiagnosticButtons) {
+    const control = findExactHostedPaymentControl(snapshot, button.labels, [
+      "button",
+    ]);
+    if (control)
+      return `${button.state}_${control.enabled ? "enabled" : "disabled"}` as HostedPaymentDiagnosticState;
+  }
+
+  const cardControls = hostedPaymentCardFields.map((labels) =>
+    findExactHostedPaymentControl(snapshot, labels, ["textbox", "input"])
+  );
+  if (cardControls.some((control) => control !== undefined))
+    return cardControls.every((control) => control?.enabled === true)
+      ? "card_entry_ready"
+      : "card_entry_incomplete";
+
+  const continueButton = findExactHostedPaymentControl(
+    snapshot,
+    ["CONTINUE", "Continue", "CONTINUA"],
+    ["button"]
+  );
+  if (continueButton)
+    return continueButton.enabled ? "continue_enabled" : "continue_disabled";
+
+  return "unknown";
+};
+
+const failWithHostedPaymentDiagnostic = (
+  label: HostedPaymentClickLabel,
+  state: HostedPaymentDiagnosticState,
+  error: WorkspaceE2EError
+): Effect.Effect<never, WorkspaceE2EError> => {
+  const target = hostedPaymentDiagnosticTargets[label];
+  const diagnosticCode = `nexi_hosted_${target}_${state}`;
+  if (!isWorkspaceE2EDiagnosticCode(diagnosticCode)) return Effect.fail(error);
+  return withWorkspaceE2EDiagnosticCode(
+    diagnosticCode as WorkspaceE2EHostedPaymentDiagnosticCode
+  )(Effect.fail(error));
+};
+
 const clickHostedPaymentTarget = (
   run: Runner,
   session: string,
-  label: string,
+  label: HostedPaymentClickLabel,
   targets: readonly HostedPaymentClickTarget[],
   timeouts: WorkspaceE2ETimeouts,
   options: {
@@ -1136,16 +1266,27 @@ const clickHostedPaymentTarget = (
       if (options.optional) return Effect.void;
 
       return readInteractiveSnapshot(run, session, true).pipe(
-        Effect.flatMap((snapshot) =>
-          Effect.fail(
-            toWorkspaceE2EError(
-              `click Nexi ${label}`,
-              new Error(
-                `${error.message}\n${summarizeHostedPaymentSnapshot(snapshot)}`
-              )
+        Effect.exit,
+        Effect.flatMap((snapshotExit) => {
+          if (Exit.isFailure(snapshotExit))
+            return failWithHostedPaymentDiagnostic(
+              label,
+              "snapshot_unavailable",
+              error
+            );
+
+          const diagnosticError = toWorkspaceE2EError(
+            `click Nexi ${label}`,
+            new Error(
+              `${error.message}\n${summarizeHostedPaymentSnapshot(snapshotExit.value)}`
             )
-          )
-        )
+          );
+          return failWithHostedPaymentDiagnostic(
+            label,
+            classifyHostedPaymentSnapshot(snapshotExit.value),
+            diagnosticError
+          );
+        })
       );
     })
   );
