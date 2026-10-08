@@ -95,7 +95,7 @@ const getEmailRetryPolicyDescription = (
   error: EmailServiceError | NetworkError
 ) =>
   isRetryableEmailError(error)
-    ? "exponential backoff (1s base, jittered, max 3 attempts)"
+    ? "exponential backoff (1s base, jittered, max 3 retries)"
     : "no retry - not a network error";
 
 /** Log only non-PII send facts; recipients and rendered bodies stay out. */
@@ -148,10 +148,10 @@ const emailServiceImplementation = Effect.gen(function* () {
           ...emailSendLogFacts(message),
         });
 
-        const finalMessage = {
+        const finalMessage = yield* withDeliveryIdempotencyKey({
           ...message,
           from: message.from || config.defaultFrom,
-        };
+        });
 
         const result = yield* provider.send(finalMessage).pipe(
           Effect.tapError((error) =>
@@ -204,7 +204,7 @@ const emailServiceImplementation = Effect.gen(function* () {
         const to =
           typeof recipient === "string" ? { email: recipient } : recipient;
 
-        const message: EmailMessage = {
+        const message = yield* withDeliveryIdempotencyKey({
           from: config.defaultFrom,
           to,
           subject: rendered.subject,
@@ -214,7 +214,7 @@ const emailServiceImplementation = Effect.gen(function* () {
           metadata: {
             templateType: template.type,
           },
-        };
+        });
 
         return yield* provider.send(message).pipe(
           Effect.tapError((error) =>
@@ -284,3 +284,33 @@ const emailServiceImplementation = Effect.gen(function* () {
     ),
   };
 });
+
+/**
+ * One logical delivery keeps one idempotency key across transport retries, so
+ * a provider that accepted a timed-out attempt does not deliver it twice.
+ */
+const withDeliveryIdempotencyKey = (message: EmailMessage) =>
+  Effect.sync(
+    (): EmailMessage => ({
+      ...message,
+      idempotencyKey:
+        message.idempotencyKey ??
+        reservationDeliveryIdempotencyKey(message) ??
+        `email-delivery-${crypto.randomUUID()}`,
+    })
+  );
+
+/** A reservation delivery category is sent at most once per reservation. */
+const reservationDeliveryIdempotencyKey = (message: EmailMessage) => {
+  const workspaceReservationId = message.metadata?.workspaceReservationId;
+  const category = message.tags?.[0];
+
+  if (
+    typeof workspaceReservationId !== "string" ||
+    typeof category !== "string"
+  ) {
+    return undefined;
+  }
+
+  return `${category}-${workspaceReservationId}`;
+};

@@ -260,21 +260,10 @@ const createResendProvider = (apiKey: string): EmailProvider => {
   };
 };
 
-const getResendIdempotencyKey = (message: EmailMessage) => {
-  if (message.idempotencyKey) return message.idempotencyKey.slice(0, 256);
+const resendIdempotencyKeyMaxLength = 256;
 
-  const workspaceReservationId = message.metadata?.workspaceReservationId;
-  const category = message.tags?.[0];
-
-  if (
-    typeof workspaceReservationId !== "string" ||
-    typeof category !== "string"
-  ) {
-    return undefined;
-  }
-
-  return `${category}-${workspaceReservationId}`.slice(0, 256);
-};
+const getResendIdempotencyKey = (message: EmailMessage) =>
+  message.idempotencyKey?.slice(0, resendIdempotencyKeyMaxLength);
 
 export const ResendEmailProviderLive = Layer.effect(
   EmailProviderTag,
