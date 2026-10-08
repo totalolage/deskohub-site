@@ -6,6 +6,12 @@
       "dependsOn": ["i18n:compile"],
       "outputs": ["dist/**", ".astro/**", ".vercel/output/**"]
     },
+    "test": {
+      "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]
+    },
+    "typecheck": {
+      "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]
+    },
     "i18n:compile": {
       "inputs": [
         "features/i18n/messages/*.json",
