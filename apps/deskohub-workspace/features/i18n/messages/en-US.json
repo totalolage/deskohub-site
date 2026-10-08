@@ -103,6 +103,7 @@
   "languageSwitcherLabel": "Language switcher",
   "openNavigationMenuLabel": "Open navigation menu",
   "closeNavigationMenuLabel": "Close navigation menu",
+  "closeDialogLabel": "Close",
   "landingHeroImageAlt": "Deskohub Workspace interior",
   "landingCarouselAriaLabel": "Deskohub Workspace photo carousel",
   "landingCarouselOpenCurrentPhoto": "Open carousel photo {number} in the lightbox",

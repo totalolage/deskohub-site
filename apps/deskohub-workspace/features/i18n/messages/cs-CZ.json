@@ -103,6 +103,7 @@
   "languageSwitcherLabel": "Výběr jazyka",
   "openNavigationMenuLabel": "Otevřít navigační nabídku",
   "closeNavigationMenuLabel": "Zavřít navigační nabídku",
+  "closeDialogLabel": "Zavřít",
   "landingHeroImageAlt": "Interiér Deskohub Workspace",
   "landingCarouselAriaLabel": "Fotogalerie Deskohub Workspace",
   "landingCarouselOpenCurrentPhoto": "Otevřít fotku {number} v galerii",
