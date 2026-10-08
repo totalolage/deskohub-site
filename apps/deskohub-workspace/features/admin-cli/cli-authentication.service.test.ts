@@ -451,67 +451,72 @@ describe.skipIf(!postgresDatabase)(
       expect((await loadSessionRow(granted.session.id))?.expiresAt).toBeNull();
     });
 
-    test("expires sessions after the approved calendar lifetime in the site time zone", async () => {
-      const approvedAt = Temporal.Instant.from("2026-10-31T12:00:00.000Z");
-      const lifetime = cliSessionLifetimeSchema.cases.Duration.make({
-        amount: 1,
-        unit: "months",
-      });
-      const approve = (code: CliAuthenticationCodeType) =>
-        Effect.gen(function* () {
-          yield* TestClock.setTime(approvedAt.epochMilliseconds);
-          return yield* authentication.approve({
-            approvedBy: alice,
-            code,
-            sessionLifetime: lifetime,
-          });
-        }).pipe(Effect.provide(TestClock.layer()));
-      const started = await Effect.runPromise(
-        authentication.start({
-          challenge: CliAuthenticationChallenge.make(
-            await Effect.runPromise(newSecret())
-          ),
-          clientName: "Calendar CLI",
-          cliVersion: "1.0.0",
-          buildTarget: "development",
-        })
-      );
-      fixtureCodeHashes.push(
-        await Effect.runPromise(digestSecret(started.code))
-      );
-      await Effect.runPromise(
-        postgres.db
-          .update(cliAuthenticationRequests)
-          .set({
-            createdAt: approvedAt.subtract({ minutes: 1 }),
-            expiresAt: approvedAt.add({ minutes: 4 }),
+    // 24 Oct 14:00 CEST plus one month crosses the 25 Oct switch to CET and
+    // keeps the local wall-clock time; 31 Oct plus one month clamps to the
+    // last day of November.
+    test.each([
+      ["2026-10-24T12:00:00.000Z", "2026-11-24T13:00:00Z"],
+      ["2026-10-31T12:00:00.000Z", "2026-11-30T12:00:00Z"],
+    ])(
+      "expires sessions one Prague calendar month after approval at %s",
+      async (approvedAtIso, expectedExpiry) => {
+        const approvedAt = Temporal.Instant.from(approvedAtIso);
+        const lifetime = cliSessionLifetimeSchema.cases.Duration.make({
+          amount: 1,
+          unit: "months",
+        });
+        const approve = (code: CliAuthenticationCodeType) =>
+          Effect.gen(function* () {
+            yield* TestClock.setTime(approvedAt.epochMilliseconds);
+            return yield* authentication.approve({
+              approvedBy: alice,
+              code,
+              sessionLifetime: lifetime,
+            });
+          }).pipe(Effect.provide(TestClock.layer()));
+        const started = await Effect.runPromise(
+          authentication.start({
+            challenge: CliAuthenticationChallenge.make(
+              await Effect.runPromise(newSecret())
+            ),
+            clientName: "Calendar CLI",
+            cliVersion: "1.0.0",
+            buildTarget: "development",
           })
-          .where(
-            eq(
-              cliAuthenticationRequests.codeHash,
-              await Effect.runPromise(digestSecret(started.code))
+        );
+        fixtureCodeHashes.push(
+          await Effect.runPromise(digestSecret(started.code))
+        );
+        await Effect.runPromise(
+          postgres.db
+            .update(cliAuthenticationRequests)
+            .set({
+              createdAt: approvedAt.subtract({ minutes: 1 }),
+              expiresAt: approvedAt.add({ minutes: 4 }),
+            })
+            .where(
+              eq(
+                cliAuthenticationRequests.codeHash,
+                await Effect.runPromise(digestSecret(started.code))
+              )
             )
-          )
-      );
-      await Effect.runPromise(approve(started.code));
+        );
+        await Effect.runPromise(approve(started.code));
 
-      const [request] = await Effect.runPromise(
-        postgres.db
-          .select()
-          .from(cliAuthenticationRequests)
-          .where(
-            eq(
-              cliAuthenticationRequests.codeHash,
-              await Effect.runPromise(digestSecret(started.code))
+        const [request] = await Effect.runPromise(
+          postgres.db
+            .select()
+            .from(cliAuthenticationRequests)
+            .where(
+              eq(
+                cliAuthenticationRequests.codeHash,
+                await Effect.runPromise(digestSecret(started.code))
+              )
             )
-          )
-      );
-      // One Prague calendar month after 13:00 CET on 31 October is 13:00 CET
-      // on 30 November.
-      expect(request?.sessionExpiresAt?.toString()).toBe(
-        "2026-11-30T12:00:00Z"
-      );
-    });
+        );
+        expect(request?.sessionExpiresAt?.toString()).toBe(expectedExpiry);
+      }
+    );
 
     test("rejects a session whose expiry has passed and reports it as expired", async () => {
       const approvedNoEarlierThan = Temporal.Instant.fromEpochMilliseconds(
