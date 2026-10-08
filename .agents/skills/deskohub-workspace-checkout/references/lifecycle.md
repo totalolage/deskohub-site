@@ -573,6 +573,12 @@ tab that wins the hydration race. An unmarked returned tab closes when the lock
 is unavailable or preempted; if the original tab is closed, it keeps the lock
 and remains open.
 
+The hosted-provider return endpoint is a navigation-only redirect to the
+canonical status page. Provider returns may lack browser authorization cookies;
+keep authorization, provider verification, and reconciliation on the status
+page so a cookie-less return can still reach the tab coordinator. The return
+endpoint exposes no reservation data and grants no access.
+
 Starting a new reservation from terminal status or invalid Pay state uses a
 document navigation. Cache Components may retain the previous reservation form
 and its completed action result in an inactive route tree; restoring that tree
