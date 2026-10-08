@@ -225,7 +225,12 @@ describe.skipIf(!postgresDatabase)(
       expect(row?.approvedAt).not.toBeNull();
       expect(
         row?.approvedAt &&
-          row.sessionExpiresAt?.equals(row.approvedAt.add({ hours: 14 * 24 }))
+          row.sessionExpiresAt?.equals(
+            row.approvedAt
+              .toZonedDateTimeISO("Europe/Prague")
+              .add({ weeks: 2 })
+              .toInstant()
+          )
       ).toBe(true);
       expect(
         row?.approvedAt &&
