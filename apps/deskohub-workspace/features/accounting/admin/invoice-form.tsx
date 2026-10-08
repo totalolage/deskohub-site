@@ -348,7 +348,12 @@ export function InvoiceCreationForm({
     // (trimming and hidden-field normalization included) and rotates when the
     // normalized submitted payload changes: the server rejects a reused id
     // with different input.
-    const payload = readInvoiceFormPayload({ customer, customerMode, values });
+    const payload = readInvoiceFormPayload({
+      customer,
+      customerMode,
+      suggestedVariableSymbol,
+      values,
+    });
     const fingerprint = JSON.stringify(payload);
     const bound = draftRef.current;
     const invoiceId =
@@ -1270,6 +1275,7 @@ export function readInvoiceForm(input: {
   readonly customer: InvoiceAdministrationCustomer | null;
   readonly customerMode: "existing" | "new";
   readonly invoiceId: string;
+  readonly suggestedVariableSymbol: string;
   readonly values: InvoiceFormOutput;
 }) {
   return {
@@ -1281,6 +1287,7 @@ export function readInvoiceForm(input: {
 export function readInvoiceFormPayload(input: {
   readonly customer: InvoiceAdministrationCustomer | null;
   readonly customerMode: "existing" | "new";
+  readonly suggestedVariableSymbol: string;
   readonly values: InvoiceFormOutput;
 }) {
   const formCustomer = input.values.customer;
@@ -1313,7 +1320,14 @@ export function readInvoiceFormPayload(input: {
           firstName: formCustomer.firstName,
           lastName: formCustomer.lastName,
         };
-  const variableSymbol = input.values.variableSymbol.trim();
+  // The suggestion is computed when the page loads and goes stale once
+  // another invoice is issued. Send only an operator-edited symbol; the
+  // server derives the default from the final invoice number.
+  const enteredVariableSymbol = input.values.variableSymbol.trim();
+  const variableSymbol =
+    enteredVariableSymbol === input.suggestedVariableSymbol
+      ? ""
+      : enteredVariableSymbol;
   return {
     customer:
       input.customerMode === "existing" && input.customer
