@@ -26,6 +26,7 @@
     },
     "build": {
       "dependsOn": [
+        "$TURBO_EXTENDS$",
         "@deskohub/dotypos#generate",
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
@@ -102,16 +103,17 @@
       "dependsOn": ["$TURBO_EXTENDS$", "@deskohub/igloohome#generate"]
     },
     "test:admin-cli": {
+      "cache": false,
       "dependsOn": [
         "@deskohub/dotypos#generate",
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
         "i18n:compile"
-      ],
-      "outputs": []
+      ]
     },
     "typecheck": {
       "dependsOn": [
+        "$TURBO_EXTENDS$",
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
         "i18n:compile",
