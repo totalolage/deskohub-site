@@ -42,6 +42,7 @@ import {
   CliMutationRejected,
   CliMutationRequestId,
   CliMutationUncertain,
+  type CliSessionAdministrationType,
   CliSessionId,
   type CliSessionType,
   CliSessionUnauthorized,
@@ -53,6 +54,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import {
   BigDecimal,
+  Clock,
   Console,
   Crypto,
   Data,
@@ -69,6 +71,7 @@ import { AccessCodeAttemptStore } from "./access-codes/access-code-attempt-store
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
 import {
+  describeSessionExpiry,
   reportAuthenticationGranted,
   reportAuthenticationStarted,
 } from "./authentication/authentication-output";
@@ -2050,6 +2053,7 @@ const sessionsListCommand = Command.make("list", {}, () =>
         yield* Console.log(JSON.stringify(sessions));
         return;
       }
+      const now = yield* Clock.currentTimeMillis;
       yield* Console.log(`CLI sessions: ${sessions.length}`);
       for (const session of sessions) {
         yield* Console.log(
@@ -2059,13 +2063,25 @@ const sessionsListCommand = Command.make("list", {}, () =>
             session.cliVersion,
             session.buildTarget,
             session.lastUsedAt,
-            session.revokedAt ? "Revoked" : "Active",
+            session.expiresAt ?? "Never expires",
+            describeCliSessionStatus(session, now),
           ].join("\t")
         );
       }
     })
   )
 ).pipe(Command.withDescription("List issued CLI sessions"));
+
+const describeCliSessionStatus = (
+  session: CliSessionAdministrationType,
+  now: number
+) => {
+  if (session.revokedAt) return "Revoked";
+  if (session.expiresAt && Date.parse(session.expiresAt) <= now) {
+    return "Expired";
+  }
+  return "Active";
+};
 
 const sessionsRenameCommand = Command.make(
   "rename",
@@ -2156,7 +2172,7 @@ const authCommand = Command.make(
                   authStatus: "granted",
                   session: existing.value.session,
                 })
-              : `Already authenticated as ${existing.value.session.clientName}.`
+              : `Already authenticated as ${existing.value.session.clientName}. ${describeSessionExpiry(existing.value.session)}`
           );
           return;
         }

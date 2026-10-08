@@ -2,6 +2,7 @@ import type { AdministrationActorUsernameType } from "@deskohub/workspace-admin-
 import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { Suspense } from "react";
 import { approveCliAuthentication } from "@/features/admin-cli/actions";
+import { CliSessionLifetimeFields } from "@/features/admin-cli/cli-session-lifetime-fields";
 import { loadCliAuthenticationApproval } from "@/features/admin-cli/page-data.server";
 import {
   AdministrationAlert,
@@ -73,6 +74,7 @@ export async function CliAuthenticationRequest({
       <div className="border-t border-navy-blue/10 px-5 py-5 sm:px-6">
         <AuthenticationRequestState
           code={params.code}
+          failed={params.result === "error"}
           request={request}
           username={username}
         />
@@ -83,10 +85,12 @@ export async function CliAuthenticationRequest({
 
 function AuthenticationRequestState({
   code,
+  failed,
   request,
   username,
 }: {
   readonly code?: string;
+  readonly failed: boolean;
   readonly request: NonNullable<
     NonNullable<
       Awaited<ReturnType<typeof loadCliAuthenticationApproval>>
@@ -105,8 +109,17 @@ function AuthenticationRequestState({
             Approving as <strong>{username}</strong>.
           </p>
         </AdministrationAlert>
+        {failed && (
+          <AdministrationAlert className="mb-5" status="error">
+            <p>
+              The CLI could not be approved. Check the session duration and try
+              again.
+            </p>
+          </AdministrationAlert>
+        )}
         <form action={approveCliAuthentication}>
           <input name="code" type="hidden" value={code} />
+          <CliSessionLifetimeFields />
           <Button type="submit">Approve this CLI</Button>
         </form>
       </>

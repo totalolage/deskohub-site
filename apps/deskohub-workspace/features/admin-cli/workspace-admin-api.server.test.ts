@@ -117,6 +117,7 @@ const session = {
   buildTarget: "development",
   createdAt: "2026-08-10T10:00:00.000Z",
   lastUsedAt: "2026-08-10T10:00:00.000Z",
+  expiresAt: null,
 } as const;
 const AuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
   bearer: (httpEffect) =>
@@ -567,7 +568,14 @@ describe("Workspace Admin API", () => {
     const authentication = Layer.succeed(CliAuthentication, {
       ...({} as CliAuthentication["Service"]),
       listSessions: (owner) =>
-        Effect.succeed([{ ...session, approvedBy: owner, revokedAt: null }]),
+        Effect.succeed([
+          {
+            ...session,
+            approvedBy: owner,
+            revokedAt: null,
+            status: "active" as const,
+          },
+        ]),
     });
     const reservationAdministration = Layer.succeed(
       ReservationAdministrationService,
@@ -1141,6 +1149,7 @@ describe("Workspace Admin API", () => {
               ...session,
               approvedBy: owner,
               revokedAt: null,
+              status: "active" as const,
             },
           ])
         ),

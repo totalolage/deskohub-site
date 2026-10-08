@@ -41,7 +41,17 @@ New sessions default to the recognizable label `dhw on <machine-name>`. Pass
 later from `/admin/cli/sessions`. The label is descriptive only; the opaque
 session ID remains its identity and renaming does not change access.
 
-Permanent bearer values are never stored by the server; only their SHA-256
+The approving administrator chooses the session lifetime on the approval page.
+The server computes `session_expires_at` on the authentication request at
+approval time (calendar units in `Europe/Prague`) and copies it to
+`cli_sessions.expires_at` at grant exchange; `NULL` means the session never
+expires. Session authentication filters out expired rows in the same query that
+excludes revoked rows, so an expired bearer fails with `CliSessionUnauthorized`
+and `dhw` removes the stored credential. `CliSession.expiresAt` decodes a
+missing field as `null` so a newer CLI can still read an older server's
+response.
+
+Session bearer values are never stored by the server; only their SHA-256
 digests are persisted. `/admin/cli/sessions` lists issued sessions and revokes
 them. Every authenticated CLI operation validates its session, and a revoked
 credential is removed from secure storage as soon as the API reports it.

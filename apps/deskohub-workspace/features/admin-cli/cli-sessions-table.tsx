@@ -64,12 +64,36 @@ export function CliSessionsTable({
           formatAdministrationDateTime(getValue<string>()),
       },
       {
-        accessorFn: (session) => session.revokedAt !== null,
-        id: "status",
+        accessorFn: (session) => session.expiresAt ?? "",
+        id: "expiresAt",
+        header: "Expires",
+        cell: ({ row }) =>
+          row.original.expiresAt
+            ? formatAdministrationDateTime(row.original.expiresAt)
+            : "Never",
+      },
+      {
+        accessorKey: "status",
         header: "Status",
         cell: ({ row }) => (
-          <StatusBadge tone={row.original.revokedAt ? "neutral" : "positive"}>
-            {row.original.revokedAt ? "Revoked" : "Active"}
+          <StatusBadge
+            tone={
+              (
+                {
+                  active: "positive",
+                  expired: "neutral",
+                  revoked: "neutral",
+                } as const
+              )[row.original.status]
+            }
+          >
+            {
+              {
+                active: "Active",
+                expired: "Expired",
+                revoked: "Revoked",
+              }[row.original.status]
+            }
           </StatusBadge>
         ),
       },
@@ -103,7 +127,7 @@ export function CliSessionsTable({
           />
         </div>
       )}
-      tableClassName="min-w-[1000px]"
+      tableClassName="min-w-[1120px]"
     />
   );
 }

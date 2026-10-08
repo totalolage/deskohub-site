@@ -18,6 +18,7 @@ import {
   makeCliAuthenticationSecret,
   type StartCliAuthenticationType,
 } from "@deskohub/workspace-admin-api";
+import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
 import { NodeCrypto } from "@effect/platform-node";
 import { and, desc, eq, gt, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
@@ -43,6 +44,8 @@ import {
 import "@/shared/polyfills/temporal";
 import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 import { ConfiguredAdministrators } from "@/shared/administrator/configured-administrators.service";
+import { addCalendarDuration } from "@/shared/utils/temporal";
+import { type CliSessionLifetime, cliSessionLifetimeSchema } from "./contracts";
 
 const authenticationLifetimeMinutes = 5;
 const grantLifetimeMinutes = 5;
@@ -50,6 +53,7 @@ const lastUsedWriteIntervalMinutes = 5;
 
 export type CliSessionAdministrationItem = CliSessionType & {
   readonly revokedAt: string | null;
+  readonly status: "active" | "expired" | "revoked";
 };
 
 export type CliApprovalRequest = {
@@ -104,6 +108,7 @@ interface ICliAuthentication {
   readonly approve: (input: {
     readonly code: CliAuthenticationCodeType;
     readonly approvedBy: AdministrationActorUsernameType;
+    readonly sessionLifetime: CliSessionLifetime;
   }) => Effect.Effect<
     CliApprovalRequest,
     | EffectDrizzleQueryError
@@ -154,6 +159,7 @@ export class CliAuthentication extends Context.Service<
           .select({
             request: cliAuthenticationRequests,
             revokedAt: cliSessions.revokedAt,
+            sessionExpiresAt: cliSessions.expiresAt,
           })
           .from(cliAuthenticationRequests)
           .leftJoin(
@@ -244,6 +250,7 @@ export class CliAuthentication extends Context.Service<
       const approve = Effect.fn("CliAuthentication.approve")(function* (input: {
         readonly code: CliAuthenticationCodeType;
         readonly approvedBy: AdministrationActorUsernameType;
+        readonly sessionLifetime: CliSessionLifetime;
       }) {
         const result = yield* loadRequest(input.code);
         const now = yield* nowInstant;
@@ -267,6 +274,7 @@ export class CliAuthentication extends Context.Service<
             approvedBy: input.approvedBy,
             grantToken,
             grantExpiresAt,
+            sessionExpiresAt: toSessionExpiry(input.sessionLifetime, now),
           })
           .where(
             and(
@@ -287,7 +295,10 @@ export class CliAuthentication extends Context.Service<
           return toApprovalRequest(latest, now);
         }
 
-        return toApprovalRequest({ request: approved, revokedAt: null }, now);
+        return toApprovalRequest(
+          { request: approved, revokedAt: null, sessionExpiresAt: null },
+          now
+        );
       });
 
       const exchange = Effect.fn("CliAuthentication.exchange")(function* (
@@ -340,6 +351,7 @@ export class CliAuthentication extends Context.Service<
               buildTarget: request.buildTarget,
               createdAt: now,
               lastUsedAt: now,
+              expiresAt: request.sessionExpiresAt,
             });
 
             const consumed = yield* tx
@@ -371,6 +383,7 @@ export class CliAuthentication extends Context.Service<
               buildTarget: request.buildTarget,
               createdAt: now,
               lastUsedAt: now,
+              expiresAt: request.sessionExpiresAt,
               revokedAt: null,
             } satisfies CliSessionRow;
           })
@@ -386,13 +399,15 @@ export class CliAuthentication extends Context.Service<
         if (!token) return yield* unauthorizedSession;
 
         const tokenHash = yield* digestSecret(token);
+        const now = yield* nowInstant;
         const [session] = yield* db
           .select()
           .from(cliSessions)
           .where(
             and(
               eq(cliSessions.tokenHash, tokenHash),
-              isNull(cliSessions.revokedAt)
+              isNull(cliSessions.revokedAt),
+              unexpiredSession(now)
             )
           )
           .limit(1);
@@ -403,7 +418,6 @@ export class CliAuthentication extends Context.Service<
         );
         if (!ownerConfigured) return yield* unauthorizedSession;
 
-        const now = yield* nowInstant;
         const writeBefore = now.subtract({
           minutes: lastUsedWriteIntervalMinutes,
         });
@@ -414,6 +428,7 @@ export class CliAuthentication extends Context.Service<
             and(
               eq(cliSessions.id, session.id),
               isNull(cliSessions.revokedAt),
+              unexpiredSession(now),
               lt(cliSessions.lastUsedAt, writeBefore)
             )
           )
@@ -424,6 +439,7 @@ export class CliAuthentication extends Context.Service<
 
       const listSessions = Effect.fn("CliAuthentication.listSessions")(
         function* (owner: AdministrationActorUsernameType) {
+          const now = yield* nowInstant;
           const rows = yield* db
             .select()
             .from(cliSessions)
@@ -432,6 +448,7 @@ export class CliAuthentication extends Context.Service<
           return rows.map((row) => ({
             ...toCliSession(row),
             revokedAt: row.revokedAt ? toIsoString(row.revokedAt) : null,
+            status: toSessionStatus(row, now),
           }));
         }
       );
@@ -511,6 +528,34 @@ const nowInstant = Clock.currentTimeMillis.pipe(
 const toIsoString = (instant: Temporal.Instant) =>
   instant.toString({ smallestUnit: "millisecond" });
 
+const unexpiredSession = (now: Temporal.Instant) =>
+  or(isNull(cliSessions.expiresAt), gt(cliSessions.expiresAt, now));
+
+const toSessionExpiry = (
+  lifetime: CliSessionLifetime,
+  approvedAt: Temporal.Instant
+) =>
+  cliSessionLifetimeSchema.match(lifetime, {
+    Never: () => null,
+    Duration: ({ amount, unit }) =>
+      addCalendarDuration({
+        instant: approvedAt,
+        duration: { [unit]: amount },
+        timeZone: WORKSPACE_SITE_TIME_ZONE,
+      }),
+  });
+
+const toSessionStatus = (
+  row: CliSessionRow,
+  now: Temporal.Instant
+): CliSessionAdministrationItem["status"] => {
+  if (row.revokedAt) return "revoked";
+  if (row.expiresAt && Temporal.Instant.compare(now, row.expiresAt) >= 0) {
+    return "expired";
+  }
+  return "active";
+};
+
 const toCliSession = (row: CliSessionRow): CliSessionType => ({
   id: row.id,
   approvedBy: row.approvedBy,
@@ -519,18 +564,27 @@ const toCliSession = (row: CliSessionRow): CliSessionType => ({
   buildTarget: row.buildTarget,
   createdAt: toIsoString(row.createdAt),
   lastUsedAt: toIsoString(row.lastUsedAt),
+  expiresAt: row.expiresAt ? toIsoString(row.expiresAt) : null,
 });
 
 const toAuthenticationStatus = (
   result: {
     readonly request: CliAuthenticationRequestRow;
     readonly revokedAt: Temporal.Instant | null;
+    readonly sessionExpiresAt: Temporal.Instant | null;
   },
   now: Temporal.Instant
 ): CliAuthenticationStatusType => {
-  const { request, revokedAt } = result;
+  const { request, revokedAt, sessionExpiresAt } = result;
   if (request.sessionId) {
-    return { authStatus: revokedAt ? "revoked" : "granted" };
+    if (revokedAt) return { authStatus: "revoked" };
+    if (
+      sessionExpiresAt &&
+      Temporal.Instant.compare(now, sessionExpiresAt) >= 0
+    ) {
+      return { authStatus: "expired" };
+    }
+    return { authStatus: "granted" };
   }
   if (
     !request.approvedAt &&
@@ -563,6 +617,7 @@ const toApprovalRequest = (
   result: {
     readonly request: CliAuthenticationRequestRow;
     readonly revokedAt: Temporal.Instant | null;
+    readonly sessionExpiresAt: Temporal.Instant | null;
   },
   now: Temporal.Instant
 ): CliApprovalRequest => ({
@@ -588,6 +643,6 @@ const rejectedGrant = Effect.fail(
 
 const unauthorizedSession = Effect.fail(
   new CliSessionUnauthorized({
-    message: "The CLI session is invalid or has been revoked.",
+    message: "The CLI session is invalid, has expired, or has been revoked.",
   })
 );

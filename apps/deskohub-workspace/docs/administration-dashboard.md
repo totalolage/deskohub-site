@@ -18,6 +18,8 @@ An operator can issue an ad-hoc service invoice to an existing Dotypos customer 
 
 CLI sessions are owner-scoped. Each administrator sees only the sessions they approved, identified by their authenticated username, and can rename or revoke only those sessions. Revoking a session invalidates its bearer credential on the session's next request. The pending approval page names the approving administrator, and the sessions page names the current administrator and shows an `Approved by` column so each row displays its own approver.
 
+When approving a CLI, the administrator chooses how long the session stays valid: a whole number from 1 to 999 of hours, days, weeks, months, or years, defaulting to 30 days, or `Never expire`. The duration starts at approval, and months and years follow the Prague calendar. A request made with an expired session is rejected the same way as one made with a revoked session, and the CLI must be authenticated again. Sessions issued before expiry was introduced never expire. The sessions page shows each session's expiry and marks elapsed sessions as `Expired`.
+
 ## Access code creation
 
 Access codes creates standalone Igloohome door access codes that are independent of reservations. Operators create them at `/admin/access-codes`, through the administration API, or with `dhw access-codes create`. Each code requires a name of at most 60 characters and a window of 1 to 672 elapsed whole hours between an inclusive site-local start and an exclusive site-local end. Both times sit on the whole hour. Workspace interprets them in `Europe/Prague`. Creation targets one configured lock device and allows at most two live codes for the same device and identical window.
