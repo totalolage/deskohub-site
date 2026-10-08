@@ -2,16 +2,10 @@ import {
   type DotyposReservationId,
   DotyposReservationIdSchema,
   DotyposService,
-  type DotyposTable,
 } from "@deskohub/dotypos";
-import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
+import type { Customer, Reservation } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import {
-  getWorkspaceTableCandidatesByPredicate,
-  getWorkspaceTableSeatCapacity,
-  isWorkspaceCoworkTableCandidate,
-} from "@/features/checkout/backend/reservation";
 import {
   getWorkspaceTableMap,
   type WorkspaceTableMap,
@@ -28,6 +22,11 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+
+import {
+  getOpenSpaceTableNames,
+  getReservationTableName,
+} from "./reservation-table";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
   "WorkspaceReservationDetailsError"
@@ -305,31 +304,3 @@ export const getDotyposReservationTiming = Effect.fn(
     reservedUntil: Temporal.Instant.from(endsAt),
   };
 });
-
-const getReservationTableName = (
-  reservation: Reservation,
-  tables: readonly Table[]
-) => {
-  const tableId = reservation._tableId?.trim();
-  if (!tableId) return undefined;
-
-  const tableName = tables
-    .find((table) => table.id?.trim() === tableId)
-    ?.name?.trim();
-
-  return tableName || tableId;
-};
-
-const getOpenSpaceTableNames = (tables: readonly DotyposTable[]) =>
-  Effect.forEach(
-    getWorkspaceTableCandidatesByPredicate(tables, (tableTags) =>
-      isWorkspaceCoworkTableCandidate(tableTags, { entryTier: "open-space" })
-    ),
-    (table) =>
-      getWorkspaceTableSeatCapacity(table).pipe(
-        Effect.as(table.name?.trim()),
-        Effect.orElseSucceed(() => undefined)
-      )
-  ).pipe(
-    Effect.map((names) => names.filter((name): name is string => Boolean(name)))
-  );

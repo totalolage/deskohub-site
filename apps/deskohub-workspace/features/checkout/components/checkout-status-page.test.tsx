@@ -159,6 +159,58 @@ describe("CheckoutStatusPage", () => {
     ).toBeNull();
   });
 
+  test.each(["page", "modal"] as const)(
+    "shows the assigned table without a seating map in %s presentation",
+    (presentation) => {
+      const view = render(
+        <CheckoutStatusPage
+          locale="en-US"
+          presentation={presentation}
+          status={{
+            ...reconstructedCoworkStatus,
+            table: { mode: "assigned", name: "12" },
+          }}
+        />
+      );
+
+      const label = view.getByText("Table", { selector: "dt" });
+      expect(label.nextElementSibling?.textContent).toBe("12");
+      expect(view.queryByText("Your reserved table")).toBeNull();
+    }
+  );
+
+  test.each([
+    ["en-US", "Tables"],
+    ["cs-CZ", "Stoly"],
+  ] as const)("shows shared Open Space tables in %s", (locale, label) => {
+    const view = render(
+      <CheckoutStatusPage
+        locale={locale}
+        status={{
+          ...baseStatus,
+          summary: {
+            reservedFrom: Temporal.Instant.from("2026-06-19T22:00:00Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-20T22:00:00Z"),
+            price: { value: 55_000, exponent: 2, currency: "CZK" },
+            kind: "cowork",
+            entryTier: "open-space",
+            coffee: false,
+          },
+          table: { mode: "shared", name: "1–3, 5" },
+        }}
+      />
+    );
+
+    expect(
+      view.getByText(label, { selector: "dt" }).nextElementSibling?.textContent
+    ).toBe("1–3, 5");
+    expect(
+      view.queryByText(locale === "en-US" ? "Table" : "Stůl", {
+        selector: "dt",
+      })
+    ).toBeNull();
+  });
+
   test("keeps the fulfilled default presentation inside the checkout flow", () => {
     const view = render(
       <CheckoutStatusPage locale="en-US" status={reconstructedCoworkStatus} />
@@ -178,6 +230,7 @@ describe("CheckoutStatusPage", () => {
     expect(
       view.getByText("We will send the reservation details by email.")
     ).toBeDefined();
+    expect(view.queryByText("Table", { selector: "dt" })).toBeNull();
   });
 
   test("keeps reservation access outside the payment status page", () => {
