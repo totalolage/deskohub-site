@@ -59,7 +59,7 @@ async function GalleryContent({ locale }: { readonly locale: Locale }) {
     tags: ["gallery"],
     maxResults: 80,
   });
-  const photos = toGalleryPhotos(assets, (index) =>
+  const photos = toGalleryPhotos(assets, locale, (index) =>
     m.galleryImageFallbackAlt({ number: index + 1 }, { locale })
   );
 
