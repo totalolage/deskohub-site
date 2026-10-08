@@ -10,13 +10,17 @@ import type { FormEvent } from "react";
 import {
   Suspense,
   useActionState,
+  useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
-import { type UseFormRegisterReturn, useForm } from "react-hook-form";
+import {
+  type UseFormRegisterReturn,
+  type UseFormReturn,
+  useForm,
+} from "react-hook-form";
 import type { ContactFormState } from "@/features/contact/actions/contact";
 import type { submitContactForm } from "@/features/contact/actions/submit-contact";
 import {
@@ -46,6 +50,27 @@ export type ContactFormClientProps = {
 
 export type ContactFormInitialValues = Partial<ContactFormValues>;
 
+const haveSameContactValues = (
+  left: ContactFormInitialValues | undefined,
+  right: ContactFormInitialValues | undefined
+) =>
+  left === right ||
+  (left !== undefined &&
+    right !== undefined &&
+    left.name === right.name &&
+    left.email === right.email &&
+    left.phone === right.phone &&
+    left.message === right.message);
+
+const getContactFormValues = (
+  values?: ContactFormInitialValues
+): ContactFormValues => ({
+  name: values?.name ?? contactDefaultValues.name,
+  email: values?.email ?? contactDefaultValues.email,
+  phone: values?.phone ?? contactDefaultValues.phone,
+  message: values?.message ?? contactDefaultValues.message,
+});
+
 const getContactQueryValue = (
   params: Pick<URLSearchParams, "get">,
   key: keyof ContactFormInitialValues,
@@ -68,81 +93,48 @@ export function ContactFormClient({
   locale,
   submitAction,
 }: ContactFormClientProps) {
-  const action = useStateAction(submitAction);
+  const [queryInitialValues, setQueryInitialValues] =
+    useState<ContactFormInitialValues>();
+  const queryInitialValuesRef = useRef<ContactFormInitialValues | undefined>(
+    undefined
+  );
+  const formMethodsRef = useRef<UseFormReturn<ContactFormValues> | undefined>(
+    undefined
+  );
+  const syncQueryInitialValues = useCallback(
+    (values: ContactFormInitialValues | undefined) => {
+      if (haveSameContactValues(queryInitialValuesRef.current, values)) return;
+      queryInitialValuesRef.current = values;
+      setQueryInitialValues(values);
+      formMethodsRef.current?.reset(getContactFormValues(values), {
+        keepFieldsRef: true,
+      });
+    },
+    []
+  );
+  const action = useStateAction(submitAction, {
+    onSuccess: ({ data }) => {
+      if (data.status === "success") {
+        formMethodsRef.current?.reset(contactDefaultValues, {
+          keepFieldsRef: true,
+        });
+      } else if (data.status === "error" && data.values) {
+        formMethodsRef.current?.reset(data.values, { keepFieldsRef: true });
+      }
+    },
+  });
   const [nativeResult, nativeFormAction] = useActionState(submitAction, {});
   const state: ContactFormState = resolveContactFormState(
     action.result,
     nativeResult,
     m.contactEmailSendError({}, { locale })
   );
-  const [queryInitialValues, setQueryInitialValues] =
-    useState<ContactFormInitialValues>();
   let fieldValues = initialValues ?? queryInitialValues;
   if (state.status === "error") {
     fieldValues = state.values ?? fieldValues;
   } else if (state.status === "success") {
     fieldValues = undefined;
   }
-  const resolver = useMemo(
-    () =>
-      standardSchemaResolver(
-        Schema.toStandardSchemaV1(getContactSchema(locale), {
-          parseOptions: { errors: "all" },
-        })
-      ),
-    [locale]
-  );
-  const form = useForm<ContactFormValues>({
-    defaultValues: { ...contactDefaultValues, ...fieldValues },
-    resolver,
-  });
-  const { formState, register, reset } = form;
-  const [clientValidationMessage, setClientValidationMessage] = useState<
-    string | undefined
-  >();
-  const formRef = useRef<HTMLFormElement>(null);
-  const rhfResetPending = useRef(false);
-
-  useEffect(() => {
-    const resetAndInvalidateReadiness = (values: ContactFormValues) => {
-      rhfResetPending.current = true;
-      formRef.current?.removeAttribute("data-rhf-ready");
-      reset(values);
-    };
-
-    if (state.status === "success") {
-      resetAndInvalidateReadiness(contactDefaultValues);
-    } else if (state.status === "error" && state.values) {
-      resetAndInvalidateReadiness(state.values);
-    } else if (state.status === "idle") {
-      resetAndInvalidateReadiness({ ...contactDefaultValues, ...fieldValues });
-    }
-  }, [fieldValues, reset, state.status, state.values]);
-
-  useLayoutEffect(() => {
-    if (!rhfResetPending.current || !formState.isReady) return;
-    rhfResetPending.current = false;
-    formRef.current?.setAttribute("data-rhf-ready", "true");
-  }, [formState]);
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    const formData = new FormData(event.currentTarget);
-    setClientValidationMessage(undefined);
-    void form.handleSubmit(
-      () => action.execute(formData),
-      () =>
-        setClientValidationMessage(
-          m.contactValidationReviewMessage({}, { locale })
-        )
-    )(event);
-  };
-
-  const message =
-    clientValidationMessage ??
-    (formState.isSubmitting || action.isExecuting ? undefined : state.message);
-  const isSuccessMessage =
-    clientValidationMessage === undefined && state.status === "success";
-
   return (
     <Card
       id="contact-form"
@@ -158,117 +150,181 @@ export function ContactFormClient({
       <CardContent>
         {!initialValues && (
           <Suspense fallback={null}>
-            <ContactQueryInitialValuesSync onChange={setQueryInitialValues} />
+            <ContactQueryInitialValuesSync onChange={syncQueryInitialValues} />
           </Suspense>
         )}
 
-        <form
-          action={nativeFormAction}
-          className="space-y-5"
-          method="post"
-          noValidate
-          onSubmit={handleSubmit}
-          ref={formRef}
-        >
-          <input type="hidden" name="locale" value={locale} />
-          <div className="space-y-5">
-            <div className="grid gap-5 md:grid-cols-2">
-              <Field
-                name="name"
-                registration={register("name")}
-                label={m.contactNameLabel({}, { locale })}
-                placeholder={m.contactNamePlaceholder({}, { locale })}
-                defaultValue={fieldValues?.name}
-                error={
-                  formState.errors.name?.message ?? state.fieldErrors?.name
-                }
-                autoComplete="name"
-                maxLength={100}
-                minLength={2}
-                required
-              />
-              <Field
-                name="phone"
-                registration={register("phone")}
-                label={m.contactPhoneLabel({}, { locale })}
-                placeholder={m.contactPhonePlaceholder({}, { locale })}
-                defaultValue={fieldValues?.phone}
-                error={
-                  formState.errors.phone?.message ?? state.fieldErrors?.phone
-                }
-                autoComplete="tel"
-                maxLength={20}
-              />
-            </div>
-
-            <Field
-              name="email"
-              registration={register("email")}
-              type="email"
-              label={m.contactEmailLabel({}, { locale })}
-              placeholder={m.contactEmailPlaceholder({}, { locale })}
-              defaultValue={fieldValues?.email}
-              error={
-                formState.errors.email?.message ?? state.fieldErrors?.email
-              }
-              autoComplete="email"
-              maxLength={255}
-              required
-            />
-
-            <Field
-              name="message"
-              registration={register("message")}
-              label={m.contactMessageLabel({}, { locale })}
-              placeholder={m.contactMessagePlaceholder({}, { locale })}
-              defaultValue={fieldValues?.message}
-              error={
-                formState.errors.message?.message ?? state.fieldErrors?.message
-              }
-              multiline
-              maxLength={1000}
-              minLength={10}
-              required
-            />
-          </div>
-
-          <div className="space-y-3 pt-2">
-            <SubmitButton
-              locale={locale}
-              pending={formState.isSubmitting || action.isExecuting}
-            />
-
-            <p className="text-sm leading-6 text-navy-blue/62">
-              {m.contactPrivacyNoteBefore({}, { locale })}{" "}
-              <Link
-                href={`/${locale}/privacy-policy`}
-                prefetch={false}
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-burned-orange-ink"
-              >
-                {m.contactPrivacyNoteLinkLabel({}, { locale })}
-              </Link>{" "}
-              {m.contactPrivacyNoteAfter({}, { locale })}
-            </p>
-
-            {!!message && (
-              <p
-                aria-live="polite"
-                className={cn(
-                  "rounded-2xl border px-4 py-3 text-sm leading-6",
-                  isSuccessMessage
-                    ? "border-aquamarine-green/30 bg-aquamarine-green/10 text-aquamarine-ink"
-                    : "border-burned-orange/20 bg-burned-orange/8 text-burned-orange-ink"
-                )}
-              >
-                {message}
-              </p>
-            )}
-          </div>
-        </form>
+        <ContactFormBody
+          actionIsExecuting={action.isExecuting}
+          defaultValues={fieldValues}
+          execute={action.execute}
+          formMethodsRef={formMethodsRef}
+          locale={locale}
+          nativeFormAction={nativeFormAction}
+          state={state}
+        />
       </CardContent>
     </Card>
+  );
+}
+
+function ContactFormBody({
+  actionIsExecuting,
+  defaultValues,
+  execute,
+  formMethodsRef,
+  locale,
+  nativeFormAction,
+  state,
+}: {
+  readonly actionIsExecuting: boolean;
+  readonly defaultValues?: ContactFormInitialValues;
+  readonly execute: (formData: FormData) => void;
+  readonly formMethodsRef: {
+    current: UseFormReturn<ContactFormValues> | undefined;
+  };
+  readonly locale: Locale;
+  readonly nativeFormAction: (formData: FormData) => void;
+  readonly state: ContactFormState;
+}) {
+  const resolver = standardSchemaResolver(
+    Schema.toStandardSchemaV1(getContactSchema(locale), {
+      parseOptions: { errors: "all" },
+    })
+  );
+  const form = useForm<ContactFormValues>({
+    defaultValues: getContactFormValues(defaultValues),
+    resolver,
+  });
+  const { formState, register } = form;
+  const [clientValidationMessage, setClientValidationMessage] = useState<
+    string | undefined
+  >();
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useLayoutEffect(() => {
+    formMethodsRef.current = form;
+    if (!formState.isReady) return;
+    formRef.current?.setAttribute("data-rhf-ready", "true");
+  }, [form, formMethodsRef, formState.isReady]);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    const formData = new FormData(event.currentTarget);
+    setClientValidationMessage(undefined);
+    void form.handleSubmit(
+      () => execute(formData),
+      () =>
+        setClientValidationMessage(
+          m.contactValidationReviewMessage({}, { locale })
+        )
+    )(event);
+  };
+
+  const message =
+    clientValidationMessage ??
+    (formState.isSubmitting || actionIsExecuting ? undefined : state.message);
+  const isSuccessMessage =
+    clientValidationMessage === undefined && state.status === "success";
+
+  return (
+    <form
+      action={nativeFormAction}
+      className="space-y-5"
+      noValidate
+      onSubmit={handleSubmit}
+      ref={formRef}
+    >
+      <input type="hidden" name="locale" value={locale} />
+      <div className="space-y-5">
+        <div className="grid gap-5 md:grid-cols-2">
+          <Field
+            name="name"
+            registration={register("name")}
+            label={m.contactNameLabel({}, { locale })}
+            placeholder={m.contactNamePlaceholder({}, { locale })}
+            defaultValue={defaultValues?.name}
+            error={formState.errors.name?.message ?? state.fieldErrors?.name}
+            autoComplete="name"
+            maxLength={100}
+            minLength={2}
+            required
+          />
+          <Field
+            name="phone"
+            registration={register("phone")}
+            label={m.contactPhoneLabel({}, { locale })}
+            placeholder={m.contactPhonePlaceholder({}, { locale })}
+            defaultValue={defaultValues?.phone}
+            error={formState.errors.phone?.message ?? state.fieldErrors?.phone}
+            autoComplete="tel"
+            maxLength={20}
+          />
+        </div>
+
+        <Field
+          name="email"
+          registration={register("email")}
+          type="email"
+          label={m.contactEmailLabel({}, { locale })}
+          placeholder={m.contactEmailPlaceholder({}, { locale })}
+          defaultValue={defaultValues?.email}
+          error={formState.errors.email?.message ?? state.fieldErrors?.email}
+          autoComplete="email"
+          maxLength={255}
+          required
+        />
+
+        <Field
+          name="message"
+          registration={register("message")}
+          label={m.contactMessageLabel({}, { locale })}
+          placeholder={m.contactMessagePlaceholder({}, { locale })}
+          defaultValue={defaultValues?.message}
+          error={
+            formState.errors.message?.message ?? state.fieldErrors?.message
+          }
+          multiline
+          maxLength={1000}
+          minLength={10}
+          required
+        />
+      </div>
+
+      <div className="space-y-3 pt-2">
+        <SubmitButton
+          locale={locale}
+          pending={formState.isSubmitting || actionIsExecuting}
+        />
+
+        <p className="text-sm leading-6 text-navy-blue/62">
+          {m.contactPrivacyNoteBefore({}, { locale })}{" "}
+          <Link
+            href={`/${locale}/privacy-policy`}
+            prefetch={false}
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-burned-orange-ink"
+          >
+            {m.contactPrivacyNoteLinkLabel({}, { locale })}
+          </Link>{" "}
+          {m.contactPrivacyNoteAfter({}, { locale })}
+        </p>
+
+        {!!message && (
+          <p
+            aria-live="polite"
+            className={cn(
+              "rounded-2xl border px-4 py-3 text-sm leading-6",
+              isSuccessMessage
+                ? "border-aquamarine-green/30 bg-aquamarine-green/10 text-aquamarine-ink"
+                : "border-burned-orange/20 bg-burned-orange/8 text-burned-orange-ink"
+            )}
+          >
+            {message}
+          </p>
+        )}
+      </div>
+    </form>
   );
 }
 

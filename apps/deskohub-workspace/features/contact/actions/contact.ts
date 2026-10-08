@@ -21,6 +21,45 @@ interface SubmitContactFormInput {
   readonly submittedValues: ContactFormValues;
 }
 
+const getContactFieldErrors = (issue: Schema.SchemaError["issue"]) => {
+  const fieldErrors: ContactFormState["fieldErrors"] = {};
+
+  const collect = (
+    current: Schema.SchemaError["issue"],
+    path: readonly PropertyKey[] = []
+  ): void => {
+    if (current._tag === "Pointer") {
+      collect(current.issue, [...path, ...current.path]);
+      return;
+    }
+
+    if (current._tag === "Composite") {
+      for (const nested of current.issues) collect(nested, path);
+      return;
+    }
+
+    if (current._tag !== "Filter") return;
+
+    switch (path[0]) {
+      case "name":
+        fieldErrors.name ??= String(current);
+        break;
+      case "email":
+        fieldErrors.email ??= String(current);
+        break;
+      case "phone":
+        fieldErrors.phone ??= String(current);
+        break;
+      case "message":
+        fieldErrors.message ??= String(current);
+        break;
+    }
+  };
+
+  collect(issue);
+  return fieldErrors;
+};
+
 export const processContactSubmission = Effect.fn("submitContactForm")(
   function* ({ locale, submittedValues }: SubmitContactFormInput) {
     const botProtection = yield* BotProtectionService;
@@ -29,31 +68,18 @@ export const processContactSubmission = Effect.fn("submitContactForm")(
     yield* Effect.annotateLogsScoped({ submittedValues, locale });
     yield* Effect.logInfo("Workspace contact form action received");
 
-    const validation = yield* Effect.promise(
-      async () =>
-        await Schema.toStandardSchemaV1(getContactSchema(locale), {
-          parseOptions: { errors: "all" },
-        })["~standard"].validate(submittedValues)
+    const validation = yield* Schema.decodeUnknownEffect(
+      getContactSchema(locale),
+      { errors: "all" }
+    )(submittedValues).pipe(
+      Effect.map((value) => ({ _tag: "Valid" as const, value })),
+      Effect.catchTag("SchemaError", (error) =>
+        Effect.succeed({ _tag: "Invalid" as const, error })
+      )
     );
 
-    if (validation.issues) {
-      const fieldErrors: ContactFormState["fieldErrors"] = {};
-      for (const issue of validation.issues) {
-        switch (issue.path?.[0]) {
-          case "name":
-            fieldErrors.name ??= issue.message;
-            break;
-          case "email":
-            fieldErrors.email ??= issue.message;
-            break;
-          case "phone":
-            fieldErrors.phone ??= issue.message;
-            break;
-          case "message":
-            fieldErrors.message ??= issue.message;
-            break;
-        }
-      }
+    if (validation._tag === "Invalid") {
+      const fieldErrors = getContactFieldErrors(validation.error.issue);
       yield* Effect.logWarning("Workspace contact form validation failed", {
         fieldErrors,
       });

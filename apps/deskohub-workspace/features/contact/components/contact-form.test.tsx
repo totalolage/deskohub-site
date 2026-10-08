@@ -8,7 +8,6 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import type { ContactFormState } from "@/features/contact/actions/contact";
 import type { submitContactForm } from "@/features/contact/actions/submit-contact";
 import { m } from "@/features/i18n";
@@ -18,9 +17,16 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import { resolveContactFormState } from "./contact-form-state";
 
+type TestingLibrary = typeof import("@testing-library/react/pure");
+let cleanup: TestingLibrary["cleanup"];
+let fireEvent: TestingLibrary["fireEvent"];
+let render: TestingLibrary["render"];
+let waitFor: TestingLibrary["waitFor"];
+
 let response: { data?: unknown; serverError?: unknown } = {
   data: { status: "idle" },
 };
+let contactSearchParams = "";
 const calls: FormData[] = [];
 const submitContactFormMock = Object.assign(
   mock(
@@ -45,14 +51,23 @@ const submitContactFormMock = Object.assign(
 mock.module("@/features/contact/actions/submit-contact", () => ({
   submitContactForm: submitContactFormMock,
 }));
+mock.module("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(contactSearchParams),
+}));
 
 describe("ContactForm", () => {
-  beforeAll(registerWorkspaceComponentTestEnv);
+  beforeAll(async () => {
+    registerWorkspaceComponentTestEnv();
+    ({ cleanup, fireEvent, render, waitFor } = await import(
+      "@testing-library/react/pure"
+    ));
+  });
   beforeEach(() => {
     response = { data: { status: "idle" } };
+    contactSearchParams = "";
     calls.length = 0;
   });
-  afterEach(cleanup);
+  afterEach(() => cleanup());
   afterAll(unregisterWorkspaceComponentTestEnv);
 
   test("prefills values and retains a native form action", async () => {
@@ -80,7 +95,76 @@ describe("ContactForm", () => {
     }
     const form = view.container.querySelector("form");
     expect(form?.getAttribute("action")).toBeTruthy();
-    expect(form?.getAttribute("method")).toBe("post");
+  });
+
+  test("validates and submits edited field values after hydration", async () => {
+    response = { data: { status: "success", message: "Sent" } };
+    const { ContactForm } = await import("./contact-form");
+    const view = render(<ContactForm locale="en-US" />);
+    await waitFor(() =>
+      expect(
+        view.container.querySelector("form")?.getAttribute("data-rhf-ready")
+      ).toBe("true")
+    );
+
+    for (const [label, value] of [
+      ["Name", "Grace Hopper"],
+      ["Email", "grace@example.com"],
+      ["Message", "Please contact me about a meeting room."],
+    ]) {
+      const field = view.getByLabelText(label) as HTMLInputElement;
+      fireEvent.change(field, { target: { value } });
+      expect(field.value).toBe(value);
+    }
+    const form = view.container.querySelector("form");
+    if (!form) throw new Error("Contact form did not render.");
+    expect(form.getAttribute("data-rhf-ready")).toBe("true");
+    const submittedValues = new FormData(form);
+    expect(submittedValues.get("name")).toBe("Grace Hopper");
+    expect(submittedValues.get("email")).toBe("grace@example.com");
+    expect(submittedValues.get("message")).toBe(
+      "Please contact me about a meeting room."
+    );
+    fireEvent.submit(form);
+
+    const clientValidationMessage = m.contactValidationReviewMessage(
+      {},
+      {
+        locale: "en-US",
+      }
+    );
+    await waitFor(() =>
+      expect(
+        calls.length === 1 || view.queryByText(clientValidationMessage) !== null
+      ).toBe(true)
+    );
+    expect(view.queryByText(clientValidationMessage)).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.get("name")).toBe("Grace Hopper");
+    expect(calls[0]?.get("email")).toBe("grace@example.com");
+    expect(calls[0]?.get("message")).toBe(
+      "Please contact me about a meeting room."
+    );
+    await waitFor(() =>
+      expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe("")
+    );
+    expect(view.getByText("Sent")).toBeTruthy();
+  });
+
+  test("keeps edited values when only unrelated query parameters change", async () => {
+    contactSearchParams = "name=Query+Prefill";
+    const { ContactForm } = await import("./contact-form");
+    const view = render(<ContactForm locale="en-US" />);
+    const nameInput = view.getByLabelText("Name") as HTMLInputElement;
+
+    await waitFor(() => expect(nameInput.value).toBe("Query Prefill"));
+    fireEvent.change(nameInput, { target: { value: "X" } });
+    contactSearchParams = "name=Query+Prefill&source=campaign";
+    view.rerender(<ContactForm locale="en-US" />);
+
+    await waitFor(() =>
+      expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe("X")
+    );
   });
 
   test("shows localized errors and retains invalid values", async () => {
@@ -93,6 +177,7 @@ describe("ContactForm", () => {
     };
     const { ContactForm } = await import("./contact-form");
     const view = render(<ContactForm locale={locale} initialValues={values} />);
+    view.rerender(<ContactForm locale={locale} initialValues={values} />);
     const form = view.container.querySelector("form");
     if (!form) throw new Error("Contact form did not render.");
     fireEvent.submit(form);
@@ -137,7 +222,67 @@ describe("ContactForm", () => {
     await waitFor(() =>
       expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe("")
     );
+    await waitFor(() =>
+      expect(
+        view.container.querySelector("form")?.getAttribute("data-rhf-ready")
+      ).toBe("true")
+    );
     expect(view.getByText("Sent")).toBeTruthy();
+  });
+
+  test("shows hydrated server field errors with retained values and accessibility links", async () => {
+    const locale = "cs-CZ";
+    const message = m.contactValidationReviewMessage({}, { locale });
+    const nameError = m.contactValidationNameMinimum({ min: 2 }, { locale });
+    const state: ContactFormState = {
+      status: "error",
+      message,
+      values: {
+        name: " S ",
+        email: "bad",
+        phone: "",
+        message: " short ",
+      },
+      fieldErrors: { name: nameError },
+    };
+    response = { data: state };
+    const { ContactForm } = await import("./contact-form");
+    const view = render(
+      <ContactForm
+        locale={locale}
+        initialValues={{
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+          phone: "",
+          message: "Please help with a reservation.",
+        }}
+      />
+    );
+    const form = view.container.querySelector("form");
+    if (!form) throw new Error("Contact form did not render.");
+    fireEvent.submit(form);
+
+    await waitFor(() =>
+      expect(
+        (
+          view.getByLabelText(
+            m.contactNameLabel({}, { locale })
+          ) as HTMLInputElement
+        ).value
+      ).toBe(state.values?.name)
+    );
+    const nameInput = view.getByLabelText(
+      m.contactNameLabel({}, { locale })
+    ) as HTMLInputElement;
+    expect(nameInput.getAttribute("aria-invalid")).toBe("true");
+    expect(nameInput.getAttribute("aria-describedby")).toBe("name-error");
+    expect(view.getByText(nameError).getAttribute("role")).toBe("alert");
+    expect(view.getByText(message).getAttribute("aria-live")).toBe("polite");
+    await waitFor(() =>
+      expect(
+        view.container.querySelector("form")?.getAttribute("data-rhf-ready")
+      ).toBe("true")
+    );
   });
 
   test("shows a generic action error without losing entered values", async () => {
@@ -156,6 +301,9 @@ describe("ContactForm", () => {
     );
     const form = view.container.querySelector("form");
     if (!form) throw new Error("Contact form did not render.");
+    fireEvent.change(view.getByLabelText("Name"), {
+      target: { value: "Edited Name" },
+    });
     fireEvent.submit(form);
     await waitFor(() =>
       expect(
@@ -163,7 +311,7 @@ describe("ContactForm", () => {
       ).toBeTruthy()
     );
     expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe(
-      "Ada Lovelace"
+      "Edited Name"
     );
   });
 
