@@ -1697,6 +1697,58 @@ describe("DotyposService categories", () => {
 
     expect(result).toEqual([category()]);
   });
+
+  test("loads every category and product page", async () => {
+    const requestedPages: string[] = [];
+    const product = (id: string) => ({
+      id,
+      _categoryId: "category-id",
+      name: `Product ${id}`,
+      priceWithoutVat: "100",
+      vat: "21",
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      const page = url.searchParams.get("page") ?? "1";
+      if (url.pathname === "/clouds/cloud-id/categories") {
+        requestedPages.push(`categories:${page}`);
+        return Response.json(
+          page === "1"
+            ? { data: [category({ id: "first" })], nextPage: "2" }
+            : { data: [category({ id: "second" })], nextPage: null }
+        );
+      }
+      if (url.pathname === "/clouds/cloud-id/products") {
+        requestedPages.push(`products:${page}`);
+        return Response.json(
+          page === "1"
+            ? { data: [product("first")], nextPage: "2" }
+            : { data: [product("second")], nextPage: null }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const { categories, products } = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        const categories = yield* dotypos.getCategories();
+        const products = yield* dotypos.getProducts({});
+        return { categories, products };
+      }),
+      fetchMock
+    );
+
+    expect(categories.map(({ id }) => String(id))).toEqual(["first", "second"]);
+    expect(products.map(({ id }) => String(id))).toEqual(["first", "second"]);
+    expect(requestedPages).toEqual([
+      "categories:1",
+      "categories:2",
+      "products:1",
+      "products:2",
+    ]);
+  });
 });
 
 describe("DotyposService customer discounts", () => {

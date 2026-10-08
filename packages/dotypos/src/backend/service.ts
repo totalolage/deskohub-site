@@ -1592,19 +1592,22 @@ const makeDotyposService = Effect.gen(function* () {
     categoryId?: DotyposCategoryId;
     includeDeleted?: boolean;
   }) {
-    return yield* runDotyposRequest(
-      client
-        .getProducts(config.cloudId, {
-          params: {
-            limit: 100,
-            ...(options?.categoryId && {
-              filter: `_categoryId|eq|${options.categoryId}`,
-            }),
-          },
-        })
-        .pipe(Effect.map((page) => [...(page.data ?? [])])),
-      "getProducts"
-    ).pipe(
+    return yield* loadAllDotyposPages({
+      operation: "getProducts",
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.getProducts(config.cloudId, {
+            params: {
+              limit: 100,
+              page,
+              ...(options?.categoryId && {
+                filter: `_categoryId|eq|${options.categoryId}`,
+              }),
+            },
+          }),
+          "getProducts"
+        ),
+    }).pipe(
       Effect.flatMap((products) =>
         decodeProviderEntities(DotyposProductSchema, products, "getProducts")
       ),
@@ -1619,12 +1622,16 @@ const makeDotyposService = Effect.gen(function* () {
   });
 
   const getCategories = Effect.fn("getCategories")(function* () {
-    const categories = yield* runDotyposRequest(
-      client
-        .getCategories(config.cloudId, { params: { limit: 100 } })
-        .pipe(Effect.map((page) => [...(page.data ?? [])])),
-      "getCategories"
-    ).pipe(Effect.retry(retryPolicy));
+    const categories = yield* loadAllDotyposPages({
+      operation: "getCategories",
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.getCategories(config.cloudId, {
+            params: { limit: 100, page },
+          }),
+          "getCategories"
+        ),
+    }).pipe(Effect.retry(retryPolicy));
     return yield* decodeProviderEntities(
       DotyposCategorySchema,
       categories,
