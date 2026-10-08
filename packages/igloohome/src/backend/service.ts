@@ -46,7 +46,13 @@ const makeIgloohomeService = Effect.gen(function* () {
                 })
               ),
           }),
-          Effect.mapError(mapAlgoPinRequestError)
+          Effect.mapError(mapAlgoPinRequestError),
+          Effect.tapError((error) =>
+            Effect.when(
+              accessToken.invalidate,
+              Effect.succeed(error.statusCode === 401)
+            )
+          )
         );
 
       const pin = yield* Schema.decodeUnknownEffect(AlgoPinSchema)(
