@@ -3,6 +3,7 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { getTableColumns } from "drizzle-orm";
 import { Effect, Layer, Schema } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { paymentAttempts } from "@/db/schema";
 import {
   type AccountingDocumentSnapshot,
@@ -17,6 +18,7 @@ import { discountIdSchema } from "@/features/discounts/contracts";
 import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
 import {
   PaymentLifecycleRepository,
+  redeemCodeClaim,
   validateDiscountCommitment,
   validateInternalPaymentCommitment,
 } from "./payment-lifecycle.repository";
@@ -205,5 +207,80 @@ describe("PaymentLifecycleRepository", () => {
         reason: "money_mismatch",
       },
     });
+  });
+
+  test("re-redeems a released code claim within the per-customer use limit", async () => {
+    const recording = await makeRecordingWorkspaceDatabase();
+    recording.setRows([
+      // Released claim of this payment attempt.
+      [["customer-1", "code-1", "released"]],
+      // No voucher claim.
+      [],
+      // Code without total or per-customer limits.
+      [[null, null]],
+      // The same customer redeemed the code once more since the release.
+      [[1]],
+      [],
+    ]);
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        return yield* db.transaction((tx) =>
+          redeemCodeClaim(
+            tx,
+            "attempt-1" as never,
+            Temporal.Instant.from("2026-01-01T00:00:00Z"),
+            true
+          )
+        );
+      }).pipe(Effect.provide(recording.layer), Effect.result)
+    );
+
+    expect(result._tag).toBe("Success");
+    expect(
+      recording.statements.some(({ sql }) =>
+        sql.startsWith('update "discount_code_redemptions"')
+      )
+    ).toBe(true);
+  });
+
+  test("refuses to re-redeem a released code claim beyond the per-customer use limit", async () => {
+    const recording = await makeRecordingWorkspaceDatabase();
+    recording.setRows([
+      [["customer-1", "code-1", "released"]],
+      [],
+      // One use per customer.
+      [[null, 1]],
+      // The customer already holds another active use.
+      [[1]],
+      [],
+    ]);
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        return yield* db.transaction((tx) =>
+          redeemCodeClaim(
+            tx,
+            "attempt-1" as never,
+            Temporal.Instant.from("2026-01-01T00:00:00Z"),
+            true
+          )
+        );
+      }).pipe(Effect.provide(recording.layer), Effect.result)
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("Expected failure");
+    expect(result.failure).toMatchObject({
+      _tag: "DiscountClaimError",
+      reason: "usage_limit_reached",
+    });
+    expect(
+      recording.statements.some(({ sql }) =>
+        sql.startsWith('update "discount_code_redemptions"')
+      )
+    ).toBe(false);
   });
 });
