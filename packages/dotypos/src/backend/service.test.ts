@@ -1676,6 +1676,42 @@ describe("DotyposService reservations", () => {
   });
 });
 
+describe("DotyposService access token", () => {
+  test("requests a new access token after Dotypos rejects the cached one", async () => {
+    let issuedTokens = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") {
+        issuedTokens += 1;
+        return Response.json({ accessToken: `access-token-${issuedTokens}` });
+      }
+      if (url.pathname === "/clouds/cloud-id/categories") {
+        return request.headers.get("authorization") === "Bearer access-token-1"
+          ? Response.json(
+              { error: "unauthorized", error_description: "", code: 401 },
+              { status: 401 }
+            )
+          : Response.json({ data: [category()] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const [revoked, renewed] = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        const revoked = yield* dotypos.getCategories().pipe(Effect.result);
+        const renewed = yield* dotypos.getCategories();
+        return [revoked, renewed] as const;
+      }),
+      fetchMock
+    );
+
+    expect(revoked._tag).toBe("Failure");
+    expect(renewed).toEqual([category()]);
+    expect(issuedTokens).toBe(2);
+  });
+});
+
 describe("DotyposService categories", () => {
   test("accepts nullable category tags", async () => {
     const fetchMock = mockDotyposFetch((request) => {
