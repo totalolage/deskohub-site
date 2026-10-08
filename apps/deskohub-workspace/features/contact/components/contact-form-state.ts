@@ -3,16 +3,19 @@ import type { submitContactForm } from "@/features/contact/actions/submit-contac
 
 type ContactActionResult = Awaited<ReturnType<typeof submitContactForm>>;
 
+export const hasContactActionOutcome = (result: ContactActionResult) =>
+  result.data !== undefined ||
+  result.serverError !== undefined ||
+  result.validationErrors !== undefined;
+
 export const resolveContactFormState = (
   hydratedResult: ContactActionResult,
   nativeResult: ContactActionResult,
   serverErrorMessage: string
 ): ContactFormState => {
-  const hydratedHasOutcome =
-    hydratedResult.data !== undefined ||
-    hydratedResult.serverError !== undefined ||
-    hydratedResult.validationErrors !== undefined;
-  const result = hydratedHasOutcome ? hydratedResult : nativeResult;
+  const result = hasContactActionOutcome(hydratedResult)
+    ? hydratedResult
+    : nativeResult;
 
   if (result.data !== undefined) return result.data;
   if (

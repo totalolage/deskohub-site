@@ -40,7 +40,10 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
-import { resolveContactFormState } from "./contact-form-state";
+import {
+  hasContactActionOutcome,
+  resolveContactFormState,
+} from "./contact-form-state";
 
 export type ContactFormClientProps = {
   readonly locale: Locale;
@@ -95,22 +98,16 @@ export function ContactFormClient({
 }: ContactFormClientProps) {
   const [queryInitialValues, setQueryInitialValues] =
     useState<ContactFormInitialValues>();
-  const queryInitialValuesRef = useRef<ContactFormInitialValues | undefined>(
-    undefined
+  const syncQueryInitialValues = useCallback(
+    (values: ContactFormInitialValues | undefined) => {
+      setQueryInitialValues((current) =>
+        haveSameContactValues(current, values) ? current : values
+      );
+    },
+    []
   );
   const formMethodsRef = useRef<UseFormReturn<ContactFormValues> | undefined>(
     undefined
-  );
-  const syncQueryInitialValues = useCallback(
-    (values: ContactFormInitialValues | undefined) => {
-      if (haveSameContactValues(queryInitialValuesRef.current, values)) return;
-      queryInitialValuesRef.current = values;
-      setQueryInitialValues(values);
-      formMethodsRef.current?.reset(getContactFormValues(values), {
-        keepFieldsRef: true,
-      });
-    },
-    []
   );
   const action = useStateAction(submitAction, {
     onSuccess: ({ data }) => {
@@ -124,6 +121,7 @@ export function ContactFormClient({
     },
   });
   const [nativeResult, nativeFormAction] = useActionState(submitAction, {});
+  const hydratedHasOutcome = hasContactActionOutcome(action.result);
   const state: ContactFormState = resolveContactFormState(
     action.result,
     nativeResult,
@@ -135,6 +133,12 @@ export function ContactFormClient({
   } else if (state.status === "success") {
     fieldValues = undefined;
   }
+  let reactiveValues: ContactFormValues | undefined;
+  if (!hydratedHasOutcome) {
+    if (state.status === "error") reactiveValues = state.values;
+    else reactiveValues = getContactFormValues(fieldValues);
+  }
+
   return (
     <Card
       id="contact-form"
@@ -161,6 +165,7 @@ export function ContactFormClient({
           formMethodsRef={formMethodsRef}
           locale={locale}
           nativeFormAction={nativeFormAction}
+          reactiveValues={reactiveValues}
           state={state}
         />
       </CardContent>
@@ -175,6 +180,7 @@ function ContactFormBody({
   formMethodsRef,
   locale,
   nativeFormAction,
+  reactiveValues,
   state,
 }: {
   readonly actionIsExecuting: boolean;
@@ -185,6 +191,7 @@ function ContactFormBody({
   };
   readonly locale: Locale;
   readonly nativeFormAction: (formData: FormData) => void;
+  readonly reactiveValues?: ContactFormValues;
   readonly state: ContactFormState;
 }) {
   const resolver = standardSchemaResolver(
@@ -195,6 +202,7 @@ function ContactFormBody({
   const form = useForm<ContactFormValues>({
     defaultValues: getContactFormValues(defaultValues),
     resolver,
+    values: reactiveValues,
   });
   const { formState, register } = form;
   const [clientValidationMessage, setClientValidationMessage] = useState<
@@ -204,8 +212,9 @@ function ContactFormBody({
 
   useLayoutEffect(() => {
     formMethodsRef.current = form;
-    if (!formState.isReady) return;
-    formRef.current?.setAttribute("data-rhf-ready", "true");
+    if (formState.isReady) {
+      formRef.current?.setAttribute("data-rhf-ready", "true");
+    }
   }, [form, formMethodsRef, formState.isReady]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
