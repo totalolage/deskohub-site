@@ -116,7 +116,7 @@ describe("ContactForm native action state", () => {
     };
     nativeResult = { data: state };
 
-    const { ContactFormClient } = await import("./contact-form-client");
+    const { ContactFormClient } = await import("./contact-form");
     const props = {
       initialValues,
       locale,
@@ -169,7 +169,7 @@ describe("ContactForm native action state", () => {
     nativeResult = { data: state };
     contactSearchParams = "name=Query+Prefill";
 
-    const { ContactFormClient } = await import("./contact-form-client");
+    const { ContactFormClient } = await import("./contact-form");
     const view = render(
       <ContactFormClient locale={locale} submitAction={submitContactFormMock} />
     );
@@ -196,7 +196,7 @@ describe("ContactForm native action state", () => {
 
   test("a native success after valid edits clears an initially empty RHF form", async () => {
     const locale = "en-US";
-    const { ContactFormClient } = await import("./contact-form-client");
+    const { ContactFormClient } = await import("./contact-form");
     const props = { locale, submitAction: submitContactFormMock };
     const view = render(<ContactFormClient {...props} />);
     const form = view.container.querySelector("form");
@@ -263,7 +263,7 @@ describe("ContactForm native action state", () => {
         message: m.contactSuccessMessage({}, { locale }),
       },
     };
-    const { ContactFormClient } = await import("./contact-form-client");
+    const { ContactFormClient } = await import("./contact-form");
     const props = { locale, submitAction: submitContactFormMock };
     const view = render(<ContactFormClient {...props} />);
     await waitFor(() =>
@@ -300,7 +300,7 @@ describe("ContactForm native action state", () => {
         name: m.contactValidationNameMinimum({ min: 2 }, { locale }),
       },
     };
-    const { ContactFormClient } = await import("./contact-form-client");
+    const { ContactFormClient } = await import("./contact-form");
     const props = {
       initialValues,
       locale,
@@ -364,7 +364,7 @@ describe("ContactForm native action state", () => {
     };
     hydratedResult = { data: state };
 
-    const { ContactFormClient } = await import("./contact-form-client");
+    const { ContactFormClient } = await import("./contact-form");
     const view = render(
       <ContactFormClient
         initialValues={initialValues}
