@@ -58,14 +58,6 @@
     "VERCEL_URL"
   ],
   "tasks": {
-    "@deskohub/dotypos#generate": {
-      "passThroughEnv": [
-        "CLOUDINARY_API_KEY",
-        "CLOUDINARY_API_SECRET",
-        "EMAIL_API_KEY"
-      ]
-    },
-    "@deskohub/nexi#generate": {},
     "deskohub-workspace#i18n:compile": {
       "outputs": ["features/i18n/paraglide/**"],
       "passThroughEnv": [
@@ -82,6 +74,14 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "generate": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/generate-effect-openapi-client.ts",
+        "$TURBO_ROOT$/patches/@effect%2Fopenapi-generator@*.patch"
+      ],
+      "outputs": ["src/generated/**"]
     },
     "dev:app": {
       "cache": false,
