@@ -329,6 +329,21 @@ export function CheckoutStatusPage({
                 {status.orderId}
               </dd>
             </div>
+            {showReservationDetails && status.table && (
+              <div className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4">
+                <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
+                  {
+                    {
+                      assigned: m.checkoutEmailTableNumberLabel({}, { locale }),
+                      shared: m.checkoutEmailTablesLabel({}, { locale }),
+                    }[status.table.mode]
+                  }
+                </dt>
+                <dd className="text-base font-semibold text-navy-blue">
+                  {status.table.name}
+                </dd>
+              </div>
+            )}
             {summaryRows.map((row) => (
               <div
                 key={row.label}

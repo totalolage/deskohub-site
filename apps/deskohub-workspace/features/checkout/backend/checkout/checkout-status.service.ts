@@ -14,6 +14,12 @@ import {
   WorkspaceFeatureFlagService,
 } from "@/features/feature-flags/backend";
 import {
+  type CustomerReservationTable,
+  getCustomerReservationTable,
+  getOpenSpaceTableNames,
+  getReservationTableName,
+} from "@/features/reservation/backend/reservation-table";
+import {
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
   WorkspaceReservationRepository,
@@ -84,6 +90,7 @@ type CheckoutReservationStatusViewModelBase = CheckoutStatusViewModelBase & {
   readonly status: CheckoutReservationStatusKind;
   readonly paymentStatus: PaymentState;
   readonly fulfillmentStatus: FulfillmentState;
+  readonly table?: CustomerReservationTable;
   readonly tableMap?: CheckoutStatusTableMap;
   readonly supportContactPrefill?: CheckoutStatusContactPrefill;
 };
@@ -134,6 +141,7 @@ type CheckoutStatusReservationReconstruction =
 
 type CheckoutStatusReconstruction = {
   readonly reservation: CheckoutStatusReservationReconstruction;
+  readonly table?: CustomerReservationTable;
   readonly tableMap?: CheckoutStatusTableMap;
   readonly supportContactPrefill?: CheckoutStatusContactPrefill;
 };
@@ -307,22 +315,29 @@ const implementation = Effect.gen(function* () {
         "Checkout status summary Dotypos reservation loaded"
       );
 
-      const tableMap = yield* Effect.suspend(() => dotypos.getTables()).pipe(
+      const tables = yield* Effect.suspend(() => dotypos.getTables()).pipe(
         Effect.tapError((cause) =>
-          Effect.logWarning("Checkout status table map load failed", {
-            cause,
-          })
+          Effect.logWarning("Checkout status tables load failed", { cause })
         ),
-        Effect.option,
-        Effect.when(seatingMapFeatureFlag.isEnabled),
-        Effect.map(Option.flatten),
-        Effect.map(
-          Option.map((tables) =>
-            getWorkspaceTableMap(dotyposReservation.reservation, tables)
-          )
-        ),
-        Effect.map(Option.getOrUndefined)
+        Effect.orElseSucceed(() => [])
       );
+      const openSpaceTableNames =
+        reservation.reservationDetails.kind === "cowork" &&
+        reservation.reservationDetails.entryTier === "open-space"
+          ? yield* getOpenSpaceTableNames(tables)
+          : undefined;
+      const table = getCustomerReservationTable({
+        reservationDetails: reservation.reservationDetails,
+        tableName: getReservationTableName(
+          dotyposReservation.reservation,
+          tables
+        ),
+        openSpaceTableNames,
+      });
+      const seatingMapEnabled = yield* seatingMapFeatureFlag.isEnabled;
+      const tableMap = seatingMapEnabled
+        ? getWorkspaceTableMap(dotyposReservation.reservation, tables)
+        : undefined;
 
       const timing = yield* getDotyposReservationTiming({
         reservationId: reservation.id,
@@ -340,6 +355,7 @@ const implementation = Effect.gen(function* () {
       if (!timing) {
         const reconstruction: CheckoutStatusReconstruction = {
           reservation: emptyReconstruction.reservation,
+          table,
           tableMap,
           supportContactPrefill: getSupportContactPrefill(
             dotyposReservation.customer
@@ -394,6 +410,7 @@ const implementation = Effect.gen(function* () {
 
       const reconstruction: CheckoutStatusReconstruction = {
         reservation: statusReservation,
+        table,
         tableMap,
         supportContactPrefill: getSupportContactPrefill(
           dotyposReservation.customer
@@ -466,6 +483,7 @@ const implementation = Effect.gen(function* () {
         status: statusKind,
         paymentStatus: reservation.paymentState,
         fulfillmentStatus: reservation.fulfillmentState,
+        table: reconstruction.table,
         tableMap: reconstruction.tableMap,
         supportContactPrefill:
           statusKind === "fulfillment_failed"
