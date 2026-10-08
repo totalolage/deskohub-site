@@ -75,10 +75,7 @@ export function SignInCard({ locale }: SignInCardProps) {
     () => createAuthReturnLifecycle({ locale }),
     [locale]
   );
-  const signInFormSchema = useMemo(
-    () => createSignInFormSchema(locale),
-    [locale]
-  );
+  const signInFormSchema = createSignInFormSchema(locale);
   const form = useForm<SignInFormInput, unknown, SignInFormValues>({
     defaultValues: { email: "" },
     mode: "onSubmit",

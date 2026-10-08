@@ -228,6 +228,30 @@ describe("ContactForm", () => {
       ).toBe("true")
     );
     expect(view.getByText("Sent")).toBeTruthy();
+
+    const reviewMessage = m.contactValidationReviewMessage(
+      {},
+      { locale: "en-US" }
+    );
+    fireEvent.submit(form);
+    await waitFor(() => expect(view.getByText(reviewMessage)).toBeTruthy());
+    expect(view.queryByText("Sent")).toBeNull();
+    expect(calls).toHaveLength(1);
+
+    for (const [label, value] of [
+      ["Name", "Ada Lovelace"],
+      ["Email", "ada@example.com"],
+      ["Message", "Please help with a reservation."],
+    ]) {
+      fireEvent.change(view.getByLabelText(label), { target: { value } });
+    }
+    expect(view.getByText(reviewMessage)).toBeTruthy();
+
+    response = { data: { status: "success", message: "Sent again" } };
+    fireEvent.submit(form);
+    await waitFor(() => expect(calls).toHaveLength(2));
+    await waitFor(() => expect(view.getByText("Sent again")).toBeTruthy());
+    expect(view.queryByText(reviewMessage)).toBeNull();
   });
 
   test("shows hydrated server field errors with retained values and accessibility links", async () => {

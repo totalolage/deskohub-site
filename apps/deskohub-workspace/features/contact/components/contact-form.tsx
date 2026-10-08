@@ -241,9 +241,6 @@ function ContactFormBody({
     values: reactiveValues,
   });
   const { formState, register } = form;
-  const [clientValidationMessage, setClientValidationMessage] = useState<
-    string | undefined
-  >();
   const formRef = useRef<HTMLFormElement>(null);
 
   useLayoutEffect(() => {
@@ -255,21 +252,18 @@ function ContactFormBody({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     const formData = new FormData(event.currentTarget);
-    setClientValidationMessage(undefined);
-    void form.handleSubmit(
-      () => execute(formData),
-      () =>
-        setClientValidationMessage(
-          m.contactValidationReviewMessage({}, { locale })
-        )
-    )(event);
+    void form.handleSubmit(() => execute(formData))(event);
   };
 
+  const hasClientValidationError =
+    formState.isSubmitted && !formState.isSubmitSuccessful;
+  const resultMessage = hasClientValidationError
+    ? m.contactValidationReviewMessage({}, { locale })
+    : state.message;
   const message =
-    clientValidationMessage ??
-    (formState.isSubmitting || actionIsExecuting ? undefined : state.message);
+    formState.isSubmitting || actionIsExecuting ? undefined : resultMessage;
   const isSuccessMessage =
-    clientValidationMessage === undefined && state.status === "success";
+    !hasClientValidationError && state.status === "success";
 
   return (
     <form
