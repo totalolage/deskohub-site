@@ -66,7 +66,7 @@ describe("customer auth callback route boundary", () => {
   test("keeps the account gate inside the callback suspense boundary", async () => {
     const { default: CustomerAuthCallbackPage } = await import("./page");
 
-    const output = CustomerAuthCallbackPage();
+    const output = await CustomerAuthCallbackPage();
 
     expect(output.type).toBe(Suspense);
     expect(events).toEqual([]);
@@ -80,7 +80,7 @@ describe("customer auth callback route boundary", () => {
       return false;
     });
     const { default: CustomerAuthCallbackPage } = await import("./page");
-    const output = CustomerAuthCallbackPage();
+    const output = await CustomerAuthCallbackPage();
     const content = output.props.children;
     const Content = content.type as (props: {
       readonly locale: "en-US";
@@ -88,5 +88,25 @@ describe("customer auth callback route boundary", () => {
 
     await expect(Content(content.props)).rejects.toThrow("NEXT_NOT_FOUND");
     expect(events).toEqual(["connection", "gate"]);
+  });
+
+  test("threads one strict referral code into the callback suspense boundary", async () => {
+    const { default: CustomerAuthCallbackPage } = await import("./page");
+
+    const valid = await CustomerAuthCallbackPage({
+      searchParams: Promise.resolve({ ref: "RFL12345" }),
+    });
+    expect(valid.props.children.props).toMatchObject({
+      locale: "en-US",
+      referralCode: "RFL12345",
+    });
+
+    const duplicate = await CustomerAuthCallbackPage({
+      searchParams: Promise.resolve({ ref: ["RFL12345", "OTHER"] }),
+    });
+    expect(duplicate.props.children.props).toMatchObject({
+      locale: "en-US",
+      referralCode: undefined,
+    });
   });
 });

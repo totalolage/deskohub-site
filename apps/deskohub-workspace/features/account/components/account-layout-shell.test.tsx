@@ -322,6 +322,26 @@ describe("AccountLayoutShell", () => {
     ).toBe("page");
   });
 
+  test("opens the referrals section only for one valid share code", () => {
+    searchParams = new URLSearchParams("section=profile&ref=RFL12345");
+    const view = renderLayout(<p>Account</p>);
+    expect(
+      getDesktopNavigation(view)
+        .getByRole("button", { name: "Referrals" })
+        .getAttribute("aria-current")
+    ).toBe("page");
+
+    searchParams = new URLSearchParams(
+      "section=profile&ref=RFL12345&ref=OTHER123"
+    );
+    view.rerender(layoutElement(<p>Account with duplicate share codes</p>));
+    expect(
+      getDesktopNavigation(view)
+        .getByRole("button", { name: "Profile & Identity" })
+        .getAttribute("aria-current")
+    ).toBe("page");
+  });
+
   test("bypasses the frame on the deleted-account route", () => {
     pathname = "/en-US/account/deleted";
     const view = renderLayout(<p data-testid="deleted-content">Deleted</p>);

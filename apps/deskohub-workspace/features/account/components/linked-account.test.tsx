@@ -96,6 +96,7 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
         danger: "Danger zone",
         legal: "Legal & privacy",
         profile: "Profile & identity",
+        referrals: "Referrals",
         reservations: "Reservations",
       },
     },
@@ -167,6 +168,10 @@ mock.module("@/features/account/components/legal/legal-screen", () => ({
       </>
     );
   },
+}));
+
+mock.module("@/features/account/components/referral-screen", () => ({
+  ReferralScreen: () => <div data-testid="referral-screen-mock" />,
 }));
 
 mock.module("@/shared/utils/use-workspace-action", () => ({

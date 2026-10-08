@@ -26,7 +26,7 @@ import { postgresUuidV7 } from "../uuid-v7";
 
 export type DiscountLabels = Readonly<Record<Locale, string>>;
 
-export const promotionCodeKinds = ["discount", "voucher"] as const;
+export const promotionCodeKinds = ["discount", "voucher", "referral"] as const;
 export type PromotionCodeKind = (typeof promotionCodeKinds)[number];
 
 export const discounts = pgTable(
@@ -121,7 +121,7 @@ export const promotionCodes = pgTable(
     ),
     check(
       "promotion_codes_kind_check",
-      sql`${t.kind} in ('discount', 'voucher')`
+      sql`${t.kind} in ('discount', 'voucher', 'referral')`
     ),
   ]
 );

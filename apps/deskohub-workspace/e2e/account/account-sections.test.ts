@@ -23,6 +23,7 @@ import {
 
 const sections = [
   "reservations",
+  "referrals",
   "profile",
   "billing",
   "legal",
@@ -50,6 +51,12 @@ const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
         "h2",
         { id: "account-reservations-past-title" },
         "Past reservations"
+      );
+    case "referrals":
+      return createElement(
+        "section",
+        { "data-screen": "referrals-screen" },
+        createElement("h2", null, "Referrals")
       );
     case "profile":
       return createElement(

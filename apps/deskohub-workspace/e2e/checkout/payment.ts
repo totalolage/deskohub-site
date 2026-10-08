@@ -200,12 +200,14 @@ export const prepareCheckoutPaymentAttempt = ({
 
 export const submitReservationForPayPage = ({
   onOrderId,
+  onPayPageUrl,
   run,
   session,
   submitReservationScript,
   timeouts,
 }: {
   onOrderId?: (orderId: WorkspaceReservationId) => void;
+  onPayPageUrl?: (url: string) => void;
   run: Runner;
   session: string;
   submitReservationScript: string;
@@ -219,6 +221,7 @@ export const submitReservationForPayPage = ({
       submitReservationScript,
       timeouts,
     });
+    yield* Effect.sync(() => onPayPageUrl?.(payPageUrl));
     const searchOrderId = yield* tryWorkspaceE2ESync(
       "decode checkout pay page order id",
       () => {

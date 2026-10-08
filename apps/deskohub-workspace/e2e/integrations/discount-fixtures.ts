@@ -95,6 +95,11 @@ export const discountCodeFixtures = {
     creditPerRun: { value: 10_000, exponent: 2, currency: "CZK" },
     id: voucherIdSchema.make("7e171618-e39b-476f-a7c1-f753c664323f"),
   },
+  accountReferralVoucher: {
+    code: canonicalPromotionCodeSchema.make("E2E_REFERRAL_VOUCHER"),
+    creditPerRun: { value: 10_000, exponent: 2, currency: "CZK" },
+    id: voucherIdSchema.make("86f4bc91-6cb8-4815-9968-8edb38d1fce8"),
+  },
 } as const;
 
 const partialCodeDiscountId = storedDiscountIdSchema.make(
@@ -277,6 +282,7 @@ export const seedDiscountE2EFixtures: Effect.Effect<
         for (const fixture of [
           discountCodeFixtures.voucherReuse,
           discountCodeFixtures.voucherFull,
+          discountCodeFixtures.accountReferralVoucher,
         ]) {
           const [voucherUsage] = yield* tx
             .select({

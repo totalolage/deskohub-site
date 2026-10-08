@@ -4,6 +4,7 @@ import {
   normalizePhoneNumber,
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   clickBrowserElement,
   evalBrowserScript,
@@ -45,16 +46,20 @@ import type { WorkspaceE2EAccountConfig } from "./config";
 import {
   makeWorkspaceE2EAccountRecipient,
   workspaceE2EAccountMainRecipientLabel,
+  workspaceE2EReferralInviteeRecipientLabel,
+  workspaceE2EReferralOwnerRecipientLabel,
 } from "./config";
 import {
   assertNoSyntheticCustomerProfile,
   cancelSyntheticReservation,
   createSyntheticCustomerProfile,
+  createSyntheticReferralHistoryReservation,
   createSyntheticReservation,
   expireSyntheticCustomerProfile,
   readSyntheticCustomerProfile,
 } from "./fixtures";
 import type { MagicLinkRateBudget } from "./rate-budget";
+import { seedWorkspaceE2EReferralFixture } from "./referral-fixture";
 import type {
   WorkspaceE2EAccountCase,
   WorkspaceE2EAccountJournalRef,
@@ -851,6 +856,147 @@ export const makeWorkspaceE2EAccountCases = ({
                 matches: (snapshot) =>
                   snapshot.includes(pastReservationsTitle) &&
                   snapshot.includes(cancelledStatus),
+                run,
+                session,
+                timeoutMs: datasourceTimeout,
+              });
+            }),
+            accountPageLoadTimeout
+          )
+        );
+      })
+    ),
+    makeCase(
+      "account-referrals",
+      Effect.fn("workspaceE2EAccountReferralCase")(function* ({
+        journalRef,
+        runStep,
+      }) {
+        const linked = yield* runStep(
+          step(
+            "reads the linked synthetic referral recipient",
+            Effect.gen(function* () {
+              const userId = yield* requireAuthUserId(recipient);
+              const customerId = yield* requireLinkedCustomerId(userId);
+              yield* recordFixtureIds(journalRef, {
+                dotyposCustomerIds: [customerId],
+              });
+              return { customerId, userId };
+            }),
+            datasourceTimeout
+          )
+        );
+        const ownerEmail = makeWorkspaceE2EAccountRecipient(
+          config,
+          workspaceE2EReferralOwnerRecipientLabel
+        );
+        const eligibleInviteeEmail = makeWorkspaceE2EAccountRecipient(
+          config,
+          workspaceE2EReferralInviteeRecipientLabel
+        );
+        const ownerAccountId = customerAccountIdSchema.make(
+          `account-referral-owner-${crypto.randomUUID()}`
+        );
+        const createdProfiles = yield* runStep(
+          step(
+            "creates synthetic active referral owner and eligible invitee profiles",
+            Effect.gen(function* () {
+              yield* recordFixtureIds(journalRef, {
+                authUserIds: [ownerAccountId],
+              });
+              const owner = yield* createSyntheticCustomerProfile(
+                datasourceConfig,
+                { email: ownerEmail, firstName: "Referral Owner" }
+              );
+              yield* recordFixtureIds(journalRef, {
+                dotyposCustomerIds: [owner],
+              });
+              const invitee = yield* createSyntheticCustomerProfile(
+                datasourceConfig,
+                { email: eligibleInviteeEmail, firstName: "Referral Invitee" }
+              );
+              yield* recordFixtureIds(journalRef, {
+                dotyposCustomerIds: [invitee],
+              });
+              return { invitee, owner };
+            }),
+            datasourceTimeout
+          )
+        );
+        const profiles = yield* runStep(
+          step(
+            "creates a recent confirmed paid-history reservation",
+            Effect.gen(function* () {
+              const reservation =
+                yield* createSyntheticReferralHistoryReservation(
+                  datasourceConfig,
+                  { customerId: createdProfiles.invitee }
+                );
+              assert(
+                reservation.reservationId,
+                "referral history reservation id missing"
+              );
+              const reservationId = reservation.reservationId;
+              if (!reservationId) {
+                return yield* workspaceE2EError(
+                  "referral history reservation has no provider id",
+                  {
+                    diagnosticCode: "dotypos_account_fixture_mutation_failed",
+                    operation: "read referral history reservation id",
+                  }
+                );
+              }
+              yield* recordFixtureIds(journalRef, {
+                dotyposReservationIds: [reservationId],
+              });
+              return { ...createdProfiles, reservation, reservationId };
+            }),
+            datasourceTimeout
+          )
+        );
+        const fixture = yield* runStep(
+          step(
+            "seeds exact referral attribution and paid local history rows",
+            seedWorkspaceE2EReferralFixture({
+              eligibleInviteeDotyposCustomerId: profiles.invitee,
+              eligibleReservationAt: new Date(
+                Number(profiles.reservation.endsAt.epochMilliseconds)
+              ),
+              eligibleReservationId: profiles.reservationId,
+              invitationOwnerAccountId: ownerAccountId,
+              invitationOwnerDotyposCustomerId: profiles.owner,
+              invitationOwnerEmail: ownerEmail,
+              invitationOwnerName: "Synthetic Referral Owner",
+              referrerDotyposCustomerId: linked.customerId,
+            }),
+            datasourceTimeout
+          )
+        );
+        lifecycleHandoff.referralInvitationCode = fixture.invitationCode;
+        lifecycleHandoff.referralCheckoutContact = {
+          customerId: linked.customerId,
+          email: recipient,
+          name: "E2E Lane",
+          phone: profilePhoneFixture,
+        };
+        lifecycleHandoff.referralUnavailableCode = `RFLMISSING${crypto
+          .randomUUID()
+          .replaceAll("-", "")
+          .slice(0, 8)
+          .toUpperCase()}`;
+
+        yield* runStep(
+          step(
+            "shows the eligible referral count and current discount",
+            Effect.gen(function* () {
+              yield* openPage(localized(`${accountSuffix}?section=referrals`));
+              yield* waitForInteractiveSnapshot({
+                description: "referral overview with one eligible invitee",
+                matches: (snapshot) =>
+                  snapshot.includes(
+                    "Currently eligible invited customers: 1"
+                  ) &&
+                  snapshot.includes("Your current referral discount is 5%"),
                 run,
                 session,
                 timeoutMs: datasourceTimeout,

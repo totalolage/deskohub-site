@@ -92,9 +92,13 @@ export class PromotionCodeRepository extends Context.Service<
             )
             .limit(1);
 
-          return yield* Option.fromNullishOr(row).pipe(
-            Option.map((found) => decodePromotionConfiguration({ row: found })),
-            Effect.transposeOption
+          if (!row || (row.kind !== "discount" && row.kind !== "voucher")) {
+            return Option.none();
+          }
+          return Option.some(
+            yield* decodePromotionConfiguration({
+              row: { ...row, kind: row.kind as "discount" | "voucher" },
+            })
           );
         }
       );

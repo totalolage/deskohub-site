@@ -4,6 +4,7 @@ import {
   workspaceE2ETimeouts,
 } from "../timeouts";
 import {
+  workspaceE2EAccountCheckoutCaseIds,
   workspaceE2ECaseIds,
   workspaceE2ENonPaymentCaseIds,
   workspaceE2EPaymentCaseLanes,
@@ -11,8 +12,8 @@ import {
 } from "./case-catalog";
 
 test("registers every checkout case once in a Playwright-owned lane", () => {
-  expect(workspaceE2ECaseIds).toHaveLength(39);
-  expect(new Set(workspaceE2ECaseIds).size).toBe(39);
+  expect(workspaceE2ECaseIds).toHaveLength(40);
+  expect(new Set(workspaceE2ECaseIds).size).toBe(40);
   expect(workspaceE2ENonPaymentCaseIds).toHaveLength(21);
   expect(workspaceE2EPaymentCaseLanes.map((lane) => lane.length)).toEqual([
     6, 6, 5,
@@ -20,6 +21,15 @@ test("registers every checkout case once in a Playwright-owned lane", () => {
   expect(workspaceE2ESharedFixtureCaseIds).toEqual([
     "calendar-sale-pricing-changes",
   ]);
+  expect(workspaceE2EAccountCheckoutCaseIds).toEqual([
+    "account-referral-checkout",
+  ]);
+  expect(workspaceE2ENonPaymentCaseIds).not.toContain(
+    "account-referral-checkout"
+  );
+  expect(workspaceE2EPaymentCaseLanes.flat()).not.toContain(
+    "account-referral-checkout"
+  );
 });
 
 test("keeps the Playwright watchdog outside the longest semantic case", () => {

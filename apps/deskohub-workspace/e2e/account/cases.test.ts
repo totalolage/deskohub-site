@@ -1081,6 +1081,10 @@ mock.module("./fixtures", () => ({
         "reservation fixture coverage belongs to its separate case"
       );
     }),
+  createSyntheticReferralHistoryReservation: () =>
+    Effect.sync(() => {
+      throw new Error("referral fixture coverage belongs to its separate case");
+    }),
   expireSyntheticCustomerProfile: (
     _config: DatasourceConfig,
     customerId: string

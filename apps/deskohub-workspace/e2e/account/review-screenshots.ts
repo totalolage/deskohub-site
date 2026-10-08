@@ -1,6 +1,7 @@
 import * as fsPromises from "node:fs/promises";
 import { resolve } from "node:path";
 import type * as Playwright from "@playwright/test";
+import { parseReferralCode } from "@/features/referrals/client";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { workspaceDir } from "../runtime";
@@ -17,6 +18,17 @@ export type AccountReviewTarget =
   | "sign-in-handoff-desktop"
   | "linked-reservations-desktop"
   | "linked-reservations-mobile"
+  | "linked-referrals-desktop"
+  | "linked-referrals-mobile"
+  | "linked-referrals-cs-desktop"
+  | "linked-referrals-cs-mobile"
+  | "referral-overview-positive-desktop"
+  | "referral-overview-positive-mobile"
+  | "referral-overview-positive-cs-desktop"
+  | "referral-overview-positive-cs-mobile"
+  | "referral-invitation-eligible-desktop"
+  | "referral-invitation-accepted-desktop"
+  | "referral-invitation-unavailable-desktop"
   | "linked-profile-desktop"
   | "linked-billing-desktop"
   | "linked-billing-mobile"
@@ -90,6 +102,61 @@ const accountReviewTargetMetadata = {
     filename: "linked-reservations-mobile.png",
     path: "/en-US/account",
     viewport: { height: 900, width: 375 },
+  },
+  "linked-referrals-desktop": {
+    filename: "linked-referrals-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-referrals-mobile": {
+    filename: "linked-referrals-mobile.png",
+    path: "/en-US/account",
+    viewport: { height: 900, width: 375 },
+  },
+  "linked-referrals-cs-desktop": {
+    filename: "linked-referrals-cs-desktop.png",
+    path: "/cs-CZ/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-referrals-cs-mobile": {
+    filename: "linked-referrals-cs-mobile.png",
+    path: "/cs-CZ/account",
+    viewport: { height: 900, width: 375 },
+  },
+  "referral-overview-positive-desktop": {
+    filename: "referral-overview-positive-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "referral-overview-positive-mobile": {
+    filename: "referral-overview-positive-mobile.png",
+    path: "/en-US/account",
+    viewport: { height: 900, width: 375 },
+  },
+  "referral-overview-positive-cs-desktop": {
+    filename: "referral-overview-positive-cs-desktop.png",
+    path: "/cs-CZ/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "referral-overview-positive-cs-mobile": {
+    filename: "referral-overview-positive-cs-mobile.png",
+    path: "/cs-CZ/account",
+    viewport: { height: 900, width: 375 },
+  },
+  "referral-invitation-eligible-desktop": {
+    filename: "referral-invitation-eligible-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "referral-invitation-accepted-desktop": {
+    filename: "referral-invitation-accepted-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "referral-invitation-unavailable-desktop": {
+    filename: "referral-invitation-unavailable-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
   },
   "linked-profile-desktop": {
     filename: "linked-profile-desktop.png",
@@ -244,25 +311,74 @@ const callbackLoadingSelector =
   '[data-slot="auth-callback-loading"][role="status"][aria-busy="true"]';
 const privateLinkedAccountSections = [
   "reservations",
+  "referrals",
   "profile",
   "billing",
   "danger",
 ] as const;
+const referralReviewTargets = new Set<ReviewTarget>([
+  "linked-referrals-desktop",
+  "linked-referrals-mobile",
+  "linked-referrals-cs-desktop",
+  "linked-referrals-cs-mobile",
+  "referral-overview-positive-desktop",
+  "referral-overview-positive-mobile",
+  "referral-overview-positive-cs-desktop",
+  "referral-overview-positive-cs-mobile",
+  "referral-invitation-eligible-desktop",
+  "referral-invitation-accepted-desktop",
+  "referral-invitation-unavailable-desktop",
+]);
 
 const isPrivateLinkedAccountTarget = (target: ReviewTarget): boolean =>
   target === "linked-reservations-desktop" ||
   target === "linked-reservations-mobile" ||
+  target === "linked-referrals-desktop" ||
+  target === "linked-referrals-mobile" ||
+  target === "linked-referrals-cs-desktop" ||
+  target === "linked-referrals-cs-mobile" ||
+  target === "referral-overview-positive-desktop" ||
+  target === "referral-overview-positive-mobile" ||
+  target === "referral-overview-positive-cs-desktop" ||
+  target === "referral-overview-positive-cs-mobile" ||
+  target === "referral-invitation-eligible-desktop" ||
+  target === "referral-invitation-accepted-desktop" ||
+  target === "referral-invitation-unavailable-desktop" ||
   target === "linked-profile-desktop" ||
   target === "linked-billing-desktop" ||
   target === "linked-billing-mobile" ||
   target === "linked-danger-desktop" ||
   target === "linked-danger-mobile";
 
-const isAllowedPrivateLinkedAccountQuery = (search: string): boolean =>
-  search === "" ||
-  privateLinkedAccountSections.some(
-    (section) => search === `?section=${section}`
+const isAllowedPrivateLinkedAccountQuery = (search: string): boolean => {
+  if (
+    search === "" ||
+    privateLinkedAccountSections.some(
+      (section) => search === `?section=${section}`
+    )
+  ) {
+    return true;
+  }
+
+  const query = new URLSearchParams(search);
+  const referralValues = query.getAll("ref");
+  if (
+    referralValues.length !== 1 ||
+    parseReferralCode(referralValues[0]) === undefined
+  ) {
+    return false;
+  }
+
+  const keys = [...query.keys()];
+  return (
+    (keys.length === 1 && keys[0] === "ref") ||
+    (keys.length === 2 &&
+      keys.includes("section") &&
+      keys.includes("ref") &&
+      query.getAll("section").length === 1 &&
+      query.get("section") === "referrals")
   );
+};
 
 type AccountReviewCaptureOptions = {
   readonly deadline?: number;
@@ -379,6 +495,15 @@ const captureAccountReviewPixels = async (
       page.screenshot({
         animations: "disabled",
         fullPage: metadata.fullPage ?? true,
+        ...(referralReviewTargets.has(target)
+          ? {
+              mask: [
+                page.locator(
+                  '[data-screen="referrals-screen"] code, [data-screen="referrals-screen"] a[href*="ref="]'
+                ),
+              ],
+            }
+          : {}),
         timeout: screenshotTimeout,
       }),
     deadline,

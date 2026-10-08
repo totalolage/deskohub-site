@@ -473,6 +473,7 @@ test("announces a rejected save request with localized copy and allows a success
     m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
   );
 
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
   fireEvent.click(marketingSwitch);
 
   await waitFor(() => {
@@ -485,11 +486,14 @@ test("announces a rejected save request with localized copy and allows a success
   // as a loose sibling of the row article.
   expect(getArticle(view).contains(view.getByRole("alert"))).toBe(true);
   expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
+  expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
   expect(routerRefresh).not.toHaveBeenCalled();
 
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
   fireEvent.click(
     getSwitch(view, m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }))
   );
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
   await waitFor(() => {
     expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
       confirmed: true,

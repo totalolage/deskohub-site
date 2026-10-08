@@ -45,6 +45,37 @@ test("capture accepts a working tree identical to HEAD", () => {
   expect(() => assertCapturedSourcesMatchHead([])).not.toThrow();
 });
 
+test("capture excludes the preserved workspace example env file only", () => {
+  expect(() =>
+    assertCapturedSourcesMatchHead([" M apps/deskohub-workspace/.env.example"])
+  ).not.toThrow();
+  expect(() =>
+    assertCapturedSourcesMatchHead([
+      "M  apps/deskohub-workspace/.env.example",
+      "MM apps/deskohub-workspace/.env.example",
+    ])
+  ).not.toThrow();
+  expect(() =>
+    assertCapturedSourcesMatchHead([
+      " M apps/deskohub-workspace/.env.example.copy",
+    ])
+  ).toThrow(/refusing to attribute a dirty tree to a clean commit/);
+  expect(() =>
+    assertCapturedSourcesMatchHead([" D apps/deskohub-workspace/.env.example"])
+  ).toThrow(/refusing to attribute a dirty tree to a clean commit/);
+  expect(() =>
+    assertCapturedSourcesMatchHead([
+      "R  apps/deskohub-workspace/.env.example -> apps/deskohub-workspace/renamed.example",
+    ])
+  ).toThrow(/refusing to attribute a dirty tree to a clean commit/);
+  expect(() =>
+    assertCapturedSourcesMatchHead([
+      " M apps/deskohub-workspace/.env.example",
+      "?? apps/deskohub-workspace/scripts/new-build-input.ts",
+    ])
+  ).toThrow(/apps\/deskohub-workspace\/scripts\/new-build-input.ts/);
+});
+
 test("status collection detects untracked inputs despite status.showUntrackedFiles=no", () => {
   const repository = mkdtempSync(join(tmpdir(), "avatar-status-check-"));
   try {
@@ -65,6 +96,22 @@ test("status collection detects untracked inputs despite status.showUntrackedFil
     expect(() => assertCapturedSourcesMatchHead(lines)).toThrow(
       /refusing to attribute a dirty tree to a clean commit/
     );
+  } finally {
+    rmSync(repository, { recursive: true, force: true });
+  }
+});
+
+test("status collection omits ignored task artifacts", () => {
+  const repository = mkdtempSync(join(tmpdir(), "avatar-status-check-"));
+  try {
+    execSync("git init -q", { cwd: repository });
+    writeFileSync(
+      join(repository, ".git/info/exclude"),
+      "task-output-artifact\n"
+    );
+    writeFileSync(join(repository, "task-output-artifact"), "synthetic\n");
+
+    expect(gitStatusPorcelainLines(repository)).toEqual([]);
   } finally {
     rmSync(repository, { recursive: true, force: true });
   }

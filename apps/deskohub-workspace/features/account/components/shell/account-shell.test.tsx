@@ -22,6 +22,7 @@ import {
 
 const sectionKeys: readonly AccountSection[] = [
   "reservations",
+  "referrals",
   "profile",
   "billing",
   "legal",
@@ -36,6 +37,7 @@ const labels: AccountShellProps["labels"] = {
     danger: "Danger zone",
     legal: "Legal & privacy",
     profile: "Profile & identity",
+    referrals: "Referrals",
     reservations: "Reservations",
   },
 };

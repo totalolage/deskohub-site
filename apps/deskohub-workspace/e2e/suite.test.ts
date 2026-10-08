@@ -3,8 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { Cause, Effect, Exit, Layer } from "effect";
+import { makeCoworkCheckoutData } from "./checkout/data";
 import type { DatasourceConfig } from "./config";
 import { WorkspaceE2EProviderVerificationPermitServiceMock } from "./coordination/provider-verification-permit.service.mock";
+import { workspaceE2EError } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
 import type { Runner } from "./runtime";
 import { WorkspaceE2ECleanupService } from "./services/cleanup";
@@ -146,6 +148,84 @@ test("stops HAR capture before closing the browser session", async () => {
   );
 
   expect(finalizerOperations).toEqual(["har-stop", "browser-close"]);
+});
+
+test("borrowed sessions skip browser diagnostics and close while cleaning exact owned states", async () => {
+  const browserCommands: string[][] = [];
+  const startedSessions: string[] = [];
+  const reportedFailures: WorkspaceE2EFailureDiagnostic[] = [];
+  let cleanedStates: WorkspaceE2ECase["checkoutStates"] | undefined;
+  const checkoutStates = [
+    {
+      data: makeCoworkCheckoutData(
+        "https://workspace.example.test",
+        "2099-09-01"
+      ),
+    },
+    {
+      data: makeCoworkCheckoutData(
+        "https://workspace.example.test",
+        "2099-09-02"
+      ),
+    },
+  ];
+  const cleanupLayer = Layer.succeed(WorkspaceE2ECleanupService, {
+    cleanupCheckoutStates: () => Effect.succeed(undefined),
+    cleanupOwnedCheckoutStates: ({ flowStates }) =>
+      Effect.sync(() => {
+        cleanedStates = flowStates;
+        return undefined;
+      }),
+  });
+  const run: Runner = async (_command, args) => {
+    browserCommands.push(args);
+    return { exitCode: 0, stderr: "", stdout: "" };
+  };
+  const testCase: WorkspaceE2ECase = {
+    checkoutStates,
+    execute: ({ session }) =>
+      Effect.sync(() => startedSessions.push(session)).pipe(
+        Effect.andThen(
+          Effect.fail(
+            workspaceE2EError("synthetic borrowed-session failure", {
+              operation: "test borrowed browser ownership",
+            })
+          )
+        )
+      ),
+    id: "account-referral-checkout",
+    timeoutMs: 1_000,
+  };
+
+  const exit = await Effect.runPromiseExit(
+    runWorkspaceE2ECase({
+      artifactRoot: "/tmp/workspace-e2e-borrowed-session-test",
+      browserSession: {
+        ownership: "borrowed",
+        session: "workspace-account-e2e-existing",
+      },
+      datasourceConfig: testDatasourceConfig,
+      reportFailure: (failure) => reportedFailures.push(failure),
+      run,
+      sessionPrefix: "workspace-checkout-e2e",
+      testCase,
+      timeouts: workspaceE2ETimeouts,
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeE2ETelemetryMock([]),
+          cleanupLayer,
+          WorkspaceE2EProviderVerificationPermitServiceMock
+        )
+      )
+    )
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  expect(startedSessions).toEqual(["workspace-account-e2e-existing"]);
+  expect(browserCommands).toEqual([]);
+  expect(reportedFailures).toEqual([]);
+  expect(cleanedStates).toBe(checkoutStates);
 });
 
 test("overlaps reservation cleanup with browser finalization", async () => {

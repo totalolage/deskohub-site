@@ -29,9 +29,14 @@ const attemptUuid = "0f0a9c1e-7b62-4c8d-9e21-53ab2f0d4c7a";
 const privateLinkedAccountQueries = [
   "",
   "?section=reservations",
+  "?section=referrals",
   "?section=profile",
   "?section=billing",
   "?section=danger",
+] as const;
+const referralInvitationQueries = [
+  "?ref=RFL12345",
+  "?section=referrals&ref=RFL12345",
 ] as const;
 const marketingReviewTargets = [
   "account-marketing-withdrawn-desktop",
@@ -96,6 +101,105 @@ const validTargets = [
     queries: privateLinkedAccountQueries,
     target: "linked-reservations-mobile",
     viewport: { height: 900, width: 375 },
+    fullPage: true,
+  },
+  {
+    filename: "linked-referrals-desktop.png",
+    path: "/en-US/account",
+    query: "?section=referrals",
+    queries: privateLinkedAccountQueries,
+    target: "linked-referrals-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "linked-referrals-mobile.png",
+    path: "/en-US/account",
+    query: "?section=referrals",
+    queries: privateLinkedAccountQueries,
+    target: "linked-referrals-mobile",
+    viewport: { height: 900, width: 375 },
+    fullPage: true,
+  },
+  {
+    filename: "linked-referrals-cs-desktop.png",
+    path: "/cs-CZ/account",
+    query: "?section=referrals",
+    queries: privateLinkedAccountQueries,
+    target: "linked-referrals-cs-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "linked-referrals-cs-mobile.png",
+    path: "/cs-CZ/account",
+    query: "?section=referrals",
+    queries: privateLinkedAccountQueries,
+    target: "linked-referrals-cs-mobile",
+    viewport: { height: 900, width: 375 },
+    fullPage: true,
+  },
+  {
+    filename: "referral-overview-positive-desktop.png",
+    path: "/en-US/account",
+    query: "?section=referrals",
+    queries: privateLinkedAccountQueries,
+    target: "referral-overview-positive-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "referral-overview-positive-mobile.png",
+    path: "/en-US/account",
+    query: "?section=referrals",
+    queries: privateLinkedAccountQueries,
+    target: "referral-overview-positive-mobile",
+    viewport: { height: 900, width: 375 },
+    fullPage: true,
+  },
+  {
+    filename: "referral-overview-positive-cs-desktop.png",
+    path: "/cs-CZ/account",
+    query: "?section=referrals",
+    queries: privateLinkedAccountQueries,
+    target: "referral-overview-positive-cs-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "referral-overview-positive-cs-mobile.png",
+    path: "/cs-CZ/account",
+    query: "?section=referrals",
+    queries: privateLinkedAccountQueries,
+    target: "referral-overview-positive-cs-mobile",
+    viewport: { height: 900, width: 375 },
+    fullPage: true,
+  },
+  {
+    filename: "referral-invitation-eligible-desktop.png",
+    path: "/en-US/account",
+    query: "?ref=RFL12345",
+    queries: referralInvitationQueries,
+    target: "referral-invitation-eligible-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "referral-invitation-accepted-desktop.png",
+    path: "/en-US/account",
+    query: "?ref=RFL12345",
+    queries: referralInvitationQueries,
+    target: "referral-invitation-accepted-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "referral-invitation-unavailable-desktop.png",
+    path: "/en-US/account",
+    query: "?ref=RFL12345",
+    queries: referralInvitationQueries,
+    target: "referral-invitation-unavailable-desktop",
+    viewport: { height: 1000, width: 1440 },
     fullPage: true,
   },
   {
@@ -313,6 +417,7 @@ const validTargets = [
 type FakePage = {
   readonly currentViewport: () => Playwright.ViewportSize | null;
   readonly fontReadyCalls: () => number;
+  readonly locatorSelectors: readonly string[];
   readonly page: Playwright.Page;
   readonly setCallbackLoadingPresent: (present: boolean) => void;
   readonly setUrl: (url: string) => void;
@@ -337,6 +442,7 @@ const makeFakePage = (
   let currentUrl = url;
   let callbackLoadingPresent = options.callbackLoadingPresent ?? true;
   let fontReadyCallCount = 0;
+  const locatorSelectors: string[] = [];
   const screenshotCalls: Record<string, unknown>[] = [];
   const viewportChanges: (Playwright.ViewportSize | null)[] = [];
   let resolveScreenshotStarted!: () => void;
@@ -386,8 +492,10 @@ const makeFakePage = (
     },
     getByRole: (role: string) =>
       makeLocator(role === "status" ? "loading-status" : "landmark"),
-    locator: (selector: string) =>
-      makeLocator(selector === "main" ? "main" : "loading-card"),
+    locator: (selector: string) => {
+      locatorSelectors.push(selector);
+      return makeLocator(selector === "main" ? "main" : "loading-card");
+    },
     url: () => currentUrl,
     viewportSize: () => currentViewport,
   });
@@ -395,6 +503,7 @@ const makeFakePage = (
   return {
     currentViewport: () => currentViewport,
     fontReadyCalls: () => fontReadyCallCount,
+    locatorSelectors,
     page,
     setCallbackLoadingPresent: (present) => {
       callbackLoadingPresent = present;
@@ -910,8 +1019,16 @@ describe("account review screenshot capture", () => {
           expect(fakePage.screenshotCalls[0]).toEqual({
             animations: "disabled",
             fullPage: expected.fullPage,
+            ...(expected.target.includes("referral")
+              ? { mask: [expect.any(Object)] }
+              : {}),
             timeout: expect.any(Number),
           });
+          if (expected.target.includes("referral")) {
+            expect(fakePage.locatorSelectors).toContain(
+              '[data-screen="referrals-screen"] code, [data-screen="referrals-screen"] a[href*="ref="]'
+            );
+          }
           expect(fakePage.screenshotCalls[0]?.timeout).toBeGreaterThan(0);
           expect(fakePage.screenshotCalls[0]?.timeout).toBeLessThanOrEqual(
             workspaceE2ETimeouts.browserAction

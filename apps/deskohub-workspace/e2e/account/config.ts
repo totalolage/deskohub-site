@@ -11,6 +11,8 @@ const resendSyntheticRecipientHost = "resend.dev";
 
 /** The lane's primary synthetic identity, shared with the failure diagnostic. */
 export const workspaceE2EAccountMainRecipientLabel = "main";
+export const workspaceE2EReferralOwnerRecipientLabel = "referral-owner";
+export const workspaceE2EReferralInviteeRecipientLabel = "referral-invitee";
 
 export type WorkspaceE2EAccountConfig = {
   readonly baseUrl: string;

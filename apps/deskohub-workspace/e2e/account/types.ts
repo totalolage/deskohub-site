@@ -19,6 +19,14 @@ export type WorkspaceE2EAccountRequirement =
  */
 export type WorkspaceE2EAccountLifecycleHandoff = {
   firstAcceptedRequestedAt?: Date;
+  referralCheckoutContact?: {
+    readonly customerId: string;
+    readonly email: string;
+    readonly name: string;
+    readonly phone: string;
+  };
+  referralInvitationCode?: string;
+  referralUnavailableCode?: string;
   reauthentication?: {
     link: string;
     userId: string;

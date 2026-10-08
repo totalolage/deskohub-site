@@ -16,6 +16,7 @@ const accountMobileNavigationSelector = `nav[aria-label=${JSON.stringify(account
 
 export const accountSectionLabels = {
   reservations: "Reservations",
+  referrals: "Referrals",
   profile: "Profile & Identity",
   billing: "Billing & Invoices",
   legal: "Legal & Privacy",
@@ -29,6 +30,7 @@ export const accountSectionLabels = {
  */
 export const accountSectionLandmarks = {
   reservations: "#account-reservations-past-title",
+  referrals: "[data-screen='referrals-screen']",
   profile: "[data-screen='profile-screen']",
   billing: "#account-profile-billing-kind",
   legal: "main a[href$='/privacy-policy']",

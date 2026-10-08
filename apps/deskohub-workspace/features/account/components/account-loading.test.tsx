@@ -16,6 +16,7 @@ import { AccountShell, type AccountShellProps } from "./shell/account-shell";
 
 const sectionKeys = [
   "reservations",
+  "referrals",
   "profile",
   "billing",
   "legal",
@@ -48,6 +49,7 @@ const localizedLoadingCopy: readonly LoadingCopy[] = [
       danger: "Danger zone",
       legal: "Legal & Privacy",
       profile: "Profile & Identity",
+      referrals: "Referrals",
       reservations: "Reservations",
     },
     signOut: "Sign out",
@@ -64,6 +66,7 @@ const localizedLoadingCopy: readonly LoadingCopy[] = [
       danger: "Nebezpečná zóna",
       legal: "Právní informace a soukromí",
       profile: "Profil a identita",
+      referrals: "Doporučení",
       reservations: "Rezervace",
     },
     signOut: "Odhlásit se",
@@ -78,6 +81,7 @@ const shellLabels: AccountShellProps["labels"] = {
     danger: "Danger zone",
     legal: "Legal & Privacy",
     profile: "Profile & Identity",
+    referrals: "Referrals",
     reservations: "Reservations",
   },
 };
@@ -199,7 +203,7 @@ describe("AccountLoading", () => {
       }
 
       const buttons = Array.from(view.container.querySelectorAll("button"));
-      expect(buttons).toHaveLength(11);
+      expect(buttons).toHaveLength(sectionKeys.length * 2 + 1);
       expect(buttons.every((button) => button.disabled)).toBe(true);
       expect(view.getByRole("button", { name: copy.signOut })).toHaveProperty(
         "disabled",

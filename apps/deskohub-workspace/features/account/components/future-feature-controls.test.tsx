@@ -277,6 +277,7 @@ const accountScreenCopy = {
       danger: "Danger zone",
       legal: "Legal & privacy",
       profile: "Profile & identity",
+      referrals: "Referrals",
       reservations: "Reservations",
     },
   },

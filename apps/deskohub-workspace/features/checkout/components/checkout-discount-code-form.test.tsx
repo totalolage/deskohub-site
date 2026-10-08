@@ -8,11 +8,13 @@ import {
   mock,
   test,
 } from "bun:test";
+import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import {
   buildCoworkCheckoutSummary,
   buildCoworkReservationQuote as buildCoworkPriceQuote,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { hasCheckoutReferralAppliedNotice } from "@/features/checkout/checkout-referral-notice";
 import { m } from "@/features/i18n";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
@@ -49,6 +51,7 @@ describe("CheckoutDiscountCodeForm", () => {
 
   beforeEach(() => {
     analyticsAccepted = true;
+    applyDiscountCodeForm.mockClear();
     capture.mockClear();
     workspaceUseAction.mockReturnValue({
       execute: mock(),
@@ -170,6 +173,72 @@ describe("CheckoutDiscountCodeForm", () => {
     expect(view.queryByRole("textbox")).toBeNull();
   });
 
+  test.each(["en-US", "cs-CZ"] as const)(
+    "shows the %s referral confirmation and leaves the ordinary code form available",
+    async (locale) => {
+      const { CheckoutDiscountCodeForm } = await import(
+        "./checkout-discount-code-form"
+      );
+      const view = render(
+        <CheckoutDiscountCodeForm
+          enabled
+          fieldError={false}
+          locale={locale}
+          payStateToken="signed-state"
+          referralApplied
+        />
+      );
+
+      expect(
+        view.getByText(m.checkoutReferralDiscountApplied({}, { locale }))
+      ).toBeDefined();
+      const codeInput = view.getByRole("textbox") as HTMLInputElement;
+      expect(codeInput.name).toBe("submittedCode");
+      expect(codeInput.disabled).toBe(false);
+      expect(
+        view.getByRole("button", {
+          name: m.checkoutDiscountCodeApply({}, { locale }),
+        })
+      ).toHaveProperty("disabled", false);
+    }
+  );
+
+  test.each([
+    { discounts: [], marker: "1" },
+    { discounts: [], marker: "unknown" },
+    { discounts: [], marker: ["1"] },
+  ])(
+    "does not show referral feedback for an invalid marker or absent signed invitation discount",
+    async ({ discounts, marker }) => {
+      const { CheckoutDiscountCodeForm } = await import(
+        "./checkout-discount-code-form"
+      );
+      const referralApplied = hasCheckoutReferralAppliedNotice({
+        discounts,
+        dotyposCustomerId: DotyposCustomerIdSchema.make(
+          "checkout-referral-notice-customer"
+        ),
+        marker,
+      });
+      const view = render(
+        <CheckoutDiscountCodeForm
+          enabled
+          fieldError={false}
+          locale="en-US"
+          payStateToken="signed-state"
+          referralApplied={referralApplied}
+        />
+      );
+
+      expect(
+        view.queryByText(
+          m.checkoutReferralDiscountApplied({}, { locale: "en-US" })
+        )
+      ).toBeNull();
+      expect(view.getByRole("textbox")).toBeDefined();
+    }
+  );
+
   test("stays hidden while its server-evaluated release gate is disabled", async () => {
     const { CheckoutDiscountCodeForm } = await import(
       "./checkout-discount-code-form"
@@ -226,6 +295,7 @@ describe("CheckoutDiscountCodeForm", () => {
     expect(error.className).toContain("bg-burned-orange/8");
     expect(error.className).toContain("text-burned-orange-ink");
     expect(view.getByRole("textbox").getAttribute("aria-invalid")).toBe("true");
+    expect(applyDiscountCodeForm).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(capture).toHaveBeenCalledWith("pre-payment outcome", {
         outcome: "discount_rejected",

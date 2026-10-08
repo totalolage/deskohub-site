@@ -179,6 +179,35 @@ Object.assign(Avatar, { Live: AvatarLayer });
 mock.module("@/features/account/backend/customer-avatar.service", () => ({
   CustomerAvatarService: Avatar,
 }));
+
+const referralSummary = {
+  code: "RFL12345",
+  eligibleInviteeCount: 0,
+  discount: "0",
+} as const;
+let referralSummaryEffect: Effect.Effect<typeof referralSummary, unknown>;
+let referralSummaryCalls: Array<{
+  readonly customerAccountId: CustomerAccountId;
+  readonly dotyposCustomerId: string;
+}> = [];
+type TestReferralService = {
+  readonly getAccountSummary: (input: {
+    readonly customerAccountId: CustomerAccountId;
+    readonly dotyposCustomerId: string;
+  }) => typeof referralSummaryEffect;
+};
+const Referrals = Context.Service<Referrals, TestReferralService>()(
+  "@test/AccountReferrals"
+);
+const ReferralsLayer = Layer.succeed(Referrals, {
+  getAccountSummary: (input) => {
+    referralSummaryCalls.push(input);
+    return referralSummaryEffect;
+  },
+});
+Object.assign(Referrals, { Live: ReferralsLayer });
+mock.module("@/features/referrals", () => ({ ReferralService: Referrals }));
+
 const areAccountAvatarsEnabled = mock(() => Promise.resolve(true));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
   areAccountAvatarsEnabled,
@@ -199,6 +228,8 @@ describe("loadCustomerAccountPage", () => {
     historyLoadCalls = 0;
     avatarLookupCalls = 0;
     avatarLookupEffect = Effect.succeed(null);
+    referralSummaryEffect = Effect.succeed(referralSummary);
+    referralSummaryCalls = [];
     areAccountAvatarsEnabled.mockReset();
     areAccountAvatarsEnabled.mockResolvedValue(true);
     historyEffect = Effect.succeed({
@@ -316,7 +347,11 @@ describe("loadCustomerAccountPage", () => {
       profile: { firstName: "Ada" },
       avatar: { kind: "available", avatar: null },
       history: { kind: "available" },
+      referrals: referralSummary,
     });
+    expect(referralSummaryCalls).toEqual([
+      { customerAccountId: accountId, dotyposCustomerId: "60111" },
+    ]);
   });
 
   test("keeps the profile available and marks history unavailable when the provider fails", async () => {
@@ -333,6 +368,7 @@ describe("loadCustomerAccountPage", () => {
       },
       avatar: { kind: "available", avatar: null },
       history: { kind: "unavailable", reason: "provider-unavailable" },
+      referrals: referralSummary,
     });
   });
 
@@ -382,6 +418,7 @@ describe("loadCustomerAccountPage", () => {
         kind: "available",
         groups: { current: [], past: [], unavailable: [] },
       },
+      referrals: referralSummary,
     });
     expect(avatarLookupCalls).toBe(0);
     expect(profileLoadCalls).toBe(1);

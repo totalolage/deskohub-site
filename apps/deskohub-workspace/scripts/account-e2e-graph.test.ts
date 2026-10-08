@@ -3,6 +3,7 @@ import type { TSESTree } from "@typescript-eslint/types";
 import { workspaceE2EAccountCaseIds } from "../e2e/account/catalog";
 import { accountReviewTargetByCaseId } from "../e2e/account/review-targets";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "../e2e/account/types";
+import { workspaceE2EAccountCheckoutCaseIds } from "../e2e/playwright-checkout/case-catalog";
 import {
   workspaceE2EPlaywrightCheckoutTimeout,
   workspaceE2ETimeouts,
@@ -283,11 +284,26 @@ describe("workspace account e2e graph", () => {
       "account-magic-link-delivery",
       "account-profile-completion",
       "account-reservation-transitions",
+      "account-referrals",
       "account-deletion-marker-reauth",
       "account-session-lifecycle",
       "account-deletion-and-reactivation",
       "account-linking-variants",
     ]);
+
+    expect(workspaceE2EAccountCheckoutCaseIds).toEqual([
+      "account-referral-checkout",
+    ]);
+    const checkoutRegistrations = callsNamed(
+      laneModule.ast,
+      "accountTest"
+    ).filter((call) =>
+      identifierNames(call).has("workspaceE2EAccountCheckoutCaseIds")
+    );
+    expect(checkoutRegistrations).toHaveLength(1);
+    expect(stringLiterals(laneModule.ast).map(({ value }) => value)).toContain(
+      "account-referrals"
+    );
 
     // The lane configures serial execution; the argument is an object, not
     // prose, so the verdict survives any reformatting.

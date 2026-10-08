@@ -7,14 +7,10 @@ import {
   mock,
   test,
 } from "bun:test";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  within,
-} from "@testing-library/react";
+import { useState } from "react";
+import type { CustomerProfileInput } from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
+import { parseReferralCode } from "@/features/referrals/client";
 import {
   workspaceRouterPush,
   workspaceRouterRefresh,
@@ -28,11 +24,20 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import type { CustomerAccountPageState } from "../page-data.server";
 
+registerWorkspaceComponentTestEnv();
+const { act, cleanup, fireEvent, render, waitFor, within } = await import(
+  "@testing-library/react"
+);
+
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
 const getSession = mock(() => Promise.resolve({ data: null, error: null }));
 const beginAnalyticsAccountTransition = mock(() => undefined);
 const completeAnalyticsAccountSignOut = mock(() => undefined);
 const refreshAnalyticsAccountIdentity = mock(() => Promise.resolve());
+const completeCustomerProfile = mock((_input: CustomerProfileInput) =>
+  Promise.resolve({ data: { status: "completed" } })
+);
+const executedWorkspaceActionNames: string[] = [];
 mock.module("@/features/account/analytics-identity", () => ({
   beginAnalyticsAccountTransition,
   completeAnalyticsAccountSignOut,
@@ -53,19 +58,53 @@ mock.module("next/navigation", () => ({
   useSearchParams: workspaceUseSearchParams,
 }));
 mock.module("@/shared/utils/use-workspace-action", () => ({
-  useWorkspaceAction: () => ({
-    execute: () => undefined,
-    isExecuting: false,
-    result: {},
-    reset: () => undefined,
-  }),
+  useWorkspaceAction: (
+    action: (input: never) => Promise<unknown>,
+    options?: {
+      readonly actionName?: string;
+      readonly onSuccess?: (args: { readonly data?: unknown }) => void;
+    }
+  ) => {
+    const [result, setResult] = useState<{
+      readonly data?: unknown;
+      readonly serverError?: string;
+      readonly validationErrors?: unknown;
+    }>({});
+    const [isExecuting, setExecuting] = useState(false);
+    return {
+      result,
+      isExecuting,
+      execute: (input: never) => {
+        if (options?.actionName !== undefined) {
+          executedWorkspaceActionNames.push(options.actionName);
+        }
+        setExecuting(true);
+        void action(input).then((outcome) => {
+          setExecuting(false);
+          const nextResult = outcome as {
+            readonly data?: unknown;
+            readonly serverError?: string;
+            readonly validationErrors?: unknown;
+          };
+          setResult(nextResult);
+          if (!nextResult.serverError && !nextResult.validationErrors) {
+            options?.onSuccess?.({ data: nextResult.data });
+          }
+        });
+      },
+      reset: () => setResult({}),
+    };
+  },
+}));
+mock.module("@/features/account/referral-actions", () => ({
+  acceptAccountReferral: () =>
+    Promise.resolve({ data: { status: "accepted" } }),
 }));
 
 mock.module("@/features/account/actions", () => ({
   lookupAresBusiness: () =>
     Promise.resolve({ data: { status: "not-found", message: "" } }),
-  completeCustomerProfile: () =>
-    Promise.resolve({ data: { status: "completed" } }),
+  completeCustomerProfile,
   updateCustomerProfile: () => Promise.resolve({ data: { status: "updated" } }),
   deleteCustomerAccount: () => Promise.resolve({ data: { status: "deleted" } }),
 }));
@@ -125,6 +164,7 @@ const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
       danger: "Danger zone",
       legal: "Legal & privacy",
       profile: "Profile & identity",
+      referrals: "Referrals",
       reservations: "Reservations",
     },
   },
@@ -224,7 +264,10 @@ describe("AccountPage states", () => {
 
   afterEach(() => {
     cleanup();
+    completeCustomerProfile.mockClear();
+    executedWorkspaceActionNames.length = 0;
     workspaceRouterRefresh.mockClear();
+    workspaceRouterRefresh.mockImplementation(() => undefined);
     workspaceRouterReplace.mockClear();
     beginAnalyticsAccountTransition.mockClear();
     completeAnalyticsAccountSignOut.mockClear();
@@ -242,11 +285,18 @@ describe("AccountPage states", () => {
 
   const renderState = async (
     state: CustomerAccountPageState,
-    locale: "en-US" | "cs-CZ" = "en-US"
+    locale: "en-US" | "cs-CZ" = "en-US",
+    referralCode?: ReturnType<typeof parseReferralCode>
   ) => {
     const { AccountPage } = await import("./account-page");
     if (state.kind === "unauthenticated") {
-      return render(<AccountPage locale={locale} state={state} />);
+      return render(
+        <AccountPage
+          locale={locale}
+          referralCode={referralCode}
+          state={state}
+        />
+      );
     }
 
     const { AccountLayoutShell } = await import("./account-layout-shell");
@@ -254,7 +304,11 @@ describe("AccountPage states", () => {
       state.kind !== "unauthenticated" && state.kind !== "unavailable";
     const view = render(
       <AccountLayoutShell accountsEnabled locale={locale} signedIn={signedIn}>
-        <AccountPage locale={locale} state={state} />
+        <AccountPage
+          locale={locale}
+          referralCode={referralCode}
+          state={state}
+        />
       </AccountLayoutShell>
     );
 
@@ -355,6 +409,80 @@ describe("AccountPage states", () => {
       })
     );
     expect(czechView.getByText("Fakturační údaje")).toBeTruthy();
+  });
+
+  test("shows a validated share invitation on the fresh linked account page", async () => {
+    const referralCode = parseReferralCode("RFL12345");
+    if (referralCode === undefined) throw new Error("invalid referral code");
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams(`ref=${referralCode}`)
+    );
+
+    const view = await renderState(linkedState, "en-US", referralCode);
+
+    expect(
+      view.getByRole("heading", { name: "Accept a referral invitation" })
+    ).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Accept invitation" })
+    ).toBeTruthy();
+  });
+
+  test("shows the referral invitation after profile completion refresh links the account", async () => {
+    const referralCode = parseReferralCode("RFL12345");
+    if (referralCode === undefined) throw new Error("invalid referral code");
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams(`ref=${referralCode}`)
+    );
+    let refreshLinkedAccount!: () => void;
+    function ProfileCompletionRefreshJourney() {
+      const [state, setState] = useState<CustomerAccountPageState>({
+        kind: "completion-required",
+        email: "ada@example.test",
+      });
+      refreshLinkedAccount = () => setState(linkedState);
+
+      return (
+        <AccountLayoutShell accountsEnabled locale="en-US" signedIn>
+          <AccountPage
+            locale="en-US"
+            referralCode={referralCode}
+            state={state}
+          />
+        </AccountLayoutShell>
+      );
+    }
+
+    const { AccountLayoutShell } = await import("./account-layout-shell");
+    const { AccountPage } = await import("./account-page");
+    workspaceRouterRefresh.mockImplementation(() => refreshLinkedAccount());
+    const view = render(<ProfileCompletionRefreshJourney />);
+    const main = view.container.querySelector("main");
+    expect(
+      view.getByRole("heading", { name: "Complete your profile" })
+    ).toBeTruthy();
+
+    const firstName = view.getByLabelText("First name") as HTMLInputElement;
+    fireEvent.change(firstName, { target: { value: "Ada" } });
+    expect(firstName.value).toBe("Ada");
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+
+    await waitFor(() => {
+      expect(executedWorkspaceActionNames).toContain("account.profile");
+      expect(completeCustomerProfile).toHaveBeenCalledTimes(1);
+      expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
+    });
+    expect(view.container.querySelector("main")).toBe(main);
+    expect(
+      await view.findByRole("heading", {
+        name: "Accept a referral invitation",
+      })
+    ).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Accept invitation" })
+    ).toBeTruthy();
   });
 
   test("renders the support state with the contact destination and no profile data", async () => {

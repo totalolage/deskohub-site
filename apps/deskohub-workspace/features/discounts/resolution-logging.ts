@@ -1,15 +1,18 @@
 import { Effect, type Option } from "effect";
+import type { ReferralError } from "@/features/referrals/contracts";
 import type { CalendarSaleConfigurationError } from "./calendar-sale";
 import type { DiscountResolutionError } from "./errors";
 
 export type DiscountResolutionFailure =
   | CalendarSaleConfigurationError
+  | ReferralError
   | DiscountResolutionError;
 
 export type DiscountResolutionProvider =
   | "calendar"
   | "customer"
   | "code"
+  | "referral"
   | "calculator";
 
 export type DiscountResolutionOperation =

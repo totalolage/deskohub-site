@@ -31,6 +31,7 @@ import {
   type WorkspaceE2EAccountJournal,
   writeWorkspaceE2EAccountJournal,
 } from "./journal";
+import { removeWorkspaceE2EReferralRows } from "./referral-fixture";
 
 type WorkspaceE2EAccountCleanupIds = Pick<
   WorkspaceE2EAccountJournal,
@@ -70,6 +71,20 @@ export const reconcileWorkspaceE2EAccountJournal = ({
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const failures: WorkspaceE2EError[] = [];
+
+    const referralRowsExit = yield* Effect.exit(
+      removeWorkspaceE2EReferralRows({
+        syntheticDotyposCustomerIds:
+          journal.dotyposCustomerIds as DotyposCustomerId[],
+        syntheticDotyposReservationIds:
+          journal.dotyposReservationIds as DotyposReservationId[],
+      })
+    );
+    if (Exit.isFailure(referralRowsExit)) {
+      failures.push(
+        toWorkspaceE2EFailure(Cause.squash(referralRowsExit.cause))
+      );
+    }
 
     const reservationExit = yield* Effect.exit(
       reconcileReservations(datasourceConfig, candidates.dotyposReservationIds)
@@ -139,7 +154,12 @@ export const reconcileWorkspaceE2EAccountLane = (
     });
   });
 
-const accountLaneRecipientLabels = ["main", "accepted-b"] as const;
+const accountLaneRecipientLabels = [
+  "main",
+  "accepted-b",
+  "referral-owner",
+  "referral-invitee",
+] as const;
 
 type AccountLanePreparationDependencies = {
   readonly readJournal: typeof readWorkspaceE2EAccountJournal;

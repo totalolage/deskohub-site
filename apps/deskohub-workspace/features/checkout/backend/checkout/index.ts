@@ -15,6 +15,10 @@ export {
 } from "./checkout-pay-url";
 export { CheckoutPricingService } from "./checkout-pricing.service";
 export {
+  type CheckoutReferralResult,
+  CheckoutReferralService,
+} from "./checkout-referral.service";
+export {
   type CheckoutCoworkStatusSummary,
   type CheckoutMeetingRoomStatusSummary,
   type CheckoutOfficeStatusSummary,

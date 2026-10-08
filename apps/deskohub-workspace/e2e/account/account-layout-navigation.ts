@@ -16,6 +16,7 @@ const mobileViewports = [
 ] as const;
 const accountSections = [
   "reservations",
+  "referrals",
   "profile",
   "billing",
   "legal",

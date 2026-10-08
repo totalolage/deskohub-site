@@ -13,8 +13,13 @@ import {
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
+import { referralFirstBookingLockStatement } from "@/features/referrals/advisory-locks";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { redeemCodeClaim } from "./payment-lifecycle.repository";
+import {
+  ensureReferralFirstPaidTransition,
+  redeemCodeClaim,
+  redeemReferralInvitationClaim,
+} from "./payment-lifecycle.repository";
 
 export class LatePaymentRecoveryStateError extends Data.TaggedError(
   "LatePaymentRecoveryStateError"
@@ -115,6 +120,28 @@ export class LatePaymentRecoveryRepository extends Context.Service<
         ) {
           yield* db.transaction(
             Effect.fn(function* (tx) {
+              const [reservationIdentity] = yield* tx
+                .select({
+                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                })
+                .from(workspaceReservations)
+                .where(
+                  eq(workspaceReservations.id, input.workspaceReservationId)
+                )
+                .limit(1);
+              if (!reservationIdentity) {
+                return yield* recoveryStateError(
+                  "settle",
+                  input.paymentAttemptId,
+                  "Late-payment reservation was not found."
+                );
+              }
+              yield* tx.execute(
+                referralFirstBookingLockStatement(
+                  reservationIdentity.dotyposCustomerId
+                )
+              );
+
               const [recovery] = yield* tx
                 .select()
                 .from(latePaymentRecoveries)
@@ -223,6 +250,13 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     "A newer active checkout-session reservation prevents recovery."
                   );
                 }
+
+                yield* ensureReferralFirstPaidTransition({
+                  tx,
+                  dotyposCustomerId: reservation.dotyposCustomerId,
+                  workspaceReservationId: input.workspaceReservationId,
+                  paymentAttemptId: input.paymentAttemptId,
+                });
               }
 
               const [attempt] = yield* tx
@@ -266,6 +300,13 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 yield* redeemCodeClaim(
                   tx,
                   input.paymentAttemptId,
+                  recovery.verifiedPaidAt,
+                  true
+                );
+                yield* redeemReferralInvitationClaim(
+                  tx,
+                  input.paymentAttemptId,
+                  input.workspaceReservationId,
                   recovery.verifiedPaidAt,
                   true
                 );
@@ -357,6 +398,28 @@ export class LatePaymentRecoveryRepository extends Context.Service<
           function* (input) {
             return yield* db.transaction(
               Effect.fn(function* (tx) {
+                const [reservationIdentity] = yield* tx
+                  .select({
+                    dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                  })
+                  .from(workspaceReservations)
+                  .where(
+                    eq(workspaceReservations.id, input.workspaceReservationId)
+                  )
+                  .limit(1);
+                if (!reservationIdentity) {
+                  return yield* recoveryStateError(
+                    "start",
+                    input.paymentAttemptId,
+                    "Late-payment reservation was not found."
+                  );
+                }
+                yield* tx.execute(
+                  referralFirstBookingLockStatement(
+                    reservationIdentity.dotyposCustomerId
+                  )
+                );
+
                 const [existing] = yield* tx
                   .select()
                   .from(latePaymentRecoveries)

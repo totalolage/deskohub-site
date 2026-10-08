@@ -5,10 +5,13 @@ import { Effect, Layer, Predicate } from "effect";
 import { RedirectType, redirect } from "next/navigation";
 import {
   buildCheckoutPayPathFromToken,
+  CheckoutReferralService,
   PayableReservationService,
 } from "@/features/checkout/backend/checkout";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
+import { addCheckoutReferralAppliedMarker } from "@/features/checkout/checkout-referral-notice";
 import type { Locale } from "@/features/i18n";
+import { ReferralService } from "@/features/referrals";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { applyDiscountCodeSchema } from "./apply-discount-code-input";
 import { applyDiscountCodeToPayState } from "./apply-discount-code-to-pay-state";
@@ -21,7 +24,12 @@ const applyDiscountCodeAction = defineWorkspaceAction(
   (input) =>
     applyDiscountCodeToPayState(input).pipe(
       Effect.provide(
-        Layer.merge(CheckoutPricingService.Live, PayableReservationService.Live)
+        Layer.mergeAll(
+          CheckoutPricingService.Live,
+          PayableReservationService.Live,
+          ReferralService.Live,
+          CheckoutReferralService.Live
+        )
       )
     )
 );
@@ -44,16 +52,24 @@ export async function applyDiscountCodeForm(
     payStateToken,
     submittedCode: Predicate.isString(submittedCode) ? submittedCode : "",
   });
+  const data = result.data;
 
   if (
-    result.data?.status === "applied" ||
-    result.data?.status === "pricing_changed"
+    data?.freshPayUrl &&
+    (data.status === "accepted" || data.status === "already_accepted")
   ) {
-    redirect(result.data.freshPayUrl, RedirectType.replace);
+    const freshPayUrl =
+      addCheckoutReferralAppliedMarker(data.freshPayUrl, locale) ??
+      data.freshPayUrl;
+    redirect(freshPayUrl, RedirectType.replace);
   }
 
-  if (result.data?.status === "unavailable" && result.data.freshPayUrl) {
-    redirect(result.data.freshPayUrl, RedirectType.replace);
+  if (data?.freshPayUrl && data.status !== "unavailable") {
+    redirect(data.freshPayUrl, RedirectType.replace);
+  }
+
+  if (data?.status === "unavailable" && data.freshPayUrl) {
+    redirect(data.freshPayUrl, RedirectType.replace);
   }
 
   redirect(

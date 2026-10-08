@@ -10,6 +10,7 @@ import type { AccountReviewTarget } from "./review-screenshots";
  */
 export const accountReviewTargetBySection = {
   reservations: "linked-reservations-desktop",
+  referrals: "linked-referrals-desktop",
   profile: "linked-profile-desktop",
   billing: "linked-billing-desktop",
   legal: "linked-legal-desktop",
@@ -20,6 +21,7 @@ export const mobileAccountReviewTargetBySection: Readonly<
   Record<AccountSection, AccountReviewTarget | undefined>
 > = {
   reservations: "linked-reservations-mobile",
+  referrals: "linked-referrals-mobile",
   billing: "linked-billing-mobile",
   danger: "linked-danger-mobile",
   profile: undefined,
@@ -34,4 +36,5 @@ export const accountReviewTargetByCaseId: Partial<
   "account-magic-link-delivery": "completion-mobile375x900",
   "account-session-lifecycle": "callback-failed-desktop",
   "account-linking-variants": "support-desktop",
+  "account-referrals": "referral-overview-positive-desktop",
 };

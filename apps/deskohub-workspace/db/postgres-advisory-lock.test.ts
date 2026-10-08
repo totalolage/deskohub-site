@@ -11,6 +11,7 @@ import {
   type PostgresAdvisoryLockPool,
   WorkspaceDatabaseAdvisoryLock,
   withPostgresAdvisoryLock,
+  withPostgresAdvisoryLocks,
 } from "./postgres-advisory-lock";
 
 const key: PostgresAdvisoryLockKey = ["test-namespace", "resource-1"];
@@ -81,6 +82,15 @@ const runLayerLock = <A, E, R>(
   Effect.gen(function* () {
     const advisoryLock = yield* WorkspaceDatabaseAdvisoryLock;
     return yield* advisoryLock.withLock(lockKey, effect);
+  }).pipe(Effect.provide(layer));
+
+const runLayerTransactionPermit = <A, E, R>(
+  layer: ReturnType<typeof WorkspaceDatabaseAdvisoryLock.makeLayer>,
+  effect: Effect.Effect<A, E, R>
+) =>
+  Effect.gen(function* () {
+    const advisoryLock = yield* WorkspaceDatabaseAdvisoryLock;
+    return yield* advisoryLock.withTransactionPermit(effect);
   }).pipe(Effect.provide(layer));
 
 const makeTransactionPoolingPostgres = (serverSessionCount: number) => {
@@ -231,6 +241,27 @@ describe("Postgres advisory lock helper", () => {
     expect(fake.released[0]).toBeUndefined();
   });
 
+  test("acquires multiple keys on one transaction client", async () => {
+    const fake = makeFakePool();
+
+    const result = await Effect.runPromise(
+      withPostgresAdvisoryLocks(
+        fake.pool,
+        [key, ["customer-account", "account-1"]],
+        Effect.succeed("inside")
+      )
+    );
+
+    expect(result).toBe("inside");
+    expect(fake.queries).toEqual([
+      "begin",
+      "select pg_advisory_xact_lock(hashtext($1), hashtext($2))",
+      "select pg_advisory_xact_lock(hashtext($1), hashtext($2))",
+      "rollback",
+    ]);
+    expect(fake.released).toHaveLength(1);
+  });
+
   test("releases the advisory lock at transaction end so the next same-key scope does not stall under transaction pooling", async () => {
     const fake = makeTransactionPoolingPostgres(3);
     const mutexKey: PostgresAdvisoryLockKey = ["account-pooler", "profile-1"];
@@ -346,6 +377,85 @@ describe("Postgres advisory lock helper", () => {
           ["capacity", "one"],
           Effect.succeed("unreachable")
         ).pipe(Effect.flip)
+      );
+
+      expect(SqlError.isSqlError(error)).toBe(true);
+      if (SqlError.isSqlError(error)) {
+        expect(error.message).toBe(
+          "Postgres advisory lock pool capacity is too small"
+        );
+      }
+      expect(fake.connected).toBe(0);
+    } finally {
+      await fake.pool.end();
+    }
+  });
+
+  test("transaction permits share the bounded-pool gate without taking another client", async () => {
+    const fake = makeLayerPool(2);
+    const layer = WorkspaceDatabaseAdvisoryLock.makeLayer(fake.pool);
+    let enterLock!: () => void;
+    let releaseLock!: () => void;
+    const lockEntered = new Promise<void>((resolve) => {
+      enterLock = resolve;
+    });
+    const lockGate = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    let transactionEntered = false;
+    let lockPromise: Promise<unknown> | undefined;
+    let transactionPromise: Promise<unknown> | undefined;
+
+    try {
+      lockPromise = Effect.runPromise(
+        runLayerLock(
+          layer,
+          ["transaction-permit", "shared"],
+          Effect.promise(async () => {
+            enterLock();
+            await lockGate;
+          })
+        )
+      );
+      await lockEntered;
+      transactionPromise = Effect.runPromise(
+        runLayerTransactionPermit(
+          layer,
+          Effect.sync(() => {
+            transactionEntered = true;
+          })
+        )
+      );
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      expect(transactionEntered).toBe(false);
+      expect(fake.connected).toBe(1);
+
+      releaseLock();
+      await Promise.all([lockPromise, transactionPromise]);
+
+      expect(transactionEntered).toBe(true);
+      expect(fake.connected).toBe(1);
+    } finally {
+      releaseLock();
+      await Promise.allSettled(
+        [lockPromise, transactionPromise].filter(
+          (promise): promise is Promise<unknown> => promise !== undefined
+        )
+      );
+      await fake.pool.end();
+    }
+  });
+
+  test("fails closed when a transaction permit cannot leave a query connection available", async () => {
+    const fake = makeLayerPool(1);
+    const layer = WorkspaceDatabaseAdvisoryLock.makeLayer(fake.pool);
+
+    try {
+      const error = await Effect.runPromise(
+        runLayerTransactionPermit(layer, Effect.succeed("unreachable")).pipe(
+          Effect.flip
+        )
       );
 
       expect(SqlError.isSqlError(error)).toBe(true);

@@ -1,15 +1,24 @@
 import "../../shared/polyfills/temporal";
 
+import { resolve } from "node:path";
 import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
+import { m } from "@/features/i18n";
 import { WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import type { E2EDatabase } from "../integrations/database.service";
+import { workspaceE2EAccountCheckoutCaseIds } from "../playwright-checkout/case-catalog";
+import { readWorkspaceE2ERunPlan } from "../playwright-checkout/run-plan";
 import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
-import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
+import {
+  makePlaywrightBrowserRunner,
+  type Runner,
+  workspaceDir,
+} from "../runtime";
+import { WorkspaceE2ECaseService } from "../services/cases";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { WorkspaceE2EStep } from "../types";
 import { verifyAccountLayoutNavigation } from "./account-layout-navigation";
@@ -32,6 +41,10 @@ import {
 import { verifyWorkspaceE2EMarketingPreferences } from "./marketing-preferences";
 import { verifyProfileNavigation } from "./profile-navigation";
 import { makeMagicLinkRateBudget } from "./rate-budget";
+import {
+  verifyReferralInvitationReview,
+  verifyReferralOverview,
+} from "./referral-review";
 import { withWorkspaceE2EReservationHistoryFixture } from "./reservation-history-fixture";
 import {
   toWorkspaceE2EReservationHistoryFailure,
@@ -74,6 +87,7 @@ type WorkspaceE2EAccountLane = {
     }) => Promise<void>;
   };
   readonly rateBudget: ReturnType<typeof makeMagicLinkRateBudget>;
+  readonly runPlan: Awaited<ReturnType<typeof readWorkspaceE2ERunPlan>>;
   readonly run: Runner;
   readonly session: string;
 };
@@ -95,6 +109,7 @@ const accountTest = runtimeTest.extend<
   accountLane: [
     async ({ browser, environment, runContext, runEffect }, applyFixture) => {
       const config = getAccountE2EConfig(environment, runContext.runId);
+      const runPlan = await readWorkspaceE2ERunPlan();
       const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
       const lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff = {};
       let journal = emptyWorkspaceE2EAccountJournal();
@@ -138,6 +153,7 @@ const accountTest = runtimeTest.extend<
                   journalRef,
                   previewLogs,
                   rateBudget: makeMagicLinkRateBudget(),
+                  runPlan,
                   run,
                   session: `workspace-account-e2e-${runContext.runId}`,
                 })
@@ -259,6 +275,20 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                       ),
                 try: () =>
                   verifyAccountLayoutNavigation(page, async (section) => {
+                    if (section === "referrals") {
+                      await page
+                        .getByText(
+                          m.accountReferralsEligibleInvitees(
+                            { count: "0" },
+                            { locale: "en-US" }
+                          ),
+                          { exact: true }
+                        )
+                        .waitFor({
+                          state: "visible",
+                          timeout: workspaceE2ETimeouts.browserAction,
+                        });
+                    }
                     await captureAccountReview(
                       page,
                       accountLane.config.baseUrl,
@@ -277,6 +307,30 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               });
             }),
             id: "checks account layout navigation",
+            timeoutMs: workspaceE2ETimeouts.providerTransition,
+          },
+          {
+            execute: Effect.tryPromise({
+              catch: (cause) =>
+                cause instanceof WorkspaceE2EError
+                  ? cause
+                  : workspaceE2EError(
+                      "capture Czech zero-invite referral overview failed",
+                      { operation: "capture Czech referral overview" }
+                    ),
+              try: () =>
+                verifyReferralOverview({
+                  baseUrl: accountLane.config.baseUrl,
+                  count: 0,
+                  locale: "cs-CZ",
+                  page: getOwnedPage(),
+                  targets: {
+                    desktop: "linked-referrals-cs-desktop",
+                    mobile: "linked-referrals-cs-mobile",
+                  },
+                }),
+            }),
+            id: "captures zero-invite referral overview in Czech",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
           {
@@ -339,6 +393,67 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               );
             }),
             id: "checks reservation history navigation and access privacy",
+            timeoutMs: workspaceE2ETimeouts.providerTransition,
+          },
+        ];
+      } else if (caseId === "account-referrals") {
+        verifyPages = [
+          {
+            execute: Effect.tryPromise({
+              catch: (cause) =>
+                cause instanceof WorkspaceE2EError
+                  ? cause
+                  : workspaceE2EError(
+                      "capture referral overview and invitation states failed",
+                      { operation: "capture referral review states" }
+                    ),
+              try: async () => {
+                const page = getOwnedPage();
+                const baseUrl = accountLane.config.baseUrl;
+                await verifyReferralOverview({
+                  baseUrl,
+                  count: 1,
+                  locale: "en-US",
+                  page,
+                  targets: {
+                    desktop: "referral-overview-positive-desktop",
+                    mobile: "referral-overview-positive-mobile",
+                  },
+                });
+                await verifyReferralOverview({
+                  baseUrl,
+                  count: 1,
+                  locale: "cs-CZ",
+                  page,
+                  targets: {
+                    desktop: "referral-overview-positive-cs-desktop",
+                    mobile: "referral-overview-positive-cs-mobile",
+                  },
+                });
+
+                const invitationCode =
+                  accountLane.lifecycleHandoff.referralInvitationCode;
+                const unavailableCode =
+                  accountLane.lifecycleHandoff.referralUnavailableCode;
+                if (!invitationCode || !unavailableCode) {
+                  throw workspaceE2EError(
+                    "referral invitation fixture is incomplete",
+                    {
+                      diagnosticCode:
+                        "postgres_account_fixture_assertion_failed",
+                      operation: "read referral invitation handoff",
+                    }
+                  );
+                }
+                await verifyReferralInvitationReview({
+                  baseUrl,
+                  invitationCode,
+                  page,
+                  unavailableCode,
+                });
+              },
+            }),
+            id: "captures eligible accepted and unavailable referral states",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
         ];
@@ -421,4 +536,109 @@ for (const caseId of workspaceE2EAccountCaseIds) {
       );
     }
   );
+
+  if (caseId === "account-referrals") {
+    accountTest(
+      workspaceE2EAccountCheckoutCaseIds[0],
+      async ({ accountLane, browser, environment, runEffect }) => {
+        const contact = accountLane.lifecycleHandoff.referralCheckoutContact;
+        const referralCode =
+          accountLane.lifecycleHandoff.referralInvitationCode;
+        if (!contact || !referralCode) {
+          throw new Error("account referral checkout handoff is incomplete");
+        }
+
+        const { getConfig, getDatasourceConfig } = await import("../config");
+        const { writeWorkspaceE2ECaseJournal } = await import(
+          "../playwright-checkout/run-plan"
+        );
+        const config = getConfig(environment);
+        const datasourceConfig = getDatasourceConfig(environment);
+        const caseId = workspaceE2EAccountCheckoutCaseIds[0];
+        const plannedCase = await runEffect(
+          Effect.gen(function* () {
+            const caseService = yield* WorkspaceE2ECaseService;
+            const cases = yield* caseService.reconstructCases({
+              allocation: accountLane.runPlan.runContext.allocation,
+              config,
+              datasourceConfig,
+              flowStates: [],
+              preparation: accountLane.runPlan.preparation,
+              run: accountLane.run,
+            });
+            return cases.find((candidate) => candidate.id === caseId);
+          })
+        );
+        if (!plannedCase) {
+          throw new Error("planned account referral checkout was not built");
+        }
+
+        const { bindWorkspaceE2EAccountReferralCheckout } = await import(
+          "./referral-checkout"
+        );
+        const { captureReferralCheckoutReview } = await import(
+          "./referral-checkout-review"
+        );
+        const pages = browser.contexts().flatMap((context) => context.pages());
+        const page = pages.length === 1 ? pages[0] : undefined;
+        if (!page) throw new Error(accountReviewCaptureFailureMessage);
+        const boundCase = bindWorkspaceE2EAccountReferralCheckout({
+          captureReview: ({ expectedPayUrl, orderId, target }) =>
+            captureReferralCheckoutReview({
+              baseUrl: config.baseUrl,
+              expectedPayUrl,
+              orderId,
+              page,
+              target,
+            }),
+          config,
+          contact: {
+            ...contact,
+            customerId: DotyposCustomerIdSchema.make(contact.customerId),
+          },
+          datasourceConfig,
+          referralCode,
+          run: accountLane.run,
+          testCase: plannedCase,
+        });
+
+        const journalStartedAt = new Date();
+        await writeWorkspaceE2ECaseJournal(
+          caseId,
+          boundCase.checkoutStates,
+          journalStartedAt
+        );
+        try {
+          await runEffect(
+            Effect.gen(function* () {
+              const caseService = yield* WorkspaceE2ECaseService;
+              yield* caseService.runCase({
+                artifactRoot: resolve(
+                  workspaceDir,
+                  "e2e-artifacts",
+                  "checkout",
+                  "cases"
+                ),
+                browserSession: {
+                  ownership: "borrowed",
+                  session: accountLane.session,
+                },
+                datasourceConfig,
+                run: accountLane.run,
+                sessionPrefix: `workspace-checkout-e2e-${accountLane.runPlan.runContext.runId}`,
+                testCase: boundCase,
+                timeouts: config.timeouts,
+              });
+            })
+          );
+        } finally {
+          await writeWorkspaceE2ECaseJournal(
+            caseId,
+            boundCase.checkoutStates,
+            journalStartedAt
+          );
+        }
+      }
+    );
+  }
 }

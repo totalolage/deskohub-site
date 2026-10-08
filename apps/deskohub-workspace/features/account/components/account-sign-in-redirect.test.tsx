@@ -8,6 +8,7 @@ import {
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { parseReferralCode } from "@/features/referrals/client";
 import { workspaceRouterReplace } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -45,4 +46,20 @@ describe("AccountSignInRedirect", () => {
       expect(view.container.textContent).not.toContain("@");
     }
   );
+
+  test("preserves only the referral code on the fixed sign-in redirect", () => {
+    const referralCode = parseReferralCode("RFL12345");
+    if (referralCode === undefined) throw new Error("Invalid referral fixture");
+    const props = { locale: "en-US" as const, referralCode };
+    const view = render(<AccountSignInRedirect {...props} />);
+    const staticMarkup = renderToStaticMarkup(
+      <AccountSignInRedirect {...props} />
+    );
+
+    expect(workspaceRouterReplace).toHaveBeenCalledWith(
+      "/en-US/auth/sign-in?ref=RFL12345"
+    );
+    expect(staticMarkup).toContain('href="/en-US/auth/sign-in?ref=RFL12345"');
+    expect(view.container.textContent).not.toContain("returnTo");
+  });
 });

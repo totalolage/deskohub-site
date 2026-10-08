@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
 import { type Locale, m } from "@/features/i18n";
+import type { ReferralCode } from "@/features/referrals/client";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
@@ -12,14 +13,15 @@ import { Label } from "@/shared/components/ui/label";
 
 type SignInCardProps = {
   readonly locale: Locale;
+  readonly referralCode?: ReferralCode;
 };
 
-export function SignInCard({ locale }: SignInCardProps) {
+export function SignInCard({ locale, referralCode }: SignInCardProps) {
   const [requested, setRequested] = useState(false);
   const [failed, setFailed] = useState(false);
   const authReturn = useMemo(
-    () => createAuthReturnLifecycle({ locale }),
-    [locale]
+    () => createAuthReturnLifecycle({ locale, referralCode }),
+    [locale, referralCode]
   );
 
   useEffect(() => authReturn.cancel, [authReturn]);

@@ -1,8 +1,16 @@
 import { Context, Effect, Layer, Option, Schema, Scope } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
-import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
+import {
+  positiveWorkspaceMoneyCodec,
+  workspaceMoneyWithValue,
+} from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
+import { ReferralService } from "@/features/referrals";
+import {
+  getReferralInvitationDiscountId,
+  getReferralReferrerDiscountId,
+} from "@/features/referrals/discount-identifiers";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
@@ -134,7 +142,115 @@ export class DiscountService extends Context.Service<
       const calendar = yield* CalendarDiscountProvider;
       const customer = yield* CustomerDiscountProvider;
       const code = yield* PromotionCodeProvider;
+      const referrals = yield* ReferralService;
       const releaseGates = yield* DiscountReleaseGateService;
+
+      const appendReferralDiscounts = Effect.fn(
+        "DiscountService.appendReferralDiscounts"
+      )(
+        (input: {
+          readonly baseQuote: DiscountQuote;
+          readonly dotyposCustomerId: DotyposCustomerId;
+          readonly locale: Locale;
+          readonly operation: DiscountResolutionOperation;
+          readonly voucherCandidates: readonly DiscountCandidate[];
+        }) => {
+          // Voucher candidates are last in each provider order; reapply their credit after referral pricing.
+          const voucherCandidates = input.voucherCandidates.filter(
+            ({ claim }) => claim?.kind === "voucher"
+          );
+          return Effect.succeed(input).pipe(
+            Effect.let("referralBaseQuote", () =>
+              removeVoucherApplications(input.baseQuote, voucherCandidates)
+            ),
+            Effect.bind("invitationCandidate", () =>
+              recoverDiscountResolution(
+                referrals.resolveInvitationCandidate({
+                  dotyposCustomerId: input.dotyposCustomerId,
+                  locale: input.locale,
+                }),
+                { operation: input.operation, provider: "referral" }
+              ).pipe(Effect.map(Option.getOrUndefined))
+            ),
+            Effect.bind(
+              "invitationCalculation",
+              ({ invitationCandidate, referralBaseQuote }) =>
+                calculateDiscounts({
+                  product: referralBaseQuote.product,
+                  discountableSubtotal: referralBaseQuote.discountedSubtotal,
+                  candidates: invitationCandidate ? [invitationCandidate] : [],
+                })
+            ),
+            Effect.bind("referrerCandidate", ({ invitationCalculation }) =>
+              recoverDiscountResolution(
+                referrals.resolveReferrerCandidate({
+                  dotyposCustomerId: input.dotyposCustomerId,
+                  locale: input.locale,
+                  remainingSubtotal:
+                    invitationCalculation.quote.discountedSubtotal,
+                }),
+                { operation: input.operation, provider: "referral" }
+              ).pipe(Effect.map(Option.getOrUndefined))
+            ),
+            Effect.bind(
+              "referrerCalculation",
+              ({
+                invitationCalculation,
+                referrerCandidate,
+                referralBaseQuote,
+              }) =>
+                calculateDiscounts({
+                  product: referralBaseQuote.product,
+                  discountableSubtotal:
+                    invitationCalculation.quote.discountedSubtotal,
+                  candidates: referrerCandidate ? [referrerCandidate] : [],
+                })
+            ),
+            Effect.map(
+              ({
+                invitationCalculation,
+                referrerCalculation,
+                referralBaseQuote,
+              }) => {
+                const addedDiscount =
+                  invitationCalculation.quote.totalDiscount.value +
+                  referrerCalculation.quote.totalDiscount.value;
+                const addedApplications = [
+                  ...invitationCalculation.applications,
+                  ...referrerCalculation.applications,
+                ];
+                return {
+                  quote: {
+                    product: referralBaseQuote.product,
+                    discountableSubtotal:
+                      referralBaseQuote.discountableSubtotal,
+                    discounts: [
+                      ...referralBaseQuote.discounts,
+                      ...invitationCalculation.quote.discounts,
+                      ...referrerCalculation.quote.discounts,
+                    ],
+                    totalDiscount: workspaceMoneyWithValue(
+                      referralBaseQuote.totalDiscount.value + addedDiscount,
+                      referralBaseQuote.totalDiscount
+                    ),
+                    discountedSubtotal:
+                      referrerCalculation.quote.discountedSubtotal,
+                  } satisfies DiscountQuote,
+                  applications: addedApplications,
+                };
+              }
+            ),
+            Effect.flatMap((referralQuote) => {
+              return voucherCandidates.length === 0
+                ? Effect.succeed(referralQuote)
+                : appendDiscounts({
+                    baseQuote: referralQuote.quote,
+                    candidates: voucherCandidates,
+                  }).pipe(Effect.map((quote) => ({ ...referralQuote, quote })));
+            })
+          );
+        }
+      );
 
       const resolveQuoteCandidates = Effect.fn(
         "DiscountService.resolveQuoteCandidates"
@@ -243,8 +359,23 @@ export class DiscountService extends Context.Service<
               resolveQuoteCandidates({ quoteInput: input, releaseGates })
             ),
             Effect.bind("calculation", calculateDiscounts),
-            Effect.tap(logDiscountResolution),
-            Effect.map(({ calculation }) => calculation.quote)
+            Effect.bind("referralQuote", ({ calculation }) =>
+              appendReferralDiscounts({
+                baseQuote: calculation.quote,
+                dotyposCustomerId: input.dotyposCustomerId,
+                locale: input.locale,
+                operation: "quote",
+                voucherCandidates: calculation.applications.map(
+                  ({ candidate }) => candidate
+                ),
+              })
+            ),
+            Effect.tap(({ referralQuote }) =>
+              logDiscountResolution({
+                calculation: { applications: referralQuote.quote.discounts },
+              })
+            ),
+            Effect.map(({ referralQuote }) => referralQuote.quote)
           ),
         withServiceAnnotations("quote")
       );
@@ -388,28 +519,37 @@ export class DiscountService extends Context.Service<
                 )
               )
             ),
-            Effect.bind("quote", ({ codeCandidates, customerQuote }) =>
+            Effect.bind("ordinaryQuote", ({ codeCandidates, customerQuote }) =>
               appendDiscounts({
                 baseQuote: customerQuote,
                 candidates: codeCandidates,
               })
             ),
-            Effect.tap(({ quote }) =>
-              logDiscountResolution({
-                calculation: { applications: quote.discounts },
+            Effect.bind("referralQuote", ({ codeCandidates, ordinaryQuote }) =>
+              appendReferralDiscounts({
+                baseQuote: ordinaryQuote,
+                dotyposCustomerId: input.dotyposCustomerId,
+                locale: input.locale,
+                operation: "apply_customer_discount",
+                voucherCandidates: codeCandidates,
               })
             ),
-            Effect.map(({ codeCandidates, quote }) => {
+            Effect.tap(({ referralQuote }) =>
+              logDiscountResolution({
+                calculation: { applications: referralQuote.quote.discounts },
+              })
+            ),
+            Effect.map(({ codeCandidates, ordinaryQuote, referralQuote }) => {
               const advertisedCode = input.affirmedAdvertisement.discounts.find(
                 ({ discount }) => discount.id === input.submittedCodeDiscountId
               )?.discount;
               const revalidatedCode = codeCandidates[0]?.discount;
-              const codeApplied = quote.discounts.some(
+              const codeApplied = ordinaryQuote.discounts.some(
                 ({ discount }) => discount.id === input.submittedCodeDiscountId
               );
 
               return {
-                ...quote,
+                ...referralQuote.quote,
                 advertisedPriceChanged:
                   advertisedCode !== undefined &&
                   (!codeApplied ||
@@ -467,19 +607,52 @@ export class DiscountService extends Context.Service<
             ),
             Effect.bind("candidates", ({ releaseGates }) =>
               resolveDisplayedCandidates({
-                affirmationInput: input,
+                affirmationInput: {
+                  ...input,
+                  displayedDiscountIds: getOrdinaryDiscountIds(input),
+                },
                 releaseGates,
               })
             ),
             Effect.bind("calculation", calculateDiscounts),
-            Effect.tap(logDiscountResolution),
-            Effect.map(({ calculation }) => ({
-              quote: calculation.quote,
-              commitment: makeDiscountCommitment({
-                product: calculation.quote.product,
-                applications: calculation.applications,
-              }),
-            }))
+            Effect.bind("referralQuote", ({ calculation }) =>
+              appendReferralDiscounts({
+                baseQuote: calculation.quote,
+                dotyposCustomerId: input.dotyposCustomerId,
+                locale: input.locale,
+                operation: "affirm_displayed_discounts",
+                voucherCandidates: calculation.applications.map(
+                  ({ candidate }) => candidate
+                ),
+              })
+            ),
+            Effect.tap(({ referralQuote }) =>
+              logDiscountResolution({
+                calculation: { applications: referralQuote.quote.discounts },
+              })
+            ),
+            Effect.map(({ calculation, referralQuote }) => {
+              const candidatesById = new Map<DiscountId, DiscountCandidate>();
+              for (const { candidate } of [
+                ...calculation.applications,
+                ...referralQuote.applications,
+              ]) {
+                candidatesById.set(candidate.discount.id, candidate);
+              }
+              const applications = referralQuote.quote.discounts.flatMap(
+                (application) => {
+                  const candidate = candidatesById.get(application.discount.id);
+                  return candidate ? [{ application, candidate }] : [];
+                }
+              );
+              return {
+                quote: referralQuote.quote,
+                commitment: makeDiscountCommitment({
+                  product: referralQuote.quote.product,
+                  applications,
+                }),
+              };
+            })
           ),
         withServiceAnnotations("affirm_displayed_discounts")
       );
@@ -487,13 +660,18 @@ export class DiscountService extends Context.Service<
       const applyDiscountCode = Effect.fn("DiscountService.applyDiscountCode")(
         (input: ApplyDiscountCodeInput) =>
           Effect.succeed(input).pipe(
+            Effect.let("ordinaryBaseQuote", () =>
+              removeReferralDiscounts(input.baseQuote, input.dotyposCustomerId)
+            ),
             Effect.bind("releaseGates", () =>
               releaseGates.evaluate({ operation: "apply_discount_code" })
             ),
             Effect.tap(({ releaseGates }) =>
               requireDiscountCodesEnabled(releaseGates)
             ),
-            Effect.tap(requireEligibleSubtotal),
+            Effect.tap(({ ordinaryBaseQuote }) =>
+              requireEligibleSubtotal({ baseQuote: ordinaryBaseQuote })
+            ),
             Effect.bind("candidates", () =>
               code.revalidate({
                 product: input.baseQuote.product,
@@ -503,21 +681,39 @@ export class DiscountService extends Context.Service<
                 submittedCode: input.submittedCode,
               })
             ),
-            Effect.bind("quote", ({ candidates }) =>
+            Effect.bind("ordinaryQuote", ({ candidates, ordinaryBaseQuote }) =>
               appendDiscounts({
-                baseQuote: input.baseQuote,
+                baseQuote: ordinaryBaseQuote,
                 candidates,
               })
             ),
-            Effect.bind("application", ({ quote }) =>
-              requireAppliedCode({ baseQuote: input.baseQuote, quote })
-            ),
-            Effect.tap(({ quote }) =>
-              logDiscountResolution({
-                calculation: { applications: quote.discounts },
+            Effect.bind("application", ({ ordinaryBaseQuote, ordinaryQuote }) =>
+              requireAppliedCode({
+                baseQuote: ordinaryBaseQuote,
+                quote: ordinaryQuote,
               })
             ),
-            Effect.map(({ application, quote }) => ({ application, quote }))
+            Effect.bind("referralQuote", ({ candidates, ordinaryQuote }) =>
+              appendReferralDiscounts({
+                baseQuote: ordinaryQuote,
+                dotyposCustomerId: input.dotyposCustomerId,
+                locale: input.locale,
+                operation: "apply_discount_code",
+                voucherCandidates: candidates,
+              })
+            ),
+            Effect.tap(({ referralQuote }) =>
+              logDiscountResolution({
+                calculation: { applications: referralQuote.quote.discounts },
+              })
+            ),
+            Effect.map(({ application, referralQuote }) => ({
+              application:
+                referralQuote.quote.discounts.find(
+                  ({ discount }) => discount.id === application.discount.id
+                ) ?? application,
+              quote: referralQuote.quote,
+            }))
           ),
         withApplyDiscountCodeAnnotations
       );
@@ -556,7 +752,11 @@ function makeDiscountServiceLayer(
     CustomerDiscountProvider.Default,
     PromotionCodeProvider.Default
   ).pipe(Layer.provide(providerDependencies));
-  const dependencies = Layer.merge(discountProviders, releaseGates);
+  const dependencies = Layer.mergeAll(
+    discountProviders,
+    releaseGates,
+    ReferralService.Live
+  );
   const processScope = Scope.makeUnsafe();
   const processMemoMap = Layer.makeMemoMapUnsafe();
 
@@ -601,6 +801,79 @@ const selectDiscountCandidates = (input: {
     const candidate = candidatesById.get(discountId);
     return candidate ? [candidate] : [];
   });
+};
+
+const getReferralDiscountIds = (dotyposCustomerId: DotyposCustomerId) => [
+  getReferralInvitationDiscountId(dotyposCustomerId),
+  getReferralReferrerDiscountId(dotyposCustomerId),
+];
+
+const getOrdinaryDiscountIds = (input: DisplayedDiscountAffirmationInput) => {
+  const referralIds = new Set(getReferralDiscountIds(input.dotyposCustomerId));
+  return input.displayedDiscountIds.filter(
+    (discountId) => !referralIds.has(discountId)
+  );
+};
+
+const removeReferralDiscounts = (
+  quote: DiscountQuote,
+  dotyposCustomerId: DotyposCustomerId
+): DiscountQuote => {
+  const referralIds = new Set(getReferralDiscountIds(dotyposCustomerId));
+  const firstReferral = quote.discounts.find(({ discount }) =>
+    referralIds.has(discount.id)
+  );
+  if (!firstReferral) return quote;
+
+  const discounts = quote.discounts.filter(
+    ({ discount }) => !referralIds.has(discount.id)
+  );
+  const discountedSubtotal = firstReferral.subtotalBefore;
+  return {
+    ...quote,
+    discounts,
+    totalDiscount: workspaceMoneyWithValue(
+      quote.discountableSubtotal.value - discountedSubtotal.value,
+      quote.totalDiscount
+    ),
+    discountedSubtotal,
+  };
+};
+
+const removeVoucherApplications = (
+  quote: DiscountQuote,
+  candidates: readonly DiscountCandidate[]
+): DiscountQuote => {
+  const voucherIds = new Set(
+    candidates
+      .filter(({ claim }) => claim?.kind === "voucher")
+      .map(({ discount }) => discount.id)
+  );
+  if (voucherIds.size === 0) return quote;
+
+  const voucherApplications = quote.discounts.filter(({ discount }) =>
+    voucherIds.has(discount.id)
+  );
+  if (voucherApplications.length === 0) return quote;
+
+  const voucherAmount = voucherApplications.reduce(
+    (total, application) => total + application.amount.value,
+    0
+  );
+  return {
+    ...quote,
+    discounts: quote.discounts.filter(
+      ({ discount }) => !voucherIds.has(discount.id)
+    ),
+    totalDiscount: workspaceMoneyWithValue(
+      quote.totalDiscount.value - voucherAmount,
+      quote.totalDiscount
+    ),
+    discountedSubtotal: workspaceMoneyWithValue(
+      quote.discountedSubtotal.value + voucherAmount,
+      quote.discountedSubtotal
+    ),
+  };
 };
 
 const logDiscountResolution = (input: {

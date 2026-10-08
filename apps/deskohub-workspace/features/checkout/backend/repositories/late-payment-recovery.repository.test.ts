@@ -59,6 +59,7 @@ const reservationRowDefaults = {
   checkoutSessionKey: "session-1",
   createdAt: paidAt,
   activePaymentAttemptId: "attempt-1",
+  dotyposCustomerId: "dotypos-customer-1",
   reservationState: "held",
   dotyposReservationId: "dotypos-original",
 };
@@ -74,12 +75,17 @@ const reservationRow = (
 const settleSuccessRows = (
   reservation: Partial<typeof reservationRowDefaults>
 ) => [
+  [["dotypos-customer-1"]],
+  [], // advisory lock
   [processingRecoveryRow()],
   [reservationRow(reservation)],
-  [],
+  [], // no newer active reservation
+  [], // no referral claim on this attempt
+  [], // no referral attribution
   [["attempt-1"]],
-  [],
-  [],
+  [], // no discount-code claim
+  [], // no voucher claim
+  [], // no referral invitation claim
   [["reservation-1"]],
   [],
 ];
@@ -104,6 +110,8 @@ describe("LatePaymentRecoveryRepository", () => {
   test("rechecks supersession when settling with the original reservation", async () => {
     const { recording, repository } = await makeRepository();
     recording.setRows([
+      [["dotypos-customer-1"]],
+      [],
       [processingRecoveryRow()],
       [reservationRow()],
       [["reservation-2"]],
@@ -165,6 +173,8 @@ describe("LatePaymentRecoveryRepository", () => {
   test("marks the settled payment attempt as requiring a refund without replacing the reservation", async () => {
     const { recording, repository } = await makeRepository();
     recording.setRows([
+      [["dotypos-customer-1"]],
+      [],
       [processingRecoveryRow()],
       [reservationRow({ activePaymentAttemptId: "attempt-2" })],
       [["attempt-1"]],
@@ -196,9 +206,7 @@ describe("LatePaymentRecoveryRepository", () => {
 
   test("redeems the attempt's discount claim inside the recovered settlement transaction", async () => {
     const { recording, repository } = await makeRepository();
-    recording.setRows(
-      settleSuccessRows(reservationRow({ reservationState: "held" }))
-    );
+    recording.setRows(settleSuccessRows({ reservationState: "held" }));
 
     await Effect.runPromise(
       repository.completeUsingOriginalReservation({
