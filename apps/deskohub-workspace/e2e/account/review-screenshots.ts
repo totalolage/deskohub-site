@@ -399,9 +399,7 @@ const validateCallbackLoadingCapture = async (
     exact: true,
     name: callbackLoadingName,
   });
-  const loadingText = loadingCard.getByText(callbackLoadingName, {
-    exact: true,
-  });
+  const loadingSkeleton = loadingCard.locator('[data-slot="skeleton"]').first();
 
   await waitForAccountReviewOperation(
     () =>
@@ -431,7 +429,7 @@ const validateCallbackLoadingCapture = async (
   );
   await waitForAccountReviewOperation(
     () =>
-      loadingText.waitFor({
+      loadingSkeleton.waitFor({
         state: "visible",
         timeout: remainingAccountReviewBudget(deadline),
       }),

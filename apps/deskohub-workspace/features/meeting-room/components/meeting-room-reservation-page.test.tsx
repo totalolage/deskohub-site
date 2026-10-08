@@ -164,7 +164,6 @@ test("prefills the fresh form from checkout query defaults", async () => {
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "+420777777777",
-      message: "",
       billing: { purpose: "personal", invoice: "none" },
       marketingConsent: false,
     });

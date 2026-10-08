@@ -66,7 +66,10 @@ import {
   storedWebhookEventIdSchema,
 } from "@/features/checkout/checkout-identifiers";
 import { legalEvidenceEventIdSchema } from "@/features/checkout/legal-evidence";
-import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceProductByTier,
+  type WorkspaceCoworkProductTier,
+} from "@/features/checkout/product-catalog";
 import {
   type DiscountApplicationId,
   discountApplicationIdSchema,
@@ -309,6 +312,8 @@ export type AdministrationCustomerReservationActivityCategory =
   | Exclude<WorkspaceReservationKind, "cowork">;
 
 const customerReservationActivityCategoryPriority = {
+  "cowork-open-space": 0,
+  "cowork-reserved-desk": 1,
   "cowork-basic": 0,
   "cowork-plus": 1,
   "cowork-profi": 2,
@@ -620,8 +625,7 @@ const getReservationTypeLabel = (
 ) => {
   if (row.reservationDetails.kind === "meeting-room") return "Meeting Room";
   if (row.reservationDetails.kind === "office") return "Private Office";
-  const tier = row.reservationDetails.entryTier;
-  return `Cowork ${tier[0]?.toUpperCase()}${tier.slice(1)}`;
+  return getWorkspaceProductByTier(row.reservationDetails.entryTier).label;
 };
 
 const getReservationDate = (startsAt: string) =>

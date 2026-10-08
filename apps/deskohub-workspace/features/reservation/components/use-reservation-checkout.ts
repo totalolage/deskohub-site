@@ -16,13 +16,13 @@ import {
   getReservationAnalyticsProperties,
   type ReservationPrePaymentOutcome,
 } from "@/features/reservation/reservation-analytics";
-import type { ReservationOrderData } from "@/features/reservation/reservation-order";
+import type { ReservationOrderIssuanceData } from "@/features/reservation/reservation-order";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 
 type ReservationCheckoutDetails = {
   readonly advertisedPriceToken: string;
   readonly marketingConsent?: boolean;
-  readonly reservation: ReservationOrderData;
+  readonly reservation: ReservationOrderIssuanceData;
 };
 
 type UseReservationCheckoutOptions = {

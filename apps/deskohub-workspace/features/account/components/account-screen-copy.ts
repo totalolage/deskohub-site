@@ -56,7 +56,6 @@ export function getAccountScreenCopy(locale: Locale) {
       checkIn: m.accountReservationCheckIn({}, { locale }),
       date: m.accountReservationDate({}, { locale }),
       moreCurrent: m.accountReservationMoreCurrent({}, { locale }),
-      nfcAccess: m.accountReservationNfcAccess({}, { locale }),
       product: m.accountReservationProduct({}, { locale }),
       seats: m.accountReservationSeatsLabel({}, { locale }),
       showPinCode: m.accountReservationShowPinCode({}, { locale }),

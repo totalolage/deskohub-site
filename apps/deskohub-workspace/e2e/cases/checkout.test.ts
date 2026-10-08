@@ -6,7 +6,11 @@ import type { Customer } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
-import { formatReservationDisplayDateRange } from "@/features/reservation/reservation-date";
+import {
+  formatReservationDisplayDate,
+  formatReservationDisplayDateRange,
+  formatReservationDisplayTimeRange,
+} from "@/features/reservation/reservation-date";
 import {
   importSpecifiers,
   parseTrackedSource,
@@ -178,6 +182,55 @@ test("observes fulfillment across server and runner whitespace variants", async 
 
   expect(commands.some((args) => args.includes("open"))).toBe(false);
   expect(commands.filter((args) => args.includes("eval"))).toHaveLength(2);
+});
+
+test("preserves an Open Space-length meeting-room interval on the fulfilled status page", async () => {
+  const reservedFrom = Temporal.Instant.from("2026-06-09T22:00:00Z");
+  const reservedUntil = Temporal.Instant.from("2026-06-10T15:00:00Z");
+  const expectedDate = formatReservationDisplayDate(reservedFrom, "en-US");
+  const expectedTime = formatReservationDisplayTimeRange(
+    reservedFrom,
+    reservedUntil,
+    "en-US"
+  );
+  const run = (async (_command: string, args: string[]) => {
+    const readsUrl = args.at(-2) === "get" && args.at(-1) === "url";
+
+    return {
+      exitCode: 0,
+      stderr: "",
+      stdout: readsUrl
+        ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
+        : `Your reservation is confirmed. Your payment is complete and the secure access link has been sent by email. ${expectedDate} ${expectedTime} CZK 0`,
+    };
+  }) as Runner;
+
+  await Effect.runPromise(
+    assertFulfilledStatusPage({
+      checkoutRow: {
+        amount_exponent: 2,
+        amount_value: 0,
+        currency: "CZK",
+      } as CheckoutRow,
+      config: {
+        expectedHost: "workspace.test",
+        timeouts: workspaceE2ETimeouts,
+      } as WorkspaceE2EConfig,
+      data: {
+        locale: "en-US",
+        meetingRoom: {},
+      } as CheckoutData,
+      dotyposReservation: {
+        reservedFrom,
+        reservedUntil,
+      } as never,
+      orderId: "order-id",
+      run,
+      session: "open-space-length-meeting-room-status-page",
+    }).pipe(
+      Effect.provideService(E2EDatabase, E2EDatabase.of({ db: {} as never }))
+    )
+  );
 });
 
 test("asserts office range, seats, and price on the fulfilled status page", async () => {

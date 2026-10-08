@@ -65,7 +65,7 @@ const testKey: AccountingSnapshotKey = {
   secret: "synthetic accounting snapshot secret!",
 };
 const coworkOrder = {
-  entryTier: "basic",
+  entryTier: "open-space",
   coffee: true,
 } satisfies CoworkReservationQuoteOrder;
 const prepared = {

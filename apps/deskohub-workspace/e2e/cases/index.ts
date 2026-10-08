@@ -92,8 +92,8 @@ export const makeWorkspaceE2ECases = ({
         {
           allocation,
           maximumReservationsPerDate:
-            workspaceE2EMaximumSameDateCoworkReservations.basic,
-          selectionLabel: "tier:basic",
+            workspaceE2EMaximumSameDateCoworkReservations["open-space"],
+          selectionLabel: "open-space",
         }
       );
       const cases: WorkspaceE2ECase[] = [

@@ -86,7 +86,8 @@ export const discountCodeFixtures = {
   },
   voucherReuse: {
     code: canonicalPromotionCodeSchema.make("E2E_VOUCHER_REUSE"),
-    creditPerRun: { value: 56_000, exponent: 2, currency: "CZK" },
+    // 2 × Open Space one-day after 20% Calendar sale (2 × 23_200).
+    creditPerRun: { value: 46_400, exponent: 2, currency: "CZK" },
     id: voucherIdSchema.make("df62e84a-10be-49b4-ae62-6fa30765a6a9"),
   },
   voucherFull: {

@@ -16,7 +16,10 @@ import type {
   ReservationInterval,
   ReservationIntervalInput,
 } from "@/features/reservation/reservation-interval-domain";
-import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
+import {
+  isCoworkReservationInterval,
+  isSingleDayReservationInterval,
+} from "@/features/reservation/reservation-interval-domain";
 import { normalizeReservationIntervalFields } from "@/features/reservation/reservation-interval-normalization";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -30,7 +33,7 @@ export type {
   ReservationInterval,
   ReservationIntervalInput,
 } from "@/features/reservation/reservation-interval-domain";
-export { isSingleDayReservationInterval };
+export { isCoworkReservationInterval, isSingleDayReservationInterval };
 
 export class ReservationIntervalError extends Data.TaggedError(
   "ReservationIntervalError"
@@ -92,7 +95,7 @@ export const wholeHourReservationInstantSchema =
   makeWholeHourInstantStringSchema(workspaceSiteConstants.location.timeZone);
 
 export const coworkReservationIntervalSchema = reservationIntervalSchema.check(
-  Schema.makeFilter(isSingleDayReservationInterval, {
+  Schema.makeFilter(isCoworkReservationInterval, {
     message: "Cowork reservations must use the full-day duration.",
   })
 );

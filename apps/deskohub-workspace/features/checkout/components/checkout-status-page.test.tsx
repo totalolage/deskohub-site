@@ -461,10 +461,63 @@ describe("CheckoutStatusPage", () => {
     expect(capturedLinks.some(({ href }) => href === stepHref)).toBe(false);
 
     const url = new URL(stepHref ?? "", "https://deskohub.local");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      entryTier: "profi",
+      coffee: "true",
+      monitorOption: "2x27-qhd",
+    });
     const defaults = getReservationDefaultValuesFromSearchParams(
       url.searchParams
     );
-    expect(defaults.entryTier).toBe("profi");
+    expect(defaults.entryTier).toBe("open-space");
+    expect(defaults.coffee).toBe(true);
+    expect(defaults.monitorOption).toBeUndefined();
+    expect(defaults.date).toBe("");
+    expect(defaults.name).toBe("");
+    expect(defaults.email).toBe("");
+    expect(defaults.phone).toBe("");
+    expect(defaults.marketingConsent).toBe(false);
+  });
+
+  test("restores a current Reserved Desk through the raw repeat anchor", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          summary: {
+            kind: "cowork",
+            entryTier: "reserved-desk",
+            coffee: true,
+            monitorOption: "2x27-qhd",
+            reservedFrom: Temporal.Instant.from("2026-06-19T22:00:00Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-20T22:00:00Z"),
+            price: { value: 53_000, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+
+    const ctaHref = view.container
+      .querySelector("#checkout-status-reserve-again")
+      ?.getAttribute("href");
+    expect(ctaHref).toBe(
+      "/en-US/reservation/cowork?entryTier=reserved-desk&coffee=true&monitorOption=2x27-qhd"
+    );
+    const completedOrderStep = Array.from(
+      view.container.querySelectorAll("main ol a")
+    ).find((step) => step.getAttribute("href") === ctaHref);
+    expect(completedOrderStep).not.toBeNull();
+    expect(completedOrderStep?.getAttribute("href")).toBe(ctaHref);
+    expect(completedOrderStep?.getAttribute("data-next-link")).toBeNull();
+    const stepHref = completedOrderStep?.getAttribute("href");
+    expect(capturedLinks.some(({ href }) => href === stepHref)).toBe(false);
+
+    const url = new URL(stepHref ?? "", "https://deskohub.local");
+    const defaults = getReservationDefaultValuesFromSearchParams(
+      url.searchParams
+    );
+    expect(defaults.entryTier).toBe("reserved-desk");
     expect(defaults.coffee).toBe(true);
     expect(defaults.monitorOption).toBe("2x27-qhd");
     expect(defaults.date).toBe("");
@@ -603,7 +656,7 @@ describe("CheckoutStatusPage", () => {
     const defaults = getReservationDefaultValuesFromSearchParams(
       url.searchParams
     );
-    expect(defaults.entryTier).toBe("basic");
+    expect(defaults.entryTier).toBe("open-space");
     expect(defaults.coffee).toBe(false);
     expect(defaults.monitorOption).toBeUndefined();
     expect(defaults.date).toBe("");

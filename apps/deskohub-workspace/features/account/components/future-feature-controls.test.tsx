@@ -237,7 +237,6 @@ const reservationCopy = {
     checkIn: "Check in",
     date: "Date",
     moreCurrent: "More current and upcoming reservations",
-    nfcAccess: "NFC access",
     product: "Product",
     seats: "Seats",
     showPinCode: "Show PIN code",
@@ -253,7 +252,6 @@ const reservationCopy = {
     checkIn: "Odbavit se",
     date: "Datum",
     moreCurrent: "Další aktuální a nadcházející rezervace",
-    nfcAccess: "NFC přístup",
     product: "Produkt",
     seats: "Místa",
     showPinCode: "Zobrazit PIN kód",
@@ -478,11 +476,6 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
     render: renderReservationHistory,
   },
   {
-    label: (locale) => reservationCopy[locale].nfcAccess,
-    name: "NFC control",
-    render: renderReservationHistory,
-  },
-  {
     label: (locale) => m.legalScreenArchiveAction({}, { locale }),
     name: "GDPR archive control",
     render: renderLegalScreen,
@@ -490,8 +483,8 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
 ];
 
 describe("account future-feature controls", () => {
-  test("keeps the future-feature inventory at seven controls", () => {
-    expect(futureFeatureTargets).toHaveLength(7);
+  test("keeps the future-feature inventory at six controls", () => {
+    expect(futureFeatureTargets).toHaveLength(6);
   });
 
   for (const target of futureFeatureTargets) {

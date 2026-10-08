@@ -71,3 +71,16 @@ export const createWorkspaceReservationEmailPreviewReservation = (
     ],
   },
 });
+
+export const createWorkspaceOpenSpaceReservationEmailPreviewReservation = (
+  locale: string
+): WorkspaceReservationDetails => ({
+  ...createWorkspaceReservationEmailPreviewReservation(locale),
+  reservationDetails: {
+    kind: "cowork",
+    entryTier: "open-space",
+    coffee: false,
+  },
+  tableName: "assigned-only-preview-table-id",
+  openSpaceTableNames: ["9", "10", "11", "12", "15", "16", "wallee", "gromice"],
+});

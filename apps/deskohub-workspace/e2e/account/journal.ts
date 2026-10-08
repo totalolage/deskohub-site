@@ -59,7 +59,9 @@ export const readWorkspaceE2EAccountJournal = async (): Promise<
   WorkspaceE2EAccountJournal | undefined
 > => {
   try {
-    return parseJournal(await readFile(laneJournalPath, "utf8"));
+    return parseWorkspaceE2EAccountJournal(
+      await readFile(laneJournalPath, "utf8")
+    );
   } catch (cause) {
     if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {
       return undefined;
@@ -68,7 +70,9 @@ export const readWorkspaceE2EAccountJournal = async (): Promise<
   }
 };
 
-const parseJournal = (serialized: string): WorkspaceE2EAccountJournal => {
+export const parseWorkspaceE2EAccountJournal = (
+  serialized: string
+): WorkspaceE2EAccountJournal => {
   const value: unknown = JSON.parse(serialized);
   if (
     !isRecord(value) ||

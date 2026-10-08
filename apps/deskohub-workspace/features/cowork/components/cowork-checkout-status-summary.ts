@@ -33,6 +33,18 @@ export const getCoworkCheckoutStatusSummary = (
       : []),
     ...Match.value(summary).pipe(
       Match.discriminatorsExhaustive("entryTier")({
+        "open-space": () => [],
+        "reserved-desk": ({ monitorOption }) =>
+          monitorOption
+            ? [
+                {
+                  label: String(
+                    m.checkoutStatusSummaryMonitorLabel({}, { locale })
+                  ),
+                  value: getWorkspaceProductMonitorTitle(monitorOption, locale),
+                },
+              ]
+            : [],
         basic: () => [],
         plus: () => [],
         profi: ({ monitorOption }) => [

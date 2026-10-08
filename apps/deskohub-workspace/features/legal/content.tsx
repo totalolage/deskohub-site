@@ -105,8 +105,8 @@ const termsAndConditionsSections: LegalSection[] = [
   {
     heading: "7. Přístup a užívání služeb",
     body: [
-      "7.1 Potvrzovací email obsahuje bezpečný odkaz na přístupovou stránku Rezervace. Aktuální přístupový PIN kód se na této stránce zobrazuje od 30 minut před začátkem Rezervace do 30 minut po jejím skončení. PIN není obsažen přímo v potvrzovacím emailu.",
-      "7.2 Poskytovatel může přístupový PIN změnit; Klient použije kód aktuálně zobrazený na přístupové stránce Rezervace. Doba zobrazení PIN kódu je pouze technickou rezervou pro příchod a odchod, neprodlužuje potvrzenou dobu užívání Prostor a nezakládá právo na přístup mimo tuto dobu nebo do jiných prostor.",
+      "7.1 Potvrzovací email obsahuje bezpečný odkaz na přístupovou stránku Rezervace. Jakmile je Rezervace zaplacená, potvrzená a živě ověřená a má vystaven přístupový PIN kód, zobrazuje chráněná stránka tento PIN společně s přesně naprogramovanými hranicemi platnosti kódu. Přijímání kódu zamykacím systémem určuje výhradně naprogramované hranice AlgoPINu; aplikace nesdílejí vlastní hodiny. PIN není obsažen přímo v potvrzovacím emailu.",
+      "7.2 Poskytovatel může přístupový PIN změnit; Klient použije kód aktuálně zobrazený na přístupové stránce Rezervace. Zobrazení PIN kódu neprodlužuje potvrzenou dobu užívání Prostor a nezakládá právo na přístup mimo tuto dobu nebo do jiných prostor. Používání Prostor je možné pouze v potvrzené době Rezervace.",
       "7.3 Klient smí PIN kód sdělit pouze osobám oprávněným účastnit se jeho Rezervace, musí jej chránit před dalšími osobami a odpovídá za jeho použití svými hosty. Podezření na zneužití neprodleně oznámí Poskytovateli.",
       "7.4 Klient a jeho hosté jsou povinni dodržovat kapacitu, účel Rezervace, potvrzený čas a Provozní řád. Klient zajistí, aby hosté Prostory opustili nejpozději na konci Rezervace.",
     ],
@@ -285,7 +285,7 @@ const operatingRulesSections: LegalSection[] = [
       "6.2 Uživatel nesmí blokovat únikové cesty ani jinak ohrožovat bezpečný provoz prostor.",
       "6.3 Uživatel je povinen bez zbytečného odkladu upozornit Provozovatele na vznik nebezpečné situace nebo závady.",
       "6.4 Přístupový PIN kód smí Klient sdělit pouze osobám oprávněným účastnit se jeho rezervace. Uživatelé jej chrání před zpřístupněním nebo odpozorováním neoprávněnou osobou a při zadávání dbají zvýšené opatrnosti.",
-      "6.5 Doba, po kterou přístupová stránka Rezervace PIN zobrazuje, neprodlužuje dobu oprávněného užívání prostor. Uživatelé smějí vstoupit a pobývat v prostorách pouze v potvrzené době Rezervace.",
+      "6.5 Zobrazení PIN kódu na přístupové stránce Rezervace nijak neomezuje ani neprodlužuje dobu oprávněného užívání prostor; o přijímání kódu rozhoduje výhradně zamykací systém. Uživatelé smějí vstoupit a pobývat v prostorách pouze v potvrzené době Rezervace.",
       "6.6 Dveře ani jiné zabezpečené vstupy nesmějí být ponechány otevřené. Podezření na zneužití kódu nebo vstup neoprávněné osoby Uživatel neprodleně oznámí Provozovateli.",
       "6.7 Klient zajistí bezpečný příchod a odchod svých hostů a nesmí jim umožnit přístup mimo potvrzenou dobu nebo do jiných než oprávněně užívaných prostor.",
       "6.8 Provozovatel nebo jím pověřená osoba může vstoupit do rezervovaného prostoru, je-li to nutné kvůli mimořádné události, bezpečnosti, odvrácení škody nebo nezbytné údržbě; pokud to okolnosti dovolují, Klienta předem informuje.",
@@ -392,8 +392,8 @@ const termsAndConditionsSectionsEn: LegalSection[] = [
   {
     heading: "7. Access and Use of Services",
     body: [
-      "7.1 The confirmation email contains a secure link to the Booking access page. The current Access PIN Code is displayed on that page from 30 minutes before the Booking starts until 30 minutes after it ends. The PIN is not included directly in the confirmation email.",
-      "7.2 The Provider may change the Access PIN Code; the Client must use the code currently displayed on the Booking access page. The PIN display period is only a technical grace period for arrival and departure, does not extend the confirmed use of the Premises, and creates no right to enter outside the confirmed time or into other premises.",
+      "7.1 The confirmation email contains a secure link to the Booking access page. Once a Booking is paid, confirmed locally and by live verification, and an Access PIN Code has been issued, the protected page displays that PIN together with the exact programmed validity bounds of the code. Acceptance of the code is determined solely by the lock system's programmed AlgoPIN bounds; the application does not impose its own display clock. The PIN is not included directly in the confirmation email.",
+      "7.2 The Provider may change the Access PIN Code; the Client must use the code currently displayed on the Booking access page. Displaying the PIN does not extend the confirmed use of the Premises and creates no right to enter outside the confirmed time or into other premises. The Premises may be used only during the confirmed Booking time.",
       "7.3 The Client may disclose the PIN Code only to people authorized to attend the Booking, must protect it from everyone else, and is responsible for its use by the Client's guests. Suspected misuse must be reported to the Provider without delay.",
       "7.4 The Client and guests must observe the capacity, Booking purpose, confirmed time, and House Rules. The Client must ensure that guests leave the Premises by the end of the Booking.",
     ],
@@ -574,7 +574,7 @@ const operatingRulesSectionsEn: LegalSection[] = [
       "6.2 The User must not block escape routes or otherwise jeopardize the safe operation of the premises.",
       "6.3 The User is obliged to notify the Operator of any dangerous situation or defect without undue delay.",
       "6.4 The Client may disclose an Access PIN Code only to people authorized to attend the Booking. Users must protect it from disclosure to or observation by an unauthorized person and take particular care when entering it.",
-      "6.5 The period during which the Booking access page displays the PIN does not extend the authorized use of the Premises. Users may enter and remain only during the confirmed Booking time.",
+      "6.5 Displaying the PIN on the Booking access page neither limits nor extends the authorized use of the Premises; acceptance of the code is determined solely by the lock system. Users may enter and remain only during the confirmed Booking time.",
       "6.6 Doors and other secured entrances must not be left open. Suspected code misuse or entry by an unauthorized person must be reported to the Operator without delay.",
       "6.7 The Client must ensure guests arrive and leave safely and must not grant them access outside the confirmed time or to other premises.",
       "6.8 The Operator or its authorized representative may enter a booked space when necessary for an emergency, safety, damage prevention, or essential maintenance and will inform the Client in advance where circumstances allow.",
@@ -642,9 +642,9 @@ const legalDocuments = {
               We process the data you provide through our public website,
               especially contact details and message content sent through the
               contact form, plus reservation details: your name, email, phone
-              number, optional message, selected reservation family and product,
-              date or date range, start time, duration, seat count, and any
-              coworking refreshment, monitor, or workstation preferences.
+              number, selected reservation family and product, date or date
+              range, start time, duration, seat count, and any coworking
+              refreshment, monitor, or workstation preferences.
             </>,
             <>
               When you continue to checkout, we also process the quoted and paid
@@ -1080,10 +1080,10 @@ const legalDocuments = {
             <>
               Zpracováváme údaje, které nám poskytnete přes veřejný web, zejména
               kontaktní údaje a obsah zprávy odeslané přes kontaktní formulář a
-              údaje o rezervaci: jméno, e-mail, telefonní číslo, volitelnou
-              zprávu, vybranou rodinu a produkt rezervace, datum nebo rozsah
-              dat, čas začátku, dobu trvání, počet míst a případné coworkingové
-              preference občerstvení, monitorů nebo pracovní stanice.
+              údaje o rezervaci: jméno, e-mail, telefonní číslo, vybranou rodinu
+              a produkt rezervace, datum nebo rozsah dat, čas začátku, dobu
+              trvání, počet míst a případné coworkingové preference občerstvení,
+              monitorů nebo pracovní stanice.
             </>,
             <>
               Při pokračování k objednávce zpracováváme také nabízenou a

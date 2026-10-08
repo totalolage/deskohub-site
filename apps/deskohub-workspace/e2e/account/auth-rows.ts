@@ -33,6 +33,21 @@ export const findAuthUserIdByEmail = (
     return rows[0]?.id;
   });
 
+export const findAuthUserEmailById = (
+  accountId: string
+): Effect.Effect<string | null | undefined, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runDatabaseOperation(
+      "read synthetic auth user owner",
+      db
+        .select({ email: authUser.email })
+        .from(authUser)
+        .where(eq(authUser.id, sensitiveDatabaseParameter(accountId)))
+    );
+    return rows[0] ? rows[0].email : undefined;
+  });
+
 export const findLinkedDotyposCustomerId = (
   accountId: string
 ): Effect.Effect<string | undefined, WorkspaceE2EError, E2EDatabase> =>

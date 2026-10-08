@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import {
@@ -86,9 +86,8 @@ function MarketingPreferencesFormContent({
 
   const revertToConfirmed = () => setChecked(confirmedActive);
 
-  const { execute: executeSave, isExecuting: isSaving } = useWorkspaceAction(
-    saveMarketingPreferencesAction,
-    {
+  const { executeAsync: executeSave, isExecuting: isSaving } =
+    useWorkspaceAction(saveMarketingPreferencesAction, {
       actionName: "legal.marketing-preferences.save",
       onSuccess: ({ input }) => {
         setConfirmedActive(input.granted);
@@ -102,31 +101,27 @@ function MarketingPreferencesFormContent({
         revertToConfirmed();
         markError("save");
       },
-    }
-  );
-  const { execute: executeConfirm, isExecuting: isConfirming } =
+    });
+  const { executeAsync: executeConfirm, isExecuting: isConfirming } =
     useWorkspaceAction(confirmMarketingManagementAction, {
       actionName: "legal.marketing-preferences.confirm",
       onSuccess: () => markSuccess("confirm"),
       onError: ({ error }) => markError("confirm", error.serverError),
       onTransportError: () => markError("confirm"),
     });
-  const { execute: executeClear, isExecuting: isClearing } = useWorkspaceAction(
-    clearMarketingManagementAction,
-    {
+  const { executeAsync: executeClear, isExecuting: isClearing } =
+    useWorkspaceAction(clearMarketingManagementAction, {
       actionName: "legal.marketing-preferences.clear",
       onSuccess: () => markSuccess("clear"),
       onError: ({ error }) => markError("clear", error.serverError),
       onTransportError: () => markError("clear"),
-    }
-  );
+    });
 
   const busy = isSaving || isConfirming || isClearing;
   const actionInFlight = useRef(false);
-
-  useEffect(() => {
-    if (!busy) actionInFlight.current = false;
-  }, [busy]);
+  const releaseActionInFlight = () => {
+    actionInFlight.current = false;
+  };
 
   const titleId = "marketing-preferences-title";
   const descriptionId = "marketing-preferences-description";
@@ -287,13 +282,13 @@ function MarketingPreferencesFormContent({
     actionInFlight.current = true;
     setFeedback(null);
     setChecked(nextChecked);
-    executeSave({
+    void executeSave({
       confirmed: true,
       context,
       granted: nextChecked,
       locale,
       source: managedState.source,
-    });
+    }).then(releaseActionInFlight, releaseActionInFlight);
   }
 
   function continueManagement() {
@@ -308,7 +303,10 @@ function MarketingPreferencesFormContent({
 
     actionInFlight.current = true;
     setFeedback(null);
-    executeConfirm({ context });
+    void executeConfirm({ context }).then(
+      releaseActionInFlight,
+      releaseActionInFlight
+    );
   }
 
   function clearManagement() {
@@ -325,7 +323,10 @@ function MarketingPreferencesFormContent({
 
     actionInFlight.current = true;
     setFeedback(null);
-    executeClear({ context: dismissalContext });
+    void executeClear({ context: dismissalContext }).then(
+      releaseActionInFlight,
+      releaseActionInFlight
+    );
   }
 }
 

@@ -6,6 +6,7 @@ import {
 } from "../errors";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
+  type AccountSectionSelectionStage,
   accountSectionLabels,
   accountSectionLandmarks,
   selectAccountSection,
@@ -21,6 +22,18 @@ const billingKindSelector = "#account-profile-billing-kind";
 const billingCompanyNameSelector = "#account-profile-billing-company-name";
 const profileSubmitSelector = "#account-profile-submit";
 const unavailableHeading = "Customer accounts are temporarily unavailable";
+const persistedProfileSelectionDiagnostics: Readonly<
+  Record<
+    AccountSectionSelectionStage,
+    WorkspaceE2EProfileNavigationDiagnosticCode
+  >
+> = {
+  "button-handler-wait":
+    "account_profile_persisted_profile_handler_wait_failed",
+  "native-button-click": "account_profile_persisted_profile_click_failed",
+  "selected-landmark-wait":
+    "account_profile_persisted_profile_landmark_wait_failed",
+};
 
 export function triggerProfileHistoryBack(page: Page): Promise<void> {
   return page.evaluate(() => {
@@ -50,8 +63,14 @@ export async function verifyProfileNavigation(
       name: "Account",
     });
 
-    const selectProfileSection = async (): Promise<void> => {
-      await selectAccountSection(page, "profile");
+    const selectProfileSection = async (
+      onSelectionStage?: (stage: AccountSectionSelectionStage) => void
+    ): Promise<void> => {
+      await selectAccountSection(page, "profile", onSelectionStage);
+      if (onSelectionStage) {
+        diagnosticCode =
+          "account_profile_persisted_profile_form_visibility_failed";
+      }
       await expect(profileForm).toBeVisible({
         timeout: workspaceE2ETimeouts.browserAction,
       });
@@ -238,7 +257,9 @@ export async function verifyProfileNavigation(
     });
 
     diagnosticCode = "account_profile_persisted_profile_navigation_failed";
-    await selectProfileSection();
+    await selectProfileSection((stage) => {
+      diagnosticCode = persistedProfileSelectionDiagnostics[stage];
+    });
 
     diagnosticCode = "account_profile_persisted_first_name_restore_failed";
     await expect(firstName).toHaveValue(originalProfile.firstName, {

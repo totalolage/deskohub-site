@@ -10,19 +10,28 @@ import {
   coworkCheckoutSummaryDiscountedProductItemSchema,
   coworkCheckoutSummaryProductItemSchema,
 } from "@/features/checkout/checkout-summary-cowork-item";
+import type {
+  WorkspaceCoworkProductTier,
+  WorkspaceProductMonitorOption,
+} from "@/features/checkout/product-catalog";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
-import {
-  type CoworkReservationProductInput,
-  getCoworkReservationProductMonitorOption,
-} from "@/features/reservation/cowork-reservation-product";
+
+type CoworkReservationSummaryInput = {
+  readonly entryTier: WorkspaceCoworkProductTier;
+  readonly monitorOption?: WorkspaceProductMonitorOption | "" | undefined;
+};
+
+const getCoworkSummaryMonitorOption = (
+  reservation: CoworkReservationSummaryInput
+) => reservation.monitorOption || undefined;
 
 export const getCoworkCheckoutSummary = (
-  reservation: CoworkReservationProductInput,
+  reservation: CoworkReservationSummaryInput,
   quote: CoworkReservationQuote
 ): CheckoutSummary => {
-  const [productQuoteItem, coffeeQuoteItem] = quote.items;
+  const [productQuoteItem, addonQuoteItem] = quote.items;
   const product = {
     kind: productQuoteItem.type,
     tier: productQuoteItem.tier,
@@ -49,14 +58,23 @@ export const getCoworkCheckoutSummary = (
         });
   const orderItems: CheckoutSummaryOrderItem[] = [productItem];
 
-  if (coffeeQuoteItem) {
+  if (addonQuoteItem?.type === "coffee") {
     orderItems.push({
       key: "addon:coffee",
-      amount: coffeeQuoteItem.amount,
+      amount: addonQuoteItem.amount,
     });
   }
 
-  const monitorOption = getCoworkReservationProductMonitorOption(reservation);
+  if (addonQuoteItem?.type === "workstation") {
+    orderItems.push({
+      key: "addon:workstation",
+      amount: addonQuoteItem.amount,
+    });
+  }
+
+  // Workstation composition is a zero-priced product line: the chosen monitor
+  // configuration changes the reserved product, never the price.
+  const monitorOption = getCoworkSummaryMonitorOption(reservation);
   if (monitorOption) {
     orderItems.push({
       key: `monitor:${monitorOption}`,

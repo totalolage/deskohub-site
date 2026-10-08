@@ -16,6 +16,7 @@ import {
   locales,
 } from "@/features/i18n/routing";
 import { env } from "./env";
+import { appendVercelPreviewProtectionBypass } from "./features/checkout/backend/checkout/vercel-preview-protection-bypass";
 import {
   createReservationAccessCookieCapability,
   parseCanonicalReservationAccessUrl,
@@ -28,6 +29,7 @@ import {
   reservationAccessTokenSchema,
 } from "./features/reservation/reservation-access-token";
 import { isAdministratorAuthorizationValid } from "./shared/administrator/administrator-basic-auth";
+import { getWorkspaceRuntimeCallbackOrigin } from "./shared/backend/config/workspace-url.config";
 import { runWorkspaceEffect } from "./shared/backend/workspace-effect";
 
 const isAdministrationPath = (pathname: string) =>
@@ -151,6 +153,25 @@ export async function proxy(request: NextRequest) {
 
   if (request.method === "POST" && request.headers.has("next-action")) {
     return NextResponse.next();
+  }
+
+  if (
+    env.VERCEL_ENV === "preview" &&
+    (request.method === "GET" || request.method === "HEAD")
+  ) {
+    const callbackOrigin = await getWorkspaceRuntimeCallbackOrigin.pipe(
+      runWorkspaceEffect("workspace.canonical-origin", { boundary: "route" })
+    );
+    if (request.nextUrl.origin !== callbackOrigin.origin) {
+      const redirectUrl = new URL(
+        `${request.nextUrl.pathname}${request.nextUrl.search}`,
+        callbackOrigin
+      );
+      appendVercelPreviewProtectionBypass(redirectUrl, {
+        setBypassCookie: true,
+      });
+      return privateResponse(NextResponse.redirect(redirectUrl));
+    }
   }
 
   const localeFromUrl = getLocaleFromRequestPathname(request, locales);

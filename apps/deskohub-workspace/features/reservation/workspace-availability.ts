@@ -4,8 +4,10 @@ import {
 } from "@deskohub/standard-schema";
 import { Match, Option, Schema } from "effect";
 import {
-  isWorkspaceCoworkProductTier,
+  isWorkspaceCoworkCurrentProductTier,
   isWorkspaceProductMonitorOption,
+  type WorkspaceCoworkProductTier,
+  workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
@@ -40,7 +42,7 @@ export const coworkWorkspaceAvailabilityQuerySchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
   ...workspaceAvailabilityQueryBaseFields,
   date: Schema.optional(Schema.String),
-  entryTier: Schema.optional(workspaceCoworkProductIdentitySchema.fields.tier),
+  entryTier: Schema.optional(Schema.Literals(workspaceCoworkCurrentTiers)),
   monitorOption: Schema.optional(
     Schema.Literals(workspaceProductMonitorOptions)
   ),
@@ -67,14 +69,25 @@ export const workspaceAvailabilityQuerySchema = Schema.Union([
   officeWorkspaceAvailabilityQuerySchema,
 ]);
 
-export type WorkspaceAvailabilityQuery =
-  typeof workspaceAvailabilityQuerySchema.Type;
 export type CoworkWorkspaceAvailabilityQuery =
   typeof coworkWorkspaceAvailabilityQuerySchema.Type;
 export type MeetingRoomWorkspaceAvailabilityQuery =
   typeof meetingRoomWorkspaceAvailabilityQuerySchema.Type;
 export type OfficeWorkspaceAvailabilityQuery =
   typeof officeWorkspaceAvailabilityQuerySchema.Type;
+
+// Internal availability computations also serve historical recovery paths,
+// so the selection query keeps every cowork tier decodable even though the
+// public query schema only accepts the current offers.
+export type CoworkWorkspaceAvailabilitySelectionQuery = Omit<
+  CoworkWorkspaceAvailabilityQuery,
+  "entryTier"
+> & { readonly entryTier?: WorkspaceCoworkProductTier };
+
+export type WorkspaceAvailabilityQuery =
+  | CoworkWorkspaceAvailabilitySelectionQuery
+  | MeetingRoomWorkspaceAvailabilityQuery
+  | OfficeWorkspaceAvailabilityQuery;
 
 export type WorkspaceAvailabilityUnavailableTarget =
   | WorkspaceCoworkAvailabilityTarget
@@ -98,6 +111,7 @@ const workspaceAvailabilityResponseSchema = Schema.Struct({
   from: Schema.String,
   to: Schema.String,
   unavailableDates: Schema.Array(Schema.String),
+  reservedDeskWorkstationRequiredDates: Schema.Array(Schema.String),
   unavailableCoworkTiers: Schema.Array(
     workspaceCoworkProductIdentitySchema.fields.tier
   ),
@@ -143,7 +157,9 @@ const getDateParam = (searchParams: URLSearchParams, key: string) => {
 
 const getTierParam = (value: string | null) => {
   const normalized = value?.trim();
-  return isWorkspaceCoworkProductTier(normalized) ? normalized : undefined;
+  return isWorkspaceCoworkCurrentProductTier(normalized)
+    ? normalized
+    : undefined;
 };
 
 const decodeReservationKindParam = Schema.decodeUnknownOption(

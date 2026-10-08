@@ -224,10 +224,6 @@ export function MeetingRoomReservationForm({
       form={form}
       getReservation={getMeetingRoomReservationOrder}
       locale={locale}
-      messagePlaceholder={m.reservationMeetingRoomMessagePlaceholder(
-        {},
-        { locale }
-      )}
     >
       <FormField
         control={form.control}

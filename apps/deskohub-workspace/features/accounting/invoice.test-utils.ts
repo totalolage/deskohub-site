@@ -68,7 +68,7 @@ export const makeCoworkInvoiceDocument = (
   options: { readonly businessBuyer?: boolean } = {}
 ): InvoiceDocument => {
   const order = {
-    entryTier: "basic",
+    entryTier: "open-space",
     coffee: true,
   } satisfies CoworkReservationQuoteOrder;
   const prepared = {
