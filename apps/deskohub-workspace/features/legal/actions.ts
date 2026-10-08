@@ -1,6 +1,6 @@
 "use server";
 
-import { Data, Effect, Option, Schema } from "effect";
+import { Data, Effect, Schema } from "effect";
 import { cookies } from "next/headers";
 import { CustomerAccountResolver } from "@/features/account";
 import { type Locale, locales } from "@/features/i18n";
@@ -19,6 +19,7 @@ import {
 } from "./backend/marketing-management-cookies.server";
 import {
   getMarketingManagementDismissalContext,
+  isInvalidMarketingManagementCredential,
   type MarketingManagementCookies as MarketingManagementCookieValues,
   MarketingPreferencesAuthorityError,
   matchesMarketingManagementContext,
@@ -244,7 +245,7 @@ const clearMarketingManagementSession = Effect.fn(function* (
     .revoke(session)
     .pipe(
       Effect.catch((cause) =>
-        hasManagementFailureReason(cause, "invalid_credential")
+        isInvalidMarketingManagementCredential(cause)
           ? Effect.void
           : Effect.fail(mutationError("unavailable"))
       )
@@ -282,24 +283,9 @@ const mapAuthorityFailure = (
 const mapManagementMutationFailure = (
   cause: unknown
 ): MarketingPreferencesMutationError =>
-  hasManagementFailureReason(cause, "invalid_credential")
+  isInvalidMarketingManagementCredential(cause)
     ? mutationError("invalid-link")
     : mutationError("unavailable");
-
-const managementFailureReasonSchema = Schema.TaggedStruct(
-  "MarketingManagementError",
-  {
-    reason: Schema.Literals(["invalid_credential", "unavailable"]),
-  }
-);
-
-const hasManagementFailureReason = (
-  cause: unknown,
-  reason: "invalid_credential" | "unavailable"
-): boolean =>
-  Option.getOrUndefined(
-    Schema.decodeUnknownOption(managementFailureReasonSchema)(cause)
-  )?.reason === reason;
 
 const toPublicMutationError = (
   failure: MarketingPreferencesMutationError

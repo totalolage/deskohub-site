@@ -15,22 +15,6 @@ export const TemporalInstantSchema = Schema.declare(
   }
 );
 
-export const TemporalPlainDateSchema = Schema.declare(
-  (input): input is Temporal.PlainDate => input instanceof Temporal.PlainDate,
-  {
-    identifier: "TemporalPlainDate",
-    description: "Temporal plain date value.",
-  }
-);
-
-export const TemporalPlainTimeSchema = Schema.declare(
-  (input): input is Temporal.PlainTime => input instanceof Temporal.PlainTime,
-  {
-    identifier: "TemporalPlainTime",
-    description: "Temporal plain time value.",
-  }
-);
-
 export const localTimeSchema = Schema.String.check(
   Schema.makeFilter((value) => {
     try {
@@ -157,9 +141,6 @@ export const dateToTemporalInstant = (date: Date) =>
     ? Temporal.Instant.fromEpochMilliseconds(date.getTime())
     : undefined;
 
-export const toTemporalInstant = (date: Date | Temporal.Instant) =>
-  date instanceof Date ? dateToTemporalInstant(date) : date;
-
 export const temporalPlainDateToDate = ({
   date,
   plainTime,
@@ -180,14 +161,6 @@ export const temporalInstantToPlainDate = ({
   readonly instant: Temporal.Instant;
   readonly timeZone: string;
 }) => instant.toZonedDateTimeISO(timeZone).toPlainDate();
-
-export const dateToTemporalPlainDate = ({
-  date,
-  timeZone,
-}: {
-  readonly date: Date;
-  readonly timeZone: string;
-}) => dateToTemporalInstant(date)?.toZonedDateTimeISO(timeZone).toPlainDate();
 
 export const isFuturePlainDateTime = ({
   dateTime,
