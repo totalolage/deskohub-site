@@ -134,13 +134,14 @@ export function ContactFormClient({
   } else if (state.status === "success") {
     fieldValues = undefined;
   }
-  const reactiveValues =
-    !hydratedHasOutcome && state.status === "idle"
-      ? getContactFormValues(fieldValues)
-      : undefined;
+  let reactiveValues: ContactFormValues | undefined;
+  if (!hydratedHasOutcome) {
+    if (state.status === "error") reactiveValues = state.values;
+    else reactiveValues = getContactFormValues(fieldValues);
+  }
 
-  // RHF caches defaultValues; late useActionState results need an explicit transition sync.
-  useEffect(() => {
+  // RHF caches defaultValues; synchronize only a new native result after mount.
+  useLayoutEffect(() => {
     if (hydratedHasOutcome || previousNativeResult.current === nativeResult)
       return;
     previousNativeResult.current = nativeResult;
