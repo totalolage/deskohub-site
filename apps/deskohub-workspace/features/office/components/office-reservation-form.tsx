@@ -2,7 +2,7 @@
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Option, Predicate, Schema } from "effect";
-import { useEffect, useMemo } from "react";
+import { type ComponentProps, useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   type AdvertisedPrice,
@@ -105,13 +105,9 @@ export function OfficeReservationForm({
   submittedCode,
   today,
 }: OfficeReservationFormProps) {
-  const defaultValues = useMemo(
-    () =>
-      initialReservation
-        ? getOfficeReservationDefaultValues(initialReservation)
-        : initialValues,
-    [initialReservation, initialValues]
-  );
+  const defaultValues = initialReservation
+    ? getOfficeReservationDefaultValues(initialReservation)
+    : initialValues;
   const form = useForm<OfficeReservationInput, unknown, OfficeReservationData>({
     resolver: standardSchemaResolver(officeReservationFormSchema),
     defaultValues,
@@ -126,15 +122,14 @@ export function OfficeReservationForm({
     () => getSelection(startsOn, dayCount, seats),
     [dayCount, seats, startsOn]
   );
-  const maximumEndsOn = useMemo(
-    () => getOfficeReservationMaximumEndsOn(Temporal.PlainDate.from(today)),
-    [today]
-  );
+  const maximumEndsOn = getOfficeReservationMaximumEndsOn(
+    Temporal.PlainDate.from(today)
+  ).toString();
   const availabilityQuery = useMemo(
     (): OfficeWorkspaceAvailabilityQuery => ({
       kind: "office",
       from: today,
-      to: maximumEndsOn.toString(),
+      to: maximumEndsOn,
     }),
     [maximumEndsOn, today]
   );
@@ -165,7 +160,12 @@ export function OfficeReservationForm({
 
   for (const [index, result] of advertisedPriceResults.entries()) {
     const request = advertisedPriceRequests[index];
-    if (request && result.data && isOfficeAdvertisedPrice(result.data)) {
+    if (
+      request &&
+      !result.isError &&
+      result.data &&
+      isOfficeAdvertisedPrice(result.data)
+    ) {
       advertisedPricesBySeats.set(
         request.reservation.details.seats,
         result.data
@@ -186,17 +186,13 @@ export function OfficeReservationForm({
     () => new Set(availabilityResult.availability?.unavailableDates ?? []),
     [availabilityResult.availability]
   );
-  const maximumDayCount = useMemo(
-    () =>
-      startsOn
-        ? getOfficeReservationMaximumDayCount({
-            startsOn,
-            maximumEndsOn,
-            unavailableDates: [...unavailableDates],
-          })
-        : 0,
-    [maximumEndsOn, startsOn, unavailableDates]
-  );
+  const maximumDayCount = startsOn
+    ? getOfficeReservationMaximumDayCount({
+        startsOn,
+        maximumEndsOn: Temporal.PlainDate.from(maximumEndsOn),
+        unavailableDates: [...unavailableDates],
+      })
+    : 0;
   useEffect(() => {
     if (
       maximumDayCount > 0 &&
@@ -211,6 +207,13 @@ export function OfficeReservationForm({
       (maximumDayCount === 0 ||
         (Predicate.isNumber(dayCount) && dayCount > maximumDayCount))
   );
+  const availabilityMessage = unavailable
+    ? m.reservationOfficeUnavailable({}, { locale })
+    : undefined;
+  const availabilityErrorMessage =
+    availabilityResult.isError && !availabilityResult.isFetching
+      ? m.reservationAvailabilityError({}, { locale })
+      : undefined;
   const basePriceLabel = selection
     ? m.reservationOfficeBasePriceLabel(
         { dayCount: getOfficeReservationDayCount(selection) },
@@ -234,9 +237,7 @@ export function OfficeReservationForm({
       }}
       availability={{
         isFetching: availabilityResult.isFetching,
-        unavailableMessage: unavailable
-          ? m.reservationOfficeUnavailable({}, { locale })
-          : undefined,
+        unavailableMessage: availabilityMessage ?? availabilityErrorMessage,
       }}
       checkoutSessionId={checkoutSessionId}
       form={form}
@@ -262,9 +263,10 @@ export function OfficeReservationForm({
                     unavailableDates.has(date.toString())
                   }
                   locale={locale}
-                  maximum={maximumEndsOn.toString()}
+                  maximum={maximumEndsOn}
                   minimum={today}
                   name={field.name}
+                  onBlur={field.onBlur}
                   onChange={field.onChange}
                   placeholder={m.reservationDatePlaceholder({}, { locale })}
                   value={field.value}
@@ -283,29 +285,15 @@ export function OfficeReservationForm({
                   {m.reservationOfficeDayCountLabel({}, { locale })}
                 </ReservationFormLabel>
                 <FormControl>
-                  <Input
+                  <OfficeDayCountInput
                     disabled={maximumDayCount === 0}
-                    inputMode="numeric"
-                    max={Math.max(1, maximumDayCount)}
-                    min={1}
+                    maximum={Math.max(1, maximumDayCount)}
                     name={field.name}
                     onBlur={field.onBlur}
-                    onChange={(event) => {
-                      const nextValue = event.currentTarget.valueAsNumber;
-                      if (Number.isFinite(nextValue)) {
-                        field.onChange(
-                          Math.min(
-                            Math.max(1, nextValue),
-                            Math.max(1, maximumDayCount)
-                          )
-                        );
-                      }
-                    }}
+                    onChange={field.onChange}
                     ref={field.ref}
-                    type="number"
                     value={field.value}
                     variant={fieldState.error ? "error" : "default"}
-                    required
                   />
                 </FormControl>
                 <FormMessage />
@@ -394,6 +382,48 @@ export function OfficeReservationForm({
         )}
       />
     </ReservationCheckoutForm>
+  );
+}
+
+function OfficeDayCountInput({
+  maximum,
+  onBlur,
+  onChange,
+  value,
+  ...props
+}: Omit<ComponentProps<typeof Input>, "onChange" | "value"> & {
+  readonly maximum: number;
+  readonly onChange: (dayCount: number) => void;
+  readonly value: number;
+}) {
+  // Keeps the visitor's raw text while editing so the field can be cleared and
+  // retyped; the committed day count is clamped and the text resyncs on blur.
+  const [draft, setDraft] = useState<string>();
+  const clampDayCount = (dayCount: number) =>
+    Math.min(Math.max(1, Math.trunc(dayCount)), maximum);
+
+  return (
+    <Input
+      {...props}
+      inputMode="numeric"
+      max={maximum}
+      min={1}
+      onBlur={(event) => {
+        setDraft(undefined);
+        onBlur?.(event);
+      }}
+      onChange={(event) => {
+        const nextDraft = event.currentTarget.value;
+        setDraft(nextDraft);
+        const nextDayCount = Number(nextDraft);
+        if (nextDraft.trim() !== "" && Number.isFinite(nextDayCount)) {
+          onChange(clampDayCount(nextDayCount));
+        }
+      }}
+      type="number"
+      value={draft ?? value}
+      required
+    />
   );
 }
 
