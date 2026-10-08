@@ -1172,6 +1172,131 @@ describe("DotyposService customer lookup", () => {
     expect(createAttempts).toBe(1);
   });
 
+  test("does not retry an ambiguous customer creation during findOrCreateCustomer", async () => {
+    let createAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        if (request.method === "GET") return Response.json({ data: [] });
+        if (request.method === "POST") {
+          createAttempts += 1;
+          return Response.json(
+            { error: "server", error_description: "Server error", code: 500 },
+            { status: 500 }
+          );
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .findOrCreateCustomer(
+            {
+              firstName: "Ada",
+              lastName: "Lovelace",
+              email: "ada@example.com",
+              phone: "+420 777 123 456",
+            },
+            undefined
+          )
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(createAttempts).toBe(1);
+  });
+
+  test("keeps customer contact details out of findOrCreateCustomer logs", async () => {
+    const logs: CapturedLog[] = [];
+    const matched = customer({
+      id: "customer-id",
+      firstName: "Ada",
+      lastName: "Lovelace",
+      email: "ada.private@example.com",
+      phone: undefined,
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        if (request.method === "GET") {
+          return Response.json({
+            data: url.searchParams.get("filter")?.includes("email")
+              ? [matched]
+              : [],
+          });
+        }
+        if (request.method === "POST") {
+          return Response.json([
+            customer({
+              id: "created-id",
+              firstName: "Grace",
+              lastName: "Hopper",
+              email: "grace.private@example.com",
+              phone: "+420777987654",
+            }),
+          ]);
+        }
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "PUT"
+      ) {
+        return Response.json({ ...matched, phone: "+420777123456" });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        yield* dotypos.findOrCreateCustomer(
+          {
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada.private@example.com",
+            phone: "+420 777 123 456",
+          },
+          undefined
+        );
+        yield* dotypos.findOrCreateCustomer(
+          {
+            firstName: "Grace",
+            lastName: "Hopper",
+            email: "grace.private@example.com",
+            phone: "+420 777 987 654",
+          },
+          undefined
+        );
+      }).pipe(
+        Effect.provide(Logger.layer([captureLogs(logs)])),
+        Effect.provideService(References.MinimumLogLevel, "All")
+      ),
+      fetchMock
+    );
+
+    const logged = logText(
+      logs.map(({ message, annotations }) => ({ message, annotations }))
+    );
+    expect(logs.length).toBeGreaterThan(0);
+    for (const personalDetail of [
+      "ada.private@example.com",
+      "grace.private@example.com",
+      "777123456",
+      "777987654",
+      "Lovelace",
+      "Hopper",
+    ]) {
+      expect(logged).not.toContain(personalDetail);
+    }
+  });
+
   test("does not create or reuse a customer when lookup is ambiguous", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
@@ -1370,6 +1495,45 @@ describe("DotyposService reservations", () => {
         note: "setup note",
       },
     ]);
+  });
+
+  test("does not retry an ambiguous reservation creation failure", async () => {
+    let reservationAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        reservationAttempts += 1;
+        return Response.json(
+          { error: "server", error_description: "Server error", code: 500 },
+          { status: 500 }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .createReservation({
+            customerId: dotyposCustomerId("customer-id"),
+            tableId: dotyposTableId("table-id"),
+            startDate: new Date("2026-06-20T10:00:00.000Z"),
+            endDate: new Date("2026-06-20T12:00:00.000Z"),
+            seats: 2,
+            status: "NEW",
+          })
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(reservationAttempts).toBe(1);
   });
 
   test("confirms by reading ETag and patching with If-Match", async () => {

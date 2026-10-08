@@ -86,11 +86,28 @@ const isRetryableDotyposError = (error: DotyposError) =>
     Match.orElse(() => false)
   );
 
-const retryPolicy = {
+const emptyResponseMessage = "Dotypos returned an empty array.";
+
+/**
+ * Creation requests are not idempotent, so only failures that prove Dotypos
+ * created nothing are retried. A timeout, transport failure, or server error
+ * may follow a successful write and would create a duplicate.
+ */
+const isRetryableCreationError = (error: DotyposError) =>
+  Match.value(error).pipe(
+    Match.tag(
+      "ExternalAPIError",
+      (apiError) =>
+        apiError.statusCode === 429 || apiError.message === emptyResponseMessage
+    ),
+    Match.orElse(() => false)
+  );
+
+const makeRetryPolicy = (isRetryable: (error: DotyposError) => boolean) => ({
   schedule: Schedule.exponential("100 millis").pipe(
     Schedule.jittered,
     Schedule.while<DotyposError, Duration.Duration>(({ input }) =>
-      isRetryableDotyposError(input)
+      isRetryable(input)
     ),
     Schedule.both(Schedule.recurs(3)),
     Schedule.tapOutput(([delay, attempt]) =>
@@ -101,7 +118,10 @@ const retryPolicy = {
       })
     )
   ),
-};
+});
+
+const retryPolicy = makeRetryPolicy(isRetryableDotyposError);
+const creationRetryPolicy = makeRetryPolicy(isRetryableCreationError);
 
 const catchUnexpectedDotyposError = (operation: string) =>
   Effect.catch((error: unknown) =>
@@ -403,7 +423,7 @@ const makeDotyposService = Effect.gen(function* () {
           new ExternalAPIError({
             service: "Dotypos",
             operation,
-            message: "Dotypos returned an empty array.",
+            message: emptyResponseMessage,
             statusCode: 502,
           })
         );
@@ -580,7 +600,7 @@ const makeDotyposService = Effect.gen(function* () {
         "createReservation"
       ).pipe(
         Effect.withSpan("dotyposService.createReservation"),
-        Effect.retry(retryPolicy),
+        Effect.retry(creationRetryPolicy),
         Effect.tapError((error) =>
           Effect.logError("Dotypos reservation creation failed", {
             error,
@@ -1089,7 +1109,10 @@ const makeDotyposService = Effect.gen(function* () {
 
       const lookup = yield* lookupCustomer(customerData, options);
 
-      yield* Effect.logDebug("Dotypos customer lookup result", { lookup });
+      yield* Effect.logDebug("Dotypos customer lookup result", {
+        outcome: lookup._tag,
+        matchedCustomerIds: lookup.matches.map((customer) => customer.id),
+      });
 
       const normalizedCustomerData = lookup.normalizedCustomerData;
       const existingCustomer = yield* Match.value(lookup).pipe(
@@ -1126,8 +1149,7 @@ const makeDotyposService = Effect.gen(function* () {
 
         yield* Effect.logDebug("Dotypos customer update-needed decision", {
           needsUpdate,
-          existingCustomer,
-          normalizedCustomerData,
+          customerId: existingCustomer.id,
         });
 
         if (needsUpdate) {
@@ -1169,31 +1191,24 @@ const makeDotyposService = Effect.gen(function* () {
             ),
             Effect.tapError((error) =>
               Effect.logWarning("Dotypos customer update failed", {
-                error,
-                existingCustomer,
-                input: normalizedCustomerData,
+                errorTag: error._tag,
                 operation: "updateCustomer",
-                request: {
-                  path: {
-                    cloudId: config.cloudId,
-                    customerId,
-                  },
-                  body: updateRequest,
-                },
+                customerId,
+                updatedFields: Object.keys(updateRequest),
               })
             ),
             Effect.orElseSucceed(() => existingCustomer)
           );
 
           yield* Effect.logDebug("Dotypos existing customer result", {
-            customer: updatedCustomer,
+            customerId: updatedCustomer.id,
           });
 
           return updatedCustomer;
         }
 
         yield* Effect.logDebug("Dotypos existing customer result", {
-          customer: existingCustomer,
+          customerId: existingCustomer.id,
         });
 
         return existingCustomer;
@@ -1249,7 +1264,7 @@ const makeDotyposService = Effect.gen(function* () {
           ),
         "createCustomer"
       ).pipe(
-        Effect.retry(retryPolicy),
+        Effect.retry(creationRetryPolicy),
         Effect.tapError((error) => {
           const apiErrorDetails = Match.value(error).pipe(
             Match.tag("ExternalAPIError", (apiError) => ({
@@ -1277,7 +1292,9 @@ const makeDotyposService = Effect.gen(function* () {
         "createCustomer"
       );
 
-      yield* Effect.logInfo("Dotypos customer created", { customer });
+      yield* Effect.logInfo("Dotypos customer created", {
+        customerId: customer.id,
+      });
 
       return customer;
     },
