@@ -197,17 +197,23 @@ describe("ContactForm native action state", () => {
   test("a native success arriving after mount clears RHF values", async () => {
     const locale = "en-US";
     const { ContactFormClient } = await import("./contact-form-client");
-    const props = {
-      initialValues,
-      locale,
-      submitAction: submitContactFormMock,
-    };
+    const props = { locale, submitAction: submitContactFormMock };
     const view = render(<ContactFormClient {...props} />);
     const form = view.container.querySelector("form");
     if (!form) throw new Error("Contact form did not render.");
     await waitFor(() =>
       expect(form.getAttribute("data-rhf-ready")).toBe("true")
     );
+    for (const [label, value] of [
+      ["Name", "Grace Hopper"],
+      ["Email", "grace@example.com"],
+      ["Message", "Please contact me about a meeting room."],
+    ]) {
+      const field = view.getByLabelText(label) as HTMLInputElement;
+      fireEvent.change(field, { target: { value } });
+      expect(field.value).toBe(value);
+    }
+    expect(new FormData(form).get("name")).toBe("Grace Hopper");
 
     nativeResult = {
       data: {
@@ -219,6 +225,10 @@ describe("ContactForm native action state", () => {
 
     await waitFor(() =>
       expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe("")
+    );
+    expect((view.getByLabelText("Email") as HTMLInputElement).value).toBe("");
+    expect((view.getByLabelText("Message") as HTMLTextAreaElement).value).toBe(
+      ""
     );
     expect(
       view.getByText(m.contactSuccessMessage({}, { locale }))

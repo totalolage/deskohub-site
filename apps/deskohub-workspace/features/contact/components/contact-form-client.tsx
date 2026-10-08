@@ -121,6 +121,7 @@ export function ContactFormClient({
     },
   });
   const [nativeResult, nativeFormAction] = useActionState(submitAction, {});
+  const previousNativeResult = useRef(nativeResult);
   const hydratedHasOutcome = hasContactActionOutcome(action.result);
   const state: ContactFormState = resolveContactFormState(
     action.result,
@@ -133,11 +134,30 @@ export function ContactFormClient({
   } else if (state.status === "success") {
     fieldValues = undefined;
   }
-  let reactiveValues: ContactFormValues | undefined;
-  if (!hydratedHasOutcome) {
-    if (state.status === "error") reactiveValues = state.values;
-    else reactiveValues = getContactFormValues(fieldValues);
-  }
+  const reactiveValues =
+    !hydratedHasOutcome && state.status === "idle"
+      ? getContactFormValues(fieldValues)
+      : undefined;
+
+  // RHF caches defaultValues; late useActionState results need an explicit transition sync.
+  useEffect(() => {
+    if (hydratedHasOutcome || previousNativeResult.current === nativeResult)
+      return;
+    previousNativeResult.current = nativeResult;
+
+    if (nativeResult.data?.status === "success") {
+      formMethodsRef.current?.reset(contactDefaultValues, {
+        keepFieldsRef: true,
+      });
+    } else if (
+      nativeResult.data?.status === "error" &&
+      nativeResult.data.values
+    ) {
+      formMethodsRef.current?.reset(nativeResult.data.values, {
+        keepFieldsRef: true,
+      });
+    }
+  }, [hydratedHasOutcome, nativeResult]);
 
   return (
     <Card
