@@ -26,6 +26,10 @@ import {
   workspaceE2EError,
   workspaceE2ETimeoutError,
 } from "../errors";
+import {
+  waitForCancelledDotyposReservationStatuses,
+  waitForCancelledDotyposReservations,
+} from "../integrations/dotypos";
 import { pollUntil } from "../polling";
 import { assert, type Runner } from "../runtime";
 import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
@@ -862,6 +866,55 @@ export const makeWorkspaceE2EAccountCases = ({
               });
             }),
             accountPageLoadTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "cancels and converges the remaining reservation history",
+            Effect.gen(function* () {
+              const first = reservations[0];
+              const second = reservations[1];
+              assert(first && second, "transition reservations are missing");
+              const firstId = first.reservationId;
+              const secondId = second.reservationId;
+              assert(
+                firstId && secondId,
+                "transition reservation ids are missing"
+              );
+              const reservationIds = [firstId, secondId] as const;
+
+              // The cancelled-card assertion above remains visible to the
+              // account test. This final transition cleanup prevents the
+              // still-confirmed first reservation from being mistaken for
+              // historical referral eligibility evidence in the next case.
+              yield* cancelSyntheticReservation(
+                datasourceConfig,
+                firstId as DotyposReservationId
+              );
+              yield* waitForCancelledDotyposReservations(
+                datasourceConfig,
+                reservationIds,
+                {
+                  endDate: new Date(
+                    Math.max(
+                      Number(first.endsAt.epochMilliseconds),
+                      Number(second.endsAt.epochMilliseconds)
+                    )
+                  ),
+                  startDate: new Date(
+                    Math.min(
+                      Number(first.startsAt.epochMilliseconds),
+                      Number(second.startsAt.epochMilliseconds)
+                    )
+                  ),
+                }
+              );
+              yield* waitForCancelledDotyposReservationStatuses(
+                datasourceConfig,
+                reservationIds
+              );
+            }),
+            datasourceTimeout
           )
         );
       })

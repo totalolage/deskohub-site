@@ -415,6 +415,27 @@ export const readDotyposReservationStatus = (
     )
   );
 
+export const waitForCancelledDotyposReservationStatuses = (
+  config: DatasourceConfig,
+  dotyposReservationIds: readonly DotyposReservationId[]
+) =>
+  pollUntil(
+    Effect.forEach(dotyposReservationIds, (reservationId) =>
+      readDotyposReservationStatus(config, reservationId)
+    ).pipe(
+      Effect.map((statuses) =>
+        statuses.every((status) => status === "CANCELLED")
+          ? statuses
+          : undefined
+      )
+    ),
+    {
+      intervalMs: workspaceE2EPollIntervalMs.datasource,
+      label: "exact Dotypos reservation statuses to be CANCELLED",
+      timeoutMs: config.timeouts.datasource,
+    }
+  );
+
 export const prepareDotyposCustomerDiscount = (
   config: DatasourceConfig,
   data: CheckoutData,

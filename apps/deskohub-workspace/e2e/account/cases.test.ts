@@ -1,7 +1,17 @@
 import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
+import {
+  DotyposCustomerIdSchema,
+  type DotyposReservationId,
+  DotyposReservationIdSchema,
+} from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
+import { Temporal } from "@js-temporal/polyfill";
 import { Effect, Exit } from "effect";
 import { betterAuthMagicLinkOptions } from "@/features/account/backend/auth/auth-options";
+import {
+  hasPreviousPaidBooking,
+  hasPriorConfirmedDotyposBooking,
+} from "@/features/referrals/eligibility";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import type { BrowserCommandResult, Runner } from "../runtime";
@@ -56,6 +66,7 @@ const deleteTriggerSelector = "#delete-account-trigger";
 const deleteReauthSendSelector = "#delete-account-reauth-send";
 const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
 const deleteConfirmSelector = "#delete-account-confirm";
+const accountReservationStartsAtMs = fixedNowMs + 120 * 24 * 60 * 60 * 1_000;
 
 const selectedCaseIds = [
   "account-sign-in-form",
@@ -120,6 +131,13 @@ type FakeEvent = {
   readonly mode?: "active" | "expired";
   readonly recipient?: string;
   readonly userId?: string;
+};
+
+type FakeReservation = {
+  readonly customerId: string;
+  readonly endsAt: Temporal.Instant;
+  readonly startsAt: Temporal.Instant;
+  status: "CONFIRMED" | "CANCELLED";
 };
 
 type FakeBrowserAction = {
@@ -197,6 +215,10 @@ class FakeAccountExternalState {
   readonly providerCalls: string[] = [];
   readonly messagesByRecipient = new Map<string, FakeMessage[]>();
   readonly profiles = new Map<string, FakeProfile>();
+  readonly reservations = new Map<DotyposReservationId, FakeReservation>();
+  readonly reservationSnapshots: string[] = [];
+  readonly reservationOverlapChecks: string[][] = [];
+  readonly reservationStatusChecks: string[][] = [];
   readonly usersByEmail = new Map<string, FakeUser>();
   readonly usersById = new Map<string, FakeUser>();
   readonly linksByUserId = new Map<string, string>();
@@ -212,6 +234,7 @@ class FakeAccountExternalState {
   reauthenticationDialog = false;
   private messageSequence = 0;
   private duplicateProfileSequence = 0;
+  private reservationSequence = 0;
   private deletedIdentity = false;
 
   constructor(
@@ -291,6 +314,78 @@ class FakeAccountExternalState {
     this.linksByUserId.set(original.id, retained.id);
     this.historyReady = true;
     this.profileHistorySeeded = true;
+  }
+
+  seedVerifiedLinkedAccountForReservationTest() {
+    this.createAuthUser("auth-original", this.mainRecipient);
+    const profile = this.makeProfile({
+      email: this.mainRecipient,
+      firstName: "E2E",
+      id: "customer-retained",
+    });
+    this.profiles.set(profile.id, profile);
+    this.linksByUserId.set("auth-original", profile.id);
+    this.currentAuthUserId = "auth-original";
+    this.historyReady = true;
+  }
+
+  createReservation(customerId: string) {
+    this.reservationSequence += 1;
+    const id = DotyposReservationIdSchema.make(
+      `transition-reservation-${this.reservationSequence}`
+    );
+    const startsAt = Temporal.Instant.fromEpochMilliseconds(
+      accountReservationStartsAtMs +
+        (this.reservationSequence - 1) * 4 * 60 * 60 * 1_000
+    );
+    const endsAt = startsAt.add({ hours: 2 });
+    this.reservations.set(id, {
+      customerId,
+      endsAt,
+      startsAt,
+      status: "CONFIRMED",
+    });
+    return { endsAt, reservationId: id, startsAt };
+  }
+
+  cancelReservation(reservationId: DotyposReservationId) {
+    const reservation = this.reservations.get(reservationId);
+    if (!reservation) throw new Error("unknown synthetic reservation");
+    reservation.status = "CANCELLED";
+  }
+
+  waitForCancelledReservationOverlap(
+    reservationIds: readonly DotyposReservationId[],
+    interval: { readonly endDate: Date; readonly startDate: Date }
+  ) {
+    this.reservationOverlapChecks.push([...reservationIds]);
+    for (const id of reservationIds) {
+      const reservation = this.reservations.get(id);
+      if (reservation?.status !== "CANCELLED") {
+        throw new Error("synthetic reservation remains active");
+      }
+      if (
+        interval.startDate.getTime() >
+          Number(reservation.startsAt.epochMilliseconds) ||
+        interval.endDate.getTime() <
+          Number(reservation.endsAt.epochMilliseconds)
+      ) {
+        throw new Error(
+          "synthetic reservation falls outside the overlap interval"
+        );
+      }
+    }
+  }
+
+  readCancelledReservationStatuses(
+    reservationIds: readonly DotyposReservationId[]
+  ) {
+    this.reservationStatusChecks.push([...reservationIds]);
+    return reservationIds.map((id) => {
+      const reservation = this.reservations.get(id);
+      if (!reservation) throw new Error("unknown synthetic reservation");
+      return reservation.status;
+    });
   }
 
   seedPendingReauthenticationForTest() {
@@ -942,9 +1037,27 @@ class FakeBrowser {
   }
 
   waitForSnapshot(matches: (snapshot: string) => boolean) {
-    const snapshot = this.external.historyReady
-      ? "Current and upcoming\nPast reservations\nCancelled"
-      : "";
+    const reservationStatuses = [...this.external.reservations.values()].map(
+      ({ status }) => status
+    );
+    let snapshot = "";
+    if (this.external.historyReady) {
+      if (reservationStatuses.length === 0) {
+        snapshot = "Current and upcoming\nPast reservations\nCancelled";
+      } else {
+        snapshot = [
+          reservationStatuses.includes("CONFIRMED")
+            ? "Current and upcoming\nConfirmed"
+            : "",
+          reservationStatuses.includes("CANCELLED")
+            ? "Past reservations\nCancelled"
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+      }
+    }
+    this.external.reservationSnapshots.push(snapshot);
     if (!matches(snapshot)) {
       throw new Error(
         "the synthetic reservation snapshot assertion did not match"
@@ -976,6 +1089,9 @@ const requireBrowser = () => {
   return activeBrowser;
 };
 
+const realBrowserModule = await import("../browser");
+const realDotyposIntegrationModule = await import("../integrations/dotypos");
+
 const browserResult = (stdout = ""): BrowserCommandResult => ({
   exitCode: 0,
   stderr: "",
@@ -988,6 +1104,7 @@ const browserResult = (stdout = ""): BrowserCommandResult => ({
  * steps remain the implementation under test.
  */
 mock.module("../browser", () => ({
+  ...realBrowserModule,
   clickBrowserElement: (_run: Runner, _session: string, selector: string) =>
     Effect.sync(() => requireBrowser().click(selector)),
   evalBrowserScript: (
@@ -1065,22 +1182,18 @@ mock.module("./fixtures", () => ({
     _config: DatasourceConfig,
     email: string
   ) => Effect.sync(() => requireExternal().assertNoProfile(email)),
-  cancelSyntheticReservation: () =>
-    Effect.sync(() => {
-      throw new Error(
-        "the selected account cases must not create reservations"
-      );
-    }),
+  cancelSyntheticReservation: (
+    _config: DatasourceConfig,
+    reservationId: DotyposReservationId
+  ) => Effect.sync(() => requireExternal().cancelReservation(reservationId)),
   createSyntheticCustomerProfile: (
     _config: DatasourceConfig,
     profile: { readonly email: string; readonly firstName: string }
   ) => Effect.sync(() => requireExternal().createProfile(profile)),
-  createSyntheticReservation: () =>
-    Effect.sync(() => {
-      throw new Error(
-        "reservation fixture coverage belongs to its separate case"
-      );
-    }),
+  createSyntheticReservation: (
+    _config: DatasourceConfig,
+    input: { readonly customerId: string }
+  ) => Effect.sync(() => requireExternal().createReservation(input.customerId)),
   createSyntheticReferralHistoryReservation: () =>
     Effect.sync(() => {
       throw new Error("referral fixture coverage belongs to its separate case");
@@ -1093,6 +1206,28 @@ mock.module("./fixtures", () => ({
     _config: DatasourceConfig,
     customerId: string
   ) => Effect.sync(() => requireExternal().readProfile(customerId)),
+}));
+
+mock.module("../integrations/dotypos", () => ({
+  ...realDotyposIntegrationModule,
+  waitForCancelledDotyposReservationStatuses: (
+    _config: DatasourceConfig,
+    reservationIds: readonly DotyposReservationId[]
+  ) =>
+    Effect.sync(() =>
+      requireExternal().readCancelledReservationStatuses(reservationIds)
+    ),
+  waitForCancelledDotyposReservations: (
+    _config: DatasourceConfig,
+    reservationIds: readonly DotyposReservationId[],
+    interval: { readonly endDate: Date; readonly startDate: Date }
+  ) =>
+    Effect.sync(() =>
+      requireExternal().waitForCancelledReservationOverlap(
+        reservationIds,
+        interval
+      )
+    ),
 }));
 
 const makeConfig = (): WorkspaceE2EAccountConfig => ({
@@ -1489,6 +1624,52 @@ test("executes the selected account lifecycle cases with a fresh factory per cas
       userId: "auth-reactivated",
     },
   ]);
+});
+
+test("the account reservation transition leaves referral history eligible", async () => {
+  setSystemTime(fixedNow);
+  const { makeWorkspaceE2EAccountCases } = await import("./cases");
+  const scenario = makeScenario();
+  scenario.external.seedVerifiedLinkedAccountForReservationTest();
+  const transitionCase = await buildCase(
+    makeWorkspaceE2EAccountCases,
+    "account-reservation-transitions",
+    scenario
+  );
+  const stepIds: string[] = [];
+
+  await executeCase(transitionCase, scenario, stepIds);
+
+  const reservationIds = [...scenario.external.reservations.keys()];
+  expect(reservationIds).toHaveLength(2);
+  const evidence = [...scenario.external.reservations.values()].map(
+    ({ customerId, endsAt, status }) => ({
+      cancelled: status === "CANCELLED",
+      dotyposCustomerId: DotyposCustomerIdSchema.make(customerId),
+      dotyposStatus: status,
+      endsAt,
+      localPaymentState: null,
+    })
+  );
+  expect(
+    hasPreviousPaidBooking({
+      hasLocalPaidBooking: false,
+      hasPriorConfirmedDotyposBooking:
+        hasPriorConfirmedDotyposBooking(evidence),
+    })
+  ).toBe(false);
+  expect(scenario.external.reservationSnapshots).toEqual([
+    "Current and upcoming\nConfirmed",
+    "Current and upcoming\nConfirmed\nPast reservations\nCancelled",
+  ]);
+  expect(stepIds).toContain(
+    "cancels and converges the remaining reservation history"
+  );
+  expect(scenario.external.reservationOverlapChecks).toEqual([reservationIds]);
+  expect(scenario.external.reservationStatusChecks).toEqual([reservationIds]);
+  expect(scenario.external.journal.dotyposReservationIds).toEqual(
+    reservationIds
+  );
 });
 
 test("fails closed before external side effects when the accepted request handoff is missing", async () => {
