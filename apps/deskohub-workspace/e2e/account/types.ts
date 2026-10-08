@@ -46,12 +46,24 @@ export type WorkspaceE2EAccountJournalRef = {
   ) => Promise<void>;
 };
 
+export type WorkspaceE2EAccountCaseCompletion = {
+  readonly cleanup: Effect.Effect<
+    void,
+    WorkspaceE2EError,
+    WorkspaceE2EAccountRequirement
+  >;
+};
+
 export type WorkspaceE2EAccountCase = {
   readonly execute: (context: {
     readonly journalRef: WorkspaceE2EAccountJournalRef;
     readonly runStep: WorkspaceE2EStepRunner;
     readonly session: string;
-  }) => Effect.Effect<void, WorkspaceE2EError, WorkspaceE2EAccountRequirement>;
+  }) => Effect.Effect<
+    WorkspaceE2EAccountCaseCompletion,
+    WorkspaceE2EError,
+    WorkspaceE2EAccountRequirement
+  >;
   readonly id: WorkspaceE2EAccountCaseId;
   readonly timeoutMs: number;
 };

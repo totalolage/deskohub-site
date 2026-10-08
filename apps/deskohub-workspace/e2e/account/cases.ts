@@ -66,8 +66,10 @@ import type { MagicLinkRateBudget } from "./rate-budget";
 import { seedWorkspaceE2EReferralFixture } from "./referral-fixture";
 import type {
   WorkspaceE2EAccountCase,
+  WorkspaceE2EAccountCaseCompletion,
   WorkspaceE2EAccountJournalRef,
   WorkspaceE2EAccountLifecycleHandoff,
+  WorkspaceE2EAccountRequirement,
 } from "./types";
 import type { WorkspaceE2EPreviewLogs } from "./vercel-log-retrieval";
 
@@ -370,8 +372,23 @@ export const makeWorkspaceE2EAccountCases = ({
 
   const makeCase = (
     id: WorkspaceE2EAccountCaseId,
-    execute: WorkspaceE2EAccountCase["execute"]
-  ): WorkspaceE2EAccountCase => ({ execute, id, timeoutMs: caseTimeout });
+    execute: (
+      context: Parameters<WorkspaceE2EAccountCase["execute"]>[0]
+    ) => Effect.Effect<
+      void | WorkspaceE2EAccountCaseCompletion,
+      WorkspaceE2EError,
+      WorkspaceE2EAccountRequirement
+    >
+  ): WorkspaceE2EAccountCase => ({
+    execute: (context) =>
+      execute(context).pipe(
+        Effect.map((completion) =>
+          completion === undefined ? { cleanup: Effect.void } : completion
+        )
+      ),
+    id,
+    timeoutMs: caseTimeout,
+  });
 
   const step = <A, R>(
     id: string,
@@ -868,55 +885,54 @@ export const makeWorkspaceE2EAccountCases = ({
             accountPageLoadTimeout
           )
         );
-        yield* runStep(
-          step(
-            "cancels and converges the remaining reservation history",
-            Effect.gen(function* () {
-              const first = reservations[0];
-              const second = reservations[1];
-              assert(first && second, "transition reservations are missing");
-              const firstId = first.reservationId;
-              const secondId = second.reservationId;
-              assert(
-                firstId && secondId,
-                "transition reservation ids are missing"
-              );
-              const reservationIds = [firstId, secondId] as const;
+        const cleanupStep = step(
+          "cancels and converges the remaining reservation history",
+          Effect.gen(function* () {
+            const first = reservations[0];
+            const second = reservations[1];
+            assert(first && second, "transition reservations are missing");
+            const firstId = first.reservationId;
+            const secondId = second.reservationId;
+            assert(
+              firstId && secondId,
+              "transition reservation ids are missing"
+            );
+            const reservationIds = [firstId, secondId] as const;
 
-              // The cancelled-card assertion above remains visible to the
-              // account test. This final transition cleanup prevents the
-              // still-confirmed first reservation from being mistaken for
-              // historical referral eligibility evidence in the next case.
-              yield* cancelSyntheticReservation(
-                datasourceConfig,
-                firstId as DotyposReservationId
-              );
-              yield* waitForCancelledDotyposReservations(
-                datasourceConfig,
-                reservationIds,
-                {
-                  endDate: new Date(
-                    Math.max(
-                      Number(first.endsAt.epochMilliseconds),
-                      Number(second.endsAt.epochMilliseconds)
-                    )
-                  ),
-                  startDate: new Date(
-                    Math.min(
-                      Number(first.startsAt.epochMilliseconds),
-                      Number(second.startsAt.epochMilliseconds)
-                    )
-                  ),
-                }
-              );
-              yield* waitForCancelledDotyposReservationStatuses(
-                datasourceConfig,
-                reservationIds
-              );
-            }),
-            datasourceTimeout
-          )
+            // The cancelled-card assertion above remains visible to the
+            // account test. This final transition cleanup prevents the
+            // still-confirmed first reservation from being mistaken for
+            // historical referral eligibility evidence in the next case.
+            yield* cancelSyntheticReservation(
+              datasourceConfig,
+              firstId as DotyposReservationId
+            );
+            yield* waitForCancelledDotyposReservations(
+              datasourceConfig,
+              reservationIds,
+              {
+                endDate: new Date(
+                  Math.max(
+                    Number(first.endsAt.epochMilliseconds),
+                    Number(second.endsAt.epochMilliseconds)
+                  )
+                ),
+                startDate: new Date(
+                  Math.min(
+                    Number(first.startsAt.epochMilliseconds),
+                    Number(second.startsAt.epochMilliseconds)
+                  )
+                ),
+              }
+            );
+            yield* waitForCancelledDotyposReservationStatuses(
+              datasourceConfig,
+              reservationIds
+            );
+          }),
+          datasourceTimeout
         );
+        return { cleanup: runStep(cleanupStep) };
       })
     ),
     makeCase(

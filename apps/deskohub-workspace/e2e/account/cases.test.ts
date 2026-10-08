@@ -5,8 +5,8 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
-import { Temporal } from "@js-temporal/polyfill";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Layer, Option } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import { betterAuthMagicLinkOptions } from "@/features/account/backend/auth/auth-options";
 import {
   hasPreviousPaidBooking,
@@ -14,7 +14,9 @@ import {
 } from "@/features/referrals/eligibility";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
+import { E2EDatabase } from "../integrations/database.service";
 import type { BrowserCommandResult, Runner } from "../runtime";
+import { makeE2ETelemetryMock } from "../services/telemetry.mock";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../types";
 import {
@@ -1320,11 +1322,31 @@ const makeScenario = () => {
   };
 };
 
-const executeCase = async (
+const rejectUnexpectedHttp = Object.assign(
+  async (..._args: Parameters<typeof fetch>) => {
+    throw new Error("HTTP must not execute");
+  },
+  {
+    preconnect: (..._args: Parameters<typeof fetch.preconnect>) => undefined,
+  }
+);
+
+const httpClientLayer = FetchHttpClient.layer.pipe(
+  Layer.provide(Layer.succeed(FetchHttpClient.Fetch, rejectUnexpectedHttp))
+);
+
+const accountCaseTestLayer = Layer.mergeAll(
+  makeE2ETelemetryMock([]),
+  Layer.succeed(E2EDatabase, E2EDatabase.of({ db: {} as never })),
+  httpClientLayer
+);
+
+const makeCaseExecution = (
   testCase: WorkspaceE2EAccountCase,
   scenario: ReturnType<typeof makeScenario>,
-  stepIds: string[]
-) => {
+  stepIds: string[],
+  verifyPage?: WorkspaceE2EStep<void>
+): Effect.Effect<void, WorkspaceE2EError> => {
   const runStep: WorkspaceE2EStepRunner = <A, R>(
     step: WorkspaceE2EStep<A, R>
   ) => {
@@ -1333,13 +1355,43 @@ const executeCase = async (
     // boundary models its dependencies; it does not replace semantic steps.
     return step.execute;
   };
-  const effect = testCase.execute({
-    journalRef: scenario.journalRef,
-    runStep,
-    session,
-  });
-  await Effect.runPromise(effect as Effect.Effect<void, WorkspaceE2EError>);
+  return Effect.acquireUseRelease(
+    Effect.interruptible(
+      testCase.execute({
+        journalRef: scenario.journalRef,
+        runStep,
+        session,
+      })
+    ),
+    () =>
+      Option.match(Option.fromNullishOr(verifyPage), {
+        onNone: () => Effect.void,
+        onSome: runStep,
+      }),
+    (completion, useExit) =>
+      completion.cleanup.pipe(
+        Effect.exit,
+        Effect.flatMap((cleanupExit) =>
+          Exit.match(useExit, {
+            onFailure: () => Effect.void,
+            onSuccess: () =>
+              Exit.match(cleanupExit, {
+                onFailure: (cause) => Effect.failCause(cause),
+                onSuccess: () => Effect.void,
+              }),
+          })
+        )
+      )
+  ).pipe(Effect.provide(accountCaseTestLayer));
 };
+
+const executeCase = async (
+  testCase: WorkspaceE2EAccountCase,
+  scenario: ReturnType<typeof makeScenario>,
+  stepIds: string[],
+  verifyPage?: WorkspaceE2EStep<void>
+) =>
+  Effect.runPromise(makeCaseExecution(testCase, scenario, stepIds, verifyPage));
 
 const buildCase = async (
   makeCases: typeof import("./cases").makeWorkspaceE2EAccountCases,
@@ -1637,11 +1689,30 @@ test("the account reservation transition leaves referral history eligible", asyn
     scenario
   );
   const stepIds: string[] = [];
+  let reservationStatusesDuringHistoryCheck: readonly string[] = [];
+  const historyCheck: WorkspaceE2EStep<void> = {
+    execute: Effect.sync(() => {
+      reservationStatusesDuringHistoryCheck = [
+        ...scenario.external.reservations.values(),
+      ].map(({ status }) => status);
+    }),
+    id: "checks reservation history while transition reservations are active",
+    timeoutMs: workspaceE2ETimeouts.providerTransition,
+  };
 
-  await executeCase(transitionCase, scenario, stepIds);
+  await executeCase(transitionCase, scenario, stepIds, historyCheck);
 
   const reservationIds = [...scenario.external.reservations.keys()];
   expect(reservationIds).toHaveLength(2);
+  expect(reservationStatusesDuringHistoryCheck).toEqual([
+    "CONFIRMED",
+    "CANCELLED",
+  ]);
+  expect(
+    [...scenario.external.reservations.values()].map(({ status }) => status)
+  ).toEqual(["CANCELLED", "CANCELLED"]);
+  expect(scenario.external.reservationOverlapChecks).toEqual([reservationIds]);
+  expect(scenario.external.reservationStatusChecks).toEqual([reservationIds]);
   const evidence = [...scenario.external.reservations.values()].map(
     ({ customerId, endsAt, status }) => ({
       cancelled: status === "CANCELLED",
@@ -1665,8 +1736,7 @@ test("the account reservation transition leaves referral history eligible", asyn
   expect(stepIds).toContain(
     "cancels and converges the remaining reservation history"
   );
-  expect(scenario.external.reservationOverlapChecks).toEqual([reservationIds]);
-  expect(scenario.external.reservationStatusChecks).toEqual([reservationIds]);
+  expect(stepIds).toContain(historyCheck.id);
   expect(scenario.external.journal.dotyposReservationIds).toEqual(
     reservationIds
   );
@@ -1682,18 +1752,8 @@ test("fails closed before external side effects when the accepted request handof
     scenario
   );
   const stepIds: string[] = [];
-  const runStep: WorkspaceE2EStepRunner = <A, R>(
-    step: WorkspaceE2EStep<A, R>
-  ) => {
-    stepIds.push(step.id);
-    return step.execute;
-  };
   const exit = await Effect.runPromiseExit(
-    selected.execute({
-      journalRef: scenario.journalRef,
-      runStep,
-      session,
-    }) as Effect.Effect<void, WorkspaceE2EError>
+    makeCaseExecution(selected, scenario, stepIds)
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
@@ -1718,18 +1778,8 @@ test("fails closed before external side effects when the reauthentication handof
     scenario
   );
   const stepIds: string[] = [];
-  const runStep: WorkspaceE2EStepRunner = <A, R>(
-    step: WorkspaceE2EStep<A, R>
-  ) => {
-    stepIds.push(step.id);
-    return step.execute;
-  };
   const exit = await Effect.runPromiseExit(
-    selected.execute({
-      journalRef: scenario.journalRef,
-      runStep,
-      session,
-    }) as Effect.Effect<void, WorkspaceE2EError>
+    makeCaseExecution(selected, scenario, stepIds)
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
@@ -1762,18 +1812,8 @@ test("fails when the reauthentication handoff names a different linked customer"
     scenario
   );
   const stepIds: string[] = [];
-  const runStep: WorkspaceE2EStepRunner = <A, R>(
-    step: WorkspaceE2EStep<A, R>
-  ) => {
-    stepIds.push(step.id);
-    return step.execute;
-  };
   const exit = await Effect.runPromiseExit(
-    selected.execute({
-      journalRef: scenario.journalRef,
-      runStep,
-      session,
-    }) as Effect.Effect<void, WorkspaceE2EError>
+    makeCaseExecution(selected, scenario, stepIds)
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
