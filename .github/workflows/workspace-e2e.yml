@@ -29,7 +29,7 @@ permissions:
   contents: read
   deployments: read
   pull-requests: read
-  statuses: write
+  statuses: read
 
 concurrency:
   group: workspace-e2e-${{ github.event_name == 'workflow_dispatch' && 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' || github.event.client_payload.project.id }}-pr-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.recover_failed_e2e_run == true && '-recovery' || '' }}
@@ -42,6 +42,7 @@ jobs:
       (github.event.client_payload.project.id == 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' &&
        github.event.client_payload.environment == 'preview')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       eligible: ${{ steps.target.outputs.eligible }}
       head_ref: ${{ steps.target.outputs.head_ref }}
@@ -241,7 +242,7 @@ jobs:
 
     steps:
       - name: Checkout exact target
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve-target.outputs.sha }}
           fetch-depth: 2
@@ -258,7 +259,7 @@ jobs:
           echo "Checked out exact deployment SHA $actual_sha"
 
       - name: Checkout allocation action
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           path: .workspace-e2e-coordinator
@@ -311,7 +312,7 @@ jobs:
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             >/dev/null
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2
 
@@ -455,7 +456,7 @@ jobs:
           WORKSPACE_E2E_ALLOCATION_SHARD: ${{ steps.lease.outputs.shard }}
         run: bun turbo test:e2e --filter=deskohub-workspace
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: workspace-e2e-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
@@ -465,7 +466,7 @@ jobs:
 
       - name: Upload reservation-link screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: workspace-e2e-reservation-link-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
           path: apps/deskohub-workspace/e2e-artifacts/reservation-links/*.png
@@ -473,7 +474,7 @@ jobs:
           retention-days: 7
 
       - name: Upload synthetic PR review screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: workspace-account-review-${{ github.run_id }}-${{ github.run_attempt }}
@@ -534,7 +535,7 @@ jobs:
       NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
     steps:
       - name: Checkout the reviewed recovery code ref
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
@@ -559,7 +560,7 @@ jobs:
             echo "Resolved runtime target is not the original failed PR preview" >&2
             exit 1
           fi
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2
 
@@ -947,6 +948,7 @@ jobs:
     needs: [resolve-target, test-e2e]
     if: always() && inputs.recover_failed_e2e_run != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       statuses: write
@@ -988,6 +990,7 @@ jobs:
     needs: resolve-target
     if: inputs.recover_failed_e2e_run != true && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       statuses: write

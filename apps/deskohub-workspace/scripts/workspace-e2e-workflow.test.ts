@@ -135,6 +135,9 @@ describe("workspace E2E workflow", () => {
       )
     ).toBe(true);
     expect(doc.permissions?.contents).not.toBe("write");
+    // Only the jobs that publish commit statuses opt into write access; the
+    // workflow default stays read-only for the target-resolution job.
+    expect(doc.permissions?.statuses).toBe("read");
     expect(
       JSON.stringify(allocationAction?.with ?? {}).includes(
         "secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL"
@@ -362,8 +365,8 @@ describe("workspace E2E workflow", () => {
       "bun scripts/workspace-e2e-account-state.ts"
     );
 
-    const uploadIndex = allSteps.findIndex(
-      (step) => step.uses === "actions/upload-artifact@v4"
+    const uploadIndex = allSteps.findIndex((step) =>
+      (step.uses ?? "").startsWith("actions/upload-artifact@")
     );
     const diagnosticIndex = allSteps.findIndex(
       (step) => step.name === "Classify synthetic main account state"
