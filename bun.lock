@@ -123,6 +123,7 @@
         "@deskohub/cloudinary": "workspace:*",
         "@deskohub/cloudinary-image": "workspace:*",
         "@deskohub/dotypos": "workspace:*",
+        "@deskohub/effect-schema-resolver": "workspace:*",
         "@deskohub/email": "workspace:*",
         "@deskohub/google-calendar": "workspace:*",
         "@deskohub/i18n": "workspace:*",
@@ -301,6 +302,28 @@
       },
       "peerDependencies": {
         "react": "^19.2.7",
+      },
+    },
+    "packages/effect-schema-resolver": {
+      "name": "@deskohub/effect-schema-resolver",
+      "version": "0.1.0",
+      "dependencies": {
+        "@hookform/resolvers": "^5.2.2",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.10.1",
+        "@testing-library/react": "^16.3.2",
+        "@types/react": "^19.2.17",
+        "@types/react-dom": "^19.2.3",
+        "effect": "4.0.0-beta.85",
+        "react": "19.2.7",
+        "react-dom": "19.2.7",
+        "react-hook-form": "^7.74.0",
+        "typescript": "npm:@typescript/typescript6@6.0.2",
+      },
+      "peerDependencies": {
+        "effect": "4.0.0-beta.85",
+        "react-hook-form": "^7.74.0",
       },
     },
     "packages/email": {
@@ -653,6 +676,8 @@
     "@deskohub/cloudinary-image": ["@deskohub/cloudinary-image@workspace:packages/cloudinary-image"],
 
     "@deskohub/dotypos": ["@deskohub/dotypos@workspace:packages/dotypos"],
+
+    "@deskohub/effect-schema-resolver": ["@deskohub/effect-schema-resolver@workspace:packages/effect-schema-resolver"],
 
     "@deskohub/email": ["@deskohub/email@workspace:packages/email"],
 

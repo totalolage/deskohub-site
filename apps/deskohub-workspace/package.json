@@ -40,6 +40,7 @@
     "@deskohub/cloudinary": "workspace:*",
     "@deskohub/cloudinary-image": "workspace:*",
     "@deskohub/dotypos": "workspace:*",
+    "@deskohub/effect-schema-resolver": "workspace:*",
     "@deskohub/email": "workspace:*",
     "@deskohub/google-calendar": "workspace:*",
     "@deskohub/igloohome": "workspace:*",
