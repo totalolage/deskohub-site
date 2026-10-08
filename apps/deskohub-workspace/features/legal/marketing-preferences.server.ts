@@ -51,9 +51,15 @@ export const getMarketingPreferencesEffect = (
 ) =>
   readMarketingPreferencesEffect(marketingCookies).pipe(
     Effect.provide(layers),
-    Effect.catch(() => Effect.succeed({ status: "unavailable" as const })),
+    Effect.catch((error) =>
+      Effect.logWarning("Marketing preferences are unavailable").pipe(
+        Effect.annotateLogs({ failure: error._tag }),
+        Effect.as({ status: "unavailable" as const })
+      )
+    ),
     // The locale is a trusted route value and is safe low-cardinality context;
-    // no credential, provider identifier, or database cause is annotated.
+    // no credential, provider identifier, or database cause is annotated, and
+    // a failure is logged only by its fixed error tag.
     Effect.annotateLogs({ locale })
   );
 
