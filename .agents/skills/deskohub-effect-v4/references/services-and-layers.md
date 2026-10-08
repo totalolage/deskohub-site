@@ -63,6 +63,13 @@ Import HTTP modules as named namespaces from the `effect/unstable/http` barrel, 
 
 Resolve capabilities while constructing the consuming service and close over them in its implementation so public methods accept domain input only. Let a service's `Default` layer require its dependencies from Context. Provide live dependency layers in the service's `Live` composition and replace them with test layers in tests.
 
+## Call external providers
+
+- Bound every outbound provider request with a timeout that fails with the capability's typed error. Pass the `Effect.tryPromise` abort signal to promise-based SDKs so a timeout or interruption cancels the request.
+- Retry idempotent reads on transient failures. A timeout, transport failure, or 5xx can follow a committed create or send, so retry those only when the provider honors an idempotency key that stays the same across attempts. Otherwise retry only failures that prove nothing was applied, such as 429 or an empty creation response.
+- When a provider rejects a cached credential with 401, invalidate the cached credential.
+- Keep the original error as `cause` unless it carries request bodies, credentials, or personal data. In that case remove those parts, and log only tags, identifiers, status codes, and field names.
+
 ## Name and expose operations
 
 Name public service operations with `Effect.fn("Service.operation")`. Do not wrap the entire named operation in a redundant `Effect.withSpan`; add explicit spans only for meaningful nested trace boundaries.
