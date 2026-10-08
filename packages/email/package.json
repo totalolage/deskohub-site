@@ -18,6 +18,6 @@
   },
   "dependencies": {
     "effect": "4.0.0-beta.85",
-    "resend": "^6.0.1"
+    "resend": "^6.32.1"
   }
 }
