@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { PostHogProjectId } from "../identifiers";
 import {
   listPostHogFeatureFlagDefinitions,
@@ -154,6 +155,40 @@ describe("listPostHogFeatureFlagDefinitions", () => {
     );
 
     expect(definition?.constantEnabledValue).toBeUndefined();
+  });
+
+  test("keeps the page request failure as the error cause", async () => {
+    const requestFailure = new Error("PostHog unavailable");
+
+    const error = await Effect.runPromise(
+      listPostHogFeatureFlagDefinitions(projectId, () =>
+        Effect.fail(requestFailure)
+      ).pipe(Effect.flip)
+    );
+
+    expect(error).toMatchObject({
+      _tag: "PostHogFeatureFlagError",
+      message: "Could not list PostHog feature flags.",
+    });
+    expect(error.cause).toBe(requestFailure);
+  });
+
+  test("fails a stalled page request", async () => {
+    const error = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* listPostHogFeatureFlagDefinitions(
+          projectId,
+          () => Effect.never
+        ).pipe(Effect.flip, Effect.forkChild);
+        yield* TestClock.adjust("10 seconds");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(error).toMatchObject({
+      _tag: "PostHogFeatureFlagError",
+      message: "PostHog feature flag request timed out.",
+    });
   });
 
   test("fails through the Effect error channel for duplicate keys", async () => {
