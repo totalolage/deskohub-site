@@ -10,6 +10,7 @@ import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { CliAuthentication } from "./cli-authentication.service";
 import {
+  cliSessionDurationFieldsSchema,
   cliSessionLifetimeSchema,
   renameCliSessionStandardSchema,
 } from "./contracts";
@@ -44,15 +45,12 @@ export async function approveCliAuthentication(formData: FormData) {
 }
 
 const decodeCliSessionLifetime = (formData: FormData) =>
-  Schema.decodeUnknownEffect(cliSessionLifetimeSchema)(
-    formData.get("neverExpire") === "on"
-      ? { _tag: "Never" }
-      : {
-          _tag: "Duration",
-          amount: formData.get("lifetimeAmount"),
-          unit: formData.get("lifetimeUnit"),
-        }
-  );
+  formData.get("neverExpire") === "on"
+    ? Effect.succeed(cliSessionLifetimeSchema.cases.Never.make({}))
+    : Schema.decodeUnknownEffect(cliSessionDurationFieldsSchema)({
+        amount: formData.get("lifetimeAmount"),
+        unit: formData.get("lifetimeUnit"),
+      }).pipe(Effect.map(cliSessionLifetimeSchema.cases.Duration.make));
 
 export async function revokeCliSession(formData: FormData) {
   const revoked = await Effect.gen(function* () {
