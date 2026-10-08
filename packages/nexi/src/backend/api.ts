@@ -222,7 +222,11 @@ export const mapNexiClientError = (
     }
   }
 
-  const providerError = parseProviderError(error);
+  // Every field of the provider error body is optional, so only a plain
+  // payload counts; an unexpected Error is not a provider response.
+  const providerError = Predicate.isError(error)
+    ? undefined
+    : parseProviderError(error);
   if (providerError) {
     return toExternalApiError({
       operation,
@@ -236,6 +240,7 @@ export const mapNexiClientError = (
   return new ExternalAPIError({
     service: "Nexi",
     operation,
+    cause: error,
   });
 };
 
