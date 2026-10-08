@@ -427,8 +427,8 @@ test("preserves the server-authoritative switch on a save failure and allows ret
   rejectFirst({ serverError: "Synthetic preference save failure" });
 
   await waitFor(() => {
-    expect(view.getByRole("alert").textContent).toContain(
-      "Synthetic preference save failure"
+    expect(view.getByRole("alert").textContent).toBe(
+      m.marketingPreferencesFormSaveError({}, { locale: "en-US" })
     );
   });
   expect(
@@ -588,7 +588,9 @@ test.each([
       )
     );
     await waitFor(() => {
-      expect(view.getByRole("alert")).toBeTruthy();
+      expect(view.getByRole("alert").textContent).toBe(
+        m.marketingPreferencesFormSaveError({}, { locale: "en-US" })
+      );
     });
     expect(getSwitchChecked()).toBe(expectedAfterFailure);
   }
@@ -641,8 +643,8 @@ test("keeps a pending context after a continuation failure and allows retry", as
   );
 
   await waitFor(() => {
-    expect(view.getByRole("alert").textContent).toContain(
-      "Synthetic continuation failure"
+    expect(view.getByRole("alert").textContent).toBe(
+      m.marketingPreferencesFormConfirmError({}, { locale: "en-US" })
     );
   });
   expect(routerRefresh).not.toHaveBeenCalled();
@@ -713,8 +715,8 @@ test("resets a stale save error when the dismissal context changes", async () =>
     getSwitch(view, m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }))
   );
   await waitFor(() => {
-    expect(view.getByRole("alert").textContent).toContain(
-      "Synthetic stale save failure"
+    expect(view.getByRole("alert").textContent).toBe(
+      m.marketingPreferencesFormSaveError({}, { locale: "en-US" })
     );
   });
   await waitFor(() =>
@@ -738,7 +740,7 @@ test("resets a stale save error when the dismissal context changes", async () =>
     />
   );
 
-  expect(view.queryByRole("alert")).toBeNull();
+  expect(view.getByRole("alert").textContent).toBe("");
   expect(
     getSwitch(
       view,
@@ -1042,8 +1044,8 @@ test("keeps a pending dedicated link after clear failure and allows retry", asyn
     })
   );
   await waitFor(() => {
-    expect(view.getByRole("alert").textContent).toContain(
-      "Synthetic pending clear failure"
+    expect(view.getByRole("alert").textContent).toBe(
+      m.marketingPreferencesFormClearError({}, { locale: "en-US" })
     );
   });
   expect(
@@ -1182,8 +1184,8 @@ test("announces clear loading, allows retry after an error, and keeps the dismis
 
   resolveClear({ serverError: "Synthetic clear failure" });
   await waitFor(() => {
-    expect(view.getByRole("alert").textContent).toContain(
-      "Synthetic clear failure"
+    expect(view.getByRole("alert").textContent).toBe(
+      m.marketingPreferencesFormClearError({}, { locale: "en-US" })
     );
   });
 
@@ -1262,4 +1264,120 @@ test("renders the managed preference through the shared preference row primitive
   expect(
     view.container.querySelector('[data-slot="preference-row"]')
   ).toBeTruthy();
+});
+
+test("keeps save feedback and the focused switch when refreshed props report the saved status", async () => {
+  const context = "synthetic-refresh-context";
+  const view = renderForm({ context, source: "account", status: "absent" });
+  const marketingSwitch = getSwitch(view);
+
+  fireEvent.click(marketingSwitch);
+  await waitFor(() => {
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+    expect(marketingSwitch.hasAttribute("disabled")).toBe(false);
+  });
+  act(() => marketingSwitch.focus());
+
+  // router.refresh() delivers the server-confirmed status as new props.
+  view.rerender(
+    <MarketingPreferencesForm
+      locale="en-US"
+      state={{ context, source: "account", status: "active" }}
+    />
+  );
+
+  expect(getSwitch(view)).toBe(marketingSwitch);
+  expect(marketingSwitch.isConnected).toBe(true);
+  expect(document.activeElement).toBe(marketingSwitch);
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
+  expect(
+    view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
+  ).toBeTruthy();
+
+  // A later server-side change still drives the switch without a remount.
+  view.rerender(
+    <MarketingPreferencesForm
+      locale="en-US"
+      state={{ context, source: "account", status: "withdrawn" }}
+    />
+  );
+  expect(getSwitch(view)).toBe(marketingSwitch);
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
+
+  // The refreshed status is now the confirmed rollback target.
+  saveMarketingPreferencesAction.mockImplementationOnce(() =>
+    Promise.resolve({ serverError: "Synthetic refreshed save failure" })
+  );
+  fireEvent.click(marketingSwitch);
+  await waitFor(() => {
+    expect(view.getByRole("alert").textContent).toBe(
+      m.marketingPreferencesFormSaveError({}, { locale: "en-US" })
+    );
+  });
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
+});
+
+test("announces server failures with localized copy instead of the server message", async () => {
+  const locale = "cs-CZ" as const;
+  saveMarketingPreferencesAction.mockImplementationOnce(() =>
+    Promise.resolve({
+      serverError:
+        "We could not update your marketing preference. Please try again.",
+    })
+  );
+  const view = renderForm(
+    {
+      context: "synthetic-account-context",
+      source: "account",
+      status: "absent",
+    },
+    locale
+  );
+
+  fireEvent.click(
+    getSwitch(view, m.marketingPreferencesFormRowTitle({}, { locale }))
+  );
+
+  await waitFor(() => {
+    expect(view.getByRole("alert").textContent).toBe(
+      m.marketingPreferencesFormSaveError({}, { locale })
+    );
+  });
+  expect(view.container.textContent).not.toContain(
+    "We could not update your marketing preference."
+  );
+});
+
+test("keeps the feedback live regions mounted before any feedback appears", async () => {
+  saveMarketingPreferencesAction.mockImplementationOnce(() =>
+    Promise.resolve({ serverError: "Synthetic live region failure" })
+  );
+  const view = renderForm({
+    context: "synthetic-account-context",
+    source: "account",
+    status: "absent",
+  });
+  const statusRegion = view.getByRole("status");
+  const alertRegion = view.getByRole("alert");
+
+  expect(statusRegion.getAttribute("aria-live")).toBe("polite");
+  expect(statusRegion.textContent).toBe("");
+  expect(alertRegion.textContent).toBe("");
+
+  fireEvent.click(getSwitch(view));
+  await waitFor(() => {
+    expect(alertRegion.textContent).toBe(
+      m.marketingPreferencesFormSaveError({}, { locale: "en-US" })
+    );
+  });
+  expect(view.getByRole("alert")).toBe(alertRegion);
+
+  fireEvent.click(getSwitch(view));
+  await waitFor(() => {
+    expect(statusRegion.textContent).toBe(
+      m.marketingPreferencesFormSaved({}, { locale: "en-US" })
+    );
+  });
+  expect(view.getByRole("status")).toBe(statusRegion);
+  expect(alertRegion.textContent).toBe("");
 });
