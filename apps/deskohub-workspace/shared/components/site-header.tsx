@@ -72,6 +72,46 @@ function ActiveAccountLink(props: Omit<AccountLinkProps, "active">) {
   return <AccountLink {...props} active={pathname === props.href} />;
 }
 
+type NavigationLinkProps = {
+  readonly active?: boolean;
+  readonly className: string;
+  readonly href: string;
+  readonly label: string;
+  readonly onClick?: () => void;
+};
+
+function NavigationLink({
+  active = false,
+  className,
+  href,
+  label,
+  onClick,
+}: NavigationLinkProps) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={className}
+      onClick={onClick}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function ActiveNavigationLink(props: Omit<NavigationLinkProps, "active">) {
+  const pathname = usePathname();
+  return <NavigationLink {...props} active={pathname === props.href} />;
+}
+
+function CurrentPageNavigationLink(props: Omit<NavigationLinkProps, "active">) {
+  return (
+    <Suspense fallback={<NavigationLink {...props} />}>
+      <ActiveNavigationLink {...props} />
+    </Suspense>
+  );
+}
+
 export function SiteHeader({
   accountHref,
   accountLabel,
@@ -119,13 +159,12 @@ export function SiteHeader({
           className="hidden items-center gap-6 xl:flex"
         >
           {links.map((link) => (
-            <Link
+            <CurrentPageNavigationLink
               key={link.id}
               href={link.href}
+              label={link.label}
               className="text-balance text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow"
-            >
-              {link.label}
-            </Link>
+            />
           ))}
         </nav>
 
@@ -230,14 +269,13 @@ export function SiteHeader({
               </Suspense>
             )}
             {links.map((link) => (
-              <Link
+              <CurrentPageNavigationLink
                 key={link.id}
                 href={link.href}
+                label={link.label}
                 onClick={closeMenu}
                 className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm uppercase tracking-[0.12em] text-white/80 transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow"
-              >
-                {link.label}
-              </Link>
+              />
             ))}
           </nav>
 
