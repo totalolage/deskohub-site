@@ -458,9 +458,11 @@ describe("standalone access-code failure mapping", () => {
 });
 
 describe("standalone access-code form schema", () => {
+  const formStandardSchema = Schema.toStandardSchemaV1(
+    createStandaloneAccessCodeFormSchema
+  );
   const validateForm = async (values: CreateStandaloneAccessCodeFormInput) => {
-    const result =
-      await createStandaloneAccessCodeFormSchema["~standard"].validate(values);
+    const result = await formStandardSchema["~standard"].validate(values);
     return result.issues
       ? Object.groupBy(
           result.issues.map((issue) => ({

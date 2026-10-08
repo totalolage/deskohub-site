@@ -1,11 +1,10 @@
 "use client";
 
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import {
   CliSessionId,
   type CliSessionIdType,
 } from "@deskohub/workspace-admin-api";
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
 import { useRef, useTransition } from "react";
 import { useForm } from "react-hook-form";
@@ -26,18 +25,9 @@ const revokeCliSessionFormSchema = Schema.Struct({
   sessionId: CliSessionId,
 });
 
-const revokeCliSessionFormStandardSchema = Schema.toStandardSchemaV1(
-  revokeCliSessionFormSchema,
-  { parseOptions: { errors: "all", onExcessProperty: "error" } }
-);
+type RevokeCliSessionFormInput = typeof revokeCliSessionFormSchema.Encoded;
 
-type RevokeCliSessionFormInput = StandardSchemaV1.InferInput<
-  typeof revokeCliSessionFormStandardSchema
->;
-
-type RevokeCliSessionFormValues = StandardSchemaV1.InferOutput<
-  typeof revokeCliSessionFormStandardSchema
->;
+type RevokeCliSessionFormValues = typeof revokeCliSessionFormSchema.Type;
 
 export function RevokeCliSession({
   clientName,
@@ -58,7 +48,9 @@ export function RevokeCliSession({
     defaultValues: { sessionId },
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(revokeCliSessionFormStandardSchema),
+    resolver: effectSchemaResolver(revokeCliSessionFormSchema, {
+      onExcessProperty: "error",
+    }),
   });
 
   return (

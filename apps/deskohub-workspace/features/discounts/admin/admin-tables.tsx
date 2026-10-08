@@ -1,8 +1,8 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import type { ColumnDef } from "@tanstack/react-table";
+import type { Schema } from "effect";
 import { ArrowUpRight, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -745,7 +745,7 @@ function MutationForm<Input extends FieldValues, Values = Input>({
    */
   readonly resetOnSuccessTo?: "initial" | "submitted";
   readonly requireDirty?: boolean;
-  readonly schema: StandardSchemaV1<Input, Values>;
+  readonly schema: Schema.Codec<Values, Input>;
   readonly submitIcon: ReactNode;
   readonly submitLabel: string;
   readonly onSuccess?: (message: string) => void;
@@ -759,7 +759,7 @@ function MutationForm<Input extends FieldValues, Values = Input>({
     defaultValues,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(schema),
+    resolver: effectSchemaResolver(schema),
   });
   const { isDirty } = form.formState;
   // Snapshot taken at submit entry so the success reset cannot absorb values

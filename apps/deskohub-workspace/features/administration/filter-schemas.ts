@@ -1,4 +1,3 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
 import { isPlainDateString } from "@/shared/utils/temporal";
 import {
@@ -12,28 +11,20 @@ const optionalCalendarDateField = Schema.Union([
   calendarDateField,
 ]);
 
-export const orderFilterSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    from: optionalCalendarDateField,
-    to: optionalCalendarDateField,
-  })
-);
+export const orderFilterSchema = Schema.Struct({
+  from: optionalCalendarDateField,
+  to: optionalCalendarDateField,
+});
 
-export type OrderFilterValues = StandardSchemaV1.InferInput<
-  typeof orderFilterSchema
->;
+export type OrderFilterValues = typeof orderFilterSchema.Encoded;
 
-export const bookingFilterSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    date: calendarDateField,
-    sort: Schema.Literals(["booking", "status"]),
-    direction: Schema.Literals(["asc", "desc"]),
-  })
-);
+export const bookingFilterSchema = Schema.Struct({
+  date: calendarDateField,
+  sort: Schema.Literals(["booking", "status"]),
+  direction: Schema.Literals(["asc", "desc"]),
+});
 
-export type BookingFilterValues = StandardSchemaV1.InferInput<
-  typeof bookingFilterSchema
->;
+export type BookingFilterValues = typeof bookingFilterSchema.Encoded;
 
 const optionalOperationChannelField = Schema.Union([
   Schema.Literal(""),
@@ -45,18 +36,14 @@ const optionalOperationTypeField = Schema.Union([
   Schema.Literals(nexiOperationTypes),
 ]);
 
-export const operationFilterSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    from: optionalCalendarDateField,
-    to: optionalCalendarDateField,
-    channel: optionalOperationChannelField,
-    operationType: optionalOperationTypeField,
-  })
-);
+export const operationFilterSchema = Schema.Struct({
+  from: optionalCalendarDateField,
+  to: optionalCalendarDateField,
+  channel: optionalOperationChannelField,
+  operationType: optionalOperationTypeField,
+});
 
-export type OperationFilterValues = StandardSchemaV1.InferInput<
-  typeof operationFilterSchema
->;
+export type OperationFilterValues = typeof operationFilterSchema.Encoded;
 
 const optionalReservationStatusField = Schema.Union([
   Schema.Literal(""),
@@ -68,18 +55,14 @@ const optionalReservationTypeField = Schema.Union([
   Schema.Literals(["cowork", "meeting-room", "office"]),
 ]);
 
-export const reservationFilterSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    status: optionalReservationStatusField,
-    type: optionalReservationTypeField,
-    from: optionalCalendarDateField,
-    to: optionalCalendarDateField,
-    customerId: Schema.optional(Schema.String),
-    sort: Schema.Literals(["created", "date", "reservation", "status"]),
-    direction: Schema.Literals(["asc", "desc"]),
-  })
-);
+export const reservationFilterSchema = Schema.Struct({
+  status: optionalReservationStatusField,
+  type: optionalReservationTypeField,
+  from: optionalCalendarDateField,
+  to: optionalCalendarDateField,
+  customerId: Schema.optional(Schema.String),
+  sort: Schema.Literals(["created", "date", "reservation", "status"]),
+  direction: Schema.Literals(["asc", "desc"]),
+});
 
-export type ReservationFilterValues = StandardSchemaV1.InferInput<
-  typeof reservationFilterSchema
->;
+export type ReservationFilterValues = typeof reservationFilterSchema.Encoded;

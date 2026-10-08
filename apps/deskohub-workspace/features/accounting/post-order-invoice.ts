@@ -10,9 +10,9 @@ const access = {
   accessToken: reservationAccessTokenSchema,
 };
 
-export const postOrderInvoiceAddressFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({ address: invoiceBuyerAddressSchema })
-);
+export const postOrderInvoiceAddressFormSchema = Schema.Struct({
+  address: invoiceBuyerAddressSchema,
+});
 
 export const managePostOrderInvoiceSchema = Schema.toStandardSchemaV1(
   Schema.Union([

@@ -1,6 +1,6 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import type { FormEvent } from "react";
 import { useForm } from "react-hook-form";
 import { m } from "@/features/i18n";
@@ -46,7 +46,7 @@ export function OrdersAdministrationFilterForm({
     defaultValues: values,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(orderFilterSchema),
+    resolver: effectSchemaResolver(orderFilterSchema),
     values,
   });
 
@@ -102,7 +102,7 @@ export function BookingsAdministrationFilterForm({
     defaultValues: values,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(bookingFilterSchema),
+    resolver: effectSchemaResolver(bookingFilterSchema),
     values,
   });
 
@@ -158,7 +158,7 @@ export function OperationsAdministrationFilterForm({
     defaultValues: values,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(operationFilterSchema),
+    resolver: effectSchemaResolver(operationFilterSchema),
     values,
   });
 
@@ -258,7 +258,7 @@ export function ReservationsAdministrationFilterForm({
     defaultValues: values,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(reservationFilterSchema),
+    resolver: effectSchemaResolver(reservationFilterSchema),
     values,
   });
   const shortcutHref = (range: {

@@ -1,7 +1,6 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { Schema } from "effect";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
@@ -77,10 +76,6 @@ type MeetingRoomReservationFormFallbackProps = {
   readonly locale: Locale;
 };
 
-const meetingRoomReservationFormSchema = Schema.toStandardSchemaV1(
-  meetingRoomReservationSchema
-);
-
 export function MeetingRoomReservationForm({
   checkoutSessionId,
   initialAdvertisedPrices = [],
@@ -108,7 +103,7 @@ export function MeetingRoomReservationForm({
     unknown,
     MeetingRoomReservationData
   >({
-    resolver: standardSchemaResolver(meetingRoomReservationFormSchema),
+    resolver: effectSchemaResolver(meetingRoomReservationSchema),
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",

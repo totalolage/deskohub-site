@@ -1,7 +1,6 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { Schema } from "effect";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { Send } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -230,11 +229,7 @@ function ContactFormBody({
   readonly reactiveValues?: ContactFormValues;
   readonly state: ContactFormState;
 }) {
-  const resolver = standardSchemaResolver(
-    Schema.toStandardSchemaV1(getContactSchema(locale), {
-      parseOptions: { errors: "all" },
-    })
-  );
+  const resolver = effectSchemaResolver(getContactSchema(locale));
   const form = useForm<ContactFormValues>({
     defaultValues: getContactFormValues(defaultValues),
     resolver,
