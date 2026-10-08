@@ -5,7 +5,7 @@ import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-i
 import { GalleryErrorBoundary } from "@/features/gallery/components/gallery-error-boundary";
 import { WorkspaceGalleryAlbum } from "@/features/gallery/components/workspace-gallery-album";
 import { toGalleryPhotos } from "@/features/gallery/types/gallery-photo";
-import { m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { Container } from "@/shared/components/container";
 import { Skeleton } from "@/shared/components/ui/skeleton";
@@ -21,21 +21,27 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function GalleryPage() {
-  return runWithRequestLocale(() => (
-    <Gallery>
+  return runWithRequestLocale((locale) => (
+    <Gallery locale={locale}>
       <GalleryErrorBoundary>
-        <Suspense fallback={<GalleryFallback />}>
-          <GalleryContent />
+        <Suspense fallback={<GalleryFallback locale={locale} />}>
+          <GalleryContent locale={locale} />
         </Suspense>
       </GalleryErrorBoundary>
     </Gallery>
   ));
 }
 
-function Gallery({ children }: { children: ReactNode }) {
+function Gallery({
+  children,
+  locale,
+}: {
+  readonly children: ReactNode;
+  readonly locale: Locale;
+}) {
   return (
     <main className="mt-(--site-header-height) min-h-dvh overflow-x-clip bg-[#f4f1ea] text-navy-blue">
-      <h1 className="sr-only">{m.gallerySrTitle()}</h1>
+      <h1 className="sr-only">{m.gallerySrTitle({}, { locale })}</h1>
       <section className="relative isolate py-6 sm:py-8 lg:py-10">
         <div
           aria-hidden="true"
@@ -47,28 +53,31 @@ function Gallery({ children }: { children: ReactNode }) {
   );
 }
 
-async function GalleryContent() {
+async function GalleryContent({ locale }: { readonly locale: Locale }) {
   await connection();
   const assets = await getCloudinaryImages({
     tags: ["gallery"],
     maxResults: 80,
   });
   const photos = toGalleryPhotos(assets, (index) =>
-    m.galleryImageFallbackAlt({ number: index + 1 })
+    m.galleryImageFallbackAlt({ number: index + 1 }, { locale })
   );
 
   return photos.length > 0 ? (
-    <WorkspaceGalleryAlbum photos={photos} openLabel={m.galleryOpenImage()} />
+    <WorkspaceGalleryAlbum
+      photos={photos}
+      openLabel={m.galleryOpenImage({}, { locale })}
+    />
   ) : (
-    <EmptyGallery assetsCount={assets.length} />
+    <EmptyGallery assetsCount={assets.length} locale={locale} />
   );
 }
 
-function GalleryFallback() {
+function GalleryFallback({ locale }: { readonly locale: Locale }) {
   return (
     <section
       aria-busy="true"
-      aria-label={m.gallerySrTitle()}
+      aria-label={m.gallerySrTitle({}, { locale })}
       className="grid gap-4 sm:grid-cols-3"
     >
       <Skeleton className="min-h-64 rounded-[1.35rem] bg-transparent bg-linear-to-br from-white via-[#f8efe3] to-burned-orange/24 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
@@ -78,7 +87,13 @@ function GalleryFallback() {
   );
 }
 
-function EmptyGallery({ assetsCount }: { assetsCount: number }) {
+function EmptyGallery({
+  assetsCount,
+  locale,
+}: {
+  readonly assetsCount: number;
+  readonly locale: Locale;
+}) {
   return (
     <div className="grid gap-4 sm:grid-cols-3">
       <div className="min-h-64 rounded-[1.35rem] bg-linear-to-br from-white via-[#f8efe3] to-burned-orange/24 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
@@ -86,8 +101,8 @@ function EmptyGallery({ assetsCount }: { assetsCount: number }) {
       <div className="min-h-56 rounded-[1.35rem] bg-linear-to-br from-white via-sunset-yellow/20 to-chilean-fire/28 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
       <p className="sm:col-span-3 rounded-[1.35rem] border border-navy-blue/10 bg-white/72 px-5 py-4 text-sm text-navy-blue/70 shadow-[0_18px_60px_-46px_rgba(0,2,79,0.7)] backdrop-blur">
         {assetsCount === 0
-          ? m.galleryEmptyNoPhotos()
-          : m.galleryEmptyMissingMetadata()}
+          ? m.galleryEmptyNoPhotos({}, { locale })
+          : m.galleryEmptyMissingMetadata({}, { locale })}
       </p>
     </div>
   );
