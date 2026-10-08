@@ -272,12 +272,10 @@ export const ResendEmailProviderLive = Layer.effect(
     const apiKey = config.apiKey?.trim() ?? "";
 
     if (!apiKey) {
-      return yield* Effect.fail(
-        new EmailServiceError(
-          "EMAIL_API_KEY is required for Resend email provider",
-          undefined,
-          "resend"
-        )
+      return yield* new EmailServiceError(
+        "EMAIL_API_KEY is required for Resend email provider",
+        undefined,
+        "resend"
       );
     }
 

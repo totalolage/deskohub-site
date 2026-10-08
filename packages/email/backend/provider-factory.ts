@@ -13,12 +13,10 @@ export const ConfiguredEmailProviderLayer = Layer.unwrap(
     }
 
     if (config.provider !== "console") {
-      return yield* Effect.fail(
-        new EmailServiceError(
-          `Unsupported email provider: ${config.provider}`,
-          undefined,
-          config.provider
-        )
+      return yield* new EmailServiceError(
+        `Unsupported email provider: ${config.provider}`,
+        undefined,
+        config.provider
       );
     }
 
@@ -33,12 +31,10 @@ export const ConfiguredEmailProviderLayer = Layer.unwrap(
         return ResendEmailProviderLive;
       }
 
-      return yield* Effect.fail(
-        new EmailServiceError(
-          "Console email provider is disabled in production",
-          undefined,
-          "console"
-        )
+      return yield* new EmailServiceError(
+        "Console email provider is disabled in production",
+        undefined,
+        "console"
       );
     }
 
