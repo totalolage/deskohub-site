@@ -905,6 +905,7 @@
   "accountDeletionReauthSendLink": "Poslat nový odkaz",
   "accountDeletionReauthLinkSent": "Pokud lze na adresu doručit zprávu, nový odkaz už je na cestě. Otevřete ho v tomto prohlížeči a poté smazání potvrďte znovu.",
   "accountDeletionRetryableError": "Zákaznický profil se nepodařilo deaktivovat, proto váš účet nebyl smazán. Zkuste to prosím znovu, až se náš rezervační systém obnoví.",
+  "accountDeletionRequestFailed": "Smazání účtu se nepodařilo dokončit. Zkuste to prosím znovu.",
   "accountDeletionPendingError": "Váš účet se právě maže, proto profil nelze změnit.",
   "accountSessionExpired": "Vaše relace vypršela. Přihlaste se prosím znovu.",
   "accountDeletedMetadataTitle": "Účet byl smazán | Deskohub Workspace",
