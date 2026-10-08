@@ -71,21 +71,18 @@ const focusOnMount = (node: HTMLDivElement | null) => {
   node?.focus();
 };
 
-const cleanupConfirmationFormSchema = () =>
-  Schema.toStandardSchemaV1(
-    Schema.Struct({
-      providerCredentialRemoved: Schema.Boolean.check(
-        Schema.makeFilter((confirmed) => confirmed === true, {
-          message: m.reservationBillingFieldRequired(),
-        })
-      ),
-    }),
-    { parseOptions: { errors: "all" } }
-  );
+const cleanupConfirmationFormSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({
+    providerCredentialRemoved: Schema.Boolean.check(
+      Schema.makeFilter(
+        (confirmed) => confirmed || m.reservationBillingFieldRequired()
+      )
+    ),
+  }),
+  { parseOptions: { errors: "all" } }
+);
 
-type CleanupConfirmationFormSchema = ReturnType<
-  typeof cleanupConfirmationFormSchema
->;
+type CleanupConfirmationFormSchema = typeof cleanupConfirmationFormSchema;
 
 type CleanupConfirmationFormInput =
   StandardSchemaV1.InferInput<CleanupConfirmationFormSchema>;
@@ -479,7 +476,7 @@ function CleanupConfirmationForm({
     defaultValues: cleanupConfirmationFormDefaults,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(cleanupConfirmationFormSchema()),
+    resolver: standardSchemaResolver(cleanupConfirmationFormSchema),
   });
   const cleanupConfirmed = useWatch({
     control: cleanupForm.control,
