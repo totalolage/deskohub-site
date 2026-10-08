@@ -2,6 +2,8 @@ import type { ComponentProps } from "react";
 
 const Understroke2 = ({ style, ...props }: ComponentProps<"svg">) => (
   <svg
+    aria-hidden="true"
+    focusable="false"
     viewBox="0 0 542 57"
     version="1.1"
     style={{
@@ -15,7 +17,6 @@ const Understroke2 = ({ style, ...props }: ComponentProps<"svg">) => (
     }}
     {...props}
   >
-    <title>Understroke2</title>
     <g transform="matrix(1,0,0,1,-25,-29.523359)">
       <g transform="matrix(0.1,0,0,-0.1,0,108)">
         <path

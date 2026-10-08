@@ -2,27 +2,9 @@ import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-i
 import { type Locale, m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { cn } from "@/shared/utils";
-import noiseTexture from "../images/noise-texture.png";
+import { LandingPageBackgroundNoise } from "./landing-page-background-noise";
 import { LandingPageHexagon } from "./landing-page-hexagon";
 import { LandingPagePhotoCarousel } from "./landing-page-photo-carousel";
-
-export const LandingPagePhotoCarouselBackgroundNoise = ({
-  className,
-}: {
-  className?: string;
-}) => (
-  <div
-    aria-hidden="true"
-    className={cn(
-      "pointer-events-none absolute inset-0 bg-repeat opacity-20",
-      className
-    )}
-    style={{
-      backgroundImage: `url(${noiseTexture.src})`,
-      backgroundSize: "500px 500px",
-    }}
-  />
-);
 
 export async function LandingPagePhotoCarouselSection({
   locale,
@@ -44,7 +26,7 @@ export async function LandingPagePhotoCarouselSection({
         "bg-[linear-gradient(var(--color-chilean-fire)_0%,transparent_100%),conic-gradient(from_225deg_at_30%_10%,#F57D00,#FF9222)] bg-bottom-left"
       )}
     >
-      <LandingPagePhotoCarouselBackgroundNoise className="bg-top" />
+      <LandingPageBackgroundNoise className="bg-top" />
 
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -left-10 top-1/2 h-36 w-40 -translate-y-1/2 text-navy-blue/30">
