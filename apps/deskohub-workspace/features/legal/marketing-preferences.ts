@@ -51,6 +51,8 @@ export type MarketingPreferencesMutationFailureReason =
   (typeof marketingPreferencesMutationFailureReasons)[number];
 
 export const isMarketingPreferencesMutationFailureReason = (
-  value: unknown
-): value is MarketingPreferencesMutationFailureReason =>
-  marketingPreferencesMutationFailureReasons.some((reason) => reason === value);
+  serverError: string | undefined
+): serverError is MarketingPreferencesMutationFailureReason =>
+  marketingPreferencesMutationFailureReasons.some(
+    (reason) => reason === serverError
+  );
