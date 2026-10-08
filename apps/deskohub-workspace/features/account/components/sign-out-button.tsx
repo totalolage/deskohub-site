@@ -68,7 +68,7 @@ export function SignOutButton({ locale }: SignOutButtonProps) {
         {m.accountSignOut({}, { locale })}
       </Button>
       {signOutFailed && (
-        <div role="alert" aria-live="polite" className="text-sm text-red-700">
+        <div role="alert" className="text-sm text-red-700">
           {m.accountSignOutFailed({}, { locale })}
         </div>
       )}

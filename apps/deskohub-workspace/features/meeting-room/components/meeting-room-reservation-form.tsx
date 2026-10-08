@@ -90,19 +90,11 @@ export function MeetingRoomReservationForm({
   replacementToken,
   submittedCode,
 }: MeetingRoomReservationFormProps) {
-  const restoredInitialValues = useMemo(
-    () =>
-      initialReservation
-        ? getMeetingRoomReservationDefaultValues(initialReservation)
-        : undefined,
-    [initialReservation]
-  );
-  const defaultValues = useMemo(
-    () =>
-      initialValues ??
-      restoredInitialValues ?? { ...meetingRoomReservationDefaultValues },
-    [initialValues, restoredInitialValues]
-  );
+  const defaultValues =
+    initialValues ??
+    (initialReservation
+      ? getMeetingRoomReservationDefaultValues(initialReservation)
+      : { ...meetingRoomReservationDefaultValues });
   const form = useForm<
     MeetingRoomReservationInput,
     unknown,
@@ -152,6 +144,15 @@ export function MeetingRoomReservationForm({
       ((availability?.unavailableDates.length ?? 0) > 0 ||
         availability?.meetingRoomUnavailable)
   );
+  const availabilityMessage = isSelectedReservationUnavailable
+    ? m.reservationMeetingRoomUnavailable({}, { locale })
+    : undefined;
+  const availabilityErrorMessage =
+    availabilityQuery &&
+    availabilityQueryResult.isError &&
+    !availabilityQueryResult.isFetching
+      ? m.reservationAvailabilityError({}, { locale })
+      : undefined;
   const advertisedPriceRequests = useMemo(
     () =>
       getMeetingRoomDurationAdvertisedPriceRequests({
@@ -216,9 +217,7 @@ export function MeetingRoomReservationForm({
       }}
       availability={{
         isFetching: availabilityQueryResult.isFetching,
-        unavailableMessage: isSelectedReservationUnavailable
-          ? m.reservationMeetingRoomUnavailable({}, { locale })
-          : undefined,
+        unavailableMessage: availabilityMessage ?? availabilityErrorMessage,
       }}
       checkoutSessionId={checkoutSessionId}
       form={form}

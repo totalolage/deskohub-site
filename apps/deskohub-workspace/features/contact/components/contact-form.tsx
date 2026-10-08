@@ -1,10 +1,11 @@
 "use client";
 
+import { Predicate } from "effect";
 import { Send } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useStateAction } from "next-safe-action/stateful-hooks";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type {
   ContactFormState,
@@ -52,17 +53,40 @@ const getContactQueryInitialValues = (params: Pick<URLSearchParams, "get">) => {
   return Object.values(values).some(Boolean) ? values : undefined;
 };
 
+const getSubmittedContactValues = (
+  formData: FormData | undefined
+): ContactFormValues | undefined => {
+  if (!formData) return undefined;
+  const getValue = (name: keyof ContactFormValues) => {
+    const value = formData.get(name);
+    return Predicate.isString(value) ? value : "";
+  };
+
+  return {
+    name: getValue("name"),
+    email: getValue("email"),
+    phone: getValue("phone"),
+    message: getValue("message"),
+  };
+};
+
 export function ContactForm({ locale, initialValues }: ContactFormProps) {
   const action = useStateAction(submitContactForm);
+  // Failures that never reach the contact handler carry no form state, so the
+  // submitted FormData restores the fields instead of clearing them.
+  const failureMessage = action.result.serverError
+    ? m.contactEmailSendError({}, { locale })
+    : action.result.validationErrors &&
+      m.contactValidationReviewMessage({}, { locale });
   const state: ContactFormState =
     action.result.data ??
-    (action.result.serverError
+    (failureMessage
       ? {
           status: "error" as const,
-          message: m.contactEmailSendError({}, { locale }),
+          message: failureMessage,
+          values: getSubmittedContactValues(action.input),
         }
       : initialContactFormState);
-  const formRef = useRef<HTMLFormElement>(null);
   const [queryInitialValues, setQueryInitialValues] =
     useState<ContactFormInitialValues>();
   let fieldValues = initialValues ?? queryInitialValues;
@@ -78,12 +102,6 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
         .map((value) => `${value.length}:${value}`)
         .join("|")
     : "clear";
-
-  useEffect(() => {
-    if (state.status === "success") {
-      formRef.current?.reset();
-    }
-  }, [state.status]);
 
   return (
     <Card
@@ -104,7 +122,7 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
           </Suspense>
         )}
 
-        <form ref={formRef} action={action.formAction} className="space-y-5">
+        <form action={action.formAction} className="space-y-5">
           <input type="hidden" name="locale" value={locale} />
           <div key={fieldRemountKey} className="space-y-5">
             <div className="grid gap-5 md:grid-cols-2">
@@ -149,10 +167,10 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
             />
           </div>
 
-          <div className="space-y-3 pt-2">
+          <div className="pt-2">
             <SubmitButton locale={locale} />
 
-            <p className="text-sm leading-6 text-navy-blue/62">
+            <p className="mt-3 text-sm leading-6 text-navy-blue/62">
               {m.contactPrivacyNoteBefore({}, { locale })}{" "}
               <Link
                 href={`/${locale}/privacy-policy`}
@@ -166,19 +184,22 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
               {m.contactPrivacyNoteAfter({}, { locale })}
             </p>
 
-            {!!state.message && (
-              <p
-                aria-live="polite"
-                className={cn(
-                  "rounded-2xl border px-4 py-3 text-sm leading-6",
-                  state.status === "success"
-                    ? "border-aquamarine-green/30 bg-aquamarine-green/10 text-aquamarine-ink"
-                    : "border-burned-orange/20 bg-burned-orange/8 text-burned-orange-ink"
-                )}
-              >
-                {state.message}
-              </p>
-            )}
+            {/* The live region stays mounted (and unstyled, so it takes no
+                space while empty) so screen readers observe new messages. */}
+            <div aria-live="polite">
+              {!!state.message && (
+                <p
+                  className={cn(
+                    "mt-3 rounded-2xl border px-4 py-3 text-sm leading-6",
+                    state.status === "success"
+                      ? "border-aquamarine-green/30 bg-aquamarine-green/10 text-aquamarine-ink"
+                      : "border-burned-orange/20 bg-burned-orange/8 text-burned-orange-ink"
+                  )}
+                >
+                  {state.message}
+                </p>
+              )}
+            </div>
           </div>
         </form>
       </CardContent>

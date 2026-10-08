@@ -9,17 +9,24 @@ import {
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
 mock.module("@deskohub/cloudinary-image", () => ({
-  CloudinaryImage: () => null,
+  CloudinaryImage: ({ alt }: { alt: string }) => (
+    <span aria-label={alt} role="img" />
+  ),
 }));
 
 mock.module("yet-another-react-lightbox", () => ({
-  default: () => null,
+  default: ({ slides }: { slides: readonly { alt?: string }[] }) => (
+    <output data-testid="lightbox-slides">
+      {slides.map((slide) => slide.alt).join("|")}
+    </output>
+  ),
 }));
 
 const images = [
@@ -68,5 +75,46 @@ describe("LandingPagePhotoCarousel", () => {
       })
     ).toBeTruthy();
     expect(view.queryByRole("button", { name: "Pause carousel" })).toBeNull();
+  });
+
+  test("uses the locale-specific Cloudinary alt text and skips empty values", async () => {
+    const { LandingPagePhotoCarousel } = await import(
+      "./landing-page-photo-carousel"
+    );
+    const localizedImages = [
+      {
+        ...images[0]!,
+        context: {
+          custom: {
+            alt: "Default alt",
+            "alt-cs-CZ": "Český popis",
+            "alt-en-US": "English alt",
+          },
+        },
+      },
+      {
+        ...images[1]!,
+        context: { custom: { alt: " ", "alt-cs-CZ": "" } },
+      },
+    ] as readonly CloudinaryAsset[];
+    const view = render(
+      <LandingPagePhotoCarousel
+        ariaLabel="Workspace photos"
+        images={localizedImages}
+        locale="cs-CZ"
+      />
+    );
+    const fallbackAlt = m.landingCarouselImageAlt(
+      { number: 2 },
+      { locale: "cs-CZ" }
+    );
+
+    expect(view.getAllByRole("img", { name: "Český popis" })).not.toHaveLength(
+      0
+    );
+    expect(view.getAllByRole("img", { name: fallbackAlt })).not.toHaveLength(0);
+    expect(view.getByTestId("lightbox-slides").textContent).toBe(
+      `Český popis|${fallbackAlt}`
+    );
   });
 });

@@ -1,6 +1,8 @@
 import type { CloudinaryPublicId } from "@deskohub/cloudinary/schema";
 import { getCloudinaryImageUrl } from "@deskohub/cloudinary-image/url";
+import { getLocale, type Locale } from "@/features/i18n";
 import type { CloudinaryAsset } from "../backend/cloudinary.service";
+import { getLocalizedCloudinaryContextValue } from "./localized-cloudinary-context";
 
 const galleryImageSize = 960;
 const lightboxImageSize = 1920;
@@ -19,16 +21,23 @@ export type GalleryPhoto = {
 export function toGalleryPhotos(
   assets: readonly CloudinaryAsset[],
   getFallbackAlt: (index: number) => string = (index) =>
-    `Deskohub Workspace gallery photo ${index + 1}`
+    `Deskohub Workspace gallery photo ${index + 1}`,
+  locale: Locale = getLocale()
 ): readonly GalleryPhoto[] {
   return assets.flatMap((asset, index) => {
     if (asset.width <= 0 || asset.height <= 0) {
       return [];
     }
 
-    const caption = asset.context?.custom?.caption?.trim();
+    const caption = getLocalizedCloudinaryContextValue(
+      asset,
+      "caption",
+      locale
+    );
     const alt =
-      asset.context?.custom?.alt?.trim() || caption || getFallbackAlt(index);
+      getLocalizedCloudinaryContextValue(asset, "alt", locale) ||
+      caption ||
+      getFallbackAlt(index);
 
     return [
       {

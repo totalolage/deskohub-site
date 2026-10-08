@@ -17,6 +17,9 @@ type SignInCardProps = {
 export function SignInCard({ locale }: SignInCardProps) {
   const [requested, setRequested] = useState(false);
   const [failed, setFailed] = useState(false);
+  // React resets uncontrolled fields once a form action settles; the reset
+  // restores defaultValue, so the submitted email survives a failed send.
+  const [submittedEmail, setSubmittedEmail] = useState("");
   const authReturn = useMemo(
     () => createAuthReturnLifecycle({ locale }),
     [locale]
@@ -27,6 +30,7 @@ export function SignInCard({ locale }: SignInCardProps) {
   const requestLink = async (formData: FormData) => {
     const email = String(formData.get("email") ?? "").trim();
     if (!email) return;
+    setSubmittedEmail(email);
     setFailed(false);
     try {
       const result = await authReturn.sendMagicLink(email);
@@ -93,6 +97,7 @@ export function SignInCard({ locale }: SignInCardProps) {
               type="email"
               required
               autoComplete="email"
+              defaultValue={submittedEmail}
               placeholder={m.accountSignInEmailPlaceholder({}, { locale })}
             />
           </div>

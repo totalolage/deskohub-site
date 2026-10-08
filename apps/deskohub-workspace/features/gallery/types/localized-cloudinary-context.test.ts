@@ -28,4 +28,14 @@ describe("getLocalizedCloudinaryContextValue", () => {
       "Default detail"
     );
   });
+
+  test("treats blank context values as missing", () => {
+    const blankAsset = {
+      context: { custom: { alt: " ", "alt-en-US": "" } },
+    } as CloudinaryAsset;
+
+    expect(
+      getLocalizedCloudinaryContextValue(blankAsset, "alt", "en-US")
+    ).toBeUndefined();
+  });
 });
