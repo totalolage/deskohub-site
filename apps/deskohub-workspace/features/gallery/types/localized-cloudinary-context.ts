@@ -10,5 +10,9 @@ export function getLocalizedCloudinaryContextValue(
 ): string | undefined {
   const custom = asset.context?.custom;
 
-  return custom?.[`${field}-${locale}`]?.trim() || custom?.[field]?.trim();
+  return (
+    custom?.[`${field}-${locale}`]?.trim() ||
+    custom?.[field]?.trim() ||
+    undefined
+  );
 }

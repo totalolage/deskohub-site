@@ -132,8 +132,6 @@ export function RoomImageCarousel({
     handleDragStart,
     isSwiping,
     moveToIndex,
-    setIsFocusWithin,
-    setIsPointerOver,
     shouldReduceMotion,
     shouldSuppressClickAfterSwipe,
     stageRef,
@@ -189,23 +187,7 @@ export function RoomImageCarousel({
   );
 
   return (
-    <section
-      aria-label={openLabel}
-      className={cn("mb-7 space-y-3", className)}
-      onBlur={(event) => {
-        const nextTarget = event.relatedTarget;
-
-        if (
-          !(nextTarget instanceof Node) ||
-          !event.currentTarget.contains(nextTarget)
-        ) {
-          setIsFocusWithin(false);
-        }
-      }}
-      onFocus={() => setIsFocusWithin(true)}
-      onPointerEnter={() => setIsPointerOver(true)}
-      onPointerLeave={() => setIsPointerOver(false)}
-    >
+    <section aria-label={openLabel} className={cn("mb-7 space-y-3", className)}>
       <motion.div
         className={cn(
           "relative aspect-[4/3] w-full touch-pan-y overflow-hidden rounded-[1.25rem] bg-navy-blue",
@@ -239,7 +221,7 @@ export function RoomImageCarousel({
             <motion.button
               animate={getSlideMotion(offset)}
               aria-hidden={isCurrent ? undefined : true}
-              aria-label={openLabel}
+              aria-label={getImageLabel(image, logicalIndex, openLabel)}
               className="group absolute inset-0 cursor-zoom-in overflow-hidden bg-navy-blue text-left focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-burned-orange"
               disabled={!isCurrent}
               draggable={false}
