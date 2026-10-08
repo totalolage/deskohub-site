@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { getLocale, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
-export default function NotFoundPage() {
-  const locale = getLocale();
+export default async function NotFoundPage() {
+  const locale = await getRequestLocale();
 
   return (
     <main className="grid min-h-dvh place-items-center bg-[#f4f1ea] px-4 py-20 text-navy-blue">
