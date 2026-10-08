@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Context, Effect, Layer } from "effect";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { Context, Effect, Layer, Predicate } from "effect";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 
 let currentUserEffect: Effect.Effect<
@@ -334,6 +334,40 @@ describe("loadCustomerAccountPage", () => {
       avatar: { kind: "available", avatar: null },
       history: { kind: "unavailable", reason: "provider-unavailable" },
     });
+  });
+
+  test("logs fixed, cause-free warnings when history and avatar degrade", async () => {
+    historyEffect = Effect.fail(new Error("dotypos down"));
+    avatarLookupEffect = Effect.fail(new Error("cloudinary down"));
+    const lines: string[] = [];
+    const capture = (...args: unknown[]) => {
+      lines.push(
+        args
+          .map((arg) => (Predicate.isString(arg) ? arg : JSON.stringify(arg)))
+          .join(" ")
+      );
+    };
+    const spies = [
+      spyOn(console, "log").mockImplementation(capture),
+      spyOn(console, "warn").mockImplementation(capture),
+      spyOn(console, "error").mockImplementation(capture),
+    ];
+
+    try {
+      await expect(loadPageState()).resolves.toMatchObject({
+        kind: "linked",
+        avatar: { kind: "available", avatar: null },
+        history: { kind: "unavailable", reason: "provider-unavailable" },
+      });
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+
+    const output = lines.filter((line) => line.includes("WARN")).join("\n");
+    expect(output).toContain("account.reservation-history.unavailable");
+    expect(output).toContain("account.avatar.unavailable");
+    expect(output).not.toContain("dotypos down");
+    expect(output).not.toContain("cloudinary down");
   });
 
   test("includes the versioned avatar when the account has one", async () => {
