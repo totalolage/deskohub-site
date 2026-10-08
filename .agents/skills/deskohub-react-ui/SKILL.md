@@ -9,6 +9,7 @@ description: React, TSX, JSX, component, UI convention, translated copy, and Inl
 - When mapping a small variant union to copy, icons, or similar values, use an inline object lookup instead of ternaries. Keep one-use lookup objects inline.
 - Inline a JSX `className` string when it is used only once. Do not hoist it into a local variable.
 - Inline simple one-use literals or lookup objects where they are consumed. Do not hoist them to module scope.
+- For Next.js `Link` targets with query parameters, use an href object with `pathname` and `query`; set `query` to `undefined` when there are no parameters.
 - Build administration list counts and associated search or filter controls with the shared administration table toolbar instead of page-local wrappers. Keep the compact count badge vertically centered with the primary controls.
 - Use the matching shadcn primitive for standard interactions. In particular, use Tooltip for hover and focus hints instead of building controlled Popover timers or pointer-state machinery. If the primitive is missing, add it through the app's existing `components.json` configuration and adapt only its shared styling and React conventions.
 - With `useWorkspaceAction`, transport rejections reach both `onTransportError` and next-safe-action's `onError` (`error.thrownError`). Handle transport feedback in `onTransportError` and ignore `thrownError` in `onError` so a delayed duplicate callback cannot overwrite a retry.

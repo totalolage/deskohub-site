@@ -71,11 +71,13 @@ const CustomerAuthCallbackSession = async ({
             </p>
             <Button asChild className="mt-8">
               <Link
-                href={
-                  referralCode === undefined
-                    ? `/${locale}/auth/sign-in`
-                    : `/${locale}/auth/sign-in?${new URLSearchParams({ ref: referralCode })}`
-                }
+                href={{
+                  pathname: `/${locale}/auth/sign-in`,
+                  query:
+                    referralCode === undefined
+                      ? undefined
+                      : { ref: referralCode },
+                }}
                 prefetch={false}
               >
                 {m.accountCallbackFailedAction({}, { locale })}
