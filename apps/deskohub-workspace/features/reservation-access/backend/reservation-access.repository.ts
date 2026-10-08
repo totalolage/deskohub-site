@@ -4,7 +4,7 @@ import type {
   IgloohomePinId,
 } from "@deskohub/igloohome";
 import { AlgoPinSchema } from "@deskohub/igloohome";
-import { and, eq, inArray, lte, or } from "drizzle-orm";
+import { and, eq, inArray, lte, ne, or } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { reservationAccessGrants } from "@/db/schema";
@@ -159,11 +159,26 @@ export class ReservationAccessRepository extends Context.Service<
                   failedAt: null,
                   failureCode: null,
                 },
-                setWhere: inArray(reservationAccessGrants.state, [
-                  "pending",
-                  "failed",
-                  "issued",
-                ]),
+                // Reset an issued grant only for a moved schedule. A request
+                // that raced a concurrent issuance for the same target must
+                // reuse the stored PIN rather than wipe it and provision a
+                // second credential.
+                setWhere: or(
+                  inArray(reservationAccessGrants.state, ["pending", "failed"]),
+                  and(
+                    eq(reservationAccessGrants.state, "issued"),
+                    or(
+                      ne(
+                        reservationAccessGrants.scheduledAccessStartsAt,
+                        input.scheduledAccessStartsAt
+                      ),
+                      ne(
+                        reservationAccessGrants.accessEndsAt,
+                        input.accessEndsAt
+                      )
+                    )
+                  )
+                ),
               })
               .pipe(
                 Effect.mapError(

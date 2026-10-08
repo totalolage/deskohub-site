@@ -673,4 +673,88 @@ describe("WorkspacePaidFulfillmentService", () => {
       })
     );
   });
+
+  test("records a Dotypos reservation read failure without an email failure code", async () => {
+    const order = {
+      id: "reservation-id",
+      paymentState: "paid",
+      fulfillmentState: "not_started",
+    };
+    const claimed = {
+      ...order,
+      reservationState: "confirmed",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+    };
+    const markFulfillmentFailed = mock(() => Effect.void);
+
+    const result = await Effect.gen(function* () {
+      const service = yield* WorkspacePaidFulfillmentService;
+      return yield* service
+        .fulfillPaidOrder({ orderId: "reservation-id" })
+        .pipe(Effect.result);
+    }).pipe(
+      Effect.provide(
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
+                markReservationConfirmed: mock(() =>
+                  Effect.die("confirmed reservations are not reconfirmed")
+                ),
+                markFulfilled: mock(() =>
+                  Effect.die("failed fulfillment must not complete")
+                ),
+                markFulfillmentFailed,
+              }),
+              Layer.mock(DotyposService, {
+                confirmReservation: mock(() =>
+                  Effect.die("confirmed reservations are not reconfirmed")
+                ),
+              }),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.fail(new Error("Dotypos read timed out") as never)
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails: mock(() =>
+                  Effect.die("email flow should not start")
+                ),
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.die("access flow should not start")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() =>
+                  Effect.die("invoice processing should not start")
+                ),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    // Only a real email failure may later be repaired by a delivered
+    // webhook, so a provider read failure must not reuse that code.
+    expect(result._tag).toBe("Failure");
+    expect(markFulfillmentFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "reservation-id",
+        failureCode: "dotypos_reservation_failed",
+      })
+    );
+  });
 });

@@ -20,7 +20,7 @@ export const standaloneAccessCodeMaximumDurationHours =
 
 const standaloneAccessCodeWindowDurationIssue = `The end must be ${ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS} to ${ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS} hours after the start.`;
 
-const elapsedHoursPerNanosecond = 1 / 3_600_000_000_000;
+const nanosecondsPerHour = 3_600_000_000_000n;
 
 export const createStandaloneAccessCodeInputSchema = Schema.toStandardSchemaV1(
   Schema.Struct({
@@ -179,12 +179,14 @@ export const standaloneAccessCodeElapsedHours = ({
   ) {
     return null;
   }
-  const elapsedHours =
-    Number(
-      toSiteInstant(endsAt).epochNanoseconds -
-        toSiteInstant(startsAt).epochNanoseconds
-    ) * elapsedHoursPerNanosecond;
-  return Number.isInteger(elapsedHours) ? elapsedHours : null;
+  // Exact integer arithmetic: multiplying by a floating-point reciprocal
+  // made valid whole-hour durations such as 15 or 60 hours non-integer.
+  const elapsedNanoseconds =
+    toSiteInstant(endsAt).epochNanoseconds -
+    toSiteInstant(startsAt).epochNanoseconds;
+  return elapsedNanoseconds % nanosecondsPerHour === 0n
+    ? Number(elapsedNanoseconds / nanosecondsPerHour)
+    : null;
 };
 
 export const shiftStandaloneAccessCodeLocalEnd = ({

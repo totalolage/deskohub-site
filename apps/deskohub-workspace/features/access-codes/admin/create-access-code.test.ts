@@ -284,6 +284,24 @@ describe("standalone access-code window arithmetic", () => {
     ).toBe(false);
   });
 
+  test("counts every whole-hour duration exactly", () => {
+    const start = "2026-09-10T10:00";
+    const inexactHours = Array.from({ length: 672 }, (_, index) => index + 1)
+      .filter(
+        (hours) =>
+          standaloneAccessCodeElapsedHours({
+            startsAt: start,
+            endsAt: shiftStandaloneAccessCodeLocalEnd({
+              startsAt: start,
+              hours,
+            }),
+          }) !== hours
+      )
+      .slice(0, 5);
+
+    expect(inexactHours).toEqual([]);
+  });
+
   test("returns no elapsed hours for non-whole-hour inputs", () => {
     expect(
       standaloneAccessCodeElapsedHours({

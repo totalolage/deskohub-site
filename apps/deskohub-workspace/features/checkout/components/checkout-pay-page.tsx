@@ -206,7 +206,7 @@ export function CheckoutPayPage({
         </>
       )}
 
-      {!!errorMessage && <Banner>{errorMessage}</Banner>}
+      {!!errorMessage && <Banner role="alert">{errorMessage}</Banner>}
     </CheckoutPayCard>
   );
 }
@@ -386,16 +386,27 @@ function CheckoutPaySubmitButton({
   );
 }
 
-function Banner({ children }: { readonly children: string }) {
+function Banner({
+  children,
+  role,
+}: {
+  readonly children: string;
+  readonly role?: "alert";
+}) {
   return (
     <p
-      aria-live="polite"
+      // A banner inserted after a failed action must use an alert role:
+      // assistive technology may ignore a live region mounted with content.
+      {...(role ? { role } : { "aria-live": "polite" as const })}
       className={cn(
         "flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm leading-6",
         "border-burned-orange/20 bg-burned-orange/8 text-burned-orange-ink"
       )}
     >
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />
+      <AlertTriangle
+        aria-hidden="true"
+        className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange"
+      />
       <span>{children}</span>
     </p>
   );

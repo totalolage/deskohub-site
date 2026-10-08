@@ -63,7 +63,11 @@ const input = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)({
 
 describe("InvoiceAdministrationService", () => {
   test("projects reservation and customer references", async () => {
-    const document = makeCoworkInvoiceDocument("en-US");
+    const document = {
+      ...makeCoworkInvoiceDocument("en-US"),
+      // Late evening UTC is already the next calendar day in Prague.
+      fulfilledAt: "2026-08-10T22:30:00Z" as never,
+    };
     const invoice = {
       id: "01980000-0000-7000-8000-000000000009",
       workspaceReservationId: "workspace-reservation",
@@ -118,6 +122,7 @@ describe("InvoiceAdministrationService", () => {
       });
     }
     expect(result[0].items[1]?.reservationId).toBeNull();
+    expect(result[1].serviceDate).toBe("2026-08-11");
   });
 
   test("renders a PDF preview without touching providers or persistence", async () => {
