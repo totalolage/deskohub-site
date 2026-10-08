@@ -134,11 +134,10 @@ export function ContactFormClient({
   } else if (state.status === "success") {
     fieldValues = undefined;
   }
-  let reactiveValues: ContactFormValues | undefined;
-  if (!hydratedHasOutcome) {
-    if (state.status === "error") reactiveValues = state.values;
-    else reactiveValues = getContactFormValues(fieldValues);
-  }
+  const reactiveValues =
+    !hydratedHasOutcome && state.status === "idle"
+      ? getContactFormValues(fieldValues)
+      : undefined;
 
   // RHF caches defaultValues; synchronize only a new native result after mount.
   useLayoutEffect(() => {
