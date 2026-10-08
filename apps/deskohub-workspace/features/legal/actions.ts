@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { CustomerAccountResolver } from "@/features/account";
 import { type Locale, locales } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
+import type { MarketingPreferencesMutationFailureReason } from "@/features/legal/marketing-preferences";
 import {
   marketingManagementLive,
   marketingPreferencesLive,
@@ -43,12 +44,6 @@ const marketingManagementContextSchema = Schema.toStandardSchemaV1(
   Schema.Struct({ context: marketingPreferencesContextSchema }),
   { parseOptions: { errors: "all", onExcessProperty: "error" } }
 );
-
-type MarketingPreferencesMutationFailureReason =
-  | "invalid-link"
-  | "pending-confirmation-required"
-  | "stale-context"
-  | "unavailable";
 
 class MarketingPreferencesMutationError extends Data.TaggedError(
   "MarketingPreferencesMutationError"
@@ -291,24 +286,10 @@ const toPublicMutationError = (
   failure: MarketingPreferencesMutationError
 ): PublicSafeActionError =>
   new PublicSafeActionError({
-    message: publicMutationMessage(failure.reason),
+    // The client maps the reason code to localized copy.
+    message: failure.reason,
     cause: failure,
   });
-
-const publicMutationMessage = (
-  reason: MarketingPreferencesMutationFailureReason
-): string => {
-  if (reason === "invalid-link") {
-    return "This marketing management link is invalid or has expired.";
-  }
-  if (reason === "stale-context") {
-    return "This marketing preference context is no longer current. Refresh the page and try again.";
-  }
-  if (reason === "pending-confirmation-required") {
-    return "Confirm this management link before saving a marketing preference.";
-  }
-  return "We could not update your marketing preference. Please try again.";
-};
 
 const createSaveMarketingPreferencesAction = (
   marketingCookies: MarketingManagementCookieOperations

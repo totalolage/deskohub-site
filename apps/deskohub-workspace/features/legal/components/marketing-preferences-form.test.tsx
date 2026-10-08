@@ -1348,6 +1348,57 @@ test("announces server failures with localized copy instead of the server messag
   );
 });
 
+test("announces the invalid-link rejection reason when continuing a replayed link", async () => {
+  confirmMarketingManagementAction.mockImplementationOnce(() =>
+    Promise.resolve({ serverError: "invalid-link" })
+  );
+  const view = renderForm({
+    context: "synthetic-replayed-confirm-context",
+    dismissalContext: "synthetic-replayed-dismissal-context",
+    status: "pending-link",
+  });
+
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
+    })
+  );
+
+  await waitFor(() => {
+    expect(view.getByRole("alert").textContent).toBe(
+      "This marketing management link is invalid or has expired."
+    );
+  });
+});
+
+test("announces a stale-context save rejection in the visitor's locale", async () => {
+  const locale = "cs-CZ" as const;
+  saveMarketingPreferencesAction.mockImplementationOnce(() =>
+    Promise.resolve({ serverError: "stale-context" })
+  );
+  const view = renderForm(
+    {
+      context: "synthetic-account-context",
+      source: "account",
+      status: "absent",
+    },
+    locale
+  );
+
+  fireEvent.click(
+    getSwitch(view, m.marketingPreferencesFormRowTitle({}, { locale }))
+  );
+
+  await waitFor(() => {
+    expect(view.getByRole("alert").textContent).toBe(
+      m.marketingPreferencesFormStaleContextError({}, { locale })
+    );
+  });
+  expect(view.getByRole("alert").textContent).not.toBe(
+    m.marketingPreferencesFormSaveError({}, { locale })
+  );
+});
+
 test("keeps the feedback live regions mounted before any feedback appears", async () => {
   saveMarketingPreferencesAction.mockImplementationOnce(() =>
     Promise.resolve({ serverError: "Synthetic live region failure" })

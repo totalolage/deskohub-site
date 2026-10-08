@@ -11,6 +11,8 @@ import {
 } from "@/features/legal/actions";
 import {
   isManagedMarketingState,
+  isMarketingPreferencesMutationFailureReason,
+  type MarketingPreferencesMutationFailureReason,
   type MarketingPreferencesState,
 } from "@/features/legal/marketing-preferences";
 import { Button } from "@/shared/components/ui/button";
@@ -47,6 +49,7 @@ type MarketingFeedbackKind = "save" | "confirm" | "clear";
 type MarketingFeedback = {
   readonly kind: MarketingFeedbackKind;
   readonly outcome: "success" | "error";
+  readonly reason?: MarketingPreferencesMutationFailureReason;
 };
 
 function MarketingPreferencesFormContent({
@@ -91,9 +94,15 @@ function MarketingPreferencesFormContent({
     setFeedback({ kind, outcome: "success" });
     router.refresh();
   };
-  // Server error strings are not localized; always announce catalog copy.
-  const markError = (kind: MarketingFeedbackKind) =>
-    setFeedback({ kind, outcome: "error" });
+  // The server reports a failure reason code; announce its catalog copy.
+  const markError = (kind: MarketingFeedbackKind, serverError?: string) =>
+    setFeedback({
+      kind,
+      outcome: "error",
+      reason: isMarketingPreferencesMutationFailureReason(serverError)
+        ? serverError
+        : undefined,
+    });
 
   const revertToConfirmed = () => setChecked(confirmedActive);
 
@@ -104,9 +113,9 @@ function MarketingPreferencesFormContent({
         setConfirmedActive(input.granted);
         markSuccess("save");
       },
-      onError: () => {
+      onError: ({ error }) => {
         revertToConfirmed();
-        markError("save");
+        markError("save", error.serverError);
       },
       onTransportError: () => {
         revertToConfirmed();
@@ -117,14 +126,14 @@ function MarketingPreferencesFormContent({
     useWorkspaceAction(confirmMarketingManagementAction, {
       actionName: "legal.marketing-preferences.confirm",
       onSuccess: () => markSuccess("confirm"),
-      onError: () => markError("confirm"),
+      onError: ({ error }) => markError("confirm", error.serverError),
       onTransportError: () => markError("confirm"),
     });
   const { executeAsync: executeClear, isExecuting: isClearing } =
     useWorkspaceAction(clearMarketingManagementAction, {
       actionName: "legal.marketing-preferences.clear",
       onSuccess: () => markSuccess("clear"),
-      onError: () => markError("clear"),
+      onError: ({ error }) => markError("clear", error.serverError),
       onTransportError: () => markError("clear"),
     });
 
@@ -142,10 +151,19 @@ function MarketingPreferencesFormContent({
     context !== undefined || dismissalContext !== undefined;
   const hasError = feedback?.outcome === "error";
 
-  function feedbackMessage(
-    kind: MarketingFeedbackKind,
-    outcome: "success" | "error"
-  ) {
+  function feedbackMessage({ kind, outcome, reason }: MarketingFeedback) {
+    if (reason === "invalid-link") {
+      return m.marketingPreferencesFormInvalidLinkError({}, { locale });
+    }
+    if (reason === "stale-context") {
+      return m.marketingPreferencesFormStaleContextError({}, { locale });
+    }
+    if (reason === "pending-confirmation-required") {
+      return m.marketingPreferencesFormConfirmationRequiredError(
+        {},
+        { locale }
+      );
+    }
     if (kind === "save") {
       return outcome === "success"
         ? m.marketingPreferencesFormSaved({}, { locale })
@@ -172,16 +190,12 @@ function MarketingPreferencesFormContent({
           <p>{m.marketingPreferencesFormSavingStatus({}, { locale })}</p>
         )}
         {feedback && !hasError && (
-          <p className="text-emerald-800">
-            {feedbackMessage(feedback.kind, feedback.outcome)}
-          </p>
+          <p className="text-emerald-800">{feedbackMessage(feedback)}</p>
         )}
       </div>
       <div role="alert">
         {feedback && hasError && (
-          <p className="text-red-700">
-            {feedbackMessage(feedback.kind, feedback.outcome)}
-          </p>
+          <p className="text-red-700">{feedbackMessage(feedback)}</p>
         )}
       </div>
     </div>
