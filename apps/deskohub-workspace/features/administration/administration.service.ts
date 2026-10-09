@@ -93,9 +93,9 @@ import {
   PaymentAdministrationService,
 } from "./payment-administration.service";
 import {
-  getProviderOperationTimelineTone,
-  getProviderValueLabel,
-} from "./payment-presentation";
+  buildPaymentAttemptTimeline,
+  getOrderTimeline,
+} from "./payment-timeline";
 import {
   mergeReservationHistory,
   PostHogReservationHistory,
@@ -1049,59 +1049,6 @@ const buildTimeline = (row: SafeReservationRow) => {
   );
 };
 
-const buildPaymentAttemptTimeline = (
-  attempts: readonly AdministrationPaymentAttempt[]
-): readonly AdministrationTimelineItem[] =>
-  attempts.flatMap((attempt) => {
-    const started: AdministrationTimelineItem = {
-      id: `payment-attempt-${attempt.id}-started`,
-      title: "Payment started",
-      description: `${attempt.providerLabel} attempt ${attempt.id}.`,
-      occurredAt: attempt.createdAt,
-      tone: "neutral",
-    };
-    if (attempt.state === "paid" && attempt.refundedAt) {
-      return [
-        started,
-        {
-          id: `payment-attempt-${attempt.id}-refunded`,
-          title: "Refund recorded",
-          description:
-            "Nexi reported a refund for this payment, so it no longer needs refund work.",
-          occurredAt: attempt.refundedAt,
-          tone: "neutral" as const,
-        },
-      ];
-    }
-    if (
-      attempt.state === "created" ||
-      attempt.state === "pending" ||
-      attempt.state === "paid"
-    ) {
-      return [started];
-    }
-    const abandoned =
-      attempt.failureCode === "payment_abandoned_after_provider_cutoff";
-    return [
-      started,
-      {
-        id: `payment-attempt-${attempt.id}-${attempt.state}`,
-        title: abandoned
-          ? "Payment abandoned"
-          : {
-              cancelled: "Payment unsuccessful",
-              expired: "Payment unsuccessful",
-              failed: "Payment failed",
-            }[attempt.state],
-        description: abandoned
-          ? "Workspace released the reservation after the local payment window elapsed and Nexi still reported no payment activity."
-          : "The attempt ended without a recorded payment.",
-        occurredAt: attempt.updatedAt,
-        tone: "warning" as const,
-      },
-    ];
-  });
-
 type LatePaymentEventRow = {
   readonly eventId: string;
   readonly receivedAt: Temporal.Instant;
@@ -1258,87 +1205,6 @@ const getReservationOperatorNotice = ({
     };
   }
   return null;
-};
-
-const getOperationTimelineTitle = (
-  operationType: string | undefined,
-  operationResult: string | undefined
-) => {
-  if (operationType === "AUTHORIZATION" && operationResult === "AUTHORIZED") {
-    return "Payment authorized by Nexi";
-  }
-  if (
-    (operationType === "AUTHORIZATION" || operationType === "CAPTURE") &&
-    operationResult === "EXECUTED"
-  ) {
-    return "Payment executed by Nexi";
-  }
-  if (operationType === "REFUND") return "Refund reported by Nexi";
-  if (operationType === "CANCEL" || operationType === "VOID") {
-    return "Payment reversal reported by Nexi";
-  }
-  const typeLabel = operationType
-    ? getProviderValueLabel(operationType)
-    : "Payment operation";
-  return operationResult
-    ? `${typeLabel}: ${getProviderValueLabel(operationResult)}`
-    : typeLabel;
-};
-
-const getOrderTimeline = (
-  orders: readonly AdministrationOrder[]
-): readonly AdministrationTimelineItem[] => {
-  const items: AdministrationTimelineItem[] = [];
-  for (const order of orders) {
-    if (order.link?.providerOrderCreatedAt) {
-      items.push({
-        id: `order-${order.orderId}-created`,
-        title: order.link.providerOrderCreatedAtEstimated
-          ? "Nexi order created (estimated)"
-          : "Nexi order created",
-        description: order.link.providerOrderCreatedAtEstimated
-          ? "This attached Nexi session predates exact order-creation tracking; the local payment-attempt time is shown."
-          : "Nexi accepted the hosted-payment request.",
-        occurredAt: order.link.providerOrderCreatedAt,
-        tone: "neutral",
-        href: `#order-${order.orderId}`,
-      });
-    }
-    for (const [index, operation] of (
-      order.provider?.operations ?? []
-    ).entries()) {
-      if (!operation.operationTime) continue;
-      let occurredAt: string;
-      try {
-        occurredAt = Temporal.Instant.from(operation.operationTime).toString();
-      } catch {
-        continue;
-      }
-      const result = operation.operationResult?.toUpperCase();
-      const operationId = operation.operationId;
-      items.push({
-        id: operationId
-          ? `nexi-operation-${operationId}`
-          : `nexi-operation-${order.orderId}-${index}`,
-        title: getOperationTimelineTitle(
-          operation.operationType?.toUpperCase(),
-          result
-        ),
-        description: operation.channel
-          ? `Nexi reported this ${getProviderValueLabel(operation.channel)} operation.`
-          : "Nexi reported this payment operation.",
-        occurredAt,
-        tone: getProviderOperationTimelineTone(
-          operation.operationType,
-          operation.operationResult
-        ),
-        ...(operationId && {
-          href: `#operation-${operationId}`,
-        }),
-      });
-    }
-  }
-  return items;
 };
 
 export class AdministrationService extends Context.Service<
@@ -2066,7 +1932,7 @@ export class AdministrationService extends Context.Service<
           timeline: mergeReservationHistory({
             durable: [
               ...buildTimeline(row),
-              ...buildPaymentAttemptTimeline(attempts),
+              ...buildPaymentAttemptTimeline(attempts, orders),
               ...buildLatePaymentTimeline(latePaymentRows),
               ...buildLatePaymentRecoveryTimeline(recoveryRows),
               ...getOrderTimeline(orders),
