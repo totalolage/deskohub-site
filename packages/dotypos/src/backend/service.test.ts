@@ -1242,6 +1242,124 @@ describe("DotyposService customer lookup", () => {
 
     expect(result).toEqual(active);
   });
+
+  test.each([
+    { input: "Ada@Example.test", stored: "ada@example.test" },
+    { input: "ada@example.test", stored: "Ada@Example.TEST" },
+    { input: "  ADA@example.test ", stored: "ada@EXAMPLE.test" },
+  ])(
+    "matches stored email $stored for input $input regardless of case",
+    async ({ input, stored }) => {
+      const matched = customer({ id: "email-match", email: stored });
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        if (url.pathname === "/clouds/cloud-id/customers") {
+          return Response.json({
+            data: [
+              customer({ id: "longer", email: "grace.ada@example.test" }),
+              matched,
+            ],
+          });
+        }
+        return new Response("Not found", { status: 404 });
+      });
+
+      const result = await runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.findCustomer(
+            { firstName: "Ada", email: input },
+            { lookupFields: ["email"] }
+          );
+        }),
+        fetchMock
+      );
+
+      expect(result).toEqual({
+        _tag: "Matched",
+        customer: matched,
+        matches: [matched],
+      });
+      const searchCall = fetchMock.mock.calls.find((call) =>
+        getUrl(call as FetchCall).includes("/customers")
+      ) as FetchCall;
+      expect(new URL(getUrl(searchCall)).searchParams.get("filter")).toBe(
+        `email|like|${input.trim()};deleted|in|0,1`
+      );
+    }
+  );
+
+  test("reports ambiguity when active customers differ only by email case", async () => {
+    const lower = customer({ id: "lower", email: "ada@example.test" });
+    const mixed = customer({ id: "mixed", email: "Ada@Example.test" });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json({ data: [lower, mixed] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findCustomer(
+          { firstName: "Ada", email: "ADA@example.test" },
+          { lookupFields: ["email"] }
+        );
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual({ _tag: "Ambiguous", matches: [lower, mixed] });
+  });
+
+  test("reuses the existing customer when the checkout email differs only by case", async () => {
+    const existing = customer({
+      id: "existing",
+      email: "ada@example.test",
+      phone: "+420777123456",
+      lastName: "Lovelace",
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        if (request.method === "GET") {
+          return Response.json({ data: [existing] });
+        }
+        throw new Error("A duplicate customer must not be created");
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findOrCreateCustomer(
+          {
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "Ada@Example.test",
+            phone: "+420777123456",
+          },
+          { lookupFields: ["email"] }
+        );
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual(existing);
+    expect(
+      fetchMock.mock.calls.some(
+        (call) =>
+          getMethod(call as FetchCall) !== "GET" &&
+          getUrl(call as FetchCall).includes("/customers")
+      )
+    ).toBe(false);
+  });
 });
 
 describe("DotyposService reservations", () => {
