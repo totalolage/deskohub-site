@@ -7,6 +7,12 @@ describe("shouldAutoRefreshCheckoutStatus", () => {
     expect(shouldAutoRefreshCheckoutStatus("paid_waiting_fulfillment")).toBe(
       true
     );
+    expect(shouldAutoRefreshCheckoutStatus("late_payment_checking")).toBe(true);
+  });
+
+  test("stops refreshing once a late payment needs a refund or review", () => {
+    expect(shouldAutoRefreshCheckoutStatus("late_payment_refund")).toBe(false);
+    expect(shouldAutoRefreshCheckoutStatus("late_payment_review")).toBe(false);
   });
 
   test("stops refreshing once the checkout reaches a terminal status", () => {

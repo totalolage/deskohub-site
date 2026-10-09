@@ -367,6 +367,95 @@ describe("CheckoutStatusPage", () => {
     }
   });
 
+  test("tells the customer a late payment will be refunded instead of awaiting confirmation", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...reconstructedCoworkStatus,
+          status: "late_payment_refund",
+          paymentStatus: "paid",
+          fulfillmentStatus: "not_started",
+        }}
+      />
+    );
+
+    expect(
+      view.getByRole("heading", { name: "We will refund your payment." })
+    ).toBeTruthy();
+    expect(
+      view.getByText(
+        "Your payment arrived after the reservation was no longer available, so we could not confirm it and will refund the payment. Start a new reservation if you still want to book."
+      )
+    ).toBeTruthy();
+    expect(
+      view.queryByText("We are sending your confirmation now!")
+    ).toBeNull();
+    expect(view.container.querySelector("#checkout-status-access")).toBeNull();
+    expect(
+      view.container.querySelector("#checkout-status-reserve-again")
+    ).not.toBeNull();
+  });
+
+  test("renders the late-payment refund copy in Czech", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="cs-CZ"
+        status={{
+          ...baseStatus,
+          status: "late_payment_refund",
+          paymentStatus: "paid",
+          fulfillmentStatus: "not_started",
+        }}
+      />
+    );
+
+    expect(
+      view.getByRole("heading", { name: "Platbu vám vrátíme." })
+    ).toBeTruthy();
+    expect(
+      view.getByText(
+        "Vaše platba dorazila až ve chvíli, kdy rezervace už nebyla k dispozici, proto ji nemůžeme potvrdit a platbu vám vrátíme. Pokud si stále chcete rezervovat, spusťte novou rezervaci."
+      )
+    ).toBeTruthy();
+  });
+
+  test("explains a late payment that is still being checked or needs review", () => {
+    const cases = [
+      {
+        status: "late_payment_checking",
+        title: "We are checking your reservation.",
+        lead: "Your payment arrived after the reservation hold expired, so we are checking that the space is still available. Keep this page open; it will update automatically.",
+      },
+      {
+        status: "late_payment_review",
+        title: "We are reviewing your reservation.",
+        lead: "Your payment arrived after the reservation hold expired, and we need to check your reservation manually. We will email you once we have confirmed the reservation or refunded the payment.",
+      },
+    ] as const;
+
+    for (const { lead, status, title } of cases) {
+      const view = render(
+        <CheckoutStatusPage
+          locale="en-US"
+          status={{
+            ...baseStatus,
+            status,
+            paymentStatus: "expired",
+            fulfillmentStatus: "not_started",
+          }}
+        />
+      );
+
+      expect(view.getByRole("heading", { name: title })).toBeTruthy();
+      expect(view.getByText(lead)).toBeTruthy();
+      expect(
+        view.container.querySelector("#checkout-status-access")
+      ).toBeNull();
+      cleanup();
+    }
+  });
+
   test("links fulfilled reservations to the canonical access page", () => {
     const view = render(
       <CheckoutStatusPage locale="en-US" status={baseStatus} />

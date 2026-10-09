@@ -6,6 +6,7 @@ import {
   Clock3,
   HelpCircle,
   MailCheck,
+  RotateCcw,
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
@@ -120,6 +121,27 @@ const getStatusCopy = (
         lead: m.checkoutStatusExpiredLead({}, { locale }),
         tone: "warning",
         Icon: Clock3,
+      };
+    case "late_payment_checking":
+      return {
+        title: m.checkoutStatusLatePaymentCheckingTitle({}, { locale }),
+        lead: m.checkoutStatusLatePaymentCheckingLead({}, { locale }),
+        tone: "pending",
+        Icon: Clock3,
+      };
+    case "late_payment_refund":
+      return {
+        title: m.checkoutStatusLatePaymentRefundTitle({}, { locale }),
+        lead: m.checkoutStatusLatePaymentRefundLead({}, { locale }),
+        tone: "warning",
+        Icon: RotateCcw,
+      };
+    case "late_payment_review":
+      return {
+        title: m.checkoutStatusLatePaymentReviewTitle({}, { locale }),
+        lead: m.checkoutStatusLatePaymentReviewLead({}, { locale }),
+        tone: "warning",
+        Icon: AlertTriangle,
       };
     case "not_found":
       return {
