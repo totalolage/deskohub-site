@@ -21,7 +21,8 @@ export const calendarDiscountSourceTag = "workspace-calendar-discounts";
 
 export interface CalendarSalesSourceInput {
   readonly calendarId: SalesCalendarId;
-  readonly reservationDate: string;
+  /** Workspace calendar date on which the booking is made. */
+  readonly bookingDate: string;
 }
 
 export interface ResolvedCalendarSale {
@@ -83,8 +84,8 @@ export const loadCalendarSalesSource = Effect.fn("CalendarDiscountSource.load")(
     const events = yield* calendar
       .listEvents({
         calendarId: input.calendarId,
-        from: input.reservationDate,
-        to: input.reservationDate,
+        from: input.bookingDate,
+        to: input.bookingDate,
       })
       .pipe(
         Effect.mapError(
@@ -97,7 +98,7 @@ export const loadCalendarSalesSource = Effect.fn("CalendarDiscountSource.load")(
     const normalization = yield* normalizeCalendarSales({
       calendarId: input.calendarId,
       events,
-      reservationDate: input.reservationDate,
+      bookingDate: input.bookingDate,
     });
     const definitionResolution = yield* loadDiscountDefinitions({
       sales: normalization.sales,
@@ -125,7 +126,7 @@ const CalendarDiscountSourceLive = Layer.mergeAll(
 );
 
 export async function loadCalendarDiscountSource(
-  reservationDate: string
+  bookingDate: string
 ): Promise<CalendarSalesSourceResult> {
   "use cache: remote";
 
@@ -134,7 +135,7 @@ export async function loadCalendarDiscountSource(
       const { salesCalendarId } = yield* CalendarResourceConfig;
       return yield* loadCalendarSalesSource({
         calendarId: salesCalendarId,
-        reservationDate,
+        bookingDate,
       });
     }).pipe(
       Effect.provide(CalendarDiscountSourceLive),

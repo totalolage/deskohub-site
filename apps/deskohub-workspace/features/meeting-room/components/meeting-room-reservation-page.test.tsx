@@ -58,6 +58,7 @@ test("preloads the preserved quote for a restored hourly slot that has started",
           kind: "meeting-room",
           duration: { unit: "hour", amount: 4 },
           reservationDate: "2099-07-30",
+          lastServiceDate: "2099-07-30",
         },
       },
     });
@@ -106,6 +107,7 @@ test("restores a whole-day reservation after its start and before its end", asyn
           kind: "meeting-room",
           duration: { unit: "day", amount: 1 },
           reservationDate: "2099-07-30",
+          lastServiceDate: "2099-07-30",
         },
       },
     });
@@ -133,6 +135,7 @@ test("preloads only the default selected duration", async () => {
             kind: "meeting-room",
             duration: { unit: "hour", amount: 1 },
             reservationDate: "2099-07-30",
+            lastServiceDate: "2099-07-30",
           },
         },
       },

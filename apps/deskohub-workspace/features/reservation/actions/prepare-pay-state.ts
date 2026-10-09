@@ -85,6 +85,11 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
+  currentInstant,
+  instantStringSchema,
+  temporalInstantToIsoString,
+} from "@/shared/utils/temporal";
+import {
   ensureCoworkPayStateAvailable,
   getPreparedCoworkCheckoutDetails,
   type PreparedCoworkAdvertisement,
@@ -127,7 +132,11 @@ type PreparedAdvertisement =
   | PreparedOfficeAdvertisement;
 
 const prepareAdvertisement = Effect.fn("preparePayState.prepareAdvertisement")(
-  (input: PreparePayStateInput) =>
+  (
+    input: PreparePayStateInput & {
+      readonly bookedAt: Temporal.Instant;
+    }
+  ) =>
     Match.value(input.reservation).pipe(
       Match.discriminatorsExhaustive("kind")({
         cowork: (reservation) =>
@@ -260,12 +269,16 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
     readonly prepared: PreparedPayState;
     readonly reservationId: WorkspaceReservationId;
     readonly checkoutSessionId: CheckoutSessionId;
+    readonly bookedAt: Temporal.Instant;
     readonly changedKeys?: CheckoutSummaryChangedKeys;
   }) {
     const state = yield* buildSignedPayState({
       ...input.prepared,
       locale: input.locale,
       orderId: input.reservationId,
+      bookedAt: instantStringSchema.make(
+        temporalInstantToIsoString(input.bookedAt)
+      ),
       checkoutSessionId: input.checkoutSessionId,
       changedKeys: input.changedKeys,
     });
@@ -707,7 +720,13 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           })
         );
 
-        const advertisement = yield* prepareAdvertisement(input);
+        // Submission locks the price: calendar sales are evaluated at this
+        // booking moment here and at every later checkout re-check.
+        const bookedAt = yield* currentInstant;
+        const advertisement = yield* prepareAdvertisement({
+          ...input,
+          bookedAt,
+        });
         const reservation = advertisement.reservation;
 
         const checkoutSessionKey = deriveCheckoutSessionKey(
@@ -845,6 +864,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
             prepared,
             reservationId: reservationDraft.id,
             checkoutSessionId,
+            bookedAt,
             changedKeys: prepared.changedKeys,
           });
         }
@@ -893,6 +913,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
               prepared: reusedPrepared,
               reservationId: claimConflictReservation.id,
               checkoutSessionId,
+              bookedAt,
               changedKeys: reusedPrepared.changedKeys,
             });
           }
@@ -1044,6 +1065,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           prepared,
           reservationId: reservationDraft.id,
           checkoutSessionId,
+          bookedAt,
           changedKeys: prepared.changedKeys,
         });
       })

@@ -12,7 +12,7 @@ import {
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
-  getMeetingRoomAvailabilityToDate,
+  getMeetingRoomLastServiceDate,
   getMeetingRoomReservationDate,
   getMeetingRoomReservationInterval,
 } from "@/features/reservation/meeting-room-reservation-time";
@@ -729,7 +729,7 @@ export const loadMeetingRoomAvailability = (
     const params = new URLSearchParams({
       kind: "meeting-room",
       from: slot.date,
-      to: getMeetingRoomAvailabilityToDate(slot),
+      to: getMeetingRoomLastServiceDate(slot),
       startsAt: slot.startsAt,
       endsAt: slot.endsAt,
     });
@@ -793,7 +793,7 @@ const makeCoworkSelectionLabel = (
 
 const getTouchedDates = (slot: MeetingRoomCheckoutSlot) => {
   const dates = [slot.date];
-  const endDate = getMeetingRoomAvailabilityToDate(slot);
+  const endDate = getMeetingRoomLastServiceDate(slot);
   if (endDate !== slot.date) dates.push(endDate);
   return dates;
 };

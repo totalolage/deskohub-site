@@ -90,6 +90,7 @@ import {
 } from "./checkout-pricing.service";
 import {
   type BuildSignedPayStateInput,
+  getSignedPayStateBookedAt,
   getSignedPayStateCheckoutSummary,
   getSignedPayStateSubmittedCode,
   openPayState,
@@ -1005,6 +1006,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             );
             const prepared = yield* pricing.affirmForPayment({
               ...state,
+              bookedAt: getSignedPayStateBookedAt(state),
               dotyposCustomerId,
               locale,
             });
@@ -1045,6 +1047,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                 ...prepared,
                 locale,
                 orderId: reservation.id,
+                bookedAt: state.bookedAt,
                 checkoutSessionId: state.checkoutSessionId,
                 requestedDiscountCode:
                   state.requestedDiscountCode ?? state.submittedCode,
@@ -1205,6 +1208,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                         );
                         const refreshed = yield* pricing.affirmForPayment({
                           ...state,
+                          bookedAt: getSignedPayStateBookedAt(state),
                           dotyposCustomerId,
                           locale,
                         });
@@ -1239,6 +1243,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                           ...refreshed,
                           locale,
                           orderId: reservation.id,
+                          bookedAt: state.bookedAt,
                           checkoutSessionId: state.checkoutSessionId,
                           requestedDiscountCode:
                             state.requestedDiscountCode ?? state.submittedCode,

@@ -59,10 +59,39 @@ Once a customer discount has appeared in a signed summary, it is an accepted dis
 - If a discount in the signed summary cannot be freshly affirmed at order submission, return `pricing_changed` with a refreshed signed summary. Create no durable payment attempt and no external payment session.
 - Newly available anonymously discoverable automatic discounts are never introduced retrospectively during quote generation or final affirmation. They may appear only through a new advertisement/summary cycle. The customer discount may first appear only at the first signed-summary boundary after Dotypos identity resolution, as described above. A successfully submitted discount code is a separate deliberate exception because the customer explicitly requested that quote change.
 
-Calendar discovery caching never extends the accepted interval. Eligibility is
-checked against the current instant after a cached occurrence is read, so the
-exclusive-end Prague midnight remains authoritative without waiting for the
-60-second discovery cache to expire.
+Calendar sale eligibility is one shared rule, `calendarSaleAppliesToBooking` in
+`features/discounts/calendar-sale.ts`. The booking instant must fall inside the
+sale's Prague all-day booking window, which has an exclusive end. The last
+service date must also be no later than the sale's last day, and earlier
+service dates qualify. Each product's pricing context supplies
+`lastServiceDate` in the discount input: office uses `endsOn`, cowork uses its
+reserved date, and meeting rooms use the Prague date of the exclusive `endsAt`
+(`getMeetingRoomLastServiceDate`), because hourly bookings can cross midnight
+and one ending exactly at midnight belongs to the previous day. Meeting-room
+advertised-price details carry `lastServiceDate` so the advertisement stays
+keyed by dates, not clock times. A range extending past the sale's last day gets
+no sale; never prorate. Do not re-derive the window or compare
+service dates against sale dates elsewhere.
+
+The booking instant is the price-lock moment. Reservation-page advertisement
+and the home-page banner use the current instant because they preview a booking
+made now. Reservation submission (`prepareWorkspacePayState`) captures
+`currentInstant` once and signs it into the Pay state as `bookedAt`. Every
+later affirmation reads it with `getSignedPayStateBookedAt` rather than the
+clock: summary acceptance, discount-code entry, payment start and
+claim-conflict refresh. Re-signed Pay states carry the original `bookedAt`
+forward. Editing or resubmitting the reservation creates a new Pay state and
+therefore a new booking instant. A sale that has ended by then disappears
+through the normal `pricing_changed` flow. Do not use the reservation draft's
+creation time, because drafts can be reused or superseded. Webhook,
+finalization and late-payment recovery read persisted application snapshots
+and never re-evaluate sale eligibility.
+
+Calendar discovery caching never extends the accepted interval. Occurrences are
+cached by the booking's Prague date, and eligibility is checked against the
+booking instant after a cached occurrence is read. The exclusive-end Prague
+midnight therefore remains authoritative without waiting for the 60-second
+discovery cache to expire.
 
 Discount code entry belongs on the order-summary page as an independent form with its own server action, pending state, and field error. It must not resubmit the reservation form or the main order submission:
 
