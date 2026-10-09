@@ -16,7 +16,10 @@ export interface CommandOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Text written to the command's stdin; stdin is closed when omitted. */
   readonly stdin?: string;
-  /** Kills the command with SIGKILL once it runs longer than this. */
+  /**
+   * Kills the command's process group with SIGKILL once it runs longer than
+   * this, and stops waiting for output shortly after.
+   */
   readonly timeoutMs?: number;
 }
 
@@ -29,10 +32,41 @@ export interface CommandResult {
   readonly timedOut: boolean;
 }
 
+/** How long output may keep draining after a timeout kill before it is abandoned. */
+const timedOutDrainMs = 500;
+
+const readText = async (
+  stream: ReadableStream<Uint8Array>,
+  abandoned: Promise<void>
+): Promise<string> => {
+  const reader = stream.getReader();
+  // Cancelling settles a pending read as done, so a pipe still held open by
+  // an escaped descendant cannot keep the caller waiting.
+  void abandoned.then(() => reader.cancel());
+  const decoder = new TextDecoder();
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    text += decoder.decode(value, { stream: true });
+  }
+};
+
+/** Kills the command's whole process group, then the direct child if it led none. */
+const killCommand = (child: Bun.Subprocess): void => {
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    child.kill("SIGKILL");
+  }
+};
+
 export const runCommand = async (
   command: readonly string[],
   options: CommandOptions = {}
 ): Promise<CommandResult> => {
+  // `detached` makes the command lead its own process group, so a timeout
+  // reaches the descendants that inherited its output pipes.
   const child = Bun.spawn({
     cmd: [...command],
     cwd: options.cwd,
@@ -40,19 +74,23 @@ export const runCommand = async (
     stdin: options.stdin === undefined ? "ignore" : new Blob([options.stdin]),
     stdout: "pipe",
     stderr: "pipe",
+    detached: true,
   });
+  const abandonOutput = Promise.withResolvers<void>();
   let timedOut = false;
+  let drainTimer: ReturnType<typeof setTimeout> | undefined;
   const timer =
     options.timeoutMs === undefined
       ? undefined
       : setTimeout(() => {
           timedOut = true;
-          child.kill("SIGKILL");
+          killCommand(child);
+          drainTimer = setTimeout(abandonOutput.resolve, timedOutDrainMs);
         }, options.timeoutMs);
   try {
     const [stdout, stderr] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
+      readText(child.stdout, abandonOutput.promise),
+      readText(child.stderr, abandonOutput.promise),
       child.exited,
     ]);
     return {
@@ -64,25 +102,30 @@ export const runCommand = async (
     };
   } finally {
     clearTimeout(timer);
+    clearTimeout(drainTimer);
   }
 };
 
-const describeTermination = (result: CommandResult): string => {
+const describeTermination = (result: CommandResult): string | undefined => {
   if (result.timedOut) return "timed out";
   if (result.signalCode !== null) return `was ended by ${result.signalCode}`;
-  return `exited with ${result.exitCode}`;
+  if (result.exitCode !== 0) return `exited with ${result.exitCode}`;
+  return undefined;
 };
 
-/** Runs a command that must succeed and returns its stdout. */
+/**
+ * Runs a command that must succeed and returns its stdout. A non-zero exit,
+ * a signal, or a timeout rejects, even when the direct child exited 0.
+ */
 export const commandOutput = async (
   command: readonly string[],
   options: CommandOptions = {}
 ): Promise<string> => {
   const result = await runCommand(command, options);
-  if (result.exitCode !== 0) {
-    const termination = describeTermination(result);
+  const failure = describeTermination(result);
+  if (failure !== undefined) {
     throw new Error(
-      `Command \`${command.join(" ")}\` ${termination}${result.stderr ? `:\n${result.stderr}` : ""}`
+      `Command \`${command.join(" ")}\` ${failure}${result.stderr ? `:\n${result.stderr}` : ""}`
     );
   }
   return result.stdout;
