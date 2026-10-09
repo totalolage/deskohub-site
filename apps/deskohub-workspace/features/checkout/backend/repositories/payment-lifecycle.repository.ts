@@ -22,6 +22,7 @@ import {
   discountCodes,
   discountProductTargets,
   discounts,
+  type PaymentAttemptState,
   paymentAttempts,
   promotionCodeCustomers,
   promotionCodes,
@@ -156,11 +157,22 @@ export interface IPaymentLifecycleRepository {
     readonly webhookEventId?: NexiWebhookEventId;
     readonly providerOperationId?: NexiOperationId;
     readonly providerStatus?: string;
+    /**
+     * Non-terminal attempt states the transition may start from; defaults to
+     * both. Pass `["created"]` to end an attempt only while no provider
+     * session has been attached to it.
+     */
+    readonly fromAttemptStates?: readonly NonTerminalPaymentAttemptState[];
   }) => Effect.Effect<
     PaymentLifecycleTransition,
     PaymentLifecycleRepositoryError
   >;
 }
+
+type NonTerminalPaymentAttemptState = Extract<
+  PaymentAttemptState,
+  "created" | "pending"
+>;
 
 export class PaymentLifecycleRepository extends Context.Service<
   PaymentLifecycleRepository,
@@ -766,8 +778,13 @@ export class PaymentLifecycleRepository extends Context.Service<
           readonly webhookEventId?: NexiWebhookEventId;
           readonly providerOperationId?: NexiOperationId;
           readonly providerStatus?: string;
+          readonly fromAttemptStates?: readonly NonTerminalPaymentAttemptState[];
         }) {
           const terminalAt = Temporal.Now.instant();
+          const fromAttemptStates = input.fromAttemptStates ?? [
+            "created",
+            "pending",
+          ];
 
           return yield* db.transaction(
             Effect.fn(function* (tx) {
@@ -789,8 +806,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                       input.workspaceReservationId
                     ),
                     inArray(paymentAttempts.state, [
-                      "created",
-                      "pending",
+                      ...fromAttemptStates,
                       input.state,
                     ])
                   )

@@ -640,6 +640,19 @@ otherwise ambiguous creation/attachment failure retains the created attempt and
 reserved claim. That active attempt blocks a second charge while webhook,
 return/status reconciliation, and hold cleanup determine the terminal outcome.
 
+Nexi documents no idempotency key for `POST /orders/hpp` (only for refunds and
+some other operations), and `GET /orders/{orderId}` returns no hosted page. A
+timeout, transport failure, or 5xx after creation may therefore follow a
+committed order whose session can never be recovered. Never resend hosted page
+creation automatically. An attempt still `created` with no security token never
+showed its hosted page to the customer, so it cannot be paid. Queued hold
+cleanup resolves it after the 30-minute abandonment window, measured from the
+attempt's creation: it looks up the order, and when Nexi returns 404 or an
+order with no operations and no authorized or captured amount, it fails the
+attempt with `nexi_hpp_create_unconfirmed` only while it is still `created`,
+releasing its claim before cancelling the hold. Payment activity on such an
+order needs operator review; an inconclusive lookup is retried later.
+
 ### Webhook Success And Dotypos Confirmation
 
 ```mermaid

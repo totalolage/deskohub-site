@@ -237,7 +237,10 @@ export const capturePaymentAbandoned = (input: {
 
 export const capturePaymentFailed = (input: {
   readonly attempt: PaymentLifecycleAttempt;
-  readonly failureReason: "nexi_hpp_create_failed" | "nexi_payment_failed";
+  readonly failureReason:
+    | "nexi_hpp_create_failed"
+    | "nexi_hpp_create_unconfirmed"
+    | "nexi_payment_failed";
   readonly timestamp: LifecycleEventTimestamp;
 }) =>
   captureLifecycleEvent({
