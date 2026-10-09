@@ -30,6 +30,12 @@ Run the complete payment flow only against the ordinary protected immutable prev
 
 Cover successful completion and an unsuccessful or cancelled return followed by the Workspace retry/restart path. Follow [preview-workflow.md](preview-workflow.md) for target, protection, database, fixture, and cleanup requirements.
 
+## Hosted page driver
+
+The sandbox page renders each card field in its own iframe and the Continue, Pay, 3-D Secure, and Back to the shop buttons in the main document. Drive it from main-document AI snapshots: they include iframe content with frame-scoped refs, so locate a field by role and exact accessible name, enter only the iframe that owns it, and restore the main frame in the same scope. Match buttons by role and accessible name, never by substring.
+
+The sandbox fails intermittently on its side. Observed failures include `POST /fe/build/text/` returning HTTP 400 after Continue, the `/hpp/nexi/error` "Payment error" page, and "OPS! Something went wrong" after a `validateAndPay` HTTP 500. The 400 case is the most deceptive: Nexi handles it as a silent save error, so the card form stays on screen with its fields disabled and no Pay button ever appears. Fail fast with the `nexi_hosted_<step>_<state>` diagnostic code instead of waiting out the step timeout. Do not reload the page or resubmit card data to hide these failures. Rerun the exact-SHA workflow when the code names a provider state.
+
 ## Verification
 
 Treat notifications as triggers. Read the order from Nexi and compare the expected order identifier, amount, and currency before changing local payment state. Compare a security token only when Nexi returns one in the notification or operation.
