@@ -21,6 +21,12 @@ For a Dotypos resource or item operation:
 
 Do not add a parallel hand-written response decoder when the contract can be generated.
 
+## Customer records
+
+- Dotypos filters customer `email` only through the STRING group: `email|like|value` is a case-insensitive substring match (`ILIKE '%value%'`, see the official filter and Customer entity references). Treat its results as candidates and identify a customer only by a whole-address, case-insensitive email comparison. Customers that differ only by email case are ambiguous, never silently merged.
+- Store the email as the customer entered it; lookups, not writes, carry the case-insensitivity.
+- An absent or unparseable phone must never overwrite the stored Dotypos phone. Omit the field from update patches. Only an explicit, validated clearing path such as the customer's own account profile edit sends the blank value.
+
 For production log inspection or provider diagnostics, also read `../deskohub-workspace-operations/references/diagnostics.md` before fetching data.
 
 Update this skill when developer feedback changes the integration workflow.

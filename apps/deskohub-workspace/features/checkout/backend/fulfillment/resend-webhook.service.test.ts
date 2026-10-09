@@ -1041,7 +1041,7 @@ describe("ResendWebhookService", () => {
     const {
       createWorkspaceCheckoutWifiQrPayload,
       WorkspaceCheckoutNetworkDetailsService,
-      workspaceCheckoutPlaceholderNetworkDetails,
+      workspaceCheckoutCustomerNetworkDetails,
     } = await import("./network-details.service");
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
@@ -1254,10 +1254,10 @@ describe("ResendWebhookService", () => {
       );
       expect(networkHeading).toBeTruthy();
       expect(
-        emailView.getByText(workspaceCheckoutPlaceholderNetworkDetails.ssid)
+        emailView.getByText(workspaceCheckoutCustomerNetworkDetails.ssid)
       ).toBeTruthy();
       expect(
-        emailView.getByText(workspaceCheckoutPlaceholderNetworkDetails.password)
+        emailView.getByText(workspaceCheckoutCustomerNetworkDetails.password)
       ).toBeTruthy();
       expect(networkQrImage.getAttribute("src")).toBe("cid:workspace-wifi-qr");
       expect(tableLabel.nextElementSibling?.textContent).toBe("12");
@@ -1291,7 +1291,7 @@ describe("ResendWebhookService", () => {
       expect(qrAttachmentContent.subarray(1, 4).toString("ascii")).toBe("PNG");
       expect(
         createWorkspaceCheckoutWifiQrPayload(
-          workspaceCheckoutPlaceholderNetworkDetails
+          workspaceCheckoutCustomerNetworkDetails
         )
       ).toBe("WIFI:T:WPA;S:Deskohub Workspace;P:Workspace42;;");
       expect(generateStaticMapImage).not.toHaveBeenCalled();
