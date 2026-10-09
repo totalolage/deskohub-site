@@ -155,12 +155,12 @@ test("keeps only Nexi hosted-field API statuses from the session log", () => {
   );
 
   expect(responses).toEqual([
-    { endpoint: "other", status: 200 },
-    { endpoint: "browser-data", status: 200 },
-    { endpoint: "card-data", status: 400 },
-    { endpoint: "state", status: 500 },
-    { endpoint: "validate-and-pay", status: 500 },
-    { endpoint: "gdi-result", status: 200 },
+    { endpoint: "other", method: "GET", status: 200 },
+    { endpoint: "browser-data", method: "POST", status: 200 },
+    { endpoint: "card-data", method: "POST", status: 400 },
+    { endpoint: "state", method: "GET", status: 500 },
+    { endpoint: "validate-and-pay", method: "GET", status: 500 },
+    { endpoint: "gdi-result", method: "GET", status: 200 },
   ]);
   expect(countNexiCardDataRejections(responses)).toBe(1);
   expect(formatNexiBuildFailures(responses)).toBe(
@@ -169,6 +169,21 @@ test("keeps only Nexi hosted-field API statuses from the session log", () => {
   expect(formatNexiBuildFailures([])).toBe(
     "Nexi build API failures: none observed"
   );
+});
+
+test("counts only failed card-data saves as rejections", () => {
+  expect(
+    countNexiCardDataRejections(
+      parseNexiBuildResponses(
+        [
+          "500 POST https://xpaysandbox.nexigroup.com/fe/build/text/",
+          "400 GET https://xpaysandbox.nexigroup.com/fe/build/text/",
+          "200 POST https://xpaysandbox.nexigroup.com/fe/build/text/",
+          "400 POST https://example.com/fe/build/text/",
+        ].join("\n")
+      )
+    )
+  ).toBe(1);
 });
 
 test("classifies the card form, including the inert form after a rejected save", () => {
@@ -185,7 +200,7 @@ test("classifies the card form, including the inert form after a rejected save",
   const rejected = classifyNexiHostedPage(
     observe({
       cardDataRejections: 1,
-      responses: [{ endpoint: "card-data", status: 400 }],
+      responses: [{ endpoint: "card-data", method: "POST", status: 400 }],
       snapshot: cardFormSnapshot({ fieldsDisabled: true }),
     })
   );
@@ -243,7 +258,7 @@ test("classifies payment progress, return, and missing snapshots", () => {
   expect(
     classifyNexiHostedPage(
       observe({
-        responses: [{ endpoint: "state", status: 500 }],
+        responses: [{ endpoint: "state", method: "GET", status: 500 }],
         snapshot: '- generic [ref=e2]: "..."',
       })
     )

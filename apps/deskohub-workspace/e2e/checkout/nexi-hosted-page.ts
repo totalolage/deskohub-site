@@ -177,6 +177,7 @@ export type NexiBuildEndpoint =
 
 export type NexiBuildResponse = {
   readonly endpoint: NexiBuildEndpoint;
+  readonly method: string;
   readonly status: number;
 };
 
@@ -190,17 +191,20 @@ const nexiBuildEndpoints: readonly [RegExp, NexiBuildEndpoint][] = [
 ];
 
 // Reads the session response log ("<status> <METHOD> <url>" lines) and keeps
-// only the status and a fixed endpoint class of Nexi hosted-field API calls.
+// only the status, method, and a fixed endpoint class of Nexi hosted-field API
+// calls.
 export const parseNexiBuildResponses = (
   responseLog: string
 ): readonly NexiBuildResponse[] => {
   const responses: NexiBuildResponse[] = [];
   for (const line of responseLog.split("\n")) {
-    const match = line.trim().match(/^(\d{3})\s+[A-Z]+\s+(https:\/\/\S+)$/);
-    if (!match?.[1] || !match[2]) continue;
+    const match = line
+      .trim()
+      .match(/^(\d{3})\s+([A-Z]+)\s+(https:\/\/\S+)$/);
+    if (!match?.[1] || !match[2] || !match[3]) continue;
     let url: URL;
     try {
-      url = new URL(match[2]);
+      url = new URL(match[3]);
     } catch {
       continue;
     }
@@ -208,19 +212,21 @@ export const parseNexiBuildResponses = (
     const endpoint =
       nexiBuildEndpoints.find(([pattern]) => pattern.test(url.pathname))?.[1] ??
       "other";
-    responses.push({ endpoint, status: Number(match[1]) });
+    responses.push({ endpoint, method: match[2], status: Number(match[1]) });
   }
   return responses;
 };
 
+// Card details are saved by POST; Nexi leaves the form inert after any failed
+// save, whether it rejects the data or fails server-side.
 export const countNexiCardDataRejections = (
   responses: readonly NexiBuildResponse[]
 ) =>
   responses.filter(
     (response) =>
       response.endpoint === "card-data" &&
-      response.status >= 400 &&
-      response.status < 500
+      response.method === "POST" &&
+      response.status >= 400
   ).length;
 
 export const formatNexiBuildFailures = (

@@ -237,8 +237,9 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   message reports only counts by status, never reservation IDs. The
   `suite-cleanup` phase span must fail whenever cleanup fails.
 - Nexi's hosted fields submit card details to `/fe/build/text/` after
-  Continue. A 4xx there leaves the fields disabled and never offers PAY; the
-  hosted-page driver reports it as the `card_submission_rejected` page state
+  Continue. A failed POST there (4xx or 5xx) leaves the fields disabled and
+  never offers PAY; the hosted-page driver reports it as the
+  `card_submission_rejected` page state
   (`nexi_hosted_<step>_card_submission_rejected`) from the session's Nexi
   build responses. On 2026-10-08 this hit the first hosted payment of
   many suites (usually `checkout-calendar-sale-and-code`, lane 3) and passed
