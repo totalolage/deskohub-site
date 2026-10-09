@@ -58,7 +58,7 @@ const money = (value: number): WorkspaceMoney => ({
 const advertisementInput: DiscountAdvertisementInput = {
   product,
   discountableSubtotal: money(10_000),
-  reservationDate: "2026-07-20",
+  lastServiceDate: "2026-07-20",
   bookedAt: Temporal.Instant.from("2026-07-20T10:00:00Z"),
   locale: "en-US",
 };

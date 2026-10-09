@@ -178,8 +178,11 @@ export type AffirmedDiscountAdvertisementQuote =
 export type DiscountAdvertisementInput = {
   readonly product: WorkspaceProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
-  /** Service date of the reservation. */
-  readonly reservationDate: string;
+  /**
+   * Last date the reservation uses the workspace. Calendar sales apply only
+   * when it is on or before the sale's last day.
+   */
+  readonly lastServiceDate: string;
   /** Moment the booking is made; calendar sales are evaluated at it. */
   readonly bookedAt: Temporal.Instant;
   readonly locale: Locale;
@@ -188,8 +191,11 @@ export type DiscountAdvertisementInput = {
 export type DiscountQuoteInput = {
   readonly product: WorkspaceProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
-  /** Service date of the reservation. */
-  readonly reservationDate: string;
+  /**
+   * Last date the reservation uses the workspace. Calendar sales apply only
+   * when it is on or before the sale's last day.
+   */
+  readonly lastServiceDate: string;
   /** Moment the booking is made; calendar sales are evaluated at it. */
   readonly bookedAt: Temporal.Instant;
   readonly locale: Locale;

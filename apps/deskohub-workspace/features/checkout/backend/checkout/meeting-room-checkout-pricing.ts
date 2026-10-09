@@ -99,7 +99,7 @@ const getMeetingRoomPricingContext = Effect.fn(
         duration: productItem.duration,
       },
       discountableSubtotal: productItem.amount,
-      reservationDate: reservation.reservationDate,
+      lastServiceDate: reservation.reservationDate,
     },
   };
 });

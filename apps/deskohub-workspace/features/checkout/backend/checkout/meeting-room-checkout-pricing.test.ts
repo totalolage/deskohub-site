@@ -101,7 +101,7 @@ describe("meeting-room checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product: meetingRoomProduct,
       discountableSubtotal: money,
-      reservationDate: "2099-06-10",
+      lastServiceDate: "2099-06-10",
       locale: "en-US",
       bookedAt: expect.any(Temporal.Instant),
     });
@@ -144,7 +144,7 @@ describe("meeting-room checkout pricing", () => {
     expect(affirmAdvertisement).toHaveBeenCalledWith({
       product: meetingRoomProduct,
       discountableSubtotal: money,
-      reservationDate: "2099-06-10",
+      lastServiceDate: "2099-06-10",
       locale: "en-US",
       bookedAt,
       advertisedDiscountIds: [discountId],
@@ -215,7 +215,7 @@ describe("meeting-room checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: meetingRoomProduct,
       discountableSubtotal: money,
-      reservationDate: "2099-06-10",
+      lastServiceDate: "2099-06-10",
       dotyposCustomerId,
       locale: "en-US",
       bookedAt,
@@ -302,7 +302,7 @@ describe("meeting-room checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: meetingRoomProduct,
       discountableSubtotal: money,
-      reservationDate: "2099-06-10",
+      lastServiceDate: "2099-06-10",
       dotyposCustomerId,
       locale: "en-US",
       bookedAt,

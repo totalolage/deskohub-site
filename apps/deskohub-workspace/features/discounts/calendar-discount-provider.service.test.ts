@@ -113,7 +113,7 @@ const discover = Effect.gen(function* () {
   return yield* provider.discover({
     locale: "en-US",
     product: basicProduct,
-    reservationDate: "2026-07-14",
+    lastServiceDate: "2026-07-14",
     bookedAt: bookedAtOn("2026-07-14"),
   });
 });
@@ -242,13 +242,13 @@ describe("CalendarDiscountProvider", () => {
         const basic = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         const plus = yield* provider.discover({
           locale: "en-US",
           product: { kind: "cowork", tier: "plus" },
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         return { basic, plus };
@@ -479,19 +479,19 @@ describe("CalendarDiscountProvider", () => {
         const spring = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-03-29",
+          lastServiceDate: "2026-03-29",
           bookedAt: bookedAtOn("2026-03-29"),
         });
         const springExclusiveEnd = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-03-30",
+          lastServiceDate: "2026-03-30",
           bookedAt: bookedAtOn("2026-03-30"),
         });
         const autumn = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-10-25",
+          lastServiceDate: "2026-10-25",
           bookedAt: bookedAtOn("2026-10-25"),
         });
         return { autumn, spring, springExclusiveEnd };
@@ -535,14 +535,14 @@ describe("CalendarDiscountProvider", () => {
         const first = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: displayedDate,
+          lastServiceDate: displayedDate,
           bookedAt: bookedAtOn(displayedDate),
         });
         displayedDate = "2026-07-16";
         const moved = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: displayedDate,
+          lastServiceDate: displayedDate,
           bookedAt: bookedAtOn(displayedDate),
         });
         originalDate = "2026-07-21";
@@ -550,7 +550,7 @@ describe("CalendarDiscountProvider", () => {
         const nextOccurrence = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: displayedDate,
+          lastServiceDate: displayedDate,
           bookedAt: bookedAtOn(displayedDate),
         });
         return { first, moved, nextOccurrence };
@@ -622,13 +622,13 @@ describe("CalendarDiscountProvider", () => {
         const english = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         const czech = yield* provider.discover({
           locale: "cs-CZ",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         return { czech, english };
@@ -681,26 +681,26 @@ describe("CalendarDiscountProvider", () => {
         const quoteBeforeMutation = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-14",
+          lastServiceDate: "2026-07-14",
           bookedAt: bookedAtOn("2026-07-14"),
         });
         definitions.set(discountIdA, definition(discountIdA, { products: [] }));
         const quoteAfterMutation = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-14",
+          lastServiceDate: "2026-07-14",
           bookedAt: bookedAtOn("2026-07-14"),
         });
         const independentPaymentCase = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-15",
+          lastServiceDate: "2026-07-15",
           bookedAt: bookedAtOn("2026-07-15"),
         });
         const cachedQuoteCase = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-14",
+          lastServiceDate: "2026-07-14",
           bookedAt: bookedAtOn("2026-07-14"),
         });
         return {
@@ -736,14 +736,14 @@ describe("CalendarDiscountProvider", () => {
         const initial = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         title = "Edited operator title";
         const afterTitleEdit = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         return { afterTitleEdit, initial };
@@ -773,7 +773,7 @@ describe("CalendarDiscountProvider", () => {
         const first = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         currentLabels = {
@@ -783,20 +783,20 @@ describe("CalendarDiscountProvider", () => {
         const cached = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         const fresh = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         yield* TestClock.adjust("61 seconds");
         const afterTtl = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         return { afterTtl, cached, first, fresh };
@@ -826,7 +826,7 @@ describe("CalendarDiscountProvider", () => {
         const bookedBeforeExpiry = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: lastBookableInstant,
         });
         yield* TestClock.adjust("1 second");
@@ -836,13 +836,13 @@ describe("CalendarDiscountProvider", () => {
         const bookedAfterExpiry = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: lastBookableInstant.add({ seconds: 1 }),
         });
         const storedBookingAfterExpiry = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: lastBookableInstant,
         });
 
@@ -876,13 +876,13 @@ describe("CalendarDiscountProvider", () => {
         const bookedBeforeStart = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: firstBookableInstant.subtract({ milliseconds: 1 }),
         });
         const bookedAtStart = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: firstBookableInstant,
         });
         return { bookedAtStart, bookedBeforeStart };
@@ -901,15 +901,15 @@ describe("CalendarDiscountProvider", () => {
     ["after the sale's last day", "2026-08-02", 0],
     ["well after the sale ended", "2026-09-15", 0],
   ] as const)(
-    "applies a booking made during the sale for a service date %s",
-    async (_label, reservationDate, expectedCount) => {
+    "applies a booking made during the sale for a last service date %s",
+    async (_label, lastServiceDate, expectedCount) => {
       const result = await runWithProvider(
         Effect.gen(function* () {
           const provider = yield* CalendarDiscountProvider;
           return yield* provider.revalidate({
             locale: "en-US",
             product: basicProduct,
-            reservationDate,
+            lastServiceDate,
             bookedAt: bookedAtOn("2026-07-20"),
           });
         }),
@@ -958,7 +958,7 @@ describe("CalendarDiscountProvider", () => {
       return yield* provider.discover({
         locale: "en-US",
         product: basicProduct,
-        reservationDate: "2026-07-20",
+        lastServiceDate: "2026-07-20",
         bookedAt: bookedAtOn("2026-07-20"),
       });
     });
@@ -967,7 +967,7 @@ describe("CalendarDiscountProvider", () => {
       return yield* provider.revalidate({
         locale: "en-US",
         product: basicProduct,
-        reservationDate: "2026-07-20",
+        lastServiceDate: "2026-07-20",
         bookedAt: bookedAtOn("2026-07-20"),
       });
     });
@@ -1029,13 +1029,13 @@ describe("CalendarDiscountProvider", () => {
         const first = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         const second = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
-          reservationDate: "2026-07-20",
+          lastServiceDate: "2026-07-20",
           bookedAt: bookedAtOn("2026-07-20"),
         });
         return { first, second };

@@ -42,8 +42,11 @@ Model Workspace sales calendar events as references to stored discount definitio
   the checkout candidate.
 - A Calendar sale depends on when the reservation is booked, not only on when
   it is used. It applies only when the booking instant falls inside the
-  occurrence's Prague all-day booking window (exclusive end) and the service
-  date is no later than the sale's last day. Earlier service dates qualify.
+  occurrence's Prague all-day booking window (exclusive end) and the last
+  service date (`lastServiceDate`: office `endsOn`, otherwise the single
+  reserved date) is no later than the sale's last day. Earlier service dates
+  qualify; a range extending past the last day gets no sale and is never
+  prorated.
   Express this only through `calendarSaleAppliesToBooking` and
   `isCalendarSaleBookableAt` in `features/discounts/calendar-sale.ts`. The
   checkout skill's lifecycle reference defines where the booking instant comes

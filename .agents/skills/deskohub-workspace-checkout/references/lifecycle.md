@@ -61,10 +61,13 @@ Once a customer discount has appeared in a signed summary, it is an accepted dis
 
 Calendar sale eligibility is one shared rule, `calendarSaleAppliesToBooking` in
 `features/discounts/calendar-sale.ts`. The booking instant must fall inside the
-sale's Prague all-day booking window, which has an exclusive end. The service
-date must also be no later than the sale's last day, and earlier service dates
-qualify. Do not re-derive the window or compare service dates against sale
-dates elsewhere.
+sale's Prague all-day booking window, which has an exclusive end. The last
+service date must also be no later than the sale's last day, and earlier
+service dates qualify. Each product's pricing context supplies
+`lastServiceDate` in the discount input: office uses `endsOn`, cowork and
+meeting rooms use their single reserved date. A range extending past the sale's
+last day gets no sale; never prorate. Do not re-derive the window or compare
+service dates against sale dates elsewhere.
 
 The booking instant is the price-lock moment. Reservation-page advertisement
 and the home-page banner use the current instant because they preview a booking

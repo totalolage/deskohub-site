@@ -21,9 +21,9 @@ Sale timing uses whole Prague calendar days with an exclusive end: a sale runs f
 A sale applies to a reservation only when both of these hold:
 
 - the reservation is booked while the sale runs; and
-- the reserved service date is no later than the sale's last day.
+- the reservation's last service date is no later than the sale's last day.
 
-Service dates before or during the sale qualify. A service date after the sale's last day never qualifies, even when it is booked during the sale.
+For a single-day reservation the last service date is its reserved date. For a multi-day office reservation it is the final reserved day. Service dates before or during the sale qualify. A reservation whose last service date falls after the sale's last day gets no sale at all, even when it is booked during the sale and some of its days fall inside the sale. The sale is never split across the days of one reservation.
 
 The booking moment is when the customer submits the reservation and its price is locked. Later checks in the same checkout judge the sale at that moment rather than at the current time, including accepting an updated summary, entering a code, and starting payment. A customer who submitted before the sale ended therefore keeps the sale through payment. Editing or resubmitting the reservation books it again. If the sale has ended by then, checkout shows an updated summary without it for acceptance.
 

@@ -35,7 +35,7 @@ const providerNamespace = "google-calendar-sales";
 
 export type CalendarDiscountProviderInput = Pick<
   DiscountQuoteInput,
-  "bookedAt" | "locale" | "product" | "reservationDate"
+  "bookedAt" | "lastServiceDate" | "locale" | "product"
 >;
 
 export interface ActiveSaleDiscoveryResult {
@@ -208,7 +208,7 @@ class CalendarSalesCacheKey extends Data.Class<CalendarSalesSourceInput> {}
 
 const toEligibleCalendarCandidates = (input: {
   readonly bookedAt: Temporal.Instant;
-  readonly reservationDate: string;
+  readonly lastServiceDate: string;
   readonly locale: CalendarDiscountProviderInput["locale"];
   readonly product: WorkspaceProductIdentity;
   readonly sales: readonly ResolvedCalendarSale[];
@@ -218,7 +218,7 @@ const toEligibleCalendarCandidates = (input: {
       calendarSaleAppliesToBooking({
         sale,
         bookedAt: input.bookedAt,
-        serviceDate: input.reservationDate,
+        lastServiceDate: input.lastServiceDate,
       })
     )
     .filter(({ definition }) =>

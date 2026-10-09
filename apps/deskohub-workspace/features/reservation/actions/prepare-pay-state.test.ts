@@ -818,7 +818,7 @@ describe("prepareWorkspacePayState", () => {
           kind: "meeting-room",
           duration: { unit: "hour", amount: 4 },
         },
-        reservationDate: "2099-06-10",
+        lastServiceDate: "2099-06-10",
         locale: "en-US",
         advertisedDiscountIds: [],
       })

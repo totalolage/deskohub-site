@@ -111,7 +111,7 @@ describe("cowork checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
-      reservationDate: reservation.date,
+      lastServiceDate: reservation.date,
       locale: "en-US",
       bookedAt: expect.any(Temporal.Instant),
     });
@@ -205,7 +205,7 @@ describe("cowork checkout pricing", () => {
     expect(affirmAdvertisement).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
-      reservationDate: reservation.date,
+      lastServiceDate: reservation.date,
       locale: "en-US",
       bookedAt,
       advertisedDiscountIds: [advertisedDiscountId],
@@ -281,7 +281,7 @@ describe("cowork checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
-      reservationDate: reservation.date,
+      lastServiceDate: reservation.date,
       dotyposCustomerId,
       locale: "en-US",
       bookedAt,
@@ -350,7 +350,7 @@ describe("cowork checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
-      reservationDate: reservation.date,
+      lastServiceDate: reservation.date,
       dotyposCustomerId,
       locale: "en-US",
       bookedAt,
@@ -494,7 +494,7 @@ describe("cowork checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "profi" },
       discountableSubtotal: money(55_000),
-      reservationDate: profiOrder.date,
+      lastServiceDate: profiOrder.date,
       dotyposCustomerId,
       locale: "en-US",
       bookedAt,
@@ -558,7 +558,7 @@ describe("cowork checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "reserved-desk" },
       discountableSubtotal: money(41_000),
-      reservationDate: "2099-07-30",
+      lastServiceDate: "2099-07-30",
       locale: "en-US",
       bookedAt: expect.any(Temporal.Instant),
     });

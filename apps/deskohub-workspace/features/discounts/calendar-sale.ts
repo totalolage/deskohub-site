@@ -92,16 +92,18 @@ export const isCalendarSaleBookableAt = (
   Temporal.Instant.compare(bookedAt, sale.expiresAt) < 0;
 
 /**
- * A calendar sale applies only to bookings made during the sale whose service
- * date is not after the sale's last day. Earlier service dates are covered.
+ * A calendar sale applies only to bookings made during the sale whose last
+ * service date is not after the sale's last day. Earlier service dates are
+ * covered; a booking whose service range extends past the sale's last day gets
+ * no sale at all.
  */
 export const calendarSaleAppliesToBooking = (input: {
   readonly sale: Pick<CalendarSale, "startsAt" | "expiresAt" | "lastDay">;
   readonly bookedAt: Temporal.Instant;
-  readonly serviceDate: string;
+  readonly lastServiceDate: string;
 }) =>
   isCalendarSaleBookableAt(input.sale, input.bookedAt) &&
-  Temporal.PlainDate.compare(input.serviceDate, input.sale.lastDay) <= 0;
+  Temporal.PlainDate.compare(input.lastServiceDate, input.sale.lastDay) <= 0;
 
 /**
  * Workspace calendar date on which a booking made at `bookedAt` happens.
