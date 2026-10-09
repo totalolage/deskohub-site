@@ -117,7 +117,7 @@ const makeHarness = (options: {
                 seats: "1",
                 status: "CANCELLED",
               },
-              customer: { id: "customer-id" },
+              customer: { id: "customer-id", email: "late@example.test" },
             } as never)
           ),
           getTables: mock(() => Effect.succeed(tables as never)),
@@ -182,6 +182,18 @@ describe("CheckoutStatusService for late payments", () => {
     }).getStatus();
 
     expect(status.status).toBe("late_payment_review");
+    expect(status).toMatchObject({
+      supportContactPrefill: { email: "late@example.test" },
+    });
+  });
+
+  test("does not prefill support contact for a refund the customer need not chase", async () => {
+    const status = await makeHarness({
+      reservation: refundedReservation,
+      recovery: { state: "refund_required" },
+    }).getStatus();
+
+    expect(status).toMatchObject({ supportContactPrefill: undefined });
   });
 
   test("shows a recovered late payment as an ordinary confirmed reservation", async () => {

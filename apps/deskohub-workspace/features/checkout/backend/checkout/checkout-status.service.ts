@@ -543,7 +543,8 @@ const implementation = Effect.gen(function* () {
           tableMap: reconstruction.tableMap,
         }),
         supportContactPrefill:
-          statusKind === "fulfillment_failed"
+          statusKind === "fulfillment_failed" ||
+          statusKind === "late_payment_review"
             ? reconstruction.supportContactPrefill
             : undefined,
       };
