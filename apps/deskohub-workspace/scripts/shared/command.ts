@@ -66,9 +66,16 @@ const killCommand = (child: Bun.Subprocess, ownsGroup: boolean): void => {
 };
 
 /**
- * Kill functions of the commands still running. While any are registered,
- * caller shutdown (SIGINT, SIGTERM, exit) ends them, because a command that
- * leads its own process group would otherwise outlive the caller.
+ * Kill functions of the commands still running. Caller shutdown (SIGINT,
+ * SIGTERM, exit) ends them, because a command that leads its own process
+ * group would otherwise outlive the caller.
+ *
+ * The shutdown handlers are installed with the first command and kept until a
+ * signal arrives: Bun intercepts a signal while a listener exists and
+ * delivers it to JavaScript later, so removing the listener when the last
+ * command finishes could swallow a signal that arrived just before. With no
+ * command running, the handler kills nothing and re-raises the signal, which
+ * matches the default action.
  */
 const activeCommands = new Set<() => void>();
 const shutdownSignals = ["SIGINT", "SIGTERM"] as const;
@@ -81,6 +88,8 @@ const killActiveCommands = (): void => {
 const removeShutdownHandlers = (): void => {
   for (const [signal, handler] of signalHandlers) process.off(signal, handler);
   process.off("exit", killActiveCommands);
+  process.off("newListener", keepShutdownHandlersFirst);
+  shutdownHandlersInstalled = false;
 };
 
 const endCommandsOnSignal = (signal: NodeJS.Signals): void => {
@@ -95,15 +104,43 @@ const signalHandlers = new Map(
   shutdownSignals.map((signal) => [signal, () => endCommandsOnSignal(signal)])
 );
 
+let shutdownHandlersInstalled = false;
+
+const moveShutdownHandlersFirst = (): void => {
+  if (!shutdownHandlersInstalled) return;
+  for (const [signal, handler] of signalHandlers) {
+    if (process.listeners(signal)[0] === handler) continue;
+    process.off(signal, handler);
+    process.prependListener(signal, handler);
+  }
+};
+
+/**
+ * The re-raise check counts the listeners that take part in a delivery, so
+ * the handler must run before every caller listener, including one-shot
+ * listeners a caller prepends later. `newListener` fires before the listener
+ * is added, so the handlers move back to the front once it is in place.
+ */
+const keepShutdownHandlersFirst = (event: string | symbol): void => {
+  if (shutdownSignals.some((signal) => signal === event)) {
+    queueMicrotask(moveShutdownHandlersFirst);
+  }
+};
+
 const trackCommand = (kill: () => void): (() => void) => {
-  if (activeCommands.size === 0) {
-    for (const [signal, handler] of signalHandlers) process.on(signal, handler);
+  if (!shutdownHandlersInstalled) {
+    // Run before the caller's own listeners: a caller's one-shot listener
+    // removes itself when it runs, and the re-raise check must still see it.
+    for (const [signal, handler] of signalHandlers) {
+      process.prependListener(signal, handler);
+    }
     process.on("exit", killActiveCommands);
+    process.on("newListener", keepShutdownHandlersFirst);
+    shutdownHandlersInstalled = true;
   }
   activeCommands.add(kill);
   return () => {
     activeCommands.delete(kill);
-    if (activeCommands.size === 0) removeShutdownHandlers();
   };
 };
 

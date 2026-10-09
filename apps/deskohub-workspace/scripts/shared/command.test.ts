@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commandOutput, runCommand } from "./command";
@@ -179,18 +179,74 @@ describe("caller shutdown", () => {
     }
   }
 
-  test("a caller with no running command keeps its signal listeners unchanged", async () => {
-    const before = process.listenerCount("SIGINT");
-    const beforeTerm = process.listenerCount("SIGTERM");
-    const beforeExit = process.listenerCount("exit");
+  for (const kind of [
+    "once-before",
+    "once-after",
+    "prepend-once-after",
+    "prepend-self-removing-after",
+  ] as const) {
+    test(`a caller's own one-shot SIGTERM listener (${kind}) handles the signal`, async () => {
+      const directory = mkdtempSync(join(tmpdir(), "command-listener-"));
+      const handledFile = join(directory, "handled");
+      const caller = Bun.spawn({
+        cmd: [
+          process.execPath,
+          join(import.meta.dir, "command.listener-fixture.ts"),
+          handledFile,
+          kind,
+        ],
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      try {
+        const reader = caller.stdout.getReader();
+        const { value } = await reader.read();
+        expect(new TextDecoder().decode(value)).toContain("ready");
+        reader.releaseLock();
+
+        process.kill(caller.pid, "SIGTERM");
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          if (existsSync(handledFile)) break;
+          await Bun.sleep(20);
+        }
+        await Bun.sleep(200);
+
+        expect(existsSync(handledFile)).toBe(true);
+        // The caller's own listener handled SIGTERM, so it must not have
+        // been ended by a re-raised signal.
+        expect(caller.exitCode).toBeNull();
+        expect(caller.signalCode).toBeNull();
+      } finally {
+        caller.kill("SIGKILL");
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }, 20_000);
+  }
+
+  test("installs one set of shutdown listeners however many commands run", async () => {
+    const before = [
+      process.listenerCount("SIGINT"),
+      process.listenerCount("SIGTERM"),
+      process.listenerCount("exit"),
+    ];
     await runCommand(["bash", "-c", "exit 0"], { timeoutMs: 5000 });
-    const during = runCommand(["bash", "-c", "sleep 0.2"], { timeoutMs: 5000 });
-    expect(process.listenerCount("SIGINT")).toBe(before + 1);
-    await during;
+    const installed = [
+      process.listenerCount("SIGINT"),
+      process.listenerCount("SIGTERM"),
+      process.listenerCount("exit"),
+    ];
+    for (const [index, count] of installed.entries()) {
+      expect(count - (before[index] ?? 0)).toBeLessThanOrEqual(1);
+    }
+    await Promise.all([
+      runCommand(["bash", "-c", "sleep 0.1"], { timeoutMs: 5000 }),
+      runCommand(["bash", "-c", "sleep 0.1"]),
+    ]);
     expect([
       process.listenerCount("SIGINT"),
       process.listenerCount("SIGTERM"),
       process.listenerCount("exit"),
-    ]).toEqual([before, beforeTerm, beforeExit]);
+    ]).toEqual(installed);
   });
 });

@@ -33,6 +33,7 @@ import {
 } from "@/shared/components/ui/sheet";
 import { cn } from "@/shared/utils";
 import { AdministrationLink as Link } from "./admin-link";
+import { useCredentialFreeDocumentUrl } from "./credential-free-url";
 import { AdministrationBreadcrumbLoading } from "./loading";
 
 type NavItem = {
@@ -236,6 +237,8 @@ export function AdminShell({
   readonly breadcrumb: ReactNode;
   readonly children: ReactNode;
 }) {
+  useCredentialFreeDocumentUrl();
+
   return (
     <div className="min-h-screen bg-[#f6f6f3] text-navy-blue lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
       <SkipLink label="Skip to main content" />
