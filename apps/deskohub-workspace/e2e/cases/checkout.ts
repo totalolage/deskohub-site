@@ -32,7 +32,6 @@ import {
 import {
   formatNexiBuildFailureCodes,
   parseNexiBuildFailures,
-  parseNexiBuildResponses,
 } from "../checkout/nexi-build-api";
 import {
   completeNexiHostedPayment,
@@ -381,8 +380,7 @@ export const assertFreshPaymentAttempt = (
   );
 };
 
-// Decides from the hosted-field responses whether the rejected payment may
-// restart. If so, retires the rejected attempt, leaves the hosted page, and
+// Decides whether the rejected payment may restart. If so, retires the rejected attempt, leaves the hosted page, and
 // reopens the checkout pay page, which starts a fresh attempt and Nexi order.
 const restartSandboxRejectedPayment = (
   { config, orderId, run, session, state }: HostedCheckoutPaymentOptions,
@@ -393,7 +391,6 @@ const restartSandboxRejectedPayment = (
     const decision = decideNexiSandboxRetry({
       authorizationRequested: rejected.authorizationRequested,
       error: rejected.error,
-      responses: parseNexiBuildResponses(networkLog),
     });
     const nexiCodes = formatNexiBuildFailureCodes(
       parseNexiBuildFailures(networkLog)

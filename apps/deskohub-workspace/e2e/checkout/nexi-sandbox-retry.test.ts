@@ -4,7 +4,6 @@ import {
   workspaceE2EError,
   workspaceE2ETimeoutError,
 } from "../errors";
-import type { NexiBuildResponse } from "./nexi-build-api";
 import {
   classifyNexiSandboxRejection,
   decideNexiSandboxRetry,
@@ -20,16 +19,11 @@ const decide = (
   diagnosticCode: NexiHostedPaymentDiagnosticCode,
   {
     authorizationRequested = false,
-    responses = [],
-  }: {
-    readonly authorizationRequested?: boolean;
-    readonly responses?: readonly NexiBuildResponse[];
-  } = {}
+  }: { readonly authorizationRequested?: boolean } = {}
 ) =>
   decideNexiSandboxRetry({
     authorizationRequested,
     error: hostedPaymentError(diagnosticCode),
-    responses,
   });
 
 test("classifies only terminal Nexi pages as sandbox rejections", () => {
@@ -90,53 +84,26 @@ test("never classifies timeouts, app assertions, or uncoded failures", () => {
 });
 
 test("retries the card-data save rejection Nexi answers with HTTP 400", () => {
-  expect(
-    decide("nexi_hosted_continue_card_submission_rejected", {
-      responses: [{ endpoint: "card-data", status: 400 }],
-    })
-  ).toMatchObject({ retry: true });
+  expect(decide("nexi_hosted_continue_card_submission_rejected")).toMatchObject(
+    { retry: true }
+  );
   expect(decide("nexi_hosted_card_entry_provider_error_page")).toMatchObject({
     retry: true,
   });
 });
 
-test("retries a Pay-step rejection only before authorization or after Nexi failed it", () => {
+test("retries a Pay-step rejection only before Pay asked Nexi to authorize", () => {
   expect(decide("nexi_hosted_pay_provider_error_page")).toMatchObject({
     retry: true,
   });
-  expect(
-    decide("nexi_hosted_pay_provider_failure_page", {
-      authorizationRequested: true,
-      responses: [
-        { endpoint: "card-data", status: 200 },
-        { endpoint: "validate-and-pay", status: 500 },
-      ],
-    })
-  ).toMatchObject({ retry: true });
-
-  for (const responses of [
-    [],
-    [{ endpoint: "validate-and-pay", status: 200 }],
-    [
-      { endpoint: "validate-and-pay", status: 500 },
-      { endpoint: "validate-and-pay", status: 200 },
-    ],
-    [
-      { endpoint: "validate-and-pay", status: 500 },
-      { endpoint: "gdi-result", status: 200 },
-    ],
-    [
-      { endpoint: "validate-and-pay", status: 500 },
-      { endpoint: "finalize-payment", status: 200 },
-    ],
-    [{ endpoint: "validate-and-pay", status: 400 }],
-  ] satisfies NexiBuildResponse[][])
-    expect(
-      decide("nexi_hosted_pay_provider_failure_page", {
-        authorizationRequested: true,
-        responses,
-      })
-    ).toEqual({ reason: "Nexi may have authorized the payment", retry: false });
+  for (const diagnosticCode of [
+    "nexi_hosted_pay_provider_error_page",
+    "nexi_hosted_pay_provider_failure_page",
+  ] as const)
+    expect(decide(diagnosticCode, { authorizationRequested: true })).toEqual({
+      reason: "Nexi may have authorized the payment",
+      retry: false,
+    });
 });
 
 test("never retries the 3-D Secure challenge or the return to the shop", () => {

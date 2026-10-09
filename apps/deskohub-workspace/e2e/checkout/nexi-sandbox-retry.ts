@@ -7,7 +7,6 @@ import {
   toNexiHostedPaymentDiagnosticCode,
   type WorkspaceE2EError,
 } from "../errors";
-import type { NexiBuildResponse } from "./nexi-build-api";
 
 // The shared Nexi sandbox intermittently rejects a hosted payment on its own
 // side. A checkout case may restart such a payment once, through a fresh
@@ -27,9 +26,6 @@ const nexiPreAuthorizationSteps = [
   "card_entry",
   "continue",
 ] as const satisfies readonly NexiHostedPaymentStep[];
-
-// Hosted-field calls that only follow an accepted authorization request.
-const nexiPostAuthorizationEndpoints = ["gdi-result", "finalize-payment"];
 
 export const nexiSandboxRetryDelayMs = 5_000;
 
@@ -67,29 +63,9 @@ export const classifyNexiSandboxRejection = (
   };
 };
 
-// Nexi answered every authorization request with a server error and never
-// reached the 3-D Secure result or payment finalization.
-const isAuthorizationRequestRejected = (
-  responses: readonly NexiBuildResponse[]
-) => {
-  const authorizations = responses.filter(
-    (response) => response.endpoint === "validate-and-pay"
-  );
-  return (
-    authorizations.length > 0 &&
-    authorizations.every((response) => response.status >= 500) &&
-    !responses.some(
-      (response) =>
-        nexiPostAuthorizationEndpoints.includes(response.endpoint) &&
-        response.status < 400
-    )
-  );
-};
-
 export const decideNexiSandboxRetry = ({
   authorizationRequested,
   error,
-  responses,
 }: {
   // Whether the driver activated Pay, the only authorization request.
   readonly authorizationRequested: boolean;
@@ -97,8 +73,6 @@ export const decideNexiSandboxRetry = ({
     WorkspaceE2EError,
     "diagnosticCode" | "reason" | "cause"
   >;
-  // Nexi hosted-field responses observed in the browser session.
-  readonly responses: readonly NexiBuildResponse[];
 }): NexiSandboxRetryDecision => {
   const rejection = classifyNexiSandboxRejection(error);
   if (!rejection)
@@ -107,8 +81,9 @@ export const decideNexiSandboxRetry = ({
     return { rejection, retry: true };
   if (rejection.step !== "pay")
     return decline(`Nexi ${rejection.step} runs after payment authorization`);
-  if (!authorizationRequested) return { rejection, retry: true };
-  return isAuthorizationRequestRejected(responses)
-    ? { rejection, retry: true }
-    : decline("Nexi may have authorized the payment");
+  // Nexi may authorize a payment and still answer Pay with an error, and
+  // retiring the local attempt would not cancel that authorization.
+  return authorizationRequested
+    ? decline("Nexi may have authorized the payment")
+    : { rejection, retry: true };
 };
