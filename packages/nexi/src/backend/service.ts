@@ -170,13 +170,15 @@ const makeNexiService = Effect.gen(function* () {
 
       yield* Effect.logInfo("Nexi hosted payment page request started");
 
+      // Never retried: Nexi documents no idempotency key for POST
+      // /orders/hpp, and a timeout or 5xx can follow a committed creation.
+      // The caller keeps such an attempt unresolved until reconciliation.
       const response = yield* nexiClient
         .createHostedPaymentPage({
           correlationId: input.correlationId,
           payload: request,
         })
         .pipe(
-          Effect.retry(retryPolicy),
           Effect.tapError((error) =>
             Effect.logError("Nexi hosted payment page request failed", {
               error,
