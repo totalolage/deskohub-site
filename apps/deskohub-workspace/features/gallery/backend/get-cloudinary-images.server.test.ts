@@ -8,7 +8,10 @@ const providerMessage =
   "with api_secret=synthetic-cloudinary-secret-sentinel";
 
 let executeAttempts = 0;
-const cacheLife = mock((_profile: string) => undefined);
+const cacheLife = mock(
+  (_profile: string | { stale: number; revalidate: number; expire: number }) =>
+    undefined
+);
 
 const cloudinary = {
   config: mock(() => undefined),
@@ -30,9 +33,6 @@ const cloudinary = {
 };
 
 mock.module("cloudinary", () => ({ v2: cloudinary }));
-const cacheLife = mock(
-  (_profile: { stale: number; revalidate: number; expire: number }) => undefined
-);
 mock.module("next/cache", () => ({
   cacheLife,
   cacheTag: () => undefined,
