@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commandOutput, runCommand } from "./command";
@@ -177,6 +177,46 @@ describe("caller shutdown", () => {
         }
       }, 20_000);
     }
+  }
+
+  for (const order of ["before", "after"] as const) {
+    test(`a caller's own SIGTERM listener registered ${order} the first command handles the signal`, async () => {
+      const directory = mkdtempSync(join(tmpdir(), "command-listener-"));
+      const handledFile = join(directory, "handled");
+      const caller = Bun.spawn({
+        cmd: [
+          process.execPath,
+          join(import.meta.dir, "command.listener-fixture.ts"),
+          handledFile,
+          order,
+        ],
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      try {
+        const reader = caller.stdout.getReader();
+        const { value } = await reader.read();
+        expect(new TextDecoder().decode(value)).toContain("ready");
+        reader.releaseLock();
+
+        process.kill(caller.pid, "SIGTERM");
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+          if (existsSync(handledFile)) break;
+          await Bun.sleep(20);
+        }
+        await Bun.sleep(200);
+
+        expect(existsSync(handledFile)).toBe(true);
+        // The caller's own listener handled SIGTERM, so it must not have
+        // been ended by a re-raised signal.
+        expect(caller.exitCode).toBeNull();
+        expect(caller.signalCode).toBeNull();
+      } finally {
+        caller.kill("SIGKILL");
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }, 20_000);
   }
 
   test("installs one set of shutdown listeners however many commands run", async () => {

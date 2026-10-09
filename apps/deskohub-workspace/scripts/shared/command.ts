@@ -107,7 +107,12 @@ let shutdownHandlersInstalled = false;
 
 const trackCommand = (kill: () => void): (() => void) => {
   if (!shutdownHandlersInstalled) {
-    for (const [signal, handler] of signalHandlers) process.on(signal, handler);
+    // Run before the caller's own listeners: a caller's `once` listener
+    // removes itself when it runs, and the re-raise check below must still
+    // see it.
+    for (const [signal, handler] of signalHandlers) {
+      process.prependListener(signal, handler);
+    }
     process.on("exit", killActiveCommands);
     shutdownHandlersInstalled = true;
   }
