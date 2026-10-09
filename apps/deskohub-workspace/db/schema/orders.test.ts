@@ -59,6 +59,15 @@ describe("orders", () => {
     expect(sql).toContain('"fulfillment_failure_code" is not null');
   });
 
+  test("mirrors the active payment attempt without owning its lifecycle", () => {
+    const config = getTableConfig(orders);
+    const activePaymentAttemptId = config.columns.find(
+      ({ name }) => name === "active_payment_attempt_id"
+    );
+
+    expect(activePaymentAttemptId?.notNull).toBe(false);
+  });
+
   test("enforces the required customer and correlation facts", () => {
     const config = getTableConfig(orders);
     const correlationId = config.columns.find(

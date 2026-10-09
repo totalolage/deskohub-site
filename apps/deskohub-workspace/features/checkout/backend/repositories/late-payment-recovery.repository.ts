@@ -1,10 +1,13 @@
 import type { DotyposReservationId } from "@deskohub/dotypos";
 import type { NexiOperationId, NexiWebhookEventId } from "@deskohub/nexi";
-import { and, eq, gt, inArray, lte, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
-import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
 import {
   type LatePaymentRecovery,
   latePaymentRecoveries,
@@ -13,6 +16,8 @@ import {
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
+import { orderIdSchema } from "@/features/order";
+import { ensureReservationOrder } from "@/features/order/backend/reservation-order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { redeemCodeClaim } from "./payment-lifecycle.repository";
 
@@ -35,6 +40,10 @@ type RecoverySettlementInput = {
   readonly paymentAttemptId: PaymentAttemptId;
   readonly workspaceReservationId: WorkspaceReservationId;
 };
+
+type TransactionClient = Parameters<
+  Parameters<WorkspaceDatabaseClient["transaction"]>[0]
+>[0];
 
 type LatePaymentRecoveryRepositoryError =
   | DiscountClaimError
@@ -103,6 +112,26 @@ export class LatePaymentRecoveryRepository extends Context.Service<
         return recovery ?? null;
       });
 
+      const relinkLegacyAttemptOrder = Effect.fn(
+        "LatePaymentRecoveryRepository.relinkLegacyAttemptOrder"
+      )(function* (input: {
+        readonly tx: TransactionClient;
+        readonly paymentAttemptId: PaymentAttemptId;
+        readonly workspaceReservationId: WorkspaceReservationId;
+      }) {
+        yield* input.tx
+          .update(paymentAttempts)
+          .set({
+            orderId: orderIdSchema.make(input.workspaceReservationId) as never,
+          })
+          .where(
+            and(
+              eq(paymentAttempts.id, input.paymentAttemptId),
+              isNull(paymentAttempts.orderId)
+            )
+          );
+      });
+
       const settle = Effect.fn("LatePaymentRecoveryRepository.settle")(
         function* (
           input: RecoverySettlementInput & {
@@ -140,12 +169,38 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   "Late-payment recovery was not found."
                 );
               }
-              if (recovery.state === input.state) return;
-              if (recovery.state !== "processing") {
+              const alreadySettled = recovery.state === input.state;
+              if (!alreadySettled && recovery.state !== "processing") {
                 return yield* recoveryStateError(
                   "settle",
                   input.paymentAttemptId,
                   "Only a processing late-payment recovery can settle."
+                );
+              }
+
+              // The recovery row is locked first to serialize settlement
+              // generations. The attempt anchor then precedes the reservation,
+              // matching payment and invoice writers; order mirrors copy the
+              // active-attempt scalar without taking an attempt lock.
+              const [attemptAnchor] = yield* tx
+                .select({ id: paymentAttempts.id })
+                .from(paymentAttempts)
+                .where(
+                  and(
+                    eq(paymentAttempts.id, input.paymentAttemptId),
+                    eq(
+                      paymentAttempts.workspaceReservationId,
+                      input.workspaceReservationId
+                    )
+                  )
+                )
+                .limit(1)
+                .for("no key update");
+              if (!attemptAnchor) {
+                return yield* recoveryStateError(
+                  "settle",
+                  input.paymentAttemptId,
+                  "Late-payment attempt was not found."
                 );
               }
 
@@ -164,6 +219,16 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   "Late-payment reservation was not found."
                 );
               }
+              yield* ensureReservationOrder({ tx, reservation });
+              if (alreadySettled) {
+                yield* relinkLegacyAttemptOrder({
+                  tx,
+                  paymentAttemptId: input.paymentAttemptId,
+                  workspaceReservationId: input.workspaceReservationId,
+                });
+                return;
+              }
+
               const isActiveAttempt =
                 reservation.activePaymentAttemptId === input.paymentAttemptId;
               if (!isActiveAttempt && input.state !== "refund_required") {
@@ -261,6 +326,11 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   "Only a terminal late payment can settle as paid."
                 );
               }
+              yield* relinkLegacyAttemptOrder({
+                tx,
+                paymentAttemptId: input.paymentAttemptId,
+                workspaceReservationId: input.workspaceReservationId,
+              });
 
               if (input.state === "recovered") {
                 yield* redeemCodeClaim(
@@ -314,7 +384,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                       )
                     )
                   )
-                  .returning({ id: workspaceReservations.id });
+                  .returning();
                 if (!updatedReservation) {
                   return yield* recoveryStateError(
                     "settle",
@@ -322,6 +392,10 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     "Late-payment reservation settlement failed."
                   );
                 }
+                yield* ensureReservationOrder({
+                  tx,
+                  reservation: updatedReservation,
+                });
               }
 
               yield* tx
@@ -368,10 +442,70 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   )
                   .limit(1)
                   .for("update");
-                if (existing) return existing;
+                if (existing) {
+                  if (
+                    existing.workspaceReservationId !==
+                    input.workspaceReservationId
+                  ) {
+                    return yield* recoveryStateError(
+                      "start",
+                      input.paymentAttemptId,
+                      "Late-payment recovery belongs to a different reservation."
+                    );
+                  }
 
+                  const [attempt] = yield* tx
+                    .select({ id: paymentAttempts.id })
+                    .from(paymentAttempts)
+                    .where(
+                      and(
+                        eq(paymentAttempts.id, input.paymentAttemptId),
+                        eq(
+                          paymentAttempts.workspaceReservationId,
+                          input.workspaceReservationId
+                        )
+                      )
+                    )
+                    .limit(1)
+                    .for("no key update");
+                  const [reservation] = yield* tx
+                    .select()
+                    .from(workspaceReservations)
+                    .where(
+                      eq(workspaceReservations.id, input.workspaceReservationId)
+                    )
+                    .limit(1)
+                    .for("update");
+                  if (!attempt || !reservation) {
+                    return yield* recoveryStateError(
+                      "start",
+                      input.paymentAttemptId,
+                      "Late-payment recovery requires its attempt and reservation."
+                    );
+                  }
+
+                  yield* ensureReservationOrder({ tx, reservation });
+                  yield* relinkLegacyAttemptOrder({
+                    tx,
+                    paymentAttemptId: input.paymentAttemptId,
+                    workspaceReservationId: input.workspaceReservationId,
+                  });
+                  return existing;
+                }
+
+                // Lock-order contract: payment attempt → reservation →
+                // order. The attempt-first anchor matches deployed recovery
+                // and payment lifecycle writers. Reservation-only mirrors do
+                // not lock attempts; their active-attempt projection is a
+                // scalar without a database FK, so they can complete while an
+                // old reader holds the attempt before waiting on the
+                // reservation. The order_id relink below remains protected by
+                // its separate order foreign key.
+                // Lock mode: FOR NO KEY UPDATE. It conflicts with old
+                // recovery FOR UPDATE locks and other payment-writer anchors
+                // before this transaction locks the reservation.
                 const [attempt] = yield* tx
-                  .select({ state: paymentAttempts.state })
+                  .select({ id: paymentAttempts.id })
                   .from(paymentAttempts)
                   .where(
                     and(
@@ -388,7 +522,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     )
                   )
                   .limit(1)
-                  .for("update");
+                  .for("no key update");
                 const [reservation] = yield* tx
                   .select()
                   .from(workspaceReservations)
@@ -404,6 +538,13 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     "Late-payment recovery requires a terminal attempt and its Dotypos reservation."
                   );
                 }
+
+                yield* ensureReservationOrder({ tx, reservation });
+                yield* relinkLegacyAttemptOrder({
+                  tx,
+                  paymentAttemptId: input.paymentAttemptId,
+                  workspaceReservationId: input.workspaceReservationId,
+                });
 
                 const [recovery] = yield* tx
                   .insert(latePaymentRecoveries)

@@ -160,7 +160,18 @@ export const relations = defineRelations(schema, (r) => ({
       optional: false,
     }),
   },
+  orders: {
+    paymentAttempts: r.many.paymentAttempts(),
+    activePaymentAttempt: r.one.paymentAttempts({
+      from: r.orders.activePaymentAttemptId,
+      to: r.paymentAttempts.id,
+    }),
+  },
   paymentAttempts: {
+    order: r.one.orders({
+      from: r.paymentAttempts.orderId,
+      to: r.orders.id,
+    }),
     accountingDocumentSnapshot: r.one.accountingDocumentSnapshots({
       from: r.paymentAttempts.id,
       to: r.accountingDocumentSnapshots.paymentAttemptId,

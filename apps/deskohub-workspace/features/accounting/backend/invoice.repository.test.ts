@@ -82,7 +82,7 @@ const makeHarness = async () => {
   return { recording, repository };
 };
 
-// Column order mirrors the locked reservation/attempt select in issue().
+// Column order mirrors the locked reservation select in issue().
 const lockedRowBase = {
   reservationId: "reservation-1",
   reservationPaymentState: "paid",
@@ -92,15 +92,18 @@ const lockedRowBase = {
   paidAt: "2026-08-10T12:30:00Z",
   fulfillmentState: "fulfilled",
   fulfilledAt: "2026-08-11T08:00:00Z",
-  paymentAttemptState: "paid",
 };
 const lockedRow = (overrides: Partial<typeof lockedRowBase> = {}) => {
   const base = { ...lockedRowBase, ...overrides };
   return Object.values(base);
 };
 
-const issueFlowRows = (locked: readonly unknown[]) => [
+const issueFlowRows = (
+  locked: readonly unknown[],
+  attemptState: string = "paid"
+) => [
   [], // no invoice issued yet for the attempt
+  [[attemptState]], // attempt-first anchor: the locked payment attempt row
   [locked], // locked reservation row
   [], // no existing reservation invoice
   [[3]], // counter allocation returns sequence 3
@@ -125,10 +128,20 @@ describe("invoice repository persistence contract", () => {
     ).catch(() => undefined);
 
     const sqlTexts = recording.statements.map(({ sql }) => sql);
-    const lockedIndex = sqlTexts.findIndex(
-      (sql) =>
-        sql.includes('from "payment_attempts"') && sql.includes("for update")
+    // Attempt-first lock order: the payment attempt row is locked before the
+    // reservation row, matching the deployed old writers so old-new overlap
+    // during a rolling deploy serializes instead of deadlocking.
+    const attemptAnchor = sqlTexts.find((sql) =>
+      sql.includes('from "payment_attempts"')
     );
+    // The anchor is FOR NO KEY UPDATE: issuance only reads the attempt, while
+    // this lock serializes it with old recovery/payment writers before the
+    // reservation lock is acquired. Reservation order mirrors do not lock
+    // attempts or enforce this scalar with a database FK.
+    expect(attemptAnchor).toContain("for no key update");
+    const forUpdate = sqlTexts.filter((sql) => sql.includes("for update"));
+    expect(forUpdate.length).toBeGreaterThanOrEqual(1);
+    expect(forUpdate[0]).toContain('from "workspace_reservations"');
     const existingIndex = sqlTexts.findIndex(
       (sql) =>
         sql.includes('from "invoices"') &&
@@ -141,8 +154,7 @@ describe("invoice repository persistence contract", () => {
       sql.includes('insert into "invoices"')
     );
 
-    expect(lockedIndex).toBeGreaterThan(-1);
-    expect(existingIndex).toBeGreaterThan(lockedIndex);
+    expect(existingIndex).toBeGreaterThan(-1);
     expect(counterIndex).toBeGreaterThan(existingIndex);
     expect(invoiceInsertIndex).toBeGreaterThan(counterIndex);
   });
@@ -166,9 +178,7 @@ describe("invoice repository persistence contract", () => {
 
   test("refuses to invoice before the attempt, reservation, and delivery are all paid", async () => {
     const { recording, repository } = await makeHarness();
-    recording.setRows(
-      issueFlowRows(lockedRow({ paymentAttemptState: "failed" }))
-    );
+    recording.setRows(issueFlowRows(lockedRow(), "failed"));
 
     const error = await Effect.runPromise(
       Effect.flip(
@@ -191,7 +201,8 @@ describe("invoice repository persistence contract", () => {
     // already invoiced from another payment attempt.
     recording.setRows([
       [],
-      [lockedRow()],
+      [["paid"]], // attempt-first anchor: the locked payment attempt row
+      [lockedRow()], // locked reservation row
       [["invoice-1", "payment-attempt-9"]],
     ]);
 

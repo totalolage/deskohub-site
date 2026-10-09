@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { getTableColumns, type Table } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import "@/shared/polyfills/temporal";
-import { latePaymentRecoveries, workspaceReservations } from "@/db/schema";
+import {
+  latePaymentRecoveries,
+  orders,
+  workspaceReservations,
+} from "@/db/schema";
 import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
 import {
   LatePaymentRecoveryRepository,
@@ -45,7 +49,7 @@ const makeRepository = async () => {
 const processingRecoveryRow = () =>
   rowOf(latePaymentRecoveries, {
     paymentAttemptId: "attempt-1",
-    workspaceReservationId: "reservation-1",
+    workspaceReservationId: "00000000-0000-4000-8000-000000000001",
     webhookEventId: "webhook-1",
     providerOperationId: "operation-1",
     providerStatus: "CAPTURED",
@@ -55,7 +59,7 @@ const processingRecoveryRow = () =>
   });
 
 const reservationRowDefaults = {
-  id: "reservation-1",
+  id: "00000000-0000-4000-8000-000000000001",
   checkoutSessionKey: "session-1",
   createdAt: paidAt,
   activePaymentAttemptId: "attempt-1",
@@ -71,26 +75,51 @@ const reservationRow = (
     ...overrides,
   });
 
+/**
+ * The order mirror upsert returns the mirrored order row; canned rows must be
+ * complete because the orders table decodes every column positionally.
+ */
+const orderRow = () =>
+  rowOf(orders, {
+    id: reservationRowDefaults.id,
+    kind: "reservation",
+    correlationId: "correlation-1",
+    dotyposCustomerId: "dotypos-customer-1",
+    paymentState: "pending",
+    fulfillmentState: "not_started",
+    createdAt: paidAt,
+    updatedAt: paidAt,
+  });
+
 const settleSuccessRows = (
   reservation: Partial<typeof reservationRowDefaults>
 ) => [
   [processingRecoveryRow()],
+  [["paid"]], // attempt-first anchor: the locked attempt state read
   [reservationRow(reservation)],
-  [],
+  [orderRow()], // order mirror upsert after the locked reservation
+  [], // supersession recheck
   [["attempt-1"]],
+  [], // repair legacy payment_attempts.order_id
   [],
   [],
-  [["reservation-1"]],
+  [reservationRow({ ...reservation })],
+  [orderRow()], // order mirror upsert after the settled reservation
   [],
 ];
 
 describe("LatePaymentRecoveryRepository", () => {
   test("only treats later checkout-session reservations as superseding", async () => {
     const { recording, repository } = await makeRepository();
-    recording.setRows([[["session-1", paidAt]], [["reservation-2"]]]);
+    recording.setRows([
+      [["session-1", paidAt]],
+      [["00000000-0000-4000-8000-000000000002"]],
+    ]);
 
     const hasNewer = await Effect.runPromise(
-      repository.hasNewerActiveReservation("reservation-1" as never)
+      repository.hasNewerActiveReservation(
+        "00000000-0000-4000-8000-000000000001" as never
+      )
     );
 
     expect(hasNewer).toBe(true);
@@ -105,15 +134,18 @@ describe("LatePaymentRecoveryRepository", () => {
     const { recording, repository } = await makeRepository();
     recording.setRows([
       [processingRecoveryRow()],
+      [["paid"]], // attempt-first anchor: the locked attempt state read
       [reservationRow()],
-      [["reservation-2"]],
+      [orderRow()], // order mirror upsert after the locked reservation
+      [["00000000-0000-4000-8000-000000000002"]],
     ]);
 
     const error = await Effect.runPromise(
       Effect.flip(
         repository.completeUsingOriginalReservation({
           paymentAttemptId: "attempt-1" as never,
-          workspaceReservationId: "reservation-1" as never,
+          workspaceReservationId:
+            "00000000-0000-4000-8000-000000000001" as never,
           reservationState: "confirmed",
           completedAt,
         })
@@ -125,9 +157,13 @@ describe("LatePaymentRecoveryRepository", () => {
       sql.includes('"created_at" > ')
     );
     expect(supersessionStatement).toBeDefined();
-    expect(recording.statements.map(({ sql }) => sql)).not.toContainEqual(
-      expect.stringContaining('update "payment_attempts"')
-    );
+    // No settlement write reaches the attempt; the mirror is reservation →
+    // order only, so no payment_attempts statement runs at all on this path.
+    expect(
+      recording.statements
+        .map(({ sql }) => sql)
+        .filter((sql) => sql.includes('update "payment_attempts"'))
+    ).toHaveLength(0);
   });
 
   test("allows a replacement to settle after the original reservation was cancelled", async () => {
@@ -137,7 +173,7 @@ describe("LatePaymentRecoveryRepository", () => {
     await Effect.runPromise(
       repository.completeWithReplacement({
         paymentAttemptId: "attempt-1" as never,
-        workspaceReservationId: "reservation-1" as never,
+        workspaceReservationId: "00000000-0000-4000-8000-000000000001" as never,
         recoveredDotyposReservationId: "dotypos-replacement" as never,
         reservationState: "confirmed",
         completedAt,
@@ -166,23 +202,28 @@ describe("LatePaymentRecoveryRepository", () => {
     const { recording, repository } = await makeRepository();
     recording.setRows([
       [processingRecoveryRow()],
+      [["paid"]], // attempt-first anchor: the locked attempt state read
       [reservationRow({ activePaymentAttemptId: "attempt-2" })],
+      [orderRow()], // order mirror upsert after the locked reservation
       [["attempt-1"]],
-      [],
+      [], // repair legacy payment_attempts.order_id
+      [], // settle recovery row
     ]);
 
     await Effect.runPromise(
       repository.requireRefund({
         paymentAttemptId: "attempt-1" as never,
-        workspaceReservationId: "reservation-1" as never,
+        workspaceReservationId: "00000000-0000-4000-8000-000000000001" as never,
         failureCode: "provider_refund_needed",
         completedAt,
       })
     );
 
     const sqlTexts = recording.statements.map(({ sql }) => sql);
-    const attemptUpdate = recording.statements.find(({ sql }) =>
-      sql.startsWith('update "payment_attempts"')
+    const attemptUpdate = recording.statements.find(
+      ({ sql }) =>
+        sql.startsWith('update "payment_attempts"') &&
+        sql.includes('"refund_state"')
     );
     expect(attemptUpdate?.params).toContain("required");
     expect(sqlTexts.join("\n")).not.toContain(
@@ -203,7 +244,7 @@ describe("LatePaymentRecoveryRepository", () => {
     await Effect.runPromise(
       repository.completeUsingOriginalReservation({
         paymentAttemptId: "attempt-1" as never,
-        workspaceReservationId: "reservation-1" as never,
+        workspaceReservationId: "00000000-0000-4000-8000-000000000001" as never,
         reservationState: "confirmed",
         completedAt,
       })
