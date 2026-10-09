@@ -95,7 +95,6 @@ export type ActiveSale = {
 
 export type ActiveSaleDiscoveryInput = {
   readonly locale: Locale;
-  readonly currentDate: Temporal.PlainDate;
 };
 
 export const discountCodec = Schema.Struct({
@@ -179,14 +178,20 @@ export type AffirmedDiscountAdvertisementQuote =
 export type DiscountAdvertisementInput = {
   readonly product: WorkspaceProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
+  /** Service date of the reservation. */
   readonly reservationDate: string;
+  /** Moment the booking is made; calendar sales are evaluated at it. */
+  readonly bookedAt: Temporal.Instant;
   readonly locale: Locale;
 };
 
 export type DiscountQuoteInput = {
   readonly product: WorkspaceProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
+  /** Service date of the reservation. */
   readonly reservationDate: string;
+  /** Moment the booking is made; calendar sales are evaluated at it. */
+  readonly bookedAt: Temporal.Instant;
   readonly locale: Locale;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly submittedCode?: CanonicalPromotionCode;

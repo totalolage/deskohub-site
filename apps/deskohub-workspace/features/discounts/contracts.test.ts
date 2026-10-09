@@ -90,6 +90,7 @@ describe("discount contracts", () => {
       product: quote.product,
       discountableSubtotal: quote.discountableSubtotal,
       reservationDate: "2026-07-14",
+      bookedAt: Temporal.Instant.from("2026-07-14T10:00:00Z"),
       dotyposCustomerId: "customer-1",
       locale: "en-US",
       submittedCode: undefined,

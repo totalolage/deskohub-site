@@ -6,6 +6,7 @@ import {
   temporalInstantToIsoString,
   workspaceSiteConstants,
 } from "@/shared/utils";
+import { temporalInstantToPlainDate } from "@/shared/utils/temporal";
 import {
   type StoredDiscountId,
   storedDiscountIdSchema,
@@ -71,15 +72,51 @@ export type CalendarSale = {
   readonly occurrenceReference: CalendarSaleOccurrenceReference;
   readonly occurrenceDate: string;
   readonly discountId: StoredDiscountId;
+  /** First instant at which a booking can receive the sale. */
+  readonly startsAt: string;
+  /** Exclusive end of the booking window; also the advertised expiry. */
   readonly expiresAt: string;
   readonly countdownStartsAt: string;
+  /** Last service date the sale covers. */
+  readonly lastDay: string;
 };
+
+/**
+ * A booking made at `bookedAt` falls within the sale's booking window.
+ */
+export const isCalendarSaleBookableAt = (
+  sale: Pick<CalendarSale, "startsAt" | "expiresAt">,
+  bookedAt: Temporal.Instant
+) =>
+  Temporal.Instant.compare(sale.startsAt, bookedAt) <= 0 &&
+  Temporal.Instant.compare(bookedAt, sale.expiresAt) < 0;
+
+/**
+ * A calendar sale applies only to bookings made during the sale whose service
+ * date is not after the sale's last day. Earlier service dates are covered.
+ */
+export const calendarSaleAppliesToBooking = (input: {
+  readonly sale: Pick<CalendarSale, "startsAt" | "expiresAt" | "lastDay">;
+  readonly bookedAt: Temporal.Instant;
+  readonly serviceDate: string;
+}) =>
+  isCalendarSaleBookableAt(input.sale, input.bookedAt) &&
+  Temporal.PlainDate.compare(input.serviceDate, input.sale.lastDay) <= 0;
+
+/**
+ * Workspace calendar date on which a booking made at `bookedAt` happens.
+ */
+export const getCalendarSaleBookingDate = (bookedAt: Temporal.Instant) =>
+  temporalInstantToPlainDate({
+    instant: bookedAt,
+    timeZone: workspaceSiteConstants.location.timeZone,
+  }).toString();
 
 export const normalizeCalendarSales = Effect.fn("CalendarSale.normalizeAll")(
   (input: {
     readonly calendarId: SalesCalendarId;
     readonly events: readonly GoogleCalendarEvent[];
-    readonly reservationDate: string;
+    readonly bookingDate: string;
   }) =>
     Effect.succeed(input).pipe(
       Effect.bind("results", ({ events, ...context }) =>
@@ -112,7 +149,7 @@ export const normalizeCalendarSales = Effect.fn("CalendarSale.normalizeAll")(
 const normalizeCalendarSale = (input: {
   readonly calendarId: SalesCalendarId;
   readonly event: GoogleCalendarEvent;
-  readonly reservationDate: string;
+  readonly bookingDate: string;
 }): Effect.Effect<
   Option.Option<CalendarSale>,
   CalendarSaleConfigurationError
@@ -128,8 +165,8 @@ const normalizeCalendarSale = (input: {
           Effect.bind("metadata", decodeCalendarSaleEventMetadata),
           Effect.bind("occurrence", getCalendarSaleOccurrence),
           Effect.let("sale", toCalendarSale),
-          Effect.map(({ metadata, reservationDate, sale }) =>
-            isReservationDateCovered({ metadata, reservationDate })
+          Effect.map(({ metadata, bookingDate, sale }) =>
+            isBookingDateCovered({ metadata, bookingDate })
               ? Option.some(sale)
               : Option.none()
           )
@@ -249,9 +286,9 @@ const toCalendarSale = (input: {
     readonly occurrenceReference: CalendarSaleOccurrenceReference;
   };
 }): CalendarSale => {
-  const expiresAt = Temporal.PlainDate.from(input.metadata.endDate)
-    .toZonedDateTime({ timeZone: workspaceSiteConstants.location.timeZone })
-    .toInstant();
+  const startsAt = toWorkspaceStartOfDay(input.metadata.startDate);
+  const endDate = Temporal.PlainDate.from(input.metadata.endDate);
+  const expiresAt = toWorkspaceStartOfDay(endDate);
 
   return {
     calendarId: input.calendarId,
@@ -259,19 +296,26 @@ const toCalendarSale = (input: {
     occurrenceReference: input.occurrence.occurrenceReference,
     occurrenceDate: input.occurrence.occurrenceDate,
     discountId: input.discountId,
+    startsAt: temporalInstantToIsoString(startsAt),
     expiresAt: temporalInstantToIsoString(expiresAt),
     countdownStartsAt: temporalInstantToIsoString(
       expiresAt.subtract({ hours: 24 })
     ),
+    lastDay: endDate.subtract({ days: 1 }).toString(),
   };
 };
 
-const isReservationDateCovered = (input: {
+const toWorkspaceStartOfDay = (date: Temporal.PlainDate | string) =>
+  Temporal.PlainDate.from(date)
+    .toZonedDateTime({ timeZone: workspaceSiteConstants.location.timeZone })
+    .toInstant();
+
+const isBookingDateCovered = (input: {
   readonly metadata: Schema.Schema.Type<typeof calendarSaleEventMetadataSchema>;
-  readonly reservationDate: string;
+  readonly bookingDate: string;
 }) =>
-  input.metadata.startDate <= input.reservationDate &&
-  input.reservationDate < input.metadata.endDate;
+  input.metadata.startDate <= input.bookingDate &&
+  input.bookingDate < input.metadata.endDate;
 
 const decodeCalendarEventReference = Schema.decodeUnknownSync(
   calendarEventReferenceSchema

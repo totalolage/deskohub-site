@@ -15,7 +15,11 @@ import {
 import type { Locale } from "@/features/i18n";
 import { locales } from "@/features/i18n";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import { unixTimestampSecondsSchema } from "@/shared/utils/temporal";
+import {
+  type Instant,
+  instantStringSchema,
+  unixTimestampSecondsSchema,
+} from "@/shared/utils/temporal";
 import { checkoutStateKeyIdSchema } from "./checkout-state-token";
 
 export const signedPayStateEnvelopeSchema = Schema.Struct({
@@ -24,6 +28,7 @@ export const signedPayStateEnvelopeSchema = Schema.Struct({
   exp: unixTimestampSecondsSchema,
   locale: Schema.Literals(locales),
   orderId: workspaceReservationIdSchema,
+  bookedAt: instantStringSchema,
   checkoutSessionId: Schema.optional(checkoutSessionIdSchema),
   acceptedTotal: nonNegativeWorkspaceMoneyCodec,
   submittedCode: Schema.optional(canonicalPromotionCodeSchema),
@@ -37,6 +42,8 @@ export type SignedPayStateEnvelope = typeof signedPayStateEnvelopeSchema.Type;
 type BuildSignedPayStateBaseInput = {
   readonly locale: Locale;
   readonly orderId: typeof workspaceReservationIdSchema.Type;
+  /** Moment the reservation was submitted; calendar sales are evaluated at it. */
+  readonly bookedAt: Instant;
   readonly checkoutSessionId?: typeof checkoutSessionIdSchema.Type;
   readonly requestedDiscountCode?: CanonicalPromotionCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;

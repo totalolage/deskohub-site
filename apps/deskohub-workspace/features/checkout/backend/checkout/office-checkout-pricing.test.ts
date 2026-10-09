@@ -62,6 +62,7 @@ describe("office checkout pricing", () => {
       discountableSubtotal: money,
       reservationDate: startsOn.toString(),
       locale: "en-US",
+      bookedAt: expect.any(Temporal.Instant),
     });
     expect(result.quote.payment.expectedPrice).toEqual(money);
   });

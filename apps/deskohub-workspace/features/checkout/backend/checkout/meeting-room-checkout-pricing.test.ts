@@ -79,6 +79,8 @@ const runWithDiscounts = <A, E>(
   discounts: ReturnType<typeof DiscountServiceMock>
 ) => effect.pipe(Effect.provide(discounts), Effect.runPromise);
 
+const bookedAt = Temporal.Instant.from("2099-06-01T10:00:00Z");
+
 describe("meeting-room checkout pricing", () => {
   test("quotes anonymous discounts from the family product and Prague date", async () => {
     const discoverAdvertisedDiscounts = mock(() =>
@@ -101,6 +103,7 @@ describe("meeting-room checkout pricing", () => {
       discountableSubtotal: money,
       reservationDate: "2099-06-10",
       locale: "en-US",
+      bookedAt: expect.any(Temporal.Instant),
     });
     expect(result.quote.payment.expectedPrice).toEqual(
       advertisementQuote.discountedSubtotal
@@ -131,6 +134,7 @@ describe("meeting-room checkout pricing", () => {
         return yield* pricing.affirmAdvertisement({
           reservation: advertisedReservation,
           locale: "en-US",
+          bookedAt,
           advertisedQuote: advertised.quote,
         });
       }),
@@ -142,6 +146,7 @@ describe("meeting-room checkout pricing", () => {
       discountableSubtotal: money,
       reservationDate: "2099-06-10",
       locale: "en-US",
+      bookedAt,
       advertisedDiscountIds: [discountId],
     });
     expect(result.discountQuote).toBe(affirmedAdvertisement);
@@ -199,6 +204,7 @@ describe("meeting-room checkout pricing", () => {
         return yield* pricing.affirmForPayment({
           reservation,
           locale: "en-US",
+          bookedAt,
           dotyposCustomerId,
           quote: advertised.quote,
         });
@@ -212,6 +218,7 @@ describe("meeting-room checkout pricing", () => {
       reservationDate: "2099-06-10",
       dotyposCustomerId,
       locale: "en-US",
+      bookedAt,
       submittedCode: undefined,
       displayedDiscountIds: [discountId],
     });
@@ -280,6 +287,7 @@ describe("meeting-room checkout pricing", () => {
         return yield* pricing.applyDiscountCode({
           reservation,
           locale: "en-US",
+          bookedAt,
           dotyposCustomerId,
           quote: displayedQuote,
           submittedCode,
@@ -297,6 +305,7 @@ describe("meeting-room checkout pricing", () => {
       reservationDate: "2099-06-10",
       dotyposCustomerId,
       locale: "en-US",
+      bookedAt,
       submittedCode: undefined,
       displayedDiscountIds: [discountId],
     });
@@ -353,6 +362,7 @@ describe("meeting-room checkout pricing", () => {
         return yield* pricing.applyDiscountCode({
           reservation,
           locale: "en-US",
+          bookedAt,
           dotyposCustomerId,
           quote: displayedQuote,
           submittedCode,
