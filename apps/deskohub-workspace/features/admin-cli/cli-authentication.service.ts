@@ -43,10 +43,7 @@ import {
 import "@/shared/polyfills/temporal";
 import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 import { ConfiguredAdministrators } from "@/shared/administrator/configured-administrators.service";
-import {
-  addCalendarDuration,
-  currentInstant,
-} from "@/shared/utils/temporal";
+import { addCalendarDuration, currentInstant } from "@/shared/utils/temporal";
 import { type CliSessionLifetime, cliSessionLifetimeSchema } from "./contracts";
 
 const authenticationLifetimeMinutes = 5;
