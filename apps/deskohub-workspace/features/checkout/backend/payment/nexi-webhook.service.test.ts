@@ -102,7 +102,10 @@ type NexiWebhookTestServices = {
   readonly notification?: unknown;
 };
 
-const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
+const buildWebhookEffect = async (
+  services: NexiWebhookTestServices,
+  notification: Omit<typeof payload, "securityToken"> = payload
+) => {
   const { NexiService } = await import("@deskohub/nexi");
   const { WorkspaceReservationRepository } = await import(
     "@/features/reservation/backend/workspace-reservation.repository"
@@ -136,7 +139,9 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
 
   return Effect.gen(function* () {
     const service = yield* NexiWebhookService;
-    return yield* service.processNotification(services.notification ?? payload);
+    return yield* service.processNotification(
+      services.notification ?? notification
+    );
   }).pipe(
     Effect.provide(
       NexiWebhookService.Default.pipe(
@@ -341,6 +346,92 @@ describe("NexiWebhookService", () => {
     expect(fulfillPaidOrder).not.toHaveBeenCalled();
     expect(markProcessed).toHaveBeenCalled();
     expect(markFailed).not.toHaveBeenCalled();
+  });
+
+  const unauthenticatedNotificationServices = () => {
+    const insertReceived = mock(() =>
+      Effect.succeed({ status: "inserted" as const, event: receivedEvent })
+    );
+    const markProcessed = mock(() => Effect.void);
+    const markFailed = mock(() => Effect.void);
+    const verifyPaymentOutcome = mock(() => Effect.succeed(verification));
+    const markPaid = mock(() => Effect.die("unused"));
+    const services: NexiWebhookTestServices = {
+      webhookEvents: {
+        insertReceived,
+        linkPaymentAttempt: mock(() => Effect.void),
+        markProcessed,
+        markFailed,
+        claimRetry: mock(() => Effect.die("unused")),
+      },
+      paymentAttempts: {
+        findByProviderOrderId: mock(() => Effect.succeed(attempt)),
+      },
+      paymentLifecycle: {
+        createPendingNexiAttempt: mock(() => Effect.die("unused")),
+        attachProviderSession: mock(() => Effect.die("unused")),
+        markPaid,
+        markTerminal: mock(() => Effect.die("unused")),
+      },
+      reservations: {
+        findById: mock(() => Effect.succeed(reservation as never)),
+      },
+      nexi: { verifyPaymentOutcome },
+      fulfillment: { fulfillPaidOrder: mock(() => Effect.die("unused")) },
+    };
+    return {
+      services,
+      insertReceived,
+      markProcessed,
+      markFailed,
+      verifyPaymentOutcome,
+      markPaid,
+    };
+  };
+
+  test("does not process a notification without a security token", async () => {
+    const { services, insertReceived, verifyPaymentOutcome, markPaid } =
+      unauthenticatedNotificationServices();
+    const { securityToken: _omitted, ...notification } = payload;
+
+    const result = await Effect.runPromise(
+      Effect.result(await buildWebhookEffect(services, notification))
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(result._tag === "Failure" && result.failure).toMatchObject({
+      _tag: "NexiWebhookProcessingError",
+      errorCode: "nexi_webhook_missing_security_token",
+    });
+    expect(insertReceived).not.toHaveBeenCalled();
+    expect(verifyPaymentOutcome).not.toHaveBeenCalled();
+    expect(markPaid).not.toHaveBeenCalled();
+  });
+
+  test("does not process a notification whose security token does not match", async () => {
+    const { services, markFailed, verifyPaymentOutcome, markPaid } =
+      unauthenticatedNotificationServices();
+
+    const result = await Effect.runPromise(
+      Effect.result(
+        await buildWebhookEffect(services, {
+          ...payload,
+          securityToken: "forged-security-token",
+        })
+      )
+    );
+
+    expect(result._tag === "Failure" && result.failure).toMatchObject({
+      _tag: "NexiWebhookProcessingError",
+      errorCode: "nexi_webhook_verification_mismatch",
+    });
+    expect(markFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: "nexi_webhook_verification_mismatch",
+      })
+    );
+    expect(verifyPaymentOutcome).not.toHaveBeenCalled();
+    expect(markPaid).not.toHaveBeenCalled();
   });
 
   test("marks the webhook failed and not processed when paid fulfillment fails", async () => {

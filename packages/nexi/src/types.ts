@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { Effect, Schema } from "effect";
 
 export const locales = ["cs-CZ", "en-US"] as const;
@@ -117,7 +118,12 @@ export interface NexiWebhookEventIdentity {
   readonly source: NexiWebhookEventIdentitySource;
 }
 
-export type NexiWebhookSecurityTokenStatus = "absent" | "match" | "mismatch";
+/**
+ * Only `match` authenticates a notification. A notification without a
+ * security token, or for a payment that was never issued one, must not be
+ * processed.
+ */
+export type NexiWebhookSecurityTokenStatus = "missing" | "match" | "mismatch";
 
 export interface NexiWebhookSecurityTokenCheck {
   readonly status: NexiWebhookSecurityTokenStatus;
@@ -209,15 +215,26 @@ export const checkNexiWebhookSecurityToken = (input: {
   const notificationSecurityToken = cleanOptionalString(
     input.notificationSecurityToken
   );
-  if (!notificationSecurityToken) return { status: "absent" };
+  if (!notificationSecurityToken) return { status: "missing" };
 
+  const expectedSecurityToken = cleanOptionalString(
+    input.expectedSecurityToken ?? undefined
+  );
   return {
     status:
-      notificationSecurityToken === input.expectedSecurityToken
+      expectedSecurityToken &&
+      securityTokensEqual(notificationSecurityToken, expectedSecurityToken)
         ? "match"
         : "mismatch",
   };
 };
+
+// Compares fixed-length digests so neither content nor length leaks timing.
+const securityTokensEqual = (received: string, expected: string) =>
+  timingSafeEqual(
+    createHash("sha256").update(received).digest(),
+    createHash("sha256").update(expected).digest()
+  );
 
 export const classifyNexiFailureStatus = (
   providerStatus: string | undefined

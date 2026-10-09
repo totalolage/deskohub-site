@@ -223,6 +223,20 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
             });
             yield* Effect.logInfo("Nexi webhook notification decoded");
 
+            // The security token is the only proof that a notification came
+            // from the gateway; without one, record and process nothing.
+            if (!envelope.securityToken) {
+              yield* Effect.logWarning(
+                "Nexi webhook notification without security token rejected"
+              );
+              return yield* new NexiWebhookProcessingError({
+                errorCode: "nexi_webhook_missing_security_token",
+                eventId,
+                orderId: providerOrderId,
+                message: "Nexi webhook notification has no security token.",
+              });
+            }
+
             const received = yield* webhookEvents
               .insertReceived({
                 eventId,
@@ -400,7 +414,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
             });
             yield* Effect.annotateLogsScoped({ tokenCheck });
             yield* Effect.logDebug("Nexi webhook security token checked");
-            if (tokenCheck.status === "mismatch") {
+            if (tokenCheck.status !== "match") {
               yield* Effect.logWarning(
                 "Nexi webhook security token mismatch detected"
               );
