@@ -3,12 +3,20 @@ import type { NexiOperation, NexiOperationId } from "./types";
 const REFUND_OPERATION_TYPE = "REFUND";
 
 /**
+ * Results that mean a `REFUND` operation returned money to the cardholder.
  * Nexi documents `REFUNDED` as "Full or partial amount refunded" and uses
- * `EXECUTED` for completed operations, so either result on a `REFUND`
- * operation means money went back to the cardholder. Pending, declined, and
- * failed refunds move no money.
+ * `EXECUTED` for completed operations. Refunds made in the Nexi back office
+ * before settlement are reported as `REFUND` with `VOIDED`: the refund was
+ * performed as a void of the unsettled charge, so the money also went back.
+ *
+ * Every other result is excluded. Declined, denied, failed, and cancelled
+ * refunds moved no money. Pending and unrecognized results are excluded too,
+ * because they are not final: counting them could clear refund work for a
+ * refund that later fails, while excluding them only delays clearing until
+ * Nexi reports a final result, which the webhook or the daily reconciliation
+ * then picks up.
  */
-const successfulRefundResults = new Set(["EXECUTED", "REFUNDED"]);
+const successfulRefundResults = new Set(["EXECUTED", "REFUNDED", "VOIDED"]);
 
 const minorUnitAmountPattern = /^[1-9][0-9]*$/;
 

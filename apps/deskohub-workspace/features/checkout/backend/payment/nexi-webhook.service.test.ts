@@ -406,6 +406,7 @@ describe("NexiWebhookService", () => {
     expect(markProcessed).not.toHaveBeenCalled();
   });
 
+  // Back-office refunds before settlement arrive as REFUND with VOIDED.
   const refundNotification = {
     ...payload,
     eventId: "refund-event-id",
@@ -413,7 +414,7 @@ describe("NexiWebhookService", () => {
       ...payload.operation,
       operationId: "refund-operation-id",
       operationType: "REFUND",
-      operationResult: "EXECUTED",
+      operationResult: "VOIDED",
       operationAmount: "10000",
     },
   };
@@ -463,7 +464,7 @@ describe("NexiWebhookService", () => {
       paymentRefunds: { reconcileAttempt: overrides.reconcileAttempt },
     }) as NexiWebhookTestServices;
 
-  test("records a refund notification without re-running payment or fulfillment", async () => {
+  test("records a voided refund notification without re-running payment, failure, or fulfillment", async () => {
     const markProcessed = mock(() => Effect.void);
     const markFailed = mock(() => Effect.void);
     const reconcileAttempt = mock(() => Effect.succeed("recorded" as const));

@@ -33,6 +33,55 @@ describe("Nexi refunds", () => {
     ).toBe(false);
   });
 
+  test("counts a back-office refund reported as a voided refund operation", () => {
+    expect(
+      isSuccessfulNexiRefund({
+        operationType: "REFUND",
+        operationResult: "VOIDED",
+      })
+    ).toBe(true);
+    expect(
+      summarizeNexiRefunds([
+        {
+          operationId: operationId("capture"),
+          operationType: "CAPTURE",
+          operationResult: "EXECUTED",
+          amount: "1000",
+        },
+        {
+          operationId: operationId("refund-voided"),
+          operationType: "REFUND",
+          operationResult: "voided",
+          operationTime: "2026-10-05T11:00:00+02:00",
+          amount: "1000",
+        },
+      ])
+    ).toEqual({
+      amount: 1000,
+      lastRefundedAt: "2026-10-05T11:00:00+02:00",
+      operationIds: [operationId("refund-voided")],
+    });
+  });
+
+  test("ignores refunds that failed or have no final result yet", () => {
+    for (const operationResult of [
+      "DECLINED",
+      "DENIED",
+      "DENIED_BY_RISK",
+      "THREEDS_FAILED",
+      "FAILED",
+      "CANCELED",
+      "PENDING",
+      "AUTHORIZED",
+      "SOMETHING_NEW",
+      undefined,
+    ]) {
+      expect(
+        isSuccessfulNexiRefund({ operationType: "REFUND", operationResult })
+      ).toBe(false);
+    }
+  });
+
   test("sums successful refunds and keeps the latest refund time", () => {
     expect(
       summarizeNexiRefunds([
