@@ -136,7 +136,7 @@ export function LandingPageHeroSection({
       ariaLabelledBy="landing-page-heading"
       background={<Background locale={locale} />}
       bottomSection={orangeMaskSection}
-      className="group relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white has-[[data-landing-page-sale-banner]]:pt-(--site-header-height)"
+      className="group relative isolate -mb-[calc(0.5*var(--hero-bottom-section-height))] min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white has-[[data-landing-page-sale-banner]]:pt-(--site-header-height)"
       id={overviewSectionId}
       saleBanner={saleBanner}
     >
