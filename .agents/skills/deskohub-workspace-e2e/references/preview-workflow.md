@@ -88,7 +88,12 @@ names. Inspect settings and deployment metadata without printing their values.
 - `GOOGLE_CALENDAR_SALES_ID` must identify the dedicated Preview E2E sales
   calendar. Its long-lived all-day sale references discount UUID
   `454784dd-380b-43a1-bae7-cc070bf1aec2`. Keep that event immutable so parallel
-  happy-path cases cannot interfere with one another.
+  happy-path cases cannot interfere with one another. Calendar sales apply only
+  to bookings made during the sale, for service dates no later than its last
+  day. That event must therefore be a single non-recurring occurrence. It must
+  start on or before the run date and last beyond the end of the 14-to-90-day
+  candidate range. A daily recurring sale would only cover same-day service
+  dates.
 - `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.
 
 This Vercel list is separate from the GitHub Actions
