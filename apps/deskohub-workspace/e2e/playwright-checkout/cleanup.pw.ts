@@ -1,4 +1,3 @@
-import { Effect } from "effect";
 import {
   prepareWorkspaceE2EAccountLaneReconciliation,
   reconcileWorkspaceE2EAccountLane,
@@ -8,9 +7,11 @@ import {
   prepareCheckoutFlowCleanup,
 } from "../cleanup";
 import { getDatasourceConfig } from "../config";
-import { E2ETelemetryService } from "../services/telemetry";
 import { workspaceE2ECaseIds } from "./case-catalog";
-import { runWorkspaceE2ECleanupWithPreparedCandidates } from "./cleanup-plan";
+import {
+  runWorkspaceE2ECleanupWithPreparedCandidates,
+  traceWorkspaceE2ESuiteCleanup,
+} from "./cleanup-plan";
 import { cleanupTest as test } from "./cleanup-runtime-fixtures";
 import { readWorkspaceE2ECaseJournals } from "./run-plan";
 
@@ -20,7 +21,7 @@ test("reconcile workspace checkout reservations", async ({
   runEffect,
 }) => {
   const datasourceConfig = getDatasourceConfig(environment);
-  const cleanupError = await runWorkspaceE2ECleanupWithPreparedCandidates({
+  await runWorkspaceE2ECleanupWithPreparedCandidates({
     readAccountLaneJournal: () =>
       runEffect(
         prepareWorkspaceE2EAccountLaneReconciliation(
@@ -37,25 +38,17 @@ test("reconcile workspace checkout reservations", async ({
     },
     reconcile: ({ accountLaneJournal, checkoutCleanup }) =>
       runEffect(
-        Effect.gen(function* () {
-          const telemetry = yield* E2ETelemetryService;
-          return yield* telemetry.tracePhase({
-            effect: Effect.gen(function* () {
-              const checkoutError = yield* cleanupPreparedCheckoutFlowStates({
-                datasourceConfig,
-                prepared: checkoutCleanup,
-                workflowError: undefined,
-              });
-              yield* reconcileWorkspaceE2EAccountLane(
-                datasourceConfig,
-                accountLaneJournal
-              );
-              return checkoutError;
-            }),
-            phaseId: "suite-cleanup",
-          });
+        traceWorkspaceE2ESuiteCleanup({
+          cleanupCheckout: cleanupPreparedCheckoutFlowStates({
+            datasourceConfig,
+            prepared: checkoutCleanup,
+            workflowError: undefined,
+          }),
+          reconcileAccountLane: reconcileWorkspaceE2EAccountLane(
+            datasourceConfig,
+            accountLaneJournal
+          ),
         })
       ),
   });
-  if (cleanupError) throw cleanupError;
 });

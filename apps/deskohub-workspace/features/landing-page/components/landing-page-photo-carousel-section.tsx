@@ -34,7 +34,9 @@ export async function LandingPagePhotoCarouselSection({
     tags: ["landing-carousel"],
     maxResults: 20,
   }).catch(() => undefined);
-  if (!images) return null;
+  // getCloudinaryImages serves no photos when Cloudinary fails; hide the
+  // section rather than render an empty carousel.
+  if (!images || images.length === 0) return null;
 
   return (
     <section

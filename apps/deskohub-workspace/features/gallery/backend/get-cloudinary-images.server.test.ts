@@ -8,7 +8,10 @@ const providerMessage =
   "with api_secret=synthetic-cloudinary-secret-sentinel";
 
 let executeAttempts = 0;
-const cacheLife = mock((_profile: string) => undefined);
+const cacheLife = mock(
+  (_profile: string | { stale: number; revalidate: number; expire: number }) =>
+    undefined
+);
 
 const cloudinary = {
   config: mock(() => undefined),
@@ -60,38 +63,17 @@ mock.module("@/shared/backend/workspace-effect", () => ({
 
 const { getCloudinaryImages } = await import("./get-cloudinary-images.server");
 
-describe("getCloudinaryImages escaping failures", () => {
-  test("propagates a sanitized CloudinarySearchError without provider data", async () => {
-    let caught: unknown;
-    try {
-      await getCloudinaryImages({ tags: [["gallery"]] });
-    } catch (error) {
-      caught = error;
-    }
+describe("getCloudinaryImages provider failures", () => {
+  test("degrades to no images and refreshes within a minute while staying prerenderable", async () => {
+    const images = await getCloudinaryImages({ tags: [["gallery"]] });
 
-    expect(caught).toBeDefined();
+    expect(images).toEqual([]);
     expect(executeAttempts).toBe(1);
-
-    const failure = caught as {
-      readonly _tag?: string;
-      readonly message?: string;
-      readonly expression?: string;
-      readonly httpCode?: number;
-      readonly cause?: unknown;
-    };
-    expect(failure._tag).toBe("CloudinarySearchError");
-    expect(failure.message).not.toContain("cloudinary-account-id-sentinel");
-    expect(failure.message).not.toContain(
-      "synthetic-cloudinary-secret-sentinel"
-    );
-    expect(failure.expression).not.toContain("cloudinary-account-id-sentinel");
-    expect(failure.expression).not.toContain("public_id=");
-    expect(failure.cause).toBeUndefined();
-
-    const stringified = JSON.stringify(caught);
-    expect(stringified).not.toContain("cloudinary-account-id-sentinel");
-    expect(stringified).not.toContain("synthetic-cloudinary-secret-sentinel");
-    expect(stringified).not.toContain("api_secret");
+    expect(cacheLife).toHaveBeenCalledWith({
+      stale: 30,
+      revalidate: 60,
+      expire: 300,
+    });
   });
 });
 

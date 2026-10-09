@@ -101,6 +101,27 @@ test("waits for cancelled reservations to leave active inventory", async () => {
   expect(reads).toBe(3);
 });
 
+test("reports how many cancelled reservations remained active by status", async () => {
+  const revived = DotyposReservationIdSchema.make("revived-reservation");
+  const converged = DotyposReservationIdSchema.make("converged-reservation");
+
+  const error = await Effect.runPromise(
+    waitForDotyposCancellationConvergence(
+      Effect.succeed([
+        { id: revived, status: "CONFIRMED" as const },
+        { id: "unrelated-reservation", status: "NEW" as const },
+      ]),
+      [revived, converged],
+      { intervalMs: 1, timeoutMs: 20 }
+    ).pipe(Effect.flip)
+  );
+
+  expect(error.message).toContain(
+    "1 of 2 cancelled reservations still active (CONFIRMED: 1)"
+  );
+  expect(error.message).not.toContain(revived);
+});
+
 // The two fake-reader tests above only poll the supplied read effect; they
 // prove the polling wrapper, not which read model the cleanup adapter wires
 // in. The adapter-level test below executes waitForCancelledDotyposReservations

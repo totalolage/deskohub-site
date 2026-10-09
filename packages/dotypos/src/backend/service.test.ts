@@ -1411,6 +1411,78 @@ describe("DotyposService reservations", () => {
     expect(await readJsonBody(patchCall)).toEqual({ status: "CONFIRMED" });
   });
 
+  test("refuses to confirm a cancelled reservation without patching", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
+        request.method === "GET"
+      ) {
+        return Response.json(reservation({ status: "CANCELLED" }), {
+          headers: { etag: '"reservation-etag"' },
+        });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
+        request.method === "PATCH"
+      ) {
+        return Response.json(reservation({ status: "CONFIRMED" }));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .confirmReservation(dotyposReservationId("reservation-id"))
+          .pipe(Effect.flip);
+      }),
+      fetchMock
+    );
+
+    expect(error._tag).toBe("DotyposReservationCancelledError");
+    expect(
+      fetchMock.mock.calls.some(
+        (call) => getMethod(call as FetchCall) === "PATCH"
+      )
+    ).toBe(false);
+  });
+
+  test("returns an already confirmed reservation without patching", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
+        request.method === "GET"
+      ) {
+        return Response.json(reservation({ status: "CONFIRMED" }), {
+          headers: { etag: '"reservation-etag"' },
+        });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.confirmReservation(
+          dotyposReservationId("reservation-id")
+        );
+      }),
+      fetchMock
+    );
+
+    expect(result.status).toBe("CONFIRMED");
+    expect(
+      fetchMock.mock.calls.some(
+        (call) => getMethod(call as FetchCall) === "PATCH"
+      )
+    ).toBe(false);
+  });
+
   test("updates a reservation note with an ETag-protected patch", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
