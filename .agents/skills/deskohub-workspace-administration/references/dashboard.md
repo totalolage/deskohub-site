@@ -22,6 +22,8 @@ Authorize every protected data loader, and wrap the authorization operation in R
 
 Keep the global administration shell and layout request-independent: do not add identity controls such as logout or an avatar there. Request-derived identity stays inside each page's existing authorization and Suspense boundaries. The CLI session views are owner-scoped: the pending approval page names the approving administrator, the sessions page names the current administrator beside the session count, and the table renders each row's own `approvedBy` value with a safe fallback so a future owner-scoped projection that returns other administrators' sessions still displays distinct approvers.
 
+The administration shell reloads any page opened through a URL with embedded Basic credentials (`https://user:password@host/admin`) at the same location without them. Browsers reject relative `fetch` calls from such documents, so Next.js server actions fail in the browser before any request is sent, while client-router navigation, which uses absolute origin URLs, keeps working. Keep that reload in the shell rather than handling it per form.
+
 ## Data ownership
 
 The dashboard composes three sources without creating a second customer or reservation store:
