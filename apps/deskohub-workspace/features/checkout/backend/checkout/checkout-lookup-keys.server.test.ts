@@ -76,26 +76,43 @@ const attemptKeysUnder = (keyRing: string) =>
   );
 
 describe("checkout lookup key write format", () => {
-  test("stores the ring-keyed key that workers before keyed lookup keys store", () => {
-    for (const keyRing of [originalKey, `${originalKey},${rotatedKey}`]) {
+  test("stores the active key's key-ID-prefixed key", () => {
+    for (const [keyRing, activeKid] of [
+      [originalKey, "original"],
+      [`${originalKey},${rotatedKey}`, "original"],
+      [`${rotatedKey},${originalKey}`, "rotated"],
+    ] as const) {
       const session = sessionKeysUnder(keyRing);
       const attempt = attemptKeysUnder(keyRing);
 
       expect(session.current).toBe(
-        deriveRingKeyedCheckoutSessionKey(keyRing, checkoutSessionId)
+        findKeyIdPrefixedLookupKey(session, activeKid)
       );
       expect(attempt.current).toBe(
+        findKeyIdPrefixedLookupKey(attempt, activeKid)
+      );
+      expect(session.current).toMatch(
+        new RegExp(`^${activeKid}:[a-f0-9]{64}$`)
+      );
+    }
+  });
+
+  test("still accepts the ring-keyed key that earlier workers stored", () => {
+    for (const keyRing of [originalKey, `${originalKey},${rotatedKey}`]) {
+      expect(sessionKeysUnder(keyRing).accepted).toContain(
+        deriveRingKeyedCheckoutSessionKey(keyRing, checkoutSessionId)
+      );
+      expect(attemptKeysUnder(keyRing).accepted).toContain(
         deriveRingKeyedCheckoutAttemptKey(keyRing, {
           checkoutSessionId,
           checkoutAttemptId,
           reservation: coworkReservation,
         })
       );
-      expect(session.current).toMatch(/^[a-f0-9]{64}$/);
     }
     // Known answer from the pre-keyed `deriveCheckoutSessionKey`, so the
     // frozen reference cannot drift together with the production derivation.
-    expect(sessionKeysUnder(originalKey).current).toBe(
+    expect(sessionKeysUnder(originalKey).accepted).toContain(
       "ee6351f8b63fa03fc29e75e70810c05b7b3389186445a460d9b1b0252e191259"
     );
   });
