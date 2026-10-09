@@ -1,6 +1,6 @@
 import { DotyposService } from "@deskohub/dotypos";
 import { EmailServiceTag } from "@deskohub/email/backend/service";
-import { Context, Data, Effect, Layer, Predicate } from "effect";
+import { Context, Data, Effect, Layer, Match, Predicate } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { env } from "@/env";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
@@ -311,7 +311,18 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                   Effect.catch((cause) =>
                     failFulfillment({
                       orderId: input.orderId,
-                      failureCode: "dotypos_reservation_failed",
+                      failureCode: Match.value(cause).pipe(
+                        Match.tagsExhaustive({
+                          DotyposReservationCancelledError: () =>
+                            "dotypos_reservation_unfulfillable" as const,
+                          ExternalAPIError: () =>
+                            "dotypos_reservation_failed" as const,
+                          NetworkError: () =>
+                            "dotypos_reservation_failed" as const,
+                          ValidationError: () =>
+                            "dotypos_reservation_failed" as const,
+                        })
+                      ),
                       cause,
                     })
                   )

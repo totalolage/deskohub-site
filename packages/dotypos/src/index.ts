@@ -16,6 +16,7 @@ export {
 } from "./config";
 
 export {
+  DotyposReservationCancelledError,
   ExternalAPIError,
   NetworkError,
   ValidationError,

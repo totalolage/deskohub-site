@@ -427,6 +427,7 @@ test("checks the handler before letting the section click own actionability", as
 
   expect(calls).toEqual([
     "wait",
+    "wait",
     `click:${workspaceE2ETimeouts.browserAction}`,
     "wait",
   ]);
@@ -448,6 +449,10 @@ test("waits for the rendered section button handler before clicking it", async (
         calls.push("wait:button-handler");
         await Promise.resolve();
         restoreButtonHandler();
+        return;
+      }
+      if (typeof argument === "string") {
+        calls.push(`wait:panel-hydration:${argument}`);
         return;
       }
       calls.push("wait:section-ready");
@@ -493,6 +498,8 @@ test("waits for the rendered section button handler before clicking it", async (
   expect(calls).toEqual([
     "stage:button-handler-wait",
     "wait:button-handler",
+    "stage:panel-hydration-wait",
+    "wait:panel-hydration:[data-screen='profile-screen']",
     "stage:native-button-click",
     "click",
     "stage:selected-landmark-wait",
@@ -510,15 +517,18 @@ test("uses a visible desktop button and waits for its visible landmark in the Ru
 
   expect(calls.map(({ args }) => args.slice(0, 2))).toEqual([
     ["eval", "--stdin"],
+    ["wait", "--fn"],
     [
       "click",
       'nav[aria-label="Account navigation"] button:not([data-account-section]):has-text("Billing & Invoices")',
     ],
     ["wait", "--fn"],
   ]);
-  expect(calls[2]?.args[2]).toContain("#account-profile-billing-kind");
-  expect(calls[2]?.args[2]).toContain('"desktop":true');
-  expect(calls[2]?.args[2]).not.toContain(".click(");
+  expect(calls[1]?.args[2]).toContain("__reactProps$");
+  expect(calls[1]?.args[2]).toContain("[data-screen='profile-screen']");
+  expect(calls[3]?.args[2]).toContain("#account-profile-billing-kind");
+  expect(calls[3]?.args[2]).toContain('"desktop":true');
+  expect(calls[3]?.args[2]).not.toContain(".click(");
 });
 
 test("uses the visible mobile section button in the Runner adapter", async () => {
@@ -530,12 +540,48 @@ test("uses the visible mobile section button in the Runner adapter", async () =>
 
   expect(calls.map(({ args }) => args.slice(0, 2))).toEqual([
     ["eval", "--stdin"],
+    ["wait", "--fn"],
     [
       "click",
       'nav[aria-label="Account navigation"] [data-account-mobile-navigation] button[data-account-section="danger"]',
     ],
     ["wait", "--fn"],
   ]);
-  expect(calls[2]?.args[2]).toContain('"desktop":false');
-  expect(calls[2]?.args[2]).toContain("#delete-account-trigger");
+  expect(calls[1]?.args[2]).toContain("#delete-account-trigger");
+  expect(calls[3]?.args[2]).toContain('"desktop":false');
+  expect(calls[3]?.args[2]).toContain("#delete-account-trigger");
+});
+
+test("does not click a section before its streamed panel is hydrated", async () => {
+  const calls: string[] = [];
+  const page = makeFakePage(1440, {
+    onClick: () => {
+      calls.push("click");
+    },
+  });
+  render(createElement(AccountShellHarness));
+  const profileScreen = document.querySelector(accountSectionLandmarks.profile);
+  if (profileScreen === null)
+    throw new Error("profile screen was not rendered");
+  const serverCopy = profileScreen.cloneNode(true);
+  profileScreen.replaceWith(serverCopy);
+
+  await expect(
+    selectAccountSection(page, "profile", (stage) => calls.push(stage))
+  ).rejects.toThrow("fake account section did not settle");
+  expect(calls).toEqual(["button-handler-wait", "panel-hydration-wait"]);
+});
+
+test("selects legal without waiting for a panel that renders only when active", async () => {
+  const stages: string[] = [];
+  const page = makeFakePage(1440);
+  render(createElement(AccountShellHarness));
+
+  await selectAccountSection(page, "legal", (stage) => stages.push(stage));
+
+  expect(stages).toEqual([
+    "button-handler-wait",
+    "native-button-click",
+    "selected-landmark-wait",
+  ]);
 });
