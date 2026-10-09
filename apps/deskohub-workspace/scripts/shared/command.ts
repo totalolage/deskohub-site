@@ -52,21 +52,69 @@ const readText = async (
   }
 };
 
-/** Kills the command's whole process group, then the direct child if it led none. */
-const killCommand = (child: Bun.Subprocess): void => {
-  try {
-    process.kill(-child.pid, "SIGKILL");
-  } catch {
-    child.kill("SIGKILL");
+/** Kills a command's process group, or just the command when it leads none. */
+const killCommand = (child: Bun.Subprocess, ownsGroup: boolean): void => {
+  if (ownsGroup) {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+      return;
+    } catch {
+      // The group is already gone; fall through for the direct child.
+    }
   }
+  child.kill("SIGKILL");
+};
+
+/**
+ * Kill functions of the commands still running. While any are registered,
+ * caller shutdown (SIGINT, SIGTERM, exit) ends them, because a command that
+ * leads its own process group would otherwise outlive the caller.
+ */
+const activeCommands = new Set<() => void>();
+const shutdownSignals = ["SIGINT", "SIGTERM"] as const;
+
+const killActiveCommands = (): void => {
+  for (const kill of activeCommands) kill();
+  activeCommands.clear();
+};
+
+const removeShutdownHandlers = (): void => {
+  for (const [signal, handler] of signalHandlers) process.off(signal, handler);
+  process.off("exit", killActiveCommands);
+};
+
+const endCommandsOnSignal = (signal: NodeJS.Signals): void => {
+  killActiveCommands();
+  removeShutdownHandlers();
+  // Listening disabled the signal's default action. When no other listener
+  // handles it, raise it again so the caller ends with the same status.
+  if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+};
+
+const signalHandlers = new Map(
+  shutdownSignals.map((signal) => [signal, () => endCommandsOnSignal(signal)])
+);
+
+const trackCommand = (kill: () => void): (() => void) => {
+  if (activeCommands.size === 0) {
+    for (const [signal, handler] of signalHandlers) process.on(signal, handler);
+    process.on("exit", killActiveCommands);
+  }
+  activeCommands.add(kill);
+  return () => {
+    activeCommands.delete(kill);
+    if (activeCommands.size === 0) removeShutdownHandlers();
+  };
 };
 
 export const runCommand = async (
   command: readonly string[],
   options: CommandOptions = {}
 ): Promise<CommandResult> => {
-  // `detached` makes the command lead its own process group, so a timeout
-  // reaches the descendants that inherited its output pipes.
+  // A timed command leads its own process group so the timeout reaches the
+  // descendants that inherited its output pipes. An untimed one stays in the
+  // caller's group, where terminal and supervisor signals still reach it.
+  const ownsGroup = options.timeoutMs !== undefined;
   const child = Bun.spawn({
     cmd: [...command],
     cwd: options.cwd,
@@ -74,8 +122,9 @@ export const runCommand = async (
     stdin: options.stdin === undefined ? "ignore" : new Blob([options.stdin]),
     stdout: "pipe",
     stderr: "pipe",
-    detached: true,
+    detached: ownsGroup,
   });
+  const untrack = trackCommand(() => killCommand(child, ownsGroup));
   const abandonOutput = Promise.withResolvers<void>();
   let timedOut = false;
   let drainTimer: ReturnType<typeof setTimeout> | undefined;
@@ -84,7 +133,7 @@ export const runCommand = async (
       ? undefined
       : setTimeout(() => {
           timedOut = true;
-          killCommand(child);
+          killCommand(child, ownsGroup);
           drainTimer = setTimeout(abandonOutput.resolve, timedOutDrainMs);
         }, options.timeoutMs);
   try {
@@ -103,6 +152,7 @@ export const runCommand = async (
   } finally {
     clearTimeout(timer);
     clearTimeout(drainTimer);
+    untrack();
   }
 };
 

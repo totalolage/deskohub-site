@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { commandOutput, runCommand } from "./command";
 
 const isRunning = (pid: number): boolean => {
@@ -106,5 +109,88 @@ describe("commandOutput", () => {
 
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("SIGTERM");
+  });
+});
+
+const readPids = async (pidFile: string): Promise<readonly number[]> => {
+  for (let attempt = 0; attempt < 250; attempt++) {
+    try {
+      const pids = readFileSync(pidFile, "utf8").trim().split(" ").map(Number);
+      if (pids.length === 2 && pids.every((pid) => pid > 0)) return pids;
+    } catch {
+      // The command has not written its pids yet.
+    }
+    await Bun.sleep(20);
+  }
+  throw new Error("The command never recorded its pids");
+};
+
+/**
+ * `caller` signals only the caller's pid, as `kill <pid>` or a supervisor
+ * does; `caller group` signals its whole process group, as a terminal's
+ * Ctrl-C does. `ended` lists which recorded pids must be gone afterwards:
+ * the command's shell and its descendant, or only the shell when
+ * an untimed command shares the caller's group and only the caller was
+ * signalled.
+ */
+const shutdownScenarios = [
+  { mode: "timeout", target: "caller", ended: [0, 1] },
+  { mode: "no-timeout", target: "caller", ended: [0] },
+  { mode: "no-timeout", target: "caller group", ended: [0, 1] },
+] as const;
+
+describe("caller shutdown", () => {
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    for (const { mode, target, ended } of shutdownScenarios) {
+      test(`${signal} to the ${target} ends its ${mode} command and keeps the signal exit`, async () => {
+        const directory = mkdtempSync(join(tmpdir(), "command-shutdown-"));
+        const pidFile = join(directory, "pids");
+        const caller = Bun.spawn({
+          cmd: [
+            process.execPath,
+            join(import.meta.dir, "command.signal-fixture.ts"),
+            pidFile,
+            mode,
+          ],
+          detached: target === "caller group",
+          stdin: "ignore",
+          stdout: "ignore",
+          stderr: "ignore",
+        });
+        let pids: readonly number[] = [];
+        try {
+          pids = await readPids(pidFile);
+          process.kill(target === "caller" ? caller.pid : -caller.pid, signal);
+          await caller.exited;
+
+          // The caller still dies by the signal itself.
+          expect(caller.signalCode).toBe(signal);
+          for (const index of ended) {
+            expect(await waitUntilStopped(pids[index] ?? 0)).toBe(true);
+          }
+        } finally {
+          caller.kill("SIGKILL");
+          for (const pid of pids) {
+            if (isRunning(pid)) process.kill(pid, "SIGKILL");
+          }
+          rmSync(directory, { recursive: true, force: true });
+        }
+      }, 20_000);
+    }
+  }
+
+  test("a caller with no running command keeps its signal listeners unchanged", async () => {
+    const before = process.listenerCount("SIGINT");
+    const beforeTerm = process.listenerCount("SIGTERM");
+    const beforeExit = process.listenerCount("exit");
+    await runCommand(["bash", "-c", "exit 0"], { timeoutMs: 5000 });
+    const during = runCommand(["bash", "-c", "sleep 0.2"], { timeoutMs: 5000 });
+    expect(process.listenerCount("SIGINT")).toBe(before + 1);
+    await during;
+    expect([
+      process.listenerCount("SIGINT"),
+      process.listenerCount("SIGTERM"),
+      process.listenerCount("exit"),
+    ]).toEqual([before, beforeTerm, beforeExit]);
   });
 });
