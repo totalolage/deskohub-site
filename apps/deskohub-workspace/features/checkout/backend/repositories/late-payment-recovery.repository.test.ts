@@ -61,6 +61,8 @@ const reservationRowDefaults = {
   activePaymentAttemptId: "attempt-1",
   reservationState: "held",
   dotyposReservationId: "dotypos-original",
+  // A current hold deadline keeps the original hold reusable.
+  reservationHoldExpiresAt: "2999-01-01T00:00:00.000Z",
 };
 
 const reservationRow = (

@@ -1,0 +1,2 @@
+ALTER TABLE "late_payment_recoveries" ALTER COLUMN "webhook_event_id" DROP NOT NULL;--> statement-breakpoint
+CREATE INDEX "payment_attempts_refund_required_idx" ON "payment_attempts" ("workspace_reservation_id") WHERE "refund_state" = 'required';

@@ -116,6 +116,9 @@ export const paymentAttempts = pgTable(
       t.workspaceReservationId
     ),
     index("payment_attempts_state_created_idx").on(t.state, t.createdAt),
+    index("payment_attempts_refund_required_idx")
+      .on(t.workspaceReservationId)
+      .where(sql`${t.refundState} = 'required'`),
   ]
 );
 
