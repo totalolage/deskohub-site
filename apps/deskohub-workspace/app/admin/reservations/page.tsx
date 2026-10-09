@@ -84,10 +84,12 @@ async function ReservationFiltersContent({
 }: {
   readonly input: Promise<ReservationsData["input"]>;
 }) {
+  const resolvedInput = await input;
+
   return (
     <ReservationsAdministrationFilterForm
       defaultFrom={getAdministrationReservationListDefaultDateRange().from}
-      input={await input}
+      input={resolvedInput}
       shortcuts={getAdministrationReservationDateShortcuts()}
     />
   );

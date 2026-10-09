@@ -14,6 +14,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
 import type {
   AdministrationReservationListInput,
   AdministrationReservationPage,
@@ -67,6 +68,9 @@ async function expectNativeGetSubmission(form: HTMLFormElement) {
 
 let reservationPage: LoadedReservationPage = defaultReservationPage;
 let receivedReservationSearchParams: SearchParams | undefined;
+let reservationPageInput:
+  | Promise<AdministrationReservationListInput>
+  | undefined;
 
 mock.module("@/features/administration/page-data.server", () => ({
   loadAdministrationReservations: (searchParams: SearchParams) => {
@@ -76,7 +80,7 @@ mock.module("@/features/administration/page-data.server", () => ({
   loadAdministrationReservationsPage: (searchParams: SearchParams) => {
     receivedReservationSearchParams = searchParams;
     return {
-      input: Promise.resolve(reservationPage.input),
+      input: reservationPageInput ?? Promise.resolve(reservationPage.input),
       result: Promise.resolve(reservationPage.result),
     };
   },
@@ -92,6 +96,7 @@ describe("ReservationsAdministrationPage", () => {
     cleanup();
     reservationPage = defaultReservationPage;
     receivedReservationSearchParams = undefined;
+    reservationPageInput = undefined;
   });
   afterAll(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -111,6 +116,50 @@ describe("ReservationsAdministrationPage", () => {
       view.getByRole("combobox", { name: "Deskohub status" })
     ).toBeDefined();
     expect(view.queryByText("115 reservations")).toBeNull();
+  });
+
+  test("waits for request input before reading the default date", async () => {
+    const originalNow = Temporal.Now.instant;
+    let nowReadCount = 0;
+    Temporal.Now.instant = () => {
+      nowReadCount += 1;
+      return Temporal.Instant.from("2026-08-12T10:00:00Z");
+    };
+
+    let resolveInput!: (input: AdministrationReservationListInput) => void;
+    reservationPageInput = new Promise((resolve) => {
+      resolveInput = resolve;
+    });
+    let filterContent: Promise<ReactNode> | undefined;
+
+    try {
+      const { default: ReservationsAdministrationPage } = await import(
+        "./page"
+      );
+      const page = ReservationsAdministrationPage({
+        searchParams: Promise.resolve({}),
+      }) as ReactElement<{ readonly children: ReactNode }>;
+      const pageChildren = page.props.children as readonly ReactNode[];
+      const toolbar = pageChildren[1] as ReactElement<{
+        readonly filters: ReactElement<{ readonly children: ReactElement }>;
+      }>;
+      const filterLeaf = toolbar.props.filters.props.children;
+      const renderFilterLeaf = filterLeaf.type as (
+        props: typeof filterLeaf.props
+      ) => Promise<ReactNode>;
+
+      filterContent = renderFilterLeaf(filterLeaf.props);
+      expect(nowReadCount).toBe(0);
+    } finally {
+      try {
+        resolveInput({});
+        if (filterContent) await filterContent;
+      } finally {
+        Temporal.Now.instant = originalNow;
+      }
+    }
+
+    expect(nowReadCount).toBeGreaterThan(0);
   });
 
   test("preserves server sorting while moving across reservation pages", async () => {
