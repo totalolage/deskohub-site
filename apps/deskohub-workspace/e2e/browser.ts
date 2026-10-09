@@ -15,7 +15,7 @@ import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
 
-const runBrowserCommand = (
+export const runBrowserCommand = (
   operation: string,
   run: Runner,
   session: string,
@@ -28,6 +28,24 @@ const runBrowserCommand = (
       signal,
     })
   );
+
+// The session's request/response log, or an empty log when it is unavailable.
+export const readBrowserNetworkLog = (
+  run: Runner,
+  session: string
+): Effect.Effect<string, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "read browser network log",
+    run,
+    session,
+    ["network", "requests"],
+    {
+      allowFailure: true,
+      logCommand: false,
+      logOutput: false,
+      timeoutMs: 30_000,
+    }
+  ).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout : "")));
 
 export const readBrowserUrl = (
   run: Runner,
@@ -544,6 +562,9 @@ export const captureBrowserFailureArtifacts = ({
     yield* tryWorkspaceE2EPromise("create browser artifact directory", () =>
       mkdir(artifactDir, { recursive: true })
     );
+    // A failed or interrupted step can leave the session inside an iframe;
+    // diagnostics describe the page the user sees.
+    yield* switchToMainFrame(run, session);
     yield* writeTextArtifact(
       artifactDir,
       "error.txt",
@@ -585,10 +606,11 @@ export const captureBrowserFailureArtifacts = ({
           "read browser HAR artifact",
           () => readFile(rawHarPath, "utf8")
         );
-        yield* writeTextArtifact(
-          artifactDir,
-          "network.har",
-          sanitizeHarArtifact(har)
+        yield* tryWorkspaceE2EPromise("write network.har artifact", () =>
+          writeFile(
+            resolve(artifactDir, "network.har"),
+            `${sanitizeHarArtifact(har)}\n`
+          )
         );
       }).pipe(
         Effect.ensuring(
@@ -684,26 +706,11 @@ export const closeBrowserSession = (
     logOutput: false,
   }).pipe(Effect.asVoid);
 
-export const findFirstTextFieldRef = (snapshot: string) => {
-  for (const line of snapshot.split("\n")) {
-    const ref = getSnapshotRef(line);
-    if (ref && /\b(textbox|input)\b/i.test(line)) return ref;
-  }
-};
-
-export const findFirstEnabledTextFieldRef = (snapshot: string) => {
-  for (const line of snapshot.split("\n")) {
-    if (hasDisabledSnapshotState(line)) continue;
-    const ref = getSnapshotRef(line);
-    if (ref && /\b(textbox|input)\b/i.test(line)) return ref;
-  }
-};
-
 export const summarizeHostedPaymentSnapshot = (snapshot: string) => {
   const lines = snapshot
     .split("\n")
     .filter((line) =>
-      /\b(?:button|frame|iframe|input|textbox|link)\b/i.test(line)
+      /\b(?:button|frame|heading|iframe|input|textbox|link)\b/i.test(line)
     )
     .slice(0, 80)
     .map(sanitizeDiagnosticLine)
@@ -738,7 +745,9 @@ const sanitizeArtifactUrlText = (text: string) =>
     }
   });
 
-const sanitizeHarArtifact = (text: string) => {
+// Sanitizes string values only, so short redacted values (such as test card
+// fragments) cannot rewrite timings and sizes into invalid JSON.
+export const sanitizeHarArtifact = (text: string) => {
   try {
     const har = JSON.parse(text) as Record<string, unknown>;
     const log = asRecord(har.log);
@@ -751,10 +760,23 @@ const sanitizeHarArtifact = (text: string) => {
       sanitizeHarResponse(asRecord(record.response));
     }
 
-    return JSON.stringify(har, null, 2);
+    return JSON.stringify(sanitizeJsonStrings(har), null, 2);
   } catch {
     return sanitizeArtifactText(text);
   }
+};
+
+const sanitizeJsonStrings = (value: unknown): unknown => {
+  if (typeof value === "string") return sanitizeArtifactText(value);
+  if (Array.isArray(value)) return value.map(sanitizeJsonStrings);
+  const record = asRecord(value);
+  if (!record) return value;
+  return Object.fromEntries(
+    Object.entries(record).map(([key, item]) => [
+      key,
+      sanitizeJsonStrings(item),
+    ])
+  );
 };
 
 const sanitizeHarRequest = (request: Record<string, unknown> | undefined) => {

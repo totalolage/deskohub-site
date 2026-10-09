@@ -76,10 +76,58 @@ export const workspaceE2EAccountDiagnosticCodes = [
   ...workspaceE2EProfileNavigationDiagnosticCodes,
 ] as const;
 
+// The Nexi hosted payment page step that failed, paired with the provider page
+// state observed when it failed. Both halves are closed code-owned sets.
+export const nexiHostedPaymentSteps = [
+  "card_entry",
+  "continue",
+  "pay",
+  "challenge",
+  "return",
+] as const;
+
+export const nexiHostedPaymentPageStates = [
+  "card_entry_incomplete",
+  "card_entry_ready",
+  "card_submission_rejected",
+  "provider_error_page",
+  "provider_failure_page",
+  "provider_server_error",
+  "continue_enabled",
+  "continue_disabled",
+  "pay_enabled",
+  "pay_disabled",
+  "challenge_enabled",
+  "challenge_disabled",
+  "return_enabled",
+  "return_disabled",
+  "unknown",
+  "snapshot_unavailable",
+] as const;
+
+export type NexiHostedPaymentStep = (typeof nexiHostedPaymentSteps)[number];
+export type NexiHostedPaymentPageStateCode =
+  (typeof nexiHostedPaymentPageStates)[number];
+export type NexiHostedPaymentDiagnosticCode =
+  `nexi_hosted_${NexiHostedPaymentStep}_${NexiHostedPaymentPageStateCode}`;
+
+export const nexiHostedPaymentDiagnosticCodes = nexiHostedPaymentSteps.flatMap(
+  (step) =>
+    nexiHostedPaymentPageStates.map(
+      (state): NexiHostedPaymentDiagnosticCode => `nexi_hosted_${step}_${state}`
+    )
+);
+
+export const toNexiHostedPaymentDiagnosticCode = (
+  step: NexiHostedPaymentStep,
+  state: NexiHostedPaymentPageStateCode
+): NexiHostedPaymentDiagnosticCode => `nexi_hosted_${step}_${state}`;
+
 export const workspaceE2EDiagnosticCodes = [
   ...nexiWebhookDiagnosticCodes,
   ...workspaceE2ERunnerDiagnosticCodes,
   ...workspaceE2EAccountDiagnosticCodes,
+  ...nexiHostedPaymentDiagnosticCodes,
 ] as const;
 
 export type WorkspaceE2EDiagnosticCode =
@@ -122,6 +170,8 @@ export const workspaceE2EError = (
 export const workspaceE2ETimeoutError = (
   message: string,
   options: {
+    readonly cause?: unknown;
+    readonly diagnosticCode?: WorkspaceE2EDiagnosticCode;
     readonly operation?: string;
   } = {}
 ) => new WorkspaceE2EError({ message, ...options, reason: "timeout" });

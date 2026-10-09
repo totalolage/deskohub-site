@@ -8,11 +8,51 @@ import {
   isFrameSnapshotRef,
   readActiveBrowserTabId,
   readBrowserTabs,
+  sanitizeHarArtifact,
   switchToBrowserTab,
   waitForBrowserCondition,
 } from "./browser";
-import type { Runner } from "./runtime";
+import { addRedaction, type Runner } from "./runtime";
 import { workspaceE2ETimeouts } from "./timeouts";
+
+test("keeps a sanitized HAR valid JSON when a short value is redacted", () => {
+  addRedaction("97531", true);
+  const sanitized = JSON.parse(
+    sanitizeHarArtifact(
+      JSON.stringify({
+        log: {
+          entries: [
+            {
+              comment: "card 97531",
+              request: {
+                bodySize: 97531,
+                headers: [{ name: "Cookie", value: "session" }],
+                postData: { params: [{ name: "pan" }], text: "97531" },
+                url: "https://pay.example.test/fe/build/text/?token=abc",
+              },
+              response: {
+                content: { text: '{"errors":[]}' },
+                headers: [],
+              },
+              time: 5.97531,
+            },
+          ],
+        },
+      })
+    )
+  );
+  const [entry] = sanitized.log.entries;
+
+  expect(entry.time).toBe(5.97531);
+  expect(entry.request.bodySize).toBe(97531);
+  expect(entry.comment).toBe("card [redacted]");
+  expect(entry.request.headers).toEqual([
+    { name: "Cookie", value: "[redacted]" },
+  ]);
+  expect(entry.request.postData).toEqual({ params: [], text: "[redacted]" });
+  expect(entry.request.url).not.toContain("abc");
+  expect(entry.response.content.text).toBe("[redacted]");
+});
 
 test("activates a hydrated element through focus and keyboard input", async () => {
   const calls: Array<{ readonly args: string[]; readonly input?: string }> = [];

@@ -2,8 +2,8 @@ import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { openBrowserPage, waitForBrowserUrl } from "../browser";
 import { getWorkspaceE2EDateInterval } from "../capacity";
+import { completeNexiHostedPayment } from "../checkout/nexi-hosted-payment";
 import {
-  completeNexiHostedPayment,
   prepareCheckoutPaymentAttempt,
   submitPaymentAndWaitForHostedPage,
 } from "../checkout/payment";
