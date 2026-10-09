@@ -14,6 +14,7 @@ const unlimited = "--max-diagnostics=none";
 writeFileSync(config, JSON.stringify({
   linter: { enabled: true },
   plugins: [
+    join(repositoryRoot, "lint", "no-synchronous-subprocess.grit"),
     join(repositoryRoot, "lint", "no-wildcard-reexport.grit"),
     join(repositoryRoot, "lint", "prefer-effect-fn.grit"),
     join(repositoryRoot, "lint", "prefer-effect-value.grit"),
@@ -238,6 +239,20 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["permits test modules", tracedLazyValue("sync(() => headers())"), false, "apps/deskohub-workspace/features/reservation/load-value.test.ts"],
       ["permits generated modules", tracedLazyValue("sync(() => headers())"), false, generated],
       ["permits modules outside Workspace", tracedLazyValue("sync(() => headers())"), false, "apps/dhw/src/load-value.ts"],
+    ],
+  },
+  {
+    name: "no-synchronous-subprocess", diagnostic: "Run subprocesses with runCommand or commandOutput",
+    module: "apps/deskohub-workspace/scripts/probe.test.ts",
+    cases: [
+      ["rejects Bun.spawnSync", 'Bun.spawnSync({ cmd: ["git", "status"] });\n', true],
+      ["rejects a namespaced child_process spawnSync", 'import childProcess from "node:child_process";\nchildProcess.spawnSync("git", ["status"]);\n', true],
+      ["rejects an imported execSync", 'import { execSync } from "node:child_process";\nexecSync("git status");\n', true],
+      ["rejects an imported execFileSync", 'import { execFileSync } from "node:child_process";\nexecFileSync("git", ["status"]);\n', true],
+      ["rejects synchronous spawns outside tests", 'import { spawnSync } from "node:child_process";\nspawnSync("git", ["status"]);\n', true, "apps/deskohub-workspace/scripts/probe.ts"],
+      ["permits asynchronous Bun.spawn", 'const child = Bun.spawn(["git", "status"]);\nawait child.exited;\n', false],
+      ["permits the shared command runner", 'import { runCommand } from "./shared/command";\nawait runCommand(["git", "status"]);\n', false],
+      ["permits modules outside Workspace", 'Bun.spawnSync({ cmd: ["git", "status"] });\n', false, "apps/dhw/src/probe.ts"],
     ],
   },
 ];
