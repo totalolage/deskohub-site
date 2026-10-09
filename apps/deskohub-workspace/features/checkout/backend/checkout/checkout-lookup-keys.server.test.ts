@@ -14,9 +14,11 @@ import { reservationOrderSchema } from "@/features/reservation/reservation-order
 
 mock.module("server-only", () => ({}));
 
-const { deriveCheckoutAttemptKeys, deriveCheckoutSessionKeys } = await import(
-  "./checkout-lookup-keys.server"
-);
+const {
+  deriveCheckoutAttemptKeys,
+  deriveCheckoutSessionKeys,
+  deriveCheckoutSessionLockKey,
+} = await import("./checkout-lookup-keys.server");
 
 const decodeReservation = <T>(input: T) =>
   Schema.decodeUnknownEffect(reservationOrderSchema)(input).pipe(
@@ -110,6 +112,26 @@ describe("checkout lookup key rotation", () => {
       .digest("hex");
 
     expect(sessionKeysUnder(originalKey).accepted).toContain(preKeyedSession);
+  });
+
+  test("stages a non-first key for lookup without making it active", () => {
+    const staged = sessionKeysUnder(`${originalKey},${rotatedKey}`);
+    const activated = sessionKeysUnder(`${rotatedKey},${originalKey}`);
+
+    expect(staged.current).toMatch(/^original:/);
+    expect(staged.accepted).toContain(activated.current);
+    expect(activated.accepted).toContain(staged.current);
+  });
+
+  test("locks a session under one identity whatever the key ring", () => {
+    const lockKey = deriveCheckoutSessionLockKey(checkoutSessionId);
+
+    expect(deriveCheckoutSessionLockKey(checkoutSessionId)).toBe(lockKey);
+    expect(
+      deriveCheckoutSessionLockKey(
+        checkoutSessionIdSchema.make("other-session-id")
+      )
+    ).not.toBe(lockKey);
   });
 
   test("does not accept another session's keys", () => {

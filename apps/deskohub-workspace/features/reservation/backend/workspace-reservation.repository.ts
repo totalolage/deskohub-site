@@ -83,12 +83,33 @@ export interface CreateWorkspaceReservationInput {
   readonly reservationHoldExpiresAt?: Temporal.Instant;
 }
 
+/**
+ * Creates the first draft of a checkout attempt. `checkoutSessionKey` and
+ * `checkoutAttemptKey` are the active-key derivations, stored only when the
+ * session and attempt have no row under any accepted derivation.
+ */
+export interface CreateWorkspaceReservationDraftInput
+  extends CreateWorkspaceReservationInput {
+  /** Rotation-independent lock identity of the raw checkout session. */
+  readonly checkoutSessionLockKey: bigint;
+  readonly acceptedCheckoutSessionKeys: readonly CheckoutSessionKey[];
+  readonly acceptedCheckoutAttemptKeys: readonly CheckoutAttemptKey[];
+}
+
 export interface IWorkspaceReservationRepository {
+  /**
+   * Serializes draft creation per checkout session so workers with different
+   * active Pay-state keys cannot both create a first row. Returns the
+   * attempt's existing row, else the session's current row, else the draft
+   * inserted under the session's already stored key.
+   */
   readonly createDraft: (
-    input: CreateWorkspaceReservationInput
+    input: CreateWorkspaceReservationDraftInput
   ) => Effect.Effect<
     WorkspaceReservation,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
+    | WorkspaceReservationDetailsMalformedError
   >;
   readonly findById: (
     id: WorkspaceReservationId
@@ -359,65 +380,97 @@ export class WorkspaceReservationRepository extends Context.Service<
       return {
         createDraft: Effect.fn("workspaceReservations.createDraft")(
           function* (input) {
-            const row = {
-              id: postgresUuidV7,
-              checkoutSessionKey: input.checkoutSessionKey,
-              checkoutAttemptKey: input.checkoutAttemptKey,
-              correlationId: postgresUuidV7,
-              dotyposCustomerId: input.dotyposCustomerId,
-              reservationPurpose: input.reservationPurpose,
-              reservationState: "draft" as const,
-              paymentState: "not_started" as const,
-              fulfillmentState: "not_started" as const,
-              reservationDetails: input.reservationDetails,
-              locale: input.locale,
-              reservationHoldExpiresAt: input.reservationHoldExpiresAt,
-            };
+            return yield* db.transaction(
+              Effect.fn(function* (tx) {
+                yield* tx.execute(
+                  sql`select pg_advisory_xact_lock(${input.checkoutSessionLockKey.toString()}::bigint)`
+                );
 
-            const [inserted] = yield* db
-              .insert(workspaceReservations)
-              .values(row)
-              .onConflictDoNothing()
-              .returning();
+                const [existingAttempt] = yield* tx
+                  .select()
+                  .from(workspaceReservations)
+                  .where(
+                    inArray(
+                      workspaceReservations.checkoutAttemptKey,
+                      input.acceptedCheckoutAttemptKeys
+                    )
+                  )
+                  .orderBy(desc(workspaceReservations.createdAt))
+                  .limit(1);
+                if (existingAttempt) {
+                  return yield* decodeWorkspaceReservation(existingAttempt);
+                }
 
-            if (inserted) return yield* decodeWorkspaceReservation(inserted);
+                const [storedSession] = yield* tx
+                  .select({
+                    checkoutSessionKey:
+                      workspaceReservations.checkoutSessionKey,
+                  })
+                  .from(workspaceReservations)
+                  .where(
+                    inArray(
+                      workspaceReservations.checkoutSessionKey,
+                      input.acceptedCheckoutSessionKeys
+                    )
+                  )
+                  .orderBy(desc(workspaceReservations.createdAt))
+                  .limit(1);
+                const checkoutSessionKey =
+                  storedSession?.checkoutSessionKey ?? input.checkoutSessionKey;
+                const findCurrentSessionRow = () =>
+                  tx
+                    .select()
+                    .from(workspaceReservations)
+                    .where(
+                      and(
+                        eq(
+                          workspaceReservations.checkoutSessionKey,
+                          checkoutSessionKey
+                        ),
+                        sql`${workspaceReservations.reservationState} <> 'cancelled'`
+                      )
+                    )
+                    .orderBy(desc(workspaceReservations.createdAt))
+                    .limit(1);
 
-            const [existingAttempt] = yield* db
-              .select()
-              .from(workspaceReservations)
-              .where(
-                eq(
-                  workspaceReservations.checkoutAttemptKey,
-                  input.checkoutAttemptKey
-                )
-              )
-              .limit(1);
+                const [currentSessionRow] = yield* findCurrentSessionRow();
+                if (currentSessionRow) {
+                  return yield* decodeWorkspaceReservation(currentSessionRow);
+                }
 
-            if (existingAttempt) {
-              return yield* decodeWorkspaceReservation(existingAttempt);
-            }
+                const [inserted] = yield* tx
+                  .insert(workspaceReservations)
+                  .values({
+                    id: postgresUuidV7,
+                    checkoutSessionKey,
+                    checkoutAttemptKey: input.checkoutAttemptKey,
+                    correlationId: postgresUuidV7,
+                    dotyposCustomerId: input.dotyposCustomerId,
+                    reservationPurpose: input.reservationPurpose,
+                    reservationState: "draft",
+                    paymentState: "not_started",
+                    fulfillmentState: "not_started",
+                    reservationDetails: input.reservationDetails,
+                    locale: input.locale,
+                    reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+                  })
+                  .onConflictDoNothing()
+                  .returning();
+                if (inserted) {
+                  return yield* decodeWorkspaceReservation(inserted);
+                }
 
-            const [currentAttempt] = yield* db
-              .select()
-              .from(workspaceReservations)
-              .where(
-                and(
-                  eq(
-                    workspaceReservations.checkoutSessionKey,
-                    input.checkoutSessionKey
-                  ),
-                  sql`${workspaceReservations.reservationState} <> 'cancelled'`
-                )
-              )
-              .orderBy(desc(workspaceReservations.createdAt))
-              .limit(1);
-
-            if (!currentAttempt) {
-              return yield* Effect.die(
-                "Workspace reservation insert returned no row."
-              );
-            }
-            return yield* decodeWorkspaceReservation(currentAttempt);
+                // Supersession inserts its replacement without this lock, so
+                // it alone can win the session's current-row index here.
+                const [replacement] = yield* findCurrentSessionRow();
+                if (!replacement) {
+                  return yield* Effect.die(
+                    "Workspace reservation insert returned no row."
+                  );
+                }
+                return yield* decodeWorkspaceReservation(replacement);
+              })
+            );
           },
           (effect, input) =>
             effect.pipe(

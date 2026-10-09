@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHmac, hkdfSync } from "node:crypto";
+import { createHash, createHmac, hkdfSync } from "node:crypto";
 import { Config, Effect, Match } from "effect";
 import {
   type CheckoutAttemptId,
@@ -32,6 +32,23 @@ export interface CheckoutLookupKeys<Key extends string> {
   readonly current: Key;
   readonly accepted: readonly [Key, ...Key[]];
 }
+
+/**
+ * Advisory-lock identity of one raw checkout session. It must not depend on
+ * the configured key ring, so workers with different active keys serialize
+ * on the same lock. The unkeyed domain-separated digest keeps the raw
+ * browser ID out of database parameters and query logs.
+ */
+export const deriveCheckoutSessionLockKey = (
+  checkoutSessionId: CheckoutSessionId
+): bigint =>
+  createHash("sha256")
+    .update(checkoutSessionLockDomain)
+    .update(checkoutSessionId)
+    .digest()
+    .readBigInt64BE(0);
+
+const checkoutSessionLockDomain = "deskohub-workspace/checkout-session-lock\0";
 
 export const deriveCheckoutSessionKeys = Effect.fn(
   "checkoutLookupKeys.deriveSessionKeys"

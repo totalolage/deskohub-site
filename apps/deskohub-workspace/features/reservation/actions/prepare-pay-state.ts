@@ -32,6 +32,7 @@ import {
 import {
   deriveCheckoutAttemptKeys,
   deriveCheckoutSessionKeys,
+  deriveCheckoutSessionLockKey,
 } from "@/features/checkout/backend/checkout/checkout-lookup-keys.server";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import {
@@ -695,8 +696,17 @@ const prepareReservationDraft = Effect.fn(
       ...input.draft,
       checkoutSessionKey,
       checkoutAttemptKey,
+      checkoutSessionLockKey: deriveCheckoutSessionLockKey(checkoutSessionId),
+      acceptedCheckoutSessionKeys: checkoutSessionKeys.accepted,
+      acceptedCheckoutAttemptKeys: checkoutAttemptKeys.accepted,
     });
-    if (reservationDraft.checkoutAttemptKey !== checkoutAttemptKey) {
+    // Another worker may have created this attempt under a different
+    // active key; any other row is the session's current reservation.
+    if (
+      !checkoutAttemptKeys.accepted.includes(
+        reservationDraft.checkoutAttemptKey
+      )
+    ) {
       continue;
     }
 

@@ -515,9 +515,17 @@ Lookup keys must survive `CHECKOUT_PAY_STATE_KEYS` rotation without a separate s
 
 Every row of one checkout session stores the same session key. Before creating a row, resolve the key stored by the session's latest row under any accepted derivation and reuse it; derive with the active key only for a brand-new session. Supersession, the one-current-row unique index, and late-payment recovery's newer-reservation check compare stored session keys, so mixing derivations inside a session would split it.
 
+Unique indexes cover only the stored strings, so they cannot stop two workers with different active keys from both inserting a session's first row. Draft creation therefore runs in one transaction behind `pg_advisory_xact_lock` on a rotation-independent lock key: the first eight bytes of a domain-separated SHA-256 of the raw checkout session ID, which keeps the raw ID out of query parameters. Inside the lock it looks up the attempt and the session under every accepted derivation and inserts only when neither exists. Supersession is already serialized by its cancellation claim and inserts its replacement under the claimed row's stored session key.
+
 Rows stored before keyed lookup keys hold an unprefixed digest keyed by the whole configured key-ring string. Lookups still accept that derivation, which matches only while the key-ring string is unchanged. Deploy the keyed derivation without changing `CHECKOUT_PAY_STATE_KEYS`, and do not rotate until those in-flight rows have ended (no unprefixed key on a `held` row or a row with `pending` payment). Remove the unprefixed derivation once no such row remains.
 
-To rotate, prepend a new `kid:base64url-32-byte-key` entry so it becomes active and keep the old entry. Retire an old key only after no in-flight session still stores keys prefixed with its ID, checked with a read-only query on `checkout_session_key` prefixes for rows that are `held` or have `pending` payment. Pay-state tokens sealed with that key also stop opening once it is retired.
+`CHECKOUT_PAY_STATE_KEYS` is an ordered `kid:base64url-32-byte-key` list. Only the first entry is active: it seals new Pay-state tokens and derives new lookup keys. Every entry opens tokens sealed with its key ID and is accepted for lookups. Rotate in phases, each a complete deployment, so no worker ever meets a token or lookup key derived with a key it lacks:
+
+1. Stage: append the new entry after the current active entry. Every worker can now open its tokens and find its lookup keys, but none uses it yet.
+2. Activate: once the staged configuration is the only one serving traffic, move the new entry first. While both orders serve traffic, the draft-creation lock and all-key lookups keep each session to one row.
+3. Retire: remove the old entry only after no in-flight session still stores keys prefixed with its ID, checked with a read-only query on `checkout_session_key` prefixes for rows that are `held` or have `pending` payment. Pay-state tokens sealed with that key stop opening once it is retired, so also wait at least the Pay-state token lifetime after activation.
+
+Never prepend a new key in a single step: a worker still on the old configuration could neither open the new tokens nor find the new lookup keys.
 
 ## Sequence Diagrams
 

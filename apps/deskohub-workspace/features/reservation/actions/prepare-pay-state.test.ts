@@ -1592,6 +1592,15 @@ describe("prepareWorkspacePayState", () => {
       expect.objectContaining({
         checkoutSessionKey: expect.stringMatching(/^test:[a-f0-9]{64}$/),
         checkoutAttemptKey: expect.stringMatching(/^test:[a-f0-9]{64}$/),
+        checkoutSessionLockKey: expect.any(BigInt),
+        acceptedCheckoutSessionKeys: expect.arrayContaining([
+          expect.stringMatching(/^test:[a-f0-9]{64}$/),
+          expect.stringMatching(/^[a-f0-9]{64}$/),
+        ]),
+        acceptedCheckoutAttemptKeys: expect.arrayContaining([
+          expect.stringMatching(/^test:[a-f0-9]{64}$/),
+          expect.stringMatching(/^[a-f0-9]{64}$/),
+        ]),
       })
     );
   });

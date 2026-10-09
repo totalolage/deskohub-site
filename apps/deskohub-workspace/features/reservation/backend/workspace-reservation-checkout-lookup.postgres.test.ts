@@ -3,18 +3,21 @@ import "@/shared/testing/workspace-test-env";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { inArray } from "drizzle-orm";
-import { Effect, Layer } from "effect";
+import { ConfigProvider, Effect, Layer, Schema } from "effect";
 import { type ReservationState, workspaceReservations } from "@/db/schema";
 import {
   type CheckoutAttemptKey,
   type CheckoutSessionKey,
+  checkoutAttemptIdSchema,
   checkoutAttemptKeySchema,
+  checkoutSessionIdSchema,
   checkoutSessionKeySchema,
 } from "@/features/checkout/checkout-identifiers";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
+import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
@@ -148,6 +151,105 @@ describe.skipIf(!postgresDatabase)(
 
       expect(stored).toBe(storedSessionKey);
       expect(unknown).toBeNull();
+    });
+
+    // During phase 2 of a rotation, workers whose key rings contain both keys
+    // in a different order can receive the same guest's first submission.
+    test("creates one draft when workers with different active keys race a first submission", async () => {
+      const {
+        deriveCheckoutAttemptKeys,
+        deriveCheckoutSessionKeys,
+        deriveCheckoutSessionLockKey,
+      } = await import(
+        "@/features/checkout/backend/checkout/checkout-lookup-keys.server"
+      );
+      const originalKey = `original:${Buffer.alloc(32, 1).toString("base64url")}`;
+      const rotatedKey = `rotated:${Buffer.alloc(32, 2).toString("base64url")}`;
+      const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
+        kind: "cowork",
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        phone: "+420 777 777 777",
+        date: "2099-06-10",
+        entryTier: "basic",
+        coffee: false,
+      });
+
+      for (let round = 0; round < 5; round++) {
+        const checkoutSessionId = checkoutSessionIdSchema.make(
+          `session-${crypto.randomUUID()}`
+        );
+        const checkoutAttemptId = checkoutAttemptIdSchema.make(
+          `attempt-${crypto.randomUUID()}`
+        );
+        const draftUnder = (keyRing: string) =>
+          Effect.gen(function* () {
+            const sessionKeys =
+              yield* deriveCheckoutSessionKeys(checkoutSessionId);
+            const attemptKeys = yield* deriveCheckoutAttemptKeys({
+              checkoutSessionId,
+              checkoutAttemptId,
+              reservation,
+            });
+            return {
+              checkoutSessionKey: sessionKeys.current,
+              checkoutAttemptKey: attemptKeys.current,
+              checkoutSessionLockKey:
+                deriveCheckoutSessionLockKey(checkoutSessionId),
+              acceptedCheckoutSessionKeys: sessionKeys.accepted,
+              acceptedCheckoutAttemptKeys: attemptKeys.accepted,
+              dotyposCustomerId: DotyposCustomerIdSchema.make(
+                `customer-${round}`
+              ),
+              reservationPurpose: "personal" as const,
+              reservationDetails: {
+                kind: "cowork" as const,
+                entryTier: "basic" as const,
+                coffee: false,
+              },
+              locale: "en-US",
+            };
+          }).pipe(
+            Effect.provideService(
+              ConfigProvider.ConfigProvider,
+              ConfigProvider.fromUnknown({ CHECKOUT_PAY_STATE_KEYS: keyRing })
+            ),
+            Effect.runSync
+          );
+        const firstWorker = draftUnder(`${originalKey},${rotatedKey}`);
+        const secondWorker = draftUnder(`${rotatedKey},${originalKey}`);
+        expect(firstWorker.checkoutSessionKey).not.toBe(
+          secondWorker.checkoutSessionKey
+        );
+
+        const drafts = await Effect.all(
+          [
+            reservations.createDraft(firstWorker),
+            reservations.createDraft(secondWorker),
+          ],
+          { concurrency: "unbounded" }
+        ).pipe(Effect.runPromise);
+        const rows = await postgres.db
+          .select({
+            id: workspaceReservations.id,
+            checkoutSessionKey: workspaceReservations.checkoutSessionKey,
+          })
+          .from(workspaceReservations)
+          .where(
+            inArray(
+              workspaceReservations.checkoutSessionKey,
+              firstWorker.acceptedCheckoutSessionKeys
+            )
+          )
+          .pipe(Effect.runPromise);
+        fixtureReservationIds.push(...rows.map(({ id }) => id));
+
+        expect(rows).toHaveLength(1);
+        expect(drafts.map(({ id }) => id)).toEqual([rows[0]?.id, rows[0]?.id]);
+        expect(
+          new Set(drafts.map((draft) => draft.checkoutSessionKey)).size
+        ).toBe(1);
+      }
     });
   }
 );
