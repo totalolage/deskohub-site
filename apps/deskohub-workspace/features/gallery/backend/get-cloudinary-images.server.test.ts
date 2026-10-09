@@ -30,7 +30,9 @@ const cloudinary = {
 };
 
 mock.module("cloudinary", () => ({ v2: cloudinary }));
-const cacheLife = mock((_profile: unknown) => undefined);
+const cacheLife = mock(
+  (_profile: { stale: number; revalidate: number; expire: number }) => undefined
+);
 mock.module("next/cache", () => ({
   cacheLife,
   cacheTag: () => undefined,
