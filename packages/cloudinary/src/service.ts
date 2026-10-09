@@ -858,11 +858,19 @@ function createPrefixDeleteExecutor() {
       catch: (error) => toPrefixDeleteError(error as CloudinaryRejectedValue),
     }).pipe(
       Effect.flatMap(decodePrefixDeletePage),
-      Effect.tapError((error) =>
-        Effect.logError("Cloudinary asset prefix delete failed", {
+      Effect.tapError((error) => {
+        const httpCode = error.httpCode;
+
+        return Effect.logError("Cloudinary asset prefix delete failed", {
           outcome: error.outcome,
-        })
-      ),
+          ...(httpCode !== undefined &&
+          Number.isSafeInteger(httpCode) &&
+          httpCode >= 100 &&
+          httpCode <= 599
+            ? { httpCode }
+            : {}),
+        });
+      }),
       Effect.retry(retryPolicy)
     );
 
