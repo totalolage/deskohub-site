@@ -41,6 +41,14 @@ test("Cloudinary server reads stay behind cached workspace boundaries", async ()
   expect(offenders).toEqual([]);
 });
 
+test("gallery results are shared across server instances", async () => {
+  // A per-instance cache refetches Cloudinary on every cold start; with the
+  // former Search API lookup that exhausted the shared rate limit (HTTP 420)
+  // during E2E reruns.
+  const gallerySource = await readWorkspaceSource(gallerySearchModule);
+  expect(gallerySource).toMatch(/(^|\n)\s*"use cache: remote";/);
+});
+
 test("gallery searches stay server-only and cannot enumerate avatar assets", async () => {
   const gallerySource = await readWorkspaceSource(gallerySearchModule);
   expect(gallerySource).toContain('import "server-only";');

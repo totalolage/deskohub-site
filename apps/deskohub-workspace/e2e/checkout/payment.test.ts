@@ -7,6 +7,7 @@ import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutData } from "../types";
 import {
   completeNexiHostedPayment,
+  findRejectedNexiCardSubmissionStatus,
   startCheckoutPaymentAttempt,
   submitCheckoutPayment,
   submitPaymentAndWaitForHostedPage,
@@ -696,4 +697,30 @@ const makeCheckoutData = (): CheckoutData => ({
   name: "Workspace E2E",
   orderIdHint: "workspace-e2e",
   phone: "+420700000000",
+});
+
+test("classifies a rejected Nexi hosted card submission from the request log", () => {
+  expect(
+    findRejectedNexiCardSubmissionStatus(
+      [
+        "POST https://xpaysandbox.nexigroup.com/fe/build/text/BROWSER_DATA",
+        "200 POST https://xpaysandbox.nexigroup.com/fe/build/text/BROWSER_DATA",
+        "POST https://xpaysandbox.nexigroup.com/fe/build/text/",
+        "400 POST https://xpaysandbox.nexigroup.com/fe/build/text/",
+      ].join("\n")
+    )
+  ).toBe(400);
+});
+
+test("does not classify accepted or unrelated hosted payment requests", () => {
+  expect(
+    findRejectedNexiCardSubmissionStatus(
+      [
+        "200 POST https://xpaysandbox.nexigroup.com/fe/build/text/",
+        "500 POST https://xpaysandbox.nexigroup.com/fe/build/text/BROWSER_DATA",
+        "400 GET https://xpaysandbox.nexigroup.com/fe/build/text/",
+        "400 POST https://example.com/fe/build/text/",
+      ].join("\n")
+    )
+  ).toBeUndefined();
 });

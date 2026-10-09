@@ -48,7 +48,9 @@ export async function getCloudinaryImages({
   sortBy,
   sortDirection,
 }: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
-  "use cache";
+  // Shared across server instances, so cold starts reuse the cached list
+  // instead of refetching it from Cloudinary.
+  "use cache: remote";
   cacheLife(cloudinaryGalleryCacheLife);
   const expression = normalizeExpression(tags);
   // Tag lists cannot answer empty or negative-only groups: they need a

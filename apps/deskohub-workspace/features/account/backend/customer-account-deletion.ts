@@ -56,33 +56,42 @@ export const expireLinkedDotyposProfile = (
 ) =>
   Effect.fn("CustomerAccountDeletion.expireLinkedDotyposProfile")(
     (accountId: CustomerAccountId) =>
-      dependencies.withAccountLock(
-        accountId,
-        Effect.gen(function* () {
-          yield* dependencies.markDeletionRequested(accountId, new Date());
+      dependencies
+        .withAccountLock(
+          accountId,
+          Effect.gen(function* () {
+            yield* dependencies.markDeletionRequested(accountId, new Date());
 
-          const linkedCustomerId = yield* dependencies.findLink(accountId);
-          if (linkedCustomerId) {
-            yield* dependencies
-              .expireCustomer(linkedCustomerId)
-              .pipe(
-                Effect.catchTag("ExternalAPIError", (error) =>
-                  error.statusCode === 404
-                    ? Effect.logWarning(
-                        "Customer account deletion: Dotypos profile already missing.",
-                        { code: "dotypos.customer-expiration.missing" }
-                      )
-                    : Effect.fail(error)
-                )
-              );
-          }
+            const linkedCustomerId = yield* dependencies.findLink(accountId);
+            if (linkedCustomerId) {
+              yield* dependencies
+                .expireCustomer(linkedCustomerId)
+                .pipe(
+                  Effect.catchTag("ExternalAPIError", (error) =>
+                    error.statusCode === 404
+                      ? Effect.logWarning(
+                          "Customer account deletion: Dotypos profile already missing.",
+                          { code: "dotypos.customer-expiration.missing" }
+                        )
+                      : Effect.fail(error)
+                  )
+                );
+            }
 
-          // The media asset goes before identity removal: an uncertain
-          // provider outcome fails retryably so deletion stays retryable,
-          // and a missing asset is idempotent success.
-          yield* dependencies.destroyAvatar(accountId);
-        })
-      )
+            // The media asset goes before identity removal: an uncertain
+            // provider outcome fails retryably so deletion stays retryable,
+            // and a missing asset is idempotent success.
+            yield* dependencies.destroyAvatar(accountId);
+          })
+        )
+        .pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning(
+              "Customer account deletion: provider cleanup failed; deletion stays retryable.",
+              { code: "account.deletion.retryable", cause }
+            )
+          )
+        )
   );
 
 interface ICustomerAccountDeletionService {
