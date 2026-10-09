@@ -278,14 +278,25 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   loaded normally. The response stayed HTTP 200 because the page streams, and
   the instant-navigation tests could not find the site banner. Confirm with
   the deployment's Vercel request logs for `/en-US`. Gallery search uses
-  `"use cache: remote"` so cold serverless instances share results instead of
-  re-searching Cloudinary; the Cloudinary webhook still revalidates its tags.
+  `"use cache: remote"` with `cacheLife("max")`, so cold serverless
+  instances share results instead of re-searching Cloudinary; the Cloudinary
+  webhook revalidates its tags. On 2026-10-09 between 09:00 and 09:25 UTC,
+  four previews still on the per-instance cache made 119–143 searches each,
+  while this cache made 7. The homepage hides the carousel section when the
+  decorative lookup returns no images, including a build-time prerender during
+  a rate-limit window, so instant-navigation accepts either a resolved,
+  visible `#hero-gallery` or no carousel. It must never accept a busy or
+  half-rendered carousel.
   With Cache Components, a `"use cache"` function that rejects during a
   build-time prerender fails the whole build, even when the page catches the
   rejection (the PR #497 preview build failed on `/en-US/meeting-room` with a
-  420). Absorb decorative provider failures inside the cache scope with a
-  short `cacheLife("publicContent")` and an empty result; keep throwing only
-  from request-time lookups behind `connection()`, such as the gallery page.
+  420). `getCloudinaryImages` therefore absorbs provider failures inside its
+  cache scope: it logs the failure, returns no images, and switches to a short
+  `cacheLife` (expire 300 s, so the entry stays prerenderable) that retries
+  within a minute. Callers treat an empty result as "no photos": the homepage
+  hides its carousel, the room pages render without photos, and the gallery
+  page shows its empty state. A missing site banner with a "Something went wrong." page is an
+  application error-boundary failure, not a navigation race.
 - Account deletion also spends the shared Cloudinary Admin API quota: it
   deletes the avatar prefix after expiring the Dotypos profile. During a
   rate-limit window (PR #497 run 37904601281, 2026-10-09 08:32), the retry in
@@ -299,10 +310,7 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   navigation resolves the Calendar sale before fixture seeding has inserted
   its definition. Later attempts on the same preview do not log it, and pages
   still render. `PromotionCodeUnavailableError` entries come from the
-  negative discount-code cases. Neither explains a checkout failure. Load decorative Cloudinary images through
-  `getOptionalCloudinaryImages`; a missing banner with a "Something went
-  wrong." page is an application error-boundary failure, not a navigation
-  race.
+  negative discount-code cases. Neither explains a checkout failure.
 - The Vercel request-log history route intermittently returns gateway errors
   (run 37850570880-6 failed on one HTTP 504). Deployment resolution, history
   polling, and the baseline listing are read-only, so they repeat transport
