@@ -286,6 +286,14 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   420). Absorb decorative provider failures inside the cache scope with a
   short `cacheLife("publicContent")` and an empty result; keep throwing only
   from request-time lookups behind `connection()`, such as the gallery page.
+- Account deletion also spends the shared Cloudinary Admin API quota: it
+  deletes the avatar prefix after expiring the Dotypos profile. During a
+  rate-limit window (PR #497 run 37904601281, 2026-10-09 08:32), the retry in
+  `account-session-lifecycle` stayed pending and the step timed out. The
+  account showed "could not expire your customer profile", but the logged
+  cause was `Cloudinary asset prefix delete failed` (`outcome: failed`, a
+  4xx). The retryable-deletion warning now carries its `cause`; read that
+  `_tag` instead of the user-facing copy before blaming Dotypos.
 - A fresh preview database logs `DiscountProviderError` /
   `DiscountDefinitionNotFoundError` during its first E2E run, while instant
   navigation resolves the Calendar sale before fixture seeding has inserted
