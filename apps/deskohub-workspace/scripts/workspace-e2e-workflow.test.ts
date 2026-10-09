@@ -688,6 +688,9 @@ describe("workspace E2E workflow", () => {
     const cleanupRuntime = parseTrackedModule(
       "../e2e/playwright-checkout/cleanup-runtime-fixtures.ts"
     );
+    const cleanupPlan = parseTrackedModule(
+      "../e2e/playwright-checkout/cleanup-plan.ts"
+    );
     const cleanup = parseTrackedModule(
       "../e2e/playwright-checkout/cleanup.pw.ts"
     );
@@ -750,7 +753,10 @@ describe("workspace E2E workflow", () => {
     expect(suiteIdentifiers.has("Deferred")).toBe(false);
 
     expect(
-      stringLiterals(cleanup.ast).some(
+      identifierNames(cleanup.ast).has("traceWorkspaceE2ESuiteCleanup")
+    ).toBe(true);
+    expect(
+      stringLiterals(cleanupPlan.ast).some(
         (literal) => literal.value === "suite-cleanup"
       )
     ).toBe(true);

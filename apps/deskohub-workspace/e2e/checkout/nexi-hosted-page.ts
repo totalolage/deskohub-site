@@ -166,14 +166,16 @@ export const findNexiCardField = (
   };
 };
 
+// Card details are saved by POST; Nexi leaves the form inert after any failed
+// save, whether it rejects the data or fails server-side.
 export const countNexiCardDataRejections = (
   responses: readonly NexiBuildResponse[]
 ) =>
   responses.filter(
     (response) =>
       response.endpoint === "card-data" &&
-      response.status >= 400 &&
-      response.status < 500
+      response.method === "POST" &&
+      response.status >= 400
   ).length;
 
 export const formatNexiBuildFailures = (

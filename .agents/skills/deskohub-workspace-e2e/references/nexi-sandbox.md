@@ -38,7 +38,7 @@ The sandbox fails intermittently on its side. Observed failures include `POST /f
 
 A checkout case restarts a sandbox-rejected payment once, through a fresh payment attempt (`completeHostedCheckoutPayment` in `e2e/cases/checkout.ts`; the decision lives in `e2e/checkout/nexi-sandbox-retry.ts`). Only terminal provider pages qualify: `card_submission_rejected`, `provider_error_page`, or `provider_failure_page`. A step timeout, an unknown or server-error state, or any app assertion never qualifies. The step decides the rest:
 
-- `card_entry` and `continue` run before any authorization request, so they always restart. This covers the `POST /fe/build/text/` HTTP 400 `GW0027` card-data rejection, which tends to hit the first real card-data submission of a run.
+- `card_entry` and `continue` run before any authorization request, so they always restart. This covers a failed `POST /fe/build/text/` card-data save (HTTP 4xx or 5xx, typically 400 `GW0027`), which tends to hit the first real card-data submission of a run.
 - `pay` restarts only when the driver never activated Pay. Once Pay is activated, Nexi may have authorized the payment even if `validateAndPay` answers with HTTP 5xx, and retiring the local attempt would not cancel that authorization, so the case fails.
 - `challenge` and `return` follow authorization and never restart.
 

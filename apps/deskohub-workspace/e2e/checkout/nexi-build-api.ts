@@ -17,6 +17,7 @@ export type NexiBuildEndpoint =
 
 export type NexiBuildResponse = {
   readonly endpoint: NexiBuildEndpoint;
+  readonly method: string;
   readonly status: number;
 };
 
@@ -42,18 +43,20 @@ const parseHttpsUrl = (value: string) => {
 };
 
 // Reads the session response log ("<status> <METHOD> <url>" lines) and keeps
-// only the status and a fixed endpoint class of Nexi hosted-field API calls.
+// only the status, method, and a fixed endpoint class of Nexi hosted-field API
+// calls.
 export const parseNexiBuildResponses = (
   responseLog: string
 ): readonly NexiBuildResponse[] => {
   const responses: NexiBuildResponse[] = [];
   for (const line of responseLog.split("\n")) {
-    const match = line.trim().match(/^(\d{3})\s+[A-Z]+\s+(https:\/\/\S+)$/);
-    if (!match?.[1] || !match[2]) continue;
-    const url = parseHttpsUrl(match[2]);
+    const match = line.trim().match(/^(\d{3})\s+([A-Z]+)\s+(https:\/\/\S+)$/);
+    if (!match?.[1] || !match[2] || !match[3]) continue;
+    const url = parseHttpsUrl(match[3]);
     if (!url || !isNexiBuildApiUrl(url)) continue;
     responses.push({
       endpoint: toNexiBuildEndpoint(url),
+      method: match[2],
       status: Number(match[1]),
     });
   }
@@ -133,7 +136,10 @@ export const listNexiBuildFailureCodes = (
   }),
 ];
 
-export type NexiBuildFailure = NexiBuildResponse & {
+export type NexiBuildFailure = Pick<
+  NexiBuildResponse,
+  "endpoint" | "status"
+> & {
   readonly codes: readonly string[];
 };
 

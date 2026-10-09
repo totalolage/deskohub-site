@@ -103,6 +103,6 @@ test("round-trips code-only failure lines through the session network log", () =
   expect(formatNexiBuildFailureCodes([])).toBe("none observed");
   // The code-only line never counts as a response of its own.
   expect(parseNexiBuildResponses(networkLog)).toEqual([
-    { endpoint: "card-data", status: 400 },
+    { endpoint: "card-data", method: "POST", status: 400 },
   ]);
 });
