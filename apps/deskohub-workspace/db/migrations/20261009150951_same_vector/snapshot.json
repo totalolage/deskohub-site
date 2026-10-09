@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "e15cc3d0-eb47-4b5b-a93f-7f8d957c42d1",
+  "id": "e5bbe96c-f234-48c2-aa4c-c032006272d6",
   "prevIds": [
     "a815dc3b-0744-4e7c-9a2d-265c6f903e94"
   ],
@@ -2323,6 +2323,45 @@
       "generated": null,
       "identity": null,
       "name": "refund_state",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "refunded_amount_value",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "refunded_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "refund_checked_at",
       "entityType": "columns",
       "schema": "public",
       "table": "payment_attempts"
@@ -7162,8 +7201,15 @@
       "table": "payment_attempts"
     },
     {
-      "value": "\"refund_state\" in ('not_required', 'required') and (\"refund_state\" <> 'required' or (\"provider\" = 'nexi' and \"state\" = 'paid'))",
+      "value": "\"refund_state\" in ('not_required', 'required', 'refunded') and (\"refund_state\" = 'not_required' or (\"provider\" = 'nexi' and \"state\" = 'paid'))",
       "name": "payment_attempts_refund_state_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "value": "(\"refund_state\" = 'refunded' and \"refunded_amount_value\" > 0 and \"refunded_at\" is not null) or (\"refund_state\" <> 'refunded' and \"refunded_amount_value\" is null and \"refunded_at\" is null)",
+      "name": "payment_attempts_refund_record_check",
       "entityType": "checks",
       "schema": "public",
       "table": "payment_attempts"
