@@ -4,6 +4,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
+import { calendarSaleDiscountServiceLayer } from "@/features/discounts/calendar-sale.test-utils";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import {
   affirmedDiscountAdvertisementQuoteCodec,
@@ -15,7 +16,11 @@ import {
 import type { DiscountService } from "@/features/discounts/discount.service";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
-import { normalizeMeetingRoomReservationOrder } from "@/features/reservation/meeting-room-reservation";
+import {
+  getMeetingRoomAdvertisedPriceReservation,
+  normalizeMeetingRoomReservationOrder,
+} from "@/features/reservation/meeting-room-reservation";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { meetingRoomCheckoutPricing } from "./meeting-room-checkout-pricing";
 
 const meetingRoomDuration = { unit: "hour", amount: 4 } as const;
@@ -65,19 +70,24 @@ const reservation = await normalizeMeetingRoomReservationOrder({
   email: "ada@example.com",
   phone: "+420 777 777 777",
 }).pipe(Effect.runPromise);
-const advertisedReservation = {
-  kind: "meeting-room" as const,
-  details: {
-    kind: reservation.kind,
-    duration: reservation.duration,
-    reservationDate: reservation.reservationDate,
-  },
-};
+const advertisedReservation =
+  getMeetingRoomAdvertisedPriceReservation(reservation);
+
+const saleLastDay = getCurrentWorkspaceDate().add({ days: 1 });
+const calendarSaleDiscounts = calendarSaleDiscountServiceLayer({
+  calendarId: "meeting-room-midnight",
+  firstDay: saleLastDay.subtract({ days: 2 }),
+  lastDay: saleLastDay,
+  labels: { "en-US": "Meeting-room sale", "cs-CZ": "Sleva na zasedačku" },
+  products: [{ kind: "meeting-room" }],
+});
 
 const runWithDiscounts = <A, E>(
   effect: Effect.Effect<A, E, DiscountService>,
   discounts: ReturnType<typeof DiscountServiceMock>
 ) => effect.pipe(Effect.provide(discounts), Effect.runPromise);
+
+const bookedAt = Temporal.Instant.from("2099-06-01T10:00:00Z");
 
 describe("meeting-room checkout pricing", () => {
   test("quotes anonymous discounts from the family product and Prague date", async () => {
@@ -99,8 +109,9 @@ describe("meeting-room checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product: meetingRoomProduct,
       discountableSubtotal: money,
-      reservationDate: "2099-06-10",
+      lastServiceDate: "2099-06-10",
       locale: "en-US",
+      bookedAt: expect.any(Temporal.Instant),
     });
     expect(result.quote.payment.expectedPrice).toEqual(
       advertisementQuote.discountedSubtotal
@@ -131,6 +142,7 @@ describe("meeting-room checkout pricing", () => {
         return yield* pricing.affirmAdvertisement({
           reservation: advertisedReservation,
           locale: "en-US",
+          bookedAt,
           advertisedQuote: advertised.quote,
         });
       }),
@@ -140,8 +152,9 @@ describe("meeting-room checkout pricing", () => {
     expect(affirmAdvertisement).toHaveBeenCalledWith({
       product: meetingRoomProduct,
       discountableSubtotal: money,
-      reservationDate: "2099-06-10",
+      lastServiceDate: "2099-06-10",
       locale: "en-US",
+      bookedAt,
       advertisedDiscountIds: [discountId],
     });
     expect(result.discountQuote).toBe(affirmedAdvertisement);
@@ -199,6 +212,7 @@ describe("meeting-room checkout pricing", () => {
         return yield* pricing.affirmForPayment({
           reservation,
           locale: "en-US",
+          bookedAt,
           dotyposCustomerId,
           quote: advertised.quote,
         });
@@ -209,9 +223,10 @@ describe("meeting-room checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: meetingRoomProduct,
       discountableSubtotal: money,
-      reservationDate: "2099-06-10",
+      lastServiceDate: "2099-06-10",
       dotyposCustomerId,
       locale: "en-US",
+      bookedAt,
       submittedCode: undefined,
       displayedDiscountIds: [discountId],
     });
@@ -280,6 +295,7 @@ describe("meeting-room checkout pricing", () => {
         return yield* pricing.applyDiscountCode({
           reservation,
           locale: "en-US",
+          bookedAt,
           dotyposCustomerId,
           quote: displayedQuote,
           submittedCode,
@@ -294,9 +310,10 @@ describe("meeting-room checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: meetingRoomProduct,
       discountableSubtotal: money,
-      reservationDate: "2099-06-10",
+      lastServiceDate: "2099-06-10",
       dotyposCustomerId,
       locale: "en-US",
+      bookedAt,
       submittedCode: undefined,
       displayedDiscountIds: [discountId],
     });
@@ -353,6 +370,7 @@ describe("meeting-room checkout pricing", () => {
         return yield* pricing.applyDiscountCode({
           reservation,
           locale: "en-US",
+          bookedAt,
           dotyposCustomerId,
           quote: displayedQuote,
           submittedCode,
@@ -373,4 +391,47 @@ describe("meeting-room checkout pricing", () => {
     });
     expect(applyDiscountCode).not.toHaveBeenCalled();
   });
+
+  test.each([
+    ["crosses midnight past the sale's last day", "22:00", "02:00", 0],
+    ["ends exactly at midnight after the sale's last day", "20:00", "00:00", 1],
+  ] as const)(
+    "applies a calendar sale only when a 4-hour booking %s",
+    async (_label, startTime, endTime, expectedDiscounts) => {
+      const nextDay = saleLastDay.add({ days: 1 });
+      const order = await normalizeMeetingRoomReservationOrder({
+        kind: "meeting-room",
+        duration: meetingRoomDuration,
+        reservationDate: saleLastDay.toString(),
+        startsAt: `${saleLastDay}T${startTime}`,
+        endsAt: `${nextDay}T${endTime}`,
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        phone: "+420 777 777 777",
+      }).pipe(Effect.runPromise);
+
+      const result = await Effect.gen(function* () {
+        const pricing = yield* meetingRoomCheckoutPricing;
+        const advertised = yield* pricing.quoteAdvertisement({
+          reservation: getMeetingRoomAdvertisedPriceReservation(order),
+          locale: "en-US",
+        });
+        const payment = yield* pricing.affirmForPayment({
+          reservation: order,
+          locale: "en-US",
+          bookedAt: Temporal.Now.instant(),
+          dotyposCustomerId,
+          quote: advertised.quote,
+        });
+        return { advertised, payment };
+      }).pipe(Effect.provide(calendarSaleDiscounts), Effect.runPromise);
+
+      expect(result.advertised.quote.payment.discounts).toHaveLength(
+        expectedDiscounts
+      );
+      expect(result.payment.quote.payment.discounts).toHaveLength(
+        expectedDiscounts
+      );
+    }
+  );
 });

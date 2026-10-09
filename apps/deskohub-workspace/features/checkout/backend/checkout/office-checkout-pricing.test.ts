@@ -4,6 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import { getWorkspaceOfficePrice } from "@/features/checkout/product-catalog";
+import { calendarSaleDiscountServiceLayer } from "@/features/discounts/calendar-sale.test-utils";
 import { discountAdvertisementQuoteCodec } from "@/features/discounts/contracts";
 import type { DiscountService } from "@/features/discounts/discount.service";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
@@ -35,6 +36,15 @@ const advertisementQuote = discountAdvertisementQuoteCodec.make({
   discountedSubtotal: money,
 });
 
+const saleLastDay = startsOn.add({ days: 1 });
+const calendarSaleDiscounts = calendarSaleDiscountServiceLayer({
+  calendarId: "office-range",
+  firstDay: startsOn.subtract({ days: 2 }),
+  lastDay: saleLastDay,
+  labels: { "en-US": "Office sale", "cs-CZ": "Sleva na kanceláře" },
+  products: [{ kind: "office" }],
+});
+
 const runWithDiscounts = <A, E>(
   effect: Effect.Effect<A, E, DiscountService>,
   discounts: ReturnType<typeof DiscountServiceMock>
@@ -60,9 +70,35 @@ describe("office checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product,
       discountableSubtotal: money,
-      reservationDate: startsOn.toString(),
+      lastServiceDate: reservation.endsOn,
       locale: "en-US",
+      bookedAt: expect.any(Temporal.Instant),
     });
     expect(result.quote.payment.expectedPrice).toEqual(money);
   });
+
+  test.each([
+    ["ends on the sale's last day", 1, 1],
+    ["extends past the sale's last day", 2, 0],
+  ] as const)(
+    "applies a calendar sale only when the office range %s",
+    async (_label, extraDays, expectedDiscounts) => {
+      const rangeReservation = Schema.decodeUnknownSync(
+        officeReservationOrderSchema
+      )({
+        ...reservation,
+        endsOn: startsOn.add({ days: extraDays }).toString(),
+      });
+
+      const result = await Effect.gen(function* () {
+        const pricing = yield* officeCheckoutPricing;
+        return yield* pricing.quoteAdvertisement({
+          reservation: getOfficeAdvertisedPriceReservation(rangeReservation),
+          locale: "en-US",
+        });
+      }).pipe(Effect.provide(calendarSaleDiscounts), Effect.runPromise);
+
+      expect(result.quote.payment.discounts).toHaveLength(expectedDiscounts);
+    }
+  );
 });

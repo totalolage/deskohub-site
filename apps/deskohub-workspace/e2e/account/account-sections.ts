@@ -51,6 +51,7 @@ export type AccountSectionPage = Pick<
 
 export type AccountSectionSelectionStage =
   | "button-handler-wait"
+  | "panel-hydration-wait"
   | "native-button-click"
   | "selected-landmark-wait";
 
@@ -172,6 +173,35 @@ export const waitForAccountSectionButtonHandler = async (
   }
 };
 
+/**
+ * After a document load the account content streams in its own Suspense
+ * boundary. Clicking a section before React reveals and hydrates that boundary
+ * makes React client-render a second copy of the panel next to the hidden
+ * server copy. Every panel except legal is always rendered, so its landmark
+ * carries React props only once the content boundary is hydrated.
+ */
+const accountSectionPanelIsHydrated = (landmark: string): boolean => {
+  const panel = document.querySelector(landmark);
+  return (
+    panel !== null &&
+    Object.keys(panel).some((key) => key.startsWith("__reactProps$"))
+  );
+};
+
+/**
+ * Always-rendered hydration anchors inside each panel. Billing shares the
+ * profile screen, whose container is a plain element rather than a form
+ * control. Legal renders only once active, so it has no anchor.
+ */
+const accountSectionHydrationAnchors: Readonly<
+  Partial<Record<AccountSection, string>>
+> = {
+  reservations: accountSectionLandmarks.reservations,
+  profile: accountSectionLandmarks.profile,
+  billing: accountSectionLandmarks.profile,
+  danger: accountSectionLandmarks.danger,
+};
+
 const accountSectionButtonSelector = (section: AccountSection) =>
   `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] button:not([data-account-section]):has-text(${JSON.stringify(accountSectionLabels[section])})`;
 
@@ -218,6 +248,14 @@ export const selectAccountSection = async (
   onStage?.("button-handler-wait");
   await waitForAccountSectionButtonHandler(page, sectionButton);
 
+  const hydrationAnchor = accountSectionHydrationAnchors[section];
+  if (hydrationAnchor !== undefined) {
+    onStage?.("panel-hydration-wait");
+    await page.waitForFunction(accountSectionPanelIsHydrated, hydrationAnchor, {
+      timeout: workspaceE2ETimeouts.uiTransition,
+    });
+  }
+
   onStage?.("native-button-click");
   await sectionButton.click({ timeout });
 
@@ -236,6 +274,17 @@ export const selectAccountSectionInRunner = (
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const desktop = yield* readDesktopMode(run, session);
+
+    const hydrationAnchor = accountSectionHydrationAnchors[section];
+    if (hydrationAnchor !== undefined) {
+      yield* waitForBrowserCondition(
+        run,
+        session,
+        `account ${section} panel hydration`,
+        `(${accountSectionPanelIsHydrated.toString()})(${JSON.stringify(hydrationAnchor)})`,
+        { timeoutMs: workspaceE2ETimeouts.uiTransition }
+      );
+    }
 
     if (desktop) {
       yield* clickBrowserElement(

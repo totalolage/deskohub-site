@@ -19,6 +19,7 @@ import {
   assertInternalDiscountApplications,
   assertLatePaymentRecoveryOutcome,
   assertLegalEvidenceRows,
+  getPreviewFulfillmentMarkerDiagnosticCode,
   getProviderSessionRowDiagnosticCode,
   replayNexiWebhook,
   waitForProviderSessionRowAfterRedirect,
@@ -257,6 +258,33 @@ test("classifies provider session rows after the hosted redirect barrier", () =>
       security_token: "security-token",
     } as CheckoutRow)
   ).toBeUndefined();
+});
+
+test("stops waiting for the preview fulfillment marker once the order cannot fulfill", () => {
+  const row = (overrides: Partial<CheckoutRow>) =>
+    ({
+      fulfillment_state: "not_started",
+      payment_state: "pending",
+      ...overrides,
+    }) as CheckoutRow;
+
+  expect(getPreviewFulfillmentMarkerDiagnosticCode(undefined)).toBeUndefined();
+  expect(getPreviewFulfillmentMarkerDiagnosticCode(row({}))).toBeUndefined();
+  expect(
+    getPreviewFulfillmentMarkerDiagnosticCode(
+      row({ fulfillment_state: "processing", payment_state: "paid" })
+    )
+  ).toBeUndefined();
+  for (const payment_state of ["failed", "cancelled", "expired"]) {
+    expect(
+      getPreviewFulfillmentMarkerDiagnosticCode(row({ payment_state }))
+    ).toBe("checkout_payment_terminal_before_fulfillment");
+  }
+  expect(
+    getPreviewFulfillmentMarkerDiagnosticCode(
+      row({ fulfillment_state: "failed", payment_state: "paid" })
+    )
+  ).toBe("checkout_fulfillment_failed_before_marker");
 });
 
 test("waits briefly for the provider session row to converge after redirect", async () => {

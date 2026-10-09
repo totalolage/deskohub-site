@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { ExternalAPIError, NetworkError } from "@deskohub/dotypos";
-import { Effect } from "effect";
+import { Effect, Logger } from "effect";
 import { customerAccountIdSchema } from "../customer-account";
 import {
   type CustomerAccountDeletionDependencies,
   expireLinkedDotyposProfile,
 } from "./customer-account-deletion";
+import { CustomerAvatarProviderError } from "./customer-avatar.service";
 
 const accountId = customerAccountIdSchema.make("auth-user-1");
 
@@ -111,6 +112,37 @@ describe("Customer account deletion", () => {
       "destroy-avatar",
       "lock-release",
     ]);
+  });
+
+  test("logs which provider step left the deletion retryable", async () => {
+    const logs: { readonly level: string; readonly message: unknown[] }[] = [];
+    const logger = Logger.make((options) => {
+      logs.push({
+        level: options.logLevel,
+        message: Array.isArray(options.message)
+          ? options.message
+          : [options.message],
+      });
+    });
+    const { dependencies } = makeDependencies({
+      avatarOutcome: Effect.fail(new CustomerAvatarProviderError()),
+    });
+
+    await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(
+        Effect.result,
+        Effect.provide(Logger.layer([logger]))
+      )
+    );
+
+    const warning = logs.find(({ level }) => level === "Warn");
+    expect(warning?.message[0]).toBe(
+      "Customer account deletion: provider cleanup failed; deletion stays retryable."
+    );
+    expect(warning?.message[1]).toMatchObject({
+      cause: { _tag: "CustomerAvatarProviderError" },
+      code: "account.deletion.retryable",
+    });
   });
 
   test("tolerates a definitively missing provider profile", async () => {

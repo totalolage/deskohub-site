@@ -116,6 +116,14 @@ export const getSignedPayStateSubmittedCode = (
   };
 };
 
+/**
+ * Booking moment locked into the Pay state at reservation submission. Later
+ * price affirmations evaluate calendar sales at this moment instead of now.
+ */
+export const getSignedPayStateBookedAt = (
+  state: Pick<SignedPayState, "bookedAt">
+) => Temporal.Instant.from(state.bookedAt);
+
 export class PayStateTokenError extends Data.TaggedError("PayStateTokenError")<{
   readonly code: CheckoutStateTokenError["code"];
   readonly message: string;
@@ -154,6 +162,7 @@ export const buildSignedPayState = Effect.fn("payState.build")(function* (
     ...claims,
     locale: input.locale,
     orderId: input.orderId,
+    bookedAt: input.bookedAt,
   };
   const state = Match.value(input).pipe(
     Match.when({ reservation: { kind: "cowork" } }, (coworkInput) =>

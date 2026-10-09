@@ -50,20 +50,20 @@ const primeCurrentCalendarDiscountSources = Effect.fn(
 
   return Effect.forEach(
     dates,
-    (reservationDate) =>
+    (bookingDate) =>
       Effect.tryPromise({
-        try: () => loadCalendarDiscountSource(reservationDate),
+        try: () => loadCalendarDiscountSource(bookingDate),
         catch: (cause) => new CalendarDiscountSourceMaintenanceError({ cause }),
       }).pipe(
         Effect.tap((source) =>
           Effect.logWarning("Calendar discount cache prime was incomplete", {
-            reservationDate,
+            bookingDate,
           }).pipe(Effect.when(Effect.succeed(!source.complete)))
         ),
         Effect.catch((cause) =>
           Effect.logWarning("Calendar discount cache prime failed", {
             cause,
-            reservationDate,
+            bookingDate,
           })
         )
       ),

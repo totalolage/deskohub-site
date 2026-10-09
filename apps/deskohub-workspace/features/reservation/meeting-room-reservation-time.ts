@@ -9,6 +9,8 @@ import {
   instantStringSchema,
   type LocalDateTime,
   localDateTimeSchema,
+  type PlainDate,
+  plainDateStringSchema,
 } from "@/shared/utils/temporal";
 
 const decodeInstant = Schema.decodeUnknownOption(instantStringSchema);
@@ -92,17 +94,24 @@ export const getMeetingRoomReservationInterval = (
   );
 };
 
-export const getMeetingRoomAvailabilityToDate = ({
+/**
+ * Last Prague calendar date a meeting-room interval occupies. The end is
+ * exclusive, so a booking ending exactly at midnight belongs to the previous
+ * day.
+ */
+export const getMeetingRoomLastServiceDate = ({
   endsAt,
-}: Pick<ReservationInterval, "endsAt">) => {
+}: Pick<ReservationInterval, "endsAt">): PlainDate => {
   const lastTouchedInstant = Temporal.Instant.fromEpochMilliseconds(
     Temporal.Instant.from(endsAt).epochMilliseconds - 1
   );
 
-  return lastTouchedInstant
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDate()
-    .toString();
+  return plainDateStringSchema.make(
+    lastTouchedInstant
+      .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+      .toPlainDate()
+      .toString()
+  );
 };
 
 export const getMeetingRoomReservationDate = ({

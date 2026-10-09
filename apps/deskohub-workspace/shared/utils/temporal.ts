@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Clock, Effect, Schema } from "effect";
 
 export const unixTimestampSecondsSchema = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(0)
@@ -30,6 +30,16 @@ export const TemporalPlainTimeSchema = Schema.declare(
     description: "Temporal plain time value.",
   }
 );
+
+/**
+ * Current instant read from the Effect `Clock`, so tests can control time.
+ */
+export const currentInstant: Effect.Effect<Temporal.Instant> =
+  Clock.currentTimeMillis.pipe(
+    Effect.map((epochMilliseconds) =>
+      Temporal.Instant.fromEpochMilliseconds(epochMilliseconds)
+    )
+  );
 
 export const localTimeSchema = Schema.String.check(
   Schema.makeFilter((value) => {

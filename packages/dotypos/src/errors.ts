@@ -1,8 +1,16 @@
 import { Data } from "effect";
+import type { DotyposReservationId } from "./types";
 
 export class ValidationError extends Data.TaggedError("ValidationError")<{
   readonly message: string;
   readonly cause?: unknown;
+}> {}
+
+export class DotyposReservationCancelledError extends Data.TaggedError(
+  "DotyposReservationCancelledError"
+)<{
+  readonly reservationId: DotyposReservationId;
+  readonly message: string;
 }> {}
 
 export type DotyposProviderError = {

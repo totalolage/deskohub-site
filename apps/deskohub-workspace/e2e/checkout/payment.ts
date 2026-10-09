@@ -37,6 +37,7 @@ import {
   tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  workspaceE2EError,
 } from "../errors";
 import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
@@ -733,6 +734,10 @@ export const completeNexiHostedPayment = ({
       "pay",
       [{ value: "PAY" }, { value: "Pay" }, { value: "PAGA" }],
       timeouts
+    ).pipe(
+      Effect.catch((error) =>
+        classifyRejectedHostedCardSubmission(run, session, error)
+      )
     );
     yield* clickHostedPaymentTarget(
       run,
@@ -784,6 +789,61 @@ export const completeNexiHostedPayment = ({
       });
     }
   });
+
+const classifyRejectedHostedCardSubmission = (
+  run: Runner,
+  session: string,
+  error: WorkspaceE2EError
+): Effect.Effect<never, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "read hosted payment requests",
+    run,
+    session,
+    ["network", "requests"],
+    { allowFailure: true, logCommand: false, logOutput: false }
+  ).pipe(
+    Effect.map((result) =>
+      result.exitCode === 0
+        ? findRejectedNexiCardSubmissionStatus(result.stdout)
+        : undefined
+    ),
+    Effect.orElseSucceed(() => undefined),
+    Effect.flatMap((rejectedStatus) =>
+      Effect.fail(
+        rejectedStatus === undefined
+          ? error
+          : workspaceE2EError(
+              `Nexi rejected the hosted card submission with HTTP ${rejectedStatus} before offering PAY`,
+              {
+                cause: error,
+                diagnosticCode: "nexi_hosted_card_submission_rejected",
+                operation: "submit Nexi hosted card details",
+              }
+            )
+      )
+    )
+  );
+
+const nexiCardSubmissionPath = "/fe/build/text/";
+
+export const findRejectedNexiCardSubmissionStatus = (
+  networkRequests: string
+): number | undefined => {
+  for (const line of networkRequests.split("\n")) {
+    const match = /^(\d{3}) POST (\S+)$/.exec(line.trim());
+    if (!match?.[1] || !match[2]) continue;
+    const url = parseUrl(match[2]);
+    const status = Number(match[1]);
+    if (
+      url?.hostname.endsWith(".nexigroup.com") &&
+      url.pathname === nexiCardSubmissionPath &&
+      status >= 400
+    ) {
+      return status;
+    }
+  }
+  return undefined;
+};
 
 const waitForReturnedPaymentTabToClose = ({
   hostedPaymentPage,

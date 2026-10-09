@@ -32,7 +32,10 @@ export async function getCloudinaryImages({
   sortBy,
   sortDirection,
 }: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
-  "use cache";
+  // Shared across server instances: a per-instance cache re-searches
+  // Cloudinary on every cold start and spends the account-wide Search API
+  // rate limit that production and every preview share.
+  "use cache: remote";
   cacheLife("max");
   const expression = normalizeExpression(tags);
   // Empty or negative-only groups let Cloudinary search the whole cloud.
