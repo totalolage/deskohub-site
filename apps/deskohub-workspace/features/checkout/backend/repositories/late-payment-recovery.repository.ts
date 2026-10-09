@@ -1,6 +1,6 @@
 import type { DotyposReservationId } from "@deskohub/dotypos";
 import type { NexiOperationId, NexiWebhookEventId } from "@deskohub/nexi";
-import { and, desc, eq, gt, inArray, lte, ne, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lte, ne, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -8,6 +8,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type LatePaymentRecovery,
   latePaymentRecoveries,
+  type PaymentRefundState,
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
@@ -256,8 +257,9 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 .update(paymentAttempts)
                 .set({
                   state: "paid",
+                  // A refund Nexi already reported stays recorded.
                   ...(input.state === "refund_required" && {
-                    refundState: "required",
+                    refundState: sql<PaymentRefundState>`case when ${paymentAttempts.refundState} = 'refunded' then 'refunded' else 'required' end`,
                   }),
                   ...(recovery.webhookEventId && {
                     lastWebhookEventId: recovery.webhookEventId,

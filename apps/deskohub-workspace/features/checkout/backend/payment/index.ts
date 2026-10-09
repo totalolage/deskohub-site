@@ -4,3 +4,4 @@ export {
   NexiWebhookProcessingError,
   NexiWebhookService,
 } from "./nexi-webhook.service";
+export { PaymentRefundService } from "./payment-refund.service";

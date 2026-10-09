@@ -30,7 +30,16 @@ export const paymentAttemptStates = [
 
 export type PaymentAttemptState = (typeof paymentAttemptStates)[number];
 
-export const paymentRefundStates = ["not_required", "required"] as const;
+/**
+ * `required` marks a paid Nexi attempt whose money must go back to the
+ * customer. `refunded` records that Nexi reported a successful refund of the
+ * attempt's order, whether full or partial.
+ */
+export const paymentRefundStates = [
+  "not_required",
+  "required",
+  "refunded",
+] as const;
 
 export type PaymentRefundState = (typeof paymentRefundStates)[number];
 
@@ -63,6 +72,10 @@ export const paymentAttempts = pgTable(
       .notNull()
       .default("not_required")
       .$type<PaymentRefundState>(),
+    /** Sum of successful Nexi refunds, in the attempt's minor units. */
+    refundedAmountValue: integer("refunded_amount_value"),
+    /** Time of the latest successful Nexi refund. */
+    refundedAt: instant("refunded_at"),
     amountValue: integer("amount_value").notNull(),
     amountExponent: integer("amount_exponent").notNull(),
     currency: text("currency").notNull(),
@@ -90,7 +103,11 @@ export const paymentAttempts = pgTable(
     ),
     check(
       "payment_attempts_refund_state_check",
-      sql`${t.refundState} in (${quotedSqlList(paymentRefundStates)}) and (${t.refundState} <> 'required' or (${t.provider} = 'nexi' and ${t.state} = 'paid'))`
+      sql`${t.refundState} in (${quotedSqlList(paymentRefundStates)}) and (${t.refundState} = 'not_required' or (${t.provider} = 'nexi' and ${t.state} = 'paid'))`
+    ),
+    check(
+      "payment_attempts_refund_record_check",
+      sql`(${t.refundState} = 'refunded' and ${t.refundedAmountValue} > 0 and ${t.refundedAt} is not null) or (${t.refundState} <> 'refunded' and ${t.refundedAmountValue} is null and ${t.refundedAt} is null)`
     ),
     check("payment_attempts_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
     check(
