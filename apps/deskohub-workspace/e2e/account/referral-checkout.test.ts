@@ -10,6 +10,7 @@ import { formatDiscountAdjustment } from "@/features/checkout/format-discount-ad
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import { currencyCZK } from "@/features/checkout/workspace-money";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { instantStringSchema } from "@/shared/utils/temporal";
 import { makeCoworkCheckoutData } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceDir } from "../runtime";
@@ -168,6 +169,7 @@ test("both ownership guards accept and constrain URLs from the real fresh-pay bu
     locale: "en-US" as const,
     orderId,
     checkoutSessionId: "checkout-session-referral-url",
+    bookedAt: instantStringSchema.make("2026-06-01T09:58:00.000Z"),
     reservation,
     quote: buildCoworkReservationQuote(reservation),
   };

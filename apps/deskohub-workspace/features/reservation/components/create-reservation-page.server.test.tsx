@@ -2,11 +2,14 @@ import { expect, mock, test } from "bun:test";
 import { Effect } from "effect";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
+import { instantStringSchema } from "@/shared/utils/temporal";
 
 mock.module("server-only", () => ({}));
 mock.module("next/root-params", () => ({
   locale: () => Promise.resolve("en-US"),
 }));
+
+const payStateBookedAt = instantStringSchema.make("2026-06-01T09:58:00.000Z");
 
 const { createReservationPage } = await import(
   "./create-reservation-page.server"
@@ -111,6 +114,7 @@ test("prefers the signed requested discount code over a fresh public query code"
         reservation,
         quote,
         orderId: "reservation-id",
+        bookedAt: payStateBookedAt,
         checkoutSessionId: "session-id",
         requestedDiscountCode: Schema.decodeUnknownSync(
           canonicalPromotionCodeSchema

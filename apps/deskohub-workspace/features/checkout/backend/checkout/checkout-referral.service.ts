@@ -15,6 +15,7 @@ import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
 import { CheckoutPricingService } from "./checkout-pricing.service";
 import { isExpectedReferralQuoteAddition } from "./checkout-referral-price-change";
 import {
+  getSignedPayStateBookedAt,
   getSignedPayStateCheckoutSummary,
   getSignedPayStateSubmittedCode,
   openPayState,
@@ -89,6 +90,7 @@ export class CheckoutReferralService extends Context.Service<
                 dotyposCustomerId: identity.dotyposCustomerId,
                 locale: input.locale,
                 quote: state.quote,
+                bookedAt: getSignedPayStateBookedAt(opened),
                 // biome-ignore lint/plugin: Preserve exact optional-property typing for the ordinary code slot.
                 ...(state.submittedCode === undefined
                   ? {}
@@ -101,6 +103,7 @@ export class CheckoutReferralService extends Context.Service<
                 dotyposCustomerId: identity.dotyposCustomerId,
                 locale: input.locale,
                 quote: state.quote,
+                bookedAt: getSignedPayStateBookedAt(opened),
                 // biome-ignore lint/plugin: Preserve exact optional-property typing for the ordinary code slot.
                 ...(state.submittedCode === undefined
                   ? {}
@@ -113,6 +116,7 @@ export class CheckoutReferralService extends Context.Service<
                 dotyposCustomerId: identity.dotyposCustomerId,
                 locale: input.locale,
                 quote: state.quote,
+                bookedAt: getSignedPayStateBookedAt(opened),
                 // biome-ignore lint/plugin: Preserve exact optional-property typing for the ordinary code slot.
                 ...(state.submittedCode === undefined
                   ? {}
@@ -160,6 +164,7 @@ export class CheckoutReferralService extends Context.Service<
             ...prepared,
             locale: input.locale,
             orderId: opened.orderId,
+            bookedAt: opened.bookedAt,
             checkoutSessionId: opened.checkoutSessionId,
             ...getSignedPayStateSubmittedCode(
               opened,

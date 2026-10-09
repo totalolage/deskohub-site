@@ -44,7 +44,12 @@ export type PreparedMeetingRoomPayState = PayStateSubmittedCodeMetadata & {
 
 export const prepareMeetingRoomAdvertisement = Effect.fn(
   "prepareMeetingRoomPayState.prepareAdvertisement"
-)(function* (input: PrepareMeetingRoomPayStateInput) {
+)(function* (
+  input: PrepareMeetingRoomPayStateInput & {
+    /** Moment the reservation is submitted and its price is locked. */
+    readonly bookedAt: Temporal.Instant;
+  }
+) {
   const state = yield* openSubmittedAdvertisedPriceState(
     input.advertisedPriceToken
   );
@@ -80,6 +85,7 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     reservation: getMeetingRoomAdvertisedPriceReservation(reservation),
     locale: input.locale,
     advertisedQuote: state.quote,
+    bookedAt: input.bookedAt,
     ...getSubmittedCodeMetadata(state),
   });
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;

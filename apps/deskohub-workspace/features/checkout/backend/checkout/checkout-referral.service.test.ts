@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
@@ -34,9 +36,11 @@ import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { type Instant, instantStringSchema } from "@/shared/utils/temporal";
 import {
   CheckoutPricingService,
   type PaymentPriceAffirmation,
+  type PaymentPriceAffirmationInput,
 } from "./checkout-pricing.service";
 import {
   type CheckoutReferralResult,
@@ -81,6 +85,7 @@ const referrerDiscountId = getReferralReferrerDiscountId(dotyposCustomerId);
 const ordinaryDiscountId = discountIdSchema.make(
   "checkout-referral-service-test-ordinary-code"
 );
+const payStateBookedAt = instantStringSchema.make("2026-06-01T09:58:00.000Z");
 
 const reservation = Schema.decodeUnknownSync(
   normalizedCoworkReservationOrderSchema
@@ -252,7 +257,9 @@ const makeCommitment = (
     })),
   });
 
-type TestPayStateInput =
+type TestPayStateInput = {
+  readonly bookedAt: Instant;
+} & (
   | {
       readonly reservation: typeof reservation;
       readonly quote: CoworkReservationQuote;
@@ -264,7 +271,8 @@ type TestPayStateInput =
   | {
       readonly reservation: typeof officeReservation;
       readonly quote: OfficeReservationQuote;
-    };
+    }
+);
 
 const tokenFor = (input: TestPayStateInput) =>
   Effect.runSync(
@@ -302,7 +310,7 @@ const makeServiceLayer = (input: {
     readonly kind: "accepted" | "already_accepted";
   }>;
   readonly payableReservationCustomerId?: typeof dotyposCustomerId;
-  readonly onPricingAffirmation?: () => void;
+  readonly onPricingAffirmation?: (input: PaymentPriceAffirmationInput) => void;
 }) => {
   const dependencies = Layer.mergeAll(
     Layer.succeed(CustomerAccountResolver, {
@@ -316,9 +324,9 @@ const makeServiceLayer = (input: {
       acceptReferral: input.acceptReferral,
     }),
     Layer.mock(CheckoutPricingService, {
-      affirmForPayment: () =>
+      affirmForPayment: (affirmationInput) =>
         Effect.sync(() => {
-          input.onPricingAffirmation?.();
+          input.onPricingAffirmation?.(affirmationInput);
           return input.affirmation;
         }),
     }),
@@ -352,8 +360,11 @@ const expectAcceptedThenIdempotentRetry = async (input: {
   readonly family: "cowork" | "meeting-room" | "office";
 }) => {
   let acceptanceCount = 0;
+  const affirmationInputs: PaymentPriceAffirmationInput[] = [];
   const layer = makeServiceLayer({
     affirmation: input.affirmation,
+    onPricingAffirmation: (affirmationInput) =>
+      affirmationInputs.push(affirmationInput),
     acceptReferral: () =>
       Effect.sync(() => {
         acceptanceCount += 1;
@@ -381,6 +392,7 @@ const expectAcceptedThenIdempotentRetry = async (input: {
     expect(state.changedKeys).toBeUndefined();
     expect(state.submittedCode).toBeUndefined();
     expect(state.reservation.kind).toBe(input.family);
+    expect(state.bookedAt).toBe(payStateBookedAt);
     expect(getSignedPayStateCheckoutSummary(state).total).toEqual(
       input.affirmation.quote.payment.expectedPrice
     );
@@ -391,14 +403,22 @@ const expectAcceptedThenIdempotentRetry = async (input: {
     ).toBe(true);
   };
 
-  await checkFreshUrl(
-    await Effect.runPromise(runAcceptCode(layer, input.payStateToken)),
-    "accepted"
+  const firstResult = await Effect.runPromise(
+    runAcceptCode(layer, input.payStateToken)
   );
-  await checkFreshUrl(
-    await Effect.runPromise(runAcceptCode(layer, input.payStateToken)),
-    "already_accepted"
+  expect(affirmationInputs[0]?.bookedAt).toEqual(
+    Temporal.Instant.from(payStateBookedAt)
   );
+  await checkFreshUrl(firstResult, "accepted");
+
+  const retryResult = await Effect.runPromise(
+    runAcceptCode(layer, input.payStateToken)
+  );
+  expect(affirmationInputs[1]?.bookedAt).toEqual(
+    Temporal.Instant.from(payStateBookedAt)
+  );
+  await checkFreshUrl(retryResult, "already_accepted");
+  expect(affirmationInputs).toHaveLength(2);
   expect(acceptanceCount).toBe(2);
 };
 
@@ -429,7 +449,11 @@ describe("CheckoutReferralService", () => {
       })
     );
     await expectAcceptedThenIdempotentRetry({
-      payStateToken: tokenFor({ reservation, quote: previousQuote }),
+      payStateToken: tokenFor({
+        reservation,
+        quote: previousQuote,
+        bookedAt: payStateBookedAt,
+      }),
       affirmation: {
         kind: "cowork",
         reservation,
@@ -452,7 +476,10 @@ describe("CheckoutReferralService", () => {
       },
       acceptReferral: () => Effect.succeed({ kind: "accepted" as const }),
     });
-    const payStateToken = tokenForOrder({ reservation, quote }, signedOrderId);
+    const payStateToken = tokenForOrder(
+      { reservation, quote, bookedAt: payStateBookedAt },
+      signedOrderId
+    );
     const originalState = Effect.runSync(openPayState(payStateToken));
     const result = await Effect.runPromise(runAcceptCode(layer, payStateToken));
 
@@ -499,6 +526,7 @@ describe("CheckoutReferralService", () => {
       payStateToken: tokenFor({
         reservation: meetingRoomReservation,
         quote: previousQuote,
+        bookedAt: payStateBookedAt,
       }),
       affirmation: {
         kind: "meeting-room",
@@ -545,6 +573,7 @@ describe("CheckoutReferralService", () => {
       payStateToken: tokenFor({
         reservation: officeReservation,
         quote: previousQuote,
+        bookedAt: payStateBookedAt,
       }),
       affirmation: {
         kind: "office",
@@ -606,7 +635,14 @@ describe("CheckoutReferralService", () => {
     });
 
     const result = await Effect.runPromise(
-      runAcceptCode(layer, tokenFor({ reservation, quote: previousQuote }))
+      runAcceptCode(
+        layer,
+        tokenFor({
+          reservation,
+          quote: previousQuote,
+          bookedAt: payStateBookedAt,
+        })
+      )
     );
     expect(result.status).toBe("pricing_changed");
     expect("freshPayUrl" in result && result.freshPayUrl).toBeTruthy();
@@ -635,7 +671,10 @@ describe("CheckoutReferralService", () => {
     });
 
     const result = await Effect.runPromise(
-      runAcceptCode(layer, tokenFor({ reservation, quote }))
+      runAcceptCode(
+        layer,
+        tokenFor({ reservation, quote, bookedAt: payStateBookedAt })
+      )
     );
     expect(result.status).toBe("unavailable");
     expect(acceptanceCount).toBe(0);

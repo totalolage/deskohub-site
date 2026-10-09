@@ -1,8 +1,10 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
 import { useMemo } from "react";
-import { AdministrationDataTable } from "@/features/administration/components";
+import {
+  AdministrationDataTable,
+  type AdministrationDataTableColumn,
+} from "@/features/administration/components";
 import { EmptyState } from "@/features/administration/empty-state";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
@@ -15,7 +17,9 @@ export function CliSessionsTable({
 }: {
   readonly sessions: readonly CliSessionAdministrationItem[];
 }) {
-  const columns = useMemo<ColumnDef<CliSessionAdministrationItem>[]>(
+  const columns = useMemo<
+    AdministrationDataTableColumn<CliSessionAdministrationItem>[]
+  >(
     () => [
       {
         accessorKey: "clientName",

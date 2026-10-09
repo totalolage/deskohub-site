@@ -14,6 +14,7 @@
 - `typescript` (`npm:@typescript/typescript6@6.0.2`) provides the TS6 API (`createProgram`) consumed by typescript-eslint and Next.js, exposed as the `tsc6` CLI.
 - Never add plain `typescript@5`/`6`/`7` dependencies or new `tsc`-bin-providing packages.
 - Next apps set `experimental.useTypeScriptCli: false` because Next's CLI integration resolves `bin.tsc`, which the official TS6 wrapper (tsc6-only) must not provide; with the flag off, Next type-checks builds through its TS6 API worker (no CLI), while `bun turbo typecheck` separately runs the patched native compiler.
+- Workspace test files (`**/*.test.ts`, `**/*.test.tsx`) are intentionally not typechecked. `apps/deskohub-workspace/tsconfig.json` excludes them, its `typecheck` task checks only that project, and Bun runs tests without type checking. There is no test tsconfig in the check graph. Do not report this as an audit finding, and do not add a test tsconfig, test typecheck task, or Turbo dependency for it. Shared packages and `dhw` use a single tsconfig whose `include` happens to cover their colocated tests; leave that as it is unless the developer decides otherwise.
 
 ## Bootstrap and development
 

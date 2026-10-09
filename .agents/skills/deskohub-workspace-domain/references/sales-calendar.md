@@ -40,12 +40,24 @@ Model Workspace sales calendar events as references to stored discount definitio
 - Cache the complete locale-independent stored definition for Calendar
   advertisement discovery and resolve the concrete label only when creating
   the checkout candidate.
+- A Calendar sale depends on when the reservation is booked, not only on when
+  it is used. It applies only when the booking instant falls inside the
+  occurrence's Prague all-day booking window (exclusive end) and the last
+  service date (`lastServiceDate`: office `endsOn`, cowork `date`, meeting
+  room the Prague date of its exclusive `endsAt`, since hourly bookings can
+  cross midnight) is no later than the sale's last day. Earlier service dates
+  qualify; a range extending past the last day gets no sale and is never
+  prorated.
+  Express this only through `calendarSaleAppliesToBooking` and
+  `isCalendarSaleBookableAt` in `features/discounts/calendar-sale.ts`. The
+  checkout skill's lifecycle reference defines where the booking instant comes
+  from.
 - Share only complete Calendar-occurrence and stored-definition source
-  snapshots across requests, keyed by reservation date, through `use cache:
-  remote`. Give partial or failed loads no cache lifetime, and do not put a
+  snapshots across requests, keyed by the booking's Prague date, through
+  `use cache: remote`. Give partial or failed loads no cache lifetime, and do not put a
   process-memory cache in front of the remote boundary because it can hide
   invalidation and cannot share entries across Vercel instances.
-- Keep feature-flag evaluation, current-time eligibility, locale and product
+- Keep feature-flag evaluation, booking-time eligibility, locale and product
   filtering, checkout revalidation, and advertised-price token sealing outside
   the shared source cache.
 - Invalidate the shared source after stored discount-definition mutations and
@@ -58,4 +70,6 @@ Model Workspace sales calendar events as references to stored discount definitio
   it only when Calendar discovery resolves exactly one active sale; if
   overlapping sales are active, log the ambiguous count and omit the banner
   rather than advertising an arbitrary discount. Pricing may still resolve
-  and stack those overlapping sales independently.
+  and stack those overlapping sales independently. The banner and the
+  countdown both target the occurrence's `expiresAt`, which is the end of the
+  booking window.

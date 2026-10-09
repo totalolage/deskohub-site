@@ -30,6 +30,7 @@ export { loadCheckoutStatusPage } from "./checkout-status-page.server";
 export {
   buildSignedPayState,
   getPayStateRestartKind,
+  getSignedPayStateBookedAt,
   getSignedPayStateCheckoutSummary,
   getSignedPayStateSubmittedCodeApplication,
   openPayState,

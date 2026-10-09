@@ -21,8 +21,11 @@ import {
   PromotionCodeUnavailableError,
 } from "@/features/discounts";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { instantStringSchema } from "@/shared/utils/temporal";
 
 mock.module("server-only", () => ({}));
+
+const payStateBookedAt = instantStringSchema.make("2026-06-01T09:58:00.000Z");
 
 const reservation = {
   kind: "cowork" as const,
@@ -47,6 +50,7 @@ const makePayStateToken = async (input?: {
       reservation,
       quote,
       orderId: "reservation-id",
+      bookedAt: payStateBookedAt,
       checkoutSessionId,
       requestedDiscountCode: input?.requestedDiscountCode,
     })
@@ -241,6 +245,11 @@ describe("applyDiscountCodeToPayState", () => {
         locale: "en-US",
         quote,
         submittedCode: "SAVE20",
+      })
+    );
+    expect(scenario.applyDiscountCode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookedAt: Temporal.Instant.from(payStateBookedAt),
       })
     );
     expect(scenario.result.status).toBe("applied");

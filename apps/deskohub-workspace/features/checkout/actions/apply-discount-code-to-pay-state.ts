@@ -4,6 +4,7 @@ import {
   buildFreshCheckoutPayPath,
   CheckoutPricingService,
   CheckoutReferralService,
+  getSignedPayStateBookedAt,
   openPayState,
   PayableReservationService,
   PayStateTokenError,
@@ -114,6 +115,7 @@ export const applyDiscountCodeToPayState = Effect.fn(
     const result = yield* pricing
       .applyDiscountCode({
         ...state,
+        bookedAt: getSignedPayStateBookedAt(state),
         dotyposCustomerId,
         locale: input.locale,
         submittedCode,
@@ -163,6 +165,7 @@ export const applyDiscountCodeToPayState = Effect.fn(
               ...applied,
               locale: input.locale,
               orderId: state.orderId,
+              bookedAt: state.bookedAt,
               checkoutSessionId: state.checkoutSessionId,
               submittedCode,
               submittedCodeDiscountId: applied.submittedCodeDiscountId,
@@ -177,6 +180,7 @@ export const applyDiscountCodeToPayState = Effect.fn(
               ...changed,
               locale: input.locale,
               orderId: state.orderId,
+              bookedAt: state.bookedAt,
               checkoutSessionId: state.checkoutSessionId,
               changedKeys: changed.changedKeys,
               requestedDiscountCode: submittedCode,
