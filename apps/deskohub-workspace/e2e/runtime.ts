@@ -658,6 +658,34 @@ export const redact = (text: string) => {
   return output;
 };
 
+export const redactJsonValue = (
+  value: unknown,
+  sanitizeText: (text: string) => string = redact
+): unknown => {
+  if (typeof value === "string") return sanitizeText(value);
+  if (typeof value === "number") {
+    const text = String(value);
+    const sanitized = sanitizeText(text);
+    return sanitized === text ? value : sanitized;
+  }
+  if (Array.isArray(value))
+    return value.map((item) => redactJsonValue(item, sanitizeText));
+  if (value === null || typeof value !== "object") return value;
+
+  const sanitized: Record<string, unknown> = Object.create(null);
+  for (const [key, item] of Object.entries(value)) {
+    const sanitizedKey = sanitizeText(key);
+    let uniqueKey = sanitizedKey;
+    let ordinal = 2;
+    while (Object.hasOwn(sanitized, uniqueKey)) {
+      uniqueKey = `${sanitizedKey}#${ordinal}`;
+      ordinal += 1;
+    }
+    sanitized[uniqueKey] = redactJsonValue(item, sanitizeText);
+  }
+  return sanitized;
+};
+
 export function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
