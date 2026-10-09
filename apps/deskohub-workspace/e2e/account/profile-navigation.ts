@@ -30,6 +30,8 @@ const persistedProfileSelectionDiagnostics: Readonly<
 > = {
   "button-handler-wait":
     "account_profile_persisted_profile_handler_wait_failed",
+  "panel-hydration-wait":
+    "account_profile_persisted_profile_panel_hydration_wait_failed",
   "native-button-click": "account_profile_persisted_profile_click_failed",
   "selected-landmark-wait":
     "account_profile_persisted_profile_landmark_wait_failed",

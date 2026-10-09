@@ -1,7 +1,10 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { DotyposService } from "@deskohub/dotypos";
+import {
+  DotyposReservationCancelledError,
+  DotyposService,
+} from "@deskohub/dotypos";
 import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { Effect, Layer } from "effect";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
@@ -670,6 +673,96 @@ describe("WorkspacePaidFulfillmentService", () => {
       expect.objectContaining({
         id: "reservation-id",
         failureCode: "fulfillment_completion_failed",
+      })
+    );
+  });
+
+  test("does not confirm or deliver a paid order whose Dotypos hold was cancelled", async () => {
+    const order = {
+      id: "reservation-id",
+      paymentState: "paid",
+      fulfillmentState: "not_started",
+    };
+    const claimed = {
+      ...order,
+      reservationState: "held",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+    };
+    const cancelled = new DotyposReservationCancelledError({
+      reservationId: "dotypos-reservation-id" as never,
+      message: "Dotypos reservation is already cancelled.",
+    });
+    const markReservationConfirmed = mock(() => Effect.void);
+    const markFulfillmentFailed = mock(() => Effect.void);
+
+    const result = await Effect.gen(function* () {
+      const service = yield* WorkspacePaidFulfillmentService;
+      return yield* service
+        .fulfillPaidOrder({ orderId: "reservation-id" })
+        .pipe(Effect.result);
+    }).pipe(
+      Effect.provide(
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
+                markReservationConfirmed,
+                markFulfilled: mock(() =>
+                  Effect.die("a cancelled hold must not be fulfilled")
+                ),
+                markFulfillmentFailed,
+              }),
+              Layer.mock(DotyposService, {
+                confirmReservation: mock(() => Effect.fail(cancelled)),
+              }),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.die("email flow should not start")
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails: mock(() =>
+                  Effect.die("email flow should not start")
+                ),
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.die("access flow should not start")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() =>
+                  Effect.die("invoice processing should not start")
+                ),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toMatchObject({
+        _tag: "WorkspacePaidFulfillmentError",
+        failureCode: "dotypos_reservation_unfulfillable",
+      });
+    }
+    expect(markReservationConfirmed).not.toHaveBeenCalled();
+    expect(markFulfillmentFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "reservation-id",
+        failureCode: "dotypos_reservation_unfulfillable",
       })
     );
   });
