@@ -305,6 +305,14 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   cause was `Cloudinary asset prefix delete failed` (`outcome: failed`, a
   4xx). The retryable-deletion warning now carries its `cause`; read that
   `_tag` instead of the user-facing copy before blaming Dotypos.
+  Provider failure logs deliberately omit the HTTP code, so confirm the quota
+  from concurrent bursts instead: query PostHog logs for `Cloudinary search
+  page failed` across all `service.version` values around the failed
+  deletion. In run 37958123336 (2026-10-09 16:26 UTC) the exact preview made
+  four successful remote-cached searches, while three previews from other
+  branches logged about 200 failed searches in the same minutes. That is an
+  external quota flake: rerun after the hourly window resets instead of
+  changing the deletion flow.
 - A fresh preview database logs `DiscountProviderError` /
   `DiscountDefinitionNotFoundError` during its first E2E run, while instant
   navigation resolves the Calendar sale before fixture seeding has inserted
