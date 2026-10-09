@@ -30,7 +30,7 @@ const cloudinary = {
 };
 
 mock.module("cloudinary", () => ({ v2: cloudinary }));
-const cacheLife = mock((_profile: string) => undefined);
+const cacheLife = mock((_profile: unknown) => undefined);
 mock.module("next/cache", () => ({
   cacheLife,
   cacheTag: () => undefined,
@@ -62,12 +62,16 @@ mock.module("@/shared/backend/workspace-effect", () => ({
 const { getCloudinaryImages } = await import("./get-cloudinary-images.server");
 
 describe("getCloudinaryImages provider failures", () => {
-  test("degrades to no images and caches the failure only briefly", async () => {
+  test("degrades to no images and refreshes within a minute while staying prerenderable", async () => {
     const images = await getCloudinaryImages({ tags: [["gallery"]] });
 
     expect(images).toEqual([]);
     expect(executeAttempts).toBe(1);
-    expect(cacheLife).toHaveBeenCalledWith("seconds");
+    expect(cacheLife).toHaveBeenCalledWith({
+      stale: 30,
+      revalidate: 60,
+      expire: 300,
+    });
   });
 });
 

@@ -16,6 +16,12 @@ import {
   WorkspaceCloudinaryLayer,
 } from "./cloudinary.service";
 
+const cloudinaryFailureCacheLife = {
+  stale: 30,
+  revalidate: 60,
+  expire: 300,
+} as const;
+
 interface GetCloudinaryImagesOptions extends SearchOptions {
   tags: UnnormalizedLogicalExpression<CloudinaryTag>;
 }
@@ -42,7 +48,9 @@ export async function getCloudinaryImages({
   // A Cloudinary outage or Admin API rate limit (HTTP 420) must not fail the
   // page: under Cache Components a throwing "use cache" function fails the
   // prerender even when the caller catches it. The failure is logged by the
-  // runner; serve no photos and keep that result only briefly.
+  // runner; serve no photos and refresh soon. The expiry stays at the
+  // 5-minute prerender threshold so callers without a Suspense boundary
+  // remain part of the static shell instead of becoming dynamic holes.
   return getGalleryImages(expression, {
     maxResults,
     sortBy,
@@ -53,7 +61,7 @@ export async function getCloudinaryImages({
       runWorkspaceEffect("gallery.images.load")
     )
     .catch((): readonly CloudinaryAsset[] => {
-      cacheLife("seconds");
+      cacheLife(cloudinaryFailureCacheLife);
       return [];
     });
 }
