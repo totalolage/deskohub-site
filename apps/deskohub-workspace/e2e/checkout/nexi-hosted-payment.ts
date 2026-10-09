@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 import {
   clickBrowserElement,
   focusBrowserElement,
@@ -7,6 +7,7 @@ import {
   readBrowserTabs,
   readBrowserUrl,
   readInteractiveSnapshot,
+  requireMainFrame,
   runBrowserCommand,
   summarizeHostedPaymentSnapshot,
   switchToBrowserTab,
@@ -91,7 +92,7 @@ export const completeNexiHostedPayment = ({
     addRedaction(NEXI_TEST_CVV, true);
     addRedaction(NEXI_TEST_EXPIRY, true);
 
-    yield* switchToMainFrame(run, session);
+    yield* requireMainFrame(run, session);
     const page: NexiHostedPaymentSession = {
       cardDataRejectionBaseline: countNexiCardDataRejections(
         parseNexiBuildResponses(yield* readBrowserNetworkLog(run, session))
@@ -314,10 +315,35 @@ const fillNexiCardField = (
     return yield* nexiHostedPaymentError("card_entry", label, observed, cause);
   });
 
-// Fills one field inside its hosted-field iframe and verifies the value. The
-// frame switch and the main-frame restore share one scope so an interrupted
-// fill cannot leave the session inside the iframe.
+// Fills one field inside its hosted-field iframe, then requires the session to
+// be back in the main frame: every later decision reads the main document, so
+// a failed restore must not surface later as a missing-field timeout. An
+// interrupted or failed fill still attempts the restore, best effort.
 const fillCardFieldTarget = (
+  page: NexiHostedPaymentSession,
+  target: NexiCardFieldTarget,
+  value: string
+): Effect.Effect<boolean, WorkspaceE2EError> => {
+  if (!target.frameRef) return fillAndVerifyCardField(page, target, value);
+  const restoreBestEffort = switchToMainFrame(page.run, page.session).pipe(
+    Effect.ignore
+  );
+  return Effect.gen(function* () {
+    const exit = yield* Effect.exit(
+      fillAndVerifyCardField(page, target, value).pipe(
+        Effect.onInterrupt(() => restoreBestEffort)
+      )
+    );
+    if (Exit.isFailure(exit)) {
+      yield* restoreBestEffort;
+      return yield* exit;
+    }
+    yield* requireMainFrame(page.run, page.session);
+    return exit.value;
+  });
+};
+
+const fillAndVerifyCardField = (
   page: NexiHostedPaymentSession,
   target: NexiCardFieldTarget,
   value: string
@@ -355,13 +381,7 @@ const fillCardFieldTarget = (
       if (yield* cardFieldHasValue(page, selector)) return true;
     }
     return false;
-  }).pipe(
-    Effect.ensuring(
-      target.frameRef
-        ? switchToMainFrame(page.run, page.session).pipe(Effect.ignore)
-        : Effect.void
-    )
-  );
+  });
 
 const runCardFieldCommand = (
   { run, session }: NexiHostedPaymentSession,
@@ -437,17 +457,33 @@ const activateNexiControl = (
       return;
     }
 
-    if (options.activation === "pointer") {
-      yield* clickBrowserElement(page.run, page.session, found.ref, {
-        timeoutMs: 30_000,
-      });
-    } else {
-      yield* focusBrowserElement(page.run, page.session, found.ref, {
-        timeoutMs: 30_000,
-      });
-      yield* pressBrowserKey(page.run, page.session, "Enter", {
-        timeoutMs: 30_000,
-      });
+    const activation = yield* Effect.exit(
+      options.activation === "pointer"
+        ? clickBrowserElement(page.run, page.session, found.ref, {
+            timeoutMs: 30_000,
+          })
+        : Effect.gen(function* () {
+            yield* focusBrowserElement(page.run, page.session, found.ref, {
+              timeoutMs: 30_000,
+            });
+            yield* pressBrowserKey(page.run, page.session, "Enter", {
+              timeoutMs: 30_000,
+            });
+          })
+    );
+    if (Exit.isFailure(activation)) {
+      // The activation can navigate away from Nexi while its command still
+      // rejects. Never activate again; accept only an observed return.
+      const observed = yield* observeNexiHostedPage(page).pipe(
+        Effect.orElseSucceed(() => undefined)
+      );
+      if (options.skipWhenReturned && observed?.state.kind === "returned") {
+        log(
+          `${label} activation reported an error after returning to checkout status`
+        );
+        return;
+      }
+      return yield* activation;
     }
 
     yield* pollNexiHostedPage(page, {

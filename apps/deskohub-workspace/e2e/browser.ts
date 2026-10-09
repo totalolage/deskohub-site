@@ -687,6 +687,7 @@ const writeTextArtifact = (
     )
   );
 
+// Best-effort switch for cleanup and diagnostics; a failed switch is ignored.
 export const switchToMainFrame = (
   run: Runner,
   session: string
@@ -696,6 +697,28 @@ export const switchToMainFrame = (
     logOutput: false,
     timeoutMs: 30_000,
   }).pipe(Effect.asVoid);
+
+// Fails unless the session is back in the main frame, for callers whose next
+// commands must not run inside an iframe.
+export const requireMainFrame = (
+  run: Runner,
+  session: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand("switch to main frame", run, session, ["frame", "main"], {
+    logOutput: false,
+    timeoutMs: 30_000,
+  }).pipe(
+    Effect.flatMap((result) =>
+      result.exitCode === 0
+        ? Effect.void
+        : Effect.fail(
+            toWorkspaceE2EError(
+              "switch to main frame",
+              new Error(`frame command exited with ${result.exitCode}`)
+            )
+          )
+    )
+  );
 
 export const closeBrowserSession = (
   run: Runner,

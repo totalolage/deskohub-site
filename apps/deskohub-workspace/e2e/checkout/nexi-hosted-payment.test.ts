@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Fiber } from "effect";
 import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -25,17 +25,25 @@ type Phase = "card" | "pay" | "challenge" | "result" | "status" | "error-page";
 // A scripted Nexi hosted payment page behind the browser runner contract,
 // including its allowFailure semantics.
 const makeHostedPage = ({
+  failedMainFrameRestores = 0,
+  firstCardFillSticks = true,
+  hangCardFill = false,
   initialResponses = [],
   onContinue = "advance",
-  firstCardFillSticks = true,
-  snapshotGaps = 0,
+  onReturnPress = "navigate",
   returnAfterChallenge = false,
+  snapshotGaps = 0,
 }: {
+  // Leading `frame main` commands issued from an iframe that fail.
+  readonly failedMainFrameRestores?: number;
+  readonly firstCardFillSticks?: boolean;
+  // The card-number fill never settles until its command is aborted.
+  readonly hangCardFill?: boolean;
   readonly initialResponses?: readonly string[];
   readonly onContinue?: "advance" | "reject" | "error-page" | "stall";
-  readonly firstCardFillSticks?: boolean;
-  readonly snapshotGaps?: number;
+  readonly onReturnPress?: "navigate" | "navigate-and-reject" | "reject";
   readonly returnAfterChallenge?: boolean;
+  readonly snapshotGaps?: number;
 } = {}) => {
   const values = new Map<string, string>();
   const responses = [...initialResponses];
@@ -46,6 +54,11 @@ const makeHostedPage = ({
   let fieldsDisabled = false;
   let cardFills = 0;
   let remainingSnapshotGaps = snapshotGaps;
+  let remainingFailedRestores = failedMainFrameRestores;
+  let markCardFillStarted: () => void = () => undefined;
+  const cardFillStarted = new Promise<void>((resolve) => {
+    markCardFillStarted = resolve;
+  });
 
   const snapshot = () => {
     switch (phase) {
@@ -78,6 +91,14 @@ const makeHostedPage = ({
   const execute = (args: string[]): string => {
     const [command, ...rest] = args;
     if (command === "frame") {
+      if (
+        rest[0] === "main" &&
+        frame !== "main" &&
+        remainingFailedRestores > 0
+      ) {
+        remainingFailedRestores -= 1;
+        throw new Error("Playwright frame target unavailable");
+      }
       frame = rest[0] === "main" ? "main" : (rest[0] ?? "main");
       return "";
     }
@@ -134,7 +155,11 @@ const makeHostedPage = ({
       } else if (phase === "pay" && focused === "@e90") {
         phase = "challenge";
       } else if (phase === "result" && focused === "@e95") {
-        phase = "status";
+        if (onReturnPress !== "reject") phase = "status";
+        if (onReturnPress !== "navigate")
+          throw new Error(
+            "keyboard.press: Execution context was destroyed, most likely because of a navigation"
+          );
       }
       return "";
     }
@@ -160,6 +185,14 @@ const makeHostedPage = ({
   const run: Runner = async (_command, args, options = {}) => {
     const browserArgs = args.slice(2);
     calls.push({ args: browserArgs, frame });
+    if (hangCardFill && browserArgs[0] === "fill" && frame === "@e39") {
+      markCardFillStarted();
+      return new Promise((_, reject) =>
+        options.signal?.addEventListener("abort", () =>
+          reject(new Error("fill aborted"))
+        )
+      );
+    }
     try {
       return { exitCode: 0, stderr: "", stdout: execute(browserArgs) };
     } catch (error) {
@@ -170,6 +203,7 @@ const makeHostedPage = ({
 
   return {
     calls,
+    cardFillStarted,
     get frame() {
       return frame;
     },
@@ -312,4 +346,74 @@ test("tolerates navigation snapshot gaps and a provider return without back-to-s
     ["focus", "@e90"],
     ["click", "@e43"],
   ]);
+});
+
+const pressesOf = (page: ReturnType<typeof makeHostedPage>, ref: string) => {
+  let focused: string | undefined;
+  let presses = 0;
+  for (const { args } of page.calls) {
+    if (args[0] === "focus") focused = args[1];
+    if (args[0] === "press" && focused === ref) presses += 1;
+  }
+  return presses;
+};
+
+test("accepts a back-to-shop activation that navigates while its command rejects", async () => {
+  const page = makeHostedPage({ onReturnPress: "navigate-and-reject" });
+
+  const exit = await completePayment(page);
+
+  expect(Exit.isSuccess(exit)).toBe(true);
+  expect(pressesOf(page, "@e95")).toBe(1);
+  expect(page.calls).toContainEqual({ args: ["tab", "t1"], frame: "main" });
+});
+
+test("fails a rejected back-to-shop activation that never left Nexi without retrying it", async () => {
+  const page = makeHostedPage({ onReturnPress: "reject" });
+
+  const error = failureOf(await completePayment(page));
+
+  expect(error.message).toContain("Execution context was destroyed");
+  expect(pressesOf(page, "@e95")).toBe(1);
+});
+
+test("fails at the field when the main-frame restore after a fill fails", async () => {
+  const page = makeHostedPage({ failedMainFrameRestores: 2 });
+
+  const error = failureOf(await completePayment(page));
+
+  expect(error.operation).toBe("switch to main frame");
+  expect(error.reason).toBeUndefined();
+  expect(page.values.get("@e39")).toBe("4509034543615006");
+  // Nothing after the fill reads the page from inside the iframe.
+  expect(
+    page.calls.filter(
+      ({ args, frame }) => args[0] === "snapshot" && frame !== "main"
+    )
+  ).toEqual([]);
+  expect(page.values.has("@e42")).toBe(false);
+});
+
+test("restores the main frame when a hosted field fill is interrupted", async () => {
+  const page = makeHostedPage({ hangCardFill: true });
+  const fiber = Effect.runFork(
+    completeNexiHostedPayment({
+      data: checkoutData,
+      run: page.run,
+      session: "nexi-test",
+      timeouts: workspaceE2ETimeouts,
+    })
+  );
+
+  await page.cardFillStarted;
+  expect(page.frame).toBe("@e39");
+  await Effect.runPromise(Fiber.interrupt(fiber));
+  const exit = await Effect.runPromise(Fiber.await(fiber));
+
+  expect(Exit.hasInterrupts(exit)).toBe(true);
+  expect(page.frame).toBe("main");
+  expect(page.calls.at(-1)).toEqual({
+    args: ["frame", "main"],
+    frame: "@e39",
+  });
 });
