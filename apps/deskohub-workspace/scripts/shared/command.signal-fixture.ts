@@ -22,3 +22,7 @@ await runCommand(
     timeoutMs: mode === "timeout" ? 60_000 : undefined,
   }
 );
+
+// A group signal can end the command before the caller handles its own copy;
+// stay alive so the caller only ever ends by the signal under test.
+setInterval(() => undefined, 1_000);
