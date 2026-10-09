@@ -284,7 +284,8 @@ describe.skipIf(!testDatabase)(
 
       expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
-        expect(result.failure._tag).toBe("LatePaymentRecoveryStateError");
+        // A distinct rejection lets recovery continue through recreation.
+        expect(result.failure._tag).toBe("OriginalHoldNotReusableError");
       }
       const { reservation, attempt, recoveries } = await readRows(checkout);
       expect(reservation?.paymentState).toBe("expired");
@@ -311,6 +312,9 @@ describe.skipIf(!testDatabase)(
       );
 
       expect(result._tag).toBe("Failure");
+      expect(result).toMatchObject({
+        failure: { _tag: "OriginalHoldNotReusableError" },
+      });
     });
 
     test("refuses to reuse a hold whose cleanup cancellation failed", async () => {
@@ -330,6 +334,9 @@ describe.skipIf(!testDatabase)(
       );
 
       expect(result._tag).toBe("Failure");
+      expect(result).toMatchObject({
+        failure: { _tag: "OriginalHoldNotReusableError" },
+      });
     });
 
     test("reuses a hold whose deadline is still comfortably in the future", async () => {

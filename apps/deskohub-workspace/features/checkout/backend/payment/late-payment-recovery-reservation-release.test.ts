@@ -15,6 +15,7 @@ import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment
 import {
   LatePaymentRecoveryRepository,
   LatePaymentRecoveryStateError,
+  OriginalHoldNotReusableError,
 } from "../repositories/late-payment-recovery.repository";
 import {
   TableAssignmentUnavailableError,
@@ -343,7 +344,33 @@ describe("LatePaymentRecoveryService with an expired or released hold", () => {
     ]);
   });
 
-  test("retries instead of releasing when the hold deadline passes during reuse", async () => {
+  test("continues through release and recreation when the hold deadline passes during reuse", async () => {
+    // 61 s remained at the first check, 59 s at the locked settlement.
+    const harness = makeRecoveryHarness({
+      reservation: currentHeldReservation,
+      originalStatus: "NEW",
+      completeUsingOriginalReservation: () =>
+        Effect.fail(
+          new OriginalHoldNotReusableError({
+            paymentAttemptId: "attempt-id" as never,
+            message: "The hold reached its reuse margin.",
+          })
+        ),
+    });
+
+    const result = await harness.recover();
+
+    expect(result).toMatchObject({ _tag: "Success", success: "recovered" });
+    expect(harness.events).toEqual([
+      "getReservationStatus",
+      "completeUsingOriginalReservation",
+      ...releaseEvents,
+      ...recreationEvents,
+    ]);
+    expect(harness.spies.requireRefund).not.toHaveBeenCalled();
+  });
+
+  test("keeps other settlement conflicts during reuse retryable", async () => {
     const harness = makeRecoveryHarness({
       reservation: currentHeldReservation,
       originalStatus: "NEW",
@@ -352,7 +379,7 @@ describe("LatePaymentRecoveryService with an expired or released hold", () => {
           new LatePaymentRecoveryStateError({
             operation: "settle",
             paymentAttemptId: "attempt-id" as never,
-            message: "expired during reuse",
+            message: "A newer reservation prevents recovery.",
           })
         ),
     });

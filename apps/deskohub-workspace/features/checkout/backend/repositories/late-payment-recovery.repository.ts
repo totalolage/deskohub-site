@@ -35,6 +35,18 @@ export class LatePaymentRecoveryStateError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
+/**
+ * The original hold stopped being reusable (its deadline reached the safety
+ * margin or its local state changed) before the settlement acquired its lock.
+ * Recovery continues by releasing the hold and creating the reservation again.
+ */
+export class OriginalHoldNotReusableError extends Data.TaggedError(
+  "OriginalHoldNotReusableError"
+)<{
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly message: string;
+}> {}
+
 type LatePaymentProviderFacts = {
   /** Absent when the status page's provider verification found the payment. */
   readonly webhookEventId?: NexiWebhookEventId;
@@ -52,6 +64,7 @@ type LatePaymentRecoveryRepositoryError =
   | DiscountClaimError
   | EffectDrizzleQueryError
   | LatePaymentRecoveryStateError
+  | OriginalHoldNotReusableError
   | SqlError;
 
 export interface ILatePaymentRecoveryRepository {
@@ -193,11 +206,11 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 !input.recoveredDotyposReservationId &&
                 !isReusableHold(reservation, Temporal.Now.instant())
               ) {
-                return yield* recoveryStateError(
-                  "settle",
-                  input.paymentAttemptId,
-                  "The original hold may already have been offered as free inventory."
-                );
+                return yield* new OriginalHoldNotReusableError({
+                  paymentAttemptId: input.paymentAttemptId,
+                  message:
+                    "The original hold may already have been offered as free inventory.",
+                });
               }
               if (
                 input.recoveredDotyposReservationId &&

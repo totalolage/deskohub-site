@@ -558,16 +558,27 @@ export class LatePaymentRecoveryService extends Context.Service<
             return "refund_required" as const;
           }
 
-          const newerReservation = yield* recoveries.hasNewerActiveReservation(
+          let newerReservation = yield* recoveries.hasNewerActiveReservation(
             reservation.id
           );
-          const release = () =>
-            releaseOriginalHold({
-              paymentAttemptId: claimed.paymentAttemptId,
-              reservation,
-              originalDotyposReservationId:
-                claimed.originalDotyposReservationId,
-            });
+          // Release from the current row: a concurrent cleanup may have moved
+          // it since this run loaded it.
+          const release = Effect.fn("latePaymentRecovery.releaseCurrentHold")(
+            function* () {
+              const current = yield* reservations.findById(reservation.id);
+              if (!current) {
+                return yield* Effect.die(
+                  "Late-payment recovery reservation disappeared before release."
+                );
+              }
+              return yield* releaseOriginalHold({
+                paymentAttemptId: claimed.paymentAttemptId,
+                reservation: current,
+                originalDotyposReservationId:
+                  claimed.originalDotyposReservationId,
+              });
+            }
+          );
 
           // Only a hold that never passed its deadline was never offered to
           // other customers as free inventory, so only it skips the normal
@@ -580,7 +591,7 @@ export class LatePaymentRecoveryService extends Context.Service<
               claimed.originalDotyposReservationId
             );
             if (status === "NEW" || status === "CONFIRMED") {
-              const reused = yield* recoveries
+              const reuse = yield* recoveries
                 .completeUsingOriginalReservation({
                   paymentAttemptId: claimed.paymentAttemptId,
                   workspaceReservationId: reservation.id,
@@ -589,28 +600,39 @@ export class LatePaymentRecoveryService extends Context.Service<
                   completedAt: Temporal.Now.instant(),
                 })
                 .pipe(
-                  Effect.as(true),
-                  Effect.catchTag("DiscountClaimError", () =>
-                    Effect.succeed(false)
-                  )
+                  Effect.as("reused" as const),
+                  Effect.catchTags({
+                    DiscountClaimError: () =>
+                      Effect.succeed("discount_unavailable" as const),
+                    // The deadline reached the margin between the first check
+                    // and the locked settlement: recreate in this same run
+                    // instead of waiting for the claim timeout.
+                    OriginalHoldNotReusableError: () =>
+                      Effect.succeed("hold_not_reusable" as const),
+                  })
                 );
-              if (reused) {
+              if (reuse === "reused") {
                 yield* fulfillment.fulfillPaidOrder({
                   orderId: reservation.id,
                 });
                 return "recovered" as const;
               }
-              // The accepted discounted price can no longer be honoured: free
-              // the slot before the refund marks the reservation paid.
-              if ((yield* release()) === "review_required") {
-                return "review_required" as const;
+              if (reuse === "discount_unavailable") {
+                // The accepted discounted price can no longer be honoured: free
+                // the slot before the refund marks the reservation paid.
+                if ((yield* release()) === "review_required") {
+                  return "review_required" as const;
+                }
+                yield* settleRefund({
+                  paymentAttemptId: claimed.paymentAttemptId,
+                  workspaceReservationId: reservation.id,
+                  failureCode: "late_payment_discount_unavailable",
+                });
+                return "refund_required" as const;
               }
-              yield* settleRefund({
-                paymentAttemptId: claimed.paymentAttemptId,
-                workspaceReservationId: reservation.id,
-                failureCode: "late_payment_discount_unavailable",
-              });
-              return "refund_required" as const;
+              newerReservation = yield* recoveries.hasNewerActiveReservation(
+                reservation.id
+              );
             }
           }
 
