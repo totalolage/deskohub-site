@@ -47,7 +47,7 @@ export type OperationFilterValues = typeof operationFilterSchema.Encoded;
 
 const optionalReservationStatusField = Schema.Union([
   Schema.Literal(""),
-  Schema.Literals(["in_progress", "complete", "cancelled"]),
+  Schema.Literals(["in_progress", "complete", "cancelled", "needs_refund"]),
 ]);
 
 const optionalReservationTypeField = Schema.Union([

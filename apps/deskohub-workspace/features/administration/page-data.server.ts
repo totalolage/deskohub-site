@@ -53,7 +53,10 @@ const parseDate = (value: string | undefined) => {
 const parseStatus = (
   value: string | undefined
 ): AdministrationReservationListInput["status"] =>
-  value === "in_progress" || value === "complete" || value === "cancelled"
+  value === "in_progress" ||
+  value === "complete" ||
+  value === "cancelled" ||
+  value === "needs_refund"
     ? value
     : undefined;
 
@@ -107,6 +110,14 @@ export const loadAdministrationOverview = async () => {
     return yield* administration.loadOverview(source);
   }).pipe(runAdministration("administration.overview"));
 };
+
+export const loadAdministrationRefundAttention = cache(async () => {
+  await authorizeAdministratorPage();
+  return Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.countReservationsNeedingRefund();
+  }).pipe(runAdministration("administration.refund-attention"));
+});
 
 export const loadAdministrationReservationOverview = async () => {
   return getAdministrationReservationOverview(

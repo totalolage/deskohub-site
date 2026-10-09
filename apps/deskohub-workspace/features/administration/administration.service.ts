@@ -130,6 +130,15 @@ const paymentAttemptStateLabels = {
   expired: "Unsuccessful",
 } as const;
 
+/**
+ * Reservation list filters: the durable workflow status groups plus the
+ * payment-attempt refund work queue shared by late payments and operator
+ * cancellations.
+ */
+export type AdministrationReservationStatusFilter =
+  | Exclude<AdministrationStatusGroup, "attention">
+  | "needs_refund";
+
 export type AdministrationReservationListInput = {
   readonly customerId?: DotyposCustomerId;
   readonly date?: string;
@@ -137,7 +146,7 @@ export type AdministrationReservationListInput = {
   readonly from?: string;
   readonly page?: number;
   readonly sort?: AdministrationReservationSort;
-  readonly status?: Exclude<AdministrationStatusGroup, "attention">;
+  readonly status?: AdministrationReservationStatusFilter;
   readonly to?: string;
   readonly type?: "cowork" | "meeting-room" | "office";
 };
@@ -689,12 +698,15 @@ const getReservationStatusNote = (
 
 const toReservationSummary = ({
   latePayment = false,
+  needsRefund = false,
   recoveryState,
   latestPayment = null,
   live,
   row,
 }: {
   readonly latePayment?: boolean;
+  /** Any payment attempt of the reservation, not only the latest, needs a refund. */
+  readonly needsRefund?: boolean;
   readonly recoveryState?: LatePaymentRecoveryState;
   readonly latestPayment?: AdministrationPaymentAttempt | null;
   readonly live: LiveReservationDetails;
@@ -725,7 +737,7 @@ const toReservationSummary = ({
       reservationState: row.reservationState,
     }),
     statusNote:
-      latestPayment?.refundState === "required"
+      needsRefund || latestPayment?.refundState === "required"
         ? "Needs refund"
         : getReservationStatusNote(row, live, latePayment, recoveryState),
     createdAt: toIsoString(row.createdAt),
@@ -834,9 +846,18 @@ const successfulReservationCount =
     Number
   );
 
+const needsRefundCondition = sql`exists (
+  select 1 from ${paymentAttempts}
+  where ${paymentAttempts.workspaceReservationId} = ${workspaceReservations.id}
+    and ${paymentAttempts.refundState} = 'required'
+)`;
+
 const statusCondition = (
-  status: Exclude<AdministrationStatusGroup, "attention">
+  status: AdministrationReservationStatusFilter
 ): SQL => {
+  if (status === "needs_refund") {
+    return needsRefundCondition;
+  }
   if (status === "complete") {
     return successfulReservationCondition;
   }
@@ -1263,6 +1284,11 @@ export class AdministrationService extends Context.Service<
     readonly loadOverview: (
       source: AdministrationOverviewSource
     ) => Effect.Effect<AdministrationOverview, unknown>;
+    /** Reservations with at least one paid Nexi attempt awaiting refund work. */
+    readonly countReservationsNeedingRefund: () => Effect.Effect<
+      number,
+      unknown
+    >;
     readonly listReservations: (
       input: AdministrationReservationListInput
     ) => Effect.Effect<
@@ -1534,6 +1560,13 @@ export class AdministrationService extends Context.Service<
           const latePaymentReservationIds = new Set(
             latePaymentRows.map(({ reservationId }) => reservationId)
           );
+          const refundReservationIds = new Set<string>(
+            attemptRows.flatMap((attempt) =>
+              attempt.refundState === "required"
+                ? [attempt.workspaceReservationId]
+                : []
+            )
+          );
           const recoveryByReservation = new Map(
             recoveryRows.map((recovery) => [recovery.reservationId, recovery])
           );
@@ -1559,6 +1592,7 @@ export class AdministrationService extends Context.Service<
                 ? recoveryByReservation.get(row.id)?.state === "refund_required"
                 : latePaymentReservationIds.has(row.id),
               recoveryState: recoveryByReservation.get(row.id)?.state,
+              needsRefund: refundReservationIds.has(row.id),
               live,
               row,
             })
@@ -1650,6 +1684,18 @@ export class AdministrationService extends Context.Service<
               }).pipe(Effect.as(null));
             })
           );
+      });
+
+      const countReservationsNeedingRefund = Effect.fn(
+        "AdministrationService.countReservationsNeedingRefund"
+      )(function* () {
+        const [row] = yield* db
+          .select({
+            value: countDistinct(paymentAttempts.workspaceReservationId),
+          })
+          .from(paymentAttempts)
+          .where(eq(paymentAttempts.refundState, "required"));
+        return Number(row?.value ?? 0);
       });
 
       const listReservations = Effect.fn(
@@ -2952,6 +2998,7 @@ export class AdministrationService extends Context.Service<
       return {
         loadOverviewSource,
         loadOverview,
+        countReservationsNeedingRefund,
         listReservations,
         loadReservation,
         loadReservationBreadcrumbLabel,
