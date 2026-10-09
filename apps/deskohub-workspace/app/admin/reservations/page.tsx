@@ -117,7 +117,9 @@ export async function ReservationsAdministrationContent({
         count={result.total}
         filters={
           <ReservationsAdministrationFilterForm
-            defaultFrom={getAdministrationReservationListDefaultDateRange().from}
+            defaultFrom={
+              getAdministrationReservationListDefaultDateRange().from
+            }
             input={input}
             shortcuts={getAdministrationReservationDateShortcuts()}
           />
