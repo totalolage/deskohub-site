@@ -207,6 +207,8 @@ One row per payment attempt. Positive totals create Nexi HPP/session attempts. E
 | `security_token` | text | no | Nexi HPP security token. Short-lived non-PII. |
 | `state` | text enum | yes | Attempt-level payment state. |
 | `refund_state` | text enum | yes | Refund work state, separate from successful settlement. |
+| `refunded_amount_value` | integer | no | Sum of successful Nexi refunds in the attempt's scaled units. Set only while `refund_state = 'refunded'`. |
+| `refunded_at` | timestamptz | no | Latest successful Nexi refund time, or the reconciliation time when Nexi omits it. Set only while `refund_state = 'refunded'`. |
 | `amount_value` | integer | yes | Expected payment amount in scaled integer form. |
 | `amount_exponent` | integer | yes | Currency exponent used for amount verification. |
 | `currency` | text | yes | Uppercase ISO currency code. |
@@ -346,7 +348,10 @@ Attempt-level `payment_attempts.state` values:
 Attempt-level `payment_attempts.refund_state` remains separate from settlement state:
 
 - `not_required`: no operator refund work is pending.
-- `required`: the paid Nexi attempt needs operator refund work, whether caused by an operator cancellation or an unrecoverable late payment; the payment remains truthfully `paid` until a separate refund workflow is completed.
+- `required`: the paid Nexi attempt needs operator refund work, whether caused by an operator cancellation or an unrecoverable late payment; the payment remains truthfully `paid`.
+- `refunded`: Nexi reports at least one successful refund on the paid attempt's order. `refunded_amount_value` and `refunded_at` record the refund total and time; a partial refund still clears the refund work, and administration shows the partial amount. The attempt state stays `paid`.
+
+Refund reconciliation reads `GET /orders/{orderId}` and counts `REFUND` operations whose result is `EXECUTED` or `REFUNDED`. It runs when Nexi sends a refund notification for the order and in the daily `/api/cron/workspace/payment-refunds` batch over the oldest `required` attempts. Recording is monotonic: a smaller or equal total is `unchanged`, and an attempt that is not a paid Nexi attempt is `not_applicable`. A refund recorded on a `not_required` paid attempt is kept, so a direct back-office refund of a fulfilled booking is still visible. Late-payment settlement into a refund outcome preserves an existing `refunded` state instead of reopening it.
 
 Use `payment_attempts.refund_state` as the single refund-work source of truth. Source-specific recovery rows may retain the reason and workflow outcome, but any transition to their refund-required outcome must mark the same payment attempt `required` atomically rather than create a competing refund queue.
 
@@ -714,7 +719,7 @@ sequenceDiagram
 | Expired unpaid hold | `reservation_state = 'held' and payment_state <> 'paid' and reservation_hold_expires_at <= now()` | Cancel Dotypos hold. |
 | Cancellation failed | `reservation_state = 'cancellation_failed'` | Retry Dotypos cancellation. |
 | Late payment | `late_payment_recoveries.state in ('pending', 'processing')` | Queue recovery: reuse a current hold, otherwise release it and run normal reservation creation. |
-| Refund work | `payment_attempts.refund_state = 'required'` | Surface in the Admin UI refund banner and `needs_refund` filter; refunds are issued manually. |
+| Refund work | `payment_attempts.refund_state = 'required'` | Surface in the Admin UI refund banner and `needs_refund` filter; operators refund in the Nexi back office, and the Nexi refund notification or the daily payment-refunds cron records the refund. |
 | Duplicate webhook | Existing `webhook_events.event_id` | Return duplicate/accepted response without reapplying side effects. |
 
 ## Live Test Safety Checklist
