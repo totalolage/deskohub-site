@@ -107,7 +107,9 @@ const makeHttpHarness = (
       url.origin === "https://api.vercel.com" &&
       url.pathname === `/v13/deployments/${expectedHost}`
     ) {
-      const payload = await deploymentPayload;
+      const payload = await (typeof deploymentPayload === "function"
+        ? deploymentPayload()
+        : deploymentPayload);
       return payload instanceof Response
         ? payload.clone()
         : Response.json(payload);
@@ -372,6 +374,157 @@ describe("workspace e2e Vercel log retrieval", () => {
     ].join(" ");
     expect(failureText).not.toContain(privateBody);
     expect(failureText).not.toContain("private-value");
+  });
+
+  test("retries a transient history gateway failure within the retrieval deadline", async () => {
+    const { requests, result } = makeRetrieval((_request, call) =>
+      call === 0
+        ? new Response("gateway timeout", { status: 504 })
+        : Response.json(
+            page([
+              row("req-after-gateway-timeout", [
+                log(previewE2ELine(magicLink("after-gateway-timeout"))),
+              ]),
+            ])
+          )
+    );
+
+    expect(await result).toBe(magicLink("after-gateway-timeout"));
+    expect(
+      requests.filter(
+        (request) => new URL(request.url).pathname === "/api/logs/request-logs"
+      )
+    ).toHaveLength(2);
+  });
+
+  test("reports the last transient provider failure when the deadline expires", async () => {
+    const { requests, result } = makeRetrieval(
+      () => new Response("bad gateway", { status: 502 }),
+      { deadlineAfterMs: 60 }
+    );
+
+    const failure = await captureFailure(result);
+    expect(failure).toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      message: "query Vercel preview runtime logs failed (HTTP 502)",
+      operation: "query Vercel preview runtime logs",
+    });
+    expect(
+      requests.filter(
+        (request) => new URL(request.url).pathname === "/api/logs/request-logs"
+      ).length
+    ).toBeGreaterThan(1);
+  });
+
+  test("retries transient deployment metadata failures within the retrieval deadline", async () => {
+    let metadataCalls = 0;
+    const harness = makeHttpHarness(
+      () =>
+        Response.json(
+          page([
+            row("req-after-metadata-retry", [
+              log(previewE2ELine(magicLink("after-metadata-retry"))),
+            ]),
+          ])
+        ),
+      () => {
+        metadataCalls += 1;
+        return metadataCalls === 1
+          ? new Response("unavailable", { status: 503 })
+          : Response.json(deployment);
+      }
+    );
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(config);
+          return yield* previewLogs.retrieveMagicLink({
+            callbackPath,
+            deadlineAfterMs: 500,
+            pollIntervalMs: 5,
+            recipient,
+            startedAt: new Date("2026-10-01T12:00:00.000Z"),
+          });
+        })
+      ).pipe(Effect.provide(harness.layer))
+    );
+
+    expect(result).toBe(magicLink("after-metadata-retry"));
+    expect(metadataCalls).toBe(2);
+  });
+
+  test("reports an unobserved entry when the deadline clips a request after history answered", async () => {
+    const { result } = makeRetrieval(
+      (_request, call) =>
+        call === 0
+          ? Response.json(page([]))
+          : new Response(new ReadableStream({ start() {} })),
+      { deadlineAfterMs: 60 }
+    );
+
+    const failure = await captureFailure(result);
+    expect(failure).toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_not_observed",
+      operation: "poll Vercel preview runtime logs",
+    });
+  });
+
+  test("retries a transient gateway failure while listing baseline entries", async () => {
+    const harness = makeHttpHarness((_request, call) =>
+      call === 0
+        ? new Response("gateway timeout", { status: 504 })
+        : Response.json(
+            page([
+              row("req-baseline", [log(previewE2ELine(magicLink("baseline")))]),
+            ])
+          )
+    );
+
+    const baseline = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(config);
+          return yield* previewLogs.listSyntheticLogEntryIds({
+            recipient,
+            startedAt: new Date("2026-10-01T12:00:00.000Z"),
+          });
+        })
+      ).pipe(Effect.provide(harness.layer))
+    );
+
+    expect(baseline).toEqual(["req-baseline:0"]);
+  });
+
+  test("keeps non-transient baseline failures terminal", async () => {
+    const harness = makeHttpHarness(
+      () => new Response("forbidden", { status: 403 })
+    );
+
+    const failure = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(config);
+          return yield* previewLogs
+            .listSyntheticLogEntryIds({
+              recipient,
+              startedAt: new Date("2026-10-01T12:00:00.000Z"),
+            })
+            .pipe(Effect.flip);
+        })
+      ).pipe(Effect.provide(harness.layer))
+    );
+
+    expect(failure).toMatchObject({
+      diagnosticCode: "auth_delivery_message_retrieve_failed",
+      message: "query Vercel preview runtime logs failed (HTTP 403)",
+    });
+    expect(
+      harness.requests.filter(
+        (request) => new URL(request.url).pathname === "/api/logs/request-logs"
+      )
+    ).toHaveLength(1);
   });
 
   test("discards transport failure details", async () => {

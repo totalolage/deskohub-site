@@ -1151,6 +1151,25 @@ export const markFulfillmentFailedForE2E = (
     );
   });
 
+const terminalUnpaidPaymentStates: ReadonlySet<string> = new Set([
+  "failed",
+  "cancelled",
+  "expired",
+]);
+
+export const getPreviewFulfillmentMarkerDiagnosticCode = (
+  row: CheckoutRow | undefined
+): WorkspaceE2EDiagnosticCode | undefined => {
+  if (!row) return undefined;
+  if (terminalUnpaidPaymentStates.has(row.payment_state)) {
+    return "checkout_payment_terminal_before_fulfillment";
+  }
+  if (row.fulfillment_state === "failed") {
+    return "checkout_fulfillment_failed_before_marker";
+  }
+  return undefined;
+};
+
 export const markPreviewFulfillmentDeliveredForE2E = (
   config: DatasourceConfig,
   orderId: WorkspaceReservationId
@@ -1182,6 +1201,17 @@ export const markPreviewFulfillmentDeliveredForE2E = (
 
         if (rows[0]?.id !== orderId) {
           const current = yield* readCheckoutRowFromDatabase(db, orderId);
+          const diagnosticCode =
+            getPreviewFulfillmentMarkerDiagnosticCode(current);
+          if (diagnosticCode) {
+            return yield* workspaceE2EError(
+              `Checkout ${orderId} can no longer reach fulfillment (payment ${current?.payment_state}, fulfillment ${current?.fulfillment_state})`,
+              {
+                diagnosticCode,
+                operation: "mark preview fulfillment delivered",
+              }
+            );
+          }
           return current?.fulfillment_state === "fulfilled"
             ? current
             : undefined;

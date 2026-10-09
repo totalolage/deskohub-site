@@ -1,7 +1,6 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { Schema } from "effect";
 import { Loader2 } from "lucide-react";
 import type { FormEvent } from "react";
@@ -38,29 +37,26 @@ const getClientReadySnapshot = () => true;
 const getServerClientReadySnapshot = () => false;
 
 const createSignInFormSchema = (locale: Locale) =>
-  Schema.toStandardSchemaV1(
-    Schema.Struct({
-      email: Schema.Trim.check(
-        Schema.isNonEmpty({
-          message: m.contactValidationEmailRequired({}, { locale }),
-        }),
-        Schema.isMaxLength(signInEmailMaximumLength, {
-          message: m.contactValidationEmailMaximum(
-            { max: signInEmailMaximumLength },
-            { locale }
-          ),
-        }),
-        Schema.makeFilter((value) => isEmail(value), {
-          message: m.contactValidationEmailInvalid({}, { locale }),
-        })
-      ),
-    }),
-    { parseOptions: { errors: "all" } }
-  );
+  Schema.Struct({
+    email: Schema.Trim.check(
+      Schema.isNonEmpty({
+        message: m.contactValidationEmailRequired({}, { locale }),
+      }),
+      Schema.isMaxLength(signInEmailMaximumLength, {
+        message: m.contactValidationEmailMaximum(
+          { max: signInEmailMaximumLength },
+          { locale }
+        ),
+      }),
+      Schema.makeFilter((value) => isEmail(value), {
+        message: m.contactValidationEmailInvalid({}, { locale }),
+      })
+    ),
+  });
 
 type SignInFormSchema = ReturnType<typeof createSignInFormSchema>;
-type SignInFormInput = StandardSchemaV1.InferInput<SignInFormSchema>;
-type SignInFormValues = StandardSchemaV1.InferOutput<SignInFormSchema>;
+type SignInFormInput = SignInFormSchema["Encoded"];
+type SignInFormValues = SignInFormSchema["Type"];
 
 export function SignInCard({ locale }: SignInCardProps) {
   const [requested, setRequested] = useState(false);
@@ -80,7 +76,7 @@ export function SignInCard({ locale }: SignInCardProps) {
     defaultValues: { email: "" },
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(signInFormSchema),
+    resolver: effectSchemaResolver(signInFormSchema),
   });
 
   useEffect(() => authReturn.cancel, [authReturn]);

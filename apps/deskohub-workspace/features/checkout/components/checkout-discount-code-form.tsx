@@ -1,6 +1,6 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { Schema } from "effect";
 import { AlertTriangle } from "lucide-react";
 import { type FormEvent, useEffect, useRef } from "react";
@@ -14,16 +14,12 @@ import { Label } from "@/shared/components/ui/label";
 import { CheckoutDiscountCodeSubmitButton } from "./checkout-discount-code-submit-button";
 import { DiscountRejectionAnalytics } from "./discount-rejection-analytics";
 
-const checkoutDiscountCodeFormInputSchema = Schema.Struct({
+const checkoutDiscountCodeFormSchema = Schema.Struct({
   submittedCode: Schema.String,
 });
 
-const checkoutDiscountCodeFormSchema = Schema.toStandardSchemaV1(
-  checkoutDiscountCodeFormInputSchema
-);
-
 type CheckoutDiscountCodeFormValues =
-  typeof checkoutDiscountCodeFormInputSchema.Type;
+  typeof checkoutDiscountCodeFormSchema.Type;
 
 type CheckoutDiscountCodeFormProps = {
   readonly appliedAdjustment?: DiscountAdjustment;
@@ -47,7 +43,7 @@ export function CheckoutDiscountCodeForm({
   const form = useForm<CheckoutDiscountCodeFormValues>({
     defaultValues: { submittedCode: defaultCode ?? "" },
     mode: "onSubmit",
-    resolver: standardSchemaResolver(checkoutDiscountCodeFormSchema),
+    resolver: effectSchemaResolver(checkoutDiscountCodeFormSchema),
   });
   const { isSubmitting } = form.formState;
   const previousDefaultCode = useRef(defaultCode);

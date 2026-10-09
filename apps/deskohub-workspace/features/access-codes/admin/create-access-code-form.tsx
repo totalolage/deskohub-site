@@ -1,13 +1,12 @@
 "use client";
 
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import type {
   AdministrationStandaloneAccessCodeAttemptIdType,
   AdministrationStandaloneAccessCodeCleanupTargetType,
   AdministrationStandaloneAccessCodeCreationOutcome,
 } from "@deskohub/workspace-admin-api";
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Result, Schema } from "effect";
 import { Plus } from "lucide-react";
 import { useRef, useState } from "react";
@@ -71,24 +70,18 @@ const focusOnMount = (node: HTMLDivElement | null) => {
   node?.focus();
 };
 
-const cleanupConfirmationFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    providerCredentialRemoved: Schema.Boolean.check(
-      Schema.makeFilter(
-        (confirmed) => confirmed || m.reservationBillingFieldRequired()
-      )
-    ),
-  }),
-  { parseOptions: { errors: "all" } }
-);
-
-type CleanupConfirmationFormSchema = typeof cleanupConfirmationFormSchema;
+const cleanupConfirmationFormSchema = Schema.Struct({
+  providerCredentialRemoved: Schema.Boolean.check(
+    Schema.makeFilter(
+      (confirmed) => confirmed || m.reservationBillingFieldRequired()
+    )
+  ),
+});
 
 type CleanupConfirmationFormInput =
-  StandardSchemaV1.InferInput<CleanupConfirmationFormSchema>;
+  typeof cleanupConfirmationFormSchema.Encoded;
 
-type CleanupConfirmationFormValues =
-  StandardSchemaV1.InferOutput<CleanupConfirmationFormSchema>;
+type CleanupConfirmationFormValues = typeof cleanupConfirmationFormSchema.Type;
 
 const cleanupConfirmationFormDefaults = {
   providerCredentialRemoved: false,
@@ -115,7 +108,7 @@ export function CreateStandaloneAccessCodeForm() {
     defaultValues: createStandaloneAccessCodeFormDefaults,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(createStandaloneAccessCodeFormSchema),
+    resolver: effectSchemaResolver(createStandaloneAccessCodeFormSchema),
   });
   const [watchedStartsAt, watchedEndsAt] = useWatch({
     control: form.control,
@@ -476,7 +469,7 @@ function CleanupConfirmationForm({
     defaultValues: cleanupConfirmationFormDefaults,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(cleanupConfirmationFormSchema),
+    resolver: effectSchemaResolver(cleanupConfirmationFormSchema),
   });
   const cleanupConfirmed = useWatch({
     control: cleanupForm.control,

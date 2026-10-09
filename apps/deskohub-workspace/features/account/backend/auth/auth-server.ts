@@ -207,13 +207,5 @@ export const workspaceBeforeDeleteUser = (accountId: CustomerAccountId) =>
   })(
     Effect.flatMap(CustomerAccountDeletionService, (service) =>
       service.requestDeletion(accountId)
-    ).pipe(
-      Effect.provide(CustomerAccountDeletionService.Live),
-      Effect.tapError(() =>
-        Effect.logWarning(
-          "Customer account deletion: Dotypos expiration failed; deletion stays retryable.",
-          { code: "account.deletion.retryable" }
-        )
-      )
-    )
+    ).pipe(Effect.provide(CustomerAccountDeletionService.Live))
   );

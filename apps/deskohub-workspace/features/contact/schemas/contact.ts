@@ -1,4 +1,3 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
 import { isValidPhoneNumber } from "libphonenumber-js";
 import isEmail from "validator/lib/isEmail.js";
@@ -81,18 +80,12 @@ const createContactSchema = (locale: Locale) =>
     ),
   });
 
-const contactFormStandardSchema = Schema.toStandardSchemaV1(
-  createContactSchema("en-US")
-);
+type ContactSchema = ReturnType<typeof createContactSchema>;
 
 export const getContactSchema = createContactSchema;
 
-export type ContactFormValues = StandardSchemaV1.InferInput<
-  typeof contactFormStandardSchema
->;
-export type ContactData = StandardSchemaV1.InferOutput<
-  typeof contactFormStandardSchema
->;
+export type ContactFormValues = ContactSchema["Encoded"];
+export type ContactData = ContactSchema["Type"];
 
 export const contactDefaultValues: ContactFormValues = {
   name: "",

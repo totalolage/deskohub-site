@@ -1,8 +1,7 @@
 "use client";
 
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { CliAuthenticationCode } from "@deskohub/workspace-admin-api";
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
 import { useRef, useTransition } from "react";
 import { useForm } from "react-hook-form";
@@ -13,18 +12,11 @@ const approveCliAuthenticationFormSchema = Schema.Struct({
   code: CliAuthenticationCode,
 });
 
-const approveCliAuthenticationFormStandardSchema = Schema.toStandardSchemaV1(
-  approveCliAuthenticationFormSchema,
-  { parseOptions: { errors: "all", onExcessProperty: "error" } }
-);
+type ApproveCliAuthenticationFormInput =
+  typeof approveCliAuthenticationFormSchema.Encoded;
 
-type ApproveCliAuthenticationFormInput = StandardSchemaV1.InferInput<
-  typeof approveCliAuthenticationFormStandardSchema
->;
-
-type ApproveCliAuthenticationFormValues = StandardSchemaV1.InferOutput<
-  typeof approveCliAuthenticationFormStandardSchema
->;
+type ApproveCliAuthenticationFormValues =
+  typeof approveCliAuthenticationFormSchema.Type;
 
 export function ApproveCliAuthenticationForm({
   code,
@@ -41,9 +33,9 @@ export function ApproveCliAuthenticationForm({
     defaultValues: { code: code ?? "" },
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(
-      approveCliAuthenticationFormStandardSchema
-    ),
+    resolver: effectSchemaResolver(approveCliAuthenticationFormSchema, {
+      onExcessProperty: "error",
+    }),
   });
 
   return (

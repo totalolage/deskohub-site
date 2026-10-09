@@ -24,7 +24,57 @@ import { workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import type { WorkspaceE2ERunId } from "../run-identifiers";
 import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "../types";
-import { runWorkspaceE2ECleanupWithPreparedCandidates } from "./cleanup-plan";
+import {
+  type E2ETelemetryObservation,
+  makeE2ETelemetryMock,
+} from "../services/telemetry.mock";
+import {
+  runWorkspaceE2ECleanupWithPreparedCandidates,
+  traceWorkspaceE2ESuiteCleanup,
+} from "./cleanup-plan";
+
+test("records a failed suite-cleanup phase after reconciling the account lane", async () => {
+  const observations: E2ETelemetryObservation[] = [];
+  const checkoutError = workspaceE2EError(
+    "wait for Dotypos cancellation convergence failed"
+  );
+  let accountLaneReconciled = false;
+
+  const exit = await Effect.runPromiseExit(
+    traceWorkspaceE2ESuiteCleanup({
+      cleanupCheckout: Effect.succeed(checkoutError),
+      reconcileAccountLane: Effect.sync(() => {
+        accountLaneReconciled = true;
+      }),
+    }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
+  );
+
+  expect(exit._tag).toBe("Failure");
+  expect(accountLaneReconciled).toBe(true);
+  expect(observations).toEqual([
+    {
+      failureKind: "error",
+      outcome: "failed",
+      phaseId: "suite-cleanup",
+      scope: "phase",
+    },
+  ]);
+});
+
+test("records a passed suite-cleanup phase when checkout cleanup succeeds", async () => {
+  const observations: E2ETelemetryObservation[] = [];
+
+  await Effect.runPromise(
+    traceWorkspaceE2ESuiteCleanup({
+      cleanupCheckout: Effect.succeed(undefined),
+      reconcileAccountLane: Effect.void,
+    }).pipe(Effect.provide(makeE2ETelemetryMock(observations)))
+  );
+
+  expect(observations).toEqual([
+    { outcome: "passed", phaseId: "suite-cleanup", scope: "phase" },
+  ]);
+});
 
 test("does not start checkout cleanup when account journal validation fails", async () => {
   let checkoutCleanupStarted = false;
