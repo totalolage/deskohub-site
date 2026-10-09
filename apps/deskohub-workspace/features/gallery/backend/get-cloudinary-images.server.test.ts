@@ -8,6 +8,7 @@ const providerMessage =
   "with api_secret=synthetic-cloudinary-secret-sentinel";
 
 let executeAttempts = 0;
+const cacheLife = mock((_profile: string) => undefined);
 
 const cloudinary = {
   config: mock(() => undefined),
@@ -30,6 +31,7 @@ const cloudinary = {
 
 mock.module("cloudinary", () => ({ v2: cloudinary }));
 mock.module("next/cache", () => ({
+  cacheLife,
   cacheTag: () => undefined,
   revalidateTag: () => undefined,
 }));
@@ -90,5 +92,15 @@ describe("getCloudinaryImages escaping failures", () => {
     expect(stringified).not.toContain("cloudinary-account-id-sentinel");
     expect(stringified).not.toContain("synthetic-cloudinary-secret-sentinel");
     expect(stringified).not.toContain("api_secret");
+  });
+});
+
+describe("getCloudinaryImages caching", () => {
+  test("uses the max cache life because the Cloudinary webhook revalidates its tags", async () => {
+    cacheLife.mockClear();
+
+    await getCloudinaryImages({ tags: [["gallery"]] }).catch(() => undefined);
+
+    expect(cacheLife).toHaveBeenCalledWith("max");
   });
 });
