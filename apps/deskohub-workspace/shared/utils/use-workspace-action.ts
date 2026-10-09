@@ -36,8 +36,23 @@ export function useWorkspaceAction<
   safeActionFn: SingleInputActionFn<ServerError, Schema, ShapedErrors, Data>,
   opts: UseWorkspaceActionOptions<ServerError, Schema, ShapedErrors, Data>
 ): UseActionHookReturn<ServerError, Schema, ShapedErrors, Data> {
-  const { actionName: _actionName, onTransportError, ...hookOptions } = opts;
-  const action = useAction(safeActionFn, hookOptions);
+  const {
+    actionName: _actionName,
+    onError,
+    onTransportError,
+    ...hookOptions
+  } = opts;
+  const action = useAction(safeActionFn, {
+    ...hookOptions,
+    ...(onError && {
+      onError: (args: Parameters<typeof onError>[0]) => {
+        // A rejected action call is already reported through onTransportError,
+        // and this later callback would overwrite that transport message.
+        if (onTransportError && isTransportOnlyError(args.error)) return;
+        return onError(args);
+      },
+    }),
+  });
 
   const handleTransportError = (
     cause: unknown,
@@ -72,3 +87,12 @@ export function useWorkspaceAction<
     executeAsync,
   };
 }
+
+const isTransportOnlyError = (error: {
+  readonly serverError?: unknown;
+  readonly thrownError?: Error;
+  readonly validationErrors?: unknown;
+}) =>
+  error.thrownError !== undefined &&
+  error.serverError === undefined &&
+  error.validationErrors === undefined;
