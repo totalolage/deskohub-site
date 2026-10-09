@@ -4,7 +4,6 @@ import { Effect } from "effect";
 import { connection } from "next/server";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import type { Locale } from "@/features/i18n";
-import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import type { ActiveSale } from "./contracts";
@@ -35,12 +34,7 @@ async function loadActivePublicSales(input: {
   await connection();
 
   return CalendarDiscountProvider.pipe(
-    Effect.flatMap((provider) =>
-      provider.discoverActiveSales({
-        ...input,
-        currentDate: getCurrentWorkspaceDate(),
-      })
-    ),
+    Effect.flatMap((provider) => provider.discoverActiveSales(input)),
     Effect.tapError((cause) =>
       logDiscountResolutionFailure({
         cause,

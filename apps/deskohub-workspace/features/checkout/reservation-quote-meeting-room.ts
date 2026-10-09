@@ -30,7 +30,7 @@ export type CanonicalMeetingRoomReservation = {
 };
 
 export const getMeetingRoomReservationQuote = (
-  reservation: MeetingRoomReservationPricingInput,
+  reservation: Pick<MeetingRoomReservationPricingInput, "duration">,
   options: {
     readonly discountQuote?: DiscountQuote;
   } = {}
@@ -66,7 +66,10 @@ export const getMeetingRoomReservationQuote = (
 };
 
 export const getCanonicalMeetingRoomReservation = (
-  reservation: MeetingRoomReservationPricingInput
+  reservation: Pick<
+    MeetingRoomReservationPricingInput,
+    "duration" | "reservationDate"
+  >
 ): CanonicalMeetingRoomReservation => ({
   kind: "meeting-room" as const,
   duration: reservation.duration,

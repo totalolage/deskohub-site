@@ -6,7 +6,10 @@ import {
   meetingRoomReservationDurationKeySchema,
   meetingRoomReservationDurationSchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
-import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
+import {
+  getMeetingRoomLastServiceDate,
+  getMeetingRoomReservationInterval,
+} from "@/features/reservation/meeting-room-reservation-time";
 import {
   defaultReservationBillingSelection,
   normalizedReservationBillingSelectionSchema,
@@ -127,10 +130,24 @@ export const meetingRoomReservationPricingInputSchema = Schema.Struct({
   kind: Schema.Literal(meetingRoomReservationKind),
   duration: meetingRoomReservationDurationSchema,
   reservationDate: plainDateStringSchema,
-}).annotate({
-  identifier: "MeetingRoomReservationPricingInput",
-  description: "The complete set of inputs that can affect meeting-room price.",
-});
+  /** Last Prague date the booking occupies; calendar sales depend on it. */
+  lastServiceDate: plainDateStringSchema,
+})
+  .check(
+    Schema.makeFilter(
+      ({ lastServiceDate, reservationDate }) =>
+        Temporal.PlainDate.compare(lastServiceDate, reservationDate) >= 0 &&
+        Temporal.PlainDate.compare(
+          lastServiceDate,
+          Temporal.PlainDate.from(reservationDate).add({ days: 1 })
+        ) <= 0
+    )
+  )
+  .annotate({
+    identifier: "MeetingRoomReservationPricingInput",
+    description:
+      "The complete set of inputs that can affect meeting-room price.",
+  });
 
 export type MeetingRoomReservationPricingInput =
   typeof meetingRoomReservationPricingInputSchema.Type;
@@ -160,6 +177,7 @@ export const getMeetingRoomAdvertisedPriceReservation = (
       kind: meetingRoomReservationKind,
       duration: reservation.duration,
       reservationDate: reservation.reservationDate,
+      lastServiceDate: getMeetingRoomLastServiceDate(reservation),
     },
   });
 

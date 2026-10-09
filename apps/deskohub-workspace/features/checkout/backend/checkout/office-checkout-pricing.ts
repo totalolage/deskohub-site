@@ -81,7 +81,7 @@ const getOfficePricingContext = Effect.fn(
     discountInput: {
       product: getOfficeReservationProductIdentity(reservation),
       discountableSubtotal: productItem.amount,
-      reservationDate: reservation.startsOn,
+      lastServiceDate: reservation.endsOn,
     },
   };
 });
