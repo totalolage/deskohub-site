@@ -7,7 +7,7 @@ import {
 } from "@deskohub/cloudinary";
 import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
-import { cacheTag } from "next/cache";
+import { cacheLife, cacheTag } from "next/cache";
 import { env } from "@/env";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
@@ -28,6 +28,7 @@ export async function getCloudinaryImages({
   sortDirection,
 }: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
   "use cache";
+  cacheLife("max");
   const expression = normalizeExpression(tags);
   // Empty or negative-only groups let Cloudinary search the whole cloud.
   if (
