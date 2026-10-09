@@ -280,6 +280,12 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   the deployment's Vercel request logs for `/en-US`. Gallery search uses
   `"use cache: remote"` so cold serverless instances share results instead of
   re-searching Cloudinary; the Cloudinary webhook still revalidates its tags.
+  With Cache Components, a `"use cache"` function that rejects during a
+  build-time prerender fails the whole build, even when the page catches the
+  rejection (the PR #497 preview build failed on `/en-US/meeting-room` with a
+  420). Absorb decorative provider failures inside the cache scope with a
+  short `cacheLife("publicContent")` and an empty result; keep throwing only
+  from request-time lookups behind `connection()`, such as the gallery page.
 - A fresh preview database logs `DiscountProviderError` /
   `DiscountDefinitionNotFoundError` during its first E2E run, while instant
   navigation resolves the Calendar sale before fixture seeding has inserted
