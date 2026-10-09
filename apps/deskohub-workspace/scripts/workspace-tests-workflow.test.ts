@@ -151,12 +151,26 @@ test("runs four serial Bun test shards and keeps test-functional as a fail-close
     MIGRATION_COUNT_RESULT: "success",
     FUNCTIONAL_SHARDS_RESULT: "success",
   };
+  // The gate runs in an isolated shell: earlier suites in the same Bun process
+  // may have mutated process.env, and an inherited stdin or environment must
+  // not be able to stall the fail-closed check.
   const runGate = (overrides: Partial<typeof expectedResults> = {}) =>
     Bun.spawnSync({
-      cmd: ["bash", "-e", "-o", "pipefail", "-c", gateStep?.run ?? ""],
-      env: { ...process.env, ...expectedResults, ...overrides },
+      cmd: [
+        "bash",
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        "-c",
+        gateStep?.run ?? "",
+      ],
+      env: { PATH: process.env.PATH ?? "", ...expectedResults, ...overrides },
+      stdin: "ignore",
       stderr: "pipe",
       stdout: "pipe",
+      timeout: 5000,
     });
   expect(runGate().exitCode).toBe(0);
   const resultNames = [
