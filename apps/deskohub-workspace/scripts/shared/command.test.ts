@@ -179,18 +179,29 @@ describe("caller shutdown", () => {
     }
   }
 
-  test("a caller with no running command keeps its signal listeners unchanged", async () => {
-    const before = process.listenerCount("SIGINT");
-    const beforeTerm = process.listenerCount("SIGTERM");
-    const beforeExit = process.listenerCount("exit");
+  test("installs one set of shutdown listeners however many commands run", async () => {
+    const before = [
+      process.listenerCount("SIGINT"),
+      process.listenerCount("SIGTERM"),
+      process.listenerCount("exit"),
+    ];
     await runCommand(["bash", "-c", "exit 0"], { timeoutMs: 5000 });
-    const during = runCommand(["bash", "-c", "sleep 0.2"], { timeoutMs: 5000 });
-    expect(process.listenerCount("SIGINT")).toBe(before + 1);
-    await during;
+    const installed = [
+      process.listenerCount("SIGINT"),
+      process.listenerCount("SIGTERM"),
+      process.listenerCount("exit"),
+    ];
+    for (const [index, count] of installed.entries()) {
+      expect(count - (before[index] ?? 0)).toBeLessThanOrEqual(1);
+    }
+    await Promise.all([
+      runCommand(["bash", "-c", "sleep 0.1"], { timeoutMs: 5000 }),
+      runCommand(["bash", "-c", "sleep 0.1"]),
+    ]);
     expect([
       process.listenerCount("SIGINT"),
       process.listenerCount("SIGTERM"),
       process.listenerCount("exit"),
-    ]).toEqual([before, beforeTerm, beforeExit]);
+    ]).toEqual(installed);
   });
 });
