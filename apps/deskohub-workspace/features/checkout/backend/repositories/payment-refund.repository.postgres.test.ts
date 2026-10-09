@@ -149,7 +149,10 @@ describe.skipIf(!testDatabase)(
       expect(await record(refunded, 29_000)).toBe("recorded");
 
       const candidates = await run((repository) =>
-        repository.findAwaitingRefund({ limit: 1_000 })
+        repository.claimAwaitingRefund({
+          limit: 1_000,
+          checkedAt: Temporal.Now.instant(),
+        })
       );
       const ids = candidates.map(({ attempt }) => attempt.id);
 
@@ -159,6 +162,44 @@ describe.skipIf(!testDatabase)(
       expect(
         candidates.find(({ attempt }) => attempt.id === awaiting)?.correlationId
       ).toBeString();
+    });
+
+    test("claims every outstanding refund across runs instead of rechecking the oldest", async () => {
+      const ours = new Set<PaymentAttemptId>();
+      for (let index = 0; index < 30; index += 1) {
+        ours.add(
+          await insertCheckout({
+            attemptState: "paid",
+            refundState: "required",
+          })
+        );
+      }
+      const {
+        rows: [{ outstanding }],
+      } = await postgres.pool.query<{ outstanding: number }>(
+        "select count(*)::int as outstanding from payment_attempts where refund_state = 'required'"
+      );
+      const limit = 25;
+      const runs = Math.ceil(outstanding / limit);
+
+      // Nothing gets refunded between runs, like a back office that has not
+      // refunded yet or a Nexi outage, so no claimed attempt leaves the queue.
+      // Ordering by age alone would recheck the same oldest batch forever.
+      const claimed = new Set<PaymentAttemptId>();
+      let checkedAt = Temporal.Now.instant();
+      for (let index = 0; index < runs; index += 1) {
+        checkedAt = checkedAt.add({ seconds: 1 });
+        const batch = await run((repository) =>
+          repository.claimAwaitingRefund({ limit, checkedAt })
+        );
+        expect(batch.length).toBeLessThanOrEqual(limit);
+        for (const { attempt } of batch) claimed.add(attempt.id);
+      }
+
+      expect(runs).toBeGreaterThan(1);
+      for (const id of ours) {
+        expect(claimed).toContain(id);
+      }
     });
 
     test("records a refund total that only grows", async () => {

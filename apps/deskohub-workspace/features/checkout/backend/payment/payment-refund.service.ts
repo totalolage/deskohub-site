@@ -43,8 +43,9 @@ export interface IPaymentRefundService {
     PaymentRefundReconciliationError
   >;
   /**
-   * Reconciles a batch of attempts still awaiting a refund. One attempt's
-   * provider failure is logged and does not stop the rest of the batch.
+   * Reconciles a batch of attempts still awaiting a refund, least recently
+   * checked first. One attempt's provider failure is logged and does not stop
+   * the rest of the batch; the next run moves on to other attempts.
    */
   readonly reconcileAwaitingRefunds: (input: {
     readonly limit: number;
@@ -128,7 +129,10 @@ export class PaymentRefundService extends Context.Service<
       const reconcileAwaitingRefunds = Effect.fn(
         "PaymentRefundService.reconcileAwaitingRefunds"
       )(function* (input: { readonly limit: number }) {
-        const awaiting = yield* refunds.findAwaitingRefund(input);
+        const awaiting = yield* refunds.claimAwaitingRefund({
+          limit: input.limit,
+          checkedAt: Temporal.Now.instant(),
+        });
         const results = yield* Effect.forEach(
           awaiting,
           (candidate) =>

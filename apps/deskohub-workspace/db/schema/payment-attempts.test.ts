@@ -69,7 +69,7 @@ describe("payment attempt providers", () => {
     );
     const migration = await Bun.file(
       new URL(
-        "../migrations/20261009140608_sour_madame_web/migration.sql",
+        "../migrations/20261009145735_cuddly_violations/migration.sql",
         import.meta.url
       )
     ).text();
@@ -82,6 +82,12 @@ describe("payment attempt providers", () => {
     expect(migration).toContain(
       '("refund_state" = \'refunded\' and "refunded_amount_value" > 0 and "refunded_at" is not null) or ("refund_state" <> \'refunded\' and "refunded_amount_value" is null and "refunded_at" is null)'
     );
+    expect(migration).toContain(
+      'ADD COLUMN "refund_checked_at" timestamp with time zone;'
+    );
+    expect(
+      config.columns.find(({ name }) => name === "refund_checked_at")?.notNull
+    ).toBe(false);
   });
 
   test("migrates refund state with its paid Nexi invariant", async () => {

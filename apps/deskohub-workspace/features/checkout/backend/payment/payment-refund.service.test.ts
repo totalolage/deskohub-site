@@ -57,7 +57,8 @@ const refundedOrder: NexiOrder = {
     {
       operationId: NexiOperationIdSchema.make("refund-operation-id"),
       operationType: "REFUND",
-      operationResult: "EXECUTED",
+      // Back-office refunds before settlement are reported as VOIDED.
+      operationResult: "VOIDED",
       operationTime: "2026-10-05T08:30:00Z",
       amount: "35000",
     },
@@ -69,7 +70,7 @@ const unusedRepositoryCall = () => Effect.die("unused");
 const buildService = async (services: {
   readonly getOrder: (typeof NexiServiceTag.Service)["getOrder"];
   readonly recordRefund?: IPaymentRefundRepository["recordRefund"];
-  readonly findAwaitingRefund?: IPaymentRefundRepository["findAwaitingRefund"];
+  readonly claimAwaitingRefund?: IPaymentRefundRepository["claimAwaitingRefund"];
 }) => {
   const { NexiService } = await import("@deskohub/nexi");
   const { PaymentRefundRepository } = await import(
@@ -83,8 +84,8 @@ const buildService = async (services: {
         Layer.mock(NexiService, { getOrder: services.getOrder }),
         Layer.mock(PaymentRefundRepository, {
           recordRefund: services.recordRefund ?? unusedRepositoryCall,
-          findAwaitingRefund:
-            services.findAwaitingRefund ?? unusedRepositoryCall,
+          claimAwaitingRefund:
+            services.claimAwaitingRefund ?? unusedRepositoryCall,
         })
       )
     )
@@ -147,19 +148,21 @@ describe("PaymentRefundService", () => {
 
   test("keeps reconciling the batch when one provider lookup fails", async () => {
     const recordRefund = mock(() => Effect.succeed("recorded" as const));
-    const run = await buildService({
-      findAwaitingRefund: () =>
-        Effect.succeed([
-          candidate,
-          {
-            ...candidate,
-            attempt: {
-              ...attempt,
-              id: paymentAttemptIdSchema.make("failing-attempt-id"),
-              providerOrderId: NexiOrderIdSchema.make("failing-order-id"),
-            },
+    const claimAwaitingRefund = mock(() =>
+      Effect.succeed([
+        candidate,
+        {
+          ...candidate,
+          attempt: {
+            ...attempt,
+            id: paymentAttemptIdSchema.make("failing-attempt-id"),
+            providerOrderId: NexiOrderIdSchema.make("failing-order-id"),
           },
-        ]),
+        },
+      ])
+    );
+    const run = await buildService({
+      claimAwaitingRefund,
       getOrder: (input: GetNexiOrderInput) =>
         input.orderId === "failing-order-id"
           ? Effect.fail(new Error("provider unavailable"))
@@ -173,5 +176,9 @@ describe("PaymentRefundService", () => {
 
     expect(summary).toEqual({ checked: 2, recorded: 1, failed: 1 });
     expect(recordRefund).toHaveBeenCalledTimes(1);
+    expect(claimAwaitingRefund).toHaveBeenCalledWith({
+      limit: 25,
+      checkedAt: expect.any(Temporal.Instant),
+    });
   });
 });

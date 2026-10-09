@@ -1,5 +1,5 @@
 import type { NexiCorrelationId } from "@deskohub/nexi";
-import { and, asc, eq, lt, ne, or } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -27,9 +27,16 @@ export interface RefundablePaymentAttempt {
 }
 
 export interface IPaymentRefundRepository {
-  /** Paid Nexi attempts whose refund is still outstanding, oldest first. */
-  readonly findAwaitingRefund: (input: {
+  /**
+   * Claims up to `limit` paid Nexi attempts whose refund is still outstanding
+   * and stamps them as checked at `checkedAt`. Never-checked attempts come
+   * first, then the least recently checked, so every run moves past the
+   * attempts it took whatever Nexi reports and outstanding refunds cannot
+   * starve newer ones. Concurrent runs skip each other's claims.
+   */
+  readonly claimAwaitingRefund: (input: {
     readonly limit: number;
+    readonly checkedAt: Temporal.Instant;
   }) => Effect.Effect<
     readonly RefundablePaymentAttempt[],
     EffectDrizzleQueryError
@@ -55,27 +62,57 @@ export class PaymentRefundRepository extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
 
-      const findAwaitingRefund = Effect.fn(
-        "PaymentRefundRepository.findAwaitingRefund"
-      )(function* (input: { readonly limit: number }) {
-        const rows = yield* db
+      const claimAwaitingRefund = Effect.fn(
+        "PaymentRefundRepository.claimAwaitingRefund"
+      )(function* (input: {
+        readonly limit: number;
+        readonly checkedAt: Temporal.Instant;
+      }) {
+        const claimed = yield* db
+          .update(paymentAttempts)
+          .set({ refundCheckedAt: input.checkedAt })
+          .where(
+            inArray(
+              paymentAttempts.id,
+              db
+                .select({ id: paymentAttempts.id })
+                .from(paymentAttempts)
+                .where(eq(paymentAttempts.refundState, "required"))
+                .orderBy(
+                  sql`${paymentAttempts.refundCheckedAt} asc nulls first`,
+                  asc(paymentAttempts.updatedAt),
+                  asc(paymentAttempts.id)
+                )
+                .limit(input.limit)
+                .for("update", { skipLocked: true })
+            )
+          )
+          .returning();
+        if (claimed.length === 0) return [];
+
+        const reservations = yield* db
           .select({
-            attempt: paymentAttempts,
+            id: workspaceReservations.id,
             correlationId: workspaceReservations.correlationId,
           })
-          .from(paymentAttempts)
-          .innerJoin(
-            workspaceReservations,
-            eq(workspaceReservations.id, paymentAttempts.workspaceReservationId)
-          )
-          .where(eq(paymentAttempts.refundState, "required"))
-          .orderBy(asc(paymentAttempts.updatedAt), asc(paymentAttempts.id))
-          .limit(input.limit);
+          .from(workspaceReservations)
+          .where(
+            inArray(
+              workspaceReservations.id,
+              claimed.map(
+                ({ workspaceReservationId }) => workspaceReservationId
+              )
+            )
+          );
+        const correlationIds = new Map(
+          reservations.map(({ id, correlationId }) => [id, correlationId])
+        );
 
-        return rows.flatMap(({ attempt, correlationId }) => {
-          const paymentAttempt = toPaymentAttempt(attempt);
-          return isNexiPaymentAttempt(paymentAttempt)
-            ? [{ attempt: paymentAttempt, correlationId }]
+        return claimed.flatMap((row) => {
+          const attempt = toPaymentAttempt(row);
+          const correlationId = correlationIds.get(row.workspaceReservationId);
+          return correlationId && isNexiPaymentAttempt(attempt)
+            ? [{ attempt, correlationId }]
             : [];
         });
       });
@@ -124,7 +161,7 @@ export class PaymentRefundRepository extends Context.Service<
         (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
       );
 
-      return { findAwaitingRefund, recordRefund };
+      return { claimAwaitingRefund, recordRefund };
     })
   );
 }

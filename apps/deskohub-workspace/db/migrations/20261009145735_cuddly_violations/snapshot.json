@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "e1a904fa-27ae-4512-b602-a1f3108476f6",
+  "id": "691f9ea7-b695-472a-9963-aab26de1f343",
   "prevIds": [
     "e15cc3d0-eb47-4b5b-a93f-7f8d957c42d1"
   ],
@@ -2349,6 +2349,19 @@
       "generated": null,
       "identity": null,
       "name": "refunded_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "refund_checked_at",
       "entityType": "columns",
       "schema": "public",
       "table": "payment_attempts"

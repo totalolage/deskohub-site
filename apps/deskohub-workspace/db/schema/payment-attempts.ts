@@ -76,6 +76,12 @@ export const paymentAttempts = pgTable(
     refundedAmountValue: integer("refunded_amount_value"),
     /** Time of the latest successful Nexi refund. */
     refundedAt: instant("refunded_at"),
+    /**
+     * When scheduled refund reconciliation last claimed this attempt to check
+     * Nexi, whatever the outcome. Batches take least recently checked attempts
+     * first, so outstanding refunds cannot starve newer ones.
+     */
+    refundCheckedAt: instant("refund_checked_at"),
     amountValue: integer("amount_value").notNull(),
     amountExponent: integer("amount_exponent").notNull(),
     currency: text("currency").notNull(),

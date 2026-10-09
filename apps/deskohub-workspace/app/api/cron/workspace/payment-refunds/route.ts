@@ -8,8 +8,8 @@ const cronBatchLimit = 25;
 
 /**
  * Fallback for refund notifications Nexi does not deliver: re-reads the Nexi
- * order of every paid attempt still awaiting a refund and records any refund
- * an operator already made in the Nexi back office.
+ * orders of the paid attempts awaiting a refund that were checked longest ago
+ * and records any refund an operator already made in the Nexi back office.
  */
 const reconcileAwaitingRefunds = Effect.fn("reconcileAwaitingRefunds")(
   function* () {
