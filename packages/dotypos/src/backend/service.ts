@@ -682,19 +682,21 @@ const makeDotyposService = Effect.gen(function* () {
       Effect.flatMap(([reservation, response]) => {
         const etag = response.headers.etag ?? response.headers.ETag;
 
-        return etag
-          ? decodeProviderEntity(
-              DotyposReservationSchema,
-              { ...reservation, id: reservation.id ?? reservationId },
-              "getReservation"
-            ).pipe(Effect.map((decoded) => ({ etag, reservation: decoded })))
-          : Effect.fail(
-              new ExternalAPIError({
-                service: "Dotypos",
-                operation: "getReservation",
-                message: "Reservation ETag header was missing.",
-              })
-            );
+        if (!etag) {
+          return Effect.fail(
+            new ExternalAPIError({
+              service: "Dotypos",
+              operation: "getReservation",
+              message: "Reservation ETag header was missing.",
+            })
+          );
+        }
+
+        return decodeProviderEntity(
+          DotyposReservationSchema,
+          { ...reservation, id: reservation.id ?? reservationId },
+          "getReservation"
+        ).pipe(Effect.map((decoded) => ({ etag, reservation: decoded })));
       })
     )
   );
