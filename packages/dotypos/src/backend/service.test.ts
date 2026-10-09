@@ -1044,7 +1044,7 @@ describe("DotyposService customer lookup", () => {
     ]);
   });
 
-  test("creates and fully updates invoice customer details without a phone", async () => {
+  test("creates and updates invoice customer details without a phone, leaving the stored phone untouched", async () => {
     const created = customer({
       id: "invoice-customer",
       firstName: "",
@@ -1120,13 +1120,76 @@ describe("DotyposService customer lookup", () => {
     const updateCall = fetchMock.mock.calls.find(
       (call) => getMethod(call as FetchCall) === "PATCH"
     ) as FetchCall;
-    expect(await readJsonBody(updateCall)).toMatchObject({
+    const updateBody = await readJsonBody(updateCall);
+    expect(updateBody).toMatchObject({
       email: "billing@example.com",
-      phone: "",
       addressLine1: "42 Engine Street",
       companyName: "Analytical Engines",
     });
+    expect(updateBody).not.toHaveProperty("phone");
   });
+
+  test.each([
+    { label: "unparseable", phone: "not a phone", expectedPhone: undefined },
+    { label: "blank", phone: "   ", expectedPhone: undefined },
+    { label: "valid", phone: "777 123 456", expectedPhone: "+420777123456" },
+  ])(
+    "updates invoice customer details with a $label phone",
+    async ({ phone, expectedPhone }) => {
+      const stored = customer({
+        id: "invoice-customer",
+        email: "billing@example.test",
+        phone: "+420777000111",
+      });
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        if (url.pathname === "/clouds/cloud-id/customers/invoice-customer") {
+          if (request.method === "GET") {
+            return Response.json(stored, {
+              headers: { ETag: '"customer-v1"' },
+            });
+          }
+          if (request.method === "PATCH") return Response.json(stored);
+        }
+        return new Response("Not found", { status: 404 });
+      });
+
+      await runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.updateCustomerDetails(
+            dotyposCustomerId("invoice-customer"),
+            {
+              firstName: "Ada",
+              lastName: "Lovelace",
+              email: "billing@example.test",
+              phone,
+              addressLine1: "42 Engine Street",
+              addressLine2: "",
+              city: "London",
+              zip: "SW1A 1AA",
+              country: "GB",
+              companyName: "",
+              companyId: "",
+              vatId: "",
+            }
+          );
+        }),
+        fetchMock
+      );
+
+      const updateCall = fetchMock.mock.calls.find(
+        (call) => getMethod(call as FetchCall) === "PATCH"
+      ) as FetchCall;
+      const updateBody = await readJsonBody(updateCall);
+      if (expectedPhone === undefined) {
+        expect(updateBody).not.toHaveProperty("phone");
+      } else {
+        expect(updateBody.phone).toBe(expectedPhone);
+      }
+    }
+  );
 
   test("does not retry the non-idempotent invoice customer creation request", async () => {
     let createAttempts = 0;

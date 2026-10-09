@@ -1118,7 +1118,9 @@ const makeDotyposService = Effect.gen(function* () {
         hexColor: "#000000",
         internalNote: "",
         lastName: details.lastName.trim(),
-        phone: details.phone ? normalizePhoneNumber(details.phone) || "" : "",
+        // Dotypos requires a phone on creation; a new customer has no stored
+        // phone to preserve, so an absent or unparseable phone stays blank.
+        phone: normalizePhoneNumber(details.phone) ?? "",
         points: "0",
         tags: [],
         vatId: details.vatId.trim(),
@@ -1522,10 +1524,15 @@ const makeDotyposService = Effect.gen(function* () {
     patchCustomer(customerId, details)
   );
 
+  /**
+   * An absent or unparseable phone omits the field so the phone stored in
+   * Dotypos stays untouched; clearing it requires an explicit provider patch.
+   */
   const updateCustomerDetails = Effect.fn(
     "DotyposService.updateCustomerDetails"
-  )((customerId: DotyposCustomerId, details: DotyposCustomerDetails) =>
-    patchCustomer(customerId, {
+  )((customerId: DotyposCustomerId, details: DotyposCustomerDetails) => {
+    const phone = normalizePhoneNumber(details.phone);
+    return patchCustomer(customerId, {
       addressLine1: details.addressLine1.trim(),
       addressLine2: details.addressLine2.trim(),
       city: details.city.trim(),
@@ -1535,11 +1542,11 @@ const makeDotyposService = Effect.gen(function* () {
       email: details.email.trim(),
       firstName: details.firstName.trim(),
       lastName: details.lastName.trim(),
-      phone: details.phone ? normalizePhoneNumber(details.phone) || "" : "",
+      ...(phone && { phone }),
       vatId: details.vatId.trim(),
       zip: details.zip.trim(),
-    })
-  );
+    });
+  });
 
   const getTables = Effect.fn("getTables")(() =>
     loadAllDotyposPages({
