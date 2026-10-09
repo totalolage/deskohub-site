@@ -109,7 +109,7 @@ export class CustomerAvatarSettings extends Context.Service<
   }));
 }
 
-const WorkspaceCloudinaryLayer = CloudinaryService.Default.pipe(
+const WorkspaceCloudinaryLayer = CloudinaryService.Live.pipe(
   Layer.provide(
     makeCloudinaryRuntimeConfigLayer({
       cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,

@@ -73,7 +73,7 @@ test("gallery searches stay server-only and cannot enumerate avatar assets", asy
       avatarStagingListings.push(relativePath);
     }
     if (
-      /\.(?:searchAll|searchByExpression|searchByFolder|searchByTag|searchWithTags)\s*\(/.test(
+      /\.(?:searchAll|searchByExpression|searchByFolder|listTaggedAssets)\s*\(/.test(
         contents
       )
     ) {
