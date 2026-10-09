@@ -179,8 +179,13 @@ describe("caller shutdown", () => {
     }
   }
 
-  for (const order of ["before", "after"] as const) {
-    test(`a caller's own SIGTERM listener registered ${order} the first command handles the signal`, async () => {
+  for (const kind of [
+    "once-before",
+    "once-after",
+    "prepend-once-after",
+    "prepend-self-removing-after",
+  ] as const) {
+    test(`a caller's own one-shot SIGTERM listener (${kind}) handles the signal`, async () => {
       const directory = mkdtempSync(join(tmpdir(), "command-listener-"));
       const handledFile = join(directory, "handled");
       const caller = Bun.spawn({
@@ -188,7 +193,7 @@ describe("caller shutdown", () => {
           process.execPath,
           join(import.meta.dir, "command.listener-fixture.ts"),
           handledFile,
-          order,
+          kind,
         ],
         stdin: "ignore",
         stdout: "pipe",

@@ -88,6 +88,7 @@ const killActiveCommands = (): void => {
 const removeShutdownHandlers = (): void => {
   for (const [signal, handler] of signalHandlers) process.off(signal, handler);
   process.off("exit", killActiveCommands);
+  process.off("newListener", keepShutdownHandlersFirst);
   shutdownHandlersInstalled = false;
 };
 
@@ -105,15 +106,36 @@ const signalHandlers = new Map(
 
 let shutdownHandlersInstalled = false;
 
+const moveShutdownHandlersFirst = (): void => {
+  if (!shutdownHandlersInstalled) return;
+  for (const [signal, handler] of signalHandlers) {
+    if (process.listeners(signal)[0] === handler) continue;
+    process.off(signal, handler);
+    process.prependListener(signal, handler);
+  }
+};
+
+/**
+ * The re-raise check counts the listeners that take part in a delivery, so
+ * the handler must run before every caller listener, including one-shot
+ * listeners a caller prepends later. `newListener` fires before the listener
+ * is added, so the handlers move back to the front once it is in place.
+ */
+const keepShutdownHandlersFirst = (event: string | symbol): void => {
+  if (shutdownSignals.some((signal) => signal === event)) {
+    queueMicrotask(moveShutdownHandlersFirst);
+  }
+};
+
 const trackCommand = (kill: () => void): (() => void) => {
   if (!shutdownHandlersInstalled) {
-    // Run before the caller's own listeners: a caller's `once` listener
-    // removes itself when it runs, and the re-raise check below must still
-    // see it.
+    // Run before the caller's own listeners: a caller's one-shot listener
+    // removes itself when it runs, and the re-raise check must still see it.
     for (const [signal, handler] of signalHandlers) {
       process.prependListener(signal, handler);
     }
     process.on("exit", killActiveCommands);
+    process.on("newListener", keepShutdownHandlersFirst);
     shutdownHandlersInstalled = true;
   }
   activeCommands.add(kill);
