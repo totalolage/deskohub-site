@@ -2,17 +2,19 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { createHmac } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
 import { ConfigProvider, Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import {
   type CheckoutSessionKey,
   checkoutSessionIdSchema,
-  checkoutSessionKeySchema,
 } from "@/features/checkout/checkout-identifiers";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { deriveCheckoutSessionKeys } from "./checkout-lookup-keys.server";
+import {
+  deriveRingKeyedCheckoutSessionKey,
+  findKeyIdPrefixedLookupKey,
+} from "./checkout-lookup-keys.test-utils";
 import {
   PayableReservationService,
   PayableReservationUnavailableError,
@@ -28,11 +30,16 @@ const withKeyRing = (keyRing: string) =>
     ConfigProvider.fromUnknown({ CHECKOUT_PAY_STATE_KEYS: keyRing })
   );
 
+// Rotation is only supported once new rows store the active key's prefixed
+// derivation, so rotation scenarios start from that format.
 const deriveStoredSessionKey = (keyRing: string): CheckoutSessionKey =>
-  deriveCheckoutSessionKeys(checkoutSessionId).pipe(
-    withKeyRing(keyRing),
-    Effect.runSync
-  ).current;
+  findKeyIdPrefixedLookupKey(
+    deriveCheckoutSessionKeys(checkoutSessionId).pipe(
+      withKeyRing(keyRing),
+      Effect.runSync
+    ),
+    keyRing.slice(0, keyRing.indexOf(":"))
+  );
 
 const checkoutSessionKey = deriveStoredSessionKey(originalKeyRing);
 
@@ -149,14 +156,14 @@ describe("PayableReservationService across Pay-state key rotation", () => {
     await expect(result).resolves.toMatchObject({ id: "reservation-id" });
   });
 
-  test("keeps a checkout stored before keyed lookup keys payable", async () => {
-    const preKeyedSessionKey = checkoutSessionKeySchema.make(
-      createHmac("sha256", originalKeyRing)
-        .update(JSON.stringify({ checkoutSessionId }))
-        .digest("hex")
-    );
+  test("keeps a ring-keyed checkout payable while the key ring is unchanged", async () => {
     const { result } = runRequireCurrent({
-      candidate: reservation({ checkoutSessionKey: preKeyedSessionKey }),
+      candidate: reservation({
+        checkoutSessionKey: deriveRingKeyedCheckoutSessionKey(
+          originalKeyRing,
+          checkoutSessionId
+        ),
+      }),
     });
 
     await expect(result).resolves.toMatchObject({ id: "reservation-id" });

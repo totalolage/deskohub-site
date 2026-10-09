@@ -85,7 +85,7 @@ export interface CreateWorkspaceReservationInput {
 
 /**
  * Creates the first draft of a checkout attempt. `checkoutSessionKey` and
- * `checkoutAttemptKey` are the active-key derivations, stored only when the
+ * `checkoutAttemptKey` are the derivations new rows store, used only when the
  * session and attempt have no row under any accepted derivation.
  */
 export interface CreateWorkspaceReservationDraftInput
@@ -99,9 +99,9 @@ export interface CreateWorkspaceReservationDraftInput
 export interface IWorkspaceReservationRepository {
   /**
    * Serializes draft creation per checkout session so workers with different
-   * active Pay-state keys cannot both create a first row. Returns the
-   * attempt's existing row, else the session's current row, else the draft
-   * inserted under the session's already stored key.
+   * active Pay-state keys or stored lookup-key formats cannot both create a
+   * first row. Returns the attempt's existing row, else the session's current
+   * row, else the draft inserted under the session's already stored key.
    */
   readonly createDraft: (
     input: CreateWorkspaceReservationDraftInput

@@ -701,7 +701,8 @@ const prepareReservationDraft = Effect.fn(
       acceptedCheckoutAttemptKeys: checkoutAttemptKeys.accepted,
     });
     // Another worker may have created this attempt under a different
-    // active key; any other row is the session's current reservation.
+    // active key or lookup-key format; any other row is the session's
+    // current reservation.
     if (
       !checkoutAttemptKeys.accepted.includes(
         reservationDraft.checkoutAttemptKey

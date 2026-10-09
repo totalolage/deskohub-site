@@ -2,7 +2,6 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { createHmac } from "node:crypto";
 import { ConfigProvider, Effect, Schema } from "effect";
 import {
   type CheckoutSessionId,
@@ -11,6 +10,11 @@ import {
 } from "@/features/checkout/checkout-identifiers";
 import type { ReservationBillingSelectionInput } from "@/features/reservation/reservation-billing";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
+import {
+  deriveRingKeyedCheckoutAttemptKey,
+  deriveRingKeyedCheckoutSessionKey,
+  findKeyIdPrefixedLookupKey,
+} from "./checkout-lookup-keys.test-utils";
 
 mock.module("server-only", () => ({}));
 
@@ -71,19 +75,63 @@ const attemptKeysUnder = (keyRing: string) =>
     })
   );
 
-describe("checkout lookup key rotation", () => {
-  test("stores keys derived with the active key and labelled with its key ID", () => {
-    const session = sessionKeysUnder(`${rotatedKey},${originalKey}`);
-    const attempt = attemptKeysUnder(`${rotatedKey},${originalKey}`);
+describe("checkout lookup key write format", () => {
+  test("stores the ring-keyed key that workers before keyed lookup keys store", () => {
+    for (const keyRing of [originalKey, `${originalKey},${rotatedKey}`]) {
+      const session = sessionKeysUnder(keyRing);
+      const attempt = attemptKeysUnder(keyRing);
 
-    expect(session.current).toMatch(/^rotated:[a-f0-9]{64}$/);
-    expect(attempt.current).toMatch(/^rotated:[a-f0-9]{64}$/);
-    expect(session.current).not.toBe(sessionKeysUnder(originalKey).current);
+      expect(session.current).toBe(
+        deriveRingKeyedCheckoutSessionKey(keyRing, checkoutSessionId)
+      );
+      expect(attempt.current).toBe(
+        deriveRingKeyedCheckoutAttemptKey(keyRing, {
+          checkoutSessionId,
+          checkoutAttemptId,
+          reservation: coworkReservation,
+        })
+      );
+      expect(session.current).toMatch(/^[a-f0-9]{64}$/);
+    }
+    // Known answer from the pre-keyed `deriveCheckoutSessionKey`, so the
+    // frozen reference cannot drift together with the production derivation.
+    expect(sessionKeysUnder(originalKey).current).toBe(
+      "ee6351f8b63fa03fc29e75e70810c05b7b3389186445a460d9b1b0252e191259"
+    );
+  });
+
+  test("accepts the stored key and every configured key's prefixed key once", () => {
+    const keys = sessionKeysUnder(`${rotatedKey},${originalKey}`);
+
+    expect(keys.accepted[0]).toBe(keys.current);
+    expect(new Set(keys.accepted).size).toBe(keys.accepted.length);
+    expect(findKeyIdPrefixedLookupKey(keys, "rotated")).toMatch(
+      /^rotated:[a-f0-9]{64}$/
+    );
+    expect(findKeyIdPrefixedLookupKey(keys, "original")).toMatch(
+      /^original:[a-f0-9]{64}$/
+    );
+  });
+});
+
+describe("checkout lookup key rotation", () => {
+  const prefixedSessionKeyUnder = (keyRing: string, kid: string) =>
+    findKeyIdPrefixedLookupKey(sessionKeysUnder(keyRing), kid);
+  const prefixedAttemptKeyUnder = (keyRing: string, kid: string) =>
+    findKeyIdPrefixedLookupKey(attemptKeysUnder(keyRing), kid);
+
+  test("derives each key's prefixed key independently of the key ring", () => {
+    expect(prefixedSessionKeyUnder(originalKey, "original")).toBe(
+      prefixedSessionKeyUnder(`${rotatedKey},${originalKey}`, "original")
+    );
+    expect(prefixedSessionKeyUnder(originalKey, "original")).not.toBe(
+      prefixedSessionKeyUnder(rotatedKey, "rotated")
+    );
   });
 
   test("keeps an in-flight checkout when a new active key is added", () => {
-    const storedSession = sessionKeysUnder(originalKey).current;
-    const storedAttempt = attemptKeysUnder(originalKey).current;
+    const storedSession = prefixedSessionKeyUnder(originalKey, "original");
+    const storedAttempt = prefixedAttemptKeyUnder(originalKey, "original");
 
     const rotatedRing = `${rotatedKey},${originalKey}`;
 
@@ -93,34 +141,41 @@ describe("checkout lookup key rotation", () => {
 
   test("keeps an in-flight checkout when an unused old key is retired", () => {
     const rotatedRing = `${rotatedKey},${originalKey}`;
-    const storedSession = sessionKeysUnder(rotatedRing).current;
-    const storedAttempt = attemptKeysUnder(rotatedRing).current;
+    const storedSession = prefixedSessionKeyUnder(rotatedRing, "rotated");
+    const storedAttempt = prefixedAttemptKeyUnder(rotatedRing, "rotated");
 
     expect(sessionKeysUnder(rotatedKey).accepted).toContain(storedSession);
     expect(attemptKeysUnder(rotatedKey).accepted).toContain(storedAttempt);
   });
 
   test("stops matching a checkout only once its own key is retired", () => {
-    const storedSession = sessionKeysUnder(originalKey).current;
+    const storedSession = prefixedSessionKeyUnder(originalKey, "original");
 
     expect(sessionKeysUnder(rotatedKey).accepted).not.toContain(storedSession);
   });
 
-  test("keeps checkouts stored before keyed lookup keys until the key ring changes", () => {
-    const preKeyedSession = createHmac("sha256", originalKey)
-      .update(JSON.stringify({ checkoutSessionId }))
-      .digest("hex");
+  test("matches a ring-keyed checkout only while the key ring is unchanged", () => {
+    const ringKeyedSession = deriveRingKeyedCheckoutSessionKey(
+      originalKey,
+      checkoutSessionId
+    );
 
-    expect(sessionKeysUnder(originalKey).accepted).toContain(preKeyedSession);
+    expect(sessionKeysUnder(originalKey).accepted).toContain(ringKeyedSession);
+    expect(
+      sessionKeysUnder(`${originalKey},${rotatedKey}`).accepted
+    ).not.toContain(ringKeyedSession);
   });
 
   test("stages a non-first key for lookup without making it active", () => {
-    const staged = sessionKeysUnder(`${originalKey},${rotatedKey}`);
-    const activated = sessionKeysUnder(`${rotatedKey},${originalKey}`);
+    const stagedRing = `${originalKey},${rotatedKey}`;
+    const activatedRing = `${rotatedKey},${originalKey}`;
 
-    expect(staged.current).toMatch(/^original:/);
-    expect(staged.accepted).toContain(activated.current);
-    expect(activated.accepted).toContain(staged.current);
+    expect(sessionKeysUnder(stagedRing).accepted).toContain(
+      prefixedSessionKeyUnder(activatedRing, "rotated")
+    );
+    expect(sessionKeysUnder(activatedRing).accepted).toContain(
+      prefixedSessionKeyUnder(stagedRing, "original")
+    );
   });
 
   test("locks a session under one identity whatever the key ring", () => {
@@ -182,9 +237,6 @@ describe("checkout attempt key", () => {
       deriveAttemptKey(laterMeetingRoom),
     ];
     expect(new Set(keys).size).toBe(3);
-    for (const key of keys) {
-      expect(key).toMatch(/^original:[a-f0-9]{64}$/);
-    }
   });
 
   test("changes when reservation purpose or billing identity changes", () => {

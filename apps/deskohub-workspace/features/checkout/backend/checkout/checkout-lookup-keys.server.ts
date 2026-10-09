@@ -21,12 +21,12 @@ import {
 /**
  * Persisted one-way lookup keys for one checkout identifier.
  *
- * New rows store `current`, derived with the active Pay-state key and prefixed
- * with its key ID. Lookups accept every configured key's derivation, so adding
- * a new active key or retiring an unused one never orphans a checkout in
- * flight. `accepted` also contains the derivation used before keyed lookup
- * keys existed, which was keyed by the whole configured key ring; it only
- * matches while that ring is unchanged since the row was written.
+ * New rows store `current`, in the format selected by
+ * {@link storedLookupKeyFormat}. `accepted` starts with `current` and contains
+ * both formats: every configured key's key-ID-prefixed derivation, so adding a
+ * new active key or retiring an unused one never orphans a checkout in flight,
+ * and the ring-keyed derivation, which only matches while the configured key
+ * ring is unchanged since the row was written.
  */
 export interface CheckoutLookupKeys<Key extends string> {
   readonly current: Key;
@@ -87,6 +87,34 @@ export const deriveCheckoutAttemptKeys = Effect.fn(
   );
 });
 
+/**
+ * Lookup-key formats a row can store.
+ *
+ * - `ring-keyed`: unprefixed hex HMAC keyed by the whole configured
+ *   `CHECKOUT_PAY_STATE_KEYS` string. Every worker before keyed lookup keys
+ *   writes and reads only this format, without the draft-creation lock.
+ * - `key-id-prefixed`: `<kid>:<hex HMAC>` keyed by an HKDF subkey of the active
+ *   Pay-state key. It survives key-ring rotation.
+ */
+type LookupKeyFormat = "ring-keyed" | "key-id-prefixed";
+
+/**
+ * Format stored on new rows. Lookups always accept both formats.
+ *
+ * The write format changes in two separate deployments because Vercel keeps
+ * serving in-flight requests on the previous deployment:
+ *
+ * 1. `ring-keyed` (this value): earlier workers neither read prefixed keys nor
+ *    take the draft-creation lock, so new rows keep their format and the two
+ *    versions still collide on the stored-key unique indexes.
+ * 2. `key-id-prefixed`: only after step 1 is the sole deployment serving
+ *    traffic. Both versions then take the lock and read both formats.
+ *
+ * Rotate `CHECKOUT_PAY_STATE_KEYS` only after step 2 is deployed and no
+ * `held` row or row with `pending` payment still stores a ring-keyed key.
+ */
+const storedLookupKeyFormat: LookupKeyFormat = "ring-keyed";
+
 const lookupKeyDerivationInfo = "deskohub-workspace/checkout-lookup-key";
 const lookupKeyByteLength = 32;
 
@@ -96,15 +124,23 @@ const deriveCheckoutLookupKeys = <Payload, Key extends string>(
 ) =>
   loadCheckoutLookupKeyRing.pipe(
     Effect.map(({ configuredKeyRing, keys: [activeKey, ...otherKeys] }) => {
-      const deriveKeyed = (key: CheckoutStateKey) =>
+      const deriveKeyIdPrefixed = (key: CheckoutStateKey) =>
         toKey(`${key.kid}:${signLookupKey(deriveLookupSecret(key), payload)}`);
-      const current = deriveKeyed(activeKey);
+      const activeKeyIdPrefixed = deriveKeyIdPrefixed(activeKey);
+      const ringKeyed = toKey(signLookupKey(configuredKeyRing, payload));
+      const current = {
+        "ring-keyed": ringKeyed,
+        "key-id-prefixed": activeKeyIdPrefixed,
+      }[storedLookupKeyFormat];
       const lookupKeys: CheckoutLookupKeys<Key> = {
         current,
         accepted: [
           current,
-          ...otherKeys.map(deriveKeyed),
-          toKey(signLookupKey(configuredKeyRing, payload)),
+          ...[
+            activeKeyIdPrefixed,
+            ...otherKeys.map(deriveKeyIdPrefixed),
+            ringKeyed,
+          ].filter((key) => key !== current),
         ],
       };
       return lookupKeys;

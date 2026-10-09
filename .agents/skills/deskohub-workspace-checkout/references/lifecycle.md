@@ -152,8 +152,8 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 | Column | Type | Required | Purpose |
 | --- | --- | --- | --- |
 | `id` | text | yes | Local workflow ID. Stable route/support reference. |
-| `checkout_session_key` | text | yes | HMAC key grouping deliberate reservation submissions while the customer moves between Reservation and Pay. Stores only the key-ID-prefixed digest. |
-| `checkout_attempt_key` | text | yes | HMAC idempotency key for one mounted-form submission and its immediate retry. Includes the normalized reservation details and stores only the key-ID-prefixed digest. |
+| `checkout_session_key` | text | yes | HMAC key grouping deliberate reservation submissions while the customer moves between Reservation and Pay. Stores only an HMAC digest, in the write format described under Key rotation. |
+| `checkout_attempt_key` | text | yes | HMAC idempotency key for one mounted-form submission and its immediate retry. Includes the normalized reservation details and stores only an HMAC digest, in the write format described under Key rotation. |
 | `correlation_id` | text | yes | Non-PII cross-system tracing ID. Unique. |
 | `dotypos_customer_id` | text | yes | Dotypos customer that owns customer PII. |
 | `dotypos_reservation_id` | text | no | Dotypos reservation hold/final reservation ID. Null until Dotypos creates it. |
@@ -493,7 +493,7 @@ credential and may never call live Igloohome; Production requires live mode.
 
 `checkoutSessionId` groups the reservation rows created while a customer moves back and forth between Reservation and Pay. It remains stable when the customer returns to the form and deliberately submits again. `checkoutAttemptId` identifies one mounted-form submission and its immediate transport retry; a changed reservation value or a new form mount creates a new attempt. Marketing consent is customer-scoped and is deliberately excluded from the reservation attempt HMAC.
 
-Only HMAC digests, prefixed with the deriving key ID as `<kid>:<hex digest>`, are stored in `workspace_reservations.checkout_session_key` and `workspace_reservations.checkout_attempt_key`. The opaque browser IDs are carried only in signed checkout state and action input. Both key payloads use `JSON.stringify` on a fixed object shape; do not sort keys or build a delimiter-joined tuple.
+Only HMAC digests are stored in `workspace_reservations.checkout_session_key` and `workspace_reservations.checkout_attempt_key`, in one of two formats: the ring-keyed hex digest keyed by the whole `CHECKOUT_PAY_STATE_KEYS` string, or the key-ID-prefixed `<kid>:<hex digest>` keyed by that key's lookup subkey. Key rotation describes which format new rows store. The opaque browser IDs are carried only in signed checkout state and action input. Both key payloads use `JSON.stringify` on a fixed object shape; do not sort keys or build a delimiter-joined tuple.
 
 ```ts
 const checkoutSessionKey = hmac({
@@ -511,13 +511,17 @@ The normalized reservation is included so a replayed opaque attempt ID with chan
 
 ### Key rotation
 
-Lookup keys must survive `CHECKOUT_PAY_STATE_KEYS` rotation without a separate secret. Each configured key derives a lookup subkey through HKDF-SHA256 (info `deskohub-workspace/checkout-lookup-key`), so lookup HMACs never reuse the raw Pay-state encryption key. New rows store the active (first) key's derivation; attempt and session lookups accept the derivation of every configured key. Never compare or look up a single freshly derived key.
+Lookup keys must survive `CHECKOUT_PAY_STATE_KEYS` rotation without a separate secret. Each configured key derives a lookup subkey through HKDF-SHA256 (info `deskohub-workspace/checkout-lookup-key`), so lookup HMACs never reuse the raw Pay-state encryption key. Attempt and session lookups accept the key-ID-prefixed derivation of every configured key and the ring-keyed derivation of the configured key-ring string. New rows store one of them, chosen by `storedLookupKeyFormat` in `checkout-lookup-keys.server.ts`: the ring-keyed digest or the active (first) key's prefixed digest. Never compare or look up a single freshly derived key.
 
 Every row of one checkout session stores the same session key. Before creating a row, resolve the key stored by the session's latest row under any accepted derivation and reuse it; derive with the active key only for a brand-new session. Supersession, the one-current-row unique index, and late-payment recovery's newer-reservation check compare stored session keys, so mixing derivations inside a session would split it.
 
-Unique indexes cover only the stored strings, so they cannot stop two workers with different active keys from both inserting a session's first row. Draft creation therefore runs in one transaction behind `pg_advisory_xact_lock` on a rotation-independent lock key: the first eight bytes of a domain-separated SHA-256 of the raw checkout session ID, which keeps the raw ID out of query parameters. Inside the lock it looks up the attempt and the session under every accepted derivation and inserts only when neither exists. Supersession is already serialized by its cancellation claim and inserts its replacement under the claimed row's stored session key.
+Unique indexes cover only the stored strings, so they cannot stop two workers with different active keys or stored formats from both inserting a session's first row. Draft creation therefore runs in one transaction behind `pg_advisory_xact_lock` on a rotation-independent lock key: the first eight bytes of a domain-separated SHA-256 of the raw checkout session ID, which keeps the raw ID out of query parameters. Inside the lock it looks up the attempt and the session under every accepted derivation and inserts only when neither exists. Supersession is already serialized by its cancellation claim and inserts its replacement under the claimed row's stored session key.
 
-Rows stored before keyed lookup keys hold an unprefixed digest keyed by the whole configured key-ring string. Lookups still accept that derivation, which matches only while the key-ring string is unchanged. Deploy the keyed derivation without changing `CHECKOUT_PAY_STATE_KEYS`, and do not rotate until those in-flight rows have ended (no unprefixed key on a `held` row or a row with `pending` payment). Remove the unprefixed derivation once no such row remains.
+Workers before keyed lookup keys store only the ring-keyed digest, look up only that exact digest, and take no draft-creation lock. During a deployment overlap they would miss a prefixed row and insert a duplicate draft and Dotypos hold. The stored format therefore switches in separate, complete deployments, without changing `CHECKOUT_PAY_STATE_KEYS` until the last step:
+
+1. Accept: deploy lookups that accept both formats and the draft-creation lock, while new rows still store the ring-keyed digest (`storedLookupKeyFormat = "ring-keyed"`). Rows from either version share one digest per session and attempt, so the unique indexes deduplicate across versions.
+2. Write prefixed: once no worker before keyed lookup keys serves traffic, set `storedLookupKeyFormat = "key-id-prefixed"`. Workers from step 1 accept the prefixed format and take the same lock.
+3. Rotate: only after step 2 is the only deployment serving traffic and ring-keyed rows have ended (no unprefixed key on a `held` row or a row with `pending` payment, checked with a read-only query). The ring-keyed derivation matches only while the key-ring string is unchanged. Remove it from lookups once no such row remains.
 
 `CHECKOUT_PAY_STATE_KEYS` is an ordered `kid:base64url-32-byte-key` list. Only the first entry is active: it seals new Pay-state tokens and derives new lookup keys. Every entry opens tokens sealed with its key ID and is accepted for lookups. Rotate in phases, each a complete deployment, so no worker ever meets a token or lookup key derived with a key it lacks:
 
@@ -763,7 +767,7 @@ sequenceDiagram
 - Confirm the database branch is development/preview, not production, before schema reset or test checkout.
 - Confirm migrations do not create `checkout_return_state_tokens`.
 - Confirm `workspace_reservations`, `payment_attempts`, `webhook_events`, `legal_evidence_events`, and `customer_marketing_consents` have no PII-capable columns or raw payload columns.
-- Confirm checkout session/attempt key derivation stores only key-ID-prefixed HMAC digests and uses `JSON.stringify` on fixed object payloads.
+- Confirm checkout session/attempt key derivation stores only HMAC digests in the current `storedLookupKeyFormat` and uses `JSON.stringify` on fixed object payloads.
 - Confirm Dotypos test customer lookup/create is the only persistence destination for customer name, email, and phone.
 - Confirm Dotypos reservation is created as a hold before payment only for the approved hold workflow, and Dotypos remains the source of reservation facts.
 - Confirm Nexi `securityToken` is stored only on `payment_attempts` and is not copied to webhook events.

@@ -61,6 +61,10 @@ mock.module("next/headers", () => ({
   headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
 }));
 
+// Format of the checkout lookup keys new rows store: the ring-keyed digest
+// until the key-ID-prefixed write flip.
+const storedLookupKeyPattern = /^[a-f0-9]{64}$/;
+
 const reservation = {
   kind: "cowork" as const,
   entryTier: "open-space" as const,
@@ -794,8 +798,8 @@ describe("prepareWorkspacePayState", () => {
     });
     expect(scenario.createDraft).toHaveBeenCalledWith(
       expect.objectContaining({
-        checkoutSessionKey: expect.stringMatching(/^test:[a-f0-9]{64}$/),
-        checkoutAttemptKey: expect.stringMatching(/^test:[a-f0-9]{64}$/),
+        checkoutSessionKey: expect.stringMatching(storedLookupKeyPattern),
+        checkoutAttemptKey: expect.stringMatching(storedLookupKeyPattern),
         reservationDetails: { kind: "meeting-room" },
       })
     );
@@ -1540,7 +1544,7 @@ describe("prepareWorkspacePayState", () => {
       expect.objectContaining({
         replacement: expect.objectContaining({
           checkoutSessionKey: storedSessionKey,
-          checkoutAttemptKey: expect.stringMatching(/^test:[a-f0-9]{64}$/),
+          checkoutAttemptKey: expect.stringMatching(storedLookupKeyPattern),
         }),
       })
     );
@@ -1574,7 +1578,7 @@ describe("prepareWorkspacePayState", () => {
     );
   });
 
-  test("starts a new session under the active Pay-state key", async () => {
+  test("starts a new session under its stored lookup key and accepts both formats", async () => {
     const result = await runReusableReservationScenario({
       findByAttemptKeys: mock(() => Effect.succeed(null)),
       createDraft: mock((input) =>
@@ -1590,8 +1594,8 @@ describe("prepareWorkspacePayState", () => {
     expect(result.result.status).toBe("ready");
     expect(result.createDraft).toHaveBeenCalledWith(
       expect.objectContaining({
-        checkoutSessionKey: expect.stringMatching(/^test:[a-f0-9]{64}$/),
-        checkoutAttemptKey: expect.stringMatching(/^test:[a-f0-9]{64}$/),
+        checkoutSessionKey: expect.stringMatching(storedLookupKeyPattern),
+        checkoutAttemptKey: expect.stringMatching(storedLookupKeyPattern),
         checkoutSessionLockKey: expect.any(BigInt),
         acceptedCheckoutSessionKeys: expect.arrayContaining([
           expect.stringMatching(/^test:[a-f0-9]{64}$/),
