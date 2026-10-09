@@ -3,10 +3,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runCommand } from "@/scripts/shared/command";
 
 const repositoryRoot = fileURLToPath(new URL("../../../..", import.meta.url));
 const fixtureRoot = mkdtempSync(join(tmpdir(), "deskohub-lint-rules-"));
-const decoder = new TextDecoder();
 const config = join(fixtureRoot, "biome.json");
 const unlimited = "--max-diagnostics=none";
 
@@ -25,12 +25,7 @@ const lintModule = (module: string, source: string) => {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, source);
   const args = ["lint", path, "--config-path", config, unlimited];
-  return Bun.spawnSync({
-    cmd: ["bunx", "biome", ...args],
-    cwd: repositoryRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  return runCommand(["bunx", "biome", ...args], { cwd: repositoryRoot });
 };
 
 type Row = readonly [string, string, boolean, string?];
@@ -249,21 +244,21 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
 
 for (const { name, diagnostic, module, cases } of rules) {
   for (const [behavior, source, flagged, override] of cases) {
-    test(`${name} ${behavior}`, () => {
-      const result = lintModule(override ?? module, source);
-      const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+    test(`${name} ${behavior}`, async () => {
+      const result = await lintModule(override ?? module, source);
+      const output = `${result.stdout}${result.stderr}`;
       expect(output.includes(diagnostic)).toBe(flagged);
       expect(result.exitCode).toBe(flagged ? 1 : 0);
     });
   }
 }
 
-test("prefer-effect-fn emits exactly one diagnostic for a named Effect.fn arrow with three trailing transforms", () => {
-  const result = lintModule(
+test("prefer-effect-fn emits exactly one diagnostic for a named Effect.fn arrow with three trailing transforms", async () => {
+  const result = await lintModule(
     "apps/deskohub-workspace/features/reservation/load-reservation.ts",
     traced(gen, threeTransforms)
   );
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
   expect(
     output.split("Define Effect generator functions with Effect.fn").length - 1
   ).toBe(1);
