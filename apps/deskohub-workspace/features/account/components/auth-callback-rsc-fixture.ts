@@ -3,7 +3,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import {
   registerClientReference,
   renderToReadableStream,
@@ -357,6 +357,42 @@ const callbackLoadingModel = (output: string, nextLocale: Locale) => ({
     output.includes(accountLabel[nextLocale]),
 });
 
+// The flight server bundled with Next 16.4 outlines a client reference's module
+// id and export name into string rows that the import row references, e.g.
+// `40:"auth-callback-redirect"` `41:"AuthCallbackRedirect"`
+// `42:I["$40",[],"$41"]`. Row ids depend on stream position, so resolve the
+// references instead of matching ids.
+const flightRowPattern = /^([0-9a-f]+):(.*)$/gm;
+const decodeFlightString = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.String)
+);
+const decodeFlightImport = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Tuple([Schema.String, Schema.Array(Schema.String), Schema.String])
+  )
+);
+
+const clientReferenceImports = (output: string) => {
+  const rows = new Map(
+    [...output.matchAll(flightRowPattern)].map(
+      ([, id = "", body = ""]) => [id, body] as const
+    )
+  );
+  const resolveFlightString = (value: string) => {
+    if (!value.startsWith("$")) return value;
+    if (value.startsWith("$$")) return value.slice(1);
+    const row = rows.get(value.slice(1));
+    return row === undefined ? undefined : decodeFlightString(row);
+  };
+
+  return [...rows.values()]
+    .filter((body) => body.startsWith("I["))
+    .map((body) => {
+      const [id, , name] = decodeFlightImport(body.slice(1));
+      return { id: resolveFlightString(id), name: resolveFlightString(name) };
+    });
+};
+
 const signInLoadingOutput = async (nextLocale: Locale) => {
   const { SignInLoading } = await import(
     "@/features/account/components/sign-in-loading"
@@ -452,10 +488,9 @@ describe("auth callback RSC regression", () => {
         Effect.succeed(activeSession)
       );
 
-      expect(output).toContain(
-        'I["auth-callback-redirect",[],"AuthCallbackRedirect"]'
-      );
-      expect(output).toContain("AuthCallbackRedirect");
+      expect(clientReferenceImports(output)).toEqual([
+        { id: "auth-callback-redirect", name: "AuthCallbackRedirect" },
+      ]);
       expect(output).toContain(`"locale":"${nextLocale}"`);
       expect(output).not.toContain("NEXT_REDIRECT");
       expect(output).not.toContain(failureCopy[nextLocale].title);
