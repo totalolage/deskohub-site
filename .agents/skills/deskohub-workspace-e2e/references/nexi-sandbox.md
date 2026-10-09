@@ -34,7 +34,22 @@ Cover successful completion and an unsuccessful or cancelled return followed by 
 
 The sandbox page renders each card field in its own iframe and the Continue, Pay, 3-D Secure, and Back to the shop buttons in the main document. Drive it from main-document AI snapshots: they include iframe content with frame-scoped refs, so locate a field by role and exact accessible name, enter only the iframe that owns it, and restore the main frame in the same scope. Match buttons by role and accessible name, never by substring.
 
-The sandbox fails intermittently on its side. Observed failures include `POST /fe/build/text/` returning HTTP 400 after Continue, the `/hpp/nexi/error` "Payment error" page, and "OPS! Something went wrong" after a `validateAndPay` HTTP 500. The 400 case is the most deceptive: Nexi handles it as a silent save error, so the card form stays on screen with its fields disabled and no Pay button ever appears. Fail fast with the `nexi_hosted_<step>_<state>` diagnostic code instead of waiting out the step timeout. Do not reload the page or resubmit card data to hide these failures. Rerun the exact-SHA workflow when the code names a provider state.
+The sandbox fails intermittently on its side. Observed failures include `POST /fe/build/text/` returning HTTP 400 after Continue, the `/hpp/nexi/error` "Payment error" page, and "OPS! Something went wrong" after a `validateAndPay` HTTP 500. The 400 case is the most deceptive: Nexi handles it as a silent save error, so the card form stays on screen with its fields disabled and no Pay button ever appears. Fail fast with the `nexi_hosted_<step>_<state>` diagnostic code instead of waiting out the step timeout. Never reload the rejected hosted page or resubmit card data into it.
+
+A checkout case restarts a sandbox-rejected payment once, through a fresh payment attempt (`completeHostedCheckoutPayment` in `e2e/cases/checkout.ts`; the decision lives in `e2e/checkout/nexi-sandbox-retry.ts`). Only terminal provider pages qualify: `card_submission_rejected`, `provider_error_page`, or `provider_failure_page`. A step timeout, an unknown or server-error state, or any app assertion never qualifies. The step decides the rest:
+
+- `card_entry` and `continue` run before any authorization request, so they always restart. This covers the `POST /fe/build/text/` HTTP 400 `GW0027` card-data rejection, which tends to hit the first real card-data submission of a run.
+- `pay` restarts only when the driver never activated Pay, or when every `validateAndPay` response was HTTP 5xx and no 3-D Secure result or finalization call succeeded. Otherwise Nexi may have authorized the payment, so the case fails.
+- `challenge` and `return` follow authorization and never restart.
+
+The `restart-sandbox-rejected-payment` step works in this order:
+
+1. Logs the diagnostic code and the code-only Nexi failure lines.
+2. Retires the rejected attempt with `retireRejectedPaymentAttemptForE2E`. This marks the attempt and reservation payment state `failed`, releases its reserved discount-code and voucher claims, and keeps the hold, so cleanup is unchanged.
+3. Closes the hosted tab and waits `nexiSandboxRetryDelayMs`.
+4. Reopens the saved checkout pay page URL. Its `payState` value is registered for redaction.
+
+The app's normal Pay submission then creates a new attempt and a new Nexi order, and the `-retry` steps assert that both identifiers changed. A second rejection fails the case. Rerun the exact-SHA workflow when a restarted payment is rejected again.
 
 Nexi states the reason for a rejected hosted-field call only in that response body. For failed Nexi `/fe/build/` responses, the failure `network.har` keeps only provider error codes (`errors[].code`), workflow enum values (`event`, `state`, `workflowState`), and `fieldStatus` events with known hosted-field ids. Every other field and body is redacted. Read those codes before blaming the sandbox. When the same case is rejected repeatedly while other paid cases in the run succeed, reproduce its order values (amount, currency override, customer info) directly against the sandbox before rerunning.
 
