@@ -306,8 +306,9 @@ export async function verifyProfileNavigation(
         name: unavailableHeading,
       })
     ).toHaveCount(0, { timeout: workspaceE2ETimeouts.browserAction });
-  } catch {
+  } catch (cause) {
     throw workspaceE2EError("Profile navigation verification failed", {
+      cause,
       diagnosticCode,
       operation: "verify profile navigation and unsaved changes",
     });
