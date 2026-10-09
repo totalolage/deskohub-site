@@ -59,6 +59,7 @@ Authenticated read commands use the same application services as the Admin UI:
 dhw overview
 dhw reservations list
 dhw reservations list --date 2026-08-10 --status complete --page 2
+dhw reservations list --status needs_refund
 dhw reservations get <reservation-id>
 dhw reservations find <reservation-or-payment-id>
 dhw reservations cancel <reservation-id> --confirm-access-credential-removed --send-cancellation-email
