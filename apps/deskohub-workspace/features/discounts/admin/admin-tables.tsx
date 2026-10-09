@@ -2,7 +2,6 @@
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ColumnDef } from "@tanstack/react-table";
 import { ArrowUpRight, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -14,7 +13,10 @@ import {
   useWatch,
 } from "react-hook-form";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
-import { AdministrationDataTable } from "@/features/administration/data-table";
+import {
+  AdministrationDataTable,
+  type AdministrationDataTableColumn,
+} from "@/features/administration/data-table";
 import { AdministrationAlert } from "@/features/administration/notice";
 import {
   formatWorkspaceMoney,
@@ -128,7 +130,9 @@ export function DiscountCodesAdminTable({
       ),
     [discounts]
   );
-  const columns = useMemo<ColumnDef<DiscountCodeTableItem>[]>(
+  const columns = useMemo<
+    AdministrationDataTableColumn<DiscountCodeTableItem>[]
+  >(
     () => [
       {
         accessorKey: "code",
@@ -229,7 +233,7 @@ export function VouchersAdminTable({
   readonly vouchers: readonly VoucherTableItem[];
 }) {
   const [expandedId, setExpandedId] = useState<VoucherId | null>(null);
-  const columns = useMemo<ColumnDef<VoucherTableItem>[]>(
+  const columns = useMemo<AdministrationDataTableColumn<VoucherTableItem>[]>(
     () => [
       {
         accessorKey: "code",
@@ -404,7 +408,7 @@ export function CalendarSalesAdminTable({
     () => new Map(discounts.map((discount) => [discount.id, discount])),
     [discounts]
   );
-  const columns = useMemo<ColumnDef<AdminCalendarSale>[]>(
+  const columns = useMemo<AdministrationDataTableColumn<AdminCalendarSale>[]>(
     () => [
       {
         accessorKey: "title",
