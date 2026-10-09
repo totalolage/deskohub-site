@@ -28,6 +28,8 @@ const syntheticPhotos = [
   },
 ] as const satisfies readonly CloudinaryAsset[];
 let requestLocale: Locale = "en-US";
+let loadCarouselImages = async (): Promise<readonly CloudinaryAsset[]> =>
+  syntheticPhotos;
 
 function runWithRequestLocale<A>(resolve: (locale: Locale) => A) {
   return Promise.resolve(resolve(requestLocale));
@@ -59,7 +61,7 @@ mock.module("@/shared/backend/workspace-effect", () => ({
   runWorkspaceEffect: () => passthrough,
 }));
 mock.module("@/features/gallery/backend/get-cloudinary-images.server", () => ({
-  getCloudinaryImages: async () => syntheticPhotos,
+  getCloudinaryImages: () => loadCarouselImages(),
 }));
 const syntheticHeroImageUrl =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E";
@@ -103,13 +105,18 @@ afterAll(() => {
   unregisterWorkspaceComponentTestEnv();
 });
 
-test("renders the public homepage sections without Team, FAQ, or teambuilding sections", async () => {
-  requestLocale = "en-US";
+async function renderHomePage() {
   const element = (await LocalizedWorkspaceHomePage()) as ReactElement;
   const stream = await renderToReadableStream(element);
-  const markup = await new Response(stream).text();
   const page = document.createElement("div");
-  page.innerHTML = markup;
+  page.innerHTML = await new Response(stream).text();
+  return page;
+}
+
+test("renders the public homepage sections without Team, FAQ, or teambuilding sections", async () => {
+  requestLocale = "en-US";
+  loadCarouselImages = async () => syntheticPhotos;
+  const page = await renderHomePage();
 
   expect(
     page.querySelector('section[aria-labelledby="landing-page-heading"] h1')
@@ -145,4 +152,40 @@ test("renders the public homepage sections without Team, FAQ, or teambuilding se
   expect(headings).not.toContain("Frequenty Asked Questions");
   expect(headings).not.toContain("FAQ");
   expect(headings).not.toContain("Workspace teambuilding");
+});
+
+test("hides the photo carousel and keeps the homepage when its images fail to load", async () => {
+  requestLocale = "en-US";
+  loadCarouselImages = () =>
+    Promise.reject(new Error("Cloudinary search failed"));
+  const page = await renderHomePage();
+
+  expect(page.querySelector("#hero-gallery")).toBeNull();
+  expect(
+    page.querySelector(
+      'section[aria-label="Deskohub Workspace photo carousel"]'
+    )
+  ).toBeNull();
+  expect(
+    page.querySelector('section[aria-labelledby="landing-page-heading"] h1')
+      ?.textContent
+  ).toBe("The first self-service workspace on Palmovka.");
+  expect(page.querySelector("section#location-map h2")?.textContent).toBe(
+    "Two minutes from Palmovka metro"
+  );
+  expect(
+    page.querySelector('a[href="mailto:workspace@deskohub.cz"]')?.textContent
+  ).toBe("workspace@deskohub.cz");
+});
+
+test("hides the photo carousel when Cloudinary serves no photos", async () => {
+  requestLocale = "en-US";
+  loadCarouselImages = async () => [];
+  const page = await renderHomePage();
+
+  expect(page.querySelector("#hero-gallery")).toBeNull();
+  expect(
+    page.querySelector('section[aria-labelledby="landing-page-heading"] h1')
+      ?.textContent
+  ).toBe("The first self-service workspace on Palmovka.");
 });

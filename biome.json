@@ -34,6 +34,7 @@
     "./lint/no-repeated-computed-conditional-operand.grit",
     "./lint/no-runtime-typeof.grit",
     "./lint/no-shape-in-symbol-names.grit",
+    "./lint/no-synchronous-subprocess.grit",
     "./lint/no-throw-in-workspace-effect-modules.grit",
     "./lint/no-unknown-parameters.grit",
     "./lint/no-unknown-type-aliases.grit",
