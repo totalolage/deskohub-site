@@ -177,3 +177,15 @@ test("hides the photo carousel and keeps the homepage when its images fail to lo
     page.querySelector('a[href="mailto:workspace@deskohub.cz"]')?.textContent
   ).toBe("workspace@deskohub.cz");
 });
+
+test("hides the photo carousel when Cloudinary serves no photos", async () => {
+  requestLocale = "en-US";
+  loadCarouselImages = async () => [];
+  const page = await renderHomePage();
+
+  expect(page.querySelector("#hero-gallery")).toBeNull();
+  expect(
+    page.querySelector('section[aria-labelledby="landing-page-heading"] h1')
+      ?.textContent
+  ).toBe("The first self-service workspace on Palmovka.");
+});
