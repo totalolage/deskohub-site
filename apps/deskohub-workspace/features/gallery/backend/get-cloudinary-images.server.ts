@@ -8,7 +8,6 @@ import {
 import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
 import { cacheLife, cacheTag } from "next/cache";
-import { env } from "@/env";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 import type { CloudinaryTag } from "../types/cloudinary-tag";
@@ -40,19 +39,21 @@ export async function getCloudinaryImages({
 
   cacheTag(cloudinaryTags.all(), cloudinaryTags.search(tags, maxResults ?? 50));
 
+  // A Cloudinary outage or Admin API rate limit (HTTP 420) must not fail the
+  // page: under Cache Components a throwing "use cache" function fails the
+  // prerender even when the caller catches it. The failure is logged by the
+  // runner; serve no photos and keep that result only briefly.
   return getGalleryImages(expression, {
     maxResults,
     sortBy,
     sortDirection,
-  }).pipe(
-    Effect.catch((error) => {
-      if (env.VERCEL_ENV !== "development") return Effect.fail(error);
-
-      return Effect.logWarning(
-        "Workspace Cloudinary gallery search skipped in development"
-      ).pipe(Effect.as([] as readonly CloudinaryAsset[]));
-    }),
-    Effect.provide(WorkspaceCloudinaryLayer),
-    runWorkspaceEffect("gallery.images.load")
-  );
+  })
+    .pipe(
+      Effect.provide(WorkspaceCloudinaryLayer),
+      runWorkspaceEffect("gallery.images.load")
+    )
+    .catch((): readonly CloudinaryAsset[] => {
+      cacheLife("seconds");
+      return [];
+    });
 }
