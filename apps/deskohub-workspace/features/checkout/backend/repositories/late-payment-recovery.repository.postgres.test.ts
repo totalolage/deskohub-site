@@ -266,6 +266,42 @@ describe.skipIf(!testDatabase)(
       expect(attempt?.refundState).toBe("required");
     });
 
+    test("a webhook joining a verification-started recovery links its event to the attempt", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "cancelled",
+        holdExpiresAt: Temporal.Now.instant().subtract({ minutes: 30 }),
+        lastWebhookEventId: "earlier-webhook",
+      });
+      await startAndClaim(checkout);
+
+      await run((repository) =>
+        repository.start({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          webhookEventId: NexiWebhookEventIdSchema.make(
+            `late-webhook-${checkout.id}`
+          ),
+          providerStatus: "EXECUTED",
+          verifiedPaidAt: Temporal.Now.instant(),
+        })
+      );
+      await run((repository) =>
+        repository.requireRefund({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          failureCode: "late_payment_reservation_unavailable",
+          completedAt: Temporal.Now.instant(),
+        })
+      );
+
+      const { attempt, recoveries } = await readRows(checkout);
+      expect(recoveries).toHaveLength(1);
+      expect(recoveries[0]?.state).toBe("refund_required");
+      expect(attempt?.lastWebhookEventId).toBe(
+        NexiWebhookEventIdSchema.make(`late-webhook-${checkout.id}`)
+      );
+    });
+
     test("refuses to reuse an original hold whose deadline has passed", async () => {
       const checkout = await insertLatePaidCheckout({
         reservationState: "held",

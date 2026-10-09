@@ -435,7 +435,19 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     )
                   )
                   .limit(1);
-                if (existing) return existing;
+                if (existing) {
+                  // A webhook arriving after status-page verification started
+                  // the recovery still identifies the payment; link it to the
+                  // attempt already locked here rather than the recovery,
+                  // whose row settlement locks before the attempt.
+                  if (input.webhookEventId && !existing.webhookEventId) {
+                    yield* tx
+                      .update(paymentAttempts)
+                      .set({ lastWebhookEventId: input.webhookEventId })
+                      .where(eq(paymentAttempts.id, input.paymentAttemptId));
+                  }
+                  return existing;
+                }
 
                 const [reservation] = yield* tx
                   .select()
