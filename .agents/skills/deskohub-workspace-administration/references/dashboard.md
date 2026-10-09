@@ -35,6 +35,8 @@ The dashboard composes three sources without creating a second customer or reser
 
 Fuzzy customer search by name or email remains a protected server action. Customer contact data is not placed in URLs or persisted by the dashboard. The selected Dotypos customer ID, status groups, reservation types, dates, and page numbers may be represented in URLs.
 
+The reservation page loader resolves a missing date range to the Prague year to date (`getAdministrationReservationListDateRange`) before calling `AdministrationService.listReservations`, and returns that effective range as the page input so the date controls, sort links, and pagination carry it. Keep the default at the UI loader: the shared service and the `dhw` reservation list keep treating an absent range as unbounded.
+
 The administration projection deliberately excludes secret Workspace access codes, payment security tokens, provider redirect URLs, Dotypos notes, raw provider responses, and raw PostHog property bags. A reservation detail may expose only the safe access-grant projection: state, deterministic access name, interval, device, provider credential identifier, issuance and failure timestamps, and failure code.
 
 Retry access automatically only from `failed`, which represents a definitive provider rejection. For `uncertain`, tell the operator to use the Igloohome app over Bluetooth at the lock, find `Deskohub <reservation-id>`, and remove it or verify it is absent. Require explicit confirmation before conditionally changing `uncertain` to `failed` and retrying. If the operator cannot confirm provider cleanup, do not retry; wait for the possible credential to expire. Igloohome does not provide an AlgoPIN lookup or revocation operation for this integration.

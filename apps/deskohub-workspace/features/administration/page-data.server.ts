@@ -19,7 +19,7 @@ import {
   getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
-import { getAdministrationReservationDateRange } from "./reservation-date-range";
+import { getAdministrationReservationListDateRange } from "./reservation-date-range";
 import {
   getDotyposCustomerRouteId,
   requireDotyposCustomerRouteId,
@@ -120,7 +120,7 @@ const getAdministrationReservationListInput = async (
   await authorizeAdministratorPage();
   const params = await searchParams;
   const typeValue = firstParam(params.type);
-  const dateRange = getAdministrationReservationDateRange({
+  const dateRange = getAdministrationReservationListDateRange({
     date: firstParam(params.date),
     from: firstParam(params.from),
     to: firstParam(params.to),

@@ -253,6 +253,44 @@ describe("ReservationsAdministrationPage", () => {
     }
   });
 
+  test("shows the default year-to-date range without offering to clear it", async () => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2026-08-12T10:00:00Z");
+    reservationPage = {
+      input: {
+        direction: "desc",
+        from: "2026-01-01",
+        sort: "created",
+        to: "2026-08-12",
+      },
+      result: { ...defaultReservationPage.result, pageCount: 2 },
+    };
+
+    try {
+      const { ReservationsAdministrationContent } = await import("./page");
+      const view = render(
+        await ReservationsAdministrationContent({
+          searchParams: Promise.resolve({}),
+        })
+      );
+
+      expect(view.getByLabelText("Start date from").getAttribute("value")).toBe(
+        "2026-01-01"
+      );
+      expect(view.getByLabelText("Start date to").getAttribute("value")).toBe(
+        "2026-08-12"
+      );
+      expect(view.queryByRole("link", { name: "Clear" })).toBeNull();
+      expect(
+        view.getByRole("link", { name: "Next" }).getAttribute("href")
+      ).toBe(
+        "/admin/reservations?direction=desc&from=2026-01-01&sort=created&to=2026-08-12&page=2"
+      );
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
   test("explains the fallback when provider date sorting is unavailable", async () => {
     reservationPage = {
       input: { direction: "asc", sort: "date" },

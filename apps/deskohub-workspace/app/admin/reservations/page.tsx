@@ -25,6 +25,7 @@ import {
 import {
   type AdministrationReservationDateRange,
   getAdministrationReservationDateShortcuts,
+  getAdministrationReservationYearToDateRange,
 } from "@/features/administration/reservation-date-range";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { Button } from "@/shared/components/ui/button";
@@ -128,6 +129,7 @@ function ReservationFilters({
   readonly input: ReservationsData["input"];
 }) {
   const shortcutRanges = getAdministrationReservationDateShortcuts();
+  const defaultRange = getAdministrationReservationYearToDateRange();
   const shortcutHref = (range: AdministrationReservationDateRange) => {
     const search = new URLSearchParams();
     for (const [key, value] of Object.entries({
@@ -224,9 +226,9 @@ function ReservationFilters({
           className="flex min-w-0 items-center justify-end gap-2 border-0 p-0"
         >
           {(input.customerId ||
-            input.from ||
+            input.from !== defaultRange.from ||
             input.status ||
-            input.to ||
+            input.to !== defaultRange.to ||
             input.type) && (
             <Button asChild className="min-h-10" size="sm" variant="ghost">
               <Link href="/admin/reservations">Clear</Link>
