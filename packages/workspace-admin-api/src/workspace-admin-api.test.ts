@@ -841,7 +841,35 @@ describe("administration contract", () => {
       updatedAt: "2026-08-13T12:01:00Z",
     });
 
-    expect(attempt).toMatchObject({ state: "paid", refundState: "required" });
+    expect(attempt).toMatchObject({
+      state: "paid",
+      refundState: "required",
+      refundedAmount: null,
+      refundedAt: null,
+    });
+  });
+
+  test("exposes the refund Nexi reported for a paid attempt", () => {
+    const attempt = Schema.decodeUnknownSync(AdministrationPaymentAttempt)({
+      id: "payment-attempt-id",
+      state: "paid",
+      refundState: "refunded",
+      providerOrderId: "order-id",
+      providerLabel: "Online payment",
+      stateLabel: "Paid",
+      amount: { value: 1000, exponent: 2, currency: "CZK" },
+      refundedAmount: { value: 400, exponent: 2, currency: "CZK" },
+      refundedAt: "2026-08-14T09:00:00Z",
+      createdAt: "2026-08-13T12:00:00Z",
+      providerOrderCreatedAt: "2026-08-13T12:00:01Z",
+      updatedAt: "2026-08-14T09:00:00Z",
+    });
+
+    expect(attempt).toMatchObject({
+      refundState: "refunded",
+      refundedAmount: { value: 400, exponent: 2, currency: "CZK" },
+      refundedAt: "2026-08-14T09:00:00Z",
+    });
   });
 
   test("exposes access operations without exposing the PIN", () => {

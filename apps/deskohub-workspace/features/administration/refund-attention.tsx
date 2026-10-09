@@ -22,7 +22,8 @@ export async function RefundAttention({
       </p>
       <p>
         Their payment was received, but the reservation could not be provided or
-        was cancelled. Refunds are not issued automatically.
+        was cancelled. Refunds are not issued automatically; refund them in Nexi
+        and they leave this list once Nexi reports the refund.
       </p>
       <Link
         className="mt-1 inline-block font-semibold underline underline-offset-4"

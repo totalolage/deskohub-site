@@ -259,11 +259,10 @@ export type AdministrationPaymentAttempt = {
   readonly providerLabel: string;
   readonly stateLabel: string;
   readonly failureCode: string | null;
-  readonly amount: {
-    readonly value: number;
-    readonly exponent: number;
-    readonly currency: string;
-  };
+  readonly amount: AdministrationMoney;
+  /** Total Nexi reports as refunded; set only when `refundState` is `refunded`. */
+  readonly refundedAmount: AdministrationMoney | null;
+  readonly refundedAt: string | null;
   readonly createdAt: string;
   readonly providerOrderCreatedAt: string | null;
   readonly updatedAt: string;
@@ -570,6 +569,8 @@ type SafePaymentAttemptRow = {
   readonly state: PaymentAttemptState;
   readonly failureCode: string | null;
   readonly refundState: PaymentRefundState;
+  readonly refundedAmountValue: number | null;
+  readonly refundedAt: Temporal.Instant | null;
   readonly amountValue: number;
   readonly amountExponent: number;
   readonly currency: string;
@@ -586,6 +587,8 @@ const safePaymentAttemptSelection = {
   state: paymentAttempts.state,
   failureCode: paymentAttempts.failureCode,
   refundState: paymentAttempts.refundState,
+  refundedAmountValue: paymentAttempts.refundedAmountValue,
+  refundedAt: paymentAttempts.refundedAt,
   amountValue: paymentAttempts.amountValue,
   amountExponent: paymentAttempts.amountExponent,
   currency: paymentAttempts.currency,
@@ -613,6 +616,15 @@ const toAdministrationPaymentAttempt = (
     exponent: attempt.amountExponent,
     currency: attempt.currency,
   },
+  refundedAmount:
+    attempt.refundedAmountValue === null
+      ? null
+      : {
+          value: attempt.refundedAmountValue,
+          exponent: attempt.amountExponent,
+          currency: attempt.currency,
+        },
+  refundedAt: attempt.refundedAt ? toIsoString(attempt.refundedAt) : null,
   createdAt: toIsoString(attempt.createdAt),
   providerOrderCreatedAt: attempt.providerOrderCreatedAt?.toString() ?? null,
   updatedAt: toIsoString(attempt.updatedAt),
@@ -676,16 +688,34 @@ type LiveReservationDetails = {
   readonly customer: DotyposCustomer | null;
 };
 
-const getReservationStatusNote = (
-  row: SafeReservationRow,
-  live: LiveReservationDetails,
-  latePayment: boolean,
-  recoveryState?: LatePaymentRecoveryState
-) => {
+/**
+ * A reservation is refunded once Nexi reports a refund for every payment that
+ * required one. Any successful refund counts, including a partial one.
+ */
+const isReservationRefunded = (
+  attempts: readonly Pick<SafePaymentAttemptRow, "refundState">[]
+) =>
+  attempts.some(({ refundState }) => refundState === "refunded") &&
+  !attempts.some(({ refundState }) => refundState === "required");
+
+const getReservationStatusNote = ({
+  latePayment,
+  live,
+  recoveryState,
+  refunded,
+  row,
+}: {
+  readonly latePayment: boolean;
+  readonly live: LiveReservationDetails;
+  readonly recoveryState?: LatePaymentRecoveryState;
+  readonly refunded: boolean;
+  readonly row: SafeReservationRow;
+}) => {
   if (recoveryState === "pending" || recoveryState === "processing") {
     return "Recovery in progress";
   }
   if (recoveryState === "review_required") return "Recovery needs review";
+  if (refunded) return "Refunded";
   if (latePayment) return "Refund required";
   if (row.failureCode === "payment_outcome_unconfirmed_before_cleanup") {
     return "Payment needs review";
@@ -699,6 +729,7 @@ const getReservationStatusNote = (
 const toReservationSummary = ({
   latePayment = false,
   needsRefund = false,
+  refunded = false,
   recoveryState,
   latestPayment = null,
   live,
@@ -707,6 +738,8 @@ const toReservationSummary = ({
   readonly latePayment?: boolean;
   /** Any payment attempt of the reservation, not only the latest, needs a refund. */
   readonly needsRefund?: boolean;
+  /** Nexi reported a refund for every payment attempt that required one. */
+  readonly refunded?: boolean;
   readonly recoveryState?: LatePaymentRecoveryState;
   readonly latestPayment?: AdministrationPaymentAttempt | null;
   readonly live: LiveReservationDetails;
@@ -734,12 +767,19 @@ const toReservationSummary = ({
       latePayment,
       latePaymentRecovery: recoveryState,
       paymentState: row.paymentState,
+      refunded,
       reservationState: row.reservationState,
     }),
     statusNote:
       needsRefund || latestPayment?.refundState === "required"
         ? "Needs refund"
-        : getReservationStatusNote(row, live, latePayment, recoveryState),
+        : getReservationStatusNote({
+            latePayment,
+            live,
+            recoveryState,
+            refunded,
+            row,
+          }),
     createdAt: toIsoString(row.createdAt),
     latestPayment,
     updatedAt: toIsoString(row.updatedAt),
@@ -1020,6 +1060,19 @@ const buildPaymentAttemptTimeline = (
       occurredAt: attempt.createdAt,
       tone: "neutral",
     };
+    if (attempt.state === "paid" && attempt.refundedAt) {
+      return [
+        started,
+        {
+          id: `payment-attempt-${attempt.id}-refunded`,
+          title: "Refund recorded",
+          description:
+            "Nexi reported a refund for this payment, so it no longer needs refund work.",
+          occurredAt: attempt.refundedAt,
+          tone: "neutral" as const,
+        },
+      ];
+    }
     if (
       attempt.state === "created" ||
       attempt.state === "pending" ||
@@ -1145,11 +1198,17 @@ const buildLatePaymentRecoveryTimeline = (
     ];
   });
 
-const getReservationOperatorNotice = (
-  row: SafeReservationRow,
-  latePayment: boolean,
-  recovery?: LatePaymentRecoveryRow
-): AdministrationReservationDetail["operatorNotice"] => {
+const getReservationOperatorNotice = ({
+  latePayment,
+  recovery,
+  refunded,
+  row,
+}: {
+  readonly latePayment: boolean;
+  readonly recovery?: LatePaymentRecoveryRow;
+  readonly refunded: boolean;
+  readonly row: SafeReservationRow;
+}): AdministrationReservationDetail["operatorNotice"] => {
   if (recovery?.state === "pending" || recovery?.state === "processing") {
     return {
       status: "warning",
@@ -1172,6 +1231,14 @@ const getReservationOperatorNotice = (
       title: "Late payment recovery needs review",
       message:
         "Workspace could not safely complete recovery. Check the original and replacement Dotypos bookings before fulfilling or refunding.",
+    };
+  }
+  if (latePayment && refunded) {
+    return {
+      status: "success",
+      title: "Late payment refunded",
+      message:
+        "Nexi reported a refund for the late payment. No further refund work is needed.",
     };
   }
   if (latePayment) {
@@ -1567,6 +1634,10 @@ export class AdministrationService extends Context.Service<
                 : []
             )
           );
+          const attemptsByReservation = Map.groupBy(
+            attemptRows,
+            ({ workspaceReservationId }) => workspaceReservationId
+          );
           const recoveryByReservation = new Map(
             recoveryRows.map((recovery) => [recovery.reservationId, recovery])
           );
@@ -1593,6 +1664,9 @@ export class AdministrationService extends Context.Service<
                 : latePaymentReservationIds.has(row.id),
               recoveryState: recoveryByReservation.get(row.id)?.state,
               needsRefund: refundReservationIds.has(row.id),
+              refunded: isReservationRefunded(
+                attemptsByReservation.get(row.id) ?? []
+              ),
               live,
               row,
             })
@@ -1936,6 +2010,7 @@ export class AdministrationService extends Context.Service<
           );
 
         const attempts = attemptRows.map(toAdministrationPaymentAttempt);
+        const refunded = isReservationRefunded(attemptRows);
         const recovery = recoveryRows.at(-1);
         const latePayment = recovery
           ? recovery.state === "refund_required"
@@ -1956,6 +2031,7 @@ export class AdministrationService extends Context.Service<
             latestPayment: attempts.at(-1) ?? null,
             latePayment,
             recoveryState: recovery?.state,
+            refunded,
             live,
             row,
           }),
@@ -1978,13 +2054,15 @@ export class AdministrationService extends Context.Service<
             latePayment,
             latePaymentRecovery: recovery?.state,
             paymentState: row.paymentState,
+            refunded,
             reservationState: row.reservationState,
           }),
-          operatorNotice: getReservationOperatorNotice(
-            row,
+          operatorNotice: getReservationOperatorNotice({
             latePayment,
-            recovery
-          ),
+            recovery,
+            refunded,
+            row,
+          }),
           timeline: mergeReservationHistory({
             durable: [
               ...buildTimeline(row),

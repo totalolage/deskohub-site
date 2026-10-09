@@ -81,7 +81,7 @@ describe.skipIf(!testDatabase)(
     /** Inserts a paid, cancelled checkout with one attempt per refund state. */
     const insertPaidCheckout = async (
       label: string,
-      refundStates: readonly ("not_required" | "required")[]
+      refundStates: readonly ("not_required" | "required" | "refunded")[]
     ) => {
       const id = `${label}-${runId}`;
       const reservationId = workspaceReservationIdSchema.make(`refund-${id}`);
@@ -115,6 +115,10 @@ describe.skipIf(!testDatabase)(
             providerOrderId: NexiOrderIdSchema.make(`order-${index}-${id}`),
             state: "paid",
             refundState,
+            ...(refundState === "refunded" && {
+              refundedAmountValue: 29_000,
+              refundedAt: Temporal.Instant.from("2026-10-05T08:30:00Z"),
+            }),
             amountValue: 29_000,
             amountExponent: 2,
             currency: "CZK",
@@ -140,6 +144,10 @@ describe.skipIf(!testDatabase)(
         "not_required",
       ]);
       await insertPaidCheckout("settled", ["not_required"]);
+      const refunded = await insertPaidCheckout("refunded", [
+        "refunded",
+        "not_required",
+      ]);
 
       const after = await run((administration) =>
         administration.countReservationsNeedingRefund()
@@ -159,6 +167,16 @@ describe.skipIf(!testDatabase)(
       for (const item of listed.items) {
         expect(item.statusNote).toBe("Needs refund");
       }
+
+      const cancelled = await run((administration) =>
+        administration.listReservations({
+          customerId,
+          status: "cancelled",
+        })
+      );
+      expect(
+        cancelled.items.find(({ id }) => id === refunded)?.statusNote
+      ).toBe("Refunded");
     });
   }
 );
