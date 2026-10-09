@@ -193,6 +193,28 @@ describe("administration UI boundaries", () => {
     ).toBe(true);
   });
 
+  test("renders the reusable export action on both reservation variants", async () => {
+    const page = await readWorkspaceFile("app/admin/reservations/page.tsx");
+    const exportAction = await readWorkspaceFile(
+      "features/administration/reservation-export-action.tsx"
+    );
+
+    expect(page).toContain("AdministrationStreamedReservationExportAction");
+    expect(page).toContain(
+      "<AdministrationStreamedReservationExportAction input={input} />"
+    );
+    expect(page).toContain(
+      "<AdministrationReservationExportAction input={input} />"
+    );
+    expect(exportAction).toContain("AdministrationTableExportAction");
+    expect(exportAction).toContain("getAdministrationReservationExportHref");
+
+    const exportHrefBuilder = await readWorkspaceFile(
+      "features/administration/reservation-export.ts"
+    );
+    expect(exportHrefBuilder).toContain("export.csv");
+  });
+
   test("keeps empty and sorting chrome in their shared foundations", async () => {
     const sourceFiles = [
       ...new Bun.Glob("app/admin/**/*.tsx").scanSync({ cwd: workspaceRoot }),

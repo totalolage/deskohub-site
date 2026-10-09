@@ -8,6 +8,23 @@ export type AdministrationReservationDateRange = {
 export type AdministrationReservationClosedDateRange =
   Required<AdministrationReservationDateRange>;
 
+export type AdministrationReservationDateRangeField = "date" | "from" | "to";
+
+export type AdministrationReservationDateRangeFailure = {
+  readonly field: AdministrationReservationDateRangeField;
+  readonly value: string;
+};
+
+export type AdministrationReservationDateRangeStrictResult =
+  | {
+      readonly ok: true;
+      readonly range: AdministrationReservationDateRange | undefined;
+    }
+  | {
+      readonly ok: false;
+      readonly failures: readonly AdministrationReservationDateRangeFailure[];
+    };
+
 export const getAdministrationReservationDateRange = ({
   date,
   from,
@@ -20,19 +37,74 @@ export const getAdministrationReservationDateRange = ({
   const legacyDate = parseCalendarDate(date);
   const fromDate = parseCalendarDate(from);
   const toDate = parseCalendarDate(to);
-  if (!fromDate && !toDate) {
-    return legacyDate
-      ? { from: legacyDate.toString(), to: legacyDate.toString() }
-      : undefined;
+  return resolveReservationDateRange({
+    date: legacyDate,
+    from: fromDate,
+    to: toDate,
+  });
+};
+
+/**
+ * Like the lenient page parser, but fails closed with the raw values that do
+ * not parse as calendar dates instead of silently dropping the narrowing
+ * filter.
+ */
+export const getAdministrationReservationDateRangeStrict = ({
+  date,
+  from,
+  to,
+}: {
+  readonly date?: string;
+  readonly from?: string;
+  readonly to?: string;
+}): AdministrationReservationDateRangeStrictResult => {
+  const failures: AdministrationReservationDateRangeFailure[] = [];
+  const parseStrict = (
+    field: AdministrationReservationDateRangeField,
+    value: string | undefined
+  ) => {
+    if (!value) return undefined;
+    try {
+      return Temporal.PlainDate.from(value);
+    } catch {
+      failures.push({ field, value });
+      return undefined;
+    }
+  };
+  const legacyDate = parseStrict("date", date);
+  const fromDate = parseStrict("from", from);
+  const toDate = parseStrict("to", to);
+  if (failures.length > 0) return { ok: false, failures };
+  return {
+    ok: true,
+    range: resolveReservationDateRange({
+      date: legacyDate,
+      from: fromDate,
+      to: toDate,
+    }),
+  };
+};
+
+const resolveReservationDateRange = ({
+  date,
+  from,
+  to,
+}: {
+  readonly date: Temporal.PlainDate | undefined;
+  readonly from: Temporal.PlainDate | undefined;
+  readonly to: Temporal.PlainDate | undefined;
+}): AdministrationReservationDateRange | undefined => {
+  if (!from && !to) {
+    return date ? { from: date.toString(), to: date.toString() } : undefined;
   }
 
-  if (fromDate && toDate) {
-    return Temporal.PlainDate.compare(fromDate, toDate) <= 0
-      ? { from: fromDate.toString(), to: toDate.toString() }
-      : { from: toDate.toString(), to: fromDate.toString() };
+  if (from && to) {
+    return Temporal.PlainDate.compare(from, to) <= 0
+      ? { from: from.toString(), to: to.toString() }
+      : { from: to.toString(), to: from.toString() };
   }
 
-  return fromDate ? { from: fromDate.toString() } : { to: toDate?.toString() };
+  return from ? { from: from.toString() } : { to: to?.toString() };
 };
 
 export const getAdministrationOverviewDateRanges = (

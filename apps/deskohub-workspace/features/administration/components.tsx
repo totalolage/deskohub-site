@@ -62,6 +62,7 @@ export {
 } from "./table-frame";
 export {
   AdministrationTableCount,
+  AdministrationTableExportAction,
   AdministrationTableToolbar,
 } from "./table-toolbar";
 
