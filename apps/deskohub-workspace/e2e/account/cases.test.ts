@@ -930,6 +930,12 @@ class FakeBrowser {
   }
 
   waitForCondition(description: string, condition: string) {
+    if (description === "account danger panel hydration") {
+      if (!condition.includes("#delete-account-trigger")) {
+        throw new Error("the danger panel hydration anchor is wrong");
+      }
+      return;
+    }
     if (description === "account danger section") {
       if (this.selectedSection !== "danger") {
         throw new Error("the danger section is not selected");

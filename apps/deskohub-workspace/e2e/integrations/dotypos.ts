@@ -347,30 +347,49 @@ export const waitForDotyposCancellationConvergence = <E, R>(
   }
 ): Effect.Effect<void, E | WorkspaceE2EError, R> => {
   const reservationIds = new Set(dotyposReservationIds);
+  let pendingStatuses: readonly Reservation["status"][] = [];
 
   return pollUntil(
     readReservations.pipe(
-      Effect.map((reservations) =>
-        reservations.some((reservation) => {
-          const reservationId = Option.getOrUndefined(
-            decodeDotyposReservationId(reservation.id)
-          );
-          return (
-            reservationId !== undefined &&
-            reservationIds.has(reservationId) &&
-            reservation.status !== "CANCELLED"
-          );
-        })
-          ? undefined
-          : true
-      )
+      Effect.map((reservations) => {
+        pendingStatuses = reservations
+          .filter((reservation) => {
+            const reservationId = Option.getOrUndefined(
+              decodeDotyposReservationId(reservation.id)
+            );
+            return (
+              reservationId !== undefined &&
+              reservationIds.has(reservationId) &&
+              reservation.status !== "CANCELLED"
+            );
+          })
+          .map((reservation) => reservation.status);
+        return pendingStatuses.length > 0 ? undefined : true;
+      })
     ),
     {
+      describePending: () =>
+        describePendingCancellations(pendingStatuses, reservationIds.size),
       intervalMs: options.intervalMs,
       label: "cancelled Dotypos reservations to leave active inventory",
       timeoutMs: options.timeoutMs,
     }
   ).pipe(Effect.asVoid);
+};
+
+const describePendingCancellations = (
+  statuses: readonly Reservation["status"][],
+  trackedCount: number
+) => {
+  const counts = new Map<Reservation["status"], number>();
+  for (const status of statuses) {
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
+  const byStatus = [...counts]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([status, count]) => `${status}: ${count}`)
+    .join(", ");
+  return `${statuses.length} of ${trackedCount} cancelled reservations still active (${byStatus})`;
 };
 
 export const reconcileStaleDotyposReservations = (
