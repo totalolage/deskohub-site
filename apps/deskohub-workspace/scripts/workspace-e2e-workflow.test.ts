@@ -12,6 +12,7 @@ import {
   positionDelta,
   stringLiterals,
 } from "./shared/source-ast";
+import { runBoundedProcess } from "./shared/testing/bounded-process";
 import {
   findStepByName,
   parseWorkflow,
@@ -22,32 +23,42 @@ import {
 type PlaywrightCheckoutConfig =
   typeof import("../playwright.e2e.config")["default"];
 
-let cachedConfigStructure: PlaywrightCheckoutConfig | undefined;
+let cachedConfigStructure: Promise<PlaywrightCheckoutConfig> | undefined;
 // The real Playwright config is executed (not text-scanned) and its resolved
 // structure is asserted on. It runs in a child process because the config
 // resolves its browser executable with a top-level await, which bun's test
 // runner does not settle reliably across multiple entry files.
-const playwrightConfigStructure = (): PlaywrightCheckoutConfig => {
-  if (cachedConfigStructure === undefined) {
-    const result = Bun.spawnSync({
+const playwrightConfigStructure = (): Promise<PlaywrightCheckoutConfig> =>
+  (cachedConfigStructure ??= (async () => {
+    const result = await runBoundedProcess({
       cmd: [
         process.execPath,
         "-e",
         'const config = (await import("./playwright.e2e.config")).default; console.log(JSON.stringify(config));',
       ],
       cwd: resolve(import.meta.dir, ".."),
-      stdout: "pipe",
-      stderr: "pipe",
+      maxOutputBytes: 64 * 1024,
+      timeoutMs: 15_000,
     });
-    if (result.exitCode !== 0) {
-      throw new Error(new TextDecoder().decode(result.stderr));
+    if (result.outcome === "timed-out") {
+      throw new Error("actual Playwright config loader timed out");
     }
-    cachedConfigStructure = JSON.parse(
-      new TextDecoder().decode(result.stdout)
-    ) as PlaywrightCheckoutConfig;
-  }
-  return cachedConfigStructure;
-};
+    if (result.outcome === "output-limit") {
+      throw new Error(
+        "actual Playwright config loader exceeded its output limit"
+      );
+    }
+    if (result.outcome === "failed") {
+      throw new Error(
+        `actual Playwright config loader exited with status ${result.exitCode}`
+      );
+    }
+    try {
+      return JSON.parse(result.stdout) as PlaywrightCheckoutConfig;
+    } catch {
+      throw new Error("actual Playwright config loader emitted invalid JSON");
+    }
+  })());
 
 const workflowPath = resolve(
   import.meta.dir,
@@ -558,8 +569,8 @@ describe("workspace E2E workflow", () => {
     expect(turboGlobal).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
   });
 
-  test("runs invoice persistence inside the normal exact-SHA Playwright graph", () => {
-    const playwrightConfig = playwrightConfigStructure();
+  test("runs invoice persistence inside the normal exact-SHA Playwright graph", async () => {
+    const playwrightConfig = await playwrightConfigStructure();
     const packageJson = readTrackedJson("../package.json") as {
       readonly scripts: Record<string, string | undefined>;
       readonly dependencies: Record<string, string>;
@@ -678,8 +689,8 @@ describe("workspace E2E workflow", () => {
     expect(stepNames).toContain("Verify hosted browser runtime");
   });
 
-  test("lets Playwright own checkout preparation, scheduling, and parallelism", () => {
-    const playwrightConfig = playwrightConfigStructure();
+  test("lets Playwright own checkout preparation, scheduling, and parallelism", async () => {
+    const playwrightConfig = await playwrightConfigStructure();
     const entry = parseTrackedModule("workspace-e2e.ts");
     const suite = parseTrackedModule("../e2e/suite.ts");
     const cleanupRuntime = parseTrackedModule(
@@ -768,8 +779,8 @@ describe("workspace E2E workflow", () => {
     ).toBe(false);
   });
 
-  test("preserves discount seeding and account phase dependencies", () => {
-    const playwrightConfig = playwrightConfigStructure();
+  test("preserves discount seeding and account phase dependencies", async () => {
+    const playwrightConfig = await playwrightConfigStructure();
     expect(
       projectByName(playwrightConfig, "account-auth")?.dependencies
     ).toEqual(["checkout-plan"]);
@@ -786,8 +797,8 @@ describe("workspace E2E workflow", () => {
     ).toEqual(["checkout-setup"]);
   });
 
-  test("lets Playwright schedule read-only navigation beside checkout cases", () => {
-    const playwrightConfig = playwrightConfigStructure();
+  test("lets Playwright schedule read-only navigation beside checkout cases", async () => {
+    const playwrightConfig = await playwrightConfigStructure();
     const packageJson = readTrackedJson("../package.json") as {
       readonly scripts: Record<string, string>;
     };
@@ -820,8 +831,8 @@ describe("workspace E2E workflow", () => {
     );
   });
 
-  test("lets Playwright write complete GitHub job summaries", () => {
-    const playwrightConfig = playwrightConfigStructure();
+  test("lets Playwright write complete GitHub job summaries", async () => {
+    const playwrightConfig = await playwrightConfigStructure();
     expect(serializedWorkflow.includes("GITHUB_STEP_SUMMARY")).toBe(false);
     const summaryReporter = playwrightConfig.reporter?.find(
       (entry) =>
