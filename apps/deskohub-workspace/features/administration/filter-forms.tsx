@@ -227,9 +227,11 @@ export function OperationsAdministrationFilterForm({
 }
 
 export function ReservationsAdministrationFilterForm({
+  defaultFrom,
   input,
   shortcuts,
 }: {
+  readonly defaultFrom: string;
   readonly input: {
     readonly customerId?: string;
     readonly direction?: "asc" | "desc";
@@ -384,7 +386,7 @@ export function ReservationsAdministrationFilterForm({
           className="flex min-w-0 items-center justify-end gap-2 border-0 p-0"
         >
           {(input.customerId ||
-            input.from ||
+            input.from !== defaultFrom ||
             input.status ||
             input.to ||
             input.type) && (

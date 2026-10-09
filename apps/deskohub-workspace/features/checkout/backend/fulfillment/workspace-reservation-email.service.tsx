@@ -54,7 +54,7 @@ import {
   createWorkspaceCheckoutWifiQrPayload,
   type WorkspaceCheckoutNetworkDetails,
   WorkspaceCheckoutNetworkDetailsService,
-  workspaceCheckoutPlaceholderNetworkDetails,
+  workspaceCheckoutCustomerNetworkDetails,
 } from "./network-details.service";
 import { createWorkspaceMeetingRoomEmailDetailRows } from "./workspace-meeting-room-email-details";
 
@@ -426,7 +426,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml = Effect.fn(
             locale,
             accessUrl: input.accessUrl,
             invoiceUrl: input.invoiceUrl,
-            networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
+            networkDetails: workspaceCheckoutCustomerNetworkDetails,
             networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
             locationMapImageSrc: workspaceLocationMapUrl,
           })
@@ -442,7 +442,7 @@ const createPreviewNetworkQrPng = () =>
     try: () =>
       generateQrCodePngBuffer(
         createWorkspaceCheckoutWifiQrPayload(
-          workspaceCheckoutPlaceholderNetworkDetails
+          workspaceCheckoutCustomerNetworkDetails
         ),
         {
           errorCorrectionLevel: "M",

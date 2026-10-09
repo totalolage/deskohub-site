@@ -19,7 +19,10 @@ import {
   loadAdministrationReservations,
   loadAdministrationReservationsPage,
 } from "@/features/administration/page-data.server";
-import { getAdministrationReservationDateShortcuts } from "@/features/administration/reservation-date-range";
+import {
+  getAdministrationReservationDateShortcuts,
+  getAdministrationReservationListDefaultDateRange,
+} from "@/features/administration/reservation-date-range";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 
 export default function ReservationsAdministrationPage({
@@ -83,6 +86,7 @@ async function ReservationFiltersContent({
 }) {
   return (
     <ReservationsAdministrationFilterForm
+      defaultFrom={getAdministrationReservationListDefaultDateRange().from}
       input={await input}
       shortcuts={getAdministrationReservationDateShortcuts()}
     />
@@ -113,6 +117,7 @@ export async function ReservationsAdministrationContent({
         count={result.total}
         filters={
           <ReservationsAdministrationFilterForm
+            defaultFrom={getAdministrationReservationListDefaultDateRange().from}
             input={input}
             shortcuts={getAdministrationReservationDateShortcuts()}
           />

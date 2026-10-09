@@ -507,6 +507,97 @@ describe("ReservationsAdministrationPage", () => {
     }
   });
 
+  test("shows the default open-ended range from January 1 without offering to clear it", async () => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2026-08-12T10:00:00Z");
+    reservationPage = {
+      input: {
+        direction: "desc",
+        from: "2026-01-01",
+        sort: "created",
+      },
+      result: { ...defaultReservationPage.result, pageCount: 2 },
+    };
+
+    try {
+      const { ReservationsAdministrationContent } = await import("./page");
+      const view = render(
+        await ReservationsAdministrationContent({
+          searchParams: Promise.resolve({}),
+        })
+      );
+
+      expect(view.getByLabelText("Start date from").getAttribute("value")).toBe(
+        "2026-01-01"
+      );
+      expect(view.getByLabelText("Start date to").getAttribute("value")).toBe(
+        ""
+      );
+      expect(view.queryByRole("link", { name: "Clear" })).toBeNull();
+      expect(
+        view.getByRole("link", { name: "Next" }).getAttribute("href")
+      ).toBe(
+        "/admin/reservations?direction=desc&from=2026-01-01&sort=created&page=2"
+      );
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
+  test("offers to clear an end date added to the default range", async () => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2026-08-12T10:00:00Z");
+    reservationPage = {
+      input: {
+        direction: "desc",
+        from: "2026-01-01",
+        sort: "created",
+        to: "2026-08-12",
+      },
+      result: defaultReservationPage.result,
+    };
+
+    try {
+      const { ReservationsAdministrationContent } = await import("./page");
+      const view = render(
+        await ReservationsAdministrationContent({
+          searchParams: Promise.resolve({}),
+        })
+      );
+
+      expect(
+        view.getByRole("link", { name: "Clear" }).getAttribute("href")
+      ).toBe("/admin/reservations");
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
+  test("shows a customer's complete history without a date range", async () => {
+    reservationPage = {
+      input: {
+        customerId: "customer-one",
+        direction: "desc",
+        sort: "created",
+      },
+      result: defaultReservationPage.result,
+    };
+    const { ReservationsAdministrationContent } = await import("./page");
+    const view = render(
+      await ReservationsAdministrationContent({
+        searchParams: Promise.resolve({ customerId: "customer-one" }),
+      })
+    );
+
+    expect(view.getByLabelText("Start date from").getAttribute("value")).toBe(
+      ""
+    );
+    expect(view.getByLabelText("Start date to").getAttribute("value")).toBe("");
+    expect(
+      view.getByRole("link", { name: "Clear customer" }).getAttribute("href")
+    ).toBe("/admin/reservations?direction=desc&sort=created");
+  });
+
   test("explains the fallback when provider date sorting is unavailable", async () => {
     reservationPage = {
       input: { direction: "asc", sort: "date" },

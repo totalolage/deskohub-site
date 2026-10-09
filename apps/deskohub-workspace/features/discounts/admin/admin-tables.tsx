@@ -1,11 +1,10 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
-import type { ColumnDef } from "@tanstack/react-table";
 import type { Schema } from "effect";
 import { ArrowUpRight, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import {
   type DefaultValues,
   type FieldValues,
@@ -14,7 +13,10 @@ import {
   useWatch,
 } from "react-hook-form";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
-import { AdministrationDataTable } from "@/features/administration/data-table";
+import {
+  AdministrationDataTable,
+  type AdministrationDataTableColumn,
+} from "@/features/administration/data-table";
 import { AdministrationAlert } from "@/features/administration/notice";
 import {
   formatWorkspaceMoney,
@@ -128,7 +130,9 @@ export function DiscountCodesAdminTable({
       ),
     [discounts]
   );
-  const columns = useMemo<ColumnDef<DiscountCodeTableItem>[]>(
+  const columns = useMemo<
+    AdministrationDataTableColumn<DiscountCodeTableItem>[]
+  >(
     () => [
       {
         accessorKey: "code",
@@ -229,7 +233,7 @@ export function VouchersAdminTable({
   readonly vouchers: readonly VoucherTableItem[];
 }) {
   const [expandedId, setExpandedId] = useState<VoucherId | null>(null);
-  const columns = useMemo<ColumnDef<VoucherTableItem>[]>(
+  const columns = useMemo<AdministrationDataTableColumn<VoucherTableItem>[]>(
     () => [
       {
         accessorKey: "code",
@@ -404,7 +408,7 @@ export function CalendarSalesAdminTable({
     () => new Map(discounts.map((discount) => [discount.id, discount])),
     [discounts]
   );
-  const columns = useMemo<ColumnDef<AdminCalendarSale>[]>(
+  const columns = useMemo<AdministrationDataTableColumn<AdminCalendarSale>[]>(
     () => [
       {
         accessorKey: "title",
@@ -754,6 +758,8 @@ function MutationForm<Input extends FieldValues, Values = Input>({
   const [feedback, setFeedback] = useState<{
     readonly kind: "error" | "success";
     readonly message: string;
+    /** The form values this feedback was shown with; unset until it renders. */
+    readonly formValues?: Input;
   } | null>(null);
   const form = useForm<Input, unknown, Values>({
     defaultValues,
@@ -762,17 +768,23 @@ function MutationForm<Input extends FieldValues, Values = Input>({
     resolver: effectSchemaResolver(schema),
   });
   const { isDirty } = form.formState;
+  // `compute` makes useWatch deep-compare the values, so the snapshot keeps
+  // its identity until a field value actually changes.
+  const formValues = useWatch({
+    control: form.control,
+    compute: (values) => values,
+  });
+  // New feedback adopts the values it first renders with, which already
+  // include a success reset; any later edit to those values clears it.
+  if (feedback && feedback.formValues !== formValues) {
+    setFeedback(feedback.formValues ? null : { ...feedback, formValues });
+  }
   // Snapshot taken at submit entry so the success reset cannot absorb values
   // edited while the request is in flight.
   const submittedValuesRef = useRef<Input | null>(null);
   const recordSubmittedValues = (values: Input) => {
     submittedValuesRef.current = values;
   };
-
-  useEffect(() => {
-    const subscription = form.watch(() => setFeedback(null));
-    return () => subscription.unsubscribe();
-  }, [form]);
 
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
     actionName,
@@ -817,10 +829,14 @@ function MutationForm<Input extends FieldValues, Values = Input>({
     <Form {...form}>
       <form
         noValidate
-        onSubmit={form.handleSubmit((values) => {
-          recordSubmittedValues(form.getValues());
-          execute(buildMutation(values));
-        })}
+        onSubmit={(event) => {
+          // Bound at event time so the submitted-values ref is only written
+          // outside render.
+          void form.handleSubmit((values) => {
+            recordSubmittedValues(form.getValues());
+            execute(buildMutation(values));
+          })(event);
+        }}
       >
         {children}
         {feedback && (
