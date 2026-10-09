@@ -30,6 +30,7 @@ import {
   SearchOptionsSchema,
 } from "./schema";
 import { makeTaggedAssetLister } from "./tag-list";
+import { untracedFetch } from "./untraced-fetch";
 
 export type { CloudinaryConfig } from "./config";
 
@@ -205,8 +206,15 @@ export class CloudinaryService extends Context.Service<
     })
   );
 
-  /** The service wired to the platform `fetch` for tag list requests. */
-  static Live = this.Default.pipe(Layer.provide(FetchHttpClient.layer));
+  /**
+   * The service wired to the platform `fetch` for tag list requests. Tag list
+   * URLs carry a signature, so the requests run with tracing suppressed and
+   * no fetch or HTTP instrumentation records them.
+   */
+  static Live = this.Default.pipe(
+    Layer.provide(FetchHttpClient.layer),
+    Layer.provide(Layer.succeed(FetchHttpClient.Fetch, untracedFetch))
+  );
 }
 
 type CloudinaryProviderError = {

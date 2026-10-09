@@ -136,7 +136,9 @@ export function makeTaggedAssetLister(
       }),
       Effect.tapError(() => Effect.logError(tagListFailureMessage)),
       Effect.retry(tagListRetryPolicy),
-      // Client spans record the full request URL, signature included.
+      // Effect's client spans record the full request URL, signature
+      // included. `CloudinaryService.Live` also suppresses OpenTelemetry fetch
+      // and HTTP instrumentation spans for these requests.
       Effect.provideService(HttpClient.TracerDisabledWhen, () => true)
     );
 

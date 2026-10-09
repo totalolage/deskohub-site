@@ -29,9 +29,31 @@ Workspace and Boardgame Bar applications.
   clients.
 - The signed URL, its `s--…--` signature segment, and the raw response body
   never enter logs, errors, or spans. Failures map to a fixed
-  `CloudinarySearchError` without a cause, and HTTP client tracing is disabled
-  for these requests because client spans record the full URL. Never print a
-  signed list URL while diagnosing.
+  `CloudinarySearchError` without a cause. Never print a signed list URL while
+  diagnosing.
+- Every tracing layer that sees the request names spans after the full URL:
+  Effect's HTTP client, `@vercel/otel`'s fetch and `node:http` instrumentation,
+  and Next.js' patched `fetch`. The service guards them in layers:
+  - `listTaggedAssets` disables Effect client spans with
+    `HttpClient.TracerDisabledWhen`.
+  - `CloudinaryService.Live` sends list requests through `untracedFetch`,
+    which calls the global `fetch` inside an OpenTelemetry context with
+    tracing suppressed (`suppressTracing`), so instrumentations start
+    non-recording spans. Layers that build the service from `Default` with
+    their own `FetchHttpClient.Fetch` lose this; keep `Live` in apps.
+  - `CloudinarySignatureRedactor` (`@deskohub/cloudinary/telemetry`) rewrites
+    `s--…--` path segments to `s--REDACTED--` in span names, attributes,
+    events, and status messages, including writes made after the span
+    starts. The Workspace lists it through `createWorkspaceSpanRedactors` ahead
+    of the exporting processors in `registerOTel` (`spanProcessors:
+    [...createWorkspaceSpanRedactors(), "auto"]`) and in the PostHog tracer
+    provider. Any new tracer provider, including a future Boardgame Bar one
+    (it exports no spans today), must list the redactors before its exporters.
+- Regression tests use the synthetic `s--fake-signature--` segment only:
+  `packages/cloudinary/src/service.test.ts` (instrumented global fetch),
+  `packages/cloudinary/src/telemetry.test.ts`, and the Workspace
+  `shared/backend/observability/span-redaction.test.ts` (real `@vercel/otel`
+  fetch instrumentation).
 - `cloudinary.url` consumes its options object. Pass a fresh object on every
   call.
 

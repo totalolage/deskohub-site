@@ -1,4 +1,11 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { context, trace } from "@opentelemetry/api";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
 import { Effect, Fiber, Layer, Logger, References } from "effect";
 import * as Schema from "effect/Schema";
 import { TestClock } from "effect/testing";
@@ -1468,5 +1475,75 @@ describe("CloudinaryService tag lists", () => {
     expect(exclusionOnly).toEqual([]);
     expect(tagListRequests).toEqual([]);
     expect(executeAttempts).toBe(0);
+  });
+
+  test("keeps signed list URLs out of spans recorded by an instrumented global fetch", async () => {
+    const exporter = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    const contextManager = new AsyncLocalStorageContextManager().enable();
+    const platformFetch = globalThis.fetch;
+    // Stands in for fetch instrumentations such as `@vercel/otel` or Next.js'
+    // patched fetch, which name spans after the full request URL.
+    const instrumentedFetch = Object.assign(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : String(input);
+        const span = trace
+          .getTracer("fetch-instrumentation")
+          .startSpan(`fetch GET ${url}`, { attributes: { "http.url": url } });
+        return fakeFetch(input, init).finally(() => span.end());
+      },
+      { preconnect: platformFetch.preconnect }
+    );
+    const recordedText = () =>
+      JSON.stringify(
+        exporter
+          .getFinishedSpans()
+          .map(({ name, attributes, events, status }) => ({
+            name,
+            attributes,
+            events,
+            status,
+          }))
+      );
+
+    context.setGlobalContextManager(contextManager);
+    trace.setGlobalTracerProvider(provider);
+    globalThis.fetch = instrumentedFetch;
+    try {
+      // The stand-in records the signature when tracing is not suppressed.
+      await instrumentedFetch(
+        `https://res.cloudinary.test/cloud-name/image/list/${fakeListSignature}/control.json`
+      );
+      expect(recordedText()).toContain(fakeListSignature);
+      exporter.reset();
+      tagListRequests.length = 0;
+
+      tagListReplies = {
+        gallery: [tagList(listEntry("gallery/a", "2026-01-01T00:00:00Z"))],
+      };
+      const result = await Effect.runPromise(
+        CloudinaryService.use((service) =>
+          service.listTaggedAssets([["gallery"]])
+        ).pipe(
+          Effect.provide(
+            CloudinaryService.Live.pipe(
+              Layer.provide(makeCloudinaryRuntimeConfigLayer(config))
+            )
+          )
+        )
+      );
+
+      expect(listedIds(result)).toEqual(["gallery/a"]);
+      expect(tagListRequests).toEqual(["gallery"]);
+      await provider.forceFlush();
+      expect(recordedText()).not.toContain(fakeListSignature);
+    } finally {
+      globalThis.fetch = platformFetch;
+      trace.disable();
+      context.disable();
+      await provider.shutdown();
+    }
   });
 });
