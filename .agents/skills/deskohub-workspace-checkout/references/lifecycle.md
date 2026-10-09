@@ -152,8 +152,8 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 | Column | Type | Required | Purpose |
 | --- | --- | --- | --- |
 | `id` | text | yes | Local workflow ID. Stable route/support reference. |
-| `checkout_session_key` | text | yes | HMAC key grouping deliberate reservation submissions while the customer moves between Reservation and Pay. Stores only the digest. |
-| `checkout_attempt_key` | text | yes | HMAC idempotency key for one mounted-form submission and its immediate retry. Includes the normalized reservation details and stores only the digest. |
+| `checkout_session_key` | text | yes | HMAC key grouping deliberate reservation submissions while the customer moves between Reservation and Pay. Stores only the key-ID-prefixed digest. |
+| `checkout_attempt_key` | text | yes | HMAC idempotency key for one mounted-form submission and its immediate retry. Includes the normalized reservation details and stores only the key-ID-prefixed digest. |
 | `correlation_id` | text | yes | Non-PII cross-system tracing ID. Unique. |
 | `dotypos_customer_id` | text | yes | Dotypos customer that owns customer PII. |
 | `dotypos_reservation_id` | text | no | Dotypos reservation hold/final reservation ID. Null until Dotypos creates it. |
@@ -493,7 +493,7 @@ credential and may never call live Igloohome; Production requires live mode.
 
 `checkoutSessionId` groups the reservation rows created while a customer moves back and forth between Reservation and Pay. It remains stable when the customer returns to the form and deliberately submits again. `checkoutAttemptId` identifies one mounted-form submission and its immediate transport retry; a changed reservation value or a new form mount creates a new attempt. Marketing consent is customer-scoped and is deliberately excluded from the reservation attempt HMAC.
 
-Only HMAC digests are stored in `workspace_reservations.checkout_session_key` and `workspace_reservations.checkout_attempt_key`. The opaque browser IDs are carried only in signed checkout state and action input. Both key payloads use `JSON.stringify` on a fixed object shape; do not sort keys or build a delimiter-joined tuple.
+Only HMAC digests, prefixed with the deriving key ID as `<kid>:<hex digest>`, are stored in `workspace_reservations.checkout_session_key` and `workspace_reservations.checkout_attempt_key`. The opaque browser IDs are carried only in signed checkout state and action input. Both key payloads use `JSON.stringify` on a fixed object shape; do not sort keys or build a delimiter-joined tuple.
 
 ```ts
 const checkoutSessionKey = hmac({
@@ -508,6 +508,16 @@ const checkoutAttemptKey = hmac({
 ```
 
 The normalized reservation is included so a replayed opaque attempt ID with changed values cannot reuse a hold created for different facts; its PII exists only in the transient HMAC payload. An exact attempt-key match makes an immediate retry idempotent. A new attempt in the same session does not mutate or reuse the existing Dotypos reservation: the server claims the previous unpaid hold for cancellation, verifies its live Dotypos status, cancels it when `NEW`, marks its local row cancelled, and creates a fresh local and Dotypos reservation. If the previous row has pending/paid payment, is no longer pending in Dotypos, or its Dotypos cancellation fails, the server leaves that row to its normal lifecycle and rotates to a fresh checkout session before creating the new reservation. Every created row keeps its original cleanup deadline and scheduled cleanup job.
+
+### Key rotation
+
+Lookup keys must survive `CHECKOUT_PAY_STATE_KEYS` rotation without a separate secret. Each configured key derives a lookup subkey through HKDF-SHA256 (info `deskohub-workspace/checkout-lookup-key`), so lookup HMACs never reuse the raw Pay-state encryption key. New rows store the active (first) key's derivation; attempt and session lookups accept the derivation of every configured key. Never compare or look up a single freshly derived key.
+
+Every row of one checkout session stores the same session key. Before creating a row, resolve the key stored by the session's latest row under any accepted derivation and reuse it; derive with the active key only for a brand-new session. Supersession, the one-current-row unique index, and late-payment recovery's newer-reservation check compare stored session keys, so mixing derivations inside a session would split it.
+
+Rows stored before keyed lookup keys hold an unprefixed digest keyed by the whole configured key-ring string. Lookups still accept that derivation, which matches only while the key-ring string is unchanged. Deploy the keyed derivation without changing `CHECKOUT_PAY_STATE_KEYS`, and do not rotate until those in-flight rows have ended (no unprefixed key on a `held` row or a row with `pending` payment). Remove the unprefixed derivation once no such row remains.
+
+To rotate, prepend a new `kid:base64url-32-byte-key` entry so it becomes active and keep the old entry. Retire an old key only after no in-flight session still stores keys prefixed with its ID, checked with a read-only query on `checkout_session_key` prefixes for rows that are `held` or have `pending` payment. Pay-state tokens sealed with that key also stop opening once it is retired.
 
 ## Sequence Diagrams
 
@@ -726,7 +736,7 @@ sequenceDiagram
 - Confirm the database branch is development/preview, not production, before schema reset or test checkout.
 - Confirm migrations do not create `checkout_return_state_tokens`.
 - Confirm `workspace_reservations`, `payment_attempts`, `webhook_events`, `legal_evidence_events`, and `customer_marketing_consents` have no PII-capable columns or raw payload columns.
-- Confirm checkout session/attempt key derivation stores only HMAC digests and uses `JSON.stringify` on fixed object payloads.
+- Confirm checkout session/attempt key derivation stores only key-ID-prefixed HMAC digests and uses `JSON.stringify` on fixed object payloads.
 - Confirm Dotypos test customer lookup/create is the only persistence destination for customer name, email, and phone.
 - Confirm Dotypos reservation is created as a hold before payment only for the approved hold workflow, and Dotypos remains the source of reservation facts.
 - Confirm Nexi `securityToken` is stored only on `payment_attempts` and is not copied to webhook events.

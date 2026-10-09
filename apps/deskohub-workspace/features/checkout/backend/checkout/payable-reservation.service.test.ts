@@ -2,18 +2,39 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
+import { createHmac } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
-import { Effect, Layer } from "effect";
+import { ConfigProvider, Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
+import {
+  type CheckoutSessionKey,
+  checkoutSessionIdSchema,
+  checkoutSessionKeySchema,
+} from "@/features/checkout/checkout-identifiers";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { deriveCheckoutSessionKey } from "./checkout-session-key.server";
+import { deriveCheckoutSessionKeys } from "./checkout-lookup-keys.server";
 import {
   PayableReservationService,
   PayableReservationUnavailableError,
 } from "./payable-reservation.service";
 
-const checkoutSessionId = "checkout-session-id";
-const checkoutSessionKey = deriveCheckoutSessionKey(checkoutSessionId);
+const checkoutSessionId = checkoutSessionIdSchema.make("checkout-session-id");
+const originalKeyRing = `original:${Buffer.alloc(32, 1).toString("base64url")}`;
+const rotatedKeyRing = `rotated:${Buffer.alloc(32, 2).toString("base64url")},${originalKeyRing}`;
+
+const withKeyRing = (keyRing: string) =>
+  Effect.provideService(
+    ConfigProvider.ConfigProvider,
+    ConfigProvider.fromUnknown({ CHECKOUT_PAY_STATE_KEYS: keyRing })
+  );
+
+const deriveStoredSessionKey = (keyRing: string): CheckoutSessionKey =>
+  deriveCheckoutSessionKeys(checkoutSessionId).pipe(
+    withKeyRing(keyRing),
+    Effect.runSync
+  ).current;
+
+const checkoutSessionKey = deriveStoredSessionKey(originalKeyRing);
 
 const reservation = (overrides: Partial<WorkspaceReservation> = {}) =>
   ({
@@ -33,6 +54,7 @@ const runRequireCurrent = (input: {
   readonly current?: WorkspaceReservation | null;
   readonly dotyposStatus?: "NEW" | "CANCELLED" | "CONFIRMED";
   readonly checkoutSessionId?: string;
+  readonly keyRing?: string;
 }) => {
   const candidate =
     input.candidate === undefined ? reservation() : input.candidate;
@@ -61,9 +83,15 @@ const runRequireCurrent = (input: {
       const payable = yield* PayableReservationService;
       return yield* payable.requireCurrent({
         orderId: "reservation-id",
-        checkoutSessionId: input.checkoutSessionId ?? checkoutSessionId,
+        checkoutSessionId: checkoutSessionIdSchema.make(
+          input.checkoutSessionId ?? checkoutSessionId
+        ),
       });
-    }).pipe(Effect.provide(layer), Effect.runPromise),
+    }).pipe(
+      Effect.provide(layer),
+      withKeyRing(input.keyRing ?? originalKeyRing),
+      Effect.runPromise
+    ),
   };
 };
 
@@ -92,6 +120,51 @@ describe("PayableReservationService", () => {
   test("rejects a superseded local reservation without calling Dotypos", async () => {
     const { getReservationStatus, result } = runRequireCurrent({
       current: reservation({ id: "replacement-reservation-id" }),
+    });
+
+    await expect(result).rejects.toEqual(
+      new PayableReservationUnavailableError({
+        orderId: "reservation-id",
+        reason: "not_current",
+      })
+    );
+    expect(getReservationStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("PayableReservationService across Pay-state key rotation", () => {
+  test("keeps a held checkout payable after a new active key is added", async () => {
+    const { result } = runRequireCurrent({ keyRing: rotatedKeyRing });
+
+    await expect(result).resolves.toMatchObject({ id: "reservation-id" });
+  });
+
+  test("keeps a held checkout payable after an unused old key is retired", async () => {
+    const storedUnderRotation = deriveStoredSessionKey(rotatedKeyRing);
+    const { result } = runRequireCurrent({
+      candidate: reservation({ checkoutSessionKey: storedUnderRotation }),
+      keyRing: rotatedKeyRing.split(",")[0],
+    });
+
+    await expect(result).resolves.toMatchObject({ id: "reservation-id" });
+  });
+
+  test("keeps a checkout stored before keyed lookup keys payable", async () => {
+    const preKeyedSessionKey = checkoutSessionKeySchema.make(
+      createHmac("sha256", originalKeyRing)
+        .update(JSON.stringify({ checkoutSessionId }))
+        .digest("hex")
+    );
+    const { result } = runRequireCurrent({
+      candidate: reservation({ checkoutSessionKey: preKeyedSessionKey }),
+    });
+
+    await expect(result).resolves.toMatchObject({ id: "reservation-id" });
+  });
+
+  test("rejects a reservation from another checkout session", async () => {
+    const { getReservationStatus, result } = runRequireCurrent({
+      checkoutSessionId: "other-checkout-session-id",
     });
 
     await expect(result).rejects.toEqual(

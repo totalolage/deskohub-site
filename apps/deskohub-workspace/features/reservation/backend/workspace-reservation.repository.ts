@@ -96,12 +96,21 @@ export interface IWorkspaceReservationRepository {
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
-  readonly findByAttemptKey: (
-    checkoutAttemptKey: CheckoutAttemptKey
+  /** Finds the reservation stored under any accepted derivation of one attempt. */
+  readonly findByAttemptKeys: (
+    checkoutAttemptKeys: readonly CheckoutAttemptKey[]
   ) => Effect.Effect<
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
+  /**
+   * Returns the session key stored by the latest reservation under any
+   * accepted derivation of one checkout session, so every reservation in the
+   * session keeps grouping under one key across key rotation.
+   */
+  readonly findStoredCheckoutSessionKey: (
+    checkoutSessionKeys: readonly CheckoutSessionKey[]
+  ) => Effect.Effect<CheckoutSessionKey | null, EffectDrizzleQueryError>;
   readonly findCurrentByCheckoutSessionKey: (
     checkoutSessionKey: CheckoutSessionKey
   ) => Effect.Effect<
@@ -420,19 +429,53 @@ export class WorkspaceReservationRepository extends Context.Service<
             )
         ),
         findById,
-        findByAttemptKey: Effect.fn("workspaceReservations.findByAttemptKey")(
-          function* (checkoutAttemptKey) {
+        findByAttemptKeys: Effect.fn("workspaceReservations.findByAttemptKeys")(
+          function* (checkoutAttemptKeys) {
             const [reservation] = yield* db
               .select()
               .from(workspaceReservations)
               .where(
-                eq(workspaceReservations.checkoutAttemptKey, checkoutAttemptKey)
+                inArray(
+                  workspaceReservations.checkoutAttemptKey,
+                  checkoutAttemptKeys
+                )
               )
+              .orderBy(desc(workspaceReservations.createdAt))
               .limit(1);
             return yield* decodeOptionalWorkspaceReservation(reservation);
           },
-          (effect, checkoutAttemptKey) =>
-            effect.pipe(Effect.annotateLogs({ checkoutAttemptKey }))
+          (effect, checkoutAttemptKeys) =>
+            effect.pipe(
+              Effect.annotateLogs({
+                checkoutAttemptKey: checkoutAttemptKeys[0],
+              })
+            )
+        ),
+        findStoredCheckoutSessionKey: Effect.fn(
+          "workspaceReservations.findStoredCheckoutSessionKey"
+        )(
+          function* (checkoutSessionKeys) {
+            const [reservation] = yield* db
+              .select({
+                checkoutSessionKey: workspaceReservations.checkoutSessionKey,
+              })
+              .from(workspaceReservations)
+              .where(
+                inArray(
+                  workspaceReservations.checkoutSessionKey,
+                  checkoutSessionKeys
+                )
+              )
+              .orderBy(desc(workspaceReservations.createdAt))
+              .limit(1);
+            return reservation?.checkoutSessionKey ?? null;
+          },
+          (effect, checkoutSessionKeys) =>
+            effect.pipe(
+              Effect.annotateLogs({
+                checkoutSessionKey: checkoutSessionKeys[0],
+              })
+            )
         ),
         findCurrentByCheckoutSessionKey: Effect.fn(
           "workspaceReservations.findCurrentByCheckoutSessionKey"
