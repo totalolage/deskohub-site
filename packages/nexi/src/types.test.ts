@@ -85,14 +85,14 @@ describe("Nexi webhook types", () => {
     ).toEqual({ status: "mismatch" });
   });
 
-  test("reports a notification without a security token as missing", () => {
+  test("reports a notification without a security token as absent", () => {
     for (const notificationSecurityToken of [undefined, "", " "]) {
       expect(
         checkNexiWebhookSecurityToken({
           notificationSecurityToken,
           expectedSecurityToken: "token",
         })
-      ).toEqual({ status: "missing" });
+      ).toEqual({ status: "absent" });
     }
   });
 
@@ -110,7 +110,7 @@ describe("Nexi webhook types", () => {
         notificationSecurityToken: undefined,
         expectedSecurityToken: null,
       })
-    ).toEqual({ status: "missing" });
+    ).toEqual({ status: "absent" });
   });
 
   test("rejects zero amount and unsupported currency", () => {

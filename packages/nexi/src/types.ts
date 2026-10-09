@@ -119,11 +119,12 @@ export interface NexiWebhookEventIdentity {
 }
 
 /**
- * Only `match` authenticates a notification. A notification without a
- * security token, or for a payment that was never issued one, must not be
- * processed.
+ * Nexi marks the notification security token optional, so `absent` is not a
+ * rejection: callers must verify such a notification against the order API
+ * before acting on it. A present token that differs from the issued one, or
+ * any token for a payment that was never issued one, is a `mismatch`.
  */
-export type NexiWebhookSecurityTokenStatus = "missing" | "match" | "mismatch";
+export type NexiWebhookSecurityTokenStatus = "absent" | "match" | "mismatch";
 
 export interface NexiWebhookSecurityTokenCheck {
   readonly status: NexiWebhookSecurityTokenStatus;
@@ -215,7 +216,7 @@ export const checkNexiWebhookSecurityToken = (input: {
   const notificationSecurityToken = cleanOptionalString(
     input.notificationSecurityToken
   );
-  if (!notificationSecurityToken) return { status: "missing" };
+  if (!notificationSecurityToken) return { status: "absent" };
 
   const expectedSecurityToken = cleanOptionalString(
     input.expectedSecurityToken ?? undefined

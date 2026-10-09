@@ -665,14 +665,13 @@ sequenceDiagram
 
   Nexi->>Webhook: Official notification envelope
   Webhook->>Webhook: Decode envelope; derive event identity
-  Webhook-->>Nexi: Reject without recording when securityToken is missing
   Webhook->>DB: Insert webhook_events(received) or load duplicate state
   alt duplicate processed
     Webhook-->>Nexi: No-op success
   else duplicate failed/received or fresh event
   Webhook->>DB: Claim retry only if webhook_events is not processed
   Webhook->>DB: Load payment attempt by provider_order_id
-  Webhook->>Webhook: Constant-time compare notification securityToken; reject unless it matches
+  Webhook->>Webhook: Constant-time compare a present securityToken; reject a mismatch
   Webhook->>Nexi: GET /orders/{provider_order_id}
   Nexi-->>Webhook: Verified payment result
   Webhook->>DB: In one transaction mark attempt/reservation paid and redeem reserved discount claim
@@ -684,6 +683,12 @@ sequenceDiagram
   Webhook->>DB: webhook_events processed
   end
 ```
+
+Nexi marks the notification `securityToken` optional. Do not reject a
+notification merely because it has none: it is never trusted, and only the
+authoritative `GET /orders/{orderId}` verification may move payment state.
+Compare a present token in constant time and reject a mismatch, including any
+token for an attempt that was never issued one.
 
 ### Nexi Failure, Cancel, Or Expired Return
 

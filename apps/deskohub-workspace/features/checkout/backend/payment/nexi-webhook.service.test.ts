@@ -348,14 +348,17 @@ describe("NexiWebhookService", () => {
     expect(markFailed).not.toHaveBeenCalled();
   });
 
-  const unauthenticatedNotificationServices = () => {
+  const securityTokenScenarioServices = (
+    verificationResult: PaymentVerificationResult = verification
+  ) => {
     const insertReceived = mock(() =>
       Effect.succeed({ status: "inserted" as const, event: receivedEvent })
     );
     const markProcessed = mock(() => Effect.void);
     const markFailed = mock(() => Effect.void);
-    const verifyPaymentOutcome = mock(() => Effect.succeed(verification));
+    const verifyPaymentOutcome = mock(() => Effect.succeed(verificationResult));
     const markPaid = mock(() => Effect.die("unused"));
+    const markTerminal = mock(() => Effect.die("unused"));
     const services: NexiWebhookTestServices = {
       webhookEvents: {
         insertReceived,
@@ -371,7 +374,7 @@ describe("NexiWebhookService", () => {
         createPendingNexiAttempt: mock(() => Effect.die("unused")),
         attachProviderSession: mock(() => Effect.die("unused")),
         markPaid,
-        markTerminal: mock(() => Effect.die("unused")),
+        markTerminal,
       },
       reservations: {
         findById: mock(() => Effect.succeed(reservation as never)),
@@ -386,31 +389,89 @@ describe("NexiWebhookService", () => {
       markFailed,
       verifyPaymentOutcome,
       markPaid,
+      markTerminal,
     };
   };
 
-  test("does not process a notification without a security token", async () => {
-    const { services, insertReceived, verifyPaymentOutcome, markPaid } =
-      unauthenticatedNotificationServices();
+  // Nexi marks the notification security token optional, so a token-less
+  // notification is not trusted but still triggers authoritative verification.
+  test("verifies a notification without a security token without trusting it", async () => {
+    const pendingVerification: PaymentVerificationResult = {
+      status: "pending",
+      provider: {
+        orderId: "provider-order-id",
+        operationCount: 0,
+        amount: "35000",
+        currency: "CZK",
+        orderStatus: "PENDING",
+        captureExecuted: false,
+      },
+      mismatches: [],
+    };
+    const {
+      services,
+      insertReceived,
+      markProcessed,
+      markFailed,
+      verifyPaymentOutcome,
+      markPaid,
+      markTerminal,
+    } = securityTokenScenarioServices(pendingVerification);
+    // The notification claims an executed capture, but only the order lookup
+    // may move payment state.
     const { securityToken: _omitted, ...notification } = payload;
 
     const result = await Effect.runPromise(
-      Effect.result(await buildWebhookEffect(services, notification))
+      await buildWebhookEffect(services, notification)
     );
 
-    expect(result._tag).toBe("Failure");
+    expect(result).toMatchObject({ status: "accepted" });
+    expect(insertReceived).toHaveBeenCalledTimes(1);
+    expect(verifyPaymentOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: "provider-order-id",
+        securityToken: "security-token",
+      })
+    );
+    expect(markPaid).not.toHaveBeenCalled();
+    expect(markTerminal).not.toHaveBeenCalled();
+    expect(markFailed).not.toHaveBeenCalled();
+    expect(markProcessed).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not match a supplied token for a payment that was never issued one", async () => {
+    const { services, markFailed, verifyPaymentOutcome, markPaid } =
+      securityTokenScenarioServices();
+
+    const result = await Effect.runPromise(
+      Effect.result(
+        await buildWebhookEffect({
+          ...services,
+          paymentAttempts: {
+            findByProviderOrderId: mock(() =>
+              Effect.succeed({
+                ...attempt,
+                state: "created" as const,
+                securityToken: null,
+              })
+            ),
+          },
+        })
+      )
+    );
+
     expect(result._tag === "Failure" && result.failure).toMatchObject({
       _tag: "NexiWebhookProcessingError",
-      errorCode: "nexi_webhook_missing_security_token",
+      errorCode: "nexi_webhook_verification_mismatch",
     });
-    expect(insertReceived).not.toHaveBeenCalled();
+    expect(markFailed).toHaveBeenCalledTimes(1);
     expect(verifyPaymentOutcome).not.toHaveBeenCalled();
     expect(markPaid).not.toHaveBeenCalled();
   });
 
   test("does not process a notification whose security token does not match", async () => {
     const { services, markFailed, verifyPaymentOutcome, markPaid } =
-      unauthenticatedNotificationServices();
+      securityTokenScenarioServices();
 
     const result = await Effect.runPromise(
       Effect.result(
