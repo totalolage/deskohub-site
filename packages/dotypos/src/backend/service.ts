@@ -12,7 +12,12 @@ import {
 } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { DotyposRuntimeConfig } from "../config";
-import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
+import {
+  DotyposReservationCancelledError,
+  ExternalAPIError,
+  NetworkError,
+  ValidationError,
+} from "../errors";
 import type {
   CreateCustomerRequest,
   CreateReservationRequest,
@@ -671,46 +676,74 @@ const makeDotyposService = Effect.gen(function* () {
       readonly payload: UpdateReservationRequest;
     }) =>
       Effect.succeed(input).pipe(
-        Effect.bind("response", ({ reservationId }) =>
-          runDotyposRequest(
-            client.getReservation(config.cloudId, reservationId, {
-              config: { includeResponse: true },
-            }),
-            "getReservation"
-          ).pipe(Effect.retry(retryPolicy))
+        Effect.bind("current", ({ reservationId }) =>
+          readReservationVersion(reservationId)
         ),
-        Effect.bind("etag", ({ response: [, response] }) => {
-          const etag = response.headers.etag ?? response.headers.ETag;
+        Effect.flatMap(({ current, payload, reservationId }) =>
+          patchReservationVersion({
+            reservationId,
+            etag: current.etag,
+            payload,
+          })
+        )
+      )
+  );
 
-          return etag
-            ? Effect.succeed(etag)
-            : Effect.fail(
-                new ExternalAPIError({
-                  service: "Dotypos",
-                  operation: "getReservation",
-                  message: "Reservation ETag header was missing.",
-                })
-              );
+  const readReservationVersion = Effect.fn(
+    "DotyposService.readReservationVersion"
+  )((reservationId: DotyposReservationId) =>
+    runDotyposRequest(
+      client.getReservation(config.cloudId, reservationId, {
+        config: { includeResponse: true },
+      }),
+      "getReservation"
+    ).pipe(
+      Effect.retry(retryPolicy),
+      Effect.flatMap(([reservation, response]) => {
+        const etag = response.headers.etag ?? response.headers.ETag;
+
+        if (!etag) {
+          return Effect.fail(
+            new ExternalAPIError({
+              service: "Dotypos",
+              operation: "getReservation",
+              message: "Reservation ETag header was missing.",
+            })
+          );
+        }
+
+        return decodeProviderEntity(
+          DotyposReservationSchema,
+          { ...reservation, id: reservation.id ?? reservationId },
+          "getReservation"
+        ).pipe(Effect.map((decoded) => ({ etag, reservation: decoded })));
+      })
+    )
+  );
+
+  const patchReservationVersion = Effect.fn(
+    "DotyposService.patchReservationVersion"
+  )(
+    (input: {
+      readonly reservationId: DotyposReservationId;
+      readonly etag: string;
+      readonly payload: UpdateReservationRequest;
+    }) =>
+      runDotyposRequest(
+        client.patchReservation(config.cloudId, input.reservationId, {
+          params: { "If-Match": input.etag },
+          payload: input.payload,
         }),
-        Effect.bind("reservation", ({ etag, payload, reservationId }) =>
-          runDotyposRequest(
-            client.patchReservation(config.cloudId, reservationId, {
-              params: { "If-Match": etag },
-              payload,
-            }),
+        "patchReservation"
+      ).pipe(
+        Effect.retry(retryPolicy),
+        Effect.flatMap((reservation) =>
+          decodeProviderEntity(
+            DotyposReservationSchema,
+            { ...reservation, id: reservation.id ?? input.reservationId },
             "patchReservation"
-          ).pipe(
-            Effect.retry(retryPolicy),
-            Effect.flatMap((reservation) =>
-              decodeProviderEntity(
-                DotyposReservationSchema,
-                { ...reservation, id: reservation.id ?? reservationId },
-                "patchReservation"
-              )
-            )
           )
-        ),
-        Effect.map(({ reservation }) => reservation)
+        )
       )
   );
 
@@ -724,10 +757,31 @@ const makeDotyposService = Effect.gen(function* () {
 
       yield* Effect.logInfo("Dotypos reservation confirmation patch started");
 
-      const reservation = yield* patchReservation({
-        reservationId: id,
-        payload: { status: "CONFIRMED" },
-      }).pipe(
+      // The If-Match ETag makes the status check and the PATCH one atomic
+      // transition: a cancellation after this read fails the PATCH instead of
+      // being overwritten, so a cancelled hold is never revived.
+      const reservation = yield* readReservationVersion(id).pipe(
+        Effect.flatMap((current) =>
+          Match.value(current.reservation.status).pipe(
+            Match.when("CANCELLED", () =>
+              Effect.fail(
+                new DotyposReservationCancelledError({
+                  reservationId: id,
+                  message: "Dotypos reservation is already cancelled.",
+                })
+              )
+            ),
+            Match.when("CONFIRMED", () => Effect.succeed(current.reservation)),
+            Match.when("NEW", () =>
+              patchReservationVersion({
+                reservationId: id,
+                etag: current.etag,
+                payload: { status: "CONFIRMED" },
+              })
+            ),
+            Match.exhaustive
+          )
+        ),
         Effect.tapError((error) =>
           Effect.logError("Dotypos reservation confirmation failed", {
             error,

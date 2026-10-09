@@ -226,6 +226,115 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Confirm Dotypos cancellation convergence through the same active-overlap read
   model used by capacity validation. Absence from the generic reservation list
   is not sufficient evidence that provider availability has released the seats.
+- When convergence times out with a tracked reservation still `CONFIRMED`,
+  check for a late paid fulfillment before blaming provider latency. A
+  hosted-payment case interrupted after card submission can still settle at
+  Nexi after its finalizer cancelled the hold. Paid fulfillment must never
+  confirm a reservation Dotypos already reports `CANCELLED`: the provider
+  confirmation reads the reservation and its ETag, refuses `CANCELLED`, and
+  patches with `If-Match`, and fulfillment records
+  `dotypos_reservation_unfulfillable` for operator recovery. The timeout
+  message reports only counts by status, never reservation IDs. The
+  `suite-cleanup` phase span must fail whenever cleanup fails.
+- Nexi's hosted fields submit card details to `/fe/build/text/` after
+  Continue. A 4xx there leaves the fields disabled and never offers PAY; the
+  hosted-page driver reports it as the `card_submission_rejected` page state
+  (`nexi_hosted_<step>_card_submission_rejected`) from the session's Nexi
+  build responses. On 2026-10-08 this hit the first hosted payment of
+  many suites (usually `checkout-calendar-sale-and-code`, lane 3) and passed
+  on exact-SHA reruns. On 2026-10-09 a local sandbox run with no runner or
+  Workspace involvement reproduced it: the response body was Nexi error
+  `GW0027` ("Internal Rest communication error during payment"), and Nexi's
+  own `/fe/v2/build/state` also returned HTTP 500. Treat it as sandbox
+  instability; never re-submit card details or retry payment creation to hide
+  it.
+- The sandbox can also mark the authorization itself `FAILED` after the 3DS
+  success click (`orderStatus: FAILED`, zero authorized amount). Workspace
+  then correctly settles the order unpaid. The fulfillment-marker wait fails
+  immediately with `checkout_payment_terminal_before_fulfillment` or
+  `checkout_fulfillment_failed_before_marker` instead of polling the
+  datasource timeout for a fulfillment that cannot happen. Confirm the
+  provider verdict in the preview's `Nexi payment outcome verification
+  completed` logs before suspecting Workspace. In the failed CI runs, Nexi
+  took about 10 s between its 3DS notification and `challenge_hpp.html`,
+  against about 0.2 s in successful sandbox payments. Such failures were
+  about 0.5% of roughly 1,200 preview orders from 2026-10-01 to 2026-10-09,
+  across several amounts.
+- After a full document load, `/account` streams its layout and its content
+  in separate Suspense boundaries, and React can delay revealing the content
+  by a few hundred milliseconds. Clicking a section before that content is
+  hydrated makes React client-render a second copy of the panel next to the
+  hidden server copy, and strict locators such as `#account-profile-form`
+  then fail at once with a strict-mode violation. Section selection
+  therefore waits for the target panel's always-rendered anchor to carry
+  React props before the native click; legal has no anchor because it renders
+  only when active. Profile navigation failures keep only the closed
+  diagnostic code and never attach the Playwright cause, which can contain
+  private profile values.
+- Decorative provider data must never take down a page. The Cloudinary
+  Search API rate-limits with HTTP 420, and Preview E2E shares that quota
+  with production. In run 37850570880 attempts 5, 10, and 11 the homepage
+  request threw `CloudinarySearchError` (`httpCode: 420`) from the carousel
+  lookup into `app/[locale]/error.tsx`, while its sale and calendar data
+  loaded normally. The response stayed HTTP 200 because the page streams, and
+  the instant-navigation tests could not find the site banner. Confirm with
+  the deployment's Vercel request logs for `/en-US`. Gallery search uses
+  `"use cache: remote"` with `cacheLife("max")`, so cold serverless
+  instances share results instead of re-searching Cloudinary; the Cloudinary
+  webhook revalidates its tags. On 2026-10-09 between 09:00 and 09:25 UTC,
+  four previews still on the per-instance cache made 119–143 searches each,
+  while this cache made 7. The homepage hides the carousel section when the
+  decorative lookup returns no images, including a build-time prerender during
+  a rate-limit window, so instant-navigation accepts either a resolved,
+  visible `#hero-gallery` or no carousel. It must never accept a busy or
+  half-rendered carousel.
+  With Cache Components, a `"use cache"` function that rejects during a
+  build-time prerender fails the whole build, even when the page catches the
+  rejection (the PR #497 preview build failed on `/en-US/meeting-room` with a
+  420). `getCloudinaryImages` therefore absorbs provider failures inside its
+  cache scope: it logs the failure, returns no images, and switches to a short
+  `cacheLife` (expire 300 s, so the entry stays prerenderable) that retries
+  within a minute. Callers treat an empty result as "no photos": the homepage
+  hides its carousel, the room pages render without photos, and the gallery
+  page shows its empty state. A missing site banner with a "Something went wrong." page is an
+  application error-boundary failure, not a navigation race.
+- Account deletion also spends the shared Cloudinary Admin API quota: it
+  deletes the avatar prefix after expiring the Dotypos profile. During a
+  rate-limit window (PR #497 run 37904601281, 2026-10-09 08:32), the retry in
+  `account-session-lifecycle` stayed pending and the step timed out. The
+  account showed "could not expire your customer profile", but the logged
+  cause was `Cloudinary asset prefix delete failed` (`outcome: failed`, a
+  4xx). The retryable-deletion warning now carries its `cause`; read that
+  `_tag` instead of the user-facing copy before blaming Dotypos.
+  Provider failure logs deliberately omit the HTTP code, so confirm the quota
+  from concurrent bursts instead: query PostHog logs for `Cloudinary search
+  page failed` across all `service.version` values around the failed
+  deletion. In run 37958123336 (2026-10-09 16:26 UTC) the exact preview made
+  four successful remote-cached searches, while three previews from other
+  branches logged about 200 failed searches in the same minutes. That is an
+  external quota flake: rerun after the hourly window resets instead of
+  changing the deletion flow.
+- A fresh preview database logs `DiscountProviderError` /
+  `DiscountDefinitionNotFoundError` during its first E2E run, while instant
+  navigation resolves the Calendar sale before fixture seeding has inserted
+  its definition. Later attempts on the same preview do not log it, and pages
+  still render. `PromotionCodeUnavailableError` entries come from the
+  negative discount-code cases. Neither explains a checkout failure.
+- The Vercel request-log history route intermittently returns gateway errors
+  (run 37850570880-6 failed on one HTTP 504). Deployment resolution, history
+  polling, and the baseline listing are read-only, so they repeat transport
+  failures, per-request timeouts, and HTTP 408/429/500/502/503/504 at the
+  poll interval. Retrieval stays inside the existing auth-delivery deadline,
+  the baseline listing inside the existing provider-transition budget, and
+  neither is extended. Other statuses,
+  malformed or truncated payloads, and ambiguous matches stay terminal. At the
+  deadline, report the last provider failure. A deadline-clipped request after
+  history already answered reports `auth_delivery_message_not_observed`.
+- Separate genuine failures from fail-fast interruptions before triage. After
+  the first failure, cases still running are recorded `cancelled` (some
+  account-lane browser errors during shutdown still surface as `failed` within
+  about two seconds of the stop); only the annotated case is the root
+  failure.
 - Express each case as named semantic steps with a focused timeout (navigation, UI transition, provider transition, or datasource convergence), plus a generous case watchdog. Avoid using a single checkout-wide timeout for every browser command and poll.
 - Preserve the E2E OTLP trace contract when changing orchestration. Emit one
   root run span, fixed phase spans, one child span for every case, and one child

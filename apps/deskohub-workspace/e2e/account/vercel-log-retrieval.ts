@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect";
+import { Data, Effect, Result, Stream } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import {
   tryWorkspaceE2ESync,
@@ -79,6 +79,30 @@ const vercelRequestFailure = (
     }
   );
 
+// Read-only history requests may be repeated within the caller's retrieval
+// deadline when the provider reports a transient failure. Permission,
+// not-found, and payload failures stay terminal.
+class TransientVercelRequestFailure extends Data.TaggedError(
+  "TransientVercelRequestFailure"
+)<{
+  readonly failure: WorkspaceE2EError;
+  readonly timedOut: boolean;
+}> {}
+
+const transientVercelStatuses: ReadonlySet<number> = new Set([
+  408, 429, 500, 502, 503, 504,
+]);
+
+const transientVercelRequestFailure = (
+  operation: string,
+  reason: string,
+  status?: number
+) =>
+  new TransientVercelRequestFailure({
+    failure: vercelRequestFailure(operation, reason, status),
+    timedOut: reason === "timeout",
+  });
+
 const requestVercel = Effect.fn("vercelLogRetrieval.request")(function* (
   config: WorkspaceE2EAccountConfig,
   url: URL,
@@ -94,13 +118,23 @@ const requestVercel = Effect.fn("vercelLogRetrieval.request")(function* (
   );
   const response = yield* httpClient.execute(request).pipe(
     Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
-    Effect.mapError(() => vercelRequestFailure(operation, "request-failed")),
+    Effect.mapError(() =>
+      transientVercelRequestFailure(operation, "request-failed")
+    ),
     Effect.timeoutOrElse({
       duration: `${timeoutMs} millis`,
-      orElse: () => Effect.fail(vercelRequestFailure(operation, "timeout")),
+      orElse: () =>
+        Effect.fail(transientVercelRequestFailure(operation, "timeout")),
     })
   );
   yield* Effect.annotateCurrentSpan("vercel.http.status_code", response.status);
+  if (transientVercelStatuses.has(response.status)) {
+    return yield* transientVercelRequestFailure(
+      operation,
+      "request-failed",
+      response.status
+    );
+  }
   if (response.status < 200 || response.status >= 300) {
     return yield* vercelRequestFailure(
       operation,
@@ -189,7 +223,11 @@ const decodeVercelDeployment = (
 const resolveVercelDeployment = (
   config: WorkspaceE2EAccountConfig,
   timeoutMs = vercelRequestTimeoutMs
-): Effect.Effect<VercelDeployment, WorkspaceE2EError, HttpClient.HttpClient> =>
+): Effect.Effect<
+  VercelDeployment,
+  WorkspaceE2EError | TransientVercelRequestFailure,
+  HttpClient.HttpClient
+> =>
   Effect.gen(function* () {
     const url = new URL(
       `https://api.vercel.com/v13/deployments/${encodeURIComponent(config.expectedHost)}`
@@ -216,7 +254,10 @@ const resolveVercelDeployment = (
       duration: `${timeoutMs} millis`,
       orElse: () =>
         Effect.fail(
-          vercelRequestFailure("resolve Vercel preview deployment", "timeout")
+          transientVercelRequestFailure(
+            "resolve Vercel preview deployment",
+            "timeout"
+          )
         ),
     })
   );
@@ -310,7 +351,11 @@ const requestVercelLogPage = (
   endDate: number,
   page: number,
   timeoutMs: number
-): Effect.Effect<VercelLogPage, WorkspaceE2EError, HttpClient.HttpClient> =>
+): Effect.Effect<
+  VercelLogPage,
+  WorkspaceE2EError | TransientVercelRequestFailure,
+  HttpClient.HttpClient
+> =>
   Effect.gen(function* () {
     const url = new URL("https://vercel.com/api/logs/request-logs");
     url.searchParams.set("projectId", deployment.projectId);
@@ -337,7 +382,10 @@ const requestVercelLogPage = (
       duration: `${timeoutMs} millis`,
       orElse: () =>
         Effect.fail(
-          vercelRequestFailure("query Vercel preview runtime logs", "timeout")
+          transientVercelRequestFailure(
+            "query Vercel preview runtime logs",
+            "timeout"
+          )
         ),
     })
   );
@@ -349,7 +397,7 @@ const runLogQuery = (
   timeoutMs: number
 ): Effect.Effect<
   readonly WorkspaceE2EVercelLogEntry[],
-  WorkspaceE2EError,
+  WorkspaceE2EError | TransientVercelRequestFailure,
   HttpClient.HttpClient
 > =>
   Effect.gen(function* () {
@@ -398,7 +446,10 @@ const runLogQuery = (
       duration: `${timeoutMs} millis`,
       orElse: () =>
         Effect.fail(
-          vercelRequestFailure("query Vercel preview runtime logs", "timeout")
+          transientVercelRequestFailure(
+            "query Vercel preview runtime logs",
+            "timeout"
+          )
         ),
     })
   );
@@ -448,19 +499,17 @@ const retrieveWorkspaceE2EMagicLink = (
     const deadline =
       Date.now() + (request.deadlineAfterMs ?? config.timeouts.authDelivery);
     const pollIntervalMs = request.pollIntervalMs ?? defaultPollIntervalMs;
-    const metadataTimeoutMs = Math.min(
-      vercelRequestTimeoutMs,
-      deadline - Date.now()
-    );
-    if (metadataTimeoutMs <= 0) {
-      return yield* vercelRequestFailure(
-        "resolve Vercel preview deployment",
-        "timeout"
-      );
-    }
-    const deployment = yield* resolveVercelDeployment(
-      config,
-      metadataTimeoutMs
+    const deployment = yield* retryTransientVercelRequest(
+      (timeoutMs) => resolveVercelDeployment(config, timeoutMs),
+      {
+        deadline,
+        operation: "resolve Vercel preview deployment",
+        pollIntervalMs,
+      }
+    ).pipe(
+      Effect.catchTag("TransientVercelRequestFailure", ({ failure }) =>
+        Effect.fail(failure)
+      )
     );
 
     const body = yield* pollForLogMatch(config, deployment, {
@@ -488,12 +537,26 @@ const listSyntheticLogEntryIds = (
   request: { readonly recipient: string; readonly startedAt: Date }
 ): Effect.Effect<readonly string[], WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
-    const deployment = yield* resolveVercelDeployment(config);
-    const entries = yield* runLogQuery(
-      config,
-      deployment,
-      request.startedAt,
-      vercelRequestTimeoutMs
+    const bounds = {
+      deadline: Date.now() + config.timeouts.providerTransition,
+      pollIntervalMs: defaultPollIntervalMs,
+    };
+    const deployment = yield* retryTransientVercelRequest(
+      (timeoutMs) => resolveVercelDeployment(config, timeoutMs),
+      { ...bounds, operation: "resolve Vercel preview deployment" }
+    ).pipe(
+      Effect.catchTag("TransientVercelRequestFailure", ({ failure }) =>
+        Effect.fail(failure)
+      )
+    );
+    const entries = yield* retryTransientVercelRequest(
+      (timeoutMs) =>
+        runLogQuery(config, deployment, request.startedAt, timeoutMs),
+      { ...bounds, operation: "query Vercel preview runtime logs" }
+    ).pipe(
+      Effect.catchTag("TransientVercelRequestFailure", ({ failure }) =>
+        Effect.fail(failure)
+      )
     );
     return matchPreviewE2EEntries(entries, {
       excludeLogEntryIds: [],
@@ -514,16 +577,32 @@ const pollForLogMatch = (
   }
 ): Effect.Effect<string, WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
+    let historyObserved = false;
     while (true) {
       const remainingMs = bounds.deadline - Date.now();
       if (remainingMs <= 0) break;
-      const entries = yield* runLogQuery(
-        config,
-        deployment,
-        bounds.startedAt,
-        Math.min(vercelRequestTimeoutMs, remainingMs)
+      // A request still in flight when the deadline clips it is not a
+      // provider failure once history has already answered without the entry.
+      const entries = yield* retryTransientVercelRequest(
+        (timeoutMs) =>
+          runLogQuery(config, deployment, bounds.startedAt, timeoutMs),
+        {
+          deadline: bounds.deadline,
+          operation: "query Vercel preview runtime logs",
+          pollIntervalMs: bounds.pollIntervalMs,
+        }
+      ).pipe(
+        Effect.catchTag("TransientVercelRequestFailure", (transient) =>
+          Effect.succeed(undefined).pipe(
+            Effect.filterOrFail(
+              () => historyObserved && transient.timedOut,
+              () => transient.failure
+            )
+          )
+        )
       );
-      if (Date.now() >= bounds.deadline) break;
+      if (entries === undefined || Date.now() >= bounds.deadline) break;
+      historyObserved = true;
       const matches = matchPreviewE2EEntries(entries, {
         excludeLogEntryIds: bounds.excludeLogEntryIds,
         recipient: bounds.recipient,
@@ -565,6 +644,40 @@ const pollForLogMatch = (
         operation: "poll Vercel preview runtime logs",
       }
     );
+  });
+
+const retryTransientVercelRequest = <A, R>(
+  request: (
+    timeoutMs: number
+  ) => Effect.Effect<A, WorkspaceE2EError | TransientVercelRequestFailure, R>,
+  bounds: {
+    readonly deadline: number;
+    readonly operation: string;
+    readonly pollIntervalMs: number;
+  }
+): Effect.Effect<A, WorkspaceE2EError | TransientVercelRequestFailure, R> =>
+  Effect.gen(function* () {
+    let lastFailure = transientVercelRequestFailure(
+      bounds.operation,
+      "timeout"
+    );
+    while (true) {
+      const remainingMs = bounds.deadline - Date.now();
+      if (remainingMs <= 0) return yield* lastFailure;
+      const result = yield* request(
+        Math.min(vercelRequestTimeoutMs, remainingMs)
+      ).pipe(Effect.result);
+      if (Result.isSuccess(result)) return result.success;
+      if (result.failure._tag === "WorkspaceE2EError") {
+        return yield* result.failure;
+      }
+      lastFailure = result.failure;
+      const sleepRemainingMs = bounds.deadline - Date.now();
+      if (sleepRemainingMs <= 0) return yield* lastFailure;
+      yield* Effect.sleep(
+        `${Math.min(bounds.pollIntervalMs, sleepRemainingMs)} millis`
+      );
+    }
   });
 
 const matchPreviewE2EEntries = (

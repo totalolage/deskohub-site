@@ -23,6 +23,7 @@ export const withinWorkspaceE2EDeadline = <A, E, R>(
 export const pollUntil = <A, E, R>(
   effect: Effect.Effect<A | undefined, E, R>,
   options: {
+    readonly describePending?: () => string | undefined;
     readonly intervalMs: number;
     readonly label: string;
     readonly timeoutMs: number;
@@ -31,11 +32,13 @@ export const pollUntil = <A, E, R>(
   Effect.gen(function* () {
     const startedAt = Date.now();
     let attempts = 0;
-    const timeoutError = () =>
-      workspaceE2ETimeoutError(
-        `Timed out waiting for ${options.label} after ${attempts} attempts (${formatWorkspaceE2EDuration(Date.now() - startedAt)})`,
+    const timeoutError = () => {
+      const pending = options.describePending?.();
+      return workspaceE2ETimeoutError(
+        `Timed out waiting for ${options.label} after ${attempts} attempts (${formatWorkspaceE2EDuration(Date.now() - startedAt)})${pending ? `: ${pending}` : ""}`,
         { operation: options.label }
       );
+    };
     const result = yield* Effect.suspend(() => {
       attempts += 1;
       return effect;

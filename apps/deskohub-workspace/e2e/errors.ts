@@ -32,6 +32,8 @@ export const workspaceE2ERunnerDiagnosticCodes = [
   "postgres_checkout_row_assertion_failed",
   "postgres_legal_evidence_validation_failed",
   "postgres_local_pii_validation_failed",
+  "checkout_payment_terminal_before_fulfillment",
+  "checkout_fulfillment_failed_before_marker",
 ] as const;
 
 export const workspaceE2EProfileNavigationDiagnosticCodes = [
@@ -45,6 +47,7 @@ export const workspaceE2EProfileNavigationDiagnosticCodes = [
   "account_profile_persisted_document_reload_failed",
   "account_profile_persisted_profile_navigation_failed",
   "account_profile_persisted_profile_handler_wait_failed",
+  "account_profile_persisted_profile_panel_hydration_wait_failed",
   "account_profile_persisted_profile_click_failed",
   "account_profile_persisted_profile_landmark_wait_failed",
   "account_profile_persisted_profile_form_visibility_failed",
