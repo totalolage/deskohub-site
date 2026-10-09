@@ -36,6 +36,8 @@ The sandbox page renders each card field in its own iframe and the Continue, Pay
 
 The sandbox fails intermittently on its side. Observed failures include `POST /fe/build/text/` returning HTTP 400 after Continue, the `/hpp/nexi/error` "Payment error" page, and "OPS! Something went wrong" after a `validateAndPay` HTTP 500. The 400 case is the most deceptive: Nexi handles it as a silent save error, so the card form stays on screen with its fields disabled and no Pay button ever appears. Fail fast with the `nexi_hosted_<step>_<state>` diagnostic code instead of waiting out the step timeout. Do not reload the page or resubmit card data to hide these failures. Rerun the exact-SHA workflow when the code names a provider state.
 
+Nexi states the reason for a rejected hosted-field call only in that response body. For failed Nexi `/fe/build/` responses, the failure `network.har` keeps only provider error codes (`errors[].code`), workflow enum values (`event`, `state`, `workflowState`), and `fieldStatus` events with known hosted-field ids. Every other field and body is redacted. Read those codes before blaming the sandbox. When the same case is rejected repeatedly while other paid cases in the run succeed, reproduce its order values (amount, currency override, customer info) directly against the sandbox before rerunning.
+
 ## Verification
 
 Treat notifications as triggers. Read the order from Nexi and compare the expected order identifier, amount, and currency before changing local payment state. Compare a security token only when Nexi returns one in the notification or operation.

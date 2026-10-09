@@ -14,6 +14,7 @@ import { pollUntil } from "./polling";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
+import { isNexiBuildApiUrl } from "./urls";
 
 export const runBrowserCommand = (
   operation: string,
@@ -779,8 +780,10 @@ export const sanitizeHarArtifact = (text: string) => {
     for (const entry of entries) {
       const record = asRecord(entry);
       if (!record) continue;
-      sanitizeHarRequest(asRecord(record.request));
-      sanitizeHarResponse(asRecord(record.response));
+      const request = asRecord(record.request);
+      const requestUrl = typeof request?.url === "string" ? request.url : "";
+      sanitizeHarRequest(request);
+      sanitizeHarResponse(asRecord(record.response), requestUrl);
     }
 
     return JSON.stringify(sanitizeJsonStrings(har), null, 2);
@@ -816,14 +819,90 @@ const sanitizeHarRequest = (request: Record<string, unknown> | undefined) => {
   if (typeof postData.text === "string") postData.text = "[redacted]";
 };
 
-const sanitizeHarResponse = (response: Record<string, unknown> | undefined) => {
+const sanitizeHarResponse = (
+  response: Record<string, unknown> | undefined,
+  requestUrl: string
+) => {
   if (!response) return;
   response.headers = sanitizeHarNamedValues(response.headers);
   response.cookies = [];
 
   const content = asRecord(response.content);
-  if (content && typeof content.text === "string") content.text = "[redacted]";
+  if (!content || typeof content.text !== "string") return;
+  content.text =
+    typeof response.status === "number" &&
+    response.status >= 400 &&
+    isNexiBuildUrl(requestUrl)
+      ? summarizeNexiBuildFailureBody(content.text)
+      : "[redacted]";
 };
+
+const isNexiBuildUrl = (value: string) => {
+  try {
+    return isNexiBuildApiUrl(new URL(value));
+  } catch {
+    return false;
+  }
+};
+
+// Nexi explains a rejected hosted-field call only in its response body. Keep
+// only fields at known paths whose values have a provider-code shape that
+// cannot carry customer or card data; drop everything else.
+const nexiErrorCodePattern = /^[A-Z]{2,4}\d{2,6}$/;
+const nexiEnumValuePattern = /^[A-Z]+(?:_[A-Z]+)+$/;
+const nexiHostedFieldIds = new Set([
+  "CARDHOLDER_EMAIL",
+  "CARDHOLDER_NAME",
+  "CARD_NUMBER",
+  "EXPIRATION_DATE",
+  "SECURITY_CODE",
+]);
+
+const summarizeNexiBuildFailureBody = (text: string) => {
+  let body: Record<string, unknown> | undefined;
+  try {
+    body = asRecord(JSON.parse(text));
+  } catch {
+    return "[redacted]";
+  }
+  if (!body) return "[redacted]";
+
+  const summary: Record<string, unknown> = {};
+  const errorCodes = recordsOf(body.errors).flatMap((error) =>
+    codeValue(error.code, nexiErrorCodePattern)
+  );
+  if (errorCodes.length > 0)
+    summary.errors = errorCodes.map((code) => ({ code }));
+  for (const key of ["event", "state", "workflowState"]) {
+    const [value] = codeValue(body[key], nexiEnumValuePattern);
+    if (value) summary[key] = value;
+  }
+  const fieldStatus = recordsOf(body.fieldStatus).flatMap((field) => {
+    const [event] = codeValue(field.event, nexiEnumValuePattern);
+    if (!event) return [];
+    const id =
+      typeof field.id === "string" && nexiHostedFieldIds.has(field.id)
+        ? field.id
+        : "[other]";
+    return [{ event, id }];
+  });
+  if (fieldStatus.length > 0) summary.fieldStatus = fieldStatus;
+
+  return Object.keys(summary).length > 0
+    ? JSON.stringify(summary)
+    : "[redacted]";
+};
+
+const recordsOf = (value: unknown) =>
+  Array.isArray(value)
+    ? value.flatMap((item) => {
+        const record = asRecord(item);
+        return record ? [record] : [];
+      })
+    : [];
+
+const codeValue = (value: unknown, pattern: RegExp): string[] =>
+  typeof value === "string" && pattern.test(value) ? [value] : [];
 
 const sanitizeHarNamedValues = (value: unknown) =>
   Array.isArray(value)

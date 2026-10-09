@@ -54,6 +54,69 @@ test("keeps a sanitized HAR valid JSON when a short value is redacted", () => {
   expect(entry.response.content.text).toBe("[redacted]");
 });
 
+test("keeps only the error codes of a failed Nexi hosted-field response", () => {
+  const cardDataUrl = "https://xpaysandbox.nexigroup.com/fe/build/text/";
+  const harEntry = (url: string, status: number, text: string) => ({
+    request: { headers: [], url },
+    response: { content: { text }, headers: [], status },
+  });
+  const sanitized = JSON.parse(
+    sanitizeHarArtifact(
+      JSON.stringify({
+        log: {
+          entries: [
+            harEntry(
+              cardDataUrl,
+              400,
+              JSON.stringify({
+                errors: [
+                  { code: "GW0001", description: "Jane Doe is not allowed" },
+                  { code: "298" },
+                  { code: "JANE" },
+                ],
+                event: "JANE",
+                fieldStatus: [
+                  { event: "BUILD_ERROR", id: "CARDHOLDER_NAME" },
+                  { event: "BUILD_ERROR", id: "A1B2C3D4E5F6" },
+                  { event: "1234", id: "CARD_NUMBER" },
+                ],
+                holder: "Jane Doe",
+                pan: 4509,
+                workflowState: "CARD_DATA_COLLECTION",
+              })
+            ),
+            harEntry(cardDataUrl, 400, '"GW0001"'),
+            harEntry(cardDataUrl, 400, '["298", "GW0001"]'),
+            harEntry(cardDataUrl, 400, "<html>Jane Doe</html>"),
+            harEntry(
+              cardDataUrl,
+              200,
+              '{"workflowState":"CARD_DATA_COLLECTION"}'
+            ),
+            harEntry(
+              "https://deskohub.example.test/fe/build/text/",
+              400,
+              '{"errors":[{"code":"GW0001"}]}'
+            ),
+          ],
+        },
+      })
+    )
+  );
+  const [nexiFailure, ...redactedEntries] = sanitized.log.entries;
+
+  expect(JSON.parse(nexiFailure.response.content.text)).toEqual({
+    errors: [{ code: "GW0001" }],
+    fieldStatus: [
+      { event: "BUILD_ERROR", id: "CARDHOLDER_NAME" },
+      { event: "BUILD_ERROR", id: "[other]" },
+    ],
+    workflowState: "CARD_DATA_COLLECTION",
+  });
+  for (const entry of redactedEntries)
+    expect(entry.response.content.text).toBe("[redacted]");
+});
+
 test("activates a hydrated element through focus and keyboard input", async () => {
   const calls: Array<{ readonly args: string[]; readonly input?: string }> = [];
   const run: Runner = async (_command, args, options) => {

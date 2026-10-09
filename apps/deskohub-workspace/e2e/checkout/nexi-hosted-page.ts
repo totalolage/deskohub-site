@@ -2,6 +2,7 @@ import type {
   NexiHostedPaymentPageStateCode,
   NexiHostedPaymentStep,
 } from "../errors";
+import { isNexiBuildApiUrl } from "../urls";
 
 // Pure model of the Nexi XPay hosted payment page as seen through Playwright AI
 // snapshots and the session's response log. The driver polls this model; it
@@ -203,8 +204,7 @@ export const parseNexiBuildResponses = (
     } catch {
       continue;
     }
-    if (!url.hostname.endsWith(".nexigroup.com")) continue;
-    if (!/^\/fe\/(?:v2\/)?build\//.test(url.pathname)) continue;
+    if (!isNexiBuildApiUrl(url)) continue;
     const endpoint =
       nexiBuildEndpoints.find(([pattern]) => pattern.test(url.pathname))?.[1] ??
       "other";
