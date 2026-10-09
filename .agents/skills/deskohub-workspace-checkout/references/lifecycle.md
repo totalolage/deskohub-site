@@ -64,9 +64,13 @@ Calendar sale eligibility is one shared rule, `calendarSaleAppliesToBooking` in
 sale's Prague all-day booking window, which has an exclusive end. The last
 service date must also be no later than the sale's last day, and earlier
 service dates qualify. Each product's pricing context supplies
-`lastServiceDate` in the discount input: office uses `endsOn`, cowork and
-meeting rooms use their single reserved date. A range extending past the sale's
-last day gets no sale; never prorate. Do not re-derive the window or compare
+`lastServiceDate` in the discount input: office uses `endsOn`, cowork uses its
+reserved date, and meeting rooms use the Prague date of the exclusive `endsAt`
+(`getMeetingRoomLastServiceDate`), because hourly bookings can cross midnight
+and one ending exactly at midnight belongs to the previous day. Meeting-room
+advertised-price details carry `lastServiceDate` so the advertisement stays
+keyed by dates, not clock times. A range extending past the sale's last day gets
+no sale; never prorate. Do not re-derive the window or compare
 service dates against sale dates elsewhere.
 
 The booking instant is the price-lock moment. Reservation-page advertisement

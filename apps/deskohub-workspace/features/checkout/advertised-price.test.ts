@@ -62,12 +62,36 @@ describe("advertised price contract", () => {
           kind: "meeting-room",
           duration: { unit: "hour", amount: 4 },
           reservationDate: "2099-06-10",
+          lastServiceDate: "2099-06-11",
         },
       },
     });
 
     expect(Option.isSome(decoded)).toBe(true);
   });
+
+  test.each([
+    ["before the reservation date", "2099-06-09"],
+    ["more than a day after the reservation date", "2099-06-12"],
+  ])(
+    "rejects a meeting-room last service date %s",
+    (_label, lastServiceDate) => {
+      const decoded = decodeRequest({
+        locale: "en-US",
+        reservation: {
+          kind: "meeting-room",
+          details: {
+            kind: "meeting-room",
+            duration: { unit: "hour", amount: 4 },
+            reservationDate: "2099-06-10",
+            lastServiceDate,
+          },
+        },
+      });
+
+      expect(Option.isNone(decoded)).toBe(true);
+    }
+  );
 
   test("rejects office price requests beyond the one-month booking horizon", () => {
     const startsOn = Temporal.Now.plainDateISO();
@@ -114,6 +138,7 @@ describe("advertised price contract", () => {
           kind: "meeting-room",
           duration: { unit: "day", amount: 1 },
           reservationDate: "2099-06-10",
+          lastServiceDate: "2099-06-10",
           startsAt: "2099-06-10T08:00:00Z",
           endsAt: "2099-06-11T08:00:00Z",
         },

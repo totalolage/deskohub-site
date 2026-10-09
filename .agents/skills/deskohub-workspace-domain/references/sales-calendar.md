@@ -43,8 +43,9 @@ Model Workspace sales calendar events as references to stored discount definitio
 - A Calendar sale depends on when the reservation is booked, not only on when
   it is used. It applies only when the booking instant falls inside the
   occurrence's Prague all-day booking window (exclusive end) and the last
-  service date (`lastServiceDate`: office `endsOn`, otherwise the single
-  reserved date) is no later than the sale's last day. Earlier service dates
+  service date (`lastServiceDate`: office `endsOn`, cowork `date`, meeting
+  room the Prague date of its exclusive `endsAt`, since hourly bookings can
+  cross midnight) is no later than the sale's last day. Earlier service dates
   qualify; a range extending past the last day gets no sale and is never
   prorated.
   Express this only through `calendarSaleAppliesToBooking` and

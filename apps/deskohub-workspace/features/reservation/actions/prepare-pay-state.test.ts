@@ -138,6 +138,8 @@ const buildMeetingRoomAdvertisedPriceToken = async (
       kind: "meeting-room",
       duration: input.duration,
       reservationDate: input.reservationDate,
+      // Every meeting-room fixture here ends on its start date.
+      lastServiceDate: input.reservationDate,
     },
   });
   const quoteWithoutFingerprint = Effect.runSync(

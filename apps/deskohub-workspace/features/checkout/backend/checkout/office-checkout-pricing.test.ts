@@ -2,28 +2,17 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { getWorkspaceOfficePrice } from "@/features/checkout/product-catalog";
-import { CalendarDiscountProvider } from "@/features/discounts/calendar-discount-provider.service";
+import { calendarSaleDiscountServiceLayer } from "@/features/discounts/calendar-sale.test-utils";
 import { discountAdvertisementQuoteCodec } from "@/features/discounts/contracts";
-import { CustomerDiscountProviderMock } from "@/features/discounts/customer-discount-provider.service.mock";
-import { DiscountService } from "@/features/discounts/discount.service";
+import type { DiscountService } from "@/features/discounts/discount.service";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
-import { DiscountDefinitionRepositoryMock } from "@/features/discounts/discount-definition.repository.mock";
-import { DiscountReleaseGateServiceMock } from "@/features/discounts/discount-release-gate.service.mock";
-import { storedDiscountIdSchema } from "@/features/discounts/persistence-contracts";
-import { PromotionCodeProviderMock } from "@/features/discounts/promotion-code-provider.service.mock";
 import {
   getOfficeAdvertisedPriceReservation,
   officeReservationOrderSchema,
 } from "@/features/reservation/office-reservation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
-import {
-  CalendarResourceConfig,
-  salesCalendarIdSchema,
-  workspaceLimitationsCalendarIdSchema,
-} from "@/shared/backend/config/calendar-resource.config";
 import { officeCheckoutPricing } from "./office-checkout-pricing";
 
 const startsOn = getCurrentWorkspaceDate().add({ days: 1 });
@@ -47,62 +36,14 @@ const advertisementQuote = discountAdvertisementQuoteCodec.make({
   discountedSubtotal: money,
 });
 
-const saleDiscountId = Schema.decodeUnknownSync(storedDiscountIdSchema)(
-  "019bfe6e-8ef0-7def-8b16-55cfbc82edc1"
-);
 const saleLastDay = startsOn.add({ days: 1 });
-
-/**
- * Real discount service and calendar provider over a synthetic all-day sale
- * that started yesterday and whose last day is the day after `startsOn`.
- */
-const calendarSaleDiscounts = Layer.mergeAll(
-  CalendarDiscountProvider.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        GoogleCalendarServiceMock({
-          listEvents: () =>
-            Effect.succeed([
-              {
-                id: "office-range-sale",
-                summary: "Synthetic office sale",
-                description: saleDiscountId,
-                start: { date: startsOn.subtract({ days: 2 }).toString() },
-                end: { date: saleLastDay.add({ days: 1 }).toString() },
-              },
-            ]),
-        }),
-        DiscountDefinitionRepositoryMock({
-          loadById: ({ discountId }) =>
-            Effect.succeed({
-              id: discountId,
-              labels: { "en-US": "Office sale", "cs-CZ": "Sleva na kanceláře" },
-              adjustment: { kind: "percentage", basisPoints: 2000 },
-              products: [{ kind: "office" }],
-            }),
-        }),
-        Layer.succeed(CalendarResourceConfig, {
-          salesCalendarId: Schema.decodeUnknownSync(salesCalendarIdSchema)(
-            "office-range-sales-calendar"
-          ),
-          workspaceLimitationsCalendarId: Schema.decodeUnknownSync(
-            workspaceLimitationsCalendarIdSchema
-          )("office-range-limitations-calendar"),
-        })
-      )
-    )
-  ),
-  CustomerDiscountProviderMock(),
-  PromotionCodeProviderMock(),
-  DiscountReleaseGateServiceMock({
-    evaluate: () =>
-      Effect.succeed({
-        calendarSales: true,
-        customerDiscounts: true,
-        discountCodes: true,
-      }),
-  })
-);
+const calendarSaleDiscounts = calendarSaleDiscountServiceLayer({
+  calendarId: "office-range",
+  firstDay: startsOn.subtract({ days: 2 }),
+  lastDay: saleLastDay,
+  labels: { "en-US": "Office sale", "cs-CZ": "Sleva na kanceláře" },
+  products: [{ kind: "office" }],
+});
 
 const runWithDiscounts = <A, E>(
   effect: Effect.Effect<A, E, DiscountService>,
@@ -155,12 +96,7 @@ describe("office checkout pricing", () => {
           reservation: getOfficeAdvertisedPriceReservation(rangeReservation),
           locale: "en-US",
         });
-      }).pipe(
-        Effect.provide(
-          DiscountService.Default.pipe(Layer.provide(calendarSaleDiscounts))
-        ),
-        Effect.runPromise
-      );
+      }).pipe(Effect.provide(calendarSaleDiscounts), Effect.runPromise);
 
       expect(result.quote.payment.discounts).toHaveLength(expectedDiscounts);
     }

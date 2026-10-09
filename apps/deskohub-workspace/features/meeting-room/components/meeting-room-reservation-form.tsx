@@ -51,7 +51,7 @@ import {
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getEarliestMeetingRoomStartDateTime,
-  getMeetingRoomAvailabilityToDate,
+  getMeetingRoomLastServiceDate,
   getMeetingRoomReservationDate,
   getMeetingRoomReservationInterval,
 } from "@/features/reservation/meeting-room-reservation-time";
@@ -135,7 +135,7 @@ export function MeetingRoomReservationForm({
         ? {
             kind: "meeting-room",
             from: getMeetingRoomReservationDate(selectedInterval),
-            to: getMeetingRoomAvailabilityToDate(selectedInterval),
+            to: getMeetingRoomLastServiceDate(selectedInterval),
             startsAt: selectedInterval.startsAt,
             endsAt: selectedInterval.endsAt,
           }

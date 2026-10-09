@@ -4,6 +4,10 @@ import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import { meetingRoomReservationDurations } from "@/features/reservation/meeting-room-reservation-duration";
 import {
+  getMeetingRoomLastServiceDate,
+  getMeetingRoomReservationInterval,
+} from "@/features/reservation/meeting-room-reservation-time";
+import {
   localDateTimeSchema,
   plainDateStringSchema,
 } from "@/shared/utils/temporal";
@@ -21,24 +25,32 @@ export const getMeetingRoomDurationAdvertisedPriceRequests = ({
   readonly submittedCode?: CanonicalPromotionCode;
 }): ReadonlyArray<MeetingRoomAdvertisedPriceRequest> =>
   decodeLocalDateTime(startDateTime).pipe(
-    Option.map((dateTime) =>
-      decodePlainDate(
+    Option.map((dateTime) => {
+      const reservationDate = decodePlainDate(
         Temporal.PlainDateTime.from(dateTime).toPlainDate().toString()
-      )
-    ),
-    Option.map((reservationDate) =>
-      meetingRoomReservationDurations.map((duration) => ({
-        locale,
-        ...(submittedCode && { submittedCode }),
-        reservation: {
-          kind: "meeting-room" as const,
-          details: {
-            kind: "meeting-room" as const,
-            duration,
-            reservationDate,
-          },
-        },
-      }))
-    ),
+      );
+
+      return meetingRoomReservationDurations.flatMap((duration) => {
+        const interval = getMeetingRoomReservationInterval(dateTime, duration);
+
+        return interval
+          ? [
+              {
+                locale,
+                ...(submittedCode && { submittedCode }),
+                reservation: {
+                  kind: "meeting-room" as const,
+                  details: {
+                    kind: "meeting-room" as const,
+                    duration,
+                    reservationDate,
+                    lastServiceDate: getMeetingRoomLastServiceDate(interval),
+                  },
+                },
+              },
+            ]
+          : [];
+      });
+    }),
     Option.getOrElse(() => [])
   );
