@@ -33,14 +33,14 @@ export async function LandingPagePhotoCarouselSection({
   const images = await getCloudinaryImages({
     tags: ["landing-carousel"],
     maxResults: 20,
-  });
+  }).catch(() => undefined);
+  if (!images) return null;
 
   return (
     <section
       id="hero-gallery"
       className={cn(
         "relative py-16 sm:py-20 lg:py-24",
-        "mt-[calc(-0.5*var(--hero-bottom-section-height))]",
         "bg-[linear-gradient(var(--color-chilean-fire)_0%,transparent_100%),conic-gradient(from_225deg_at_30%_10%,#F57D00,#FF9222)] bg-bottom-left"
       )}
     >
