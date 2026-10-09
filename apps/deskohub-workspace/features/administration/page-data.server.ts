@@ -120,13 +120,15 @@ const getAdministrationReservationListInput = async (
   await authorizeAdministratorPage();
   const params = await searchParams;
   const typeValue = firstParam(params.type);
+  const customerId = getDotyposCustomerRouteId(firstParam(params.customerId));
   const dateRange = getAdministrationReservationListDateRange({
+    customerId,
     date: firstParam(params.date),
     from: firstParam(params.from),
     to: firstParam(params.to),
   });
   return {
-    customerId: getDotyposCustomerRouteId(firstParam(params.customerId)),
+    customerId,
     ...dateRange,
     direction: parseSortDirection(firstParam(params.direction)),
     page: parsePage(firstParam(params.page)),

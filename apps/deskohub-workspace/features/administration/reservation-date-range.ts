@@ -37,21 +37,29 @@ export const getAdministrationReservationDateRange = ({
 
 /**
  * Resolves the start-date range an operator's reservation list shows. Without
- * an explicit range the list covers the current Workspace year to date, so
- * date sorting never pages through the complete provider history.
+ * an explicit range the list starts on January 1 of the current Workspace year
+ * and stays open-ended, so upcoming bookings remain visible while date sorting
+ * never pages through the complete provider history. A single customer's list
+ * keeps that customer's complete history.
  */
 export const getAdministrationReservationListDateRange = (
-  filters: Parameters<typeof getAdministrationReservationDateRange>[0],
+  {
+    customerId,
+    ...filters
+  }: Parameters<typeof getAdministrationReservationDateRange>[0] & {
+    readonly customerId?: string;
+  },
   currentDate = getCurrentWorkspaceDate()
-): AdministrationReservationDateRange =>
+): AdministrationReservationDateRange | undefined =>
   getAdministrationReservationDateRange(filters) ??
-  getAdministrationReservationYearToDateRange(currentDate);
+  (customerId
+    ? undefined
+    : getAdministrationReservationListDefaultDateRange(currentDate));
 
-export const getAdministrationReservationYearToDateRange = (
+export const getAdministrationReservationListDefaultDateRange = (
   currentDate = getCurrentWorkspaceDate()
-): AdministrationReservationClosedDateRange => ({
+): { readonly from: string } => ({
   from: currentDate.with({ month: 1, day: 1 }).toString(),
-  to: currentDate.toString(),
 });
 
 export const getAdministrationOverviewDateRanges = (

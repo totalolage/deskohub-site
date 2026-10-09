@@ -43,7 +43,7 @@ An unavailable external record never hides an existing Workspace reservation. Pr
 
 Customer contact search is protected. Contact values are not placed in shareable URLs or copied into Workspace records merely to support search. Filters may use non-sensitive identifiers, dates, reservation families, and business statuses.
 
-The reservation list filters by booking start date. Without an explicit date range it shows the current year to date: from January 1 of the current Prague calendar year through today. The date controls show that effective range, and an operator widens or narrows it explicitly.
+The reservation list filters by booking start date. Without an explicit date range it shows bookings starting on or after January 1 of the current Prague calendar year, with no end date, so upcoming bookings remain visible. The date controls show that effective range, and an operator widens or narrows it explicitly. A list opened for one customer has no default range and shows that customer's complete reservation history.
 
 Secret Workspace access codes, payment security values, payment redirect addresses, free-form provider notes, and raw provider or analytics payloads are excluded from administration projections. Reservation access state, validity, device, provider credential identifier, and failure metadata are visible without the code itself.
 

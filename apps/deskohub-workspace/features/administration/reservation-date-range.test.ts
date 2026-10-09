@@ -5,7 +5,7 @@ import {
   getAdministrationReservationDateRange,
   getAdministrationReservationDateShortcuts,
   getAdministrationReservationListDateRange,
-  getAdministrationReservationYearToDateRange,
+  getAdministrationReservationListDefaultDateRange,
 } from "./reservation-date-range";
 
 describe("administration reservation date ranges", () => {
@@ -52,19 +52,35 @@ describe("administration reservation date ranges", () => {
     });
   });
 
-  test("defaults an unfiltered reservation list to year-to-date", () => {
+  test("defaults an unfiltered reservation list to an open-ended range from January 1", () => {
     const currentDate = Temporal.PlainDate.from("2026-08-12");
 
     expect(getAdministrationReservationListDateRange({}, currentDate)).toEqual({
       from: "2026-01-01",
-      to: "2026-08-12",
     });
     expect(
       getAdministrationReservationListDateRange(
         { from: "not-a-date", to: "" },
         currentDate
       )
-    ).toEqual({ from: "2026-01-01", to: "2026-08-12" });
+    ).toEqual({ from: "2026-01-01" });
+  });
+
+  test("keeps a customer's complete reservation history without a default range", () => {
+    const currentDate = Temporal.PlainDate.from("2026-08-12");
+
+    expect(
+      getAdministrationReservationListDateRange(
+        { customerId: "customer-one" },
+        currentDate
+      )
+    ).toBeUndefined();
+    expect(
+      getAdministrationReservationListDateRange(
+        { customerId: "customer-one", from: "2026-08-13" },
+        currentDate
+      )
+    ).toEqual({ from: "2026-08-13" });
   });
 
   test("keeps explicit and open-ended reservation date filters", () => {
@@ -96,16 +112,16 @@ describe("administration reservation date ranges", () => {
     ).toEqual({ from: "2024-05-06", to: "2024-05-06" });
   });
 
-  test("starts year-to-date on January 1 of the current Workspace year", () => {
+  test("starts the default range on January 1 of the current Workspace year", () => {
     expect(
-      getAdministrationReservationYearToDateRange(
+      getAdministrationReservationListDefaultDateRange(
         Temporal.PlainDate.from("2026-01-01")
       )
-    ).toEqual({ from: "2026-01-01", to: "2026-01-01" });
+    ).toEqual({ from: "2026-01-01" });
     expect(
-      getAdministrationReservationYearToDateRange(
+      getAdministrationReservationListDefaultDateRange(
         getCurrentWorkspaceDate(Temporal.Instant.from("2026-12-31T23:30:00Z"))
       )
-    ).toEqual({ from: "2027-01-01", to: "2027-01-01" });
+    ).toEqual({ from: "2027-01-01" });
   });
 });
