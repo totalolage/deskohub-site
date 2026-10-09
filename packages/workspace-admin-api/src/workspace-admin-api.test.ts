@@ -1065,6 +1065,13 @@ describe("administration contract", () => {
       voucher: { credit: { value: 10_000 } },
     });
   });
+  test("accepts the refund work queue as a reservation status filter", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationQuery)({
+        status: "needs_refund",
+      })
+    ).toEqual({ status: "needs_refund" });
+  });
   test("rejects invalid reservation filters before service execution", () => {
     expect(() =>
       Schema.decodeUnknownSync(AdministrationReservationQuery)({ page: 0 })

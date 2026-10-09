@@ -721,7 +721,7 @@ export const AdministrationReservationQuery = Schema.Struct({
   ),
   sort: Schema.optional(AdministrationReservationSort),
   status: Schema.optional(
-    Schema.Literals(["in_progress", "complete", "cancelled"])
+    Schema.Literals(["in_progress", "complete", "cancelled", "needs_refund"])
   ),
   type: Schema.optional(Schema.Literals(["cowork", "meeting-room", "office"])),
 });
