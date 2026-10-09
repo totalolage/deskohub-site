@@ -30,6 +30,7 @@ import {
 } from "../timeouts";
 import type { CheckoutData } from "../types";
 import { isCheckoutStatusUrl } from "../urls";
+import { parseNexiBuildResponses } from "./nexi-build-api";
 import {
   classifyNexiHostedPage,
   countNexiCardDataRejections,
@@ -44,7 +45,6 @@ import {
   type NexiHostedControl,
   type NexiHostedPageObservation,
   type NexiHostedPageState,
-  parseNexiBuildResponses,
   parseNexiSnapshot,
   toNexiHostedPageStateCode,
 } from "./nexi-hosted-page";
@@ -57,6 +57,8 @@ const optionalCardFieldTimeoutMs = 10_000;
 const continueAbsentAfterMs = 15_000;
 
 export type HostedPaymentPage = {
+  // The checkout pay page that started this hosted payment.
+  readonly checkoutPageUrl: string;
   readonly checkoutTabId: string;
   readonly hostedPaymentTabId: string;
   readonly url: string;
@@ -77,12 +79,16 @@ type ObservedNexiHostedPage = {
 export const completeNexiHostedPayment = ({
   data,
   hostedPaymentPage,
+  onPaymentAuthorizationRequested,
   run,
   session,
   timeouts,
 }: {
   data: CheckoutData;
   hostedPaymentPage?: HostedPaymentPage;
+  // Called just before the Pay activation, which is the only step that asks
+  // Nexi to authorize the payment.
+  onPaymentAuthorizationRequested?: () => void;
   run: Runner;
   session: string;
   timeouts: WorkspaceE2ETimeouts;
@@ -126,6 +132,9 @@ export const completeNexiHostedPayment = ({
     });
     yield* activateNexiControl(page, "pay", {
       findTimeoutMs: timeouts.providerTransition,
+      ...(onPaymentAuthorizationRequested
+        ? { onActivate: onPaymentAuthorizationRequested }
+        : {}),
       transitionTimeoutMs: timeouts.providerTransition,
     });
     yield* activateNexiControl(page, "challenge", {
@@ -412,6 +421,7 @@ type ControlActivationOptions = {
   // rendered, the control must become enabled and complete its transition.
   readonly absentAfterMs?: number;
   readonly findTimeoutMs: number;
+  readonly onActivate?: () => void;
   // Treat a provider redirect back to checkout status as completion.
   readonly skipWhenReturned?: boolean;
   readonly transitionTimeoutMs: number;
@@ -457,6 +467,7 @@ const activateNexiControl = (
       return;
     }
 
+    options.onActivate?.();
     const activation = yield* Effect.exit(
       options.activation === "pointer"
         ? clickBrowserElement(page.run, page.session, found.ref, {

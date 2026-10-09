@@ -23,13 +23,14 @@ import {
 } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import {
+  failWorkspaceE2E,
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "../errors";
 import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
-import { assert, log, parseUrl } from "../runtime";
+import { addRedaction, assert, log, parseUrl } from "../runtime";
 import {
   type WorkspaceE2ETimeouts,
   workspaceE2EPollIntervalMs,
@@ -561,6 +562,16 @@ export const submitPaymentAndWaitForHostedPage = ({
   timeouts: WorkspaceE2ETimeouts;
 }) =>
   Effect.gen(function* () {
+    const checkoutPageUrl = yield* readBrowserUrl(run, session);
+    if (!checkoutPageUrl) {
+      return yield* failWorkspaceE2E("checkout pay page URL is unavailable", {
+        operation: "read checkout pay page URL",
+      });
+    }
+    // A sandbox restart reopens this URL; keep its sealed pay state out of logs.
+    addRedaction(
+      parseUrl(checkoutPageUrl)?.searchParams.get("payState") ?? undefined
+    );
     const checkoutTabId = yield* submitCheckoutPayment(run, session);
 
     const hostedPaymentUrl = yield* waitForBrowserUrl({
@@ -584,6 +595,7 @@ export const submitPaymentAndWaitForHostedPage = ({
       yield* switchToBrowserTab(run, session, hostedPaymentTabId);
     }
     return {
+      checkoutPageUrl,
       checkoutTabId,
       hostedPaymentTabId,
       url: hostedPaymentUrl,

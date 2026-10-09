@@ -125,6 +125,7 @@ test("supports hosted payment in the checkout tab when the popup is blocked", as
       })
     )
   ).toEqual({
+    checkoutPageUrl: "https://workspace.example/en-US/checkout/pay",
     checkoutTabId: "checkout",
     hostedPaymentTabId: "checkout",
     url: "https://xpay.nexigroup.com/hpp/nexi/test",
