@@ -73,6 +73,15 @@ description: Workspace customer account, Better Auth, magic link, auth persisten
   `/api/auth/[...all]` with `Cache-Control: private, no-store`, and keep every
   page and Server Action re-checking the authoritative database session; the
   proxy and cookies are not the authorization boundary.
+- The account layout's `@modal` slot owns only the intercepted
+  `(..)reservation/{status,access}/[orderId]` modals. `@modal/page.tsx`
+  renders nothing at `/account`, and `@modal/default.tsx` renders nothing on
+  hard navigation to the other account routes. Do not add a catch-all slot
+  page. Every route into `/account/legal` and `/account/deleted` starts with
+  the modal closed: the dialog makes the background inert, closing it goes
+  back to `/account`, and deletion leaves through a document navigation. If a
+  modal ever links to another account route, add an explicit null slot page
+  for that route.
 - Use a single magic-link form for sign-in and implicit sign-up. Configure
   hashed token storage and keep the bearer URL out of logs, traces, and
   provider metadata.

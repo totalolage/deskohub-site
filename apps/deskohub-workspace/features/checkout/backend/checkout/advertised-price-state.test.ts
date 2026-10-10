@@ -41,6 +41,7 @@ const meetingRoomReservation = {
     kind: "meeting-room" as const,
     duration: { unit: "hour" as const, amount: 4 },
     reservationDate: "2026-06-21",
+    lastServiceDate: "2026-06-21",
   },
 };
 

@@ -64,7 +64,7 @@ describe("Nexi webhook types", () => {
     );
   });
 
-  test("reports security token match, mismatch, and absence", () => {
+  test("reports security token match and mismatch", () => {
     expect(
       checkNexiWebhookSecurityToken({
         notificationSecurityToken: "token",
@@ -79,8 +79,36 @@ describe("Nexi webhook types", () => {
     ).toEqual({ status: "mismatch" });
     expect(
       checkNexiWebhookSecurityToken({
-        notificationSecurityToken: " ",
-        expectedSecurityToken: "token",
+        notificationSecurityToken: "token",
+        expectedSecurityToken: "token-with-a-longer-value",
+      })
+    ).toEqual({ status: "mismatch" });
+  });
+
+  test("reports a notification without a security token as absent", () => {
+    for (const notificationSecurityToken of [undefined, "", " "]) {
+      expect(
+        checkNexiWebhookSecurityToken({
+          notificationSecurityToken,
+          expectedSecurityToken: "token",
+        })
+      ).toEqual({ status: "absent" });
+    }
+  });
+
+  test("never matches when no security token was issued", () => {
+    for (const expectedSecurityToken of [undefined, null, "", " "]) {
+      expect(
+        checkNexiWebhookSecurityToken({
+          notificationSecurityToken: "token",
+          expectedSecurityToken,
+        })
+      ).toEqual({ status: "mismatch" });
+    }
+    expect(
+      checkNexiWebhookSecurityToken({
+        notificationSecurityToken: undefined,
+        expectedSecurityToken: null,
       })
     ).toEqual({ status: "absent" });
   });

@@ -76,6 +76,8 @@ const makeFixturePayment = (
   stateLabel: "Paid",
   failureCode: null,
   amount: { value: 27_500, exponent: 2, currency: "CZK" },
+  refundedAmount: null,
+  refundedAt: null,
   createdAt: Temporal.Instant.from(updatedAt)
     .subtract({ minutes: 5 })
     .toString(),
@@ -400,6 +402,8 @@ export const loadFixtureReservation = (
         stateLabel: "Paid",
         failureCode: null,
         amount: { value: 240000, exponent: 2, currency: "CZK" },
+        refundedAmount: null,
+        refundedAt: null,
         createdAt: Temporal.Instant.from(paidAt)
           .subtract({ minutes: 3 })
           .toString(),

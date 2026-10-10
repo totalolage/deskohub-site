@@ -84,6 +84,8 @@ const runWithDiscounts = <A, E>(
   discounts: ReturnType<typeof DiscountServiceMock>
 ) => effect.pipe(Effect.provide(discounts), Effect.runPromise);
 
+const bookedAt = Temporal.Instant.from("2099-06-01T10:00:00Z");
+
 describe("cowork checkout pricing", () => {
   test("quotes the advertised catalog price with anonymous discounts", async () => {
     const discoverAdvertisedDiscounts = mock(() =>
@@ -109,8 +111,9 @@ describe("cowork checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
-      reservationDate: reservation.date,
+      lastServiceDate: reservation.date,
       locale: "en-US",
+      bookedAt: expect.any(Temporal.Instant),
     });
     expect(result.kind).toBe("cowork");
     expect(result.reservation).toBe(advertisedReservation);
@@ -192,6 +195,7 @@ describe("cowork checkout pricing", () => {
         return yield* pricing.affirmAdvertisement({
           reservation: advertisedReservation,
           locale: "en-US",
+          bookedAt,
           advertisedQuote: displayedQuote,
         });
       }),
@@ -201,8 +205,9 @@ describe("cowork checkout pricing", () => {
     expect(affirmAdvertisement).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
-      reservationDate: reservation.date,
+      lastServiceDate: reservation.date,
       locale: "en-US",
+      bookedAt,
       advertisedDiscountIds: [advertisedDiscountId],
     });
     expect(result.discountQuote).toBe(affirmedAdvertisement);
@@ -260,6 +265,7 @@ describe("cowork checkout pricing", () => {
         return yield* pricing.affirmForPayment({
           reservation,
           locale: "en-US",
+          bookedAt,
           dotyposCustomerId,
           quote: displayedQuote,
         });
@@ -275,9 +281,10 @@ describe("cowork checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
-      reservationDate: reservation.date,
+      lastServiceDate: reservation.date,
       dotyposCustomerId,
       locale: "en-US",
+      bookedAt,
       submittedCode: undefined,
       displayedDiscountIds: [advertisedDiscountId],
     });
@@ -328,6 +335,7 @@ describe("cowork checkout pricing", () => {
         return yield* pricing.applyDiscountCode({
           reservation,
           locale: "en-US",
+          bookedAt,
           dotyposCustomerId,
           quote: displayedQuote,
           submittedCode,
@@ -342,9 +350,10 @@ describe("cowork checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
-      reservationDate: reservation.date,
+      lastServiceDate: reservation.date,
       dotyposCustomerId,
       locale: "en-US",
+      bookedAt,
       submittedCode: undefined,
       displayedDiscountIds: [advertisedDiscountId],
     });
@@ -388,6 +397,7 @@ describe("cowork checkout pricing", () => {
         return yield* pricing.applyDiscountCode({
           reservation,
           locale: "en-US",
+          bookedAt,
           dotyposCustomerId,
           quote: displayedQuote,
           submittedCode,
@@ -473,6 +483,7 @@ describe("cowork checkout pricing", () => {
         return yield* pricing.affirmForPayment({
           reservation: profiOrder,
           locale: "en-US",
+          bookedAt,
           dotyposCustomerId,
           quote: customerQuote.quote,
         });
@@ -483,9 +494,10 @@ describe("cowork checkout pricing", () => {
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "profi" },
       discountableSubtotal: money(55_000),
-      reservationDate: profiOrder.date,
+      lastServiceDate: profiOrder.date,
       dotyposCustomerId,
       locale: "en-US",
+      bookedAt,
       submittedCode: undefined,
       displayedDiscountIds: [],
     });
@@ -546,8 +558,9 @@ describe("cowork checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "reserved-desk" },
       discountableSubtotal: money(41_000),
-      reservationDate: "2099-07-30",
+      lastServiceDate: "2099-07-30",
       locale: "en-US",
+      bookedAt: expect.any(Temporal.Instant),
     });
     expect(withWorkstation.quote.items).toEqual([
       { type: "cowork", tier: "reserved-desk", amount: money(41_000) },

@@ -14,7 +14,8 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { deriveCheckoutSessionKey } from "./checkout-session-key.server";
+import { deriveCheckoutSessionKeys } from "./checkout-lookup-keys.server";
+import type { CheckoutStateTokenError } from "./checkout-state-token";
 
 export class PayableReservationUnavailableError extends Data.TaggedError(
   "PayableReservationUnavailableError"
@@ -37,6 +38,7 @@ interface IPayableReservationService {
   }) => Effect.Effect<
     WorkspaceReservation,
     | PayableReservationUnavailableError
+    | CheckoutStateTokenError
     | EffectDrizzleQueryError
     | WorkspaceReservationDetailsMalformedError
     | ExternalAPIError
@@ -62,22 +64,25 @@ export class PayableReservationService extends Context.Service<
               return yield* unavailable(input, "missing_checkout_session");
             }
 
-            const checkoutSessionKey = deriveCheckoutSessionKey(
+            const checkoutSessionKeys = yield* deriveCheckoutSessionKeys(
               input.checkoutSessionId
             );
             const reservation = yield* reservations.findById(input.orderId);
             if (!reservation) {
               return yield* unavailable(input, "missing_reservation");
             }
-
-            const current =
-              yield* reservations.findCurrentByCheckoutSessionKey(
-                checkoutSessionKey
-              );
             if (
-              reservation.checkoutSessionKey !== checkoutSessionKey ||
-              current?.id !== reservation.id
+              !checkoutSessionKeys.accepted.includes(
+                reservation.checkoutSessionKey
+              )
             ) {
+              return yield* unavailable(input, "not_current");
+            }
+
+            const current = yield* reservations.findCurrentByCheckoutSessionKey(
+              reservation.checkoutSessionKey
+            );
+            if (current?.id !== reservation.id) {
               return yield* unavailable(input, "not_current");
             }
 

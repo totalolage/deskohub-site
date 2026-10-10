@@ -139,6 +139,10 @@ const stagedDeploymentPayload = () => ({
       path: "/api/cron/workspace/auth-cleanup",
       schedule: "17 3 * * *",
     },
+    {
+      path: "/api/cron/workspace/payment-refunds",
+      schedule: "37 4 * * *",
+    },
   ],
 });
 
@@ -150,6 +154,10 @@ const requiredWorkspaceCronDefinitions = [
   {
     path: "/api/cron/workspace/auth-cleanup",
     schedule: "17 3 * * *",
+  },
+  {
+    path: "/api/cron/workspace/payment-refunds",
+    schedule: "37 4 * * *",
   },
 ] as const;
 

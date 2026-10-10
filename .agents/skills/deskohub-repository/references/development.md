@@ -16,6 +16,13 @@
 - `typescript` (`npm:@typescript/typescript6@6.0.2`) provides the TS6 API (`createProgram`) consumed by typescript-eslint and Next.js, exposed as the `tsc6` CLI.
 - Never add plain `typescript@5`/`6`/`7` dependencies or new `tsc`-bin-providing packages.
 - Next apps set `experimental.useTypeScriptCli: false` because Next's CLI integration resolves `bin.tsc`, which the official TS6 wrapper (tsc6-only) must not provide; with the flag off, Next type-checks builds through its TS6 API worker (no CLI), while `bun turbo typecheck` separately runs the patched native compiler.
+- Workspace test files (`**/*.test.ts`, `**/*.test.tsx`) are intentionally not typechecked. `apps/deskohub-workspace/tsconfig.json` excludes them, its `typecheck` task checks only that project, and Bun runs tests without type checking. There is no test tsconfig in the check graph. Do not report this as an audit finding, and do not add a test tsconfig, test typecheck task, or Turbo dependency for it. Shared packages and `dhw` use a single tsconfig whose `include` happens to cover their colocated tests; leave that as it is unless the developer decides otherwise.
+
+### Next.js
+
+- Upgrade `next` and every `@next/*` package together: the Workspace and Boardgame Bar tilde ranges, the exact `@next/playwright` pin, and the `next` peer ranges in `packages/i18n` and `packages/next-effect`. Regenerate `bun.lock` with one `bun install`, then confirm `bun install --frozen-lockfile`.
+- Strict route matching is on by default from 16.4. Do not opt out with `deprecated.looseRouteMatching`. Every parallel-route slot page must belong to a complete route, so each sibling slot under that layout needs a matching page or `default.tsx` for the URL. A slot catch-all counts only when it combines with real sibling `children` routes. `next build` fails on violations, while `next dev` shows an error overlay that blocks browser fixtures. Fixtures that copy part of the route tree must keep it complete: for example, the `/[locale]` home page beside a locale-level `@modal/page.tsx`.
+- Do not assert raw RSC flight rows. The row format changes between minors: 16.4 moves a client reference's module id and export name into separate string rows that the import row references. Parse the rows and resolve the references.
 
 ## Bootstrap and development
 

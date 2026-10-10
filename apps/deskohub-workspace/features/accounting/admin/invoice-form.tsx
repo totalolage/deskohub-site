@@ -1,7 +1,6 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { BigDecimal, Option, Schema } from "effect";
 import { CircleAlert, Minus, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -155,31 +154,24 @@ const invoiceFormValues = Schema.Struct({
   ),
 });
 
-export const invoiceFormSchema = Schema.toStandardSchemaV1(
-  invoiceFormValues.check(
-    // Only the payment date chosen by the "Already paid" toggle is visible,
-    // so only that field carries a validation rule.
-    Schema.makeFilter<InvoiceFormValues>((value) => {
-      const paymentDate = (value.paid ? value.paidOn : value.dueDate).trim();
-      if (paymentDate !== "" && isCalendarDate(paymentDate)) return true;
-      return {
-        path: [value.paid ? "paidOn" : "dueDate"],
-        issue: paymentDate === "" ? requiredMessage : calendarDateMessage,
-      };
-    })
-  ),
-  { parseOptions: { errors: "all" } }
+export const invoiceFormSchema = invoiceFormValues.check(
+  // Only the payment date chosen by the "Already paid" toggle is visible,
+  // so only that field carries a validation rule.
+  Schema.makeFilter<InvoiceFormValues>((value) => {
+    const paymentDate = (value.paid ? value.paidOn : value.dueDate).trim();
+    if (paymentDate !== "" && isCalendarDate(paymentDate)) return true;
+    return {
+      path: [value.paid ? "paidOn" : "dueDate"],
+      issue: paymentDate === "" ? requiredMessage : calendarDateMessage,
+    };
+  })
 );
 
 type InvoiceFormValues = typeof invoiceFormValues.Type;
 
-export type InvoiceFormInput = StandardSchemaV1.InferInput<
-  typeof invoiceFormSchema
->;
+export type InvoiceFormInput = typeof invoiceFormSchema.Encoded;
 
-export type InvoiceFormOutput = StandardSchemaV1.InferOutput<
-  typeof invoiceFormSchema
->;
+export type InvoiceFormOutput = typeof invoiceFormSchema.Type;
 
 export function InvoiceCreationForm({
   currencies,
@@ -251,7 +243,7 @@ export function InvoiceCreationForm({
     },
     mode: "onBlur",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(invoiceFormSchema),
+    resolver: effectSchemaResolver(invoiceFormSchema),
   });
   const { fields, append, remove } = useFieldArray({
     control: form.control,

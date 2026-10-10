@@ -265,27 +265,61 @@ export const waitForBrowserTextContent = (
   ).pipe(Effect.asVoid);
 };
 
-export const waitForBrowserReactFormAction = (
+export const waitForBrowserReactFormSubmit = (
   run: Runner,
   session: string,
   selector: string,
-  options: { readonly timeoutMs?: number } = {}
+  visibleFieldSelectors: readonly string[],
+  options: {
+    readonly requiredReadyAttribute?: {
+      readonly name: string;
+      readonly value: string;
+    };
+    readonly timeoutMs?: number;
+  } = {}
 ): Effect.Effect<void, WorkspaceE2EError> => {
   const selectorLiteral = JSON.stringify(selector);
-  const hydrationCheck = `(() => {
+  const fieldSelectorsLiteral = JSON.stringify(visibleFieldSelectors);
+  const requiredReadyAttribute = options.requiredReadyAttribute;
+  const readyAttributeCheck =
+    requiredReadyAttribute === undefined
+      ? "true"
+      : `form.getAttribute(${JSON.stringify(requiredReadyAttribute.name)}) === ${JSON.stringify(requiredReadyAttribute.value)}`;
+  const handlersCheck = `(() => {
     const form = document.querySelector(${selectorLiteral});
     const reactPropsKey = form === null
       ? undefined
       : Object.keys(form).find((key) => key.startsWith("__reactProps$"));
     const reactProps = reactPropsKey === undefined ? undefined : form[reactPropsKey];
-    return typeof reactProps?.action === "function";
+    const formHasSubmitHandler = typeof reactProps?.onSubmit === "function";
+    if (!formHasSubmitHandler) return false;
+    if (!(${readyAttributeCheck})) return false;
+    const fieldSelectors = ${fieldSelectorsLiteral};
+    if (fieldSelectors.length === 0) return false;
+    return fieldSelectors.every((fieldSelector) => {
+      const field = document.querySelector(fieldSelector);
+      if (field === null || !form.contains(field)) return false;
+      if (field instanceof HTMLInputElement && field.type === "hidden") return true;
+      const fieldStyle = window.getComputedStyle(field);
+      const fieldIsVisible =
+        field.getClientRects().length > 0 &&
+        fieldStyle.display !== "none" &&
+        fieldStyle.visibility === "visible";
+      if (!fieldIsVisible) return false;
+      const fieldPropsKey = Object.keys(field).find((key) =>
+        key.startsWith("__reactProps$")
+      );
+      const fieldProps =
+        fieldPropsKey === undefined ? undefined : field[fieldPropsKey];
+      return typeof fieldProps?.onChange === "function";
+    });
   })()`;
 
   return runBrowserCommand(
-    "wait for browser React form action",
+    "wait for browser React form handlers",
     run,
     session,
-    ["wait", "--fn", hydrationCheck],
+    ["wait", "--fn", handlersCheck],
     {
       logOutput: false,
       timeoutMs: options.timeoutMs ?? 60_000,

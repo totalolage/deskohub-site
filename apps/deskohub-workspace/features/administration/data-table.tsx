@@ -2,14 +2,19 @@
 
 import {
   type ColumnDef,
+  createSortedRowModel,
   flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
+  metaHelper,
   type RowData,
+  rowSortingFeature,
   type SortingState,
-  useReactTable,
+  sortFn_alphanumeric,
+  sortFn_datetime,
+  sortFn_text,
+  tableFeatures,
+  useTable,
 } from "@tanstack/react-table";
-import { Fragment, type ReactNode, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import {
   Table,
   TableBody,
@@ -25,20 +30,34 @@ import {
   AdministrationTableFrame,
 } from "./table-frame";
 
-declare module "@tanstack/react-table" {
-  interface ColumnMeta<TData extends RowData, TValue> {
+const administrationTableFeatures = tableFeatures({
+  columnMeta: metaHelper<{
     readonly cellClassName?: string;
     readonly headClassName?: string;
-  }
-}
+  }>(),
+  rowSortingFeature,
+  sortedRowModel: createSortedRowModel(),
+  // Automatic column sorting resolves these by name from the leading rows'
+  // values; registering them keeps text and date columns naturally ordered.
+  sortFns: {
+    alphanumeric: sortFn_alphanumeric,
+    datetime: sortFn_datetime,
+    text: sortFn_text,
+  },
+});
 
-export type AdministrationDataTableColumn<T> = ColumnDef<T>;
+export type AdministrationDataTableColumn<T extends RowData> = ColumnDef<
+  typeof administrationTableFeatures,
+  T
+>;
+
+export type AdministrationDataTableSorting = SortingState;
 
 const isTableRowControl = (target: EventTarget | null) =>
   target instanceof Element &&
   Boolean(target.closest("a, button, input, select, textarea, label, summary"));
 
-export function AdministrationDataTable<T>({
+export function AdministrationDataTable<T extends RowData>({
   actionsLabel = "Actions",
   ariaLabel,
   canRowActivate,
@@ -57,7 +76,7 @@ export function AdministrationDataTable<T>({
   readonly actionsLabel?: string;
   readonly ariaLabel: string;
   readonly canRowActivate?: (item: T) => boolean;
-  readonly columns: readonly ColumnDef<T>[];
+  readonly columns: readonly AdministrationDataTableColumn<T>[];
   readonly data: readonly T[];
   readonly expandedId?: string | null;
   readonly getRowId: (item: T, index: number) => string;
@@ -69,24 +88,18 @@ export function AdministrationDataTable<T>({
   readonly onRowActivate?: (item: T, expanded: boolean) => void;
   readonly renderActions?: (item: T, expanded: boolean) => ReactNode;
   readonly renderExpanded?: (item: T) => ReactNode;
-  readonly sorting?: SortingState;
+  readonly sorting?: AdministrationDataTableSorting;
   readonly tableClassName?: string;
 }) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const tableColumns = useMemo(() => [...columns], [columns]);
-  const tableData = useMemo(() => [...data], [data]);
-  // TanStack Table intentionally returns dynamic accessors; this component is
-  // kept outside memoized boundaries.
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({
-    columns: tableColumns,
-    data: tableData,
+  const [sorting, setSorting] = useState<AdministrationDataTableSorting>([]);
+  const table = useTable({
+    columns,
+    data,
     enableSortingRemoval: false,
-    getCoreRowModel: getCoreRowModel(),
+    features: administrationTableFeatures,
     getRowId,
-    getSortedRowModel: getSortHref ? undefined : getSortedRowModel(),
     manualSorting: Boolean(getSortHref),
-    onSortingChange: controlledSorting ? undefined : setSorting,
+    onSortingChange: setSorting,
     state: { sorting: controlledSorting ?? sorting },
   });
 
@@ -165,7 +178,7 @@ export function AdministrationDataTable<T>({
                 }}
                 tabIndex={rowCanActivate ? 0 : undefined}
               >
-                {row.getVisibleCells().map((cell) => (
+                {row.getAllCells().map((cell) => (
                   <TableCell
                     className={cell.column.columnDef.meta?.cellClassName}
                     key={cell.id}
@@ -183,9 +196,7 @@ export function AdministrationDataTable<T>({
                 <TableRow className="bg-[#fafafd] hover:bg-[#fafafd]">
                   <TableCell
                     className="border-t border-navy-blue/10 p-5"
-                    colSpan={
-                      row.getVisibleCells().length + (renderActions ? 1 : 0)
-                    }
+                    colSpan={row.getAllCells().length + (renderActions ? 1 : 0)}
                   >
                     {renderExpanded(row.original)}
                   </TableCell>

@@ -13,6 +13,7 @@ import {
   getBookingTableLabel,
   NexiOrderLink,
   PaymentAttemptList,
+  PaymentRefundLabel,
   RelatedReservationLink,
   ReservationReferences,
   ReservationTimeline,
@@ -179,11 +180,10 @@ export async function ReservationAdministrationDetail({
                       reservation.latestPayment.updatedAt
                     )}
                   </p>
-                  {reservation.latestPayment.refundState === "required" && (
-                    <p className="mt-2 font-semibold text-burned-orange-ink text-sm">
-                      Needs refund
-                    </p>
-                  )}
+                  <PaymentRefundLabel
+                    attempt={reservation.latestPayment}
+                    className="mt-2 text-sm"
+                  />
                   {reservation.latestPayment.providerOrderId && (
                     <NexiOrderLink
                       accessibleLabel={`Payment ${reservation.latestPayment.providerOrderId}`}

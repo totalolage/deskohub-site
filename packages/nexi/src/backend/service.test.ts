@@ -205,9 +205,72 @@ describe("NexiService hosted payment pages", () => {
     ).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  // Nexi documents no idempotency key for POST /orders/hpp, so a failure
+  // that may follow a committed creation must not be replayed automatically.
+  test.each([
+    ["a provider 5xx", () => Response.json({}, { status: 503 })],
+    [
+      "a transport failure",
+      () => {
+        throw new TypeError("fetch failed");
+      },
+    ],
+  ])(
+    "does not resend hosted payment page creation after %s",
+    async (_label, respond) => {
+      const fetchMock = mock(
+        async (_input: RequestInfo | URL, _init?: RequestInit) => respond()
+      ) as unknown as typeof globalThis.fetch & ReturnType<typeof mock>;
+
+      const result = await runWithService(
+        Effect.gen(function* () {
+          const nexi = yield* NexiService;
+          return yield* nexi
+            .createHostedPaymentPage({
+              orderId: nexiOrderId("order-id"),
+              correlationId: nexiCorrelationId("correlation-id"),
+              amount: "5000",
+              currency: "CZK",
+              locale: "en-US",
+              resultUrl: "https://example.test/result",
+              cancelUrl: "https://example.test/cancel",
+              notificationUrl: "https://example.test/webhook",
+            })
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      expect(Predicate.isTagged(result, "Failure")).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  );
 });
 
 describe("NexiService verifyPaymentOutcome", () => {
+  test("retries an order lookup after a provider 5xx", async () => {
+    let calls = 0;
+    const fetchMock = mock(async () =>
+      calls++ === 0
+        ? Response.json({}, { status: 503 })
+        : Response.json({ orderId: "order-id", operations: [] })
+    ) as unknown as typeof globalThis.fetch & ReturnType<typeof mock>;
+
+    await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.getOrder({
+          orderId: nexiOrderId("order-id"),
+          correlationId: nexiCorrelationId("correlation-id"),
+        });
+      }),
+      fetchMock
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   test("gets orders with API key and correlation header", async () => {
     const fetchMock = mockNexiFetch(
       Response.json({
@@ -296,6 +359,7 @@ describe("NexiService verifyPaymentOutcome", () => {
       order: OrderResponse;
       status: PaymentOutcomeStatus;
       mismatches: Array<PaymentVerificationResult["mismatches"][number]>;
+      operationId?: PaymentVerificationResult["provider"]["operationId"];
     }> = [
       {
         name: "success",
@@ -384,6 +448,63 @@ describe("NexiService verifyPaymentOutcome", () => {
         status: "failure",
         mismatches: ["amount"],
       },
+      {
+        name: "paid order refunded in the back office",
+        order: {
+          orderStatus: {
+            lastOperationType: "REFUND",
+            order: {
+              orderId: nexiOrderId("order-id"),
+              amount: "5000",
+              currency: "CZK",
+            },
+          },
+          operations: [
+            {
+              operationId: nexiOperationId("capture-id"),
+              operationType: "CAPTURE",
+              operationResult: "EXECUTED",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
+              securityToken: "security-token",
+            },
+            {
+              operationId: nexiOperationId("refund-id"),
+              operationType: "REFUND",
+              operationResult: "VOIDED",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
+            },
+          ],
+        },
+        status: "success",
+        mismatches: [],
+        operationId: nexiOperationId("capture-id"),
+      },
+      {
+        name: "voided refund without a settled payment",
+        order: {
+          orderStatus: {
+            lastOperationType: "REFUND",
+            order: {
+              orderId: nexiOrderId("order-id"),
+              amount: "5000",
+              currency: "CZK",
+            },
+          },
+          operations: [
+            {
+              operationId: nexiOperationId("refund-id"),
+              operationType: "REFUND",
+              operationResult: "VOIDED",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
+            },
+          ],
+        },
+        status: "pending",
+        mismatches: [],
+      },
     ];
 
     for (const item of cases) {
@@ -404,6 +525,9 @@ describe("NexiService verifyPaymentOutcome", () => {
 
       expect(result.status).toBe(item.status);
       expect(result.mismatches).toEqual(item.mismatches);
+      if (item.operationId) {
+        expect(result.provider.operationId).toBe(item.operationId);
+      }
       expect(result.provider.operationCount).toBe(
         item.order.operations?.length ?? 0
       );

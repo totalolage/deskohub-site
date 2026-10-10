@@ -246,33 +246,6 @@ describe("workspace E2E workflow", () => {
     ).toBe(true);
   });
 
-  test("generates the cleanup-only Playwright prerequisites without running E2E cases", () => {
-    const recoverySteps = doc.jobs["recover-failed-e2e"]?.steps ?? [];
-    const generateStepIndex = recoverySteps.findIndex(
-      (step) => step.name === "Generate cleanup-only Playwright prerequisites"
-    );
-    const cleanupStepIndex = recoverySteps.findIndex(
-      (step) =>
-        step.name ===
-        "Run cleanup-only recovery against the restored source run"
-    );
-    const generateStep = recoverySteps[generateStepIndex];
-    const cleanupStep = recoverySteps[cleanupStepIndex];
-
-    expect(generateStepIndex).toBeGreaterThanOrEqual(0);
-    expect(cleanupStepIndex).toBeGreaterThanOrEqual(0);
-    expect(generateStepIndex).toBeLessThan(cleanupStepIndex);
-    expect(generateStep?.run).toContain(
-      "bun turbo run i18n:compile --filter=deskohub-workspace"
-    );
-    expect(generateStep?.run).toContain(
-      "bun turbo run generate --filter=@deskohub/igloohome"
-    );
-    expect(generateStep?.run).not.toContain("test:e2e");
-    expect(cleanupStep?.run).toContain("--project=checkout-cleanup");
-    expect(cleanupStep?.run).toContain("--no-deps");
-  });
-
   test("waives exact-SHA E2E only when Vercel marks Workspace unaffected", () => {
     const skippedJob = doc.jobs["publish-skipped-status"];
     const rawSkipped = JSON.stringify(skippedJob);

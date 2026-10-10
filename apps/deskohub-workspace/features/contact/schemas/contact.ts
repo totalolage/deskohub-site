@@ -1,6 +1,7 @@
+import { Schema } from "effect";
 import { isValidPhoneNumber } from "libphonenumber-js";
-import { z } from "zod/v4";
-import { m } from "@/features/i18n";
+import isEmail from "validator/lib/isEmail.js";
+import { type Locale, m } from "@/features/i18n";
 
 const CONTACT_VALIDATION = {
   name: {
@@ -19,61 +20,74 @@ const CONTACT_VALIDATION = {
   },
 } as const;
 
-export const getContactSchema = () =>
-  z.object({
-    name: z
-      .string()
-      .trim()
-      .min(CONTACT_VALIDATION.name.min, {
-        error: m.contactValidationNameMinimum({
-          min: CONTACT_VALIDATION.name.min,
-        }),
+const createContactSchema = (locale: Locale) =>
+  Schema.Struct({
+    name: Schema.Trim.check(
+      Schema.isMinLength(CONTACT_VALIDATION.name.min, {
+        message: m.contactValidationNameMinimum(
+          { min: CONTACT_VALIDATION.name.min },
+          { locale }
+        ),
+      }),
+      Schema.isMaxLength(CONTACT_VALIDATION.name.max, {
+        message: m.contactValidationNameMaximum(
+          { max: CONTACT_VALIDATION.name.max },
+          { locale }
+        ),
       })
-      .max(CONTACT_VALIDATION.name.max, {
-        error: m.contactValidationNameMaximum({
-          max: CONTACT_VALIDATION.name.max,
-        }),
+    ),
+    email: Schema.Trim.check(
+      Schema.isNonEmpty({
+        message: m.contactValidationEmailRequired({}, { locale }),
       }),
-    email: z
-      .email({ error: m.contactValidationEmailInvalid() })
-      .min(1, { error: m.contactValidationEmailRequired() })
-      .max(CONTACT_VALIDATION.email.max, {
-        error: m.contactValidationEmailMaximum({
-          max: CONTACT_VALIDATION.email.max,
-        }),
+      Schema.isMaxLength(CONTACT_VALIDATION.email.max, {
+        message: m.contactValidationEmailMaximum(
+          { max: CONTACT_VALIDATION.email.max },
+          { locale }
+        ),
       }),
-    phone: z
-      .string()
-      .trim()
-      .max(CONTACT_VALIDATION.phone.max, {
-        error: m.contactValidationPhoneMaximum({
-          max: CONTACT_VALIDATION.phone.max,
-        }),
+      Schema.makeFilter((email) => isEmail(email), {
+        message: m.contactValidationEmailInvalid({}, { locale }),
       })
-      .optional()
-      .or(z.literal(""))
-      .refine((phone) => !phone || isValidPhoneNumber(phone, "CZ"), {
-        error: m.contactValidationPhoneInvalid(),
+    ),
+    phone: Schema.Trim.check(
+      Schema.isMaxLength(CONTACT_VALIDATION.phone.max, {
+        message: m.contactValidationPhoneMaximum(
+          { max: CONTACT_VALIDATION.phone.max },
+          { locale }
+        ),
       }),
-    message: z
-      .string()
-      .trim()
-      .min(CONTACT_VALIDATION.message.min, {
-        error: m.contactValidationMessageMinimum({
-          min: CONTACT_VALIDATION.message.min,
-        }),
+      Schema.makeFilter(
+        (phone) => phone === "" || isValidPhoneNumber(phone, "CZ"),
+        {
+          message: m.contactValidationPhoneInvalid({}, { locale }),
+        }
+      )
+    ),
+    message: Schema.Trim.check(
+      Schema.isMinLength(CONTACT_VALIDATION.message.min, {
+        message: m.contactValidationMessageMinimum(
+          { min: CONTACT_VALIDATION.message.min },
+          { locale }
+        ),
+      }),
+      Schema.isMaxLength(CONTACT_VALIDATION.message.max, {
+        message: m.contactValidationMessageMaximum(
+          { max: CONTACT_VALIDATION.message.max },
+          { locale }
+        ),
       })
-      .max(CONTACT_VALIDATION.message.max, {
-        error: m.contactValidationMessageMaximum({
-          max: CONTACT_VALIDATION.message.max,
-        }),
-      }),
+    ),
   });
 
-export type ContactInput = z.input<ReturnType<typeof getContactSchema>>;
-export type ContactData = z.output<ReturnType<typeof getContactSchema>>;
+type ContactSchema = ReturnType<typeof createContactSchema>;
 
-export const contactDefaultValues: ContactInput = {
+export const getContactSchema = createContactSchema;
+
+export type ContactFormValues = ContactSchema["Encoded"];
+export type ContactData = ContactSchema["Type"];
+
+export const contactDefaultValues: ContactFormValues = {
   name: "",
   email: "",
   phone: "",

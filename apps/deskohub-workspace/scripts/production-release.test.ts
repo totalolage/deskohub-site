@@ -717,6 +717,10 @@ describe("workspace production release checks", () => {
                 path: "/api/cron/workspace/auth-cleanup",
                 schedule: "17 3 * * *",
               },
+              {
+                path: "/api/cron/workspace/payment-refunds",
+                schedule: "37 4 * * *",
+              },
             ],
           })
         );
@@ -1339,7 +1343,7 @@ describe("workspace production release checks", () => {
     ).rejects.toThrow("Rollback verification failed");
   });
 
-  test("validates both staged cron definitions without consulting the live baseline", async () => {
+  test("validates every staged cron definition without consulting the live baseline", async () => {
     const requests: URL[] = [];
     mockGlobalFetch((input) => {
       const url = new URL(input.toString());
@@ -1375,6 +1379,10 @@ describe("workspace production release checks", () => {
             {
               path: "/api/cron/workspace/auth-cleanup",
               schedule: "17 3 * * *",
+            },
+            {
+              path: "/api/cron/workspace/payment-refunds",
+              schedule: "37 4 * * *",
             },
           ],
         })
@@ -1420,6 +1428,10 @@ describe("workspace production release checks", () => {
               {
                 path: "/api/cron/workspace/auth-cleanup",
                 schedule: "17 3 * * *",
+              },
+              {
+                path: "/api/cron/workspace/payment-refunds",
+                schedule: "37 4 * * *",
               },
             ],
           })
@@ -1544,6 +1556,10 @@ describe("workspace production release checks", () => {
               path: "/api/cron/workspace/auth-cleanup",
               schedule: "17 3 * * *",
             },
+            {
+              path: "/api/cron/workspace/payment-refunds",
+              schedule: "37 4 * * *",
+            },
           ],
         })
       )
@@ -1582,6 +1598,10 @@ describe("workspace production release checks", () => {
                   {
                     path: "/api/cron/workspace/auth-cleanup",
                     schedule: "17 3 * * *",
+                  },
+                  {
+                    path: "/api/cron/workspace/payment-refunds",
+                    schedule: "37 4 * * *",
                   },
                 ]
               : [
@@ -1769,6 +1789,10 @@ describe("workspace production release checks", () => {
               {
                 path: "/api/cron/workspace/auth-cleanup",
                 schedule: "17 3 * * *",
+              },
+              {
+                path: "/api/cron/workspace/payment-refunds",
+                schedule: "37 4 * * *",
               },
             ],
           },

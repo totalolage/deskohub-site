@@ -12,9 +12,12 @@ import {
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { canonicalPromotionCodeSchema } from "@/features/discounts/contracts";
 import type { WorkspaceActionOptions } from "@/shared/backend/workspace-action";
+import { instantStringSchema } from "@/shared/utils/temporal";
 import type { ApplyDiscountCodeResult } from "./apply-discount-code-to-pay-state";
 
 mock.module("server-only", () => ({}));
+
+const payStateBookedAt = instantStringSchema.make("2026-06-01T09:58:00.000Z");
 
 const reservation = {
   kind: "cowork" as const,
@@ -62,6 +65,7 @@ const makeTokenWithRequestedIntent = async () => {
         reservation,
         quote,
         orderId: "reservation-id",
+        bookedAt: payStateBookedAt,
         checkoutSessionId: "checkout-session-id",
         requestedDiscountCode: Schema.decodeUnknownSync(
           canonicalPromotionCodeSchema

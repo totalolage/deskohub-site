@@ -1508,6 +1508,7 @@ describe("discount administration pages", () => {
     fireEvent.input(labelEn, {
       target: { value: "Twice-updated summer discount" },
     });
+    expect(view.queryByRole("status")).toBeNull();
     expect(save).toHaveProperty("disabled", false);
     fireEvent.submit(save.closest("form")!);
     await waitFor(() =>
@@ -1745,6 +1746,52 @@ describe("discount administration pages", () => {
         "The change could not be saved. Try again."
       )
     );
+  });
+
+  test("keeps create feedback through the reset to defaults until the next edit", async () => {
+    const captured = captureWorkspaceActions(/^createDiscount$/);
+    const { CreateDiscountForm } = await import("./admin-tables");
+    const view = render(
+      <StrictMode>
+        <CreateDiscountForm />
+      </StrictMode>
+    );
+    const labelEn = () =>
+      view.getByRole("textbox", {
+        name: "English (en-US)",
+      }) as HTMLInputElement;
+    const { execute, options } = captured("createDiscount");
+
+    act(() =>
+      options.onError({ error: { serverError: "The discount was rejected." } })
+    );
+    expect(view.getByRole("alert").textContent).toContain(
+      "The discount was rejected."
+    );
+    fireEvent.input(labelEn(), { target: { value: "Spring promo" } });
+    expect(view.queryByRole("alert")).toBeNull();
+
+    fireEvent.input(view.getByRole("textbox", { name: "Czech (cs-CZ)" }), {
+      target: { value: "Jarní sleva" },
+    });
+    fireEvent.submit(labelEn().closest("form")!);
+    await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+
+    act(() =>
+      options.onSuccess({
+        data: {
+          notice: "Discount created.",
+          createdDiscountId: "calendar-discount-id",
+        },
+      })
+    );
+    await waitFor(() => expect(labelEn().value).toBe(""));
+    expect(view.getByRole("status").textContent).toContain(
+      "Discount created. Calendar ID: calendar-discount-id"
+    );
+
+    fireEvent.input(labelEn(), { target: { value: "Summer promo" } });
+    expect(view.queryByRole("status")).toBeNull();
   });
 
   test("blocks discount submission with client-side validation messages", async () => {

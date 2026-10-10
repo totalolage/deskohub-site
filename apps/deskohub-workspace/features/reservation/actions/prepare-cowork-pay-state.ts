@@ -42,7 +42,12 @@ export type PreparedCoworkPayState = PayStateSubmittedCodeMetadata & {
 
 export const prepareCoworkAdvertisement = Effect.fn(
   "prepareCoworkPayState.prepareAdvertisement"
-)(function* (input: PrepareCoworkPayStateInput) {
+)(function* (
+  input: PrepareCoworkPayStateInput & {
+    /** Moment the reservation is submitted and its price is locked. */
+    readonly bookedAt: Temporal.Instant;
+  }
+) {
   const state = yield* openSubmittedAdvertisedPriceState(
     input.advertisedPriceToken
   );
@@ -77,6 +82,7 @@ export const prepareCoworkAdvertisement = Effect.fn(
     reservation: state.reservation,
     locale: input.locale,
     advertisedQuote: state.quote,
+    bookedAt: input.bookedAt,
     ...getSubmittedCodeMetadata(state),
   });
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;

@@ -1,6 +1,5 @@
 "use client";
 
-import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { CircleAlert, Download, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -8,6 +7,8 @@ import { AdministrationLink as Link } from "@/features/administration/admin-link
 import {
   AdministrationAlert,
   AdministrationDataTable,
+  type AdministrationDataTableColumn,
+  type AdministrationDataTableSorting,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
 import { getAdministrationTableSortHref } from "@/features/administration/table-sort";
@@ -21,75 +22,76 @@ import type {
 } from "./invoice-administration.service";
 import { InvoicePaymentStatusBadge } from "./invoice-detail";
 
-const columns: readonly ColumnDef<InvoiceAdministrationListItem>[] = [
-  {
-    accessorKey: "invoiceNumber",
-    header: "Invoice",
-    cell: ({ row }) => (
-      <Link
-        className="font-semibold underline underline-offset-4"
-        href={`/admin/invoices/${row.original.id}`}
-      >
-        {row.original.invoiceNumber}
-      </Link>
-    ),
-  },
-  {
-    id: "customer",
-    accessorFn: (invoice) => invoice.customerName,
-    header: "Customer",
-  },
-  {
-    accessorKey: "issuedAt",
-    header: "Issued",
-    cell: ({ row }) =>
-      new Intl.DateTimeFormat("en-GB", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(new Date(row.original.issuedAt)),
-  },
-  {
-    accessorKey: "total",
-    header: "Total",
-    cell: ({ row }) => `${row.original.total} ${row.original.currency}`,
-    meta: { cellClassName: "font-mono tabular-nums" },
-  },
-  {
-    accessorKey: "paymentStatus",
-    header: "Payment",
-    cell: ({ row }) => (
-      <InvoicePaymentStatusBadge status={row.original.paymentStatus} />
-    ),
-  },
-  {
-    accessorKey: "source",
-    header: "Provenance",
-    cell: ({ row }) => (
-      <div>
-        <p>
-          {
+const columns: readonly AdministrationDataTableColumn<InvoiceAdministrationListItem>[] =
+  [
+    {
+      accessorKey: "invoiceNumber",
+      header: "Invoice",
+      cell: ({ row }) => (
+        <Link
+          className="font-semibold underline underline-offset-4"
+          href={`/admin/invoices/${row.original.id}`}
+        >
+          {row.original.invoiceNumber}
+        </Link>
+      ),
+    },
+    {
+      id: "customer",
+      accessorFn: (invoice) => invoice.customerName,
+      header: "Customer",
+    },
+    {
+      accessorKey: "issuedAt",
+      header: "Issued",
+      cell: ({ row }) =>
+        new Intl.DateTimeFormat("en-GB", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(row.original.issuedAt)),
+    },
+    {
+      accessorKey: "total",
+      header: "Total",
+      cell: ({ row }) => `${row.original.total} ${row.original.currency}`,
+      meta: { cellClassName: "font-mono tabular-nums" },
+    },
+    {
+      accessorKey: "paymentStatus",
+      header: "Payment",
+      cell: ({ row }) => (
+        <InvoicePaymentStatusBadge status={row.original.paymentStatus} />
+      ),
+    },
+    {
+      accessorKey: "source",
+      header: "Provenance",
+      cell: ({ row }) => (
+        <div>
+          <p>
             {
-              "reservation-request": "Reservation request",
-              "post-order-link": "Post-order link",
-              "admin-ui": "Admin UI",
-              "dhw-cli": "dhw CLI",
-              legacy: "Legacy / unknown",
-            }[row.original.source]
-          }
-        </p>
-        {row.original.actor && (
-          <p className="text-xs text-navy-blue/55">{row.original.actor}</p>
-        )}
-      </div>
-    ),
-  },
-  {
-    id: "delivery",
-    header: "Delivery",
-    accessorFn: (invoice) => invoice.needsAttention,
-    cell: ({ row }) => <InvoiceDeliveryBadge invoice={row.original} />,
-  },
-];
+              {
+                "reservation-request": "Reservation request",
+                "post-order-link": "Post-order link",
+                "admin-ui": "Admin UI",
+                "dhw-cli": "dhw CLI",
+                legacy: "Legacy / unknown",
+              }[row.original.source]
+            }
+          </p>
+          {row.original.actor && (
+            <p className="text-xs text-navy-blue/55">{row.original.actor}</p>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "delivery",
+      header: "Delivery",
+      accessorFn: (invoice) => invoice.needsAttention,
+      cell: ({ row }) => <InvoiceDeliveryBadge invoice={row.original} />,
+    },
+  ];
 
 function InvoiceDeliveryBadge({
   invoice,
@@ -119,7 +121,7 @@ export function InvoiceAdministrationTable({
   readonly items: readonly InvoiceAdministrationListItem[];
   readonly query: InvoiceAdministrationListQuery;
 }) {
-  const sorting: SortingState = query.sort
+  const sorting: AdministrationDataTableSorting = query.sort
     ? [{ id: query.sort, desc: query.direction === "desc" }]
     : [];
   return (
