@@ -76,8 +76,8 @@ describe("reservation form legal cards", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("privacy exposes no form control and only marketing is a checkbox", () => {

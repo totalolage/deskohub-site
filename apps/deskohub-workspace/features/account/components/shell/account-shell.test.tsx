@@ -129,9 +129,9 @@ describe("AccountShell", () => {
     TestResizeObserver.instances.length = 0;
   });
 
-  afterAll(() => {
+  afterAll(async () => {
     globalThis.ResizeObserver = originalResizeObserver;
-    unregisterWorkspaceComponentTestEnv();
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders caller-owned title, content, and sign-out action", () => {

@@ -138,8 +138,8 @@ describe("DeleteAccountCard", () => {
     workspaceRouterRefresh.mockClear();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   const openDialog = async (

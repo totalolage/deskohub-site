@@ -101,8 +101,8 @@ beforeAll(() => {
   registerWorkspaceComponentTestEnv();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 async function renderHomePage() {

@@ -18,8 +18,8 @@ beforeAll(() => {
   registerWorkspaceComponentTestEnv();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 const openDocument = (href: string) => {

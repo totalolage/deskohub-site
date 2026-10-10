@@ -4,6 +4,7 @@ import { logs } from "@opentelemetry/api-logs";
 import { registerOTel } from "@vercel/otel";
 import { env } from "./env";
 import { createPostHogLoggerProvider } from "./shared/backend/logging/posthog-otel";
+import { createWorkspaceSpanRedactors } from "./shared/backend/observability/span-redaction";
 import {
   WORKSPACE_SERVICE_NAME,
   WORKSPACE_SERVICE_NAMESPACE,
@@ -24,6 +25,8 @@ export async function register() {
     attributes: {
       "service.namespace": WORKSPACE_SERVICE_NAMESPACE,
     },
+    // Redactors run before the automatic exporting processors see a span.
+    spanProcessors: [...createWorkspaceSpanRedactors(), "auto"],
   });
 
   if (!postHogLoggerProvider) return;

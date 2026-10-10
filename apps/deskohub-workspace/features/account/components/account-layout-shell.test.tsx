@@ -135,9 +135,9 @@ describe("AccountLayoutShell", () => {
     routerReplace.mockClear();
   });
 
-  afterAll(() => {
+  afterAll(async () => {
     globalThis.ResizeObserver = originalResizeObserver;
-    unregisterWorkspaceComponentTestEnv();
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("keeps the actual header and navigation nodes across account route content", () => {

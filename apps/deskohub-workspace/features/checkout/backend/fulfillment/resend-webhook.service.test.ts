@@ -1296,7 +1296,7 @@ describe("ResendWebhookService", () => {
       ).toBe("WIFI:T:WPA;S:Deskohub Workspace;P:Workspace42;;");
       expect(generateStaticMapImage).not.toHaveBeenCalled();
     } finally {
-      unregisterWorkspaceComponentTestEnv();
+      await unregisterWorkspaceComponentTestEnv();
     }
 
     const internalEmail = sentMessages[1];

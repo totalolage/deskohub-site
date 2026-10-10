@@ -1,6 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { errors as playwrightErrors } from "@playwright/test";
 import { Effect } from "effect";
 import { browserDiagnosticsScript, browserTextScript } from "./browser-scripts";
 import {
@@ -13,12 +14,19 @@ import {
   tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  workspaceE2ETimeoutError,
 } from "./errors";
 import { pollUntil } from "./polling";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
 
+const isPlaywrightTimeout = (cause: unknown): boolean =>
+  cause instanceof playwrightErrors.TimeoutError ||
+  (cause instanceof Error && isPlaywrightTimeout(cause.cause));
+
+// Playwright reports an exhausted command budget as its TimeoutError; classify
+// it as a Workspace E2E timeout so pollers can retry it like their own deadlines.
 export const runBrowserCommand = (
   operation: string,
   run: Runner,
@@ -31,6 +39,15 @@ export const runBrowserCommand = (
       ...options,
       signal,
     })
+  ).pipe(
+    Effect.mapError((error) =>
+      isPlaywrightTimeout(error.cause)
+        ? workspaceE2ETimeoutError(error.message, {
+            cause: error.cause,
+            operation: error.operation,
+          })
+        : error
+    )
   );
 
 // The session's request/response log, or an empty log when it is unavailable.

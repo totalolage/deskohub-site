@@ -87,8 +87,8 @@ describe("ReservationCheckoutForm", () => {
 
   afterEach(cleanup);
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("allows submission with a current advertised price", () => {
