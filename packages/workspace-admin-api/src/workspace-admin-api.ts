@@ -721,7 +721,7 @@ export const AdministrationReservationQuery = Schema.Struct({
   ),
   sort: Schema.optional(AdministrationReservationSort),
   status: Schema.optional(
-    Schema.Literals(["in_progress", "complete", "cancelled"])
+    Schema.Literals(["in_progress", "complete", "cancelled", "needs_refund"])
   ),
   type: Schema.optional(Schema.Literals(["cowork", "meeting-room", "office"])),
 });
@@ -765,11 +765,18 @@ export const AdministrationPaymentAttempt = Schema.Struct({
     "cancelled",
     "expired",
   ]),
-  refundState: Schema.Literals(["not_required", "required"]),
+  refundState: Schema.Literals(["not_required", "required", "refunded"]),
   providerOrderId: Schema.NullOr(AdministrationNexiOrderId),
   providerLabel: Schema.String,
   stateLabel: Schema.String,
   amount: AdministrationMoney,
+  /** Total Nexi reports as refunded; set only when `refundState` is `refunded`. */
+  refundedAmount: Schema.NullOr(AdministrationMoney).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
+  refundedAt: Schema.NullOr(Schema.String).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   createdAt: Schema.String,
   providerOrderCreatedAt: Schema.NullOr(Schema.String),
   updatedAt: Schema.String,

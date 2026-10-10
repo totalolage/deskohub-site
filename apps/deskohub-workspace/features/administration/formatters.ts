@@ -3,7 +3,10 @@ import {
   temporalPlainDateToDate,
   workspaceSiteConstants,
 } from "@/shared/utils";
-import type { AdministrationReservationSummary } from "./administration.service";
+import type {
+  AdministrationPaymentAttempt,
+  AdministrationReservationSummary,
+} from "./administration.service";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "medium",
@@ -58,3 +61,33 @@ export const formatAdministrationMoney = ({
     currency,
     style: "currency",
   }).format(value / 10 ** exponent);
+
+/**
+ * Describes the refund work of a payment attempt. A recorded refund clears the
+ * refund requirement whatever its amount; a partial refund shows the amount.
+ */
+export const formatAdministrationRefund = (
+  attempt: Pick<
+    AdministrationPaymentAttempt,
+    "amount" | "refundState" | "refundedAmount" | "refundedAt"
+  >
+): { readonly label: string; readonly needsAction: boolean } | null => {
+  if (attempt.refundState === "required") {
+    return { label: "Needs refund", needsAction: true };
+  }
+  if (
+    attempt.refundState !== "refunded" ||
+    !attempt.refundedAmount ||
+    !attempt.refundedAt
+  ) {
+    return null;
+  }
+  const refundedAt = formatAdministrationDateTime(attempt.refundedAt);
+  return {
+    label:
+      attempt.refundedAmount.value < attempt.amount.value
+        ? `Partially refunded ${formatAdministrationMoney(attempt.refundedAmount)} · ${refundedAt}`
+        : `Refunded · ${refundedAt}`,
+    needsAction: false,
+  };
+};

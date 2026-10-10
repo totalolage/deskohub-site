@@ -45,11 +45,49 @@ describe("payment attempt providers", () => {
       ({ name }) => name === "refund_state"
     );
 
-    expect(paymentRefundStates).toEqual(["not_required", "required"]);
+    expect(paymentRefundStates).toEqual([
+      "not_required",
+      "required",
+      "refunded",
+    ]);
     expect(refundState).toMatchObject({ hasDefault: true, notNull: true });
-    expect(config.checks.map(({ name }) => name)).toContain(
-      "payment_attempts_refund_state_check"
+    expect(config.checks.map(({ name }) => name)).toEqual(
+      expect.arrayContaining([
+        "payment_attempts_refund_state_check",
+        "payment_attempts_refund_record_check",
+      ])
     );
+  });
+
+  test("records a refund's amount and time only on refunded paid Nexi attempts", async () => {
+    const config = getTableConfig(paymentAttempts);
+    const refundedAmount = config.columns.find(
+      ({ name }) => name === "refunded_amount_value"
+    );
+    const refundedAt = config.columns.find(
+      ({ name }) => name === "refunded_at"
+    );
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20261009150951_same_vector/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    expect(refundedAmount?.notNull).toBe(false);
+    expect(refundedAt?.notNull).toBe(false);
+    expect(migration).toContain(
+      "\"refund_state\" in ('not_required', 'required', 'refunded') and (\"refund_state\" = 'not_required' or (\"provider\" = 'nexi' and \"state\" = 'paid'))"
+    );
+    expect(migration).toContain(
+      '("refund_state" = \'refunded\' and "refunded_amount_value" > 0 and "refunded_at" is not null) or ("refund_state" <> \'refunded\' and "refunded_amount_value" is null and "refunded_at" is null)'
+    );
+    expect(migration).toContain(
+      'ADD COLUMN "refund_checked_at" timestamp with time zone;'
+    );
+    expect(
+      config.columns.find(({ name }) => name === "refund_checked_at")?.notNull
+    ).toBe(false);
   });
 
   test("migrates refund state with its paid Nexi invariant", async () => {

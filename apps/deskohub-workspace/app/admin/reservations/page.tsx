@@ -16,9 +16,11 @@ import {
 } from "@/features/administration/loading";
 import {
   type AdministrationSearchParams,
+  loadAdministrationRefundAttention,
   loadAdministrationReservations,
   loadAdministrationReservationsPage,
 } from "@/features/administration/page-data.server";
+import { RefundAttention } from "@/features/administration/refund-attention";
 import {
   getAdministrationReservationDateShortcuts,
   getAdministrationReservationListDefaultDateRange,
@@ -31,10 +33,14 @@ export default function ReservationsAdministrationPage({
   readonly searchParams: AdministrationSearchParams;
 }) {
   const { input, result } = loadAdministrationReservationsPage(searchParams);
+  const refundAttention = loadAdministrationRefundAttention();
 
   return (
     <AdministrationPage>
       <h1 className="sr-only">Reservations</h1>
+      <Suspense fallback={null}>
+        <ReservationRefundAttention count={refundAttention} input={input} />
+      </Suspense>
       <AdministrationTableToolbar
         count={
           <Suspense
@@ -77,6 +83,18 @@ async function ReservationCount({
       itemLabel="reservation"
     />
   );
+}
+
+async function ReservationRefundAttention({
+  count,
+  input,
+}: {
+  readonly count: Promise<number>;
+  readonly input: Promise<ReservationsData["input"]>;
+}) {
+  // The filtered list already is the refund work queue.
+  if ((await input).status === "needs_refund") return null;
+  return <RefundAttention count={count} />;
 }
 
 async function ReservationFiltersContent({
