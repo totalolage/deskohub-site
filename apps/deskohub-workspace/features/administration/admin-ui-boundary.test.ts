@@ -63,7 +63,6 @@ describe("administration UI boundaries", () => {
       "app/admin/cli/sessions/page.tsx",
       "app/admin/codes/page.tsx",
       "app/admin/codes/[codeId]/page.tsx",
-      "app/admin/customers/page.tsx",
       "app/admin/customers/[customerId]/page.tsx",
       "app/admin/customers/[customerId]/create-code/page.tsx",
       "app/admin/operations/page.tsx",
@@ -73,6 +72,7 @@ describe("administration UI boundaries", () => {
       "app/admin/reservations/page.tsx",
       "app/admin/reservations/[reservationId]/page.tsx",
       "app/admin/sales/page.tsx",
+      "app/admin/customers/page.tsx",
     ];
 
     for (const route of dataRoutes) {
@@ -80,6 +80,19 @@ describe("administration UI boundaries", () => {
       expect(source).toContain("<Suspense");
       expect(source).not.toContain("export default async function");
     }
+
+    // The customers page shell must never await URL-derived input so filter
+    // controls stay mounted while customer results stream beneath their own
+    // Suspense boundary.
+    const customersSource = await readWorkspaceFile(
+      "app/admin/customers/page.tsx"
+    );
+    const customersShell = customersSource.slice(
+      0,
+      customersSource.indexOf("async function CustomerCount")
+    );
+    expect(customersShell).not.toMatch(/await\s+input/);
+    expect(customersSource).toContain("CustomerConsentFilterForm");
   });
 
   test("keeps low-level table and badge composition out of route pages", async () => {

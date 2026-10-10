@@ -7,7 +7,9 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
+import { useState } from "react";
+import type { AdministrationCustomerListInput } from "@/features/administration/administration.service";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -15,20 +17,59 @@ import {
 
 mock.module("server-only", () => ({}));
 
+type CustomerItem = {
+  customer: {
+    displayName: string;
+    email: string;
+    phone: string;
+  } | null;
+  customerId: string;
+  lastActivityAt: string;
+  marketingConsent: "granted" | "never" | "withdrawn";
+  reservationCount: number;
+};
+
+let mockInput: AdministrationCustomerListInput;
+let mockItems: readonly CustomerItem[];
+let mockPendingResult = false;
+let mockSearchParams = new URLSearchParams();
+const routerPushUrls: string[] = [];
+
+const resetMocks = () => {
+  mockInput = { direction: "desc", page: 1, sort: "activity" };
+  mockItems = [];
+  mockPendingResult = false;
+  mockSearchParams = new URLSearchParams();
+  routerPushUrls.length = 0;
+};
+
+resetMocks();
+
+mock.module("next/navigation", () => ({
+  useRouter: () => ({
+    push: (url: string) => {
+      routerPushUrls.push(url);
+    },
+  }),
+  useSearchParams: () => mockSearchParams,
+}));
+
 mock.module("@/features/administration/page-data.server", () => ({
   loadAdministrationCustomers: () =>
     Promise.resolve({
-      input: { direction: "desc", page: 1, sort: "activity" },
-      result: { items: [], page: 1, pageCount: 1, total: 24 },
+      input: mockInput,
+      result: { items: mockItems, page: 1, pageCount: 2, total: 24 },
     }),
   loadAdministrationCustomersPage: () => ({
-    input: Promise.resolve({ direction: "desc", page: 1, sort: "activity" }),
-    result: Promise.resolve({
-      items: [],
-      page: 1,
-      pageCount: 1,
-      total: 24,
-    }),
+    input: Promise.resolve(mockInput),
+    result: mockPendingResult
+      ? new Promise<never>(() => {})
+      : Promise.resolve({
+          items: mockItems,
+          page: 1,
+          pageCount: 2,
+          total: 24,
+        }),
   }),
 }));
 
@@ -36,9 +77,27 @@ mock.module("@/features/discounts/admin/customer-admin-client", () => ({
   CustomerSearch: () => <input aria-label="Customer name or email" />,
 }));
 
+const customerWithDetails = (
+  consent: CustomerItem["marketingConsent"],
+  customerId: string
+): CustomerItem => ({
+  customer: {
+    displayName: `Customer ${customerId}`,
+    email: `${customerId}@example.com`,
+    phone: "+420000000",
+  },
+  customerId,
+  lastActivityAt: "2026-08-14T12:00:00Z",
+  marketingConsent: consent,
+  reservationCount: 2,
+});
+
 describe("DiscountCustomersAdminPage", () => {
   beforeAll(() => registerWorkspaceComponentTestEnv());
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    resetMocks();
+  });
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
   test("uses the shared compact accessible table count", async () => {
@@ -51,5 +110,444 @@ describe("DiscountCustomersAdminPage", () => {
 
     expect(view.getByLabelText("24 customers").textContent).toBe("24");
     expect(view.queryByText("24 customers")).toBeNull();
+  });
+
+  test("renders the consent filter with four options and keeps the selection", async () => {
+    mockSearchParams = new URLSearchParams("consent=granted");
+    const { CustomerConsentFilterForm } = await import(
+      "./customer-consent-filter-form"
+    );
+    const view = render(<CustomerConsentFilterForm />);
+
+    const select = view.getByLabelText(
+      "Marketing consent"
+    ) as HTMLSelectElement;
+    expect(select).toBeDefined();
+    const options = Array.from(select.options).map((option) => option.value);
+    expect(options).toEqual(["", "granted", "withdrawn", "never"]);
+    expect(select.value).toBe("granted");
+    expect(view.getByRole("button", { name: "Apply filters" })).toBeDefined();
+  });
+
+  test("applies the consent filter through a soft navigation", async () => {
+    mockSearchParams = new URLSearchParams("consent=granted&sort=reservations");
+    const { CustomerConsentFilterForm } = await import(
+      "./customer-consent-filter-form"
+    );
+    const view = render(<CustomerConsentFilterForm />);
+
+    const form = view.container.querySelector("form") as HTMLFormElement;
+    expect(form.getAttribute("method")).toBe("get");
+    const select = view.getByLabelText(
+      "Marketing consent"
+    ) as HTMLSelectElement;
+    select.value = "never";
+
+    // A cancelable submit event proves the handler calls preventDefault
+    // (native submission is cancelled), and the recorded router push proves
+    // the soft navigation used the exact filtered URL.
+    const event = new window.Event("submit", {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    expect(form.dispatchEvent(event)).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    expect(routerPushUrls).toEqual([
+      "/admin/customers?consent=never&sort=reservations&direction=desc",
+    ]);
+  });
+
+  test("keeps the consent filter visible while the customer list loads", async () => {
+    mockSearchParams = new URLSearchParams(
+      "consent=granted&direction=desc&sort=activity"
+    );
+    mockPendingResult = true;
+    const { default: DiscountCustomersAdminPage } = await import("./page");
+    const view = render(
+      DiscountCustomersAdminPage({
+        searchParams: Promise.resolve({
+          consent: "granted",
+          direction: "desc",
+          sort: "activity",
+        }),
+      })
+    );
+
+    const select = view.getByLabelText(
+      "Marketing consent"
+    ) as HTMLSelectElement;
+    expect(select.value).toBe("granted");
+    expect(select.disabled).toBe(false);
+    expect(view.queryByLabelText("Loading table filters")).toBeNull();
+  });
+
+  test("renders consent state in the desktop table and mobile rows", async () => {
+    mockItems = [
+      customerWithDetails("granted", "customer-a"),
+      customerWithDetails("withdrawn", "customer-b"),
+      customerWithDetails("never", "customer-c"),
+    ];
+    const { CustomersAdministrationContent } = await import("./page");
+    const view = render(
+      await CustomersAdministrationContent({
+        searchParams: Promise.resolve({}),
+      })
+    );
+
+    expect(view.getAllByText("Granted").length).toBe(2);
+    expect(view.getAllByText("Withdrawn").length).toBe(2);
+    expect(view.getAllByText("Never granted").length).toBe(2);
+
+    const mobileList = view.getByRole("list");
+    expect(mobileList.textContent).toContain("Granted");
+    expect(mobileList.textContent).toContain("Withdrawn");
+    expect(mobileList.textContent).toContain("Never granted");
+  });
+
+  test("renders consent state for rows without provider contact details", async () => {
+    mockItems = [
+      {
+        customer: null,
+        customerId: "customer-x",
+        lastActivityAt: "2026-08-14T12:00:00Z",
+        marketingConsent: "granted",
+        reservationCount: 1,
+      },
+    ];
+    const { CustomersAdministrationContent } = await import("./page");
+    const view = render(
+      await CustomersAdministrationContent({
+        searchParams: Promise.resolve({}),
+      })
+    );
+
+    expect(view.getAllByText("Granted").length).toBe(2);
+  });
+
+  test("shows the filter-specific empty state when a consent filter is active", async () => {
+    mockInput = {
+      direction: "desc",
+      marketingConsent: "never",
+      page: 1,
+      sort: "activity",
+    };
+    const { CustomersAdministrationContent } = await import("./page");
+    const view = render(
+      await CustomersAdministrationContent({
+        searchParams: Promise.resolve({}),
+      })
+    );
+
+    expect(
+      view.getByText("No customers match this marketing consent filter.")
+    ).toBeDefined();
+  });
+
+  test("keeps the default empty state without a consent filter", async () => {
+    const { CustomersAdministrationContent } = await import("./page");
+    const view = render(
+      await CustomersAdministrationContent({
+        searchParams: Promise.resolve({}),
+      })
+    );
+
+    expect(view.getByText("No customers have reservations yet.")).toBeDefined();
+  });
+
+  test("preserves the consent filter in pagination and sort links", async () => {
+    mockInput = {
+      direction: "desc",
+      marketingConsent: "granted",
+      page: 1,
+      sort: "activity",
+    };
+    mockItems = [customerWithDetails("granted", "customer-a")];
+    const { CustomersAdministrationContent } = await import("./page");
+    const view = render(
+      await CustomersAdministrationContent({
+        searchParams: Promise.resolve({}),
+      })
+    );
+
+    const hrefs = Array.from(view.container.querySelectorAll("a")).map(
+      (anchor) => anchor.getAttribute("href")
+    );
+    expect(hrefs.length).toBeGreaterThan(0);
+    for (const href of hrefs) {
+      if (href?.includes("sort=") || href?.includes("page=2")) {
+        expect(href).toContain("consent=granted");
+      }
+      expect(href).not.toContain("customer-a@example.com");
+      expect(href).not.toContain("Customer%20");
+      expect(href).not.toContain("+420000000");
+    }
+    expect(
+      hrefs.some((href) => href?.includes("consent=granted&direction=desc"))
+    ).toBe(true);
+  });
+});
+
+describe("CustomerFilterNavigation pending state", () => {
+  beforeAll(() => registerWorkspaceComponentTestEnv());
+  afterEach(() => {
+    cleanup();
+    resetMocks();
+  });
+  afterAll(() => unregisterWorkspaceComponentTestEnv());
+
+  const submitForm = (view: ReturnType<typeof render>) => {
+    const form = view.container.querySelector("form") as HTMLFormElement;
+    const event = new window.Event("submit", {
+      bubbles: true,
+      cancelable: true,
+    });
+    form.dispatchEvent(event);
+    return event;
+  };
+
+  test("routes filter submission through the pending navigation context", async () => {
+    mockSearchParams = new URLSearchParams("consent=granted&sort=activity");
+    const { CustomerConsentFilterForm } = await import(
+      "./customer-consent-filter-form"
+    );
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+
+    let startFilterNavigationCalls = 0;
+    let deferredNavigate: (() => void) | null = null;
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: false,
+          startFilterNavigation: (navigate) => {
+            startFilterNavigationCalls += 1;
+            deferredNavigate = navigate;
+          },
+        }}
+      >
+        <CustomerConsentFilterForm />
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    const select = view.getByLabelText(
+      "Marketing consent"
+    ) as HTMLSelectElement;
+    select.value = "never";
+    const event = submitForm(view);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(startFilterNavigationCalls).toBe(1);
+    expect(deferredNavigate).toBeTypeOf("function");
+    deferredNavigate?.();
+    expect(routerPushUrls).toEqual([
+      "/admin/customers?consent=never&sort=activity&direction=desc",
+    ]);
+  });
+
+  test("engages the pending flag while the deferred navigation runs", async () => {
+    const { CustomerFilterNavigationProvider, useCustomerFilterNavigation } =
+      await import("./customer-filter-navigation");
+
+    const pendingValues: boolean[] = [];
+    let trigger: ((navigate: () => void) => void) | null = null;
+
+    let bumpGate: (() => void) | null = null;
+
+    const Probe = () => {
+      const { isFilterNavigationPending, startFilterNavigation } =
+        useCustomerFilterNavigation();
+      pendingValues.push(isFilterNavigationPending);
+      trigger = startFilterNavigation;
+      return null;
+    };
+
+    // The deferred navigation schedules its own state update, the way a
+    // router push does; the transition stays pending until that update
+    // commits.
+    const Gate = () => {
+      const [, setGate] = useState(0);
+      bumpGate = () => setGate((value) => value + 1);
+      return null;
+    };
+
+    render(
+      <CustomerFilterNavigationProvider>
+        <Gate />
+        <Probe />
+      </CustomerFilterNavigationProvider>
+    );
+
+    act(() => {
+      trigger?.(() => {
+        bumpGate?.();
+      });
+    });
+    expect(pendingValues).toContain(true);
+    expect(pendingValues[pendingValues.length - 1]).toBe(false);
+  });
+
+  test("obscures the results children behind a pending status while navigation is pending", async () => {
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+    const { CustomerResultsPendingOverlay } = await import(
+      "./customer-results-pending-overlay"
+    );
+
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: true,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerResultsPendingOverlay>
+          <table>
+            <tbody>
+              <tr>
+                <td>Customer 101</td>
+              </tr>
+            </tbody>
+          </table>
+        </CustomerResultsPendingOverlay>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    const status = view.getByRole("status");
+    expect(status.textContent).toBe("Loading customers…");
+    const busyWrapper = view
+      .getByText("Customer 101")
+      .closest("[aria-busy='true']");
+    expect(busyWrapper).not.toBeNull();
+    expect(busyWrapper?.hasAttribute("inert")).toBe(true);
+    // The status announcement must not sit under the busy ancestor, or
+    // assistive tech would defer it.
+    expect(busyWrapper?.contains(status)).toBe(false);
+    // The stale child stays in the DOM (occluded visually) but inert.
+    expect(view.getByText("Customer 101")).toBeDefined();
+  });
+
+  test("blocks focus on stale results while pending and restores it when settled", async () => {
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+    const { CustomerResultsPendingOverlay } = await import(
+      "./customer-results-pending-overlay"
+    );
+
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: true,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerResultsPendingOverlay>
+          <a href="/admin/customers/101">Customer 101</a>
+        </CustomerResultsPendingOverlay>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    const link = view.getByText("Customer 101") as HTMLAnchorElement;
+    link.focus();
+    // happy-dom may not enforce inert focus blocking; the inert attribute is
+    // the enforcement mechanism browsers use to keep the link unfocusable.
+    if (document.activeElement === link) {
+      expect(link.closest("[inert]")).not.toBeNull();
+    } else {
+      expect(document.activeElement).not.toBe(link);
+    }
+
+    view.rerender(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: false,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerResultsPendingOverlay>
+          <a href="/admin/customers/101">Customer 101</a>
+        </CustomerResultsPendingOverlay>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    link.focus();
+    expect(document.activeElement).toBe(link);
+  });
+
+  test("renders the results children unchanged when navigation is not pending", async () => {
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+    const { CustomerResultsPendingOverlay } = await import(
+      "./customer-results-pending-overlay"
+    );
+
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: false,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerResultsPendingOverlay>
+          <p>Customer 101</p>
+        </CustomerResultsPendingOverlay>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    expect(view.queryByRole("status")).toBeNull();
+    expect(view.container.querySelector("[inert]")).toBeNull();
+    expect(view.container.querySelector("[aria-busy]")).toBeNull();
+    expect(view.getByText("Customer 101")).toBeDefined();
+  });
+
+  test("replaces the toolbar count with a pending indicator while navigation is pending", async () => {
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+    const { CustomerCountPending } = await import("./customer-count-pending");
+
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: true,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerCountPending>
+          <output aria-label="8 customers">8</output>
+        </CustomerCountPending>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    const status = view.getByRole("status");
+    expect(status.textContent).toBe("Loading customers…");
+    expect(view.queryByLabelText("8 customers")).toBeNull();
+  });
+
+  test("renders the toolbar count unchanged when navigation is not pending", async () => {
+    const { CustomerFilterNavigationContext } = await import(
+      "./customer-filter-navigation"
+    );
+    const { CustomerCountPending } = await import("./customer-count-pending");
+
+    const view = render(
+      <CustomerFilterNavigationContext.Provider
+        value={{
+          isFilterNavigationPending: false,
+          startFilterNavigation: (navigate) => navigate(),
+        }}
+      >
+        <CustomerCountPending>
+          <output aria-label="8 customers">8</output>
+        </CustomerCountPending>
+      </CustomerFilterNavigationContext.Provider>
+    );
+
+    expect(view.queryByText("Loading customers…")).toBeNull();
+    expect(view.getByLabelText("8 customers")).toBeDefined();
   });
 });

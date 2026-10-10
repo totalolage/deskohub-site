@@ -77,6 +77,13 @@ const parseCustomerSort = (
 ): NonNullable<AdministrationCustomerListInput["sort"]> =>
   value === "reservations" ? value : "activity";
 
+export const parseMarketingConsent = (
+  value: string | undefined
+): AdministrationCustomerListInput["marketingConsent"] =>
+  value === "granted" || value === "never" || value === "withdrawn"
+    ? value
+    : undefined;
+
 const parseSortDirection = (
   value: string | undefined
 ): NonNullable<AdministrationReservationListInput["direction"]> =>
@@ -280,6 +287,7 @@ const getAdministrationCustomerListInput = async (
   const params = await searchParams;
   return {
     direction: parseSortDirection(firstParam(params.direction)),
+    marketingConsent: parseMarketingConsent(firstParam(params.consent)),
     page: parsePage(firstParam(params.page)),
     sort: parseCustomerSort(firstParam(params.sort)),
   } satisfies AdministrationCustomerListInput;
