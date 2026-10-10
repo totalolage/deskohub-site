@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
 import {
+  findMeetingRoomReservationDuration,
   getEarliestMeetingRoomStartDateTime,
   getMeetingRoomLastServiceDate,
   getMeetingRoomReservationInterval,
@@ -75,5 +76,32 @@ describe("meeting room reservation time helpers", () => {
         amount: 1,
       })
     ).toBeNull();
+  });
+});
+
+describe("findMeetingRoomReservationDuration", () => {
+  test("finds the purchasable duration a booked interval used", () => {
+    expect(
+      findMeetingRoomReservationDuration({
+        startsAt: Temporal.Instant.from("2026-07-12T07:00:00Z"),
+        endsAt: Temporal.Instant.from("2026-07-12T11:00:00Z"),
+      })
+    ).toEqual({ unit: "hour", amount: 4 });
+    // A whole Prague day starts at local midnight.
+    expect(
+      findMeetingRoomReservationDuration({
+        startsAt: Temporal.Instant.from("2026-07-11T22:00:00Z"),
+        endsAt: Temporal.Instant.from("2026-07-12T22:00:00Z"),
+      })
+    ).toEqual({ unit: "day", amount: 1 });
+  });
+
+  test("finds nothing for an interval no duration produces", () => {
+    expect(
+      findMeetingRoomReservationDuration({
+        startsAt: Temporal.Instant.from("2026-07-12T07:00:00Z"),
+        endsAt: Temporal.Instant.from("2026-07-12T08:37:00Z"),
+      })
+    ).toBeUndefined();
   });
 });

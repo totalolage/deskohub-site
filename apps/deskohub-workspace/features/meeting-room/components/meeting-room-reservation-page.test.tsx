@@ -1,4 +1,4 @@
-import { beforeEach, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import type { ReactElement } from "react";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
@@ -21,11 +21,26 @@ mock.module(
 mock.module("@/features/reservation/backend/advertised-prices.server", () => ({
   loadAdvertisedPrices,
 }));
+let isRememberedDurationAvailable = true;
+const isRememberedMeetingRoomReservationAvailable = mock(() =>
+  Promise.resolve(isRememberedDurationAvailable)
+);
+mock.module(
+  "@/features/reservation/backend/reservation-existing-customer.server",
+  () => ({
+    isRememberedCoworkOfferAvailable: () => Promise.resolve(false),
+    isRememberedMeetingRoomReservationAvailable,
+    loadReservationExistingCustomer: () => Promise.resolve(undefined),
+  })
+);
 const { renderMeetingRoomReservationContent } = await import(
   "./meeting-room-reservation-page"
 );
 
-beforeEach(() => mock.clearAllMocks());
+beforeEach(() => {
+  mock.clearAllMocks();
+  isRememberedDurationAvailable = true;
+});
 
 test("preloads the preserved quote for a restored hourly slot that has started", async () => {
   const originalNow = Temporal.Now.instant;
@@ -247,4 +262,57 @@ test("falls back to query-free defaults for an ended signed reservation", async 
     duration: "hour:1",
   });
   expect(restoredForm.props.initialReservation).toBeUndefined();
+});
+
+describe("remembered meeting-room duration", () => {
+  const existingCustomer = {
+    contact: {
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+    },
+    lastReservation: { kind: "meeting-room", duration: "hour:4" },
+  } as const;
+
+  const renderInitialValues = async (
+    searchParams: Record<string, string> = {}
+  ) => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T07:01:00Z");
+
+    try {
+      const form = (await renderMeetingRoomReservationContent({
+        existingCustomer,
+        locale: "en-US",
+        searchParams,
+      })) as ReactElement<Parameters<typeof MeetingRoomReservationForm>[0]>;
+      return form.props.initialValues;
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  };
+
+  test("opens on the remembered duration while the room is free for it", async () => {
+    const initialValues = await renderInitialValues();
+
+    expect(isRememberedMeetingRoomReservationAvailable).toHaveBeenCalledWith(
+      expect.objectContaining({ duration: "hour:4" })
+    );
+    expect(initialValues.duration).toBe("hour:4");
+  });
+
+  test("falls back to the default duration when the room is taken for the remembered one", async () => {
+    isRememberedDurationAvailable = false;
+
+    const initialValues = await renderInitialValues();
+
+    expect(initialValues.duration).toBe("hour:1");
+  });
+
+  test("keeps an explicit query duration without checking the remembered one", async () => {
+    const initialValues = await renderInitialValues({ duration: "day:1" });
+
+    expect(isRememberedMeetingRoomReservationAvailable).not.toHaveBeenCalled();
+    expect(initialValues.duration).toBe("day:1");
+  });
 });

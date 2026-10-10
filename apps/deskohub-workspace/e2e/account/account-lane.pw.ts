@@ -30,8 +30,10 @@ import {
   writeWorkspaceE2EAccountJournal,
 } from "./journal";
 import { verifyWorkspaceE2EMarketingPreferences } from "./marketing-preferences";
+import { workspaceE2EAccountProfileName } from "./profile-fixture";
 import { verifyProfileNavigation } from "./profile-navigation";
 import { makeMagicLinkRateBudget } from "./rate-budget";
+import { verifyReservationExistingCustomer } from "./reservation-existing-customer";
 import { withWorkspaceE2EReservationHistoryFixture } from "./reservation-history-fixture";
 import {
   toWorkspaceE2EReservationHistoryFailure,
@@ -46,6 +48,7 @@ import {
   accountReviewTargetByCaseId,
   accountReviewTargetBySection,
   mobileAccountReviewTargetBySection,
+  reservationCustomerReviewTargetByMode,
 } from "./review-targets";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
 import {
@@ -209,6 +212,41 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               },
             }),
             id: "checks profile re-entry and unsaved navigation",
+            timeoutMs: workspaceE2ETimeouts.providerTransition,
+          },
+          {
+            execute: Effect.tryPromise({
+              catch: (cause) =>
+                cause instanceof WorkspaceE2EError
+                  ? cause
+                  : workspaceE2EError(
+                      "verify reservation existing customer card failed",
+                      {
+                        operation: "verify reservation existing customer card",
+                      }
+                    ),
+              try: async () => {
+                const page = getOwnedPage();
+                await verifyReservationExistingCustomer({
+                  baseUrl: accountLane.config.baseUrl,
+                  captureReview: (mode) =>
+                    captureAccountReview(
+                      page,
+                      accountLane.config.baseUrl,
+                      reservationCustomerReviewTargetByMode[mode]
+                    ),
+                  contact: {
+                    email: makeWorkspaceE2EAccountRecipient(
+                      accountLane.config,
+                      workspaceE2EAccountMainRecipientLabel
+                    ),
+                    name: workspaceE2EAccountProfileName,
+                  },
+                  page,
+                });
+              },
+            }),
+            id: "checks reservation existing customer card",
             timeoutMs: workspaceE2ETimeouts.providerTransition,
           },
         ];

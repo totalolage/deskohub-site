@@ -19,7 +19,7 @@ import { getCoworkCheckoutStatusSummary } from "@/features/cowork/components/cow
 import { type Locale, m } from "@/features/i18n";
 import { getMeetingRoomCheckoutStatusSummary } from "@/features/meeting-room/components/meeting-room-checkout-status-summary";
 import { getOfficeCheckoutStatusSummary } from "@/features/office/components/office-checkout-status-summary";
-import { getOfficeReservationDayCount } from "@/features/reservation/office-reservation";
+import { getOfficeReservationSelection } from "@/features/reservation/office-reservation";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   getCoworkReservationPath,
@@ -28,7 +28,6 @@ import {
 } from "@/features/reservation/routes";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
-import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
 import { WorkspaceTableMapView } from "./workspace-table-map-view";
 
@@ -203,31 +202,17 @@ const getRepeatReservationSearchParams = (
         }),
       "meeting-room": () => undefined,
       office: ({ reservedFrom, reservedUntil, seats }) => {
-        const startsAt = reservedFrom.toZonedDateTimeISO(
-          workspaceSiteConstants.location.timeZone
-        );
-        const endsAt = reservedUntil.toZonedDateTimeISO(
-          workspaceSiteConstants.location.timeZone
-        );
-        if (
-          !startsAt.equals(startsAt.startOfDay()) ||
-          !endsAt.equals(endsAt.startOfDay())
-        ) {
-          return undefined;
-        }
-
-        const dayCount = getOfficeReservationDayCount({
-          startsOn: startsAt.toPlainDate().toString(),
-          endsOn: endsAt.toPlainDate().subtract({ days: 1 }).toString(),
+        const selection = getOfficeReservationSelection({
+          startsAt: reservedFrom,
+          endsAt: reservedUntil,
+          seats,
         });
-        if (dayCount < 1 || !Number.isInteger(seats) || seats < 1) {
-          return undefined;
-        }
-
-        return new URLSearchParams({
-          dayCount: String(dayCount),
-          seats: String(seats),
-        });
+        return selection
+          ? new URLSearchParams({
+              dayCount: String(selection.dayCount),
+              seats: String(selection.seats),
+            })
+          : undefined;
       },
     })
   );

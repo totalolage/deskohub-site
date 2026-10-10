@@ -75,6 +75,7 @@ import {
   formatReservationInputDate,
   getCurrentWorkspaceDate,
 } from "@/features/reservation/reservation-date";
+import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import type { CoworkWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import {
   FormControl,
@@ -92,6 +93,7 @@ type CoworkReservationFormProps = {
   initialValues?: CoworkReservationInput;
   locale: Locale;
   checkoutSessionId?: CheckoutSessionId;
+  existingCustomer?: ReservationExistingCustomerForm;
   replacementToken?: string;
   submittedCode?: CanonicalPromotionCode;
 };
@@ -159,6 +161,7 @@ export function CoworkReservationForm({
   initialValues,
   locale,
   checkoutSessionId,
+  existingCustomer,
   replacementToken,
   submittedCode,
 }: CoworkReservationFormProps) {
@@ -587,6 +590,7 @@ export function CoworkReservationForm({
 
   return (
     <ReservationCheckoutForm
+      existingCustomer={existingCustomer}
       advertisedPrice={{
         token: advertisedPrice?.advertisedPriceToken,
         isFetching: Boolean(advertisedPriceQueryResult?.isFetching),

@@ -6,10 +6,14 @@ import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import { type Locale, m } from "@/features/i18n";
+import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import type { ReservationOrderIssuanceData } from "@/features/reservation/reservation-order";
 import { Form } from "@/shared/components/ui/form";
 import { ReservationBillingFields } from "./reservation-billing-fields";
-import { ReservationCustomerFields } from "./reservation-customer-fields";
+import {
+  ReservationCustomerSection,
+  useReservationCustomer,
+} from "./reservation-customer-fields";
 import { ReservationFormCard } from "./reservation-form-card";
 import { ReservationFormSale } from "./reservation-form-sale";
 import { ReservationMarketingConsentField } from "./reservation-marketing-consent-field";
@@ -41,6 +45,8 @@ type ReservationCheckoutFormProps<
   };
   readonly checkoutSessionId?: CheckoutSessionId;
   readonly children: ReactNode;
+  /** The signed-in customer the form can book as, if any. */
+  readonly existingCustomer?: ReservationExistingCustomerForm;
   readonly form: UseFormReturn<Input, unknown, Data>;
   readonly getReservation: (data: Data) => ReservationOrderIssuanceData;
   readonly locale: Locale;
@@ -54,10 +60,12 @@ export function ReservationCheckoutForm<
   availability,
   checkoutSessionId,
   children,
+  existingCustomer,
   form,
   getReservation,
   locale,
 }: ReservationCheckoutFormProps<Input, Data>) {
+  const customer = useReservationCustomer(existingCustomer);
   const {
     capturePrePaymentOutcome,
     clearSubmissionError,
@@ -91,6 +99,8 @@ export function ReservationCheckoutForm<
 
         startCheckout({
           advertisedPriceToken: advertisedPrice.token,
+          ...(existingCustomer &&
+            customer.mode === "account" && { customer: "account" }),
           marketingConsent: data.marketingConsent,
           reservation: getReservation(data),
         });
@@ -118,7 +128,11 @@ export function ReservationCheckoutForm<
       <Form {...form}>
         <form className="space-y-7" noValidate onSubmit={handleSubmit}>
           {children}
-          <ReservationCustomerFields locale={locale} />
+          <ReservationCustomerSection
+            customer={customer}
+            existingCustomer={existingCustomer}
+            locale={locale}
+          />
           <ReservationBillingFields locale={locale} />
           <ReservationPrivacyNotice locale={locale} />
           <ReservationMarketingConsentField locale={locale} />

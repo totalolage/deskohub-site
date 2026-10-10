@@ -27,7 +27,6 @@ import {
 import postcss from "postcss";
 import loadPostCssConfig from "postcss-load-config";
 import { type Locale, m } from "@/features/i18n";
-import { waitForAccountSectionButtonHandler } from "./account/account-sections";
 import {
   type CookieCategory,
   expectNoAuthSessionCookie,
@@ -36,6 +35,7 @@ import {
   waitForCookieSwitchHandler,
 } from "./instant-navigation/public-account-legal-assertions";
 import { dismissLegalCookieConsent } from "./legal-cookie-consent";
+import { waitForReactClickHandler } from "./react-handlers";
 
 const accountLegalPort = 3168;
 const fixtureParent = "/tmp/opencode";
@@ -1226,7 +1226,7 @@ const runPrivateContinuity = async (
     const targetSection = accountToLegal ? "legal" : "profile";
     const sourceButton = accountSectionButton(page, locale, sourceSection);
     await sourceButton.waitFor({ state: "visible" });
-    await waitForAccountSectionButtonHandler(page, sourceButton);
+    await waitForReactClickHandler(page, sourceButton);
     expect(await sourceButton.count()).toBe(1);
     expect(await sourceButton.getAttribute("aria-current")).toBe("page");
 
@@ -1242,7 +1242,7 @@ const runPrivateContinuity = async (
     try {
       const targetButton = accountSectionButton(page, locale, targetSection);
       await targetButton.waitFor({ state: "visible" });
-      await waitForAccountSectionButtonHandler(page, targetButton);
+      await waitForReactClickHandler(page, targetButton);
       expect(await targetButton.count()).toBe(1);
       await targetButton.click();
       await forward.waitForIntercept();
@@ -1402,9 +1402,12 @@ const assertSignedInRolloutOffLegalRoute = async (
     expect(await dedicatedLinkContent.count()).toBe(1);
     expect(
       await page
-        .getByText(m.marketingPreferencesFormPendingDescription({}, { locale }), {
-          exact: true,
-        })
+        .getByText(
+          m.marketingPreferencesFormPendingDescription({}, { locale }),
+          {
+            exact: true,
+          }
+        )
         .count()
     ).toBe(1);
     await assertGlobalHeaderGeometry(page);

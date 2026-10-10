@@ -353,6 +353,43 @@ export const getOfficeReservationDayCount = (reservation: {
     { largestUnit: "day" }
   ).days + 1;
 
+/**
+ * The day count and seats that repeat a booked office interval, or null when
+ * the interval is not a whole number of workspace calendar days.
+ */
+export const getOfficeReservationSelection = (reservation: {
+  readonly startsAt: Temporal.Instant;
+  readonly endsAt: Temporal.Instant;
+  readonly seats: number;
+}): { readonly dayCount: number; readonly seats: number } | null => {
+  const startsAt = reservation.startsAt.toZonedDateTimeISO(
+    workspaceSiteConstants.location.timeZone
+  );
+  const endsAt = reservation.endsAt.toZonedDateTimeISO(
+    workspaceSiteConstants.location.timeZone
+  );
+  if (
+    !startsAt.equals(startsAt.startOfDay()) ||
+    !endsAt.equals(endsAt.startOfDay())
+  ) {
+    return null;
+  }
+
+  const dayCount = getOfficeReservationDayCount({
+    startsOn: startsAt.toPlainDate().toString(),
+    endsOn: endsAt.toPlainDate().subtract({ days: 1 }).toString(),
+  });
+  if (
+    dayCount < 1 ||
+    !Number.isInteger(reservation.seats) ||
+    reservation.seats < 1
+  ) {
+    return null;
+  }
+
+  return { dayCount, seats: reservation.seats };
+};
+
 export const getOfficeReservationEndsOn = (reservation: {
   readonly startsOn: string;
   readonly dayCount: number;
