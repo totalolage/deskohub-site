@@ -1631,7 +1631,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     const submit = view.getByRole("button", { name: "Continue" });
 
     expect(dateAddonRow?.classList.contains("grid")).toBe(true);
-    expect(dateAddonRow?.classList.contains("lg:grid-cols-2")).toBe(true);
+    expect(dateAddonRow?.classList.contains("md:grid-cols-2")).toBe(true);
     expect(dateAddonRow?.classList.contains("grid-cols-2")).toBe(false);
     expect(dateColumn?.parentElement).toBe(dateAddonRow);
     expect(addonColumn?.parentElement).toBe(dateAddonRow);
@@ -1870,7 +1870,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(addonControl?.contains(toggle as Node)).toBe(true);
     expect(addonControl?.nextElementSibling).toBe(monitorOptions);
     expect(monitorOptions?.parentElement).toBe(addonColumn);
-    expect(monitorOptions?.classList.contains("lg:col-span-2")).toBe(true);
+    expect(monitorOptions?.classList.contains("md:col-span-2")).toBe(true);
     const form = view.container.querySelector("form")!;
     const ordered = Array.from(form.querySelectorAll("*"));
     expect(ordered.indexOf(monitors as Element)).toBeLessThan(
@@ -2085,7 +2085,7 @@ describe("CoworkReservationForm advertised pricing", () => {
         `[data-cowork-optional-addon-toggle='${addon}']`
       );
 
-      expect(dateAddonRow?.classList.contains("lg:grid-cols-2")).toBe(true);
+      expect(dateAddonRow?.classList.contains("md:grid-cols-2")).toBe(true);
       expect(dateAddonRow?.classList.contains("grid-cols-2")).toBe(false);
       expect(dateColumn?.parentElement).toBe(dateAddonRow);
       expect(addonColumn?.parentElement).toBe(dateAddonRow);
