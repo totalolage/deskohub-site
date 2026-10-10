@@ -1,6 +1,6 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -20,7 +20,7 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { getAdministrationReservation } from "./actions";
 import {
   type ReservationLookupInput,
-  reservationLookupStandardSchema,
+  reservationLookupSchema,
 } from "./contracts";
 import { AdministrationAlert } from "./notice";
 
@@ -36,7 +36,9 @@ export function ReservationLookup({
       defaultValues: { identifier: "" },
       mode: "onSubmit",
       reValidateMode: "onChange",
-      resolver: standardSchemaResolver(reservationLookupStandardSchema),
+      resolver: effectSchemaResolver(reservationLookupSchema, {
+        onExcessProperty: "error",
+      }),
     }
   );
   const { execute, isExecuting } = useWorkspaceAction(

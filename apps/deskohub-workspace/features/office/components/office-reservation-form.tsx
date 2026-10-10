@@ -1,6 +1,6 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { Option, Predicate, Schema } from "effect";
 import { useEffect, useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
@@ -70,9 +70,6 @@ type OfficeReservationFormProps = {
   readonly today: string;
 };
 
-const officeReservationFormSchema = Schema.toStandardSchemaV1(
-  officeReservationSchema
-);
 const decodeSelection = Schema.decodeUnknownOption(
   officeReservationDetailsSchema
 );
@@ -113,7 +110,7 @@ export function OfficeReservationForm({
     [initialReservation, initialValues]
   );
   const form = useForm<OfficeReservationInput, unknown, OfficeReservationData>({
-    resolver: standardSchemaResolver(officeReservationFormSchema),
+    resolver: effectSchemaResolver(officeReservationSchema),
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",

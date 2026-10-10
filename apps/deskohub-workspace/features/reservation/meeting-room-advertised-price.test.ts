@@ -17,16 +17,19 @@ describe("meeting-room advertised prices", () => {
         kind: "meeting-room",
         duration: { unit: "hour", amount: 1 },
         reservationDate: "2099-07-30",
+        lastServiceDate: "2099-07-30",
       },
       {
         kind: "meeting-room",
         duration: { unit: "hour", amount: 4 },
         reservationDate: "2099-07-30",
+        lastServiceDate: "2099-07-30",
       },
       {
         kind: "meeting-room",
         duration: { unit: "day", amount: 1 },
         reservationDate: "2099-07-30",
+        lastServiceDate: "2099-07-30",
       },
     ]);
   });
@@ -42,6 +45,28 @@ describe("meeting-room advertised prices", () => {
     });
 
     expect(afternoon).toEqual(morning);
+  });
+
+  test("keeps an hourly booking that crosses midnight on its last service date", () => {
+    const requests = getMeetingRoomDurationAdvertisedPriceRequests({
+      locale: "en-US",
+      startDateTime: "2099-07-30T22:00",
+    });
+
+    expect(
+      requests.map(({ reservation }) => reservation.details.lastServiceDate)
+    ).toEqual(["2099-07-30", "2099-07-31", "2099-07-30"]);
+  });
+
+  test("keeps an hourly booking ending exactly at midnight on its start date", () => {
+    const requests = getMeetingRoomDurationAdvertisedPriceRequests({
+      locale: "en-US",
+      startDateTime: "2099-07-30T20:00",
+    });
+
+    expect(
+      requests.map(({ reservation }) => reservation.details.lastServiceDate)
+    ).toEqual(["2099-07-30", "2099-07-30", "2099-07-30"]);
   });
 
   test("returns no request for incomplete or invalid form state", () => {

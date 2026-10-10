@@ -473,8 +473,6 @@ const writeFixture = async (
   const fixtureFiles: Readonly<Record<string, string>> = {
     "app/[locale]/(full-header)/account/@modal/default.tsx": nullModalPage,
     "app/[locale]/(full-header)/account/@modal/page.tsx": nullModalPage,
-    "app/[locale]/(full-header)/account/@modal/[...not-found]/page.tsx":
-      nullModalPage,
     "app/[locale]/(full-header)/account/page.tsx": privatePage,
     ...(realCookieConsent
       ? {

@@ -31,6 +31,7 @@ import {
   AdministrationTableCount,
   AdministrationTableToolbar,
   BookingTable,
+  formatAdministrationDateTime,
   getBookingTableLabel,
   PaymentAttemptList,
   RelatedReservationLink,
@@ -430,6 +431,41 @@ describe("administration reservation components", () => {
     expect(view.getByText("Needs refund")).toBeDefined();
     expect(orderLink.getAttribute("target")).toBe("_blank");
     expect(view.getAllByText("Nexi order")).toHaveLength(1);
+  });
+
+  test("shows a recorded refund instead of the refund requirement", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    const attempt = detail?.paymentAttempts[0];
+    expect(attempt).toBeDefined();
+    if (!attempt) return;
+    const refundedAt = "2026-10-05T08:30:00Z";
+
+    const view = render(
+      <PaymentAttemptList
+        attempts={[
+          {
+            ...attempt,
+            refundState: "refunded",
+            refundedAmount: attempt.amount,
+            refundedAt,
+          },
+          {
+            ...attempt,
+            id: "fixture-partially-refunded-payment",
+            refundState: "refunded",
+            refundedAmount: { ...attempt.amount, value: 100_000 },
+            refundedAt,
+          },
+        ]}
+      />
+    );
+
+    const recordedAt = formatAdministrationDateTime(refundedAt);
+    expect(view.queryByText("Needs refund")).toBeNull();
+    expect(view.getByText(`Refunded · ${recordedAt}`)).toBeDefined();
+    expect(
+      view.getByText(`Partially refunded CZK 1,000.00 · ${recordedAt}`)
+    ).toBeDefined();
   });
 
   test("folds Nexi orders and operations into the reservation", () => {

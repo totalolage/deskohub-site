@@ -1,7 +1,7 @@
 "use client";
 
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import type { CliSessionIdType } from "@deskohub/workspace-admin-api";
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -28,7 +28,7 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { renameCliSession } from "./actions";
-import { renameCliSessionStandardSchema } from "./contracts";
+import { renameCliSessionSchema } from "./contracts";
 
 type RenameCliSessionFormInput = {
   readonly sessionId: string;
@@ -58,7 +58,9 @@ export function RenameCliSession({
     defaultValues: { sessionId, clientName },
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(renameCliSessionStandardSchema),
+    resolver: effectSchemaResolver(renameCliSessionSchema, {
+      onExcessProperty: "error",
+    }),
   });
   const { execute, isExecuting } = useWorkspaceAction(renameCliSession, {
     actionName: "renameCliSession",

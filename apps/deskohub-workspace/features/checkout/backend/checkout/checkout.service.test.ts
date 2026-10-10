@@ -33,6 +33,7 @@ import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservat
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { instantStringSchema } from "@/shared/utils/temporal";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
@@ -44,6 +45,8 @@ import {
 } from "./pay-state";
 
 mock.module("server-only", () => ({}));
+
+const payStateBookedAt = instantStringSchema.make("2026-06-01T09:58:00.000Z");
 
 const testInstant = (value = "2026-06-01T10:00:00Z") =>
   Temporal.Instant.from(value);
@@ -239,6 +242,7 @@ const buildPayStateToken = (input: {
         reservation,
         quote: input.quote ?? buildCoworkReservationQuote(reservation),
         orderId: input.orderId,
+        bookedAt: payStateBookedAt,
         checkoutSessionId: input.checkoutSessionId ?? "checkout-session-id",
         ...(input.submittedCode !== undefined && {
           submittedCode: input.submittedCode,
@@ -287,6 +291,7 @@ const buildMeetingRoomPayStateToken = (input: {
         reservation,
         quote: input.quote ?? buildMeetingRoomQuote(undefined, reservation),
         orderId: input.orderId,
+        bookedAt: payStateBookedAt,
         checkoutSessionId:
           input.checkoutSessionId ?? "meeting-room-checkout-session-id",
         ...(input.submittedCode !== undefined && {
@@ -398,6 +403,7 @@ const buildOfficePayStateToken = (input: {
         reservation: input.reservation,
         quote,
         orderId: input.orderId,
+        bookedAt: payStateBookedAt,
         checkoutSessionId: "office-checkout-session-id",
         ttlMilliseconds: 10 * 60 * 1000,
       });
@@ -982,6 +988,7 @@ describe("CheckoutService", () => {
         locale: "cs-CZ",
         submittedCode,
         quote: acceptedQuote,
+        bookedAt: Temporal.Instant.from(payStateBookedAt),
       })
     );
     expect(harness.createPendingNexiAttempt).toHaveBeenCalledWith(

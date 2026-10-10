@@ -10,17 +10,23 @@ import {
 } from "@/features/administration/overview-activity";
 import {
   loadAdministrationOverview,
+  loadAdministrationRefundAttention,
   loadAdministrationReservationOverview,
 } from "@/features/administration/page-data.server";
+import { RefundAttention } from "@/features/administration/refund-attention";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
 
 export default function AdminPage() {
   const customerOverview = loadAdministrationOverview();
   const reservationOverview = loadAdministrationReservationOverview();
+  const refundAttention = loadAdministrationRefundAttention();
 
   return (
     <AdministrationPage>
+      <Suspense fallback={null}>
+        <RefundAttention count={refundAttention} />
+      </Suspense>
       <section aria-labelledby="reservation-activity-heading">
         <div className="mb-3">
           <h1 className="text-xl" id="reservation-activity-heading">

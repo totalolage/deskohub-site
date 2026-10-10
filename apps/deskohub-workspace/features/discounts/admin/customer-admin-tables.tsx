@@ -1,10 +1,12 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
 import { useMemo } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import type { AdministrationCustomerTransaction } from "@/features/administration/administration.service";
-import { AdministrationDataTable } from "@/features/administration/data-table";
+import {
+  AdministrationDataTable,
+  type AdministrationDataTableColumn,
+} from "@/features/administration/data-table";
 import {
   formatAdministrationDateTime,
   formatAdministrationMoney,
@@ -83,7 +85,9 @@ export function CustomerCodeEligibilityTable({
   readonly customerId: AdminCustomerProfile["customer"]["id"];
   readonly customerName: string;
 }) {
-  const columns = useMemo<ColumnDef<CustomerCodeEligibilityItem>[]>(
+  const columns = useMemo<
+    AdministrationDataTableColumn<CustomerCodeEligibilityItem>[]
+  >(
     () => [
       {
         accessorKey: "code",
@@ -153,7 +157,9 @@ export function CustomerVoucherEligibilityTable({
 }: {
   readonly vouchers: readonly CustomerVoucherEligibilityItem[];
 }) {
-  const columns = useMemo<ColumnDef<CustomerVoucherEligibilityItem>[]>(
+  const columns = useMemo<
+    AdministrationDataTableColumn<CustomerVoucherEligibilityItem>[]
+  >(
     () => [
       {
         accessorKey: "code",
@@ -204,7 +210,9 @@ export function CustomerTransactionHistoryTable({
 }: {
   readonly transactions: readonly AdministrationCustomerTransaction[];
 }) {
-  const columns = useMemo<ColumnDef<AdministrationCustomerTransaction>[]>(
+  const columns = useMemo<
+    AdministrationDataTableColumn<AdministrationCustomerTransaction>[]
+  >(
     () => [
       {
         accessorFn: ({ attempt }) => attempt.updatedAt,
@@ -290,7 +298,7 @@ export function ClaimHistoryTable({
   const isVoucher = resource.startsWith("voucher");
   const showsCustomer = resource.endsWith("customer");
   const subjectLabel = isVoucher ? "Voucher" : "Discount code";
-  const columns = useMemo<ColumnDef<ClaimHistoryItem>[]>(
+  const columns = useMemo<AdministrationDataTableColumn<ClaimHistoryItem>[]>(
     () => [
       {
         accessorFn: (claim) =>

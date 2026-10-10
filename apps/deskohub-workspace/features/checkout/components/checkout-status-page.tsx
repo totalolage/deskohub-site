@@ -6,6 +6,7 @@ import {
   Clock3,
   HelpCircle,
   MailCheck,
+  RotateCcw,
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
@@ -121,6 +122,27 @@ const getStatusCopy = (
         tone: "warning",
         Icon: Clock3,
       };
+    case "late_payment_checking":
+      return {
+        title: m.checkoutStatusLatePaymentCheckingTitle({}, { locale }),
+        lead: m.checkoutStatusLatePaymentCheckingLead({}, { locale }),
+        tone: "pending",
+        Icon: Clock3,
+      };
+    case "late_payment_refund":
+      return {
+        title: m.checkoutStatusLatePaymentRefundTitle({}, { locale }),
+        lead: m.checkoutStatusLatePaymentRefundLead({}, { locale }),
+        tone: "warning",
+        Icon: RotateCcw,
+      };
+    case "late_payment_review":
+      return {
+        title: m.checkoutStatusLatePaymentReviewTitle({}, { locale }),
+        lead: m.checkoutStatusLatePaymentReviewLead({}, { locale }),
+        tone: "warning",
+        Icon: AlertTriangle,
+      };
     case "not_found":
       return {
         title: m.checkoutStatusNotFoundTitle({}, { locale }),
@@ -146,10 +168,11 @@ const getSummaryPresentation = (
       )
     : undefined;
 
-const getFulfillmentFailedContactMessage = (
+const getSupportContactMessage = (
   status: CheckoutStatusViewModel,
   locale: Locale,
-  summaryPresentation: CheckoutStatusSummaryPresentation | undefined
+  summaryPresentation: CheckoutStatusSummaryPresentation | undefined,
+  topic: "fulfillment_failed" | "late_payment_review"
 ) => {
   const reservation =
     summaryPresentation?.reservationTitle ??
@@ -158,10 +181,11 @@ const getFulfillmentFailedContactMessage = (
     ? formatReservationDisplayDate(status.summary.reservedFrom, locale)
     : m.checkoutStatusMissingSummary({}, { locale });
 
-  return m.checkoutStatusFulfillmentFailedContactMessage(
-    { orderId: status.orderId, reservation, date },
-    { locale }
-  );
+  const message = {
+    fulfillment_failed: m.checkoutStatusFulfillmentFailedContactMessage,
+    late_payment_review: m.checkoutStatusLatePaymentReviewContactMessage,
+  }[topic];
+  return message({ orderId: status.orderId, reservation, date }, { locale });
 };
 
 const getRepeatReservationSearchParams = (
@@ -218,12 +242,17 @@ const getReserveAgainPath = (
   return getReservationStartPath(locale, status.kind, searchParams);
 };
 
-const getFulfillmentFailedContactHref = (
+const getSupportContactHref = (
   status: CheckoutStatusViewModel,
   locale: Locale,
   summaryPresentation: CheckoutStatusSummaryPresentation | undefined
 ) => {
-  if (status.status !== "fulfillment_failed") return undefined;
+  if (
+    status.status !== "fulfillment_failed" &&
+    status.status !== "late_payment_review"
+  ) {
+    return undefined;
+  }
 
   const url = new URL(`/${locale}/contact`, "https://deskohub.local");
   const prefill = status.supportContactPrefill;
@@ -232,7 +261,7 @@ const getFulfillmentFailedContactHref = (
   if (prefill?.phone) url.searchParams.set("phone", prefill.phone);
   url.searchParams.set(
     "message",
-    getFulfillmentFailedContactMessage(status, locale, summaryPresentation)
+    getSupportContactMessage(status, locale, summaryPresentation, status.status)
   );
 
   return `${url.pathname}${url.search}`;
@@ -247,7 +276,7 @@ export function CheckoutStatusPage({
   const showReservationDetails = status.status !== "not_found";
   const summaryPresentation = getSummaryPresentation(status, locale);
   const summaryRows = summaryPresentation?.rows ?? [];
-  const supportContactHref = getFulfillmentFailedContactHref(
+  const supportContactHref = getSupportContactHref(
     status,
     locale,
     summaryPresentation

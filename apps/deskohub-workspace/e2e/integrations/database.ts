@@ -1017,6 +1017,9 @@ export const waitForLatePaymentRecoveryOutcome = (
 
         const checkoutRow = yield* readCheckoutRowFromDatabase(db, orderId);
         if (!checkoutRow) return undefined;
+        // Status-page verification can settle the recovery while the
+        // replayed webhook is still being processed; wait for both.
+        if (checkoutRow.webhook_state !== "processed") return undefined;
         if (
           expected.state === "recovered" &&
           checkoutRow.fulfillment_state !== "processing" &&

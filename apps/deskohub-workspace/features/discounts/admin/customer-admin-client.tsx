@@ -5,8 +5,7 @@ import {
   type DotyposDiscountGroupId,
   DotyposDiscountGroupIdSchema,
 } from "@deskohub/dotypos";
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { Schema } from "effect";
 import { Minus, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -62,15 +61,13 @@ const decodeDotyposCustomerId = Schema.decodeUnknownSync(
   DotyposCustomerIdSchema
 );
 
-const searchFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    query: Schema.String.check(
-      Schema.makeFilter((value) => value.trim().length >= 2, {
-        message: "Enter at least 2 characters.",
-      })
-    ),
-  })
-);
+const searchFormSchema = Schema.Struct({
+  query: Schema.String.check(
+    Schema.makeFilter((value) => value.trim().length >= 2, {
+      message: "Enter at least 2 characters.",
+    })
+  ),
+});
 
 export function CustomerSearch({
   variant = "card",
@@ -83,7 +80,7 @@ export function CustomerSearch({
     defaultValues: { query: "" },
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(searchFormSchema),
+    resolver: effectSchemaResolver(searchFormSchema),
   });
   const { execute, isExecuting } = useWorkspaceAction(
     searchDiscountAdminCustomers,
@@ -576,7 +573,7 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
    * the saved state plus the new change; audience-add forms clear.
    */
   readonly resetOnSuccessTo?: "initial" | "submitted";
-  readonly schema: StandardSchemaV1<Input, Values>;
+  readonly schema: Schema.Codec<Values, Input>;
   readonly submitLabel: string;
 }) {
   const router = useRouter();
@@ -588,7 +585,7 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
     defaultValues,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(schema),
+    resolver: effectSchemaResolver(schema),
   });
   // Snapshot taken at submit entry so the success reset cannot absorb values
   // edited while the request is in flight.

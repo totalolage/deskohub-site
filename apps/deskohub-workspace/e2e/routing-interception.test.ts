@@ -38,8 +38,6 @@ const fixtureFiles = (mode: FixtureMode): Readonly<Record<string, string>> => {
       modalStatusPage,
     "app/[locale]/(full-header)/account/@modal/(..)reservation/access/[orderId]/page.tsx":
       modalAccessPage,
-    "app/[locale]/(full-header)/account/@modal/[...not-found]/page.tsx":
-      nullModalPage,
     "app/[locale]/(full-header)/account/@modal/default.tsx": nullModalPage,
     "app/[locale]/(full-header)/account/@modal/page.tsx": nullModalPage,
   };
@@ -47,6 +45,9 @@ const fixtureFiles = (mode: FixtureMode): Readonly<Record<string, string>> => {
   return {
     "app/[locale]/(full-header)/account/page.tsx": accountPage,
     "app/[locale]/(full-header)/layout.tsx": fullHeaderLayout,
+    // Production serves the locale home here. Strict route matching needs it
+    // so the global variant's `@modal/page.tsx` has a sibling `children` page.
+    "app/[locale]/(full-header)/page.tsx": homePage,
     "app/[locale]/(minimal-header)/checkout/pay/page.tsx": checkoutPayPage,
     "app/[locale]/(minimal-header)/layout.tsx": minimalHeaderLayout,
     "app/[locale]/(minimal-header)/reservation/access/[orderId]/page.tsx":
@@ -204,6 +205,12 @@ import type { ReactNode } from "react";
 
 export default function FullHeaderLayout({ children }: { readonly children: ReactNode }) {
   return <div data-chrome="full">{children}</div>;
+}
+`;
+
+const homePage = `
+export default function HomePage() {
+  return <main data-testid="home-page">Home</main>;
 }
 `;
 

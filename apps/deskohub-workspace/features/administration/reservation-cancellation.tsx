@@ -1,8 +1,7 @@
 "use client";
 
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import type { AdministrationWorkspaceReservationIdType } from "@deskohub/workspace-admin-api";
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -50,23 +49,11 @@ const confirmedReservationCancellationFormSchema =
     )
   );
 
-const reservationCancellationStandardSchema = Schema.toStandardSchemaV1(
-  reservationCancellationFormSchema,
-  { parseOptions: { errors: "all" } }
-);
+type ReservationCancellationFormInput =
+  typeof reservationCancellationFormSchema.Encoded;
 
-const confirmedReservationCancellationStandardSchema =
-  Schema.toStandardSchemaV1(confirmedReservationCancellationFormSchema, {
-    parseOptions: { errors: "all" },
-  });
-
-type ReservationCancellationFormInput = StandardSchemaV1.InferInput<
-  typeof reservationCancellationStandardSchema
->;
-
-type ReservationCancellationFormValues = StandardSchemaV1.InferOutput<
-  typeof reservationCancellationStandardSchema
->;
+type ReservationCancellationFormValues =
+  typeof reservationCancellationFormSchema.Type;
 
 const reservationCancellationFormDefaults = {
   providerCredentialRemoved: false,
@@ -95,10 +82,10 @@ export function ReservationCancellation({
   >({
     defaultValues: reservationCancellationFormDefaults,
     mode: "onSubmit",
-    resolver: standardSchemaResolver(
+    resolver: effectSchemaResolver(
       requiresProviderCredentialRemoval
-        ? confirmedReservationCancellationStandardSchema
-        : reservationCancellationStandardSchema
+        ? confirmedReservationCancellationFormSchema
+        : reservationCancellationFormSchema
     ),
   });
   const [providerCredentialRemoved] = useWatch({

@@ -19,7 +19,7 @@ import {
   getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
-import { getAdministrationReservationDateRange } from "./reservation-date-range";
+import { getAdministrationReservationListDateRange } from "./reservation-date-range";
 import {
   getDotyposCustomerRouteId,
   requireDotyposCustomerRouteId,
@@ -53,7 +53,10 @@ const parseDate = (value: string | undefined) => {
 const parseStatus = (
   value: string | undefined
 ): AdministrationReservationListInput["status"] =>
-  value === "in_progress" || value === "complete" || value === "cancelled"
+  value === "in_progress" ||
+  value === "complete" ||
+  value === "cancelled" ||
+  value === "needs_refund"
     ? value
     : undefined;
 
@@ -108,6 +111,14 @@ export const loadAdministrationOverview = async () => {
   }).pipe(runAdministration("administration.overview"));
 };
 
+export const loadAdministrationRefundAttention = cache(async () => {
+  await authorizeAdministratorPage();
+  return Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.countReservationsNeedingRefund();
+  }).pipe(runAdministration("administration.refund-attention"));
+});
+
 export const loadAdministrationReservationOverview = async () => {
   return getAdministrationReservationOverview(
     await loadAdministrationOverviewSource()
@@ -120,18 +131,22 @@ const getAdministrationReservationListInput = async (
   await authorizeAdministratorPage();
   const params = await searchParams;
   const typeValue = firstParam(params.type);
-  const dateRange = getAdministrationReservationDateRange({
+  const customerId = getDotyposCustomerRouteId(firstParam(params.customerId));
+  const status = parseStatus(firstParam(params.status));
+  const dateRange = getAdministrationReservationListDateRange({
+    customerId,
     date: firstParam(params.date),
     from: firstParam(params.from),
+    status,
     to: firstParam(params.to),
   });
   return {
-    customerId: getDotyposCustomerRouteId(firstParam(params.customerId)),
+    customerId,
     ...dateRange,
     direction: parseSortDirection(firstParam(params.direction)),
     page: parsePage(firstParam(params.page)),
     sort: parseReservationSort(firstParam(params.sort)),
-    status: parseStatus(firstParam(params.status)),
+    status,
     type:
       typeValue === "cowork" ||
       typeValue === "meeting-room" ||

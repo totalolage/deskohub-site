@@ -1,7 +1,7 @@
 import type { AdministrationActorUsernameType } from "@deskohub/workspace-admin-api";
 import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { Suspense } from "react";
-import { approveCliAuthentication } from "@/features/admin-cli/actions";
+import { ApproveCliAuthenticationForm } from "@/features/admin-cli/approve-cli-authentication-form";
 import { loadCliAuthenticationApproval } from "@/features/admin-cli/page-data.server";
 import {
   AdministrationAlert,
@@ -10,7 +10,6 @@ import {
   formatAdministrationDateTime,
 } from "@/features/administration/components";
 import { AdministrationPanelLoading } from "@/features/administration/loading";
-import { Button } from "@/shared/components/ui/button";
 
 export default function CliAuthenticationApprovalPage({
   searchParams,
@@ -105,10 +104,7 @@ function AuthenticationRequestState({
             Approving as <strong>{username}</strong>.
           </p>
         </AdministrationAlert>
-        <form action={approveCliAuthentication}>
-          <input name="code" type="hidden" value={code} />
-          <Button type="submit">Approve this CLI</Button>
-        </form>
+        <ApproveCliAuthenticationForm code={code} />
       </>
     );
   }
