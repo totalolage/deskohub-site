@@ -386,17 +386,20 @@ export class WorkspaceReservationRepository extends Context.Service<
                   sql`select pg_advisory_xact_lock(${input.checkoutSessionLockKey.toString()}::bigint)`
                 );
 
-                const [existingAttempt] = yield* tx
-                  .select()
-                  .from(workspaceReservations)
-                  .where(
-                    inArray(
-                      workspaceReservations.checkoutAttemptKey,
-                      input.acceptedCheckoutAttemptKeys
+                const findAttemptRow = () =>
+                  tx
+                    .select()
+                    .from(workspaceReservations)
+                    .where(
+                      inArray(
+                        workspaceReservations.checkoutAttemptKey,
+                        input.acceptedCheckoutAttemptKeys
+                      )
                     )
-                  )
-                  .orderBy(desc(workspaceReservations.createdAt))
-                  .limit(1);
+                    .orderBy(desc(workspaceReservations.createdAt))
+                    .limit(1);
+
+                const [existingAttempt] = yield* findAttemptRow();
                 if (existingAttempt) {
                   return yield* decodeWorkspaceReservation(existingAttempt);
                 }
@@ -460,8 +463,14 @@ export class WorkspaceReservationRepository extends Context.Service<
                   return yield* decodeWorkspaceReservation(inserted);
                 }
 
-                // Supersession inserts its replacement without this lock, so
-                // it alone can win the session's current-row index here.
+                // Writers that skip this lock can still win a unique index
+                // here: a worker from before the lock may have stored this
+                // attempt, even if it is already cancelled, and supersession
+                // inserts its replacement as the session's current row.
+                const [conflictingAttempt] = yield* findAttemptRow();
+                if (conflictingAttempt) {
+                  return yield* decodeWorkspaceReservation(conflictingAttempt);
+                }
                 const [replacement] = yield* findCurrentSessionRow();
                 if (!replacement) {
                   return yield* Effect.die(

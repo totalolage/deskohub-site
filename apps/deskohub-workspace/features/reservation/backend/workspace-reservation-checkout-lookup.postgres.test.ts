@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { ConfigProvider, Effect, Layer, Schema } from "effect";
 import { type ReservationState, workspaceReservations } from "@/db/schema";
 import {
@@ -337,6 +338,19 @@ describe.skipIf(!postgresDatabase)(
       return rows;
     };
 
+    const pollUntilBlockedBy = async (pid: number | undefined) => {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const { rowCount } = await postgres.pool.query(
+          "select 1 from pg_stat_activity where $1::int = any(pg_blocking_pids(pid))",
+          [pid]
+        );
+        if (rowCount) return;
+        await Bun.sleep(20);
+      }
+      throw new Error("The draft insert never waited on the earlier worker.");
+    };
+
     // Vercel keeps finishing in-flight requests on the previous deployment
     // while this one serves new ones.
     test("creates one draft when an earlier worker submits the same attempt first", async () => {
@@ -384,6 +398,54 @@ describe.skipIf(!postgresDatabase)(
 
         expect(rows).toHaveLength(1);
         expect([draft.id, earlierId]).toEqual([rows[0]?.id, rows[0]?.id]);
+      }
+    });
+
+    test("returns an earlier worker's attempt that wins the insert after the draft lookup", async () => {
+      const submission = newSubmission();
+      const input = draftInput(submission, { keyRing });
+      const earlierId = workspaceReservationIdSchema.make(
+        `reservation-${crypto.randomUUID()}`
+      );
+      fixtureReservationIds.push(earlierId);
+
+      // The earlier worker's row stays uncommitted until the draft's insert
+      // waits on it, so the draft's lookups ran before the row existed.
+      const earlierWorker = await postgres.pool.connect();
+      try {
+        await earlierWorker.query("begin");
+        await drizzle({ client: earlierWorker })
+          .insert(workspaceReservations)
+          .values({
+            id: earlierId,
+            checkoutSessionKey: deriveRingKeyedCheckoutSessionKey(
+              keyRing,
+              submission.checkoutSessionId
+            ),
+            checkoutAttemptKey: deriveRingKeyedCheckoutAttemptKey(
+              keyRing,
+              submission
+            ),
+            reservationState: "cancelled",
+            paymentState: "not_started",
+            fulfillmentState: "not_started",
+            dotyposReservationId: `dotypos-${crypto.randomUUID()}` as never,
+            reservationCancelledAt: Temporal.Now.instant(),
+            ...draftDetails,
+          });
+        const { rows } = await earlierWorker.query<{ readonly pid: number }>(
+          "select pg_backend_pid()::int as pid"
+        );
+        const earlierWorkerPid = rows[0]?.pid;
+
+        const draft = reservations.createDraft(input).pipe(Effect.runPromise);
+        await pollUntilBlockedBy(earlierWorkerPid);
+        await earlierWorker.query("commit");
+
+        expect((await draft).id).toBe(earlierId);
+      } finally {
+        await earlierWorker.query("rollback").catch(() => {});
+        earlierWorker.release();
       }
     });
 
