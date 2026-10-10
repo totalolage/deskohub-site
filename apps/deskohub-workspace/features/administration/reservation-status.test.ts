@@ -161,6 +161,19 @@ describe("administration reservation status", () => {
     ).toEqual({ group: "attention", label: "Refund required" });
   });
 
+  test("clears the refund requirement once Nexi reports the refund", () => {
+    expect(
+      getAdministrationReservationStatus({
+        failureCode: "payment_abandoned_after_provider_cutoff",
+        fulfillmentState: "not_started",
+        latePayment: true,
+        paymentState: "expired",
+        refunded: true,
+        reservationState: "cancelled",
+      })
+    ).toEqual({ group: "cancelled", label: "Refunded" });
+  });
+
   test.each([
     ["pending", "Recovering payment"],
     ["processing", "Recovering payment"],
@@ -323,6 +336,23 @@ describe("administration reservation lifecycle", () => {
       currentStage: "cancelled",
       label: "Late payment — refund required",
       tone: "attention",
+    });
+  });
+
+  test("settles a refunded late payment as a neutral cancellation", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        latePayment: true,
+        paymentState: "expired",
+        refunded: true,
+        reservationState: "cancelled",
+      })
+    ).toEqual({
+      currentStage: "cancelled",
+      label: "Late payment refunded",
+      reachedStages: ["started", "held", "cancelled"],
+      tone: "neutral",
     });
   });
 

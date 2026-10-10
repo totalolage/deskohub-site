@@ -54,6 +54,7 @@ const makeOverview = () => ({
 let overview = makeOverview();
 let customerOverviewLoads = 0;
 let reservationOverviewLoads = 0;
+let refundAttentionLoads = 0;
 
 mock.module("@/features/administration/page-data.server", () => ({
   loadAdministrationOverview: () => {
@@ -63,6 +64,10 @@ mock.module("@/features/administration/page-data.server", () => ({
   loadAdministrationReservationOverview: () => {
     reservationOverviewLoads += 1;
     return Promise.resolve(overview);
+  },
+  loadAdministrationRefundAttention: () => {
+    refundAttentionLoads += 1;
+    return Promise.resolve(2);
   },
 }));
 
@@ -87,6 +92,7 @@ describe("AdminPage", () => {
     overview = makeOverview();
     customerOverviewLoads = 0;
     reservationOverviewLoads = 0;
+    refundAttentionLoads = 0;
   });
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
@@ -97,6 +103,36 @@ describe("AdminPage", () => {
 
     expect(reservationOverviewLoads).toBe(1);
     expect(customerOverviewLoads).toBe(1);
+    expect(refundAttentionLoads).toBe(1);
+  });
+
+  test("puts reservations needing a refund at the top of the overview", async () => {
+    const { RefundAttention } = await import(
+      "@/features/administration/refund-attention"
+    );
+    const view = render(await RefundAttention({ count: Promise.resolve(2) }));
+
+    expect(view.getByText("2 reservations need a refund.")).toBeDefined();
+    expect(
+      view.getByRole("link", { name: "Review refunds" }).getAttribute("href")
+    ).toBe("/admin/reservations?status=needs_refund");
+  });
+
+  test("uses the singular for one reservation needing a refund", async () => {
+    const { RefundAttention } = await import(
+      "@/features/administration/refund-attention"
+    );
+    const view = render(await RefundAttention({ count: Promise.resolve(1) }));
+
+    expect(view.getByText("1 reservation needs a refund.")).toBeDefined();
+  });
+
+  test("renders nothing when no reservation needs a refund", async () => {
+    const { RefundAttention } = await import(
+      "@/features/administration/refund-attention"
+    );
+
+    expect(await RefundAttention({ count: Promise.resolve(0) })).toBeNull();
   });
 
   test("links reservation activity to its inclusive start-date range", async () => {

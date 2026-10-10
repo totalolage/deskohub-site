@@ -65,6 +65,7 @@ AdministrationService.Live = Layer.succeed(AdministrationService, {
       overviewCalls += 1;
       return blockedOverview ?? Promise.resolve(customerOverview);
     }),
+  countReservationsNeedingRefund: unused,
   listReservations: unused,
   loadReservation: unused,
   loadReservationBreadcrumbLabel: unused,
