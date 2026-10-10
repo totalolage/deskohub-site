@@ -172,10 +172,7 @@ describe.skipIf(!postgresDatabase)(
       );
     });
 
-    test("attributes approved CLI authentication requests to the acting administrator", async () => {
-      const { approveCliAuthentication } = await import(
-        "@/features/admin-cli/actions"
-      );
+    const insertPendingRequestFixture = async () => {
       const code = await Effect.runPromise(randomSecret());
       const requestId = cliAuthenticationRequestIdSchema.make(
         crypto.randomUUID()
@@ -193,21 +190,93 @@ describe.skipIf(!postgresDatabase)(
         })
       );
       fixtureRequestIds.push(requestId);
+      return { code, requestId };
+    };
 
-      actAs("operator");
-      const error = await invokeRedirect(() =>
-        approveCliAuthentication(toFormData({ code }))
-      );
-      expect(error.digest).toContain("result=approved");
-
+    const loadRequestRow = async (id: CliAuthenticationRequestId) => {
       const [row] = await Effect.runPromise(
         postgres.db
           .select()
           .from(cliAuthenticationRequests)
-          .where(eq(cliAuthenticationRequests.id, requestId))
+          .where(eq(cliAuthenticationRequests.id, id))
       );
+      return row ?? null;
+    };
+
+    test("attributes approved CLI authentication requests to the acting administrator", async () => {
+      const { approveCliAuthentication } = await import(
+        "@/features/admin-cli/actions"
+      );
+      const { code, requestId } = await insertPendingRequestFixture();
+
+      actAs("operator");
+      const approvedNoEarlierThan = Temporal.Instant.fromEpochMilliseconds(
+        Date.now()
+      );
+      const error = await invokeRedirect(() =>
+        approveCliAuthentication(
+          toFormData({ code, lifetimeAmount: "2", lifetimeUnit: "weeks" })
+        )
+      );
+      expect(error.digest).toContain("result=approved");
+
+      const row = await loadRequestRow(requestId);
       expect(row?.approvedBy).toBe("operator");
       expect(row?.approvedAt).not.toBeNull();
+      expect(
+        row?.approvedAt &&
+          row.sessionExpiresAt?.equals(
+            row.approvedAt
+              .toZonedDateTimeISO("Europe/Prague")
+              .add({ weeks: 2 })
+              .toInstant()
+          )
+      ).toBe(true);
+      expect(
+        row?.approvedAt &&
+          Temporal.Instant.compare(row.approvedAt, approvedNoEarlierThan)
+      ).toBeGreaterThanOrEqual(0);
+    });
+
+    test("approves a session that never expires when the never-expire box is checked", async () => {
+      const { approveCliAuthentication } = await import(
+        "@/features/admin-cli/actions"
+      );
+      const { code, requestId } = await insertPendingRequestFixture();
+
+      actAs("operator");
+      const error = await invokeRedirect(() =>
+        approveCliAuthentication(toFormData({ code, neverExpire: "on" }))
+      );
+      expect(error.digest).toContain("result=approved");
+
+      const row = await loadRequestRow(requestId);
+      expect(row?.approvedAt).not.toBeNull();
+      expect(row?.sessionExpiresAt).toBeNull();
+    });
+
+    test("leaves the request pending when the session lifetime is invalid", async () => {
+      const { approveCliAuthentication } = await import(
+        "@/features/admin-cli/actions"
+      );
+      const { code, requestId } = await insertPendingRequestFixture();
+
+      actAs("operator");
+      const invalidLifetimes: ReadonlyArray<Record<string, string>> = [
+        {},
+        { lifetimeAmount: "0", lifetimeUnit: "days" },
+        { lifetimeAmount: "1.5", lifetimeUnit: "days" },
+        { lifetimeAmount: "1000", lifetimeUnit: "days" },
+        { lifetimeAmount: "3", lifetimeUnit: "decades" },
+      ];
+      for (const lifetime of invalidLifetimes) {
+        const error = await invokeRedirect(() =>
+          approveCliAuthentication(toFormData({ code, ...lifetime }))
+        );
+        expect(error.digest).toContain("result=error");
+      }
+
+      expect((await loadRequestRow(requestId))?.approvedAt).toBeNull();
     });
   }
 );

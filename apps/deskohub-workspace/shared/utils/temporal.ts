@@ -247,3 +247,13 @@ export const makeWholeHourInstantStringSchema = (timeZone: string) =>
       }
     })
   );
+
+export const addCalendarDuration = ({
+  instant,
+  duration,
+  timeZone,
+}: {
+  readonly instant: Temporal.Instant;
+  readonly duration: Temporal.DurationLike;
+  readonly timeZone: string;
+}) => instant.toZonedDateTimeISO(timeZone).add(duration).toInstant();

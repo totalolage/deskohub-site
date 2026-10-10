@@ -39,7 +39,9 @@ const sessionFixture = (
   buildTarget: "development",
   createdAt: "2026-09-01T10:00:00.000Z",
   lastUsedAt: "2026-09-01T10:05:00.000Z",
+  expiresAt: null,
   revokedAt: null,
+  status: "active",
   ...overrides,
 });
 
@@ -89,5 +91,34 @@ describe("CliSessionsTable", () => {
 
     const table = view.getByRole("table", { name: "CLI sessions" });
     expect(within(table).getByText("Unavailable")).toBeTruthy();
+  });
+
+  test("shows each session's expiry and marks elapsed sessions as expired", async () => {
+    const { CliSessionsTable } = await import("./cli-sessions-table");
+    const view = render(
+      <CliSessionsTable
+        sessions={[
+          sessionFixture({
+            id: CliSessionId.make("019f70bd-0131-7f30-9f8a-48e768f00292"),
+            clientName: "Office Mac",
+          }),
+          sessionFixture({
+            id: CliSessionId.make("019f70bd-0131-7f30-9f8a-48e768f00293"),
+            clientName: "Travel laptop",
+            expiresAt: "2026-09-02T10:00:00.000Z",
+            status: "expired",
+          }),
+        ]}
+      />
+    );
+
+    const table = view.getByRole("table", { name: "CLI sessions" });
+    const [, officeRow, travelRow] = within(table).getAllByRole("row");
+    expect(
+      within(table).getByRole("columnheader", { name: "Expires" })
+    ).toBeTruthy();
+    expect(within(officeRow as HTMLElement).getByText("Never")).toBeTruthy();
+    expect(within(officeRow as HTMLElement).getByText("Active")).toBeTruthy();
+    expect(within(travelRow as HTMLElement).getByText("Expired")).toBeTruthy();
   });
 });
