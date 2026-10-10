@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
 import { loadPostHogFeatureFlagDefinitions } from "@deskohub/posthog/feature-flags/management";
 import { Effect } from "effect";
 import { cacheLife } from "next/cache";
@@ -7,24 +8,31 @@ import { env } from "@/env";
 import { postHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
+  type PostHogFeatureFlagDefinitions,
   type PostHogFeatureFlagKey,
   postHogFeatureFlags,
 } from "../generated/contract";
 
-export async function areWorkspaceFeatureFlagsGlobal(
+type GlobalWorkspaceFeatureFlagValues =
+  PostHogFeatureFlagOverrides<PostHogFeatureFlagDefinitions>;
+
+/** Returns the requested values only when every requested flag is constant. */
+export async function getGlobalWorkspaceFeatureFlagValues(
   keys: readonly PostHogFeatureFlagKey[]
-) {
-  const values = await getGlobalWorkspaceFeatureFlagValues();
-  return keys.every((key) => Object.hasOwn(values, key));
+): Promise<GlobalWorkspaceFeatureFlagValues | undefined> {
+  const values = await classifyWorkspaceFeatureFlags();
+  if (!keys.every((key) => Object.hasOwn(values, key))) return undefined;
+
+  return Object.fromEntries(keys.map((key) => [key, values[key]]));
 }
 
 export async function getGlobalWorkspaceFeatureFlagValue(
   key: PostHogFeatureFlagKey
 ) {
-  return (await getGlobalWorkspaceFeatureFlagValues())[key];
+  return (await classifyWorkspaceFeatureFlags())[key];
 }
 
-async function getGlobalWorkspaceFeatureFlagValues() {
+async function classifyWorkspaceFeatureFlags(): Promise<GlobalWorkspaceFeatureFlagValues> {
   "use cache";
   cacheLife("publicContent");
 
