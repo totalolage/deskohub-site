@@ -57,13 +57,19 @@ export function CheckoutDiscountCodeForm({
     resolver: effectSchemaResolver(checkoutDiscountCodeFormSchema),
   });
   const { isSubmitting } = form.formState;
-  const previousDefaultCode = useRef(defaultCode);
+  const previousPayState = useRef({ defaultCode, payStateToken });
 
   useEffect(() => {
-    if (previousDefaultCode.current === defaultCode) return;
-    previousDefaultCode.current = defaultCode;
+    const previous = previousPayState.current;
+    if (
+      previous.defaultCode === defaultCode &&
+      previous.payStateToken === payStateToken
+    ) {
+      return;
+    }
+    previousPayState.current = { defaultCode, payStateToken };
     form.reset({ submittedCode: defaultCode ?? "" });
-  }, [defaultCode, form]);
+  }, [defaultCode, form, payStateToken]);
 
   if (appliedAdjustment) {
     return (

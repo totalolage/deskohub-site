@@ -174,6 +174,77 @@ describe("CheckoutDiscountCodeForm", () => {
     expect(view.getByRole("textbox")).toHaveProperty("value", "MYCODE");
   });
 
+  test("clears the ordinary code after referral acceptance refreshes pay state", async () => {
+    const { CheckoutDiscountCodeForm } = await import(
+      "./checkout-discount-code-form"
+    );
+    const view = render(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError={false}
+        locale="en-US"
+        payStateToken="before-referral"
+      />
+    );
+
+    const codeInput = view.getByRole("textbox");
+    fireEvent.input(codeInput, { target: { value: "ORDINARY10" } });
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.checkoutDiscountCodeApply({}, { locale: "en-US" }),
+      })
+    );
+
+    await waitFor(() => expect(applyDiscountCodeForm).toHaveBeenCalledTimes(1));
+    const [firstLocale, firstToken, firstFormData] =
+      applyDiscountCodeForm.mock.calls[0] ?? [];
+    expect(firstLocale).toBe("en-US");
+    expect(firstToken).toBe("before-referral");
+    expect(firstFormData?.get("submittedCode")).toBe("ORDINARY10");
+
+    view.rerender(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError={false}
+        locale="en-US"
+        payStateToken="after-referral"
+        referralApplied
+      />
+    );
+
+    await waitFor(() =>
+      expect(view.getByRole("textbox")).toHaveProperty("value", "")
+    );
+    expect(
+      view.getByText(m.checkoutReferralDiscountApplied({}, { locale: "en-US" }))
+    ).toBeDefined();
+    expect(
+      view.getByRole("button", {
+        name: m.checkoutDiscountCodeApply({}, { locale: "en-US" }),
+      })
+    ).toHaveProperty("disabled", false);
+    expect(
+      view.container.querySelector("form")?.getAttribute("action")
+    ).toBeTruthy();
+    expect(applyDiscountCodeForm).toHaveBeenCalledTimes(1);
+
+    fireEvent.input(view.getByRole("textbox"), {
+      target: { value: "NEXTCODE" },
+    });
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.checkoutDiscountCodeApply({}, { locale: "en-US" }),
+      })
+    );
+
+    await waitFor(() => expect(applyDiscountCodeForm).toHaveBeenCalledTimes(2));
+    const [nextLocale, nextToken, nextFormData] =
+      applyDiscountCodeForm.mock.calls[1] ?? [];
+    expect(nextLocale).toBe("en-US");
+    expect(nextToken).toBe("after-referral");
+    expect(nextFormData?.get("submittedCode")).toBe("NEXTCODE");
+  });
+
   test("shows the applied adjustment instead of a prefilled code field", async () => {
     const { CheckoutDiscountCodeForm } = await import(
       "./checkout-discount-code-form"
