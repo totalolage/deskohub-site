@@ -19,7 +19,7 @@ export default function CliSessionsPage({
       <h1 className="sr-only">CLI sessions</h1>
       <Suspense
         fallback={
-          <AdministrationCollectionLoading label="CLI sessions" columns={7} />
+          <AdministrationCollectionLoading label="CLI sessions" columns={8} />
         }
       >
         <CliSessionsContent searchParams={searchParams} />

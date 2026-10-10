@@ -193,6 +193,9 @@ export const CliSession = Schema.Struct({
   buildTarget: CliBuildTarget,
   createdAt: Schema.String,
   lastUsedAt: Schema.String,
+  expiresAt: Schema.NullOr(Schema.String).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
 });
 export type CliSession = typeof CliSession.Type;
 

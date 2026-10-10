@@ -406,6 +406,7 @@ describe("WorkspaceAdminApiClient", () => {
       buildTarget: "development",
       createdAt: expiresAt,
       lastUsedAt: expiresAt,
+      expiresAt: null,
     } as const;
     const booking = Schema.decodeUnknownSync(AdministrationBookingSummary)({
       id: "booking-1",

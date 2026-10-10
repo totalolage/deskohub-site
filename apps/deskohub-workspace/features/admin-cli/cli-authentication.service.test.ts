@@ -4,7 +4,9 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import {
   AdministrationActorUsername,
   type AdministrationActorUsernameType,
+  CliAuthenticationChallenge,
   CliAuthenticationCode,
+  type CliAuthenticationCodeType,
   CliAuthenticationVerifier,
   CliGrantRejected,
   CliGrantToken,
@@ -18,6 +20,7 @@ import {
 import { NodeCrypto } from "@effect/platform-node";
 import { eq, inArray } from "drizzle-orm";
 import { Effect, Layer } from "effect";
+import { TestClock } from "effect/testing";
 import { cliAuthenticationRequests, cliSessions } from "@/db/schema";
 import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 import { cliAuthenticationRequestIdSchema } from "@/features/admin-cli/cli-identifiers";
@@ -27,6 +30,7 @@ import {
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { CliAuthentication } from "./cli-authentication.service";
+import { type CliSessionLifetime, cliSessionLifetimeSchema } from "./contracts";
 
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -351,7 +355,11 @@ describe.skipIf(!postgresDatabase)(
       );
 
       const approved = await Effect.runPromise(
-        authentication.approve({ approvedBy: alice, code: started.code })
+        authentication.approve({
+          approvedBy: alice,
+          code: started.code,
+          sessionLifetime: cliSessionLifetimeSchema.cases.Never.make({}),
+        })
       );
       expect(approved.state).toBe("approved");
 
@@ -386,6 +394,188 @@ describe.skipIf(!postgresDatabase)(
         authentication.authenticateSession(`Bearer ${granted.accessToken}`)
       );
       expect(authenticated.id).toBe(granted.session.id);
+    });
+
+    const authenticateThroughApproval = async (
+      sessionLifetime: CliSessionLifetime
+    ) => {
+      const verifier = await Effect.runPromise(
+        makeCliAuthenticationVerifier.pipe(Effect.provide(NodeCrypto.layer))
+      );
+      const challenge = await Effect.runPromise(
+        makeCliAuthenticationChallenge(verifier).pipe(
+          Effect.provide(NodeCrypto.layer)
+        )
+      );
+      const started = await Effect.runPromise(
+        authentication.start({
+          challenge,
+          clientName: "Expiring CLI",
+          cliVersion: "1.0.0",
+          buildTarget: "development",
+        })
+      );
+      fixtureCodeHashes.push(
+        await Effect.runPromise(digestSecret(started.code))
+      );
+      await Effect.runPromise(
+        authentication.approve({
+          approvedBy: alice,
+          code: started.code,
+          sessionLifetime,
+        })
+      );
+      const status = await Effect.runPromise(
+        authentication.status(started.code)
+      );
+      if (status.authStatus !== "approved") {
+        throw new Error(`Unexpected status ${status.authStatus}`);
+      }
+      const granted = await Effect.runPromise(
+        exchangeGrant({
+          code: started.code,
+          grantToken: status.grantToken,
+          verifier,
+        })
+      );
+      fixtureSessionIds.push(granted.session.id);
+      return { code: started.code, granted };
+    };
+
+    test("issues sessions that never expire when approved without a lifetime", async () => {
+      const { granted } = await authenticateThroughApproval(
+        cliSessionLifetimeSchema.cases.Never.make({})
+      );
+
+      expect(granted.session.expiresAt).toBeNull();
+      expect((await loadSessionRow(granted.session.id))?.expiresAt).toBeNull();
+    });
+
+    // 24 Oct 14:00 CEST plus one month crosses the 25 Oct switch to CET and
+    // keeps the local wall-clock time; 31 Oct plus one month clamps to the
+    // last day of November.
+    test.each([
+      ["2026-10-24T12:00:00.000Z", "2026-11-24T13:00:00Z"],
+      ["2026-10-31T12:00:00.000Z", "2026-11-30T12:00:00Z"],
+    ])(
+      "expires sessions one Prague calendar month after approval at %s",
+      async (approvedAtIso, expectedExpiry) => {
+        const approvedAt = Temporal.Instant.from(approvedAtIso);
+        const lifetime = cliSessionLifetimeSchema.cases.Duration.make({
+          amount: 1,
+          unit: "months",
+        });
+        const approve = (code: CliAuthenticationCodeType) =>
+          Effect.gen(function* () {
+            yield* TestClock.setTime(approvedAt.epochMilliseconds);
+            return yield* authentication.approve({
+              approvedBy: alice,
+              code,
+              sessionLifetime: lifetime,
+            });
+          }).pipe(Effect.provide(TestClock.layer()));
+        const started = await Effect.runPromise(
+          authentication.start({
+            challenge: CliAuthenticationChallenge.make(
+              await Effect.runPromise(newSecret())
+            ),
+            clientName: "Calendar CLI",
+            cliVersion: "1.0.0",
+            buildTarget: "development",
+          })
+        );
+        fixtureCodeHashes.push(
+          await Effect.runPromise(digestSecret(started.code))
+        );
+        await Effect.runPromise(
+          postgres.db
+            .update(cliAuthenticationRequests)
+            .set({
+              createdAt: approvedAt.subtract({ minutes: 1 }),
+              expiresAt: approvedAt.add({ minutes: 4 }),
+            })
+            .where(
+              eq(
+                cliAuthenticationRequests.codeHash,
+                await Effect.runPromise(digestSecret(started.code))
+              )
+            )
+        );
+        await Effect.runPromise(approve(started.code));
+
+        const [request] = await Effect.runPromise(
+          postgres.db
+            .select()
+            .from(cliAuthenticationRequests)
+            .where(
+              eq(
+                cliAuthenticationRequests.codeHash,
+                await Effect.runPromise(digestSecret(started.code))
+              )
+            )
+        );
+        expect(request?.sessionExpiresAt?.toString()).toBe(expectedExpiry);
+      }
+    );
+
+    test("rejects a session whose expiry has passed and reports it as expired", async () => {
+      const approvedNoEarlierThan = Temporal.Instant.fromEpochMilliseconds(
+        Date.now()
+      );
+      const { code, granted } = await authenticateThroughApproval(
+        cliSessionLifetimeSchema.cases.Duration.make({
+          amount: 1,
+          unit: "hours",
+        })
+      );
+      const bearer = `Bearer ${granted.accessToken}`;
+      const now = Temporal.Instant.fromEpochMilliseconds(Date.now());
+      const expiresAt = Temporal.Instant.from(granted.session.expiresAt ?? "");
+      expect(
+        Temporal.Instant.compare(
+          expiresAt,
+          approvedNoEarlierThan.add({ hours: 1 })
+        )
+      ).toBeGreaterThanOrEqual(0);
+      expect(
+        Temporal.Instant.compare(expiresAt, now.add({ hours: 1 }))
+      ).toBeLessThanOrEqual(0);
+
+      const active = await Effect.runPromise(
+        authentication.authenticateSession(bearer)
+      );
+      expect(active.id).toBe(granted.session.id);
+
+      await Effect.runPromise(
+        postgres.db
+          .update(cliSessions)
+          .set({
+            createdAt: now.subtract({ hours: 2 }),
+            lastUsedAt: now.subtract({ hours: 2 }),
+            expiresAt: now.subtract({ seconds: 1 }),
+          })
+          .where(eq(cliSessions.id, granted.session.id))
+      );
+
+      const expiredError = await Effect.runPromise(
+        Effect.flip(authentication.authenticateSession(bearer))
+      );
+      expect(expiredError).toBeInstanceOf(CliSessionUnauthorized);
+      expect(
+        (await loadSessionRow(granted.session.id))?.lastUsedAt.equals(
+          now.subtract({ hours: 2 })
+        )
+      ).toBe(true);
+
+      const listed = await Effect.runPromise(
+        authentication.listSessions(alice)
+      );
+      expect(
+        listed.find((session) => session.id === granted.session.id)?.status
+      ).toBe("expired");
+      expect(
+        (await Effect.runPromise(authentication.status(code))).authStatus
+      ).toBe("expired");
     });
   }
 );

@@ -7,7 +7,7 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -69,6 +69,44 @@ describe("CliAuthenticationApprovalPage", () => {
     expect(view.getByText("operator")).toBeTruthy();
     expect(view.getByText("Office Mac")).toBeTruthy();
     expect(view.getByRole("button", { name: "Approve this CLI" })).toBeTruthy();
+  });
+
+  test("lets the administrator choose a session lifetime or never expire", async () => {
+    const { CliAuthenticationRequest } = await import("./page");
+    const view = render(
+      await CliAuthenticationRequest({
+        searchParams: Promise.resolve({ code: "pending-code" }),
+      })
+    );
+
+    const amount = view.getByLabelText("Duration") as HTMLInputElement;
+    const unit = view.getByRole("combobox", { name: "Unit" });
+    expect(amount.value).toBe("30");
+    expect(unit.textContent).toBe("Days");
+    expect(amount.disabled).toBe(false);
+
+    fireEvent.click(view.getByRole("checkbox", { name: "Never expire" }));
+
+    expect(amount.disabled).toBe(true);
+    expect(unit.hasAttribute("disabled")).toBe(true);
+  });
+
+  test("explains a failed approval while the request is still pending", async () => {
+    const { CliAuthenticationRequest } = await import("./page");
+    const view = render(
+      await CliAuthenticationRequest({
+        searchParams: Promise.resolve({
+          code: "pending-code",
+          result: "error",
+        }),
+      })
+    );
+
+    expect(
+      view.getByText(
+        "The CLI could not be approved. Check the session duration and try again."
+      )
+    ).toBeTruthy();
   });
 
   test("does not imply approval once the request reaches a terminal state", async () => {

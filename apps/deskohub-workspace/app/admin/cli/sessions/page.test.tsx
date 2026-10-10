@@ -41,7 +41,9 @@ const sessionFixture = (
   buildTarget: "development",
   createdAt: "2026-09-01T10:00:00.000Z",
   lastUsedAt: "2026-09-01T10:05:00.000Z",
+  expiresAt: null,
   revokedAt: null,
+  status: "active",
   ...overrides,
 });
 

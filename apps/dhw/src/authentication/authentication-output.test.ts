@@ -21,6 +21,7 @@ test("keeps auth --json stdout to one final JSON document", async () => {
     buildTarget: "development",
     createdAt: "2026-08-10T10:00:00.000Z",
     lastUsedAt: "2026-08-10T10:00:00.000Z",
+    expiresAt: null,
   } as const;
 
   await Effect.gen(function* () {
@@ -46,4 +47,39 @@ test("keeps auth --json stdout to one final JSON document", async () => {
   });
   expect(stderr).toHaveLength(1);
   expect(stderr[0]).toContain(approvalUrl);
+});
+
+test("reports the granted session expiry in human output", async () => {
+  const stdout: Array<string> = [];
+  const session = {
+    id: Schema.decodeUnknownSync(CliSessionId)(
+      "01980000-0000-7000-8000-000000000000"
+    ),
+    approvedBy: null,
+    clientName: "dhw on test-machine",
+    cliVersion: "1.0.0+development",
+    buildTarget: "development",
+    createdAt: "2026-08-10T10:00:00.000Z",
+    lastUsedAt: "2026-08-10T10:00:00.000Z",
+    expiresAt: null,
+  } as const;
+
+  await Effect.gen(function* () {
+    yield* reportAuthenticationGranted({ json: false, session });
+    yield* reportAuthenticationGranted({
+      json: false,
+      session: { ...session, expiresAt: "2026-09-10T10:00:00.000Z" },
+    });
+  }).pipe(
+    Effect.updateService(Console.Console, (service) => ({
+      ...service,
+      log: (...args) => stdout.push(args.join(" ")),
+    })),
+    Effect.runPromise
+  );
+
+  expect(stdout).toEqual([
+    "Authenticated as dhw on test-machine. This session does not expire.",
+    "Authenticated as dhw on test-machine. This session expires at 2026-09-10T10:00:00.000Z.",
+  ]);
 });
