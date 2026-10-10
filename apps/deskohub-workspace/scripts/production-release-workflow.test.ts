@@ -139,6 +139,10 @@ const stagedDeploymentPayload = () => ({
       path: "/api/cron/workspace/auth-cleanup",
       schedule: "17 3 * * *",
     },
+    {
+      path: "/api/cron/workspace/payment-refunds",
+      schedule: "37 4 * * *",
+    },
   ],
 });
 
@@ -150,6 +154,10 @@ const requiredWorkspaceCronDefinitions = [
   {
     path: "/api/cron/workspace/auth-cleanup",
     schedule: "17 3 * * *",
+  },
+  {
+    path: "/api/cron/workspace/payment-refunds",
+    schedule: "37 4 * * *",
   },
 ] as const;
 
@@ -888,7 +896,20 @@ describe("deploy-workspace-production workflow", () => {
     expect(rawWorkflow.includes("BETTER_AUTH")).toBe(false);
     const jobEnv = deployJob.env as Record<string, string>;
     expect(jobEnv.VERCEL_TOKEN).toBe(`\${{ secrets.VERCEL_TOKEN }}`);
-    expect(jobEnv.NEON_API_KEY).toBe(`\${{ secrets.NEON_API_KEY }}`);
+  });
+
+  test("exposes the Neon API key only to the production migration", () => {
+    // Dependency install and the Next build run third-party code, so the
+    // database-admin credential stays scoped to the one step that uses it.
+    const jobEnv = deployJob.env as Record<string, string>;
+    expect(Object.keys(jobEnv)).not.toContain("NEON_API_KEY");
+    expect(stepByName("Migrate production database").env?.NEON_API_KEY).toBe(
+      `\${{ secrets.NEON_API_KEY }}`
+    );
+    const keyOutsideMigration = allSteps
+      .filter((step) => step.name !== "Migrate production database")
+      .some((step) => JSON.stringify(step.env ?? {}).includes("NEON_API_KEY"));
+    expect(keyOutsideMigration).toBe(false);
   });
 
   test("never sends a production magic link as a release probe", () => {

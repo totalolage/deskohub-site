@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -34,6 +34,7 @@
     "./lint/no-repeated-computed-conditional-operand.grit",
     "./lint/no-runtime-typeof.grit",
     "./lint/no-shape-in-symbol-names.grit",
+    "./lint/no-synchronous-subprocess.grit",
     "./lint/no-throw-in-workspace-effect-modules.grit",
     "./lint/no-unknown-parameters.grit",
     "./lint/no-unknown-type-aliases.grit",
@@ -46,7 +47,7 @@
   ],
   "linter": {
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "correctness": {
         "noNestedComponentDefinitions": "off"
       },

@@ -21,6 +21,7 @@ import {
   resolveProductionRollbackTarget,
   verifyCanonicalAliasServes,
 } from "./production-release";
+import { runCommand } from "./shared/command";
 
 type VercelApiPayload =
   | {
@@ -613,7 +614,7 @@ describe("workspace production release checks", () => {
     expect(await Bun.file(outputFile).text()).toBe("");
   });
 
-  test("rolls back with the Vercel rollback operation instead of promoting", () => {
+  test("rolls back with the Vercel rollback operation instead of promoting", async () => {
     const scriptPath = fileURLToPath(
       new URL("./production-release.ts", import.meta.url)
     );
@@ -626,8 +627,8 @@ describe("workspace production release checks", () => {
       { mode: 0o755 }
     );
 
-    Bun.spawnSync({
-      cmd: [
+    await runCommand(
+      [
         "timeout",
         "30",
         process.execPath,
@@ -636,18 +637,18 @@ describe("workspace production release checks", () => {
         "--url",
         "https://staged.vercel.app",
       ],
-      cwd: workspaceRoot,
-      env: {
-        ...process.env,
-        PATH: `${fakeBin}:${process.env.PATH}`,
-        RECORD_FILE: recordFile,
-        VERCEL_TOKEN: "synthetic-token",
-        VERCEL_PROJECT_ID: "synthetic-project",
-        HTTPS_PROXY: "http://127.0.0.1:9",
-      },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+      {
+        cwd: workspaceRoot,
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          RECORD_FILE: recordFile,
+          VERCEL_TOKEN: "synthetic-token",
+          VERCEL_PROJECT_ID: "synthetic-project",
+          HTTPS_PROXY: "http://127.0.0.1:9",
+        },
+      }
+    );
 
     // The rollback command shells out through bunx; the invocation record is
     // the observable command construction.
@@ -715,6 +716,10 @@ describe("workspace production release checks", () => {
               {
                 path: "/api/cron/workspace/auth-cleanup",
                 schedule: "17 3 * * *",
+              },
+              {
+                path: "/api/cron/workspace/payment-refunds",
+                schedule: "37 4 * * *",
               },
             ],
           })
@@ -877,7 +882,7 @@ describe("workspace production release checks", () => {
     ).toBe(true);
   });
 
-  test("requests the promotion through the primary Vercel API, not a CLI wait", () => {
+  test("requests the promotion through the primary Vercel API, not a CLI wait", async () => {
     const scriptPath = fileURLToPath(
       new URL("./production-release.ts", import.meta.url)
     );
@@ -890,8 +895,8 @@ describe("workspace production release checks", () => {
       { mode: 0o755 }
     );
 
-    Bun.spawnSync({
-      cmd: [
+    await runCommand(
+      [
         "timeout",
         "30",
         process.execPath,
@@ -900,18 +905,18 @@ describe("workspace production release checks", () => {
         "--url",
         "https://staged.vercel.app",
       ],
-      cwd: workspaceRoot,
-      env: {
-        ...process.env,
-        PATH: `${fakeBin}:${process.env.PATH}`,
-        RECORD_FILE: recordFile,
-        VERCEL_TOKEN: "synthetic-token",
-        VERCEL_PROJECT_ID: "synthetic-project",
-        HTTPS_PROXY: "http://127.0.0.1:9",
-      },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+      {
+        cwd: workspaceRoot,
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          RECORD_FILE: recordFile,
+          VERCEL_TOKEN: "synthetic-token",
+          VERCEL_PROJECT_ID: "synthetic-project",
+          HTTPS_PROXY: "http://127.0.0.1:9",
+        },
+      }
+    );
 
     // Promotion must go through the REST API (verified in-process above);
     // the CLI subprocess is never spawned for promotion.
@@ -1338,7 +1343,7 @@ describe("workspace production release checks", () => {
     ).rejects.toThrow("Rollback verification failed");
   });
 
-  test("validates both staged cron definitions without consulting the live baseline", async () => {
+  test("validates every staged cron definition without consulting the live baseline", async () => {
     const requests: URL[] = [];
     mockGlobalFetch((input) => {
       const url = new URL(input.toString());
@@ -1374,6 +1379,10 @@ describe("workspace production release checks", () => {
             {
               path: "/api/cron/workspace/auth-cleanup",
               schedule: "17 3 * * *",
+            },
+            {
+              path: "/api/cron/workspace/payment-refunds",
+              schedule: "37 4 * * *",
             },
           ],
         })
@@ -1419,6 +1428,10 @@ describe("workspace production release checks", () => {
               {
                 path: "/api/cron/workspace/auth-cleanup",
                 schedule: "17 3 * * *",
+              },
+              {
+                path: "/api/cron/workspace/payment-refunds",
+                schedule: "37 4 * * *",
               },
             ],
           })
@@ -1543,6 +1556,10 @@ describe("workspace production release checks", () => {
               path: "/api/cron/workspace/auth-cleanup",
               schedule: "17 3 * * *",
             },
+            {
+              path: "/api/cron/workspace/payment-refunds",
+              schedule: "37 4 * * *",
+            },
           ],
         })
       )
@@ -1581,6 +1598,10 @@ describe("workspace production release checks", () => {
                   {
                     path: "/api/cron/workspace/auth-cleanup",
                     schedule: "17 3 * * *",
+                  },
+                  {
+                    path: "/api/cron/workspace/payment-refunds",
+                    schedule: "37 4 * * *",
                   },
                 ]
               : [
@@ -1768,6 +1789,10 @@ describe("workspace production release checks", () => {
               {
                 path: "/api/cron/workspace/auth-cleanup",
                 schedule: "17 3 * * *",
+              },
+              {
+                path: "/api/cron/workspace/payment-refunds",
+                schedule: "37 4 * * *",
               },
             ],
           },

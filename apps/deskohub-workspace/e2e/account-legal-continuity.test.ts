@@ -473,8 +473,6 @@ const writeFixture = async (
   const fixtureFiles: Readonly<Record<string, string>> = {
     "app/[locale]/(full-header)/account/@modal/default.tsx": nullModalPage,
     "app/[locale]/(full-header)/account/@modal/page.tsx": nullModalPage,
-    "app/[locale]/(full-header)/account/@modal/[...not-found]/page.tsx":
-      nullModalPage,
     "app/[locale]/(full-header)/account/page.tsx": privatePage,
     ...(realCookieConsent
       ? {
@@ -789,6 +787,28 @@ const isTargetRscRequest = (
     : url.searchParams.get("section") === expectedSection;
 };
 
+const heldRscFetchAttempts = 3;
+
+// The harness forwards the held navigation through Playwright's own HTTP
+// client. A transport failure there (for example a reset keep-alive socket
+// to the dev server) aborts the browser request, and Next falls back to a
+// document navigation that discards the captured shell references. Retry
+// this idempotent RSC GET, and surface the transport error if it persists.
+const fetchHeldRscResponse = async (route: Route) => {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= heldRscFetchAttempts; attempt += 1) {
+    try {
+      return await route.fetch();
+    } catch (error) {
+      lastError = error;
+      await Bun.sleep(100 * attempt);
+    }
+  }
+  throw new Error("held RSC navigation could not be forwarded", {
+    cause: lastError,
+  });
+};
+
 const holdRscNavigation = async (
   page: Page,
   expectedPathname: string,
@@ -807,8 +827,8 @@ const holdRscNavigation = async (
 
     const responseWork = (async () => {
       try {
+        const response = await fetchHeldRscResponse(route);
         intercepted.resolve();
-        const response = await route.fetch();
         await release.promise;
         await route.fulfill({ response });
       } catch (error) {

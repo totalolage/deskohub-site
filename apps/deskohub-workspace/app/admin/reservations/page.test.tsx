@@ -73,6 +73,7 @@ let reservationPageInput:
   | undefined;
 
 mock.module("@/features/administration/page-data.server", () => ({
+  loadAdministrationRefundAttention: () => Promise.resolve(3),
   loadAdministrationReservations: (searchParams: SearchParams) => {
     receivedReservationSearchParams = searchParams;
     return Promise.resolve(reservationPage);
@@ -100,7 +101,7 @@ describe("ReservationsAdministrationPage", () => {
   });
   afterAll(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    unregisterWorkspaceComponentTestEnv();
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("shows the reservation count as a compact accessible badge", async () => {
@@ -140,7 +141,7 @@ describe("ReservationsAdministrationPage", () => {
         searchParams: Promise.resolve({}),
       }) as ReactElement<{ readonly children: ReactNode }>;
       const pageChildren = page.props.children as readonly ReactNode[];
-      const toolbar = pageChildren[1] as ReactElement<{
+      const toolbar = pageChildren[2] as ReactElement<{
         readonly filters: ReactElement<{ readonly children: ReactElement }>;
       }>;
       const filterLeaf = toolbar.props.filters.props.children;
@@ -160,6 +161,25 @@ describe("ReservationsAdministrationPage", () => {
     }
 
     expect(nowReadCount).toBeGreaterThan(0);
+  });
+
+  test("offers the refund work queue as a status filter", async () => {
+    reservationPage = {
+      ...defaultReservationPage,
+      input: { status: "needs_refund" },
+    };
+    const { ReservationsAdministrationContent } = await import("./page");
+    const view = render(
+      await ReservationsAdministrationContent({
+        searchParams: Promise.resolve({ status: "needs_refund" }),
+      })
+    );
+
+    const status = view.getByRole("combobox", { name: "Deskohub status" });
+    expect(
+      within(status).getByRole("option", { name: "Needs refund" })
+    ).toBeDefined();
+    expect((status as HTMLSelectElement).value).toBe("needs_refund");
   });
 
   test("preserves server sorting while moving across reservation pages", async () => {

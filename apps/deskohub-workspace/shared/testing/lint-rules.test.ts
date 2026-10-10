@@ -3,10 +3,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runCommand } from "@/scripts/shared/command";
 
 const repositoryRoot = fileURLToPath(new URL("../../../..", import.meta.url));
 const fixtureRoot = mkdtempSync(join(tmpdir(), "deskohub-lint-rules-"));
-const decoder = new TextDecoder();
 const config = join(fixtureRoot, "biome.json");
 const unlimited = "--max-diagnostics=none";
 
@@ -14,6 +14,7 @@ const unlimited = "--max-diagnostics=none";
 writeFileSync(config, JSON.stringify({
   linter: { enabled: true },
   plugins: [
+    join(repositoryRoot, "lint", "no-synchronous-subprocess.grit"),
     join(repositoryRoot, "lint", "no-wildcard-reexport.grit"),
     join(repositoryRoot, "lint", "prefer-effect-fn.grit"),
     join(repositoryRoot, "lint", "prefer-effect-value.grit"),
@@ -25,12 +26,7 @@ const lintModule = (module: string, source: string) => {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, source);
   const args = ["lint", path, "--config-path", config, unlimited];
-  return Bun.spawnSync({
-    cmd: ["bunx", "biome", ...args],
-    cwd: repositoryRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  return runCommand(["bunx", "biome", ...args], { cwd: repositoryRoot });
 };
 
 type Row = readonly [string, string, boolean, string?];
@@ -245,25 +241,44 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["permits modules outside Workspace", tracedLazyValue("sync(() => headers())"), false, "apps/dhw/src/load-value.ts"],
     ],
   },
+  {
+    name: "no-synchronous-subprocess", diagnostic: "Run subprocesses with runCommand or commandOutput",
+    module: "apps/deskohub-workspace/scripts/probe.test.ts",
+    cases: [
+      ["rejects Bun.spawnSync", 'Bun.spawnSync({ cmd: ["git", "status"] });\n', true],
+      ["rejects a namespaced child_process spawnSync", 'import childProcess from "node:child_process";\nchildProcess.spawnSync("git", ["status"]);\n', true],
+      ["rejects an imported execSync", 'import { execSync } from "node:child_process";\nexecSync("git status");\n', true],
+      ["rejects an imported execFileSync", 'import { execFileSync } from "node:child_process";\nexecFileSync("git", ["status"]);\n', true],
+      ["rejects synchronous spawns outside tests", 'import { spawnSync } from "node:child_process";\nspawnSync("git", ["status"]);\n', true, "apps/deskohub-workspace/scripts/probe.ts"],
+      ["rejects a destructured Bun alias", 'const { spawnSync: run } = Bun;\nrun({ cmd: ["git", "status"] });\n', true],
+      ["rejects an aliased child_process import", 'import { execSync as run } from "node:child_process";\nrun("git status");\n', true],
+      ["rejects an aliased execFileSync import", 'import { execFileSync as run } from "child_process";\nrun("git", ["status"]);\n', true],
+      ["rejects passing Bun.spawnSync as a value", 'const run = Bun.spawnSync;\nrun({ cmd: ["git", "status"] });\n', true],
+      ["permits unrelated names containing Sync", 'const syncSpawnSummary = "spawned";\nvoid syncSpawnSummary;\n', false],
+      ["permits asynchronous Bun.spawn", 'const child = Bun.spawn(["git", "status"]);\nawait child.exited;\n', false],
+      ["permits the shared command runner", 'import { runCommand } from "./shared/command";\nawait runCommand(["git", "status"]);\n', false],
+      ["permits modules outside Workspace", 'Bun.spawnSync({ cmd: ["git", "status"] });\n', false, "apps/dhw/src/probe.ts"],
+    ],
+  },
 ];
 
 for (const { name, diagnostic, module, cases } of rules) {
   for (const [behavior, source, flagged, override] of cases) {
-    test(`${name} ${behavior}`, () => {
-      const result = lintModule(override ?? module, source);
-      const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+    test(`${name} ${behavior}`, async () => {
+      const result = await lintModule(override ?? module, source);
+      const output = `${result.stdout}${result.stderr}`;
       expect(output.includes(diagnostic)).toBe(flagged);
       expect(result.exitCode).toBe(flagged ? 1 : 0);
     });
   }
 }
 
-test("prefer-effect-fn emits exactly one diagnostic for a named Effect.fn arrow with three trailing transforms", () => {
-  const result = lintModule(
+test("prefer-effect-fn emits exactly one diagnostic for a named Effect.fn arrow with three trailing transforms", async () => {
+  const result = await lintModule(
     "apps/deskohub-workspace/features/reservation/load-reservation.ts",
     traced(gen, threeTransforms)
   );
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
   expect(
     output.split("Define Effect generator functions with Effect.fn").length - 1
   ).toBe(1);

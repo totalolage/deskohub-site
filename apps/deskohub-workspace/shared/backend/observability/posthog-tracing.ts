@@ -5,6 +5,7 @@ import {
   BatchSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { createCensoredOtelSpanExporter } from "../logging/censorship";
+import { createWorkspaceSpanRedactors } from "./span-redaction";
 import { workspaceServiceResourceAttributes } from "./workspace-service";
 
 const POSTHOG_TRACES_PATH = "/i/v1/traces";
@@ -47,6 +48,7 @@ export function createPostHogTracerProvider({
       "service.version": serviceVersion,
     }),
     spanProcessors: [
+      ...createWorkspaceSpanRedactors(),
       new BatchSpanProcessor(
         createCensoredOtelSpanExporter(
           new OTLPTraceExporter({

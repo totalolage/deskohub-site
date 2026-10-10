@@ -8,9 +8,18 @@
         "app/**/*.{ts,tsx}",
         "**/*.test.{ts,tsx}",
         "**/*.pw.ts",
+        "**/*.typecheck.ts",
+        "**/*.rsc-fixture.ts",
+        "**/*-rsc-fixture.ts",
+        "**/*.browser-harness.tsx",
         "**/drizzle.config.ts",
+        // drizzle.config.ts files load their schema by path, not by import.
+        "e2e/coordination/schema.ts",
+        "e2e/account/marketing-document-hash.config.ts",
         "env.ts",
-        "scripts/*.ts",
+        "scripts/**/*.{ts,tsx}",
+        // Bundled by path for browser-rendered test fixtures.
+        "shared/testing/posthog-identity-browser-fixture.tsx",
         "types/*.d.ts"
       ],
       // drizzle.config.ts decodes DATABASE_URL at module load, so the plugin cannot

@@ -7,7 +7,7 @@ import { setBoardgameTestEnv } from "@/shared/testing/boardgame-test-env";
 setBoardgameTestEnv();
 mock.module("server-only", () => ({}));
 
-const searchWithTags = mock<ICloudinaryService["searchWithTags"]>(() =>
+const listTaggedAssets = mock<ICloudinaryService["listTaggedAssets"]>(() =>
   Effect.succeed([])
 );
 
@@ -17,7 +17,7 @@ beforeAll(async () => {
   const { CloudinaryService } = await import("@deskohub/cloudinary/server");
 
   mock.module("@/features/gallery/backend/cloudinary.service", () => ({
-    GalleryCloudinaryLayer: Layer.mock(CloudinaryService, { searchWithTags }),
+    GalleryCloudinaryLayer: Layer.mock(CloudinaryService, { listTaggedAssets }),
   }));
 
   ({ getCloudinaryImagesEffect } = await import(
@@ -26,8 +26,8 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  searchWithTags.mockClear();
-  searchWithTags.mockImplementation(() => Effect.succeed([]));
+  listTaggedAssets.mockClear();
+  listTaggedAssets.mockImplementation(() => Effect.succeed([]));
 });
 
 test("keeps normalized gallery tags and result limits", async () => {
@@ -36,7 +36,7 @@ test("keeps normalized gallery tags and result limits", async () => {
   const assets = await Effect.runPromise(getCloudinaryImagesEffect(tags, 7));
 
   expect(assets).toEqual([]);
-  expect(searchWithTags).toHaveBeenCalledWith(tags, { maxResults: 7 });
+  expect(listTaggedAssets).toHaveBeenCalledWith(tags, { maxResults: 7 });
 });
 
 test("returns an empty gallery without logging provider error data", async () => {
@@ -51,7 +51,7 @@ test("returns an empty gallery without logging provider error data", async () =>
     message: sentinels[0]!,
     expression: `${sentinels[1]} ${sentinels[2]} ${sentinels[3]}`,
   });
-  searchWithTags.mockImplementation(() => Effect.fail(error));
+  listTaggedAssets.mockImplementation(() => Effect.fail(error));
 
   const logRecords: {
     readonly annotations: Record<string, unknown>;

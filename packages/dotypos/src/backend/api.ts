@@ -29,6 +29,8 @@ import {
 
 interface IDotyposAccessToken {
   readonly get: Effect.Effect<string, ExternalAPIError | NetworkError>;
+  /** Forgets a cached token that Dotypos no longer accepts. */
+  readonly invalidate: Effect.Effect<void>;
 }
 
 interface IDotyposGeneratedClient {
@@ -89,7 +91,10 @@ export class DotyposAccessToken extends Context.Service<
         }
       );
 
-      return { get: Cache.get(tokenCache, "access-token") };
+      return {
+        get: Cache.get(tokenCache, "access-token"),
+        invalidate: Cache.invalidate(tokenCache, "access-token"),
+      };
     })
   );
 }
@@ -115,6 +120,12 @@ export class DotyposGeneratedClient extends Context.Service<
                 })
               )
             )
+          )
+        ),
+        HttpClient.tap((response) =>
+          Effect.when(
+            accessToken.invalidate,
+            Effect.succeed(response.status === 401)
           )
         )
       ) as HttpClient.HttpClient;

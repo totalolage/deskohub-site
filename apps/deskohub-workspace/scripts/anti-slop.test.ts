@@ -10,11 +10,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runCommand } from "./shared/command";
 
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
-const decoder = new TextDecoder();
 
-const lint = (
+const lint = async (
   source: string,
   workspaceDirectory = "scripts",
   filename = "probe.ts"
@@ -30,8 +30,8 @@ const lint = (
   writeFileSync(path, source);
 
   try {
-    return Bun.spawnSync({
-      cmd: [
+    return await runCommand(
+      [
         "bunx",
         "biome",
         "lint",
@@ -42,17 +42,15 @@ const lint = (
         ".",
         "--max-diagnostics=none",
       ],
-      cwd: repositoryRoot,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+      { cwd: repositoryRoot }
+    );
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true });
   }
 };
 
-test("anti-slop allows independent assertions and parsed unknown values", () => {
-  const result = lint(`
+test("anti-slop allows independent assertions and parsed unknown values", async () => {
+  const result = await lint(`
 declare const input: unknown;
 declare function parse(value: string): number;
 const result = parse(input as string) as number;
@@ -66,18 +64,18 @@ void payload;
   expect(result.exitCode).toBe(0);
 });
 
-test("unknown parameter rule allows error causes", () => {
-  const result = lint(`
+test("unknown parameter rule allows error causes", async () => {
+  const result = await lint(`
 const handleFailure = (cause: unknown) => String(cause);
 void handleFailure;
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).not.toContain("[anti-slop/no-unknown-parameters]");
 });
 
-test("anti-slop reports all eleven rules", () => {
-  const result = lint(`
+test("anti-slop reports all eleven rules", async () => {
+  const result = await lint(`
 declare const externalValue: unknown;
 const chained = externalValue as unknown as { value: string };
 const conditionalSpread = { ...(true ? { value: 1 } : {}) };
@@ -107,7 +105,7 @@ void payloadShape;
 void unknownParameter;
 void reconstruct;
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   for (const rule of [
     "no-chained-type-assertions",
@@ -126,27 +124,27 @@ void reconstruct;
   }
 });
 
-test("repeated computed conditional operand rule allows independent branches", () => {
-  const result = lint(`
+test("repeated computed conditional operand rule allows independent branches", async () => {
+  const result = await lint(`
 declare const condition: boolean;
 declare function loadValue(): string;
 const value = condition ? loadValue() : null;
 void value;
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).not.toContain(
     "[anti-slop/no-repeated-computed-conditional-operand]"
   );
 });
 
-test("repeated computed conditional operand rule preserves falsey semantics", () => {
-  const result = lint(`
+test("repeated computed conditional operand rule preserves falsey semantics", async () => {
+  const result = await lint(`
 declare const values: readonly (number | undefined)[];
 const value = values[0] ? values[0] : null;
 void value;
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).toContain(
     "[anti-slop/no-repeated-computed-conditional-operand]"
@@ -154,40 +152,40 @@ void value;
   expect(output).not.toContain("logical AND");
 });
 
-test("chained assertion rule retains Workspace e2e coverage", () => {
-  const result = lint(
+test("chained assertion rule retains Workspace e2e coverage", async () => {
+  const result = await lint(
     "declare const value: unknown; value as unknown as string;",
     "e2e"
   );
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).toContain("[anti-slop/no-chained-type-assertions]");
 });
 
-test("chained assertion rule retains the E2E run plan", () => {
-  const result = lint(
+test("chained assertion rule retains the E2E run plan", async () => {
+  const result = await lint(
     "declare const value: object; value as unknown as { id: string };",
     "e2e/playwright-checkout",
     "run-plan.ts"
   );
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).toContain("[anti-slop/no-chained-type-assertions]");
 });
 
-test("chained assertion rule retains test utility coverage", () => {
-  const result = lint(
+test("chained assertion rule retains test utility coverage", async () => {
+  const result = await lint(
     "declare const value: object; value as unknown as { id: string };",
     "shared/testing",
     "fixture.test-utils.ts"
   );
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).toContain("[anti-slop/no-chained-type-assertions]");
 });
 
-test("shape rule ignores external property names", () => {
-  const result = lint(
+test("shape rule ignores external property names", async () => {
+  const result = await lint(
     `
 declare function configure(value: { defaultValidationErrorsShape: string }): void;
 configure({ defaultValidationErrorsShape: "flattened" });
@@ -197,69 +195,69 @@ void view;
     "scripts",
     "probe.tsx"
   );
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).not.toContain("[anti-slop/no-shape-in-symbol-names]");
 });
 
-test("chained assertion rule unwraps nested parentheses", () => {
-  const result = lint(`
+test("chained assertion rule unwraps nested parentheses", async () => {
+  const result = await lint(`
 declare const value: unknown;
 const asserted = ((value as unknown)) as string;
 void asserted;
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).toContain("[anti-slop/no-chained-type-assertions]");
 });
 
-test("conditional spread rule reports objects with sibling properties", () => {
-  const result = lint(`
+test("conditional spread rule reports objects with sibling properties", async () => {
+  const result = await lint(`
 declare const condition: boolean;
 const payload = { fixed: 1, ...(condition ? { value: 1 } : {}) };
 void payload;
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).toContain("[anti-slop/no-conditional-empty-object-spread]");
 });
 
-test("conditional spread rule ignores conditionals inside spread calls", () => {
-  const result = lint(`
+test("conditional spread rule ignores conditionals inside spread calls", async () => {
+  const result = await lint(`
 declare const condition: boolean;
 declare function normalize(value: { value?: number }): object;
 const payload = { ...normalize(condition ? { value: 1 } : {}) };
 void payload;
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).not.toContain(
     "[anti-slop/no-conditional-empty-object-spread]"
   );
 });
 
-test("known value widening allows empty dictionary accumulators", () => {
-  const result = lint(`
+test("known value widening allows empty dictionary accumulators", async () => {
+  const result = await lint(`
 const handlers: Record<string, string> = {};
 handlers.start = "ready";
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).not.toContain("[anti-slop/no-known-value-widening]");
 });
 
-test("known value widening reports nested Record value types", () => {
-  const result = lint(`
+test("known value widening reports nested Record value types", async () => {
+  const result = await lint(`
 const handlers: Record<string, () => void> = { start: () => undefined };
 void handlers;
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).toContain("[anti-slop/no-known-value-widening]");
 });
 
-test("widen-then-assert does not connect unrelated scopes", () => {
-  const result = lint(`
+test("widen-then-assert does not connect unrelated scopes", async () => {
+  const result = await lint(`
 function first() {
   const value: unknown = { ok: true };
   return value;
@@ -287,24 +285,24 @@ void second;
 void third;
 void fourth;
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).not.toContain("[anti-slop/no-widen-then-assert]");
 });
 
-test("widen-then-assert reports a direct top-level binding", () => {
-  const result = lint(`
+test("widen-then-assert reports a direct top-level binding", async () => {
+  const result = await lint(`
 const evidence: unknown = { value: 1 };
 const reconstructed = evidence as { value: number };
 void reconstructed;
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).toContain("[anti-slop/no-widen-then-assert]");
 });
 
-test("widen-then-assert reports an outer binding despite nested shadowing", () => {
-  const result = lint(`
+test("widen-then-assert reports an outer binding despite nested shadowing", async () => {
+  const result = await lint(`
 function reconstruct(condition: boolean) {
   const value: unknown = { ok: true };
   if (condition) {
@@ -315,13 +313,13 @@ function reconstruct(condition: boolean) {
 }
 void reconstruct;
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).toContain("[anti-slop/no-widen-then-assert]");
 });
 
-test("unsafe dictionary allows concrete values containing unknown", () => {
-  const result = lint(`
+test("unsafe dictionary allows concrete values containing unknown", async () => {
+  const result = await lint(`
 type AsyncValues = Record<string, Promise<unknown>>;
 type AsyncUnionValues = Record<string, Promise<unknown | null>>;
 type StructuredValues = Record<string, { value: unknown; source: string }>;
@@ -331,19 +329,19 @@ void (0 as unknown as AsyncUnionValues);
 void (0 as unknown as StructuredValues);
 void (0 as unknown as NestedValues);
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).not.toContain("[anti-slop/no-unsafe-dictionary-type]");
 });
 
-test("unsafe dictionary reports direct unsafe union members", () => {
-  const result = lint(`
+test("unsafe dictionary reports direct unsafe union members", async () => {
+  const result = await lint(`
 type RecordValues = Record<string, unknown | undefined>;
 type IndexedValues = { [key: string]: null | object };
 void (0 as unknown as RecordValues);
 void (0 as unknown as IndexedValues);
 `);
-  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  const output = `${result.stdout}${result.stderr}`;
 
   expect(output).toContain("[anti-slop/no-unsafe-dictionary-type]");
 });

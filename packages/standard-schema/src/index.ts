@@ -36,7 +36,7 @@ export const parseStandardSchema = <S extends StandardSchemaV1>(
   const result = getSchemaValidationResult(schema, value);
 
   if (result.issues) {
-    throw new Error(invalidMessage);
+    throw new Error(invalidMessage, { cause: result.issues });
   }
 
   return result.value;

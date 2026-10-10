@@ -89,8 +89,8 @@ describe("CheckoutStatusPage", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("exposes an accessible busy status shell", () => {
@@ -362,6 +362,95 @@ describe("CheckoutStatusPage", () => {
       expect(view.queryByRole("link", { name: "Back home" })).toBeNull();
       expect(
         view.queryByRole("link", { name: "Send support request" })
+      ).toBeNull();
+      cleanup();
+    }
+  });
+
+  test("tells the customer a late payment will be refunded instead of awaiting confirmation", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...reconstructedCoworkStatus,
+          status: "late_payment_refund",
+          paymentStatus: "paid",
+          fulfillmentStatus: "not_started",
+        }}
+      />
+    );
+
+    expect(
+      view.getByRole("heading", { name: "We will refund your payment." })
+    ).toBeTruthy();
+    expect(
+      view.getByText(
+        "Your payment arrived after the reservation was no longer available, so we could not confirm it and will refund the payment. Start a new reservation if you still want to book."
+      )
+    ).toBeTruthy();
+    expect(
+      view.queryByText("We are sending your confirmation now!")
+    ).toBeNull();
+    expect(view.container.querySelector("#checkout-status-access")).toBeNull();
+    expect(
+      view.container.querySelector("#checkout-status-reserve-again")
+    ).not.toBeNull();
+  });
+
+  test("renders the late-payment refund copy in Czech", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="cs-CZ"
+        status={{
+          ...baseStatus,
+          status: "late_payment_refund",
+          paymentStatus: "paid",
+          fulfillmentStatus: "not_started",
+        }}
+      />
+    );
+
+    expect(
+      view.getByRole("heading", { name: "Platbu vám vrátíme." })
+    ).toBeTruthy();
+    expect(
+      view.getByText(
+        "Vaše platba dorazila až ve chvíli, kdy rezervace už nebyla k dispozici, proto ji nemůžeme potvrdit a platbu vám vrátíme. Pokud si stále chcete rezervovat, spusťte novou rezervaci."
+      )
+    ).toBeTruthy();
+  });
+
+  test("explains a late payment that is still being checked or needs review", () => {
+    const cases = [
+      {
+        status: "late_payment_checking",
+        title: "We are checking your reservation.",
+        lead: "Your payment arrived after the reservation hold expired, so we are checking that the space is still available. Keep this page open; it will update automatically.",
+      },
+      {
+        status: "late_payment_review",
+        title: "We are reviewing your reservation.",
+        lead: "Your payment arrived after the reservation hold expired, and we need to check your reservation manually. Please contact us so we can confirm the reservation or refund the payment.",
+      },
+    ] as const;
+
+    for (const { lead, status, title } of cases) {
+      const view = render(
+        <CheckoutStatusPage
+          locale="en-US"
+          status={{
+            ...baseStatus,
+            status,
+            paymentStatus: "expired",
+            fulfillmentStatus: "not_started",
+          }}
+        />
+      );
+
+      expect(view.getByRole("heading", { name: title })).toBeTruthy();
+      expect(view.getByText(lead)).toBeTruthy();
+      expect(
+        view.container.querySelector("#checkout-status-access")
       ).toBeNull();
       cleanup();
     }
@@ -963,5 +1052,78 @@ describe("CheckoutStatusPage", () => {
         "Please help me get my secure access link.",
       ].join("\n")
     );
+  });
+
+  test("asks the customer to contact us about a late payment under review", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          kind: "cowork",
+          status: "late_payment_review",
+          paymentStatus: "paid",
+          fulfillmentStatus: "not_started",
+          supportContactPrefill: {
+            name: "Ada Lovelace",
+            email: "ada@example.com",
+          },
+          summary: {
+            kind: "cowork",
+            entryTier: "basic",
+            coffee: false,
+            reservedFrom: Temporal.Instant.from("2026-06-19T22:00:00.000Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-20T22:00:00.000Z"),
+            price: { value: 35_000, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+
+    expect(view.queryByText(/We will email you/)).toBeNull();
+    const link = view.getByRole("link", { name: "Send support request" });
+    expect(link.id).toBe("checkout-status-support-contact");
+    const contactUrl = new URL(
+      link.getAttribute("href") ?? "",
+      "https://deskohub.local"
+    );
+    expect(contactUrl.pathname).toBe("/en-US/contact");
+    expect(contactUrl.searchParams.get("email")).toBe("ada@example.com");
+    expect(contactUrl.searchParams.get("message")).toBe(
+      [
+        "Hi Deskohub Workspace,",
+        "",
+        "My payment arrived after the reservation hold expired, and the payment status page says my reservation needs a manual check.",
+        "",
+        "Order reference: reservation-status-page",
+        "Reservation: Basic Day Pass on Saturday, June 20, 2026",
+        "",
+        "Please confirm my reservation or refund the payment.",
+      ].join("\n")
+    );
+  });
+
+  test("renders the late-payment review copy in Czech without an email promise", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="cs-CZ"
+        status={{
+          ...baseStatus,
+          status: "late_payment_review",
+          paymentStatus: "paid",
+          fulfillmentStatus: "not_started",
+        }}
+      />
+    );
+
+    expect(
+      view.getByText(
+        "Vaše platba dorazila až po vypršení blokace rezervace a rezervaci musíme zkontrolovat ručně. Kontaktujte nás prosím, abychom mohli rezervaci potvrdit, nebo vám platbu vrátit."
+      )
+    ).toBeTruthy();
+    expect(view.queryByText(/pošleme vám email/)).toBeNull();
+    expect(
+      view.getByRole("link", { name: "Zaslat žádost o podporu" })
+    ).toBeTruthy();
   });
 });

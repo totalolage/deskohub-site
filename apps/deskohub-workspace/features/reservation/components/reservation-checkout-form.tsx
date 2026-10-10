@@ -130,6 +130,8 @@ export function ReservationCheckoutForm<
               Boolean(availability.unavailableMessage) ||
               availability.isFetching ||
               advertisedPrice.isFetching ||
+              // A failed refresh keeps the previous, possibly expired, token.
+              advertisedPrice.isError ||
               !advertisedPrice.token
             }
             isAvailabilityLoading={availability.isFetching}

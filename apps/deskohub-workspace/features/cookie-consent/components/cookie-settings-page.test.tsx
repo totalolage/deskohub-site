@@ -40,9 +40,9 @@ describe("CookieSettings", () => {
     rejectCategory.mockImplementation(() => undefined);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
-    unregisterWorkspaceComponentTestEnv();
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("keeps the necessary switch checked and disabled without calling the consent hook", () => {

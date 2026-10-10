@@ -36,8 +36,8 @@ afterEach(() => {
   cleanup();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 const code = "A".repeat(43);

@@ -1,5 +1,3 @@
-"use client";
-
 import { LegalScreen } from "@/features/account/components/legal/legal-screen";
 import type { Locale } from "@/features/i18n";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";

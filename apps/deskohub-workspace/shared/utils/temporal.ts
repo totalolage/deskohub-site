@@ -167,9 +167,6 @@ export const dateToTemporalInstant = (date: Date) =>
     ? Temporal.Instant.fromEpochMilliseconds(date.getTime())
     : undefined;
 
-export const toTemporalInstant = (date: Date | Temporal.Instant) =>
-  date instanceof Date ? dateToTemporalInstant(date) : date;
-
 export const temporalPlainDateToDate = ({
   date,
   plainTime,
@@ -190,14 +187,6 @@ export const temporalInstantToPlainDate = ({
   readonly instant: Temporal.Instant;
   readonly timeZone: string;
 }) => instant.toZonedDateTimeISO(timeZone).toPlainDate();
-
-export const dateToTemporalPlainDate = ({
-  date,
-  timeZone,
-}: {
-  readonly date: Date;
-  readonly timeZone: string;
-}) => dateToTemporalInstant(date)?.toZonedDateTimeISO(timeZone).toPlainDate();
 
 export const isFuturePlainDateTime = ({
   dateTime,

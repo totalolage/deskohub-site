@@ -121,8 +121,9 @@ const revalidateDeletionAuthority = (locale: Locale) =>
  * Runs account deletion exclusively through Better Auth's public delete-user
  * endpoint, so its session-freshness gate and the provider-first beforeDelete
  * hook stay the single identity-deletion path. A stale or missing session
- * asks for reauthentication; a retryable provider failure keeps the durable
- * deletion marker and the account untouched.
+ * asks for reauthentication; an unreadable session or a retryable provider
+ * failure reports a retryable failure and keeps the durable deletion marker
+ * and the account untouched.
  */
 const deleteCustomerAccountAction = defineWorkspaceAction(
   {
@@ -136,34 +137,47 @@ const deleteCustomerAccountAction = defineWorkspaceAction(
       Effect.result
     );
     if (Result.isFailure(session)) {
-      return yield* revalidateDeletionAuthority(locale).pipe(
-        Effect.as({ status: "reauthentication-required" } as const)
+      const result = toDeletionSessionFailureResult(session.failure);
+      yield* Effect.log("Customer account deletion did not complete").pipe(
+        Effect.annotateLogs({
+          code: "account.delete.session",
+          reason: session.failure.reason,
+          diagnostic: session.failure.diagnostic,
+        }),
+        Effect.when(Effect.succeed(result.status === "failed"))
       );
+      return yield* revalidateDeletionAuthority(locale).pipe(Effect.as(result));
     }
 
-    const deletion = yield* Effect.promise(() =>
+    // The endpoint adapter converts every rejection into its closed result.
+    const result = yield* Effect.promise(() =>
       deleteCurrentAccountThroughAuthEndpoint()
-    ).pipe(Effect.result);
+    );
 
     yield* revalidateDeletionAuthority(locale);
 
-    if (Result.isSuccess(deletion)) {
-      const result = deletion.success;
-      if (result.status === "failed") {
-        yield* Effect.log("Customer account deletion did not complete").pipe(
-          Effect.annotateLogs({ code: result.code })
-        );
-        return { status: "failed" } as const;
-      }
-      return result;
+    if (result.status === "failed") {
+      yield* Effect.log("Customer account deletion did not complete").pipe(
+        Effect.annotateLogs({ code: result.code })
+      );
+      return { status: "failed" } as const;
     }
-
-    yield* Effect.log("Customer account deletion did not complete").pipe(
-      Effect.annotateLogs({ code: "account.delete.unexpected" })
-    );
-    return { status: "failed" } as const;
+    return result;
   })
 );
+
+const toDeletionSessionFailureResult = (failure: CustomerAccountAccessError) =>
+  Match.value(failure.reason).pipe(
+    Match.when(
+      Match.is("unauthenticated", "unverified-email", "link-required"),
+      () => ({ status: "reauthentication-required" }) as const
+    ),
+    Match.when(
+      Match.is("not-configured", "unavailable"),
+      () => ({ status: "failed" }) as const
+    ),
+    Match.exhaustive
+  );
 
 const aresLookupStandardSchema = Schema.toStandardSchemaV1(
   Schema.Struct({ ico: Schema.String }),

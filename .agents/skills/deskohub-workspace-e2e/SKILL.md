@@ -171,7 +171,7 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   cleanup journals. Keep the suite's nonzero exit even if that fallback cleanup
   passes, and never rerun the ordinary cases as part of cleanup recovery.
 - Keep interval-based availability pending while a user is rapidly editing its inputs, and coalesce intermediate queries before they reach the provider-backed route. Parallel meeting-room browsers can otherwise multiply a date, time, and duration change into enough overlapping Dotypos and Calendar inventory loads to strand the final availability request. Preserve the immediate initial query and the final selected interval rather than serializing whole E2E cases or weakening the readiness assertion.
-- Seed source-neutral discount definitions and codes only in the exact preview database before Playwright admits availability preparation or cases. Calendar-backed availability resolves the long-lived event's stored discount definition, so it reads those seeded rows even though provider discovery itself is read-only. After the seed project commits, let Playwright run cowork, meeting-room, and office availability tests in parallel while provider preparation runs in its sibling project. Keep the dedicated long-lived Calendar event immutable. When a pricing-change case must mutate its stored definition, isolate it on a product identity unused by happy paths, keep it in the Playwright project that depends on every independent-case project, serialize the related mutations inside that case, and restore the target with an interruption-safe finalizer. Calendar discovery caches resolved definitions by date, so a concurrent request for another product can otherwise preserve the transient target state. Never mutate a target consumed by another parallel case.
+- Seed source-neutral discount definitions and codes only in the exact preview database before Playwright admits availability preparation or cases. Calendar-backed availability resolves the long-lived event's stored discount definition, so it reads those seeded rows even though provider discovery itself is read-only. After the seed project commits, let Playwright run cowork, meeting-room, and office availability tests in parallel while provider preparation runs in its sibling project. Keep the dedicated long-lived Calendar event immutable. When a pricing-change case must mutate its stored definition, isolate it on a product identity unused by happy paths, keep it in the Playwright project that depends on every independent-case project, serialize the related mutations inside that case, and restore the target with an interruption-safe finalizer. Calendar discovery caches resolved definitions under the date the booking is made (today), so a concurrent request for another product can otherwise preserve the transient target state, and an ineligible window keeps being advertised until `advertisedPricingSources` revalidates even after the finalizer restores the row. Any step that needs the restored sale advertised must reload until the page shows it before submitting, never assume restoration is visible immediately. Never mutate a target consumed by another parallel case.
 - Lease one partition of the fixed 14-to-90-day candidate range before
   constructing cases. Coordinate owners through the dedicated long-lived Neon
   coordination database, never an application production, development, or
@@ -237,16 +237,19 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   message reports only counts by status, never reservation IDs. The
   `suite-cleanup` phase span must fail whenever cleanup fails.
 - Nexi's hosted fields submit card details to `/fe/build/text/` after
-  Continue. A 4xx there leaves the fields disabled and never offers PAY; the
-  runner classifies it as `nexi_hosted_card_submission_rejected` from the
-  session request log. On 2026-10-08 this hit the first hosted payment of
+  Continue. A failed POST there (4xx or 5xx) leaves the fields disabled and
+  never offers PAY; the hosted-page driver reports it as the
+  `card_submission_rejected` page state
+  (`nexi_hosted_<step>_card_submission_rejected`) from the session's Nexi
+  build responses. On 2026-10-08 this hit the first hosted payment of
   many suites (usually `checkout-calendar-sale-and-code`, lane 3) and passed
   on exact-SHA reruns. On 2026-10-09 a local sandbox run with no runner or
   Workspace involvement reproduced it: the response body was Nexi error
   `GW0027` ("Internal Rest communication error during payment"), and Nexi's
   own `/fe/v2/build/state` also returned HTTP 500. Treat it as sandbox
-  instability; never re-submit card details or retry payment creation to hide
-  it.
+  instability; never re-submit card details on the inert form. The only
+  recovery is the single classified restart in
+  [references/nexi-sandbox.md](references/nexi-sandbox.md).
 - The sandbox can also mark the authorization itself `FAILED` after the 3DS
   success click (`orderStatus: FAILED`, zero authorized amount). Workspace
   then correctly settles the order unpaid. The fulfillment-marker wait fails
@@ -374,7 +377,7 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Configure the public PostHog project ingest token and ingest host as
   variables in the `workspace-checkout-e2e` GitHub Actions environment, not
   secrets; management and trace-read API keys remain secrets.
-- Propagate Effect's `AbortSignal` through the Playwright runner and close the interrupted case's context so in-flight browser work is cancelled. Do not retry state-creating checkout submission as a whole; a retry can create duplicate orders and leak cleanup state. The reservation-preparation UI action may retry once after its recognized generic error only when it reuses the same `checkoutAttemptId` within the same `checkoutSessionId`; the backend attempt key is the immediate-retry idempotency boundary. Never extend that retry to provider payment creation.
+- Propagate Effect's `AbortSignal` through the Playwright runner and close the interrupted case's context so in-flight browser work is cancelled. Do not retry state-creating checkout submission as a whole; a retry can create duplicate orders and leak cleanup state. The reservation-preparation UI action may retry once after its recognized generic error only when it reuses the same `checkoutAttemptId` within the same `checkoutSessionId`; the backend attempt key is the immediate-retry idempotency boundary. Never extend that retry to provider payment creation. The only payment restart is the single classified Nexi sandbox restart in [references/nexi-sandbox.md](references/nexi-sandbox.md). It runs only before any possible authorization, retires the rejected attempt and releases its claims, then pays again through the app's normal pay page with a fresh attempt and Nexi order.
 - Treat arrival at the Nexi hosted page as the provider-session creation
   barrier: production creates and links the attempt, awaits provider-session
   attachment, and only then returns the redirect URL. Database visibility can

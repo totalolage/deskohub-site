@@ -146,7 +146,7 @@ afterEach(() => {
 afterAll(async () => {
   cleanup();
   await flushWorkspaceComponentWork();
-  unregisterWorkspaceComponentTestEnv();
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 function renderLegalScreen(locale: Locale) {

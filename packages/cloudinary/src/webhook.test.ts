@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { Effect, Layer, Logger, References } from "effect";
 
 mock.module("server-only", () => ({}));
@@ -35,11 +36,15 @@ afterEach(() => {
   Date.now = originalNow;
 });
 
+/** Cloudinary signs the raw body, the timestamp, and the API secret. */
+const sign = (body: string, secret = config.apiSecret) =>
+  createHash("sha1").update(`${body}${timestamp}${secret}`).digest("hex");
+
 const request = (body: string, overrides: Record<string, string> = {}) =>
   new Request("https://example.test/cloudinary", {
     method: "POST",
     headers: {
-      "x-cld-signature": "signature",
+      "x-cld-signature": sign(body),
       "x-cld-timestamp": String(timestamp),
       ...overrides,
     },
@@ -86,11 +91,30 @@ describe("verifyCloudinaryWebhookRequest", () => {
       payload: { public_id: "gallery/image" },
       timestamp,
     });
-    expect(verifyNotificationSignature).toHaveBeenCalledWith(
-      body,
-      timestamp,
-      "signature"
+  });
+
+  test("verifies with the configured secret, not the SDK's global configuration", async () => {
+    verifyNotificationSignature.mockReturnValue(false);
+    const body = JSON.stringify({ public_id: "gallery/image" });
+
+    const result = await Effect.runPromise(
+      verifyRequest(request(body)).pipe(Effect.result)
     );
+
+    expect(result._tag).toBe("Success");
+  });
+
+  test("rejects a signature of a different length", async () => {
+    const result = await Effect.runPromise(
+      verifyRequest(request("{}", { "x-cld-signature": "abc" })).pipe(
+        Effect.result
+      )
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("CloudinaryWebhookAuthError");
+    }
   });
 
   test("rejects stale timestamps", async () => {
@@ -108,10 +132,10 @@ describe("verifyCloudinaryWebhookRequest", () => {
   });
 
   test("rejects bad signatures", async () => {
-    verifyNotificationSignature.mockReturnValue(false);
-
     const result = await Effect.runPromise(
-      verifyRequest(request("{}")).pipe(Effect.result)
+      verifyRequest(
+        request("{}", { "x-cld-signature": sign("{}", "other-secret") })
+      ).pipe(Effect.result)
     );
 
     expect(result._tag).toBe("Failure");
@@ -123,11 +147,11 @@ describe("verifyCloudinaryWebhookRequest", () => {
   test("never logs webhook credentials, signatures, or provider payloads", async () => {
     const identifier = "webhook-asset-id-sentinel";
     const deliveryUrl = `https://cloudinary.test/${identifier}`;
-    const secretSignature = "webhook-signature-secret-sentinel";
     const body = JSON.stringify({
       public_id: identifier,
       secure_url: deliveryUrl,
     });
+    const secretSignature = sign(body);
 
     const { logs, result } = await captureLogs(
       verifyRequest(request(body, { "x-cld-signature": secretSignature })).pipe(
@@ -147,7 +171,6 @@ describe("verifyCloudinaryWebhookRequest", () => {
   });
 
   test("logs a fixed category for signature failures without request details", async () => {
-    verifyNotificationSignature.mockReturnValue(false);
     const identifier = "webhook-failure-asset-id-sentinel";
     const providerText = `provider failure for ${identifier}`;
     const secretSignature = "invalid-webhook-signature-sentinel";

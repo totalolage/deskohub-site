@@ -354,6 +354,34 @@ describe("WorkspaceTableAssignmentService", () => {
     );
   });
 
+  test("reports a full table as unavailable capacity rather than invalid input", async () => {
+    // Late-payment recovery refunds on this outcome, so it must stay
+    // distinguishable from provider validation failures that are retried.
+    await expect(
+      assignTableId(
+        makeReservation({ entryTier: "open-space" }),
+        [
+          makeTable({
+            id: "open-1",
+            name: "Open 1",
+            tags: ["cowork:open-space"],
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "open-1",
+            status: "CONFIRMED",
+            startDate: "2099-06-10T06:00:00Z",
+            endDate: "2099-06-10T08:00:00Z",
+          }),
+        ]
+      )
+    ).rejects.toMatchObject({
+      _tag: "TableAssignmentUnavailableError",
+      requiredTags: ["cowork:open-space"],
+    });
+  });
+
   test("keeps the 17:00 half-open boundary parity on the assignment path", async () => {
     // A reservation starting exactly at 17:00 Prague does not occupy the
     // 00:00-17:00 exclusive-end open-space interval.

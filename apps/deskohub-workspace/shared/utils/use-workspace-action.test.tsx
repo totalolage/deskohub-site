@@ -16,8 +16,8 @@ beforeAll(() => {
   registerWorkspaceComponentTestEnv();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 const renderWorkspaceAction = (

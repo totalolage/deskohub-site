@@ -4,9 +4,24 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
 
 const isEnabled = mock(() => Effect.succeed(true));
+const evaluateFlags = mock(() =>
+  // posthog-node reports failed remote evaluations as empty snapshots.
+  Effect.succeed({ getFlag: () => undefined })
+);
 let globalEvaluation = false;
 const getGlobalWorkspaceFeatureFlagValue = mock(() =>
   Promise.resolve(globalEvaluation ? true : undefined)
+);
+const getGlobalWorkspaceFeatureFlagValues = mock(() =>
+  Promise.resolve(
+    globalEvaluation
+      ? {
+          calendar_sales: true,
+          customer_discounts: false,
+          discount_codes: true,
+        }
+      : undefined
+  )
 );
 const visitorSubject = {
   distinctId: "consented-visitor",
@@ -16,14 +31,14 @@ const subjectModule = await import("./subject");
 
 mock.module("./node", () => ({
   nodeFeatureFlags: {
-    evaluateFlags: () => Effect.die("not used"),
+    evaluateFlags,
     isEnabled,
   },
 }));
 
 mock.module("./feature-flag-evaluation-mode.server", () => ({
-  areWorkspaceFeatureFlagsGlobal: () => Promise.resolve(globalEvaluation),
   getGlobalWorkspaceFeatureFlagValue,
+  getGlobalWorkspaceFeatureFlagValues,
 }));
 
 mock.module("./subject", () => ({
@@ -33,7 +48,9 @@ mock.module("./subject", () => ({
 
 describe("WorkspaceFeatureFlagService", () => {
   beforeEach(() => {
+    evaluateFlags.mockClear();
     getGlobalWorkspaceFeatureFlagValue.mockClear();
+    getGlobalWorkspaceFeatureFlagValues.mockClear();
     isEnabled.mockClear();
   });
 
@@ -80,5 +97,53 @@ describe("WorkspaceFeatureFlagService", () => {
     );
     expect(enabled).toBe(true);
     expect(isEnabled).not.toHaveBeenCalled();
+  });
+
+  const discountFlagKeys = [
+    "calendar_sales",
+    "customer_discounts",
+    "discount_codes",
+  ] as const;
+  const readDiscountFlags = async () => {
+    const { WorkspaceFeatureFlagService } = await import(
+      "./workspace-feature-flag.service"
+    );
+
+    return WorkspaceFeatureFlagService.pipe(
+      Effect.flatMap((featureFlags) =>
+        featureFlags.evaluateFlags({ flagKeys: discountFlagKeys })
+      ),
+      Effect.map((snapshot) =>
+        discountFlagKeys.map((key) => snapshot.getFlag(key))
+      ),
+      Effect.provide(WorkspaceFeatureFlagService.Default),
+      Effect.runPromise
+    );
+  };
+
+  test("returns constant snapshot values without remote evaluation", async () => {
+    globalEvaluation = true;
+
+    await expect(readDiscountFlags()).resolves.toEqual([true, false, true]);
+
+    expect(getGlobalWorkspaceFeatureFlagValues).toHaveBeenCalledWith(
+      discountFlagKeys
+    );
+    expect(evaluateFlags).not.toHaveBeenCalled();
+  });
+
+  test("evaluates request-dependent snapshots for the current request subject", async () => {
+    globalEvaluation = false;
+
+    await expect(readDiscountFlags()).resolves.toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+
+    expect(evaluateFlags).toHaveBeenCalledWith({
+      options: { flagKeys: discountFlagKeys },
+      subject: visitorSubject,
+    });
   });
 });

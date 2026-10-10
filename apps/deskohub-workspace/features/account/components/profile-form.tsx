@@ -4,9 +4,7 @@ import { useRouter } from "next/navigation";
 import {
   type FormEvent,
   type InvalidEvent,
-  useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   useTransition,
@@ -136,9 +134,8 @@ export function ProfileForm({
   const isInitialCompletion = isComplete && !hasCompletedInitialProfile;
   const screenCopy = getAccountScreenCopy(locale);
 
-  const resolver = useMemo(() => createProfileFormResolver(locale), [locale]);
   const form = useForm<ProfileFormValues>({
-    resolver,
+    resolver: createProfileFormResolver(locale),
     defaultValues: getProfileFormDefaultValues(profile),
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -151,13 +148,10 @@ export function ProfileForm({
   const savedBaselineRef = useRef<ProfileFormValues>(
     getProfileFormDefaultValues(profile)
   );
-  const isDirty = useCallback(
-    () =>
-      rhfIsDirty ||
-      JSON.stringify(form.getValues()) !==
-        JSON.stringify(savedBaselineRef.current),
-    [form, rhfIsDirty]
-  );
+  const isDirty = () =>
+    rhfIsDirty ||
+    JSON.stringify(form.getValues()) !==
+      JSON.stringify(savedBaselineRef.current);
 
   const billingKind = useWatch({
     control: form.control,
@@ -245,34 +239,37 @@ export function ProfileForm({
     setAresLookup({ status: "idle" });
   };
 
-  const { execute, isExecuting, result } = useWorkspaceAction(action, {
-    actionName: "account.profile",
-    onSuccess: () => {
-      const submittedValues = submittedValuesRef.current;
-      if (submittedValues !== undefined) {
-        // The saved baseline becomes the values as they were at submit time
-        // while every current value is preserved verbatim: an in-flight edit
-        // that returned a field to its original value must not be overwritten
-        // by the submitted snapshot, and dirty state is recomputed against
-        // the new baseline.
-        savedBaselineRef.current = submittedValues;
-        form.reset(submittedValues, { keepValues: true });
-        setSavedIdentity({
-          firstName: submittedValues.firstName.trim(),
-          lastName: submittedValues.lastName.trim() || null,
-        });
-      }
-      if (isInitialCompletion) {
-        setHasCompletedInitialProfile(true);
-      }
-      const hasNoEditsSinceSubmit =
-        submittedValues !== undefined &&
-        JSON.stringify(form.getValues()) === JSON.stringify(submittedValues);
-      if (isComplete && hasNoEditsSinceSubmit) {
-        startRefreshTransition(() => router.refresh());
-      }
-    },
-  });
+  const { execute, hasErrored, isExecuting, result } = useWorkspaceAction(
+    action,
+    {
+      actionName: "account.profile",
+      onSuccess: () => {
+        const submittedValues = submittedValuesRef.current;
+        if (submittedValues !== undefined) {
+          // The saved baseline becomes the values as they were at submit time
+          // while every current value is preserved verbatim: an in-flight edit
+          // that returned a field to its original value must not be overwritten
+          // by the submitted snapshot, and dirty state is recomputed against
+          // the new baseline.
+          savedBaselineRef.current = submittedValues;
+          form.reset(submittedValues, { keepValues: true });
+          setSavedIdentity({
+            firstName: submittedValues.firstName.trim(),
+            lastName: submittedValues.lastName.trim() || null,
+          });
+        }
+        if (isInitialCompletion) {
+          setHasCompletedInitialProfile(true);
+        }
+        const hasNoEditsSinceSubmit =
+          submittedValues !== undefined &&
+          JSON.stringify(form.getValues()) === JSON.stringify(submittedValues);
+        if (isComplete && hasNoEditsSinceSubmit) {
+          startRefreshTransition(() => router.refresh());
+        }
+      },
+    }
+  );
 
   useUnsavedChanges({
     enabled: !isRefreshPending,
@@ -809,6 +806,11 @@ export function ProfileForm({
             {m.accountProfileValidationError({}, { locale })}
           </p>
         ) : null}
+        {hasErrored && !result.serverError && !hasValidationErrors && (
+          <p className="text-red-700">
+            {m.accountProfileError({}, { locale })}
+          </p>
+        )}
       </div>
 
       <Button

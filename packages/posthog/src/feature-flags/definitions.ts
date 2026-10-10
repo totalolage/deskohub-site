@@ -13,6 +13,7 @@ import {
 import { PostHogFeatureFlagError } from "./errors";
 
 const pageSize = 100;
+const pageRequestTimeout = "10 seconds";
 
 const FeatureFlagFilters = Schema.Struct({
   aggregation_group_type_index: Schema.optionalKey(
@@ -151,11 +152,21 @@ export const listPostHogFeatureFlagDefinitions = (
         projectId,
       }).pipe(
         Effect.mapError(
-          () =>
+          (cause) =>
             new PostHogFeatureFlagError({
               message: "Could not list PostHog feature flags.",
+              cause,
             })
-        )
+        ),
+        Effect.timeoutOrElse({
+          duration: pageRequestTimeout,
+          orElse: () =>
+            Effect.fail(
+              new PostHogFeatureFlagError({
+                message: "PostHog feature flag request timed out.",
+              })
+            ),
+        })
       );
 
       for (const featureFlag of page.results) {

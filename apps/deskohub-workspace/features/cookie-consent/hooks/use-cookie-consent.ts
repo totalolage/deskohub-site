@@ -61,35 +61,36 @@ export function useCookieConsent() {
     };
   }, []);
 
-  const acceptAll = useCallback(() => {
+  const acceptAll = () => {
     CookieConsent.acceptCategory("all");
-  }, []);
+  };
 
-  const rejectAll = useCallback(() => {
+  const rejectAll = () => {
     CookieConsent.acceptCategory([]);
-  }, []);
+  };
 
-  const showPreferences = useCallback(() => {
+  const showPreferences = () => {
     CookieConsent.showPreferences();
-  }, []);
+  };
 
-  const acceptCategory = useCallback((category: ConsentCategory) => {
-    const preferences = CookieConsent.getUserPreferences();
-    const current = (preferences?.acceptedCategories ||
-      []) as ConsentCategory[];
+  // vanilla-cookieconsent replaces the whole accepted set and its in-memory
+  // preferences never see other tabs' changes, so toggles start from the
+  // shared consent cookie that every tab writes.
+  const acceptCategory = (category: ConsentCategory) => {
+    const current = getAcceptedConsentCategoriesFromCookie(document.cookie);
     CookieConsent.acceptCategory([
       ...new Set(["necessary", ...current, category]),
     ]);
-  }, []);
+  };
 
-  const rejectCategory = useCallback((category: ConsentCategory) => {
+  const rejectCategory = (category: ConsentCategory) => {
     if (category === "necessary") return;
-    const preferences = CookieConsent.getUserPreferences();
-    const current = (preferences?.acceptedCategories ||
-      []) as ConsentCategory[];
+    const current = getAcceptedConsentCategoriesFromCookie(document.cookie);
     CookieConsent.acceptCategory(current.filter((item) => item !== category));
-  }, []);
+  };
 
+  // Consumers use this as an effect dependency, so keep its identity stable
+  // even where the React Compiler does not run.
   const isAccepted = useCallback(
     (category: ConsentCategory) => acceptedCategories.includes(category),
     [acceptedCategories]
