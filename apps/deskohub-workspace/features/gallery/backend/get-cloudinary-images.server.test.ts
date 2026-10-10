@@ -1,36 +1,44 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
 
 const providerMessage =
   "provider failure for cloudinary-account-id-sentinel " +
   "with api_secret=synthetic-cloudinary-secret-sentinel";
 
-let executeAttempts = 0;
+let tagListAttempts = 0;
 const cacheLife = mock(
   (_profile: string | { stale: number; revalidate: number; expire: number }) =>
     undefined
 );
 
+// The SDK only builds URLs here; signing is covered by the package tests.
 const cloudinary = {
   config: mock(() => undefined),
-  search: {
-    expression: mock(() => {
-      const builder = {
-        with_field: () => builder,
-        max_results: () => builder,
-        next_cursor: () => builder,
-        sort_by: () => builder,
-        execute: async () => {
-          executeAttempts += 1;
-          throw { http_code: 401, message: providerMessage };
-        },
-      };
-      return builder;
-    }),
-  },
+  url: mock(
+    (source: string) =>
+      `https://res.cloudinary.test/test-cloud/image/list/s--fake--/${encodeURIComponent(source)}.json`
+  ),
 };
+
+const originalFetch = globalThis.fetch;
+const rejectingFetch: typeof globalThis.fetch = Object.assign(
+  async () => {
+    tagListAttempts += 1;
+    return new Response(providerMessage, { status: 401 });
+  },
+  { preconnect: originalFetch.preconnect }
+);
+
+beforeEach(() => {
+  tagListAttempts = 0;
+  globalThis.fetch = rejectingFetch;
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
 
 mock.module("cloudinary", () => ({ v2: cloudinary }));
 mock.module("next/cache", () => ({
@@ -68,7 +76,7 @@ describe("getCloudinaryImages provider failures", () => {
     const images = await getCloudinaryImages({ tags: [["gallery"]] });
 
     expect(images).toEqual([]);
-    expect(executeAttempts).toBe(1);
+    expect(tagListAttempts).toBe(1);
     expect(cacheLife).toHaveBeenCalledWith({
       stale: 30,
       revalidate: 60,
@@ -78,11 +86,23 @@ describe("getCloudinaryImages provider failures", () => {
 });
 
 describe("getCloudinaryImages caching", () => {
-  test("uses the max cache life because the Cloudinary webhook revalidates its tags", async () => {
+  test("bounds the cache life so a webhook refresh racing the CDN tag list heals", async () => {
     cacheLife.mockClear();
 
     await getCloudinaryImages({ tags: [["gallery"]] }).catch(() => undefined);
 
-    expect(cacheLife).toHaveBeenCalledWith("max");
+    expect(cacheLife).toHaveBeenCalledWith({
+      stale: 300,
+      revalidate: 300,
+      expire: 86_400,
+    });
+    expect(cacheLife).not.toHaveBeenCalledWith("max");
+  });
+
+  test("selects nothing for exclusion-only expressions without a request", async () => {
+    const images = await getCloudinaryImages({ tags: [["!gallery"]] });
+
+    expect(images).toEqual([]);
+    expect(tagListAttempts).toBe(0);
   });
 });

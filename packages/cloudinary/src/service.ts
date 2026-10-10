@@ -1,8 +1,9 @@
 import "server-only";
 
 import { v2 as cloudinary } from "cloudinary";
-import { Context, Duration, Effect, Layer, pipe, Schedule } from "effect";
+import { Context, Effect, Layer, pipe } from "effect";
 import * as Schema from "effect/Schema";
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import { decodeCloudinaryAsset } from "./asset-decoding";
 import {
   type CloudinaryConfig,
@@ -17,7 +18,8 @@ import {
   CloudinarySearchError,
   CloudinaryUploadError,
 } from "./errors";
-import { type CnfExpression, cnfToCloudinaryExpression } from "./expression";
+import type { CnfExpression } from "./expression";
+import { createTransientRetryPolicy } from "./retry";
 import {
   type CloudinaryAsset,
   type CloudinaryDestroyOutcome,
@@ -27,6 +29,8 @@ import {
   type SearchOptions,
   SearchOptionsSchema,
 } from "./schema";
+import { makeTaggedAssetLister } from "./tag-list";
+import { untracedFetch } from "./untraced-fetch";
 
 export type { CloudinaryConfig } from "./config";
 
@@ -44,10 +48,6 @@ export interface ICloudinaryService {
   readonly getByPublicId: (
     publicId: CloudinaryPublicId
   ) => Effect.Effect<CloudinaryAsset, CloudinarySearchError>;
-  readonly searchByTag: (
-    tag: string,
-    options?: SearchOptions
-  ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
   readonly searchByFolder: (
     folder: string,
     options?: SearchOptions
@@ -69,7 +69,13 @@ export interface ICloudinaryService {
     expression: string,
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
-  readonly searchWithTags: <Tag extends string>(
+  /**
+   * Lists image assets matching a tag expression from Cloudinary's
+   * CDN-cached tag resource lists instead of the Admin Search API, so it
+   * spends no Admin API quota. A list may lag tag changes by up to a minute.
+   * Groups without a positive tag select nothing.
+   */
+  readonly listTaggedAssets: <Tag extends string>(
     tags: CnfExpression<Tag>,
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
@@ -97,6 +103,7 @@ export class CloudinaryService extends Context.Service<
     this,
     Effect.gen(function* () {
       const rawConfig = yield* CloudinaryRuntimeConfig;
+      const httpClient = yield* HttpClient.HttpClient;
       const config = yield* validateCloudinaryRuntimeConfig(rawConfig);
       yield* configureCloudinarySdk(config);
 
@@ -109,9 +116,8 @@ export class CloudinaryService extends Context.Service<
       const destroyAsset = createDestroyExecutor();
       const deleteResourcesByPublicIdPrefix = createPrefixDeleteExecutor();
       const renameAsset = createRenameExecutor();
-
-      const searchByTag: ICloudinaryService["searchByTag"] = (tag, options) =>
-        executeSearch(`tags=${tag} AND resource_type:image`, options);
+      const listTaggedAssets: ICloudinaryService["listTaggedAssets"] =
+        makeTaggedAssetLister(config, httpClient);
 
       const listFolderAssets: ICloudinaryService["listFolderAssets"] = (
         folder,
@@ -185,31 +191,29 @@ export class CloudinaryService extends Context.Service<
         options
       ) => executeSearch(expression, options);
 
-      const searchWithTags: ICloudinaryService["searchWithTags"] = (
-        tags,
-        options
-      ) => {
-        if (tags.length === 0) {
-          return searchAll(options);
-        }
-
-        return executeSearch(cnfToCloudinaryExpression(tags), options);
-      };
-
       return {
         getByPublicId,
-        searchByTag,
         searchByFolder,
         listFolderAssets,
         searchAll,
         searchByExpression,
-        searchWithTags,
+        listTaggedAssets,
         uploadImage,
         destroyAsset,
         deleteResourcesByPublicIdPrefix,
         renameAsset,
       } satisfies ICloudinaryService;
     })
+  );
+
+  /**
+   * The service wired to the platform `fetch` for tag list requests. Tag list
+   * URLs carry a signature, so the requests run with tracing suppressed and
+   * no fetch or HTTP instrumentation records them.
+   */
+  static Live = this.Default.pipe(
+    Layer.provide(FetchHttpClient.layer),
+    Layer.provide(Layer.succeed(FetchHttpClient.Fetch, untracedFetch))
   );
 }
 
@@ -269,32 +273,6 @@ function decodeAssetResponse(result: unknown) {
           message: "Cloudinary response did not match the asset schema",
           expression: publicIdLookupExpression,
         })
-    )
-  );
-}
-
-/**
- * Retries only transient provider failures: 5xx-style HTTP codes. 4xx failures
- * and errors without an HTTP code are definitive for the caller.
- */
-function createTransientRetryPolicy<
-  E extends { readonly httpCode?: number | undefined },
->(operation: string) {
-  return Schedule.exponential("100 millis").pipe(
-    Schedule.jittered,
-    Schedule.while<E, Duration.Duration>(
-      ({ input }) => input.httpCode !== undefined && input.httpCode >= 500
-    ),
-    Schedule.both(Schedule.recurs(2)),
-    Schedule.tapOutput(([delay, attempt]) =>
-      Effect.logWarning(
-        `Cloudinary ${operation} retry attempt #${attempt + 1}`,
-        {
-          attemptNumber: attempt + 1,
-          delayMs: Duration.toMillis(delay),
-          maxRetries: 2,
-        }
-      )
     )
   );
 }
@@ -561,7 +539,7 @@ export const getGalleryImages = Effect.fn("getGalleryImages")(
     const service = yield* CloudinaryService;
 
     const result = yield* service
-      .searchWithTags(tags, options)
+      .listTaggedAssets(tags, options)
       .pipe(
         Effect.tapError(() =>
           Effect.logError("Cloudinary gallery images lookup failed")

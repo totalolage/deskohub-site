@@ -152,7 +152,7 @@ const CloudinaryLayer = Layer.succeed(Cloudinary, {
     }),
 });
 
-Object.assign(Cloudinary, { Default: CloudinaryLayer });
+Object.assign(Cloudinary, { Live: CloudinaryLayer });
 
 const cloudinaryServerModule = "@deskohub/cloudinary" + "/server";
 mock.module(cloudinaryServerModule, () => ({
