@@ -172,6 +172,49 @@ describe("IgloohomeService", () => {
     void rejected;
   });
 
+  test("re-authenticates after the provider rejects a cached access token", async () => {
+    let issuedTokens = 0;
+    const fetchMock = mock(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = getRequest(input, init);
+        if (request.url === "https://auth.example.test/oauth2/token") {
+          issuedTokens += 1;
+          return Response.json({
+            access_token: `access-token-${issuedTokens}`,
+            expires_in: 3600,
+          });
+        }
+        return request.headers.get("authorization") === "Bearer access-token-1"
+          ? new Response(null, { status: 401 })
+          : Response.json({ pin: "7654321", pinId: "pin-id" });
+      }
+    ) as unknown as typeof globalThis.fetch;
+    const input = {
+      deviceId,
+      variance: 1,
+      startsAt: "2026-08-13T09:00:00+02:00",
+      endsAt: "2026-08-13T17:00:00+02:00",
+      accessName: "Deskohub reservation-id",
+    } satisfies IssueHourlyAlgoPinInput;
+
+    const [revoked, renewed] = await Effect.gen(function* () {
+      const service = yield* IgloohomeService;
+      const revoked = yield* service
+        .issueHourlyAlgoPin(input)
+        .pipe(Effect.flip);
+      const renewed = yield* service.issueHourlyAlgoPin(input);
+      return [revoked, renewed] as const;
+    }).pipe(Effect.provide(buildServiceLayer(fetchMock)), Effect.runPromise);
+
+    expect(revoked).toMatchObject({
+      operation: "issue_hourly_algopin",
+      outcome: "rejected",
+      statusCode: 401,
+    });
+    expect(String(renewed.pin)).toBe("7654321");
+    expect(issuedTokens).toBe(2);
+  });
+
   test("interrupts a delayed authentication before any AlgoPIN request can follow", async () => {
     const requests: Request[] = [];
     const abortSignals: AbortSignal[] = [];

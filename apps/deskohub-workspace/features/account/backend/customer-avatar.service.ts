@@ -2,7 +2,6 @@ import "server-only";
 
 import {
   type CloudinaryAsset,
-  type CloudinaryConfigError,
   type CloudinaryPublicId,
   CloudinaryPublicIdSchema,
 } from "@deskohub/cloudinary";
@@ -109,7 +108,7 @@ export class CustomerAvatarSettings extends Context.Service<
   }));
 }
 
-const WorkspaceCloudinaryLayer = CloudinaryService.Default.pipe(
+const WorkspaceCloudinaryLayer = CloudinaryService.Live.pipe(
   Layer.provide(
     makeCloudinaryRuntimeConfigLayer({
       cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
@@ -355,23 +354,6 @@ export class CustomerAvatarService extends Context.Service<
     )
   );
 }
-
-/**
- * Page-render convenience: the account's current avatar, or `null` when the
- * account has none. A media outage surfaces as a typed failure so the page
- * can fall back to initials instead of blocking.
- */
-export const getAccountAvatar = (
-  accountId: CustomerAccountId
-): Effect.Effect<
-  CustomerAvatar | null,
-  | CustomerAvatarProviderError
-  | CustomerAvatarUnavailableError
-  | CloudinaryConfigError
-> =>
-  Effect.flatMap(CustomerAvatarService, (service) =>
-    service.lookup(accountId)
-  ).pipe(Effect.provide(CustomerAvatarService.Live));
 
 const allowedMediaTypes: ReadonlySet<string> = new Set(
   customerAvatarAllowedMediaTypes

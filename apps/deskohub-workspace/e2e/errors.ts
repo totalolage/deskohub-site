@@ -32,7 +32,6 @@ export const workspaceE2ERunnerDiagnosticCodes = [
   "postgres_checkout_row_assertion_failed",
   "postgres_legal_evidence_validation_failed",
   "postgres_local_pii_validation_failed",
-  "nexi_hosted_card_submission_rejected",
   "checkout_payment_terminal_before_fulfillment",
   "checkout_fulfillment_failed_before_marker",
 ] as const;
@@ -80,10 +79,77 @@ export const workspaceE2EAccountDiagnosticCodes = [
   ...workspaceE2EProfileNavigationDiagnosticCodes,
 ] as const;
 
+// The Nexi hosted payment page step that failed, paired with the provider page
+// state observed when it failed. Both halves are closed code-owned sets.
+export const nexiHostedPaymentSteps = [
+  "card_entry",
+  "continue",
+  "pay",
+  "challenge",
+  "return",
+] as const;
+
+export const nexiHostedPaymentPageStates = [
+  "card_entry_incomplete",
+  "card_entry_ready",
+  "card_submission_rejected",
+  "provider_error_page",
+  "provider_failure_page",
+  "provider_server_error",
+  "continue_enabled",
+  "continue_disabled",
+  "pay_enabled",
+  "pay_disabled",
+  "challenge_enabled",
+  "challenge_disabled",
+  "return_enabled",
+  "return_disabled",
+  "unknown",
+  "snapshot_unavailable",
+] as const;
+
+export type NexiHostedPaymentStep = (typeof nexiHostedPaymentSteps)[number];
+export type NexiHostedPaymentPageStateCode =
+  (typeof nexiHostedPaymentPageStates)[number];
+export type NexiHostedPaymentDiagnosticCode =
+  `nexi_hosted_${NexiHostedPaymentStep}_${NexiHostedPaymentPageStateCode}`;
+
+export const nexiHostedPaymentDiagnosticCodes = nexiHostedPaymentSteps.flatMap(
+  (step) =>
+    nexiHostedPaymentPageStates.map(
+      (state): NexiHostedPaymentDiagnosticCode => `nexi_hosted_${step}_${state}`
+    )
+);
+
+export const toNexiHostedPaymentDiagnosticCode = (
+  step: NexiHostedPaymentStep,
+  state: NexiHostedPaymentPageStateCode
+): NexiHostedPaymentDiagnosticCode => `nexi_hosted_${step}_${state}`;
+
+export const parseNexiHostedPaymentDiagnosticCode = (
+  diagnosticCode: string | undefined
+):
+  | {
+      readonly state: NexiHostedPaymentPageStateCode;
+      readonly step: NexiHostedPaymentStep;
+    }
+  | undefined => {
+  for (const step of nexiHostedPaymentSteps) {
+    const prefix = `nexi_hosted_${step}_`;
+    if (!diagnosticCode?.startsWith(prefix)) continue;
+    const state = nexiHostedPaymentPageStates.find(
+      (candidate) => candidate === diagnosticCode.slice(prefix.length)
+    );
+    if (state) return { state, step };
+  }
+  return undefined;
+};
+
 export const workspaceE2EDiagnosticCodes = [
   ...nexiWebhookDiagnosticCodes,
   ...workspaceE2ERunnerDiagnosticCodes,
   ...workspaceE2EAccountDiagnosticCodes,
+  ...nexiHostedPaymentDiagnosticCodes,
 ] as const;
 
 export type WorkspaceE2EDiagnosticCode =
@@ -126,6 +192,8 @@ export const workspaceE2EError = (
 export const workspaceE2ETimeoutError = (
   message: string,
   options: {
+    readonly cause?: unknown;
+    readonly diagnosticCode?: WorkspaceE2EDiagnosticCode;
     readonly operation?: string;
   } = {}
 ) => new WorkspaceE2EError({ message, ...options, reason: "timeout" });

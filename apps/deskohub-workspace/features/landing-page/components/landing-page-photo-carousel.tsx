@@ -9,6 +9,7 @@ import {
   useMotionSwipeCarousel,
   wrapIndex,
 } from "@/features/gallery/hooks/use-motion-swipe-carousel";
+import { getLocalizedCloudinaryContextValue } from "@/features/gallery/types/localized-cloudinary-context";
 import { type Locale, m } from "@/features/i18n";
 import { CarouselPositionIndicator } from "@/shared/components/carousel-position-indicator";
 import { cn } from "@/shared/utils";
@@ -87,6 +88,10 @@ const getSlideMotion = (offset: number) => {
   };
 };
 
+const getImageAlt = (image: CloudinaryAsset, index: number, locale: Locale) =>
+  getLocalizedCloudinaryContextValue(image, "alt", locale) ||
+  m.landingCarouselImageAlt({ number: index + 1 }, { locale });
+
 const getSlideZIndex = (offset: number) => {
   if (Math.abs(offset) < 0.5) return 20;
   if (Math.abs(offset) < 1.5) return 10;
@@ -111,8 +116,6 @@ export function LandingPagePhotoCarousel({
     isSwiping,
     moveToIndex,
     moveToVirtualIndex,
-    setIsFocusWithin,
-    setIsPointerOver,
     shouldReduceMotion,
     shouldSuppressClickAfterSwipe,
     stageRef,
@@ -137,16 +140,22 @@ export function LandingPagePhotoCarousel({
   };
   const lightboxSlides: SlideImage[] = useMemo(
     () =>
-      images.map((image, index) => ({
-        alt:
-          image.context?.custom?.alt ??
-          m.landingCarouselImageAlt({ number: index + 1 }, { locale }),
-        description: image.context?.custom?.caption,
-        height: image.height,
-        src: image.secure_url,
-        title: image.context?.custom?.caption,
-        width: image.width,
-      })),
+      images.map((image, index) => {
+        const caption = getLocalizedCloudinaryContextValue(
+          image,
+          "caption",
+          locale
+        );
+
+        return {
+          alt: getImageAlt(image, index, locale),
+          description: caption,
+          height: image.height,
+          src: image.secure_url,
+          title: caption,
+          width: image.width,
+        };
+      }),
     [images, locale]
   );
   let visibleOffsets: readonly SlideOffset[] = slideOffsets;
@@ -168,19 +177,6 @@ export function LandingPagePhotoCarousel({
     <section
       aria-label={ariaLabel}
       className={cn("overflow-visible space-y-8", className)}
-      onBlur={(event) => {
-        const nextTarget = event.relatedTarget;
-
-        if (
-          !(nextTarget instanceof Node) ||
-          !event.currentTarget.contains(nextTarget)
-        ) {
-          setIsFocusWithin(false);
-        }
-      }}
-      onFocus={() => setIsFocusWithin(true)}
-      onPointerEnter={() => setIsPointerOver(true)}
-      onPointerLeave={() => setIsPointerOver(false)}
     >
       <motion.div
         className="relative mx-auto h-72 max-w-6xl touch-pan-y @container-[size] sm:h-112 lg:h-136"
@@ -265,13 +261,7 @@ export function LandingPagePhotoCarousel({
               <span className="relative block h-full overflow-hidden rounded-[1.25rem] bg-navy-blue sm:rounded-[1.85rem]">
                 <CloudinaryImage
                   source={image}
-                  alt={
-                    image.context?.custom?.alt ??
-                    m.landingCarouselImageAlt(
-                      { number: logicalIndex + 1 },
-                      { locale }
-                    )
-                  }
+                  alt={getImageAlt(image, logicalIndex, locale)}
                   className="absolute inset-0"
                   preload={isCurrent}
                   size={{ width: "fill", height: "fill" }}

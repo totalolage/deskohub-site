@@ -64,7 +64,7 @@ describe("BookingsAdministrationPage filters", () => {
   });
   afterAll(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    unregisterWorkspaceComponentTestEnv();
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("requires the server-selected date and retains hidden sorting in GET", async () => {

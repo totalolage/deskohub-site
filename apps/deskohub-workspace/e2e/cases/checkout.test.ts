@@ -3,7 +3,7 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import type { Customer } from "@deskohub/dotypos/generated";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
@@ -16,6 +16,11 @@ import {
   parseTrackedSource,
 } from "../../scripts/shared/source-ast";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
+import {
+  type WorkspaceE2EError,
+  workspaceE2EError,
+  workspaceE2ETimeoutError,
+} from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -25,7 +30,12 @@ import type {
   CheckoutRow,
   WorkspaceE2EStepRunner,
 } from "../types";
-import { assertFulfilledStatusPage, executeCheckoutFlow } from "./checkout";
+import {
+  assertFreshPaymentAttempt,
+  assertFulfilledStatusPage,
+  completeHostedCheckoutPayment,
+  executeCheckoutFlow,
+} from "./checkout";
 
 const customer: Customer = {
   _cloudId: "customer-id",
@@ -409,4 +419,148 @@ test("preserves semantic reservation and verification capacities and payment ste
       timeoutMs: workspaceE2ETimeouts.uiTransition,
     },
   ]);
+});
+
+describe("Nexi sandbox payment restart", () => {
+  const firstRow = {
+    payment_attempt_id: "first-attempt",
+    provider_order_id: "first-nexi-order",
+  } as CheckoutRow;
+  const retryRow = {
+    payment_attempt_id: "retry-attempt",
+    provider_order_id: "retry-nexi-order",
+  } as CheckoutRow;
+  const hostedPaymentPage = {
+    checkoutPageUrl: "https://workspace.test/en-US/reservation/order-id",
+    checkoutTabId: "checkout-tab",
+    hostedPaymentTabId: "checkout-tab",
+    url: "https://xpay.nexigroup.com/hpp/nexi/",
+  };
+  const sandboxRejection = () =>
+    workspaceE2EError("Nexi rejected the card-data save", {
+      diagnosticCode: "nexi_hosted_continue_card_submission_rejected",
+      operation: "Nexi control",
+    });
+
+  const payWithSteps = ({
+    hostedPaymentFailures,
+    restarted = true,
+  }: {
+    readonly hostedPaymentFailures: Record<string, WorkspaceE2EError>;
+    readonly restarted?: boolean;
+  }) => {
+    const stepIds: string[] = [];
+    const runStep = ((step) => {
+      stepIds.push(step.id);
+      if (step.id.startsWith("start-checkout-payment"))
+        return Effect.succeed(hostedPaymentPage);
+      if (step.id === "read-provider-session-row")
+        return Effect.succeed(firstRow);
+      if (step.id === "read-provider-session-row-retry")
+        return Effect.succeed(retryRow);
+      if (step.id === "restart-sandbox-rejected-payment")
+        return Effect.succeed(restarted);
+      const failure = hostedPaymentFailures[step.id];
+      return failure ? Effect.fail(failure) : Effect.void;
+    }) as WorkspaceE2EStepRunner;
+    const data = {} as CheckoutData;
+    const result = Effect.runPromiseExit(
+      completeHostedCheckoutPayment({
+        config: { timeouts: workspaceE2ETimeouts } as WorkspaceE2EConfig,
+        data,
+        orderId: "order-id",
+        run: (() =>
+          Promise.reject(new Error("runner must not execute"))) as Runner,
+        runStep,
+        session: "nexi-sandbox-restart",
+        state: { data },
+      }).pipe(
+        Effect.provideService(E2EDatabase, E2EDatabase.of({ db: {} as never }))
+      )
+    );
+    return { result, stepIds };
+  };
+
+  const failureOf = (exit: Exit.Exit<CheckoutRow, WorkspaceE2EError>) =>
+    Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
+
+  test("restarts a card-data rejection once and continues with the fresh attempt", async () => {
+    const { result, stepIds } = payWithSteps({
+      hostedPaymentFailures: { "complete-hosted-payment": sandboxRejection() },
+    });
+
+    expect(await result).toEqual(Exit.succeed(retryRow));
+    expect(stepIds).toEqual([
+      "start-checkout-payment",
+      "read-provider-session-row",
+      "complete-hosted-payment",
+      "restart-sandbox-rejected-payment",
+      "start-checkout-payment-retry",
+      "read-provider-session-row-retry",
+      "complete-hosted-payment-retry",
+      "reach-checkout-status-page-retry",
+    ]);
+  });
+
+  test("fails with the original rejection when the restart is declined", async () => {
+    const rejection = sandboxRejection();
+    const { result, stepIds } = payWithSteps({
+      hostedPaymentFailures: { "complete-hosted-payment": rejection },
+      restarted: false,
+    });
+
+    expect(failureOf(await result)).toEqual(Option.some(rejection));
+    expect(stepIds.at(-1)).toBe("restart-sandbox-rejected-payment");
+  });
+
+  test("never restarts the restarted attempt", async () => {
+    const retryRejection = sandboxRejection();
+    const { result, stepIds } = payWithSteps({
+      hostedPaymentFailures: {
+        "complete-hosted-payment": sandboxRejection(),
+        "complete-hosted-payment-retry": retryRejection,
+      },
+    });
+
+    expect(failureOf(await result)).toEqual(Option.some(retryRejection));
+    expect(
+      stepIds.filter((id) => id === "restart-sandbox-rejected-payment")
+    ).toHaveLength(1);
+    expect(stepIds.at(-1)).toBe("complete-hosted-payment-retry");
+  });
+
+  test("never restarts timeouts or failures that are not sandbox rejections", async () => {
+    for (const failure of [
+      workspaceE2ETimeoutError("Nexi continue timed out", {
+        diagnosticCode: "nexi_hosted_continue_card_submission_rejected",
+      }),
+      workspaceE2EError("Nexi Pay control stayed disabled", {
+        diagnosticCode: "nexi_hosted_pay_pay_disabled",
+      }),
+      workspaceE2EError("checkout row assertion failed"),
+    ]) {
+      const { result, stepIds } = payWithSteps({
+        hostedPaymentFailures: { "complete-hosted-payment": failure },
+      });
+
+      expect(failureOf(await result)).toEqual(Option.some(failure));
+      expect(stepIds).not.toContain("restart-sandbox-rejected-payment");
+    }
+  });
+
+  test("requires a fresh payment attempt and Nexi order", () => {
+    expect(() => assertFreshPaymentAttempt(firstRow, retryRow)).not.toThrow();
+    expect(() =>
+      assertFreshPaymentAttempt(firstRow, {
+        ...retryRow,
+        payment_attempt_id: firstRow.payment_attempt_id,
+      })
+    ).toThrow("restarted payment reused the rejected payment attempt");
+    expect(() =>
+      assertFreshPaymentAttempt(firstRow, {
+        ...retryRow,
+        provider_order_id: firstRow.provider_order_id,
+      })
+    ).toThrow("restarted payment reused the rejected Nexi order");
+  });
 });

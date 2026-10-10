@@ -20,6 +20,14 @@ export const setSearchParams = (
     return url;
   });
 
+export const isCheckoutStatusUrl = (value: string | undefined) => {
+  try {
+    return new URL(value ?? "").pathname.includes("/reservation/status/");
+  } catch {
+    return false;
+  }
+};
+
 export const isExpectedCheckoutStatusUrl = (
   value: string,
   expectedHost: string

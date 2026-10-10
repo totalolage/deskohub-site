@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Predicate } from "effect";
+import { Effect, Fiber, Layer, Predicate } from "effect";
+import { TestClock } from "effect/testing";
 import { FetchHttpClient, type HttpClient } from "effect/unstable/http";
 import sharp from "sharp";
 import { generateStaticMapImage } from "./static-map";
@@ -108,6 +109,64 @@ describe("generateStaticMapImage", () => {
       format: "jpeg",
       width: 1,
       height: 1,
+    });
+  });
+
+  test("crops inside the tiles when the map centre falls on a sub-pixel", async () => {
+    const tile = await sharp({
+      create: {
+        width: 256,
+        height: 256,
+        channels: 3,
+        background: "#ffffff",
+      },
+    })
+      .png()
+      .toBuffer();
+    const fetch = makeFetch(
+      async () =>
+        new Response(tile, {
+          status: 200,
+          headers: { "Content-Type": "image/png" },
+        })
+    );
+
+    const image = await runWithFetch(
+      generateStaticMapImage({
+        ...staticMapOptions,
+        lng: 0.84375,
+        width: 256,
+        height: 256,
+        tileSize: 256,
+      }),
+      fetch
+    );
+
+    expect(await sharp(image).metadata()).toMatchObject({
+      width: 256,
+      height: 256,
+    });
+  });
+
+  test("fails a stalled tile request", async () => {
+    const fetch = makeFetch(() => new Promise<Response>(() => {}));
+
+    const error = await runWithFetch(
+      Effect.gen(function* () {
+        const fiber = yield* generateStaticMapImage(staticMapOptions).pipe(
+          Effect.flip,
+          Effect.forkChild
+        );
+        yield* TestClock.adjust("10 seconds");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer())),
+      fetch
+    );
+
+    expect(error).toMatchObject({
+      _tag: "OsmTileRequestError",
+      message: "OpenStreetMap tile 0/0/0 timed out.",
+      url: "https://tiles.example.test/0/0/0.png",
     });
   });
 

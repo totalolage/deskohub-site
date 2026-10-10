@@ -15,6 +15,10 @@ export const workspaceE2ETimeouts = {
   authDelivery: 2 * MINUTE,
   browserAction: 30 * SECOND,
   browserNavigation: 60 * SECOND,
+  // One reload of an advertised-pricing page, and the overall wait for the
+  // advertisedPricingSources cache (60-second revalidation) to converge.
+  calendarSaleAdvertisement: 2 * MINUTE,
+  calendarSaleAdvertisementAttempt: 10 * SECOND,
   checkoutCase: 6 * MINUTE,
   checkoutStart: 2 * MINUTE,
   cleanupAction: 30 * SECOND,
@@ -70,6 +74,7 @@ export type WorkspaceE2ETimeouts = Readonly<
 >;
 
 export const workspaceE2EPollIntervalMs = {
+  advertisedPricing: 5 * SECOND,
   browser: SECOND,
   datasource: 5 * SECOND,
 } as const;

@@ -76,7 +76,7 @@ afterEach(() => {
 
 afterAll(async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
-  unregisterWorkspaceComponentTestEnv();
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 const fixtureReservationId = "01980000-0000-7000-8000-00000000abcd";

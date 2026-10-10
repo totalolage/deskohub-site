@@ -66,8 +66,8 @@ describe("account components", () => {
     confirmDiscardChanges.mockImplementation(() => true);
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("server markup cannot submit an email through a native GET", async () => {
@@ -267,6 +267,28 @@ describe("account components", () => {
     expect(
       view.getByText("We could not send the link. Please try again.")
     ).toBeTruthy();
+  });
+
+  test("sign-in card keeps the typed email after a failed request", async () => {
+    signInMagicLink.mockImplementationOnce(() =>
+      Promise.resolve({ error: { message: "rate limited" } })
+    );
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = render(<SignInCard locale="en-US" />);
+    fireEvent.change(view.getByLabelText("Email"), {
+      target: { value: "ada@example.test" },
+    });
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-sign-in-form")!);
+    });
+
+    expect(
+      view.getByText("We could not send the link. Please try again.")
+    ).toBeTruthy();
+    expect((view.getByLabelText("Email") as HTMLInputElement).value).toBe(
+      "ada@example.test"
+    );
   });
 
   test("sign-out button rejects discard before changing auth or navigation", async () => {

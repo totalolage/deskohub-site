@@ -100,7 +100,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await browser?.close();
-  unregisterWorkspaceComponentTestEnv();
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 test("the Czech Team route heading clears the fixed mobile site header", async () => {

@@ -426,6 +426,32 @@ describe("return-window coordination", () => {
     sender.close();
   });
 
+  test("abandons a queued attempt lock request when disposed", async () => {
+    installBrowserApis();
+    let queuedOptions: LockOptions | undefined;
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: {
+        request: mock((_name: string, options: LockOptions) => {
+          queuedOptions = options;
+          return new Promise<never>(() => undefined);
+        }),
+      },
+    });
+    const { listenForReturn } = await import("./return-window");
+
+    const stop = listenForReturn({
+      attemptId: VALID_ATTEMPT_ID,
+      onReturn: async () => true,
+      ttlMs: 100,
+    });
+    expect(queuedOptions?.signal?.aborted).toBe(false);
+
+    stop();
+
+    expect(queuedOptions?.signal?.aborted).toBe(true);
+  });
+
   test("cleans up an attempt lock for a strict-mode-style remount", async () => {
     installBrowserApis();
     const { handOffReturn, listenForReturn } = await import("./return-window");

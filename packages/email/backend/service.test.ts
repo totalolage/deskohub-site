@@ -132,6 +132,84 @@ describe("EmailService", () => {
     expect(serviceErrorSend).toHaveBeenCalledTimes(1);
   });
 
+  test("keeps one idempotency key across transport retries", async () => {
+    const attemptKeys: (string | undefined)[] = [];
+    const send = mock((sent: EmailMessage) =>
+      Effect.suspend(() => {
+        attemptKeys.push(sent.idempotencyKey);
+        return attemptKeys.length === 1
+          ? Effect.fail(new NetworkError({ message: "timed out" }))
+          : Effect.succeed(success);
+      })
+    );
+
+    await runWithEmail(
+      Effect.gen(function* () {
+        const email = yield* EmailServiceTag;
+        return yield* email.send(message);
+      }),
+      makeProvider(send)
+    );
+
+    const [first, second] = attemptKeys;
+    expect(attemptKeys).toHaveLength(2);
+    expect(first).toEqual(expect.any(String));
+    expect(second).toBe(first);
+  });
+
+  test("gives separate deliveries separate idempotency keys", async () => {
+    const send = mock((_message: EmailMessage) => Effect.succeed(success));
+
+    await runWithEmail(
+      Effect.gen(function* () {
+        const email = yield* EmailServiceTag;
+        yield* email.send(message);
+        yield* email.send(message);
+      }),
+      makeProvider(send)
+    );
+
+    const [first, second] = send.mock.calls.map(
+      ([sent]) => sent.idempotencyKey
+    );
+    expect(first).toEqual(expect.any(String));
+    expect(second).toEqual(expect.any(String));
+    expect(second).not.toBe(first);
+  });
+
+  test("derives reservation delivery keys and prefers an explicit key", async () => {
+    const send = mock((_message: EmailMessage) => Effect.succeed(success));
+
+    await runWithEmail(
+      Effect.gen(function* () {
+        const email = yield* EmailServiceTag;
+        for (const category of [
+          "workspace-paid-reservation-access",
+          "workspace-invoice-customer",
+        ]) {
+          yield* email.send({
+            ...message,
+            tags: [category],
+            metadata: { workspaceReservationId: "reservation-id" },
+          });
+        }
+        yield* email.send({
+          ...message,
+          idempotencyKey: "invoice-resend-attempt-2",
+          tags: ["workspace-invoice-customer"],
+          metadata: { workspaceReservationId: "reservation-id" },
+        });
+      }),
+      makeProvider(send)
+    );
+
+    expect(send.mock.calls.map(([sent]) => sent.idempotencyKey)).toEqual([
+      "workspace-paid-reservation-access-reservation-id",
+      "workspace-invoice-customer-reservation-id",
+      "invoice-resend-attempt-2",
+    ]);
+  });
+
   test("sendTemplate sends rendered body, tags, and metadata", async () => {
     const send = mock((_message: EmailMessage) => Effect.succeed(success));
     const render = mock(() =>
@@ -167,6 +245,7 @@ describe("EmailService", () => {
       text: "Confirmed",
       tags: ["reservation-confirmation"],
       metadata: { templateType: "reservation-confirmation" },
+      idempotencyKey: expect.any(String),
     });
   });
 });
@@ -214,24 +293,19 @@ describe("EmailService censorship", () => {
 
   test("provider failures log only the error tag and a censored code", async () => {
     const consoleLines = captureConsoleLog();
-    let outcome: Awaited<ReturnType<typeof runWithEmail>> | undefined;
-    try {
-      outcome = await runWithEmail(
-        Effect.gen(function* () {
-          const email = yield* EmailServiceTag;
-          return yield* email.send(message).pipe(Effect.result);
-        }),
-        makeProvider(
-          mock((_message: EmailMessage) =>
-            Effect.fail(new EmailServiceError("raw provider detail: quota 429"))
-          )
+    const outcome = await runWithEmail(
+      Effect.gen(function* () {
+        const email = yield* EmailServiceTag;
+        return yield* email.send(message).pipe(Effect.result);
+      }),
+      makeProvider(
+        mock((_message: EmailMessage) =>
+          Effect.fail(new EmailServiceError("raw provider detail: quota 429"))
         )
-      );
-    } finally {
-      consoleLines.restore();
-    }
+      )
+    ).finally(consoleLines.restore);
 
-    expect(outcome?._tag).toBe("Failure");
+    expect(outcome._tag).toBe("Failure");
     const logged = consoleLines.join("\n");
     expect(logged).toContain("EmailServiceError");
     expect(logged).toContain("email.send.rejected");

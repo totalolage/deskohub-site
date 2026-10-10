@@ -20,10 +20,10 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
-    "@posthog/react": "1.10.3",
+    "@posthog/react": "1.11.3",
     "effect": "4.0.0-beta.85",
     "mustache": "^4.2.0",
-    "posthog-node": "^5.46.1"
+    "posthog-node": "^5.55.1"
   },
   "peerDependencies": {
     "posthog-js": ">=1.257.2",
@@ -32,9 +32,9 @@
   "devDependencies": {
     "@effect/openapi-generator": "4.0.0-beta.85",
     "@types/mustache": "^4.2.6",
-    "@types/react": "^19.2.17",
-    "posthog-js": "^1.407.2",
-    "react": "19.2.7",
+    "@types/react": "^19.3.0",
+    "posthog-js": "1.438.1",
+    "react": "19.3.0",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

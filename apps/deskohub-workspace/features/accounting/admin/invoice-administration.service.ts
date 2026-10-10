@@ -54,7 +54,10 @@ import {
   findWorkspaceCurrencyDefinition,
 } from "@/shared/money/currencies";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { plainDateStringSchema } from "@/shared/utils/temporal";
+import {
+  plainDateStringSchema,
+  temporalInstantToPlainDate,
+} from "@/shared/utils/temporal";
 import { AccountingDocumentSnapshotRepository } from "../backend/accounting-document-snapshot.repository";
 import { AccountingSnapshotKeyService } from "../backend/accounting-snapshot-key.service";
 import {
@@ -643,7 +646,14 @@ const toDetail = (
   return {
     ...summary,
     locale: document.locale,
-    serviceDate: document.fulfilledAt ?? null,
+    // The administration contract carries a calendar date; the service date
+    // of a reservation invoice is the Prague date of its fulfillment instant.
+    serviceDate: document.fulfilledAt
+      ? temporalInstantToPlainDate({
+          instant: Temporal.Instant.from(document.fulfilledAt),
+          timeZone: workspaceSiteConstants.location.timeZone,
+        }).toString()
+      : null,
     dueDate: null,
     paidOn: null,
     variableSymbol: null,

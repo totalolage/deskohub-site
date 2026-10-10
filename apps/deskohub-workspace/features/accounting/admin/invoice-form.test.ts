@@ -133,6 +133,7 @@ test("omits blank optional business contact names", () => {
       },
     }),
     invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb21",
+    suggestedVariableSymbol: "2026000002",
   });
 
   expect(input.customer.details).not.toHaveProperty("firstName");
@@ -189,6 +190,7 @@ test("preserves the reviewed variable symbol", () => {
       customerMode: "new",
       values: formValues({ variableSymbol: "2026000001" }),
       invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb21",
+      suggestedVariableSymbol: "2026000002",
     }).variableSymbol
   ).toBe("2026000001");
 });
@@ -200,6 +202,7 @@ test("reads the visible payment date as paid on when already paid", () => {
       customerMode: "new",
       values: formValues({ paid: true, paidOn: "2026-08-20" }),
       invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb21",
+      suggestedVariableSymbol: "2026000002",
     })
   ).toHaveProperty("payment", { status: "paid", date: "2026-08-20" });
 });
@@ -424,6 +427,49 @@ test("retries creation with the same id for an unchanged invoice and a new id af
   await submitAndCreate();
   expect(create).toHaveBeenCalledTimes(3);
   expect(invoiceIdOf(create.mock.calls[2])).not.toBe(firstInvoiceId);
+});
+
+test("leaves an unedited suggested variable symbol to the server", async () => {
+  const preview = mock();
+  const create = mock();
+  let previewOnSuccess:
+    | ((result: { data: { dataUrl: string } }) => void)
+    | undefined;
+  workspaceUseAction.mockImplementation((_action, options) => {
+    const actionOptions = options as {
+      readonly actionName: string;
+      readonly onSuccess?: typeof previewOnSuccess;
+    };
+    if (actionOptions.actionName === "previewAdministrationInvoice") {
+      previewOnSuccess = actionOptions.onSuccess;
+      return { execute: preview, isExecuting: false } as never;
+    }
+    if (actionOptions.actionName === "createAdministrationInvoice") {
+      return { execute: create, isExecuting: false } as never;
+    }
+    return { execute: mock(), isExecuting: false } as never;
+  });
+  const view = renderInvoiceCreationForm();
+  fillValidPersonInvoice(view);
+
+  submitInvoiceForm(view);
+  await flush();
+  // The preview still shows the suggestion the operator reviewed.
+  expect(preview).toHaveBeenCalledWith(
+    expect.objectContaining({ variableSymbol: "2026000001" })
+  );
+  act(() =>
+    previewOnSuccess?.({ data: { dataUrl: "data:text/plain;base64,PA==" } })
+  );
+  fireEvent.click(
+    view.getByRole("button", { name: "Create and send invoice" })
+  );
+  await flush();
+
+  // The page-load suggestion goes stale once another invoice is issued, so
+  // only the final invoice number may determine the default symbol.
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(create.mock.calls[0]?.[0]).not.toHaveProperty("variableSymbol");
 });
 
 test("keeps the draft id when a whitespace-only edit produces the same payload", async () => {

@@ -350,6 +350,25 @@ describe("account actions", () => {
     expect(deleteUserCalls).toBe(0);
   });
 
+  test("reports a retryable failure when the session cannot be read", async () => {
+    const { customerAccountUnavailable } = await import("./customer-account");
+    currentUser = Effect.fail(
+      customerAccountUnavailable("authentication.session")
+    );
+
+    let deleteUserCalls = 0;
+    deleteUser = () => {
+      deleteUserCalls += 1;
+      return Promise.resolve({ success: true });
+    };
+    const { deleteCustomerAccount } = await importActions();
+
+    const result = await deleteCustomerAccount({ confirmed: true });
+
+    expect(result).toEqual({ data: { status: "failed" } });
+    expect(deleteUserCalls).toBe(0);
+  });
+
   test("reports a retryable failure for other endpoint errors and keeps the account", async () => {
     const { APIError } = await import("better-auth");
     deleteUser = () => {

@@ -9,6 +9,7 @@ import {
 } from "bun:test";
 import React, { Activity } from "react";
 import type { CustomerProfileInput } from "@/features/account/contracts";
+import { m } from "@/features/i18n";
 import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
 import {
   registerWorkspaceComponentTestEnv,
@@ -147,8 +148,8 @@ describe("ProfileForm action lifecycle", () => {
     routerRefresh.mockClear();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("reveals profile after a billing save reports a phone error and retains drafts", async () => {
@@ -319,6 +320,36 @@ describe("ProfileForm action lifecycle", () => {
     expect(firstName.value).toBe("Changed");
     expect(lastName.value).toBe("Name");
     expect(routerRefresh).not.toHaveBeenCalled();
+    expectDirty();
+  });
+
+  test("reports a transport failure with the generic profile error and allows a retry", async () => {
+    updateCustomerProfile.mockImplementationOnce(() =>
+      Promise.reject(new Error("synthetic transport failure"))
+    );
+
+    const view = render(<ProfileFixture />);
+    const feedback = () =>
+      view.container.querySelector("#account-profile-feedback") as HTMLElement;
+    const firstName = view.getByLabelText("First name") as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.input(firstName, { target: { value: "Changed" } });
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+    await waitFor(() => expect(updateCustomerProfile).toHaveBeenCalledTimes(1));
+
+    await waitFor(() =>
+      expect(feedback().textContent).toBe(
+        m.accountProfileError({}, { locale: "en-US" })
+      )
+    );
+    expect(
+      (
+        view.container.querySelector("#account-profile-submit") as HTMLElement
+      ).hasAttribute("disabled")
+    ).toBe(false);
+    expect(firstName.value).toBe("Changed");
     expectDirty();
   });
 

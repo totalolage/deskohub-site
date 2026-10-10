@@ -294,8 +294,8 @@ describe("PostHogAnalytics", () => {
     document.cookie = "cc_cookie=; Path=/; Max-Age=0";
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("rejects unsafe telemetry hosts before first SDK initialization", async () => {

@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  motion,
-  useReducedMotion,
-  useScroll,
-  useTransform,
-} from "motion/react";
+import { motion, useScroll, useTransform } from "motion/react";
 import { type ReactNode, useRef } from "react";
 import { Container } from "@/shared/components/container";
 import { cn } from "@/shared/utils";
@@ -30,7 +25,6 @@ export function LandingPageHeroScrollScene({
   saleBanner,
 }: LandingPageHeroScrollSceneProps) {
   const sectionRef = useRef<HTMLElement>(null);
-  const shouldReduceMotion = useReducedMotion();
   const { scrollYProgress } = useScroll({
     target: sectionRef,
     offset: ["start start", "end start"],
@@ -48,12 +42,8 @@ export function LandingPageHeroScrollScene({
       ref={sectionRef}
     >
       <motion.div
-        className="absolute inset-x-0 -top-[24dvh] -bottom-[32dvh] -z-1 will-change-transform"
-        style={
-          shouldReduceMotion
-            ? undefined
-            : { scale: backgroundScale, y: backgroundY }
-        }
+        className="absolute inset-x-0 -top-[24dvh] -bottom-[32dvh] -z-1 will-change-transform motion-reduce:transform-none!"
+        style={{ scale: backgroundScale, y: backgroundY }}
       >
         {background}
       </motion.div>
@@ -67,12 +57,8 @@ export function LandingPageHeroScrollScene({
         )}
       >
         <motion.div
-          className="relative z-1 flex flex-col items-center text-center"
-          style={
-            shouldReduceMotion
-              ? undefined
-              : { opacity: contentOpacity, y: contentY }
-          }
+          className="relative z-1 flex flex-col items-center text-center motion-reduce:transform-none! motion-reduce:opacity-100!"
+          style={{ opacity: contentOpacity, y: contentY }}
         >
           {children}
         </motion.div>

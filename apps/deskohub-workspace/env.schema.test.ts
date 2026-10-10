@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { Schema } from "effect";
+import { runCommand } from "@/scripts/shared/command";
 import {
   workspaceClientEnvSchema,
   workspaceServerEnvSchema,
@@ -9,48 +10,48 @@ import {
 const validateFeatureFlagOverrideEnvironment = (
   vercelEnvironment: "production" | "preview"
 ) =>
-  Bun.spawnSync({
-    cmd: [
+  runCommand(
+    [
       process.execPath,
       "--preload",
       "./shared/testing/workspace-test-env.ts",
       "-e",
       'const { env } = await import("./env.ts"); if (env.POSTHOG_FEATURE_FLAG_OVERRIDES?.discount_codes !== true) process.exit(2);',
     ],
-    cwd: import.meta.dir,
-    env: {
-      ...process.env,
-      POSTHOG_FEATURE_FLAG_OVERRIDES: '{"discount_codes":true}',
-      VERCEL_ENV: vercelEnvironment,
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+    {
+      cwd: import.meta.dir,
+      env: {
+        ...process.env,
+        POSTHOG_FEATURE_FLAG_OVERRIDES: '{"discount_codes":true}',
+        VERCEL_ENV: vercelEnvironment,
+      },
+    }
+  );
 
 const validateServerEnvironment = (
   mutation: string,
   vercelEnvironment: "production" | "preview" | "development"
 ) =>
-  Bun.spawnSync({
-    cmd: [
+  runCommand(
+    [
       process.execPath,
       "--preload",
       "./shared/testing/workspace-test-env.ts",
       "-e",
       `${mutation}; await import("./env.ts");`,
     ],
-    cwd: import.meta.dir,
-    env: { ...process.env, VERCEL_ENV: vercelEnvironment },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+    {
+      cwd: import.meta.dir,
+      env: { ...process.env, VERCEL_ENV: vercelEnvironment },
+    }
+  );
 
 const validateMissingIgloohomeEnvironment = (
   missing: "credentials" | "target-device",
   vercelEnvironment: "production" | "preview"
 ) =>
-  Bun.spawnSync({
-    cmd: [
+  runCommand(
+    [
       process.execPath,
       "--preload",
       "./shared/testing/workspace-test-env.ts",
@@ -59,35 +60,35 @@ const validateMissingIgloohomeEnvironment = (
         ? 'delete process.env.IGLOOHOME_CLIENT_ID; delete process.env.IGLOOHOME_CLIENT_SECRET; await import("./env.ts");'
         : 'delete process.env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID; await import("./env.ts");',
     ],
-    cwd: import.meta.dir,
-    env: { ...process.env, VERCEL_ENV: vercelEnvironment },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+    {
+      cwd: import.meta.dir,
+      env: { ...process.env, VERCEL_ENV: vercelEnvironment },
+    }
+  );
 
 const validateMissingBrowserPostHogHost = () =>
-  Bun.spawnSync({
-    cmd: [
+  runCommand(
+    [
       process.execPath,
       "--preload",
       "./shared/testing/workspace-test-env.ts",
       "-e",
       'delete process.env.NEXT_PUBLIC_POSTHOG_HOST; await import("./env.ts");',
     ],
-    cwd: import.meta.dir,
-    env: {
-      ...process.env,
-      NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: "phc_test",
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+    {
+      cwd: import.meta.dir,
+      env: {
+        ...process.env,
+        NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: "phc_test",
+      },
+    }
+  );
 
 const validateAdministratorCredentialEnvironment = (
   administratorCredentials: string | undefined
 ) =>
-  Bun.spawnSync({
-    cmd: [
+  runCommand(
+    [
       process.execPath,
       "--preload",
       "./shared/testing/workspace-test-env.ts",
@@ -96,14 +97,14 @@ const validateAdministratorCredentialEnvironment = (
         ? 'delete process.env.ADMIN_BASIC_AUTH_CREDENTIALS; await import("./env.ts");'
         : 'await import("./env.ts");',
     ],
-    cwd: import.meta.dir,
-    env: {
-      ...process.env,
-      ADMIN_BASIC_AUTH_CREDENTIALS: administratorCredentials,
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
+    {
+      cwd: import.meta.dir,
+      env: {
+        ...process.env,
+        ADMIN_BASIC_AUTH_CREDENTIALS: administratorCredentials,
+      },
+    }
+  );
 
 describe("workspace environment schemas", () => {
   test("decodes defaults and numeric environment values", () => {
@@ -141,27 +142,27 @@ describe("workspace environment schemas", () => {
     expect(() => decodeIgloohomeTimeout("0")).toThrow();
   });
 
-  test("always requires the Igloohome target device and requires credentials only in production", () => {
-    const previewCredentials = validateMissingIgloohomeEnvironment(
+  test("always requires the Igloohome target device and requires credentials only in production", async () => {
+    const previewCredentials = await validateMissingIgloohomeEnvironment(
       "credentials",
       "preview"
     );
-    const productionCredentials = validateMissingIgloohomeEnvironment(
+    const productionCredentials = await validateMissingIgloohomeEnvironment(
       "credentials",
       "production"
     );
-    const previewTarget = validateMissingIgloohomeEnvironment(
+    const previewTarget = await validateMissingIgloohomeEnvironment(
       "target-device",
       "preview"
     );
 
     expect(previewCredentials.exitCode).toBe(0);
     expect(productionCredentials.exitCode).toBe(1);
-    expect(productionCredentials.stderr.toString()).toContain(
+    expect(productionCredentials.stderr).toContain(
       "Invalid Igloohome client credential configuration."
     );
     expect(previewTarget.exitCode).toBe(1);
-    expect(previewTarget.stderr.toString()).toContain(
+    expect(previewTarget.stderr).toContain(
       "IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID"
     );
   });
@@ -246,19 +247,19 @@ describe("workspace environment schemas", () => {
     ).toThrow();
   });
 
-  test("fails closed for missing, empty, and malformed administrator registries without exposing values", () => {
+  test("fails closed for missing, empty, and malformed administrator registries without exposing values", async () => {
     const secretDigest = createHash("sha256")
       .update("hushhush:quiet-synthetic-password")
       .digest("hex");
-    const missing = validateAdministratorCredentialEnvironment(undefined);
-    const empty = validateAdministratorCredentialEnvironment("");
-    const malformed = validateAdministratorCredentialEnvironment(
+    const missing = await validateAdministratorCredentialEnvironment(undefined);
+    const empty = await validateAdministratorCredentialEnvironment("");
+    const malformed = await validateAdministratorCredentialEnvironment(
       `hushhush:${secretDigest}\nnonsense`
     );
 
     for (const validation of [missing, empty, malformed]) {
       expect(validation.exitCode).toBe(1);
-      const error = validation.stderr.toString();
+      const error = validation.stderr;
       expect(error).toContain(
         "Invalid administrator credential registry configuration."
       );
@@ -310,7 +311,7 @@ describe("workspace environment schemas", () => {
     expect(() => decodeVercelEnvironment("staging")).toThrow();
   });
 
-  test("fails production closed when delivery or cron authentication is unconfigured", () => {
+  test("fails production closed when delivery or cron authentication is unconfigured", async () => {
     const cases: readonly {
       readonly mutation: string;
       readonly expected: string;
@@ -334,8 +335,11 @@ describe("workspace environment schemas", () => {
     ];
 
     for (const { mutation, expected } of cases) {
-      const validation = validateServerEnvironment(mutation, "production");
-      const error = validation.stderr.toString();
+      const validation = await validateServerEnvironment(
+        mutation,
+        "production"
+      );
+      const error = validation.stderr;
 
       expect(validation.exitCode).toBe(1);
       expect(error).toContain(expected);
@@ -343,17 +347,20 @@ describe("workspace environment schemas", () => {
     }
   });
 
-  test("keeps local development and preview usable without delivery or cron secrets", () => {
+  test("keeps local development and preview usable without delivery or cron secrets", async () => {
     const mutation =
       "delete process.env.EMAIL_API_KEY; delete process.env.CRON_SECRET;";
 
     for (const vercelEnvironment of ["development", "preview"] as const) {
-      const validation = validateServerEnvironment(mutation, vercelEnvironment);
+      const validation = await validateServerEnvironment(
+        mutation,
+        vercelEnvironment
+      );
       expect(validation.exitCode).toBe(0);
     }
   });
 
-  test("fails production closed when Better Auth secrets are absent or invalid", () => {
+  test("fails production closed when Better Auth secrets are absent or invalid", async () => {
     const strongSecret = "9tEWbGQfP2vXcK7mRz4sLh6yUnAoJd1e";
     const cases: readonly {
       readonly mutation: string;
@@ -380,8 +387,11 @@ describe("workspace environment schemas", () => {
     ];
 
     for (const { mutation, neverEcho } of cases) {
-      const validation = validateServerEnvironment(mutation, "production");
-      const error = validation.stderr.toString();
+      const validation = await validateServerEnvironment(
+        mutation,
+        "production"
+      );
+      const error = validation.stderr;
 
       expect(validation.exitCode).toBe(1);
       expect(error).toContain("Invalid Better Auth secret configuration.");
@@ -391,9 +401,9 @@ describe("workspace environment schemas", () => {
     }
   });
 
-  test("accepts valid rotating Better Auth secrets in production", () => {
+  test("accepts valid rotating Better Auth secrets in production", async () => {
     const rotatedSecret = "Qw7eNb2mVzYr8sKx4tLp6hUcJoAd5gRf";
-    const validation = validateServerEnvironment(
+    const validation = await validateServerEnvironment(
       `process.env.BETTER_AUTH_SECRETS = "3:${rotatedSecret},1:9tEWbGQfP2vXcK7mRz4sLh6yUnAoJd1e";`,
       "production"
     );
@@ -401,9 +411,9 @@ describe("workspace environment schemas", () => {
     expect(validation.exitCode).toBe(0);
   });
 
-  test("keeps local development and preview usable without Better Auth secrets", () => {
+  test("keeps local development and preview usable without Better Auth secrets", async () => {
     for (const vercelEnvironment of ["development", "preview"] as const) {
-      const validation = validateServerEnvironment(
+      const validation = await validateServerEnvironment(
         "delete process.env.BETTER_AUTH_SECRETS;",
         vercelEnvironment
       );
@@ -411,20 +421,21 @@ describe("workspace environment schemas", () => {
     }
   });
 
-  test("requires the browser PostHog proxy when browser analytics is enabled", () => {
-    const validation = validateMissingBrowserPostHogHost();
+  test("requires the browser PostHog proxy when browser analytics is enabled", async () => {
+    const validation = await validateMissingBrowserPostHogHost();
 
     expect(validation.exitCode).toBe(1);
-    expect(validation.stderr.toString()).toContain(
+    expect(validation.stderr).toContain(
       "NEXT_PUBLIC_POSTHOG_HOST is required when browser PostHog is enabled."
     );
   });
 
-  test("retains server cross-field checks through T3 Env composition", () => {
-    const previewValidation = validateFeatureFlagOverrideEnvironment("preview");
+  test("retains server cross-field checks through T3 Env composition", async () => {
+    const previewValidation =
+      await validateFeatureFlagOverrideEnvironment("preview");
     const productionValidation =
-      validateFeatureFlagOverrideEnvironment("production");
-    const productionError = productionValidation.stderr.toString();
+      await validateFeatureFlagOverrideEnvironment("production");
+    const productionError = productionValidation.stderr;
 
     expect(previewValidation.exitCode).toBe(0);
     expect(productionValidation.exitCode).toBe(1);

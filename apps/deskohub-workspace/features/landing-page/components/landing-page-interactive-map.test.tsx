@@ -220,8 +220,8 @@ afterEach(() => {
   mediaQueries.length = 0;
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 describe("LandingPageInteractiveMap", () => {

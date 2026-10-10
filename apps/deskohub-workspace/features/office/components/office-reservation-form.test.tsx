@@ -9,8 +9,15 @@ import {
   test,
 } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import { Effect, Schema } from "effect";
+import type { ComponentProps } from "react";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
@@ -42,6 +49,64 @@ mock.module("@/features/reservation/actions/get-advertised-price", () => ({
 
 const { OfficeReservationForm } = await import("./office-reservation-form");
 
+const officeAvailabilityResponse = ({
+  from,
+  to,
+}: {
+  readonly from: string;
+  readonly to: string;
+}) =>
+  new Response(
+    JSON.stringify({
+      from,
+      to,
+      unavailableDates: [],
+      reservedDeskWorkstationRequiredDates: [],
+      unavailableCoworkTiers: [],
+      meetingRoomUnavailable: false,
+      officeUnavailable: false,
+      unavailableMonitorOptions: [],
+      notices: [],
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+
+// React DOM picks its change-event strategy when it loads. When it loads before
+// happy-dom registers, it falls back to the legacy IE input polyfill, which
+// watches the focused element through attachEvent and compares values on keyup.
+// Dispatching both paths reaches the controlled input's onChange either way.
+const typeIntoInput = (input: HTMLInputElement, value: string) => {
+  Object.assign(input, {
+    attachEvent: () => undefined,
+    detachEvent: () => undefined,
+  });
+  fireEvent.focusIn(input);
+  Object.getOwnPropertyDescriptor(
+    Object.getPrototypeOf(input),
+    "value"
+  )?.set?.call(input, value);
+  fireEvent.input(input);
+  fireEvent.keyUp(input);
+};
+
+const renderOfficeForm = (
+  props: Partial<ComponentProps<typeof OfficeReservationForm>> &
+    Pick<ComponentProps<typeof OfficeReservationForm>, "today">,
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retryDelay: 0 } },
+  })
+) =>
+  render(
+    <QueryClientProvider client={queryClient}>
+      <OfficeReservationForm
+        seatCapacity={3}
+        initialValues={officeReservationDefaultValues}
+        locale="en-US"
+        {...props}
+      />
+    </QueryClientProvider>
+  );
+
 describe("OfficeReservationForm", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
@@ -63,8 +128,8 @@ describe("OfficeReservationForm", () => {
     globalThis.fetch = originalFetch;
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders one start date and a day-count input", () => {
@@ -498,5 +563,159 @@ describe("OfficeReservationForm", () => {
     )) {
       expect(option.className).not.toContain("glow-border");
     }
+  });
+
+  test("lets the day count be cleared and retyped before normalizing it on blur", async () => {
+    const today = decodePlainDate("2026-08-10");
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        officeAvailabilityResponse({ from: "2026-08-10", to: "2026-09-10" })
+      )
+    ) as typeof fetch;
+    const view = renderOfficeForm({
+      initialValues: {
+        ...officeReservationDefaultValues,
+        startsOn: today,
+        dayCount: 2,
+      },
+      today,
+    });
+    const dayCount = view.getByRole<HTMLInputElement>("spinbutton", {
+      name: "Number of days",
+    });
+    await waitFor(() => {
+      expect(Number(dayCount.max)).toBeGreaterThan(5);
+    });
+
+    act(() => {
+      typeIntoInput(dayCount, "");
+    });
+    expect(dayCount.value).toBe("");
+
+    act(() => {
+      typeIntoInput(dayCount, "5");
+    });
+    expect(dayCount.value).toBe("5");
+
+    act(() => {
+      typeIntoInput(dayCount, "");
+    });
+    act(() => {
+      fireEvent.blur(dayCount);
+    });
+    expect(dayCount.value).toBe("5");
+
+    act(() => {
+      typeIntoInput(dayCount, "500");
+    });
+    act(() => {
+      fireEvent.blur(dayCount);
+    });
+    expect(dayCount.value).toBe(dayCount.max);
+  });
+
+  test("hides a stale office quote once its background refresh fails", async () => {
+    const startsOn = decodePlainDate("2026-08-10");
+    const initialAdvertisedPrices = [1, 2, 3].map((seats) => {
+      const request = getOfficeAdvertisedPriceRequest({
+        endsOn: startsOn,
+        locale: "en-US",
+        seats,
+        startsOn,
+      });
+      const quote = Effect.runSync(
+        buildOfficeReservationQuote(request.reservation.details)
+      );
+
+      return {
+        request,
+        advertisedPrice: {
+          advertisedPriceToken: `office-${seats}`,
+          kind: "office" as const,
+          quote,
+          summary: getOfficeCheckoutSummary(quote),
+        },
+      };
+    });
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        officeAvailabilityResponse({ from: "2026-08-10", to: "2026-09-10" })
+      )
+    ) as typeof fetch;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retryDelay: 0 } },
+    });
+    const view = renderOfficeForm(
+      {
+        initialAdvertisedPrices,
+        initialValues: { ...officeReservationDefaultValues, startsOn },
+        today: startsOn,
+      },
+      queryClient
+    );
+    const seatOptionText = () =>
+      view.container
+        .querySelector('[data-reservation-type-option="1"]')
+        ?.textContent?.replaceAll(" ", " ");
+    expect(seatOptionText()).toContain("CZK 315");
+
+    await act(async () => {
+      await queryClient.refetchQueries({
+        predicate: (query) => query.state.data !== undefined,
+      });
+    });
+
+    await view.findByText(/current price could not be loaded/i);
+    expect(seatOptionText()).not.toContain("CZK 315");
+    expect(
+      view.container.querySelector("[data-office-base-price]")?.textContent
+    ).not.toContain("CZK");
+  });
+
+  test("blocks checkout with an availability error when the calendar cannot be loaded", async () => {
+    const today = decodePlainDate("2026-08-10");
+    let availabilityRequestCount = 0;
+    globalThis.fetch = mock(() => {
+      availabilityRequestCount += 1;
+      return Promise.reject(new Error("Availability failed"));
+    }) as typeof fetch;
+    const view = renderOfficeForm({
+      initialValues: { ...officeReservationDefaultValues, startsOn: today },
+      today,
+    });
+
+    expect(
+      await view.findByText(
+        "We couldn't confirm availability. Please try again."
+      )
+    ).toBeDefined();
+    expect(availabilityRequestCount).toBe(4);
+    expect(
+      view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+    ).toBe(true);
+  });
+
+  test("validates an empty start date when its calendar closes", async () => {
+    const today = decodePlainDate("2026-08-10");
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        officeAvailabilityResponse({ from: "2026-08-10", to: "2026-09-10" })
+      )
+    ) as typeof fetch;
+    const view = renderOfficeForm({
+      initialValues: officeReservationDefaultValues,
+      today,
+    });
+    const startDate = view.getByRole("button", {
+      name: /^Office reservation start date/,
+    });
+    expect(startDate.getAttribute("aria-invalid")).toBe("false");
+
+    await act(async () => fireEvent.click(startDate));
+    await act(async () => fireEvent.click(startDate));
+    await act(async () => {});
+
+    expect(startDate.getAttribute("aria-invalid")).toBe("true");
+    expect(execute).not.toHaveBeenCalled();
   });
 });

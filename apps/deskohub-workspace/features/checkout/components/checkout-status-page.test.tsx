@@ -89,8 +89,8 @@ describe("CheckoutStatusPage", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("exposes an accessible busy status shell", () => {

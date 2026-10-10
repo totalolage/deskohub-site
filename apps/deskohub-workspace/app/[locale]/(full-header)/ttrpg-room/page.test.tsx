@@ -44,8 +44,8 @@ describe("TtrpgRoomPage", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("starts a meeting-room reservation from the workspace room option", async () => {

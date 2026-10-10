@@ -6,6 +6,7 @@ import { ImageRenderingError, OsmTileRequestError } from "./errors";
 const defaultTileSize = 256;
 const defaultTileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const defaultUserAgent = "DeskohubStaticMap/1.0 (+https://deskohub.cz)";
+const tileRequestTimeout = "10 seconds";
 
 export interface StaticMapImageOptions {
   readonly lat: number;
@@ -176,7 +177,18 @@ const fetchTile = Effect.fn("osm.fetchTile")(
               url,
               ...tile,
             })
-      )
+      ),
+      Effect.timeoutOrElse({
+        duration: tileRequestTimeout,
+        orElse: () =>
+          Effect.fail(
+            new OsmTileRequestError({
+              message: `OpenStreetMap tile ${tile.z}/${tile.x}/${tile.y} timed out.`,
+              url,
+              ...tile,
+            })
+          ),
+      })
     );
   }
 );
@@ -191,8 +203,10 @@ const createStaticMapInput = (
     options.zoom,
     tileSize
   );
-  const left = center.x - options.width / 2;
-  const top = center.y - options.height / 2;
+  // Snap the viewport to whole pixels before choosing tiles, so the crop
+  // offset and the tile range agree and the crop stays inside the canvas.
+  const left = Math.round(center.x - options.width / 2);
+  const top = Math.round(center.y - options.height / 2);
   const startTileX = Math.floor(left / tileSize);
   const startTileY = Math.floor(top / tileSize);
   const endTileX = Math.floor((left + options.width - 1) / tileSize);
@@ -219,8 +233,8 @@ const createStaticMapInput = (
   return {
     baseWidth: (endTileX - startTileX + 1) * tileSize,
     baseHeight: (endTileY - startTileY + 1) * tileSize,
-    extractLeft: Math.round(left - startTileX * tileSize),
-    extractTop: Math.round(top - startTileY * tileSize),
+    extractLeft: left - startTileX * tileSize,
+    extractTop: top - startTileY * tileSize,
     height: options.height,
     quality: options.quality ?? staticMapDefaults.quality,
     tileUrl: options.tileUrl ?? defaultTileUrl,

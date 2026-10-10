@@ -30,6 +30,6 @@ const WorkspaceCloudinaryRuntimeConfigLayer = makeCloudinaryRuntimeConfigLayer({
   serviceName: "workspace",
 });
 
-export const WorkspaceCloudinaryLayer = CloudinaryService.Default.pipe(
+export const WorkspaceCloudinaryLayer = CloudinaryService.Live.pipe(
   Layer.provide(WorkspaceCloudinaryRuntimeConfigLayer)
 );
