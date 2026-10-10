@@ -309,7 +309,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
 
   test("checkout keys use JSON.stringify payload and do not use tuple delimiters", async () => {
     const source = await readAppFile(
-      "features/checkout/backend/checkout/checkout-session-key.server.ts"
+      "features/checkout/backend/checkout/checkout-lookup-keys.server.ts"
     );
 
     expect(source).not.toContain("schema:");
