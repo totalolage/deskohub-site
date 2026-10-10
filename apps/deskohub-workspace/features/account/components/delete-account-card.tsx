@@ -60,9 +60,8 @@ export function DeleteAccountCard({
 
   useEffect(() => authReturn.cancel, [authReturn]);
 
-  const { execute, isExecuting, result, reset } = useWorkspaceAction(
-    deleteCustomerAccount,
-    {
+  const { execute, hasErrored, isExecuting, isIdle, result, reset } =
+    useWorkspaceAction(deleteCustomerAccount, {
       actionName: "account.delete",
       onSuccess: ({ data }) => {
         if (data?.status === "deleted") {
@@ -80,18 +79,13 @@ export function DeleteAccountCard({
         }
         // "failed" keeps the dialog open with the retryable error message.
       },
+      // Also runs for thrown (transport) failures, so no onTransportError.
       onError: () => {
         void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
           () => undefined
         );
       },
-      onTransportError: () => {
-        void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
-          () => undefined
-        );
-      },
-    }
-  );
+    });
 
   const requestReauthLink = async () => {
     setReauthFailed(false);
@@ -111,6 +105,8 @@ export function DeleteAccountCard({
   };
 
   const closeDialog = (nextOpen: boolean) => {
+    // Closing mid-request would reset the action and drop its outcome.
+    if (!nextOpen && isExecuting) return;
     setOpen(nextOpen);
     if (!nextOpen) {
       authReturn.cancel();
@@ -119,7 +115,8 @@ export function DeleteAccountCard({
       setReauthLinkSent(false);
       setReauthFailed(false);
       reset();
-      router.refresh();
+      // A deletion attempt may have changed the server-side deletion state.
+      if (!isIdle) router.refresh();
     }
   };
 
@@ -168,7 +165,10 @@ export function DeleteAccountCard({
               : m.accountDeletionButton({}, { locale })}
           </Button>
         </DialogTrigger>
-        <DialogContent aria-describedby="delete-account-dialog-description">
+        <DialogContent
+          aria-describedby="delete-account-dialog-description"
+          locale={locale}
+        >
           {reauthRequired ? (
             <>
               <DialogHeader>
@@ -233,12 +233,16 @@ export function DeleteAccountCard({
                   ? m.accountDeletionRetryableError({}, { locale })
                   : null}
                 {result.serverError ?? null}
+                {hasErrored &&
+                  result.serverError === undefined &&
+                  m.accountDeletionRequestFailed({}, { locale })}
               </div>
 
               <DialogFooter>
                 <Button
                   type="button"
                   variant="ghost"
+                  disabled={isExecuting}
                   onClick={() => closeDialog(false)}
                 >
                   {m.accountDeletionCancel({}, { locale })}

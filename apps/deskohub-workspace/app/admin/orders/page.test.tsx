@@ -69,7 +69,7 @@ describe("OrdersAdministrationPage filters", () => {
   });
   afterAll(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    unregisterWorkspaceComponentTestEnv();
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("uses server date defaults and submits the exact date fields as GET", async () => {

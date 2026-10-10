@@ -1,11 +1,10 @@
 import "server-only";
 
-import { v2 as cloudinary } from "cloudinary";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { Context, Data, Effect, Layer } from "effect";
 import {
   type CloudinaryConfig,
   CloudinaryRuntimeConfig,
-  configureCloudinarySdk,
   validateCloudinaryRuntimeConfig,
 } from "./config";
 
@@ -46,7 +45,6 @@ export class CloudinaryWebhookVerifier extends Context.Service<
     Effect.gen(function* () {
       const rawConfig = yield* CloudinaryRuntimeConfig;
       const config = yield* validateCloudinaryRuntimeConfig(rawConfig);
-      yield* configureCloudinarySdk(config);
 
       return {
         verify: (request) =>
@@ -127,15 +125,10 @@ function readCloudinaryWebhookBody(request: Request) {
 function verifyCloudinarySignature(
   bodyText: string,
   timestamp: number,
-  signature: string
+  signature: string,
+  apiSecret: string
 ) {
-  if (
-    !cloudinary.utils.verifyNotificationSignature(
-      bodyText,
-      timestamp,
-      signature
-    )
-  ) {
+  if (!isCloudinarySignature({ apiSecret, bodyText, signature, timestamp })) {
     return Effect.gen(function* () {
       yield* Effect.logWarning(
         "Cloudinary webhook auth rejected: invalid signature"
@@ -147,6 +140,27 @@ function verifyCloudinarySignature(
   }
 
   return Effect.void;
+}
+
+/**
+ * Cloudinary signs the raw body, the timestamp, and the API secret with SHA-1.
+ * The expected signature comes from this verifier's own secret rather than the
+ * SDK's process-wide configuration, and is compared in constant time.
+ */
+function isCloudinarySignature(input: {
+  readonly apiSecret: string;
+  readonly bodyText: string;
+  readonly signature: string;
+  readonly timestamp: number;
+}) {
+  const expected = createHash("sha1")
+    .update(`${input.bodyText}${input.timestamp}${input.apiSecret}`)
+    .digest();
+  const received = Buffer.from(input.signature, "hex");
+
+  return (
+    received.length === expected.length && timingSafeEqual(received, expected)
+  );
 }
 
 function parseCloudinaryWebhookPayload(bodyText: string) {
@@ -183,7 +197,12 @@ function verifyCloudinaryWebhookRequestWithConfig(
     const bodyText = yield* readCloudinaryWebhookBody(request);
     yield* Effect.logDebug("Cloudinary webhook body read");
 
-    yield* verifyCloudinarySignature(bodyText, timestamp, signature);
+    yield* verifyCloudinarySignature(
+      bodyText,
+      timestamp,
+      signature,
+      config.apiSecret
+    );
     yield* Effect.logInfo("Cloudinary webhook signature verified");
 
     const payload = yield* parseCloudinaryWebhookPayload(bodyText);

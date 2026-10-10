@@ -259,6 +259,9 @@ test("does not navigate when sign-out resolves with a 503 error", async () => {
   expect(view.getByRole("alert").textContent).toBe(
     "We could not sign you out. Please try again."
   );
+  // role="alert" already implies assertive announcement; a conflicting
+  // aria-live would downgrade it.
+  expect(view.getByRole("alert").hasAttribute("aria-live")).toBe(false);
   expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
 
   const draft = view.getByLabelText("Dirty form") as HTMLInputElement;

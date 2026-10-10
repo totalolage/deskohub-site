@@ -38,8 +38,8 @@ afterEach(() => {
   cleanup();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 const sessionId = CliSessionId.make("019f70bd-0131-7f30-9f8a-48e768f00292");

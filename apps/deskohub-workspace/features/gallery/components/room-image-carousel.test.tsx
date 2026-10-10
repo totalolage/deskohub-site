@@ -81,8 +81,8 @@ describe("RoomImageCarousel", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("opens the current fallback photo with the shared lightbox", async () => {
@@ -98,16 +98,41 @@ describe("RoomImageCarousel", () => {
         openLabel="Open meeting room gallery"
       />
     );
-    const currentPhoto = view.getByRole("button", {
-      name: "Open meeting room gallery",
+    const [currentPhoto] = view.getAllByRole("button", {
+      name: "Meeting room 1",
     });
 
+    if (!currentPhoto) throw new Error("Expected current photo");
     expect(view.getByRole("button", { name: "Meeting room 2" })).toBeTruthy();
 
     fireEvent.click(currentPhoto);
 
     expect(view.getByTestId("lightbox").dataset.open).toBe("true");
     expect(view.getByTestId("lightbox").dataset.index).toBe("0");
+  });
+
+  test("names each photo slide after its image", async () => {
+    const { RoomImageCarousel } = await import("./room-image-carousel");
+    const view = render(
+      <RoomImageCarousel
+        emptyText="No photos"
+        fallbackImages={testImages.map((src, index) => ({
+          alt: `Meeting room ${index + 1}`,
+          src,
+        }))}
+        images={[]}
+        openLabel="Open meeting room gallery"
+      />
+    );
+
+    expect(
+      [...view.container.querySelectorAll("button.cursor-zoom-in")].map(
+        (slide) => slide.getAttribute("aria-label")
+      )
+    ).toEqual(["Meeting room 2", "Meeting room 1", "Meeting room 2"]);
+    expect(
+      view.queryByRole("button", { name: "Open meeting room gallery" })
+    ).toBeNull();
   });
 
   test("swipes fallback photos through the Motion drag controls", async () => {
@@ -123,10 +148,10 @@ describe("RoomImageCarousel", () => {
         openLabel="Open meeting room gallery"
       />
     );
-    const activePhoto = view.getByRole("button", {
-      name: "Open meeting room gallery",
+    const [activePhoto] = view.getAllByRole("button", {
+      name: "Meeting room 1",
     });
-    const stage = activePhoto.parentElement;
+    const stage = activePhoto?.parentElement;
 
     if (!stage) throw new Error("Expected gallery stage");
 

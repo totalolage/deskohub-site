@@ -70,8 +70,8 @@ describe("CheckoutPayPageSkeleton", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders skeleton order details with a disabled submit button", async () => {
@@ -100,8 +100,8 @@ describe("CheckoutPayPage pricing change", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("requires review before exposing payment controls", async () => {
@@ -156,8 +156,8 @@ describe("CheckoutPayPage payment navigation", () => {
     );
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("opens the payment gateway in a new tab and sends the original tab to status", async () => {
@@ -251,6 +251,36 @@ describe("CheckoutPayPage payment navigation", () => {
         "deskohub:checkout-status-owner:/en-US/reservation/status/reservation-id"
       )
     ).toBe("true");
+  });
+
+  test("announces a payment start failure as an alert", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+    expect(view.queryByRole("alert")).toBeNull();
+
+    const actionOptions = workspaceUseAction.mock.calls.at(-1)?.[1] as
+      | { readonly onTransportError: () => void }
+      | undefined;
+    if (!actionOptions) throw new Error("Checkout action options missing");
+
+    act(() => {
+      actionOptions.onTransportError();
+    });
+
+    expect(view.getByRole("alert").textContent).toBe(
+      m.checkoutPaySubmitError({}, { locale: "en-US" })
+    );
   });
 
   test("omits the early-performance request when the withdrawal period has elapsed", async () => {
@@ -352,8 +382,8 @@ describe("CheckoutPayPage discount urgency", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("shows and updates an applied discount inside its final hour", async () => {

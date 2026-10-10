@@ -237,8 +237,8 @@ describe("MeetingRoomReservationForm", () => {
     push.mockClear();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders every server-loaded duration quote on the first paint without refetching", () => {
@@ -918,6 +918,28 @@ describe("MeetingRoomReservationForm", () => {
     expect(
       await view.findByText(/meeting room is not available/i)
     ).toBeDefined();
+    expect(
+      view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+    ).toBe(true);
+  });
+
+  test("blocks checkout with an availability error when the interval cannot be checked", async () => {
+    let availabilityRequestCount = 0;
+    globalThis.fetch = mock(() => {
+      availabilityRequestCount += 1;
+      return Promise.reject(new Error("Availability failed"));
+    }) as typeof fetch;
+
+    const view = renderForm();
+
+    expect(
+      await view.findByText(
+        "We couldn't confirm availability. Please try again.",
+        {},
+        { timeout: 3000 }
+      )
+    ).toBeDefined();
+    expect(availabilityRequestCount).toBe(4);
     expect(
       view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
     ).toBe(true);

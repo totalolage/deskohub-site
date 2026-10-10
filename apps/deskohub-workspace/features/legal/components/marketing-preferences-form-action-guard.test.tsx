@@ -89,7 +89,7 @@ afterEach(() => {
 afterAll(async () => {
   cleanup();
   await flushWorkspaceComponentWork();
-  unregisterWorkspaceComponentTestEnv();
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 test("retries a fast rejected save after the rendered busy state stays false", async () => {

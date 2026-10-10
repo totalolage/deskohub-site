@@ -35,8 +35,8 @@ afterEach(() => {
   loadFaqOccupancyStats.mockClear();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 test("the localized FAQ route renders six closed disclosures and every English answer", async () => {

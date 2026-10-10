@@ -23,8 +23,8 @@ describe("CheckoutSteps", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders four ordered steps starting with the display-only choose-space step", () => {

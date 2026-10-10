@@ -6,6 +6,8 @@
 - Run workspace orchestration through Turborepo from the repository root when task dependencies or generated outputs matter.
 - Declare task dependencies with Turbo `dependsOn`. Keep package scripts as leaf commands; compose lint checks and generation prerequisites in the Turbo graph rather than shell chains or script-to-script calls.
 - Every package containing checked-in source must expose a lint task so the root lint graph covers it.
+- When a package `turbo.json` overrides `dependsOn` for a root task that depends on `^<task>`, start the list with `$TURBO_EXTENDS$`. Turbo hashes only a package's own files, so dropping the `^` dependency lets internal-package changes replay a stale cached result.
+- Declare files outside a package that a task reads, such as root scripts and patches, as `$TURBO_ROOT$/...` inputs. Never make a cached or validation task depend on an uncached task that fetches live remote data and rewrites tracked files.
 - Inspect the target package's `package.json` before assuming it exposes a command.
 
 ### TypeScript toolchain
@@ -83,7 +85,9 @@ The independent `i18n:compile` task may exclude `NEXT_PUBLIC_VERCEL_*` because i
 
 - Monitor an active GitHub run with `timeout <seconds> gh run watch <run-id> --exit-status --interval <seconds>`. Use `gh run view` for a one-time status inspection, not a `sleep`-then-inspect polling loop. A local watch timeout does not cancel the remote workflow.
 - Workspace tests cover changes to Workspace, shared packages, and root build inputs.
-- Workspace CI runs four native Bun test shards, each with its own disposable Postgres service; keep the test task at `--parallel=1` because suites mutate process-wide state. Preserve `test-functional` as the fail-closed required check over all test shards, Workspace validation, and migration-count validation.
+- Workspace CI runs four native Bun test shards, each with its own disposable Postgres service; keep the test task at `--parallel=1` because suites mutate process-wide state.
+- Workspace code runs subprocesses only through `runCommand` or `commandOutput` in `apps/deskohub-workspace/scripts/shared/command.ts`; the `no-synchronous-subprocess` Grit rule rejects `Bun.spawnSync` and the `node:child_process` `*Sync` calls. In Bun 1.4.2 a garbage collection inside a synchronous spawn can finalize an earlier test file's stdio writer against the spawn's isolated event loop and permanently lower its poll count. Every later synchronous spawn in that worker then spins until the test times out, printing `killed 1 dangling process` (oven-sh/bun#43697). Async spawns are unaffected. Settle a subprocess promise before asserting on it rather than using `expect(pending).rejects` or `.resolves`, because those matchers run a nested event-loop tick that can drop a child's pipe events. Re-evaluate the rule after upgrading to a Bun release that includes oven-sh/bun#44581. Preserve `test-functional` as the fail-closed required check over all test shards, Workspace validation, and migration-count validation.
 - Workspace E2E starts from the successful immutable protected preview for the exact commit.
 - The `dhw` CLI and its shared administration contract have a release-producing commit requirement. Read the Workspace administration reference before changing that boundary.
 - Preview database lifecycle is owned by the hosting integration. Repository workflows do not delete those branches.
+- Pin every third-party action to a full commit SHA (not an annotated tag object) with a `# vX.Y.Z` comment. Set `persist-credentials: false` on checkouts that never push. Give each secret, and each GitHub App token's `permission-*` inputs, to the narrowest step or job that uses it. Pass `${{ }}` values to `run:` scripts through `env:`.

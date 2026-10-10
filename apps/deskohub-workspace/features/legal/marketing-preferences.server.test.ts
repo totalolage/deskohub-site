@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Logger, Schema } from "effect";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
@@ -263,6 +263,25 @@ describe("getMarketingPreferences", () => {
     ).resolves.toEqual({ status: "unavailable" });
 
     expect(scenario.repository.get).not.toHaveBeenCalled();
+  });
+
+  test("logs a fixed, cause-free warning when it fails closed", async () => {
+    const scenario = makeScenario({ repositoryError: true });
+    const records: { readonly level: string; readonly text: string }[] = [];
+    const capturingLogger = Logger.make(({ logLevel, message }) => {
+      records.push({ level: logLevel, text: JSON.stringify(message) });
+    });
+
+    await expect(
+      getMarketingPreferencesEffect(
+        "en-US",
+        marketingCookies,
+        scenario.layers
+      ).pipe(Effect.withLogger(capturingLogger), Effect.runPromise)
+    ).resolves.toEqual({ status: "unavailable" });
+
+    expect(records.some(({ level }) => level === "Warn")).toBe(true);
+    expect(JSON.stringify(records)).not.toContain("repository unavailable");
   });
 
   test("fails closed to unavailable when consent storage cannot be read", async () => {

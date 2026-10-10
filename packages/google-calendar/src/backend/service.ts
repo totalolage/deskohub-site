@@ -1,5 +1,13 @@
 import { auth, calendar, type calendar_v3 } from "@googleapis/calendar";
-import { Context, Effect, Layer, Option, Schema, Stream } from "effect";
+import {
+  Context,
+  Effect,
+  Layer,
+  Option,
+  Predicate,
+  Schema,
+  Stream,
+} from "effect";
 import {
   GoogleCalendarRuntimeConfig,
   type IGoogleCalendarRuntimeConfig,
@@ -22,6 +30,7 @@ import {
 const calendarReadonlyScope =
   "https://www.googleapis.com/auth/calendar.readonly";
 const defaultPageSize = 250;
+const requestTimeout = "10 seconds";
 
 export interface IGoogleCalendarService {
   readonly listEvents: (
@@ -88,27 +97,31 @@ export class GoogleCalendarService extends Context.Service<
       const watchEvents = Effect.fn("GoogleCalendarService.watchEvents")(
         (input: GoogleCalendarWatchEventsInput) =>
           Effect.tryPromise({
-            try: () =>
+            try: (signal) =>
               client.events
-                .watch({
-                  calendarId: input.calendarId,
-                  requestBody: {
-                    address: input.webhookUrl,
-                    id: input.channelId,
-                    params: { ttl: input.ttlSeconds.toString() },
-                    token: input.webhookToken,
-                    type: "web_hook",
+                .watch(
+                  {
+                    calendarId: input.calendarId,
+                    requestBody: {
+                      address: input.webhookUrl,
+                      id: input.channelId,
+                      params: { ttl: input.ttlSeconds.toString() },
+                      token: input.webhookToken,
+                      type: "web_hook",
+                    },
                   },
-                })
+                  { signal }
+                )
                 .then(({ data }) => data),
             catch: (cause) =>
               new GoogleCalendarAPIError({
                 operation: "events.watch",
                 statusCode: getGoogleStatusCode(cause),
                 message: getGoogleErrorMessage(cause),
-                cause,
+                cause: withoutRequestBody(cause),
               }),
           }).pipe(
+            withRequestTimeout("events.watch"),
             Effect.flatMap((data) => toGoogleCalendarWatchChannel(data, input))
           ),
         (effect, input) =>
@@ -153,17 +166,20 @@ export class GoogleCalendarService extends Context.Service<
         readonly timeMin: string;
       }) =>
         Effect.tryPromise({
-          try: () =>
-            client.events.list({
-              calendarId: input.calendarId,
-              maxResults: defaultPageSize,
-              orderBy: "startTime",
-              pageToken: input.pageToken,
-              singleEvents: true,
-              timeMax: input.timeMax,
-              timeMin: input.timeMin,
-              timeZone: config.timeZone,
-            }),
+          try: (signal) =>
+            client.events.list(
+              {
+                calendarId: input.calendarId,
+                maxResults: defaultPageSize,
+                orderBy: "startTime",
+                pageToken: input.pageToken,
+                singleEvents: true,
+                timeMax: input.timeMax,
+                timeMin: input.timeMin,
+                timeZone: config.timeZone,
+              },
+              { signal }
+            ),
           catch: (cause) =>
             new GoogleCalendarAPIError({
               operation: "events.list",
@@ -171,7 +187,7 @@ export class GoogleCalendarService extends Context.Service<
               message: getGoogleErrorMessage(cause),
               cause,
             }),
-        });
+        }).pipe(withRequestTimeout("events.list"));
 
       return { listEvents, watchEvents };
     })
@@ -291,6 +307,47 @@ const toGoogleCalendarWatchChannel = (
 
     return result;
   });
+
+/** Interrupting the request aborts it, so a stalled provider call is released. */
+const withRequestTimeout =
+  (operation: string) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      Effect.timeoutOrElse({
+        duration: requestTimeout,
+        orElse: () =>
+          Effect.fail(
+            new GoogleCalendarAPIError({
+              operation,
+              message: "Google Calendar request timed out.",
+            })
+          ),
+      })
+    );
+
+/**
+ * Gaxios errors carry the request configuration, including the body. A watch
+ * request body holds the channel token that authenticates Google
+ * notifications, so the body is removed before the error can be logged.
+ */
+const withoutRequestBody = (cause: unknown) => {
+  const response = Predicate.hasProperty(cause, "response")
+    ? cause.response
+    : undefined;
+
+  for (const holder of [cause, response]) {
+    if (
+      Predicate.hasProperty(holder, "config") &&
+      Predicate.isObject(holder.config)
+    ) {
+      Object.assign(holder, {
+        config: { ...holder.config, data: undefined, body: undefined },
+      });
+    }
+  }
+
+  return cause;
+};
 
 const addDays = (date: string, days: number) => {
   const parsed = new Date(`${date}T00:00:00.000Z`);

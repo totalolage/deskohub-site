@@ -5,6 +5,7 @@ import {
   describe,
   expect,
   mock,
+  setSystemTime,
   test,
 } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -359,8 +360,8 @@ describe("CoworkReservationForm advertised pricing", () => {
     execute.mockClear();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders server-loaded discounts on the first paint without refetching", () => {
@@ -3532,5 +3533,180 @@ describe("CoworkReservationForm advertised pricing", () => {
         "input[type='radio'][value='2x27-4k']"
       )?.checked
     ).toBe(true);
+  });
+
+  test("starts the calendar at the Prague workspace date instead of the browser date", async () => {
+    const originalTimeZone = process.env.TZ;
+    // 22:30 UTC is already the next day in Prague (CEST, UTC+2).
+    process.env.TZ = "UTC";
+    setSystemTime(new Date("2026-10-09T22:30:00.000Z"));
+    try {
+      workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
+      globalThis.fetch = mock((request: RequestInfo | URL) => {
+        const url = String(request);
+        if (!url.startsWith("/api/workspace/availability")) {
+          return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+        }
+        const searchParams = new URL(url, "http://localhost").searchParams;
+        return Promise.resolve(
+          jsonResponse({
+            ...availabilityResponse,
+            date: undefined,
+            from: searchParams.get("from"),
+            to: searchParams.get("to"),
+          })
+        );
+      }) as typeof fetch;
+
+      const view = renderForm({
+        initialValues: { ...coworkReservationDefaultValues, date: "" },
+      });
+      await act(async () =>
+        fireEvent.click(view.getByRole("button", { name: /Reservation date/i }))
+      );
+      const dialog = await within(document.body).findByRole("dialog");
+      const browserTodayButton = await getCalendarDateButton(
+        dialog,
+        "2026-10-09"
+      );
+      const workspaceTodayButton = await getCalendarDateButton(
+        dialog,
+        "2026-10-10"
+      );
+
+      expect((browserTodayButton as HTMLButtonElement).disabled).toBe(true);
+      expect((workspaceTodayButton as HTMLButtonElement).disabled).toBe(false);
+      await act(async () => {
+        view.unmount();
+      });
+    } finally {
+      setSystemTime();
+      if (originalTimeZone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTimeZone;
+      }
+    }
+  });
+
+  test("validates an empty date when its calendar closes", async () => {
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: { ...coworkReservationDefaultValues, date: "" },
+    });
+    const datePickerButton = view.getByRole("button", {
+      name: /Reservation date/i,
+    });
+    expect(datePickerButton.getAttribute("aria-invalid")).toBe("false");
+
+    await act(async () => fireEvent.click(datePickerButton));
+    await within(document.body).findByRole("dialog");
+    await act(async () => fireEvent.click(datePickerButton));
+
+    await waitFor(() => {
+      expect(datePickerButton.getAttribute("aria-invalid")).toBe("true");
+    });
+    expect(execute).not.toHaveBeenCalled();
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
+  test("focuses the first enabled monitor radio when the monitor setup is invalid", async () => {
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(
+          jsonResponse({
+            ...availabilityResponse,
+            unavailableMonitorOptions: ["2x32-4k"],
+          })
+        );
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: {
+        ...reservedDeskFormValues(),
+        monitorOption: "invalid-monitor-option" as never,
+      },
+    });
+    const continueButton = view.getByRole("button", { name: "Continue" });
+    await waitFor(() => {
+      expect(continueButton.hasAttribute("disabled")).toBe(false);
+      expect(
+        view.container.querySelector<HTMLInputElement>(
+          "input[type='radio'][value='2x32-4k']"
+        )?.disabled
+      ).toBe(true);
+    });
+
+    await act(async () => fireEvent.click(continueButton));
+    await act(async () => {});
+
+    expect((document.activeElement as HTMLInputElement | null)?.value).toBe(
+      "2x27-qhd"
+    );
+    expect(execute).not.toHaveBeenCalled();
+    await act(async () => {
+      view.unmount();
+    });
+  });
+
+  test("never requests availability for a tier together with a monitor setup it cannot carry", async () => {
+    const requestedAvailability: Array<Record<string, string>> = [];
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (!url.startsWith("/api/workspace/availability")) {
+        return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+      }
+      requestedAvailability.push(
+        Object.fromEntries(new URL(url, "http://localhost").searchParams)
+      );
+      return Promise.resolve(jsonResponse(availabilityResponse));
+    }) as typeof fetch;
+
+    const view = renderForm({
+      initialValues: reservedDeskFormValues("2099-07-30", "2x27-qhd"),
+    });
+    await waitFor(() => {
+      expect(
+        view.container.querySelector<HTMLInputElement>(
+          "input[type='radio'][value='2x27-qhd']"
+        )?.checked
+      ).toBe(true);
+    });
+
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector(
+          "#reservation-entry-tier-open-space"
+        ) as HTMLElement
+      );
+    });
+    await waitFor(() => {
+      expect(
+        requestedAvailability.some(
+          (params) => params.entryTier === "open-space" && params.date
+        )
+      ).toBe(true);
+    });
+
+    expect(
+      requestedAvailability.filter(
+        (params) => params.entryTier === "open-space" && params.monitorOption
+      )
+    ).toEqual([]);
+    await act(async () => {
+      view.unmount();
+    });
   });
 });

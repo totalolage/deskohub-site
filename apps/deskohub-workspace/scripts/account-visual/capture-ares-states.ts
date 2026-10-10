@@ -1,4 +1,3 @@
-import { execSync } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
@@ -8,6 +7,7 @@ import {
   expect,
 } from "@playwright/test";
 import { m } from "../../features/i18n";
+import { commandOutput } from "../shared/command";
 import {
   type BrowserProblem,
   buildBundle,
@@ -58,12 +58,12 @@ const outcomeByState: Partial<Record<AresStateId, string>> = {
   unavailable: "unavailable",
 };
 
-const gitHeadSha = (): string =>
-  execSync("git rev-parse HEAD", {
-    cwd: resolve(import.meta.dir, "../../../.."),
-  })
-    .toString()
-    .trim();
+const gitHeadSha = async (): Promise<string> =>
+  (
+    await commandOutput(["git", "rev-parse", "HEAD"], {
+      cwd: resolve(import.meta.dir, "../../../.."),
+    })
+  ).trim();
 
 const parseArgs = (argv: readonly string[]) => {
   let label: string | undefined;
@@ -292,7 +292,7 @@ const runLocale = async ({
 const main = async () => {
   const { label, outputRoot, port } = parseArgs(Bun.argv.slice(2));
   const outputDirectory = await makeUniqueRunDirectory(outputRoot, label);
-  const sha = gitHeadSha();
+  const sha = await gitHeadSha();
   process.stdout.write(
     `[ares-capture] capturing ARES lookup states from commit ${sha}\n`
   );

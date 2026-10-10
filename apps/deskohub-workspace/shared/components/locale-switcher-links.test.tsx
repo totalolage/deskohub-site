@@ -131,8 +131,8 @@ afterEach(() => {
   cleanup();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 test("reserves both language labels before request-aware links resolve", async () => {
@@ -238,6 +238,31 @@ test("renders only the configured full-header items without reserved slots", asy
     "/en-US/account",
     galleryHref,
   ]);
+});
+
+test("marks navigation links for the current page", async () => {
+  const { SiteHeader } = await import("./site-header");
+  currentPathname = "/en-US/gallery";
+  const view = render(
+    <SiteHeader
+      {...completeSiteHeaderProps}
+      links={[
+        { id: "gallery", href: "/en-US/gallery", label: "Gallery" },
+        { id: "team", href: "/en-US/team", label: "Team" },
+      ]}
+    />
+  );
+
+  expect(
+    [...view.container.querySelectorAll('a[href="/en-US/gallery"]')].map(
+      (link) => link.getAttribute("aria-current")
+    )
+  ).toEqual(["page", "page"]);
+  expect(
+    [...view.container.querySelectorAll('a[href="/en-US/team"]')].map((link) =>
+      link.getAttribute("aria-current")
+    )
+  ).toEqual([null, null]);
 });
 
 test("omits account links when the account configuration is unavailable", async () => {

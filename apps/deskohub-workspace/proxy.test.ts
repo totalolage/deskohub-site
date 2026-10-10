@@ -8,14 +8,15 @@ import { getReservationAccessCookieName } from "@/features/reservation/backend/r
 import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationAccessTokenQueryParam } from "@/features/reservation/reservation-access-token";
+import { runCommand } from "@/scripts/shared/command";
 import { workspaceTestAdministrators } from "@/shared/testing/workspace-test-environment";
 import { config, proxy } from "./proxy";
 
 const inspectCheckoutEntry = (
   deploymentEnvironment: "preview" | "production" | "development"
 ) =>
-  Bun.spawnSync({
-    cmd: [
+  runCommand(
+    [
       process.execPath,
       "--preload",
       "./shared/testing/workspace-test-env.ts",
@@ -50,22 +51,22 @@ const inspectCheckoutEntry = (
         process.stdout.write(JSON.stringify(results));
       `,
     ],
-    cwd: import.meta.dir,
-    env: {
-      ...process.env,
-      VERCEL_ENV: deploymentEnvironment,
-      VERCEL_URL: "immutable-preview.vercel.app",
-      VERCEL_PROJECT_PRODUCTION_URL: "workspace.example",
-      VERCEL_AUTOMATION_BYPASS_SECRET: "synthetic-preview-bypass",
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+    {
+      cwd: import.meta.dir,
+      env: {
+        ...process.env,
+        VERCEL_ENV: deploymentEnvironment,
+        VERCEL_URL: "immutable-preview.vercel.app",
+        VERCEL_PROJECT_PRODUCTION_URL: "workspace.example",
+        VERCEL_AUTOMATION_BYPASS_SECRET: "synthetic-preview-bypass",
+      },
+    }
+  );
 
-test("starts Preview payment on the callback host before issuing its host-only cookie", () => {
-  const result = inspectCheckoutEntry("preview");
+test("starts Preview payment on the callback host before issuing its host-only cookie", async () => {
+  const result = await inspectCheckoutEntry("preview");
   expect(result.exitCode).toBe(0);
-  const responses = JSON.parse(new TextDecoder().decode(result.stdout));
+  const responses = JSON.parse(result.stdout);
 
   for (const index of [0, 1, 2, 7]) {
     const response = responses[index];
@@ -101,10 +102,10 @@ test("starts Preview payment on the callback host before issuing its host-only c
   }
 });
 
-test("uses the Preview callback host before sign-in and reservation preparation", () => {
-  const result = inspectCheckoutEntry("preview");
+test("uses the Preview callback host before sign-in and reservation preparation", async () => {
+  const result = await inspectCheckoutEntry("preview");
   expect(result.exitCode).toBe(0);
-  const responses = JSON.parse(new TextDecoder().decode(result.stdout));
+  const responses = JSON.parse(result.stdout);
   for (const index of [8, 10, 11]) {
     expect(responses[index].status).toBe(307);
     expect(new URL(responses[index].location).origin).toBe(
@@ -115,11 +116,11 @@ test("uses the Preview callback host before sign-in and reservation preparation"
   expect(responses[9].status).toBe(200);
 });
 
-test("retains Development and Production payment origins", () => {
+test("retains Development and Production payment origins", async () => {
   for (const environment of ["development", "production"] as const) {
-    const result = inspectCheckoutEntry(environment);
+    const result = await inspectCheckoutEntry(environment);
     expect(result.exitCode).toBe(0);
-    const responses = JSON.parse(new TextDecoder().decode(result.stdout));
+    const responses = JSON.parse(result.stdout);
     for (const index of [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
       expect(responses[index].location).toBeNull();
     }

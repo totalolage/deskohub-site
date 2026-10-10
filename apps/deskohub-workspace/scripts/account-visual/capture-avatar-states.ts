@@ -1,4 +1,3 @@
-import { execSync } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
@@ -10,6 +9,7 @@ import {
   type Page,
 } from "@playwright/test";
 import { m } from "../../features/i18n";
+import { commandOutput } from "../shared/command";
 import {
   type BrowserProblem,
   buildBundle,
@@ -83,14 +83,10 @@ export const avatarVisualCaptureChecklist = {
   },
 } as const;
 
-const gitHeadSha = (): string =>
-  execSync("git rev-parse HEAD", {
-    cwd: resolve(import.meta.dir, "../../../.."),
-  })
-    .toString()
-    .trim();
-
 const repoRoot = resolve(import.meta.dir, "../../../..");
+
+const gitHeadSha = async (): Promise<string> =>
+  (await commandOutput(["git", "rev-parse", "HEAD"], { cwd: repoRoot })).trim();
 
 /**
  * The bundle is compiled from the working tree, so any staged, unstaged, or
@@ -99,11 +95,15 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
  * `git status` otherwise honors `status.showUntrackedFiles=no` from git
  * config and would silently hide untracked build inputs.
  */
-export const gitStatusPorcelainLines = (
+export const gitStatusPorcelainLines = async (
   cwd: string = repoRoot
-): readonly string[] =>
-  execSync("git status --porcelain=v1 --untracked-files=all", { cwd })
-    .toString()
+): Promise<readonly string[]> =>
+  (
+    await commandOutput(
+      ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+      { cwd }
+    )
+  )
     .split("\n")
     .filter((line) => line.trim().length > 0);
 
@@ -547,9 +547,9 @@ const runLocale = async ({
 
 const main = async () => {
   const { label, outputRoot, port } = parseArgs(Bun.argv.slice(2));
-  assertCapturedSourcesMatchHead(gitStatusPorcelainLines());
+  assertCapturedSourcesMatchHead(await gitStatusPorcelainLines());
   const outputDirectory = await makeUniqueRunDirectory(outputRoot, label);
-  const sha = gitHeadSha();
+  const sha = await gitHeadSha();
   process.stdout.write(
     `[avatar-capture] capturing avatar states from commit ${sha}\n`
   );
@@ -601,10 +601,10 @@ const main = async () => {
   }
   // Re-verify revision and source identity before publishing: the capture
   // must never attribute a tree that changed mid-run to the starting commit.
-  if (gitHeadSha() !== sha) {
+  if ((await gitHeadSha()) !== sha) {
     throw new Error(`HEAD moved during capture from ${sha}`);
   }
-  assertCapturedSourcesMatchHead(gitStatusPorcelainLines());
+  assertCapturedSourcesMatchHead(await gitStatusPorcelainLines());
   const report = {
     schemaVersion: 1,
     capturedFromCommit: sha,

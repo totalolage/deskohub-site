@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq, sql } from "drizzle-orm";
+import { eq, isNull, lt, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -62,6 +62,18 @@ export class CustomerMarketingConsentRepository extends Context.Service<
                   grantedAt: input.grantedAt,
                   withdrawnAt: null,
                 },
+                // A withdrawal wins over a grant that is not newer than it, so
+                // a delayed grant cannot undo the customer's latest withdrawal.
+                setWhere: or(
+                  isNull(customerMarketingConsents.withdrawnAt),
+                  lt(
+                    customerMarketingConsents.withdrawnAt,
+                    sql.param(
+                      input.grantedAt,
+                      customerMarketingConsents.grantedAt
+                    )
+                  )
+                ),
               });
           }
         ),

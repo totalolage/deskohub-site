@@ -39,3 +39,20 @@ export function isManagedMarketingState(
     state.status === "withdrawn"
   );
 }
+
+export const marketingPreferencesMutationFailureReasons = [
+  "invalid-link",
+  "pending-confirmation-required",
+  "stale-context",
+  "unavailable",
+] as const;
+
+export type MarketingPreferencesMutationFailureReason =
+  (typeof marketingPreferencesMutationFailureReasons)[number];
+
+export const isMarketingPreferencesMutationFailureReason = (
+  serverError: string | undefined
+): serverError is MarketingPreferencesMutationFailureReason =>
+  marketingPreferencesMutationFailureReasons.some(
+    (reason) => reason === serverError
+  );
