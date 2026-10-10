@@ -126,10 +126,10 @@ describe("CheckoutSummary", () => {
 
       expect(view.queryByText(`monitor:${monitorOption}`)).toBeNull();
       const monitorTitle = {
-        "2x27-qhd": '2x 27" QHD',
-        "2x32-qhd": '2x 32" QHD',
-        "2x27-4k": '2x 27" 4K',
-        "2x32-4k": '2x 32" 4K',
+        "2x27-qhd": "2x 27″ QHD",
+        "2x32-qhd": "2x 32″ QHD",
+        "2x27-4k": "2x 27″ 4K",
+        "2x32-4k": "2x 32″ 4K",
       }[monitorOption];
       const monitorRow = view.getByText(monitorTitle).parentElement;
       expect(monitorRow?.textContent?.replaceAll("\u00a0", " ")).toContain(

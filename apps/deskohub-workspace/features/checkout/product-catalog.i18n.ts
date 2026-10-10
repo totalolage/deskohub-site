@@ -1,6 +1,8 @@
-import type {
-  WorkspaceCoworkProductTier,
-  WorkspaceProductMonitorOption,
+import {
+  type WorkspaceCoworkProductTier,
+  type WorkspaceProductMonitorOption,
+  type WorkspaceProductMonitorResolution,
+  workspaceProductMonitorSetups,
 } from "@/features/checkout/product-catalog";
 import { type Locale, m } from "@/features/i18n";
 import {
@@ -94,30 +96,17 @@ export const workspaceProductTierCardMessages = {
   WorkspaceProductTierCardMessages
 >;
 
-export const workspaceProductMonitorMessages = {
-  "2x27-qhd": {
-    title: m.reservationMonitor2x27QhdTitle,
-    description: m.reservationMonitor2x27QhdDescription,
-  },
-  "2x32-qhd": {
-    title: m.reservationMonitor2x32QhdTitle,
-    description: m.reservationMonitor2x32QhdDescription,
-  },
-  "2x27-4k": {
-    title: m.reservationMonitor2x27FourKTitle,
-    description: m.reservationMonitor2x27FourKDescription,
-  },
-  "2x32-4k": {
-    title: m.reservationMonitor2x32FourKTitle,
-    description: m.reservationMonitor2x32FourKDescription,
-  },
-} satisfies Record<
-  WorkspaceProductMonitorOption,
-  {
-    readonly title: WorkspaceProductMessage;
-    readonly description: WorkspaceProductMessage;
-  }
->;
+export const workspaceProductMonitorDescriptionMessages = {
+  "2x27-qhd": m.reservationMonitor2x27QhdDescription,
+  "2x32-qhd": m.reservationMonitor2x32QhdDescription,
+  "2x27-4k": m.reservationMonitor2x27FourKDescription,
+  "2x32-4k": m.reservationMonitor2x32FourKDescription,
+} satisfies Record<WorkspaceProductMonitorOption, WorkspaceProductMessage>;
+
+const workspaceProductMonitorResolutionLabels = {
+  qhd: "QHD",
+  "4k": "4K",
+} satisfies Record<WorkspaceProductMonitorResolution, string>;
 
 export const getWorkspaceProductMessage = (
   message: WorkspaceProductMessage,
@@ -139,11 +128,23 @@ export const getWorkspaceOfficeProductTitle = (locale: Locale) =>
 export const getWorkspaceProductMonitorTitle = (
   option: WorkspaceProductMonitorOption,
   locale: Locale
-) =>
-  getWorkspaceProductMessage(
-    workspaceProductMonitorMessages[option].title,
-    locale
+) => {
+  const { count, sizeInches, resolution } =
+    workspaceProductMonitorSetups[option];
+
+  return m.reservationMonitorSetupTitle(
+    {
+      count,
+      size: new Intl.NumberFormat(locale, {
+        style: "unit",
+        unit: "inch",
+        unitDisplay: "narrow",
+      }).format(sizeInches),
+      resolution: workspaceProductMonitorResolutionLabels[resolution],
+    },
+    { locale }
   );
+};
 
 export const getWorkspaceMeetingRoomDurationLabel = (
   duration: MeetingRoomReservationDuration,

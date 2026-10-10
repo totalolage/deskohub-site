@@ -138,7 +138,7 @@ describe("CheckoutStatusPage", () => {
 
     expect(view.getByText("Profi Workstation")).toBeDefined();
     expect(view.getByText("Saturday, June 20, 2026")).toBeDefined();
-    expect(view.getByText('2x 27" QHD')).toBeDefined();
+    expect(view.getByText("2x 27″ QHD")).toBeDefined();
     expect(view.getByText("CZK 550")).toBeDefined();
     const repeatLink = view.getByRole("link", { name: "Book again" });
     const repeatUrl = new URL(

@@ -516,7 +516,7 @@ describe("workspace reservation email details", () => {
       { label: "Entry tier", value: "Profi Workstation" },
       { label: "Reservation date", value: "Friday, June 12, 2026" },
       { label: "Coffee", value: "Yes" },
-      { label: "Monitors", value: '2x 27" QHD' },
+      { label: "Monitors", value: "2x 27″ QHD" },
       {
         label: "Reservation reference",
         value: "dotypos-reservation-id",

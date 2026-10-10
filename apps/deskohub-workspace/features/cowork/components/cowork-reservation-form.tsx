@@ -25,9 +25,10 @@ import {
 } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceProductMessage,
+  getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
   type WorkspaceProductTierCardMessages,
-  workspaceProductMonitorMessages,
+  workspaceProductMonitorDescriptionMessages,
   workspaceProductTierCardMessages,
   workspaceProductTierMessages,
 } from "@/features/checkout/product-catalog.i18n";
@@ -116,11 +117,10 @@ const tierOptions: ReadonlyArray<{
 
 const monitorOptions: ReadonlyArray<{
   value: WorkspaceProductMonitorOption;
-  title: Parameters<typeof getWorkspaceProductMessage>[0];
   description: Parameters<typeof getWorkspaceProductMessage>[0];
 }> = workspaceProductMonitorOptions.map((option) => ({
   value: option,
-  ...workspaceProductMonitorMessages[option],
+  description: workspaceProductMonitorDescriptionMessages[option],
 }));
 
 const fallbackTierCards = ["offer-1", "offer-2"] as const;
@@ -1041,7 +1041,10 @@ function CoworkWorkstationAddonField({
                           }
                         />
                         <span className="block font-semibold text-navy-blue">
-                          {getWorkspaceProductMessage(option.title, locale)}
+                          {getWorkspaceProductMonitorTitle(
+                            option.value,
+                            locale
+                          )}
                         </span>
                         <span className="mt-1 block text-sm leading-5 text-navy-blue/60">
                           {getWorkspaceProductMessage(

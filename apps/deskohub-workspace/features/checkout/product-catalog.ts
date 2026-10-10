@@ -1,3 +1,4 @@
+import { Record } from "effect";
 import {
   currencyCZK,
   formatWorkspaceMoney,
@@ -56,12 +57,29 @@ export type CoworkWorkstationAddonAvailability =
   | "optional"
   | "unavailable";
 
-export const workspaceProductMonitorOptionTableTags = {
-  "2x27-qhd": ["monitor:count:2", "monitor:size:27", "monitor:resolution:qhd"],
-  "2x32-qhd": ["monitor:count:2", "monitor:size:32", "monitor:resolution:qhd"],
-  "2x27-4k": ["monitor:count:2", "monitor:size:27", "monitor:resolution:4k"],
-  "2x32-4k": ["monitor:count:2", "monitor:size:32", "monitor:resolution:4k"],
-} satisfies Record<WorkspaceProductMonitorOption, readonly string[]>;
+export type WorkspaceProductMonitorResolution = "qhd" | "4k";
+
+export type WorkspaceProductMonitorSetup = {
+  readonly count: number;
+  readonly sizeInches: number;
+  readonly resolution: WorkspaceProductMonitorResolution;
+};
+
+export const workspaceProductMonitorSetups = {
+  "2x27-qhd": { count: 2, sizeInches: 27, resolution: "qhd" },
+  "2x32-qhd": { count: 2, sizeInches: 32, resolution: "qhd" },
+  "2x27-4k": { count: 2, sizeInches: 27, resolution: "4k" },
+  "2x32-4k": { count: 2, sizeInches: 32, resolution: "4k" },
+} satisfies Record<WorkspaceProductMonitorOption, WorkspaceProductMonitorSetup>;
+
+export const workspaceProductMonitorOptionTableTags = Record.map(
+  workspaceProductMonitorSetups,
+  ({ count, sizeInches, resolution }): readonly string[] => [
+    `monitor:count:${count}`,
+    `monitor:size:${sizeInches}`,
+    `monitor:resolution:${resolution}`,
+  ]
+);
 
 export type WorkspaceProductCatalogItem = {
   readonly tier: WorkspaceCoworkProductTier;
