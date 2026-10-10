@@ -63,6 +63,7 @@ import {
 import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
 import { addRedaction, assert, log } from "../runtime";
+import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -737,10 +738,9 @@ export const makeDiscountE2ECases = ({
 // earlier ineligible window (this case's or a retried run's) can keep serving
 // the sale as ineligible until the advertisedPricingSources revalidation runs.
 // Reload until the restored sale is advertised before relying on it.
-const calendarSaleAdvertisementAttemptTimeoutMs = 10_000;
-const calendarSaleAdvertisementIntervalMs = 5000;
-const calendarSaleAdvertisementTimeoutMs = (config: WorkspaceE2EConfig) =>
-  config.timeouts.checkoutStart + config.timeouts.browserNavigation;
+// The step budget leaves room for the poll's own attempt-count timeout to report.
+const calendarSaleAdvertisementStepTimeoutMs = (config: WorkspaceE2EConfig) =>
+  config.timeouts.calendarSaleAdvertisement + config.timeouts.browserAction;
 
 const waitForAdvertisedCalendarSale = ({
   config,
@@ -770,16 +770,16 @@ const waitForAdvertisedCalendarSale = ({
         discounts: [calendarDiscountExpectation],
         run,
         session,
-        timeoutMs: calendarSaleAdvertisementAttemptTimeoutMs,
+        timeoutMs: config.timeouts.calendarSaleAdvertisementAttempt,
       }).pipe(
         Effect.as(true),
         Effect.catchIf(isWorkspaceE2ETimeout, () => Effect.succeed(undefined))
       );
     }),
     {
-      intervalMs: calendarSaleAdvertisementIntervalMs,
+      intervalMs: workspaceE2EPollIntervalMs.advertisedPricing,
       label: "advertised Calendar sale",
-      timeoutMs: config.timeouts.checkoutStart,
+      timeoutMs: config.timeouts.calendarSaleAdvertisement,
     }
   ).pipe(Effect.asVoid);
 
@@ -803,7 +803,7 @@ const executeCalendarSaleDisappearsBeforeQuote = ({
     yield* runStep({
       execute: waitForAdvertisedCalendarSale({ config, data, run, session }),
       id: "advertise-calendar-sale",
-      timeoutMs: calendarSaleAdvertisementTimeoutMs(config),
+      timeoutMs: calendarSaleAdvertisementStepTimeoutMs(config),
     });
     yield* runStep({
       execute: setE2ECalendarSaleCoworkEligibility(false),
@@ -852,7 +852,7 @@ const executeCalendarSaleDisappearsBeforePayment = ({
     yield* runStep({
       execute: waitForAdvertisedCalendarSale({ config, data, run, session }),
       id: "advertise-restored-calendar-sale",
-      timeoutMs: calendarSaleAdvertisementTimeoutMs(config),
+      timeoutMs: calendarSaleAdvertisementStepTimeoutMs(config),
     });
     const orderId = yield* runStep({
       execute: submitReservationForPayPage({
