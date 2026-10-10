@@ -733,7 +733,7 @@ export function CoworkReservationForm({
         )}
       />
 
-      <div data-cowork-date-addon-row className="grid gap-5 lg:grid-cols-2">
+      <div data-cowork-date-addon-row className="grid gap-5 md:grid-cols-2">
         <div data-cowork-date-column className="space-y-5">
           <CoworkReservationDateField
             control={form.control}
@@ -989,7 +989,7 @@ function CoworkWorkstationAddonField({
           {field.value !== undefined && (
             <div
               data-cowork-monitor-options
-              className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4 lg:col-span-2"
+              className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4 md:col-span-2"
             >
               <Label
                 id={monitorSetupLabelId}
@@ -1056,7 +1056,7 @@ function CoworkWorkstationAddonField({
               </FormControl>
             </div>
           )}
-          <FormMessage className="lg:col-span-2" />
+          <FormMessage className="md:col-span-2" />
         </FormItem>
       )}
     />
@@ -1143,7 +1143,7 @@ export function CoworkReservationFormFallback({
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 md:grid-cols-2">
         <ReservationSkeletonField />
         <ReservationSkeletonField />
       </div>
