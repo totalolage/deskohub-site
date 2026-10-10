@@ -30,9 +30,10 @@ import {
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
 import {
-  deriveCheckoutAttemptKey,
-  deriveCheckoutSessionKey,
-} from "@/features/checkout/backend/checkout/checkout-session-key.server";
+  deriveCheckoutAttemptKeys,
+  deriveCheckoutSessionKeys,
+  deriveCheckoutSessionLockKey,
+} from "@/features/checkout/backend/checkout/checkout-lookup-keys.server";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import {
   createWorkspaceDotyposReservation,
@@ -465,15 +466,18 @@ const prepareReservationDraft = Effect.fn(
   let checkoutSessionId = input.checkoutSessionId;
 
   while (true) {
-    const checkoutSessionKey = deriveCheckoutSessionKey(checkoutSessionId);
-    const checkoutAttemptKey = deriveCheckoutAttemptKey({
+    const checkoutSessionKeys =
+      yield* deriveCheckoutSessionKeys(checkoutSessionId);
+    const checkoutAttemptKeys = yield* deriveCheckoutAttemptKeys({
       checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
       reservation: input.reservation,
     });
+    const checkoutAttemptKey = checkoutAttemptKeys.current;
 
-    let existingAttempt =
-      yield* reservations.findByAttemptKey(checkoutAttemptKey);
+    let existingAttempt = yield* reservations.findByAttemptKeys(
+      checkoutAttemptKeys.accepted
+    );
     if (
       existingAttempt?.reservationState === "creating_hold" ||
       existingAttempt?.reservationState === "cancelling"
@@ -525,6 +529,12 @@ const prepareReservationDraft = Effect.fn(
       });
     }
 
+    // Rows of one session keep the key stored by its first row, so a
+    // session that spans a Pay-state key rotation still groups as one.
+    const checkoutSessionKey =
+      (yield* reservations.findStoredCheckoutSessionKey(
+        checkoutSessionKeys.accepted
+      )) ?? checkoutSessionKeys.current;
     const currentReservation =
       yield* reservations.findCurrentByCheckoutSessionKey(checkoutSessionKey);
     if (
@@ -686,8 +696,18 @@ const prepareReservationDraft = Effect.fn(
       ...input.draft,
       checkoutSessionKey,
       checkoutAttemptKey,
+      checkoutSessionLockKey: deriveCheckoutSessionLockKey(checkoutSessionId),
+      acceptedCheckoutSessionKeys: checkoutSessionKeys.accepted,
+      acceptedCheckoutAttemptKeys: checkoutAttemptKeys.accepted,
     });
-    if (reservationDraft.checkoutAttemptKey !== checkoutAttemptKey) {
+    // Another worker may have created this attempt under a different
+    // active key or lookup-key format; any other row is the session's
+    // current reservation.
+    if (
+      !checkoutAttemptKeys.accepted.includes(
+        reservationDraft.checkoutAttemptKey
+      )
+    ) {
       continue;
     }
 
@@ -729,10 +749,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         });
         const reservation = advertisement.reservation;
 
-        const checkoutSessionKey = deriveCheckoutSessionKey(
+        const checkoutSessionKeys = yield* deriveCheckoutSessionKeys(
           input.checkoutSessionId
         );
-        const checkoutAttemptKey = deriveCheckoutAttemptKey({
+        const checkoutAttemptKeys = yield* deriveCheckoutAttemptKeys({
           checkoutSessionId: input.checkoutSessionId,
           checkoutAttemptId: input.checkoutAttemptId,
           reservation,
@@ -740,8 +760,8 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         yield* Effect.annotateLogsScoped({
           locale: input.locale,
           reservationKind: reservation.kind,
-          checkoutSessionKey,
-          checkoutAttemptKey,
+          checkoutSessionKey: checkoutSessionKeys.current,
+          checkoutAttemptKey: checkoutAttemptKeys.current,
         });
         yield* Effect.logInfo("Workspace reservation submit started");
 

@@ -61,6 +61,10 @@ mock.module("next/headers", () => ({
   headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
 }));
 
+// Format of the checkout lookup keys new rows store: the ring-keyed digest
+// until the key-ID-prefixed write flip.
+const storedLookupKeyPattern = /^[a-f0-9]{64}$/;
+
 const reservation = {
   kind: "cowork" as const,
   entryTier: "open-space" as const,
@@ -298,8 +302,9 @@ const accountAuthorityFixture = async (
 };
 
 const runReusableReservationScenario = async (input: {
-  readonly findByAttemptKey: ReturnType<typeof mock>;
+  readonly findByAttemptKeys: ReturnType<typeof mock>;
   readonly findCurrentByCheckoutSessionKey?: ReturnType<typeof mock>;
+  readonly findStoredCheckoutSessionKey?: ReturnType<typeof mock>;
   readonly createDraft?: ReturnType<typeof mock>;
   readonly claimHoldCreation?: ReturnType<typeof mock>;
   readonly findById?: ReturnType<typeof mock>;
@@ -406,10 +411,12 @@ const runReusableReservationScenario = async (input: {
       ensureAvailable,
     } satisfies IWorkspaceAvailabilityService),
     Layer.mock(WorkspaceReservationRepository, {
-      findByAttemptKey: input.findByAttemptKey,
+      findByAttemptKeys: input.findByAttemptKeys,
       findCurrentByCheckoutSessionKey:
         input.findCurrentByCheckoutSessionKey ??
         mock(() => Effect.succeed(null)),
+      findStoredCheckoutSessionKey:
+        input.findStoredCheckoutSessionKey ?? mock(() => Effect.succeed(null)),
       createDraft,
       claimHoldCreation,
       findById,
@@ -596,8 +603,9 @@ const runMeetingRoomNewHoldScenario = async (
       ensureAvailable,
     } satisfies IWorkspaceAvailabilityService),
     Layer.mock(WorkspaceReservationRepository, {
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
+      findStoredCheckoutSessionKey: mock(() => Effect.succeed(null)),
       createDraft,
       claimHoldCreation: mock(() => Effect.succeed(true)),
       attachHold,
@@ -790,8 +798,8 @@ describe("prepareWorkspacePayState", () => {
     });
     expect(scenario.createDraft).toHaveBeenCalledWith(
       expect.objectContaining({
-        checkoutSessionKey: expect.stringMatching(/^[a-f0-9]{64}$/),
-        checkoutAttemptKey: expect.stringMatching(/^[a-f0-9]{64}$/),
+        checkoutSessionKey: expect.stringMatching(storedLookupKeyPattern),
+        checkoutAttemptKey: expect.stringMatching(storedLookupKeyPattern),
         reservationDetails: { kind: "meeting-room" },
       })
     );
@@ -1009,8 +1017,9 @@ describe("prepareWorkspacePayState", () => {
         ensureAvailable,
       } satisfies IWorkspaceAvailabilityService),
       Layer.mock(WorkspaceReservationRepository, {
-        findByAttemptKey: mock(() => Effect.succeed(null)),
+        findByAttemptKeys: mock(() => Effect.succeed(null)),
         findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
+        findStoredCheckoutSessionKey: mock(() => Effect.succeed(null)),
         createDraft,
         claimHoldCreation,
         attachHold,
@@ -1110,7 +1119,7 @@ describe("prepareWorkspacePayState", () => {
   test("reuses an immediate retry without scheduling cleanup", async () => {
     const existingReservation = makeReusableReservation();
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(existingReservation)),
+      findByAttemptKeys: mock(() => Effect.succeed(existingReservation)),
     });
 
     expect(result.result.status).toBe("ready");
@@ -1146,7 +1155,7 @@ describe("prepareWorkspacePayState", () => {
       country: "CZ",
     };
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+      findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
       reservation: {
         ...reservation,
         billing: { purpose: "personal", invoice: "requested", address },
@@ -1158,7 +1167,7 @@ describe("prepareWorkspacePayState", () => {
     expect(result.updateReservationDetails).toHaveBeenCalled();
 
     const personalResult = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+      findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
     });
     expect(personalResult.updateCustomerBillingDetails).not.toHaveBeenCalled();
   });
@@ -1166,7 +1175,7 @@ describe("prepareWorkspacePayState", () => {
   test("records marketing opt-in against the resolved customer", async () => {
     const existingReservation = makeReusableReservation();
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(existingReservation)),
+      findByAttemptKeys: mock(() => Effect.succeed(existingReservation)),
       marketingConsent: true,
     });
 
@@ -1188,7 +1197,7 @@ describe("prepareWorkspacePayState", () => {
     });
 
     const { error } = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+      findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
       marketingConsent: true,
       grantInitialMarketingConsent: mock(() => Effect.fail(persistenceFailure)),
     });
@@ -1201,7 +1210,7 @@ describe("prepareWorkspacePayState", () => {
 
   test("keeps anonymous preparation flowing without consulting account activity", async () => {
     const scenario = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       createDraft: mock((input) =>
         Effect.succeed(
           makeReusableReservation({
@@ -1227,7 +1236,7 @@ describe("prepareWorkspacePayState", () => {
 
   test("keeps an active authenticated account preparation flowing", async () => {
     const scenario = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       createDraft: mock((input) =>
         Effect.succeed(
           makeReusableReservation({
@@ -1260,7 +1269,7 @@ describe("prepareWorkspacePayState", () => {
     const lockProbe = { held: false };
     const lockSamples: boolean[] = [];
     const scenario = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       createDraft: mock((input) =>
         Effect.succeed(
           makeReusableReservation({
@@ -1289,7 +1298,7 @@ describe("prepareWorkspacePayState", () => {
   test("stops preparation when the account session authority cannot be read", async () => {
     const { m } = await import("@/features/i18n");
     const scenario = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       accountAuthority: { sessionUnavailable: true },
     });
 
@@ -1311,7 +1320,7 @@ describe("prepareWorkspacePayState", () => {
   test("stops a deletion-marked authenticated preparation before any mutation", async () => {
     const { m } = await import("@/features/i18n");
     const scenario = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       accountAuthority: {
         session: { deletionRequested: true },
         activityState: "deletion-requested",
@@ -1342,7 +1351,7 @@ describe("prepareWorkspacePayState", () => {
   test("stops preparation when the account row disappears during the authority window", async () => {
     const { m } = await import("@/features/i18n");
     const scenario = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       accountAuthority: { session: {}, activityState: "missing" },
     });
 
@@ -1370,7 +1379,7 @@ describe("prepareWorkspacePayState", () => {
       id: "claim-conflict-reservation-id",
     });
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       createDraft: mock((input) =>
         Effect.succeed({
           ...claimConflictReservation,
@@ -1400,7 +1409,7 @@ describe("prepareWorkspacePayState", () => {
     });
     let attemptLookupCount = 0;
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() =>
+      findByAttemptKeys: mock(() =>
         Effect.succeed(
           attemptLookupCount++ === 0 ? null : replacementReservation
         )
@@ -1429,7 +1438,7 @@ describe("prepareWorkspacePayState", () => {
     });
     const lifecycleEvents: string[] = [];
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       findCurrentByCheckoutSessionKey: mock(() =>
         Effect.succeed(previousReservation)
       ),
@@ -1491,6 +1500,115 @@ describe("prepareWorkspacePayState", () => {
     expect(result.ensureAvailable).toHaveBeenCalledTimes(1);
   });
 
+  test("supersedes a hold stored before a Pay-state key rotation under its stored session key", async () => {
+    const storedSessionKey = "original:stored-session-key";
+    const previousReservation = makeReusableReservation({
+      id: "previous-reservation-id",
+      checkoutSessionKey: storedSessionKey as never,
+      dotyposReservationId: "previous-dotypos-reservation-id",
+    });
+    const findStoredCheckoutSessionKey = mock(() =>
+      Effect.succeed(storedSessionKey)
+    );
+    const findCurrentByCheckoutSessionKey = mock(() =>
+      Effect.succeed(previousReservation)
+    );
+    const result = await runReusableReservationScenario({
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
+      findStoredCheckoutSessionKey,
+      findCurrentByCheckoutSessionKey,
+      claimSupersessionCancellation: mock(() =>
+        Effect.succeed(previousReservation)
+      ),
+      completeSupersessionAndCreateDraft: mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            id: "replacement-reservation-id",
+            checkoutSessionKey: input.replacement.checkoutSessionKey,
+            checkoutAttemptKey: input.replacement.checkoutAttemptKey,
+            dotyposReservationId: null,
+            reservationState: "draft",
+          })
+        )
+      ),
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(findStoredCheckoutSessionKey).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.stringMatching(/^test:[a-f0-9]{64}$/)])
+    );
+    expect(findCurrentByCheckoutSessionKey).toHaveBeenCalledWith(
+      storedSessionKey
+    );
+    expect(result.completeSupersessionAndCreateDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replacement: expect.objectContaining({
+          checkoutSessionKey: storedSessionKey,
+          checkoutAttemptKey: expect.stringMatching(storedLookupKeyPattern),
+        }),
+      })
+    );
+  });
+
+  test("groups a new draft under its session's stored key after a Pay-state key rotation", async () => {
+    const storedSessionKey = "original:stored-session-key";
+    const findCurrentByCheckoutSessionKey = mock(() => Effect.succeed(null));
+    const result = await runReusableReservationScenario({
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
+      findStoredCheckoutSessionKey: mock(() =>
+        Effect.succeed(storedSessionKey)
+      ),
+      findCurrentByCheckoutSessionKey,
+      createDraft: mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+          })
+        )
+      ),
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(findCurrentByCheckoutSessionKey).toHaveBeenCalledWith(
+      storedSessionKey
+    );
+    expect(result.createDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ checkoutSessionKey: storedSessionKey })
+    );
+  });
+
+  test("starts a new session under its stored lookup key and accepts both formats", async () => {
+    const result = await runReusableReservationScenario({
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
+      createDraft: mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+          })
+        )
+      ),
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(result.createDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checkoutSessionKey: expect.stringMatching(storedLookupKeyPattern),
+        checkoutAttemptKey: expect.stringMatching(storedLookupKeyPattern),
+        checkoutSessionLockKey: expect.any(BigInt),
+        acceptedCheckoutSessionKeys: expect.arrayContaining([
+          expect.stringMatching(/^test:[a-f0-9]{64}$/),
+          expect.stringMatching(/^[a-f0-9]{64}$/),
+        ]),
+        acceptedCheckoutAttemptKeys: expect.arrayContaining([
+          expect.stringMatching(/^test:[a-f0-9]{64}$/),
+          expect.stringMatching(/^[a-f0-9]{64}$/),
+        ]),
+      })
+    );
+  });
+
   test("rotates the checkout session instead of cancelling a reservation with pending payment", async () => {
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
@@ -1501,7 +1619,7 @@ describe("prepareWorkspacePayState", () => {
     });
     let currentLookupCount = 0;
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       findCurrentByCheckoutSessionKey: mock(() =>
         Effect.succeed(currentLookupCount++ === 0 ? pendingReservation : null)
       ),
@@ -1546,7 +1664,7 @@ describe("prepareWorkspacePayState", () => {
     });
     let currentLookupCount = 0;
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       findCurrentByCheckoutSessionKey: mock(() =>
         Effect.succeed(
           currentLookupCount++ === 0
@@ -1592,7 +1710,7 @@ describe("prepareWorkspacePayState", () => {
     let currentLookupCount = 0;
     const markCancellationFailed = mock(() => Effect.void);
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       findCurrentByCheckoutSessionKey: mock(() =>
         Effect.succeed(currentLookupCount++ === 0 ? previousReservation : null)
       ),
@@ -1635,7 +1753,7 @@ describe("prepareWorkspacePayState", () => {
     const previousReservation = makeReusableReservation();
     let currentLookupCount = 0;
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findByAttemptKeys: mock(() => Effect.succeed(null)),
       findCurrentByCheckoutSessionKey: mock(() =>
         Effect.succeed(currentLookupCount++ === 0 ? previousReservation : null)
       ),
@@ -1761,7 +1879,7 @@ describe("prepareWorkspacePayState", () => {
     );
     const advertisedDiscount = makeAdvertisementQuote(5000);
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+      findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
       advertisedPriceToken: await buildAdvertisedPriceToken(
         buildQuoteFromAdvertisement(advertisedDiscount)
       ),
@@ -1792,7 +1910,7 @@ describe("prepareWorkspacePayState", () => {
     );
     const customerQuote = makeAdvertisementQuote(1000, "Customer discount");
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+      findByAttemptKeys: mock(() => Effect.succeed(makeReusableReservation())),
       quoteForCustomer: mock(() =>
         Effect.succeed(buildQuoteFromAdvertisement(customerQuote))
       ),
