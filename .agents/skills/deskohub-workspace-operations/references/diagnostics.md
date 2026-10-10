@@ -5,12 +5,14 @@
 - Use `Effect.log*` inside the censored Workspace logging pipeline. Do not use `console.*` for Workspace diagnostics.
 - Preserve useful log annotations. Workspace and Dotypos application logging is globally censored and redacted, so do not strip annotations locally for privacy unless a new uncensored sink is introduced.
 - Attach handled failures to their error logs. The shared censorship layer preserves recursive cause types, safe classification fields, and stack frames for source-map attribution while redacting dynamic stack message lines, sensitive database diagnostics, and marked query parameters.
+- Span names are not censored by the span exporter. Credential-bearing URL segments, such as Cloudinary `s--…--` signatures, are scrubbed by the span processors from `createWorkspaceSpanRedactors` in [`span-redaction.ts`](../../../../apps/deskohub-workspace/shared/backend/observability/span-redaction.ts); list them first in every Workspace tracer provider.
 - Keep access-code-like keys globally censored. Workspace customer access codes have appeared in PostHog annotations before; never quote an observed value back to the user.
 
 ## Bound sensitive or oversized inspection
 
 - Do not enable, fetch, or quote Dotypos request/response debug logging for production diagnostics without explicit redaction. It can contain Authorization headers, refresh tokens, bearer tokens, and token response bodies.
 - Avoid fetching or quoting full raw Workspace Cloudinary search payloads. They can include large provider and asset metadata annotations. Prefer result count, public IDs, status, and error code.
+- Never fetch, print, or quote a signed Cloudinary tag list URL; its `s--…--` segment is derived from the API secret. Gallery lists come from CDN tag lists, not the Admin Search API; see `$deskohub-repository` [cloudinary-gallery-source.md](../../deskohub-repository/references/cloudinary-gallery-source.md) for the data source, quota rationale, and freshness window.
 - Avoid ad-hoc Workspace status or service scripts unless needed. They can print raw reservation annotations such as customer access codes; never quote those lines back to the user.
 
 ## Verify integration identity first
