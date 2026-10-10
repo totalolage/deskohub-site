@@ -132,10 +132,12 @@ const getAdministrationReservationListInput = async (
   const params = await searchParams;
   const typeValue = firstParam(params.type);
   const customerId = getDotyposCustomerRouteId(firstParam(params.customerId));
+  const status = parseStatus(firstParam(params.status));
   const dateRange = getAdministrationReservationListDateRange({
     customerId,
     date: firstParam(params.date),
     from: firstParam(params.from),
+    status,
     to: firstParam(params.to),
   });
   return {
@@ -144,7 +146,7 @@ const getAdministrationReservationListInput = async (
     direction: parseSortDirection(firstParam(params.direction)),
     page: parsePage(firstParam(params.page)),
     sort: parseReservationSort(firstParam(params.sort)),
-    status: parseStatus(firstParam(params.status)),
+    status,
     type:
       typeValue === "cowork" ||
       typeValue === "meeting-room" ||
