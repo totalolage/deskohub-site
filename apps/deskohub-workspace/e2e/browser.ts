@@ -1,21 +1,33 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { errors as playwrightErrors } from "@playwright/test";
 import { Effect } from "effect";
 import { browserDiagnosticsScript, browserTextScript } from "./browser-scripts";
+import {
+  isNexiBuildApiUrl,
+  summarizeNexiBuildFailureBody,
+} from "./checkout/nexi-build-api";
 import type { WorkspaceE2EConfig } from "./config";
 import {
   toWorkspaceE2EError,
   tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  workspaceE2ETimeoutError,
 } from "./errors";
 import { pollUntil } from "./polling";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
 
-const runBrowserCommand = (
+const isPlaywrightTimeout = (cause: unknown): boolean =>
+  cause instanceof playwrightErrors.TimeoutError ||
+  (cause instanceof Error && isPlaywrightTimeout(cause.cause));
+
+// Playwright reports an exhausted command budget as its TimeoutError; classify
+// it as a Workspace E2E timeout so pollers can retry it like their own deadlines.
+export const runBrowserCommand = (
   operation: string,
   run: Runner,
   session: string,
@@ -27,7 +39,34 @@ const runBrowserCommand = (
       ...options,
       signal,
     })
+  ).pipe(
+    Effect.mapError((error) =>
+      isPlaywrightTimeout(error.cause)
+        ? workspaceE2ETimeoutError(error.message, {
+            cause: error.cause,
+            operation: error.operation,
+          })
+        : error
+    )
   );
+
+// The session's request/response log, or an empty log when it is unavailable.
+export const readBrowserNetworkLog = (
+  run: Runner,
+  session: string
+): Effect.Effect<string, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "read browser network log",
+    run,
+    session,
+    ["network", "requests"],
+    {
+      allowFailure: true,
+      logCommand: false,
+      logOutput: false,
+      timeoutMs: 30_000,
+    }
+  ).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout : "")));
 
 export const readBrowserUrl = (
   run: Runner,
@@ -99,6 +138,21 @@ export const switchToBrowserTab = (
   runBrowserCommand("switch browser tab", run, session, ["tab", tabId], {
     logOutput: false,
   }).pipe(Effect.asVoid);
+
+export const closeBrowserTab = (
+  run: Runner,
+  session: string,
+  tabId: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "close browser tab",
+    run,
+    session,
+    ["tab", "close", tabId],
+    {
+      logOutput: false,
+    }
+  ).pipe(Effect.asVoid);
 
 export const getBrowserHeaderArgs = (config: WorkspaceE2EConfig) =>
   config.bypassSecret
@@ -578,6 +632,9 @@ export const captureBrowserFailureArtifacts = ({
     yield* tryWorkspaceE2EPromise("create browser artifact directory", () =>
       mkdir(artifactDir, { recursive: true })
     );
+    // A failed or interrupted step can leave the session inside an iframe;
+    // diagnostics describe the page the user sees.
+    yield* switchToMainFrame(run, session);
     yield* writeTextArtifact(
       artifactDir,
       "error.txt",
@@ -619,10 +676,11 @@ export const captureBrowserFailureArtifacts = ({
           "read browser HAR artifact",
           () => readFile(rawHarPath, "utf8")
         );
-        yield* writeTextArtifact(
-          artifactDir,
-          "network.har",
-          sanitizeHarArtifact(har)
+        yield* tryWorkspaceE2EPromise("write network.har artifact", () =>
+          writeFile(
+            resolve(artifactDir, "network.har"),
+            `${sanitizeHarArtifact(har)}\n`
+          )
         );
       }).pipe(
         Effect.ensuring(
@@ -699,6 +757,7 @@ const writeTextArtifact = (
     )
   );
 
+// Best-effort switch for cleanup and diagnostics; a failed switch is ignored.
 export const switchToMainFrame = (
   run: Runner,
   session: string
@@ -709,6 +768,28 @@ export const switchToMainFrame = (
     timeoutMs: 30_000,
   }).pipe(Effect.asVoid);
 
+// Fails unless the session is back in the main frame, for callers whose next
+// commands must not run inside an iframe.
+export const requireMainFrame = (
+  run: Runner,
+  session: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand("switch to main frame", run, session, ["frame", "main"], {
+    logOutput: false,
+    timeoutMs: 30_000,
+  }).pipe(
+    Effect.flatMap((result) =>
+      result.exitCode === 0
+        ? Effect.void
+        : Effect.fail(
+            toWorkspaceE2EError(
+              "switch to main frame",
+              new Error(`frame command exited with ${result.exitCode}`)
+            )
+          )
+    )
+  );
+
 export const closeBrowserSession = (
   run: Runner,
   session: string
@@ -718,26 +799,11 @@ export const closeBrowserSession = (
     logOutput: false,
   }).pipe(Effect.asVoid);
 
-export const findFirstTextFieldRef = (snapshot: string) => {
-  for (const line of snapshot.split("\n")) {
-    const ref = getSnapshotRef(line);
-    if (ref && /\b(textbox|input)\b/i.test(line)) return ref;
-  }
-};
-
-export const findFirstEnabledTextFieldRef = (snapshot: string) => {
-  for (const line of snapshot.split("\n")) {
-    if (hasDisabledSnapshotState(line)) continue;
-    const ref = getSnapshotRef(line);
-    if (ref && /\b(textbox|input)\b/i.test(line)) return ref;
-  }
-};
-
 export const summarizeHostedPaymentSnapshot = (snapshot: string) => {
   const lines = snapshot
     .split("\n")
     .filter((line) =>
-      /\b(?:button|frame|iframe|input|textbox|link)\b/i.test(line)
+      /\b(?:button|frame|heading|iframe|input|textbox|link)\b/i.test(line)
     )
     .slice(0, 80)
     .map(sanitizeDiagnosticLine)
@@ -772,7 +838,9 @@ const sanitizeArtifactUrlText = (text: string) =>
     }
   });
 
-const sanitizeHarArtifact = (text: string) => {
+// Sanitizes string values only, so short redacted values (such as test card
+// fragments) cannot rewrite timings and sizes into invalid JSON.
+export const sanitizeHarArtifact = (text: string) => {
   try {
     const har = JSON.parse(text) as Record<string, unknown>;
     const log = asRecord(har.log);
@@ -781,14 +849,29 @@ const sanitizeHarArtifact = (text: string) => {
     for (const entry of entries) {
       const record = asRecord(entry);
       if (!record) continue;
-      sanitizeHarRequest(asRecord(record.request));
-      sanitizeHarResponse(asRecord(record.response));
+      const request = asRecord(record.request);
+      const requestUrl = typeof request?.url === "string" ? request.url : "";
+      sanitizeHarRequest(request);
+      sanitizeHarResponse(asRecord(record.response), requestUrl);
     }
 
-    return JSON.stringify(har, null, 2);
+    return JSON.stringify(sanitizeJsonStrings(har), null, 2);
   } catch {
     return sanitizeArtifactText(text);
   }
+};
+
+const sanitizeJsonStrings = (value: unknown): unknown => {
+  if (typeof value === "string") return sanitizeArtifactText(value);
+  if (Array.isArray(value)) return value.map(sanitizeJsonStrings);
+  const record = asRecord(value);
+  if (!record) return value;
+  return Object.fromEntries(
+    Object.entries(record).map(([key, item]) => [
+      key,
+      sanitizeJsonStrings(item),
+    ])
+  );
 };
 
 const sanitizeHarRequest = (request: Record<string, unknown> | undefined) => {
@@ -805,13 +888,31 @@ const sanitizeHarRequest = (request: Record<string, unknown> | undefined) => {
   if (typeof postData.text === "string") postData.text = "[redacted]";
 };
 
-const sanitizeHarResponse = (response: Record<string, unknown> | undefined) => {
+const sanitizeHarResponse = (
+  response: Record<string, unknown> | undefined,
+  requestUrl: string
+) => {
   if (!response) return;
   response.headers = sanitizeHarNamedValues(response.headers);
   response.cookies = [];
 
   const content = asRecord(response.content);
-  if (content && typeof content.text === "string") content.text = "[redacted]";
+  if (!content || typeof content.text !== "string") return;
+  const summary =
+    typeof response.status === "number" &&
+    response.status >= 400 &&
+    isNexiBuildUrl(requestUrl)
+      ? summarizeNexiBuildFailureBody(content.text)
+      : undefined;
+  content.text = summary ? JSON.stringify(summary) : "[redacted]";
+};
+
+const isNexiBuildUrl = (value: string) => {
+  try {
+    return isNexiBuildApiUrl(new URL(value));
+  } catch {
+    return false;
+  }
 };
 
 const sanitizeHarNamedValues = (value: unknown) =>

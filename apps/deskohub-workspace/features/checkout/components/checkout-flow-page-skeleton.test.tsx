@@ -8,9 +8,9 @@ import { CheckoutFlowPageSkeleton } from "./checkout-flow-page-skeleton";
 
 describe("CheckoutFlowPageSkeleton", () => {
   beforeAll(registerWorkspaceComponentTestEnv);
-  afterAll(() => {
+  afterAll(async () => {
     cleanup();
-    unregisterWorkspaceComponentTestEnv();
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("exposes an accessible loading state", () => {

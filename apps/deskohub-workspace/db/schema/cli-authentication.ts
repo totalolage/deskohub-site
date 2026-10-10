@@ -44,6 +44,7 @@ export const cliSessions = pgTable(
     buildTarget: text("build_target").notNull().$type<CliBuildTargetType>(),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     lastUsedAt: instant("last_used_at").notNull().default(sql`now()`),
+    expiresAt: instant("expires_at"),
     revokedAt: instant("revoked_at"),
   },
   (t) => [
@@ -68,6 +69,10 @@ export const cliSessions = pgTable(
     check(
       "cli_sessions_last_used_check",
       sql`${t.lastUsedAt} >= ${t.createdAt}`
+    ),
+    check(
+      "cli_sessions_expiry_check",
+      sql`${t.expiresAt} is null or ${t.expiresAt} > ${t.createdAt}`
     ),
     check(
       "cli_sessions_revoked_check",
@@ -98,6 +103,7 @@ export const cliAuthenticationRequests = pgTable(
     approvedBy: text("approved_by").$type<AdministrationActorUsernameType>(),
     grantToken: text("grant_token"),
     grantExpiresAt: instant("grant_expires_at"),
+    sessionExpiresAt: instant("session_expires_at"),
     consumedAt: instant("consumed_at"),
     sessionId: text("session_id")
       .$type<CliSessionIdType>()
@@ -141,6 +147,13 @@ export const cliAuthenticationRequests = pgTable(
       ) or (
         ${t.approvedAt} is not null
         and ${t.grantExpiresAt} is not null
+      )`
+    ),
+    check(
+      "cli_authentication_requests_session_expiry_check",
+      sql`${t.sessionExpiresAt} is null or (
+        ${t.approvedAt} is not null
+        and ${t.sessionExpiresAt} > ${t.approvedAt}
       )`
     ),
     check(

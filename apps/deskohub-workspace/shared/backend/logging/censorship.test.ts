@@ -905,7 +905,7 @@ describe("createCensoredOtelLogger", () => {
   test("redacts Effect log options before emitting OTel logs", async () => {
     const exporter = new InMemoryLogRecordExporter();
     const provider = new LoggerProvider({
-      processors: [new SimpleLogRecordProcessor(exporter)],
+      processors: [new SimpleLogRecordProcessor({ exporter })],
     });
 
     await Effect.runPromise(
@@ -934,7 +934,7 @@ describe("createCensoredOtelLogger", () => {
   test("does not emit sensitive fields from Drizzle query errors", async () => {
     const exporter = new InMemoryLogRecordExporter();
     const provider = new LoggerProvider({
-      processors: [new SimpleLogRecordProcessor(exporter)],
+      processors: [new SimpleLogRecordProcessor({ exporter })],
     });
     const error = new EffectDrizzleQueryError({
       query:

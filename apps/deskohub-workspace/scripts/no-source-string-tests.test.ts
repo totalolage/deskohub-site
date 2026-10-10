@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { execSync } from "node:child_process";
 import {
   mkdtempSync,
   readFileSync,
@@ -10,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { commandOutput } from "./shared/command";
 import {
   findViolations,
   listAuditedTestFiles,
@@ -21,8 +21,8 @@ import {
   parseTrackedSource,
 } from "./shared/source-ast";
 
-const repoRoot = repositoryRoot();
-const auditedFiles = listAuditedTestFiles().map((relativePath) => ({
+const repoRoot = await repositoryRoot();
+const auditedFiles = (await listAuditedTestFiles()).map((relativePath) => ({
   path: relativePath,
   content: readFileSync(join(repoRoot, relativePath), "utf8"),
 }));
@@ -32,8 +32,8 @@ describe("no source-as-string contract tests", () => {
     expect(findViolations(auditedFiles)).toEqual([]);
   });
 
-  test("the enumeration is repository-wide, not app-scoped", () => {
-    const audited = listAuditedTestFiles();
+  test("the enumeration is repository-wide, not app-scoped", async () => {
+    const audited = await listAuditedTestFiles();
     // Every path is resolved from the repository root.
     expect(audited.length).toBeGreaterThan(0);
     expect(audited).toContain("apps/dhw/src/command.test.ts");
@@ -50,12 +50,12 @@ describe("no source-as-string contract tests", () => {
     expect(findViolations(auditedFiles)).toEqual([]);
   });
 
-  test("the enumeration classifies tracked, deleted, untracked, ignored, and dangling-symlink test paths", () => {
+  test("the enumeration classifies tracked, deleted, untracked, ignored, and dangling-symlink test paths", async () => {
     const fixtureRoot = mkdtempSync(join(tmpdir(), "audited-tests-"));
-    const git = (args: string) =>
-      execSync(`git ${args}`, { cwd: fixtureRoot, encoding: "utf8" });
+    const git = (...args: string[]) =>
+      commandOutput(["git", ...args], { cwd: fixtureRoot });
     try {
-      git("init -q");
+      await git("init", "-q");
       writeFileSync(
         join(fixtureRoot, "tracked-present.test.ts"),
         "test('present', () => {});\n"
@@ -73,11 +73,16 @@ describe("no source-as-string contract tests", () => {
         "test('ignored', () => {});\n"
       );
       writeFileSync(join(fixtureRoot, ".gitignore"), "ignored.test.ts\n");
-      git("add tracked-present.test.ts tracked-deleted.test.ts .gitignore");
+      await git(
+        "add",
+        "tracked-present.test.ts",
+        "tracked-deleted.test.ts",
+        ".gitignore"
+      );
       unlinkSync(join(fixtureRoot, "tracked-deleted.test.ts"));
       symlinkSync("missing-target.ts", join(fixtureRoot, "dangling.test.ts"));
 
-      expect(listAuditedTestFiles(fixtureRoot)).toEqual([
+      expect(await listAuditedTestFiles(fixtureRoot)).toEqual([
         "dangling.test.ts",
         "tracked-present.test.ts",
         "untracked file.test.tsx",
@@ -311,9 +316,9 @@ describe("no source-as-string contract tests", () => {
     expect(findViolations(structural)).toEqual([]);
   });
 
-  test("the audit resolves enumerated files relative to the repository root", () => {
-    const root = repositoryRoot();
-    const audited = listAuditedTestFiles();
+  test("the audit resolves enumerated files relative to the repository root", async () => {
+    const root = await repositoryRoot();
+    const audited = await listAuditedTestFiles();
     for (const relativePath of audited) {
       expect(() =>
         readFileSync(resolve(root, relativePath), "utf8")

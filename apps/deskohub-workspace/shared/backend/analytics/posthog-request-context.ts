@@ -62,13 +62,6 @@ export function getPostHogRequestContextFromCookieHeader(
   );
 }
 
-export function getPostHogRequestContextFromRequestHeaders(
-  headers: Headers
-): PostHogRequestContext {
-  return getPostHogRequestContextFromRequestHeadersWithDiagnostics(headers)
-    .context;
-}
-
 export function getPostHogRequestContextFromRequestHeadersWithDiagnostics(
   headers: Headers
 ): PostHogRequestContextResult {

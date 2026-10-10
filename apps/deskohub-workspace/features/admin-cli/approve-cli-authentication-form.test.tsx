@@ -36,8 +36,8 @@ afterEach(() => {
   cleanup();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 const code = "A".repeat(43);
@@ -56,7 +56,7 @@ const submitForm = async (view: ReturnType<typeof render>) => {
   });
 };
 
-test("validates the hidden code and submits it through the approval server action", async () => {
+test("validates the hidden code and submits it with the default session lifetime", async () => {
   const view = await renderComponent();
   const hiddenInput = view.container.querySelector(
     'input[type="hidden"]'
@@ -68,8 +68,98 @@ test("validates the hidden code and submits it through the approval server actio
   expect(approveCliAuthenticationAction).toHaveBeenCalledTimes(1);
   const formData = approveCliAuthenticationAction.mock
     .calls[0]?.[0] as FormData;
-  expect([...formData.keys()]).toEqual(["code"]);
-  expect(formData.get("code")).toBe(code);
+  expect([...formData.entries()]).toEqual([
+    ["code", code],
+    ["lifetimeAmount", "30"],
+    ["lifetimeUnit", "days"],
+  ]);
+});
+
+test("submits only the never-expire choice while the duration is disabled", async () => {
+  const view = await renderComponent();
+  const amount = view.getByLabelText("Duration") as HTMLInputElement;
+
+  fireEvent.input(amount, { target: { value: "0" } });
+  await act(async () => {
+    fireEvent.click(view.getByRole("checkbox", { name: "Never expire" }));
+  });
+  expect(amount.disabled).toBe(true);
+  expect(
+    view.getByRole("combobox", { name: "Unit" }).hasAttribute("disabled")
+  ).toBe(true);
+
+  await submitForm(view);
+
+  expect(approveCliAuthenticationAction).toHaveBeenCalledTimes(1);
+  const formData = approveCliAuthenticationAction.mock
+    .calls[0]?.[0] as FormData;
+  expect([...formData.entries()]).toEqual([
+    ["code", code],
+    ["neverExpire", "on"],
+  ]);
+});
+
+test("submits a changed duration amount and unit", async () => {
+  const view = await renderComponent();
+
+  fireEvent.input(view.getByLabelText("Duration"), {
+    target: { value: "6" },
+  });
+  const unit = view.getByRole("combobox", { name: "Unit" });
+  await act(async () => {
+    fireEvent.keyDown(unit, { key: "Enter" });
+  });
+  await act(async () => {
+    fireEvent.click(view.getByRole("option", { name: "Months" }));
+  });
+  expect(unit.textContent).toBe("Months");
+
+  await submitForm(view);
+
+  expect(approveCliAuthenticationAction).toHaveBeenCalledTimes(1);
+  const formData = approveCliAuthenticationAction.mock
+    .calls[0]?.[0] as FormData;
+  expect([...formData.entries()]).toEqual([
+    ["code", code],
+    ["lifetimeAmount", "6"],
+    ["lifetimeUnit", "months"],
+  ]);
+});
+
+test("clears the duration error while never expire is checked and restores it when unchecked", async () => {
+  const view = await renderComponent();
+  const amount = view.getByLabelText("Duration") as HTMLInputElement;
+  const neverExpire = view.getByRole("checkbox", { name: "Never expire" });
+  const durationError = "Enter a whole number from 1 to 999.";
+
+  fireEvent.input(amount, { target: { value: "0" } });
+  await submitForm(view);
+  expect(view.getByText(durationError)).toBeTruthy();
+
+  await act(async () => {
+    fireEvent.click(neverExpire);
+  });
+  expect(view.queryByText(durationError)).toBeNull();
+
+  await act(async () => {
+    fireEvent.click(neverExpire);
+  });
+  expect(view.getByText(durationError)).toBeTruthy();
+  expect(approveCliAuthenticationAction).not.toHaveBeenCalled();
+});
+
+test("rejects a session duration outside the allowed whole-number range", async () => {
+  const view = await renderComponent();
+  const amount = view.getByLabelText("Duration") as HTMLInputElement;
+
+  for (const value of ["0", "1.5", "1000", ""]) {
+    fireEvent.input(amount, { target: { value } });
+    await submitForm(view);
+  }
+
+  expect(approveCliAuthenticationAction).not.toHaveBeenCalled();
+  expect(view.getByText("Enter a whole number from 1 to 999.")).toBeTruthy();
+  expect(amount.getAttribute("aria-invalid")).toBe("true");
 });
 
 test("does not call the approval action when the code schema rejects the value", async () => {

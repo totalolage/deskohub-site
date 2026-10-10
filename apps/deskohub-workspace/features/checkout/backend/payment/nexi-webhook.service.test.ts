@@ -348,6 +348,85 @@ describe("NexiWebhookService", () => {
     expect(markFailed).not.toHaveBeenCalled();
   });
 
+  test("accepts a declined notification for an attempt that is no longer pending", async () => {
+    const { PaymentLifecycleStateError } = await import(
+      "../repositories/payment-lifecycle.repository"
+    );
+    const markProcessed = mock(() => Effect.void);
+    const markFailed = mock(() => Effect.void);
+    // Abandonment cleanup already expired the operation-free attempt; the
+    // customer then submitted the still-open hosted page and was declined.
+    const markTerminal = mock(() =>
+      Effect.fail(
+        new PaymentLifecycleStateError({
+          operation: "markTerminal",
+          paymentReference: { type: "paymentAttemptId", id: "attempt-id" },
+          message:
+            "Only a non-terminal or matching terminal attempt can mark a reservation terminal.",
+        })
+      )
+    );
+
+    const result = await Effect.runPromise(
+      Effect.result(
+        await buildWebhookEffect({
+          webhookEvents: {
+            insertReceived: mock(() =>
+              Effect.succeed({ status: "inserted", event: receivedEvent })
+            ),
+            linkPaymentAttempt: mock(() => Effect.void),
+            markProcessed,
+            markFailed,
+            claimRetry: mock(() => Effect.die("unused")),
+          },
+          paymentAttempts: {
+            findByProviderOrderId: mock(() =>
+              Effect.succeed({
+                ...attempt,
+                state: "expired" as const,
+                failureCode: "payment_abandoned_after_provider_cutoff",
+              })
+            ),
+          },
+          paymentLifecycle: {
+            createPendingNexiAttempt: mock(() => Effect.die("unused")),
+            attachProviderSession: mock(() => Effect.die("unused")),
+            markPaid: mock(() => Effect.die("unused")),
+            markTerminal,
+          },
+          reservations: {
+            findById: mock(() => Effect.succeed(reservation as never)),
+          },
+          nexi: {
+            verifyPaymentOutcome: mock(() =>
+              Effect.succeed({
+                ...verification,
+                status: "failure",
+                provider: {
+                  ...verification.provider,
+                  orderStatus: "DECLINED",
+                  captureExecuted: false,
+                },
+              } satisfies PaymentVerificationResult)
+            ),
+          },
+          fulfillment: {
+            fulfillPaidOrder: mock(() => Effect.die("unused")),
+          },
+        })
+      )
+    );
+
+    expect(markTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "attempt-id", state: "failed" })
+    );
+    expect(result._tag).toBe("Success");
+    expect(markProcessed).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "eventId", eventId: "event-id" })
+    );
+    expect(markFailed).not.toHaveBeenCalled();
+  });
+
   const securityTokenScenarioServices = (
     verificationResult: PaymentVerificationResult = verification
   ) => {

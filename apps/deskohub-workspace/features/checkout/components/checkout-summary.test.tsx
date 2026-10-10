@@ -46,8 +46,8 @@ describe("CheckoutSummary", () => {
     setSystemTime();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders server-provided summary rows and amounts without a duplicate title", () => {

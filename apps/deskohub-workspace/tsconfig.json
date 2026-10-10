@@ -27,7 +27,6 @@
     "**/*.test.ts",
     "**/*.test.tsx",
     "new_design",
-    ".next/types/validator.ts",
     ".next/dev/types/validator.ts"
   ]
 }

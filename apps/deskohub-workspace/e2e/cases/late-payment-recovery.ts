@@ -6,8 +6,8 @@ import {
   waitForBrowserUrl,
 } from "../browser";
 import { getWorkspaceE2EDateInterval } from "../capacity";
+import { completeNexiHostedPayment } from "../checkout/nexi-hosted-payment";
 import {
-  completeNexiHostedPayment,
   prepareCheckoutPaymentAttempt,
   submitPaymentAndWaitForHostedPage,
 } from "../checkout/payment";

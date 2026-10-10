@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import {
@@ -21,6 +20,7 @@ import {
 import { renderToStaticMarkup } from "react-dom/server";
 import { getAccountScreenCopy } from "../../features/account/components/account-screen-copy";
 import { ProfileScreen } from "../../features/account/components/profile/profile-screen";
+import { runCommand } from "../shared/command";
 import type { JsonObject } from "./create-account-visual-verification";
 import {
   assertCurrentPngMatchesHistoricalHash,
@@ -315,31 +315,28 @@ const writeRegressionReference = async (referencesDir: string) => {
 };
 
 const runRendererCli = async (argumentsList: readonly string[]) => {
-  const result = spawnSync(
-    process.execPath,
-    ["run", join(import.meta.dir, "run.ts"), ...argumentsList],
+  const { exitCode, signalCode, stdout, stderr, timedOut } = await runCommand(
+    [
+      process.execPath,
+      "run",
+      join(import.meta.dir, "run.ts"),
+      ...argumentsList,
+    ],
     {
       cwd: join(import.meta.dir, "../../../.."),
       env: process.env,
-      encoding: "utf8",
-      maxBuffer: 1024 * 1024,
-      shell: false,
-      timeout: 60_000,
+      timeoutMs: 60_000,
     }
   );
 
-  const stdout = result.stdout ?? "";
-  const stderr = result.stderr ?? "";
   const diagnostics = [stderr, stdout].filter(Boolean).join("\n");
-  if (result.error) {
+  if (timedOut) {
     throw new Error(
-      `Account visual CLI failed to spawn or timed out: ${result.error.message}${diagnostics ? `\n${diagnostics}` : ""}`,
-      { cause: result.error }
+      `Account visual CLI timed out${diagnostics ? `\n${diagnostics}` : ""}`
     );
   }
-  if (result.status !== 0 || result.signal !== null) {
-    const termination =
-      result.signal === null ? result.status : `signal ${result.signal}`;
+  if (exitCode !== 0 || signalCode !== null) {
+    const termination = signalCode === null ? exitCode : `signal ${signalCode}`;
     throw new Error(
       `Account visual CLI exited with ${termination}: ${diagnostics}`
     );
@@ -496,9 +493,16 @@ test("consent interaction plans only visit switches whose observed state differs
 });
 
 test("renderer CLI failures propagate through the subprocess seam", async () => {
-  await expect(
-    runRendererCli(["--unknown-account-visual-argument"])
-  ).rejects.toThrow(
+  // Settle the subprocess before matching: `expect(pending).rejects` runs a
+  // nested event-loop tick that can drop the child's pipe events in Bun 1.4.
+  const failure = await runRendererCli([
+    "--unknown-account-visual-argument",
+  ]).then(
+    () => undefined,
+    (cause: unknown) => cause
+  );
+  expect(failure).toBeInstanceOf(Error);
+  expect((failure as Error).message).toMatch(
     /Account visual CLI exited with 1:[\s\S]*Unknown argument: --unknown-account-visual-argument/
   );
 });

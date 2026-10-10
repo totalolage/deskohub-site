@@ -28,6 +28,7 @@ export type ReservationDatePickerProps = {
   readonly maximum?: string | (() => string);
   readonly minimum?: string | (() => string);
   readonly name?: string;
+  readonly onBlur?: () => void;
   readonly onChange?: (value: string) => void;
   readonly placeholder?: string;
   readonly value?: string;
@@ -67,6 +68,7 @@ export function ReservationDatePicker({
   maximum,
   minimum,
   name,
+  onBlur,
   onChange,
   placeholder = "Pick a date",
   value,
@@ -90,7 +92,15 @@ export function ReservationDatePicker({
   return (
     <>
       {name && <input name={name} type="hidden" value={value ?? ""} />}
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          // The calendar replaces a native input, so closing it is the
+          // field's blur; this lets onBlur form validation run.
+          if (!nextOpen) onBlur?.();
+        }}
+      >
         <PopoverTrigger asChild>
           <Button
             id={id}
@@ -150,6 +160,7 @@ export function ReservationDatePicker({
 
               onChange?.(plainDate.toString());
               setOpen(false);
+              onBlur?.();
             }}
             selected={selectedDate ? getCalendarDate(selectedDate) : undefined}
           />

@@ -179,6 +179,36 @@ describe.skipIf(!testDatabase)(
       });
     });
 
+    test("a grant older than the recorded withdrawal does not reactivate consent", async () => {
+      const customerId = uniqueCustomerId();
+      const initial = makeInput(customerId, {
+        documentHash: "stale-grant-initial-document",
+        grantedAt: Temporal.Instant.from("2026-09-01T12:00:00Z"),
+      });
+      const staleGrant = makeInput(customerId, {
+        documentHash: "stale-grant-document",
+        grantedAt: Temporal.Instant.from("2026-09-02T12:00:00Z"),
+      });
+      const withdrawal = makeInput(customerId, {
+        documentHash: "newer-withdrawal-document",
+        grantedAt: Temporal.Instant.from("2026-09-02T12:00:01Z"),
+      });
+
+      const consent = await runRepository((repository) =>
+        Effect.gen(function* () {
+          yield* repository.grantInitial(initial);
+          yield* repository.withdraw(withdrawal);
+          yield* repository.grant(staleGrant);
+          return yield* repository.get(customerId);
+        })
+      );
+
+      expectConsent(consent, {
+        ...initial,
+        withdrawnAt: withdrawal.grantedAt,
+      });
+    });
+
     test("an absent withdrawal creates a tombstone that blocks an initial grant", async () => {
       const customerId = uniqueCustomerId();
       const withdrawal = makeInput(customerId, {

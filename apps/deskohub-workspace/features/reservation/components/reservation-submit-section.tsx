@@ -44,7 +44,7 @@ export function ReservationSubmitSection({
       </Button>
 
       {submissionError && (
-        <ReservationError>{submissionError}</ReservationError>
+        <ReservationError role="alert">{submissionError}</ReservationError>
       )}
       {unavailableMessage && !submissionError && (
         <ReservationError>{unavailableMessage}</ReservationError>
@@ -84,13 +84,24 @@ export function ReservationSubmitSection({
   );
 }
 
-function ReservationError({ children }: { readonly children: string }) {
+function ReservationError({
+  children,
+  role,
+}: {
+  readonly children: string;
+  readonly role?: "alert";
+}) {
   return (
     <p
-      aria-live="polite"
+      // A failed submission remounts the form with its error, so it needs an
+      // alert role: a live region mounted with its text may go unannounced.
+      {...(role ? { role } : { "aria-live": "polite" as const })}
       className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
     >
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />
+      <AlertTriangle
+        aria-hidden="true"
+        className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange"
+      />
       <span>{children}</span>
     </p>
   );

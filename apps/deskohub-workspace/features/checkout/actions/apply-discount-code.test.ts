@@ -78,7 +78,11 @@ const makeTokenWithRequestedIntent = async () => {
 
 const runForm = async (
   result: ApplyDiscountCodeResult,
-  input: { readonly payStateToken: string; readonly submittedCode?: string }
+  input: {
+    readonly locale?: string;
+    readonly payStateToken: string;
+    readonly submittedCode?: string;
+  }
 ) => {
   operationResult = result;
   redirectMock.mockClear();
@@ -88,7 +92,12 @@ const runForm = async (
 
   let redirectError: unknown;
   try {
-    await applyDiscountCodeForm("en-US", input.payStateToken, formData);
+    await applyDiscountCodeForm(
+      // Server Action arguments are untrusted; tests may tamper with them.
+      (input.locale ?? "en-US") as Parameters<typeof applyDiscountCodeForm>[0],
+      input.payStateToken,
+      formData
+    );
   } catch (error) {
     redirectError = error;
   }
@@ -128,5 +137,16 @@ describe("applyDiscountCodeForm", () => {
     expect(redirectedUrl).toContain("payState=original-token");
     expect(redirectedUrl).toContain("discountCodeError=unavailable");
     expect(redirectedUrl).toContain("discountCodeErrorId=");
+  });
+
+  test("never redirects off-site when the action is invoked with a tampered locale", async () => {
+    const redirectedUrl = await runForm(
+      { status: "unavailable" },
+      { locale: "/evil.example", payStateToken: "original-token" }
+    );
+
+    expect(redirectedUrl.startsWith("//")).toBe(false);
+    expect(redirectedUrl).not.toContain("evil.example");
+    expect(redirectedUrl).toMatch(/^\/[a-z]{2}(-[A-Z]{2})?\/checkout\/pay\?/);
   });
 });

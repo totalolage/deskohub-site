@@ -19,6 +19,33 @@ describe("standard-schema helpers", () => {
     expect(parseStandardSchema(lengthSchema, "deskohub", "invalid")).toBe(8);
   });
 
+  test("keeps the validation issues as the parse error cause", () => {
+    const error = (() => {
+      try {
+        parseStandardSchema(lengthSchema, 123, "Use this message");
+      } catch (caught) {
+        return caught;
+      }
+    })();
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).cause).toEqual([{ message: "Expected string" }]);
+  });
+
+  test("rejects asynchronous schemas", () => {
+    const asyncSchema: StandardSchemaV1<unknown, string> = {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        validate: async () => ({ value: "later" }),
+      },
+    };
+
+    expect(() => decodeStandardSchema(asyncSchema, "value")).toThrow(
+      "Async Standard Schema validation is not supported here"
+    );
+  });
+
   test("uses supplied parse error message", () => {
     expect(decodeStandardSchema(lengthSchema, 123)).toBeUndefined();
     expect(() =>

@@ -20,7 +20,9 @@ The generator downloads `https://eu.posthog.com/api/schema/?format=json` and
 runs Effect's OpenAPI generator against the complete schema. Set
 `POSTHOG_OPENAPI_SCHEMA_URL` only when generation should target another PostHog
 installation. Turbo caching is disabled for this task so each generation uses
-the schema currently published by PostHog.
+the schema currently published by PostHog. Because it depends on that live
+schema, no other task depends on `generate`: typecheck and consumers use the
+checked-in client, so run generation explicitly and commit the result.
 
 Before generation, nullable feature-flag fields are converted from OpenAPI 3.1's
 `type: [value, null]` notation to the equivalent `oneOf` notation because

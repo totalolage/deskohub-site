@@ -9,7 +9,11 @@ import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { CliAuthentication } from "./cli-authentication.service";
-import { renameCliSessionStandardSchema } from "./contracts";
+import {
+  cliSessionDurationFieldsSchema,
+  cliSessionLifetimeSchema,
+  renameCliSessionStandardSchema,
+} from "./contracts";
 import { decodeCliAuthenticationCode } from "./page-data.server";
 
 export async function approveCliAuthentication(formData: FormData) {
@@ -19,8 +23,13 @@ export async function approveCliAuthentication(formData: FormData) {
   const approved = await Effect.gen(function* () {
     const approvedBy = yield* requireAdministratorAuthorization;
     const code = yield* decodeCliAuthenticationCode(rawCode);
+    const sessionLifetime = yield* decodeCliSessionLifetime(formData);
     const authentication = yield* CliAuthentication;
-    return yield* authentication.approve({ approvedBy, code });
+    return yield* authentication.approve({
+      approvedBy,
+      code,
+      sessionLifetime,
+    });
   }).pipe(
     Effect.as(true),
     Effect.catch(() => Effect.succeed(false)),
@@ -34,6 +43,14 @@ export async function approveCliAuthentication(formData: FormData) {
   });
   redirect(`/admin/cli/authenticate?${search}`);
 }
+
+const decodeCliSessionLifetime = (formData: FormData) =>
+  formData.get("neverExpire") === "on"
+    ? Effect.succeed(cliSessionLifetimeSchema.cases.Never.make({}))
+    : Schema.decodeUnknownEffect(cliSessionDurationFieldsSchema)({
+        amount: formData.get("lifetimeAmount"),
+        unit: formData.get("lifetimeUnit"),
+      }).pipe(Effect.map(cliSessionLifetimeSchema.cases.Duration.make));
 
 export async function revokeCliSession(formData: FormData) {
   const revoked = await Effect.gen(function* () {

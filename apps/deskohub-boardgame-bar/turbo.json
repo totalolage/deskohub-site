@@ -4,6 +4,7 @@
   "tasks": {
     "build": {
       "dependsOn": [
+        "$TURBO_EXTENDS$",
         "@deskohub/dotypos#generate",
         "@deskohub/games#generate",
         "i18n:compile"
@@ -45,6 +46,7 @@
     },
     "typecheck": {
       "dependsOn": [
+        "$TURBO_EXTENDS$",
         "@deskohub/dotypos#generate",
         "@deskohub/games#generate",
         "i18n:compile"

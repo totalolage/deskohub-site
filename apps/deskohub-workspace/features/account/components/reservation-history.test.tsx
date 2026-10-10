@@ -198,8 +198,8 @@ describe("ReservationHistory", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders current, past, cancelled, and undated groups with counts", () => {

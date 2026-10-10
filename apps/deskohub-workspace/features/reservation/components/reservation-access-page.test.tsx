@@ -22,8 +22,8 @@ describe("ReservationAccessPage", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("shows the current PIN and leaves validity to the lock", () => {

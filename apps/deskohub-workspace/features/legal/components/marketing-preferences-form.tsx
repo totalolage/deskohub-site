@@ -11,6 +11,8 @@ import {
 } from "@/features/legal/actions";
 import {
   isManagedMarketingState,
+  isMarketingPreferencesMutationFailureReason,
+  type MarketingPreferencesMutationFailureReason,
   type MarketingPreferencesState,
 } from "@/features/legal/marketing-preferences";
 import { Button } from "@/shared/components/ui/button";
@@ -32,7 +34,10 @@ export function MarketingPreferencesForm({
   return (
     <MarketingPreferencesFormContent
       accountsEnabled={accountsEnabled}
-      key={`${state.status}:${"source" in state ? state.source : "none"}:${"context" in state ? state.context : "none"}:${"dismissalContext" in state ? state.dismissalContext : "none"}`}
+      // Fence local feedback to one management context. The status stays out of
+      // the key: router.refresh() delivers the saved status as new props, and
+      // remounting would drop the success feedback and the switch's focus.
+      key={`${"source" in state ? state.source : "none"}:${"context" in state ? state.context : "none"}:${"dismissalContext" in state ? state.dismissalContext : "none"}`}
       locale={locale}
       state={state}
     />
@@ -44,7 +49,7 @@ type MarketingFeedbackKind = "save" | "confirm" | "clear";
 type MarketingFeedback = {
   readonly kind: MarketingFeedbackKind;
   readonly outcome: "success" | "error";
-  readonly serverMessage?: string;
+  readonly reason?: MarketingPreferencesMutationFailureReason;
 };
 
 function MarketingPreferencesFormContent({
@@ -65,24 +70,39 @@ function MarketingPreferencesFormContent({
   const source = managedState?.source;
   const isLinkManagement = source === "link";
 
+  const serverActive = managedState?.status === "active";
   // The switch is optimistic: it moves to the target state immediately on
   // toggle and reverts to the server-authoritative state only when the save
   // fails.
-  const [checked, setChecked] = useState(managedState?.status === "active");
+  const [checked, setChecked] = useState(serverActive);
   const [feedback, setFeedback] = useState<MarketingFeedback | null>(null);
   // The last value the server confirmed. Refreshed server props may lag behind
   // a successful save, so failures must revert to this, not to the initial
   // (possibly stale) props.
-  const [confirmedActive, setConfirmedActive] = useState(
-    managedState?.status === "active"
-  );
+  const [confirmedActive, setConfirmedActive] = useState(serverActive);
+  // Refreshed props that report a different server status become the new
+  // confirmed value; unchanged (lagging) props leave local state alone.
+  const [previousServerActive, setPreviousServerActive] =
+    useState(serverActive);
+  if (serverActive !== previousServerActive) {
+    setPreviousServerActive(serverActive);
+    setChecked(serverActive);
+    setConfirmedActive(serverActive);
+  }
 
   const markSuccess = (kind: MarketingFeedbackKind) => {
     setFeedback({ kind, outcome: "success" });
     router.refresh();
   };
-  const markError = (kind: MarketingFeedbackKind, serverMessage?: string) =>
-    setFeedback({ kind, outcome: "error", serverMessage });
+  // The server reports a failure reason code; announce its catalog copy.
+  const markError = (kind: MarketingFeedbackKind, serverError?: string) =>
+    setFeedback({
+      kind,
+      outcome: "error",
+      reason: isMarketingPreferencesMutationFailureReason(serverError)
+        ? serverError
+        : undefined,
+    });
 
   const revertToConfirmed = () => setChecked(confirmedActive);
 
@@ -131,10 +151,19 @@ function MarketingPreferencesFormContent({
     context !== undefined || dismissalContext !== undefined;
   const hasError = feedback?.outcome === "error";
 
-  function feedbackMessage(
-    kind: MarketingFeedbackKind,
-    outcome: "success" | "error"
-  ) {
+  function feedbackMessage({ kind, outcome, reason }: MarketingFeedback) {
+    if (reason === "invalid-link") {
+      return m.marketingPreferencesFormInvalidLinkError({}, { locale });
+    }
+    if (reason === "stale-context") {
+      return m.marketingPreferencesFormStaleContextError({}, { locale });
+    }
+    if (reason === "pending-confirmation-required") {
+      return m.marketingPreferencesFormConfirmationRequiredError(
+        {},
+        { locale }
+      );
+    }
     if (kind === "save") {
       return outcome === "success"
         ? m.marketingPreferencesFormSaved({}, { locale })
@@ -152,25 +181,23 @@ function MarketingPreferencesFormContent({
 
   // Live-region feedback rendered inside the active surface: the managed
   // row's support column, or the fallback state's root — never as a loose
-  // sibling that would break the row-group card rhythm.
+  // sibling that would break the row-group card rhythm. Both regions stay
+  // mounted so assistive technology observes their content changes.
   const feedbackBlock = hasContextState ? (
-    <div
-      aria-live={feedback ? "polite" : undefined}
-      className="text-sm"
-      id={feedbackId}
-      role={hasError ? "alert" : undefined}
-    >
-      {isSaving && (
-        <p role="status">
-          {m.marketingPreferencesFormSavingStatus({}, { locale })}
-        </p>
-      )}
-      {feedback && (
-        <p className={hasError ? "text-red-700" : "text-emerald-800"}>
-          {feedback.serverMessage ??
-            feedbackMessage(feedback.kind, feedback.outcome)}
-        </p>
-      )}
+    <div className="text-sm" id={feedbackId}>
+      <div aria-live="polite" role="status">
+        {isSaving && (
+          <p>{m.marketingPreferencesFormSavingStatus({}, { locale })}</p>
+        )}
+        {feedback && !hasError && (
+          <p className="text-emerald-800">{feedbackMessage(feedback)}</p>
+        )}
+      </div>
+      <div role="alert">
+        {feedback && hasError && (
+          <p className="text-red-700">{feedbackMessage(feedback)}</p>
+        )}
+      </div>
     </div>
   ) : null;
 

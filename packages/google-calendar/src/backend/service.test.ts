@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Fiber, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { GoogleCalendarRuntimeConfig } from "../config";
 import {
   GoogleCalendarChannelIdSchema,
@@ -22,14 +23,20 @@ type CalendarListResponse = {
   };
 };
 
+type RequestOptions = { readonly signal?: AbortSignal };
+
 type ListEventsImplementation = (
-  params: CalendarListQuery
+  params: CalendarListQuery,
+  options?: RequestOptions
 ) => Promise<CalendarListResponse>;
 
-type WatchEventsImplementation = (params: {
-  readonly calendarId: string;
-  readonly requestBody?: unknown;
-}) => Promise<{
+type WatchEventsImplementation = (
+  params: {
+    readonly calendarId: string;
+    readonly requestBody?: unknown;
+  },
+  options?: RequestOptions
+) => Promise<{
   readonly data: {
     readonly id?: string | null;
     readonly resourceId?: string | null;
@@ -327,17 +334,20 @@ describe("GoogleCalendarService", () => {
       })
     );
 
-    expect(watchEvents).toHaveBeenCalledWith({
-      calendarId: "calendar-id",
-      requestBody: {
-        address:
-          "https://bar.example.test/api/webhooks/google-calendar/opening-hours",
-        id: "requested-channel-id",
-        params: { ttl: "259200" },
-        token: "derived-webhook-token",
-        type: "web_hook",
+    expect(watchEvents).toHaveBeenCalledWith(
+      {
+        calendarId: "calendar-id",
+        requestBody: {
+          address:
+            "https://bar.example.test/api/webhooks/google-calendar/opening-hours",
+          id: "requested-channel-id",
+          params: { ttl: "259200" },
+          token: "derived-webhook-token",
+          type: "web_hook",
+        },
       },
-    });
+      { signal: expect.any(AbortSignal) }
+    );
     expect(result).toEqual({
       channelId: decodeChannelId("returned-channel-id"),
       resourceId: decodeResourceId("resource-id"),
@@ -378,6 +388,80 @@ describe("GoogleCalendarService", () => {
         message: "Invalid webhook address",
       });
     }
+  });
+
+  test("keeps the channel token out of event watch failures", async () => {
+    watchEvents = mock<WatchEventsImplementation>(async (params) => {
+      const requestConfig = {
+        url: "https://www.googleapis.com/calendar/v3/calendars/calendar-id/events/watch",
+        data: params.requestBody,
+        body: JSON.stringify(params.requestBody),
+      };
+      const error = new Error("Invalid webhook address");
+      Object.assign(error, {
+        status: 400,
+        config: requestConfig,
+        response: { status: 400, config: { ...requestConfig } },
+      });
+      throw error;
+    });
+
+    const result = await runWithCalendar(
+      Effect.gen(function* () {
+        const googleCalendar = yield* GoogleCalendarService;
+        return yield* googleCalendar
+          .watchEvents({
+            calendarId,
+            channelId: decodeChannelId("channel-id"),
+            webhookUrl: "https://bar.example.test/webhook",
+            webhookToken: "derived-webhook-token",
+            ttlSeconds: 259_200,
+          })
+          .pipe(Effect.flip);
+      })
+    );
+
+    expect(result).toMatchObject({
+      _tag: "GoogleCalendarAPIError",
+      operation: "events.watch",
+      statusCode: 400,
+      message: "Invalid webhook address",
+    });
+    expect(JSON.stringify(result)).not.toContain("derived-webhook-token");
+    expect(Bun.inspect(result.cause, { depth: 10 })).not.toContain(
+      "derived-webhook-token"
+    );
+  });
+
+  test("times out and aborts a stalled events request", async () => {
+    let aborted = false;
+    listEvents = mock<ListEventsImplementation>(
+      (_params, options) =>
+        new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener("abort", () => {
+            aborted = true;
+            reject(new Error("aborted"));
+          });
+        })
+    );
+
+    const result = await runWithCalendar(
+      Effect.gen(function* () {
+        const googleCalendar = yield* GoogleCalendarService;
+        const fiber = yield* googleCalendar
+          .listEvents({ calendarId, from: "2026-06-20", to: "2026-06-21" })
+          .pipe(Effect.flip, Effect.forkChild);
+        yield* TestClock.adjust("10 seconds");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(result).toMatchObject({
+      _tag: "GoogleCalendarAPIError",
+      operation: "events.list",
+      message: "Google Calendar request timed out.",
+    });
+    expect(aborted).toBe(true);
   });
 
   test.each(["id", "iCalUID", "recurringEventId"] as const)(

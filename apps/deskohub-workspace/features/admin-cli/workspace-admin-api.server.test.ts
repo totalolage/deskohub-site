@@ -117,6 +117,7 @@ const session = {
   buildTarget: "development",
   createdAt: "2026-08-10T10:00:00.000Z",
   lastUsedAt: "2026-08-10T10:00:00.000Z",
+  expiresAt: null,
 } as const;
 const AuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
   bearer: (httpEffect) =>
@@ -149,6 +150,59 @@ describe("Workspace Admin API", () => {
       apiVersion: "v1",
       service: "deskohub-workspace",
     });
+  });
+
+  test("logs the original failure before reporting the service as unavailable", async () => {
+    const logRecords: { readonly level: string; readonly text: string }[] = [];
+    const capturingLogger = Logger.make<unknown, void>(
+      ({ logLevel, message }) => {
+        logRecords.push({ level: logLevel, text: JSON.stringify(message) });
+      }
+    );
+    const failingAdministration = Layer.succeed(AdministrationService, {
+      ...({} as AdministrationService["Service"]),
+      listReservations: () =>
+        Effect.fail(
+          new EffectDrizzleQueryError({
+            query: "select from workspace reservations",
+            params: [],
+            cause: new Error("database unavailable"),
+          })
+        ),
+    });
+
+    const error = await Effect.gen(function* () {
+      const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+        "administration",
+      ]);
+      return yield* client.administration
+        .listReservations({ query: {} })
+        .pipe(Effect.flip);
+    }).pipe(
+      Effect.provide(AdminCliAdministrationApiHandlers),
+      Effect.provide(ActorAuthorizedCliRequest),
+      Effect.provide(UnusedStandaloneAccessCodeAdministration),
+      Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(UnusedInvoiceAdministration),
+      Effect.provide(UnusedReservationAdministration),
+      Effect.provide(UnusedDiscountAdministration),
+      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(failingAdministration),
+      Effect.provide(UnusedReservationAccessAdministration),
+      Effect.provide(NodeHttpServer.layerHttpServices),
+      Effect.scoped,
+      Effect.withLogger(capturingLogger),
+      Effect.runPromise
+    );
+
+    expect(error).toBeInstanceOf(CliServiceUnavailable);
+    expect(
+      logRecords.some(
+        ({ level, text }) =>
+          level === "Error" &&
+          text.includes("select from workspace reservations")
+      )
+    ).toBe(true);
   });
 
   test("maps an in-progress invoice claim for retry without changing provenance", async () => {
@@ -567,7 +621,14 @@ describe("Workspace Admin API", () => {
     const authentication = Layer.succeed(CliAuthentication, {
       ...({} as CliAuthentication["Service"]),
       listSessions: (owner) =>
-        Effect.succeed([{ ...session, approvedBy: owner, revokedAt: null }]),
+        Effect.succeed([
+          {
+            ...session,
+            approvedBy: owner,
+            revokedAt: null,
+            status: "active" as const,
+          },
+        ]),
     });
     const reservationAdministration = Layer.succeed(
       ReservationAdministrationService,
@@ -1141,6 +1202,7 @@ describe("Workspace Admin API", () => {
               ...session,
               approvedBy: owner,
               revokedAt: null,
+              status: "active" as const,
             },
           ])
         ),

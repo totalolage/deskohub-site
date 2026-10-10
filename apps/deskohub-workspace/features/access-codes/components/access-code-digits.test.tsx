@@ -22,8 +22,8 @@ describe("AccessCodeDigits", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("blocks the whole pin subtree from PostHog capture and session replay", () => {

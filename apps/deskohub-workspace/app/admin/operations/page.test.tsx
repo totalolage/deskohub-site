@@ -73,7 +73,7 @@ describe("OperationsAdministrationPage filters", () => {
   });
   afterAll(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    unregisterWorkspaceComponentTestEnv();
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("keeps inclusive date and provider filter values in the GET query", async () => {

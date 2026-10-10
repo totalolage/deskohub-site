@@ -72,6 +72,7 @@ export async function CliAuthenticationRequest({
       <div className="border-t border-navy-blue/10 px-5 py-5 sm:px-6">
         <AuthenticationRequestState
           code={params.code}
+          failed={params.result === "error"}
           request={request}
           username={username}
         />
@@ -82,10 +83,12 @@ export async function CliAuthenticationRequest({
 
 function AuthenticationRequestState({
   code,
+  failed,
   request,
   username,
 }: {
   readonly code?: string;
+  readonly failed: boolean;
   readonly request: NonNullable<
     NonNullable<
       Awaited<ReturnType<typeof loadCliAuthenticationApproval>>
@@ -104,6 +107,14 @@ function AuthenticationRequestState({
             Approving as <strong>{username}</strong>.
           </p>
         </AdministrationAlert>
+        {failed && (
+          <AdministrationAlert className="mb-5" status="error">
+            <p>
+              The CLI could not be approved. Check the session duration and try
+              again.
+            </p>
+          </AdministrationAlert>
+        )}
         <ApproveCliAuthenticationForm code={code} />
       </>
     );

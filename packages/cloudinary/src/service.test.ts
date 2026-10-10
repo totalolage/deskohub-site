@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Layer, Logger, References } from "effect";
+import { context, trace } from "@opentelemetry/api";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import { Effect, Fiber, Layer, Logger, References } from "effect";
 import * as Schema from "effect/Schema";
+import { TestClock } from "effect/testing";
+import { FetchHttpClient } from "effect/unstable/http";
 
 mock.module("server-only", () => ({}));
 
@@ -46,8 +55,53 @@ let uploadAttempts = 0;
 let destroyAttempts = 0;
 let renameAttempts = 0;
 
+/** Stand-in for the SDK signature segment; never a real signature. */
+const fakeListSignature = "s--fake-signature--";
+const urlCalls: { source: string; options: Record<string, unknown> }[] = [];
+
+type TagListReply = Response | "hang";
+const tagListRequests: string[] = [];
+let tagListReplies: Record<string, TagListReply[]> = {};
+
+const tagFromListUrl = (url: string) =>
+  decodeURIComponent(url.slice(url.lastIndexOf("/") + 1, -".json".length));
+
+const fakeFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  const url = input instanceof Request ? input.url : String(input);
+  const tag = tagFromListUrl(url);
+  tagListRequests.push(tag);
+  const reply = tagListReplies[tag]?.shift();
+
+  if (reply === "hang") {
+    return new Promise<Response>((_, reject) => {
+      init?.signal?.addEventListener("abort", () =>
+        reject(init.signal?.reason)
+      );
+    });
+  }
+
+  return Promise.resolve(reply ?? new Response("Not Found", { status: 404 }));
+}) as unknown as typeof globalThis.fetch;
+
+const fakeHttpClientLayer = FetchHttpClient.layer.pipe(
+  Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fakeFetch))
+);
+
 const cloudinary = {
   config: mock(() => undefined),
+  url: mock((source: string, options: Record<string, unknown>) => {
+    urlCalls.push({ source, options: { ...options } });
+
+    if (options.type === "list") {
+      // The SDK rejects sources it cannot percent-decode.
+      if (source.includes("%")) throw new URIError("URI malformed");
+      return `https://res.cloudinary.test/${String(options.cloud_name)}/image/list/${fakeListSignature}/${encodeURIComponent(source)}.json`;
+    }
+
+    const version =
+      options.version === undefined ? "" : `v${String(options.version)}/`;
+    return `${options.secure ? "https" : "http"}://res.cloudinary.test/${String(options.cloud_name)}/image/${String(options.type)}/${version}${source}.${String(options.format)}`;
+  }),
   api: {
     resource: mock(
       async (publicId: string, options: Record<string, unknown>) => {
@@ -214,7 +268,11 @@ beforeEach(() => {
   uploadAttempts = 0;
   destroyAttempts = 0;
   renameAttempts = 0;
+  urlCalls.length = 0;
+  tagListRequests.length = 0;
+  tagListReplies = {};
   cloudinary.config.mockClear();
+  cloudinary.url.mockClear();
   cloudinary.api.resource.mockClear();
   cloudinary.search.expression.mockClear();
   cloudinary.uploader.upload_stream.mockClear();
@@ -227,7 +285,12 @@ const makeService = () =>
     CloudinaryService.pipe(
       Effect.provide(
         CloudinaryService.Default.pipe(
-          Layer.provide(makeCloudinaryRuntimeConfigLayer(config))
+          Layer.provide(
+            Layer.mergeAll(
+              makeCloudinaryRuntimeConfigLayer(config),
+              fakeHttpClientLayer
+            )
+          )
         )
       )
     )
@@ -439,7 +502,10 @@ describe("CloudinaryService", () => {
         Effect.provide(
           CloudinaryService.Default.pipe(
             Layer.provide(
-              makeCloudinaryRuntimeConfigLayer({ ...config, apiKey: "" })
+              Layer.mergeAll(
+                makeCloudinaryRuntimeConfigLayer({ ...config, apiKey: "" }),
+                fakeHttpClientLayer
+              )
             )
           )
         ),
@@ -848,7 +914,12 @@ describe("CloudinaryService avatar-path logging", () => {
         Effect.provide(
           CloudinaryService,
           CloudinaryService.Default.pipe(
-            Layer.provide(makeCloudinaryRuntimeConfigLayer(config))
+            Layer.provide(
+              Layer.mergeAll(
+                makeCloudinaryRuntimeConfigLayer(config),
+                fakeHttpClientLayer
+              )
+            )
           )
         )
       )
@@ -1095,9 +1166,11 @@ describe("CloudinaryService avatar-path logging", () => {
       "with api_secret=synthetic-cloudinary-secret-sentinel";
     queuedResults = [
       { throw: { http_code: 401, message: providerMessage } },
-      { throw: { error: { http_code: 401, message: providerMessage } } },
       { throw: { http_code: 401, message: providerMessage } },
     ];
+    tagListReplies = {
+      [identifier]: [new Response(providerMessage, { status: 401 })],
+    };
 
     const captured = await captureLogs((service) =>
       Effect.gen(function* () {
@@ -1131,8 +1204,346 @@ describe("CloudinaryService avatar-path logging", () => {
     expect(serialized).not.toContain("401");
     expect(serialized).not.toContain("public_id=");
     expect(serialized).not.toContain("folder=");
+    expect(serialized).not.toContain(fakeListSignature);
+    expect(serialized).not.toContain("res.cloudinary.test");
     expect(serialized).toContain("Cloudinary search page failed");
     expect(serialized).toContain("Cloudinary search failed");
+    expect(serialized).toContain("Cloudinary tag list request failed");
     expect(serialized).toContain("Cloudinary gallery images lookup failed");
+    expect(tagListRequests).toEqual([identifier]);
+  });
+});
+
+describe("CloudinaryService tag lists", () => {
+  const listEntry = (
+    publicId: string,
+    createdAt: string,
+    extra: Record<string, unknown> = {}
+  ) => ({
+    public_id: publicId,
+    version: 1710000000,
+    format: "jpg",
+    width: 1200,
+    height: 800,
+    type: "upload",
+    created_at: createdAt,
+    ...extra,
+  });
+  const tagList = (...resources: readonly Record<string, unknown>[]) =>
+    Response.json({ resources, updated_at: "2026-09-01T00:00:00Z" });
+  const listedIds = (assets: readonly { public_id: string }[]) =>
+    assets.map(({ public_id }) => public_id);
+
+  test("signs one list URL per distinct tag and combines OR groups of AND tags with exclusions", async () => {
+    const x = listEntry("gallery/x", "2026-01-01T00:00:00Z");
+    const y = listEntry("gallery/y", "2026-01-02T00:00:00Z");
+    const z = listEntry("gallery/z", "2026-01-03T00:00:00Z");
+    const w = listEntry("gallery/w", "2026-01-04T00:00:00Z");
+    const v = listEntry("gallery/v", "2026-01-05T00:00:00Z");
+    tagListReplies = {
+      hero: [tagList(x, y)],
+      "Web galerie": [tagList(y, z, w)],
+      hidden: [tagList(w)],
+      "Školící místnost": [tagList(v, y)],
+    };
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service.listTaggedAssets([
+        ["Web galerie", "hero"],
+        ["Web galerie", "!hidden"],
+        ["Školící místnost"],
+      ])
+    );
+
+    // (Web galerie AND hero) OR (Web galerie AND NOT hidden) OR Školící
+    // místnost, newest first and without duplicates.
+    expect(listedIds(result)).toEqual(["gallery/v", "gallery/z", "gallery/y"]);
+    expect([...tagListRequests].sort()).toEqual(
+      ["Web galerie", "hero", "hidden", "Školící místnost"].sort()
+    );
+    const listUrlCalls = urlCalls.filter(
+      ({ options }) => options.type === "list"
+    );
+    expect(listUrlCalls).toHaveLength(4);
+    for (const { options } of listUrlCalls) {
+      expect(options).toMatchObject({
+        resource_type: "image",
+        type: "list",
+        format: "json",
+        sign_url: true,
+        secure: true,
+        cloud_name: "cloud-name",
+        api_secret: "api-secret",
+      });
+    }
+    expect(executeAttempts).toBe(0);
+  });
+
+  test("sorts and caps the combined list in code", async () => {
+    const unordered = () =>
+      tagList(
+        listEntry("gallery/b", "2026-01-03T00:00:00Z"),
+        listEntry("gallery/c", "2026-01-01T00:00:00Z"),
+        listEntry("gallery/a", "2026-01-02T00:00:00Z")
+      );
+    tagListReplies = { gallery: [unordered(), unordered()] };
+
+    const service = await makeService();
+    const byPublicId = await Effect.runPromise(
+      service.listTaggedAssets([["gallery"]], {
+        sortBy: "public_id",
+        sortDirection: "asc",
+        maxResults: 2,
+      })
+    );
+    const oldestFirst = await Effect.runPromise(
+      service.listTaggedAssets([["gallery"]], { sortDirection: "asc" })
+    );
+
+    expect(listedIds(byPublicId)).toEqual(["gallery/a", "gallery/b"]);
+    expect(listedIds(oldestFirst)).toEqual([
+      "gallery/c",
+      "gallery/a",
+      "gallery/b",
+    ]);
+  });
+
+  test("maps list entries to assets with delivery URLs and localized context", async () => {
+    const context = {
+      custom: {
+        alt: "Desk",
+        "alt-cs-CZ": "Stůl",
+        "alt-en-US": "Desk",
+        "caption-en-US": "Quiet room",
+        "detail-cs-CZ": "Tichá místnost",
+      },
+    };
+    tagListReplies = {
+      gallery: [
+        tagList(
+          listEntry("gallery/desk", "2026-01-01T00:00:00Z", {
+            context,
+            metadata: [{ external_id: "color_id", value: "red" }],
+          })
+        ),
+      ],
+    };
+
+    const service = await makeService();
+    const [desk] = await Effect.runPromise(
+      service.listTaggedAssets([["gallery"]])
+    );
+
+    expect(desk).toEqual({
+      public_id: cloudinaryPublicId("gallery/desk"),
+      secure_url:
+        "https://res.cloudinary.test/cloud-name/image/upload/v1710000000/gallery/desk.jpg",
+      url: "http://res.cloudinary.test/cloud-name/image/upload/v1710000000/gallery/desk.jpg",
+      width: 1200,
+      height: 800,
+      format: "jpg",
+      resource_type: "image",
+      created_at: "2026-01-01T00:00:00Z",
+      version: 1710000000,
+      context,
+    });
+    const deliveryCalls = urlCalls.filter(
+      ({ options }) => options.type === "upload"
+    );
+    expect(deliveryCalls).toHaveLength(2);
+    for (const { options } of deliveryCalls) {
+      expect(options.sign_url).toBe(false);
+      expect(options.api_secret).toBeUndefined();
+    }
+  });
+
+  test("treats a 404 list for an unused tag as empty without retrying", async () => {
+    tagListReplies = {
+      gallery: [tagList(listEntry("gallery/a", "2026-01-01T00:00:00Z"))],
+    };
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service.listTaggedAssets([
+        ["gallery", "unused"],
+        ["gallery", "!unused"],
+      ])
+    );
+
+    expect(listedIds(result)).toEqual(["gallery/a"]);
+    expect(tagListRequests.filter((tag) => tag === "unused")).toHaveLength(1);
+  });
+
+  test("retries 5xx list responses and then succeeds", async () => {
+    tagListReplies = {
+      gallery: [
+        new Response("unavailable", { status: 500 }),
+        new Response("unavailable", { status: 503 }),
+        tagList(listEntry("gallery/a", "2026-01-01T00:00:00Z")),
+      ],
+    };
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service.listTaggedAssets([["gallery"]])
+    );
+
+    expect(listedIds(result)).toEqual(["gallery/a"]);
+    expect(tagListRequests).toEqual(["gallery", "gallery", "gallery"]);
+  });
+
+  test("fails rejected list requests with a fixed error that omits the URL, tag, and signature", async () => {
+    tagListReplies = {
+      "private tag": [
+        new Response(`denied ${fakeListSignature} private tag`, {
+          status: 401,
+        }),
+      ],
+    };
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service.listTaggedAssets([["private tag"]]).pipe(Effect.result)
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("CloudinarySearchError");
+      expect(result.failure.httpCode).toBe(401);
+      const serialized = JSON.stringify(result.failure);
+      expect(serialized).not.toContain(fakeListSignature);
+      expect(serialized).not.toContain("private tag");
+      expect(serialized).not.toContain("res.cloudinary.test");
+    }
+    expect(tagListRequests).toEqual(["private tag"]);
+  });
+
+  test("fails malformed list bodies and unsignable tags without retrying", async () => {
+    tagListReplies = {
+      gallery: [Response.json({ resources: [{ public_id: 1 }] })],
+    };
+
+    const service = await makeService();
+    const malformed = await Effect.runPromise(
+      service.listTaggedAssets([["gallery"]]).pipe(Effect.result)
+    );
+    const unsignable = await Effect.runPromise(
+      service.listTaggedAssets([["100%"]]).pipe(Effect.result)
+    );
+
+    for (const result of [malformed, unsignable]) {
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe("CloudinarySearchError");
+        expect(result.failure.httpCode).toBeUndefined();
+      }
+    }
+    expect(tagListRequests).toEqual(["gallery"]);
+  });
+
+  test("bounds a hanging list request with the typed error", async () => {
+    tagListReplies = { gallery: ["hang"] };
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* service
+          .listTaggedAssets([["gallery"]])
+          .pipe(Effect.result, Effect.forkChild);
+        yield* TestClock.adjust("6 seconds");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("CloudinarySearchError");
+      expect(result.failure.httpCode).toBeUndefined();
+    }
+    expect(tagListRequests).toEqual(["gallery"]);
+  });
+
+  test("selects nothing for empty or exclusion-only expressions without fetching", async () => {
+    const service = await makeService();
+    const empty = await Effect.runPromise(service.listTaggedAssets([]));
+    const exclusionOnly = await Effect.runPromise(
+      service.listTaggedAssets([["!hidden"]])
+    );
+
+    expect(empty).toEqual([]);
+    expect(exclusionOnly).toEqual([]);
+    expect(tagListRequests).toEqual([]);
+    expect(executeAttempts).toBe(0);
+  });
+
+  test("keeps signed list URLs out of spans recorded by an instrumented global fetch", async () => {
+    const exporter = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    const contextManager = new AsyncLocalStorageContextManager().enable();
+    const platformFetch = globalThis.fetch;
+    // Stands in for fetch instrumentations such as `@vercel/otel` or Next.js'
+    // patched fetch, which name spans after the full request URL.
+    const instrumentedFetch = Object.assign(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : String(input);
+        const span = trace
+          .getTracer("fetch-instrumentation")
+          .startSpan(`fetch GET ${url}`, { attributes: { "http.url": url } });
+        return fakeFetch(input, init).finally(() => span.end());
+      },
+      { preconnect: platformFetch.preconnect }
+    );
+    const recordedText = () =>
+      JSON.stringify(
+        exporter
+          .getFinishedSpans()
+          .map(({ name, attributes, events, status }) => ({
+            name,
+            attributes,
+            events,
+            status,
+          }))
+      );
+
+    context.setGlobalContextManager(contextManager);
+    trace.setGlobalTracerProvider(provider);
+    globalThis.fetch = instrumentedFetch;
+    try {
+      // The stand-in records the signature when tracing is not suppressed.
+      await instrumentedFetch(
+        `https://res.cloudinary.test/cloud-name/image/list/${fakeListSignature}/control.json`
+      );
+      expect(recordedText()).toContain(fakeListSignature);
+      exporter.reset();
+      tagListRequests.length = 0;
+
+      tagListReplies = {
+        gallery: [tagList(listEntry("gallery/a", "2026-01-01T00:00:00Z"))],
+      };
+      const result = await Effect.runPromise(
+        CloudinaryService.use((service) =>
+          service.listTaggedAssets([["gallery"]])
+        ).pipe(
+          Effect.provide(
+            CloudinaryService.Live.pipe(
+              Layer.provide(makeCloudinaryRuntimeConfigLayer(config))
+            )
+          )
+        )
+      );
+
+      expect(listedIds(result)).toEqual(["gallery/a"]);
+      expect(tagListRequests).toEqual(["gallery"]);
+      await provider.forceFlush();
+      expect(recordedText()).not.toContain(fakeListSignature);
+    } finally {
+      globalThis.fetch = platformFetch;
+      trace.disable();
+      context.disable();
+      await provider.shutdown();
+    }
   });
 });

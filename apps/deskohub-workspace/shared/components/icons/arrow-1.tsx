@@ -2,6 +2,8 @@ import type { ComponentProps } from "react";
 
 const Arrow1 = ({ className, style, ...props }: ComponentProps<"svg">) => (
   <svg
+    aria-hidden="true"
+    focusable="false"
     viewBox="0 0 478 817"
     style={{
       fillRule: "evenodd",
@@ -15,7 +17,6 @@ const Arrow1 = ({ className, style, ...props }: ComponentProps<"svg">) => (
     className={className}
     {...props}
   >
-    <title>Arrow1</title>
     <g
       id="XMLID_324_"
       transform="matrix(9.717644,0,0,-9.717644,-1876.682163,2046.778835)"

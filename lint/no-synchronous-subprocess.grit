@@ -1,0 +1,23 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Matches the API names themselves, so calls, member reads, import
+// specifiers, and destructured aliases are all reported.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    or {
+      JsName() as $use,
+      JsReferenceIdentifier() as $use,
+      JsLiteralMemberName() as $use,
+      JsLiteralExportName() as $use
+    } where {
+      $use <: r"^(?:spawnSync|execSync|execFileSync)$",
+      register_diagnostic(
+        span = $use,
+        message = "Run subprocesses with runCommand or commandOutput from scripts/shared/command; Bun 1.4.2 synchronous spawns can hang bun test workers.",
+        severity = "error"
+      )
+    }
+  }
+}
