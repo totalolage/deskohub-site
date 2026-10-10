@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.12.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.11.1...dhw-v1.12.0) (2026-10-10)
+
+
+### Features
+
+* **dhw:** filter reservations needing a refund ([d56707c](https://github.com/totalolage/deskohub-site/commit/d56707c7c03eef464a3c23bf4680a95c2d52b047))
+* **dhw:** let administrators choose CLI session expiry ([22a8fd1](https://github.com/totalolage/deskohub-site/commit/22a8fd1158e7081cf1af1cdeace6d6ba923ac982))
+* **dhw:** let administrators choose CLI session expiry ([c454b21](https://github.com/totalolage/deskohub-site/commit/c454b21f62af218ab5ab572a7385327fdd3de5fd))
+
 ## [1.11.1](https://github.com/totalolage/deskohub-site/compare/dhw-v1.11.0...dhw-v1.11.1) (2026-09-25)
 
 
