@@ -57,6 +57,8 @@ export type ReservationStatusInput = {
     | "refund_required"
     | "review_required";
   readonly paymentState: PaymentState;
+  /** Nexi reported a refund for every payment attempt that required one. */
+  readonly refunded?: boolean;
   readonly reservationState: ReservationState;
 };
 
@@ -98,6 +100,18 @@ export const getAdministrationReservationLifecycle = (
       label: "Late payment recovery needs review",
       reachedStages: ["started", "held", "cancelled"],
       tone: "attention",
+    };
+  }
+  if (
+    input.latePayment &&
+    input.refunded &&
+    input.reservationState === "cancelled"
+  ) {
+    return {
+      currentStage: "cancelled",
+      label: "Late payment refunded",
+      reachedStages: ["started", "held", "cancelled"],
+      tone: "neutral",
     };
   }
   if (input.latePayment && input.reservationState === "cancelled") {
@@ -225,6 +239,9 @@ export const getAdministrationReservationStatus = (
   }
   if (input.latePaymentRecovery === "review_required") {
     return { group: "attention", label: "Recovery review" };
+  }
+  if (input.latePayment && input.refunded) {
+    return { group: "cancelled", label: "Refunded" };
   }
   if (input.latePayment) {
     return { group: "attention", label: "Refund required" };

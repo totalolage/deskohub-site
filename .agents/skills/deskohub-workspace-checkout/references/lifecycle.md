@@ -59,10 +59,39 @@ Once a customer discount has appeared in a signed summary, it is an accepted dis
 - If a discount in the signed summary cannot be freshly affirmed at order submission, return `pricing_changed` with a refreshed signed summary. Create no durable payment attempt and no external payment session.
 - Newly available anonymously discoverable automatic discounts are never introduced retrospectively during quote generation or final affirmation. They may appear only through a new advertisement/summary cycle. The customer discount may first appear only at the first signed-summary boundary after Dotypos identity resolution, as described above. A successfully submitted discount code is a separate deliberate exception because the customer explicitly requested that quote change.
 
-Calendar discovery caching never extends the accepted interval. Eligibility is
-checked against the current instant after a cached occurrence is read, so the
-exclusive-end Prague midnight remains authoritative without waiting for the
-60-second discovery cache to expire.
+Calendar sale eligibility is one shared rule, `calendarSaleAppliesToBooking` in
+`features/discounts/calendar-sale.ts`. The booking instant must fall inside the
+sale's Prague all-day booking window, which has an exclusive end. The last
+service date must also be no later than the sale's last day, and earlier
+service dates qualify. Each product's pricing context supplies
+`lastServiceDate` in the discount input: office uses `endsOn`, cowork uses its
+reserved date, and meeting rooms use the Prague date of the exclusive `endsAt`
+(`getMeetingRoomLastServiceDate`), because hourly bookings can cross midnight
+and one ending exactly at midnight belongs to the previous day. Meeting-room
+advertised-price details carry `lastServiceDate` so the advertisement stays
+keyed by dates, not clock times. A range extending past the sale's last day gets
+no sale; never prorate. Do not re-derive the window or compare
+service dates against sale dates elsewhere.
+
+The booking instant is the price-lock moment. Reservation-page advertisement
+and the home-page banner use the current instant because they preview a booking
+made now. Reservation submission (`prepareWorkspacePayState`) captures
+`currentInstant` once and signs it into the Pay state as `bookedAt`. Every
+later affirmation reads it with `getSignedPayStateBookedAt` rather than the
+clock: summary acceptance, discount-code entry, payment start and
+claim-conflict refresh. Re-signed Pay states carry the original `bookedAt`
+forward. Editing or resubmitting the reservation creates a new Pay state and
+therefore a new booking instant. A sale that has ended by then disappears
+through the normal `pricing_changed` flow. Do not use the reservation draft's
+creation time, because drafts can be reused or superseded. Webhook,
+finalization and late-payment recovery read persisted application snapshots
+and never re-evaluate sale eligibility.
+
+Calendar discovery caching never extends the accepted interval. Occurrences are
+cached by the booking's Prague date, and eligibility is checked against the
+booking instant after a cached occurrence is read. The exclusive-end Prague
+midnight therefore remains authoritative without waiting for the 60-second
+discovery cache to expire.
 
 Discount code entry belongs on the order-summary page as an independent form with its own server action, pending state, and field error. It must not resubmit the reservation form or the main order submission:
 
@@ -178,6 +207,8 @@ One row per payment attempt. Positive totals create Nexi HPP/session attempts. E
 | `security_token` | text | no | Nexi HPP security token. Short-lived non-PII. |
 | `state` | text enum | yes | Attempt-level payment state. |
 | `refund_state` | text enum | yes | Refund work state, separate from successful settlement. |
+| `refunded_amount_value` | integer | no | Sum of successful Nexi refunds in the attempt's scaled units. Set only while `refund_state = 'refunded'`. |
+| `refunded_at` | timestamptz | no | Latest successful Nexi refund time, or the reconciliation time when Nexi omits it. Set only while `refund_state = 'refunded'`. |
 | `amount_value` | integer | yes | Expected payment amount in scaled integer form. |
 | `amount_exponent` | integer | yes | Currency exponent used for amount verification. |
 | `currency` | text | yes | Uppercase ISO currency code. |
@@ -317,7 +348,10 @@ Attempt-level `payment_attempts.state` values:
 Attempt-level `payment_attempts.refund_state` remains separate from settlement state:
 
 - `not_required`: no operator refund work is pending.
-- `required`: the paid Nexi attempt needs operator refund work, whether caused by an operator cancellation or an unrecoverable late payment; the payment remains truthfully `paid` until a separate refund workflow is completed.
+- `required`: the paid Nexi attempt needs operator refund work, whether caused by an operator cancellation or an unrecoverable late payment; the payment remains truthfully `paid`.
+- `refunded`: Nexi reports at least one successful refund on the paid attempt's order. `refunded_amount_value` and `refunded_at` record the refund total and time; a partial refund still clears the refund work, and administration shows the partial amount. The attempt state stays `paid`.
+
+Refund reconciliation reads `GET /orders/{orderId}` and counts `REFUND` operations whose result is `EXECUTED`, `REFUNDED`, or `VOIDED`. A back-office refund made before settlement is confirmed to appear as `REFUND` with `VOIDED`. Declined, denied, failed, and cancelled refunds are excluded, and so are pending or unrecognized results, because they are not final; the next notification or batch picks up the final result. `verifyPaymentOutcome` never treats a refund operation as a failed payment, so a refunded paid order cannot reach the failure, terminal, or late-payment recovery paths. Reconciliation runs when Nexi sends a refund notification for the order and in the daily `/api/cron/workspace/payment-refunds` batch of 25 `required` attempts. The batch claims attempts by `refund_checked_at`, never-checked first and then least recently checked, and stamps each claim whatever the outcome (refund found, no refund, or provider failure), so attempts whose refund stays outstanding rotate behind newer ones instead of starving them. Concurrent batches skip each other's claimed rows. Recording is monotonic: a smaller or equal total is `unchanged`, and an attempt that is not a paid Nexi attempt is `not_applicable`. A refund recorded on a `not_required` paid attempt is kept, so a direct back-office refund of a fulfilled booking is still visible. Late-payment settlement into a refund outcome preserves an existing `refunded` state instead of reopening it.
 
 Use `payment_attempts.refund_state` as the single refund-work source of truth. Source-specific recovery rows may retain the reason and workflow outcome, but any transition to their refund-required outcome must mark the same payment attempt `required` atomically rather than create a competing refund queue.
 
@@ -336,7 +370,12 @@ Allowed payment transitions:
 - Failed/cancelled/expired workflows may create a new `payment_attempts` row only when the reservation is still `held` and hold deadline is valid.
 - `paid` is terminal for payment state.
 - The current Nexi card HPP contract has no documented provider expiry. Queued hold cleanup applies a local abandonment cutoff 30 minutes after `provider_order_created_at`. Before the cutoff, an operation-free order is deferred through the existing queue retry window. At or after the cutoff, only a freshly verified order with no operations and no authorized or captured amount may transition to local `expired`; any operation or non-zero amount remains pending.
-- A verified successful webhook for an already-failed, cancelled, or expired local attempt starts a durable late-payment recovery instead of directly fulfilling the released reservation. Recovery may reuse a provider-verified intact original hold or recreate the immutable accepted reservation after checking that the interval has not ended, no newer checkout reservation exists, and current availability passes. A recovered reservation transitions atomically to paid, re-redeems its released discount-code claim under the same total and per-customer use limits as admission, and continues normal fulfillment. Unavailable or superseded recovery requires refund; ambiguous provider state requires operator review.
+- A verified successful webhook for an already-failed, cancelled, or expired local attempt starts a durable late-payment recovery instead of directly fulfilling the released reservation. A checkout status refresh whose pending finalization returns `not_pending` verifies the active terminal Nexi attempt and starts the same recovery without a webhook event (`late_payment_recoveries.webhook_event_id` is null). Recovery start locks the payment attempt before looking for an existing recovery, so concurrent webhook and verification paths share one row. Settlement keeps the attempt's previous `last_webhook_event_id` when the recovery has none.
+- Recovery reuses the original Dotypos hold only when the local row is still `held`, its `reservation_hold_expires_at` is more than `reusableHoldMinimumRemaining` (one minute) away, no newer checkout reservation exists, and Dotypos reports `NEW` or `CONFIRMED`. The settlement transaction rechecks the deadline under the reservation row lock; once it has passed, the settlement rejects reuse with `OriginalHoldNotReusableError` and the same run continues through release and recreation instead of waiting for the claim timeout. Availability and table assignment treat an unpaid `held` row past its deadline as free inventory (`selectExpiredHoldDotyposReservationIds`), so a Dotypos `NEW` status alone never proves the slot is still ours.
+- Any other late payment first releases the original hold: `held`, `hold_expired`, `cancellation_failed`, or a `cancelling` row untouched for ten minutes is claimed, the Dotypos hold is cancelled unless already `CANCELLED`, and the row is marked `cancelled`. A Dotypos `CONFIRMED` or unknown status requires review instead of cancellation. A failed Dotypos cancellation records `cancellation_failed` and leaves the recovery retryable; a fresh `cancelling` claim owned by cleanup is waited on.
+- After release, recovery runs the normal reservation creation for the immutable accepted reservation and price from the accounting snapshot: the ended check, `ensureAvailable`, table assignment, and a new `CONFIRMED` Dotypos reservation marked with the order reference. A replacement found by that marker from an interrupted earlier run is reused because it already passed the check. A recovered reservation transitions atomically to paid, re-redeems its released discount-code claim under the same total and per-customer use limits as admission, and continues normal fulfillment exactly like an on-time payment.
+- Recovery requires a refund only when the reservation cannot be provided: no capacity (`WorkspaceTableUnavailableError`) or no free table (`TableAssignmentUnavailableError`), an ended interval, a missing snapshot, a newer checkout reservation, a superseded attempt, an operator force-cancellation, or an unredeemable discount claim. Release the original hold before settling a refund on the active attempt, because a paid row is never selected by hold cleanup and would otherwise occupy the slot. Ambiguous provider state requires operator review.
+- The customer status derives from the reservation's latest late-payment recovery: `pending` or `processing` shows `late_payment_checking` and keeps refreshing, `refund_required` shows `late_payment_refund`, `review_required` shows `late_payment_review` with the same prefilled support-request link as `fulfillment_failed` (no automatic customer notification exists), and `recovered` falls through to the normal paid states. A refund owed on a superseded attempt does not override a reservation that its active attempt paid. Late-payment states never show the original hold's table or map.
 - An explicit operator force-cancellation marks the active pending attempt cancelled and releases its claim before cancelling the reservation. Its stable failure reason prevents late-payment recovery from recreating the booking; a later verified settlement requires a refund.
 
 ### Fulfillment State
@@ -679,6 +718,8 @@ sequenceDiagram
 | Awaiting customer email delivery | `payment_state = 'paid' and fulfillment_state = 'awaiting_delivery'` | Wait for the matching provider delivery webhook; never reclaim or resend. |
 | Expired unpaid hold | `reservation_state = 'held' and payment_state <> 'paid' and reservation_hold_expires_at <= now()` | Cancel Dotypos hold. |
 | Cancellation failed | `reservation_state = 'cancellation_failed'` | Retry Dotypos cancellation. |
+| Late payment | `late_payment_recoveries.state in ('pending', 'processing')` | Queue recovery: reuse a current hold, otherwise release it and run normal reservation creation. |
+| Refund work | `payment_attempts.refund_state = 'required'` | Surface in the Admin UI refund banner and `needs_refund` filter; operators refund in the Nexi back office, and the Nexi refund notification or the daily payment-refunds cron records the refund. |
 | Duplicate webhook | Existing `webhook_events.event_id` | Return duplicate/accepted response without reapplying side effects. |
 
 ## Live Test Safety Checklist

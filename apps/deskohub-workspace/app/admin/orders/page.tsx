@@ -1,25 +1,22 @@
 import { Suspense } from "react";
 import {
   AdministrationAlert,
-  AdministrationFilterField,
-  AdministrationFilterForm,
-  AdministrationFilterInput,
   AdministrationPage,
   AdministrationTableCount,
   AdministrationTableToolbar,
 } from "@/features/administration/components";
+import { OrdersAdministrationFilterForm } from "@/features/administration/filter-forms";
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
   AdministrationFiltersLoading,
 } from "@/features/administration/loading";
-import type { AdministrationSearchParams } from "@/features/administration/page-data.server";
 import {
-  type loadAdministrationOrders,
+  type AdministrationSearchParams,
+  loadAdministrationOrders,
   loadAdministrationOrdersPage,
 } from "@/features/administration/page-data.server";
 import { OrderTable } from "@/features/administration/payment-tables";
-import { Button } from "@/shared/components/ui/button";
 
 export default function OrdersAdministrationPage({
   searchParams,
@@ -75,7 +72,7 @@ async function OrderFiltersContent({
 }: {
   readonly range: Promise<OrdersData["range"]>;
 }) {
-  return <OrderFilters range={await range} />;
+  return <OrdersAdministrationFilterForm range={await range} />;
 }
 
 async function OrderResultsContent({
@@ -84,18 +81,6 @@ async function OrderResultsContent({
   readonly result: Promise<OrdersData["result"]>;
 }) {
   return <OrderResults result={await result} />;
-}
-
-function OrderFilters({ range }: { readonly range: OrdersData["range"] }) {
-  return (
-    <AdministrationFilterForm variant="standalone">
-      <DateField defaultValue={range.from} label="From" name="from" />
-      <DateField defaultValue={range.to} label="To" name="to" />
-      <Button className="min-h-10" size="sm" type="submit">
-        Show orders
-      </Button>
-    </AdministrationFilterForm>
-  );
 }
 
 function OrderResults({ result }: { readonly result: OrdersData["result"] }) {
@@ -118,23 +103,21 @@ function OrderResults({ result }: { readonly result: OrdersData["result"] }) {
   );
 }
 
-function DateField({
-  defaultValue,
-  label,
-  name,
+export async function OrdersAdministrationContent({
+  searchParams,
 }: {
-  readonly defaultValue: string;
-  readonly label: string;
-  readonly name: string;
+  readonly searchParams: AdministrationSearchParams;
 }) {
+  const { range, result } = await loadAdministrationOrders(searchParams);
   return (
-    <AdministrationFilterField htmlFor={`order-${name}`} label={label}>
-      <AdministrationFilterInput
-        defaultValue={defaultValue}
-        id={`order-${name}`}
-        name={name}
-        type="date"
+    <AdministrationPage>
+      <h1 className="sr-only">Orders</h1>
+      <AdministrationTableToolbar
+        count={result.items.length}
+        filters={<OrdersAdministrationFilterForm range={range} />}
+        itemLabel="order"
       />
-    </AdministrationFilterField>
+      <OrderResults result={result} />
+    </AdministrationPage>
   );
 }

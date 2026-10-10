@@ -88,7 +88,7 @@ const formValues = ({
 });
 
 const validateFormSchema = (values: InvoiceFormOutput) =>
-  invoiceFormSchema["~standard"].validate(values);
+  Schema.toStandardSchemaV1(invoiceFormSchema)["~standard"].validate(values);
 
 const expectRejectedAtPath = async (
   values: InvoiceFormOutput,

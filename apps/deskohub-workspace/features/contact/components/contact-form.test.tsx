@@ -2,95 +2,75 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   mock,
   test,
 } from "bun:test";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import type { ContactFormState } from "@/features/contact/actions/contact";
+import type { submitContactForm } from "@/features/contact/actions/submit-contact";
 import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { resolveContactFormState } from "./contact-form-state";
 
-type ContactActionResult = {
-  readonly data?: unknown;
-  readonly serverError?: string;
-  readonly validationErrors?: unknown;
+type TestingLibrary = typeof import("@testing-library/react/pure");
+let cleanup: TestingLibrary["cleanup"];
+let fireEvent: TestingLibrary["fireEvent"];
+let render: TestingLibrary["render"];
+let waitFor: TestingLibrary["waitFor"];
+
+let response: { data?: unknown; serverError?: unknown } = {
+  data: { status: "idle" },
 };
-
-const idleResult = (): Promise<ContactActionResult> =>
-  Promise.resolve({ data: { status: "idle" } });
-const submitContactForm = mock(idleResult);
-
+let contactSearchParams = "";
+const calls: FormData[] = [];
+const submitContactFormMock = Object.assign(
+  mock(
+    async (
+      _previous: Parameters<typeof submitContactForm>[0],
+      data: Parameters<typeof submitContactForm>[1]
+    ) => {
+      calls.push(data);
+      return response;
+    }
+  ),
+  {
+    $$FORM_ACTION: (prefix: string) => ({
+      name: prefix,
+      action: "/en-US/contact",
+      method: "POST",
+      encType: "multipart/form-data",
+      data: null,
+    }),
+  }
+);
 mock.module("@/features/contact/actions/submit-contact", () => ({
-  submitContactForm,
+  submitContactForm: submitContactFormMock,
 }));
-
 mock.module("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(contactSearchParams),
 }));
-
-const submittedValues = {
-  name: "Synthetic Contact",
-  email: "synthetic.contact@example.test",
-  phone: "+420000000000",
-  message: "Synthetic message that must survive a failed submission.",
-};
-
-type ContactView = ReturnType<typeof render>;
-
-const fieldValue = (view: ContactView, label: string) =>
-  (view.getByLabelText(label) as HTMLInputElement | HTMLTextAreaElement).value;
-
-const fillAndSubmit = (view: ContactView) => {
-  fireEvent.change(view.getByLabelText("Name"), {
-    target: { value: submittedValues.name },
-  });
-  fireEvent.change(view.getByLabelText("Email"), {
-    target: { value: submittedValues.email },
-  });
-  fireEvent.change(view.getByLabelText("Phone"), {
-    target: { value: submittedValues.phone },
-  });
-  fireEvent.change(view.getByLabelText("Message"), {
-    target: { value: submittedValues.message },
-  });
-  const form = view.container.querySelector("form");
-  if (!form) throw new Error("Contact form was not rendered");
-  fireEvent.submit(form);
-};
-
-const expectSubmittedValues = (view: ContactView) => {
-  expect(fieldValue(view, "Name")).toBe(submittedValues.name);
-  expect(fieldValue(view, "Email")).toBe(submittedValues.email);
-  expect(fieldValue(view, "Phone")).toBe(submittedValues.phone);
-  expect(fieldValue(view, "Message")).toBe(submittedValues.message);
-};
-
-const getLiveRegion = (view: ContactView) => {
-  const region = view.container.querySelector('[aria-live="polite"]');
-  if (!region) throw new Error("Contact form live region was not rendered");
-  return region;
-};
 
 describe("ContactForm", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     registerWorkspaceComponentTestEnv();
+    ({ cleanup, fireEvent, render, waitFor } = await import(
+      "@testing-library/react/pure"
+    ));
   });
-
-  afterEach(() => {
-    cleanup();
-    submitContactForm.mockReset();
-    submitContactForm.mockImplementation(() => idleResult());
+  beforeEach(() => {
+    response = { data: { status: "idle" } };
+    contactSearchParams = "";
+    calls.length = 0;
   });
+  afterEach(() => cleanup());
+  afterAll(unregisterWorkspaceComponentTestEnv);
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
-  });
-
-  test("prefills fields from provided initial values", async () => {
+  test("prefills values and retains a native form action", async () => {
     const { ContactForm } = await import("./contact-form");
     const view = render(
       <ContactForm
@@ -99,118 +79,323 @@ describe("ContactForm", () => {
           name: "Ada Lovelace",
           email: "ada@example.com",
           phone: "+420777777777",
-          message: "Please help with order reservation-status-page.",
+          message: "Please help with a reservation.",
         }}
       />
     );
+    for (const [label, value] of [
+      ["Name", "Ada Lovelace"],
+      ["Email", "ada@example.com"],
+      ["Phone", "+420777777777"],
+      ["Message", "Please help with a reservation."],
+    ]) {
+      expect((view.getByLabelText(label) as HTMLInputElement).value).toBe(
+        value
+      );
+    }
+    const form = view.container.querySelector("form");
+    expect(form?.getAttribute("action")).toBeTruthy();
+  });
 
-    expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe(
-      "Ada Lovelace"
+  test("validates and submits edited field values after hydration", async () => {
+    response = { data: { status: "success", message: "Sent" } };
+    const { ContactForm } = await import("./contact-form");
+    const view = render(<ContactForm locale="en-US" />);
+    await waitFor(() =>
+      expect(
+        view.container.querySelector("form")?.getAttribute("data-rhf-ready")
+      ).toBe("true")
     );
-    expect((view.getByLabelText("Email") as HTMLInputElement).value).toBe(
-      "ada@example.com"
+
+    for (const [label, value] of [
+      ["Name", "Grace Hopper"],
+      ["Email", "grace@example.com"],
+      ["Message", "Please contact me about a meeting room."],
+    ]) {
+      const field = view.getByLabelText(label) as HTMLInputElement;
+      fireEvent.change(field, { target: { value } });
+      expect(field.value).toBe(value);
+    }
+    const form = view.container.querySelector("form");
+    if (!form) throw new Error("Contact form did not render.");
+    expect(form.getAttribute("data-rhf-ready")).toBe("true");
+    const submittedValues = new FormData(form);
+    expect(submittedValues.get("name")).toBe("Grace Hopper");
+    expect(submittedValues.get("email")).toBe("grace@example.com");
+    expect(submittedValues.get("message")).toBe(
+      "Please contact me about a meeting room."
     );
-    expect((view.getByLabelText("Phone") as HTMLInputElement).value).toBe(
-      "+420777777777"
+    fireEvent.submit(form);
+
+    const clientValidationMessage = m.contactValidationReviewMessage(
+      {},
+      {
+        locale: "en-US",
+      }
     );
-    expect((view.getByLabelText("Message") as HTMLTextAreaElement).value).toBe(
-      "Please help with order reservation-status-page."
+    await waitFor(() =>
+      expect(
+        calls.length === 1 || view.queryByText(clientValidationMessage) !== null
+      ).toBe(true)
+    );
+    expect(view.queryByText(clientValidationMessage)).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.get("name")).toBe("Grace Hopper");
+    expect(calls[0]?.get("email")).toBe("grace@example.com");
+    expect(calls[0]?.get("message")).toBe(
+      "Please contact me about a meeting room."
+    );
+    await waitFor(() =>
+      expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe("")
+    );
+    expect(view.getByText("Sent")).toBeTruthy();
+  });
+
+  test("keeps edited values when only unrelated query parameters change", async () => {
+    contactSearchParams = "name=Query+Prefill";
+    const { ContactForm } = await import("./contact-form");
+    const view = render(<ContactForm locale="en-US" />);
+    const nameInput = view.getByLabelText("Name") as HTMLInputElement;
+
+    await waitFor(() => expect(nameInput.value).toBe("Query Prefill"));
+    fireEvent.change(nameInput, { target: { value: "X" } });
+    contactSearchParams = "name=Query+Prefill&source=campaign";
+    view.rerender(<ContactForm locale="en-US" />);
+
+    await waitFor(() =>
+      expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe("X")
+    );
+  });
+
+  test("shows localized errors and retains invalid values", async () => {
+    const locale = "cs-CZ";
+    const values = {
+      name: " A ",
+      email: "bad",
+      phone: "bad",
+      message: " short ",
+    };
+    const { ContactForm } = await import("./contact-form");
+    const view = render(<ContactForm locale={locale} initialValues={values} />);
+    view.rerender(<ContactForm locale={locale} initialValues={values} />);
+    const form = view.container.querySelector("form");
+    if (!form) throw new Error("Contact form did not render.");
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(
+        view.getByText(m.contactValidationNameMinimum({ min: 2 }, { locale }))
+      ).toBeTruthy()
     );
     expect(
-      view.container.querySelector<HTMLInputElement>('input[name="locale"]')
-        ?.value
-    ).toBe("en-US");
+      view.getByText(m.contactValidationReviewMessage({}, { locale }))
+    ).toBeTruthy();
+    expect(calls).toHaveLength(0);
+    expect(
+      (
+        view.getByLabelText(
+          m.contactNameLabel({}, { locale })
+        ) as HTMLInputElement
+      ).value
+    ).toBe(" A ");
   });
 
-  test("keeps the submitted values and announces an error when the action fails on the server", async () => {
-    submitContactForm.mockImplementation(() =>
-      Promise.resolve({ serverError: "Synthetic contact server failure" })
-    );
-    const { ContactForm } = await import("./contact-form");
-    const view = render(<ContactForm locale="en-US" />);
-
-    fillAndSubmit(view);
-
-    await waitFor(() => {
-      expect(getLiveRegion(view).textContent).toBe(
-        m.contactEmailSendError({}, { locale: "en-US" })
-      );
-    });
-    expect(submitContactForm).toHaveBeenCalledTimes(1);
-    expectSubmittedValues(view);
-  });
-
-  test("keeps the submitted values and announces an error when the action input is rejected", async () => {
-    submitContactForm.mockImplementation(() =>
-      Promise.resolve({
-        validationErrors: { formErrors: ["Synthetic invalid form data"] },
-      })
-    );
-    const { ContactForm } = await import("./contact-form");
-    const view = render(<ContactForm locale="en-US" />);
-
-    fillAndSubmit(view);
-
-    await waitFor(() => {
-      expect(getLiveRegion(view).textContent).toBe(
-        m.contactValidationReviewMessage({}, { locale: "en-US" })
-      );
-    });
-    expect(submitContactForm).toHaveBeenCalledTimes(1);
-    expectSubmittedValues(view);
-  });
-
-  test("keeps the status live region mounted before any message appears", async () => {
-    submitContactForm.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          status: "success",
-          message: m.contactSuccessMessage({}, { locale: "en-US" }),
-        },
-      })
-    );
-    const { ContactForm } = await import("./contact-form");
-    const view = render(<ContactForm locale="en-US" />);
-    const liveRegion = getLiveRegion(view);
-
-    expect(liveRegion.textContent).toBe("");
-
-    fillAndSubmit(view);
-
-    await waitFor(() => {
-      expect(liveRegion.textContent).toBe(
-        m.contactSuccessMessage({}, { locale: "en-US" })
-      );
-    });
-    expect(getLiveRegion(view)).toBe(liveRegion);
-  });
-
-  test("clears the fields after consecutive successful submissions", async () => {
-    submitContactForm.mockImplementation(() =>
-      Promise.resolve({
-        data: {
-          status: "success",
-          message: m.contactSuccessMessage({}, { locale: "en-US" }),
-        },
-      })
-    );
+  test("submits valid data and clears the form on success", async () => {
+    response = { data: { status: "success", message: "Sent" } };
     const { ContactForm } = await import("./contact-form");
     const view = render(
       <ContactForm
         locale="en-US"
-        initialValues={{ name: "Synthetic Prefill" }}
+        initialValues={{
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+          phone: "",
+          message: "Please help with a reservation.",
+        }}
       />
     );
+    const form = view.container.querySelector("form");
+    if (!form) throw new Error("Contact form did not render.");
+    fireEvent.submit(form);
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.get("name")).toBe("Ada Lovelace");
+    expect(calls[0]?.get("locale")).toBe("en-US");
+    await waitFor(() =>
+      expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe("")
+    );
+    await waitFor(() =>
+      expect(
+        view.container.querySelector("form")?.getAttribute("data-rhf-ready")
+      ).toBe("true")
+    );
+    expect(view.getByText("Sent")).toBeTruthy();
 
-    for (const submission of [1, 2]) {
-      fillAndSubmit(view);
-      await waitFor(() => {
-        expect(submitContactForm).toHaveBeenCalledTimes(submission);
-        expect(fieldValue(view, "Name")).toBe("");
-        expect(fieldValue(view, "Email")).toBe("");
-        expect(fieldValue(view, "Phone")).toBe("");
-        expect(fieldValue(view, "Message")).toBe("");
-      });
+    const reviewMessage = m.contactValidationReviewMessage(
+      {},
+      { locale: "en-US" }
+    );
+    fireEvent.submit(form);
+    await waitFor(() => expect(view.getByText(reviewMessage)).toBeTruthy());
+    expect(view.queryByText("Sent")).toBeNull();
+    expect(calls).toHaveLength(1);
+
+    for (const [label, value] of [
+      ["Name", "Ada Lovelace"],
+      ["Email", "ada@example.com"],
+      ["Message", "Please help with a reservation."],
+    ]) {
+      fireEvent.change(view.getByLabelText(label), { target: { value } });
     }
+    expect(view.getByText(reviewMessage)).toBeTruthy();
+
+    response = { data: { status: "success", message: "Sent again" } };
+    fireEvent.submit(form);
+    await waitFor(() => expect(calls).toHaveLength(2));
+    await waitFor(() => expect(view.getByText("Sent again")).toBeTruthy());
+    expect(view.queryByText(reviewMessage)).toBeNull();
+  });
+
+  test("shows hydrated server field errors with retained values and accessibility links", async () => {
+    const locale = "cs-CZ";
+    const message = m.contactValidationReviewMessage({}, { locale });
+    const nameError = m.contactValidationNameMinimum({ min: 2 }, { locale });
+    const state: ContactFormState = {
+      status: "error",
+      message,
+      values: {
+        name: " S ",
+        email: "bad",
+        phone: "",
+        message: " short ",
+      },
+      fieldErrors: { name: nameError },
+    };
+    response = { data: state };
+    const { ContactForm } = await import("./contact-form");
+    const view = render(
+      <ContactForm
+        locale={locale}
+        initialValues={{
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+          phone: "",
+          message: "Please help with a reservation.",
+        }}
+      />
+    );
+    const form = view.container.querySelector("form");
+    if (!form) throw new Error("Contact form did not render.");
+    fireEvent.submit(form);
+
+    await waitFor(() =>
+      expect(
+        (
+          view.getByLabelText(
+            m.contactNameLabel({}, { locale })
+          ) as HTMLInputElement
+        ).value
+      ).toBe(state.values?.name)
+    );
+    const nameInput = view.getByLabelText(
+      m.contactNameLabel({}, { locale })
+    ) as HTMLInputElement;
+    expect(nameInput.getAttribute("aria-invalid")).toBe("true");
+    expect(nameInput.getAttribute("aria-describedby")).toBe("name-error");
+    expect(view.getByText(nameError).getAttribute("role")).toBe("alert");
+    expect(view.getByText(message).getAttribute("aria-live")).toBe("polite");
+    await waitFor(() =>
+      expect(
+        view.container.querySelector("form")?.getAttribute("data-rhf-ready")
+      ).toBe("true")
+    );
+  });
+
+  test("shows a generic action error without losing entered values", async () => {
+    response = { serverError: "internal" };
+    const { ContactForm } = await import("./contact-form");
+    const view = render(
+      <ContactForm
+        locale="en-US"
+        initialValues={{
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+          phone: "",
+          message: "Please help with a reservation.",
+        }}
+      />
+    );
+    const form = view.container.querySelector("form");
+    if (!form) throw new Error("Contact form did not render.");
+    fireEvent.change(view.getByLabelText("Name"), {
+      target: { value: "Edited Name" },
+    });
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(
+        view.getByText(m.contactEmailSendError({}, { locale: "en-US" }))
+      ).toBeTruthy()
+    );
+    expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe(
+      "Edited Name"
+    );
+  });
+
+  test("uses native success state when the hydrated state action has no outcome", () => {
+    const success: ContactFormState = {
+      status: "success",
+      message: m.contactSuccessMessage({}, { locale: "en-US" }),
+    };
+
+    expect(
+      resolveContactFormState({}, { data: success }, "Send failed.")
+    ).toEqual(success);
+  });
+
+  test("projects server validation values and messages from either action state", () => {
+    const locale = "cs-CZ";
+    const validationError: ContactFormState = {
+      status: "error",
+      message: m.contactValidationReviewMessage({}, { locale }),
+      values: {
+        name: " S ",
+        email: "bad",
+        phone: "",
+        message: " short ",
+      },
+      fieldErrors: {
+        name: m.contactValidationNameMinimum({ min: 2 }, { locale }),
+        email: m.contactValidationEmailInvalid({}, { locale }),
+      },
+    };
+    const nativeSuccess: ContactFormState = {
+      status: "success",
+      message: m.contactSuccessMessage({}, { locale }),
+    };
+
+    expect(
+      resolveContactFormState({}, { data: validationError }, "Send failed.")
+    ).toEqual(validationError);
+    expect(
+      resolveContactFormState(
+        { data: validationError },
+        { data: nativeSuccess },
+        "Send failed."
+      )
+    ).toEqual(validationError);
+  });
+
+  test("keeps hydrated action errors authoritative over the native fallback", () => {
+    const genericError = "The contact request could not be sent.";
+    const nativeSuccess: ContactFormState = {
+      status: "success",
+      message: m.contactSuccessMessage({}, { locale: "en-US" }),
+    };
+
+    expect(
+      resolveContactFormState(
+        { serverError: "internal" },
+        { data: nativeSuccess },
+        genericError
+      )
+    ).toEqual({ status: "error", message: genericError });
   });
 });

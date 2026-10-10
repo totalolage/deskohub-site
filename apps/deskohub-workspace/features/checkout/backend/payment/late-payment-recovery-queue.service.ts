@@ -1,17 +1,9 @@
 import { DuplicateMessageError, send } from "@vercel/queue";
-import { Context, Data, Effect, Layer, Option, Schema } from "effect";
-import {
-  type PaymentAttemptId,
-  paymentAttemptIdSchema,
-} from "@/features/checkout/checkout-identifiers";
+import { Context, Data, Effect, Layer } from "effect";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { serializeErrorForLog } from "@/shared/utils/error-formatting";
-import { LatePaymentRecoveryService } from "./late-payment-recovery.service";
 
 export const latePaymentRecoveryQueueTopic = "workspace-late-payment-recovery";
-
-const payloadSchema = Schema.Struct({
-  paymentAttemptId: paymentAttemptIdSchema,
-});
 
 export class LatePaymentRecoveryQueueError extends Data.TaggedError(
   "LatePaymentRecoveryQueueError"
@@ -66,22 +58,3 @@ export class LatePaymentRecoveryQueueService extends Context.Service<
 >()("LatePaymentRecoveryQueueService") {
   static Default = Layer.succeed(this, makeLatePaymentRecoveryQueueService());
 }
-
-const decodePayload = Schema.decodeUnknownOption(payloadSchema);
-
-export const processLatePaymentRecoveryMessage = Effect.fn(
-  "latePaymentRecoveryQueue.processMessage"
-)(function* (message: Parameters<typeof decodePayload>[0]) {
-  const payload = Option.getOrUndefined(decodePayload(message));
-  if (!payload) {
-    yield* Effect.logWarning(
-      "Late-payment recovery queue message ignored: invalid payload"
-    );
-    return "ignored" as const;
-  }
-
-  const recovery = yield* LatePaymentRecoveryService;
-  return yield* recovery.recover({
-    paymentAttemptId: payload.paymentAttemptId,
-  });
-});

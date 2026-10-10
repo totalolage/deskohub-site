@@ -12,9 +12,11 @@ import type {
 } from "@/features/discounts";
 import type {
   MeetingRoomAdvertisedPriceReservation,
+  MeetingRoomReservationDetails,
   MeetingRoomReservationPricingInput,
   NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
+import { getMeetingRoomLastServiceDate } from "@/features/reservation/meeting-room-reservation-time";
 import {
   type ReservationAdvertisementAffirmation,
   type ReservationAdvertisementAffirmationInput,
@@ -87,7 +89,7 @@ export type MeetingRoomDiscountCodePriceResult =
 
 const getMeetingRoomPricingContext = Effect.fn(
   "MeetingRoomCheckoutPricing.getPricingContext"
-)(function* (reservation: MeetingRoomReservationPricingInput) {
+)(function* (reservation: MeetingRoomPricingSelection) {
   const undiscountedQuote = yield* getMeetingRoomReservationQuote(reservation);
   const [productItem] = undiscountedQuote.items;
 
@@ -99,10 +101,31 @@ const getMeetingRoomPricingContext = Effect.fn(
         duration: productItem.duration,
       },
       discountableSubtotal: productItem.amount,
-      reservationDate: reservation.reservationDate,
+      lastServiceDate:
+        getMeetingRoomPricingSelectionLastServiceDate(reservation),
     },
   };
 });
+
+/**
+ * PII-free meeting-room selection that pricing accepts: advertised-price
+ * inputs or the reservation domain's details projection. A full order
+ * satisfies it structurally through `MeetingRoomReservationDetails`.
+ */
+type MeetingRoomPricingSelection =
+  | MeetingRoomReservationPricingInput
+  | MeetingRoomReservationDetails;
+
+/**
+ * Hourly bookings can cross midnight, so concrete reservations derive the
+ * last service date from their exclusive end instead of the start date.
+ */
+const getMeetingRoomPricingSelectionLastServiceDate = (
+  selection: MeetingRoomPricingSelection
+) =>
+  "endsAt" in selection
+    ? getMeetingRoomLastServiceDate(selection)
+    : selection.lastServiceDate;
 
 type MeetingRoomPricingContext = Effect.Success<
   ReturnType<typeof getMeetingRoomPricingContext>
@@ -129,7 +152,7 @@ const buildMeetingRoomQuote = Effect.fn(
 });
 
 export const meetingRoomCheckoutPricing = reservationCheckoutPricing<
-  MeetingRoomReservationPricingInput,
+  MeetingRoomPricingSelection,
   MeetingRoomAdvertisedPriceReservation,
   NormalizedMeetingRoomReservationOrder,
   MeetingRoomPricingContext,

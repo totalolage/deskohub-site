@@ -309,9 +309,23 @@ const normalizeCustomerLookupData = (
 
   return {
     ...customerData,
+    email: customerData.email?.trim() || undefined,
     phone: normalizedPhone || undefined,
   };
 };
+
+/**
+ * Customers own one mailbox regardless of how its address was cased, so
+ * customer identity compares emails case-insensitively. Dotypos' `like`
+ * filter is a case-insensitive substring match (`ILIKE '%value%'`), so the
+ * provider search returns every case variant and longer addresses that
+ * contain the value; only a whole-address match identifies the customer.
+ */
+const toCustomerEmailIdentity = (email: string) => email.trim().toLowerCase();
+
+const hasCustomerEmail = (customer: DotyposCustomer, email: string) =>
+  customer.email != null &&
+  toCustomerEmailIdentity(customer.email) === toCustomerEmailIdentity(email);
 
 const normalizeIdentifier = <A>(
   schema: Schema.Decoder<A>,
@@ -1003,12 +1017,12 @@ const makeDotyposService = Effect.gen(function* () {
       const matchingCustomers: DotyposCustomer[] = [];
 
       if (shouldLookupBy("email") && normalizedCustomerData.email) {
-        const customersByEmail = yield* searchByField(
-          "email",
-          normalizedCustomerData.email
-        );
+        const email = normalizedCustomerData.email;
+        // The provider filter is already case-insensitive; send the address as
+        // entered so its collation, not JavaScript case mapping, folds case.
+        const customersByEmail = yield* searchByField("email", email);
         for (const customer of customersByEmail) {
-          if (customer.email === normalizedCustomerData.email) {
+          if (hasCustomerEmail(customer, email)) {
             addUniqueCustomer(matchingCustomers, customer);
           }
         }
@@ -1124,7 +1138,9 @@ const makeDotyposService = Effect.gen(function* () {
         hexColor: "#000000",
         internalNote: "",
         lastName: details.lastName.trim(),
-        phone: details.phone ? normalizePhoneNumber(details.phone) || "" : "",
+        // Dotypos requires a phone on creation; a new customer has no stored
+        // phone to preserve, so an absent or unparseable phone stays blank.
+        phone: normalizePhoneNumber(details.phone) ?? "",
         points: "0",
         tags: [],
         vatId: details.vatId.trim(),
@@ -1525,10 +1541,15 @@ const makeDotyposService = Effect.gen(function* () {
     patchCustomer(customerId, details)
   );
 
+  /**
+   * An absent or unparseable phone omits the field so the phone stored in
+   * Dotypos stays untouched; clearing it requires an explicit provider patch.
+   */
   const updateCustomerDetails = Effect.fn(
     "DotyposService.updateCustomerDetails"
-  )((customerId: DotyposCustomerId, details: DotyposCustomerDetails) =>
-    patchCustomer(customerId, {
+  )((customerId: DotyposCustomerId, details: DotyposCustomerDetails) => {
+    const phone = normalizePhoneNumber(details.phone);
+    return patchCustomer(customerId, {
       addressLine1: details.addressLine1.trim(),
       addressLine2: details.addressLine2.trim(),
       city: details.city.trim(),
@@ -1538,11 +1559,11 @@ const makeDotyposService = Effect.gen(function* () {
       email: details.email.trim(),
       firstName: details.firstName.trim(),
       lastName: details.lastName.trim(),
-      phone: details.phone ? normalizePhoneNumber(details.phone) || "" : "",
+      ...(phone && { phone }),
       vatId: details.vatId.trim(),
       zip: details.zip.trim(),
-    })
-  );
+    });
+  });
 
   const getTables = Effect.fn("getTables")(() =>
     loadAllDotyposPages({

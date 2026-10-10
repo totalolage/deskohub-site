@@ -4,6 +4,7 @@ import {
   decodeNexiWebhookNotification,
   deriveNexiWebhookEventIdentity,
   getNexiPaymentMetadata,
+  isNexiRefundOperation,
   NexiCurrencySchema,
   type NexiOrderId,
   NexiService,
@@ -27,6 +28,7 @@ import {
   PaymentAttemptRepository,
 } from "../repositories/payment-attempt.repository";
 import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
+import { PaymentRefundRepository } from "../repositories/payment-refund.repository";
 import {
   type IWebhookEventRepository,
   type WebhookEventIdentity,
@@ -34,6 +36,7 @@ import {
 } from "../repositories/webhook-event.repository";
 import { LatePaymentRecoveryQueueService } from "./late-payment-recovery-queue.service";
 import { getNexiCurrencyOverride } from "./nexi-currency";
+import { PaymentRefundService } from "./payment-refund.service";
 
 type NexiWebhookFailureCode =
   | "nexi_webhook_parse_failed"
@@ -44,6 +47,7 @@ type NexiWebhookFailureCode =
   | "nexi_webhook_verification_mismatch"
   | "nexi_webhook_late_payment"
   | "nexi_webhook_late_payment_recovery_failed"
+  | "nexi_webhook_refund_reconciliation_failed"
   | "nexi_webhook_transition_failed"
   | "nexi_webhook_fulfillment_failed";
 
@@ -83,6 +87,11 @@ export class NexiWebhookService extends Context.Service<
     Layer.provide(LatePaymentRecoveryQueueService.Default),
     Layer.provide(PostHogEventService.Live),
     Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(
+      PaymentRefundService.Default.pipe(
+        Layer.provide(PaymentRefundRepository.Default)
+      )
+    ),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspacePaidFulfillmentService.Live)
   );
@@ -152,6 +161,42 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
       const posthogEvents = yield* PostHogEventService;
       const latePaymentRecoveries = yield* LatePaymentRecoveryRepository;
       const latePaymentRecoveryQueue = yield* LatePaymentRecoveryQueueService;
+      const paymentRefunds = yield* PaymentRefundService;
+
+      const acceptEvent = Effect.fn(function* (input: {
+        readonly eventId: NexiWebhookEventId;
+        readonly providerOrderId: NexiOrderId;
+      }) {
+        yield* webhookEvents
+          .markProcessed({
+            type: "eventId",
+            eventId: input.eventId,
+            processedAt: Temporal.Now.instant(),
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new NexiWebhookProcessingError({
+                  errorCode: "nexi_webhook_transition_failed",
+                  eventId: input.eventId,
+                  orderId: input.providerOrderId,
+                  message: "Nexi webhook event could not be marked processed.",
+                  cause,
+                })
+            )
+          );
+        yield* Effect.logInfo("Nexi webhook event marked processed");
+
+        const result: NexiWebhookResult = {
+          status: "accepted",
+          eventId: input.eventId,
+          orderId: input.providerOrderId,
+        };
+        yield* Effect.annotateLogsScoped({ result });
+        yield* Effect.logInfo("Nexi webhook processing accepted");
+
+        return result;
+      });
 
       return NexiWebhookService.of({
         processNotification: Effect.fn("nexiWebhook.processNotification")(
@@ -389,6 +434,45 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               );
             }
 
+            // A refund notification reports money going back on an already
+            // paid order. It must never re-run the paid transition or
+            // fulfillment, so it only records what Nexi's order now shows.
+            if (isNexiRefundOperation(envelope.operation)) {
+              yield* Effect.logInfo(
+                "Nexi webhook refund reconciliation started"
+              );
+              const refundResult = yield* paymentRefunds
+                .reconcileAttempt({
+                  attempt,
+                  correlationId: reservation.correlationId,
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new NexiWebhookProcessingError({
+                        errorCode: "nexi_webhook_refund_reconciliation_failed",
+                        eventId,
+                        orderId: providerOrderId,
+                        message: "Nexi refund could not be reconciled.",
+                        cause,
+                      })
+                  ),
+                  Effect.catch((error) =>
+                    failAfterMarkingEvent(
+                      webhookEvents,
+                      { type: "eventId", eventId },
+                      error
+                    )
+                  )
+                );
+              yield* Effect.annotateLogsScoped({ refundResult });
+              yield* Effect.logInfo(
+                "Nexi webhook refund reconciliation completed"
+              );
+
+              return yield* acceptEvent({ eventId, providerOrderId });
+            }
+
             const currency = yield* Schema.decodeUnknownEffect(
               NexiCurrencySchema
             )(attempt.amount.currency).pipe(
@@ -618,36 +702,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               );
             }
 
-            yield* webhookEvents
-              .markProcessed({
-                type: "eventId",
-                eventId,
-                processedAt: Temporal.Now.instant(),
-              })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new NexiWebhookProcessingError({
-                      errorCode: "nexi_webhook_transition_failed",
-                      eventId,
-                      orderId: providerOrderId,
-                      message:
-                        "Nexi webhook event could not be marked processed.",
-                      cause,
-                    })
-                )
-              );
-            yield* Effect.logInfo("Nexi webhook event marked processed");
-
-            const result = {
-              status: "accepted" as const,
-              eventId,
-              orderId: providerOrderId,
-            };
-            yield* Effect.annotateLogsScoped({ result });
-            yield* Effect.logInfo("Nexi webhook processing accepted");
-
-            return result;
+            return yield* acceptEvent({ eventId, providerOrderId });
           },
           (effect) =>
             effect.pipe(

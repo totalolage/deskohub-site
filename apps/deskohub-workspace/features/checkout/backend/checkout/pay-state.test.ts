@@ -13,9 +13,12 @@ import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/c
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import { getReservationStartPath } from "@/features/reservation/routes";
+import { instantStringSchema } from "@/shared/utils/temporal";
 import type { PayStateKey, SignedPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));
+
+const payStateBookedAt = instantStringSchema.make("2026-06-01T09:58:00.000Z");
 
 const {
   buildPayStateQueryParams,
@@ -79,6 +82,7 @@ const buildState = (overrides: Partial<SignedPayState> = {}) => ({
         reservation: baseReservation,
         quote: buildCoworkReservationQuote(baseReservation),
         orderId: "pay-state-test-order-id",
+        bookedAt: payStateBookedAt,
         checkoutSessionId: "pay-state-test-checkout-session-id",
         ttlMilliseconds: 10 * 60 * 1000,
       },
@@ -110,6 +114,7 @@ const buildMeetingRoomState = () => {
         reservation,
         quote: Effect.runSync(buildReservationQuote(reservation)),
         orderId: "meeting-room-pay-state-test-order-id",
+        bookedAt: payStateBookedAt,
       },
       { keys: [fixedKey], now: () => fixedNow }
     )
@@ -134,6 +139,7 @@ const buildOfficeState = () => {
         reservation,
         quote: runSync(buildOfficeReservationQuote(reservation)),
         orderId: "office-pay-state-test-order-id",
+        bookedAt: payStateBookedAt,
       },
       { keys: [fixedKey], now: () => fixedNow }
     )
@@ -254,6 +260,7 @@ describe("Pay URL state", () => {
             reservation: baseReservation,
             quote: buildCoworkReservationQuote(baseReservation),
             orderId: "missing-key-test",
+            bookedAt: payStateBookedAt,
           },
           { keys: [] }
         )
@@ -349,6 +356,7 @@ describe("Pay URL state", () => {
           reservation: baseReservation,
           quote: buildCoworkReservationQuote(baseReservation),
           orderId: "rotated-key-order-id",
+          bookedAt: payStateBookedAt,
         },
         { keys: [rotatedKey, fixedKey], now: () => fixedNow }
       )

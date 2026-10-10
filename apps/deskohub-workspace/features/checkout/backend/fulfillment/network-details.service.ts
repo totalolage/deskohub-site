@@ -14,7 +14,7 @@ export const createWorkspaceCheckoutWifiQrPayload = (
 ) =>
   `WIFI:T:WPA;S:${escapeWifiQrValue(details.ssid)};P:${escapeWifiQrValue(details.password)};;`;
 
-export const workspaceCheckoutPlaceholderNetworkDetails: WorkspaceCheckoutNetworkDetails =
+export const workspaceCheckoutCustomerNetworkDetails: WorkspaceCheckoutNetworkDetails =
   {
     ssid: "Deskohub Workspace",
     password: "Workspace42",
@@ -34,7 +34,7 @@ export class WorkspaceCheckoutNetworkDetailsService extends Context.Service<
     resolveCustomerNetworkDetails: Effect.fn(
       "workspaceCheckoutNetworkDetails.resolveCustomerNetworkDetails"
     )(function* () {
-      return yield* Effect.succeed(workspaceCheckoutPlaceholderNetworkDetails);
+      return yield* Effect.succeed(workspaceCheckoutCustomerNetworkDetails);
     }),
   });
 }

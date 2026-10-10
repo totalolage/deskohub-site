@@ -6,7 +6,22 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
+import { LatePaymentVerificationService } from "../payment/late-payment-verification.service";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
+import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
+
+/** These checkouts never received a late payment. */
+const noLatePaymentLayer = () =>
+  Layer.mergeAll(
+    Layer.mock(LatePaymentRecoveryRepository, {
+      findLatestByWorkspaceReservationId: mock(() => Effect.succeed(null)),
+    }),
+    Layer.mock(LatePaymentVerificationService, {
+      startRecoveryIfSettled: mock(() =>
+        Effect.succeed("not_applicable" as const)
+      ),
+    })
+  );
 
 const testInstant = (value = "2026-06-01T10:00:00Z") =>
   Temporal.Instant.from(value);
@@ -148,6 +163,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
               Layer.mock(DotyposService, makeDotypos()),
               Layer.mock(ReservationHoldCleanupService, holdCleanup),
+              noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -217,6 +233,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
               Layer.mock(DotyposService, makeDotypos()),
               Layer.mock(ReservationHoldCleanupService, holdCleanup),
+              noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -346,6 +363,7 @@ describe("CheckoutStatusService", () => {
                 Layer.mock(PaymentAttemptRepository, paymentAttempts),
                 Layer.mock(DotyposService, dotypos),
                 Layer.mock(ReservationHoldCleanupService, holdCleanup),
+                noLatePaymentLayer(),
                 SeatingMapFeatureFlagServiceMock({
                   isEnabled: Effect.succeed(seatingMapEnabled),
                 })
@@ -569,6 +587,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
               Layer.mock(DotyposService, dotypos),
               Layer.mock(ReservationHoldCleanupService, holdCleanup),
+              noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(false),
               })
@@ -680,6 +699,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
               Layer.mock(DotyposService, dotypos),
               Layer.mock(ReservationHoldCleanupService, holdCleanup),
+              noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -785,6 +805,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
               Layer.mock(DotyposService, dotypos),
               Layer.mock(ReservationHoldCleanupService, holdCleanup),
+              noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(false),
               })
@@ -891,6 +912,7 @@ describe("CheckoutStatusService", () => {
                 })
               ),
               Layer.mock(ReservationHoldCleanupService, holdCleanup),
+              noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -974,6 +996,7 @@ describe("CheckoutStatusService", () => {
               Layer.mock(PaymentAttemptRepository, paymentAttempts),
               Layer.mock(DotyposService, makeDotypos({ getReservation })),
               Layer.mock(ReservationHoldCleanupService, holdCleanup),
+              noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -1048,6 +1071,7 @@ describe("CheckoutStatusService", () => {
                 })
               ),
               Layer.mock(ReservationHoldCleanupService, holdCleanup),
+              noLatePaymentLayer(),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })

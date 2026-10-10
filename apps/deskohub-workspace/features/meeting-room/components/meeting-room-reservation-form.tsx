@@ -1,7 +1,6 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { Schema } from "effect";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
@@ -51,7 +50,7 @@ import {
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getEarliestMeetingRoomStartDateTime,
-  getMeetingRoomAvailabilityToDate,
+  getMeetingRoomLastServiceDate,
   getMeetingRoomReservationDate,
   getMeetingRoomReservationInterval,
 } from "@/features/reservation/meeting-room-reservation-time";
@@ -77,10 +76,6 @@ type MeetingRoomReservationFormFallbackProps = {
   readonly locale: Locale;
 };
 
-const meetingRoomReservationFormSchema = Schema.toStandardSchemaV1(
-  meetingRoomReservationSchema
-);
-
 export function MeetingRoomReservationForm({
   checkoutSessionId,
   initialAdvertisedPrices = [],
@@ -100,7 +95,7 @@ export function MeetingRoomReservationForm({
     unknown,
     MeetingRoomReservationData
   >({
-    resolver: standardSchemaResolver(meetingRoomReservationFormSchema),
+    resolver: effectSchemaResolver(meetingRoomReservationSchema),
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -127,7 +122,7 @@ export function MeetingRoomReservationForm({
         ? {
             kind: "meeting-room",
             from: getMeetingRoomReservationDate(selectedInterval),
-            to: getMeetingRoomAvailabilityToDate(selectedInterval),
+            to: getMeetingRoomLastServiceDate(selectedInterval),
             startsAt: selectedInterval.startsAt,
             endsAt: selectedInterval.endsAt,
           }

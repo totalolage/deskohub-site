@@ -2,16 +2,13 @@ import { Suspense } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
   AdministrationAlert,
-  AdministrationFilterField,
-  AdministrationFilterForm,
-  AdministrationFilterInput,
-  AdministrationFilterSelect,
   AdministrationPage,
   AdministrationTableCount,
   AdministrationTableToolbar,
   Pagination,
   ReservationTable,
 } from "@/features/administration/components";
+import { ReservationsAdministrationFilterForm } from "@/features/administration/filter-forms";
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
@@ -19,15 +16,16 @@ import {
 } from "@/features/administration/loading";
 import {
   type AdministrationSearchParams,
+  loadAdministrationRefundAttention,
   loadAdministrationReservations,
   loadAdministrationReservationsPage,
 } from "@/features/administration/page-data.server";
+import { RefundAttention } from "@/features/administration/refund-attention";
 import {
-  type AdministrationReservationDateRange,
   getAdministrationReservationDateShortcuts,
+  getAdministrationReservationListDefaultDateRange,
 } from "@/features/administration/reservation-date-range";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
-import { Button } from "@/shared/components/ui/button";
 
 export default function ReservationsAdministrationPage({
   searchParams,
@@ -35,10 +33,14 @@ export default function ReservationsAdministrationPage({
   readonly searchParams: AdministrationSearchParams;
 }) {
   const { input, result } = loadAdministrationReservationsPage(searchParams);
+  const refundAttention = loadAdministrationRefundAttention();
 
   return (
     <AdministrationPage>
       <h1 className="sr-only">Reservations</h1>
+      <Suspense fallback={null}>
+        <ReservationRefundAttention count={refundAttention} input={input} />
+      </Suspense>
       <AdministrationTableToolbar
         count={
           <Suspense
@@ -83,12 +85,32 @@ async function ReservationCount({
   );
 }
 
+async function ReservationRefundAttention({
+  count,
+  input,
+}: {
+  readonly count: Promise<number>;
+  readonly input: Promise<ReservationsData["input"]>;
+}) {
+  // The filtered list already is the refund work queue.
+  if ((await input).status === "needs_refund") return null;
+  return <RefundAttention count={count} />;
+}
+
 async function ReservationFiltersContent({
   input,
 }: {
   readonly input: Promise<ReservationsData["input"]>;
 }) {
-  return <ReservationFilters input={await input} />;
+  const resolvedInput = await input;
+
+  return (
+    <ReservationsAdministrationFilterForm
+      defaultFrom={getAdministrationReservationListDefaultDateRange().from}
+      input={resolvedInput}
+      shortcuts={getAdministrationReservationDateShortcuts()}
+    />
+  );
 }
 
 async function ReservationResultsContent({
@@ -113,131 +135,20 @@ export async function ReservationsAdministrationContent({
       <h1 className="sr-only">Reservations</h1>
       <AdministrationTableToolbar
         count={result.total}
-        filters={<ReservationFilters input={input} />}
+        filters={
+          <ReservationsAdministrationFilterForm
+            defaultFrom={
+              getAdministrationReservationListDefaultDateRange().from
+            }
+            input={input}
+            shortcuts={getAdministrationReservationDateShortcuts()}
+          />
+        }
         itemLabel="reservation"
         search={<ReservationLookup variant="toolbar" />}
       />
       <ReservationResults input={input} result={result} />
     </>
-  );
-}
-
-function ReservationFilters({
-  input,
-}: {
-  readonly input: ReservationsData["input"];
-}) {
-  const shortcutRanges = getAdministrationReservationDateShortcuts();
-  const shortcutHref = (range: AdministrationReservationDateRange) => {
-    const search = new URLSearchParams();
-    for (const [key, value] of Object.entries({
-      customerId: input.customerId,
-      direction: input.direction,
-      from: range.from,
-      sort: input.sort,
-      status: input.status,
-      to: range.to,
-      type: input.type,
-    })) {
-      if (value) search.set(key, value);
-    }
-    return `/admin/reservations?${search.toString()}`;
-  };
-
-  return (
-    <AdministrationFilterForm className="2xl:grid-cols-[10rem_12rem_10rem_10rem]">
-      <AdministrationFilterField
-        htmlFor="reservation-status"
-        label="Deskohub status"
-      >
-        <AdministrationFilterSelect
-          defaultValue={input.status ?? ""}
-          id="reservation-status"
-          name="status"
-        >
-          <option value="">All statuses</option>
-          <option value="in_progress">In progress</option>
-          <option value="complete">Complete</option>
-          <option value="cancelled">Cancelled</option>
-        </AdministrationFilterSelect>
-      </AdministrationFilterField>
-      <AdministrationFilterField
-        htmlFor="reservation-type"
-        label="Reservation type"
-      >
-        <AdministrationFilterSelect
-          defaultValue={input.type ?? ""}
-          id="reservation-type"
-          name="type"
-        >
-          <option value="">All reservation types</option>
-          <option value="cowork">Coworking</option>
-          <option value="meeting-room">Meeting room</option>
-        </AdministrationFilterSelect>
-      </AdministrationFilterField>
-      <AdministrationFilterField
-        htmlFor="reservation-date-from"
-        label="Start date from"
-      >
-        <AdministrationFilterInput
-          defaultValue={input.from ?? ""}
-          id="reservation-date-from"
-          name="from"
-          type="date"
-        />
-      </AdministrationFilterField>
-      <AdministrationFilterField
-        htmlFor="reservation-date-to"
-        label="Start date to"
-      >
-        <AdministrationFilterInput
-          defaultValue={input.to ?? ""}
-          id="reservation-date-to"
-          name="to"
-          type="date"
-        />
-      </AdministrationFilterField>
-      {input.customerId && (
-        <input name="customerId" type="hidden" value={input.customerId} />
-      )}
-      <input name="sort" type="hidden" value={input.sort} />
-      <input name="direction" type="hidden" value={input.direction} />
-      <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between 2xl:col-span-4">
-        <nav
-          aria-label="Reservation date shortcuts"
-          className="flex flex-wrap items-center gap-2"
-        >
-          {(
-            [
-              ["Today", shortcutRanges.today],
-              ["Upcoming", shortcutRanges.upcoming],
-              ["Past", shortcutRanges.past],
-            ] as const
-          ).map(([label, range]) => (
-            <Button asChild key={label} size="sm" variant="secondary">
-              <Link href={shortcutHref(range)}>{label}</Link>
-            </Button>
-          ))}
-        </nav>
-        <fieldset
-          aria-label="Filter actions"
-          className="flex min-w-0 items-center justify-end gap-2 border-0 p-0"
-        >
-          {(input.customerId ||
-            input.from ||
-            input.status ||
-            input.to ||
-            input.type) && (
-            <Button asChild className="min-h-10" size="sm" variant="ghost">
-              <Link href="/admin/reservations">Clear</Link>
-            </Button>
-          )}
-          <Button className="min-h-10" size="sm" type="submit">
-            Apply filters
-          </Button>
-        </fieldset>
-      </div>
-    </AdministrationFilterForm>
   );
 }
 

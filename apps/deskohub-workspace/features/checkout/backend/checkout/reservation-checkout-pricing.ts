@@ -19,6 +19,7 @@ import {
 } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { currentInstant } from "@/shared/utils";
 import {
   getSubmittedCodeMetadata,
   type PayStateSubmittedCodeMetadata,
@@ -52,6 +53,8 @@ export type ReservationAdvertisementAffirmationInput<
 > = ReservationAdvertisementQuoteInput<Reservation> &
   PayStateSubmittedCodeMetadata & {
     readonly advertisedQuote: Quote;
+    /** Moment the reservation is submitted and its price is locked. */
+    readonly bookedAt: Temporal.Instant;
   };
 
 export type ReservationCustomerQuoteInput<
@@ -71,6 +74,8 @@ export type ReservationPaymentPriceAffirmationInput<
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
   readonly quote: Quote;
+  /** Booking moment stored when the price was locked. */
+  readonly bookedAt: Temporal.Instant;
   readonly submittedCode?: CanonicalPromotionCode;
 };
 
@@ -138,7 +143,10 @@ export type ReservationDiscountCodePriceResult<
     });
 
 type PricingContext = {
-  readonly discountInput: Omit<DiscountAdvertisementInput, "locale">;
+  readonly discountInput: Omit<
+    DiscountAdvertisementInput,
+    "bookedAt" | "locale"
+  >;
 };
 
 type ReservationPricingDomain<
@@ -269,9 +277,12 @@ export const reservationCheckoutPricing = <
     )((input: ReservationAdvertisementQuoteInput<Advertisement>) =>
       domain.getPricingContext(input.reservation.details).pipe(
         Effect.bindTo("pricing"),
-        Effect.bind("discountQuote", ({ pricing }) =>
+        // An advertised price previews a booking made right now.
+        Effect.bind("bookedAt", () => currentInstant),
+        Effect.bind("discountQuote", ({ bookedAt, pricing }) =>
           discounts.discoverAdvertisedDiscounts({
             ...pricing.discountInput,
+            bookedAt,
             locale: input.locale,
           })
         ),
@@ -305,6 +316,7 @@ export const reservationCheckoutPricing = <
         Effect.bind("discountQuote", ({ pricing }) =>
           discounts.affirmAdvertisement({
             ...pricing.discountInput,
+            bookedAt: input.bookedAt,
             locale: input.locale,
             advertisedDiscountIds: input.advertisedQuote.payment.discounts
               .map(({ discount }) => discount.id)
@@ -383,6 +395,7 @@ export const reservationCheckoutPricing = <
           Effect.bind("affirmation", ({ pricing }) =>
             discounts.affirmDisplayedDiscounts({
               ...pricing.discountInput,
+              bookedAt: input.bookedAt,
               dotyposCustomerId: input.dotyposCustomerId,
               locale: input.locale,
               submittedCode: input.submittedCode,
@@ -429,6 +442,7 @@ export const reservationCheckoutPricing = <
         dotyposCustomerId: input.dotyposCustomerId,
         locale: input.locale,
         quote: input.quote,
+        bookedAt: input.bookedAt,
       });
       const displayedSummary = domain.getCheckoutSummary({
         reservation: input.reservation,

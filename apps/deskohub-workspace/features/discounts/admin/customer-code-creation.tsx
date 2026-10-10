@@ -1,6 +1,6 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { Schema } from "effect";
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -83,7 +83,7 @@ export function DiscountCodeCreationForm({
     defaultValues: discountCodeCreationFormDefaults(discounts),
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(discountCodeCreationFormSchema),
+    resolver: effectSchemaResolver(discountCodeCreationFormSchema),
   });
   const discountKind =
     useWatch({ control: form.control, name: "discountKind" }) ?? "existing";

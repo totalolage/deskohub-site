@@ -3,7 +3,11 @@ import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Match, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import type { FulfillmentState, PaymentState } from "@/db/schema";
+import type {
+  FulfillmentState,
+  LatePaymentRecovery,
+  PaymentState,
+} from "@/db/schema";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   getWorkspaceTableMap,
@@ -31,7 +35,9 @@ import type { StoredOfficeReservationDetails } from "@/features/reservation/offi
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { LatePaymentVerificationService } from "../payment/late-payment-verification.service";
 import { ProviderPaymentFinalizationService } from "../payment/provider-payment-finalization.service";
+import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
 import {
   type PaymentAttempt,
   PaymentAttemptRepository,
@@ -49,7 +55,10 @@ export type CheckoutStatusKind =
   | "fulfillment_failed"
   | "payment_failed"
   | "cancelled"
-  | "expired";
+  | "expired"
+  | "late_payment_checking"
+  | "late_payment_refund"
+  | "late_payment_review";
 
 type CheckoutReservationStatusKind = Exclude<CheckoutStatusKind, "not_found">;
 
@@ -193,6 +202,38 @@ const toCheckoutStatusKind = (
   }
 };
 
+const latePaymentStatusKinds = {
+  pending: "late_payment_checking",
+  processing: "late_payment_checking",
+  refund_required: "late_payment_refund",
+  review_required: "late_payment_review",
+} as const satisfies Record<
+  Exclude<LatePaymentRecovery["state"], "recovered">,
+  CheckoutReservationStatusKind
+>;
+
+/**
+ * A late payment takes over the customer status until recovery confirms the
+ * reservation. A refund for an older attempt does not hide a reservation that
+ * its active attempt has paid.
+ */
+const getLatePaymentStatusKind = (
+  reservation: Pick<
+    WorkspaceReservation,
+    "activePaymentAttemptId" | "paymentState"
+  >,
+  recovery: LatePaymentRecovery | null
+): CheckoutReservationStatusKind | undefined => {
+  if (!recovery || recovery.state === "recovered") return undefined;
+  if (
+    recovery.paymentAttemptId !== reservation.activePaymentAttemptId &&
+    reservation.paymentState === "paid"
+  ) {
+    return undefined;
+  }
+  return latePaymentStatusKinds[recovery.state];
+};
+
 const canUseAttemptForSummary = (
   attempt: PaymentAttempt,
   reservation: WorkspaceReservation
@@ -243,6 +284,8 @@ const getEmptyCheckoutStatusReservation = (
 
 const implementation = Effect.gen(function* () {
   const reservations = yield* WorkspaceReservationRepository;
+  const latePaymentRecoveries = yield* LatePaymentRecoveryRepository;
+  const latePaymentVerification = yield* LatePaymentVerificationService;
   const paymentAttempts = yield* PaymentAttemptRepository;
   const dotypos = yield* DotyposService;
   const finalization = yield* ProviderPaymentFinalizationService;
@@ -453,10 +496,20 @@ const implementation = Effect.gen(function* () {
         return result;
       }
 
-      const statusKind = toCheckoutStatusKind(
-        reservation.paymentState,
-        reservation.fulfillmentState
+      const latePaymentRecovery =
+        yield* latePaymentRecoveries.findLatestByWorkspaceReservationId(
+          reservation.id
+        );
+      const latePaymentStatusKind = getLatePaymentStatusKind(
+        reservation,
+        latePaymentRecovery
       );
+      const statusKind =
+        latePaymentStatusKind ??
+        toCheckoutStatusKind(
+          reservation.paymentState,
+          reservation.fulfillmentState
+        );
       const timeoutReconstruction: CheckoutStatusReconstruction = {
         reservation: getEmptyCheckoutStatusReservation(
           reservation.reservationDetails
@@ -483,10 +536,15 @@ const implementation = Effect.gen(function* () {
         status: statusKind,
         paymentStatus: reservation.paymentState,
         fulfillmentStatus: reservation.fulfillmentState,
-        table: reconstruction.table,
-        tableMap: reconstruction.tableMap,
+        // A late payment has no booked place to show until recovery confirms
+        // a reservation; the original hold's table may belong to someone else.
+        ...(!latePaymentStatusKind && {
+          table: reconstruction.table,
+          tableMap: reconstruction.tableMap,
+        }),
         supportContactPrefill:
-          statusKind === "fulfillment_failed"
+          statusKind === "fulfillment_failed" ||
+          statusKind === "late_payment_review"
             ? reconstruction.supportContactPrefill
             : undefined,
       };
@@ -538,6 +596,14 @@ const implementation = Effect.gen(function* () {
         yield* Effect.annotateLogsScoped({ result });
         yield* Effect.logInfo("Checkout status refresh finalization completed");
 
+        if (result === "not_pending") {
+          const latePayment =
+            yield* latePaymentVerification.startRecoveryIfSettled({
+              orderId: reservation.id,
+            });
+          yield* Effect.annotateLogsScoped({ latePayment });
+        }
+
         if (result !== "terminal") {
           const level =
             result === "not_verifiable" || result === "verification_mismatch"
@@ -583,6 +649,8 @@ export class CheckoutStatusService extends Context.Service<
 
   static Live = this.Default.pipe(
     Layer.provide(ProviderPaymentFinalizationService.Live),
+    Layer.provide(LatePaymentVerificationService.Live),
+    Layer.provide(LatePaymentRecoveryRepository.Default),
     Layer.provide(PaymentAttemptRepository.Default),
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(WorkspaceDatabase.Default),

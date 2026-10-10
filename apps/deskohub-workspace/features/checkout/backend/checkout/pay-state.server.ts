@@ -4,6 +4,7 @@ export {
   type BuildSignedPayStateInput,
   buildSignedPayState,
   getPayStateRestartKind,
+  getSignedPayStateBookedAt,
   getSignedPayStateCheckoutSummary,
   getSignedPayStateSubmittedCode,
   getSignedPayStateSubmittedCodeApplication,

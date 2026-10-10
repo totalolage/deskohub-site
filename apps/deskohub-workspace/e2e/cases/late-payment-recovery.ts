@@ -1,6 +1,10 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import { openBrowserPage, waitForBrowserUrl } from "../browser";
+import {
+  openBrowserPage,
+  waitForBrowserText,
+  waitForBrowserUrl,
+} from "../browser";
 import { getWorkspaceE2EDateInterval } from "../capacity";
 import { completeNexiHostedPayment } from "../checkout/nexi-hosted-payment";
 import {
@@ -210,6 +214,38 @@ export const executeLatePaymentRecovery = ({
     state.checkoutRow = recoveredRow;
 
     if (scenario.outcome.state === "refund_required") {
+      yield* runStep({
+        execute: Effect.gen(function* () {
+          const statusUrl = yield* makeUrl(
+            "build refund checkout status URL",
+            `${config.baseUrl}/en-US/reservation/status/${orderId}`
+          );
+          yield* setSearchParams(statusUrl, { e2eAt: String(Date.now()) });
+          yield* openBrowserPage(config, run, session, statusUrl.toString(), {
+            timeoutMs: config.timeouts.browserNavigation,
+          });
+        }),
+        id: "open-refund-status-page",
+        timeoutMs: config.timeouts.browserNavigation,
+      });
+      yield* runStep({
+        // The customer must learn the payment will be refunded, never that a
+        // paid reservation is still awaiting confirmation.
+        execute: waitForBrowserText({
+          description: "late-payment refund status copy",
+          matches: (text) =>
+            /We will refund your payment\./.test(text) &&
+            /arrived after the reservation was no longer available/.test(
+              text
+            ) &&
+            !/We are sending your confirmation now/.test(text),
+          run,
+          session,
+          timeoutMs: config.timeouts.uiTransition,
+        }),
+        id: "assert-refund-status-page",
+        timeoutMs: config.timeouts.uiTransition,
+      });
       log("Late payment refund-required recovery e2e passed");
       return;
     }

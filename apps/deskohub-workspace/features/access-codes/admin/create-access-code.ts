@@ -239,44 +239,39 @@ const standaloneAccessCodeFormWholeHourDateTime = (
     )
   );
 
-export const createStandaloneAccessCodeFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    name: Schema.Trim.check(
-      Schema.isNonEmpty({
-        message: "Enter a name for this access code.",
-      }),
-      Schema.isMaxLength(60, { message: "Use at most 60 characters." })
-    ),
-    startsAt: standaloneAccessCodeFormWholeHourDateTime(
-      "Choose a start time.",
-      "Choose a valid start time on the whole hour."
-    ),
-    endsAt: standaloneAccessCodeFormWholeHourDateTime(
-      "Choose an end time.",
-      "Choose a valid end time on the whole hour."
-    ),
-  }).check(
-    Schema.makeFilter<{
-      readonly startsAt: string;
-      readonly endsAt: string;
-    }>(
-      ({ startsAt, endsAt }) =>
-        isStandaloneAccessCodeWindowValid({ startsAt, endsAt }) || {
-          path: ["endsAt"],
-          issue: standaloneAccessCodeWindowDurationIssue,
-        }
-    )
+export const createStandaloneAccessCodeFormSchema = Schema.Struct({
+  name: Schema.Trim.check(
+    Schema.isNonEmpty({
+      message: "Enter a name for this access code.",
+    }),
+    Schema.isMaxLength(60, { message: "Use at most 60 characters." })
   ),
-  { parseOptions: { errors: "all" } }
+  startsAt: standaloneAccessCodeFormWholeHourDateTime(
+    "Choose a start time.",
+    "Choose a valid start time on the whole hour."
+  ),
+  endsAt: standaloneAccessCodeFormWholeHourDateTime(
+    "Choose an end time.",
+    "Choose a valid end time on the whole hour."
+  ),
+}).check(
+  Schema.makeFilter<{
+    readonly startsAt: string;
+    readonly endsAt: string;
+  }>(
+    ({ startsAt, endsAt }) =>
+      isStandaloneAccessCodeWindowValid({ startsAt, endsAt }) || {
+        path: ["endsAt"],
+        issue: standaloneAccessCodeWindowDurationIssue,
+      }
+  )
 );
 
-export type CreateStandaloneAccessCodeFormInput = StandardSchemaV1.InferInput<
-  typeof createStandaloneAccessCodeFormSchema
->;
+export type CreateStandaloneAccessCodeFormInput =
+  typeof createStandaloneAccessCodeFormSchema.Encoded;
 
-export type CreateStandaloneAccessCodeFormValues = StandardSchemaV1.InferOutput<
-  typeof createStandaloneAccessCodeFormSchema
->;
+export type CreateStandaloneAccessCodeFormValues =
+  typeof createStandaloneAccessCodeFormSchema.Type;
 
 export const createStandaloneAccessCodeFormDefaults = {
   name: "",

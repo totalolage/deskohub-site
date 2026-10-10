@@ -840,7 +840,9 @@ export class WorkspaceReservationRepository extends Context.Service<
                   and(
                     eq(paymentAttempts.workspaceReservationId, input.id),
                     eq(paymentAttempts.provider, "nexi"),
-                    eq(paymentAttempts.state, "paid")
+                    eq(paymentAttempts.state, "paid"),
+                    // A refund Nexi already reported stays recorded.
+                    eq(paymentAttempts.refundState, "not_required")
                   )
                 );
             })

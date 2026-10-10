@@ -1,11 +1,4 @@
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  waitFor,
-} from "@testing-library/react";
 import { type ComponentPropsWithoutRef, useState } from "react";
 import { type Locale, m } from "@/features/i18n";
 import {
@@ -287,6 +280,10 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
 }));
 
 registerWorkspaceComponentTestEnv();
+
+const { act, cleanup, fireEvent, render, waitFor } = await import(
+  "@testing-library/react"
+);
 
 const { AccountLoading } = await import("./account-loading");
 const { BillingScreen } = await import("./billing/billing-screen");
@@ -595,6 +592,10 @@ describe("account future-feature controls", () => {
       );
       await Promise.resolve();
     });
+    expect(signInMagicLink).toHaveBeenCalledTimes(1);
+    expect(signInMagicLink).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "ada@example.test" })
+    );
     const signInButton = signInView.getByRole("button", { name: "Sending…" });
     expect((signInButton as HTMLButtonElement).disabled).toBe(true);
     expectNoFutureTooltipWrapper(signInButton);

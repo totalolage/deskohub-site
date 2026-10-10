@@ -17,6 +17,7 @@ import type {
 import {
   formatAdministrationDateTime,
   formatAdministrationMoney,
+  formatAdministrationRefund,
   formatAdministrationReservationDate,
 } from "./formatters";
 import { NexiOrderLink } from "./nexi-order-link";
@@ -27,6 +28,7 @@ export { AdministrationCustomerTable } from "./customer-table";
 export {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
+  type AdministrationDataTableSorting,
 } from "./data-table";
 export {
   AdministrationDetailSection,
@@ -127,6 +129,33 @@ export function AdministrationPageHeader({
   );
 }
 
+export function PaymentRefundLabel({
+  attempt,
+  className,
+}: {
+  readonly className?: string;
+  readonly attempt: Pick<
+    AdministrationPaymentAttempt,
+    "amount" | "refundState" | "refundedAmount" | "refundedAt"
+  >;
+}) {
+  const refund = formatAdministrationRefund(attempt);
+  if (!refund) return null;
+  return (
+    <span
+      className={cn(
+        "block",
+        className,
+        refund.needsAction
+          ? "font-semibold text-burned-orange-ink"
+          : "text-navy-blue/65"
+      )}
+    >
+      {refund.label}
+    </span>
+  );
+}
+
 export function PaymentAttemptList({
   attempts,
 }: {
@@ -164,11 +193,7 @@ export function PaymentAttemptList({
             </p>
             <p className="mt-1 text-sm text-navy-blue/65">
               {attempt.stateLabel}
-              {attempt.refundState === "required" && (
-                <span className="block font-semibold text-burned-orange-ink">
-                  Needs refund
-                </span>
-              )}
+              <PaymentRefundLabel attempt={attempt} />
             </p>
           </div>
         </li>

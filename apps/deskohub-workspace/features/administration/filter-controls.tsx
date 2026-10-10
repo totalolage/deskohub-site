@@ -1,3 +1,5 @@
+"use client";
+
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/shared/utils";
 
@@ -46,6 +48,7 @@ export function AdministrationFilterSelect({
 export function AdministrationFilterForm({
   children,
   className,
+  method = "get",
   variant = "toolbar",
   ...props
 }: ComponentProps<"form"> & {
@@ -60,6 +63,7 @@ export function AdministrationFilterForm({
         }[variant],
         className
       )}
+      method={method}
       {...props}
     >
       {children}

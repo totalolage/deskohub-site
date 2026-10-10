@@ -22,7 +22,6 @@ import { NodeCrypto } from "@effect/platform-node";
 import { and, desc, eq, gt, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import {
-  Clock,
   Context,
   Crypto,
   Data,
@@ -43,6 +42,7 @@ import {
 import "@/shared/polyfills/temporal";
 import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 import { ConfiguredAdministrators } from "@/shared/administrator/configured-administrators.service";
+import { currentInstant } from "@/shared/utils/temporal";
 
 const authenticationLifetimeMinutes = 5;
 const grantLifetimeMinutes = 5;
@@ -170,7 +170,7 @@ export class CliAuthentication extends Context.Service<
       ) {
         const code = CliAuthenticationCode.make(yield* makeSecret());
         const codeHash = yield* digestSecret(code);
-        const now = yield* nowInstant;
+        const now = yield* currentInstant;
         const expiresAt = now.add({ minutes: authenticationLifetimeMinutes });
 
         yield* db
@@ -211,7 +211,7 @@ export class CliAuthentication extends Context.Service<
         code: CliAuthenticationCodeType
       ) {
         const result = yield* loadRequest(code);
-        const now = yield* nowInstant;
+        const now = yield* currentInstant;
         if (!result) return { authStatus: "expired" } as const;
 
         const currentStatus = toAuthenticationStatus(result, now);
@@ -236,7 +236,7 @@ export class CliAuthentication extends Context.Service<
       const inspectApproval = Effect.fn("CliAuthentication.inspectApproval")(
         function* (code: CliAuthenticationCodeType) {
           const result = yield* loadRequest(code);
-          const now = yield* nowInstant;
+          const now = yield* currentInstant;
           return result ? toApprovalRequest(result, now) : null;
         }
       );
@@ -246,7 +246,7 @@ export class CliAuthentication extends Context.Service<
         readonly approvedBy: AdministrationActorUsernameType;
       }) {
         const result = yield* loadRequest(input.code);
-        const now = yield* nowInstant;
+        const now = yield* currentInstant;
         if (!result) {
           return yield* new CliApprovalUnavailableError({
             message: "This authentication request is invalid or has expired.",
@@ -295,7 +295,7 @@ export class CliAuthentication extends Context.Service<
       ) {
         const codeHash = yield* digestSecret(input.code);
         const challenge = yield* digestSecret(input.verifier);
-        const now = yield* nowInstant;
+        const now = yield* currentInstant;
         const [request] = yield* db
           .select()
           .from(cliAuthenticationRequests)
@@ -403,7 +403,7 @@ export class CliAuthentication extends Context.Service<
         );
         if (!ownerConfigured) return yield* unauthorizedSession;
 
-        const now = yield* nowInstant;
+        const now = yield* currentInstant;
         const writeBefore = now.subtract({
           minutes: lastUsedWriteIntervalMinutes,
         });
@@ -440,7 +440,7 @@ export class CliAuthentication extends Context.Service<
         readonly owner: AdministrationActorUsernameType;
         readonly sessionId: CliSessionIdType;
       }) {
-        const now = yield* nowInstant;
+        const now = yield* currentInstant;
         const revoked = yield* db
           .update(cliSessions)
           .set({ revokedAt: now })
@@ -503,10 +503,6 @@ export class CliAuthentication extends Context.Service<
 export class CliApprovalUnavailableError extends Data.TaggedError(
   "CliApprovalUnavailableError"
 )<{ readonly message: string }> {}
-
-const nowInstant = Clock.currentTimeMillis.pipe(
-  Effect.map(Temporal.Instant.fromEpochMilliseconds)
-);
 
 const toIsoString = (instant: Temporal.Instant) =>
   instant.toString({ smallestUnit: "millisecond" });
