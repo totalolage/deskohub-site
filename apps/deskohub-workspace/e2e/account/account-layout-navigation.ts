@@ -1,6 +1,10 @@
 import { expect, type Page } from "@playwright/test";
 import type { AccountSection } from "@/features/account/components/shell/account-shell";
-import { WorkspaceE2EError, workspaceE2EError } from "../errors";
+import {
+  isWorkspaceE2EDiagnosticCode,
+  WorkspaceE2EError,
+  workspaceE2EError,
+} from "../errors";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   accountSectionLabels,
@@ -16,6 +20,7 @@ const mobileViewports = [
 ] as const;
 const accountSections = [
   "reservations",
+  "referrals",
   "profile",
   "billing",
   "legal",
@@ -262,16 +267,23 @@ const accountLayoutNavigationFailure = (
   section: AccountSection,
   viewport: AccountLayoutNavigationViewport,
   geometrySnapshot?: AccountLayoutNavigationGeometrySnapshot
-): WorkspaceE2EError =>
-  workspaceE2EError(
+): WorkspaceE2EError => {
+  const diagnosticCode = `account_layout_${phase}_${section}_failed`;
+  return workspaceE2EError(
     formatAccountLayoutNavigationFailureMessage(
       phase,
       section,
       viewport,
       geometrySnapshot
     ),
-    { operation: accountLayoutNavigationOperation }
+    {
+      ...(isWorkspaceE2EDiagnosticCode(diagnosticCode)
+        ? { diagnosticCode }
+        : {}),
+      operation: accountLayoutNavigationOperation,
+    }
   );
+};
 
 const genericAccountLayoutNavigationFailure = (): WorkspaceE2EError =>
   workspaceE2EError("verify account layout navigation failed", {

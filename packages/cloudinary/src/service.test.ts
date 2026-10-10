@@ -958,6 +958,72 @@ describe("CloudinaryService avatar-path logging", () => {
     expect(serialized).toContain("Cloudinary asset prefix delete failed");
   });
 
+  test("logs only a validated numeric status for prefix delete failures", async () => {
+    const prefix = "avatars/staging/account/delete-account-sentinel/";
+    const providerBody =
+      `Cloudinary denied ${prefix} after retry ` +
+      "with api_key=synthetic-cloudinary-key-sentinel";
+    queuedPrefixDeleteResults = [
+      {
+        throw: {
+          http_code: 403,
+          message: providerBody,
+          prefix,
+          api_key: "synthetic-cloudinary-key-sentinel",
+        },
+      },
+    ];
+
+    const captured = await captureLogs((service) =>
+      service
+        .deleteResourcesByPublicIdPrefix(cloudinaryPublicId(prefix))
+        .pipe(Effect.ignore)
+    );
+    const failure = captured.find((entry) =>
+      (Array.isArray(entry.message) ? entry.message : [entry.message]).includes(
+        "Cloudinary asset prefix delete failed"
+      )
+    );
+    const failureFields = Array.isArray(failure?.message)
+      ? failure.message.find(
+          (part) => typeof part === "object" && part !== null
+        )
+      : undefined;
+
+    expect(failureFields).toMatchObject({ outcome: "failed", httpCode: 403 });
+    const serialized = JSON.stringify(captured);
+    expect(serialized).not.toContain(prefix);
+    expect(serialized).not.toContain(providerBody);
+    expect(serialized).not.toContain("synthetic-cloudinary-key-sentinel");
+    expect(serialized).not.toContain("api_key");
+
+    for (const invalidHttpCode of [403.5, 99, 600]) {
+      queuedPrefixDeleteResults = [{ throw: { http_code: invalidHttpCode } }];
+      const malformed = await captureLogs((service) =>
+        service
+          .deleteResourcesByPublicIdPrefix(cloudinaryPublicId(prefix))
+          .pipe(Effect.ignore)
+      );
+      const malformedFailure = malformed.find((entry) =>
+        (Array.isArray(entry.message)
+          ? entry.message
+          : [entry.message]
+        ).includes("Cloudinary asset prefix delete failed")
+      );
+      const malformedFields = Array.isArray(malformedFailure?.message)
+        ? malformedFailure.message.find(
+            (part) => typeof part === "object" && part !== null
+          )
+        : undefined;
+
+      expect(
+        typeof malformedFields === "object" &&
+          malformedFields !== null &&
+          Object.hasOwn(malformedFields, "httpCode")
+      ).toBe(false);
+    }
+  });
+
   test("lists folder assets on the sanitized path without logging identifiers on success", async () => {
     queuedResults = [{ resources: [stagedAsset] }];
 

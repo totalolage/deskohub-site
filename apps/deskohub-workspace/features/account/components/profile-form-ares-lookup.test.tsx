@@ -58,6 +58,7 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
         danger: "Danger zone",
         legal: "Legal & privacy",
         profile: "Profile & identity",
+        referrals: "Referrals",
         reservations: "Reservations",
       },
     },

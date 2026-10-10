@@ -12,7 +12,7 @@ import {
 } from "./errors";
 import { pollUntil } from "./polling";
 import type { Runner } from "./runtime";
-import { log, redact } from "./runtime";
+import { log, redact, redactJsonValue } from "./runtime";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
 
 const runBrowserCommand = (
@@ -619,11 +619,7 @@ export const captureBrowserFailureArtifacts = ({
           "read browser HAR artifact",
           () => readFile(rawHarPath, "utf8")
         );
-        yield* writeTextArtifact(
-          artifactDir,
-          "network.har",
-          sanitizeHarArtifact(har)
-        );
+        yield* writeSanitizedHarArtifact(artifactDir, sanitizeHarArtifact(har));
       }).pipe(
         Effect.ensuring(
           tryWorkspaceE2EPromise("remove raw browser HAR artifact", () =>
@@ -697,6 +693,14 @@ const writeTextArtifact = (
       resolve(artifactDir, fileName),
       `${sanitizeArtifactText(text.trim())}\n`
     )
+  );
+
+const writeSanitizedHarArtifact = (
+  artifactDir: string,
+  text: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  tryWorkspaceE2EPromise("write network.har artifact", () =>
+    writeFile(resolve(artifactDir, "network.har"), `${text.trim()}\n`)
   );
 
 export const switchToMainFrame = (
@@ -785,7 +789,7 @@ const sanitizeHarArtifact = (text: string) => {
       sanitizeHarResponse(asRecord(record.response));
     }
 
-    return JSON.stringify(har, null, 2);
+    return JSON.stringify(redactJsonValue(har, sanitizeArtifactText), null, 2);
   } catch {
     return sanitizeArtifactText(text);
   }

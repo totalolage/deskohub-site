@@ -59,4 +59,32 @@ describe("customer sign-in route boundary", () => {
     expect(events).toEqual(["connection", "gate"]);
     expect(connection).toHaveBeenCalledTimes(1);
   });
+
+  test("passes only one strictly valid referral code to sign-in", async () => {
+    const { default: CustomerSignInPage } = await import("./page");
+
+    const validPage = await CustomerSignInPage({
+      searchParams: Promise.resolve({ ref: "RFL12345" }),
+    });
+    expect(validPage.props.children[1].props.children.props).toEqual({
+      locale: "en-US",
+      referralCode: "RFL12345",
+    });
+
+    const duplicatePage = await CustomerSignInPage({
+      searchParams: Promise.resolve({ ref: ["RFL12345", "BAD"] }),
+    });
+    expect(duplicatePage.props.children[1].props.children.props).toEqual({
+      locale: "en-US",
+      referralCode: undefined,
+    });
+
+    const malformedPage = await CustomerSignInPage({
+      searchParams: Promise.resolve({ ref: "lowercase" }),
+    });
+    expect(malformedPage.props.children[1].props.children.props).toEqual({
+      locale: "en-US",
+      referralCode: undefined,
+    });
+  });
 });

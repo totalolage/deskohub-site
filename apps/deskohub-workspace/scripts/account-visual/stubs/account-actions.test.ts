@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  acceptAccountReferral,
   clearMarketingManagementAction,
   confirmMarketingManagementAction,
   removeCustomerAvatar,
@@ -40,6 +41,61 @@ test("legal action stubs remain unavailable and share invocation tracking", asyn
     expect(result).not.toHaveProperty("data");
     expect(actionTracker.invocationCount).toBe(expectedInvocationCount);
   }
+});
+
+type AccountVisualReferralOutcome =
+  | "accepted"
+  | "already_accepted"
+  | "self_referral"
+  | "already_attributed"
+  | "ineligible"
+  | "unavailable";
+
+const setReferralOutcome = (outcome: string | undefined) => {
+  const scope = globalThis as typeof globalThis & {
+    __accountVisualReferralOutcome?: string;
+  };
+  scope.__accountVisualReferralOutcome = outcome;
+};
+
+test("referral action stub defaults to unavailable and counts one invocation", async () => {
+  setReferralOutcome(undefined);
+  const expectedInvocationCount = actionTracker.invocationCount + 1;
+
+  expect(await acceptAccountReferral({ code: "RFL12345" })).toEqual({
+    serverError: unavailableMessage,
+  });
+  expect(actionTracker.invocationCount).toBe(expectedInvocationCount);
+});
+
+test.each([
+  "accepted",
+  "already_accepted",
+  "self_referral",
+  "already_attributed",
+  "ineligible",
+] as const satisfies readonly AccountVisualReferralOutcome[])(
+  "referral stub returns the fixed %s outcome and counts one invocation",
+  async (outcome) => {
+    setReferralOutcome(outcome);
+    const expectedInvocationCount = actionTracker.invocationCount + 1;
+
+    expect(await acceptAccountReferral({ code: "RFL12345" })).toEqual({
+      data: { status: outcome },
+    });
+    expect(actionTracker.invocationCount).toBe(expectedInvocationCount);
+  }
+);
+
+test("referral action stub ignores an unknown outcome and remains unavailable", async () => {
+  setReferralOutcome("arbitrary");
+  const expectedInvocationCount = actionTracker.invocationCount + 1;
+
+  expect(await acceptAccountReferral({ code: "RFL12345" })).toEqual({
+    serverError: unavailableMessage,
+  });
+  expect(actionTracker.invocationCount).toBe(expectedInvocationCount);
+  setReferralOutcome(undefined);
 });
 
 type AccountVisualAvatarOutcome =

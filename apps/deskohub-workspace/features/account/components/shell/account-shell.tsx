@@ -3,6 +3,7 @@
 import {
   CalendarDays,
   CreditCard,
+  Gift,
   ShieldCheck,
   TriangleAlert,
   UserRound,
@@ -21,6 +22,7 @@ import { AccountFrame } from "./account-frame";
 
 export type AccountSection =
   | "reservations"
+  | "referrals"
   | "profile"
   | "billing"
   | "legal"
@@ -63,6 +65,7 @@ export function AccountShell({
       : undefined;
   const sections = [
     { icon: CalendarDays, key: "reservations" },
+    { icon: Gift, key: "referrals" },
     { icon: UserRound, key: "profile" },
     { icon: CreditCard, key: "billing" },
     { icon: ShieldCheck, key: "legal" },

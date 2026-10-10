@@ -9,6 +9,7 @@ import {
 } from "bun:test";
 import { act, cleanup, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { parseReferralCode } from "@/features/referrals/client";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -16,6 +17,10 @@ import {
 import { AuthCallbackRedirect } from "./auth-callback-redirect";
 
 const VALID_ATTEMPT_ID = "550e8400-e29b-41d4-a716-446655440000";
+const VALID_REFERRAL_CODE = parseReferralCode("RFL12345");
+if (VALID_REFERRAL_CODE === undefined) {
+  throw new Error("The referral code fixture must be valid");
+}
 const handOffReturn = mock((_options: { readonly attemptId: string }) =>
   Promise.resolve(false)
 );
@@ -46,10 +51,14 @@ const setClosed = (closed: boolean) => {
   });
 };
 
-const renderAndFlush = async (locale: "en-US" | "cs-CZ") => {
+const renderAndFlush = async (
+  locale: "en-US" | "cs-CZ",
+  referralCode?: typeof VALID_REFERRAL_CODE
+) => {
   let view: ReturnType<typeof render> | undefined;
   await act(async () => {
-    view = render(<AuthCallbackRedirect locale={locale} />);
+    const props = { locale, referralCode };
+    view = render(<AuthCallbackRedirect {...props} />);
     await Promise.resolve();
   });
   return view!;
@@ -145,6 +154,20 @@ describe("AuthCallbackRedirect", () => {
 
     expect(close).toHaveBeenCalledTimes(1);
     expect(replace).toHaveBeenCalledWith("/en-US/account");
+  });
+
+  test("keeps the validated referral code on the callback fallback", async () => {
+    setAttempt(VALID_ATTEMPT_ID);
+    handOffReturn.mockResolvedValue(false);
+    const replace = mock((_href: string) => undefined);
+    window.location.replace = replace as typeof window.location.replace;
+
+    await renderAndFlush("en-US", VALID_REFERRAL_CODE);
+
+    expect(replace).toHaveBeenCalledWith("/en-US/account?ref=RFL12345");
+    expect(handOffReturn).toHaveBeenCalledWith({
+      attemptId: VALID_ATTEMPT_ID,
+    });
   });
 
   test("does not close and navigates when the return is not acknowledged", async () => {

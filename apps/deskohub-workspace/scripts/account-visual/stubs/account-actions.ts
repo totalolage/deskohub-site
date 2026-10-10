@@ -173,3 +173,44 @@ export const deleteCustomerAccount = unavailable;
 export const saveMarketingPreferencesAction = unavailable;
 export const confirmMarketingManagementAction = unavailable;
 export const clearMarketingManagementAction = unavailable;
+
+type AccountVisualReferralOutcome =
+  | "accepted"
+  | "already_accepted"
+  | "self_referral"
+  | "already_attributed"
+  | "ineligible"
+  | "unavailable";
+
+const referralOutcomes = new Set<AccountVisualReferralOutcome>([
+  "accepted",
+  "already_accepted",
+  "self_referral",
+  "already_attributed",
+  "ineligible",
+  "unavailable",
+]);
+
+const globalScopeWithReferral = globalThis as typeof globalThis & {
+  __accountVisualReferralOutcome?: string;
+};
+
+const referralOutcome = (): AccountVisualReferralOutcome => {
+  const outcome = globalScopeWithReferral.__accountVisualReferralOutcome;
+  return referralOutcomes.has(outcome as AccountVisualReferralOutcome)
+    ? (outcome as AccountVisualReferralOutcome)
+    : "unavailable";
+};
+
+export const acceptAccountReferral = async (_input: {
+  readonly code: string;
+}): Promise<
+  UnavailableActionResult | { readonly data: { readonly status: string } }
+> => {
+  actionTracker.recordInvocation();
+  const outcome = referralOutcome();
+  if (outcome === "unavailable") {
+    return { serverError: unavailableMessage };
+  }
+  return { data: { status: outcome } };
+};

@@ -8,12 +8,15 @@ import { getAccountScreenCopy } from "@/features/account/components/account-scre
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { LegalScreen } from "@/features/account/components/legal/legal-screen";
 import { ProfileForm } from "@/features/account/components/profile-form";
+import { ReferralScreen } from "@/features/account/components/referral-screen";
 import { ReservationHistory } from "@/features/account/components/reservation-history";
 import type {
   CustomerAvatarPresentation,
   CustomerReservationHistory,
 } from "@/features/account/contracts";
 import type { Locale } from "@/features/i18n";
+import type { ReferralCode } from "@/features/referrals/client";
+import type { ReferralAccountSummary } from "@/features/referrals/contracts";
 
 type LinkedAccountProps = {
   readonly email: string;
@@ -21,6 +24,8 @@ type LinkedAccountProps = {
   readonly locale: Locale;
   readonly profile: CustomerProfile;
   readonly avatarPresentation: CustomerAvatarPresentation;
+  readonly referralCode?: ReferralCode;
+  readonly referralSummary?: ReferralAccountSummary;
 };
 
 export function LinkedAccount({
@@ -29,6 +34,8 @@ export function LinkedAccount({
   history,
   locale,
   profile,
+  referralCode,
+  referralSummary,
 }: LinkedAccountProps) {
   const pathname = usePathname();
   const { activeSection, changeSection, setReservationCount } =
@@ -53,6 +60,14 @@ export function LinkedAccount({
           copy={copy.reservations}
           history={history}
           locale={locale}
+        />
+      </div>
+
+      <div hidden={activeSection !== "referrals"}>
+        <ReferralScreen
+          invitationCode={referralCode}
+          locale={locale}
+          summary={referralSummary}
         />
       </div>
 

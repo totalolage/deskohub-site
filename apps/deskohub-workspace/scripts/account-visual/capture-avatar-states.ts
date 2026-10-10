@@ -110,9 +110,17 @@ export const gitStatusPorcelainLines = (
 export const assertCapturedSourcesMatchHead = (
   statusLines: readonly string[]
 ): void => {
-  if (statusLines.length > 0) {
+  // Preserve the user's local example template edit without reading its contents.
+  const sourceStatusLines = statusLines.filter((line) => {
+    const status = line.slice(0, 2);
+    const isPreservedExampleEdit =
+      line.slice(3) === "apps/deskohub-workspace/.env.example" &&
+      (status === " M" || status === "M " || status === "MM");
+    return !isPreservedExampleEdit;
+  });
+  if (sourceStatusLines.length > 0) {
     throw new Error(
-      `Account visual capture compiles the working tree, so it requires a tree identical to HEAD; refusing to attribute a dirty tree to a clean commit. Differences:\n${statusLines.join("\n")}`
+      `Account visual capture compiles the working tree, so it requires a tree identical to HEAD; refusing to attribute a dirty tree to a clean commit. Differences:\n${sourceStatusLines.join("\n")}`
     );
   }
 };

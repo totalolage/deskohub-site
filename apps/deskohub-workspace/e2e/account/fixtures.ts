@@ -142,6 +142,7 @@ export const assertNoSyntheticCustomerProfile = (
   );
 
 const futureReservationDays = 120;
+const referralHistoryEndOffsetDays = 2;
 
 export type SyntheticReservation = {
   readonly endsAt: Temporal.Instant;
@@ -149,15 +150,14 @@ export type SyntheticReservation = {
   readonly startsAt: Temporal.Instant;
 };
 
-/**
- * Creates one far-future synthetic reservation outside the checkout
- * candidate range so account cases never contend with parallel checkout
- * availability. The reservation is journaled, cancelled, and converged by
- * finalizers.
- */
-export const createSyntheticReservation = (
+/** Creates one confirmed synthetic reservation at an exact timestamp. */
+const createSyntheticReservationAt = (
   config: DatasourceConfig,
-  input: { readonly customerId: DotyposCustomerId; readonly seats?: number }
+  input: {
+    readonly customerId: DotyposCustomerId;
+    readonly seats?: number;
+    readonly startsAtMillis: number;
+  }
 ): Effect.Effect<SyntheticReservation, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
@@ -178,10 +178,8 @@ export const createSyntheticReservation = (
         }
       );
     }
-    const startsAtMillis =
-      Date.now() + futureReservationDays * 24 * 60 * 60 * 1000;
-    const startsAt = new Date(startsAtMillis);
-    const endsAt = new Date(startsAtMillis + 2 * 60 * 60 * 1000);
+    const startsAt = new Date(input.startsAtMillis);
+    const endsAt = new Date(input.startsAtMillis + 2 * 60 * 60 * 1000);
     const reservation = yield* dotypos.createReservation({
       customerId: input.customerId,
       endDate: endsAt,
@@ -202,6 +200,36 @@ export const createSyntheticReservation = (
       toWorkspaceE2EError("create synthetic Dotypos reservation", cause)
     )
   );
+
+/**
+ * Creates one far-future reservation outside the checkout candidate range.
+ * The account lane journals and cancels every returned provider reservation.
+ */
+export const createSyntheticReservation = (
+  config: DatasourceConfig,
+  input: { readonly customerId: DotyposCustomerId; readonly seats?: number }
+): Effect.Effect<SyntheticReservation, WorkspaceE2EError> =>
+  createSyntheticReservationAt(config, {
+    ...input,
+    startsAtMillis:
+      Date.now() + futureReservationDays * 24 * 60 * 60 * 1000,
+  });
+
+/**
+ * Creates a recent past confirmed booking for the referral eligibility lane.
+ * This synthetic reservation is paired with an exact locally paid row.
+ */
+export const createSyntheticReferralHistoryReservation = (
+  config: DatasourceConfig,
+  input: { readonly customerId: DotyposCustomerId }
+): Effect.Effect<SyntheticReservation, WorkspaceE2EError> =>
+  createSyntheticReservationAt(config, {
+    ...input,
+    startsAtMillis:
+      Date.now() -
+      referralHistoryEndOffsetDays * 24 * 60 * 60 * 1000 -
+      2 * 60 * 60 * 1000,
+  });
 
 export const cancelSyntheticReservation = (
   config: DatasourceConfig,

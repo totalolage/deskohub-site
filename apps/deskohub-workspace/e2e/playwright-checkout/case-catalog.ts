@@ -52,10 +52,16 @@ export const workspaceE2ESharedFixtureCaseIds = [
   "calendar-sale-pricing-changes",
 ] as const;
 
+/** Executed only by the serial account lane with its already-verified browser session. */
+export const workspaceE2EAccountCheckoutCaseIds = [
+  "account-referral-checkout",
+] as const;
+
 export const workspaceE2ECaseIds = [
   ...workspaceE2ENonPaymentCaseIds,
   ...workspaceE2EPaymentCaseLanes.flat(),
   ...workspaceE2ESharedFixtureCaseIds,
+  ...workspaceE2EAccountCheckoutCaseIds,
 ] as const;
 
 export type WorkspaceE2ECaseId = (typeof workspaceE2ECaseIds)[number];

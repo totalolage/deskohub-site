@@ -4,6 +4,7 @@ import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer"
 import type { Discount } from "./contracts";
 import type {
   DiscountCodeId,
+  PromotionCodeId,
   StoredDiscountId,
   VoucherId,
 } from "./persistence-contracts";
@@ -28,6 +29,20 @@ export type DiscountProvenance = {
     | {
         readonly discountGroupId: string;
         readonly dotyposCustomerId: DotyposCustomerId;
+      }
+    | {
+        readonly referralInvitation: {
+          readonly invitedDotyposCustomerId: DotyposCustomerId;
+          readonly referrerDotyposCustomerId: DotyposCustomerId;
+          readonly promotionCodeId: PromotionCodeId;
+        };
+      }
+    | {
+        readonly referralReferrer: {
+          readonly referrerDotyposCustomerId: DotyposCustomerId;
+          readonly eligibleInviteeCount: number;
+          readonly discountPercentage: string;
+        };
       };
 };
 
@@ -44,6 +59,12 @@ export type DiscountClaimInstruction =
       readonly voucherId: VoucherId;
       readonly availableAmount: WorkspaceMoney;
       readonly dotyposCustomerId: DotyposCustomerId;
+    }
+  | {
+      readonly kind: "referral_invitation";
+      readonly invitedDotyposCustomerId: DotyposCustomerId;
+      readonly referrerDotyposCustomerId: DotyposCustomerId;
+      readonly promotionCodeId: PromotionCodeId;
     };
 
 export type DiscountCandidate = {

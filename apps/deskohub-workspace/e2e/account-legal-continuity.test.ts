@@ -6,6 +6,7 @@ import {
   expect,
   test,
 } from "bun:test";
+import { randomUUID } from "node:crypto";
 import {
   copyFile,
   mkdir,
@@ -27,6 +28,11 @@ import {
 import postcss from "postcss";
 import loadPostCssConfig from "postcss-load-config";
 import { type Locale, m } from "@/features/i18n";
+import {
+  allocateLoopbackPort,
+  waitForOwnedLoopbackServer,
+  waitForOwnedLoopbackServerToStop,
+} from "@/shared/testing/loopback-server";
 import { waitForAccountSectionButtonHandler } from "./account/account-sections";
 import {
   type CookieCategory,
@@ -37,8 +43,8 @@ import {
 } from "./instant-navigation/public-account-legal-assertions";
 import { dismissLegalCookieConsent } from "./legal-cookie-consent";
 
-const accountLegalPort = 3168;
 const fixtureParent = "/tmp/opencode";
+const accountFixtureReadyPath = "/en-US/account-legal-fixture-ready";
 const appRoot = resolve(import.meta.dir, "..");
 const globalsCssPath = resolve(appRoot, "app/globals.css");
 const siteHeaderSelector = "body > header";
@@ -462,13 +468,25 @@ export default function AccountModal() {
 }
 `;
 
+const fixtureReadinessRoute = (marker: string) => `
+export async function GET() {
+  return new Response(${JSON.stringify(marker)}, {
+    headers: {
+      "cache-control": "no-store",
+      "content-type": "text/plain; charset=utf-8",
+    },
+  });
+}
+`;
+
 type AccountLegalFixtureOptions = {
   readonly realCookieConsent?: boolean;
+  readonly readinessMarker: string;
 };
 
 const writeFixture = async (
   fixtureRoot: string,
-  { realCookieConsent = false }: AccountLegalFixtureOptions = {}
+  { readinessMarker, realCookieConsent = false }: AccountLegalFixtureOptions
 ) => {
   const fixtureFiles: Readonly<Record<string, string>> = {
     "app/[locale]/(full-header)/account/@modal/default.tsx": nullModalPage,
@@ -476,6 +494,8 @@ const writeFixture = async (
     "app/[locale]/(full-header)/account/@modal/[...not-found]/page.tsx":
       nullModalPage,
     "app/[locale]/(full-header)/account/page.tsx": privatePage,
+    "app/[locale]/account-legal-fixture-ready/route.ts":
+      fixtureReadinessRoute(readinessMarker),
     ...(realCookieConsent
       ? {
           "app/[locale]/(full-header)/consent-waypoint/page.tsx":
@@ -583,41 +603,6 @@ const writeFixture = async (
     "dir"
   );
   await symlink(join(appRoot, "shared"), join(fixtureRoot, "shared"), "dir");
-};
-
-const waitForServer = async (
-  url: string,
-  exited: { value: boolean },
-  timeoutMs = 20_000
-) => {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (exited.value)
-      throw new Error("account legal fixture server exited early");
-    try {
-      const response = await fetch(url, {
-        headers: { [accountFixtureAuthHeader]: "private" },
-      });
-      if (response.status < 500) return;
-    } catch {
-      // The Next development server is still compiling or binding its port.
-    }
-    await Bun.sleep(100);
-  }
-  throw new Error("account legal fixture server did not become ready");
-};
-
-const waitForServerToStop = async (url: string) => {
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    try {
-      await fetch(url);
-    } catch {
-      return;
-    }
-    await Bun.sleep(100);
-  }
-  throw new Error("account legal fixture server did not release its port");
 };
 
 const warmFixtureRoutes = async (
@@ -1382,9 +1367,12 @@ const assertSignedInRolloutOffLegalRoute = async (
     expect(await dedicatedLinkContent.count()).toBe(1);
     expect(
       await page
-        .getByText(m.marketingPreferencesFormPendingDescription({}, { locale }), {
-          exact: true,
-        })
+        .getByText(
+          m.marketingPreferencesFormPendingDescription({}, { locale }),
+          {
+            exact: true,
+          }
+        )
         .count()
     ).toBe(1);
     await assertGlobalHeaderGeometry(page);
@@ -1401,15 +1389,25 @@ const accountFixtureCaseTimeout = 90_000;
 
 const startAccountLegalFixture = async ({
   realCookieConsent = false,
-}: AccountLegalFixtureOptions = {}): Promise<AccountLegalFixture> => {
+}: Omit<
+  AccountLegalFixtureOptions,
+  "readinessMarker"
+> = {}): Promise<AccountLegalFixture> => {
+  const port = await allocateLoopbackPort();
+  const readinessMarker = randomUUID();
   await mkdir(fixtureParent, { recursive: true });
   const fixtureRoot = await mkdtemp(
     join(fixtureParent, "deskohub-account-legal-")
   );
-  const serverUrl = `http://localhost:${accountLegalPort}`;
-  const exited = { value: false };
+  const serverUrl = `http://localhost:${port}`;
+  const readyUrl = `${serverUrl}${accountFixtureReadyPath}`;
+  const processExit = {
+    complete: false,
+    code: undefined as number | undefined,
+  };
   const contexts = new Set<BrowserContext>();
   let server: ReturnType<typeof Bun.spawn> | undefined;
+  let serverExit: Promise<number> | undefined;
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   let serverReady = false;
   let closePromise: Promise<void> | undefined;
@@ -1427,10 +1425,14 @@ const startAccountLegalFixture = async ({
 
       try {
         if (server) {
-          if (!exited.value) server.kill();
-          await server.exited;
+          if (!processExit.complete) server.kill();
+          await serverExit;
           if (serverReady)
-            await waitForServerToStop(`${serverUrl}/en-US/account`);
+            await waitForOwnedLoopbackServerToStop({
+              marker: readinessMarker,
+              readyUrl,
+              timeoutMs: 5_000,
+            });
         }
       } finally {
         await rm(fixtureRoot, { force: true, recursive: true });
@@ -1441,10 +1443,19 @@ const startAccountLegalFixture = async ({
   };
 
   try {
-    await writeFixture(fixtureRoot, { realCookieConsent });
+    await writeFixture(fixtureRoot, { readinessMarker, realCookieConsent });
     const nextCli = resolve(appRoot, "node_modules/next/dist/bin/next");
     server = Bun.spawn(
-      ["node", nextCli, "dev", "--webpack", "--port", String(accountLegalPort)],
+      [
+        "node",
+        nextCli,
+        "dev",
+        "--webpack",
+        "--hostname",
+        "127.0.0.1",
+        "--port",
+        String(port),
+      ],
       {
         cwd: fixtureRoot,
         env: {
@@ -1456,15 +1467,19 @@ const startAccountLegalFixture = async ({
         stdout: "inherit",
       }
     );
-    void server.exited.then(() => {
-      exited.value = true;
+    serverExit = server.exited.then((code) => {
+      processExit.code = code;
+      processExit.complete = true;
+      return code;
     });
 
-    await waitForServer(
-      `${serverUrl}/en-US/account?section=profile`,
-      exited,
-      accountFixtureStartupTimeout
-    );
+    await waitForOwnedLoopbackServer({
+      exitCode: () => (processExit.complete ? processExit.code : undefined),
+      marker: readinessMarker,
+      pollIntervalMs: 250,
+      readyUrl,
+      timeoutMs: accountFixtureStartupTimeout,
+    });
     serverReady = true;
     await warmFixtureRoutes(
       serverUrl,

@@ -27,7 +27,7 @@ export type CustomerAccountActivityState =
 
 export type CustomerAccountLinkError = EffectDrizzleQueryError | SqlError;
 
-const accountLockKey = (
+export const customerAccountLockKey = (
   accountId: CustomerAccountId
 ): PostgresAdvisoryLockKey => ["customer-account", accountId];
 
@@ -135,7 +135,7 @@ export class CustomerAccountLinkRepository extends Context.Service<
 
       const withAccountLock: ICustomerAccountLinkRepository["withAccountLock"] =
         (accountId, effect) =>
-          advisoryLock.withLock(accountLockKey(accountId), effect);
+          advisoryLock.withLock(customerAccountLockKey(accountId), effect);
 
       return {
         claim,

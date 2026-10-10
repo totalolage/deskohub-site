@@ -1,15 +1,24 @@
 import { expect, test } from "bun:test";
 import {
+  DotyposCustomerIdSchema,
   DotyposDiscountGroupIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
+import { Temporal } from "@js-temporal/polyfill";
 import { Effect } from "effect";
+import {
+  hasPreviousPaidBooking,
+  hasPriorConfirmedDotyposBooking,
+} from "@/features/referrals/eligibility";
 import type { DatasourceConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
+  cancelDotyposReservation,
   dotyposTimestampMatches,
+  readDotyposReservationStatus,
   selectE2EDotyposDiscountGroup,
+  waitForCancelledDotyposReservationStatuses,
   waitForCancelledDotyposReservations,
   waitForConfirmedDotyposReservation,
   waitForDotyposCancellationConvergence,
@@ -201,6 +210,132 @@ test("the cleanup adapter polls the overlapping-interval read model to convergen
           path === "GET /clouds/cloud-id/reservations"
       )
     ).toBe(true);
+  } finally {
+    server.stop(true);
+  }
+}, 20_000);
+
+test("the reservation-transition fixture does not leave unknown confirmed referral history", async () => {
+  const customerId = DotyposCustomerIdSchema.make("synthetic-customer");
+  const firstId = DotyposReservationIdSchema.make("transition-first");
+  const secondId = DotyposReservationIdSchema.make("transition-second");
+  const reservationIds = [firstId, secondId] as const;
+  const interval = {
+    endDate: new Date("2099-05-01T12:00:00.000Z"),
+    startDate: new Date("2099-05-01T08:00:00.000Z"),
+  };
+  const statuses = new Map<string, "CONFIRMED" | "CANCELLED">([
+    [firstId, "CONFIRMED"],
+    [secondId, "CONFIRMED"],
+  ]);
+  const reservation = (id: string, status: "CONFIRMED" | "CANCELLED") => ({
+    id,
+    _branchId: "11111111",
+    _cloudId: "cloud-id",
+    _customerId: customerId,
+    _tableId: "22222222",
+    startDate: "2099-05-01T10:00:00.000Z",
+    endDate: "2099-05-01T12:00:00.000Z",
+    seats: "1",
+    status,
+  });
+  const server = Bun.serve({
+    port: 0,
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") {
+        return Response.json({ accessToken: "access-token" });
+      }
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        const active = [...statuses].flatMap(([id, status]) =>
+          status === "CANCELLED" ? [] : [reservation(id, status)]
+        );
+        return Response.json({ data: active });
+      }
+      const reservationId = url.pathname.split("/").at(-1);
+      const status = reservationId ? statuses.get(reservationId) : undefined;
+      if (request.method === "DELETE" && reservationId && status) {
+        statuses.set(reservationId, "CANCELLED");
+        return new Response(null, { status: 200 });
+      }
+      if (request.method === "GET" && reservationId && status) {
+        return Response.json(reservation(reservationId, status));
+      }
+      return new Response("Not found", { status: 404 });
+    },
+  });
+
+  try {
+    const config: DatasourceConfig = {
+      databaseUrl: "postgres://localhost/fake",
+      databaseUrlUnpooled: "postgres://localhost/fake",
+      dotypos: {
+        apiTimeout: 1_000,
+        apiUrl: `http://127.0.0.1:${server.port}`,
+        branchId: "11111111",
+        clientId: "e2e-client",
+        clientSecret: "e2e-client-secret",
+        cloudId: "cloud-id",
+        employeeId: "22222222",
+        refreshToken: "e2e-refresh-token",
+      },
+      expectedCurrency: "CZK",
+      nexiApiOrigin: "https://xpaysandbox.nexigroup.com",
+      timeouts: workspaceE2ETimeouts,
+    };
+
+    // The existing account transition cancels only its second reservation.
+    await Effect.runPromise(cancelDotyposReservation(config, secondId));
+    await Effect.runPromise(
+      waitForCancelledDotyposReservations(config, [secondId], interval)
+    );
+    const currentStatuses = await Effect.runPromise(
+      Effect.forEach(reservationIds, (id) =>
+        readDotyposReservationStatus(config, id)
+      )
+    );
+    expect(currentStatuses).toEqual(["CONFIRMED", "CANCELLED"]);
+    const currentEvidence = currentStatuses.map((dotyposStatus) => ({
+      cancelled: dotyposStatus === "CANCELLED",
+      dotyposCustomerId: customerId,
+      dotyposStatus,
+      endsAt: Temporal.Instant.from("2099-05-01T12:00:00Z"),
+      localPaymentState: null,
+    }));
+    expect(
+      hasPreviousPaidBooking({
+        hasLocalPaidBooking: false,
+        hasPriorConfirmedDotyposBooking:
+          hasPriorConfirmedDotyposBooking(currentEvidence),
+      })
+    ).toBe(true);
+
+    // The repaired account lane cancels its remaining owned booking before
+    // the referral case, waits for overlap-list inactivity, then verifies the
+    // exact status of every journaled reservation.
+    await Effect.runPromise(cancelDotyposReservation(config, firstId));
+    await Effect.runPromise(
+      waitForCancelledDotyposReservations(config, reservationIds, interval)
+    );
+    const cancelledStatuses = await Effect.runPromise(
+      waitForCancelledDotyposReservationStatuses(config, reservationIds)
+    );
+    expect(cancelledStatuses).toEqual(["CANCELLED", "CANCELLED"]);
+    const cancelledEvidence = cancelledStatuses.map((dotyposStatus) => ({
+      cancelled: dotyposStatus === "CANCELLED",
+      dotyposCustomerId: customerId,
+      dotyposStatus,
+      endsAt: Temporal.Instant.from("2099-05-01T12:00:00Z"),
+      localPaymentState: null,
+    }));
+
+    expect(
+      hasPreviousPaidBooking({
+        hasLocalPaidBooking: false,
+        hasPriorConfirmedDotyposBooking:
+          hasPriorConfirmedDotyposBooking(cancelledEvidence),
+      })
+    ).toBe(false);
   } finally {
     server.stop(true);
   }

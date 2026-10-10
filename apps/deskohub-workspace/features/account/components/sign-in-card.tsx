@@ -15,6 +15,7 @@ import { useForm } from "react-hook-form";
 import isEmail from "validator/lib/isEmail.js";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
 import { type Locale, m } from "@/features/i18n";
+import type { ReferralCode } from "@/features/referrals/client";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import {
@@ -29,6 +30,7 @@ import { Input } from "@/shared/components/ui/input";
 
 type SignInCardProps = {
   readonly locale: Locale;
+  readonly referralCode?: ReferralCode;
 };
 
 const signInEmailMaximumLength = 255;
@@ -58,7 +60,7 @@ type SignInFormSchema = ReturnType<typeof createSignInFormSchema>;
 type SignInFormInput = SignInFormSchema["Encoded"];
 type SignInFormValues = SignInFormSchema["Type"];
 
-export function SignInCard({ locale }: SignInCardProps) {
+export function SignInCard({ locale, referralCode }: SignInCardProps) {
   const [requested, setRequested] = useState(false);
   const [failed, setFailed] = useState(false);
   const clientReady = useSyncExternalStore(
@@ -68,8 +70,8 @@ export function SignInCard({ locale }: SignInCardProps) {
   );
   const submissionInProgress = useRef(false);
   const authReturn = useMemo(
-    () => createAuthReturnLifecycle({ locale }),
-    [locale]
+    () => createAuthReturnLifecycle({ locale, referralCode }),
+    [locale, referralCode]
   );
   const signInFormSchema = createSignInFormSchema(locale);
   const form = useForm<SignInFormInput, unknown, SignInFormValues>({

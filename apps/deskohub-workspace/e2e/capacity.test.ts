@@ -170,6 +170,15 @@ test("wires the case-plan per-date maximums through the real case builders", asy
 
   expect(cases.length).toBeGreaterThan(0);
   expect(cases.some(({ id }) => id === "checkout-discount-code")).toBe(true);
+  const accountReferralCheckout = cases.find(
+    ({ id }) => id === "account-referral-checkout"
+  );
+  expect(accountReferralCheckout?.checkoutStates).toHaveLength(2);
+  expect(
+    new Set(
+      accountReferralCheckout?.checkoutStates.map(({ data }) => data.date)
+    ).size
+  ).toBe(2);
   const plannedDates = cases.flatMap(({ checkoutStates }) =>
     checkoutStates.map(({ data }) => data.date)
   );

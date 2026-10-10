@@ -28,6 +28,7 @@ type CheckoutDiscountCodeFormProps = {
   readonly fieldError: boolean;
   readonly locale: Locale;
   readonly payStateToken: string;
+  readonly referralApplied?: boolean;
   readonly rejectionId?: string;
 };
 
@@ -38,21 +39,37 @@ export function CheckoutDiscountCodeForm({
   fieldError,
   locale,
   payStateToken,
+  referralApplied = false,
   rejectionId,
 }: CheckoutDiscountCodeFormProps) {
+  const referralAppliedFeedback = referralApplied ? (
+    <output
+      className="block rounded-2xl border border-aquamarine-green/40 bg-aquamarine-green/12 px-4 py-3 text-sm font-semibold text-aquamarine-ink ring-1 ring-aquamarine-green/10"
+      data-checkout-referral-applied
+    >
+      {m.checkoutReferralDiscountApplied({}, { locale })}
+    </output>
+  ) : null;
+
   const form = useForm<CheckoutDiscountCodeFormValues>({
     defaultValues: { submittedCode: defaultCode ?? "" },
     mode: "onSubmit",
     resolver: effectSchemaResolver(checkoutDiscountCodeFormSchema),
   });
   const { isSubmitting } = form.formState;
-  const previousDefaultCode = useRef(defaultCode);
+  const previousPayState = useRef({ defaultCode, payStateToken });
 
   useEffect(() => {
-    if (previousDefaultCode.current === defaultCode) return;
-    previousDefaultCode.current = defaultCode;
-    form.reset({ submittedCode: defaultCode ?? "" });
-  }, [defaultCode, form]);
+    const previous = previousPayState.current;
+    if (
+      previous.defaultCode === defaultCode &&
+      previous.payStateToken === payStateToken
+    ) {
+      return;
+    }
+    previousPayState.current = { defaultCode, payStateToken };
+    form.reset({ submittedCode: defaultCode ?? "" }, { keepFieldsRef: true });
+  }, [defaultCode, form, payStateToken]);
 
   if (appliedAdjustment) {
     return (
@@ -67,7 +84,7 @@ export function CheckoutDiscountCodeForm({
     );
   }
 
-  if (!enabled) return null;
+  if (!enabled) return referralAppliedFeedback;
 
   const errorId = fieldError ? "checkout-discount-code-error" : undefined;
   const action = applyDiscountCodeForm.bind(null, locale, payStateToken);
@@ -77,53 +94,56 @@ export function CheckoutDiscountCodeForm({
   };
 
   return (
-    <form
-      action={action}
-      className="space-y-3"
-      id="checkout-discount-code-form"
-      noValidate
-      onSubmit={submit}
-    >
-      <Label htmlFor="checkout-discount-code">
-        {m.checkoutDiscountCodeLabel({}, { locale })}
-      </Label>
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <Input
-          {...form.register("submittedCode")}
-          defaultValue={defaultCode ?? ""}
-          id="checkout-discount-code"
-          aria-describedby={errorId}
-          aria-invalid={fieldError ? true : undefined}
-          autoCapitalize="characters"
-          autoComplete="off"
-          className="h-12 rounded-full px-5 uppercase"
-          data-ph-mask
-          placeholder={m.checkoutDiscountCodePlaceholder({}, { locale })}
-          spellCheck={false}
-        />
-        <CheckoutDiscountCodeSubmitButton
-          locale={locale}
-          pending={isSubmitting}
-        />
-      </div>
-      {fieldError && (
-        <>
-          <DiscountRejectionAnalytics key={rejectionId} />
-          <p
-            className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
-            id="checkout-discount-code-error"
-            role="alert"
-          >
-            <AlertTriangle
-              aria-hidden="true"
-              className="mt-0.5 size-4 shrink-0 text-burned-orange"
-            />
-            <span className="min-w-0">
-              {m.checkoutDiscountCodeUnavailable({}, { locale })}
-            </span>
-          </p>
-        </>
-      )}
-    </form>
+    <>
+      {referralAppliedFeedback}
+      <form
+        action={action}
+        className="space-y-3"
+        id="checkout-discount-code-form"
+        noValidate
+        onSubmit={submit}
+      >
+        <Label htmlFor="checkout-discount-code">
+          {m.checkoutDiscountCodeLabel({}, { locale })}
+        </Label>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Input
+            {...form.register("submittedCode")}
+            defaultValue={defaultCode ?? ""}
+            id="checkout-discount-code"
+            aria-describedby={errorId}
+            aria-invalid={fieldError ? true : undefined}
+            autoCapitalize="characters"
+            autoComplete="off"
+            className="h-12 rounded-full px-5 uppercase"
+            data-ph-mask
+            placeholder={m.checkoutDiscountCodePlaceholder({}, { locale })}
+            spellCheck={false}
+          />
+          <CheckoutDiscountCodeSubmitButton
+            locale={locale}
+            pending={isSubmitting}
+          />
+        </div>
+        {fieldError && (
+          <>
+            <DiscountRejectionAnalytics key={rejectionId} />
+            <p
+              className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
+              id="checkout-discount-code-error"
+              role="alert"
+            >
+              <AlertTriangle
+                aria-hidden="true"
+                className="mt-0.5 size-4 shrink-0 text-burned-orange"
+              />
+              <span className="min-w-0">
+                {m.checkoutDiscountCodeUnavailable({}, { locale })}
+              </span>
+            </p>
+          </>
+        )}
+      </form>
+    </>
   );
 }

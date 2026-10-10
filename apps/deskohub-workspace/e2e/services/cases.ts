@@ -35,6 +35,10 @@ interface IWorkspaceE2ECaseService {
   }) => Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError>;
   readonly runCase: (input: {
     readonly artifactRoot: string;
+    readonly browserSession?: {
+      readonly ownership: "borrowed";
+      readonly session: string;
+    };
     readonly datasourceConfig: DatasourceConfig;
     readonly reportFailure?: WorkspaceE2EFailureReporter;
     readonly run: Runner;

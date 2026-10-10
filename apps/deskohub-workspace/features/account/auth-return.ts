@@ -2,6 +2,7 @@
 
 import { Option, Predicate, Schema } from "effect";
 import type { Locale } from "@/features/i18n";
+import type { ReferralCode } from "@/features/referrals/client";
 import { listenForReturn } from "@/shared/browser/return-window";
 import { authClient } from "./auth.client";
 
@@ -34,6 +35,7 @@ type SessionCreatedAt = typeof sessionCreatedAtSchema.Type;
 type AuthReturnLifecycleOptions = {
   readonly locale: Locale;
   readonly requireFreshSession?: boolean;
+  readonly referralCode?: ReferralCode;
 };
 
 export type AuthReturnLifecycle = {
@@ -115,11 +117,17 @@ const focusWindow = () => {
   }
 };
 
-const navigateToAccount = (locale: Locale) => {
+const accountPath = (locale: Locale, referralCode?: ReferralCode) => {
+  if (referralCode === undefined) return `/${locale}/account`;
+  const searchParams = new URLSearchParams({ ref: referralCode });
+  return `/${locale}/account?${searchParams.toString()}`;
+};
+
+const navigateToAccount = (locale: Locale, referralCode?: ReferralCode) => {
   try {
     const replace = globalThis.window?.location?.replace;
     if (!Predicate.isFunction(replace)) return false;
-    replace.call(globalThis.window.location, `/${locale}/account`);
+    replace.call(globalThis.window.location, accountPath(locale, referralCode));
   } catch {
     return false;
   }
@@ -129,6 +137,7 @@ const navigateToAccount = (locale: Locale) => {
 
 export const createAuthReturnLifecycle = ({
   locale,
+  referralCode,
   requireFreshSession = false,
 }: AuthReturnLifecycleOptions): AuthReturnLifecycle => {
   let currentCleanup: () => void = noop;
@@ -155,7 +164,14 @@ export const createAuthReturnLifecycle = ({
     dispose();
 
     const callbackPath = `/${locale}/auth/callback`;
-    let callbackURL = callbackPath;
+    const makeCallbackURL = (attemptId?: string) => {
+      const searchParams = new URLSearchParams();
+      if (attemptId !== undefined) searchParams.set("attempt", attemptId);
+      if (referralCode !== undefined) searchParams.set("ref", referralCode);
+      const query = searchParams.toString();
+      return query.length === 0 ? callbackPath : `${callbackPath}?${query}`;
+    };
+    let callbackURL = makeCallbackURL();
 
     if (hasReturnWindowSupport()) {
       const attemptId = createAttemptId();
@@ -180,13 +196,13 @@ export const createAuthReturnLifecycle = ({
                 return false;
               }
               if (signal.aborted || requestEpoch !== requestId) return false;
-              return navigateToAccount(locale);
+              return navigateToAccount(locale, referralCode);
             },
             ttlMs: RETURN_LISTENER_TTL_MS,
           });
           if (cleanup) {
             currentCleanup = cleanup;
-            callbackURL = `${callbackPath}?attempt=${encodeURIComponent(attemptId)}`;
+            callbackURL = makeCallbackURL(attemptId);
           }
         } catch {
           // A coordination failure falls back to the ordinary callback.

@@ -3,6 +3,7 @@ import type { TSESTree } from "@typescript-eslint/types";
 import { workspaceE2EAccountCaseIds } from "../e2e/account/catalog";
 import { accountReviewTargetByCaseId } from "../e2e/account/review-targets";
 import type { WorkspaceE2EAccountLifecycleHandoff } from "../e2e/account/types";
+import { workspaceE2EAccountCheckoutCaseIds } from "../e2e/playwright-checkout/case-catalog";
 import {
   workspaceE2EPlaywrightCheckoutTimeout,
   workspaceE2ETimeouts,
@@ -21,6 +22,7 @@ import {
   stringArguments,
   stringLiterals,
 } from "./shared/source-ast";
+import { runBoundedProcess } from "./shared/testing/bounded-process";
 
 const casesModule = parseTrackedSource(
   new URL("../e2e/account/cases.ts", import.meta.url).pathname
@@ -38,32 +40,42 @@ const entryModule = parseTrackedSource(
 type PlaywrightCheckoutConfig =
   typeof import("../playwright.e2e.config")["default"];
 
-let cachedConfigStructure: PlaywrightCheckoutConfig | undefined;
+let cachedConfigStructure: Promise<PlaywrightCheckoutConfig> | undefined;
 // The real Playwright config is executed (not text-scanned) and its resolved
 // structure is asserted on. It runs in a child process because the config
 // resolves its browser executable with a top-level await, which bun's test
 // runner does not settle reliably across multiple entry files.
-const playwrightConfigStructure = (): PlaywrightCheckoutConfig => {
-  if (cachedConfigStructure === undefined) {
-    const result = Bun.spawnSync({
+const playwrightConfigStructure = (): Promise<PlaywrightCheckoutConfig> =>
+  (cachedConfigStructure ??= (async () => {
+    const result = await runBoundedProcess({
       cmd: [
         process.execPath,
         "-e",
         'const config = (await import("./playwright.e2e.config")).default; console.log(JSON.stringify(config));',
       ],
       cwd: new URL("..", import.meta.url).pathname,
-      stdout: "pipe",
-      stderr: "pipe",
+      maxOutputBytes: 64 * 1024,
+      timeoutMs: 15_000,
     });
-    if (result.exitCode !== 0) {
-      throw new Error(new TextDecoder().decode(result.stderr));
+    if (result.outcome === "timed-out") {
+      throw new Error("actual Playwright config loader timed out");
     }
-    cachedConfigStructure = JSON.parse(
-      new TextDecoder().decode(result.stdout)
-    ) as PlaywrightCheckoutConfig;
-  }
-  return cachedConfigStructure;
-};
+    if (result.outcome === "output-limit") {
+      throw new Error(
+        "actual Playwright config loader exceeded its output limit"
+      );
+    }
+    if (result.outcome === "failed") {
+      throw new Error(
+        `actual Playwright config loader exited with status ${result.exitCode}`
+      );
+    }
+    try {
+      return JSON.parse(result.stdout) as PlaywrightCheckoutConfig;
+    } catch {
+      throw new Error("actual Playwright config loader emitted invalid JSON");
+    }
+  })());
 
 const projectByName = (config: PlaywrightCheckoutConfig, name: string) =>
   config.projects.find((project) => project.name === name);
@@ -229,7 +241,7 @@ const expectSingleConjunctiveSnapshotMatcher = (
 
 describe("workspace account e2e graph", () => {
   test("runs account cases as one project in the existing Playwright graph", async () => {
-    const config = playwrightConfigStructure();
+    const config = await playwrightConfigStructure();
     const accountProject = projectByName(config, "account-auth");
 
     expect(accountProject).toBeDefined();
@@ -246,7 +258,7 @@ describe("workspace account e2e graph", () => {
   });
 
   test("keeps account cases free of screenshots, traces, videos, and HARs", async () => {
-    const config = playwrightConfigStructure();
+    const config = await playwrightConfigStructure();
     const project = projectByName(config, "account-auth");
 
     expect(project?.use?.screenshot).toBe("off");
@@ -283,11 +295,26 @@ describe("workspace account e2e graph", () => {
       "account-magic-link-delivery",
       "account-profile-completion",
       "account-reservation-transitions",
+      "account-referrals",
       "account-deletion-marker-reauth",
       "account-session-lifecycle",
       "account-deletion-and-reactivation",
       "account-linking-variants",
     ]);
+
+    expect(workspaceE2EAccountCheckoutCaseIds).toEqual([
+      "account-referral-checkout",
+    ]);
+    const checkoutRegistrations = callsNamed(
+      laneModule.ast,
+      "accountTest"
+    ).filter((call) =>
+      identifierNames(call).has("workspaceE2EAccountCheckoutCaseIds")
+    );
+    expect(checkoutRegistrations).toHaveLength(1);
+    expect(stringLiterals(laneModule.ast).map(({ value }) => value)).toContain(
+      "account-referrals"
+    );
 
     // The lane configures serial execution; the argument is an object, not
     // prose, so the verdict survives any reformatting.

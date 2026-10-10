@@ -76,10 +76,30 @@ export const runWorkspaceE2EAccountCase = ({
         });
       };
 
-      const executeCase = Effect.gen(function* () {
-        yield* testCase.execute({ journalRef, runStep, session });
-        for (const verifyPage of verifyPages ?? []) yield* runStep(verifyPage);
-      });
+      const executeCase = Effect.acquireUseRelease(
+        Effect.interruptible(
+          testCase.execute({ journalRef, runStep, session })
+        ),
+        () =>
+          Effect.forEach(verifyPages ?? [], runStep, {
+            concurrency: 1,
+            discard: true,
+          }),
+        (completion, useExit) =>
+          completion.cleanup.pipe(
+            Effect.exit,
+            Effect.flatMap((cleanupExit) =>
+              Exit.match(useExit, {
+                onFailure: () => Effect.void,
+                onSuccess: () =>
+                  Exit.match(cleanupExit, {
+                    onFailure: (cause) => Effect.failCause(cause),
+                    onSuccess: () => Effect.void,
+                  }),
+              })
+            )
+          )
+      );
 
       const traced = telemetry.traceCase({
         caseId: testCase.id,

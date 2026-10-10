@@ -94,6 +94,10 @@ function MarketingPreferencesFormContent({
         markSuccess("save");
       },
       onError: ({ error }) => {
+        // Transport failures also arrive through useWorkspaceAction's separate
+        // transport callback. Ignore its later hook callback so an older failed
+        // request cannot roll back a newer retry.
+        if (error.thrownError !== undefined) return;
         revertToConfirmed();
         markError("save", error.serverError);
       },

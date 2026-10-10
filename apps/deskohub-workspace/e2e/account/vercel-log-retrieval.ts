@@ -41,6 +41,18 @@ type VercelLogPage = {
   }[];
 };
 
+type LogPollDiagnostics = {
+  completedQueryCount: number;
+  lastReturnedEntryCount: number;
+  lastMarkerCount: number;
+  baselineExcludedMarkerCount: number;
+  beforeStartedAtMarkerCount: number;
+  otherRecipientCandidateCount: number;
+  matchingEntryCount: number;
+  lastMarkerMinTimestampDeltaMs: number | undefined;
+  lastMarkerMaxTimestampDeltaMs: number | undefined;
+};
+
 export type WorkspaceE2EMagicLinkRequest = {
   readonly callbackPath: string;
   readonly excludeLogEntryIds?: readonly string[];
@@ -491,46 +503,72 @@ const parsePreviewE2ELogLine = (
   return { kind: "match", text: candidate.text };
 };
 
-const retrieveWorkspaceE2EMagicLink = (
+function retrieveWorkspaceE2EMagicLink(
   config: WorkspaceE2EAccountConfig,
   request: WorkspaceE2EMagicLinkRequest
-): Effect.Effect<string, WorkspaceE2EError, HttpClient.HttpClient> =>
-  Effect.gen(function* () {
-    const deadline =
-      Date.now() + (request.deadlineAfterMs ?? config.timeouts.authDelivery);
-    const pollIntervalMs = request.pollIntervalMs ?? defaultPollIntervalMs;
-    const deployment = yield* retryTransientVercelRequest(
-      (timeoutMs) => resolveVercelDeployment(config, timeoutMs),
-      {
-        deadline,
-        operation: "resolve Vercel preview deployment",
-        pollIntervalMs,
-      }
-    ).pipe(
-      Effect.catchTag("TransientVercelRequestFailure", ({ failure }) =>
-        Effect.fail(failure)
-      )
-    );
+): Effect.Effect<string, WorkspaceE2EError, HttpClient.HttpClient> {
+  const diagnostics: LogPollDiagnostics = {
+    completedQueryCount: 0,
+    lastReturnedEntryCount: 0,
+    lastMarkerCount: 0,
+    baselineExcludedMarkerCount: 0,
+    beforeStartedAtMarkerCount: 0,
+    otherRecipientCandidateCount: 0,
+    matchingEntryCount: 0,
+    lastMarkerMinTimestampDeltaMs: undefined,
+    lastMarkerMaxTimestampDeltaMs: undefined,
+  };
 
-    const body = yield* pollForLogMatch(config, deployment, {
+  return retrieveWorkspaceE2EMagicLinkEffect(config, request, diagnostics).pipe(
+    Effect.onExit(() =>
+      Effect.suspend(() => annotateLogPollDiagnostics(diagnostics))
+    )
+  );
+}
+
+const retrieveWorkspaceE2EMagicLinkEffect = Effect.fn(
+  "vercelLogRetrieval.retrieveMagicLink"
+)(function* (
+  config: WorkspaceE2EAccountConfig,
+  request: WorkspaceE2EMagicLinkRequest,
+  diagnostics: LogPollDiagnostics
+) {
+  const deadline =
+    Date.now() + (request.deadlineAfterMs ?? config.timeouts.authDelivery);
+  const pollIntervalMs = request.pollIntervalMs ?? defaultPollIntervalMs;
+  const deployment = yield* retryTransientVercelRequest(
+    (timeoutMs) => resolveVercelDeployment(config, timeoutMs),
+    {
       deadline,
-      excludeLogEntryIds: request.excludeLogEntryIds ?? [],
+      operation: "resolve Vercel preview deployment",
       pollIntervalMs,
-      recipient: request.recipient,
-      startedAt: request.startedAt,
-    });
+    }
+  ).pipe(
+    Effect.catchTag("TransientVercelRequestFailure", ({ failure }) =>
+      Effect.fail(failure)
+    )
+  );
 
-    return yield* tryWorkspaceE2ESync("extract preview magic link", () => {
-      const link = extractAuthLink(config, body, {
-        callbackPath: request.callbackPath,
-      });
-      // Redact immediately upon extraction, before any error path, trace,
-      // artifact, or failure output can observe the bearer material.
-      addRedaction(link);
-      addRedaction(new URL(link).searchParams.get("token") ?? "");
-      return link;
-    });
+  const body = yield* pollForLogMatch(config, deployment, {
+    deadline,
+    excludeLogEntryIds: request.excludeLogEntryIds ?? [],
+    pollIntervalMs,
+    recipient: request.recipient,
+    startedAt: request.startedAt,
+    diagnostics,
   });
+
+  return yield* tryWorkspaceE2ESync("extract preview magic link", () => {
+    const link = extractAuthLink(config, body, {
+      callbackPath: request.callbackPath,
+    });
+    // Redact immediately upon extraction, before any error path, trace,
+    // artifact, or failure output can observe the bearer material.
+    addRedaction(link);
+    addRedaction(new URL(link).searchParams.get("token") ?? "");
+    return link;
+  });
+});
 
 const listSyntheticLogEntryIds = (
   config: WorkspaceE2EAccountConfig,
@@ -558,11 +596,14 @@ const listSyntheticLogEntryIds = (
         Effect.fail(failure)
       )
     );
-    return matchPreviewE2EEntries(entries, {
-      excludeLogEntryIds: [],
-      recipient: request.recipient,
-      startedAt: request.startedAt,
-    }).map((entry) => entry.id);
+    return matchPreviewE2EMarkerEntries(
+      selectPreviewE2EMarkerEntries(entries),
+      {
+        excludeLogEntryIds: [],
+        recipient: request.recipient,
+        startedAt: request.startedAt,
+      }
+    ).map((entry) => entry.id);
   });
 
 const pollForLogMatch = (
@@ -574,6 +615,7 @@ const pollForLogMatch = (
     readonly pollIntervalMs: number;
     readonly recipient: string;
     readonly startedAt: Date;
+    readonly diagnostics: LogPollDiagnostics;
   }
 ): Effect.Effect<string, WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
@@ -601,13 +643,25 @@ const pollForLogMatch = (
           )
         )
       );
-      if (entries === undefined || Date.now() >= bounds.deadline) break;
+      if (entries === undefined) break;
+      const markerEntries = selectPreviewE2EMarkerEntries(entries);
+      recordLogPollResponse(
+        bounds.diagnostics,
+        entries,
+        markerEntries,
+        bounds.startedAt
+      );
+      if (Date.now() >= bounds.deadline) break;
       historyObserved = true;
-      const matches = matchPreviewE2EEntries(entries, {
-        excludeLogEntryIds: bounds.excludeLogEntryIds,
-        recipient: bounds.recipient,
-        startedAt: bounds.startedAt,
-      });
+      const matches = matchPreviewE2EMarkerEntries(
+        markerEntries,
+        {
+          excludeLogEntryIds: bounds.excludeLogEntryIds,
+          recipient: bounds.recipient,
+          startedAt: bounds.startedAt,
+        },
+        bounds.diagnostics
+      );
       if (matches.length > 1) {
         return yield* workspaceE2EError(
           "Vercel log retrieval matched multiple preview log entries within the query window",
@@ -680,21 +734,86 @@ const retryTransientVercelRequest = <A, R>(
     }
   });
 
-const matchPreviewE2EEntries = (
+const selectPreviewE2EMarkerEntries = (
+  entries: readonly WorkspaceE2EVercelLogEntry[]
+): readonly WorkspaceE2EVercelLogEntry[] =>
+  entries.filter((entry) =>
+    entry.message.includes(workspaceE2EPreviewE2ELogCode)
+  );
+
+const recordLogPollResponse = (
+  diagnostics: LogPollDiagnostics,
   entries: readonly WorkspaceE2EVercelLogEntry[],
+  markerEntries: readonly WorkspaceE2EVercelLogEntry[],
+  startedAt: Date
+) => {
+  // Cumulative filter counts span processed complete queries; last-response
+  // counts and deltas are replaced for each completed query, including one
+  // that returns after the deadline and therefore is not matched.
+  diagnostics.completedQueryCount += 1;
+  diagnostics.lastReturnedEntryCount = entries.length;
+  diagnostics.lastMarkerCount = markerEntries.length;
+
+  const timestampDeltas = markerEntries.map(
+    (entry) => entry.timestampInMs - startedAt.getTime()
+  );
+  diagnostics.lastMarkerMinTimestampDeltaMs =
+    timestampDeltas.length > 0 ? Math.min(...timestampDeltas) : undefined;
+  diagnostics.lastMarkerMaxTimestampDeltaMs =
+    timestampDeltas.length > 0 ? Math.max(...timestampDeltas) : undefined;
+};
+
+const annotateLogPollDiagnostics = (diagnostics: LogPollDiagnostics) =>
+  Effect.annotateCurrentSpan({
+    "e2e.account.log_poll.completed_query_count_cumulative":
+      diagnostics.completedQueryCount,
+    "e2e.account.log_poll.last_returned_entry_count":
+      diagnostics.lastReturnedEntryCount,
+    "e2e.account.log_poll.last_marker_count": diagnostics.lastMarkerCount,
+    "e2e.account.log_poll.baseline_excluded_marker_count_cumulative":
+      diagnostics.baselineExcludedMarkerCount,
+    "e2e.account.log_poll.before_started_at_marker_count_cumulative":
+      diagnostics.beforeStartedAtMarkerCount,
+    "e2e.account.log_poll.other_recipient_candidate_count_cumulative":
+      diagnostics.otherRecipientCandidateCount,
+    "e2e.account.log_poll.matching_entry_count_cumulative":
+      diagnostics.matchingEntryCount,
+    ...(diagnostics.lastMarkerMinTimestampDeltaMs === undefined
+      ? {}
+      : {
+          "e2e.account.log_poll.last_marker_min_timestamp_delta_ms":
+            diagnostics.lastMarkerMinTimestampDeltaMs,
+        }),
+    ...(diagnostics.lastMarkerMaxTimestampDeltaMs === undefined
+      ? {}
+      : {
+          "e2e.account.log_poll.last_marker_max_timestamp_delta_ms":
+            diagnostics.lastMarkerMaxTimestampDeltaMs,
+        }),
+  });
+
+const matchPreviewE2EMarkerEntries = (
+  markerEntries: readonly WorkspaceE2EVercelLogEntry[],
   bounds: {
     readonly excludeLogEntryIds: readonly string[];
     readonly recipient: string;
     readonly startedAt: Date;
-  }
+  },
+  diagnostics?: LogPollDiagnostics
 ): readonly WorkspaceE2EVercelLogEntry[] => {
   const excluded = new Set(bounds.excludeLogEntryIds);
-  const candidates = entries.filter(
-    (entry) =>
-      !excluded.has(entry.id) &&
-      entry.timestampInMs >= bounds.startedAt.getTime() &&
-      entry.message.includes(workspaceE2EPreviewE2ELogCode)
-  );
+  const candidates: WorkspaceE2EVercelLogEntry[] = [];
+  for (const entry of markerEntries) {
+    if (excluded.has(entry.id)) {
+      if (diagnostics) diagnostics.baselineExcludedMarkerCount += 1;
+      continue;
+    }
+    if (entry.timestampInMs < bounds.startedAt.getTime()) {
+      if (diagnostics) diagnostics.beforeStartedAtMarkerCount += 1;
+      continue;
+    }
+    candidates.push(entry);
+  }
   if (candidates.some((entry) => entry.truncated)) {
     throw workspaceE2EError(
       "Vercel log retrieval matched a truncated preview log entry",
@@ -707,7 +826,10 @@ const matchPreviewE2EEntries = (
   const matches: WorkspaceE2EVercelLogEntry[] = [];
   for (const entry of candidates) {
     const parsed = parsePreviewE2ELogLine(entry.message, bounds.recipient);
-    if (parsed.kind === "other-recipient") continue;
+    if (parsed.kind === "other-recipient") {
+      if (diagnostics) diagnostics.otherRecipientCandidateCount += 1;
+      continue;
+    }
     if (parsed.kind === "unreadable") {
       throw workspaceE2EError(
         "Vercel log retrieval matched an unreadable preview log entry",
@@ -717,6 +839,7 @@ const matchPreviewE2EEntries = (
         }
       );
     }
+    if (diagnostics) diagnostics.matchingEntryCount += 1;
     matches.push(entry);
   }
   return matches;

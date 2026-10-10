@@ -11,6 +11,7 @@ export function getAccountScreenCopy(locale: Locale) {
       mobileSection: m.accountSectionLabel({}, { locale }),
       sections: {
         reservations: m.accountSectionReservations({}, { locale }),
+        referrals: m.accountSectionReferrals({}, { locale }),
         profile: m.accountSectionProfile({}, { locale }),
         billing: m.accountSectionBilling({}, { locale }),
         legal: m.accountSectionLegal({}, { locale }),

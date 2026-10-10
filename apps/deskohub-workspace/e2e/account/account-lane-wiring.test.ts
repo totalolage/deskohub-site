@@ -5,6 +5,7 @@ import {
   callsNamed,
   containsNode,
   identifierNames,
+  methodCallsNamed,
   nodesOf,
   parseTrackedSource,
   positionDelta,
@@ -20,9 +21,9 @@ import {
 const lane = parseTrackedSource(
   new URL("./account-lane.pw.ts", import.meta.url).pathname
 );
-
-const findStringLiteral = (value: string): TSESTree.Literal | undefined =>
-  stringLiterals(lane.ast).find((literal) => literal.value === value)?.node;
+const referralReview = parseTrackedSource(
+  new URL("./referral-review.ts", import.meta.url).pathname
+);
 
 /**
  * The step object literal `{ id: "<stepId>", ... }` declared in the lane
@@ -108,12 +109,13 @@ test("wires mobile linked-section captures after the desktop captures", () => {
   expect(positionDelta(desktopCapture!, mobileCapture!)).toBeLessThan(0);
 });
 
-test("pins the five-entry mobile review mapping to the linked sections", () => {
-  // Only reservations, billing, and danger gain a mobile capture; profile
-  // and legal stay desktop-only. Verdicts come from the shared runtime data
-  // the lane itself consumes.
+test("pins the mobile review mapping to the linked sections", () => {
+  // Reservations, referrals, billing, and danger gain a mobile capture;
+  // profile and legal stay desktop-only. Verdicts come from the shared
+  // runtime data the lane itself consumes.
   expect(mobileAccountReviewTargetBySection).toEqual({
     reservations: "linked-reservations-mobile",
+    referrals: "linked-referrals-mobile",
     billing: "linked-billing-mobile",
     danger: "linked-danger-mobile",
     profile: undefined,
@@ -145,4 +147,27 @@ test("maps the case-level review targets through the shared lane data", () => {
   ]) {
     expect(stringLiterals(lane.ast).map((l) => l.value)).not.toContain(target);
   }
+});
+
+test("runs explicit referral acceptance and captures each visible state", () => {
+  expect(callsNamed(lane.ast, "verifyReferralOverview")).toHaveLength(3);
+  expect(callsNamed(lane.ast, "verifyReferralInvitationReview")).toHaveLength(
+    1
+  );
+
+  const acceptClicks = methodCallsNamed(referralReview.ast, "click");
+  expect(acceptClicks).toHaveLength(2);
+  expect(
+    stringLiterals(referralReview.ast).map((literal) => literal.value)
+  ).toEqual(
+    expect.arrayContaining([
+      "referral-overview-positive-desktop",
+      "referral-overview-positive-mobile",
+      "referral-overview-positive-cs-desktop",
+      "referral-overview-positive-cs-mobile",
+      "referral-invitation-eligible-desktop",
+      "referral-invitation-accepted-desktop",
+      "referral-invitation-unavailable-desktop",
+    ])
+  );
 });

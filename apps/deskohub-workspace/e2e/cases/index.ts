@@ -11,7 +11,11 @@ import {
   selectCoworkDates,
 } from "../checkout/data";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
-import { toWorkspaceE2EError, type WorkspaceE2EError } from "../errors";
+import {
+  toWorkspaceE2EError,
+  type WorkspaceE2EError,
+  workspaceE2EError,
+} from "../errors";
 import { discountCodeFixtures } from "../integrations/discount-fixtures";
 import type { E2EDotyposDiscountGroup } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
@@ -308,6 +312,56 @@ export const makeWorkspaceE2ECases = ({
         });
       }
 
+      const referralCheckoutDates = yield* selectCoworkDates(
+        discountPreparation.availableBasicDates,
+        2,
+        {
+          allocation,
+          excludedDates: new Set(checkoutDates),
+          maximumReservationsPerDate: 1,
+          selectionLabel: "account referral checkout",
+        }
+      );
+      const referralOrdinaryDate = yield* requireCheckoutDate(
+        referralCheckoutDates,
+        0
+      );
+      const referralOrdinaryData = makeCoworkCheckoutData(
+        config.baseUrl,
+        referralOrdinaryDate,
+        "account-referral-ordinary"
+      );
+      const referralOrdinaryState = trackCheckoutState(
+        flowStates,
+        referralOrdinaryData
+      );
+
+      const referralVoucherDate = yield* requireCheckoutDate(
+        referralCheckoutDates,
+        1
+      );
+      const referralVoucherData = makeCoworkCheckoutData(
+        config.baseUrl,
+        referralVoucherDate,
+        "account-referral-voucher"
+      );
+      const referralVoucherState = trackCheckoutState(
+        flowStates,
+        referralVoucherData
+      );
+      cases.push({
+        checkoutStates: [referralOrdinaryState, referralVoucherState],
+        execute: () =>
+          Effect.fail(
+            workspaceE2EError(
+              "Account referral checkout must be bound to the verified account lane",
+              { operation: "bind account referral checkout" }
+            )
+          ),
+        id: "account-referral-checkout",
+        timeoutMs: config.timeouts.checkoutCase,
+      });
+
       cases.push(
         ...(yield* makeMeetingRoomE2ECases({
           config,
@@ -343,7 +397,7 @@ export const makeWorkspaceE2ECases = ({
           allocation,
           config,
           datasourceConfig,
-          excludedDates: new Set(checkoutDates),
+          excludedDates: new Set([...checkoutDates, ...referralCheckoutDates]),
           flowStates,
           preparation: discountPreparation,
           run,

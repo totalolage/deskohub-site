@@ -72,7 +72,8 @@ describe("PaymentLifecycleRepository", () => {
     const { recording, repository } = await makeRepository();
     const snapshot = makeSource();
     recording.setRows([
-      // BEGIN
+      [["dotypos-customer-1"]], // immutable customer identity
+      [], // advisory lock
       [
         [
           "reservation-1",
@@ -80,7 +81,8 @@ describe("PaymentLifecycleRepository", () => {
           "dotypos-reservation-1",
           "2099-01-01T00:00:00Z",
         ],
-      ],
+      ], // held reservation
+      [], // no referral attribution, preserving ordinary admission
       [attemptRow()],
       [], // snapshot insert
       [["reservation-1"]], // linking the attempt to the held reservation

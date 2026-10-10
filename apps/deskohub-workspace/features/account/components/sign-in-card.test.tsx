@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
+import { parseReferralCode } from "@/features/referrals/client";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -176,6 +177,27 @@ describe("account components", () => {
 
     fireEvent.click(view.getByText("Send another link"));
     expect(view.getByLabelText("Email")).toBeTruthy();
+  });
+
+  test("keeps the validated referral code in the fixed magic-link callback", async () => {
+    const { SignInCard } = await import("./sign-in-card");
+    const referralCode = parseReferralCode("RFL12345");
+    if (referralCode === undefined) throw new Error("Invalid referral fixture");
+    const props = { locale: "en-US" as const, referralCode };
+
+    const view = render(<SignInCard {...props} />);
+    fireEvent.change(view.getByLabelText("Email"), {
+      target: { value: "ada@example.test" },
+    });
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-sign-in-form")!);
+    });
+
+    expect(signInMagicLink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        callbackURL: "/en-US/auth/callback?ref=RFL12345",
+      })
+    );
   });
 
   test("sign-in card shows a visible pending submit and sends only once", async () => {

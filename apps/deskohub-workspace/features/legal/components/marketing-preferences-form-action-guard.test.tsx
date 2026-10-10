@@ -1,5 +1,11 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import { type Locale, m } from "@/features/i18n";
 import {
   flushWorkspaceComponentWork,
@@ -22,6 +28,10 @@ type MarketingActionInput =
 type MarketingAction = (input: MarketingActionInput) => Promise<unknown>;
 
 type ActionOptions = {
+  readonly onError?: (args: {
+    readonly error: { readonly thrownError?: Error };
+    readonly input: MarketingActionInput;
+  }) => void;
   readonly onSuccess?: (args: { readonly input: MarketingActionInput }) => void;
   readonly onTransportError?: (args: {
     readonly error: unknown;
@@ -40,6 +50,8 @@ const clearMarketingManagementAction = mock((_input: MarketingActionInput) =>
 );
 const routerRefresh = mock(() => undefined);
 const saveCalls: MarketingActionInput[] = [];
+const delayedTransportErrors: Array<() => void> = [];
+let transportErrorCalls = 0;
 
 mock.module("@/features/legal/actions", () => ({
   clearMarketingManagementAction,
@@ -58,7 +70,13 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
         saveCalls.push(input);
         if (saveCalls.length === 1) {
           const error = new Error("Synthetic fast transport failure");
-          options.onTransportError?.({ error, input });
+          if (options.onTransportError) {
+            transportErrorCalls += 1;
+            options.onTransportError({ error, input });
+          }
+          delayedTransportErrors.push(() =>
+            options.onError?.({ error: { thrownError: error }, input })
+          );
           throw error;
         }
         options.onSuccess?.({ input });
@@ -84,6 +102,8 @@ beforeAll(registerWorkspaceComponentTestEnv);
 afterEach(() => {
   cleanup();
   saveCalls.length = 0;
+  delayedTransportErrors.length = 0;
+  transportErrorCalls = 0;
   routerRefresh.mockClear();
 });
 afterAll(async () => {
@@ -104,6 +124,7 @@ test("retries a fast rejected save after the rendered busy state stays false", a
     name: m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }),
   });
 
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
   fireEvent.click(marketingSwitch);
   await waitFor(() => {
     expect(view.getByRole("alert").textContent).toBe(
@@ -111,6 +132,9 @@ test("retries a fast rejected save after the rendered busy state stays false", a
     );
     expect(marketingSwitch.hasAttribute("disabled")).toBe(false);
   });
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
+  expect(saveCalls).toHaveLength(1);
+  expect(transportErrorCalls).toBe(1);
 
   fireEvent.click(marketingSwitch);
   await waitFor(() => {
@@ -127,4 +151,16 @@ test("retries a fast rejected save after the rendered busy state stays false", a
       view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
     ).toBeTruthy();
   });
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
+
+  // next-safe-action reports a rejected action through onError as well as the
+  // workspace transport handler. A delayed old error callback must not undo a
+  // later successful retry.
+  act(() => delayedTransportErrors[0]?.());
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
+  expect(transportErrorCalls).toBe(1);
+  expect(view.queryByRole("alert")).toBeNull();
+  expect(
+    view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
+  ).toBeTruthy();
 });

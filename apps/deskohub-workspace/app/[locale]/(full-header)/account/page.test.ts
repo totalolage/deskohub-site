@@ -115,4 +115,32 @@ describe("customer account route boundary", () => {
     expect(events).toEqual(["connection", "gate"]);
     expect(loadCustomerAccountPage).not.toHaveBeenCalled();
   });
+
+  test("accepts one strict referral query value and ignores malformed duplicates", async () => {
+    const { default: CustomerAccountPageRoute } = await import("./page");
+
+    const valid = await CustomerAccountPageRoute({
+      searchParams: Promise.resolve({ ref: "RFL12345" }),
+    });
+    expect(valid.props.children.props).toMatchObject({
+      locale: "en-US",
+      referralCode: "RFL12345",
+    });
+
+    const duplicate = await CustomerAccountPageRoute({
+      searchParams: Promise.resolve({ ref: ["RFL12345", "RFL67890"] }),
+    });
+    expect(duplicate.props.children.props).toMatchObject({
+      locale: "en-US",
+      referralCode: undefined,
+    });
+
+    const malformed = await CustomerAccountPageRoute({
+      searchParams: Promise.resolve({ ref: "lowercase" }),
+    });
+    expect(malformed.props.children.props).toMatchObject({
+      locale: "en-US",
+      referralCode: undefined,
+    });
+  });
 });

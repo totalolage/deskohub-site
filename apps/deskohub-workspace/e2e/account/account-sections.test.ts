@@ -23,6 +23,7 @@ import {
 
 const sections = [
   "reservations",
+  "referrals",
   "profile",
   "billing",
   "legal",
@@ -50,6 +51,12 @@ const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
         "h2",
         { id: "account-reservations-past-title" },
         "Past reservations"
+      );
+    case "referrals":
+      return createElement(
+        "section",
+        { "data-screen": "referrals-screen" },
+        createElement("h2", null, "Referrals")
       );
     case "profile":
       return createElement(
@@ -568,6 +575,28 @@ test("does not click a section before its streamed panel is hydrated", async () 
 
   await expect(
     selectAccountSection(page, "profile", (stage) => calls.push(stage))
+  ).rejects.toThrow("fake account section did not settle");
+  expect(calls).toEqual(["button-handler-wait", "panel-hydration-wait"]);
+});
+
+test("does not click referrals before its streamed panel is hydrated", async () => {
+  const calls: string[] = [];
+  const page = makeFakePage(1440, {
+    onClick: () => {
+      calls.push("click");
+    },
+  });
+  render(createElement(AccountShellHarness));
+  const referralsScreen = document.querySelector(
+    accountSectionLandmarks.referrals
+  );
+  if (referralsScreen === null)
+    throw new Error("referrals screen was not rendered");
+  const serverCopy = referralsScreen.cloneNode(true);
+  referralsScreen.replaceWith(serverCopy);
+
+  await expect(
+    selectAccountSection(page, "referrals", (stage) => calls.push(stage))
   ).rejects.toThrow("fake account section did not settle");
   expect(calls).toEqual(["button-handler-wait", "panel-hydration-wait"]);
 });

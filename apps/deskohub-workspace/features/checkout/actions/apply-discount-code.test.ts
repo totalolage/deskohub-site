@@ -100,6 +100,32 @@ const runForm = async (
 };
 
 describe("applyDiscountCodeForm", () => {
+  test.each(["accepted", "already_accepted"] as const)(
+    "redirects a referral %s result to its fresh signed summary",
+    async (status) => {
+      const freshPayUrl = "/en-US/checkout/pay?payState=fresh-referral-state";
+      const redirectedUrl = await runForm(
+        { status, freshPayUrl },
+        { payStateToken: "original-token", submittedCode: "RFL12345" }
+      );
+
+      expect(redirectedUrl).toBe(`${freshPayUrl}&referralApplied=1`);
+    }
+  );
+
+  test.each(["applied", "pricing_changed"] as const)(
+    "does not carry referral feedback onto an ordinary %s URL",
+    async (status) => {
+      const freshPayUrl = "/en-US/checkout/pay?payState=fresh-ordinary-state";
+      const redirectedUrl = await runForm(
+        { status, freshPayUrl },
+        { payStateToken: "original-token", submittedCode: "SAVE20" }
+      );
+
+      expect(redirectedUrl).toBe(freshPayUrl);
+    }
+  );
+
   test("routes an invalid canonical attempt to the replacement token without plaintext", async () => {
     const replacementToken = await makeTokenWithRequestedIntent();
     const freshPayUrl = `/en-US/checkout/pay?${payStateTokenQueryParam}=${replacementToken}&discountCodeError=unavailable&discountCodeErrorId=attempt-1`;

@@ -8,12 +8,14 @@ import {
   mock,
   test,
 } from "bun:test";
+import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildCoworkCheckoutSummary,
   buildCoworkReservationQuote as buildCoworkPriceQuote,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { hasCheckoutReferralAppliedNotice } from "@/features/checkout/checkout-referral-notice";
 import { m } from "@/features/i18n";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
@@ -52,6 +54,7 @@ describe("CheckoutDiscountCodeForm", () => {
 
   beforeEach(() => {
     analyticsAccepted = true;
+    applyDiscountCodeForm.mockClear();
     capture.mockClear();
     applyDiscountCodeForm.mockClear();
     applyDiscountCodeForm.mockImplementation(async () => {});
@@ -171,6 +174,77 @@ describe("CheckoutDiscountCodeForm", () => {
     expect(view.getByRole("textbox")).toHaveProperty("value", "MYCODE");
   });
 
+  test("clears the ordinary code after referral acceptance refreshes pay state", async () => {
+    const { CheckoutDiscountCodeForm } = await import(
+      "./checkout-discount-code-form"
+    );
+    const view = render(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError={false}
+        locale="en-US"
+        payStateToken="before-referral"
+      />
+    );
+
+    const codeInput = view.getByRole("textbox");
+    fireEvent.input(codeInput, { target: { value: "ORDINARY10" } });
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.checkoutDiscountCodeApply({}, { locale: "en-US" }),
+      })
+    );
+
+    await waitFor(() => expect(applyDiscountCodeForm).toHaveBeenCalledTimes(1));
+    const [firstLocale, firstToken, firstFormData] =
+      applyDiscountCodeForm.mock.calls[0] ?? [];
+    expect(firstLocale).toBe("en-US");
+    expect(firstToken).toBe("before-referral");
+    expect(firstFormData?.get("submittedCode")).toBe("ORDINARY10");
+
+    view.rerender(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError={false}
+        locale="en-US"
+        payStateToken="after-referral"
+        referralApplied
+      />
+    );
+
+    await waitFor(() =>
+      expect(view.getByRole("textbox")).toHaveProperty("value", "")
+    );
+    expect(
+      view.getByText(m.checkoutReferralDiscountApplied({}, { locale: "en-US" }))
+    ).toBeDefined();
+    expect(
+      view.getByRole("button", {
+        name: m.checkoutDiscountCodeApply({}, { locale: "en-US" }),
+      })
+    ).toHaveProperty("disabled", false);
+    expect(
+      view.container.querySelector("form")?.getAttribute("action")
+    ).toBeTruthy();
+    expect(applyDiscountCodeForm).toHaveBeenCalledTimes(1);
+
+    fireEvent.input(view.getByRole("textbox"), {
+      target: { value: "NEXTCODE" },
+    });
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.checkoutDiscountCodeApply({}, { locale: "en-US" }),
+      })
+    );
+
+    await waitFor(() => expect(applyDiscountCodeForm).toHaveBeenCalledTimes(2));
+    const [nextLocale, nextToken, nextFormData] =
+      applyDiscountCodeForm.mock.calls[1] ?? [];
+    expect(nextLocale).toBe("en-US");
+    expect(nextToken).toBe("after-referral");
+    expect(nextFormData?.get("submittedCode")).toBe("NEXTCODE");
+  });
+
   test("shows the applied adjustment instead of a prefilled code field", async () => {
     const { CheckoutDiscountCodeForm } = await import(
       "./checkout-discount-code-form"
@@ -193,6 +267,72 @@ describe("CheckoutDiscountCodeForm", () => {
     ).toBeDefined();
     expect(view.queryByRole("textbox")).toBeNull();
   });
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "shows the %s referral confirmation and leaves the ordinary code form available",
+    async (locale) => {
+      const { CheckoutDiscountCodeForm } = await import(
+        "./checkout-discount-code-form"
+      );
+      const view = render(
+        <CheckoutDiscountCodeForm
+          enabled
+          fieldError={false}
+          locale={locale}
+          payStateToken="signed-state"
+          referralApplied
+        />
+      );
+
+      expect(
+        view.getByText(m.checkoutReferralDiscountApplied({}, { locale }))
+      ).toBeDefined();
+      const codeInput = view.getByRole("textbox") as HTMLInputElement;
+      expect(codeInput.name).toBe("submittedCode");
+      expect(codeInput.disabled).toBe(false);
+      expect(
+        view.getByRole("button", {
+          name: m.checkoutDiscountCodeApply({}, { locale }),
+        })
+      ).toHaveProperty("disabled", false);
+    }
+  );
+
+  test.each([
+    { discounts: [], marker: "1" },
+    { discounts: [], marker: "unknown" },
+    { discounts: [], marker: ["1"] },
+  ])(
+    "does not show referral feedback for an invalid marker or absent signed invitation discount",
+    async ({ discounts, marker }) => {
+      const { CheckoutDiscountCodeForm } = await import(
+        "./checkout-discount-code-form"
+      );
+      const referralApplied = hasCheckoutReferralAppliedNotice({
+        discounts,
+        dotyposCustomerId: DotyposCustomerIdSchema.make(
+          "checkout-referral-notice-customer"
+        ),
+        marker,
+      });
+      const view = render(
+        <CheckoutDiscountCodeForm
+          enabled
+          fieldError={false}
+          locale="en-US"
+          payStateToken="signed-state"
+          referralApplied={referralApplied}
+        />
+      );
+
+      expect(
+        view.queryByText(
+          m.checkoutReferralDiscountApplied({}, { locale: "en-US" })
+        )
+      ).toBeNull();
+      expect(view.getByRole("textbox")).toBeDefined();
+    }
+  );
 
   test("stays hidden while its server-evaluated release gate is disabled", async () => {
     const { CheckoutDiscountCodeForm } = await import(
@@ -268,6 +408,7 @@ describe("CheckoutDiscountCodeForm", () => {
     expect(error.className).toContain("bg-burned-orange/8");
     expect(error.className).toContain("text-burned-orange-ink");
     expect(view.getByRole("textbox").getAttribute("aria-invalid")).toBe("true");
+    expect(applyDiscountCodeForm).not.toHaveBeenCalled();
     expect(view.getByRole("textbox")).toHaveProperty("value", "SAVE20");
     await waitFor(() => {
       expect(capture).toHaveBeenCalledWith("pre-payment outcome", {

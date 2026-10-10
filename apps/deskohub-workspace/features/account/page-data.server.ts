@@ -14,6 +14,8 @@ import type {
 } from "@/features/account/contracts";
 import { areAccountAvatarsEnabled } from "@/features/account/server/account-feature-flag.server";
 import type { Locale } from "@/features/i18n";
+import { ReferralService } from "@/features/referrals";
+import type { ReferralAccountSummary } from "@/features/referrals/contracts";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 /**
@@ -32,6 +34,7 @@ export type CustomerAccountPageState =
       readonly profile: CustomerProfile;
       readonly avatar: CustomerAvatarPresentation;
       readonly history: CustomerReservationHistory;
+      readonly referrals?: ReferralAccountSummary;
     }
   | { readonly kind: "support-required"; readonly email: string }
   | { readonly kind: "deletion-pending"; readonly email: string };
@@ -110,12 +113,24 @@ export const loadCustomerAccountPage = cache(
         avatar = { kind: "available", avatar: availableAvatar };
       }
 
+      const referrals = await Effect.flatMap(ReferralService, (service) =>
+        service.getAccountSummary({
+          customerAccountId: account.success.accountId,
+          dotyposCustomerId: account.success.dotyposCustomerId,
+        })
+      ).pipe(
+        Effect.provide(ReferralService.Live),
+        Effect.orElseSucceed(() => undefined),
+        runWorkspaceEffect("account.referrals", { boundary: "page" })
+      );
+
       return {
         kind: "linked",
         email: user.email,
         profile: profile.success,
         avatar,
         history,
+        referrals,
       };
     }
 
