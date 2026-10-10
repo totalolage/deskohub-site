@@ -99,6 +99,55 @@ test("submits only the never-expire choice while the duration is disabled", asyn
   ]);
 });
 
+test("submits a changed duration amount and unit", async () => {
+  const view = await renderComponent();
+
+  fireEvent.input(view.getByLabelText("Duration"), {
+    target: { value: "6" },
+  });
+  const unit = view.getByRole("combobox", { name: "Unit" });
+  await act(async () => {
+    fireEvent.keyDown(unit, { key: "Enter" });
+  });
+  await act(async () => {
+    fireEvent.click(view.getByRole("option", { name: "Months" }));
+  });
+  expect(unit.textContent).toBe("Months");
+
+  await submitForm(view);
+
+  expect(approveCliAuthenticationAction).toHaveBeenCalledTimes(1);
+  const formData = approveCliAuthenticationAction.mock
+    .calls[0]?.[0] as FormData;
+  expect([...formData.entries()]).toEqual([
+    ["code", code],
+    ["lifetimeAmount", "6"],
+    ["lifetimeUnit", "months"],
+  ]);
+});
+
+test("clears the duration error while never expire is checked and restores it when unchecked", async () => {
+  const view = await renderComponent();
+  const amount = view.getByLabelText("Duration") as HTMLInputElement;
+  const neverExpire = view.getByRole("checkbox", { name: "Never expire" });
+  const durationError = "Enter a whole number from 1 to 999.";
+
+  fireEvent.input(amount, { target: { value: "0" } });
+  await submitForm(view);
+  expect(view.getByText(durationError)).toBeTruthy();
+
+  await act(async () => {
+    fireEvent.click(neverExpire);
+  });
+  expect(view.queryByText(durationError)).toBeNull();
+
+  await act(async () => {
+    fireEvent.click(neverExpire);
+  });
+  expect(view.getByText(durationError)).toBeTruthy();
+  expect(approveCliAuthenticationAction).not.toHaveBeenCalled();
+});
+
 test("rejects a session duration outside the allowed whole-number range", async () => {
   const view = await renderComponent();
   const amount = view.getByLabelText("Duration") as HTMLInputElement;
