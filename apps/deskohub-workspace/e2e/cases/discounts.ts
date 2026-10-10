@@ -38,6 +38,7 @@ import {
 } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
+  isWorkspaceE2ETimeout,
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
@@ -59,8 +60,10 @@ import {
   type E2EDotyposDiscountGroup,
   prepareDotyposCustomerDiscount,
 } from "../integrations/dotypos";
+import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
 import { addRedaction, assert, log } from "../runtime";
+import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -731,6 +734,55 @@ export const makeDiscountE2ECases = ({
     return cases;
   });
 
+// Calendar discovery is a remote cache entry keyed by the booking date, so an
+// earlier ineligible window (this case's or a retried run's) can keep serving
+// the sale as ineligible until the advertisedPricingSources revalidation runs.
+// Reload until the restored sale is advertised before relying on it.
+// The step budget leaves room for the poll's own attempt-count timeout to report.
+const calendarSaleAdvertisementStepTimeoutMs = (config: WorkspaceE2EConfig) =>
+  config.timeouts.calendarSaleAdvertisement + config.timeouts.browserAction;
+
+const waitForAdvertisedCalendarSale = ({
+  config,
+  data,
+  run,
+  session,
+}: {
+  readonly config: WorkspaceE2EConfig;
+  readonly data: CheckoutData;
+  readonly run: Runner;
+  readonly session: string;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  pollUntil(
+    Effect.gen(function* () {
+      yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+        timeoutMs: config.timeouts.browserNavigation,
+      });
+      yield* evalBrowserScript(
+        "prepare advertised Calendar sale",
+        run,
+        session,
+        getPrepareCoworkAdvertisedPriceScript(data),
+        { timeoutMs: config.timeouts.checkoutStart }
+      );
+      return yield* assertDisplayedDiscounts({
+        config,
+        discounts: [calendarDiscountExpectation],
+        run,
+        session,
+        timeoutMs: config.timeouts.calendarSaleAdvertisementAttempt,
+      }).pipe(
+        Effect.as(true),
+        Effect.catchIf(isWorkspaceE2ETimeout, () => Effect.succeed(undefined))
+      );
+    }),
+    {
+      intervalMs: workspaceE2EPollIntervalMs.advertisedPricing,
+      label: "advertised Calendar sale",
+      timeoutMs: config.timeouts.calendarSaleAdvertisement,
+    }
+  ).pipe(Effect.asVoid);
+
 const executeCalendarSaleDisappearsBeforeQuote = ({
   config,
   data,
@@ -749,26 +801,9 @@ const executeCalendarSaleDisappearsBeforeQuote = ({
   Effect.gen(function* () {
     state.startedAt = new Date();
     yield* runStep({
-      execute: Effect.gen(function* () {
-        yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-          timeoutMs: config.timeouts.browserNavigation,
-        });
-        yield* evalBrowserScript(
-          "prepare advertised Calendar sale",
-          run,
-          session,
-          getPrepareCoworkAdvertisedPriceScript(data),
-          { timeoutMs: config.timeouts.checkoutStart }
-        );
-        yield* assertDisplayedDiscounts({
-          config,
-          discounts: [calendarDiscountExpectation],
-          run,
-          session,
-        });
-      }),
+      execute: waitForAdvertisedCalendarSale({ config, data, run, session }),
       id: "advertise-calendar-sale",
-      timeoutMs: config.timeouts.checkoutStart,
+      timeoutMs: calendarSaleAdvertisementStepTimeoutMs(config),
     });
     yield* runStep({
       execute: setE2ECalendarSaleCoworkEligibility(false),
@@ -814,20 +849,20 @@ const executeCalendarSaleDisappearsBeforePayment = ({
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
+    yield* runStep({
+      execute: waitForAdvertisedCalendarSale({ config, data, run, session }),
+      id: "advertise-restored-calendar-sale",
+      timeoutMs: calendarSaleAdvertisementStepTimeoutMs(config),
+    });
     const orderId = yield* runStep({
-      execute: Effect.gen(function* () {
-        yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-          timeoutMs: config.timeouts.browserNavigation,
-        });
-        return yield* submitReservationForPayPage({
-          onOrderId: (startedOrderId) => {
-            state.orderId = startedOrderId;
-          },
-          run,
-          session,
-          submitReservationScript: getSubmitCoworkReservationScript(data),
-          timeouts: config.timeouts,
-        });
+      execute: submitReservationForPayPage({
+        onOrderId: (startedOrderId) => {
+          state.orderId = startedOrderId;
+        },
+        run,
+        session,
+        submitReservationScript: submitPreparedCoworkReservationScript,
+        timeouts: config.timeouts,
       }),
       id: "prepare-calendar-pay-page",
       timeoutMs: config.timeouts.checkoutStart,
@@ -1459,11 +1494,13 @@ export const assertDisplayedDiscounts = ({
   discounts,
   run,
   session,
+  timeoutMs = config.timeouts.uiTransition,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly discounts: readonly ExpectedDiscountApplication[];
   readonly run: Runner;
   readonly session: string;
+  readonly timeoutMs?: number;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const triggerSelector = "[data-checkout-discount-details]";
@@ -1472,7 +1509,7 @@ export const assertDisplayedDiscounts = ({
       session,
       triggerSelector,
       "onFocus",
-      { timeoutMs: config.timeouts.uiTransition }
+      { timeoutMs }
     );
     yield* scrollBrowserElementIntoView(run, session, triggerSelector, {
       timeoutMs: config.timeouts.browserAction,
@@ -1499,7 +1536,7 @@ export const assertDisplayedDiscounts = ({
     && content.includes(${adjustmentLiteral});
 })()
 `,
-        { timeoutMs: config.timeouts.uiTransition }
+        { timeoutMs }
       );
     }
   });
