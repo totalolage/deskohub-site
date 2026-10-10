@@ -400,6 +400,8 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
             });
             yield* Effect.annotateLogsScoped({ tokenCheck });
             yield* Effect.logDebug("Nexi webhook security token checked");
+            // Nexi marks the token optional; a notification without one
+            // only triggers the authoritative order lookup below.
             if (tokenCheck.status === "mismatch") {
               yield* Effect.logWarning(
                 "Nexi webhook security token mismatch detected"

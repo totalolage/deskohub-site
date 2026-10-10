@@ -1,18 +1,27 @@
 import {
   classifyNexiFailureStatus,
+  type ExternalAPIError,
   getNexiPaymentMetadata,
+  type NetworkError,
   NexiCurrencySchema,
   NexiService,
   type NexiWebhookEventId,
 } from "@deskohub/nexi";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  type WorkspaceReservation,
+  WorkspaceReservationRepository,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
-import { getProviderOrderAbandonmentState } from "../../provider-order-abandonment";
+import {
+  getProviderOrderAbandonmentCutoff,
+  getProviderOrderAbandonmentState,
+  hasProviderPaymentActivity,
+} from "../../provider-order-abandonment";
 import {
   capturePaymentAbandoned,
   capturePaymentCompleted,
@@ -21,6 +30,7 @@ import {
 import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
 import {
   isNexiPaymentAttempt,
+  type NexiPaymentAttempt,
   PaymentAttemptRepository,
 } from "../repositories/payment-attempt.repository";
 import {
@@ -82,6 +92,116 @@ function makeProviderPaymentFinalizationServiceLayer(
       const nexi = yield* NexiService;
       const fulfillment = yield* WorkspacePaidFulfillmentService;
       const posthogEvents = yield* PostHogEventService;
+
+      /**
+       * Ends an attempt whose hosted payment page creation failed ambiguously
+       * and never attached a provider session. Nexi documents no idempotency
+       * key for hosted page creation and its order lookup returns no hosted
+       * page, so the original session cannot be recovered. It is also
+       * unpayable: only an attached session's hosted page reaches the
+       * customer. Hold cleanup fails it after the abandonment window unless
+       * the provider order unexpectedly shows payment activity.
+       */
+      const resolveUnattachedProviderSession = Effect.fn(
+        "providerPaymentFinalization.resolveUnattachedProviderSession"
+      )(function* (input: {
+        readonly reservation: Pick<
+          WorkspaceReservation,
+          "id" | "correlationId"
+        >;
+        readonly attempt: NexiPaymentAttempt;
+        readonly checkedAt: Temporal.Instant | undefined;
+      }): Effect.fn.Return<
+        ProviderPaymentFinalizationResult,
+        PaymentLifecycleRepositoryError
+      > {
+        if (!input.checkedAt) {
+          yield* Effect.logWarning(
+            "Payment finalization left an unattached provider session for hold cleanup"
+          );
+          return "not_verifiable";
+        }
+        if (
+          Temporal.Instant.compare(
+            input.checkedAt,
+            getProviderOrderAbandonmentCutoff(input.attempt.createdAt)
+          ) < 0
+        ) {
+          yield* Effect.logInfo(
+            "Payment finalization deferred an unattached provider session"
+          );
+          return "deferred";
+        }
+
+        const providerOrder = yield* nexi
+          .getOrder({
+            orderId: input.attempt.providerOrderId,
+            correlationId: input.reservation.correlationId,
+          })
+          .pipe(
+            Effect.map(Option.some),
+            Effect.catchIf(isProviderOrderNotFound, () => Effect.succeedNone),
+            Effect.tapError((cause) =>
+              Effect.logError(
+                "Unattached provider session order lookup failed",
+                { cause }
+              )
+            ),
+            Effect.option
+          );
+        if (Option.isNone(providerOrder)) {
+          return "provider_verification_failed";
+        }
+        if (
+          Option.isSome(providerOrder.value) &&
+          hasProviderPaymentActivity({
+            operationCount: providerOrder.value.value.operations.length,
+            authorizedAmount: providerOrder.value.value.authorizedAmount,
+            capturedAmount: providerOrder.value.value.capturedAmount,
+          })
+        ) {
+          yield* Effect.logError(
+            "Unattached provider session has payment activity and needs operator review"
+          );
+          return "not_verifiable";
+        }
+
+        const terminal = yield* paymentLifecycle
+          .markTerminal({
+            id: input.attempt.id,
+            workspaceReservationId: input.reservation.id,
+            state: "failed",
+            failureCode: "nexi_hpp_create_unconfirmed",
+            providerStatus: "hpp_create_unconfirmed",
+            fromAttemptStates: ["created"],
+          })
+          .pipe(
+            Effect.catchTag(
+              "PaymentLifecycleStateError",
+              Effect.fn(function* (cause) {
+                yield* Effect.logWarning(
+                  "Unattached provider session changed before it could fail",
+                  { cause }
+                );
+                return undefined;
+              })
+            )
+          );
+        if (!terminal) return "not_pending";
+
+        if (terminal.changed) {
+          yield* capturePaymentFailed({
+            attempt: terminal.attempt,
+            failureReason: "nexi_hpp_create_unconfirmed",
+            timestamp: terminal.timestamp,
+          }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
+        }
+        yield* Effect.logInfo(
+          "Payment finalization failed an unattached provider session",
+          { providerOrderFound: Option.isSome(providerOrder.value) }
+        );
+        return "terminal";
+      });
 
       return ProviderPaymentFinalizationService.of({
         finalizePendingProviderPayment: Effect.fn(
@@ -172,6 +292,18 @@ function makeProviderPaymentFinalizationServiceLayer(
             yield* Effect.logDebug(
               "Payment finalization attempt lookup completed"
             );
+            if (
+              attempt &&
+              isNexiPaymentAttempt(attempt) &&
+              attempt.state === "created" &&
+              !attempt.securityToken
+            ) {
+              return yield* resolveUnattachedProviderSession({
+                reservation,
+                attempt,
+                checkedAt: input.abandonmentCheckedAt,
+              });
+            }
             if (
               !attempt ||
               !isNexiPaymentAttempt(attempt) ||
@@ -406,3 +538,7 @@ function makeProviderPaymentFinalizationServiceLayer(
     })
   );
 }
+
+// Nexi documents 404 as "Order not found" for GET /orders/{orderId}.
+const isProviderOrderNotFound = (error: ExternalAPIError | NetworkError) =>
+  error._tag === "ExternalAPIError" && error.statusCode === 404;

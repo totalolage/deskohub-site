@@ -656,3 +656,208 @@ describe("ProviderPaymentFinalizationService", () => {
     expect(markTerminalForReservation).not.toHaveBeenCalled();
   });
 });
+
+describe("ProviderPaymentFinalizationService unattached provider sessions", () => {
+  // Hosted payment page creation timed out or failed ambiguously: the attempt
+  // never received a hosted page or security token, so no customer could
+  // have been sent to pay it.
+  const attemptCreatedAt = Temporal.Instant.from("2026-06-01T10:00:00Z");
+  const unattachedAttempt = {
+    ...pendingAttempt,
+    state: "created" as const,
+    securityToken: null,
+    providerRedirectUrl: null,
+    providerOrderCreatedAt: null,
+    createdAt: attemptCreatedAt,
+  };
+  const afterCutoff = attemptCreatedAt.add({ minutes: 30 });
+
+  const finalizeUnattached = async (input: {
+    readonly abandonmentCheckedAt?: Temporal.Instant;
+    readonly getOrder?: ReturnType<typeof mock>;
+    readonly markTerminal?: ReturnType<typeof mock>;
+  }) => {
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const { WorkspacePaidFulfillmentService } = await import(
+      "../fulfillment/paid-fulfillment.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const { NexiService } = await import("@deskohub/nexi");
+
+    const getOrder =
+      input.getOrder ??
+      mock(() =>
+        Effect.succeed({ orderId: "provider-order-id", operations: [] })
+      );
+    const markTerminal =
+      input.markTerminal ??
+      mock(() =>
+        Effect.succeed({
+          attempt: { ...unattachedAttempt, state: "failed" as const },
+          changed: true,
+          timestamp: afterCutoff,
+        })
+      );
+    const verifyPaymentOutcome = mock(() => Effect.die("not used"));
+
+    const result = await Effect.gen(function* () {
+      const service = yield* ProviderPaymentFinalizationService;
+      return yield* service.finalizePendingProviderPayment({
+        orderId: "reservation-id",
+        paymentAttemptId: "attempt-id",
+        ...(input.abandonmentCheckedAt && {
+          abandonmentCheckedAt: input.abandonmentCheckedAt,
+        }),
+      });
+    }).pipe(
+      Effect.provide(
+        ProviderPaymentFinalizationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(pendingReservation)),
+              }),
+              Layer.mock(WorkspacePaidFulfillmentService, {
+                fulfillPaidOrder: mock(() => Effect.die("not used")),
+              }),
+              Layer.mock(PaymentAttemptRepository, {
+                findById: mock(() => Effect.succeed(unattachedAttempt)),
+              }),
+              paymentLifecycleLayer({ markTerminal }),
+              Layer.mock(PostHogEventService, {
+                capture: () => Effect.void,
+              }),
+              Layer.mock(NexiService, { getOrder, verifyPaymentOutcome })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    return { result, getOrder, markTerminal, verifyPaymentOutcome };
+  };
+
+  test("leaves an unattached attempt unresolved outside hold cleanup", async () => {
+    const { result, getOrder, markTerminal } = await finalizeUnattached({});
+
+    expect(result).toBe("not_verifiable");
+    expect(getOrder).not.toHaveBeenCalled();
+    expect(markTerminal).not.toHaveBeenCalled();
+  });
+
+  test("defers an unattached attempt until the abandonment cutoff", async () => {
+    const { result, getOrder, markTerminal } = await finalizeUnattached({
+      abandonmentCheckedAt: attemptCreatedAt.add({ minutes: 29, seconds: 59 }),
+    });
+
+    expect(result).toBe("deferred");
+    expect(getOrder).not.toHaveBeenCalled();
+    expect(markTerminal).not.toHaveBeenCalled();
+  });
+
+  test("fails an unattached attempt whose provider order was never created", async () => {
+    const { ExternalAPIError } = await import("@deskohub/nexi");
+    const { result, getOrder, markTerminal } = await finalizeUnattached({
+      abandonmentCheckedAt: afterCutoff,
+      getOrder: mock(() =>
+        Effect.fail(
+          new ExternalAPIError({
+            service: "Nexi",
+            operation: "Get order",
+            statusCode: 404,
+          })
+        )
+      ),
+    });
+
+    expect(result).toBe("terminal");
+    expect(getOrder).toHaveBeenCalledWith({
+      orderId: "provider-order-id",
+      correlationId: "correlation-id",
+    });
+    expect(markTerminal).toHaveBeenCalledWith({
+      id: "attempt-id",
+      workspaceReservationId: "reservation-id",
+      state: "failed",
+      failureCode: "nexi_hpp_create_unconfirmed",
+      providerStatus: "hpp_create_unconfirmed",
+      fromAttemptStates: ["created"],
+    });
+  });
+
+  test("fails an unattached attempt whose provider order has no payment activity", async () => {
+    const { result, markTerminal } = await finalizeUnattached({
+      abandonmentCheckedAt: afterCutoff,
+      getOrder: mock(() =>
+        Effect.succeed({
+          orderId: "provider-order-id",
+          authorizedAmount: "0",
+          capturedAmount: "0",
+          operations: [],
+        })
+      ),
+    });
+
+    expect(result).toBe("terminal");
+    expect(markTerminal).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps an unattached attempt for review when its provider order shows payment activity", async () => {
+    const { result, markTerminal } = await finalizeUnattached({
+      abandonmentCheckedAt: afterCutoff,
+      getOrder: mock(() =>
+        Effect.succeed({
+          orderId: "provider-order-id",
+          operations: [{ operationType: "AUTHORIZATION" }],
+        })
+      ),
+    });
+
+    expect(result).toBe("not_verifiable");
+    expect(markTerminal).not.toHaveBeenCalled();
+  });
+
+  test("keeps an unattached attempt when the provider lookup is inconclusive", async () => {
+    const { NetworkError } = await import("@deskohub/nexi");
+    const { result, markTerminal } = await finalizeUnattached({
+      abandonmentCheckedAt: afterCutoff,
+      getOrder: mock(() =>
+        Effect.fail(new NetworkError({ message: "Failed to connect to Nexi" }))
+      ),
+    });
+
+    expect(result).toBe("provider_verification_failed");
+    expect(markTerminal).not.toHaveBeenCalled();
+  });
+
+  test("yields to a provider session attached concurrently", async () => {
+    const { PaymentLifecycleStateError } = await import(
+      "../repositories/payment-lifecycle.repository"
+    );
+    const { result } = await finalizeUnattached({
+      abandonmentCheckedAt: afterCutoff,
+      markTerminal: mock(() =>
+        Effect.fail(
+          new PaymentLifecycleStateError({
+            operation: "markTerminal",
+            paymentReference: { type: "paymentAttemptId", id: "attempt-id" },
+            message: "Only a created attempt can fail an unattached session.",
+          })
+        )
+      ),
+    });
+
+    expect(result).toBe("not_pending");
+  });
+});
