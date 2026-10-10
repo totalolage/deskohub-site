@@ -90,6 +90,19 @@ describe("NexiService hosted payment pages", () => {
     expect(error.message).toBe("Payment declined");
   });
 
+  test("keeps an unclassified client failure as the error cause", () => {
+    const failure = new Error("unexpected client failure");
+    const error = mapNexiClientError(failure, "Get order");
+
+    expect(error).toMatchObject({
+      _tag: "ExternalAPIError",
+      service: "Nexi",
+      operation: "Get order",
+    });
+    expect(error).not.toHaveProperty("statusCode");
+    expect(error.cause).toBe(failure);
+  });
+
   test("builds and sends the hosted-page request", async () => {
     const fetchMock = mockNexiFetch(
       Response.json({

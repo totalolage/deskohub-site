@@ -173,49 +173,27 @@ describe("ResendEmailProvider", () => {
     }
   });
 
-  test("uses stable access and invoice delivery idempotency keys", async () => {
-    await runProvider(
-      Effect.gen(function* () {
-        const provider = yield* EmailProviderTag;
-        for (const category of [
-          "workspace-paid-reservation-access",
-          "workspace-invoice-customer",
-          "workspace-invoice-internal",
-        ]) {
-          yield* provider.send({
-            ...message,
-            tags: [category],
-            metadata: { workspaceReservationId: "reservation-id" },
-          });
-        }
-      })
-    );
-
-    expect(send.mock.calls.map(([, options]) => options)).toEqual([
-      {
-        idempotencyKey: "workspace-paid-reservation-access-reservation-id",
-      },
-      { idempotencyKey: "workspace-invoice-customer-reservation-id" },
-      { idempotencyKey: "workspace-invoice-internal-reservation-id" },
-    ]);
-  });
-
-  test("prefers an explicit idempotency key", async () => {
+  test("forwards the delivery idempotency key within Resend's limit", async () => {
     await runProvider(
       Effect.gen(function* () {
         const provider = yield* EmailProviderTag;
         yield* provider.send({
           ...message,
           idempotencyKey: "invoice-resend-attempt-2",
-          tags: ["workspace-invoice-customer"],
-          metadata: { workspaceReservationId: "reservation-id" },
         });
+        yield* provider.send({
+          ...message,
+          idempotencyKey: "k".repeat(300),
+        });
+        yield* provider.send(message);
       })
     );
 
-    expect(send.mock.calls[0]?.[1]).toEqual({
-      idempotencyKey: "invoice-resend-attempt-2",
-    });
+    expect(send.mock.calls.map(([, options]) => options)).toEqual([
+      { idempotencyKey: "invoice-resend-attempt-2" },
+      { idempotencyKey: "k".repeat(256) },
+      { idempotencyKey: undefined },
+    ]);
   });
 
   test("maps the magic-link tags and surface metadata to Resend tags", async () => {

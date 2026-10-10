@@ -1,14 +1,17 @@
 import { m } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { HorizontalLogo, Logo } from "@/shared/components/logo";
 
 export const instant = false;
 
 const SIZE = 64;
 
-export default function LogoPage() {
+export default async function LogoPage() {
+  const locale = await getRequestLocale();
+
   return (
     <main className="flex min-h-screen flex-col gap-8 bg-gray-500 pt-[calc(var(--site-header-height)+2rem)]">
-      <h1 className="sr-only">{m.logoVariantsTitle()}</h1>
+      <h1 className="sr-only">{m.logoVariantsTitle({}, { locale })}</h1>
       <div className="flex gap-4 items-center justify-center">
         <Logo styling={{ color: "dark", variant: "small" }} width={SIZE} />
         <Logo styling={{ color: "dark", variant: "color" }} width={SIZE} />

@@ -172,6 +172,7 @@ export function ReservationDateTimePicker({
         locale={locale}
         minimum={minimumDateTime?.toPlainDate().toString()}
         name={name}
+        onBlur={onBlur}
         onChange={handleDateChange}
         placeholder={placeholder}
         value={selectedDate?.toString()}

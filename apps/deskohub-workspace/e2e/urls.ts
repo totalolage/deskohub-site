@@ -20,6 +20,14 @@ export const setSearchParams = (
     return url;
   });
 
+export const isCheckoutStatusUrl = (value: string | undefined) => {
+  try {
+    return new URL(value ?? "").pathname.includes("/reservation/status/");
+  } catch {
+    return false;
+  }
+};
+
 export const isExpectedCheckoutStatusUrl = (
   value: string,
   expectedHost: string
@@ -33,3 +41,9 @@ export const isExpectedCheckoutStatusUrl = (
     return false;
   }
 };
+
+// Nexi hosted-field API calls (card data, state, validate-and-pay) that the
+// hosted payment page makes on its own origin.
+export const isNexiBuildApiUrl = (url: URL) =>
+  url.hostname.endsWith(".nexigroup.com") &&
+  /^\/fe\/(?:v2\/)?build\//.test(url.pathname);

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { runCommand } from "./shared/command";
 import { identifierNames, parseTrackedSource } from "./shared/source-ast";
 import {
   findStepByName,
@@ -119,7 +120,7 @@ test("installs the matching Chromium browser before the Workspace test task", ()
   ).toBe(true);
 });
 
-test("runs four serial Bun test shards and keeps test-functional as a fail-closed gate", () => {
+test("runs four serial Bun test shards and keeps test-functional as a fail-closed gate", async () => {
   expect(shardContract.strategy).toEqual({
     "fail-fast": false,
     matrix: { shard: [1, 2, 3, 4] },
@@ -151,14 +152,33 @@ test("runs four serial Bun test shards and keeps test-functional as a fail-close
     MIGRATION_COUNT_RESULT: "success",
     FUNCTIONAL_SHARDS_RESULT: "success",
   };
-  const runGate = (overrides: Partial<typeof expectedResults> = {}) =>
-    Bun.spawnSync({
-      cmd: ["bash", "-e", "-o", "pipefail", "-c", gateStep?.run ?? ""],
-      env: { ...process.env, ...expectedResults, ...overrides },
-      stderr: "pipe",
-      stdout: "pipe",
-    });
-  expect(runGate().exitCode).toBe(0);
+  // The gate runs in an isolated shell: earlier suites in the same Bun process
+  // may have mutated process.env, and an inherited environment must not be
+  // able to change the fail-closed check.
+  const gateExitCode = async (
+    overrides: Partial<typeof expectedResults> = {}
+  ) => {
+    const result = await runCommand(
+      [
+        "bash",
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        "-c",
+        gateStep?.run ?? "",
+      ],
+      {
+        env: { PATH: process.env.PATH ?? "", ...expectedResults, ...overrides },
+        timeoutMs: 5000,
+      }
+    );
+    // A gate that never finishes must not pass as a non-zero exit.
+    expect(result.timedOut).toBe(false);
+    return result.exitCode;
+  };
+  expect(await gateExitCode()).toBe(0);
   const resultNames = [
     "VALIDATION_RESULT",
     "MIGRATION_COUNT_RESULT",
@@ -166,7 +186,7 @@ test("runs four serial Bun test shards and keeps test-functional as a fail-close
   ] as const;
   for (const resultName of resultNames) {
     for (const result of ["failure", "cancelled", "skipped"]) {
-      expect(runGate({ [resultName]: result }).exitCode).not.toBe(0);
+      expect(await gateExitCode({ [resultName]: result })).not.toBe(0);
     }
   }
 

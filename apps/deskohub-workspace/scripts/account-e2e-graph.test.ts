@@ -7,6 +7,7 @@ import {
   workspaceE2EPlaywrightCheckoutTimeout,
   workspaceE2ETimeouts,
 } from "../e2e/timeouts";
+import { runCommand } from "./shared/command";
 import {
   callsNamed,
   containsNode,
@@ -38,30 +39,29 @@ const entryModule = parseTrackedSource(
 type PlaywrightCheckoutConfig =
   typeof import("../playwright.e2e.config")["default"];
 
-let cachedConfigStructure: PlaywrightCheckoutConfig | undefined;
 // The real Playwright config is executed (not text-scanned) and its resolved
 // structure is asserted on. It runs in a child process because the config
 // resolves its browser executable with a top-level await, which bun's test
 // runner does not settle reliably across multiple entry files.
-const playwrightConfigStructure = (): PlaywrightCheckoutConfig => {
-  if (cachedConfigStructure === undefined) {
-    const result = Bun.spawnSync({
-      cmd: [
+const loadPlaywrightConfigStructure =
+  async (): Promise<PlaywrightCheckoutConfig> => {
+    const result = await runCommand(
+      [
         process.execPath,
         "-e",
         'const config = (await import("./playwright.e2e.config")).default; console.log(JSON.stringify(config));',
       ],
-      cwd: new URL("..", import.meta.url).pathname,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+      { cwd: new URL("..", import.meta.url).pathname }
+    );
     if (result.exitCode !== 0) {
-      throw new Error(new TextDecoder().decode(result.stderr));
+      throw new Error(result.stderr);
     }
-    cachedConfigStructure = JSON.parse(
-      new TextDecoder().decode(result.stdout)
-    ) as PlaywrightCheckoutConfig;
-  }
+    return JSON.parse(result.stdout) as PlaywrightCheckoutConfig;
+  };
+
+let cachedConfigStructure: Promise<PlaywrightCheckoutConfig> | undefined;
+const playwrightConfigStructure = (): Promise<PlaywrightCheckoutConfig> => {
+  cachedConfigStructure ??= loadPlaywrightConfigStructure();
   return cachedConfigStructure;
 };
 
@@ -229,7 +229,7 @@ const expectSingleConjunctiveSnapshotMatcher = (
 
 describe("workspace account e2e graph", () => {
   test("runs account cases as one project in the existing Playwright graph", async () => {
-    const config = playwrightConfigStructure();
+    const config = await playwrightConfigStructure();
     const accountProject = projectByName(config, "account-auth");
 
     expect(accountProject).toBeDefined();
@@ -246,7 +246,7 @@ describe("workspace account e2e graph", () => {
   });
 
   test("keeps account cases free of screenshots, traces, videos, and HARs", async () => {
-    const config = playwrightConfigStructure();
+    const config = await playwrightConfigStructure();
     const project = projectByName(config, "account-auth");
 
     expect(project?.use?.screenshot).toBe("off");

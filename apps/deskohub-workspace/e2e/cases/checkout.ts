@@ -26,8 +26,8 @@ import {
   getAssertFulfillmentFailedSupportScript,
   getAssertRepeatReservationScript,
 } from "../browser-scripts";
+import { completeNexiHostedPayment } from "../checkout/nexi-hosted-payment";
 import {
-  completeNexiHostedPayment,
   submitPaymentAndWaitForHostedPage,
   submitReservationForPayPage,
 } from "../checkout/payment";

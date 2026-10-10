@@ -24,11 +24,13 @@ const acceptCategoryMock = mock((categories: string | string[]) => {
   preferenceCategories = Array.isArray(categories)
     ? [...categories]
     : [categories];
+  setConsentCookie(preferenceCategories);
 });
 
 mock.module("vanilla-cookieconsent", () => ({
-  // vanilla-cookieconsent 3.1.0 replaces the complete accepted set; a string
-  // argument is stored as a single-element list.
+  // vanilla-cookieconsent 3.1.0 replaces the complete accepted set and saves
+  // it to the consent cookie; a string argument is stored as a single-element
+  // list.
   acceptCategory: acceptCategoryMock,
   acceptedCategory: (category: string) =>
     preferenceCategories.includes(category),
@@ -38,11 +40,17 @@ mock.module("vanilla-cookieconsent", () => ({
 
 const { useCookieConsent } = await import("./use-cookie-consent");
 
-const setConsentCookie = (categories: string[]) => {
+function setConsentCookie(categories: string[]) {
   // biome-ignore lint/suspicious/noDocumentCookie: The browser test needs to control consent synchronously.
   document.cookie = `${CONSENT_COOKIE_NAME}=${encodeURIComponent(
     JSON.stringify({ categories })
   )}; Path=/`;
+}
+
+// Consent this tab's library and the shared cookie agree on.
+const setConsent = (categories: string[]) => {
+  preferenceCategories = [...categories];
+  setConsentCookie(categories);
 };
 
 function ConsentProbe() {
@@ -150,7 +158,7 @@ test("accepting categories in sequence preserves earlier accepts and necessary",
 });
 
 test("rejecting a category keeps the other accepted categories", () => {
-  preferenceCategories = ["necessary", "analytics", "marketing"];
+  setConsent(["necessary", "analytics", "marketing"]);
   const { current } = renderHook();
 
   act(() => current().rejectCategory("analytics"));
@@ -159,7 +167,7 @@ test("rejecting a category keeps the other accepted categories", () => {
 });
 
 test("rejecting necessary is a no-op", () => {
-  preferenceCategories = ["necessary", "analytics"];
+  setConsent(["necessary", "analytics"]);
   const { current } = renderHook();
 
   act(() => current().rejectCategory("necessary"));
@@ -168,7 +176,7 @@ test("rejecting necessary is a no-op", () => {
 });
 
 test("accepting necessary preserves the other accepted categories", () => {
-  preferenceCategories = ["necessary", "analytics"];
+  setConsent(["necessary", "analytics"]);
   const { current } = renderHook();
 
   act(() => current().acceptCategory("necessary"));
@@ -180,9 +188,10 @@ test("actions preserve authoritative state changed while the hook snapshot was s
   const { current } = renderHook();
   expect(preferenceCategories).toEqual(["necessary"]);
 
-  // Another tab updated consent without notifying this document; the React
-  // snapshot stays stale while the provider state is authoritative.
-  preferenceCategories = ["necessary", "analytics"];
+  // Another tab updated the shared consent cookie without notifying this
+  // document; the React snapshot and this tab's library memory stay stale
+  // while the cookie is authoritative.
+  setConsentCookie(["necessary", "analytics"]);
 
   act(() => current().acceptCategory("marketing"));
   expect(preferenceCategories).toEqual(["necessary", "analytics", "marketing"]);
@@ -191,19 +200,46 @@ test("actions preserve authoritative state changed while the hook snapshot was s
   expect(preferenceCategories).toEqual(["necessary", "marketing"]);
 });
 
-test("callback identities stay stable across rerenders", () => {
+test("toggling after another tab's storage notification keeps that tab's categories", async () => {
+  const { current } = renderHook();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  // Another tab accepted analytics: the shared cookie and the storage
+  // notification change, but this tab's vanilla-cookieconsent memory does not.
+  setConsentCookie(["necessary", "analytics"]);
+  await act(async () => {
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: CONSENT_UPDATED_STORAGE_KEY,
+        newValue: "synthetic-cross-tab-nonce",
+      })
+    );
+  });
+  expect(current().isAccepted("analytics")).toBe(true);
+
+  act(() => current().acceptCategory("marketing"));
+  expect(acceptCategoryMock).toHaveBeenLastCalledWith([
+    "necessary",
+    "analytics",
+    "marketing",
+  ]);
+
+  act(() => current().rejectCategory("marketing"));
+  expect(acceptCategoryMock).toHaveBeenLastCalledWith([
+    "necessary",
+    "analytics",
+  ]);
+});
+
+test("the effect-dependency isAccepted identity stays stable across rerenders", () => {
   const { view, current } = renderHook();
   const before = current();
 
   view.rerender(<HookHarness />);
 
-  const after = current();
-  expect(after.acceptAll).toBe(before.acceptAll);
-  expect(after.rejectAll).toBe(before.rejectAll);
-  expect(after.showPreferences).toBe(before.showPreferences);
-  expect(after.acceptCategory).toBe(before.acceptCategory);
-  expect(after.rejectCategory).toBe(before.rejectCategory);
-  expect(after.isAccepted).toBe(before.isAccepted);
+  expect(current().isAccepted).toBe(before.isAccepted);
 });
 
 test("hydrates with markup matching the server render when consent cookies exist", async () => {

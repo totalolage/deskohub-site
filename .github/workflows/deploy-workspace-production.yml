@@ -30,16 +30,16 @@ jobs:
       name: Production – deskohub-workspace-site
       url: ${{ steps.deploy.outputs.url }}
     env:
-      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
       VERCEL_ORG_ID: team_MgMQ4MEWijWnYa1R48C2JU5e
       VERCEL_PROJECT_ID: prj_7FliQBcbBiBwGaO2JLrigicnXCRd
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2
 
@@ -57,6 +57,9 @@ jobs:
 
       - name: Migrate production database
         working-directory: apps/deskohub-workspace
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
         run: |
           set -euo pipefail
 

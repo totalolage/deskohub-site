@@ -10,8 +10,8 @@ import {
   workspaceGoogleDirectionsUrl,
 } from "@/shared/utils";
 import waveMask from "../images/wave-mask.svg";
+import { LandingPageBackgroundNoise } from "./landing-page-background-noise";
 import { LandingPageLocationMap } from "./landing-page-location-map";
-import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-carousel-section";
 
 type LandingPageLocationMapSectionProps = {
   locale: Locale;
@@ -45,7 +45,7 @@ export function LandingPageLocationMapSection({
           WebkitMaskSize: "100% 100%",
         }}
       >
-        <LandingPagePhotoCarouselBackgroundNoise className="bg-top" />
+        <LandingPageBackgroundNoise className="bg-top" />
       </div>
       <div className="relative min-h-184 lg:min-h-136 pt-(--separator-height)">
         <LandingPageLocationMap

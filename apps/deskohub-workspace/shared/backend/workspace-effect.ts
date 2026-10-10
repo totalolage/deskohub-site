@@ -82,7 +82,7 @@ export const scheduleWorkspaceTelemetryFlush = () =>
       )
     : Effect.void;
 
-const WorkspaceObservabilityLive = Layer.merge(
+export const WorkspaceObservabilityLive = Layer.merge(
   postHogLoggerProvider
     ? createWorkspaceOtelLoggerLive(postHogLoggerProvider)
     : WorkspaceLoggerLive,

@@ -373,10 +373,13 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                     }
                   )
                 ),
+                // Only a real email failure may later be repaired by a
+                // delivered webhook, so a provider read failure keeps the
+                // Dotypos failure code.
                 Effect.catch((cause) =>
                   failFulfillment({
                     orderId: input.orderId,
-                    failureCode: "fulfillment_email_failed",
+                    failureCode: "dotypos_reservation_failed",
                     cause,
                   })
                 )
