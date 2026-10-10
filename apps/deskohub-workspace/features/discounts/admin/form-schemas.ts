@@ -1,4 +1,3 @@
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
 
 const minorUnitsField = Schema.String.check(
@@ -157,101 +156,76 @@ const voucherCreditFields = {
   voucherCurrency: currencyField,
 };
 
-export const discountDefinitionFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct(permissiveDiscountDefinitionFields).check(
-    ...definitionFilters<DiscountDefinitionCheckValues>(() => true)
-  ),
-  { parseOptions: { errors: "all" } }
+export const discountDefinitionFormSchema = Schema.Struct(
+  permissiveDiscountDefinitionFields
+).check(...definitionFilters<DiscountDefinitionCheckValues>(() => true));
+
+export const discountCodeConfigurationFormSchema = Schema.Struct(
+  discountCodeConfigurationFields
 );
 
-export const discountCodeConfigurationFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct(discountCodeConfigurationFields),
-  { parseOptions: { errors: "all" } }
-);
+export const discountCodeFormSchema = Schema.Struct({
+  discountId: discountIdField,
+  ...discountCodeConfigurationFields,
+});
 
-export const discountCodeFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    discountId: discountIdField,
-    ...discountCodeConfigurationFields,
-  }),
-  { parseOptions: { errors: "all" } }
-);
-
-export const voucherFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    ...voucherCreditFields,
-    code: discountCodeConfigurationFields.code,
-    enabled: discountCodeConfigurationFields.enabled,
-    validFrom: discountCodeConfigurationFields.validFrom,
-    validUntil: discountCodeConfigurationFields.validUntil,
-  }),
-  { parseOptions: { errors: "all" } }
-);
+export const voucherFormSchema = Schema.Struct({
+  ...voucherCreditFields,
+  code: discountCodeConfigurationFields.code,
+  enabled: discountCodeConfigurationFields.enabled,
+  validFrom: discountCodeConfigurationFields.validFrom,
+  validUntil: discountCodeConfigurationFields.validUntil,
+});
 
 type DiscountCodeCreationFormCheckInput = DiscountDefinitionCheckValues & {
   readonly discountKind: "existing" | "new";
   readonly discountId: string;
 };
 
-export const discountCodeCreationFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    discountKind: Schema.Union([
-      Schema.Literal("existing"),
-      Schema.Literal("new"),
-    ]),
-    discountId: Schema.String,
-    ...permissiveDiscountDefinitionFields,
-    ...discountCodeConfigurationFields,
-  }).check(
-    Schema.makeFilter<DiscountCodeCreationFormCheckInput>(
-      (values) =>
-        values.discountKind !== "existing" ||
-        values.discountId.trim().length > 0 || {
-          path: ["discountId"],
-          issue: "Choose a discount.",
-        }
-    ),
-    // Definition, label, and adjustment checks only apply while creating a
-    // new discount; the existing-discount branch pairs the code with an
-    // already valid discount.
-    ...definitionFilters<DiscountCodeCreationFormCheckInput>(
-      (values) => values.discountKind === "new"
-    )
+export const discountCodeCreationFormSchema = Schema.Struct({
+  discountKind: Schema.Union([
+    Schema.Literal("existing"),
+    Schema.Literal("new"),
+  ]),
+  discountId: Schema.String,
+  ...permissiveDiscountDefinitionFields,
+  ...discountCodeConfigurationFields,
+}).check(
+  Schema.makeFilter<DiscountCodeCreationFormCheckInput>(
+    (values) =>
+      values.discountKind !== "existing" ||
+      values.discountId.trim().length > 0 || {
+        path: ["discountId"],
+        issue: "Choose a discount.",
+      }
+  ),
+  // Definition, label, and adjustment checks only apply while creating a
+  // new discount; the existing-discount branch pairs the code with an
+  // already valid discount.
+  ...definitionFilters<DiscountCodeCreationFormCheckInput>(
+    (values) => values.discountKind === "new"
   )
 );
 
-export const customerCodeAudienceFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    customerId: Schema.String.check(
-      Schema.isNonEmpty({ message: "Enter a Dotypos customer ID." })
-    ),
-  })
-);
+export const customerCodeAudienceFormSchema = Schema.Struct({
+  customerId: Schema.String.check(
+    Schema.isNonEmpty({ message: "Enter a Dotypos customer ID." })
+  ),
+});
 
-export const customerDiscountGroupFormSchema = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    discountGroupId: Schema.String,
-  })
-);
+export const customerDiscountGroupFormSchema = Schema.Struct({
+  discountGroupId: Schema.String,
+});
 
-export type DiscountDefinitionFormValues = StandardSchemaV1.InferOutput<
-  typeof discountDefinitionFormSchema
->;
-export type DiscountCodeConfigurationFormValues = StandardSchemaV1.InferOutput<
-  typeof discountCodeConfigurationFormSchema
->;
-export type DiscountCodeFormValues = StandardSchemaV1.InferOutput<
-  typeof discountCodeFormSchema
->;
-export type VoucherFormValues = StandardSchemaV1.InferOutput<
-  typeof voucherFormSchema
->;
-export type DiscountCodeCreationFormValues = StandardSchemaV1.InferOutput<
-  typeof discountCodeCreationFormSchema
->;
-export type CustomerCodeAudienceFormValues = StandardSchemaV1.InferOutput<
-  typeof customerCodeAudienceFormSchema
->;
-export type CustomerDiscountGroupFormValues = StandardSchemaV1.InferOutput<
-  typeof customerDiscountGroupFormSchema
->;
+export type DiscountDefinitionFormValues =
+  typeof discountDefinitionFormSchema.Type;
+export type DiscountCodeConfigurationFormValues =
+  typeof discountCodeConfigurationFormSchema.Type;
+export type DiscountCodeFormValues = typeof discountCodeFormSchema.Type;
+export type VoucherFormValues = typeof voucherFormSchema.Type;
+export type DiscountCodeCreationFormValues =
+  typeof discountCodeCreationFormSchema.Type;
+export type CustomerCodeAudienceFormValues =
+  typeof customerCodeAudienceFormSchema.Type;
+export type CustomerDiscountGroupFormValues =
+  typeof customerDiscountGroupFormSchema.Type;

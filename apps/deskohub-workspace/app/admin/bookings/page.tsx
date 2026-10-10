@@ -1,14 +1,12 @@
 import { Suspense } from "react";
 import {
-  AdministrationFilterField,
-  AdministrationFilterForm,
-  AdministrationFilterInput,
   AdministrationPage,
   AdministrationTableCount,
   AdministrationTableToolbar,
   BookingTable,
   Pagination,
 } from "@/features/administration/components";
+import { BookingsAdministrationFilterForm } from "@/features/administration/filter-forms";
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
@@ -16,10 +14,9 @@ import {
 } from "@/features/administration/loading";
 import {
   type AdministrationSearchParams,
-  type loadAdministrationBookings,
+  loadAdministrationBookings,
   loadAdministrationBookingsPage,
 } from "@/features/administration/page-data.server";
-import { Button } from "@/shared/components/ui/button";
 
 export default function BookingsAdministrationPage({
   searchParams,
@@ -75,7 +72,7 @@ async function BookingFiltersContent({
 }: {
   readonly input: Promise<BookingsData["input"]>;
 }) {
-  return <BookingFilters input={await input} />;
+  return <BookingsAdministrationFilterForm input={await input} />;
 }
 
 async function BookingResultsContent({
@@ -87,27 +84,6 @@ async function BookingResultsContent({
 }) {
   const [resolvedInput, resolvedResult] = await Promise.all([input, result]);
   return <BookingResults input={resolvedInput} result={resolvedResult} />;
-}
-
-function BookingFilters({ input }: { readonly input: BookingsData["input"] }) {
-  return (
-    <AdministrationFilterForm variant="standalone">
-      <AdministrationFilterField htmlFor="booking-date" label="Booking date">
-        <AdministrationFilterInput
-          defaultValue={input.date}
-          id="booking-date"
-          name="date"
-          required
-          type="date"
-        />
-      </AdministrationFilterField>
-      <input name="sort" type="hidden" value={input.sort} />
-      <input name="direction" type="hidden" value={input.direction} />
-      <Button className="min-h-10" size="sm" type="submit">
-        Show bookings
-      </Button>
-    </AdministrationFilterForm>
-  );
 }
 
 function BookingResults({ input, result }: BookingsData) {
@@ -132,5 +108,24 @@ function BookingResults({ input, result }: BookingsData) {
         }}
       />
     </>
+  );
+}
+
+export async function BookingsAdministrationContent({
+  searchParams,
+}: {
+  readonly searchParams: AdministrationSearchParams;
+}) {
+  const { input, result } = await loadAdministrationBookings(searchParams);
+  return (
+    <AdministrationPage>
+      <h1 className="sr-only">Bookings</h1>
+      <AdministrationTableToolbar
+        count={result.total}
+        filters={<BookingsAdministrationFilterForm input={input} />}
+        itemLabel="booking"
+      />
+      <BookingResults input={input} result={result} />
+    </AdministrationPage>
   );
 }

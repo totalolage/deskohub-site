@@ -7,11 +7,19 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, render, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
 import type {
   AdministrationReservationListInput,
   AdministrationReservationPage,
 } from "@/features/administration/administration.service";
+import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -28,6 +36,10 @@ type LoadedReservationPage = {
   };
 };
 
+type SearchParams = Promise<
+  Record<string, string | readonly string[] | undefined>
+>;
+
 const defaultReservationPage: LoadedReservationPage = {
   input: {},
   result: {
@@ -40,14 +52,38 @@ const defaultReservationPage: LoadedReservationPage = {
   },
 };
 
+async function expectNativeGetSubmission(form: HTMLFormElement) {
+  let submitted = false;
+  const nativeSubmit = form.submit;
+  form.submit = () => {
+    submitted = true;
+  };
+  try {
+    fireEvent.submit(form);
+    await waitFor(() => expect(submitted).toBe(true));
+  } finally {
+    form.submit = nativeSubmit;
+  }
+}
+
 let reservationPage: LoadedReservationPage = defaultReservationPage;
+let receivedReservationSearchParams: SearchParams | undefined;
+let reservationPageInput:
+  | Promise<AdministrationReservationListInput>
+  | undefined;
 
 mock.module("@/features/administration/page-data.server", () => ({
-  loadAdministrationReservations: () => Promise.resolve(reservationPage),
-  loadAdministrationReservationsPage: () => ({
-    input: Promise.resolve(reservationPage.input),
-    result: Promise.resolve(reservationPage.result),
-  }),
+  loadAdministrationReservations: (searchParams: SearchParams) => {
+    receivedReservationSearchParams = searchParams;
+    return Promise.resolve(reservationPage);
+  },
+  loadAdministrationReservationsPage: (searchParams: SearchParams) => {
+    receivedReservationSearchParams = searchParams;
+    return {
+      input: reservationPageInput ?? Promise.resolve(reservationPage.input),
+      result: Promise.resolve(reservationPage.result),
+    };
+  },
 }));
 
 mock.module("@/features/administration/reservation-lookup", () => ({
@@ -59,8 +95,11 @@ describe("ReservationsAdministrationPage", () => {
   afterEach(() => {
     cleanup();
     reservationPage = defaultReservationPage;
+    receivedReservationSearchParams = undefined;
+    reservationPageInput = undefined;
   });
-  afterAll(() => {
+  afterAll(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
     unregisterWorkspaceComponentTestEnv();
   });
 
@@ -77,6 +116,50 @@ describe("ReservationsAdministrationPage", () => {
       view.getByRole("combobox", { name: "Deskohub status" })
     ).toBeDefined();
     expect(view.queryByText("115 reservations")).toBeNull();
+  });
+
+  test("waits for request input before reading the default date", async () => {
+    const originalNow = Temporal.Now.instant;
+    let nowReadCount = 0;
+    Temporal.Now.instant = () => {
+      nowReadCount += 1;
+      return Temporal.Instant.from("2026-08-12T10:00:00Z");
+    };
+
+    let resolveInput!: (input: AdministrationReservationListInput) => void;
+    reservationPageInput = new Promise((resolve) => {
+      resolveInput = resolve;
+    });
+    let filterContent: Promise<ReactNode> | undefined;
+
+    try {
+      const { default: ReservationsAdministrationPage } = await import(
+        "./page"
+      );
+      const page = ReservationsAdministrationPage({
+        searchParams: Promise.resolve({}),
+      }) as ReactElement<{ readonly children: ReactNode }>;
+      const pageChildren = page.props.children as readonly ReactNode[];
+      const toolbar = pageChildren[1] as ReactElement<{
+        readonly filters: ReactElement<{ readonly children: ReactElement }>;
+      }>;
+      const filterLeaf = toolbar.props.filters.props.children;
+      const renderFilterLeaf = filterLeaf.type as (
+        props: typeof filterLeaf.props
+      ) => Promise<ReactNode>;
+
+      filterContent = renderFilterLeaf(filterLeaf.props);
+      expect(nowReadCount).toBe(0);
+    } finally {
+      try {
+        resolveInput({});
+        if (filterContent) await filterContent;
+      } finally {
+        Temporal.Now.instant = originalNow;
+      }
+    }
+
+    expect(nowReadCount).toBeGreaterThan(0);
   });
 
   test("preserves server sorting while moving across reservation pages", async () => {
@@ -207,6 +290,223 @@ describe("ReservationsAdministrationPage", () => {
     );
   });
 
+  test("submits the exact filter fields as GET and preserves customer and sort values", async () => {
+    reservationPage = {
+      input: {
+        customerId: "customer-one",
+        direction: "asc",
+        from: "2026-08-04",
+        sort: "status",
+        status: "complete",
+        to: "2026-08-10",
+        type: "office",
+      },
+      result: defaultReservationPage.result,
+    };
+    const reservationQuery = {
+      customerId: "customer-one",
+      direction: "asc",
+      from: "2026-08-04",
+      sort: "status",
+      status: "complete",
+      to: "2026-08-10",
+      type: "office",
+    };
+    const { ReservationsAdministrationContent } = await import("./page");
+    const view = render(
+      await ReservationsAdministrationContent({
+        searchParams: Promise.resolve(reservationQuery),
+      })
+    );
+    const form = view.container.querySelector("form");
+
+    expect(form?.getAttribute("method")).toBe("get");
+    expect(form?.getAttribute("action")).toBe("/admin/reservations");
+    expect(await receivedReservationSearchParams).toEqual(reservationQuery);
+    expect(
+      (view.getByLabelText("Reservation type") as HTMLSelectElement).value
+    ).toBe("office");
+    expect(
+      (view.getByLabelText("Reservation type") as HTMLSelectElement)
+        .selectedOptions[0]?.textContent
+    ).toBe(m.reservationOfficeProductTitle());
+    const encodedQuery = new URLSearchParams();
+    for (const [name, value] of new FormData(
+      form as HTMLFormElement
+    ).entries()) {
+      encodedQuery.append(name, String(value));
+    }
+    expect(encodedQuery.toString()).toBe(
+      "status=complete&type=office&from=2026-08-04&to=2026-08-10&customerId=customer-one&sort=status&direction=asc"
+    );
+    await expectNativeGetSubmission(form as HTMLFormElement);
+  });
+
+  test("submits customer-less reservation criteria through native GET", async () => {
+    const query = { direction: "desc", sort: "created" };
+    reservationPage = {
+      input: { direction: "desc", sort: "created" },
+      result: defaultReservationPage.result,
+    };
+    const { ReservationsAdministrationContent } = await import("./page");
+    const view = render(
+      await ReservationsAdministrationContent({
+        searchParams: Promise.resolve(query),
+      })
+    );
+    const form = view.container.querySelector("form") as HTMLFormElement;
+
+    expect(form.getAttribute("method")).toBe("get");
+    expect(form.getAttribute("action")).toBe("/admin/reservations");
+    expect(form.querySelector('input[name="customerId"]')).toBeNull();
+    expect(
+      Array.from(new FormData(form).entries()).map(([name, value]) => [
+        name,
+        String(value),
+      ])
+    ).toEqual([
+      ["status", ""],
+      ["type", ""],
+      ["from", ""],
+      ["to", ""],
+      ["sort", "created"],
+      ["direction", "desc"],
+    ]);
+    await expectNativeGetSubmission(form);
+  });
+
+  test("replaces dirty values after Clear and date-shortcut navigation", async () => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2026-08-12T10:00:00Z");
+    const firstQuery = {
+      customerId: "customer-one",
+      direction: "asc",
+      from: "2026-08-04",
+      sort: "status",
+      status: "complete",
+      to: "2026-08-10",
+      type: "office",
+    };
+    reservationPage = {
+      input: firstQuery,
+      result: defaultReservationPage.result,
+    };
+
+    try {
+      const { ReservationsAdministrationContent } = await import("./page");
+      const view = render(
+        await ReservationsAdministrationContent({
+          searchParams: Promise.resolve(firstQuery),
+        })
+      );
+      const form = view.container.querySelector("form") as HTMLFormElement;
+      fireEvent.change(view.getByLabelText("Deskohub status"), {
+        target: { value: "cancelled" },
+      });
+      fireEvent.change(view.getByLabelText("Start date from"), {
+        target: { value: "2026-08-05" },
+      });
+      view.rerender(
+        await ReservationsAdministrationContent({
+          searchParams: Promise.resolve(firstQuery),
+        })
+      );
+      expect(
+        (view.getByLabelText("Deskohub status") as HTMLSelectElement).value
+      ).toBe("cancelled");
+      expect(
+        (view.getByLabelText("Start date from") as HTMLInputElement).value
+      ).toBe("2026-08-05");
+      expect(
+        view.getByRole("link", { name: "Clear" }).getAttribute("href")
+      ).toBe("/admin/reservations");
+
+      reservationPage = {
+        input: { direction: "desc", sort: "created" },
+        result: defaultReservationPage.result,
+      };
+      view.rerender(
+        await ReservationsAdministrationContent({
+          searchParams: Promise.resolve({}),
+        })
+      );
+
+      expect(
+        (view.getByLabelText("Deskohub status") as HTMLSelectElement).value
+      ).toBe("");
+      expect(
+        (view.getByLabelText("Reservation type") as HTMLSelectElement).value
+      ).toBe("");
+      expect(
+        (view.getByLabelText("Start date from") as HTMLInputElement).value
+      ).toBe("");
+      expect(form.querySelector('input[name="customerId"]')).toBeNull();
+      let entries = Array.from(new FormData(form).entries()).map(
+        ([name, value]) => [name, String(value)]
+      );
+      expect(entries).toEqual([
+        ["status", ""],
+        ["type", ""],
+        ["from", ""],
+        ["to", ""],
+        ["sort", "created"],
+        ["direction", "desc"],
+      ]);
+      await expectNativeGetSubmission(form);
+
+      fireEvent.change(view.getByLabelText("Start date from"), {
+        target: { value: "2026-08-02" },
+      });
+      fireEvent.change(view.getByLabelText("Deskohub status"), {
+        target: { value: "complete" },
+      });
+      const upcomingHref = view
+        .getByRole("link", { name: "Upcoming" })
+        .getAttribute("href");
+      expect(upcomingHref).toBe(
+        "/admin/reservations?direction=desc&from=2026-08-13&sort=created"
+      );
+      const upcomingQuery = Object.fromEntries(
+        new URL(upcomingHref as string, "http://workspace.test").searchParams
+      );
+      reservationPage = {
+        input: {
+          direction: "desc",
+          from: "2026-08-13",
+          sort: "created",
+        },
+        result: defaultReservationPage.result,
+      };
+      view.rerender(
+        await ReservationsAdministrationContent({
+          searchParams: Promise.resolve(upcomingQuery),
+        })
+      );
+
+      expect(
+        (view.getByLabelText("Start date from") as HTMLInputElement).value
+      ).toBe("2026-08-13");
+      expect(
+        (view.getByLabelText("Deskohub status") as HTMLSelectElement).value
+      ).toBe("");
+      expect(form.querySelector('input[name="customerId"]')).toBeNull();
+      entries = Array.from(new FormData(form).entries()).map(
+        ([name, value]) => [name, String(value)]
+      );
+      expect(entries).toEqual([
+        ["status", ""],
+        ["type", ""],
+        ["from", "2026-08-13"],
+        ["to", ""],
+        ["sort", "created"],
+        ["direction", "desc"],
+      ]);
+      await expectNativeGetSubmission(form);
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
   test("places date shortcuts before right-aligned clear and apply actions", async () => {
     const originalNow = Temporal.Now.instant;
     Temporal.Now.instant = () => Temporal.Instant.from("2026-08-12T10:00:00Z");
@@ -248,6 +548,9 @@ describe("ReservationsAdministrationPage", () => {
       const actions = view.getByRole("group", { name: "Filter actions" });
       expect(actions.className).toContain("justify-end");
       expect(actions.textContent).toBe("ClearApply filters");
+      expect(
+        view.getByRole("link", { name: "Clear" }).getAttribute("href")
+      ).toBe("/admin/reservations");
     } finally {
       Temporal.Now.instant = originalNow;
     }
