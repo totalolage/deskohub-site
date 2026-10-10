@@ -348,12 +348,12 @@ describe.skipIf(!postgresDatabase)(
         if (rowCount) return;
         await Bun.sleep(20);
       }
-      throw new Error("The draft insert never waited on the earlier worker.");
+      throw new Error("The draft insert never waited on the other writer.");
     };
 
-    // Vercel keeps finishing in-flight requests on the previous deployment
-    // while this one serves new ones.
-    test("creates one draft when an earlier worker submits the same attempt first", async () => {
+    // Rows stored by workers from before keyed lookup keys stay in flight
+    // after those workers drain.
+    test("resumes a draft an earlier worker stored for the same attempt", async () => {
       const submission = newSubmission();
       const input = draftInput(submission, { keyRing });
 
@@ -362,70 +362,34 @@ describe.skipIf(!postgresDatabase)(
         .createDraft(input)
         .pipe(Effect.runPromise);
 
+      expect(input.checkoutSessionKey).not.toBe(
+        deriveRingKeyedCheckoutSessionKey(keyRing, submission.checkoutSessionId)
+      );
       expect(draft.id).toBe(earlierId);
       expect(await sessionRows(input)).toHaveLength(1);
     });
 
-    test("makes an earlier worker's insert conflict with a draft for the same attempt", async () => {
+    test("returns an attempt another writer stores after the draft lookup", async () => {
       const submission = newSubmission();
       const input = draftInput(submission, { keyRing });
-
-      const draft = await reservations
-        .createDraft(input)
-        .pipe(Effect.runPromise);
-      const earlierId = await createDraftAsEarlierWorker(submission);
-
-      expect(draft.checkoutSessionKey).toBe(
-        deriveRingKeyedCheckoutSessionKey(keyRing, submission.checkoutSessionId)
-      );
-      expect(draft.checkoutAttemptKey).toBe(
-        deriveRingKeyedCheckoutAttemptKey(keyRing, submission)
-      );
-      expect(earlierId).toBe(draft.id);
-      expect(await sessionRows(input)).toHaveLength(1);
-    });
-
-    test("creates one draft when an earlier worker races the same attempt", async () => {
-      for (let round = 0; round < 5; round++) {
-        const submission = newSubmission();
-        const input = draftInput(submission, { keyRing });
-
-        const [draft, earlierId] = await Promise.all([
-          reservations.createDraft(input).pipe(Effect.runPromise),
-          createDraftAsEarlierWorker(submission),
-        ]);
-        const rows = await sessionRows(input);
-
-        expect(rows).toHaveLength(1);
-        expect([draft.id, earlierId]).toEqual([rows[0]?.id, rows[0]?.id]);
-      }
-    });
-
-    test("returns an earlier worker's attempt that wins the insert after the draft lookup", async () => {
-      const submission = newSubmission();
-      const input = draftInput(submission, { keyRing });
-      const earlierId = workspaceReservationIdSchema.make(
+      const writerId = workspaceReservationIdSchema.make(
         `reservation-${crypto.randomUUID()}`
       );
-      fixtureReservationIds.push(earlierId);
+      fixtureReservationIds.push(writerId);
 
-      // The earlier worker's row stays uncommitted until the draft's insert
-      // waits on it, so the draft's lookups ran before the row existed.
-      const earlierWorker = await postgres.pool.connect();
+      // A writer that skips the draft lock keeps its row uncommitted until the
+      // draft's insert waits on it, so the draft's lookups ran before the row
+      // existed.
+      const writer = await postgres.pool.connect();
+      let pendingDraft: Promise<unknown> | undefined;
       try {
-        await earlierWorker.query("begin");
-        await drizzle({ client: earlierWorker })
+        await writer.query("begin");
+        await drizzle({ client: writer })
           .insert(workspaceReservations)
           .values({
-            id: earlierId,
-            checkoutSessionKey: deriveRingKeyedCheckoutSessionKey(
-              keyRing,
-              submission.checkoutSessionId
-            ),
-            checkoutAttemptKey: deriveRingKeyedCheckoutAttemptKey(
-              keyRing,
-              submission
-            ),
+            id: writerId,
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
             reservationState: "cancelled",
             paymentState: "not_started",
             fulfillmentState: "not_started",
@@ -433,22 +397,29 @@ describe.skipIf(!postgresDatabase)(
             reservationCancelledAt: Temporal.Now.instant(),
             ...draftDetails,
           });
-        const { rows } = await earlierWorker.query<{ readonly pid: number }>(
+        const { rows } = await writer.query<{ readonly pid: number }>(
           "select pg_backend_pid()::int as pid"
         );
-        const earlierWorkerPid = rows[0]?.pid;
+        const writerPid = rows[0]?.pid;
 
         const draft = reservations.createDraft(input).pipe(Effect.runPromise);
-        await pollUntilBlockedBy(earlierWorkerPid);
-        await earlierWorker.query("commit");
+        pendingDraft = draft;
+        await pollUntilBlockedBy(writerPid);
+        await writer.query("commit");
 
-        expect((await draft).id).toBe(earlierId);
+        expect((await draft).id).toBe(writerId);
       } finally {
-        await earlierWorker.query("rollback").catch(() => {});
-        earlierWorker.release();
+        await writer.query("rollback").catch(() => {});
+        writer.release();
+        // A draft that never waited on the other writer stores its own
+        // row, so let it finish and register every row for cleanup.
+        await pendingDraft?.catch(() => {});
+        await sessionRows(input);
       }
     });
 
+    // While the prefixed-write deployment rolls out, Vercel keeps finishing
+    // in-flight requests on the ring-keyed-write deployment.
     test("creates one draft when ring-keyed and prefixed writers race a first submission", async () => {
       for (let round = 0; round < 5; round++) {
         const submission = newSubmission();

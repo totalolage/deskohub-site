@@ -104,16 +104,17 @@ type LookupKeyFormat = "ring-keyed" | "key-id-prefixed";
  * The write format changes in two separate deployments because Vercel keeps
  * serving in-flight requests on the previous deployment:
  *
- * 1. `ring-keyed` (this value): earlier workers neither read prefixed keys nor
- *    take the draft-creation lock, so new rows keep their format and the two
- *    versions still collide on the stored-key unique indexes.
- * 2. `key-id-prefixed`: only after step 1 is the sole deployment serving
- *    traffic. Both versions then take the lock and read both formats.
+ * 1. `ring-keyed`: earlier workers neither read prefixed keys nor take the
+ *    draft-creation lock, so new rows kept their format and the two versions
+ *    still collided on the stored-key unique indexes.
+ * 2. `key-id-prefixed` (this value): only after step 1 is the sole deployment
+ *    serving traffic. Both versions then take the lock and read both formats.
  *
- * Rotate `CHECKOUT_PAY_STATE_KEYS` only after step 2 is deployed and no
- * `held` row or row with `pending` payment still stores a ring-keyed key.
+ * Rotate `CHECKOUT_PAY_STATE_KEYS` only after step 2 is the sole deployment
+ * serving traffic and no `held` row or row with `pending` payment still
+ * stores a ring-keyed key.
  */
-const storedLookupKeyFormat: LookupKeyFormat = "ring-keyed";
+const storedLookupKeyFormat: LookupKeyFormat = "key-id-prefixed";
 
 const lookupKeyDerivationInfo = "deskohub-workspace/checkout-lookup-key";
 const lookupKeyByteLength = 32;
