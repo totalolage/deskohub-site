@@ -126,6 +126,25 @@ export const toNexiHostedPaymentDiagnosticCode = (
   state: NexiHostedPaymentPageStateCode
 ): NexiHostedPaymentDiagnosticCode => `nexi_hosted_${step}_${state}`;
 
+export const parseNexiHostedPaymentDiagnosticCode = (
+  diagnosticCode: string | undefined
+):
+  | {
+      readonly state: NexiHostedPaymentPageStateCode;
+      readonly step: NexiHostedPaymentStep;
+    }
+  | undefined => {
+  for (const step of nexiHostedPaymentSteps) {
+    const prefix = `nexi_hosted_${step}_`;
+    if (!diagnosticCode?.startsWith(prefix)) continue;
+    const state = nexiHostedPaymentPageStates.find(
+      (candidate) => candidate === diagnosticCode.slice(prefix.length)
+    );
+    if (state) return { state, step };
+  }
+  return undefined;
+};
+
 export const workspaceE2EDiagnosticCodes = [
   ...nexiWebhookDiagnosticCodes,
   ...workspaceE2ERunnerDiagnosticCodes,

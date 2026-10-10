@@ -4,6 +4,10 @@ import { resolve } from "node:path";
 import { errors as playwrightErrors } from "@playwright/test";
 import { Effect } from "effect";
 import { browserDiagnosticsScript, browserTextScript } from "./browser-scripts";
+import {
+  isNexiBuildApiUrl,
+  summarizeNexiBuildFailureBody,
+} from "./checkout/nexi-build-api";
 import type { WorkspaceE2EConfig } from "./config";
 import {
   toWorkspaceE2EError,
@@ -16,7 +20,6 @@ import { pollUntil } from "./polling";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
-import { isNexiBuildApiUrl } from "./urls";
 
 const isPlaywrightTimeout = (cause: unknown): boolean =>
   cause instanceof playwrightErrors.TimeoutError ||
@@ -135,6 +138,21 @@ export const switchToBrowserTab = (
   runBrowserCommand("switch browser tab", run, session, ["tab", tabId], {
     logOutput: false,
   }).pipe(Effect.asVoid);
+
+export const closeBrowserTab = (
+  run: Runner,
+  session: string,
+  tabId: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "close browser tab",
+    run,
+    session,
+    ["tab", "close", tabId],
+    {
+      logOutput: false,
+    }
+  ).pipe(Effect.asVoid);
 
 export const getBrowserHeaderArgs = (config: WorkspaceE2EConfig) =>
   config.bypassSecret
@@ -880,12 +898,13 @@ const sanitizeHarResponse = (
 
   const content = asRecord(response.content);
   if (!content || typeof content.text !== "string") return;
-  content.text =
+  const summary =
     typeof response.status === "number" &&
     response.status >= 400 &&
     isNexiBuildUrl(requestUrl)
       ? summarizeNexiBuildFailureBody(content.text)
-      : "[redacted]";
+      : undefined;
+  content.text = summary ? JSON.stringify(summary) : "[redacted]";
 };
 
 const isNexiBuildUrl = (value: string) => {
@@ -895,65 +914,6 @@ const isNexiBuildUrl = (value: string) => {
     return false;
   }
 };
-
-// Nexi explains a rejected hosted-field call only in its response body. Keep
-// only fields at known paths whose values have a provider-code shape that
-// cannot carry customer or card data; drop everything else.
-const nexiErrorCodePattern = /^[A-Z]{2,4}\d{2,6}$/;
-const nexiEnumValuePattern = /^[A-Z]+(?:_[A-Z]+)+$/;
-const nexiHostedFieldIds = new Set([
-  "CARDHOLDER_EMAIL",
-  "CARDHOLDER_NAME",
-  "CARD_NUMBER",
-  "EXPIRATION_DATE",
-  "SECURITY_CODE",
-]);
-
-const summarizeNexiBuildFailureBody = (text: string) => {
-  let body: Record<string, unknown> | undefined;
-  try {
-    body = asRecord(JSON.parse(text));
-  } catch {
-    return "[redacted]";
-  }
-  if (!body) return "[redacted]";
-
-  const summary: Record<string, unknown> = {};
-  const errorCodes = recordsOf(body.errors).flatMap((error) =>
-    codeValue(error.code, nexiErrorCodePattern)
-  );
-  if (errorCodes.length > 0)
-    summary.errors = errorCodes.map((code) => ({ code }));
-  for (const key of ["event", "state", "workflowState"]) {
-    const [value] = codeValue(body[key], nexiEnumValuePattern);
-    if (value) summary[key] = value;
-  }
-  const fieldStatus = recordsOf(body.fieldStatus).flatMap((field) => {
-    const [event] = codeValue(field.event, nexiEnumValuePattern);
-    if (!event) return [];
-    const id =
-      typeof field.id === "string" && nexiHostedFieldIds.has(field.id)
-        ? field.id
-        : "[other]";
-    return [{ event, id }];
-  });
-  if (fieldStatus.length > 0) summary.fieldStatus = fieldStatus;
-
-  return Object.keys(summary).length > 0
-    ? JSON.stringify(summary)
-    : "[redacted]";
-};
-
-const recordsOf = (value: unknown) =>
-  Array.isArray(value)
-    ? value.flatMap((item) => {
-        const record = asRecord(item);
-        return record ? [record] : [];
-      })
-    : [];
-
-const codeValue = (value: unknown, pattern: RegExp): string[] =>
-  typeof value === "string" && pattern.test(value) ? [value] : [];
 
 const sanitizeHarNamedValues = (value: unknown) =>
   Array.isArray(value)

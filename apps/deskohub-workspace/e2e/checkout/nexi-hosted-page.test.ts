@@ -5,6 +5,7 @@ import {
   nexiHostedPaymentSteps,
   toNexiHostedPaymentDiagnosticCode,
 } from "../errors";
+import { parseNexiBuildResponses } from "./nexi-build-api";
 import {
   classifyNexiHostedPage,
   countNexiCardDataRejections,
@@ -13,7 +14,6 @@ import {
   formatNexiBuildFailures,
   isTerminalNexiHostedPageState,
   type NexiHostedPageObservation,
-  parseNexiBuildResponses,
   parseNexiSnapshot,
   toNexiHostedPageStateCode,
 } from "./nexi-hosted-page";

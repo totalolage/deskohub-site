@@ -2,7 +2,7 @@ import type {
   NexiHostedPaymentPageStateCode,
   NexiHostedPaymentStep,
 } from "../errors";
-import { isNexiBuildApiUrl } from "../urls";
+import type { NexiBuildResponse } from "./nexi-build-api";
 
 // Pure model of the Nexi XPay hosted payment page as seen through Playwright AI
 // snapshots and the session's response log. The driver polls this model; it
@@ -164,57 +164,6 @@ export const findNexiCardField = (
     ...(node.frameRef ? { frameRef: node.frameRef } : {}),
     ref: node.ref,
   };
-};
-
-export type NexiBuildEndpoint =
-  | "card-data"
-  | "browser-data"
-  | "state"
-  | "gdi-result"
-  | "finalize-payment"
-  | "validate-and-pay"
-  | "other";
-
-export type NexiBuildResponse = {
-  readonly endpoint: NexiBuildEndpoint;
-  readonly method: string;
-  readonly status: number;
-};
-
-const nexiBuildEndpoints: readonly [RegExp, NexiBuildEndpoint][] = [
-  [/^\/fe\/build\/text\/?$/, "card-data"],
-  [/^\/fe\/build\/text\/BROWSER_DATA$/, "browser-data"],
-  [/^\/fe\/(?:v2\/)?build\/state$/, "state"],
-  [/^\/fe\/build\/check_gdi_result$/, "gdi-result"],
-  [/^\/fe\/build\/finalize_payment$/, "finalize-payment"],
-  [/^\/fe\/build\/validateAndPay$/, "validate-and-pay"],
-];
-
-// Reads the session response log ("<status> <METHOD> <url>" lines) and keeps
-// only the status, method, and a fixed endpoint class of Nexi hosted-field API
-// calls.
-export const parseNexiBuildResponses = (
-  responseLog: string
-): readonly NexiBuildResponse[] => {
-  const responses: NexiBuildResponse[] = [];
-  for (const line of responseLog.split("\n")) {
-    const match = line
-      .trim()
-      .match(/^(\d{3})\s+([A-Z]+)\s+(https:\/\/\S+)$/);
-    if (!match?.[1] || !match[2] || !match[3]) continue;
-    let url: URL;
-    try {
-      url = new URL(match[3]);
-    } catch {
-      continue;
-    }
-    if (!isNexiBuildApiUrl(url)) continue;
-    const endpoint =
-      nexiBuildEndpoints.find(([pattern]) => pattern.test(url.pathname))?.[1] ??
-      "other";
-    responses.push({ endpoint, method: match[2], status: Number(match[1]) });
-  }
-  return responses;
 };
 
 // Card details are saved by POST; Nexi leaves the form inert after any failed
