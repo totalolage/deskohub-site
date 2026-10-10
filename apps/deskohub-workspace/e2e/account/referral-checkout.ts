@@ -41,6 +41,21 @@ const accountReferralVoucherAmount = {
   exponent: 2,
   value: 10_000,
 } as const;
+const ordinaryCodeSlotObservationKey =
+  "__deskohubE2EReferralDiscountFormObservation";
+const ordinaryCodeSlotObservationMaximumCount = 9;
+
+type OrdinaryCodeSlotObservation = {
+  readonly formCount: number;
+  readonly namedFieldCount: number;
+  readonly namedInputEmpty: 0 | 1;
+  readonly namedInputEnabled: 0 | 1;
+  readonly namedInputPresent: 0 | 1;
+  readonly selectedFormPresent: 0 | 1;
+  readonly selectedFormVisible: 0 | 1;
+  readonly submitEnabled: 0 | 1;
+  readonly submitPresent: 0 | 1;
+};
 
 export const calculateSingleInviteeReferralDiscount = (
   remainingSubtotal: WorkspaceMoney
@@ -511,9 +526,37 @@ const assertOrdinaryCodeSlotAvailable = ({
     session,
     "ordinary code slot after referral acceptance",
     `(() => {
+      const formSelector = "#checkout-discount-code-form";
+      const inputSelector = 'input[name="submittedCode"]';
+      const buttonSelector = 'button[type="submit"]';
+      const forms = document.querySelectorAll(formSelector);
       const form = document.querySelector("#checkout-discount-code-form");
-      const input = form?.querySelector('input[name="submittedCode"]');
-      const submit = form?.querySelector('button[type="submit"]');
+      const input = form?.querySelector(inputSelector);
+      const submit = form?.querySelector(buttonSelector);
+      const inputIsPresent = input instanceof HTMLInputElement;
+      const submitIsPresent = submit instanceof HTMLButtonElement;
+      const formStyle = form ? window.getComputedStyle(form) : undefined;
+      const observation = {
+        formCount: Math.min(forms.length, ${ordinaryCodeSlotObservationMaximumCount}),
+        namedFieldCount: Math.min(
+          document.querySelectorAll(inputSelector).length,
+          ${ordinaryCodeSlotObservationMaximumCount}
+        ),
+        selectedFormPresent: form === null ? 0 : 1,
+        selectedFormVisible:
+          form !== null &&
+          form.getClientRects().length > 0 &&
+          formStyle?.display !== "none" &&
+          formStyle?.visibility === "visible"
+            ? 1
+            : 0,
+        namedInputPresent: inputIsPresent ? 1 : 0,
+        namedInputEnabled: inputIsPresent && !input.disabled ? 1 : 0,
+        namedInputEmpty: inputIsPresent && input.value === "" ? 1 : 0,
+        submitPresent: submitIsPresent ? 1 : 0,
+        submitEnabled: submitIsPresent && !submit.disabled ? 1 : 0,
+      };
+      window[${JSON.stringify(ordinaryCodeSlotObservationKey)}] = observation;
       return input instanceof HTMLInputElement &&
         !input.disabled &&
         input.value === "" &&
@@ -521,7 +564,109 @@ const assertOrdinaryCodeSlotAvailable = ({
         !submit.disabled;
     })()`,
     { timeoutMs: config.timeouts.uiTransition }
+  ).pipe(
+    Effect.ensuring(
+      annotateOrdinaryCodeSlotObservation({ run, session })
+    )
   );
+
+const annotateOrdinaryCodeSlotObservation = ({
+  run,
+  session,
+}: {
+  readonly run: Runner;
+  readonly session: string;
+}) =>
+  Effect.exit(
+    evalBrowserScript(
+      "read bounded referral discount form observation",
+      run,
+      session,
+      `(() => {
+        const key = ${JSON.stringify(ordinaryCodeSlotObservationKey)};
+        const observation = window[key];
+        delete window[key];
+        return observation;
+      })()`,
+      {
+        logCommand: false,
+        logOutput: false,
+        timeoutMs: workspaceE2EPollIntervalMs.browser,
+      }
+    ).pipe(
+      Effect.flatMap(({ stdout }) =>
+        Effect.try({
+          catch: () => undefined,
+          try: () => JSON.parse(stdout) as unknown,
+        })
+      ),
+      Effect.flatMap((value) => {
+        const observation = parseOrdinaryCodeSlotObservation(value);
+        return observation
+          ? Effect.annotateCurrentSpan({
+              "e2e.account.discount_form.form_count":
+                observation.formCount,
+              "e2e.account.discount_form.named_field_count":
+                observation.namedFieldCount,
+              "e2e.account.discount_form.selected_form_present":
+                observation.selectedFormPresent,
+              "e2e.account.discount_form.selected_form_visible":
+                observation.selectedFormVisible,
+              "e2e.account.discount_form.named_input_present":
+                observation.namedInputPresent,
+              "e2e.account.discount_form.named_input_enabled":
+                observation.namedInputEnabled,
+              "e2e.account.discount_form.named_input_empty":
+                observation.namedInputEmpty,
+              "e2e.account.discount_form.submit_present":
+                observation.submitPresent,
+              "e2e.account.discount_form.submit_enabled":
+                observation.submitEnabled,
+            })
+          : Effect.void;
+      })
+    )
+  ).pipe(Effect.asVoid);
+
+const parseOrdinaryCodeSlotObservation = (
+  value: unknown
+): OrdinaryCodeSlotObservation | undefined => {
+  if (typeof value !== "object" || value === null) return undefined;
+  const observation = value as Record<string, unknown>;
+  const isFlag = (candidate: unknown): candidate is 0 | 1 =>
+    candidate === 0 || candidate === 1;
+  const isCount = (candidate: unknown): candidate is number =>
+    typeof candidate === "number" &&
+    Number.isInteger(candidate) &&
+    candidate >= 0 &&
+    candidate <= ordinaryCodeSlotObservationMaximumCount;
+
+  if (
+    !isCount(observation.formCount) ||
+    !isCount(observation.namedFieldCount) ||
+    !isFlag(observation.selectedFormPresent) ||
+    !isFlag(observation.selectedFormVisible) ||
+    !isFlag(observation.namedInputPresent) ||
+    !isFlag(observation.namedInputEnabled) ||
+    !isFlag(observation.namedInputEmpty) ||
+    !isFlag(observation.submitPresent) ||
+    !isFlag(observation.submitEnabled)
+  ) {
+    return undefined;
+  }
+
+  return {
+    formCount: observation.formCount,
+    namedFieldCount: observation.namedFieldCount,
+    selectedFormPresent: observation.selectedFormPresent,
+    selectedFormVisible: observation.selectedFormVisible,
+    namedInputPresent: observation.namedInputPresent,
+    namedInputEnabled: observation.namedInputEnabled,
+    namedInputEmpty: observation.namedInputEmpty,
+    submitPresent: observation.submitPresent,
+    submitEnabled: observation.submitEnabled,
+  };
+};
 
 const assertReferralConfirmationCleared = ({
   config,
