@@ -1,0 +1,10 @@
+# Workspace forms
+
+- Use React Hook Form for editable values and client validation. Pass the Effect schema directly to `effectSchemaResolver` from `@deskohub/effect-schema-resolver`; do not wrap form schemas in `Schema.toStandardSchemaV1` or use `standardSchemaResolver`. Form values take the schema's encoded type and submitted values its decoded type, so `useForm<Input, unknown, Output>` generics match `typeof schema.Encoded` and `typeof schema.Type`. Keep existing GET navigation, Better Auth browser requests, Server Actions, and local confirmation callbacks as their respective submission paths.
+- The resolver already reports every issue (`errors: "all"`). Pass only other parse options, such as `{ onExcessProperty: "error" }`, as its second argument. A schema that needs Effect services must receive them through the `services` resolver option; React Hook Form context is not an Effect environment.
+- When a Server Action consumes the same rules through Standard Schema V1, keep that adapter on the action contract and give the resolver the underlying Effect schema. Do not duplicate the rules.
+- Let RHF or the submission action own pending state. Keep separate state only for a distinct workflow outcome, and justify synchronous duplicate-submit guards with a regression test.
+- Reset hydrated forms in the action completion callback. Use an effect only when synchronizing an external source that has no completion callback, such as a native action result arriving after hydration; cover that boundary with a regression test.
+- Declare parameterless schemas and default values as constants. Use a schema factory only when it depends on caller input, such as an explicit locale.
+- Rely on the React Compiler for ordinary derived values. Do not add manual memoization for a schema or resolver without a demonstrated identity or performance requirement.
+- Execute Effect Schema directly for server validation. Convert to Standard Schema V1 only when the consuming API requires that contract, such as the safe-action, environment, or query boundary.

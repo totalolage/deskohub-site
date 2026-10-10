@@ -161,6 +161,88 @@ const captureFailure = (result: Promise<string>) =>
     (failure: unknown) => failure
   );
 
+const traceFailedRetrieval = async (
+  handleHistory: FetchHandler,
+  requestOverrides: Partial<Partial<WorkspaceE2EMagicLinkRequest>> = {}
+) => {
+  const exporter = new InMemorySpanExporter();
+  const provider = new BasicTracerProvider({
+    spanProcessors: [
+      new SimpleSpanProcessor(createCensoredOtelSpanExporter(exporter)),
+    ],
+  });
+  const harness = makeHttpHarness(handleHistory);
+  const tracingLayer = createTracingLive({
+    provider,
+    serviceName: "deskohub-workspace-e2e-test",
+  });
+  const telemetryLayer = E2ETelemetryService.Default.pipe(
+    Layer.provide(E2ERunContextService.layer(makeTestE2EEnvironment()))
+  );
+  const e2eTelemetryLayer = Layer.merge(
+    Layer.merge(harness.layer, tracingLayer),
+    telemetryLayer
+  );
+  const request: WorkspaceE2EMagicLinkRequest = {
+    callbackPath,
+    deadlineAfterMs: 50,
+    pollIntervalMs: 5_000,
+    recipient,
+    startedAt: new Date("2026-10-01T12:00:00.000Z"),
+    ...requestOverrides,
+  };
+
+  let failure: unknown;
+  try {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const telemetry = yield* E2ETelemetryService;
+          return yield* telemetry.traceStep({
+            caseId: "account-magic-link",
+            effect: Effect.gen(function* () {
+              const previewLogs = yield* resolveWorkspaceE2EPreviewLogs(config);
+              return yield* previewLogs.retrieveMagicLink(request);
+            }),
+            stepId: "retrieves-delivered-single-use-link",
+            timeoutMs: config.timeouts.authDelivery,
+          });
+        })
+      ).pipe(Effect.provide(e2eTelemetryLayer))
+    );
+  } catch (error) {
+    failure = error;
+  }
+
+  try {
+    await provider.forceFlush();
+    return {
+      failure,
+      requests: harness.requests,
+      spans: exporter.getFinishedSpans(),
+    };
+  } finally {
+    await provider.shutdown();
+  }
+};
+
+const logPollStepAttributes = (
+  spans: ReturnType<InMemorySpanExporter["getFinishedSpans"]>
+) => {
+  const span = spans.find(
+    (candidate) =>
+      candidate.name === "e2e.step" &&
+      candidate.attributes["e2e.step.id"] ===
+        "retrieves-delivered-single-use-link"
+  );
+  if (!span) throw new Error("expected the log retrieval step span");
+  return Object.fromEntries(
+    Object.entries(span.attributes).filter(([key]) =>
+      key.startsWith("e2e.account.log_poll.")
+    )
+  );
+};
+
 describe("workspace e2e Vercel log retrieval", () => {
   test("uses only the selected deployment and project history resources", async () => {
     const startedAt = new Date("2026-09-28T12:00:00.000Z");
@@ -323,6 +405,17 @@ describe("workspace e2e Vercel log retrieval", () => {
               "retrieves-delivered-single-use-link"
         )
       ).toBe(true);
+      expect(logPollStepAttributes(spans)).toEqual({
+        "e2e.account.log_poll.completed_query_count_cumulative": 1,
+        "e2e.account.log_poll.last_returned_entry_count": 1,
+        "e2e.account.log_poll.last_marker_count": 1,
+        "e2e.account.log_poll.baseline_excluded_marker_count_cumulative": 0,
+        "e2e.account.log_poll.before_started_at_marker_count_cumulative": 0,
+        "e2e.account.log_poll.other_recipient_candidate_count_cumulative": 0,
+        "e2e.account.log_poll.matching_entry_count_cumulative": 1,
+        "e2e.account.log_poll.last_marker_min_timestamp_delta_ms": 1,
+        "e2e.account.log_poll.last_marker_max_timestamp_delta_ms": 1,
+      });
       const exported = JSON.stringify(spans);
       expect(exported).not.toContain(expectedHost);
       expect(exported).not.toContain(deployment.id);
@@ -577,18 +670,17 @@ describe("workspace e2e Vercel log retrieval", () => {
     expect(requests).toHaveLength(1);
   });
 
-  test("clips an empty-history poll sleep to the remaining deadline", async () => {
-    const { requests, result } = makeRetrieval(() => Response.json(page([])), {
-      deadlineAfterMs: 30,
-      pollIntervalMs: 5_000,
-    });
+  test("clips an empty-history poll sleep and traces terminal poll counts", async () => {
     const startedAt = Date.now();
-
-    const failure = await captureFailure(result);
+    const { failure, requests, spans } = await traceFailedRetrieval(() =>
+      Response.json(page([]))
+    );
 
     expect(failure).toMatchObject({
       _tag: "WorkspaceE2EError",
       diagnosticCode: "auth_delivery_message_not_observed",
+      message:
+        "Vercel log retrieval did not observe the preview magic-link entry before the deadline",
       operation: "poll Vercel preview runtime logs",
     });
     expect(Date.now() - startedAt).toBeLessThan(1_000);
@@ -597,6 +689,81 @@ describe("workspace e2e Vercel log retrieval", () => {
         (request) => new URL(request.url).pathname === "/api/logs/request-logs"
       )
     ).toHaveLength(1);
+    const attributes = logPollStepAttributes(spans);
+    expect(attributes).toEqual({
+      "e2e.account.log_poll.completed_query_count_cumulative": 1,
+      "e2e.account.log_poll.last_returned_entry_count": 0,
+      "e2e.account.log_poll.last_marker_count": 0,
+      "e2e.account.log_poll.baseline_excluded_marker_count_cumulative": 0,
+      "e2e.account.log_poll.before_started_at_marker_count_cumulative": 0,
+      "e2e.account.log_poll.other_recipient_candidate_count_cumulative": 0,
+      "e2e.account.log_poll.matching_entry_count_cumulative": 0,
+    });
+  });
+
+  test("traces marker filters without exporting synthetic log content", async () => {
+    const syntheticRecipient = "other-recipient-private@e2e.invalid";
+    const hiddenRowId = "request-row-private-baseline";
+    const startedAt = new Date("2026-10-01T12:00:00.000Z");
+    const excludedMarker = row(
+      hiddenRowId,
+      [log(previewE2ELine("excluded marker content"))],
+      { timestamp: "2026-10-01T12:00:00.001Z" }
+    );
+    const beforeStartMarker = row(
+      "request-row-private-before-start",
+      [log(previewE2ELine("before start marker content"))],
+      { timestamp: "2026-10-01T11:59:59.999Z" }
+    );
+    const otherRecipientMarker = row(
+      "request-row-private-other-recipient",
+      [
+        log(
+          previewE2ELine("other recipient marker content", syntheticRecipient)
+        ),
+      ],
+      { timestamp: "2026-10-01T12:00:00.003Z" }
+    );
+    const { failure, requests, spans } = await traceFailedRetrieval(
+      () =>
+        Response.json(
+          page([excludedMarker, beforeStartMarker, otherRecipientMarker])
+        ),
+      {
+        excludeLogEntryIds: [`${hiddenRowId}:0`],
+        startedAt,
+      }
+    );
+
+    expect(failure).toMatchObject({
+      _tag: "WorkspaceE2EError",
+      diagnosticCode: "auth_delivery_message_not_observed",
+      operation: "poll Vercel preview runtime logs",
+    });
+    expect(
+      requests.filter(
+        (request) => new URL(request.url).pathname === "/api/logs/request-logs"
+      )
+    ).toHaveLength(1);
+    expect(logPollStepAttributes(spans)).toEqual({
+      "e2e.account.log_poll.completed_query_count_cumulative": 1,
+      "e2e.account.log_poll.last_returned_entry_count": 3,
+      "e2e.account.log_poll.last_marker_count": 3,
+      "e2e.account.log_poll.baseline_excluded_marker_count_cumulative": 1,
+      "e2e.account.log_poll.before_started_at_marker_count_cumulative": 1,
+      "e2e.account.log_poll.other_recipient_candidate_count_cumulative": 1,
+      "e2e.account.log_poll.matching_entry_count_cumulative": 0,
+      "e2e.account.log_poll.last_marker_min_timestamp_delta_ms": -1,
+      "e2e.account.log_poll.last_marker_max_timestamp_delta_ms": 3,
+    });
+    const exported = JSON.stringify(spans);
+    expect(exported).not.toContain(syntheticRecipient);
+    expect(exported).not.toContain(hiddenRowId);
+    expect(exported).not.toContain("request-row-private-before-start");
+    expect(exported).not.toContain("request-row-private-other-recipient");
+    expect(exported).not.toContain("excluded marker content");
+    expect(exported).not.toContain("before start marker content");
+    expect(exported).not.toContain("other recipient marker content");
   });
 
   test("reads later pages when the history response reports more rows", async () => {

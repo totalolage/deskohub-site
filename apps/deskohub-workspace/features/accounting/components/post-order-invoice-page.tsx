@@ -1,6 +1,6 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { CircleCheck, FileText } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -48,7 +48,7 @@ export function PostOrderInvoicePage({
     },
     mode: "onBlur",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(postOrderInvoiceAddressFormSchema),
+    resolver: effectSchemaResolver(postOrderInvoiceAddressFormSchema),
   });
   const { execute, isExecuting } = useWorkspaceAction(managePostOrderInvoice, {
     actionName: "managePostOrderInvoice",

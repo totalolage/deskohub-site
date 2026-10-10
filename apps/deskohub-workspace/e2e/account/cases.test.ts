@@ -199,6 +199,11 @@ type ConsumeResult = {
 class FakeAccountExternalState {
   readonly acceptedResponses: string[] = [];
   readonly browserActions: FakeBrowserAction[] = [];
+  readonly formSubmitWaits: Array<{
+    readonly fieldSelectors: readonly string[];
+    readonly formSelector: string;
+    readonly requiresReadyAttribute: boolean;
+  }> = [];
   readonly createdAuthIds: string[] = [];
   readonly deletionObservations: DeletionObservation[] = [];
   readonly events: FakeEvent[] = [];
@@ -988,9 +993,29 @@ class FakeBrowser {
     throw new Error("the synthetic browser evaluated an unexpected script");
   }
 
-  waitForFormAction(selector: string) {
+  waitForFormSubmitHandler(
+    selector: string,
+    fieldSelectors: readonly string[],
+    options?: {
+      readonly requiredReadyAttribute?: {
+        readonly name: string;
+        readonly value: string;
+      };
+    }
+  ) {
+    this.external.formSubmitWaits.push({
+      fieldSelectors: [...fieldSelectors],
+      formSelector: selector,
+      requiresReadyAttribute: options?.requiredReadyAttribute !== undefined,
+    });
     if (selector !== signInFormSelector || !this.formReady) {
-      throw new Error("the sign-in form action is not ready");
+      throw new Error("the sign-in form submit handler is not ready");
+    }
+    if (
+      fieldSelectors.length !== 1 ||
+      fieldSelectors[0] !== signInEmailSelector
+    ) {
+      throw new Error("the sign-in readiness wait omitted its email field");
     }
   }
 
@@ -1151,11 +1176,25 @@ mock.module("../browser", () => ({
     Effect.sync(() =>
       requireBrowser().waitForCondition(description, condition)
     ),
-  waitForBrowserReactFormAction: (
+  waitForBrowserReactFormSubmit: (
     _run: Runner,
     _session: string,
-    selector: string
-  ) => Effect.sync(() => requireBrowser().waitForFormAction(selector)),
+    selector: string,
+    fieldSelectors: readonly string[],
+    options?: {
+      readonly requiredReadyAttribute?: {
+        readonly name: string;
+        readonly value: string;
+      };
+    }
+  ) =>
+    Effect.sync(() =>
+      requireBrowser().waitForFormSubmitHandler(
+        selector,
+        fieldSelectors,
+        options
+      )
+    ),
   waitForBrowserText: ({
     matches,
   }: {
@@ -1449,6 +1488,25 @@ test("executes the selected account lifecycle cases with a fresh factory per cas
     const previous = builtCases.at(-2);
     if (previous) expect(selected).not.toBe(previous);
     await executeCase(selected, scenario, stepIds);
+    if (caseId === "account-sign-in-form") {
+      expect(scenario.external.formSubmitWaits).toEqual([
+        {
+          fieldSelectors: [signInEmailSelector],
+          formSelector: signInFormSelector,
+          requiresReadyAttribute: false,
+        },
+        {
+          fieldSelectors: [signInEmailSelector],
+          formSelector: signInFormSelector,
+          requiresReadyAttribute: false,
+        },
+        {
+          fieldSelectors: [signInEmailSelector],
+          formSelector: signInFormSelector,
+          requiresReadyAttribute: false,
+        },
+      ]);
+    }
 
     if (caseId === "account-magic-link-delivery") {
       // Profile completion and reservation transitions intentionally retain

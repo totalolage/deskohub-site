@@ -1,7 +1,7 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { Match, Schema } from "effect";
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import { Match } from "effect";
 import { AlertTriangle, Clock3, Coffee, Monitor, Wifi } from "lucide-react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -100,10 +100,6 @@ type CoworkReservationFormFallbackProps = Pick<
   showMonitorOption?: boolean;
 };
 
-const coworkReservationFormSchema = Schema.toStandardSchemaV1(
-  coworkReservationSchema
-);
-
 const tierOptions: ReadonlyArray<{
   value: WorkspaceCoworkCurrentTier;
   title: Parameters<typeof getWorkspaceProductMessage>[0];
@@ -178,7 +174,7 @@ export function CoworkReservationForm({
     [searchParams]
   );
   const form = useForm<CoworkReservationInput, unknown, CoworkReservationData>({
-    resolver: standardSchemaResolver(coworkReservationFormSchema),
+    resolver: effectSchemaResolver(coworkReservationSchema),
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",

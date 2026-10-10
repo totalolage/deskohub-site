@@ -1,13 +1,13 @@
 "use client";
 
+import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import type {
   AdministrationStandaloneAccessCodeAttemptIdType,
   AdministrationStandaloneAccessCodeCleanupTargetType,
   AdministrationStandaloneAccessCodeCreationOutcome,
 } from "@deskohub/workspace-admin-api";
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { Result } from "effect";
+import { Result, Schema } from "effect";
 import { Plus } from "lucide-react";
 import { useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
@@ -16,6 +16,7 @@ import {
   AccessCodeDigits,
 } from "@/features/access-codes/components/access-code-digits";
 import { AdministrationAlert } from "@/features/administration/notice";
+import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
@@ -69,6 +70,23 @@ const focusOnMount = (node: HTMLDivElement | null) => {
   node?.focus();
 };
 
+const cleanupConfirmationFormSchema = Schema.Struct({
+  providerCredentialRemoved: Schema.Boolean.check(
+    Schema.makeFilter(
+      (confirmed) => confirmed || m.reservationBillingFieldRequired()
+    )
+  ),
+});
+
+type CleanupConfirmationFormInput =
+  typeof cleanupConfirmationFormSchema.Encoded;
+
+type CleanupConfirmationFormValues = typeof cleanupConfirmationFormSchema.Type;
+
+const cleanupConfirmationFormDefaults = {
+  providerCredentialRemoved: false,
+} satisfies CleanupConfirmationFormInput;
+
 export function CreateStandaloneAccessCodeForm() {
   const [creation, setCreation] = useState<CreationState>({ kind: "editing" });
   const [notice, setNotice] = useState<string | null>(null);
@@ -90,7 +108,7 @@ export function CreateStandaloneAccessCodeForm() {
     defaultValues: createStandaloneAccessCodeFormDefaults,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: standardSchemaResolver(createStandaloneAccessCodeFormSchema),
+    resolver: effectSchemaResolver(createStandaloneAccessCodeFormSchema),
   });
   const [watchedStartsAt, watchedEndsAt] = useWatch({
     control: form.control,
@@ -443,10 +461,15 @@ function CleanupConfirmationForm({
   readonly onConfirmed: () => void;
   readonly onStartOver: () => void;
 }) {
-  const cleanupForm = useForm<{
-    providerCredentialRemoved: boolean;
-  }>({
-    defaultValues: { providerCredentialRemoved: false },
+  const cleanupForm = useForm<
+    CleanupConfirmationFormInput,
+    unknown,
+    CleanupConfirmationFormValues
+  >({
+    defaultValues: cleanupConfirmationFormDefaults,
+    mode: "onSubmit",
+    reValidateMode: "onChange",
+    resolver: effectSchemaResolver(cleanupConfirmationFormSchema),
   });
   const cleanupConfirmed = useWatch({
     control: cleanupForm.control,
