@@ -68,7 +68,7 @@ export function CheckoutDiscountCodeForm({
       return;
     }
     previousPayState.current = { defaultCode, payStateToken };
-    form.reset({ submittedCode: defaultCode ?? "" });
+    form.reset({ submittedCode: defaultCode ?? "" }, { keepFieldsRef: true });
   }, [defaultCode, form, payStateToken]);
 
   if (appliedAdjustment) {

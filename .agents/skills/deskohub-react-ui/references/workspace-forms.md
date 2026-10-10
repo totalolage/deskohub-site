@@ -5,6 +5,7 @@
 - When a Server Action consumes the same rules through Standard Schema V1, keep that adapter on the action contract and give the resolver the underlying Effect schema. Do not duplicate the rules.
 - Let RHF or the submission action own pending state. Keep separate state only for a distinct workflow outcome, and justify synchronous duplicate-submit guards with a regression test.
 - Reset hydrated forms in the action completion callback. Use an effect only when synchronizing an external source that has no completion callback, such as a native action result arriving after hydration; cover that boundary with a regression test.
+- For compiler-enabled forms whose uncontrolled fields stay mounted across `reset`, pass `{ keepFieldsRef: true }` so RHF updates the existing native refs. The compiler can cache `register()` output; the default reset clears RHF's field registry and relies on another ref registration. Cover this boundary with a compiled native browser regression, since a direct component rerender does not exercise compiler caching.
 - Declare parameterless schemas and default values as constants. Use a schema factory only when it depends on caller input, such as an explicit locale.
 - Rely on the React Compiler for ordinary derived values. Do not add manual memoization for a schema or resolver without a demonstrated identity or performance requirement.
 - Execute Effect Schema directly for server validation. Convert to Standard Schema V1 only when the consuming API requires that contract, such as the safe-action, environment, or query boundary.
