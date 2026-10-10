@@ -30,8 +30,8 @@ describe("ReservationSubmitSection", () => {
 
   afterEach(cleanup);
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("announces a failed submission as an alert", () => {

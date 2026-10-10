@@ -49,9 +49,9 @@ afterEach(() => {
   setPrefersReducedMotion(false);
 });
 
-afterAll(() => {
+afterAll(async () => {
   window.matchMedia = originalMatchMedia;
-  unregisterWorkspaceComponentTestEnv();
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 describe("LandingPageHeroScrollScene", () => {
