@@ -151,7 +151,7 @@ function ReservationExistingCustomerCard({
           <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/55">
             {m.contactEmailLabel({}, { locale })}
           </dt>
-          <dd className="break-all">{contact.email}</dd>
+          <dd className="wrap-anywhere">{contact.email}</dd>
         </div>
         {contact.phone && (
           <div>

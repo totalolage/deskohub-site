@@ -11,6 +11,11 @@ const coworkReservationPath = "/en-US/reservation/cowork";
 const existingCustomerCardName = "Booking as";
 const bookForSomeoneElseName = "Book for someone else";
 const useAccountDetailsName = "Use my account details";
+// The submit button reports when availability and the advertised price are
+// still loading; offer prices render skeletons until they arrive.
+const settledSubmitSelector =
+  '#reservation-submit[data-reservation-availability-loading="false"][data-reservation-price-loading="false"]';
+const loadingSkeletonSelector = 'main [data-slot="skeleton"]';
 // The required marker is CSS generated content, so the accessible name may
 // end in " *".
 const contactInputNames = {
@@ -38,7 +43,7 @@ export type ReservationExistingCustomerVerification = {
  * account without submitting anything: the account card shows the profile
  * name and login email instead of the contact inputs, "book for someone
  * else" opens empty contact inputs, and "use my account details" restores
- * the card. Failures carry only a closed phase diagnostic, never the
+ * the card. Each mode is captured once the form has finished loading. Failures carry only a closed phase diagnostic, never the
  * Playwright cause, which can quote the private contact.
  */
 export async function verifyReservationExistingCustomer({
@@ -87,6 +92,21 @@ export async function verifyReservationExistingCustomer({
       await button.click({ timeout: workspaceE2ETimeouts.browserAction });
     };
 
+    // Reviews show the settled form from the top; the mode switch click
+    // scrolls the page, which full-page captures render as a displaced
+    // sticky header.
+    const settleForReview = async (): Promise<void> => {
+      await page.locator(settledSubmitSelector).waitFor({
+        state: "visible",
+        timeout: workspaceE2ETimeouts.uiTransition,
+      });
+      await page.locator(loadingSkeletonSelector).first().waitFor({
+        state: "hidden",
+        timeout: workspaceE2ETimeouts.uiTransition,
+      });
+      await page.evaluate(() => window.scrollTo(0, 0));
+    };
+
     await page.goto(new URL(coworkReservationPath, baseUrl).toString(), {
       timeout: workspaceE2ETimeouts.browserNavigation,
       waitUntil: "load",
@@ -96,6 +116,7 @@ export async function verifyReservationExistingCustomer({
     await expectAccountCard();
 
     diagnosticCode = "account_reservation_existing_customer_card_review_failed";
+    await settleForReview();
     await captureReview("account");
 
     diagnosticCode =
@@ -116,6 +137,7 @@ export async function verifyReservationExistingCustomer({
 
     diagnosticCode =
       "account_reservation_existing_customer_contact_review_failed";
+    await settleForReview();
     await captureReview("contact");
 
     diagnosticCode =

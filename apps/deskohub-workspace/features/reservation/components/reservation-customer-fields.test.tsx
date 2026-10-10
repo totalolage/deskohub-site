@@ -202,6 +202,22 @@ describe("ReservationCustomerSection", () => {
     });
   });
 
+  test("keeps focus on the toggle across switches", () => {
+    const { view } = renderSection();
+    const toggle = view.getByRole("button", { name: "Book for someone else" });
+
+    toggle.focus();
+    fireEvent.click(toggle);
+    expect(document.activeElement).toBe(
+      view.getByRole("button", { name: "Use my account details" })
+    );
+
+    fireEvent.click(document.activeElement as HTMLElement);
+    expect(document.activeElement).toBe(
+      view.getByRole("button", { name: "Book for someone else" })
+    );
+  });
+
   test("keeps the phone typed for an account without one", () => {
     const { getValues, view } = renderSection({
       ...existingCustomer,

@@ -27,6 +27,7 @@ type FailurePhase =
   | "navigation"
   | "card-email"
   | "card-input-present"
+  | "card-settle"
   | "card-review"
   | "contact-handler"
   | "contact-input-prefilled"
@@ -39,6 +40,15 @@ type FakeState = {
   mode: ReservationCustomerMode;
   url: string;
 };
+
+const settledSubmitKey =
+  'locator:#reservation-submit[data-reservation-availability-loading="false"][data-reservation-price-loading="false"]';
+const loadingSkeletonKey = 'locator:main [data-slot="skeleton"]';
+const settleActions = [
+  `visible:${settledSubmitKey}`,
+  `hidden:${loadingSkeletonKey}`,
+  "scroll-top",
+];
 
 const contactFieldByLabel = (label: string) =>
   ["Email", "Phone", "Name"].find((field) =>
@@ -72,6 +82,7 @@ const makeFakePage = (failurePhase?: FailurePhase) => {
       );
     }
     if (key.startsWith("textbox:")) return state.mode === "contact";
+    if (key === settledSubmitKey) return failurePhase !== "card-settle";
     return false;
   };
 
@@ -109,6 +120,7 @@ const makeFakePage = (failurePhase?: FailurePhase) => {
       dispose: async () => {},
       key,
     }),
+    first: () => makeLocator(key),
     getByText: (text: string, options: { readonly exact?: boolean }) => {
       expect(options.exact).toBe(true);
       return makeLocator(`text:${text}`);
@@ -118,6 +130,11 @@ const makeFakePage = (failurePhase?: FailurePhase) => {
       return "";
     },
     waitFor: async (options: { readonly state?: string }) => {
+      if (options.state === "hidden") {
+        if (isVisible(key)) fail();
+        actions.push(`hidden:${key}`);
+        return;
+      }
       expect(options.state).toBe("visible");
       if (
         failurePhase === "card-restore" &&
@@ -144,6 +161,9 @@ const makeFakePage = (failurePhase?: FailurePhase) => {
       expect(options.exact).toBe(true);
       return makeLocator(`${role}:${String(options.name)}`);
     },
+    evaluate: async () => {
+      actions.push("scroll-top");
+    },
     goto: async (url: string) => {
       actions.push(`goto:${url}`);
       if (failurePhase === "navigation") fail();
@@ -151,6 +171,7 @@ const makeFakePage = (failurePhase?: FailurePhase) => {
       state.mode = "account";
       return null;
     },
+    locator: (selector: string) => makeLocator(`locator:${selector}`),
     waitForFunction: async (_predicate: unknown, handle: { key: string }) => {
       actions.push(`react-handler:${handle.key}`);
       if (
@@ -227,6 +248,7 @@ test("checks the card, captures both modes, and restores the card without submit
     "visible:region:Booking as",
     `visible:text:${contact.name}`,
     `visible:text:${contact.email}`,
+    ...settleActions,
     "review:account",
     "visible:button:Book for someone else",
     "react-handler:button:Book for someone else",
@@ -234,6 +256,7 @@ test("checks the card, captures both modes, and restores the card without submit
     "visible:textbox:Email",
     "visible:textbox:Phone",
     "visible:textbox:Name",
+    ...settleActions,
     "review:contact",
     "visible:button:Use my account details",
     "react-handler:button:Use my account details",
@@ -261,6 +284,10 @@ const failurePhases = [
   {
     phase: "card-input-present",
     diagnosticCode: "account_reservation_existing_customer_card_failed",
+  },
+  {
+    phase: "card-settle",
+    diagnosticCode: "account_reservation_existing_customer_card_review_failed",
   },
   {
     phase: "card-review",
@@ -352,7 +379,17 @@ const reservationCustomerDocument = `<!doctype html>
     <style>label.required::after { content: " *"; }</style>
   </head>
   <body>
-    <main><form id="reservation-form" novalidate></form></main>
+    <main>
+      <div style="height: 2000px"></div>
+      <form id="reservation-form" novalidate></form>
+      <span data-slot="skeleton" style="display: block; height: 8px"></span>
+      <button
+        data-reservation-availability-loading="true"
+        data-reservation-price-loading="false"
+        id="reservation-submit"
+        type="button"
+      >Continue</button>
+    </main>
     <script>
       const contact = ${JSON.stringify(contact)};
       const form = document.getElementById("reservation-form");
@@ -390,6 +427,12 @@ const reservationCustomerDocument = `<!doctype html>
         attachClick(form.querySelector("button"), renderAccount);
       };
       renderAccount();
+      setTimeout(() => {
+        document.querySelector('[data-slot="skeleton"]').remove();
+        document
+          .getElementById("reservation-submit")
+          .setAttribute("data-reservation-availability-loading", "false");
+      }, 100);
     </script>
   </body>
 </html>`;
@@ -436,6 +479,7 @@ test.skipIf(!chromiumAvailable)(
           readonly inputCount: number;
           readonly mode: ReservationCustomerMode;
           readonly pathname: string;
+          readonly scrollY: number;
         }> = [];
 
         await verifyReservationExistingCustomer({
@@ -448,6 +492,7 @@ test.skipIf(!chromiumAvailable)(
               inputCount: await page.locator("input").count(),
               mode,
               pathname: new URL(page.url()).pathname,
+              scrollY: await page.evaluate(() => window.scrollY),
             });
           },
           contact,
@@ -460,12 +505,14 @@ test.skipIf(!chromiumAvailable)(
             inputCount: 0,
             mode: "account",
             pathname: "/en-US/reservation/cowork",
+            scrollY: 0,
           },
           {
             cardVisible: false,
             inputCount: 3,
             mode: "contact",
             pathname: "/en-US/reservation/cowork",
+            scrollY: 0,
           },
         ]);
         await expect(
