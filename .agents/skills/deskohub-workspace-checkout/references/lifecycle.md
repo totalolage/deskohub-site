@@ -532,6 +532,8 @@ Workers before keyed lookup keys store only the ring-keyed digest, look up only 
 
 Never prepend a new key in a single step: a worker still on the old configuration could neither open the new tokens nor find the new lookup keys.
 
+Production stores `CHECKOUT_PAY_STATE_KEYS` as a Vercel sensitive variable. Neither `vercel env pull` nor the dashboard returns its value, but every phase rewrites the whole list. Before staging, confirm the developer can supply the current entries, and keep each new entry retrievable until it has been retired. If the current value cannot be recovered, the only option is a one-step replace: set a single new entry, then redeploy production. That breaks every Pay page opened before the deploy finishes. Their Pay-state tokens stop opening and their stored lookup keys stop matching, so do it at a quiet time and only after the step 3 rotation check passes. Held rows whose lookup keys no longer match still reach hold cleanup, which works from reservation IDs. The 2026-10-10 rotation took this path because the earlier value was unreadable, and it left the single active key ID `k20261010`.
+
 ## Sequence Diagrams
 
 ### Reservation Submit And Hold

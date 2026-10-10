@@ -50,7 +50,8 @@ import {
 registerWorkspaceComponentTestEnv();
 
 mock.module("next/image", () => ({
-  default: () => null,
+  // Bun resolves static image imports to their file path.
+  default: ({ src }: { readonly src: string }) => <span data-image-src={src} />,
 }));
 
 const execute = mock(() => undefined);
@@ -875,6 +876,53 @@ describe("CoworkReservationForm advertised pricing", () => {
       "sealed-reserved-desk-advertised-price"
     );
     expect(bareSubmission.reservation?.monitorOption).toBeUndefined();
+  });
+
+  test("shows the reserved desk workstation artwork only while the workstation addon is selected", async () => {
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm();
+    const getReservedDeskArtworkSource = () =>
+      view.container
+        .querySelector(
+          '[data-reservation-type-option="reserved-desk"] [data-image-src]'
+        )
+        ?.getAttribute("data-image-src");
+
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector(
+          "#reservation-entry-tier-reserved-desk"
+        ) as HTMLElement
+      );
+    });
+    expect(getReservedDeskArtworkSource()).toMatch(/reserved-desk\.png$/);
+
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("switch", { name: /Monitor workstation/i })
+      );
+    });
+    await waitFor(() => {
+      expect(getReservedDeskArtworkSource()).toMatch(
+        /reserved-desk-workstation\.png$/
+      );
+    });
+
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("switch", { name: /Monitor workstation/i })
+      );
+    });
+    await waitFor(() => {
+      expect(getReservedDeskArtworkSource()).toMatch(/reserved-desk\.png$/);
+    });
   });
 
   test("shows the workstation addon price localized for cs-CZ", async () => {

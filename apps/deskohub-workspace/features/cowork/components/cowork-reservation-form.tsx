@@ -35,6 +35,7 @@ import {
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import openSpaceArtwork from "@/features/cowork/assets/open-space.png";
 import reservedDeskArtwork from "@/features/cowork/assets/reserved-desk.png";
+import reservedDeskWorkstationArtwork from "@/features/cowork/assets/reserved-desk-workstation.png";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
@@ -648,7 +649,10 @@ export function CoworkReservationForm({
                 {tierOptions.map((option) => {
                   const artworkSource = {
                     "open-space": openSpaceArtwork,
-                    "reserved-desk": reservedDeskArtwork,
+                    "reserved-desk":
+                      selectedMonitorOption === undefined
+                        ? reservedDeskArtwork
+                        : reservedDeskWorkstationArtwork,
                   }[option.value];
                   const optionTitle = getWorkspaceProductMessage(
                     option.title,
