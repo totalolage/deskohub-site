@@ -15,6 +15,7 @@ import {
 import {
   accountReviewTargetBySection,
   mobileAccountReviewTargetBySection,
+  reservationCustomerReviewTargetByMode,
 } from "./review-targets";
 
 const lane = parseTrackedSource(
@@ -144,5 +145,87 @@ test("maps the case-level review targets through the shared lane data", () => {
     "sign-in-accepted-desktop",
   ]) {
     expect(stringLiterals(lane.ast).map((l) => l.value)).not.toContain(target);
+  }
+});
+
+/**
+ * The cowork existing-customer card check runs once the profile-completion
+ * case has a completed, linked profile: after the profile navigation check
+ * and inside that case's branch, never in a case without a linked profile.
+ */
+test("wires the reservation existing-customer check after profile navigation", () => {
+  const profileStep = stepObjectById(
+    "checks profile re-entry and unsaved navigation"
+  );
+  const customerStep = stepObjectById(
+    "checks reservation existing customer card"
+  );
+  expect(profileStep).toBeDefined();
+  expect(customerStep).toBeDefined();
+  expect(positionDelta(profileStep!, customerStep!)).toBeLessThan(0);
+
+  const profileCompletionBranch = nodesOf(lane.ast).find(
+    (node): node is TSESTree.IfStatement =>
+      node.type === "IfStatement" &&
+      node.test.type === "BinaryExpression" &&
+      node.test.right.type === "Literal" &&
+      node.test.right.value === "account-profile-completion"
+  );
+  expect(profileCompletionBranch).toBeDefined();
+  expect(containsNode(profileCompletionBranch!.consequent, customerStep!)).toBe(
+    true
+  );
+
+  const verifyCalls = callsNamed(lane.ast, "verifyReservationExistingCustomer");
+  expect(verifyCalls).toHaveLength(1);
+  expect(containsNode(customerStep!, verifyCalls[0]!)).toBe(true);
+
+  const input = verifyCalls[0]?.arguments[0];
+  expect(input?.type).toBe("ObjectExpression");
+  const properties = propertyAssignments(input as TSESTree.ObjectExpression);
+
+  // Both review captures go through the shared mode map, one capture call.
+  const captureReview = properties.get("captureReview")?.value;
+  expect(captureReview?.type).toBe("ArrowFunctionExpression");
+  const captures = callsNamed(captureReview!, "captureAccountReview");
+  expect(captures).toHaveLength(1);
+  expect(
+    captures[0]?.arguments.some(
+      (argument) =>
+        argument.type === "MemberExpression" &&
+        argument.object.type === "Identifier" &&
+        argument.object.name === "reservationCustomerReviewTargetByMode"
+    )
+  ).toBe(true);
+
+  // The card must show the synthetic profile name and the synthetic login
+  // email the lane signed in with.
+  const contact = properties.get("contact")?.value;
+  expect(contact?.type).toBe("ObjectExpression");
+  const contactProperties = propertyAssignments(
+    contact as TSESTree.ObjectExpression
+  );
+  const name = contactProperties.get("name")?.value;
+  expect(name?.type === "Identifier" && name.name).toBe(
+    "workspaceE2EAccountProfileName"
+  );
+  const email = contactProperties.get("email")?.value;
+  expect(email).toBeDefined();
+  expect(callsNamed(email!, "makeWorkspaceE2EAccountRecipient")).toHaveLength(
+    1
+  );
+  expect(
+    identifierNames(email!).has("workspaceE2EAccountMainRecipientLabel")
+  ).toBe(true);
+});
+
+test("pins the reservation customer review targets to the shared mode map", () => {
+  expect(reservationCustomerReviewTargetByMode).toEqual({
+    account: "reservation-customer-account-desktop",
+    contact: "reservation-customer-contact-desktop",
+  });
+  const literals = stringLiterals(lane.ast).map((literal) => literal.value);
+  for (const target of Object.values(reservationCustomerReviewTargetByMode)) {
+    expect(literals).not.toContain(target);
   }
 });

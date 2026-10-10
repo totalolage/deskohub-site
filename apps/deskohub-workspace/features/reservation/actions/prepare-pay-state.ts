@@ -16,7 +16,11 @@ import {
   Schema,
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { OptionalAccountActivityGuard } from "@/features/account";
+import {
+  CustomerAccountAccessError,
+  CustomerAccountContactService,
+  OptionalAccountActivityGuard,
+} from "@/features/account";
 import {
   captureAvailabilityResult,
   capturePrePaymentOutcome,
@@ -718,6 +722,37 @@ const prepareReservationDraft = Effect.fn(
   }
 });
 
+/**
+ * The account a reservation booked "as the account" belongs to: the linked
+ * Dotypos customer and the contact the reservation must carry. The account
+ * advisory lock is already held, so this only reads the existing link.
+ */
+const resolveAccountCustomer = Effect.fn(
+  "preparePayState.resolveAccountCustomer"
+)(function* (input: PreparePayStateInput) {
+  if (input.customer !== "account") return undefined;
+
+  const contacts = yield* CustomerAccountContactService;
+  const contact = yield* contacts.current.pipe(
+    Effect.catchIf(
+      (error) => error.reason === "not-configured",
+      () => Effect.succeed(null)
+    )
+  );
+  if (!contact) {
+    return yield* new CustomerAccountAccessError({ reason: "unauthenticated" });
+  }
+
+  return {
+    dotyposCustomerId: contact.dotyposCustomerId,
+    contact: {
+      name: contact.name,
+      email: contact.email,
+      phone: contact.phone ?? input.reservation.phone,
+    },
+  };
+});
+
 export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
   function* (input: PreparePayStateInput) {
     const botProtection = yield* BotProtectionService;
@@ -740,11 +775,16 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           })
         );
 
+        const accountCustomer = yield* resolveAccountCustomer(input);
+
         // Submission locks the price: calendar sales are evaluated at this
         // booking moment here and at every later checkout re-check.
         const bookedAt = yield* currentInstant;
         const advertisement = yield* prepareAdvertisement({
           ...input,
+          ...(accountCustomer && {
+            reservation: { ...input.reservation, ...accountCustomer.contact },
+          }),
           bookedAt,
         });
         const reservation = advertisement.reservation;
@@ -778,16 +818,20 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
             Effect.ignore
           );
 
-        const customerName = splitCustomerName(reservation.name);
-        const customer = yield* dotypos.findOrCreateCustomer(
-          {
-            ...customerName,
-            email: reservation.email,
-            phone: reservation.phone,
-          },
-          { lookupFields: ["email"] }
-        );
-        const dotyposCustomerId = yield* getDotyposCustomerId(customer.id);
+        const dotyposCustomerId =
+          accountCustomer?.dotyposCustomerId ??
+          (yield* dotypos
+            .findOrCreateCustomer(
+              {
+                ...splitCustomerName(reservation.name),
+                email: reservation.email,
+                phone: reservation.phone,
+              },
+              { lookupFields: ["email"] }
+            )
+            .pipe(
+              Effect.flatMap((customer) => getDotyposCustomerId(customer.id))
+            ));
         yield* Effect.annotateLogsScoped({ dotyposCustomerId });
         yield* Effect.logDebug(
           "Workspace reservation Dotypos customer resolved"
@@ -1171,6 +1215,7 @@ const PreparePayStateLive = Layer.mergeAll(
     CustomerMarketingConsentRepository.Default
   ).pipe(Layer.provide(WorkspaceDatabase.Default)),
   WorkspaceAvailabilityService.Live,
+  CustomerAccountContactService.Live,
   WorkspaceTableAssignmentService.Default.pipe(
     Layer.provide(WorkspaceReservationRepository.Live),
     Layer.provide(WorkspaceDotyposLayer)

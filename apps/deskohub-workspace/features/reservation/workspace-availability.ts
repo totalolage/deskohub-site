@@ -16,6 +16,10 @@ import {
 } from "@/features/reservation/cowork-reservation-product";
 import type { WorkspaceMeetingRoomProductTarget } from "@/features/reservation/meeting-room-reservation";
 import {
+  getMeetingRoomLastServiceDate,
+  getMeetingRoomReservationDate,
+} from "@/features/reservation/meeting-room-reservation-time";
+import {
   officeSeatsSchema,
   type WorkspaceOfficeProductTarget,
 } from "@/features/reservation/office-reservation";
@@ -128,6 +132,60 @@ export type WorkspaceAvailabilityNotice =
 
 export type WorkspaceAvailability =
   typeof workspaceAvailabilityResponseSchema.Type;
+
+/**
+ * Whether a cowork offer can be booked on its date, by the same rules the
+ * reservation form applies: a Reserved Desk stays bookable on dates that only
+ * require a workstation, which the form adds itself.
+ */
+export const isCoworkOfferAvailable = (
+  availability: Pick<
+    WorkspaceAvailability,
+    | "reservedDeskWorkstationRequiredDates"
+    | "unavailableCoworkTiers"
+    | "unavailableDates"
+    | "unavailableMonitorOptions"
+  >,
+  offer: Pick<
+    CoworkWorkspaceAvailabilitySelectionQuery,
+    "entryTier" | "monitorOption"
+  > & { readonly date: string }
+) =>
+  !(
+    (offer.entryTier !== undefined &&
+      availability.unavailableCoworkTiers.includes(offer.entryTier)) ||
+    (offer.monitorOption !== undefined &&
+      availability.unavailableMonitorOptions.includes(offer.monitorOption)) ||
+    (availability.unavailableDates.includes(offer.date) &&
+      !(
+        offer.entryTier === "reserved-desk" &&
+        availability.reservedDeskWorkstationRequiredDates.includes(offer.date)
+      ))
+  );
+
+/** The availability query for one meeting-room reservation interval. */
+export const getMeetingRoomAvailabilityQuery = (
+  interval: ReservationInterval
+): MeetingRoomWorkspaceAvailabilityQuery => ({
+  kind: "meeting-room",
+  from: getMeetingRoomReservationDate(interval),
+  to: getMeetingRoomLastServiceDate(interval),
+  startsAt: interval.startsAt,
+  endsAt: interval.endsAt,
+});
+
+/**
+ * Whether the meeting room is free for the interval its availability was
+ * queried for.
+ */
+export const isMeetingRoomAvailable = (
+  availability: Pick<
+    WorkspaceAvailability,
+    "meetingRoomUnavailable" | "unavailableDates"
+  >
+) =>
+  availability.unavailableDates.length === 0 &&
+  !availability.meetingRoomUnavailable;
 
 const workspaceAvailabilitySchema = Schema.toStandardSchemaV1(
   workspaceAvailabilityResponseSchema

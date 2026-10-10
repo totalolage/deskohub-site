@@ -2,6 +2,7 @@ import { Option, Schema } from "effect";
 import {
   isMeetingRoomWholeDayReservationDuration,
   type MeetingRoomReservationDuration,
+  meetingRoomReservationDurations,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -121,3 +122,29 @@ export const getMeetingRoomReservationDate = ({
     .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate()
     .toString();
+
+/**
+ * The purchasable duration whose interval from the booked start exactly
+ * matches the booked interval, so a past reservation can preselect it.
+ */
+export const findMeetingRoomReservationDuration = (interval: {
+  readonly startsAt: Temporal.Instant;
+  readonly endsAt: Temporal.Instant;
+}): MeetingRoomReservationDuration | undefined => {
+  const startDateTime = interval.startsAt
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDateTime()
+    .toString({ smallestUnit: "minute" });
+
+  return meetingRoomReservationDurations.find((duration) => {
+    const candidate = getMeetingRoomReservationInterval(
+      startDateTime,
+      duration
+    );
+    return (
+      candidate !== null &&
+      Temporal.Instant.compare(candidate.startsAt, interval.startsAt) === 0 &&
+      Temporal.Instant.compare(candidate.endsAt, interval.endsAt) === 0
+    );
+  });
+};

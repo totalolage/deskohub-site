@@ -4,6 +4,7 @@ import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
+import { isRememberedMeetingRoomReservationAvailable } from "@/features/reservation/backend/reservation-existing-customer.server";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import {
@@ -11,7 +12,15 @@ import {
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
-import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "@/features/reservation/reservation-checkout-query";
+import {
+  getMeetingRoomReservationDefaultValuesFromSearchParams,
+  getReservationCustomerQueryMode,
+} from "@/features/reservation/reservation-checkout-query";
+import {
+  type CustomerLastReservationForKind,
+  getReservationExistingCustomerForm,
+  type ReservationExistingCustomer,
+} from "@/features/reservation/reservation-existing-customer";
 import { meetingRoomReservationPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import type { SearchParamsRecord } from "@/shared/utils";
@@ -31,8 +40,34 @@ export const meetingRoomReservationPage = createReservationPage({
   render: renderMeetingRoomReservationContent,
 });
 
+/**
+ * Query values refined by the customer's last meeting-room duration, which
+ * applies only while the room is free for it.
+ */
+const getMeetingRoomQueryValues = async (
+  searchParams: SearchParamsRecord,
+  lastReservation: CustomerLastReservationForKind<"meeting-room"> | undefined
+) => {
+  const queryValues =
+    getMeetingRoomReservationDefaultValuesFromSearchParams(searchParams);
+  if (!lastReservation) return queryValues;
+
+  const rememberedValues =
+    getMeetingRoomReservationDefaultValuesFromSearchParams(
+      searchParams,
+      undefined,
+      lastReservation
+    );
+  if (rememberedValues.duration === queryValues.duration) return queryValues;
+
+  return (await isRememberedMeetingRoomReservationAvailable(rememberedValues))
+    ? rememberedValues
+    : queryValues;
+};
+
 export async function renderMeetingRoomReservationContent({
   checkoutSessionId,
+  existingCustomer,
   initialReservation,
   locale,
   replacementToken,
@@ -40,6 +75,7 @@ export async function renderMeetingRoomReservationContent({
   submittedCode,
 }: {
   readonly checkoutSessionId?: CheckoutSessionId;
+  readonly existingCustomer?: ReservationExistingCustomer<"meeting-room">;
   readonly initialReservation?: NormalizedMeetingRoomReservationOrder;
   readonly locale: Locale;
   readonly replacementToken?: string;
@@ -51,11 +87,23 @@ export async function renderMeetingRoomReservationContent({
     : undefined;
   // The presence of a signed reservation decides the restored path even when
   // it has ended: the fallback must not consume public query values.
-  const initialValues =
+  const restoredOrQueryValues =
     restoredInitialValues ??
-    (initialReservation
-      ? getMeetingRoomReservationDefaultValuesFromSearchParams({})
-      : getMeetingRoomReservationDefaultValuesFromSearchParams(searchParams));
+    (await getMeetingRoomQueryValues(
+      initialReservation ? {} : searchParams,
+      existingCustomer?.lastReservation
+    ));
+  const { existingCustomer: existingCustomerForm, initialValues } =
+    existingCustomer
+      ? getReservationExistingCustomerForm({
+          contact: existingCustomer.contact,
+          queryMode: initialReservation
+            ? undefined
+            : getReservationCustomerQueryMode(searchParams),
+          restored: Boolean(restoredInitialValues),
+          values: restoredOrQueryValues,
+        })
+      : { existingCustomer: undefined, initialValues: restoredOrQueryValues };
   const initialAdvertisedPrices = await loadAdvertisedPrices(
     getMeetingRoomDurationAdvertisedPriceRequests({
       locale,
@@ -75,6 +123,7 @@ export async function renderMeetingRoomReservationContent({
   return (
     <MeetingRoomReservationForm
       checkoutSessionId={checkoutSessionId}
+      existingCustomer={existingCustomerForm}
       initialAdvertisedPrices={initialAdvertisedPrices}
       initialReservation={
         restoredInitialValues ? initialReservation : undefined

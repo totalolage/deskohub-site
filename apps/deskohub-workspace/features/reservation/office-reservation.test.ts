@@ -10,6 +10,7 @@ import {
   getOfficeReservationMaximumDayCount,
   getOfficeReservationMaximumEndsOn,
   getOfficeReservationOrder,
+  getOfficeReservationSelection,
   getStoredOfficeReservationDetails,
   getWorkspaceOfficeProductKey,
   isOfficeReservationWithinMaximumDuration,
@@ -348,5 +349,41 @@ describe("retired reservation customer message", () => {
     expect(getOfficeReservationDefaultValues(reservation)).not.toHaveProperty(
       "message"
     );
+  });
+});
+
+describe("getOfficeReservationSelection", () => {
+  test("repeats whole Prague calendar days across DST", () => {
+    expect(
+      getOfficeReservationSelection({
+        startsAt: Temporal.Instant.from("2026-03-28T23:00:00Z"),
+        endsAt: Temporal.Instant.from("2026-03-30T22:00:00Z"),
+        seats: 3,
+      })
+    ).toEqual({ dayCount: 2, seats: 3 });
+  });
+
+  test("rejects intervals that are not whole days and invalid seats", () => {
+    expect(
+      getOfficeReservationSelection({
+        startsAt: Temporal.Instant.from("2026-06-10T08:00:00Z"),
+        endsAt: Temporal.Instant.from("2026-06-11T22:00:00Z"),
+        seats: 2,
+      })
+    ).toBeNull();
+    expect(
+      getOfficeReservationSelection({
+        startsAt: Temporal.Instant.from("2026-06-09T22:00:00Z"),
+        endsAt: Temporal.Instant.from("2026-06-10T22:00:00Z"),
+        seats: 0,
+      })
+    ).toBeNull();
+    expect(
+      getOfficeReservationSelection({
+        startsAt: Temporal.Instant.from("2026-06-10T22:00:00Z"),
+        endsAt: Temporal.Instant.from("2026-06-10T22:00:00Z"),
+        seats: 1,
+      })
+    ).toBeNull();
   });
 });

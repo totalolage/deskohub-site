@@ -7,12 +7,15 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import type { ReservationExistingCustomerForm } from "../reservation-existing-customer";
+
+const startCheckout = mock();
 
 mock.module("./use-reservation-checkout", () => ({
   useReservationCheckout: () => ({
@@ -22,7 +25,7 @@ mock.module("./use-reservation-checkout", () => ({
     isPreparingCheckout: false,
     isSubmittingCheckout: false,
     setSubmissionError: mock(),
-    startCheckout: mock(),
+    startCheckout,
     submissionError: undefined,
   }),
 }));
@@ -42,19 +45,21 @@ type HarnessValues = {
 
 function Harness({
   advertisedPrice,
+  existingCustomer,
 }: {
   readonly advertisedPrice: {
     readonly isError: boolean;
     readonly token?: string;
   };
+  readonly existingCustomer?: ReservationExistingCustomerForm;
 }) {
   const form = useForm<HarnessValues>({
     defaultValues: {
       billing: { purpose: "personal", invoice: "none" },
-      email: "",
+      email: existingCustomer?.contact.email ?? "",
       marketingConsent: false,
-      name: "",
-      phone: "",
+      name: existingCustomer?.contact.name ?? "",
+      phone: existingCustomer?.contact.phone ?? "",
     },
   });
 
@@ -66,10 +71,11 @@ function Harness({
         retry: () => undefined,
       }}
       availability={{ isFetching: false }}
+      existingCustomer={existingCustomer}
       form={form}
-      getReservation={() => {
-        throw new Error("submission is not exercised");
-      }}
+      getReservation={({ email, name, phone }) =>
+        ({ email, name, phone }) as never
+      }
       locale="en-US"
     >
       {null}
@@ -85,7 +91,10 @@ describe("ReservationCheckoutForm", () => {
     registerWorkspaceComponentTestEnv();
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    startCheckout.mockClear();
+  });
 
   afterAll(async () => {
     await unregisterWorkspaceComponentTestEnv();
@@ -107,5 +116,44 @@ describe("ReservationCheckoutForm", () => {
     );
 
     expect(getSubmitButton(view).disabled).toBe(true);
+  });
+
+  test("books as the account only while the account card is shown", async () => {
+    const existingCustomer: ReservationExistingCustomerForm = {
+      contact: {
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        phone: "+420777777777",
+      },
+      initialMode: "account",
+      otherContact: {
+        name: "Grace Hopper",
+        email: "grace@example.com",
+        phone: "+420606060606",
+      },
+    };
+    const view = render(
+      <Harness
+        advertisedPrice={{ isError: false, token: "signed-price" }}
+        existingCustomer={existingCustomer}
+      />
+    );
+
+    fireEvent.click(getSubmitButton(view));
+    await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(1));
+    expect(startCheckout.mock.calls[0]?.[0]).toMatchObject({
+      customer: "account",
+      reservation: { email: "ada@example.com", name: "Ada Lovelace" },
+    });
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Book for someone else" })
+    );
+    fireEvent.click(getSubmitButton(view));
+    await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(2));
+    expect(startCheckout.mock.calls[1]?.[0]).not.toHaveProperty("customer");
+    expect(startCheckout.mock.calls[1]?.[0]).toMatchObject({
+      reservation: existingCustomer.otherContact,
+    });
   });
 });

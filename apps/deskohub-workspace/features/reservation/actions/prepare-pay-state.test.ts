@@ -7,6 +7,8 @@ import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
+import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
+import { CustomerAccountAccessError } from "@/features/account/customer-account";
 import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
@@ -326,6 +328,8 @@ const runReusableReservationScenario = async (input: {
     | (Omit<typeof reservation, "billing"> & { readonly billing: unknown });
   readonly updateCustomerBillingDetails?: ReturnType<typeof mock>;
   readonly accountAuthority?: Parameters<typeof accountAuthorityFixture>[0];
+  readonly customer?: "account";
+  readonly accountContact?: CustomerAccountContactService["Service"]["current"];
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { PostHogEventService } = await import(
@@ -399,8 +403,15 @@ const runReusableReservationScenario = async (input: {
   const accountAuthority = await accountAuthorityFixture(
     input.accountAuthority
   );
+  const readAccountContact = mock(
+    () =>
+      input.accountContact ?? Effect.die("the account contact must not be read")
+  );
   const testLayer = Layer.mergeAll(
     accountAuthority.layer,
+    Layer.mock(CustomerAccountContactService, {
+      current: Effect.suspend(() => readAccountContact()),
+    }),
     CheckoutPricingServiceMock({
       affirmCoworkAdvertisement: affirmAdvertisement,
       quoteForCustomer: quoteForCustomerResult as never,
@@ -461,6 +472,7 @@ const runReusableReservationScenario = async (input: {
       input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
     reservation: input.reservation ?? reservation,
     marketingConsent: input.marketingConsent,
+    customer: input.customer,
   }).pipe(Effect.provide(testLayer), Effect.result, Effect.runPromise);
 
   return {
@@ -486,6 +498,7 @@ const runReusableReservationScenario = async (input: {
     quoteForCustomer,
     findOrCreateCustomer,
     updateCustomerBillingDetails,
+    readAccountContact,
   };
 };
 
@@ -1372,6 +1385,199 @@ describe("prepareWorkspacePayState", () => {
     ]);
     expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
     expect(scenario.createDraft).not.toHaveBeenCalled();
+  });
+
+  describe("booking as the signed-in account", () => {
+    const accountDotyposCustomerId = "60111";
+    const accountContact = (
+      overrides: { readonly phone?: string | null } = {}
+    ) =>
+      Effect.succeed({
+        accountId: "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
+        dotyposCustomerId: accountDotyposCustomerId,
+        name: "Grace Hopper",
+        email: "grace@example.test",
+        phone: "+420 602 123 456",
+        ...overrides,
+      } as never);
+    const createFreshDraft = () =>
+      mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            id: "account-reservation-id",
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            correlationId: "account-correlation-id",
+            dotyposCustomerId: input.dotyposCustomerId,
+            reservationDetails: input.reservationDetails,
+            locale: input.locale,
+            reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+          })
+        )
+      );
+
+    test("books under the linked Dotypos customer without resolving one from the contact", async () => {
+      const lockProbe = { held: false };
+      const lockSamples: boolean[] = [];
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() => Effect.succeed(null)),
+        createDraft: createFreshDraft(),
+        accountAuthority: { session: {}, activityState: "active", lockProbe },
+        customer: "account",
+        accountContact: Effect.suspend(() => {
+          lockSamples.push(lockProbe.held);
+          return accountContact();
+        }),
+      });
+
+      expect(scenario.result?.status).toBe("ready");
+      expect(scenario.readAccountContact).toHaveBeenCalledTimes(1);
+      expect(lockSamples).toEqual([true]);
+      expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
+      expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+      expect(scenario.createDraft.mock.calls[0]?.[0]).toMatchObject({
+        dotyposCustomerId: accountDotyposCustomerId,
+      });
+      expect(scenario.quoteForCustomer.mock.calls[0]?.[0]).toMatchObject({
+        dotyposCustomerId: accountDotyposCustomerId,
+      });
+    });
+
+    test("prices the reservation with the account contact instead of the submitted one", async () => {
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() => Effect.succeed(null)),
+        createDraft: createFreshDraft(),
+        accountAuthority: { session: {}, activityState: "active" },
+        reservation: {
+          ...reservation,
+          name: "Someone Else",
+          email: "someone.else@example.com",
+          phone: "+420 777 777 777",
+        },
+        customer: "account",
+        accountContact: accountContact(),
+      });
+
+      expect(scenario.result?.status).toBe("ready");
+      expect(
+        scenario.quoteForCustomer.mock.calls[0]?.[0].reservation
+      ).toMatchObject({
+        name: "Grace Hopper",
+        email: "grace@example.test",
+        phone: "+420 602 123 456",
+      });
+    });
+
+    test("keeps the submitted phone when the account has no usable phone", async () => {
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() => Effect.succeed(null)),
+        createDraft: createFreshDraft(),
+        accountAuthority: { session: {}, activityState: "active" },
+        customer: "account",
+        accountContact: accountContact({ phone: null }),
+      });
+
+      expect(scenario.result?.status).toBe("ready");
+      expect(
+        scenario.quoteForCustomer.mock.calls[0]?.[0].reservation
+      ).toMatchObject({
+        name: "Grace Hopper",
+        email: "grace@example.test",
+        phone: reservation.phone,
+      });
+    });
+
+    test.each([
+      [
+        "an anonymous session has no account contact",
+        undefined,
+        Effect.succeed(null),
+      ],
+      [
+        "the signed-in account has no bookable contact",
+        { session: {}, activityState: "active" } as const,
+        Effect.succeed(null),
+      ],
+      [
+        "customer accounts are not configured",
+        undefined,
+        Effect.fail(
+          new CustomerAccountAccessError({ reason: "not-configured" })
+        ),
+      ],
+    ])(
+      "reports an expired session when %s",
+      async (_label, accountAuthority, contact) => {
+        const { m } = await import("@/features/i18n");
+        const scenario = await runReusableReservationScenario({
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+          accountAuthority,
+          customer: "account",
+          accountContact: contact,
+        });
+
+        expect(scenario.result).toBeUndefined();
+        expect(scenario.error).toMatchObject({
+          _tag: "PublicSafeActionError",
+          message: m.accountSessionExpired({}, { locale: "en-US" }),
+          cause: {
+            _tag: "CustomerAccountAccessError",
+            reason: "unauthenticated",
+          },
+        });
+        expect(scenario.readAccountContact).toHaveBeenCalledTimes(1);
+        expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
+        expect(scenario.quoteForCustomer).not.toHaveBeenCalled();
+        expect(scenario.createDraft).not.toHaveBeenCalled();
+      }
+    );
+
+    test("reports an unavailable account contact as a generic reservation error", async () => {
+      const { m } = await import("@/features/i18n");
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() => Effect.succeed(null)),
+        createDraft: createFreshDraft(),
+        accountAuthority: { session: {}, activityState: "active" },
+        customer: "account",
+        accountContact: Effect.fail(
+          new CustomerAccountAccessError({ reason: "unavailable" })
+        ),
+      });
+
+      expect(scenario.error).toMatchObject({
+        _tag: "PublicSafeActionError",
+        message: m.reservationErrorMessage({}, { locale: "en-US" }),
+        cause: {
+          _tag: "CustomerAccountAccessError",
+          reason: "unavailable",
+        },
+      });
+      expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
+      expect(scenario.createDraft).not.toHaveBeenCalled();
+    });
+
+    test("resolves the Dotypos customer from the submitted contact without an account booking", async () => {
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() => Effect.succeed(null)),
+        createDraft: createFreshDraft(),
+        accountAuthority: { session: {}, activityState: "active" },
+      });
+
+      expect(scenario.result?.status).toBe("ready");
+      expect(scenario.readAccountContact).not.toHaveBeenCalled();
+      expect(scenario.findOrCreateCustomer).toHaveBeenCalledTimes(1);
+      expect(scenario.findOrCreateCustomer.mock.calls[0]?.[0]).toMatchObject({
+        email: reservation.email,
+        phone: reservation.phone,
+      });
+      expect(scenario.createDraft.mock.calls[0]?.[0]).toMatchObject({
+        dotyposCustomerId: "customer-id",
+      });
+      expect(
+        scenario.quoteForCustomer.mock.calls[0]?.[0].reservation
+      ).toMatchObject({ name: reservation.name, email: reservation.email });
+    });
   });
 
   test("reuses a held reservation returned by a conflicting draft insert", async () => {

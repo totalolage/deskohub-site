@@ -49,6 +49,7 @@ import {
   officeReservationDetailsSchema,
   officeReservationSchema,
 } from "@/features/reservation/office-reservation";
+import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import type { OfficeWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import {
   FormControl,
@@ -60,6 +61,7 @@ import { Input } from "@/shared/components/ui/input";
 
 type OfficeReservationFormProps = {
   readonly checkoutSessionId?: CheckoutSessionId;
+  readonly existingCustomer?: ReservationExistingCustomerForm;
   readonly seatCapacity: number;
   readonly initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
   readonly initialReservation?: NormalizedOfficeReservationOrder;
@@ -93,6 +95,7 @@ const getSelection = (
 
 export function OfficeReservationForm({
   checkoutSessionId,
+  existingCustomer,
   seatCapacity,
   initialAdvertisedPrices = [],
   initialReservation,
@@ -220,6 +223,7 @@ export function OfficeReservationForm({
 
   return (
     <ReservationCheckoutForm
+      existingCustomer={existingCustomer}
       advertisedPrice={{
         token: advertisedPrice?.advertisedPriceToken,
         isFetching: advertisedPriceResult?.isFetching ?? false,

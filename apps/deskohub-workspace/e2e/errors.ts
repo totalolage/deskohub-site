@@ -64,6 +64,20 @@ export const workspaceE2EProfileNavigationDiagnosticCodes = [
 export type WorkspaceE2EProfileNavigationDiagnosticCode =
   (typeof workspaceE2EProfileNavigationDiagnosticCodes)[number];
 
+export const workspaceE2EReservationExistingCustomerDiagnosticCodes = [
+  "account_reservation_existing_customer_page_failed",
+  "account_reservation_existing_customer_card_failed",
+  "account_reservation_existing_customer_card_review_failed",
+  "account_reservation_existing_customer_contact_switch_failed",
+  "account_reservation_existing_customer_contact_inputs_failed",
+  "account_reservation_existing_customer_contact_review_failed",
+  "account_reservation_existing_customer_account_switch_failed",
+  "account_reservation_existing_customer_card_restore_failed",
+] as const;
+
+export type WorkspaceE2EReservationExistingCustomerDiagnosticCode =
+  (typeof workspaceE2EReservationExistingCustomerDiagnosticCodes)[number];
+
 export const workspaceE2EAccountDiagnosticCodes = [
   "auth_delivery_request_rejected",
   "auth_delivery_message_not_observed",
@@ -77,6 +91,7 @@ export const workspaceE2EAccountDiagnosticCodes = [
   "postgres_account_fixture_convergence_failed",
   "dotypos_account_fixture_mutation_failed",
   ...workspaceE2EProfileNavigationDiagnosticCodes,
+  ...workspaceE2EReservationExistingCustomerDiagnosticCodes,
 ] as const;
 
 // The Nexi hosted payment page step that failed, paired with the provider page

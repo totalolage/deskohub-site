@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { Effect } from "effect";
 import type { AccountSection } from "@/features/account/components/shell/account-shell";
 import {
@@ -7,6 +7,7 @@ import {
   waitForBrowserCondition,
 } from "../browser";
 import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
+import { waitForReactClickHandler } from "../react-handlers";
 import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 
@@ -133,46 +134,6 @@ const makeAccountSectionWaitCondition = (
 ) =>
   `(${accountSectionIsReady.toString()})(${JSON.stringify(makeAccountSectionWaitInput(section, desktop))})`;
 
-const accountSectionButtonHasReactClickHandler = (
-  element: Element | null
-): boolean => {
-  if (element === null) return false;
-  const reactPropsKey = Object.keys(element).find((key) =>
-    key.startsWith("__reactProps$")
-  );
-  if (reactPropsKey === undefined) return false;
-
-  const reactProps = Object.getOwnPropertyDescriptor(
-    element,
-    reactPropsKey
-  )?.value;
-  if (typeof reactProps !== "object" || reactProps === null) return false;
-
-  return (
-    "onClick" in reactProps &&
-    typeof (reactProps as { readonly onClick?: unknown }).onClick === "function"
-  );
-};
-
-export const waitForAccountSectionButtonHandler = async (
-  page: Pick<Page, "waitForFunction">,
-  button: Pick<Locator, "elementHandle">
-): Promise<void> => {
-  const element = await button.elementHandle();
-  if (element === null)
-    throw new Error("account section button was not rendered");
-
-  try {
-    await page.waitForFunction(
-      accountSectionButtonHasReactClickHandler,
-      element,
-      { timeout: 15_000 }
-    );
-  } finally {
-    await element.dispose();
-  }
-};
-
 /**
  * After a document load the account content streams in its own Suspense
  * boundary. Clicking a section before React reveals and hydrates that boundary
@@ -246,7 +207,7 @@ export const selectAccountSection = async (
     viewport === null ? null : viewport.width >= desktopBreakpoint;
 
   onStage?.("button-handler-wait");
-  await waitForAccountSectionButtonHandler(page, sectionButton);
+  await waitForReactClickHandler(page, sectionButton);
 
   const hydrationAnchor = accountSectionHydrationAnchors[section];
   if (hydrationAnchor !== undefined) {

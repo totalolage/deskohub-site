@@ -4,6 +4,10 @@ export {
   OptionalAccountActivityGuard,
   requireAccountActivity,
 } from "./backend/customer-account-activity";
+export {
+  type CustomerAccountContact,
+  CustomerAccountContactService,
+} from "./backend/customer-account-contact.service";
 export type { CustomerAccountActivityState } from "./backend/customer-account-link.repository";
 export { CustomerAccountReservationOwnership } from "./backend/customer-account-reservation-ownership";
 export {

@@ -102,6 +102,12 @@ description: Workspace customer account, Better Auth, magic link, auth persisten
   marker blocks profile, reservation, checkout, and resolver activity but
   permits reauthentication, logout, and delete retry. Never delete retained
   Dotypos reservations, payments, invoices, or legal evidence.
+- The account advisory lock is not reentrant. Code already running under
+  `OptionalAccountActivityGuard` (such as reservation submission) must read
+  the linked contact with `CustomerAccountContactService.current`, which only
+  finds an existing link and never claims, resolves, or locks. Never call
+  `resolveCurrentCustomerAccount` inside the guard; it would wait on the lock
+  the guard already holds.
 
 ## Protected-preview E2E
 

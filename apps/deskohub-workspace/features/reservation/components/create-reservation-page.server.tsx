@@ -17,6 +17,8 @@ import {
 } from "@/features/discounts";
 import { type Locale, locales } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { loadReservationExistingCustomer } from "@/features/reservation/backend/reservation-existing-customer.server";
+import type { ReservationExistingCustomer } from "@/features/reservation/reservation-existing-customer";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -36,6 +38,8 @@ type ReservationForKind<Kind extends ReservationKind> = Extract<
 
 type ReservationPageContext<Kind extends ReservationKind> = {
   readonly checkoutSessionId?: CheckoutSessionId;
+  /** The signed-in, linked customer the page books for by default. */
+  readonly existingCustomer?: ReservationExistingCustomer<Kind>;
   readonly initialReservation?: ReservationForKind<Kind>;
   readonly locale: Locale;
   readonly replacementToken?: string;
@@ -179,8 +183,12 @@ async function ReservationPageContent<Kind extends ReservationKind>({
       runWorkspaceEffect(`reservation.${definition.kind}.normalize-code`)
     );
     const submittedCode = Option.getOrUndefined(normalizedCode);
+    const existingCustomer = await loadReservationExistingCustomer(
+      definition.kind
+    );
 
     return definition.render({
+      existingCustomer,
       locale,
       searchParams: resolvedSearchParams,
       submittedCode,

@@ -8,6 +8,7 @@ import { getMeetingRoomReservationInterval } from "./meeting-room-reservation-ti
 import {
   getMeetingRoomReservationDefaultValuesFromSearchParams,
   getOfficeReservationDefaultValuesFromSearchParams,
+  getReservationCustomerQueryMode,
   getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
@@ -445,5 +446,142 @@ describe("retired reservation customer message", () => {
       billing: { purpose: "personal", invoice: "none" },
       marketingConsent: false,
     });
+  });
+});
+
+describe("getReservationCustomerQueryMode", () => {
+  test("honours an explicit customer parameter over contact fields", () => {
+    expect(
+      getReservationCustomerQueryMode({
+        customer: "account",
+        name: "Ada Lovelace",
+      })
+    ).toBe("account");
+    expect(getReservationCustomerQueryMode({ customer: " contact " })).toBe(
+      "contact"
+    );
+  });
+
+  test("treats any contact field as a request for that exact contact", () => {
+    expect(
+      getReservationCustomerQueryMode(
+        new URLSearchParams("phone=%2B420777777777")
+      )
+    ).toBe("contact");
+    expect(getReservationCustomerQueryMode({ email: "invalid@" })).toBe(
+      "contact"
+    );
+  });
+
+  test("leaves the mode open without a customer or contact parameter", () => {
+    expect(getReservationCustomerQueryMode({ tier: "plus" })).toBeUndefined();
+    expect(
+      getReservationCustomerQueryMode({ customer: "someone", name: "  " })
+    ).toBeUndefined();
+  });
+
+  test("ignores contact fields on forms whose links never prefill them", () => {
+    expect(
+      getReservationCustomerQueryMode(
+        { name: "Ada Lovelace" },
+        { prefillsContact: false }
+      )
+    ).toBeUndefined();
+    expect(
+      getReservationCustomerQueryMode(
+        { customer: "contact" },
+        { prefillsContact: false }
+      )
+    ).toBe("contact");
+  });
+});
+
+describe("customer last reservation defaults", () => {
+  test("fills an open cowork offer from the last reservation", () => {
+    expect(
+      getReservationDefaultValuesFromSearchParams(
+        { date: "2099-06-10" },
+        {
+          kind: "cowork",
+          entryTier: "reserved-desk",
+          coffee: true,
+          monitorOption: "2x27-qhd",
+        }
+      )
+    ).toMatchObject({
+      date: "2099-06-10",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    });
+  });
+
+  test("keeps explicit cowork query options over the last reservation", () => {
+    const lastReservation = {
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    } as const;
+
+    expect(
+      getReservationDefaultValuesFromSearchParams(
+        { tier: "reserved-desk", monitorOption: "2x32-4k" },
+        lastReservation
+      )
+    ).toMatchObject({
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "2x32-4k",
+    });
+    // Another tier replaces the whole remembered offer.
+    expect(
+      getReservationDefaultValuesFromSearchParams(
+        { tier: "open-space" },
+        lastReservation
+      )
+    ).toEqual(
+      getReservationDefaultValuesFromSearchParams({ tier: "open-space" })
+    );
+  });
+
+  test("fills an open meeting room duration from the last reservation", () => {
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        { startDateTime: "2099-08-12T09:00" },
+        deterministicNow(),
+        { kind: "meeting-room", duration: "hour:4" }
+      ).duration
+    ).toBe("hour:4");
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        { duration: "hour:1", startDateTime: "2099-08-12T09:00" },
+        deterministicNow(),
+        { kind: "meeting-room", duration: "hour:4" }
+      ).duration
+    ).toBe("hour:1");
+  });
+
+  test("fills open or invalid office options from a still-fitting last reservation", () => {
+    const lastReservation = { kind: "office", dayCount: 2, seats: 3 } as const;
+
+    expect(
+      getOfficeReservationDefaultValuesFromSearchParams(
+        {},
+        { lastReservation, seatCapacity: 6, startsOn: "2099-06-12" }
+      )
+    ).toMatchObject({ dayCount: 2, seats: 3 });
+    expect(
+      getOfficeReservationDefaultValuesFromSearchParams(
+        { dayCount: "4", seats: "9" },
+        { lastReservation, seatCapacity: 6, startsOn: "2099-06-12" }
+      )
+    ).toMatchObject({ dayCount: 4, seats: 3 });
+    expect(
+      getOfficeReservationDefaultValuesFromSearchParams(
+        {},
+        { lastReservation, seatCapacity: 2, startsOn: "2099-06-12" }
+      )
+    ).toMatchObject({ dayCount: 2, seats: 1 });
   });
 });

@@ -39,6 +39,10 @@ import {
   reservationCustomerPhoneSchema,
 } from "@/features/reservation/reservation-contact";
 import { isTodayOrFutureWorkspaceDate } from "@/features/reservation/reservation-date";
+import type {
+  CustomerLastReservationForKind,
+  ReservationCustomerMode,
+} from "@/features/reservation/reservation-existing-customer";
 import {
   type CoworkWorkspaceAvailabilityQuery,
   parseWorkspaceAvailabilityQuery,
@@ -109,6 +113,38 @@ const decodeReservationCheckoutCustomer = (
     Predicate.isNotUndefined
   );
 
+/**
+ * Query parameter that tells a signed-in visit whether the link prefills the
+ * standing customer (`account`) or the exact contact in the link
+ * (`contact`).
+ */
+export const reservationCustomerQueryParam = "customer";
+
+const queryCustomerModeSchema = Schema.toStandardSchemaV1(
+  Schema.Literals(["account", "contact"] as const)
+);
+
+/**
+ * The customer mode a link asks for. An explicit `customer` parameter wins;
+ * otherwise, on forms whose links prefill the contact, any contact field
+ * asks for that exact contact. A link without either leaves the choice to
+ * the page.
+ */
+export const getReservationCustomerQueryMode = (
+  searchParams: SupportedSearchParams,
+  { prefillsContact = true }: { readonly prefillsContact?: boolean } = {}
+): ReservationCustomerMode | undefined =>
+  decodeStandardSchema(
+    queryCustomerModeSchema,
+    getTrimmedSearchParam(searchParams, reservationCustomerQueryParam)
+  ) ??
+  (prefillsContact &&
+  Record.keys(queryCustomerSchemas).some(
+    (key) => getTrimmedSearchParam(searchParams, key) !== undefined
+  )
+    ? "contact"
+    : undefined);
+
 const decodeReservationCheckoutQuery = (
   searchParams: SupportedSearchParams
 ): Partial<ReservationCheckoutQueryValues> => {
@@ -142,12 +178,26 @@ const decodeReservationCheckoutQuery = (
   };
 };
 
+/**
+ * Cowork form values from a link. The customer's last cowork reservation
+ * fills the offer options the link leaves open; a link naming another tier
+ * replaces the whole remembered offer.
+ */
 export const getReservationDefaultValuesFromSearchParams = (
-  searchParams: SupportedSearchParams
+  searchParams: SupportedSearchParams,
+  lastReservation?: CustomerLastReservationForKind<"cowork">
 ): CoworkReservationInput => {
+  const query = decodeReservationCheckoutQuery(searchParams);
   const values: CoworkReservationInput = {
     ...coworkReservationDefaultValues,
-    ...decodeReservationCheckoutQuery(searchParams),
+    ...(lastReservation &&
+      (query.entryTier === undefined ||
+        query.entryTier === lastReservation.entryTier) && {
+        entryTier: lastReservation.entryTier,
+        coffee: lastReservation.coffee,
+        monitorOption: lastReservation.monitorOption,
+      }),
+    ...query,
     marketingConsent: false,
   };
 
@@ -190,18 +240,11 @@ export const getReservationDefaultValuesFromPayState = (
 export const getOfficeReservationDefaultValuesFromSearchParams = (
   searchParams: SupportedSearchParams,
   options: {
+    readonly lastReservation?: CustomerLastReservationForKind<"office">;
     readonly seatCapacity: number;
     readonly startsOn: string;
   }
 ): OfficeReservationInput => {
-  const dayCount = decodeStandardSchema(
-    queryOfficeDayCountSchema,
-    getTrimmedSearchParam(searchParams, "dayCount")
-  );
-  const seats = decodeStandardSchema(
-    queryOfficeSeatsSchema,
-    getTrimmedSearchParam(searchParams, "seats")
-  );
   const maximumDayCount = getOfficeReservationMaximumDayCount({
     startsOn: options.startsOn,
     maximumEndsOn: getOfficeReservationMaximumEndsOn(
@@ -209,12 +252,30 @@ export const getOfficeReservationDefaultValuesFromSearchParams = (
     ),
     unavailableDates: [],
   });
+  const isAllowedDayCount = (dayCount: number | undefined) =>
+    dayCount !== undefined && dayCount <= maximumDayCount;
+  const isAllowedSeats = (seats: number | undefined) =>
+    seats !== undefined && seats <= options.seatCapacity;
+  const dayCount = [
+    decodeStandardSchema(
+      queryOfficeDayCountSchema,
+      getTrimmedSearchParam(searchParams, "dayCount")
+    ),
+    options.lastReservation?.dayCount,
+  ].find(isAllowedDayCount);
+  const seats = [
+    decodeStandardSchema(
+      queryOfficeSeatsSchema,
+      getTrimmedSearchParam(searchParams, "seats")
+    ),
+    options.lastReservation?.seats,
+  ].find(isAllowedSeats);
 
   return {
     ...officeReservationDefaultValues,
     startsOn: options.startsOn,
-    ...(dayCount !== undefined && dayCount <= maximumDayCount && { dayCount }),
-    ...(seats !== undefined && seats <= options.seatCapacity && { seats }),
+    ...(dayCount !== undefined && { dayCount }),
+    ...(seats !== undefined && { seats }),
   };
 };
 
@@ -227,14 +288,17 @@ const queryMeetingRoomDurationKeySchema = Schema.toStandardSchemaV1(
 
 export const getMeetingRoomReservationDefaultValuesFromSearchParams = (
   searchParams: SupportedSearchParams,
-  now = Temporal.Now.instant()
+  now = Temporal.Now.instant(),
+  lastReservation?: CustomerLastReservationForKind<"meeting-room">
 ): MeetingRoomReservationInput => {
   const durationKey = decodeStandardSchema(
     queryMeetingRoomDurationKeySchema,
     getTrimmedSearchParam(searchParams, "duration")
   );
   const duration = getMeetingRoomReservationDuration(
-    durationKey ?? meetingRoomReservationDefaultValues.duration
+    durationKey ??
+      lastReservation?.duration ??
+      meetingRoomReservationDefaultValues.duration
   );
 
   const startDateTime = decodeStandardSchema(

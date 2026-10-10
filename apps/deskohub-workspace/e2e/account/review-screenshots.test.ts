@@ -46,6 +46,11 @@ const marketingReviewTargets = [
   "marketing-link-invalid-mobile",
 ] as const;
 
+const reservationCustomerReviewTargets = [
+  "reservation-customer-account-desktop",
+  "reservation-customer-contact-desktop",
+] as const;
+
 const validTargets = [
   {
     filename: "completion-mobile375x900.png",
@@ -130,6 +135,22 @@ const validTargets = [
     path: "/en-US/account/legal",
     query: "",
     target: "linked-legal-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "reservation-customer-account-desktop.png",
+    path: "/en-US/reservation/cowork",
+    query: "",
+    target: "reservation-customer-account-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "reservation-customer-contact-desktop.png",
+    path: "/en-US/reservation/cowork",
+    query: "",
+    target: "reservation-customer-contact-desktop",
     viewport: { height: 1000, width: 1440 },
     fullPage: true,
   },
@@ -838,6 +859,38 @@ describe("account review screenshot capture", () => {
       target: "linked-legal-desktop",
       url: `${baseUrl}/en-US/account/legal#review-state`,
     },
+    ...reservationCustomerReviewTargets.flatMap((target) => [
+      {
+        name: `${target} at a foreign origin`,
+        target,
+        url: "https://other.example.test/en-US/reservation/cowork",
+      },
+      {
+        name: `${target} at another reservation page`,
+        target,
+        url: `${baseUrl}/en-US/reservation/office`,
+      },
+      {
+        name: `${target} at the account page`,
+        target,
+        url: `${baseUrl}/en-US/account`,
+      },
+      {
+        name: `${target} with a prefilled contact query`,
+        target,
+        url: `${baseUrl}/en-US/reservation/cowork?email=synthetic%40example.test`,
+      },
+      {
+        name: `${target} with a token query`,
+        target,
+        url: `${baseUrl}/en-US/reservation/cowork?token=synthetic-secret-token`,
+      },
+      {
+        name: `${target} with a hash`,
+        target,
+        url: `${baseUrl}/en-US/reservation/cowork#review-state`,
+      },
+    ]),
     ...marketingReviewTargets.flatMap((target) => [
       {
         name: `${target} with a token query`,

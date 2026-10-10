@@ -21,6 +21,7 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 
 type ReservationCheckoutDetails = {
   readonly advertisedPriceToken: string;
+  readonly customer?: "account";
   readonly marketingConsent?: boolean;
   readonly reservation: ReservationOrderIssuanceData;
 };
