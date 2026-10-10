@@ -1,14 +1,11 @@
 import { Suspense } from "react";
 import {
   AdministrationAlert,
-  AdministrationFilterField,
-  AdministrationFilterForm,
-  AdministrationFilterInput,
-  AdministrationFilterSelect,
   AdministrationPage,
   AdministrationTableCount,
   AdministrationTableToolbar,
 } from "@/features/administration/components";
+import { OperationsAdministrationFilterForm } from "@/features/administration/filter-forms";
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
@@ -16,15 +13,10 @@ import {
 } from "@/features/administration/loading";
 import {
   type AdministrationSearchParams,
-  type loadAdministrationOperations,
+  loadAdministrationOperations,
   loadAdministrationOperationsPage,
 } from "@/features/administration/page-data.server";
-import {
-  nexiOperationChannels,
-  nexiOperationTypes,
-} from "@/features/administration/payment-administration-filters";
 import { OperationTable } from "@/features/administration/payment-tables";
-import { Button } from "@/shared/components/ui/button";
 
 export default function OperationsAdministrationPage({
   searchParams,
@@ -81,7 +73,7 @@ async function OperationFiltersContent({
 }: {
   readonly criteria: Promise<OperationCriteria>;
 }) {
-  return <OperationFilters {...(await criteria)} />;
+  return <OperationsAdministrationFilterForm {...(await criteria)} />;
 }
 
 async function OperationResultsContent({
@@ -90,35 +82,6 @@ async function OperationResultsContent({
   readonly result: Promise<OperationsData["result"]>;
 }) {
   return <OperationResults result={await result} />;
-}
-
-function OperationFilters({ input, range }: OperationCriteria) {
-  return (
-    <AdministrationFilterForm variant="standalone">
-      <FilterField
-        defaultValue={range.from}
-        label="From"
-        name="from"
-        type="date"
-      />
-      <FilterField defaultValue={range.to} label="To" name="to" type="date" />
-      <SelectField
-        defaultValue={input.channel}
-        label="Origin"
-        name="channel"
-        options={nexiOperationChannels}
-      />
-      <SelectField
-        defaultValue={input.operationType}
-        label="Type"
-        name="operationType"
-        options={nexiOperationTypes}
-      />
-      <Button className="min-h-10" size="sm" type="submit">
-        Show operations
-      </Button>
-    </AdministrationFilterForm>
-  );
 }
 
 function OperationResults({
@@ -145,54 +108,24 @@ function OperationResults({
   );
 }
 
-function FilterField({
-  defaultValue,
-  label,
-  name,
-  type,
+export async function OperationsAdministrationContent({
+  searchParams,
 }: {
-  readonly defaultValue?: string;
-  readonly label: string;
-  readonly name: string;
-  readonly type: "date";
+  readonly searchParams: AdministrationSearchParams;
 }) {
+  const { input, range, result } =
+    await loadAdministrationOperations(searchParams);
   return (
-    <AdministrationFilterField htmlFor={`operation-${name}`} label={label}>
-      <AdministrationFilterInput
-        defaultValue={defaultValue}
-        id={`operation-${name}`}
-        name={name}
-        type={type}
+    <AdministrationPage>
+      <h1 className="sr-only">Operations</h1>
+      <AdministrationTableToolbar
+        count={result.items.length}
+        filters={
+          <OperationsAdministrationFilterForm input={input} range={range} />
+        }
+        itemLabel="operation"
       />
-    </AdministrationFilterField>
-  );
-}
-
-function SelectField({
-  defaultValue,
-  label,
-  name,
-  options,
-}: {
-  readonly defaultValue?: string;
-  readonly label: string;
-  readonly name: string;
-  readonly options: readonly string[];
-}) {
-  return (
-    <AdministrationFilterField htmlFor={`operation-${name}`} label={label}>
-      <AdministrationFilterSelect
-        defaultValue={defaultValue ?? ""}
-        id={`operation-${name}`}
-        name={name}
-      >
-        <option value="">All</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option.replaceAll("_", " ")}
-          </option>
-        ))}
-      </AdministrationFilterSelect>
-    </AdministrationFilterField>
+      <OperationResults result={result} />
+    </AdministrationPage>
   );
 }

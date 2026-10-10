@@ -33,7 +33,9 @@ const cliSessionLifetimeAmountSchema = Schema.Int.check(
   Schema.isBetween(cliSessionLifetimeAmountLimits)
 );
 
-const cliSessionLifetimeUnitSchema = Schema.Literals(cliSessionLifetimeUnits);
+export const cliSessionLifetimeUnitSchema = Schema.Literals(
+  cliSessionLifetimeUnits
+);
 
 /**
  * How long an approved CLI session stays valid. Calendar units are applied in
@@ -49,10 +51,13 @@ export const cliSessionLifetimeSchema = Schema.TaggedUnion({
 
 export type CliSessionLifetime = typeof cliSessionLifetimeSchema.Type;
 
+/** The duration amount as typed into the approval form. */
+export const cliSessionLifetimeAmountFieldSchema = Schema.FiniteFromString.pipe(
+  Schema.decodeTo(cliSessionLifetimeAmountSchema)
+);
+
 /** The duration fields as submitted by the approval form. */
 export const cliSessionDurationFieldsSchema = Schema.Struct({
-  amount: Schema.FiniteFromString.pipe(
-    Schema.decodeTo(cliSessionLifetimeAmountSchema)
-  ),
+  amount: cliSessionLifetimeAmountFieldSchema,
   unit: cliSessionLifetimeUnitSchema,
 });

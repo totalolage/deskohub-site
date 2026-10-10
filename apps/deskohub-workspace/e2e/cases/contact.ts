@@ -4,7 +4,7 @@ import {
   focusBrowserElement,
   openBrowserPage,
   pressBrowserKey,
-  waitForBrowserReactFormAction,
+  waitForBrowserReactFormSubmit,
   waitForBrowserText,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
@@ -49,11 +49,23 @@ export const assertContactForm = ({
       timeoutMs: config.timeouts.browserNavigation,
     });
     yield* runStep({
-      execute: waitForBrowserReactFormAction(
+      execute: waitForBrowserReactFormSubmit(
         run,
         session,
         "#contact-form form",
-        { timeoutMs: config.timeouts.uiTransition }
+        [
+          "#contact-name",
+          "#contact-phone",
+          "#contact-email",
+          "#contact-message",
+        ],
+        {
+          requiredReadyAttribute: {
+            name: "data-rhf-ready",
+            value: "true",
+          },
+          timeoutMs: config.timeouts.uiTransition,
+        }
       ),
       id: "wait-for-contact-form-hydration",
       timeoutMs: config.timeouts.uiTransition,

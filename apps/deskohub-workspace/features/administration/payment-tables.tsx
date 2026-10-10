@@ -1,9 +1,11 @@
 "use client";
 
-import type { ColumnDef } from "@tanstack/react-table";
 import { useMemo } from "react";
 import { AdministrationLink as Link } from "./admin-link";
-import { AdministrationDataTable } from "./data-table";
+import {
+  AdministrationDataTable,
+  type AdministrationDataTableColumn,
+} from "./data-table";
 import { EmptyState } from "./empty-state";
 import type {
   AdministrationOperation,
@@ -29,7 +31,7 @@ export function OrderTable({
 }: {
   readonly orders: readonly AdministrationOrder[];
 }) {
-  const columns = useMemo<ColumnDef<AdministrationOrder>[]>(
+  const columns = useMemo<AdministrationDataTableColumn<AdministrationOrder>[]>(
     () => [
       {
         accessorKey: "orderId",
@@ -131,7 +133,9 @@ export function OperationTable({
 }: {
   readonly operations: readonly AdministrationOperation[];
 }) {
-  const columns = useMemo<ColumnDef<AdministrationOperation>[]>(
+  const columns = useMemo<
+    AdministrationDataTableColumn<AdministrationOperation>[]
+  >(
     () => [
       {
         accessorFn: (operation) => operation.operationId,
