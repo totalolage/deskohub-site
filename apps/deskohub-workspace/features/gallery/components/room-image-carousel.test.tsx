@@ -81,8 +81,8 @@ describe("RoomImageCarousel", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("opens the current fallback photo with the shared lightbox", async () => {

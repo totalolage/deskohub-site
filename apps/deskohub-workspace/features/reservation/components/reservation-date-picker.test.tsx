@@ -24,8 +24,8 @@ describe("ReservationDatePicker", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("reports a blur when the calendar closes so onBlur validation runs", () => {

@@ -53,8 +53,8 @@ describe("LandingPagePhotoCarousel", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("keeps navigation manual without an autoplay control", async () => {

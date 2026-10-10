@@ -237,8 +237,8 @@ describe("MeetingRoomReservationForm", () => {
     push.mockClear();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders every server-loaded duration quote on the first paint without refetching", () => {

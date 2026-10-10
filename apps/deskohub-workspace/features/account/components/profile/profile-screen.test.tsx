@@ -138,8 +138,8 @@ describe("ProfileScreen", () => {
 
   afterEach(cleanup);
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders the caller fields and footer without owning a form", () => {

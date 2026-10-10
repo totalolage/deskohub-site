@@ -24,8 +24,8 @@ describe("ReservationDateTimePicker", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("prevents selecting a time before the same-day minimum", () => {

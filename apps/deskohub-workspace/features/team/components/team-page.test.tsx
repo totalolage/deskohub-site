@@ -17,8 +17,8 @@ afterEach(() => {
   cleanup();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 test("presents the existing team profiles under one page heading", async () => {

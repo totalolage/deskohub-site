@@ -80,8 +80,8 @@ describe("MeetingRoomPage", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders the localized booking journey and ordered Cloudinary photos", async () => {
