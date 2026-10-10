@@ -1727,7 +1727,10 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
     if (claim.state === "redeemed") return;
     if (claim.state === "released" && claim.kind === "discount") {
       const [code] = yield* tx
-        .select({ maxUses: discountCodes.maxUses })
+        .select({
+          maxUses: discountCodes.maxUses,
+          maxUsesPerCustomer: discountCodes.maxUsesPerCustomer,
+        })
         .from(discountCodes)
         .where(eq(discountCodes.id, claim.id))
         .limit(1)
@@ -1741,30 +1744,30 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
         });
       }
 
-      const [customerUse] = yield* tx
-        .select({ state: discountCodeRedemptions.state })
-        .from(discountCodeRedemptions)
-        .where(
-          and(
-            eq(discountCodeRedemptions.codeId, claim.id),
-            eq(
-              discountCodeRedemptions.dotyposCustomerId,
-              claim.dotyposCustomerId
-            ),
-            inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
-          )
-        )
-        .limit(1);
-      if (customerUse) {
-        return yield* new DiscountClaimError({
-          operation: "redeem",
-          reason:
-            customerUse.state === "redeemed"
-              ? "already_redeemed"
-              : "claim_conflict",
-          message: "The customer has another active claim for this code.",
-          codeId: claim.id,
-        });
+      // Mirror admission: only the configured per-customer limit (null is
+      // unlimited) restricts how many active uses one customer may hold.
+      if (code.maxUsesPerCustomer !== null) {
+        const [customerUses] = yield* tx
+          .select({ count: count() })
+          .from(discountCodeRedemptions)
+          .where(
+            and(
+              eq(discountCodeRedemptions.codeId, claim.id),
+              eq(
+                discountCodeRedemptions.dotyposCustomerId,
+                claim.dotyposCustomerId
+              ),
+              inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+            )
+          );
+        if ((customerUses?.count ?? 0) >= code.maxUsesPerCustomer) {
+          return yield* new DiscountClaimError({
+            operation: "redeem",
+            reason: "usage_limit_reached",
+            message: "The customer has no remaining uses for this code.",
+            codeId: claim.id,
+          });
+        }
       }
 
       if (code.maxUses !== null) {

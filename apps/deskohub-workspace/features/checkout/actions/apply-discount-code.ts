@@ -8,7 +8,7 @@ import {
   PayableReservationService,
 } from "@/features/checkout/backend/checkout";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
-import type { Locale } from "@/features/i18n";
+import { defaultLocale, isLocale, type Locale } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { applyDiscountCodeSchema } from "./apply-discount-code-input";
 import { applyDiscountCodeToPayState } from "./apply-discount-code-to-pay-state";
@@ -56,11 +56,17 @@ export async function applyDiscountCodeForm(
     redirect(result.data.freshPayUrl, RedirectType.replace);
   }
 
+  // Server Action arguments are client-controlled, so never build a redirect
+  // path from an unvalidated locale segment.
   redirect(
-    buildCheckoutPayPathFromToken(locale, payStateToken, {
-      discountCodeError: "unavailable",
-      discountCodeErrorId: randomUUID(),
-    }),
+    buildCheckoutPayPathFromToken(
+      isLocale(locale) ? locale : defaultLocale,
+      payStateToken,
+      {
+        discountCodeError: "unavailable",
+        discountCodeErrorId: randomUUID(),
+      }
+    ),
     RedirectType.replace
   );
 }

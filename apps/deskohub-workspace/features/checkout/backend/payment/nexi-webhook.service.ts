@@ -650,16 +650,34 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               yield* Effect.annotateLogsScoped({ failureKind, terminalState });
               yield* Effect.logInfo("Nexi webhook terminal transition started");
 
-              const transition = yield* paymentLifecycle.markTerminal({
-                id: attempt.id,
-                workspaceReservationId: reservation.id,
-                state: terminalState,
-                failureCode: "nexi_payment_failed",
-                webhookEventId: eventId,
-                providerOperationId,
-                providerStatus,
-              });
-              if (transition.changed) {
+              // An unsuccessful result moves no money. When the attempt is no
+              // longer the active pending attempt (abandonment expiry, or a
+              // newer attempt after status reconciliation), the transition
+              // can never apply, so accept the event instead of provoking
+              // endless provider retries.
+              const transition = yield* paymentLifecycle
+                .markTerminal({
+                  id: attempt.id,
+                  workspaceReservationId: reservation.id,
+                  state: terminalState,
+                  failureCode: "nexi_payment_failed",
+                  webhookEventId: eventId,
+                  providerOperationId,
+                  providerStatus,
+                })
+                .pipe(
+                  Effect.catchTag(
+                    "PaymentLifecycleStateError",
+                    Effect.fn(function* (cause) {
+                      yield* Effect.logWarning(
+                        "Nexi webhook terminal transition no longer applies",
+                        { cause }
+                      );
+                      return undefined;
+                    })
+                  )
+                );
+              if (transition?.changed) {
                 if (terminalState === "failed") {
                   yield* capturePaymentFailed({
                     attempt: transition.attempt,

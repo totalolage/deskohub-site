@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { execSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { commandOutput } from "../shared/command";
 import {
   assertCapturedSourcesMatchHead,
   avatarVisualCaptureChecklist,
@@ -45,22 +45,22 @@ test("capture accepts a working tree identical to HEAD", () => {
   expect(() => assertCapturedSourcesMatchHead([])).not.toThrow();
 });
 
-test("status collection detects untracked inputs despite status.showUntrackedFiles=no", () => {
+test("status collection detects untracked inputs despite status.showUntrackedFiles=no", async () => {
   const repository = mkdtempSync(join(tmpdir(), "avatar-status-check-"));
+  const git = (...args: string[]) =>
+    commandOutput(["git", ...args], { cwd: repository });
   try {
-    execSync("git init -q", { cwd: repository });
-    execSync("git config status.showUntrackedFiles no", { cwd: repository });
+    await git("init", "-q");
+    await git("config", "status.showUntrackedFiles", "no");
     const untrackedInput = join(repository, "untracked-build-input.ts");
     writeFileSync(untrackedInput, "export const probe = 1;\n");
 
     // Prove the config is actually honored by plain porcelain output,
     // so the regression below cannot pass vacuously.
-    const hiddenOutput = execSync("git status --porcelain", {
-      cwd: repository,
-    }).toString();
+    const hiddenOutput = await git("status", "--porcelain");
     expect(hiddenOutput.trim()).toBe("");
 
-    const lines = gitStatusPorcelainLines(repository);
+    const lines = await gitStatusPorcelainLines(repository);
     expect(lines).toEqual(["?? untracked-build-input.ts"]);
     expect(() => assertCapturedSourcesMatchHead(lines)).toThrow(
       /refusing to attribute a dirty tree to a clean commit/

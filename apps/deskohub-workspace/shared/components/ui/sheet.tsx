@@ -4,6 +4,7 @@ import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import type * as React from "react";
+import { baseLocale, type Locale, m } from "@/features/i18n";
 import { cn } from "@/shared/utils";
 
 const Sheet = SheetPrimitive.Root;
@@ -51,6 +52,7 @@ const sheetVariants = cva(
 export interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {
+  locale?: Locale;
   ref?: React.Ref<React.ComponentRef<typeof SheetPrimitive.Content>>;
 }
 
@@ -58,6 +60,7 @@ function SheetContent({
   side = "right",
   className,
   children,
+  locale = baseLocale,
   ref,
   ...props
 }: SheetContentProps) {
@@ -72,7 +75,7 @@ function SheetContent({
         {children}
         <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm p-1 text-navy-blue/70 hover:bg-navy-blue/5 hover:text-navy-blue focus:outline-none focus:ring-2 focus:ring-navy-blue/30">
           <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
+          <span className="sr-only">{m.closeDialogLabel({}, { locale })}</span>
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
     </SheetPortal>

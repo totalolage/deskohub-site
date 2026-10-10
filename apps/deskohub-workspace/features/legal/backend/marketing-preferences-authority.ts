@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { Data, Effect, Option, Schema } from "effect";
+import { Data, Effect, Schema } from "effect";
 import type {
   CustomerAccountId,
   LinkedCustomerAccount,
@@ -185,24 +185,17 @@ const isInvalidCookieValue = (value: string): boolean =>
 const mapManagementResolutionFailure = (
   cause: unknown
 ): MarketingPreferencesAuthorityError =>
-  hasManagementFailureReason(cause, "invalid_credential")
-    ? invalidLink()
-    : unavailable();
+  isInvalidMarketingManagementCredential(cause) ? invalidLink() : unavailable();
 
-const managementFailureReasonSchema = Schema.TaggedStruct(
-  "MarketingManagementError",
-  {
-    reason: Schema.Literals(["invalid_credential", "unavailable"]),
-  }
+/**
+ * Recognizes a management-service rejection of the presented link or session
+ * credential, as opposed to a retryable unavailability.
+ */
+export const isInvalidMarketingManagementCredential = Schema.is(
+  Schema.TaggedStruct("MarketingManagementError", {
+    reason: Schema.Literal("invalid_credential"),
+  })
 );
-
-const hasManagementFailureReason = (
-  cause: unknown,
-  reason: "invalid_credential" | "unavailable"
-): boolean =>
-  Option.getOrUndefined(
-    Schema.decodeUnknownOption(managementFailureReasonSchema)(cause)
-  )?.reason === reason;
 
 const invalidLink = (): MarketingPreferencesAuthorityError =>
   new MarketingPreferencesAuthorityError({ reason: "invalid-link" });

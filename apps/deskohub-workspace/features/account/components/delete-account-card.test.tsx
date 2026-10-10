@@ -56,12 +56,18 @@ mock.module("@/features/account/auth.client", () => ({
   },
 }));
 
+// Mirrors next-safe-action 8 as wrapped by useWorkspaceAction: a thrown
+// (transport) failure settles as "hasErrored" with an empty result and fires
+// both onError (with thrownError) and onTransportError, and reset() discards
+// the outcome of an in-flight request.
 mock.module("@/shared/utils/use-workspace-action", () => ({
   useWorkspaceAction: (
     action: (input: never) => Promise<unknown>,
     options?: {
       readonly onSuccess?: (args: { readonly data?: unknown }) => void;
-      readonly onError?: (args: { readonly error: ActionResult }) => void;
+      readonly onError?: (args: {
+        readonly error: ActionResult & { readonly thrownError?: unknown };
+      }) => void;
       readonly onTransportError?: (args: {
         readonly error: unknown;
         readonly input: never;
@@ -69,33 +75,49 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
     }
   ) => {
     const [result, setResult] = React.useState<ActionResult>({});
-    const [isExecuting, setExecuting] = React.useState(false);
+    const [status, setStatus] = React.useState<
+      "idle" | "executing" | "hasSucceeded" | "hasErrored"
+    >("idle");
+    const requestId = React.useRef(0);
     return {
       result,
-      isExecuting,
+      status,
+      isIdle: status === "idle",
+      isExecuting: status === "executing",
+      hasSucceeded: status === "hasSucceeded",
+      hasErrored: status === "hasErrored",
       execute: (input: never) => {
-        setExecuting(true);
+        const thisRequestId = ++requestId.current;
+        setStatus("executing");
         void action(input)
           .then((outcome) => {
-            setExecuting(false);
+            if (thisRequestId !== requestId.current) return;
             const result = (outcome ?? {}) as ActionResult;
             setResult(result);
             if (
               result.serverError !== undefined ||
               result.validationErrors !== undefined
             ) {
+              setStatus("hasErrored");
               options?.onError?.({ error: result });
             } else {
+              setStatus("hasSucceeded");
               options?.onSuccess?.({ data: result.data });
             }
           })
           .catch((error) => {
-            setExecuting(false);
-            setResult({});
             options?.onTransportError?.({ error, input });
+            if (thisRequestId !== requestId.current) return;
+            setResult({});
+            setStatus("hasErrored");
+            options?.onError?.({ error: { thrownError: error } });
           });
       },
-      reset: () => setResult({}),
+      reset: () => {
+        requestId.current += 1;
+        setResult({});
+        setStatus("idle");
+      },
     };
   },
 }));
@@ -227,6 +249,25 @@ describe("DeleteAccountCard", () => {
       ).toBeTruthy();
     }
   );
+
+  test("names the dialog close button in the visitor's locale", async () => {
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="cs-CZ"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view, "cs-CZ");
+
+    expect(
+      view.getByRole("button", {
+        name: m.closeDialogLabel({}, { locale: "cs-CZ" }),
+      })
+    ).toBeTruthy();
+  });
 
   test("keeps the destructive confirmation disabled until the checkbox is checked", async () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
@@ -743,6 +784,159 @@ describe("DeleteAccountCard", () => {
       settleTransition: true,
     });
     expect(view.getByRole("dialog")).toBeTruthy();
+  });
+
+  test("shows a retryable error after a transport failure", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.reject(new Error("synthetic transport failure"))
+    );
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          m.accountDeletionConfirmLabel({}, { locale: "en-US" })
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      view.getByText(m.accountDeletionRequestFailed({}, { locale: "en-US" }))
+    ).toBeTruthy();
+    expect(view.queryByText("synthetic transport failure")).toBeNull();
+    expect(
+      (
+        view.getByRole("button", {
+          name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+  });
+
+  test("ignores close requests while deletion is in flight and still redirects", async () => {
+    let resolveDeletion!: (result: ActionResult) => void;
+    const pendingDeletion = new Promise<ActionResult>((resolve) => {
+      resolveDeletion = resolve;
+    });
+    deleteCustomerAccount.mockImplementationOnce(() => pendingDeletion);
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    let assigned: string | null = null;
+    const originalAssign = window.location.assign;
+    window.location.assign = ((href: string) => {
+      assigned = href;
+    }) as typeof window.location.assign;
+
+    try {
+      const view = render(
+        <DeleteAccountCard
+          email="ada@example.test"
+          locale="en-US"
+          deletionPending={false}
+        />
+      );
+      await openDialog(view);
+      await act(async () => {
+        fireEvent.click(
+          view.getByLabelText(
+            m.accountDeletionConfirmLabel({}, { locale: "en-US" })
+          )
+        );
+      });
+      await act(async () => {
+        fireEvent.click(
+          view.getByRole("button", {
+            name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+          })
+        );
+      });
+
+      const cancel = view.getByRole("button", {
+        name: m.accountDeletionCancel({}, { locale: "en-US" }),
+      }) as HTMLButtonElement;
+      expect(cancel.disabled).toBe(true);
+
+      await act(async () => {
+        fireEvent.keyDown(view.getByRole("dialog"), {
+          key: "Escape",
+          code: "Escape",
+        });
+      });
+      expect(view.getByRole("dialog")).toBeTruthy();
+      expect(workspaceRouterRefresh).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveDeletion({ data: { status: "deleted" } });
+        await pendingDeletion;
+      });
+
+      expect(completeAnalyticsAccountSignOut).toHaveBeenCalledTimes(1);
+      expect(assigned).toBe("/en-US/account/deleted");
+    } finally {
+      window.location.assign = originalAssign;
+    }
+  });
+
+  test("refreshes the page only when cancelling after a deletion attempt", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: "failed" } })
+    );
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    const cancelDialog = async () => {
+      await act(async () => {
+        fireEvent.click(
+          view.getByRole("button", {
+            name: m.accountDeletionCancel({}, { locale: "en-US" }),
+          })
+        );
+      });
+    };
+
+    await openDialog(view);
+    await cancelDialog();
+    expect(workspaceRouterRefresh).not.toHaveBeenCalled();
+
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          m.accountDeletionConfirmLabel({}, { locale: "en-US" })
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+        })
+      );
+    });
+    await cancelDialog();
+    expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
   });
 
   test("keeps the deletion confirmation disabled while the request is in flight", async () => {

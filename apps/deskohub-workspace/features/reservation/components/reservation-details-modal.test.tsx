@@ -49,3 +49,19 @@ test("renders an accessible modal and closes through browser history", async () 
 
   expect(back).toHaveBeenCalledTimes(1);
 });
+
+test("localizes the close button", async () => {
+  const { ReservationDetailsModal } = await import(
+    "./reservation-details-modal"
+  );
+
+  const view = render(
+    <ReservationDetailsModal locale="cs-CZ">
+      <p>Detail rezervace</p>
+    </ReservationDetailsModal>
+  );
+
+  fireEvent.click(view.getByRole("button", { name: "Zavřít" }));
+
+  expect(back).toHaveBeenCalledTimes(1);
+});

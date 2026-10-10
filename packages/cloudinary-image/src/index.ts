@@ -1,2 +1,2 @@
-export * from "./cloudinary-image";
-export * from "./url";
+export { CloudinaryImage } from "./cloudinary-image";
+export { getCloudinaryImageUrl } from "./url";

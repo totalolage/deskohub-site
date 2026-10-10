@@ -1,4 +1,4 @@
-import { Context, type Effect, Match } from "effect";
+import { Context, Data, type Effect, Match } from "effect";
 import type {
   EmailMessage,
   EmailProviderConfig,
@@ -6,22 +6,24 @@ import type {
 } from "../types/email.types";
 import type { NetworkError } from "./network-error";
 
-export class EmailServiceError {
-  readonly _tag = "EmailServiceError";
-  constructor(
-    readonly message: string,
-    readonly cause?: unknown,
-    readonly provider?: string
-  ) {}
+export class EmailServiceError extends Data.TaggedError("EmailServiceError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+  readonly provider?: string;
+}> {
+  constructor(message: string, cause?: unknown, provider?: string) {
+    super({ message, cause, provider });
+  }
 }
 
-export class EmailTemplateError {
-  readonly _tag = "EmailTemplateError";
-  constructor(
-    readonly message: string,
-    readonly template: string,
-    readonly cause?: unknown
-  ) {}
+export class EmailTemplateError extends Data.TaggedError("EmailTemplateError")<{
+  readonly message: string;
+  readonly template: string;
+  readonly cause?: unknown;
+}> {
+  constructor(message: string, template: string, cause?: unknown) {
+    super({ message, template, cause });
+  }
 }
 
 export interface EmailProvider {

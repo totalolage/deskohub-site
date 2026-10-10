@@ -52,14 +52,6 @@ const customerProfileBusinessBillingSchema = Schema.Struct({
 export const customerProfileBusinessBillingFields =
   customerProfileBusinessBillingSchema.fields;
 
-export type CustomerProfileAddressInput = {
-  readonly addressLine1?: string;
-  readonly addressLine2?: string;
-  readonly city?: string;
-  readonly zip?: string;
-  readonly country?: string;
-};
-
 export const customerProfileBillingSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("personal"),

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { workspaceE2EPlaywrightCheckoutTimeout } from "../e2e/timeouts";
+import { runCommand } from "./shared/command";
 import {
   callsNamed,
   identifierNames,
@@ -22,30 +23,29 @@ import {
 type PlaywrightCheckoutConfig =
   typeof import("../playwright.e2e.config")["default"];
 
-let cachedConfigStructure: PlaywrightCheckoutConfig | undefined;
 // The real Playwright config is executed (not text-scanned) and its resolved
 // structure is asserted on. It runs in a child process because the config
 // resolves its browser executable with a top-level await, which bun's test
 // runner does not settle reliably across multiple entry files.
-const playwrightConfigStructure = (): PlaywrightCheckoutConfig => {
-  if (cachedConfigStructure === undefined) {
-    const result = Bun.spawnSync({
-      cmd: [
+const loadPlaywrightConfigStructure =
+  async (): Promise<PlaywrightCheckoutConfig> => {
+    const result = await runCommand(
+      [
         process.execPath,
         "-e",
         'const config = (await import("./playwright.e2e.config")).default; console.log(JSON.stringify(config));',
       ],
-      cwd: resolve(import.meta.dir, ".."),
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+      { cwd: resolve(import.meta.dir, "..") }
+    );
     if (result.exitCode !== 0) {
-      throw new Error(new TextDecoder().decode(result.stderr));
+      throw new Error(result.stderr);
     }
-    cachedConfigStructure = JSON.parse(
-      new TextDecoder().decode(result.stdout)
-    ) as PlaywrightCheckoutConfig;
-  }
+    return JSON.parse(result.stdout) as PlaywrightCheckoutConfig;
+  };
+
+let cachedConfigStructure: Promise<PlaywrightCheckoutConfig> | undefined;
+const playwrightConfigStructure = (): Promise<PlaywrightCheckoutConfig> => {
+  cachedConfigStructure ??= loadPlaywrightConfigStructure();
   return cachedConfigStructure;
 };
 
@@ -135,6 +135,9 @@ describe("workspace E2E workflow", () => {
       )
     ).toBe(true);
     expect(doc.permissions?.contents).not.toBe("write");
+    // Only the jobs that publish commit statuses opt into write access; the
+    // workflow default stays read-only for the target-resolution job.
+    expect(doc.permissions?.statuses).toBe("read");
     expect(
       JSON.stringify(allocationAction?.with ?? {}).includes(
         "secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL"
@@ -335,8 +338,8 @@ describe("workspace E2E workflow", () => {
       "bun scripts/workspace-e2e-account-state.ts"
     );
 
-    const uploadIndex = allSteps.findIndex(
-      (step) => step.uses === "actions/upload-artifact@v4"
+    const uploadIndex = allSteps.findIndex((step) =>
+      (step.uses ?? "").startsWith("actions/upload-artifact@")
     );
     const diagnosticIndex = allSteps.findIndex(
       (step) => step.name === "Classify synthetic main account state"
@@ -424,9 +427,9 @@ describe("workspace E2E workflow", () => {
     expect(environment).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
   });
 
-  test("generates the Igloohome client before Workspace E2E startup", () => {
-    const result = Bun.spawnSync({
-      cmd: [
+  test("generates the Igloohome client before Workspace E2E startup", async () => {
+    const result = await runCommand(
+      [
         process.execPath,
         "turbo",
         "run",
@@ -434,14 +437,14 @@ describe("workspace E2E workflow", () => {
         "--filter=deskohub-workspace",
         "--dry=json",
       ],
-      cwd: resolve(import.meta.dir, "../../../"),
-      env: { ...process.env, TURBO_UI: "false" },
-      stderr: "pipe",
-      stdout: "pipe",
-    });
+      {
+        cwd: resolve(import.meta.dir, "../../../"),
+        env: { ...process.env, TURBO_UI: "false" },
+      }
+    );
 
     expect(result.exitCode).toBe(0);
-    const output = new TextDecoder().decode(result.stdout);
+    const output = result.stdout;
     const jsonStart = output.indexOf("{");
     expect(jsonStart).toBeGreaterThanOrEqual(0);
     const graph = JSON.parse(output.slice(jsonStart)) as {
@@ -531,8 +534,8 @@ describe("workspace E2E workflow", () => {
     expect(turboGlobal).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
   });
 
-  test("runs invoice persistence inside the normal exact-SHA Playwright graph", () => {
-    const playwrightConfig = playwrightConfigStructure();
+  test("runs invoice persistence inside the normal exact-SHA Playwright graph", async () => {
+    const playwrightConfig = await playwrightConfigStructure();
     const packageJson = readTrackedJson("../package.json") as {
       readonly scripts: Record<string, string | undefined>;
       readonly dependencies: Record<string, string>;
@@ -651,8 +654,8 @@ describe("workspace E2E workflow", () => {
     expect(stepNames).toContain("Verify hosted browser runtime");
   });
 
-  test("lets Playwright own checkout preparation, scheduling, and parallelism", () => {
-    const playwrightConfig = playwrightConfigStructure();
+  test("lets Playwright own checkout preparation, scheduling, and parallelism", async () => {
+    const playwrightConfig = await playwrightConfigStructure();
     const entry = parseTrackedModule("workspace-e2e.ts");
     const suite = parseTrackedModule("../e2e/suite.ts");
     const cleanupRuntime = parseTrackedModule(
@@ -741,8 +744,8 @@ describe("workspace E2E workflow", () => {
     ).toBe(false);
   });
 
-  test("preserves discount seeding and account phase dependencies", () => {
-    const playwrightConfig = playwrightConfigStructure();
+  test("preserves discount seeding and account phase dependencies", async () => {
+    const playwrightConfig = await playwrightConfigStructure();
     expect(
       projectByName(playwrightConfig, "account-auth")?.dependencies
     ).toEqual(["checkout-plan"]);
@@ -759,8 +762,8 @@ describe("workspace E2E workflow", () => {
     ).toEqual(["checkout-setup"]);
   });
 
-  test("lets Playwright schedule read-only navigation beside checkout cases", () => {
-    const playwrightConfig = playwrightConfigStructure();
+  test("lets Playwright schedule read-only navigation beside checkout cases", async () => {
+    const playwrightConfig = await playwrightConfigStructure();
     const packageJson = readTrackedJson("../package.json") as {
       readonly scripts: Record<string, string>;
     };
@@ -793,8 +796,8 @@ describe("workspace E2E workflow", () => {
     );
   });
 
-  test("lets Playwright write complete GitHub job summaries", () => {
-    const playwrightConfig = playwrightConfigStructure();
+  test("lets Playwright write complete GitHub job summaries", async () => {
+    const playwrightConfig = await playwrightConfigStructure();
     expect(serializedWorkflow.includes("GITHUB_STEP_SUMMARY")).toBe(false);
     const summaryReporter = playwrightConfig.reporter?.find(
       (entry) =>

@@ -24,7 +24,7 @@ describe("createWorkspaceTracingLive", () => {
     });
     const logExporter = new InMemoryLogRecordExporter();
     const loggerProvider = new LoggerProvider({
-      processors: [new SimpleLogRecordProcessor(logExporter)],
+      processors: [new SimpleLogRecordProcessor({ exporter: logExporter })],
     });
     const contextManager = new AsyncLocalStorageContextManager().enable();
     context.setGlobalContextManager(contextManager);

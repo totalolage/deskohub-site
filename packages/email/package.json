@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "biome check backend types index.ts --config-path ../../biome.json --vcs-root ../.."
+    "lint": "biome check backend types index.ts --config-path ../../biome.json --vcs-root ../..",
+    "test": "bun test"
   },
   "exports": {
     ".": "./index.ts",
@@ -18,6 +19,6 @@
   },
   "dependencies": {
     "effect": "4.0.0-beta.85",
-    "resend": "^6.0.1"
+    "resend": "^6.32.1"
   }
 }

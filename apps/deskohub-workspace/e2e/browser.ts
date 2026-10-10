@@ -14,8 +14,9 @@ import { pollUntil } from "./polling";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
+import { isNexiBuildApiUrl } from "./urls";
 
-const runBrowserCommand = (
+export const runBrowserCommand = (
   operation: string,
   run: Runner,
   session: string,
@@ -28,6 +29,24 @@ const runBrowserCommand = (
       signal,
     })
   );
+
+// The session's request/response log, or an empty log when it is unavailable.
+export const readBrowserNetworkLog = (
+  run: Runner,
+  session: string
+): Effect.Effect<string, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "read browser network log",
+    run,
+    session,
+    ["network", "requests"],
+    {
+      allowFailure: true,
+      logCommand: false,
+      logOutput: false,
+      timeoutMs: 30_000,
+    }
+  ).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout : "")));
 
 export const readBrowserUrl = (
   run: Runner,
@@ -578,6 +597,9 @@ export const captureBrowserFailureArtifacts = ({
     yield* tryWorkspaceE2EPromise("create browser artifact directory", () =>
       mkdir(artifactDir, { recursive: true })
     );
+    // A failed or interrupted step can leave the session inside an iframe;
+    // diagnostics describe the page the user sees.
+    yield* switchToMainFrame(run, session);
     yield* writeTextArtifact(
       artifactDir,
       "error.txt",
@@ -619,10 +641,11 @@ export const captureBrowserFailureArtifacts = ({
           "read browser HAR artifact",
           () => readFile(rawHarPath, "utf8")
         );
-        yield* writeTextArtifact(
-          artifactDir,
-          "network.har",
-          sanitizeHarArtifact(har)
+        yield* tryWorkspaceE2EPromise("write network.har artifact", () =>
+          writeFile(
+            resolve(artifactDir, "network.har"),
+            `${sanitizeHarArtifact(har)}\n`
+          )
         );
       }).pipe(
         Effect.ensuring(
@@ -699,6 +722,7 @@ const writeTextArtifact = (
     )
   );
 
+// Best-effort switch for cleanup and diagnostics; a failed switch is ignored.
 export const switchToMainFrame = (
   run: Runner,
   session: string
@@ -709,6 +733,28 @@ export const switchToMainFrame = (
     timeoutMs: 30_000,
   }).pipe(Effect.asVoid);
 
+// Fails unless the session is back in the main frame, for callers whose next
+// commands must not run inside an iframe.
+export const requireMainFrame = (
+  run: Runner,
+  session: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand("switch to main frame", run, session, ["frame", "main"], {
+    logOutput: false,
+    timeoutMs: 30_000,
+  }).pipe(
+    Effect.flatMap((result) =>
+      result.exitCode === 0
+        ? Effect.void
+        : Effect.fail(
+            toWorkspaceE2EError(
+              "switch to main frame",
+              new Error(`frame command exited with ${result.exitCode}`)
+            )
+          )
+    )
+  );
+
 export const closeBrowserSession = (
   run: Runner,
   session: string
@@ -718,26 +764,11 @@ export const closeBrowserSession = (
     logOutput: false,
   }).pipe(Effect.asVoid);
 
-export const findFirstTextFieldRef = (snapshot: string) => {
-  for (const line of snapshot.split("\n")) {
-    const ref = getSnapshotRef(line);
-    if (ref && /\b(textbox|input)\b/i.test(line)) return ref;
-  }
-};
-
-export const findFirstEnabledTextFieldRef = (snapshot: string) => {
-  for (const line of snapshot.split("\n")) {
-    if (hasDisabledSnapshotState(line)) continue;
-    const ref = getSnapshotRef(line);
-    if (ref && /\b(textbox|input)\b/i.test(line)) return ref;
-  }
-};
-
 export const summarizeHostedPaymentSnapshot = (snapshot: string) => {
   const lines = snapshot
     .split("\n")
     .filter((line) =>
-      /\b(?:button|frame|iframe|input|textbox|link)\b/i.test(line)
+      /\b(?:button|frame|heading|iframe|input|textbox|link)\b/i.test(line)
     )
     .slice(0, 80)
     .map(sanitizeDiagnosticLine)
@@ -772,7 +803,9 @@ const sanitizeArtifactUrlText = (text: string) =>
     }
   });
 
-const sanitizeHarArtifact = (text: string) => {
+// Sanitizes string values only, so short redacted values (such as test card
+// fragments) cannot rewrite timings and sizes into invalid JSON.
+export const sanitizeHarArtifact = (text: string) => {
   try {
     const har = JSON.parse(text) as Record<string, unknown>;
     const log = asRecord(har.log);
@@ -781,14 +814,29 @@ const sanitizeHarArtifact = (text: string) => {
     for (const entry of entries) {
       const record = asRecord(entry);
       if (!record) continue;
-      sanitizeHarRequest(asRecord(record.request));
-      sanitizeHarResponse(asRecord(record.response));
+      const request = asRecord(record.request);
+      const requestUrl = typeof request?.url === "string" ? request.url : "";
+      sanitizeHarRequest(request);
+      sanitizeHarResponse(asRecord(record.response), requestUrl);
     }
 
-    return JSON.stringify(har, null, 2);
+    return JSON.stringify(sanitizeJsonStrings(har), null, 2);
   } catch {
     return sanitizeArtifactText(text);
   }
+};
+
+const sanitizeJsonStrings = (value: unknown): unknown => {
+  if (typeof value === "string") return sanitizeArtifactText(value);
+  if (Array.isArray(value)) return value.map(sanitizeJsonStrings);
+  const record = asRecord(value);
+  if (!record) return value;
+  return Object.fromEntries(
+    Object.entries(record).map(([key, item]) => [
+      key,
+      sanitizeJsonStrings(item),
+    ])
+  );
 };
 
 const sanitizeHarRequest = (request: Record<string, unknown> | undefined) => {
@@ -805,14 +853,90 @@ const sanitizeHarRequest = (request: Record<string, unknown> | undefined) => {
   if (typeof postData.text === "string") postData.text = "[redacted]";
 };
 
-const sanitizeHarResponse = (response: Record<string, unknown> | undefined) => {
+const sanitizeHarResponse = (
+  response: Record<string, unknown> | undefined,
+  requestUrl: string
+) => {
   if (!response) return;
   response.headers = sanitizeHarNamedValues(response.headers);
   response.cookies = [];
 
   const content = asRecord(response.content);
-  if (content && typeof content.text === "string") content.text = "[redacted]";
+  if (!content || typeof content.text !== "string") return;
+  content.text =
+    typeof response.status === "number" &&
+    response.status >= 400 &&
+    isNexiBuildUrl(requestUrl)
+      ? summarizeNexiBuildFailureBody(content.text)
+      : "[redacted]";
 };
+
+const isNexiBuildUrl = (value: string) => {
+  try {
+    return isNexiBuildApiUrl(new URL(value));
+  } catch {
+    return false;
+  }
+};
+
+// Nexi explains a rejected hosted-field call only in its response body. Keep
+// only fields at known paths whose values have a provider-code shape that
+// cannot carry customer or card data; drop everything else.
+const nexiErrorCodePattern = /^[A-Z]{2,4}\d{2,6}$/;
+const nexiEnumValuePattern = /^[A-Z]+(?:_[A-Z]+)+$/;
+const nexiHostedFieldIds = new Set([
+  "CARDHOLDER_EMAIL",
+  "CARDHOLDER_NAME",
+  "CARD_NUMBER",
+  "EXPIRATION_DATE",
+  "SECURITY_CODE",
+]);
+
+const summarizeNexiBuildFailureBody = (text: string) => {
+  let body: Record<string, unknown> | undefined;
+  try {
+    body = asRecord(JSON.parse(text));
+  } catch {
+    return "[redacted]";
+  }
+  if (!body) return "[redacted]";
+
+  const summary: Record<string, unknown> = {};
+  const errorCodes = recordsOf(body.errors).flatMap((error) =>
+    codeValue(error.code, nexiErrorCodePattern)
+  );
+  if (errorCodes.length > 0)
+    summary.errors = errorCodes.map((code) => ({ code }));
+  for (const key of ["event", "state", "workflowState"]) {
+    const [value] = codeValue(body[key], nexiEnumValuePattern);
+    if (value) summary[key] = value;
+  }
+  const fieldStatus = recordsOf(body.fieldStatus).flatMap((field) => {
+    const [event] = codeValue(field.event, nexiEnumValuePattern);
+    if (!event) return [];
+    const id =
+      typeof field.id === "string" && nexiHostedFieldIds.has(field.id)
+        ? field.id
+        : "[other]";
+    return [{ event, id }];
+  });
+  if (fieldStatus.length > 0) summary.fieldStatus = fieldStatus;
+
+  return Object.keys(summary).length > 0
+    ? JSON.stringify(summary)
+    : "[redacted]";
+};
+
+const recordsOf = (value: unknown) =>
+  Array.isArray(value)
+    ? value.flatMap((item) => {
+        const record = asRecord(item);
+        return record ? [record] : [];
+      })
+    : [];
+
+const codeValue = (value: unknown, pattern: RegExp): string[] =>
+  typeof value === "string" && pattern.test(value) ? [value] : [];
 
 const sanitizeHarNamedValues = (value: unknown) =>
   Array.isArray(value)

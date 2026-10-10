@@ -253,6 +253,36 @@ describe("CheckoutPayPage payment navigation", () => {
     ).toBe("true");
   });
 
+  test("announces a payment start failure as an alert", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+    expect(view.queryByRole("alert")).toBeNull();
+
+    const actionOptions = workspaceUseAction.mock.calls.at(-1)?.[1] as
+      | { readonly onTransportError: () => void }
+      | undefined;
+    if (!actionOptions) throw new Error("Checkout action options missing");
+
+    act(() => {
+      actionOptions.onTransportError();
+    });
+
+    expect(view.getByRole("alert").textContent).toBe(
+      m.checkoutPaySubmitError({}, { locale: "en-US" })
+    );
+  });
+
   test("omits the early-performance request when the withdrawal period has elapsed", async () => {
     const { CheckoutPayPage } = await import("./checkout-pay-page");
     const quote = buildCoworkReservationQuote({

@@ -12,9 +12,9 @@ import { Button } from "@/shared/components/ui/button";
 import type { VariableStyle } from "@/shared/utils";
 import cornerMask from "../images/corner.svg";
 import heroImage from "../images/hero.jpeg";
+import { LandingPageBackgroundNoise } from "./landing-page-background-noise";
 import { LandingPageHeroScrollScene } from "./landing-page-hero-scroll-scene";
 import { LandingPageHexagon } from "./landing-page-hexagon";
-import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-carousel-section";
 
 type LandingPageHeroSectionProps = {
   locale: Locale;
@@ -113,10 +113,10 @@ export function LandingPageHeroSection({
             maskSize: "cover",
           }}
         >
-          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+          <LandingPageBackgroundNoise className="bg-bottom" />
         </div>
         <div className="absolute inset-x-0 bottom-0 top-[calc(8rem-3.075rem)] bg-chilean-fire">
-          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+          <LandingPageBackgroundNoise className="bg-bottom" />
         </div>
         <div
           className="absolute right-0 top-0 h-32 w-32 bg-chilean-fire rotate-y-180"
@@ -125,7 +125,7 @@ export function LandingPageHeroSection({
             maskSize: "cover",
           }}
         >
-          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+          <LandingPageBackgroundNoise className="bg-bottom" />
         </div>
       </div>
     </div>
