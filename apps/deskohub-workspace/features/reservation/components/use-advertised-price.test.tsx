@@ -74,8 +74,8 @@ afterEach(() => {
   getAdvertisedPrices.mockClear();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 test("splits coalesced advertised prices into server-sized batches", async () => {

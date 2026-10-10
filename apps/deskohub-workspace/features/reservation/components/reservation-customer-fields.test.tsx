@@ -36,8 +36,8 @@ describe("ReservationCustomerFields", () => {
 
   afterEach(cleanup);
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders contact fields without a message input or textarea", () => {

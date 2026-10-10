@@ -70,8 +70,8 @@ describe("CheckoutPayPageSkeleton", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders skeleton order details with a disabled submit button", async () => {
@@ -100,8 +100,8 @@ describe("CheckoutPayPage pricing change", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("requires review before exposing payment controls", async () => {
@@ -156,8 +156,8 @@ describe("CheckoutPayPage payment navigation", () => {
     );
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("opens the payment gateway in a new tab and sends the original tab to status", async () => {
@@ -382,8 +382,8 @@ describe("CheckoutPayPage discount urgency", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("shows and updates an applied discount inside its final hour", async () => {

@@ -89,8 +89,8 @@ afterEach(() => {
   window.confirm = originalConfirm;
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 test("prevents changed client navigation and does not call the caller after rejection", () => {

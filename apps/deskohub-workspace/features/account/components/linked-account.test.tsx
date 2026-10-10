@@ -290,8 +290,8 @@ describe("LinkedAccount", () => {
     workspacePathname = "/en-US/account";
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("mounts each panel once and keeps one profile form across navigation", async () => {

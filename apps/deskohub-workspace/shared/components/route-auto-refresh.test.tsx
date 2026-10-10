@@ -28,8 +28,8 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 test("retries a boundary refresh when the route still has the same deadline", async () => {

@@ -360,8 +360,8 @@ describe("CoworkReservationForm advertised pricing", () => {
     execute.mockClear();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders server-loaded discounts on the first paint without refetching", () => {
