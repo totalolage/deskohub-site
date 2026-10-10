@@ -14,6 +14,10 @@ Keep the production release sequence intentionally simple:
 
 Do not introduce database branch swapping unless the user explicitly requests it. When a schema change would break queries, mutations, constraints, or decoded data from the previous Vercel deployment, use an expand/backfill/compatibility release that retains and synchronizes both representations while old and new functions can overlap. Defer the destructive contract migration until a later release after the compatibility version is fully deployed; never rename or drop the old representation in the same rollout.
 
+Every push to `main` that touches the Workspace deploys production, so merging is the release. Skew Protection (project max age 12 hours, measured from deployment creation) keeps browsers that loaded an older deployment calling that deployment's Server Actions for up to that window. Do not hold a merge for it: a stale tab reaching an incompatible Server Action is rare, and at worst that visitor sees an error and retries.
+
+Vercel push queues are different and do need checking: a message stays pinned to the deployment that published it and can be consumed by that older code until it is acknowledged or expires (late-payment recovery messages are retained for seven days). Before a release that older queue consumers cannot tolerate, check what each topic's consumer writes and whether undelivered messages from older deployments remain.
+
 Do not add a custom Vercel Ignored Build Step for documentation-, test-, CI-, or E2E-only changes. These changes are too infrequent to justify maintaining a classifier; rely on Vercel's automatic affected-project skipping.
 
 ## Migrate protected preview databases

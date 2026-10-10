@@ -63,9 +63,9 @@ mock.module("next/headers", () => ({
   headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
 }));
 
-// Format of the checkout lookup keys new rows store: the ring-keyed digest
-// until the key-ID-prefixed write flip.
-const storedLookupKeyPattern = /^[a-f0-9]{64}$/;
+// Format of the checkout lookup keys new rows store: the active key's
+// key-ID-prefixed digest.
+const storedLookupKeyPattern = /^test:[a-f0-9]{64}$/;
 
 const reservation = {
   kind: "cowork" as const,
