@@ -62,6 +62,8 @@ const reservationRowDefaults = {
   dotyposCustomerId: "dotypos-customer-1",
   reservationState: "held",
   dotyposReservationId: "dotypos-original",
+  // A current hold deadline keeps the original hold reusable.
+  reservationHoldExpiresAt: "2999-01-01T00:00:00.000Z",
 };
 
 const reservationRow = (
@@ -194,7 +196,10 @@ describe("LatePaymentRecoveryRepository", () => {
     const attemptUpdate = recording.statements.find(({ sql }) =>
       sql.startsWith('update "payment_attempts"')
     );
-    expect(attemptUpdate?.params).toContain("required");
+    // A refund Nexi already reported stays recorded instead of reopening.
+    expect(attemptUpdate?.sql).toContain(
+      `"refund_state" = case when "payment_attempts"."refund_state" = 'refunded' then 'refunded' else 'required' end`
+    );
     expect(sqlTexts.join("\n")).not.toContain(
       'update "workspace_reservations" set'
     );

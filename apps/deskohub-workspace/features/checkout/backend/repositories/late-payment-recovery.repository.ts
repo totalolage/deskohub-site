@@ -1,6 +1,6 @@
 import type { DotyposReservationId } from "@deskohub/dotypos";
 import type { NexiOperationId, NexiWebhookEventId } from "@deskohub/nexi";
-import { and, eq, gt, inArray, lte, ne, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lte, ne, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -8,6 +8,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type LatePaymentRecovery,
   latePaymentRecoveries,
+  type PaymentRefundState,
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
@@ -21,6 +22,17 @@ import {
   redeemReferralInvitationClaim,
 } from "./payment-lifecycle.repository";
 
+/**
+ * Availability and table assignment treat an unpaid hold past its deadline as
+ * free inventory, so a late payment may reuse its original hold only while the
+ * deadline is still this far away. The margin keeps a concurrent availability
+ * check on another instance from observing the hold as expired before the
+ * recovery transaction marks it paid.
+ */
+export const reusableHoldMinimumRemaining = Temporal.Duration.from({
+  minutes: 1,
+});
+
 export class LatePaymentRecoveryStateError extends Data.TaggedError(
   "LatePaymentRecoveryStateError"
 )<{
@@ -29,8 +41,21 @@ export class LatePaymentRecoveryStateError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
+/**
+ * The original hold stopped being reusable (its deadline reached the safety
+ * margin or its local state changed) before the settlement acquired its lock.
+ * Recovery continues by releasing the hold and creating the reservation again.
+ */
+export class OriginalHoldNotReusableError extends Data.TaggedError(
+  "OriginalHoldNotReusableError"
+)<{
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly message: string;
+}> {}
+
 type LatePaymentProviderFacts = {
-  readonly webhookEventId: NexiWebhookEventId;
+  /** Absent when the status page's provider verification found the payment. */
+  readonly webhookEventId?: NexiWebhookEventId;
   readonly providerOperationId?: NexiOperationId;
   readonly providerStatus?: string;
   readonly verifiedPaidAt: Temporal.Instant;
@@ -45,6 +70,7 @@ type LatePaymentRecoveryRepositoryError =
   | DiscountClaimError
   | EffectDrizzleQueryError
   | LatePaymentRecoveryStateError
+  | OriginalHoldNotReusableError
   | SqlError;
 
 export interface ILatePaymentRecoveryRepository {
@@ -53,6 +79,9 @@ export interface ILatePaymentRecoveryRepository {
   ) => Effect.Effect<LatePaymentRecovery, LatePaymentRecoveryRepositoryError>;
   readonly findByPaymentAttemptId: (
     paymentAttemptId: PaymentAttemptId
+  ) => Effect.Effect<LatePaymentRecovery | null, EffectDrizzleQueryError>;
+  readonly findLatestByWorkspaceReservationId: (
+    workspaceReservationId: WorkspaceReservationId
   ) => Effect.Effect<LatePaymentRecovery | null, EffectDrizzleQueryError>;
   readonly claim: (input: {
     readonly paymentAttemptId: PaymentAttemptId;
@@ -203,14 +232,13 @@ export class LatePaymentRecoveryRepository extends Context.Service<
               if (
                 input.reservationState &&
                 !input.recoveredDotyposReservationId &&
-                reservation.reservationState !== "held" &&
-                reservation.reservationState !== "cancellation_failed"
+                !isReusableHold(reservation, Temporal.Now.instant())
               ) {
-                return yield* recoveryStateError(
-                  "settle",
-                  input.paymentAttemptId,
-                  "The original reservation can no longer be safely recovered."
-                );
+                return yield* new OriginalHoldNotReusableError({
+                  paymentAttemptId: input.paymentAttemptId,
+                  message:
+                    "The original hold may already have been offered as free inventory.",
+                });
               }
               if (
                 input.recoveredDotyposReservationId &&
@@ -263,10 +291,13 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 .update(paymentAttempts)
                 .set({
                   state: "paid",
+                  // A refund Nexi already reported stays recorded.
                   ...(input.state === "refund_required" && {
-                    refundState: "required",
+                    refundState: sql<PaymentRefundState>`case when ${paymentAttempts.refundState} = 'refunded' then 'refunded' else 'required' end`,
                   }),
-                  lastWebhookEventId: recovery.webhookEventId,
+                  ...(recovery.webhookEventId && {
+                    lastWebhookEventId: recovery.webhookEventId,
+                  }),
                   lastProviderOperationId: recovery.providerOperationId,
                   lastProviderStatus: recovery.providerStatus,
                   failureCode: null,
@@ -394,6 +425,25 @@ export class LatePaymentRecoveryRepository extends Context.Service<
 
       return {
         findByPaymentAttemptId,
+        findLatestByWorkspaceReservationId: Effect.fn(
+          "LatePaymentRecoveryRepository.findLatestByWorkspaceReservationId"
+        )(function* (workspaceReservationId) {
+          const [recovery] = yield* db
+            .select()
+            .from(latePaymentRecoveries)
+            .where(
+              eq(
+                latePaymentRecoveries.workspaceReservationId,
+                workspaceReservationId
+              )
+            )
+            .orderBy(
+              desc(latePaymentRecoveries.createdAt),
+              desc(latePaymentRecoveries.paymentAttemptId)
+            )
+            .limit(1);
+          return recovery ?? null;
+        }),
         start: Effect.fn("LatePaymentRecoveryRepository.start")(
           function* (input) {
             return yield* db.transaction(
@@ -419,6 +469,23 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                     reservationIdentity.dotyposCustomerId
                   )
                 );
+                // Lock the attempt before looking for an existing recovery so
+                // a concurrent webhook and status-page verification serialize
+                // here and the later one observes the committed recovery.
+                const [attempt] = yield* tx
+                  .select({ state: paymentAttempts.state })
+                  .from(paymentAttempts)
+                  .where(
+                    and(
+                      eq(paymentAttempts.id, input.paymentAttemptId),
+                      eq(
+                        paymentAttempts.workspaceReservationId,
+                        input.workspaceReservationId
+                      )
+                    )
+                  )
+                  .limit(1)
+                  .for("update");
 
                 const [existing] = yield* tx
                   .select()
@@ -429,29 +496,21 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                       input.paymentAttemptId
                     )
                   )
-                  .limit(1)
-                  .for("update");
-                if (existing) return existing;
+                  .limit(1);
+                if (existing) {
+                  // A webhook arriving after status-page verification started
+                  // the recovery still identifies the payment; link it to the
+                  // attempt already locked here rather than the recovery,
+                  // whose row settlement locks before the attempt.
+                  if (input.webhookEventId && !existing.webhookEventId) {
+                    yield* tx
+                      .update(paymentAttempts)
+                      .set({ lastWebhookEventId: input.webhookEventId })
+                      .where(eq(paymentAttempts.id, input.paymentAttemptId));
+                  }
+                  return existing;
+                }
 
-                const [attempt] = yield* tx
-                  .select({ state: paymentAttempts.state })
-                  .from(paymentAttempts)
-                  .where(
-                    and(
-                      eq(paymentAttempts.id, input.paymentAttemptId),
-                      eq(
-                        paymentAttempts.workspaceReservationId,
-                        input.workspaceReservationId
-                      ),
-                      inArray(paymentAttempts.state, [
-                        "failed",
-                        "cancelled",
-                        "expired",
-                      ])
-                    )
-                  )
-                  .limit(1)
-                  .for("update");
                 const [reservation] = yield* tx
                   .select()
                   .from(workspaceReservations)
@@ -460,7 +519,13 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   )
                   .limit(1)
                   .for("update");
-                if (!(attempt && reservation?.dotyposReservationId)) {
+                if (
+                  !(
+                    attempt &&
+                    isLateSettledAttemptState(attempt.state) &&
+                    reservation?.dotyposReservationId
+                  )
+                ) {
                   return yield* recoveryStateError(
                     "start",
                     input.paymentAttemptId,
@@ -587,6 +652,28 @@ export class LatePaymentRecoveryRepository extends Context.Service<
     })
   );
 }
+
+const isLateSettledAttemptState = (state: string) =>
+  state === "failed" || state === "cancelled" || state === "expired";
+
+/**
+ * Only a still-held reservation whose deadline has not been reached (with the
+ * safety margin) was never visible as free inventory, so only it may be reused
+ * without running the normal availability check and table assignment again.
+ */
+export const isReusableHold = (
+  reservation: {
+    readonly reservationState: string;
+    readonly reservationHoldExpiresAt: Temporal.Instant | null;
+  },
+  now: Temporal.Instant
+) =>
+  reservation.reservationState === "held" &&
+  reservation.reservationHoldExpiresAt !== null &&
+  Temporal.Instant.compare(
+    reservation.reservationHoldExpiresAt,
+    now.add(reusableHoldMinimumRemaining)
+  ) > 0;
 
 const recoveryStateError = (
   operation: string,

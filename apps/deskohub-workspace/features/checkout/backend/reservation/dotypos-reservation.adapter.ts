@@ -27,6 +27,7 @@ import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import {
   getWorkspaceReservationInterval,
+  type TableAssignmentUnavailableError,
   type WorkspaceTableAssignmentReservation,
   WorkspaceTableAssignmentService,
 } from "./workspace-table-assignment.service";
@@ -44,7 +45,10 @@ export const createWorkspaceDotyposReservation: (
   input: CreateWorkspaceDotyposReservationInput
 ) => Effect.Effect<
   Reservation,
-  ExternalAPIError | NetworkError | ValidationError,
+  | ExternalAPIError
+  | NetworkError
+  | TableAssignmentUnavailableError
+  | ValidationError,
   DotyposService | WorkspaceTableAssignmentService
 > = Effect.fn("createWorkspaceDotyposReservation")(
   function* (input) {

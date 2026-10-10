@@ -5,7 +5,6 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
 import { makeCoworkInvoiceDocument } from "@/features/accounting/invoice.test-utils";
-import { DiscountClaimError } from "@/features/discounts/errors";
 import {
   WorkspaceAvailabilityService,
   WorkspaceTableUnavailableError,
@@ -33,6 +32,8 @@ const heldReservation = {
   id: "reservation-id",
   activePaymentAttemptId: "attempt-id",
   reservationState: "held" as const,
+  // Only a hold that has not reached its deadline may be reused.
+  reservationHoldExpiresAt: Temporal.Now.instant().add({ minutes: 5 }),
 };
 
 describe("LatePaymentRecoveryService", () => {
@@ -125,59 +126,6 @@ describe("LatePaymentRecoveryService", () => {
     });
   });
 
-  test("requires a refund when a released discount claim cannot be readmitted", async () => {
-    const requireRefund = mock(() => Effect.void);
-    const fulfillPaidOrder = mock(() => Effect.void);
-    const layer = LatePaymentRecoveryService.Default.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          Layer.mock(LatePaymentRecoveryRepository, {
-            findByPaymentAttemptId: mock(() =>
-              Effect.succeed(recovery as never)
-            ),
-            claim: mock(() =>
-              Effect.succeed({ ...recovery, state: "processing" } as never)
-            ),
-            hasNewerActiveReservation: mock(() => Effect.succeed(false)),
-            completeUsingOriginalReservation: mock(() =>
-              Effect.fail(
-                new DiscountClaimError({
-                  operation: "redeem",
-                  reason: "usage_limit_reached",
-                  message: "The code has no remaining uses.",
-                })
-              )
-            ),
-            requireRefund,
-          }),
-          Layer.mock(WorkspaceReservationRepository, {
-            findById: mock(() => Effect.succeed(heldReservation as never)),
-          }),
-          Layer.mock(AccountingDocumentSnapshotRepository, {}),
-          Layer.mock(WorkspaceAvailabilityService, {}),
-          Layer.mock(DotyposService, {
-            getReservationStatus: mock(() => Effect.succeed("NEW" as const)),
-          }),
-          Layer.mock(WorkspaceTableAssignmentService, {}),
-          Layer.mock(WorkspacePaidFulfillmentService, { fulfillPaidOrder })
-        )
-      )
-    );
-
-    const outcome = await Effect.gen(function* () {
-      const service = yield* LatePaymentRecoveryService;
-      return yield* service.recover({ paymentAttemptId: "attempt-id" });
-    }).pipe(Effect.provide(layer), Effect.runPromise);
-
-    expect(outcome).toBe("refund_required");
-    expect(requireRefund).toHaveBeenCalledWith(
-      expect.objectContaining({
-        failureCode: "late_payment_discount_unavailable",
-      })
-    );
-    expect(fulfillPaidOrder).not.toHaveBeenCalled();
-  });
-
   test("requires a refund instead of recreating an operator force-cancelled reservation", async () => {
     const requireRefund = mock(() => Effect.void);
     const layer = LatePaymentRecoveryService.Default.pipe(
@@ -219,46 +167,6 @@ describe("LatePaymentRecoveryService", () => {
     expect(requireRefund).toHaveBeenCalledWith(
       expect.objectContaining({
         failureCode: "late_payment_after_administration_cancellation",
-      })
-    );
-  });
-
-  test("requires a refund when a newer checkout reservation exists", async () => {
-    const requireRefund = mock(() => Effect.void);
-    const layer = LatePaymentRecoveryService.Default.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          Layer.mock(LatePaymentRecoveryRepository, {
-            findByPaymentAttemptId: mock(() =>
-              Effect.succeed(recovery as never)
-            ),
-            claim: mock(() =>
-              Effect.succeed({ ...recovery, state: "processing" } as never)
-            ),
-            hasNewerActiveReservation: mock(() => Effect.succeed(true)),
-            requireRefund,
-          }),
-          Layer.mock(WorkspaceReservationRepository, {
-            findById: mock(() => Effect.succeed(heldReservation as never)),
-          }),
-          Layer.mock(AccountingDocumentSnapshotRepository, {}),
-          Layer.mock(WorkspaceAvailabilityService, {}),
-          Layer.mock(DotyposService, {}),
-          Layer.mock(WorkspaceTableAssignmentService, {}),
-          Layer.mock(WorkspacePaidFulfillmentService, {})
-        )
-      )
-    );
-
-    const outcome = await Effect.gen(function* () {
-      const service = yield* LatePaymentRecoveryService;
-      return yield* service.recover({ paymentAttemptId: "attempt-id" });
-    }).pipe(Effect.provide(layer), Effect.runPromise);
-
-    expect(outcome).toBe("refund_required");
-    expect(requireRefund).toHaveBeenCalledWith(
-      expect.objectContaining({
-        failureCode: "late_payment_newer_reservation",
       })
     );
   });

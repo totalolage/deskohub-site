@@ -169,7 +169,13 @@ const reservationsListCommand = Command.make(
       "in_progress",
       "complete",
       "cancelled",
-    ]).pipe(Flag.optional, Flag.withDescription("Reservation status")),
+      "needs_refund",
+    ]).pipe(
+      Flag.optional,
+      Flag.withDescription(
+        "Reservation status, or needs_refund for paid payments awaiting a refund"
+      )
+    ),
     type: Flag.choice("type", ["cowork", "meeting-room", "office"]).pipe(
       Flag.optional,
       Flag.withDescription("Reservation type")

@@ -2,6 +2,12 @@ export { NexiService } from "./backend/service";
 export type { NexiRuntimeConfigObj } from "./config";
 export { NexiRuntimeConfig } from "./config";
 export { ExternalAPIError, NetworkError } from "./errors";
+export type { NexiRefundSummary } from "./refunds";
+export {
+  isNexiRefundOperation,
+  isSuccessfulNexiRefund,
+  summarizeNexiRefunds,
+} from "./refunds";
 export type {
   CreateHostedPaymentPageInput,
   GetNexiOperationInput,

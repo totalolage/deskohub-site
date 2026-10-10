@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { AdministrationLink as Link } from "./admin-link";
+import type { AdministrationReservationStatusFilter } from "./administration.service";
 import {
   AdministrationFilterField,
   AdministrationFilterForm,
@@ -237,7 +238,7 @@ export function ReservationsAdministrationFilterForm({
     readonly direction?: "asc" | "desc";
     readonly from?: string;
     readonly sort?: "created" | "date" | "reservation" | "status";
-    readonly status?: "in_progress" | "complete" | "cancelled";
+    readonly status?: AdministrationReservationStatusFilter;
     readonly to?: string;
     readonly type?: "cowork" | "meeting-room" | "office";
   };
@@ -305,6 +306,7 @@ export function ReservationsAdministrationFilterForm({
           <option value="in_progress">In progress</option>
           <option value="complete">Complete</option>
           <option value="cancelled">Cancelled</option>
+          <option value="needs_refund">Needs refund</option>
         </AdministrationFilterSelect>
       </AdministrationFilterField>
       <AdministrationFilterField

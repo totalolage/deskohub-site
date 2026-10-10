@@ -83,6 +83,30 @@ describe("administration reservation date ranges", () => {
     ).toEqual({ from: "2026-08-13" });
   });
 
+  test("keeps every refund still owed in the refund queue without a default range", () => {
+    // A refund owed on last year's reservation stays in the queue on January 1.
+    const currentDate = Temporal.PlainDate.from("2027-01-01");
+
+    expect(
+      getAdministrationReservationListDateRange(
+        { status: "needs_refund" },
+        currentDate
+      )
+    ).toBeUndefined();
+    expect(
+      getAdministrationReservationListDateRange(
+        { from: "2026-12-01", status: "needs_refund" },
+        currentDate
+      )
+    ).toEqual({ from: "2026-12-01" });
+    expect(
+      getAdministrationReservationListDateRange(
+        { status: "cancelled" },
+        currentDate
+      )
+    ).toEqual({ from: "2027-01-01" });
+  });
+
   test("keeps explicit and open-ended reservation date filters", () => {
     const currentDate = Temporal.PlainDate.from("2026-08-12");
 

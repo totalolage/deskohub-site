@@ -283,6 +283,7 @@ describe("NexiService verifyPaymentOutcome", () => {
       order: OrderResponse;
       status: PaymentOutcomeStatus;
       mismatches: Array<PaymentVerificationResult["mismatches"][number]>;
+      operationId?: PaymentVerificationResult["provider"]["operationId"];
     }> = [
       {
         name: "success",
@@ -371,6 +372,63 @@ describe("NexiService verifyPaymentOutcome", () => {
         status: "failure",
         mismatches: ["amount"],
       },
+      {
+        name: "paid order refunded in the back office",
+        order: {
+          orderStatus: {
+            lastOperationType: "REFUND",
+            order: {
+              orderId: nexiOrderId("order-id"),
+              amount: "5000",
+              currency: "CZK",
+            },
+          },
+          operations: [
+            {
+              operationId: nexiOperationId("capture-id"),
+              operationType: "CAPTURE",
+              operationResult: "EXECUTED",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
+              securityToken: "security-token",
+            },
+            {
+              operationId: nexiOperationId("refund-id"),
+              operationType: "REFUND",
+              operationResult: "VOIDED",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
+            },
+          ],
+        },
+        status: "success",
+        mismatches: [],
+        operationId: nexiOperationId("capture-id"),
+      },
+      {
+        name: "voided refund without a settled payment",
+        order: {
+          orderStatus: {
+            lastOperationType: "REFUND",
+            order: {
+              orderId: nexiOrderId("order-id"),
+              amount: "5000",
+              currency: "CZK",
+            },
+          },
+          operations: [
+            {
+              operationId: nexiOperationId("refund-id"),
+              operationType: "REFUND",
+              operationResult: "VOIDED",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
+            },
+          ],
+        },
+        status: "pending",
+        mismatches: [],
+      },
     ];
 
     for (const item of cases) {
@@ -391,6 +449,9 @@ describe("NexiService verifyPaymentOutcome", () => {
 
       expect(result.status).toBe(item.status);
       expect(result.mismatches).toEqual(item.mismatches);
+      if (item.operationId) {
+        expect(result.provider.operationId).toBe(item.operationId);
+      }
       expect(result.provider.operationCount).toBe(
         item.order.operations?.length ?? 0
       );

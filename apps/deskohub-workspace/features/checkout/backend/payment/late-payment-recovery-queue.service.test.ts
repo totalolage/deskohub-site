@@ -6,8 +6,8 @@ import { LatePaymentRecoveryService } from "./late-payment-recovery.service";
 import {
   latePaymentRecoveryQueueTopic,
   makeLatePaymentRecoveryQueueService,
-  processLatePaymentRecoveryMessage,
 } from "./late-payment-recovery-queue.service";
+import { processLatePaymentRecoveryMessage } from "./late-payment-recovery-queue-consumer";
 
 describe("late-payment recovery queue", () => {
   test("enqueues one idempotent retained recovery message", async () => {

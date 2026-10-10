@@ -9,7 +9,7 @@ import {
   ValidationError,
 } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
-import { Context, Effect, Layer, Match } from "effect";
+import { Context, Data, Effect, Layer, Match } from "effect";
 import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
@@ -114,12 +114,23 @@ export const getWorkspaceReservationInterval = (
     )
   );
 
+/** Every matching table is already occupied for the reservation interval. */
+export class TableAssignmentUnavailableError extends Data.TaggedError(
+  "TableAssignmentUnavailableError"
+)<{
+  readonly requiredTags: readonly string[];
+  readonly message: string;
+}> {}
+
 export interface IWorkspaceTableAssignmentService {
   readonly assignTableId: (
     reservation: WorkspaceTableAssignmentReservation
   ) => Effect.Effect<
     DotyposTableId,
-    ExternalAPIError | NetworkError | ValidationError
+    | ExternalAPIError
+    | NetworkError
+    | TableAssignmentUnavailableError
+    | ValidationError
   >;
 }
 
@@ -371,7 +382,8 @@ const validateTableAssignment = (input: {
         readonly matchingTableId: DotyposTableId;
       } => assignment.matchingTableId !== undefined,
       ({ assignment }) =>
-        new ValidationError({
+        new TableAssignmentUnavailableError({
+          requiredTags: assignment.requiredTags,
           message: `No available Dotypos workspace table matches tags: ${assignment.requiredTags.join(
             ", "
           )}`,
