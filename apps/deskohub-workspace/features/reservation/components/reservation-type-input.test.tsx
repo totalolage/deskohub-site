@@ -26,8 +26,8 @@ describe("ReservationTypeInput", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("keeps semantic values controlled and forwards radio field behavior", () => {

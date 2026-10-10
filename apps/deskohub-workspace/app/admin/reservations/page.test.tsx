@@ -101,7 +101,7 @@ describe("ReservationsAdministrationPage", () => {
   });
   afterAll(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    unregisterWorkspaceComponentTestEnv();
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("shows the reservation count as a compact accessible badge", async () => {

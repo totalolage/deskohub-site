@@ -200,8 +200,8 @@ describe("discount administration pages", () => {
     cleanup();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("searches customers with one fuzzy name or email query", async () => {

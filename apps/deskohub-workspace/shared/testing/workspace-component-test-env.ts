@@ -16,8 +16,11 @@ export const registerWorkspaceComponentTestEnv = () => {
   registered = true;
 };
 
-export const unregisterWorkspaceComponentTestEnv = () => {
+export const unregisterWorkspaceComponentTestEnv = async () => {
   if (!registered) return;
+  // Commits outside act queue their passive-effect flush on React's Scheduler,
+  // which reads `window` when it runs; let it run before the DOM goes away.
+  await new Promise<void>((resolve) => setImmediate(resolve));
   GlobalRegistrator.unregister();
   registered = false;
 };

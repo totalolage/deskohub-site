@@ -79,8 +79,8 @@ describe("AvatarControl failure feedback", () => {
     routerRefresh.mockClear();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("shows a localized validation error for a zero-byte file and keeps the previous image", async () => {

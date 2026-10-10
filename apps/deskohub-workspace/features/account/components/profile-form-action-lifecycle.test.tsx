@@ -147,8 +147,8 @@ describe("ProfileForm action lifecycle", () => {
     routerRefresh.mockClear();
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("reveals profile after a billing save reports a phone error and retains drafts", async () => {

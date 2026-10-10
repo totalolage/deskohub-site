@@ -131,8 +131,8 @@ afterEach(() => {
   cleanup();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 test("reserves both language labels before request-aware links resolve", async () => {

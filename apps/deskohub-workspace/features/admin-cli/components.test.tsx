@@ -18,8 +18,8 @@ afterEach(() => {
   cleanup();
 });
 
-afterAll(() => {
-  unregisterWorkspaceComponentTestEnv();
+afterAll(async () => {
+  await unregisterWorkspaceComponentTestEnv();
 });
 
 test("requires confirmation before exposing the CLI revoke submission", async () => {

@@ -63,8 +63,8 @@ describe("CheckoutPaymentWindowCoordinator", () => {
     }
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("holds the reservation status lock until the original tab unmounts", async () => {

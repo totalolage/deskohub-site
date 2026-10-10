@@ -63,8 +63,8 @@ describe("OfficeReservationForm", () => {
     globalThis.fetch = originalFetch;
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("renders one start date and a day-count input", () => {

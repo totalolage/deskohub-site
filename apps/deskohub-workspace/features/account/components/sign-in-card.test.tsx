@@ -66,8 +66,8 @@ describe("account components", () => {
     confirmDiscardChanges.mockImplementation(() => true);
   });
 
-  afterAll(() => {
-    unregisterWorkspaceComponentTestEnv();
+  afterAll(async () => {
+    await unregisterWorkspaceComponentTestEnv();
   });
 
   test("server markup cannot submit an email through a native GET", async () => {
