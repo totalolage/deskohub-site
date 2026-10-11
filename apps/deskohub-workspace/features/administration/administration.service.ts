@@ -27,6 +27,8 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
+  isNull,
   max,
   notInArray,
   or,
@@ -166,13 +168,43 @@ type ReservationListInput = AdministrationReservationListInput & {
   readonly pageSize?: number;
 };
 
+export type AdministrationCustomerConsentState =
+  | "granted"
+  | "never"
+  | "withdrawn";
+
 export type AdministrationCustomerListInput = {
   readonly direction?: AdministrationSortDirection;
+  readonly marketingConsent?: AdministrationCustomerConsentState;
   readonly page?: number;
   readonly sort?: AdministrationCustomerSort;
 };
 
 export type AdministrationCustomerSort = "reservations" | "activity";
+
+const getMarketingConsentPredicate = (
+  filter: AdministrationCustomerConsentState | undefined
+): SQL | undefined => {
+  switch (filter) {
+    case "granted":
+      // The consent primary key guard excludes customers with no consent
+      // row: a left join would otherwise yield NULLs that isNull(withdrawnAt)
+      // wrongly counts as an active grant. A withdrawn grant never counts
+      // as granted.
+      return and(
+        isNotNull(customerMarketingConsents.dotyposCustomerId),
+        isNull(customerMarketingConsents.withdrawnAt)
+      );
+    case "withdrawn":
+      return isNotNull(customerMarketingConsents.withdrawnAt);
+    case "never":
+      // No consent row exists: the left join leaves the consent primary key
+      // null. A withdrawn grant never counts as granted.
+      return isNull(customerMarketingConsents.dotyposCustomerId);
+    default:
+      return undefined;
+  }
+};
 
 export type AdministrationBookingListInput = {
   readonly date: string;
@@ -401,6 +433,7 @@ export type AdministrationReservationAccessGrant = {
 export type AdministrationCustomerSummary = {
   readonly customer: AdministrationCustomer | null;
   readonly customerId: DotyposCustomerId;
+  readonly marketingConsent: AdministrationCustomerConsentState;
   readonly reservationCount: number;
   readonly lastActivityAt: string;
 };
@@ -2372,11 +2405,22 @@ export class AdministrationService extends Context.Service<
 
       const listCustomers = Effect.fn("AdministrationService.listCustomers")(
         function* (input: AdministrationCustomerListInput) {
+          const customerSetWhere = getMarketingConsentPredicate(
+            input.marketingConsent
+          );
           const countRows = yield* db
             .select({
               value: countDistinct(workspaceReservations.dotyposCustomerId),
             })
-            .from(workspaceReservations);
+            .from(workspaceReservations)
+            .leftJoin(
+              customerMarketingConsents,
+              eq(
+                customerMarketingConsents.dotyposCustomerId,
+                workspaceReservations.dotyposCustomerId
+              )
+            )
+            .where(customerSetWhere);
           const total = Number(countRows[0]?.value ?? 0);
           const pagination = getAdministrationPagination({
             pageSize: customerPageSize,
@@ -2385,15 +2429,36 @@ export class AdministrationService extends Context.Service<
           });
           const reservationCount = successfulReservationCount;
           const lastActivityAt = max(workspaceReservations.updatedAt);
+          const marketingConsentState = sql<AdministrationCustomerConsentState>`case
+            when ${customerMarketingConsents.dotyposCustomerId} is null then 'never'
+            when ${customerMarketingConsents.withdrawnAt} is null then 'granted'
+            else 'withdrawn'
+          end`;
           const order = input.direction === "asc" ? asc : desc;
           const rows = yield* db
             .select({
               customerId: workspaceReservations.dotyposCustomerId,
+              marketingConsent: marketingConsentState,
               reservationCount,
               lastActivityAt,
             })
             .from(workspaceReservations)
-            .groupBy(workspaceReservations.dotyposCustomerId)
+            .leftJoin(
+              customerMarketingConsents,
+              eq(
+                customerMarketingConsents.dotyposCustomerId,
+                workspaceReservations.dotyposCustomerId
+              )
+            )
+            .where(customerSetWhere)
+            .groupBy(
+              workspaceReservations.dotyposCustomerId,
+              // Grouping by the consent primary key keeps one group per
+              // customer; the withdrawn timestamp must be grouped so the
+              // consent-state case expression is legal under GROUP BY.
+              customerMarketingConsents.dotyposCustomerId,
+              customerMarketingConsents.withdrawnAt
+            )
             .orderBy(
               order(
                 input.sort === "reservations"
@@ -2412,6 +2477,7 @@ export class AdministrationService extends Context.Service<
             return {
               customer: customer ? toCustomer(customer, row.customerId) : null,
               customerId: row.customerId,
+              marketingConsent: row.marketingConsent,
               reservationCount: Number(row.reservationCount),
               lastActivityAt: row.lastActivityAt
                 ? toIsoString(row.lastActivityAt)

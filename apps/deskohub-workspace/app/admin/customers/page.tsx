@@ -16,6 +16,10 @@ import {
   loadAdministrationCustomersPage,
 } from "@/features/administration/page-data.server";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
+import { CustomerConsentFilterForm } from "./customer-consent-filter-form";
+import { CustomerCountPending } from "./customer-count-pending";
+import { CustomerFilterNavigationProvider } from "./customer-filter-navigation";
+import { CustomerResultsPendingOverlay } from "./customer-results-pending-overlay";
 
 export default function DiscountCustomersAdminPage({
   searchParams,
@@ -25,25 +29,32 @@ export default function DiscountCustomersAdminPage({
   const { input, result } = loadAdministrationCustomersPage(searchParams);
 
   return (
-    <AdministrationPage>
-      <h1 className="sr-only">Customers</h1>
-      <AdministrationTableToolbar
-        count={
-          <Suspense fallback={<AdministrationCountLoading label="customer" />}>
-            <CustomerCount result={result} />
-          </Suspense>
-        }
-        itemLabel="customer"
-        search={<CustomerSearch variant="toolbar" />}
-      />
-      <Suspense
-        fallback={
-          <AdministrationCollectionLoading label="customers" columns={4} />
-        }
-      >
-        <CustomersTable input={input} result={result} />
-      </Suspense>
-    </AdministrationPage>
+    <CustomerFilterNavigationProvider>
+      <AdministrationPage>
+        <h1 className="sr-only">Customers</h1>
+        <AdministrationTableToolbar
+          count={
+            <CustomerCountPending>
+              <Suspense
+                fallback={<AdministrationCountLoading label="customer" />}
+              >
+                <CustomerCount result={result} />
+              </Suspense>
+            </CustomerCountPending>
+          }
+          filters={<CustomerConsentFilterForm />}
+          itemLabel="customer"
+          search={<CustomerSearch variant="toolbar" />}
+        />
+        <Suspense
+          fallback={
+            <AdministrationCollectionLoading label="customers" columns={4} />
+          }
+        >
+          <CustomersTable input={input} result={result} />
+        </Suspense>
+      </AdministrationPage>
+    </CustomerFilterNavigationProvider>
   );
 }
 
@@ -73,22 +84,29 @@ export async function CustomersTable({
 
   return (
     <section className="mt-7">
-      <AdministrationCustomerTable
-        customers={resolvedResult.items}
-        sorting={{
-          direction: resolvedInput.direction ?? "desc",
-          field: resolvedInput.sort ?? "activity",
-        }}
-      />
-      <Pagination
-        basePath="/admin/customers"
-        page={resolvedResult.page}
-        pageCount={resolvedResult.pageCount}
-        params={{
-          direction: resolvedInput.direction,
-          sort: resolvedInput.sort,
-        }}
-      />
+      <CustomerResultsPendingOverlay>
+        <AdministrationCustomerTable
+          consent={resolvedInput.marketingConsent}
+          customers={resolvedResult.items}
+          sorting={{
+            direction: resolvedInput.direction ?? "desc",
+            field: resolvedInput.sort ?? "activity",
+            params: {
+              consent: resolvedInput.marketingConsent,
+            },
+          }}
+        />
+        <Pagination
+          basePath="/admin/customers"
+          page={resolvedResult.page}
+          pageCount={resolvedResult.pageCount}
+          params={{
+            consent: resolvedInput.marketingConsent,
+            direction: resolvedInput.direction,
+            sort: resolvedInput.sort,
+          }}
+        />
+      </CustomerResultsPendingOverlay>
     </section>
   );
 }
@@ -110,17 +128,25 @@ export async function CustomersAdministrationContent({
       />
       <section className="mt-7">
         <AdministrationCustomerTable
+          consent={input.marketingConsent}
           customers={result.items}
           sorting={{
             direction: input.direction ?? "desc",
             field: input.sort ?? "activity",
+            params: {
+              consent: input.marketingConsent,
+            },
           }}
         />
         <Pagination
           basePath="/admin/customers"
           page={result.page}
           pageCount={result.pageCount}
-          params={{ direction: input.direction, sort: input.sort }}
+          params={{
+            consent: input.marketingConsent,
+            direction: input.direction,
+            sort: input.sort,
+          }}
         />
       </section>
     </AdministrationPage>

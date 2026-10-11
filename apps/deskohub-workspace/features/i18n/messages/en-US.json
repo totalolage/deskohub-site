@@ -915,5 +915,13 @@
   "accountDeletedTitle": "Your account was deleted",
   "accountDeletedSignInAgain": "Sign in again",
   "accountSupportTitle": "We need to verify your profile",
-  "accountSupportContact": "We could not safely choose one customer profile for this email, so no profile details or reservations are shown. <contact>Contact us</contact> and we will connect the correct history."
+  "accountSupportContact": "We could not safely choose one customer profile for this email, so no profile details or reservations are shown. <contact>Contact us</contact> and we will connect the correct history.",
+  "adminCustomersFilterConsentLabel": "Marketing consent",
+  "adminCustomersFilterConsentAll": "All",
+  "adminCustomersFilterConsentGranted": "Granted",
+  "adminCustomersFilterConsentWithdrawn": "Withdrawn",
+  "adminCustomersFilterConsentNeverGranted": "Never granted",
+  "adminCustomersFilterApply": "Apply filters",
+  "adminCustomersPendingLabel": "Loading customers…",
+  "adminCustomersEmptyConsentFiltered": "No customers match this marketing consent filter."
 }
