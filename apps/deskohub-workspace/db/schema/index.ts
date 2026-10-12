@@ -54,6 +54,7 @@ export {
   legalEvidenceEvents,
 } from "./legal-evidence-events";
 export { manualInvoiceCreationRequests } from "./manual-invoice-creation-requests";
+export { type NewOrder, type Order, orders } from "./orders";
 export {
   type PaymentAttemptRow,
   type PaymentAttemptState,
