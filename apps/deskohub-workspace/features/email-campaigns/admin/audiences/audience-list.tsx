@@ -81,12 +81,12 @@ export function AudienceList({
         header: "Updated",
         cell: ({ row }) => (
           <span className="whitespace-nowrap text-navy-blue/70 text-sm">
-            {formatAdministrationDateTime(row.original.updatedAt)}
+            {formatAdministrationDateTime(row.original.updatedAt, locale)}
           </span>
         ),
       },
     ],
-    []
+    [locale]
   );
 
   if (audiences.length === 0) {
@@ -131,7 +131,8 @@ export function AudienceList({
                   {audience.summary}
                 </span>
                 <span className="mt-3 block text-navy-blue/60 text-xs">
-                  Updated {formatAdministrationDateTime(audience.updatedAt)}
+                  Updated{" "}
+                  {formatAdministrationDateTime(audience.updatedAt, locale)}
                 </span>
               </Link>
             </li>

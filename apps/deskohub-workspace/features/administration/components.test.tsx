@@ -230,10 +230,10 @@ describe("administration reservation components", () => {
       />
     );
 
-    const coworkDates = view.getAllByText("10 Aug 2026");
+    const coworkDates = view.getAllByText("Aug 10, 2026");
     expect(coworkDates).toHaveLength(2);
     expect(coworkDates[0]?.textContent).not.toContain("00:00");
-    expect(view.getAllByText(/10 Aug 2026(?:,| at) 10:00/)).toHaveLength(2);
+    expect(view.getAllByText(/Aug 10, 2026, 10:00/)).toHaveLength(2);
   });
 
   test("links sortable reservation headers to server-side ordering", () => {
@@ -321,17 +321,17 @@ describe("administration reservation components", () => {
       />
     );
 
-    const recordedAt = formatAdministrationDateTime(refundedAt);
+    const recordedAt = formatAdministrationDateTime(refundedAt, "en-US");
     expect(view.queryByText("Needs refund")).toBeNull();
     expect(view.queryByText(/Paid/)).toBeNull();
     expect(view.getByText(`Refunded · ${recordedAt}`)).toBeDefined();
     expect(
-      view.getByText(`Partially refunded CZK 1,000.00 · ${recordedAt}`)
+      view.getByText(`Partially refunded CZK 1,000 · ${recordedAt}`)
     ).toBeDefined();
     expect(
       [...view.container.querySelectorAll("del")].map(readableText)
-    ).toEqual(["CZK 2,400.00 refunded", "CZK 2,400.00 before refund"]);
-    expect(view.getByText("CZK 1,400.00", { exact: false })).toBeDefined();
+    ).toEqual(["CZK 2,400 refunded", "CZK 2,400 before refund"]);
+    expect(view.getByText("CZK 1,400", { exact: false })).toBeDefined();
   });
 
   test("crosses out a refunded payment in the reservation list", () => {
@@ -380,33 +380,33 @@ describe("administration reservation components", () => {
     const [refundedRow, partiallyRefundedRow, paidRow] = within(table)
       .getAllByRole("row")
       .slice(1);
-    const recordedAt = formatAdministrationDateTime(refundedAt);
+    const recordedAt = formatAdministrationDateTime(refundedAt, "en-US");
 
     expect(refundedRow?.textContent).not.toContain("Paid");
     expect(
       within(refundedRow as HTMLElement).getByText(`Refunded · ${recordedAt}`)
     ).toBeDefined();
     expect(readableText(refundedRow?.querySelector("del"))).toBe(
-      "CZK 275.00 refunded"
+      "CZK 275 refunded"
     );
 
     expect(partiallyRefundedRow?.textContent).not.toContain("Paid");
     expect(
       within(partiallyRefundedRow as HTMLElement).getByText(
-        `Partially refunded CZK 100.00 · ${recordedAt}`
+        `Partially refunded CZK 100 · ${recordedAt}`
       )
     ).toBeDefined();
     expect(readableText(partiallyRefundedRow?.querySelector("del"))).toBe(
-      "CZK 275.00 before refund"
+      "CZK 275 before refund"
     );
     expect(readableText(partiallyRefundedRow)).toContain(
-      "CZK 175.00 after refund"
+      "CZK 175 after refund"
     );
 
     expect(paidRow?.querySelector("del")).toBeNull();
     expect(
       within(paidRow as HTMLElement).getByText(
-        `Paid · ${formatAdministrationDateTime(paid.latestPayment.updatedAt)}`
+        `Paid · ${formatAdministrationDateTime(paid.latestPayment.updatedAt, "en-US")}`
       )
     ).toBeDefined();
     // The mobile list crosses out the same amounts.
@@ -430,6 +430,7 @@ describe("administration reservation components", () => {
 
     const view = render(
       <ReservationOrderList
+        locale="en-US"
         orders={[
           refundedOrder,
           {
@@ -447,15 +448,15 @@ describe("administration reservation components", () => {
       />
     );
 
-    const recordedAt = formatAdministrationDateTime(refundedAt);
+    const recordedAt = formatAdministrationDateTime(refundedAt, "en-US");
     expect(view.queryByText(/Paid/)).toBeNull();
     expect(view.getByText(`Refunded · ${recordedAt}`)).toBeDefined();
     expect(
-      view.getByText(`Partially refunded CZK 1,000.00 · ${recordedAt}`)
+      view.getByText(`Partially refunded CZK 1,000 · ${recordedAt}`)
     ).toBeDefined();
     expect(
       [...view.container.querySelectorAll("del")].map(readableText)
-    ).toEqual(["CZK 2,400.00 refunded", "CZK 2,400.00 before refund"]);
+    ).toEqual(["CZK 2,400 refunded", "CZK 2,400 before refund"]);
 
     const orderView = render(
       <OrderTable
@@ -475,7 +476,7 @@ describe("administration reservation components", () => {
     const table = orderView.getByRole("table", { name: "Nexi orders" });
     expect(within(table).getByText("Refunded")).toBeDefined();
     expect(
-      within(table).getByText("Partially refunded CZK 1,000.00")
+      within(table).getByText("Partially refunded CZK 1,000")
     ).toBeDefined();
     expect(within(table).queryByText(/Partially Refunded/)).toBeNull();
     expect(within(table).queryByText("Paid")).toBeNull();
@@ -507,7 +508,9 @@ describe("administration reservation components", () => {
           .toString(),
       },
     };
-    const openWindow = render(<ReservationOrderList orders={[emptyOrder]} />);
+    const openWindow = render(
+      <ReservationOrderList locale="en-US" orders={[emptyOrder]} />
+    );
     expect(
       openWindow.getByText(/local payment window is open until/i)
     ).toBeDefined();
@@ -515,6 +518,7 @@ describe("administration reservation components", () => {
 
     const overdue = render(
       <ReservationOrderList
+        locale="en-US"
         orders={[
           {
             ...emptyOrder,
@@ -535,6 +539,7 @@ describe("administration reservation components", () => {
 
     const activity = render(
       <ReservationOrderList
+        locale="en-US"
         orders={[
           {
             ...order,
