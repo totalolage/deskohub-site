@@ -30,7 +30,7 @@
     "lint:knip": "knip --directory ../.. --workspace apps/deskohub-workspace",
     "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 --timeout 30000 --timings=./test-timings.json --path-ignore-patterns='**/*.build.test.ts'",
     "test:build-output": "bun test ./features/administration/i18n/administration-messages.build.test.ts",
-    "test:admin-cli": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 features/admin-cli/workspace-admin-api.server.test.ts features/admin-cli/email-campaigns-api.server.test.ts",
+    "test:admin-cli": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 features/admin-cli/workspace-admin-api.server.test.ts features/admin-cli/email-campaigns-api.server.test.ts features/admin-cli/administrators-api.server.test.ts",
     "test:instant-navigation": "playwright test --config playwright.instant-navigation.config.ts",
     "test:accessibility": "playwright test --config playwright.accessibility.config.ts",
     "typecheck": "tsc --noEmit",

@@ -15,6 +15,7 @@ import {
   type CliAccessTokenType,
   CliMutationRejected,
   CliMutationUncertain,
+  CliResourceNotFound,
   CliServiceUnavailable,
   CliSessionId,
   type CliSessionType,
@@ -318,6 +319,173 @@ describe("dhw mutation commands", () => {
       layer
     ).pipe(Effect.runPromise);
     expect(requests).toEqual([{ dryRun: false, after: null }]);
+  });
+
+  test("dry-runs a legacy administrator backfill and prints its JSON result", async () => {
+    const legacyUsername = AdministrationActorUsername.make("legacy-admin");
+    const email = testEmailAddress("legacy-admin");
+    const requests: unknown[] = [];
+    const result = {
+      dryRun: true,
+      administratorRole: "granted" as const,
+      cliSessions: { linked: 2, alreadyLinked: 1, linkedToOtherAccount: 3 },
+      manualInvoices: { linked: 4, alreadyLinked: 5, linkedToOtherAccount: 6 },
+      standaloneAccessCodeEvents: {
+        linked: 7,
+        alreadyLinked: 8,
+        linkedToOtherAccount: 9,
+      },
+    };
+    const { layer } = makeCommandLayer({
+      backfillLegacyAdministrator: (_accessToken, input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return result;
+        }),
+    });
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+
+    await runCommand(
+      [
+        "--json",
+        "administrators",
+        "backfill-legacy",
+        "--legacy-username",
+        legacyUsername,
+        "--email",
+        email,
+        "--dry-run",
+      ],
+      Layer.mergeAll(layer, capturedOutput)
+    ).pipe(Effect.runPromise);
+
+    expect(requests).toEqual([{ legacyUsername, email, dryRun: true }]);
+    expect(output.map((line) => JSON.parse(line))).toEqual([result]);
+  });
+
+  test("requires confirmation for a real legacy administrator backfill", async () => {
+    const legacyUsername = AdministrationActorUsername.make("legacy-admin");
+    const email = testEmailAddress("legacy-admin");
+    const requests: unknown[] = [];
+    const { layer } = makeCommandLayer({
+      backfillLegacyAdministrator: (_accessToken, input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return {
+            dryRun: false,
+            administratorRole: "granted" as const,
+            cliSessions: {
+              linked: 1,
+              alreadyLinked: 0,
+              linkedToOtherAccount: 0,
+            },
+            manualInvoices: {
+              linked: 1,
+              alreadyLinked: 0,
+              linkedToOtherAccount: 0,
+            },
+            standaloneAccessCodeEvents: {
+              linked: 1,
+              alreadyLinked: 0,
+              linkedToOtherAccount: 0,
+            },
+          };
+        }),
+    });
+    const args = [
+      "--json",
+      "administrators",
+      "backfill-legacy",
+      "--legacy-username",
+      legacyUsername,
+      "--email",
+      email,
+    ];
+
+    const error = await runCommand(args, layer).pipe(
+      Effect.flip,
+      Effect.runPromise
+    );
+    expect(error).toMatchObject({ _tag: "ConfirmationRequiredError" });
+    expect(requests).toEqual([]);
+
+    await runCommand([...args, "--yes"], layer).pipe(Effect.runPromise);
+    expect(requests).toEqual([{ legacyUsername, email, dryRun: false }]);
+  });
+
+  test("formats legacy administrator backfill counts for operators", async () => {
+    const result = {
+      dryRun: true,
+      administratorRole: "already_granted" as const,
+      cliSessions: { linked: 2, alreadyLinked: 1, linkedToOtherAccount: 3 },
+      manualInvoices: { linked: 4, alreadyLinked: 5, linkedToOtherAccount: 6 },
+      standaloneAccessCodeEvents: {
+        linked: 7,
+        alreadyLinked: 8,
+        linkedToOtherAccount: 9,
+      },
+    };
+    const { layer } = makeCommandLayer({
+      backfillLegacyAdministrator: () => Effect.succeed(result),
+    });
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+
+    await runCommand(
+      [
+        "administrators",
+        "backfill-legacy",
+        "--legacy-username",
+        "legacy-admin",
+        "--email",
+        testEmailAddress("legacy-admin"),
+        "--dry-run",
+      ],
+      Layer.mergeAll(layer, capturedOutput)
+    ).pipe(Effect.runPromise);
+
+    expect(output).toEqual([
+      "Administrator role: already granted",
+      "CLI sessions: would link 2, already linked 1, linked to another account 3",
+      "Manual invoices: would link 4, already linked 5, linked to another account 6",
+      "Standalone access-code events: would link 7, already linked 8, linked to another account 9",
+    ]);
+  });
+
+  test("propagates CliResourceNotFound from legacy administrator backfill", async () => {
+    const notFound = new CliResourceNotFound({
+      message: "No active account has that email.",
+    });
+    const { layer } = makeCommandLayer({
+      backfillLegacyAdministrator: () => Effect.fail(notFound),
+    });
+
+    const error = await runCommand(
+      [
+        "--json",
+        "administrators",
+        "backfill-legacy",
+        "--legacy-username",
+        "legacy-admin",
+        "--email",
+        testEmailAddress("legacy-admin"),
+        "--dry-run",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(error).toBe(notFound);
   });
 
   test("clears the local credential after revoking its own session", async () => {
@@ -1046,6 +1214,7 @@ const runCommand = <R>(
   );
 
 const makeCommandLayer = ({
+  backfillLegacyAdministrator = () => Effect.die("not used"),
   backfillReservationProductDetails = () => Effect.die("not used"),
   cancelReservation = () =>
     Effect.succeed({ outcome: "already_cancelled", email: "not_requested" }),
@@ -1056,6 +1225,7 @@ const makeCommandLayer = ({
   revokeSession = () => Effect.succeed({ changed: false }),
   stateDirectory = `/tmp/dhw-command-test-${crypto.randomUUID()}`,
 }: {
+  readonly backfillLegacyAdministrator?: WorkspaceAdminApiClient["Service"]["backfillLegacyAdministrator"];
   readonly backfillReservationProductDetails?: WorkspaceAdminApiClient["Service"]["backfillReservationProductDetails"];
   readonly cancelReservation?: WorkspaceAdminApiClient["Service"]["cancelReservation"];
   readonly clear?: AuthenticationService["Service"]["clear"];
@@ -1075,6 +1245,7 @@ const makeCommandLayer = ({
   }> = [];
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
+    backfillLegacyAdministrator,
     backfillReservationProductDetails,
     cancelReservation,
     createInvoice,
