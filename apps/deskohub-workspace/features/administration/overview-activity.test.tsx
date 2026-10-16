@@ -15,8 +15,8 @@ import {
 import { m } from "./i18n";
 import { CustomerActivity, ReservationActivity } from "./overview-activity";
 
-const makeCustomer = (id: string, displayName: string) => ({
-  customer: { id, displayName, email: null, phone: null },
+const makeCustomer = (id: string, displayName: string, hasName = true) => ({
+  customer: { id, displayName, hasName, email: null, phone: null },
   customerId: id,
 });
 
@@ -41,7 +41,7 @@ const overview = {
   newCustomers: {
     customers: [
       makeCustomer("customer-riley", "Riley Chen"),
-      makeCustomer("customer-casey", "Casey Smith"),
+      makeCustomer("customer-unnamed", "Unnamed customer", false),
       makeCustomer("customer-drew", "Drew Jones"),
     ],
     unavailable: false,
@@ -84,6 +84,8 @@ describe("CustomerActivity", () => {
     expect(view.getByText("Noví zákazníci")).toBeDefined();
     expect(view.getByText("… a 5 dalších")).toBeDefined();
     expect(view.getByText("Drew Jones")).toBeDefined();
+    expect(view.getByText("Zákazník bez jména")).toBeDefined();
+    expect(view.queryByText("Unnamed customer")).toBeNull();
   });
 
   test("selects the Czech remainder form for two to four customers", () => {

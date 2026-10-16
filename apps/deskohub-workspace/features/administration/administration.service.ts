@@ -202,7 +202,10 @@ export type AdministrationBookingSort = "booking" | "status";
 
 type AdministrationCustomer = {
   readonly id: DotyposCustomerId;
+  /** Never empty: the API and `dhw` show "Unnamed customer" when `hasName` is false. */
   readonly displayName: string;
+  /** Whether Dotypos holds a personal or company name, so the Admin UI can name an unnamed customer in the operator's language. */
+  readonly hasName: boolean;
   readonly email: string | null;
   readonly phone: string | null;
 };
@@ -577,15 +580,14 @@ const toCustomer = (
   customer: DotyposCustomer,
   fallbackId: DotyposCustomerId
 ): AdministrationCustomer => {
-  const personalName = [customer.firstName, customer.lastName]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+  const name =
+    [customer.firstName, customer.lastName].filter(Boolean).join(" ").trim() ||
+    customer.companyName?.trim();
   return {
     id:
       Option.getOrUndefined(decodeDotyposCustomerId(customer.id)) ?? fallbackId,
-    displayName:
-      personalName || customer.companyName?.trim() || "Unnamed customer",
+    displayName: name || "Unnamed customer",
+    hasName: Boolean(name),
     email: customer.email?.trim() || null,
     phone: customer.phone?.trim() || null,
   };

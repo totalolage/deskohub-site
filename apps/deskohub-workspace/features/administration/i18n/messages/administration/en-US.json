@@ -112,6 +112,7 @@
   "administrationCustomerDetailUnavailableTitle": "Customer details unavailable",
   "administrationCustomerDetailViewAllReservations": "View all reservations",
   "administrationCustomerDetailsUnavailable": "Details unavailable",
+  "administrationCustomerUnnamed": "Unnamed customer",
   "administrationCustomerListEmpty": "No customers have reservations yet.",
   "administrationCustomerListItemSummary": [
     {

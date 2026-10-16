@@ -14,6 +14,7 @@ import type {
   AdministrationReservationSummary,
   AdministrationTimelineItem,
 } from "./administration.service";
+import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   formatAdministrationDateTime,
   formatAdministrationReservationDate,
@@ -234,8 +235,9 @@ export function RelatedReservationLink({
             )}
         </span>
         <span className="mt-2 block text-sm font-medium">
-          {reservation.customer?.displayName ??
-            m.administrationReservationCustomerUnavailable({}, { locale })}
+          {reservation.customer
+            ? getAdministrationCustomerName(reservation.customer, locale)
+            : m.administrationReservationCustomerUnavailable({}, { locale })}
         </span>
         {reservation.customer && (
           <span className="mt-0.5 block break-all text-xs text-navy-blue/65">

@@ -1,6 +1,7 @@
 import type { Locale } from "@/features/i18n";
 import { AdministrationLink as Link } from "./admin-link";
 import type { AdministrationOverviewMetric } from "./administration.service";
+import { getAdministrationCustomerName } from "./customer-presentation";
 import { m } from "./i18n";
 import type {
   loadAdministrationOverview,
@@ -140,11 +141,12 @@ function CustomerActivityMetric({
                     className="block break-words font-semibold transition-colors hover:text-aquamarine-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-blue/40"
                     href={`/admin/customers/${customerId}`}
                   >
-                    {customer?.displayName ??
-                      m.administrationCustomerDetailsUnavailable(
-                        {},
-                        { locale }
-                      )}
+                    {customer
+                      ? getAdministrationCustomerName(customer, locale)
+                      : m.administrationCustomerDetailsUnavailable(
+                          {},
+                          { locale }
+                        )}
                   </Link>
                 </li>
               ))}

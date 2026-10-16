@@ -117,6 +117,7 @@
   "administrationCustomerDetailUnavailableTitle": "Údaje o zákazníkovi nejsou k dispozici",
   "administrationCustomerDetailViewAllReservations": "Zobrazit všechny rezervace",
   "administrationCustomerDetailsUnavailable": "Údaje nejsou k dispozici",
+  "administrationCustomerUnnamed": "Zákazník bez jména",
   "administrationCustomerListEmpty": "Zatím žádný zákazník nemá rezervaci.",
   "administrationCustomerListItemSummary": [
     {

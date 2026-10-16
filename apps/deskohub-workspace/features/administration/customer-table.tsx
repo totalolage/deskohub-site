@@ -9,6 +9,7 @@ import type {
   AdministrationCustomerSort,
   AdministrationCustomerSummary,
 } from "./administration.service";
+import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -26,15 +27,17 @@ const getColumns = (
 ): readonly AdministrationDataTableColumn<AdministrationCustomerSummary>[] => [
   {
     accessorFn: (item) =>
-      item.customer?.displayName ??
-      m.administrationCustomerDetailsUnavailable({}, { locale }),
+      item.customer
+        ? getAdministrationCustomerName(item.customer, locale)
+        : m.administrationCustomerDetailsUnavailable({}, { locale }),
     cell: ({ row }) => (
       <Link
         className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
         href={`/admin/customers/${row.original.customerId}`}
       >
-        {row.original.customer?.displayName ??
-          m.administrationCustomerDetailsUnavailable({}, { locale })}
+        {row.original.customer
+          ? getAdministrationCustomerName(row.original.customer, locale)
+          : m.administrationCustomerDetailsUnavailable({}, { locale })}
       </Link>
     ),
     enableSorting: false,
@@ -125,8 +128,12 @@ export function AdministrationCustomerTable({
                 href={`/admin/customers/${item.customerId}`}
               >
                 <p className="font-semibold">
-                  {item.customer?.displayName ??
-                    m.administrationCustomerDetailsUnavailable({}, { locale })}
+                  {item.customer
+                    ? getAdministrationCustomerName(item.customer, locale)
+                    : m.administrationCustomerDetailsUnavailable(
+                        {},
+                        { locale }
+                      )}
                 </p>
                 <p className="mt-1 text-sm text-navy-blue/65">
                   {item.customer?.email ??

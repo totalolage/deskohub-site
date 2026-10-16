@@ -16,6 +16,7 @@ import {
   BookingStatusBadge,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { getAdministrationCustomerName } from "@/features/administration/customer-presentation";
 import { m } from "@/features/administration/i18n";
 import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationBooking } from "@/features/administration/page-data.server";
@@ -182,7 +183,7 @@ export async function BookingAdministrationDetail({
                 href={`/admin/customers/${booking.customerId}`}
               >
                 <span className="block font-semibold">
-                  {booking.customer.displayName}
+                  {getAdministrationCustomerName(booking.customer, locale)}
                 </span>
                 <span className="mt-1 block text-sm text-navy-blue/65">
                   {booking.customer.email ??
