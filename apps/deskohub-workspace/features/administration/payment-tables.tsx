@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { AdministrationLink as Link } from "./admin-link";
 import {
   AdministrationDataTable,
@@ -33,6 +34,7 @@ export function OrderTable({
 }: {
   readonly orders: readonly AdministrationOrder[];
 }) {
+  const locale = useRouteLocale();
   const columns = useMemo<AdministrationDataTableColumn<AdministrationOrder>[]>(
     () => [
       {
@@ -54,7 +56,8 @@ export function OrderTable({
                   row.original.provider?.lastOperationTime ??
                     row.original.link?.providerOrderCreatedAt ??
                     row.original.link?.attemptCreatedAt ??
-                    ""
+                    "",
+                  locale
                 )}
               </p>
             )}
@@ -103,19 +106,22 @@ export function OrderTable({
       {
         accessorFn: (order) =>
           order.provider && order.link
-            ? getPaymentAttemptStatusLabel(order.link)
+            ? getPaymentAttemptStatusLabel(order.link, locale)
             : getReconciliationLabel(order),
         id: "reconciliation",
         header: "Reconciliation",
         cell: ({ getValue, row }) =>
           row.original.provider && row.original.link ? (
-            <PaymentAttemptStatusBadge link={row.original.link} />
+            <PaymentAttemptStatusBadge
+              link={row.original.link}
+              locale={locale}
+            />
           ) : (
             <ProviderStatusBadge value={getValue<string>()} />
           ),
       },
     ],
-    []
+    [locale]
   );
 
   if (orders.length === 0) {
@@ -138,6 +144,7 @@ export function OperationTable({
 }: {
   readonly operations: readonly AdministrationOperation[];
 }) {
+  const locale = useRouteLocale();
   const columns = useMemo<
     AdministrationDataTableColumn<AdministrationOperation>[]
   >(
@@ -160,7 +167,7 @@ export function OperationTable({
             )}
             {row.original.operationTime && (
               <p className="mt-1 text-xs text-navy-blue/65">
-                {formatProviderDateTime(row.original.operationTime)}
+                {formatProviderDateTime(row.original.operationTime, locale)}
               </p>
             )}
           </>
@@ -233,7 +240,7 @@ export function OperationTable({
           ),
       },
     ],
-    []
+    [locale]
   );
 
   if (operations.length === 0) {

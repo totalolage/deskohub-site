@@ -188,9 +188,28 @@
   "emailCampaignsAudienceListColumnReach": "Koho zasáhne",
   "emailCampaignsAudienceListColumnStatus": "Stav",
   "emailCampaignsAudienceListColumnUpdated": "Upraveno",
+  "emailCampaignsAudienceListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} okruh příjemců",
+        "countPlural=few": "{count} okruhy příjemců",
+        "countPlural=other": "{count} okruhů příjemců"
+      }
+    }
+  ],
+  "emailCampaignsAudienceListCountLoading": "Načítání počtu okruhů příjemců",
   "emailCampaignsAudienceListEmpty": "Zatím tu nejsou žádné okruhy příjemců. Vytvořte okruh a vyberte, koho kampaň zasáhne.",
+  "emailCampaignsAudienceListLoading": "Načítání okruhů příjemců",
   "emailCampaignsAudienceListNew": "Nový okruh příjemců",
   "emailCampaignsAudienceListTitle": "Okruhy příjemců e-mailů",
+  "emailCampaignsAudienceListToolbarLabel": "Ovládání tabulky okruhů příjemců",
   "emailCampaignsAudienceListUpdated": "Upraveno {date}",
   "emailCampaignsAudienceLocaleEmptyError": "Vyberte alespoň jeden jazyk.",
   "emailCampaignsAudienceLocaleLabel": "Jazyk",

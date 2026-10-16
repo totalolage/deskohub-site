@@ -1,4 +1,7 @@
+"use client";
+
 import type { ReactNode } from "react";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Dialog,
@@ -9,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/shared/components/ui/dialog";
+import { m } from "./i18n";
 import { AdministrationAlert } from "./notice";
 
 /** Asks the operator to confirm a destructive action, showing its failure. */
@@ -33,10 +37,11 @@ export function ConfirmDialog({
   readonly error: string | null;
   readonly onConfirm: () => void;
 }) {
+  const locale = useRouteLocale();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent locale="en-US">
+      <DialogContent locale={locale}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -53,7 +58,7 @@ export function ConfirmDialog({
             onClick={() => onOpenChange(false)}
             disabled={pending}
           >
-            Cancel
+            {m.administrationConfirmDialogCancel({}, { locale })}
           </Button>
           <Button type="button" onClick={onConfirm} disabled={pending}>
             {confirmLabel}

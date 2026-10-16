@@ -1,5 +1,6 @@
 import type { DatePeriodUnitType } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
+import { formatAdministrationPlainDate } from "@/features/administration/formatters";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import type { DatePeriod } from "../date-period";
@@ -14,10 +15,17 @@ const lastPeriods: Readonly<
   year: m.emailCampaignsAudienceSummaryPeriodLastYear,
 };
 
+/** A period's date in `locale`; a date still being entered reads as a gap. */
+const periodDate = (date: string, locale: Locale) =>
+  date === ""
+    ? m.emailCampaignsAudienceSummaryGap({}, { locale })
+    : formatAdministrationPlainDate(date, locale);
+
 /**
  * The period as audience summaries name it: "at any time", "in the last 10
- * days", "from 2026-01-01 to 2026-03-31", "since 2026-01-01" (through now),
- * "from 2026-01-01 onward" (future included), or "until 2026-01-01".
+ * days", "from Jan 1, 2026 to Mar 31, 2026", "since Jan 1, 2026" (through
+ * now), "from Jan 1, 2026 onward" (future included), or "until Jan 1, 2026",
+ * with dates in `locale`.
  */
 export const describeDatePeriod = (
   period: DatePeriod,
@@ -29,13 +37,25 @@ export const describeDatePeriod = (
       AnyTime: () => m.emailCampaignsAudienceSummaryPeriodAnyTime({}, options),
       Last: ({ count, unit }) => lastPeriods[unit]({ count }, options),
       Range: ({ from, to }) =>
-        m.emailCampaignsAudienceSummaryPeriodRange({ from, to }, options),
+        m.emailCampaignsAudienceSummaryPeriodRange(
+          { from: periodDate(from, locale), to: periodDate(to, locale) },
+          options
+        ),
       Since: ({ date }) =>
-        m.emailCampaignsAudienceSummaryPeriodSince({ date }, options),
+        m.emailCampaignsAudienceSummaryPeriodSince(
+          { date: periodDate(date, locale) },
+          options
+        ),
       Onward: ({ date }) =>
-        m.emailCampaignsAudienceSummaryPeriodOnward({ date }, options),
+        m.emailCampaignsAudienceSummaryPeriodOnward(
+          { date: periodDate(date, locale) },
+          options
+        ),
       Until: ({ date }) =>
-        m.emailCampaignsAudienceSummaryPeriodUntil({ date }, options),
+        m.emailCampaignsAudienceSummaryPeriodUntil(
+          { date: periodDate(date, locale) },
+          options
+        ),
     })
   );
 };

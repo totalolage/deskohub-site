@@ -1,1 +1,16 @@
-{}
+{
+  "administrationConfirmDialogCancel": "Cancel",
+  "administrationLoadingBreadcrumb": "Loading breadcrumb",
+  "administrationLoadingCustomerActivity": "Loading customer activity",
+  "administrationLoadingDiscountForm": "Loading discount code form",
+  "administrationLoadingPage": "Loading administration page",
+  "administrationLoadingReservationActivity": "Loading reservation activity",
+  "administrationLoadingTableFilters": "Loading table filters",
+  "administrationNexiOrderLinkLabel": "{order} (opens in XPay)",
+  "administrationNexiOrderName": "Nexi order {orderId}",
+  "administrationPaginationLabel": "Pagination",
+  "administrationPaginationNext": "Next",
+  "administrationPaginationPrevious": "Previous",
+  "administrationPaginationStatus": "Page {page} of {pageCount}",
+  "administrationTableActions": "Actions"
+}

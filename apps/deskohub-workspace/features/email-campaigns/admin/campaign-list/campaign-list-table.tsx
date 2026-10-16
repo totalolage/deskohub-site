@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useMemo } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import {
@@ -9,11 +10,14 @@ import {
 } from "@/features/administration/data-table";
 import { EmptyState } from "@/features/administration/empty-state";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
+import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { CampaignPurposeBadge, CampaignStatusBadge } from "./campaign-badges";
 import type { CampaignListItem } from "./campaign-list-page-data.server";
 
-const columns: AdministrationDataTableColumn<CampaignListItem>[] = [
+const getColumns = (
+  locale: Locale
+): AdministrationDataTableColumn<CampaignListItem>[] => [
   {
     accessorKey: "title",
     header: "Campaign",
@@ -48,7 +52,8 @@ const columns: AdministrationDataTableColumn<CampaignListItem>[] = [
   {
     accessorKey: "updatedAt",
     header: "Updated",
-    cell: ({ row }) => formatAdministrationDateTime(row.original.updatedAt),
+    cell: ({ row }) =>
+      formatAdministrationDateTime(row.original.updatedAt, locale),
   },
 ];
 
@@ -59,6 +64,7 @@ export function CampaignListTable({
 }) {
   const router = useRouter();
   const locale = useRouteLocale();
+  const columns = useMemo(() => getColumns(locale), [locale]);
   if (campaigns.length === 0) {
     return (
       <EmptyState message="No campaigns yet. Create one to compose your first email." />
@@ -87,7 +93,8 @@ export function CampaignListTable({
                   {campaign.audienceTitle ?? "No audience"}
                 </span>
                 <span className="mt-3 block text-navy-blue/60 text-xs">
-                  Updated {formatAdministrationDateTime(campaign.updatedAt)}
+                  Updated{" "}
+                  {formatAdministrationDateTime(campaign.updatedAt, locale)}
                 </span>
               </Link>
             </li>

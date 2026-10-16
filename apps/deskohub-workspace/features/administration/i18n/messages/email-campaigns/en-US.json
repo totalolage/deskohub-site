@@ -184,9 +184,27 @@
   "emailCampaignsAudienceListColumnReach": "Who it reaches",
   "emailCampaignsAudienceListColumnStatus": "Status",
   "emailCampaignsAudienceListColumnUpdated": "Updated",
+  "emailCampaignsAudienceListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} audience",
+        "countPlural=other": "{count} audiences"
+      }
+    }
+  ],
+  "emailCampaignsAudienceListCountLoading": "Loading audience count",
   "emailCampaignsAudienceListEmpty": "No audiences yet. Create one to choose who a campaign reaches.",
+  "emailCampaignsAudienceListLoading": "Loading audiences",
   "emailCampaignsAudienceListNew": "New audience",
   "emailCampaignsAudienceListTitle": "Email audiences",
+  "emailCampaignsAudienceListToolbarLabel": "Audience table controls",
   "emailCampaignsAudienceListUpdated": "Updated {date}",
   "emailCampaignsAudienceLocaleEmptyError": "Choose at least one locale.",
   "emailCampaignsAudienceLocaleLabel": "Locale",

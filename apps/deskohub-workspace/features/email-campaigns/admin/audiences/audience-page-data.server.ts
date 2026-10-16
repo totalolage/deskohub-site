@@ -3,7 +3,6 @@ import "server-only";
 import { Effect, Option } from "effect";
 import { notFound } from "next/navigation";
 import type { CampaignAudienceRow } from "@/db/schema";
-import { formatAdministrationDateTime } from "@/features/administration/formatters";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
@@ -33,8 +32,6 @@ export type AudienceListItem = {
   readonly archived: boolean;
   /** ISO instant. */
   readonly updatedAt: string;
-  /** `updatedAt` as the request locale writes it. */
-  readonly updatedAtText: string;
 };
 
 export type AudienceEditorData = {
@@ -89,9 +86,6 @@ export const loadAudienceList = async (): Promise<
       }),
       archived: isArchived(audience),
       updatedAt: audience.updatedAt.toString(),
-      updatedAtText: formatAdministrationDateTime(
-        audience.updatedAt.toString()
-      ),
     }));
 };
 

@@ -151,7 +151,7 @@ describe("describeAudienceFilter", () => {
         operator: "in",
         value: { _tag: "Since", date: "2026-09-01" },
       })
-    ).toBe("Customers who created a Workspace account since 2026-09-01");
+    ).toBe("Customers who created a Workspace account since Sep 1, 2026");
   });
 
   test("describes in Czech", () => {
@@ -242,13 +242,25 @@ describe("describeDatePeriod", () => {
     [{ _tag: "Last", count: 2, unit: "year" }, "in the last 2 years"],
     [
       { _tag: "Range", from: "2026-01-01", to: "2026-03-31" },
-      "from 2026-01-01 to 2026-03-31",
+      "from Jan 1, 2026 to Mar 31, 2026",
     ],
-    [{ _tag: "Since", date: "2026-01-01" }, "since 2026-01-01"],
-    [{ _tag: "Onward", date: "2026-01-01" }, "from 2026-01-01 onward"],
-    [{ _tag: "Until", date: "2026-01-01" }, "until 2026-01-01"],
+    [{ _tag: "Since", date: "2026-01-01" }, "since Jan 1, 2026"],
+    [{ _tag: "Onward", date: "2026-01-01" }, "from Jan 1, 2026 onward"],
+    [{ _tag: "Until", date: "2026-01-01" }, "until Jan 1, 2026"],
   ])("names %o as “%s”", (period, phrase) => {
     expect(describeDatePeriod(period, "en-US")).toBe(phrase);
+  });
+
+  test("names periods in Czech, with Czech dates", () => {
+    expect(
+      describeDatePeriod(
+        { _tag: "Range", from: "2026-01-01", to: "2026-03-31" },
+        "cs-CZ"
+      )
+    ).toBe("od 1. 1. 2026 do 31. 3. 2026");
+    expect(
+      describeDatePeriod({ _tag: "Last", count: 1, unit: "day" }, "cs-CZ")
+    ).toBe("za poslední den");
   });
 });
 

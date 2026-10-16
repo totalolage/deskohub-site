@@ -176,6 +176,7 @@ function DatePeriodControl({
               })
             }
             aria-label={m.emailCampaignsAudiencePeriodCountLabel(
+              // Any count above one names the units in general.
               { subject: label, units: datePeriodUnit(value.unit, 2, locale) },
               { locale }
             )}

@@ -8,6 +8,7 @@ import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
   EmptyState,
+  formatAdministrationDateTime,
 } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -30,25 +31,6 @@ export function AudienceStatusBadge({
         ? m.emailCampaignsAudienceStatusArchived({}, { locale })
         : m.emailCampaignsAudienceStatusActive({}, { locale })}
     </Badge>
-  );
-}
-
-/** The list page's heading, for screen readers. */
-export function AudienceListHeading() {
-  const locale = useRouteLocale();
-  return (
-    <h1 className="sr-only">
-      {m.emailCampaignsAudienceListTitle({}, { locale })}
-    </h1>
-  );
-}
-
-export function NewAudienceLink() {
-  const locale = useRouteLocale();
-  return (
-    <Link href="/admin/email-audiences/new">
-      {m.emailCampaignsAudienceListNew({}, { locale })}
-    </Link>
   );
 }
 
@@ -103,7 +85,7 @@ export function AudienceList({
         header: m.emailCampaignsAudienceListColumnUpdated({}, { locale }),
         cell: ({ row }) => (
           <span className="whitespace-nowrap text-navy-blue/70 text-sm">
-            {row.original.updatedAtText}
+            {formatAdministrationDateTime(row.original.updatedAt, locale)}
           </span>
         ),
       },
@@ -154,7 +136,12 @@ export function AudienceList({
                 </span>
                 <span className="mt-3 block text-navy-blue/60 text-xs">
                   {m.emailCampaignsAudienceListUpdated(
-                    { date: audience.updatedAtText },
+                    {
+                      date: formatAdministrationDateTime(
+                        audience.updatedAt,
+                        locale
+                      ),
+                    },
                     { locale }
                   )}
                 </span>

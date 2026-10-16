@@ -16,7 +16,9 @@ export default function CustomerDiscountCodeCreationPage({
   return (
     <AdministrationPage>
       <Suspense
-        fallback={<AdministrationDetailLoading label="discount code form" />}
+        fallback={
+          <AdministrationDetailLoading label="Loading discount code form" />
+        }
       >
         <CustomerDiscountCodeCreationContent params={params} />
       </Suspense>
