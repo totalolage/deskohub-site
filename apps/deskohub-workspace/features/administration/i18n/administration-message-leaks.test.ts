@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   classifyChunks,
+  findMessageTexts,
   findTexts,
   readCatalogTexts,
   selectLeakEvidence,
@@ -36,14 +37,26 @@ const texts = (source: string) =>
 describe("administration message leak evidence", () => {
   test("keeps distinctive plain texts and the static runs of parameterized ones", () => {
     expect(administrationTexts).toEqual([
-      { locale: "cs-CZ", text: "Smazat koncept kampaně", fragment: false },
-      { locale: "cs-CZ", text: " záznamů auditu pro správce ", fragment: true },
       {
+        message: "plain",
+        locale: "cs-CZ",
+        text: "Smazat koncept kampaně",
+        fragment: false,
+      },
+      {
+        message: "parameterized",
+        locale: "cs-CZ",
+        text: " záznamů auditu pro správce ",
+        fragment: true,
+      },
+      {
+        message: "matched",
         locale: "cs-CZ",
         text: " rezervace čeká na vrácení peněz",
         fragment: true,
       },
       {
+        message: "matched",
         locale: "cs-CZ",
         text: " rezervací čeká na vrácení peněz",
         fragment: true,
@@ -73,6 +86,60 @@ describe("administration message leak evidence", () => {
       "Smazat koncept kampaně",
     ]);
     expect(texts('const t="Smazat koncept kampaně a vše"')).toEqual([]);
+  });
+});
+
+describe("administration messages a chunk holds", () => {
+  const catalogTexts = [
+    ...readCatalogTexts(
+      "en-US",
+      JSON.stringify({
+        operator: "at least",
+        status: "Reservation status",
+        provider: "Nexi payment gateway",
+        count: "{count} to fix",
+      })
+    ),
+    ...readCatalogTexts(
+      "cs-CZ",
+      JSON.stringify({
+        operator: "alespoň",
+        status: "Stav rezervace",
+        provider: "Nexi payment gateway",
+        count: "{count}",
+      })
+    ),
+  ];
+  const evidence = selectLeakEvidence(catalogTexts, []);
+  const leaked = (source: string) =>
+    findMessageTexts(evidence, catalogTexts, source).map(
+      ({ locale, text }) => `${locale} ${text}`
+    );
+
+  test("reports a message whose texts arrive in every locale", () => {
+    expect(
+      leaked('const en=()=>"Reservation status",cs=()=>"Stav rezervace"')
+    ).toEqual(["en-US Reservation status", "cs-CZ Stav rezervace"]);
+  });
+
+  test("ignores an English library literal without the message's translation", () => {
+    expect(
+      leaked(
+        'e.inclusive?"at least":"more than";n.annotate({description:"Reservation status"})'
+      )
+    ).toEqual([]);
+  });
+
+  test("reports a message whose texts are the same in every locale on its own", () => {
+    expect(leaked('const t="Nexi payment gateway"')).toEqual([
+      "en-US Nexi payment gateway",
+      "cs-CZ Nexi payment gateway",
+    ]);
+  });
+
+  test("reports a message whose other locales have no text worth matching", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: compiled chunk source
+    expect(leaked("return`${e?.count} to fix`")).toEqual(["en-US  to fix"]);
   });
 });
 
