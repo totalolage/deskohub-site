@@ -45,7 +45,12 @@ const allowedColumns = new Map([
   ["auth.user.name", "Better Auth required column, kept empty"],
   // The passkey plugin's credential label: the authenticator's provider
   // name, or the label a customer gives their passkey to tell it apart.
-  ["auth.passkey.name", "Better Auth passkey label"],
+  // Preview branches may inherit it under the Better Auth exception in the
+  // root AGENTS.md preview-PII rule.
+  [
+    "auth.passkey.name",
+    "Better Auth passkey label, covered by the preview-PII exception",
+  ],
   // An email delivery identifier, explicitly allowed by the No-PII policy.
   [
     "public.workspace_reservations.active_customer_email_delivery_id",

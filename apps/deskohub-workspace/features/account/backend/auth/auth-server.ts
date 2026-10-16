@@ -746,12 +746,15 @@ const requireReauthenticationUserVerification = (ctx: PasskeyOptionsRequest) =>
       onNone: () => Effect.void,
       onSome: (returned) =>
         Effect.promise(() => getSessionFromCtx(ctx)).pipe(
-          Effect.flatMap((session) =>
-            session
-              ? Effect.promise(async () =>
+          Effect.map(Option.fromNullishOr),
+          Effect.flatMap(
+            Option.match({
+              onNone: () => Effect.void,
+              onSome: () =>
+                Effect.promise(async () =>
                   ctx.json({ ...returned, userVerification: "required" })
-                )
-              : Effect.void
+                ),
+            })
           )
         ),
     })
