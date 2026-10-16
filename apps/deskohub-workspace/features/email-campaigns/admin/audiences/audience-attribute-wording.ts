@@ -3,7 +3,6 @@ import type {
   AudienceAttributeCatalogue,
   AudienceAttributeSection,
   AudienceCountCondition,
-  AudienceEditorToken,
   AudienceSetOperatorType,
 } from "@deskohub/workspace-admin-api";
 import { m } from "@/features/administration/i18n";
@@ -14,6 +13,11 @@ export type AudienceMessage<Inputs = Record<never, never>> = (
   inputs: Inputs,
   options: { readonly locale: Locale }
 ) => string;
+
+/** Editor words between a count line's controls, or a parameter's control. */
+export type AudienceEditorToken =
+  | { readonly text: string }
+  | { readonly param: string };
 
 /** A choice parameter's control: its name and each option's label. */
 export type AudienceChoiceWording = {

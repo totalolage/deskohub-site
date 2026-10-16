@@ -236,7 +236,7 @@
       ],
       "match": {
         "kind=AnyTime": "kdykoli",
-        "kind=Last": "v posledních",
+        "kind=Last": "za posledních",
         "kind=Range": "od … do …",
         "kind=Since": "od",
         "kind=Onward": "od … dál",
@@ -245,6 +245,22 @@
     }
   ],
   "emailCampaignsAudiencePeriodLabel": "{subject}: období",
+  "emailCampaignsAudiencePeriodLast": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "za poslední",
+        "countPlural=few": "za poslední",
+        "countPlural=other": "za posledních"
+      }
+    }
+  ],
   "emailCampaignsAudiencePeriodOnward": "dál",
   "emailCampaignsAudiencePeriodOrderError": "Datum začátku nesmí být pozdější než datum konce.",
   "emailCampaignsAudiencePeriodStartLabel": "{subject}: datum začátku",
@@ -259,9 +275,9 @@
         "countPlural"
       ],
       "match": {
-        "countPlural=one": "dni",
-        "countPlural=few": "dnech",
-        "countPlural=other": "dnech"
+        "countPlural=one": "den",
+        "countPlural=few": "dny",
+        "countPlural=other": "dní"
       }
     }
   ],
@@ -276,9 +292,9 @@
         "countPlural"
       ],
       "match": {
-        "countPlural=one": "měsíci",
-        "countPlural=few": "měsících",
-        "countPlural=other": "měsících"
+        "countPlural=one": "měsíc",
+        "countPlural=few": "měsíce",
+        "countPlural=other": "měsíců"
       }
     }
   ],
@@ -292,9 +308,9 @@
         "countPlural"
       ],
       "match": {
-        "countPlural=one": "týdnu",
-        "countPlural=few": "týdnech",
-        "countPlural=other": "týdnech"
+        "countPlural=one": "týden",
+        "countPlural=few": "týdny",
+        "countPlural=other": "týdnů"
       }
     }
   ],
@@ -308,9 +324,9 @@
         "countPlural"
       ],
       "match": {
-        "countPlural=one": "roce",
-        "countPlural=few": "letech",
-        "countPlural=other": "letech"
+        "countPlural=one": "rok",
+        "countPlural=few": "roky",
+        "countPlural=other": "let"
       }
     }
   ],

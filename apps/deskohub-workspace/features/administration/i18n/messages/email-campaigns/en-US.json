@@ -240,6 +240,21 @@
     }
   ],
   "emailCampaignsAudiencePeriodLabel": "{subject} period",
+  "emailCampaignsAudiencePeriodLast": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "in the last",
+        "countPlural=other": "in the last"
+      }
+    }
+  ],
   "emailCampaignsAudiencePeriodOnward": "onward",
   "emailCampaignsAudiencePeriodOrderError": "The start date must be on or before the end date.",
   "emailCampaignsAudiencePeriodStartLabel": "{subject} start date",

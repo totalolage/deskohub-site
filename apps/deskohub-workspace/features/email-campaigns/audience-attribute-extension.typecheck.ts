@@ -21,12 +21,6 @@ export const giftCardCount = countAttribute("giftCardCount", {
   label: "Gift cards bought",
   section: "Reservations",
   params: { period: periodParam },
-  editor: {
-    lead: [{ text: "gift cards bought" }],
-    period: "Gift cards",
-    count: "Gift card count",
-  },
-  summary: { verb: "bought", noun: { one: "gift card", other: "gift cards" } },
   defaults: {
     params: { period: { _tag: "Last", count: 30, unit: "day" } },
     operator: "gte",

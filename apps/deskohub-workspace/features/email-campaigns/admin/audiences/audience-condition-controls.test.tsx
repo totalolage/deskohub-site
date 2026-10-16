@@ -81,3 +81,34 @@ describe("CountConditionControls", () => {
     }
   );
 });
+
+describe("DatePeriodControl", () => {
+  test.each([
+    [1, "za poslední", "den"],
+    [3, "za poslední", "dny"],
+    [30, "za posledních", "dní"],
+  ] as const)("reads “in the last %d days” in Czech", (count, lead, unit) => {
+    const condition = {
+      ...newCondition("campaignEmailCount"),
+      params: {
+        purpose: "marketing",
+        period: { _tag: "Last", count, unit: "day" },
+      },
+    } as const;
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <CountConditionControls
+          entry={audienceAttributeCatalogue.campaignEmailCount}
+          wording={campaignEmailCountWording("cs-CZ")}
+          value={condition}
+          onChange={() => undefined}
+          errorAt={() => undefined}
+        />
+      </RouteLocaleProvider>
+    );
+    const trigger = (name: string) =>
+      view.getByRole("combobox", { name }).textContent;
+    expect(trigger("Přijaté e-maily: období")).toBe(lead);
+    expect(trigger("Přijaté e-maily: jednotka období")).toBe(unit);
+  });
+});

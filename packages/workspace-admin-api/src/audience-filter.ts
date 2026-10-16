@@ -24,10 +24,12 @@ import { AdministrationReservationStatusFilter } from "./workspace-admin-api";
 /**
  * The customer attributes an audience can filter on. Each entry declares its
  * kind, its wire shape (`attribute`, `params`, an `operator` and a `value` of
- * its kind), its Admin UI label, section, editor wording and defaults, and its
- * summary wording. Workspace drives evaluation, the Admin UI, summaries,
- * locale narrowing, and `dhw` validation from it by kind, so adding an
- * attribute takes an entry here and its Workspace resolver.
+ * its kind), its English `label` and Admin UI section, and its defaults.
+ * Workspace drives evaluation, the Admin UI structure, locale narrowing, and
+ * `dhw` validation from it by kind. Adding an attribute takes an entry here,
+ * its Workspace resolver, and its Admin UI wording (labels, editor words, and
+ * summary phrases) in Workspace's audience attribute wording, with its
+ * administration messages in both locales.
  */
 export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
   /**
@@ -40,43 +42,16 @@ export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
     section: "Reservations",
     params: {
       dateBasis: choiceParam(Schema.Literals(["visit", "booking"]), {
-        label: "Date basis",
         control: "toggle",
-        options: {
-          visit: { label: "visit date", periodVerb: "visiting " },
-          booking: { label: "booking date", periodVerb: "confirmed " },
-        },
+        options: ["visit", "booking"],
       }),
       period: periodParam,
       status: optionalChoiceParam(AdministrationReservationStatusFilter, {
-        label: "Reservation status",
         control: "select",
-        absent: { label: "booked", nounBefore: "booked " },
-        options: {
-          in_progress: { label: "in progress", nounAfter: " in progress" },
-          complete: { label: "complete", nounBefore: "complete " },
-          cancelled: { label: "cancelled", nounBefore: "cancelled " },
-          needs_refund: {
-            label: "needs refund",
-            nounAfter: " needing a refund",
-          },
-        },
+        options: ["in_progress", "complete", "cancelled", "needs_refund"],
       }),
     },
     reservationProduct: true,
-    editor: {
-      lead: [
-        { param: "status" },
-        { text: "reservations by" },
-        { param: "dateBasis" },
-      ],
-      period: "Reservations",
-      count: "Reservation count",
-    },
-    summary: {
-      verb: "have",
-      noun: { one: "reservation", other: "reservations" },
-    },
     defaults: {
       params: { dateBasis: "visit", period: { _tag: "AnyTime" } },
       operator: "gt",
@@ -91,13 +66,6 @@ export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
     label: "Last visit",
     section: "Reservations",
     reservationProduct: true,
-    editor: { noValue: "never visited" },
-    summary: {
-      withValue: "have visited",
-      inPeriod: "last visited",
-      notInPeriod: ", with the last visit not",
-      withoutValue: "have never visited",
-    },
     defaults: {
       operator: "in",
       value: { _tag: "Last", count: 30, unit: "day" },
@@ -114,26 +82,9 @@ export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
     params: {
       purpose: choiceParam(
         Schema.Union([AdministrationCampaignPurpose, Schema.Literal("any")]),
-        {
-          label: "Campaign purpose",
-          control: "select",
-          options: {
-            marketing: { label: "marketing", nounBefore: "marketing " },
-            operational: { label: "operational", nounBefore: "operational " },
-            any: { label: "any" },
-          },
-        }
+        { control: "select", options: ["marketing", "operational", "any"] }
       ),
       period: periodParam,
-    },
-    editor: {
-      lead: [{ param: "purpose" }, { text: "campaign emails received" }],
-      period: "Emails received",
-      count: "Campaign email count",
-    },
-    summary: {
-      verb: "received",
-      noun: { one: "campaign email", other: "campaign emails" },
     },
     defaults: {
       params: {
@@ -148,24 +99,12 @@ export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
   hasAccount: booleanAttribute("hasAccount", {
     label: "Workspace account",
     section: "Account",
-    editor: { true: "Has", false: "Hasn’t", object: "a Workspace account" },
-    summary: {
-      true: "have a Workspace account",
-      false: "have no Workspace account",
-    },
     defaults: { operator: "is", value: true },
   }),
   /** When the customer's linked Workspace account was created. */
   accountCreated: dateAttribute("accountCreated", {
     label: "Account created",
     section: "Account",
-    editor: { noValue: "no account" },
-    summary: {
-      withValue: "have a Workspace account",
-      inPeriod: "created a Workspace account",
-      notInPeriod: " not created",
-      withoutValue: "have no Workspace account",
-    },
     defaults: {
       operator: "in",
       value: { _tag: "Last", count: 30, unit: "day" },
@@ -175,49 +114,25 @@ export const audienceAttributeCatalogue = defineAudienceAttributeCatalogue({
   locale: setAttribute("locale", {
     label: "Locale",
     section: "Profile",
-    values: optionValues(AdministrationCampaignLocale, {
-      noun: "locale",
-      options: {
-        "cs-CZ": { label: "Czech (cs-CZ)", name: "Czech" },
-        "en-US": { label: "English (en-US)", name: "English" },
-      },
-    }),
+    values: optionValues(AdministrationCampaignLocale, ["cs-CZ", "en-US"]),
     operators: ["anyOf", "noneOf"],
     narrowsLocales: true,
-    editor: { lead: "Locale" },
-    summary: { anyOf: "speak", noneOf: "don’t speak" },
     defaults: { operator: "anyOf", value: ["cs-CZ"] },
   }),
   /** Tags on the customer's Dotypos profile. */
   dotyposTags: setAttribute("dotyposTags", {
     label: "Dotypos tags",
     section: "Profile",
-    values: freeTextValues({ noun: "tag", placeholder: "Add a tag" }),
+    values: freeTextValues(),
     operators: ["anyOf", "allOf", "noneOf"],
-    editor: { lead: "Tags" },
-    summary: {
-      anyOf: "are tagged",
-      allOf: "are tagged",
-      noneOf: "aren’t tagged",
-    },
     defaults: { operator: "anyOf", value: [] },
   }),
   /** The discount group (ID) of the customer's Dotypos profile. */
   discountGroup: setAttribute("discountGroup", {
     label: "Discount group",
     section: "Profile",
-    values: lookupValues({
-      lookup: "discountGroups",
-      noun: "discount group",
-      choose: "Choose groups",
-      freeText: { noun: "discount group ID", placeholder: "Dotypos group ID" },
-    }),
+    values: lookupValues("discountGroups"),
     operators: ["anyOf", "noneOf"],
-    editor: { lead: "Discount group" },
-    summary: {
-      anyOf: "are in discount group",
-      noneOf: "aren’t in discount group",
-    },
     defaults: { operator: "anyOf", value: [] },
   }),
 });

@@ -156,7 +156,12 @@ function DatePeriodControl({
         <SelectContent>
           {datePeriodKinds.map((kind) => (
             <SelectItem key={kind} value={kind}>
-              {m.emailCampaignsAudiencePeriodKind({ kind }, { locale })}
+              {kind === "Last" && value._tag === "Last"
+                ? m.emailCampaignsAudiencePeriodLast(
+                    { count: value.count },
+                    { locale }
+                  )
+                : m.emailCampaignsAudiencePeriodKind({ kind }, { locale })}
             </SelectItem>
           ))}
         </SelectContent>
@@ -276,15 +281,15 @@ function ChoiceParamControl({
   readonly value: unknown;
   readonly onChange: (value: string | undefined) => void;
 }) {
-  const options = Object.keys(param.options).map((option) => ({
+  const options = param.options.map((option) => ({
     option,
     label: wording?.options[option] ?? option,
   }));
   const label = wording?.label ?? "";
-  const chosen = Object.keys(param.options).find((option) => option === value);
+  const chosen = param.options.find((option) => option === value);
   const pick = (next: string) => {
-    if (next === absentValue && param.absent) onChange(undefined);
-    else if (Object.hasOwn(param.options, next)) onChange(next);
+    if (next === absentValue && param.optional) onChange(undefined);
+    else if (param.options.includes(next)) onChange(next);
   };
   const name = useId();
   return Match.value(param.control).pipe(
@@ -307,7 +312,7 @@ function ChoiceParamControl({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {param.absent && (
+          {param.optional && (
             <SelectItem value={absentValue}>{wording?.absent ?? ""}</SelectItem>
           )}
           {options.map(({ option, label: optionLabel }) => (
@@ -665,7 +670,7 @@ export function SetConditionControls<Condition extends AudienceSetCondition>({
         {Match.value(entry.values).pipe(
           Match.tagsExhaustive({
             Options: ({ options }) =>
-              Object.keys(options).map((option) => {
+              options.map((option) => {
                 const id = `${path}.value.${option}`;
                 return (
                   <label
