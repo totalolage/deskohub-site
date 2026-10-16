@@ -10,7 +10,6 @@ import {
 } from "bun:test";
 import { AlgoPinSchema, IgloohomeDeviceIdSchema } from "@deskohub/igloohome";
 import {
-  AdministrationLegacyUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeName,
@@ -20,11 +19,17 @@ import { eq, inArray } from "drizzle-orm";
 import { Effect, Layer, Schema } from "effect";
 import { Pool } from "pg";
 import { standaloneAccessCodeAttemptEvents } from "@/db/schema";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { waitForPostgresLockWaiter } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  deleteTestAccounts,
+  insertTestAccount,
+  insertTestAdministrator,
+} from "@/shared/testing/workspace-test-accounts.test-utils";
 import {
   type IStandaloneAccessCodeAttemptLogRepository,
   type StandaloneAccessCodeAttempt,
@@ -46,7 +51,8 @@ const attemptIds = [
 ];
 let nextAttemptIdIndex = 0;
 
-const actor = AdministrationLegacyUsername.make("Fixture Operator");
+let actor: AdministratorAccountActor;
+let otherAccountActor: AdministratorAccountActor;
 const source = "dhw-cli";
 const deviceId = Schema.decodeUnknownSync(IgloohomeDeviceIdSchema)(
   "fixture-ek1"
@@ -90,6 +96,7 @@ describe.skipIf(!postgresDatabase)(
   () => {
     const postgres = postgresDatabase as WorkspacePostgresTestDatabase;
     let attempts: IStandaloneAccessCodeAttemptLogRepository;
+    const testAccounts: AdministratorAccountActor[] = [];
 
     const claim = (input: {
       readonly attempt: StandaloneAccessCodeAttempt;
@@ -112,6 +119,16 @@ describe.skipIf(!postgresDatabase)(
     };
 
     beforeAll(async () => {
+      actor = await insertTestAdministrator(
+        postgres,
+        "standalone-access-code-attempt"
+      );
+      testAccounts.push(actor);
+      otherAccountActor = await insertTestAccount(
+        postgres,
+        "standalone-access-code-other-actor"
+      );
+      testAccounts.push(otherAccountActor);
       attempts = await Effect.runPromise(
         Effect.gen(function* () {
           return yield* StandaloneAccessCodeAttemptLogRepository;
@@ -159,6 +176,7 @@ describe.skipIf(!postgresDatabase)(
     });
     afterAll(async () => {
       await barrierPool.end();
+      await deleteTestAccounts(postgres, testAccounts);
     });
 
     const reconcileBarrierKey = 987654321099;
@@ -200,12 +218,14 @@ describe.skipIf(!postgresDatabase)(
 
     const insertRogueCreatedEvent = {
       text: `insert into standalone_access_code_attempt_events
-        (attempt_id, event_kind, actor, source, name, device_id, starts_at_local,
-         ends_at_local, starts_at, ends_at, variance, provider_credential_id, occurred_at)
-       values ($1, 'created', $2, $3, $4, $5, $6, $7, $8, $9, 2, $10, $11)`,
+        (attempt_id, event_kind, actor_account_id, actor_account_email, source,
+         name, device_id, starts_at_local, ends_at_local, starts_at, ends_at,
+         variance, provider_credential_id, occurred_at)
+       values ($1, 'created', $2, $3, $4, $5, $6, $7, $8, $9, $10, 2, $11, $12)`,
       values: (attemptId: string, occurredAt: Temporal.Instant) => [
         attemptId,
-        actor,
+        actor.accountId,
+        actor.email,
         source,
         accessName,
         deviceId,
@@ -231,6 +251,32 @@ describe.skipIf(!postgresDatabase)(
       expect(second).toMatchObject({ kind: "claimed", variance: 3 });
       expect(third).toMatchObject({ kind: "exhausted" });
       expect(await eventKindsOf(thirdAttempt.attemptId)).toEqual([]);
+    });
+
+    test("records the administrator account on started and terminal events", async () => {
+      const attempt = attemptFixture();
+      await Effect.runPromise(claim({ attempt }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt,
+          variance: 2,
+          eventKind: "created",
+          occurredAt: Temporal.Now.instant(),
+          providerCredentialId,
+        })
+      );
+
+      const events = await loadEvents(attempt.attemptId);
+      expect(events).toHaveLength(2);
+      expect(events.map(({ eventKind }) => eventKind).sort()).toEqual([
+        "created",
+        "started",
+      ]);
+      for (const event of events) {
+        expect(event.actor).toBeNull();
+        expect(event.actorAccountId).toBe(actor.accountId);
+        expect(event.actorAccountEmail).toBe(actor.email);
+      }
     });
 
     test("reuses a variance once its attempt is definitively rejected", async () => {
@@ -326,7 +372,7 @@ describe.skipIf(!postgresDatabase)(
         claim({
           attempt: {
             ...attempt,
-            actor: AdministrationLegacyUsername.make("Other Operator"),
+            actor: otherAccountActor,
           },
         })
       );
@@ -355,6 +401,23 @@ describe.skipIf(!postgresDatabase)(
         "ambiguous",
         "started",
       ]);
+      const events = await loadEvents(attempt.attemptId);
+      const startedEvent = events.find(
+        ({ eventKind }) => eventKind === "started"
+      );
+      const ambiguousEvent = events.find(
+        ({ eventKind }) => eventKind === "ambiguous"
+      );
+      expect(startedEvent).toMatchObject({
+        actor: null,
+        actorAccountId: actor.accountId,
+        actorAccountEmail: actor.email,
+      });
+      expect(ambiguousEvent?.actor).toBeNull();
+      expect(ambiguousEvent?.actorAccountId).toBe(startedEvent?.actorAccountId);
+      expect(ambiguousEvent?.actorAccountEmail).toBe(
+        startedEvent?.actorAccountEmail
+      );
 
       const laterReplay = await Effect.runPromise(claim({ attempt }));
       expect(laterReplay).toMatchObject({
@@ -951,7 +1014,9 @@ describe.skipIf(!postgresDatabase)(
       const reconciled = (await loadEvents(ambiguous.attemptId)).find(
         ({ eventKind }) => eventKind === "reconciled"
       );
-      expect(reconciled?.actor).toBe(actor);
+      expect(reconciled?.actor).toBeNull();
+      expect(reconciled?.actorAccountId).toBe(actor.accountId);
+      expect(reconciled?.actorAccountEmail).toBe(actor.email);
       expect(reconciled?.failureCode).toBeNull();
       expect(reconciled?.providerCredentialId).toBeNull();
     });
@@ -1067,7 +1132,9 @@ describe.skipIf(!postgresDatabase)(
         postgres.db.insert(standaloneAccessCodeAttemptEvents).values({
           attemptId: newAttemptId(),
           eventKind: "started",
-          actor,
+          actor: null,
+          actorAccountId: actor.accountId,
+          actorAccountEmail: actor.email,
           source: "operator-console" as never,
           name: accessName,
           deviceId,
@@ -1096,7 +1163,9 @@ describe.skipIf(!postgresDatabase)(
         postgres.db.insert(standaloneAccessCodeAttemptEvents).values({
           attemptId: "not-a-uuid" as never,
           eventKind: "started",
-          actor,
+          actor: null,
+          actorAccountId: actor.accountId,
+          actorAccountEmail: actor.email,
           source,
           name: accessName,
           deviceId,
