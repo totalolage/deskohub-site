@@ -188,12 +188,11 @@ describe("administration messages in a production build", () => {
   });
 
   test("finds customer message text in customer chunks", () => {
-    let found = 0;
-    for (const chunk of customerReachable) {
-      found += findTexts(customerTexts, chunks.get(chunk) ?? "").length;
-    }
-
-    expect(found).toBeGreaterThan(0);
+    expect(
+      [...customerReachable].some(
+        (chunk) => findTexts(customerTexts, chunks.get(chunk) ?? "").length > 0
+      )
+    ).toBe(true);
   });
 
   test("reports a parameterized administration message planted in a customer chunk", () => {

@@ -2,17 +2,13 @@ import path from "node:path";
 import { Schema } from "effect";
 
 // A catalog maps each key to a pattern, or to variants of a matched message.
+const MatchedMessage = Schema.Array(
+  Schema.Struct({ match: Schema.Record(Schema.String, Schema.String) })
+);
+const isMatchedMessage = Schema.is(MatchedMessage);
 const decodeCatalog = Schema.decodeUnknownSync(
   Schema.fromJsonString(
-    Schema.Record(
-      Schema.String,
-      Schema.Union([
-        Schema.String,
-        Schema.Array(
-          Schema.Struct({ match: Schema.Record(Schema.String, Schema.String) })
-        ),
-      ])
-    )
+    Schema.Record(Schema.String, Schema.Union([Schema.String, MatchedMessage]))
   )
 );
 
@@ -37,12 +33,12 @@ const isDistinctive = (text: string) =>
  */
 export const readCatalogTexts = (locale: string, json: string): CatalogText[] =>
   Object.values(decodeCatalog(json))
-    .flatMap((message) =>
-      typeof message === "string"
-        ? [message]
-        : message.flatMap(({ match }) => Object.values(match))
+    .flatMap((message): readonly string[] =>
+      isMatchedMessage(message)
+        ? message.flatMap(({ match }) => Object.values(match))
+        : [message]
     )
-    .flatMap((pattern) =>
+    .flatMap((pattern): CatalogText[] =>
       placeholder.test(pattern)
         ? pattern
             .split(placeholder)

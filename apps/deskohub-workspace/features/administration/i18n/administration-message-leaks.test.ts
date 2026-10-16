@@ -54,6 +54,7 @@ describe("administration message leak evidence", () => {
   test("finds a parameterized message compiled to a template literal", () => {
     expect(
       texts(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: compiled chunk source
         "return`Zobrazeno ${e?.count} z\\xe1znam\\u016F auditu pro spr\\xe1vce ${e?.operator}`"
       )
     ).toEqual([" záznamů auditu pro správce "]);
