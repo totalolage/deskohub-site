@@ -128,6 +128,10 @@ export type InvoiceRepositoryError =
   | ManualInvoiceValidationError
   | SqlError;
 
+type ManualInvoiceIssueInput = ManualInvoiceInput & {
+  readonly issuedBy: AdministratorAccountActor;
+};
+
 export interface IInvoiceRepository {
   readonly findById: (
     invoiceId: string
@@ -153,9 +157,7 @@ export interface IInvoiceRepository {
    * issued it in the same transaction. A retry returns the issued invoice.
    */
   readonly issueManual: (
-    input: ManualInvoiceInput & {
-      readonly issuedBy: AdministratorAccountActor;
-    }
+    input: ManualInvoiceIssueInput
   ) => Effect.Effect<ManualInvoiceIssuance, InvoiceRepositoryError>;
   readonly list: () => Effect.Effect<
     readonly InvoiceListItem[],
@@ -545,156 +547,29 @@ export class InvoiceRepository extends Context.Service<
         return { invoice, changed: outcome.changed };
       });
 
-      const issueManual = Effect.fn("InvoiceRepository.issueManual")(
-        function* ({
-          issuedBy,
-          ...rawInput
-        }: ManualInvoiceInput & {
-          readonly issuedBy: AdministratorAccountActor;
-        }) {
-          const input = yield* Schema.decodeUnknownEffect(
-            manualInvoiceInputSchema,
-            { onExcessProperty: "error" }
-          )(rawInput).pipe(
-            Effect.mapError(
-              () =>
-                new ManualInvoiceValidationError({
-                  message: "Manual invoice input is invalid.",
-                })
-            )
-          );
-          const normalized = yield* normalizeManualInvoiceInput(input);
-          const existingInvoice = yield* findById(normalized.invoiceId);
-          if (existingInvoice) {
-            yield* validateManualInvoiceRetry({
-              invoice: existingInvoice,
-              normalized,
-            });
-            if (!isManualInvoiceDocument(existingInvoice.document)) {
-              return yield* new ManualInvoiceConflictError({
-                invoiceId: normalized.invoiceId,
-                message: "Invoice id is already used by a reservation invoice.",
-              });
-            }
-            return {
-              invoice: {
-                ...existingInvoice,
-                workspaceReservationId: null,
-                paymentAttemptId: null,
-                document: existingInvoice.document,
-              },
-              changed: false,
-            };
-          }
-          if (!isInvoiceCurrencyPayable(normalized.currency)) {
-            return yield* new ManualInvoiceValidationError({
-              message:
-                "No receiving account is configured for the invoice currency.",
-            });
-          }
-
-          const outcome = yield* db.transaction(
-            Effect.fn(function* (tx) {
-              yield* tx.execute(
-                sql`select pg_advisory_xact_lock(hashtext(${normalized.invoiceId}))`
-              );
-              const [existing] = yield* tx
-                .select({ id: invoices.id })
-                .from(invoices)
-                .where(eq(invoices.id, normalized.invoiceId))
-                .limit(1);
-              if (existing) return { changed: false } as const;
-
-              const key = yield* keys.getActive.pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new InvoiceStorageError({
-                      operation: "encrypt",
-                      paymentAttemptId: normalized.invoiceId,
-                      message: "Invoice encryption key is unavailable.",
-                      cause: censorLogValue(cause),
-                    })
-                )
-              );
-              const issuedAt = Temporal.Instant.from(
-                temporalInstantToIsoString(Temporal.Now.instant())
-              );
-              const numberingYear = getInvoiceNumberingYear(issuedAt);
-              const [counter] = yield* tx
-                .insert(invoiceNumberCounters)
-                .values({ numberingYear, lastSequence: 1 })
-                .onConflictDoUpdate({
-                  target: invoiceNumberCounters.numberingYear,
-                  set: {
-                    lastSequence: sql`${invoiceNumberCounters.lastSequence} + 1`,
-                  },
-                })
-                .returning({ sequence: invoiceNumberCounters.lastSequence });
-              if (!counter) {
-                return yield* new InvoiceStorageError({
-                  operation: "load",
-                  paymentAttemptId: normalized.invoiceId,
-                  message: "Invoice number allocation returned no row.",
-                });
-              }
-
-              const invoiceNumber = formatInvoiceNumber({
-                year: numberingYear,
-                sequence: counter.sequence,
-              });
-              const document = makeManualInvoiceDocument({
-                normalized,
-                invoiceNumber,
-                issuedAt,
-              });
-              yield* tx
-                .insert(invoices)
-                .values({
-                  id: normalized.invoiceId,
-                  workspaceReservationId: null,
-                  paymentAttemptId: null,
-                  dotyposCustomerId: normalized.dotyposCustomerId,
-                  invoiceNumber,
-                  numberingYear,
-                  numberingSequence: counter.sequence,
-                  keyId: key.id,
-                  encryptedDocument: encryptAccountingSnapshot(
-                    JSON.stringify(document),
-                    key.secret
-                  ),
-                  issuedAt,
-                })
-                .pipe(
-                  Effect.withTracerEnabled(false),
-                  Effect.mapError(
-                    (cause) =>
-                      new InvoiceStorageError({
-                        operation: "encrypt",
-                        paymentAttemptId: normalized.invoiceId,
-                        message: "Invoice could not be encrypted.",
-                        cause: censorLogValue(cause),
-                      })
-                  )
-                );
-              yield* tx.insert(manualInvoiceActors).values({
-                invoiceId: normalized.invoiceId,
-                actorAccountId: issuedBy.accountId,
-                actorAccountEmail: issuedBy.email,
-              });
-              return { changed: true } as const;
-            })
-          );
-
-          const invoice = yield* findById(normalized.invoiceId);
-          if (!invoice) {
-            return yield* new InvoiceStorageError({
-              operation: "load",
-              paymentAttemptId: normalized.invoiceId,
-              message: "Issued invoice could not be loaded.",
-            });
-          }
-          yield* validateManualInvoiceRetry({ invoice, normalized });
-          if (!isManualInvoiceDocument(invoice.document)) {
+      const issueManual = Effect.fn("InvoiceRepository.issueManual")(function* (
+        issueInput: ManualInvoiceIssueInput
+      ) {
+        const { issuedBy, ...rawInput } = issueInput;
+        const input = yield* Schema.decodeUnknownEffect(
+          manualInvoiceInputSchema,
+          { onExcessProperty: "error" }
+        )(rawInput).pipe(
+          Effect.mapError(
+            () =>
+              new ManualInvoiceValidationError({
+                message: "Manual invoice input is invalid.",
+              })
+          )
+        );
+        const normalized = yield* normalizeManualInvoiceInput(input);
+        const existingInvoice = yield* findById(normalized.invoiceId);
+        if (existingInvoice) {
+          yield* validateManualInvoiceRetry({
+            invoice: existingInvoice,
+            normalized,
+          });
+          if (!isManualInvoiceDocument(existingInvoice.document)) {
             return yield* new ManualInvoiceConflictError({
               invoiceId: normalized.invoiceId,
               message: "Invoice id is already used by a reservation invoice.",
@@ -702,15 +577,138 @@ export class InvoiceRepository extends Context.Service<
           }
           return {
             invoice: {
-              ...invoice,
+              ...existingInvoice,
               workspaceReservationId: null,
               paymentAttemptId: null,
-              document: invoice.document,
+              document: existingInvoice.document,
             },
-            changed: outcome.changed,
+            changed: false,
           };
         }
-      );
+        if (!isInvoiceCurrencyPayable(normalized.currency)) {
+          return yield* new ManualInvoiceValidationError({
+            message:
+              "No receiving account is configured for the invoice currency.",
+          });
+        }
+
+        const outcome = yield* db.transaction(
+          Effect.fn(function* (tx) {
+            yield* tx.execute(
+              sql`select pg_advisory_xact_lock(hashtext(${normalized.invoiceId}))`
+            );
+            const [existing] = yield* tx
+              .select({ id: invoices.id })
+              .from(invoices)
+              .where(eq(invoices.id, normalized.invoiceId))
+              .limit(1);
+            if (existing) return { changed: false } as const;
+
+            const key = yield* keys.getActive.pipe(
+              Effect.mapError(
+                (cause) =>
+                  new InvoiceStorageError({
+                    operation: "encrypt",
+                    paymentAttemptId: normalized.invoiceId,
+                    message: "Invoice encryption key is unavailable.",
+                    cause: censorLogValue(cause),
+                  })
+              )
+            );
+            const issuedAt = Temporal.Instant.from(
+              temporalInstantToIsoString(Temporal.Now.instant())
+            );
+            const numberingYear = getInvoiceNumberingYear(issuedAt);
+            const [counter] = yield* tx
+              .insert(invoiceNumberCounters)
+              .values({ numberingYear, lastSequence: 1 })
+              .onConflictDoUpdate({
+                target: invoiceNumberCounters.numberingYear,
+                set: {
+                  lastSequence: sql`${invoiceNumberCounters.lastSequence} + 1`,
+                },
+              })
+              .returning({ sequence: invoiceNumberCounters.lastSequence });
+            if (!counter) {
+              return yield* new InvoiceStorageError({
+                operation: "load",
+                paymentAttemptId: normalized.invoiceId,
+                message: "Invoice number allocation returned no row.",
+              });
+            }
+
+            const invoiceNumber = formatInvoiceNumber({
+              year: numberingYear,
+              sequence: counter.sequence,
+            });
+            const document = makeManualInvoiceDocument({
+              normalized,
+              invoiceNumber,
+              issuedAt,
+            });
+            yield* tx
+              .insert(invoices)
+              .values({
+                id: normalized.invoiceId,
+                workspaceReservationId: null,
+                paymentAttemptId: null,
+                dotyposCustomerId: normalized.dotyposCustomerId,
+                invoiceNumber,
+                numberingYear,
+                numberingSequence: counter.sequence,
+                keyId: key.id,
+                encryptedDocument: encryptAccountingSnapshot(
+                  JSON.stringify(document),
+                  key.secret
+                ),
+                issuedAt,
+              })
+              .pipe(
+                Effect.withTracerEnabled(false),
+                Effect.mapError(
+                  (cause) =>
+                    new InvoiceStorageError({
+                      operation: "encrypt",
+                      paymentAttemptId: normalized.invoiceId,
+                      message: "Invoice could not be encrypted.",
+                      cause: censorLogValue(cause),
+                    })
+                )
+              );
+            yield* tx.insert(manualInvoiceActors).values({
+              invoiceId: normalized.invoiceId,
+              actorAccountId: issuedBy.accountId,
+              actorAccountEmail: issuedBy.email,
+            });
+            return { changed: true } as const;
+          })
+        );
+
+        const invoice = yield* findById(normalized.invoiceId);
+        if (!invoice) {
+          return yield* new InvoiceStorageError({
+            operation: "load",
+            paymentAttemptId: normalized.invoiceId,
+            message: "Issued invoice could not be loaded.",
+          });
+        }
+        yield* validateManualInvoiceRetry({ invoice, normalized });
+        if (!isManualInvoiceDocument(invoice.document)) {
+          return yield* new ManualInvoiceConflictError({
+            invoiceId: normalized.invoiceId,
+            message: "Invoice id is already used by a reservation invoice.",
+          });
+        }
+        return {
+          invoice: {
+            ...invoice,
+            workspaceReservationId: null,
+            paymentAttemptId: null,
+            document: invoice.document,
+          },
+          changed: outcome.changed,
+        };
+      });
 
       const list = Effect.fn("InvoiceRepository.list")(function* () {
         const rows = yield* db
