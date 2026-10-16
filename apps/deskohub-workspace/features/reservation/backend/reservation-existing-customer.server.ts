@@ -3,7 +3,6 @@ import "server-only";
 import { Effect, Layer, Result } from "effect";
 import { cache } from "react";
 import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
-import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
 import { getMarketingPreferenceStatus } from "@/features/legal/marketing-preferences";
 import type { CoworkReservationInput } from "@/features/reservation/cowork-reservation";
@@ -31,8 +30,6 @@ export const loadReservationExistingCustomer = cache(
   async <Kind extends WorkspaceReservationKind>(
     kind: Kind
   ): Promise<ReservationExistingCustomer<Kind> | undefined> => {
-    if (!(await areAccountsEnabled())) return undefined;
-
     const existingCustomer = await loadLinkedExistingCustomer(kind).pipe(
       Effect.provide(
         Layer.mergeAll(

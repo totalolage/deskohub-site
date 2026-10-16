@@ -20,7 +20,6 @@ import { captureAccountLocalePreference } from "@/features/account/backend/custo
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
-  areAccountsEnabled,
   arePasskeysEnabled,
   isSignInCodeEnabled,
 } from "./account-feature-flag.server";
@@ -63,7 +62,6 @@ export const auth = makeWorkspaceAuth({
   allowedHosts: allowedHosts.hosts,
   passkeyRelyingParty: passkeyRelyingParty.relyingParty,
   httpsOnly: env.VERCEL_ENV !== "development",
-  areAccountsEnabled,
   isSignInCodeEnabled,
   arePasskeysEnabled,
   verifyHuman: (input) =>

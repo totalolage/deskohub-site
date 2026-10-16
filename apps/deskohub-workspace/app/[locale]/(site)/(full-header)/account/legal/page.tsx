@@ -3,7 +3,6 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { AccountContentLoading } from "@/features/account/components/account-loading";
 import { PublicAccountLegal } from "@/features/account/components/public-account-legal";
-import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getMarketingPreferences } from "@/features/legal/marketing-preferences.server";
@@ -31,12 +30,10 @@ async function PublicAccountLegalPageContent({
 }) {
   await connection();
 
-  const accountsEnabled = await areAccountsEnabled();
   const marketingPreferences = await getMarketingPreferences(locale);
 
   return (
     <PublicAccountLegal
-      accountsEnabled={accountsEnabled}
       locale={locale}
       marketingPreferences={marketingPreferences}
     />
