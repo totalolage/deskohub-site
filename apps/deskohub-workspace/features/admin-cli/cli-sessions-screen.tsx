@@ -40,7 +40,7 @@ export async function CliSessionsScreen({
   );
 }
 
-export async function CliSessionsContent({
+async function CliSessionsContent({
   locale,
   searchParams,
 }: {

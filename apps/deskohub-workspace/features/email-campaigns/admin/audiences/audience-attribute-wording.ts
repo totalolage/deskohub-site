@@ -15,7 +15,7 @@ export type AudienceMessage<Inputs = Record<never, never>> = (
 ) => string;
 
 /** Editor words between a count line's controls, or a parameter's control. */
-export type AudienceEditorToken =
+type AudienceEditorToken =
   | { readonly text: string }
   | { readonly param: string };
 
@@ -29,7 +29,7 @@ export type AudienceChoiceWording = {
 };
 
 /** The counted noun with its forms around a count, for a count summary. */
-export type AudienceCountPhrase = {
+type AudienceCountPhrase = {
   /** The noun as counted for one ("booked reservation"). */
   readonly single: string;
   /** The noun as counted for none ("booked reservations"). */
@@ -90,7 +90,7 @@ export type AudienceValueEntryWording = {
   readonly remove: (value: string) => string;
 };
 
-export type AudienceSetValuesWording =
+type AudienceSetValuesWording =
   | {
       readonly _tag: "Options";
       readonly options: Readonly<
