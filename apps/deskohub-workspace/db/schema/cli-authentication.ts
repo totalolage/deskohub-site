@@ -172,7 +172,6 @@ export const cliAuthenticationRequests = pgTable(
       ) or (
         ${t.approvedAt} is not null
         and ${t.grantExpiresAt} is not null
-        and (${t.approvedBy} is not null or ${t.approvedByAccountEmail} is not null)
       )`
     ),
     check(

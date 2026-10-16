@@ -16,5 +16,4 @@ ALTER TABLE "cli_authentication_requests" DROP CONSTRAINT "cli_authentication_re
       ) or (
         "approved_at" is not null
         and "grant_expires_at" is not null
-        and ("approved_by" is not null or "approved_by_account_email" is not null)
       ));

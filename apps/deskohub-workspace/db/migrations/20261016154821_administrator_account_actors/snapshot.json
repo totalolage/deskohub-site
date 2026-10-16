@@ -8874,7 +8874,7 @@
       "table": "cli_authentication_requests"
     },
     {
-      "value": "(\n        \"approved_at\" is null\n        and \"approved_by\" is null\n        and \"approved_by_account_id\" is null\n        and \"approved_by_account_email\" is null\n        and \"grant_token\" is null\n        and \"grant_expires_at\" is null\n      ) or (\n        \"approved_at\" is not null\n        and \"grant_expires_at\" is not null\n        and (\"approved_by\" is not null or \"approved_by_account_email\" is not null)\n      )",
+      "value": "(\n        \"approved_at\" is null\n        and \"approved_by\" is null\n        and \"approved_by_account_id\" is null\n        and \"approved_by_account_email\" is null\n        and \"grant_token\" is null\n        and \"grant_expires_at\" is null\n      ) or (\n        \"approved_at\" is not null\n        and \"grant_expires_at\" is not null\n      )",
       "name": "cli_authentication_requests_approval_check",
       "entityType": "checks",
       "schema": "public",
