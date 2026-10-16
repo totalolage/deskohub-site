@@ -57,7 +57,11 @@
   returnTo)` adds it. The sign-in page passes it into the magic-link callback
   URL, and every exit (link tab, original-tab hand-off, sign-in code, failed-link
   retry) goes through `getSignInDestination`. Validate it with
-  `parseSameOriginPath` wherever it is read, because anyone can craft the URL.
+  `parseSameOriginPath` wherever it is read, because anyone can craft the URL,
+  and navigate to its normalized result rather than the raw value (dot
+  segments can turn `/x/..//evil.example` into `//evil.example`). Cover each
+  new reader with `unsafeReturnTargets`
+  (`shared/testing/unsafe-return-targets.test-utils.ts`).
 - The header account button links to sign-in for anonymous visitors and to
   `/account` for signed-in customers. Its href is an uncached
   `isCustomerSignedIn` promise that the header resolves with `use()` inside
