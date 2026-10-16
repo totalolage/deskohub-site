@@ -2,8 +2,12 @@
 
 import { Effect, Result } from "effect";
 import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
+import { m } from "@/features/administration/i18n";
 import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
-import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import {
+  defineWorkspaceAction,
+  type WorkspaceActionContext,
+} from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
   type CreateStandaloneAccessCodeInput,
@@ -15,12 +19,17 @@ import {
 const createStandaloneAccessCodeWorkflow = Effect.fn(
   "access-codes.createStandaloneAccessCode"
 )(
-  function* (input: CreateStandaloneAccessCodeInput) {
+  function* (
+    input: CreateStandaloneAccessCodeInput,
+    {
+      locale,
+    }: WorkspaceActionContext<typeof createStandaloneAccessCodeInputSchema>
+  ) {
     const actor = yield* requireAdministratorAuthorization.pipe(
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
-            message: "Administrator authentication is required.",
+            message: m.accessCodesAuthenticationRequired({}, { locale }),
             cause,
           })
       )
@@ -57,7 +66,7 @@ const createStandaloneAccessCodeWorkflow = Effect.fn(
       Result.succeed(attempted.success)
     );
   },
-  (effect) =>
+  (effect, _input, { locale }) =>
     effect.pipe(
       Effect.provide(StandaloneAccessCodeAdministration.Live),
       Effect.mapError(
@@ -66,7 +75,7 @@ const createStandaloneAccessCodeWorkflow = Effect.fn(
             message:
               cause instanceof PublicSafeActionError
                 ? cause.message
-                : "The access code could not be created. Try again.",
+                : m.accessCodesCreateFailed({}, { locale }),
             cause,
           })
       )

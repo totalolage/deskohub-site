@@ -13,12 +13,10 @@ import { Result, Schema } from "effect";
 import { Plus } from "lucide-react";
 import { useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import {
-  AccessCodeCopyButton,
-  AccessCodeDigits,
-} from "@/features/access-codes/components/access-code-digits";
+import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
-import { m } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
@@ -31,6 +29,7 @@ import {
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { AccessCodeCopyButton, AccessCodeDigits } from "./access-code-digits";
 import { createStandaloneAccessCode } from "./actions";
 import {
   type CreateStandaloneAccessCodeFormInput,
@@ -45,10 +44,9 @@ import {
   isStandaloneAccessCodeLocalDateTime,
   isStandaloneAccessCodeWindowValid,
   shiftStandaloneAccessCodeLocalEnd,
-  standaloneAccessCodeCleanupConfirmationLabel,
   standaloneAccessCodeEarliestLocalEnd,
   standaloneAccessCodeElapsedHours,
-  standaloneAccessCodeFailureNotices,
+  standaloneAccessCodeFailureNotice,
 } from "./create-access-code";
 
 type CreatedOutcome = Extract<
@@ -70,24 +68,30 @@ const focusOnMount = (node: HTMLDivElement | null) => {
   node?.focus();
 };
 
-const cleanupConfirmationFormSchema = Schema.Struct({
-  providerCredentialRemoved: Schema.Boolean.check(
-    Schema.makeFilter(
-      (confirmed) => confirmed || m.reservationBillingFieldRequired()
-    )
-  ),
-});
+const cleanupConfirmationFormSchema = (locale: Locale) =>
+  Schema.Struct({
+    providerCredentialRemoved: Schema.Boolean.check(
+      Schema.makeFilter(
+        (confirmed) =>
+          confirmed || m.accessCodesCleanupConfirmationRequired({}, { locale })
+      )
+    ),
+  });
 
-type CleanupConfirmationFormInput =
-  typeof cleanupConfirmationFormSchema.Encoded;
+type CleanupConfirmationFormSchema = ReturnType<
+  typeof cleanupConfirmationFormSchema
+>;
 
-type CleanupConfirmationFormValues = typeof cleanupConfirmationFormSchema.Type;
+type CleanupConfirmationFormInput = CleanupConfirmationFormSchema["Encoded"];
+
+type CleanupConfirmationFormValues = CleanupConfirmationFormSchema["Type"];
 
 const cleanupConfirmationFormDefaults = {
   providerCredentialRemoved: false,
 } satisfies CleanupConfirmationFormInput;
 
 export function CreateStandaloneAccessCodeForm() {
+  const locale = useRouteLocale();
   const [creation, setCreation] = useState<CreationState>({ kind: "editing" });
   const [notice, setNotice] = useState<string | null>(null);
   const [focusNameOnReturn, setFocusNameOnReturn] = useState(false);
@@ -108,7 +112,9 @@ export function CreateStandaloneAccessCodeForm() {
     defaultValues: createStandaloneAccessCodeFormDefaults,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(createStandaloneAccessCodeFormSchema),
+    resolver: effectSchemaResolver(
+      createStandaloneAccessCodeFormSchema(locale)
+    ),
   });
   const [watchedStartsAt, watchedEndsAt] = useWatch({
     control: form.control,
@@ -138,7 +144,7 @@ export function CreateStandaloneAccessCodeForm() {
         const failure = result.failure;
         if (failure.outcome === "rejected") {
           attemptInputRef.current = null;
-          setNotice(standaloneAccessCodeFailureNotices.rejected);
+          setNotice(standaloneAccessCodeFailureNotice("rejected", locale));
           return;
         }
         if (
@@ -152,20 +158,17 @@ export function CreateStandaloneAccessCodeForm() {
           });
           return;
         }
-        setNotice(standaloneAccessCodeFailureNotices[failure.outcome]);
+        setNotice(standaloneAccessCodeFailureNotice(failure.outcome, locale));
       },
       onError: ({ error }) => {
         cleanupConfirmedRef.current = null;
         setNotice(
-          error.serverError ??
-            "The access code could not be created. Try again."
+          error.serverError ?? m.accessCodesCreateFailed({}, { locale })
         );
       },
       onTransportError: () => {
         cleanupConfirmedRef.current = null;
-        setNotice(
-          "The server could not be reached. This attempt is kept, so you can safely try again."
-        );
+        setNotice(m.accessCodesServerUnreachable({}, { locale }));
       },
     }
   );
@@ -244,38 +247,46 @@ export function CreateStandaloneAccessCodeForm() {
         tabIndex={-1}
       >
         <AdministrationAlert className="font-semibold" status="warning">
-          This PIN is shown only once and cannot be retrieved later. Copy it
-          somewhere safe before leaving this page.
+          {m.accessCodesPinShownOnceWarning({}, { locale })}
         </AdministrationAlert>
         <div className="mt-6">
           <AccessCodeDigits code={outcome.pin} />
           <div className="mt-5">
-            <AccessCodeCopyButton code={outcome.pin} />
+            <AccessCodeCopyButton code={outcome.pin} locale={locale} />
           </div>
         </div>
         <dl className="mt-7 grid gap-x-6 gap-y-4 border-t border-navy-blue/10 pt-5 text-sm sm:grid-cols-2">
           <div>
-            <dt className="font-semibold text-navy-blue/65">Access code</dt>
+            <dt className="font-semibold text-navy-blue/65">
+              {m.accessCodesResultName({}, { locale })}
+            </dt>
             <dd className="mt-0.5 font-medium">{outcome.name}</dd>
           </div>
           <div>
-            <dt className="font-semibold text-navy-blue/65">Valid from</dt>
+            <dt className="font-semibold text-navy-blue/65">
+              {m.accessCodesResultValidFrom({}, { locale })}
+            </dt>
             <dd className="mt-0.5 font-medium">
               {formatStandaloneAccessCodeLocalDateTime(outcome.startsAt)}
             </dd>
           </div>
           <div>
-            <dt className="font-semibold text-navy-blue/65">Valid until</dt>
+            <dt className="font-semibold text-navy-blue/65">
+              {m.accessCodesResultValidUntil({}, { locale })}
+            </dt>
             <dd className="mt-0.5 font-medium">
               {formatStandaloneAccessCodeLocalDateTime(outcome.endsAt)}
             </dd>
           </div>
           <div>
-            <dt className="font-semibold text-navy-blue/65">Duration</dt>
+            <dt className="font-semibold text-navy-blue/65">
+              {m.accessCodesResultDuration({}, { locale })}
+            </dt>
             <dd className="mt-0.5 font-medium">
               {formatStandaloneAccessCodeDuration(
                 standaloneAccessCodeElapsedHours(outcome) ??
-                  ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS
+                  ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS,
+                locale
               )}
             </dd>
           </div>
@@ -288,7 +299,7 @@ export function CreateStandaloneAccessCodeForm() {
             type="button"
           >
             <Plus aria-hidden className="size-4" />
-            Create another access code
+            {m.accessCodesCreateAnother({}, { locale })}
           </Button>
         </div>
       </div>
@@ -303,8 +314,7 @@ export function CreateStandaloneAccessCodeForm() {
         tabIndex={-1}
       >
         <AdministrationAlert className="font-semibold" status="warning">
-          This access code was already created. Its PIN was shown only once at
-          creation and cannot be displayed again.
+          {m.accessCodesAlreadyCreated({}, { locale })}
         </AdministrationAlert>
         <div className="mt-6 border-t border-navy-blue/10 pt-5">
           <Button
@@ -314,7 +324,7 @@ export function CreateStandaloneAccessCodeForm() {
             type="button"
           >
             <Plus aria-hidden className="size-4" />
-            Create another access code
+            {m.accessCodesCreateAnother({}, { locale })}
           </Button>
         </div>
       </div>
@@ -330,15 +340,17 @@ export function CreateStandaloneAccessCodeForm() {
       >
         <AdministrationAlert role="alert" status="warning">
           {creation.reason === "ambiguous"
-            ? "The provider did not confirm whether this access code exists. This attempt is closed; it will not be retried automatically."
-            : "A previous attempt for this window is still ambiguous. Its possible credential must be resolved at the lock before another code is created."}
+            ? m.accessCodesAmbiguousNotice({}, { locale })
+            : m.accessCodesCleanupRequiredNotice({}, { locale })}
         </AdministrationAlert>
         <p className="mt-5 text-sm leading-6 text-navy-blue/70">
-          Before creating another code for this window, check the lock in the
-          Igloohome app over Bluetooth and remove{" "}
-          {`“${creation.cleanupTarget.name}”`} if it is there.
+          {m.accessCodesCleanupInstructions(
+            { name: creation.cleanupTarget.name },
+            { locale }
+          )}
         </p>
         <CleanupConfirmationForm
+          locale={locale}
           onConfirmed={() => confirmLockCleanup(creation.cleanupTarget)}
           onStartOver={startNewAttempt}
         />
@@ -349,7 +361,7 @@ export function CreateStandaloneAccessCodeForm() {
   return (
     <Form {...form}>
       <form
-        aria-label="Create an access code"
+        aria-label={m.accessCodesFormName({}, { locale })}
         data-standalone-access-code-creation="editing"
         noValidate
         onSubmit={(event) => {
@@ -362,7 +374,7 @@ export function CreateStandaloneAccessCodeForm() {
             name="name"
             render={({ field: { onChange, ...field }, fieldState }) => (
               <FormItem>
-                <FormLabel>Name</FormLabel>
+                <FormLabel>{m.accessCodesNameLabel({}, { locale })}</FormLabel>
                 <FormControl>
                   <Input
                     {...field}
@@ -379,7 +391,10 @@ export function CreateStandaloneAccessCodeForm() {
           />
           <fieldset>
             <legend className="text-sm font-medium text-navy-blue">
-              Access window ({WORKSPACE_SITE_TIME_ZONE})
+              {m.accessCodesWindowLegend(
+                { timeZone: WORKSPACE_SITE_TIME_ZONE },
+                { locale }
+              )}
             </legend>
             <div className="mt-5 grid gap-5 sm:grid-cols-2">
               <FormField
@@ -388,7 +403,9 @@ export function CreateStandaloneAccessCodeForm() {
                 rules={{ deps: ["endsAt"] }}
                 render={({ field: { onChange, ...field }, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Starts</FormLabel>
+                    <FormLabel>
+                      {m.accessCodesStartsLabel({}, { locale })}
+                    </FormLabel>
                     <FormControl>
                       <Input
                         {...field}
@@ -408,7 +425,9 @@ export function CreateStandaloneAccessCodeForm() {
                 name="endsAt"
                 render={({ field: { onChange, ...field }, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Ends</FormLabel>
+                    <FormLabel>
+                      {m.accessCodesEndsLabel({}, { locale })}
+                    </FormLabel>
                     <FormControl>
                       <Input
                         {...field}
@@ -432,7 +451,15 @@ export function CreateStandaloneAccessCodeForm() {
         {elapsedHours !== null &&
           isStandaloneAccessCodeWindowValid({ startsAt, endsAt }) && (
             <p aria-live="polite" className="mt-4 text-sm text-navy-blue/65">
-              Duration: {formatStandaloneAccessCodeDuration(elapsedHours)}
+              {m.accessCodesDurationSummary(
+                {
+                  duration: formatStandaloneAccessCodeDuration(
+                    elapsedHours,
+                    locale
+                  ),
+                },
+                { locale }
+              )}
             </p>
           )}
 
@@ -448,7 +475,9 @@ export function CreateStandaloneAccessCodeForm() {
 
         <div className="mt-6 flex justify-end border-t border-navy-blue/10 pt-5">
           <Button disabled={isExecuting} type="submit">
-            {isExecuting ? "Creating…" : "Create access code"}
+            {isExecuting
+              ? m.accessCodesSubmitting({}, { locale })
+              : m.accessCodesSubmit({}, { locale })}
           </Button>
         </div>
       </form>
@@ -457,9 +486,11 @@ export function CreateStandaloneAccessCodeForm() {
 }
 
 function CleanupConfirmationForm({
+  locale,
   onConfirmed,
   onStartOver,
 }: {
+  readonly locale: Locale;
   readonly onConfirmed: () => void;
   readonly onStartOver: () => void;
 }) {
@@ -471,7 +502,7 @@ function CleanupConfirmationForm({
     defaultValues: cleanupConfirmationFormDefaults,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(cleanupConfirmationFormSchema),
+    resolver: effectSchemaResolver(cleanupConfirmationFormSchema(locale)),
   });
   const cleanupConfirmed = useWatch({
     control: cleanupForm.control,
@@ -481,7 +512,7 @@ function CleanupConfirmationForm({
   return (
     <Form {...cleanupForm}>
       <form
-        aria-label="Confirm the lock is clean"
+        aria-label={m.accessCodesCleanupFormName({}, { locale })}
         className="mt-5"
         onSubmit={cleanupForm.handleSubmit(onConfirmed)}
       >
@@ -499,7 +530,9 @@ function CleanupConfirmationForm({
                     }
                   />
                 </FormControl>
-                <span>{standaloneAccessCodeCleanupConfirmationLabel}</span>
+                <span>
+                  {m.accessCodesCleanupConfirmationLabel({}, { locale })}
+                </span>
               </FormLabel>
               <FormMessage />
             </FormItem>
@@ -508,10 +541,10 @@ function CleanupConfirmationForm({
         <div className="mt-6 flex flex-wrap gap-3 border-t border-navy-blue/10 pt-5">
           <Button disabled={!cleanupConfirmed} type="submit">
             <Plus aria-hidden className="size-4" />
-            Create another access code
+            {m.accessCodesCreateAnother({}, { locale })}
           </Button>
           <Button onClick={onStartOver} type="button" variant="secondary">
-            Start over
+            {m.accessCodesStartOver({}, { locale })}
           </Button>
         </div>
       </form>
