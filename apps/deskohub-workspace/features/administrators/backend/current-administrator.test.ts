@@ -4,8 +4,8 @@ import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Exit, Layer } from "effect";
 import {
-  CustomerAuthentication,
   type CustomerAccountSession,
+  CustomerAuthentication,
 } from "@/features/account/backend/customer-authentication.service";
 import {
   CustomerAccountAccessError,
@@ -79,9 +79,7 @@ describe("currentAdministratorAccess", () => {
       granted: () => granted,
     });
 
-    expect(await run()).toMatchObject(
-      Exit.succeed({ kind: "administrator" })
-    );
+    expect(await run()).toMatchObject(Exit.succeed({ kind: "administrator" }));
     granted = false;
     expect(await run()).toEqual(Exit.succeed({ kind: "not-administrator" }));
     expect(grantChecks).toHaveLength(2);
@@ -110,7 +108,9 @@ describe("currentAdministratorAccess", () => {
     ["no session", Effect.succeed(null)],
     [
       "an unauthenticated session",
-      Effect.fail(new CustomerAccountAccessError({ reason: "unauthenticated" })),
+      Effect.fail(
+        new CustomerAccountAccessError({ reason: "unauthenticated" })
+      ),
     ],
     [
       "an unverified email",

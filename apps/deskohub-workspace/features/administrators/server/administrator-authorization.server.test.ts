@@ -4,8 +4,8 @@ import { describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Exit, Layer } from "effect";
 import {
-  CustomerAuthentication,
   type CustomerAccountSession,
+  CustomerAuthentication,
 } from "@/features/account/backend/customer-authentication.service";
 import {
   customerAccountIdSchema,
@@ -68,17 +68,17 @@ mock.module("./administrator-access-layer.server", () => ({
 const { authorizeAdministratorPage, requireAdministratorAuthorization } =
   await import("./administrator-authorization.server");
 
-const pageOutcome = () =>
-  authorizeAdministratorPage().then(
-    (value) => ({ kind: "ok" as const, value }),
-    (error: unknown) => {
-      if (error instanceof RedirectSignal) {
-        return { kind: "redirect" as const, location: error.location };
-      }
-      if (error instanceof NotFoundSignal) return { kind: "not-found" as const };
-      throw error;
+const pageOutcome = async () => {
+  try {
+    return { kind: "ok" as const, value: await authorizeAdministratorPage() };
+  } catch (signal) {
+    if (signal instanceof RedirectSignal) {
+      return { kind: "redirect" as const, location: signal.location };
     }
-  );
+    if (signal instanceof NotFoundSignal) return { kind: "not-found" as const };
+    throw signal;
+  }
+};
 
 describe("authorizeAdministratorPage", () => {
   test("returns the administrator account actor", async () => {
@@ -162,9 +162,7 @@ describe("requireAdministratorAuthorization", () => {
     currentUser = user;
     granted = grant;
 
-    const exit = await Effect.runPromiseExit(
-      requireAdministratorAuthorization
-    );
+    const exit = await Effect.runPromiseExit(requireAdministratorAuthorization);
 
     expect(exit).toMatchObject(
       Exit.fail({ _tag: "AdministratorUnauthorizedError" })

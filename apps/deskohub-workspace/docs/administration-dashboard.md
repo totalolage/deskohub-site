@@ -4,9 +4,15 @@
 
 Workspace administration helps authorized operators find reservations and customers, understand a reservation's current condition and history, manage discounts and sales, and control issued administration sessions.
 
+## Access
+
+Administrators sign in with their ordinary Deskohub customer account; there is no separate administration password. An account can use the administration only while it holds the administrator role. A signed-out visitor who opens any administration link is sent to sign-in and returns to that link afterwards. A signed-in account without the role sees the ordinary page-not-found page, so the administration isn't advertised. Removing the role takes effect on the account's next request.
+
+There is one administrator role. Administrators grant it on the Administrators page to an existing account by its sign-in email; the person must have signed in to Deskohub once, and there are no pending invitations. The page lists each administrator's email, who granted the role, and when. Administrators can remove the role from others but not from themselves, so the administration can't be left without an administrator by accident.
+
 Administration is available in English and Czech. Operators switch language the same way customers do, and a signed-in customer account remembers the choice. Administration links without a language open in the operator's language.
 
-The primary navigation includes Overview, Reservations, Customers, Invoices, Codes, Access codes, Vouchers, Sales, and CLI sessions. Codes manages discount codes; Access codes creates standalone door access codes. Payment and booking records appear in the reservation that owns them instead of competing as separate primary workflows.
+The primary navigation includes Overview, Reservations, Customers, Invoices, Codes, Access codes, Vouchers, Sales, CLI sessions, and Administrators. Codes manages discount codes; Access codes creates standalone door access codes. Payment and booking records appear in the reservation that owns them instead of competing as separate primary workflows.
 
 ## Invoice administration
 
@@ -14,11 +20,11 @@ Administration shows order and ad-hoc invoices in one sortable, paginated histor
 
 Reservation invoices are shown as paid. An operator can also mark an ad-hoc invoice as already paid and record its payment date. Paid invoices omit payment instructions. Positive-total unpaid ad-hoc invoices are shown as issued before their due date, due on that date, and overdue afterwards, using the current Prague calendar date. Zero-total and negative-total unpaid documents remain issued because they do not request payment. Email delivery is shown separately as sending, sent, or needing a resend.
 
-An operator can issue an ad-hoc service invoice to an existing Dotypos customer or a new customer reused by exact email. Each invoice records either a due date or an already-paid date. The reviewed billing identity and delivery email are saved to Dotypos before issuance. Creation requires at least one description and signed decimal price, uses a single configured invoice currency, and records the authenticated Basic-auth username and whether the operation came from the administration UI or `dhw`. The final confirmation shows the generated PDF preview and explicitly warns that creation is immutable and immediately emails both recipients; the final invoice number and issue time are assigned only after confirmation.
+An operator can issue an ad-hoc service invoice to an existing Dotypos customer or a new customer reused by exact email. Each invoice records either a due date or an already-paid date. The reviewed billing identity and delivery email are saved to Dotypos before issuance. Creation requires at least one description and signed decimal price, uses a single configured invoice currency, and records the administrator's account and its sign-in email at the time, and whether the operation came from the administration UI or `dhw`. The final confirmation shows the generated PDF preview and explicitly warns that creation is immutable and immediately emails both recipients; the final invoice number and issue time are assigned only after confirmation.
 
 ## CLI sessions
 
-CLI sessions are owner-scoped. Each administrator sees only the sessions they approved, identified by their authenticated username, and can rename or revoke only those sessions. Revoking a session invalidates its bearer credential on the session's next request. The pending approval page names the approving administrator, and the sessions page names the current administrator and shows an `Approved by` column so each row displays its own approver.
+CLI sessions are owner-scoped. Each administrator sees only the sessions their account approved and can rename or revoke only those sessions. Revoking a session invalidates its bearer credential on the session's next request. The pending approval page names the approving administrator by sign-in email, and the sessions page names the current administrator and shows an `Approved by` column so each row displays its own approver. A CLI session works only while the account that approved it still holds the administrator role; sessions approved before administrators signed in with accounts and never linked to an account no longer work, and the CLI must be authenticated again.
 
 When approving a CLI, the administrator chooses how long the session stays valid: a whole number from 1 to 999 of hours, days, weeks, months, or years, defaulting to 30 days, or `Never expire`. The duration starts at approval, and months and years follow the Prague calendar. A request made with an expired session is rejected the same way as one made with a revoked session, and the CLI must be authenticated again. Sessions issued before expiry was introduced never expire. The sessions page shows each session's expiry and marks elapsed sessions as `Expired`.
 
@@ -26,7 +32,7 @@ When approving a CLI, the administrator chooses how long the session stays valid
 
 Access codes creates standalone Igloohome door access codes that are independent of reservations. Operators create them at `/admin/access-codes`, through the administration API, or with `dhw access-codes create`. Each code requires a name of at most 60 characters and a window of 1 to 672 elapsed whole hours between an inclusive site-local start and an exclusive site-local end. Both times sit on the whole hour. Workspace interprets them in `Europe/Prague`. Creation targets one configured lock device and allows at most two live codes for the same device and identical window.
 
-The PIN appears once in the creation result and is never stored or retrievable. Replaying a completed attempt with the same identifier returns `already-created` without a PIN. An uncertain provider outcome is terminal: before creating another code for that window, an operator must check the lock over Bluetooth in the Igloohome app and remove the code if it is there. Each creation records the approving administrator and whether it came from the administration UI or `dhw`.
+The PIN appears once in the creation result and is never stored or retrievable. Replaying a completed attempt with the same identifier returns `already-created` without a PIN. An uncertain provider outcome is terminal: before creating another code for that window, an operator must check the lock over Bluetooth in the Igloohome app and remove the code if it is there. Each creation records the administrator's account and its sign-in email at the time, and whether it came from the administration UI or `dhw`.
 
 ## Operator responsibilities
 

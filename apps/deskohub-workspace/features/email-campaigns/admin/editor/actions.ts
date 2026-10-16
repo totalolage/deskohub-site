@@ -2,8 +2,8 @@
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Effect } from "effect";
-import { CampaignImageService } from "@/features/email-campaigns/backend/campaign-image.service";
 import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
+import { CampaignImageService } from "@/features/email-campaigns/backend/campaign-image.service";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 

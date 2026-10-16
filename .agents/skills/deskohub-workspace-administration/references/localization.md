@@ -4,7 +4,7 @@ The administration serves `en-US` and `cs-CZ` under the locale segment: `app/[lo
 
 ## Routes and the proxy
 
-- `proxy.ts` asks for Basic auth on every path whose first or second decoded segment is `admin`, before any locale handling or Server Action pass-through. An authorized unprefixed `/admin/...` URL then redirects to the resolved locale and keeps its query, so bookmarks, emailed links, and the `dhw auth` URL keep working. Every administration response is `private, no-store` and varies on `Authorization`.
+- `proxy.ts` treats every path whose first or second decoded segment is `admin` as administration, however it's spelled. A page load without a Better Auth session cookie goes to `/<locale>/auth/sign-in?returnTo=<path>`; the cookie check only saves a render, and the page and action guards are the real gate (see [dashboard.md](dashboard.md)). Server Actions pass straight through to their guard. Otherwise an unprefixed `/admin/...` URL redirects to the resolved locale and keeps its query, so bookmarks, emailed links, and the `dhw auth` URL keep working. Every administration response is `private, no-store` and varies on `Cookie`.
 - Customer providers (GTM, PostHog, cookie consent, referral remembrance, unsaved-changes guard) live in `app/[locale]/(site)/layout.tsx`. The administration sits beside `(site)` and gets only the root `<html>`, so it never loads them. Put new customer routes inside `(site)`.
 
 ## Paths in code

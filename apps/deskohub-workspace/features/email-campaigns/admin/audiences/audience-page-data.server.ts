@@ -3,8 +3,8 @@ import "server-only";
 import { Effect, Option } from "effect";
 import { notFound } from "next/navigation";
 import type { CampaignAudienceRow } from "@/db/schema";
-import type { Locale } from "@/features/i18n";
 import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
+import type { Locale } from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   type AudienceFilter,
