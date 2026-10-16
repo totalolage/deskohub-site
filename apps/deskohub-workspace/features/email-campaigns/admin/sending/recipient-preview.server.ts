@@ -44,12 +44,10 @@ export const loadRecipientPreview = async (
   campaignId: CampaignId
 ): Promise<RecipientPreview> => {
   const campaign = await loadAdminCampaign(campaignId);
+  const locale = await getRequestLocale();
   if (campaign.status !== "draft") {
     redirect(
-      localizeAdministrationHref(
-        `/admin/email-campaigns/${campaignId}`,
-        await getRequestLocale()
-      )
+      localizeAdministrationHref(`/admin/email-campaigns/${campaignId}`, locale)
     );
   }
   const { audienceId } = campaign;
@@ -62,7 +60,7 @@ export const loadRecipientPreview = async (
     const described = {
       campaign,
       audienceTitle: audience.title,
-      audienceSummary: describeAudienceFilter(audience.filter, {
+      audienceSummary: describeAudienceFilter(audience.filter, locale, {
         discountGroups,
       }),
     };

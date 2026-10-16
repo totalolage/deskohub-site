@@ -235,6 +235,25 @@ const failureCases = [
 
 describe("describeCampaignSendingFailure", () => {
   test.each(failureCases)("describes $name", ({ error, message }) => {
-    expect(describeCampaignSendingFailure(error)).toBe(message);
+    expect(describeCampaignSendingFailure(error, "en-US")).toBe(message);
+  });
+
+  test("describes failures in Czech with Czech plural forms", () => {
+    expect(
+      describeCampaignSendingFailure(
+        new CampaignRecipientsOutsideTestDomain({ recipientCount: 3 }),
+        "cs-CZ"
+      )
+    ).toBe(
+      `Mimo produkci lze e-maily kampaní posílat jen na adresy @${EMAIL_TEST_DOMAIN} a 3 adresy mezi ně nepatří. Nic nebylo odesláno.`
+    );
+    expect(
+      describeCampaignSendingFailure(
+        new CampaignRecipientsOutsideTestDomain({ recipientCount: 5 }),
+        "cs-CZ"
+      )
+    ).toBe(
+      `Mimo produkci lze e-maily kampaní posílat jen na adresy @${EMAIL_TEST_DOMAIN} a 5 adres mezi ně nepatří. Nic nebylo odesláno.`
+    );
   });
 });

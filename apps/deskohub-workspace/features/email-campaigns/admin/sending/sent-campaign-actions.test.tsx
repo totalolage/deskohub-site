@@ -9,6 +9,7 @@ import {
   test,
 } from "bun:test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   workspaceRouterPush,
   workspaceUseAction,
@@ -117,5 +118,27 @@ describe("SentCampaignActions", () => {
     expect(
       notRetryable.queryByRole("button", { name: "Retry undelivered" })
     ).toBeNull();
+  });
+
+  test("labels the actions in the Czech admin locale", () => {
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <SentCampaignActions
+          campaignId={campaignId}
+          retryable
+          unconfirmedCount={2}
+        />
+      </RouteLocaleProvider>
+    );
+
+    expect(
+      view.getByRole("button", { name: "Znovu odeslat nedoručeným" })
+    ).toBeTruthy();
+    expect(view.getByRole("button", { name: "Duplikovat" })).toBeTruthy();
+    expect(
+      view.getByRole("checkbox", {
+        name: "Poslat znovu i nepotvrzeným příjemcům (mohou ho dostat dvakrát)",
+      })
+    ).toBeTruthy();
   });
 });

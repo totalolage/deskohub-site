@@ -1,13 +1,16 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
 } from "@/features/administration/data-table";
 import { EmptyState } from "@/features/administration/empty-state";
-import { campaignLocaleNames } from "./campaign-locale-names";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
+import { campaignLocaleName } from "./campaign-locale-names";
 import type { CampaignRecipientResolution } from "./recipient-preview.server";
 
 type Recipient = CampaignRecipientResolution["recipients"][number];
@@ -25,49 +28,68 @@ function CustomerLink({ customerId }: { readonly customerId: string }) {
   );
 }
 
-const recipientColumns: AdministrationDataTableColumn<Recipient>[] = [
-  { accessorKey: "email", header: "Email" },
+const createRecipientColumns = (
+  locale: Locale
+): AdministrationDataTableColumn<Recipient>[] => [
   {
-    accessorFn: (recipient) => campaignLocaleNames[recipient.locale],
+    accessorKey: "email",
+    header: m.emailCampaignsRecipientPreviewEmailColumn({}, { locale }),
+  },
+  {
+    accessorFn: (recipient) => campaignLocaleName(recipient.locale, locale),
     id: "locale",
-    header: "Language",
+    header: m.emailCampaignsRecipientPreviewLanguageColumn({}, { locale }),
   },
   {
     accessorKey: "dotyposCustomerId",
-    header: "Customer",
+    header: m.emailCampaignsRecipientPreviewCustomerColumn({}, { locale }),
     cell: ({ row }) => (
       <CustomerLink customerId={row.original.dotyposCustomerId} />
     ),
   },
 ];
 
-const exclusionReasons = {
-  "missing-from-dotypos": "Not found in Dotypos",
-  "deleted-customer": "Deleted in Dotypos",
-  "missing-email": "No email in Dotypos",
-  "invalid-email": "Invalid email in Dotypos",
-} as const satisfies Record<Exclusion["reason"], string>;
+const exclusionReasonMessages = {
+  "missing-from-dotypos":
+    m.emailCampaignsRecipientPreviewExclusionMissingFromDotypos,
+  "deleted-customer": m.emailCampaignsRecipientPreviewExclusionDeletedCustomer,
+  "missing-email": m.emailCampaignsRecipientPreviewExclusionMissingEmail,
+  "invalid-email": m.emailCampaignsRecipientPreviewExclusionInvalidEmail,
+} as const satisfies Record<
+  Exclusion["reason"],
+  typeof m.emailCampaignsRecipientPreviewExclusionMissingFromDotypos
+>;
 
-const exclusionColumns: AdministrationDataTableColumn<Exclusion>[] = [
+const describeExclusionReason = (exclusion: Exclusion, locale: Locale) =>
+  exclusionReasonMessages[exclusion.reason]({}, { locale });
+
+const createExclusionColumns = (
+  locale: Locale
+): AdministrationDataTableColumn<Exclusion>[] => [
   {
     accessorKey: "dotyposCustomerId",
-    header: "Customer",
+    header: m.emailCampaignsRecipientPreviewCustomerColumn({}, { locale }),
     cell: ({ row }) => (
       <CustomerLink customerId={row.original.dotyposCustomerId} />
     ),
   },
   {
-    accessorFn: (exclusion) => exclusionReasons[exclusion.reason],
+    accessorFn: (exclusion) => describeExclusionReason(exclusion, locale),
     id: "reason",
-    header: "Reason",
+    header: m.emailCampaignsRecipientPreviewReasonColumn({}, { locale }),
   },
 ];
 
-const duplicateColumns: AdministrationDataTableColumn<Duplicate>[] = [
-  { accessorKey: "email", header: "Email" },
+const createDuplicateColumns = (
+  locale: Locale
+): AdministrationDataTableColumn<Duplicate>[] => [
+  {
+    accessorKey: "email",
+    header: m.emailCampaignsRecipientPreviewEmailColumn({}, { locale }),
+  },
   {
     accessorKey: "recipientCustomerId",
-    header: "Receives the email",
+    header: m.emailCampaignsRecipientPreviewReceivesColumn({}, { locale }),
     cell: ({ row }) => (
       <CustomerLink customerId={row.original.recipientCustomerId} />
     ),
@@ -75,7 +97,7 @@ const duplicateColumns: AdministrationDataTableColumn<Duplicate>[] = [
   {
     accessorFn: (duplicate) => duplicate.duplicateCustomerIds.join(", "),
     id: "skipped",
-    header: "Skipped",
+    header: m.emailCampaignsRecipientPreviewSkippedColumn({}, { locale }),
     cell: ({ row }) => (
       <span className="flex flex-wrap gap-x-3">
         {row.original.duplicateCustomerIds.map((customerId) => (
@@ -99,15 +121,22 @@ export function RecipientTable({
 }: {
   readonly recipients: CampaignRecipientResolution["recipients"];
 }) {
+  const locale = useRouteLocale();
+  const columns = useMemo(() => createRecipientColumns(locale), [locale]);
   if (recipients.length === 0) {
     return (
-      <EmptyState message="The audience reaches no customers right now." />
+      <EmptyState
+        message={m.emailCampaignsRecipientPreviewRecipientsEmpty(
+          {},
+          { locale }
+        )}
+      />
     );
   }
   return (
     <AdministrationDataTable
-      ariaLabel="Recipients"
-      columns={recipientColumns}
+      ariaLabel={m.emailCampaignsRecipientPreviewRecipients({}, { locale })}
+      columns={columns}
       data={recipients}
       getRowId={(recipient) => recipient.dotyposCustomerId}
       mobile={
@@ -116,7 +145,8 @@ export function RecipientTable({
             <MobileItem key={recipient.dotyposCustomerId}>
               <p className="break-all font-semibold">{recipient.email}</p>
               <p className="text-navy-blue/65">
-                {campaignLocaleNames[recipient.locale]} · Customer{" "}
+                {campaignLocaleName(recipient.locale, locale)} ·{" "}
+                {m.emailCampaignsRecipientPreviewCustomerInline({}, { locale })}{" "}
                 <CustomerLink customerId={recipient.dotyposCustomerId} />
               </p>
             </MobileItem>
@@ -132,13 +162,22 @@ export function ExclusionTable({
 }: {
   readonly exclusions: CampaignRecipientResolution["exclusions"];
 }) {
+  const locale = useRouteLocale();
+  const columns = useMemo(() => createExclusionColumns(locale), [locale]);
   if (exclusions.length === 0) {
-    return <EmptyState message="No matching customer was excluded." />;
+    return (
+      <EmptyState
+        message={m.emailCampaignsRecipientPreviewExcludedEmpty({}, { locale })}
+      />
+    );
   }
   return (
     <AdministrationDataTable
-      ariaLabel="Excluded customers"
-      columns={exclusionColumns}
+      ariaLabel={m.emailCampaignsRecipientPreviewExcludedCustomers(
+        {},
+        { locale }
+      )}
+      columns={columns}
       data={exclusions}
       getRowId={(exclusion) => exclusion.dotyposCustomerId}
       mobile={
@@ -146,10 +185,10 @@ export function ExclusionTable({
           {exclusions.map((exclusion) => (
             <MobileItem key={exclusion.dotyposCustomerId}>
               <p className="font-semibold">
-                {exclusionReasons[exclusion.reason]}
+                {describeExclusionReason(exclusion, locale)}
               </p>
               <p className="text-navy-blue/65">
-                Customer{" "}
+                {m.emailCampaignsRecipientPreviewCustomerInline({}, { locale })}{" "}
                 <CustomerLink customerId={exclusion.dotyposCustomerId} />
               </p>
             </MobileItem>
@@ -165,13 +204,25 @@ export function DuplicateTable({
 }: {
   readonly duplicates: CampaignRecipientResolution["duplicates"];
 }) {
+  const locale = useRouteLocale();
+  const columns = useMemo(() => createDuplicateColumns(locale), [locale]);
   if (duplicates.length === 0) {
-    return <EmptyState message="No two customers share an email address." />;
+    return (
+      <EmptyState
+        message={m.emailCampaignsRecipientPreviewSharedEmailsEmpty(
+          {},
+          { locale }
+        )}
+      />
+    );
   }
   return (
     <AdministrationDataTable
-      ariaLabel="Shared email addresses"
-      columns={duplicateColumns}
+      ariaLabel={m.emailCampaignsRecipientPreviewSharedEmailsTitle(
+        {},
+        { locale }
+      )}
+      columns={columns}
       data={duplicates}
       getRowId={(duplicate) => duplicate.email}
       mobile={
@@ -180,11 +231,11 @@ export function DuplicateTable({
             <MobileItem key={duplicate.email}>
               <p className="break-all font-semibold">{duplicate.email}</p>
               <p className="text-navy-blue/65">
-                Receives it:{" "}
+                {m.emailCampaignsRecipientPreviewReceivesInline({}, { locale })}{" "}
                 <CustomerLink customerId={duplicate.recipientCustomerId} />
               </p>
               <p className="flex flex-wrap gap-x-3 text-navy-blue/65">
-                Skipped:
+                {m.emailCampaignsRecipientPreviewSkippedInline({}, { locale })}
                 {duplicate.duplicateCustomerIds.map((customerId) => (
                   <CustomerLink customerId={customerId} key={customerId} />
                 ))}

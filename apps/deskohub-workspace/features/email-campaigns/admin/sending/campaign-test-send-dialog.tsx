@@ -2,11 +2,12 @@
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { FlaskConical, Lock, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import { formatAdministrationDateTime } from "@/features/administration/formatters";
+import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
 import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Dialog,
@@ -31,12 +32,16 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type { CampaignId } from "../../campaign-identifiers";
 import { sendCampaignTest } from "./actions";
 import { describeCampaignLocales } from "./campaign-locale-names";
-import { testRecipientFieldSchema } from "./contracts";
+import {
+  createTestRecipientFieldSchema,
+  type TestRecipientFieldSchema,
+} from "./contracts";
 
 type TestSendReceipt = {
   readonly recipients: readonly string[];
   readonly locales: readonly Locale[];
-  readonly codeExpiresAt: string;
+  /** When the confirmation code expires, formatted by the action. */
+  readonly codeExpiry: string;
 };
 
 const emptyRecipientField = { email: "" };
@@ -53,18 +58,23 @@ export function CampaignTestSendDialog({
   readonly contentLocales: readonly Locale[];
   readonly unsavedChanges: boolean;
 }) {
+  const locale = useRouteLocale();
+  const recipientFieldSchema = useMemo(
+    () => createTestRecipientFieldSchema(locale),
+    [locale]
+  );
   const [extraRecipients, setExtraRecipients] = useState<readonly string[]>([]);
   const [receipt, setReceipt] = useState<TestSendReceipt | null>(null);
   const [error, setError] = useState<string | null>(null);
   const form = useForm<
-    typeof testRecipientFieldSchema.Encoded,
+    TestRecipientFieldSchema["Encoded"],
     unknown,
-    typeof testRecipientFieldSchema.Type
+    TestRecipientFieldSchema["Type"]
   >({
     defaultValues: emptyRecipientField,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(testRecipientFieldSchema),
+    resolver: effectSchemaResolver(recipientFieldSchema),
   });
   const { execute, isExecuting } = useWorkspaceAction(sendCampaignTest, {
     actionName: "sendCampaignTest",
@@ -74,7 +84,7 @@ export function CampaignTestSendDialog({
     onError: ({ error: actionError }) =>
       setError(
         actionError.serverError ??
-          "The test email could not be sent. Check the addresses and try again."
+          m.emailCampaignsTestSendFailed({}, { locale })
       ),
   });
 
@@ -84,7 +94,9 @@ export function CampaignTestSendDialog({
       normalized === adminInbox?.toLowerCase() ||
       extraRecipients.includes(normalized)
     ) {
-      form.setError("email", { message: "That address is already included." });
+      form.setError("email", {
+        message: m.emailCampaignsTestSendRecipientDuplicate({}, { locale }),
+      });
       return;
     }
     setExtraRecipients([...extraRecipients, normalized]);
@@ -104,26 +116,29 @@ export function CampaignTestSendDialog({
       <DialogTrigger asChild>
         <Button size="sm" type="button" variant="secondary">
           <FlaskConical aria-hidden className="size-4" />
-          Send test
+          {m.emailCampaignsTestSendSubmit({}, { locale })}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Send a test email</DialogTitle>
+          <DialogTitle>
+            {m.emailCampaignsTestSendTitle({}, { locale })}
+          </DialogTitle>
           <DialogDescription>
-            Test emails carry the confirmation code you type to send the
-            campaign. A new test send replaces the previous code.
+            {m.emailCampaignsTestSendDescription({}, { locale })}
           </DialogDescription>
         </DialogHeader>
         <div className="mt-5 space-y-4" role="status">
           {receipt && (
             <AdministrationAlert status="success">
               <p className="font-semibold">
-                Sent {receipt.recipients.length * receipt.locales.length} test{" "}
-                {receipt.recipients.length * receipt.locales.length === 1
-                  ? "email"
-                  : "emails"}{" "}
-                ({describeCampaignLocales(receipt.locales)}).
+                {m.emailCampaignsTestSendSent(
+                  {
+                    count: receipt.recipients.length * receipt.locales.length,
+                    languages: describeCampaignLocales(receipt.locales, locale),
+                  },
+                  { locale }
+                )}
               </p>
               <ul className="mt-1 list-disc pl-5">
                 {receipt.recipients.map((recipient) => (
@@ -131,8 +146,10 @@ export function CampaignTestSendDialog({
                 ))}
               </ul>
               <p className="mt-2">
-                The confirmation code expires{" "}
-                {formatAdministrationDateTime(receipt.codeExpiresAt)}.
+                {m.emailCampaignsTestSendCodeExpires(
+                  { expiresAt: receipt.codeExpiry },
+                  { locale }
+                )}
               </p>
             </AdministrationAlert>
           )}
@@ -141,33 +158,38 @@ export function CampaignTestSendDialog({
           <div className="space-y-5">
             {unsavedChanges && (
               <AdministrationAlert status="warning">
-                Save your changes first. A test send uses the saved campaign, so
-                its code wouldn't confirm your unsaved edits.
+                {m.emailCampaignsTestSendUnsavedChanges({}, { locale })}
               </AdministrationAlert>
             )}
             {contentLocales.length === 0 ? (
               <AdministrationAlert status="warning">
-                Add a subject and body in at least one language before sending a
-                test.
+                {m.emailCampaignsTestSendContentMissing({}, { locale })}
               </AdministrationAlert>
             ) : (
               <p className="text-sm text-navy-blue/70">
-                Each address gets one [TEST] email per language:{" "}
+                {m.emailCampaignsTestSendPerLanguage({}, { locale })}{" "}
                 <span className="font-semibold text-navy-blue">
-                  {describeCampaignLocales(contentLocales)}
+                  {describeCampaignLocales(contentLocales, locale)}
                 </span>
-                .
               </p>
             )}
             <div>
-              <p className="mb-2 text-sm font-semibold">Recipients</p>
-              <ul className="flex flex-wrap gap-2" aria-label="Test recipients">
+              <p className="mb-2 text-sm font-semibold">
+                {m.emailCampaignsTestSendRecipients({}, { locale })}
+              </p>
+              <ul
+                className="flex flex-wrap gap-2"
+                aria-label={m.emailCampaignsTestSendRecipientsLabel(
+                  {},
+                  { locale }
+                )}
+              >
                 {adminInbox !== null && (
                   <li className="inline-flex items-center gap-1.5 rounded-full border border-navy-blue/15 bg-navy-blue/5 px-3 py-1 text-sm">
                     <Lock aria-hidden className="size-3.5 text-navy-blue/55" />
                     {adminInbox}
                     <span className="sr-only">
-                      (admin inbox, always included)
+                      {m.emailCampaignsTestSendAdminInboxNote({}, { locale })}
                     </span>
                   </li>
                 )}
@@ -178,7 +200,10 @@ export function CampaignTestSendDialog({
                   >
                     {recipient}
                     <Button
-                      aria-label={`Remove ${recipient}`}
+                      aria-label={m.emailCampaignsTestSendRemoveRecipient(
+                        { email: recipient },
+                        { locale }
+                      )}
                       disabled={isExecuting}
                       onClick={() =>
                         setExtraRecipients(
@@ -195,7 +220,7 @@ export function CampaignTestSendDialog({
                 ))}
               </ul>
               <p className="mt-2 text-xs text-navy-blue/60">
-                The admin inbox always receives test emails.
+                {m.emailCampaignsTestSendAdminInboxAlways({}, { locale })}
               </p>
             </div>
             <Form {...form}>
@@ -214,7 +239,10 @@ export function CampaignTestSendDialog({
                   render={({ field: { onChange, ...field }, fieldState }) => (
                     <FormItem className="min-w-0 flex-1">
                       <FormLabel className="sr-only">
-                        Add a test recipient
+                        {m.emailCampaignsTestSendAddRecipientLabel(
+                          {},
+                          { locale }
+                        )}
                       </FormLabel>
                       <FormControl>
                         <Input
@@ -237,7 +265,7 @@ export function CampaignTestSendDialog({
                   variant="secondary"
                 >
                   <Plus aria-hidden className="size-4" />
-                  Add
+                  {m.emailCampaignsTestSendAdd({}, { locale })}
                 </Button>
               </form>
             </Form>
@@ -253,7 +281,9 @@ export function CampaignTestSendDialog({
         <DialogFooter>
           <DialogClose asChild>
             <Button disabled={isExecuting} type="button" variant="secondary">
-              {receipt ? "Done" : "Cancel"}
+              {receipt
+                ? m.emailCampaignsTestSendDone({}, { locale })
+                : m.emailCampaignsTestSendCancel({}, { locale })}
             </Button>
           </DialogClose>
           {!receipt && (
@@ -265,7 +295,9 @@ export function CampaignTestSendDialog({
               }}
               type="button"
             >
-              {isExecuting ? "Sending…" : "Send test"}
+              {isExecuting
+                ? m.emailCampaignsTestSendSubmitting({}, { locale })
+                : m.emailCampaignsTestSendSubmit({}, { locale })}
             </Button>
           )}
         </DialogFooter>
