@@ -13,6 +13,7 @@ export function getAccountScreenCopy(locale: Locale) {
         reservations: m.accountSectionReservations({}, { locale }),
         referrals: m.accountSectionReferrals({}, { locale }),
         profile: m.accountSectionProfile({}, { locale }),
+        security: m.accountSectionSecurity({}, { locale }),
         billing: m.accountSectionBilling({}, { locale }),
         legal: m.accountSectionLegal({}, { locale }),
         danger: m.accountSectionDanger({}, { locale }),

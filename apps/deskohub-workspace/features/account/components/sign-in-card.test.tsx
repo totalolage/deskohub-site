@@ -43,6 +43,13 @@ const signInEmailOtp = mock(
   }): Promise<AuthResponse> =>
     Promise.resolve({ data: { token: "synthetic" }, error: null })
 );
+const signInPasskey = mock(
+  (_options?: { readonly autoFill?: boolean }): Promise<AuthResponse> =>
+    Promise.resolve({
+      data: { session: { userId: "account-1" }, user: { id: "account-1" } },
+      error: null,
+    })
+);
 const getSession = mock(
   (): Promise<{ readonly data: unknown; readonly error: null }> =>
     Promise.resolve({ data: null, error: null })
@@ -54,6 +61,7 @@ mock.module("@/features/account/auth.client", () => ({
     signIn: {
       emailOtp: signInEmailOtp,
       magicLink: signInMagicLink,
+      passkey: signInPasskey,
     },
   },
 }));
@@ -102,6 +110,9 @@ describe("account components", () => {
     signInMagicLink.mockClear();
     signInMagicLink.mockImplementation(() => Promise.resolve({ error: null }));
     signInEmailOtp.mockClear();
+    signInPasskey.mockClear();
+    Reflect.deleteProperty(globalThis, "PublicKeyCredential");
+    localStorage.clear();
     getSession.mockClear();
     getSession.mockImplementation(() =>
       Promise.resolve({ data: null, error: null })
@@ -623,5 +634,98 @@ describe("account components", () => {
     expect(
       view.getByLabelText(m.accountSignInEmailLabel({}, { locale }))
     ).toBeTruthy();
+  });
+
+  test("sign-in card offers no passkey while passkeys are off", async () => {
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = render(<SignInCard locale={locale} />);
+
+    expect(
+      view
+        .getByLabelText(m.accountSignInEmailLabel({}, { locale }))
+        .getAttribute("autocomplete")
+    ).toBe("email");
+    expect(
+      view.queryByRole("button", {
+        name: m.accountSignInPasskey({}, { locale }),
+      })
+    ).toBeNull();
+    expect(signInPasskey).not.toHaveBeenCalled();
+  });
+
+  test("sign-in card signs in with a passkey and opens the account", async () => {
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = render(<SignInCard locale={locale} passkeysEnabled />);
+    expect(
+      view
+        .getByLabelText(m.accountSignInEmailLabel({}, { locale }))
+        .getAttribute("autocomplete")
+    ).toBe("email webauthn");
+
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountSignInPasskey({}, { locale }),
+        })
+      );
+    });
+
+    expect(signInPasskey).toHaveBeenCalledWith({ autoFill: false });
+    expect(navigations).toEqual(["/en-US/account"]);
+    expect(localStorage.getItem("deskohub:passkey-held:account-1")).toBe("1");
+  });
+
+  test("sign-in card reports a failed passkey sign-in but not a cancelled one", async () => {
+    const { SignInCard } = await import("./sign-in-card");
+    const view = render(<SignInCard locale={locale} passkeysEnabled />);
+    const passkeyButton = () =>
+      view.getByRole("button", {
+        name: m.accountSignInPasskey({}, { locale }),
+      });
+
+    signInPasskey.mockResolvedValueOnce({
+      data: null,
+      error: { code: "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY", status: 400 },
+    });
+    await act(async () => {
+      fireEvent.click(passkeyButton());
+    });
+    expect(
+      view.queryByText(m.accountSignInPasskeyFailed({}, { locale }))
+    ).toBeNull();
+
+    signInPasskey.mockResolvedValueOnce({
+      data: null,
+      error: { code: "AUTHENTICATION_FAILED", status: 400 },
+    });
+    await act(async () => {
+      fireEvent.click(passkeyButton());
+    });
+    expect(
+      view.getByText(m.accountSignInPasskeyFailed({}, { locale }))
+    ).toBeTruthy();
+    expect(navigations).toEqual([]);
+  });
+
+  test("sign-in card starts passkey autofill where the browser supports it", async () => {
+    Object.defineProperty(globalThis, "PublicKeyCredential", {
+      configurable: true,
+      value: { isConditionalMediationAvailable: async () => true },
+    });
+    signInPasskey.mockImplementation(() => new Promise(() => undefined));
+    const { SignInCard } = await import("./sign-in-card");
+
+    try {
+      await act(async () => {
+        render(<SignInCard locale={locale} passkeysEnabled />);
+        await Promise.resolve();
+      });
+
+      expect(signInPasskey).toHaveBeenCalledWith({ autoFill: true });
+    } finally {
+      signInPasskey.mockReset();
+    }
   });
 });

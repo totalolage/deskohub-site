@@ -191,6 +191,7 @@ const sectionLabels = {
   group: m.accountSectionLabel({}, { locale }),
   reservations: new RegExp(`^${m.accountSectionReservations({}, { locale })}`),
   profile: m.accountSectionProfile({}, { locale }),
+  security: m.accountSectionSecurity({}, { locale }),
   billing: m.accountSectionBilling({}, { locale }),
   legal: m.accountSectionLegal({}, { locale }),
   danger: m.accountSectionDanger({}, { locale }),
@@ -227,11 +228,15 @@ const reservations = (
   />
 );
 
-function withAccountLayout(children: React.ReactNode) {
+function withAccountLayout(
+  children: React.ReactNode,
+  { passkeysEnabled = false }: { readonly passkeysEnabled?: boolean } = {}
+) {
   return (
     <AccountLayoutShell
       accountsEnabled
       locale="en-US"
+      passkeysEnabled={passkeysEnabled}
       referralsEnabled
       signedIn
     >
@@ -821,5 +826,92 @@ describe("LinkedAccount", () => {
     } finally {
       window.confirm = originalConfirm;
     }
+  });
+
+  test("lists the account's passkeys under Sign-in & security while passkeys are on", async () => {
+    const { LinkedAccount } = await import("./linked-account");
+    const view = render(
+      withAccountLayout(
+        <LinkedAccount
+          referralsEnabled
+          avatarPresentation={hiddenAvatarPresentation}
+          email={adaAddress}
+          reservationCount={history.groups.current.length}
+          reservations={reservations}
+          locale="en-US"
+          passkeys={{
+            accountId: "account-1",
+            passkeys: [
+              {
+                id: "passkey-1",
+                name: "Work laptop",
+                provider: "Google Password Manager",
+                createdAt: "2026-10-14T16:40:00.000Z",
+              },
+              {
+                id: "passkey-2",
+                name: undefined,
+                provider: undefined,
+                createdAt: "2026-10-15T08:00:00.000Z",
+              },
+            ],
+          }}
+          profile={profile}
+        />,
+        { passkeysEnabled: true }
+      )
+    );
+
+    fireEvent.click(
+      within(view.getByRole("group", { name: sectionLabels.group })).getByRole(
+        "button",
+        { name: sectionLabels.security }
+      )
+    );
+
+    const list = view.getByRole("list", {
+      name: m.accountSecurityPasskeysTitle({}, { locale }),
+    });
+    expect(within(list).getByText("Work laptop")).toBeTruthy();
+    expect(
+      within(list).getByText(
+        m.accountSecurityPasskeyDefaultName({}, { locale })
+      )
+    ).toBeTruthy();
+    expect(
+      view.getByRole("button", {
+        name: m.accountSecurityPasskeyDeleteLabel(
+          { name: "Work laptop" },
+          { locale }
+        ),
+      })
+    ).toBeTruthy();
+    expect(
+      view.getByText(m.accountSecurityEmailTitle({}, { locale }))
+    ).toBeTruthy();
+  });
+
+  test("shows no Sign-in & security panel without passkey settings", async () => {
+    const { LinkedAccount } = await import("./linked-account");
+    const view = render(
+      withAccountLayout(
+        <LinkedAccount
+          referralsEnabled
+          avatarPresentation={hiddenAvatarPresentation}
+          email={adaAddress}
+          reservationCount={history.groups.current.length}
+          reservations={reservations}
+          locale="en-US"
+          profile={profile}
+        />
+      )
+    );
+
+    expect(
+      view.queryByRole("button", { name: sectionLabels.security })
+    ).toBeNull();
+    expect(
+      view.queryByText(m.accountSecurityPasskeysTitle({}, { locale }))
+    ).toBeNull();
   });
 });

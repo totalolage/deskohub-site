@@ -19,6 +19,8 @@ type WorkspaceE2ESignInConfirmation = "inbox" | "code";
  * owns the one instance because Playwright rebuilds the case factory for every
  * test; it never carries persisted state and stays out of the cleanup journal.
  */
+export type WorkspaceE2EPasskeySignInOffer = "offered" | "absent";
+
 export type WorkspaceE2EAccountLifecycleHandoff = {
   firstAcceptedRequestedAt?: Date;
   /**
@@ -27,6 +29,11 @@ export type WorkspaceE2EAccountLifecycleHandoff = {
    * flag decides it, so the lane reads it from the UI.
    */
   signInConfirmation?: WorkspaceE2ESignInConfirmation;
+  /**
+   * Whether the sign-in form offered passkey sign-in. The preview's
+   * `login_passkeys` flag decides it, so the lane reads it from the UI.
+   */
+  passkeySignIn?: WorkspaceE2EPasskeySignInOffer;
   /**
    * The second unknown email's request, whose emailed code the sign-in code
    * case enters while the form still shows that request's code step.

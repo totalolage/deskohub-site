@@ -34,6 +34,20 @@ export const isSignInCodeEnabled = async (): Promise<boolean> =>
     runWorkspaceEffect("account.sign-in-code-enabled")
   );
 
+/**
+ * `login_passkeys`, memoized per render: account pages read it to show
+ * passkey surfaces, and the auth guard reads it once per registration
+ * request.
+ */
+export const arePasskeysEnabled = cache(
+  async (): Promise<boolean> =>
+    AccountFeatureFlagService.pipe(
+      Effect.flatMap((featureFlag) => featureFlag.isPasskeyEnabled),
+      Effect.provide(AccountFeatureFlagService.Live),
+      runWorkspaceEffect("account.passkeys-enabled")
+    )
+);
+
 export async function areAccountAvatarsEnabled(): Promise<boolean> {
   return accountAvatarsEnabled.pipe(
     Effect.provide(AccountFeatureFlagService.Live),

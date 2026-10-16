@@ -80,6 +80,8 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     }),
     secrets: [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
+    passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
+    arePasskeysEnabled: async () => false,
     httpsOnly: true,
     areAccountsEnabled: async () => true,
     sendMagicLink,

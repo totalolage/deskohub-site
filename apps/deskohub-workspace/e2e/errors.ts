@@ -84,6 +84,7 @@ const accountLayoutSections = [
   "reservations",
   "referrals",
   "profile",
+  "security",
   "billing",
   "legal",
   "danger",
@@ -98,6 +99,20 @@ const accountLayoutNavigationDiagnosticCodes =
       (section) => `account_layout_${phase}_${section}_failed` as const
     )
   ) as AccountLayoutNavigationDiagnosticCode[];
+
+const workspaceE2EAccountPasskeyDiagnosticCodes = [
+  "account_passkey_authenticator_failed",
+  "account_passkey_sign_in_offer_failed",
+  "account_passkey_prompt_failed",
+  "account_passkey_sign_in_failed",
+  "account_passkey_rename_failed",
+  "account_passkey_delete_failed",
+  "account_passkey_settings_create_failed",
+  "account_passkey_deletion_reauth_failed",
+] as const;
+
+export type WorkspaceE2EAccountPasskeyDiagnosticCode =
+  (typeof workspaceE2EAccountPasskeyDiagnosticCodes)[number];
 
 const workspaceE2EReservationExistingCustomerDiagnosticCodes = [
   "account_reservation_existing_customer_page_failed",
@@ -126,6 +141,7 @@ const workspaceE2EAccountDiagnosticCodes = [
   ...workspaceE2EAccountLocaleSwitchDiagnosticCodes,
   ...accountLayoutNavigationDiagnosticCodes,
   ...workspaceE2EReservationExistingCustomerDiagnosticCodes,
+  ...workspaceE2EAccountPasskeyDiagnosticCodes,
 ] as const;
 
 // The Nexi hosted payment page step that failed, paired with the provider page
