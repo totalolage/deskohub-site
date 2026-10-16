@@ -2,6 +2,8 @@ import "server-only";
 
 import { Effect } from "effect";
 import { cache } from "react";
+import { m } from "@/features/administration/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { decodeInvoiceAdministrationId } from "./invoice-administration-identifier";
@@ -10,10 +12,10 @@ import { InvoiceBreadcrumbService } from "./invoice-breadcrumb.service";
 export const loadInvoiceAdministrationBreadcrumbLabel = cache(
   async (invoiceId: string) => {
     await authorizeAdministratorPage();
-    const label = await Effect.gen(function* () {
+    const invoiceNumber = await Effect.gen(function* () {
       const id = yield* decodeInvoiceAdministrationId(invoiceId);
       const breadcrumb = yield* InvoiceBreadcrumbService;
-      return yield* breadcrumb.getLabel(id);
+      return yield* breadcrumb.getInvoiceNumber(id);
     }).pipe(
       Effect.catchTag("InvoiceAdministrationNotFoundError", () =>
         Effect.succeed(null)
@@ -23,6 +25,10 @@ export const loadInvoiceAdministrationBreadcrumbLabel = cache(
         boundary: "route",
       })
     );
-    return label ?? undefined;
+    if (!invoiceNumber) return undefined;
+    return m.accountingInvoiceBreadcrumb(
+      { invoiceNumber },
+      { locale: await getRequestLocale() }
+    );
   }
 );

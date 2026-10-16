@@ -157,9 +157,21 @@ type InvoiceAdministrationRetryResult = {
   readonly needsAttention: boolean;
 };
 
+export type InvoiceAdministrationCustomerErrorReason =
+  | "billing-details-invalid"
+  | "currency-not-payable"
+  | "customer-deleted"
+  | "customer-email-ambiguous"
+  | "customer-id-invalid"
+  | "customer-id-missing"
+  | "invoice-id-reused";
+
 class InvoiceAdministrationCustomerError extends Data.TaggedError(
   "InvoiceAdministrationCustomerError"
-)<{ readonly message: string }> {}
+)<{
+  readonly reason: InvoiceAdministrationCustomerErrorReason;
+  readonly message: string;
+}> {}
 
 export class InvoiceAdministrationInProgressError extends Data.TaggedError(
   "InvoiceAdministrationInProgressError"
@@ -181,6 +193,7 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     const currency = findWorkspaceCurrencyDefinition(input.currency);
     if (!currency || !isInvoiceCurrencyPayable(currency.code)) {
       return yield* new InvoiceAdministrationCustomerError({
+        reason: "currency-not-payable",
         message: "No receiving account is configured for the invoice currency.",
       });
     }
@@ -318,6 +331,7 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
         });
         if (claim.kind === "mismatch") {
           return yield* new InvoiceAdministrationCustomerError({
+            reason: "invoice-id-reused",
             message: "Invoice id was already used with different input.",
           });
         }
@@ -432,6 +446,7 @@ const decodeDotyposCustomerId = (customerId: string | undefined) =>
     Effect.mapError(
       () =>
         new InvoiceAdministrationCustomerError({
+          reason: "customer-id-missing",
           message: "Dotypos returned a customer without an id.",
         })
     )
@@ -451,6 +466,7 @@ const resolveCustomer = Effect.fn(
       Effect.mapError(
         () =>
           new InvoiceAdministrationCustomerError({
+            reason: "customer-id-invalid",
             message: "The selected customer id is invalid.",
           })
       )
@@ -458,6 +474,7 @@ const resolveCustomer = Effect.fn(
     const customer = yield* dotypos.getCustomer(customerId);
     if (customer.deleted)
       return yield* new InvoiceAdministrationCustomerError({
+        reason: "customer-deleted",
         message: "The selected customer is deleted.",
       });
     return yield* dotypos.updateCustomerDetails(customerId, details);
@@ -471,6 +488,7 @@ const resolveCustomer = Effect.fn(
     Match.tag("Ambiguous", () =>
       Effect.fail(
         new InvoiceAdministrationCustomerError({
+          reason: "customer-email-ambiguous",
           message:
             "Multiple Dotypos customers use this email. Select the correct existing customer.",
         })
@@ -481,6 +499,7 @@ const resolveCustomer = Effect.fn(
         ? dotypos.updateCustomerDetails(customer.id, details)
         : Effect.fail(
             new InvoiceAdministrationCustomerError({
+              reason: "customer-id-missing",
               message: "Dotypos returned a customer without an id.",
             })
           )
@@ -529,6 +548,7 @@ const toBuyer = Effect.fn("InvoiceAdministrationService.toBuyer")(
       Effect.mapError(
         () =>
           new InvoiceAdministrationCustomerError({
+            reason: "billing-details-invalid",
             message: "Complete valid billing details are required.",
           })
       )
