@@ -7,11 +7,13 @@ import {
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { CustomerActivity } from "./overview-activity";
+import { m } from "./i18n";
+import { CustomerActivity, ReservationActivity } from "./overview-activity";
 
 const makeCustomer = (id: string, displayName: string) => ({
   customer: { id, displayName, email: null, phone: null },
@@ -55,6 +57,7 @@ describe("CustomerActivity", () => {
   test("shows unavailable customer metrics without a substitute count", async () => {
     const view = render(
       await CustomerActivity({
+        locale: "en-US",
         overview: Promise.resolve({
           ...overview,
           uniqueCustomers: { customers: [], unavailable: true, value: 0 },
@@ -64,5 +67,58 @@ describe("CustomerActivity", () => {
 
     expect(view.getByText("Unique customer count unavailable")).toBeDefined();
     expect(view.getByText("Live booking dates unavailable")).toBeDefined();
+  });
+
+  test("names customers and the remainder in Czech", async () => {
+    const view = render(
+      await CustomerActivity({
+        locale: "cs-CZ",
+        overview: Promise.resolve({
+          ...overview,
+          uniqueCustomers: { ...overview.uniqueCustomers, value: 7 },
+        }),
+      })
+    );
+
+    expect(view.getByText("Unikátní zákazníci")).toBeDefined();
+    expect(view.getByText("Noví zákazníci")).toBeDefined();
+    expect(view.getByText("… a 5 dalších")).toBeDefined();
+    expect(view.getByText("Drew Jones")).toBeDefined();
+  });
+
+  test("selects the Czech remainder form for two to four customers", () => {
+    expect(
+      m.administrationOverviewMoreCustomers({ count: 3 }, { locale: "cs-CZ" })
+    ).toBe("… a 3 další");
+  });
+});
+
+describe("ReservationActivity", () => {
+  test("describes reservation completion in Czech", async () => {
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        {
+          await ReservationActivity({
+            locale: "cs-CZ",
+            overview: Promise.resolve(overview),
+          })
+        }
+      </RouteLocaleProvider>
+    );
+
+    expect(view.getByRole("link", { name: "Dnes" })).toBeDefined();
+    expect(view.getByText("Dokončeno: 1 z 2 rezervací")).toBeDefined();
+    expect(
+      view.getByRole("link", { name: "Posledních 7 dní" }).getAttribute("href")
+    ).toBe("/cs-CZ/admin/reservations?from=2026-08-05&to=2026-08-11");
+  });
+
+  test("keeps the singular total in English", () => {
+    expect(
+      m.administrationOverviewReservationCompletion(
+        { completed: 0, count: 1 },
+        { locale: "en-US" }
+      )
+    ).toBe("0 completed out of 1 total reservation");
   });
 });
