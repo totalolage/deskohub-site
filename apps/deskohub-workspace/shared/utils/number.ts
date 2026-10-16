@@ -1,6 +1,13 @@
 export const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
+/**
+ * Formats a count with the locale's digit grouping: "1,000" in English,
+ * "1 000" (with a no-break space) in Czech.
+ */
+export const formatCount = (count: number, locale: string) =>
+  new Intl.NumberFormat(locale).format(count);
+
 export const formatNamesWithNumericRanges = (
   names: readonly (string | null | undefined)[]
 ): string => {
