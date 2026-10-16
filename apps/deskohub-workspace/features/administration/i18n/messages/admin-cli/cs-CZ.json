@@ -49,12 +49,16 @@
   "adminCliSessionsApprovedBy": "Relace schválené účtem <username/>",
   "adminCliSessionsCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} relace CLI",
-        "countPlural=few": "{count} relace CLI",
-        "countPlural=other": "{count} relací CLI"
+        "countPlural=one": "{formattedCount} relace CLI",
+        "countPlural=few": "{formattedCount} relace CLI",
+        "countPlural=other": "{formattedCount} relací CLI"
       }
     }
   ],

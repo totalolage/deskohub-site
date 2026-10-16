@@ -10,6 +10,7 @@ import {
 import { m } from "@/features/administration/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { Button } from "@/shared/components/ui/button";
+import { formatCount } from "@/shared/utils/number";
 import type { CampaignId } from "../../campaign-identifiers";
 import { loadRecipientPreview } from "./recipient-preview.server";
 import {
@@ -80,12 +81,18 @@ export async function RecipientPreviewPage({
                   {},
                   { locale }
                 )}
-                value={preview.resolution.recipients.length}
+                value={formatCount(
+                  preview.resolution.recipients.length,
+                  locale
+                )}
                 valueClassName="text-2xl"
               />
               <AdministrationFact
                 label={m.emailCampaignsRecipientPreviewExcluded({}, { locale })}
-                value={preview.resolution.exclusions.length}
+                value={formatCount(
+                  preview.resolution.exclusions.length,
+                  locale
+                )}
                 valueClassName="text-2xl"
               />
               <AdministrationFact
@@ -93,7 +100,10 @@ export async function RecipientPreviewPage({
                   {},
                   { locale }
                 )}
-                value={preview.resolution.duplicates.length}
+                value={formatCount(
+                  preview.resolution.duplicates.length,
+                  locale
+                )}
                 valueClassName="text-2xl"
               />
             </dl>

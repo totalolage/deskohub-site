@@ -9,6 +9,7 @@ import {
 } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import { formatCount } from "@/shared/utils/number";
 import { campaignRecipientStatuses } from "../../campaign-states";
 import {
   describeAudienceFilter,
@@ -182,7 +183,7 @@ export async function SentCampaignPage({
                       status={status}
                     />
                     <span className="text-lg font-semibold tabular-nums">
-                      {send.counts[status]}
+                      {formatCount(send.counts[status], locale)}
                     </span>
                   </li>
                 ))}

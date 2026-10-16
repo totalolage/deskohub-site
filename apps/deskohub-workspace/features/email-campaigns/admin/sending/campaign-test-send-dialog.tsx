@@ -120,7 +120,7 @@ export function CampaignTestSendDialog({
           {m.emailCampaignsTestSendSubmit({}, { locale })}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-xl" locale={locale}>
         <DialogHeader>
           <DialogTitle>
             {m.emailCampaignsTestSendTitle({}, { locale })}

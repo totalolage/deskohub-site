@@ -8,10 +8,11 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   workspaceRouterPush,
+  workspaceRouterRefresh,
   workspaceUseAction,
 } from "@/shared/testing/workspace-component-module-mocks";
 import {
@@ -22,7 +23,10 @@ import { campaignIdSchema } from "../../campaign-identifiers";
 
 mock.module("next/navigation", () => ({
   useParams: () => ({ locale: "en-US" }),
-  useRouter: () => ({ push: workspaceRouterPush }),
+  useRouter: () => ({
+    push: workspaceRouterPush,
+    refresh: workspaceRouterRefresh,
+  }),
 }));
 
 const duplicateCampaign = mock();
@@ -39,6 +43,13 @@ const campaignId = campaignIdSchema.make("synthetic-campaign");
 const includeUnconfirmedLabel =
   "Also resend to unconfirmed recipients (they may receive it twice)";
 const retryExecute = mock();
+let retryOptions:
+  | {
+      readonly onSuccess: (result: {
+        readonly data: { readonly retriedCount: number };
+      }) => void;
+    }
+  | undefined;
 
 describe("SentCampaignActions", () => {
   beforeAll(() => registerWorkspaceComponentTestEnv());
@@ -46,12 +57,16 @@ describe("SentCampaignActions", () => {
     retryExecute.mockClear();
     workspaceUseAction.mockReset();
     workspaceUseAction.mockImplementation(((
-      action: typeof duplicateCampaign
-    ) => ({
-      execute:
-        action === retryUndeliveredCampaignRecipients ? retryExecute : mock(),
-      isExecuting: false,
-    })) as never);
+      action: typeof duplicateCampaign,
+      options: typeof retryOptions
+    ) => {
+      if (action === retryUndeliveredCampaignRecipients) retryOptions = options;
+      return {
+        execute:
+          action === retryUndeliveredCampaignRecipients ? retryExecute : mock(),
+        isExecuting: false,
+      };
+    }) as never);
   });
   afterEach(() => cleanup());
   afterAll(() => unregisterWorkspaceComponentTestEnv());
@@ -119,6 +134,31 @@ describe("SentCampaignActions", () => {
       notRetryable.queryByRole("button", { name: "Retry undelivered" })
     ).toBeNull();
   });
+
+  test.each([
+    ["en-US", "Retrying 1,000 undelivered recipients."],
+    [
+      "cs-CZ",
+      "Znovu odesíláme e-mail 1\u00a0000 příjemcům, kterým se ho nepodařilo doručit.",
+    ],
+  ] as const)(
+    "reports a %s retry with the count grouped",
+    (locale, message) => {
+      const view = render(
+        <RouteLocaleProvider locale={locale}>
+          <SentCampaignActions
+            campaignId={campaignId}
+            retryable
+            unconfirmedCount={0}
+          />
+        </RouteLocaleProvider>
+      );
+
+      act(() => retryOptions?.onSuccess({ data: { retriedCount: 1000 } }));
+
+      expect(view.container.textContent).toContain(message);
+    }
+  );
 
   test("labels the actions in the Czech admin locale", () => {
     const view = render(

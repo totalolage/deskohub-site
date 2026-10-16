@@ -109,4 +109,5 @@ test("asks for confirmation in Czech on a Czech route", async () => {
   expect(dialog.textContent).toContain("Odvolat relaci CLI?");
   expect(dialog.textContent).toContain("„Office Mac“");
   expect(view.getByRole("button", { name: "Odvolat přístup" })).toBeTruthy();
+  expect(view.getByRole("button", { name: "Zavřít" })).toBeTruthy();
 });

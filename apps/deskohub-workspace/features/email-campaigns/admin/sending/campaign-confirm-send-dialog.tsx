@@ -92,7 +92,7 @@ export function CampaignConfirmSendDialog({
           {m.emailCampaignsSendConfirmSubmit({}, { locale })}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg" locale={locale}>
         <DialogHeader>
           <DialogTitle>
             {m.emailCampaignsSendConfirmTitle({}, { locale })}

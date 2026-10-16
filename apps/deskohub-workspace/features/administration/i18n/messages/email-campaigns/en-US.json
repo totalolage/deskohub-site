@@ -143,11 +143,15 @@
   "emailCampaignsAudienceHasAccountTrue": "Has",
   "emailCampaignsAudienceInUse": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "A draft campaign uses this audience, so it can only be archived. Move those drafts to another audience before deleting it.",
-        "countPlural=other": "{count} draft campaigns use this audience, so it can only be archived. Move those drafts to another audience before deleting it."
+        "countPlural=other": "{formattedCount} draft campaigns use this audience, so it can only be archived. Move those drafts to another audience before deleting it."
       }
     }
   ],
@@ -163,11 +167,15 @@
   "emailCampaignsAudienceListColumnUpdated": "Updated",
   "emailCampaignsAudienceListCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} audience",
-        "countPlural=other": "{count} audiences"
+        "countPlural=one": "{formattedCount} audience",
+        "countPlural=other": "{formattedCount} audiences"
       }
     }
   ],
@@ -411,15 +419,20 @@
   "emailCampaignsAudienceStatusArchived": "Archived",
   "emailCampaignsAudienceSummaryAmount": [
     {
-      "declarations": ["input operator", "input count", "input noun"],
+      "declarations": [
+        "input operator",
+        "input count",
+        "local formattedCount = count: number",
+        "input noun"
+      ],
       "selectors": ["operator"],
       "match": {
-        "operator=eq": "exactly {count} {noun}",
-        "operator=ne": "other than {count} {noun}",
-        "operator=lt": "fewer than {count} {noun}",
-        "operator=lte": "at most {count} {noun}",
-        "operator=gt": "more than {count} {noun}",
-        "operator=*": "at least {count} {noun}"
+        "operator=eq": "exactly {formattedCount} {noun}",
+        "operator=ne": "other than {formattedCount} {noun}",
+        "operator=lt": "fewer than {formattedCount} {noun}",
+        "operator=lte": "at most {formattedCount} {noun}",
+        "operator=gt": "more than {formattedCount} {noun}",
+        "operator=*": "at least {formattedCount} {noun}"
       }
     }
   ],
@@ -436,41 +449,57 @@
   "emailCampaignsAudienceSummaryPeriodAnyTime": "at any time",
   "emailCampaignsAudienceSummaryPeriodLastDay": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "in the last day",
-        "countPlural=other": "in the last {count} days"
+        "countPlural=other": "in the last {formattedCount} days"
       }
     }
   ],
   "emailCampaignsAudienceSummaryPeriodLastMonth": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "in the last month",
-        "countPlural=other": "in the last {count} months"
+        "countPlural=other": "in the last {formattedCount} months"
       }
     }
   ],
   "emailCampaignsAudienceSummaryPeriodLastWeek": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "in the last week",
-        "countPlural=other": "in the last {count} weeks"
+        "countPlural=other": "in the last {formattedCount} weeks"
       }
     }
   ],
   "emailCampaignsAudienceSummaryPeriodLastYear": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "in the last year",
-        "countPlural=other": "in the last {count} years"
+        "countPlural=other": "in the last {formattedCount} years"
       }
     }
   ],
@@ -626,11 +655,15 @@
   "emailCampaignsListCampaignColumn": "Campaign",
   "emailCampaignsListCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} campaign",
-        "countPlural=other": "{count} campaigns"
+        "countPlural=one": "{formattedCount} campaign",
+        "countPlural=other": "{formattedCount} campaigns"
       }
     }
   ],
@@ -709,11 +742,15 @@
   "emailCampaignsSendingFailureNotRetryable": "Only a failed campaign can retry undelivered recipients.",
   "emailCampaignsSendingFailureOutsideTestDomain": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Outside production, campaign email can only go to @{domain} addresses, and {count} address is outside it. Nothing was sent.",
-        "countPlural=other": "Outside production, campaign email can only go to @{domain} addresses, and {count} addresses are outside it. Nothing was sent."
+        "countPlural=one": "Outside production, campaign email can only go to @{domain} addresses, and {formattedCount} address is outside it. Nothing was sent.",
+        "countPlural=other": "Outside production, campaign email can only go to @{domain} addresses, and {formattedCount} addresses are outside it. Nothing was sent."
       }
     }
   ],
@@ -734,11 +771,15 @@
   "emailCampaignsSentContentTitle": "Content",
   "emailCampaignsSentDeliveryRecipientCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} recipient",
-        "countPlural=other": "{count} recipients"
+        "countPlural=one": "{formattedCount} recipient",
+        "countPlural=other": "{formattedCount} recipients"
       }
     }
   ],
@@ -768,11 +809,15 @@
   "emailCampaignsSentRetryFailed": "Undelivered recipients could not be retried.",
   "emailCampaignsSentRetryStarted": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Retrying {count} undelivered recipient.",
-        "countPlural=other": "Retrying {count} undelivered recipients."
+        "countPlural=one": "Retrying {formattedCount} undelivered recipient.",
+        "countPlural=other": "Retrying {formattedCount} undelivered recipients."
       }
     }
   ],
@@ -806,11 +851,15 @@
   "emailCampaignsTestSendRemoveRecipient": "Remove {email}",
   "emailCampaignsTestSendSent": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Sent {count} test email ({languages}).",
-        "countPlural=other": "Sent {count} test emails ({languages})."
+        "countPlural=one": "Sent {formattedCount} test email ({languages}).",
+        "countPlural=other": "Sent {formattedCount} test emails ({languages})."
       }
     }
   ],

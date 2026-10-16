@@ -49,11 +49,15 @@
   "adminCliSessionsApprovedBy": "Sessions approved by <username/>",
   "adminCliSessionsCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} CLI session",
-        "countPlural=other": "{count} CLI sessions"
+        "countPlural=one": "{formattedCount} CLI session",
+        "countPlural=other": "{formattedCount} CLI sessions"
       }
     }
   ],

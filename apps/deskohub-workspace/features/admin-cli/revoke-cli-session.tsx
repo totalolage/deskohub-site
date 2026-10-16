@@ -63,7 +63,7 @@ export function RevokeCliSession({
           {m.adminCliRevokeTrigger({}, { locale })}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent locale={locale}>
         <DialogHeader>
           <DialogTitle>{m.adminCliRevokeTitle({}, { locale })}</DialogTitle>
           <DialogDescription>

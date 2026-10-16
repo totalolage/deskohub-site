@@ -121,7 +121,7 @@ export function RenameCliSession({
           {m.adminCliRenameTrigger({}, { locale })}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent locale={locale}>
         <DialogHeader>
           <DialogTitle>{m.adminCliRenameTitle({}, { locale })}</DialogTitle>
           <DialogDescription>
