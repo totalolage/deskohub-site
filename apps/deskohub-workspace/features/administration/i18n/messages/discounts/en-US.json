@@ -6,11 +6,15 @@
   "discountsCodesTableControls": "Discount code table controls",
   "discountsCodesCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} discount code",
-        "countPlural=other": "{count} discount codes"
+        "countPlural=one": "{formattedCount} discount code",
+        "countPlural=other": "{formattedCount} discount codes"
       }
     }
   ],
@@ -24,11 +28,15 @@
   "discountsVouchersTableControls": "Voucher table controls",
   "discountsVouchersCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} voucher",
-        "countPlural=other": "{count} vouchers"
+        "countPlural=one": "{formattedCount} voucher",
+        "countPlural=other": "{formattedCount} vouchers"
       }
     }
   ],
@@ -39,11 +47,15 @@
   "discountsSalesTableControls": "Sale table controls",
   "discountsSalesCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} sale",
-        "countPlural=other": "{count} sales"
+        "countPlural=one": "{formattedCount} sale",
+        "countPlural=other": "{formattedCount} sales"
       }
     }
   ],
@@ -107,11 +119,15 @@
   "discountsAudienceUnrestricted": "Unrestricted",
   "discountsAudienceCustomerCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} customer",
-        "countPlural=other": "{count} customers"
+        "countPlural=one": "{formattedCount} customer",
+        "countPlural=other": "{formattedCount} customers"
       }
     }
   ],
@@ -250,22 +266,30 @@
   "discountsCodeAudienceUnrestricted": "Any Dotypos customer can use this code.",
   "discountsCodeAudienceCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} customer can use this code.",
-        "countPlural=other": "{count} customers can use this code."
+        "countPlural=one": "{formattedCount} customer can use this code.",
+        "countPlural=other": "{formattedCount} customers can use this code."
       }
     }
   ],
   "discountsVoucherAudienceUnrestricted": "Any Dotypos customer can use this voucher.",
   "discountsVoucherAudienceCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} customer can use this voucher.",
-        "countPlural=other": "{count} customers can use this voucher."
+        "countPlural=one": "{formattedCount} customer can use this voucher.",
+        "countPlural=other": "{formattedCount} customers can use this voucher."
       }
     }
   ],
@@ -335,11 +359,15 @@
   "discountsAvailabilityOnlyCustomer": "Only this customer",
   "discountsAvailabilitySelectedCustomers": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} selected customer",
-        "countPlural=other": "{count} selected customers"
+        "countPlural=one": "{formattedCount} selected customer",
+        "countPlural=other": "{formattedCount} selected customers"
       }
     }
   ],
@@ -388,21 +416,33 @@
   "discountsVoucherAddCustomerTitle": "Add {customerName} to {code}?",
   "discountsCodeAddCustomerDialogDescription": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "input total",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number",
+        "local formattedTotal = total: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{code} is currently limited to {count} other customer. Adding {customerName} will make it available to {total} customers.",
-        "countPlural=other": "{code} is currently limited to {count} other customers. Adding {customerName} will make it available to {total} customers."
+        "countPlural=one": "{code} is currently limited to {formattedCount} other customer. Adding {customerName} will make it available to {formattedTotal} customers.",
+        "countPlural=other": "{code} is currently limited to {formattedCount} other customers. Adding {customerName} will make it available to {formattedTotal} customers."
       }
     }
   ],
   "discountsVoucherAddCustomerDialogDescription": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "input total",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number",
+        "local formattedTotal = total: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{code} is currently limited to {count} other customer. Adding {customerName} will make it available to {total} customers.",
-        "countPlural=other": "{code} is currently limited to {count} other customers. Adding {customerName} will make it available to {total} customers."
+        "countPlural=one": "{code} is currently limited to {formattedCount} other customer. Adding {customerName} will make it available to {formattedTotal} customers.",
+        "countPlural=other": "{code} is currently limited to {formattedCount} other customers. Adding {customerName} will make it available to {formattedTotal} customers."
       }
     }
   ],

@@ -8,12 +8,16 @@
   "accountingInvoiceListTableControls": "Ovládání tabulky faktur",
   "accountingInvoiceListCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} faktura",
-        "countPlural=few": "{count} faktury",
-        "countPlural=other": "{count} faktur"
+        "countPlural=one": "{formattedCount} faktura",
+        "countPlural=few": "{formattedCount} faktury",
+        "countPlural=other": "{formattedCount} faktur"
       }
     }
   ],
@@ -70,13 +74,14 @@
     {
       "declarations": [
         "input maximumLength",
-        "local maximumLengthPlural = maximumLength: plural"
+        "local maximumLengthPlural = maximumLength: plural",
+        "local formattedMaximumLength = maximumLength: number"
       ],
       "selectors": ["maximumLengthPlural"],
       "match": {
-        "maximumLengthPlural=one": "Použijte nejvýše {maximumLength} znak.",
-        "maximumLengthPlural=few": "Použijte nejvýše {maximumLength} znaky.",
-        "maximumLengthPlural=other": "Použijte nejvýše {maximumLength} znaků."
+        "maximumLengthPlural=one": "Použijte nejvýše {formattedMaximumLength} znak.",
+        "maximumLengthPlural=few": "Použijte nejvýše {formattedMaximumLength} znaky.",
+        "maximumLengthPlural=other": "Použijte nejvýše {formattedMaximumLength} znaků."
       }
     }
   ],
@@ -131,13 +136,14 @@
     {
       "declarations": [
         "input decimalPlaces",
-        "local decimalPlacesPlural = decimalPlaces: plural"
+        "local decimalPlacesPlural = decimalPlaces: plural",
+        "local formattedDecimalPlaces = decimalPlaces: number"
       ],
       "selectors": ["decimalPlacesPlural"],
       "match": {
-        "decimalPlacesPlural=one": "Zadejte ceny včetně znaménka s nejvýše {decimalPlaces} desetinným místem.",
-        "decimalPlacesPlural=few": "Zadejte ceny včetně znaménka s nejvýše {decimalPlaces} desetinnými místy.",
-        "decimalPlacesPlural=other": "Zadejte ceny včetně znaménka s nejvýše {decimalPlaces} desetinnými místy."
+        "decimalPlacesPlural=one": "Zadejte ceny včetně znaménka s nejvýše {formattedDecimalPlaces} desetinným místem.",
+        "decimalPlacesPlural=few": "Zadejte ceny včetně znaménka s nejvýše {formattedDecimalPlaces} desetinnými místy.",
+        "decimalPlacesPlural=other": "Zadejte ceny včetně znaménka s nejvýše {formattedDecimalPlaces} desetinnými místy."
       }
     }
   ],

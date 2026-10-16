@@ -6,12 +6,16 @@
   "discountsCodesTableControls": "Ovládání tabulky slevových kódů",
   "discountsCodesCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} slevový kód",
-        "countPlural=few": "{count} slevové kódy",
-        "countPlural=other": "{count} slevových kódů"
+        "countPlural=one": "{formattedCount} slevový kód",
+        "countPlural=few": "{formattedCount} slevové kódy",
+        "countPlural=other": "{formattedCount} slevových kódů"
       }
     }
   ],
@@ -25,12 +29,16 @@
   "discountsVouchersTableControls": "Ovládání tabulky poukazů",
   "discountsVouchersCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} poukaz",
-        "countPlural=few": "{count} poukazy",
-        "countPlural=other": "{count} poukazů"
+        "countPlural=one": "{formattedCount} poukaz",
+        "countPlural=few": "{formattedCount} poukazy",
+        "countPlural=other": "{formattedCount} poukazů"
       }
     }
   ],
@@ -41,12 +49,16 @@
   "discountsSalesTableControls": "Ovládání tabulky akcí",
   "discountsSalesCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} akce",
-        "countPlural=few": "{count} akce",
-        "countPlural=other": "{count} akcí"
+        "countPlural=one": "{formattedCount} akce",
+        "countPlural=few": "{formattedCount} akce",
+        "countPlural=other": "{formattedCount} akcí"
       }
     }
   ],
@@ -110,12 +122,16 @@
   "discountsAudienceUnrestricted": "Bez omezení",
   "discountsAudienceCustomerCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} zákazník",
-        "countPlural=few": "{count} zákazníci",
-        "countPlural=other": "{count} zákazníků"
+        "countPlural=one": "{formattedCount} zákazník",
+        "countPlural=few": "{formattedCount} zákazníci",
+        "countPlural=other": "{formattedCount} zákazníků"
       }
     }
   ],
@@ -254,24 +270,32 @@
   "discountsCodeAudienceUnrestricted": "Tento kód může použít kterýkoli zákazník z Dotyposu.",
   "discountsCodeAudienceCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Tento kód může použít {count} zákazník.",
-        "countPlural=few": "Tento kód mohou použít {count} zákazníci.",
-        "countPlural=other": "Tento kód může použít {count} zákazníků."
+        "countPlural=one": "Tento kód může použít {formattedCount} zákazník.",
+        "countPlural=few": "Tento kód mohou použít {formattedCount} zákazníci.",
+        "countPlural=other": "Tento kód může použít {formattedCount} zákazníků."
       }
     }
   ],
   "discountsVoucherAudienceUnrestricted": "Tento poukaz může použít kterýkoli zákazník z Dotyposu.",
   "discountsVoucherAudienceCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Tento poukaz může použít {count} zákazník.",
-        "countPlural=few": "Tento poukaz mohou použít {count} zákazníci.",
-        "countPlural=other": "Tento poukaz může použít {count} zákazníků."
+        "countPlural=one": "Tento poukaz může použít {formattedCount} zákazník.",
+        "countPlural=few": "Tento poukaz mohou použít {formattedCount} zákazníci.",
+        "countPlural=other": "Tento poukaz může použít {formattedCount} zákazníků."
       }
     }
   ],
@@ -341,12 +365,16 @@
   "discountsAvailabilityOnlyCustomer": "Pouze tento zákazník",
   "discountsAvailabilitySelectedCustomers": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} vybraný zákazník",
-        "countPlural=few": "{count} vybraní zákazníci",
-        "countPlural=other": "{count} vybraných zákazníků"
+        "countPlural=one": "{formattedCount} vybraný zákazník",
+        "countPlural=few": "{formattedCount} vybraní zákazníci",
+        "countPlural=other": "{formattedCount} vybraných zákazníků"
       }
     }
   ],
@@ -395,23 +423,35 @@
   "discountsVoucherAddCustomerTitle": "Přidat zákazníka {customerName} k poukazu {code}?",
   "discountsCodeAddCustomerDialogDescription": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "input total",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number",
+        "local formattedTotal = total: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Kód {code} je teď omezen na {count} dalšího zákazníka. Po přidání zákazníka {customerName} bude dostupný {total} zákazníkům.",
-        "countPlural=few": "Kód {code} je teď omezen na {count} další zákazníky. Po přidání zákazníka {customerName} bude dostupný {total} zákazníkům.",
-        "countPlural=other": "Kód {code} je teď omezen na {count} dalších zákazníků. Po přidání zákazníka {customerName} bude dostupný {total} zákazníkům."
+        "countPlural=one": "Kód {code} je teď omezen na {formattedCount} dalšího zákazníka. Po přidání zákazníka {customerName} bude dostupný {formattedTotal} zákazníkům.",
+        "countPlural=few": "Kód {code} je teď omezen na {formattedCount} další zákazníky. Po přidání zákazníka {customerName} bude dostupný {formattedTotal} zákazníkům.",
+        "countPlural=other": "Kód {code} je teď omezen na {formattedCount} dalších zákazníků. Po přidání zákazníka {customerName} bude dostupný {formattedTotal} zákazníkům."
       }
     }
   ],
   "discountsVoucherAddCustomerDialogDescription": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "input total",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number",
+        "local formattedTotal = total: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Poukaz {code} je teď omezen na {count} dalšího zákazníka. Po přidání zákazníka {customerName} bude dostupný {total} zákazníkům.",
-        "countPlural=few": "Poukaz {code} je teď omezen na {count} další zákazníky. Po přidání zákazníka {customerName} bude dostupný {total} zákazníkům.",
-        "countPlural=other": "Poukaz {code} je teď omezen na {count} dalších zákazníků. Po přidání zákazníka {customerName} bude dostupný {total} zákazníkům."
+        "countPlural=one": "Poukaz {code} je teď omezen na {formattedCount} dalšího zákazníka. Po přidání zákazníka {customerName} bude dostupný {formattedTotal} zákazníkům.",
+        "countPlural=few": "Poukaz {code} je teď omezen na {formattedCount} další zákazníky. Po přidání zákazníka {customerName} bude dostupný {formattedTotal} zákazníkům.",
+        "countPlural=other": "Poukaz {code} je teď omezen na {formattedCount} dalších zákazníků. Po přidání zákazníka {customerName} bude dostupný {formattedTotal} zákazníkům."
       }
     }
   ],

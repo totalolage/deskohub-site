@@ -8,12 +8,13 @@
     {
       "declarations": [
         "input maximum",
-        "local maximumPlural = maximum: plural"
+        "local maximumPlural = maximum: plural",
+        "local formattedMaximum = maximum: number"
       ],
       "selectors": ["maximumPlural"],
       "match": {
-        "maximumPlural=one": "Use at most {maximum} character.",
-        "maximumPlural=other": "Use at most {maximum} characters."
+        "maximumPlural=one": "Use at most {formattedMaximum} character.",
+        "maximumPlural=other": "Use at most {formattedMaximum} characters."
       }
     }
   ],
@@ -29,12 +30,14 @@
       "declarations": [
         "input minimum",
         "input maximum",
-        "local maximumPlural = maximum: plural"
+        "local maximumPlural = maximum: plural",
+        "local formattedMinimum = minimum: number",
+        "local formattedMaximum = maximum: number"
       ],
       "selectors": ["maximumPlural"],
       "match": {
-        "maximumPlural=one": "The end must be {minimum} to {maximum} hour after the start.",
-        "maximumPlural=other": "The end must be {minimum} to {maximum} hours after the start."
+        "maximumPlural=one": "The end must be {formattedMinimum} to {formattedMaximum} hour after the start.",
+        "maximumPlural=other": "The end must be {formattedMinimum} to {formattedMaximum} hours after the start."
       }
     }
   ],

@@ -474,7 +474,7 @@ export function CustomerAdministrationDetailPage({
       <div className="mb-7 grid gap-5 lg:grid-cols-2">
         <CustomerStats
           activity={activity}
-          availableCodes={`${targetedCodeCount} (+ ${universalCodeCount})`}
+          availableCodes={`${formatCount(targetedCodeCount, locale)} (+ ${formatCount(universalCodeCount, locale)})`}
           locale={locale}
         />
         <CustomerConsents consent={activity.marketingConsent} locale={locale} />
@@ -501,7 +501,9 @@ export function CustomerAdministrationDetailPage({
               <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
                 <summary className="cursor-pointer px-5 py-4 font-semibold">
                   {m.discountsCustomerPastReservations(
-                    { count: reservationGroups.past.length },
+                    {
+                      count: formatCount(reservationGroups.past.length, locale),
+                    },
                     { locale }
                   )}
                 </summary>
@@ -545,7 +547,12 @@ export function CustomerAdministrationDetailPage({
                 <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
                   <summary className="cursor-pointer px-5 py-4 font-semibold">
                     {m.discountsCustomerUnavailableDateReservations(
-                      { count: reservationGroups.unavailable.length },
+                      {
+                        count: formatCount(
+                          reservationGroups.unavailable.length,
+                          locale
+                        ),
+                      },
                       { locale }
                     )}
                   </summary>
@@ -706,7 +713,7 @@ function CustomerStats({
       <dl className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
         <CustomerStat
           label={m.discountsCustomerStatReservations({}, { locale })}
-          value={activity.stats.reservationCount}
+          value={formatCount(activity.stats.reservationCount, locale)}
         />
         <CustomerStat
           label={m.discountsCustomerStatRevenue({}, { locale })}

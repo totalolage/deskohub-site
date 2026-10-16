@@ -36,6 +36,7 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
+import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import {
   createAdministrationInvoice,
@@ -1106,7 +1107,7 @@ export function InvoiceCreationForm({
                       <FormItem>
                         <FormLabel>
                           {m.accountingInvoiceFormLineDescription(
-                            { lineNumber: index + 1 },
+                            { lineNumber: formatCount(index + 1, locale) },
                             { locale }
                           )}
                         </FormLabel>
@@ -1146,7 +1147,7 @@ export function InvoiceCreationForm({
                   />
                   <Button
                     aria-label={m.accountingInvoiceFormRemoveLine(
-                      { lineNumber: index + 1 },
+                      { lineNumber: formatCount(index + 1, locale) },
                       { locale }
                     )}
                     disabled={fields.length === 1}

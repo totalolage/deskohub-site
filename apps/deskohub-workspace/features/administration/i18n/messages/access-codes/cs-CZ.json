@@ -8,13 +8,14 @@
     {
       "declarations": [
         "input maximum",
-        "local maximumPlural = maximum: plural"
+        "local maximumPlural = maximum: plural",
+        "local formattedMaximum = maximum: number"
       ],
       "selectors": ["maximumPlural"],
       "match": {
-        "maximumPlural=one": "Použijte nejvýše {maximum} znak.",
-        "maximumPlural=few": "Použijte nejvýše {maximum} znaky.",
-        "maximumPlural=other": "Použijte nejvýše {maximum} znaků."
+        "maximumPlural=one": "Použijte nejvýše {formattedMaximum} znak.",
+        "maximumPlural=few": "Použijte nejvýše {formattedMaximum} znaky.",
+        "maximumPlural=other": "Použijte nejvýše {formattedMaximum} znaků."
       }
     }
   ],
@@ -30,13 +31,15 @@
       "declarations": [
         "input minimum",
         "input maximum",
-        "local maximumPlural = maximum: plural"
+        "local maximumPlural = maximum: plural",
+        "local formattedMinimum = minimum: number",
+        "local formattedMaximum = maximum: number"
       ],
       "selectors": ["maximumPlural"],
       "match": {
-        "maximumPlural=one": "Konec musí být {minimum} až {maximum} hodinu po začátku.",
-        "maximumPlural=few": "Konec musí být {minimum} až {maximum} hodiny po začátku.",
-        "maximumPlural=other": "Konec musí být {minimum} až {maximum} hodin po začátku."
+        "maximumPlural=one": "Konec musí být {formattedMinimum} až {formattedMaximum} hodinu po začátku.",
+        "maximumPlural=few": "Konec musí být {formattedMinimum} až {formattedMaximum} hodiny po začátku.",
+        "maximumPlural=other": "Konec musí být {formattedMinimum} až {formattedMaximum} hodin po začátku."
       }
     }
   ],

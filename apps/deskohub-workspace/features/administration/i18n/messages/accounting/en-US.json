@@ -8,11 +8,15 @@
   "accountingInvoiceListTableControls": "Invoice table controls",
   "accountingInvoiceListCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} invoice",
-        "countPlural=other": "{count} invoices"
+        "countPlural=one": "{formattedCount} invoice",
+        "countPlural=other": "{formattedCount} invoices"
       }
     }
   ],
@@ -69,12 +73,13 @@
     {
       "declarations": [
         "input maximumLength",
-        "local maximumLengthPlural = maximumLength: plural"
+        "local maximumLengthPlural = maximumLength: plural",
+        "local formattedMaximumLength = maximumLength: number"
       ],
       "selectors": ["maximumLengthPlural"],
       "match": {
-        "maximumLengthPlural=one": "Use at most {maximumLength} character.",
-        "maximumLengthPlural=other": "Use at most {maximumLength} characters."
+        "maximumLengthPlural=one": "Use at most {formattedMaximumLength} character.",
+        "maximumLengthPlural=other": "Use at most {formattedMaximumLength} characters."
       }
     }
   ],
@@ -129,12 +134,13 @@
     {
       "declarations": [
         "input decimalPlaces",
-        "local decimalPlacesPlural = decimalPlaces: plural"
+        "local decimalPlacesPlural = decimalPlaces: plural",
+        "local formattedDecimalPlaces = decimalPlaces: number"
       ],
       "selectors": ["decimalPlacesPlural"],
       "match": {
-        "decimalPlacesPlural=one": "Enter signed prices with up to {decimalPlaces} decimal place.",
-        "decimalPlacesPlural=other": "Enter signed prices with up to {decimalPlaces} decimal places."
+        "decimalPlacesPlural=one": "Enter signed prices with up to {formattedDecimalPlaces} decimal place.",
+        "decimalPlacesPlural=other": "Enter signed prices with up to {formattedDecimalPlaces} decimal places."
       }
     }
   ],

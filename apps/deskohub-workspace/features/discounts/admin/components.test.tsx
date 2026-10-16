@@ -755,6 +755,117 @@ describe("discount administration pages", () => {
     ).toBeDefined();
   });
 
+  test("formats customer counts in the operator's locale", async () => {
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { CustomerAdministrationDetailPage } = await import(
+      "./customer-admin-components"
+    );
+    const { CustomerPromotionCodeAction } = await import(
+      "./customer-admin-client"
+    );
+    const { m } = await import("@/features/administration/i18n");
+    const { formatCount } = await import("@/shared/utils/number");
+    const locale = "cs-CZ";
+    const view = render(
+      <RouteLocaleProvider locale={locale}>
+        <CustomerAdministrationDetailPage
+          activity={{
+            reservations: [],
+            reservationHistoryTruncated: false,
+            transactions: [],
+            transactionHistoryTruncated: false,
+            stats: {
+              reservationCount: 1250,
+              favoriteProduct: null,
+              favoriteReservationProduct: null,
+              revenue: [],
+              discountSavings: [],
+            },
+            marketingConsent: null,
+          }}
+          locale={locale}
+          profile={{
+            customer: {
+              id: "dotypos-customer",
+              displayName: "Test Customer",
+              email: testEmailAddressForTest,
+              phone: null,
+              discountGroupId: null,
+            },
+            discountGroups: [],
+            codes: [
+              {
+                ...dashboard.codes[0],
+                audienceSize: 1250,
+                discountAdjustment: { kind: "percentage", basisPoints: 1000 },
+                discountLabels: {
+                  "en-US": "Summer discount",
+                  "cs-CZ": "Letní sleva",
+                },
+                eligible: true,
+              },
+            ],
+            claims: [],
+            vouchers: [],
+            voucherClaims: [],
+          }}
+          reservationActivity={emptyReservationActivity}
+        />
+      </RouteLocaleProvider>
+    );
+
+    const reservationStat = view.getByText(
+      m.discountsCustomerStatReservations({}, { locale }),
+      { selector: "dt" }
+    ).nextElementSibling;
+    expect(reservationStat?.textContent).toBe(formatCount(1250, locale));
+    const [, codeRow] = within(
+      view.getByRole("table", { name: "Kódy a poukazy zákazníka" })
+    ).getAllByRole("row");
+    expect(codeRow?.textContent).toContain(
+      `${formatCount(1250, locale)} vybraných zákazníků`
+    );
+    cleanup();
+
+    const action = render(
+      <RouteLocaleProvider locale={locale}>
+        <CustomerPromotionCodeAction
+          audienceSize={1000}
+          code="SUMMER10"
+          customerId="dotypos-customer"
+          customerName="Test Customer"
+          eligible={false}
+          promotion={{ kind: "discount-code", id: dashboard.codes[0].id }}
+        />
+      </RouteLocaleProvider>
+    );
+    fireEvent.click(
+      action.getByRole("button", {
+        name: "Přidat zákazníka Test Customer ke kódu SUMMER10",
+      })
+    );
+    const dialog = await action.findByRole("dialog");
+    expect(dialog.textContent).toContain(
+      m.discountsCodeAddCustomerDialogDescription(
+        {
+          code: "SUMMER10",
+          customerName: "Test Customer",
+          count: 1000,
+          total: 1001,
+        },
+        { locale }
+      )
+    );
+    expect(dialog.textContent).toContain(
+      `omezen na ${formatCount(1000, locale)} dalších zákazníků`
+    );
+    expect(dialog.textContent).toContain(
+      `dostupný ${formatCount(1001, locale)} zákazníkům`
+    );
+  });
+
   test("creates a customer discount code without mixing in vouchers", async () => {
     const execute = mock();
     workspaceUseAction.mockReturnValue({
