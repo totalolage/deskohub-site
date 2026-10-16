@@ -11,7 +11,9 @@ import { CustomerAccountAccessError } from "./customer-account";
 const customerEmail = testEmailAddress("ada");
 const sneakyEmail = testEmailAddress("sneaky");
 
-const revalidatePath = mock((_path: string) => undefined);
+const revalidatePath = mock(
+  (_path: string, _type?: "layout" | "page") => undefined
+);
 mock.module("next/cache", () => ({ revalidatePath }));
 
 const requestHeaders = new Headers({ referer: "https://deskohub.test/en-US" });
@@ -884,7 +886,7 @@ describe("account actions", () => {
     expect(cookieWrites).toEqual([]);
   });
 
-  test("deletes through the Better Auth endpoint and revalidates account and deleted paths", async () => {
+  test("deletes through the Better Auth endpoint and revalidates every account path", async () => {
     areAccountsEnabled.mockResolvedValue(false);
     const seen: { body: object; headers: Headers }[] = [];
     deleteUser = async (args) => {
@@ -898,8 +900,7 @@ describe("account actions", () => {
     expect(result).toEqual({ data: { status: "deleted" } });
     expect(seen).toHaveLength(1);
     expect(String(seen[0]!.headers.get("referer"))).toContain("deskohub.test");
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account/deleted");
+    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account", "layout");
   });
 
   test("asks for reauthentication when the delete endpoint reports a stale session", async () => {
@@ -964,8 +965,7 @@ describe("account actions", () => {
     const result = await deleteCustomerAccount({ confirmed: true });
 
     expect(result).toEqual({ data: { status: "failed" } });
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account/deleted");
+    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account", "layout");
   });
 });
 

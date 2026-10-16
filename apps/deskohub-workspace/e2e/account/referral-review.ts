@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { getAccountSectionPath } from "@/features/account/routes";
 import { parseReferralCode } from "@/features/referrals/client";
 import { workspaceE2EError } from "../errors";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -39,11 +40,14 @@ export const verifyReferralScreenIgnoresShareLink = async ({
     workspaceE2EError(message, {
       operation: "verify referral screen ignores share links",
     });
-  const query = new URLSearchParams({ section: "referrals", ref: shareCode });
-  await page.goto(
-    new URL(`/${locale}/account?${query.toString()}`, baseUrl).toString(),
-    { timeout: workspaceE2ETimeouts.browserNavigation }
+  const referralUrl = new URL(
+    getAccountSectionPath(locale, "referrals"),
+    baseUrl
   );
+  referralUrl.searchParams.set("ref", shareCode);
+  await page.goto(referralUrl.toString(), {
+    timeout: workspaceE2ETimeouts.browserNavigation,
+  });
   const screen = page.locator(accountSectionLandmarks.referrals);
   const ownCode = screen.locator(referralCodeSelector);
   await ownCode.waitFor({
@@ -77,7 +81,7 @@ export const verifyReferralScreenIgnoresShareLink = async ({
 
   // The case-level review capture follows on the plain referrals section.
   await page.goto(
-    new URL(`/${locale}/account?section=referrals`, baseUrl).toString(),
+    new URL(getAccountSectionPath(locale, "referrals"), baseUrl).toString(),
     { timeout: workspaceE2ETimeouts.browserNavigation }
   );
   await ownCode.waitFor({

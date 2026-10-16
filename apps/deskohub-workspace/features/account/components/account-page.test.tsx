@@ -308,7 +308,7 @@ describe("AccountPage states", () => {
 
     expect(view.getByText(m.accountTitle({}, en))).toBeTruthy();
     expect(
-      sectionNavigation.getByRole("button", {
+      sectionNavigation.getByRole("link", {
         name: new RegExp(`^${m.accountSectionReservations({}, en)}`),
       })
     ).toBeTruthy();
@@ -317,7 +317,7 @@ describe("AccountPage states", () => {
     expect(view.container.querySelectorAll("main")).toHaveLength(1);
 
     fireEvent.click(
-      sectionNavigation.getByRole("button", {
+      sectionNavigation.getByRole("link", {
         name: m.accountSectionProfile({}, en),
       })
     );
@@ -326,7 +326,7 @@ describe("AccountPage states", () => {
     expect(view.getByText(adaAddress)).toBeTruthy();
 
     fireEvent.click(
-      sectionNavigation.getByRole("button", {
+      sectionNavigation.getByRole("link", {
         name: m.accountSectionBilling({}, en),
       })
     );
@@ -719,7 +719,7 @@ describe("AccountPage states", () => {
     fireEvent.click(
       within(
         view.getByRole("group", { name: m.accountSectionLabel({}, en) })
-      ).getByRole("button", { name: m.accountSectionSecurity({}, en) })
+      ).getByRole("link", { name: m.accountSectionSecurity({}, en) })
     );
 
     const list = view.getByRole("list", {
@@ -785,7 +785,7 @@ describe("AccountPage states", () => {
     fireEvent.click(
       within(
         view.getByRole("group", { name: m.accountSectionLabel({}, en) })
-      ).getByRole("button", { name: m.accountSectionSecurity({}, en) })
+      ).getByRole("link", { name: m.accountSectionSecurity({}, en) })
     );
 
     expect(view.queryByText(m.accountSecurityPasskeysTitle({}, en))).toBeNull();

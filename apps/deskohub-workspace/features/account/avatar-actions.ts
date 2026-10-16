@@ -74,7 +74,7 @@ const avatarRemoveInputSchema: StandardSchemaV1<unknown, undefined> = {
 };
 
 const revalidateAccount = (locale: Locale) =>
-  Effect.sync(() => revalidatePath(getAccountPath(locale)));
+  Effect.sync(() => revalidatePath(getAccountPath(locale), "layout"));
 
 const unavailableError = (locale: Locale) =>
   new PublicSafeActionError({

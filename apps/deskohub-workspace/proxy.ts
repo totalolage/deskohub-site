@@ -10,6 +10,7 @@ import {
   type NextRequest,
   NextResponse,
 } from "next/server";
+import { findLegacyAccountSectionRedirect } from "@/features/account/routes";
 import { resolveWorkspaceLocale } from "@/features/i18n/locale-resolution";
 import { localeCookieName, locales } from "@/features/i18n/routing";
 import {
@@ -164,6 +165,18 @@ async function localizedPageResponse(request: NextRequest) {
   );
 
   if (localeFromUrl === resolvedLocale) {
+    const sectionRedirect = findLegacyAccountSectionRedirect(
+      resolvedLocale,
+      new URL(request.url)
+    );
+    if (sectionRedirect) {
+      const response = markPrivateResponse(
+        NextResponse.redirect(sectionRedirect)
+      );
+      setLocaleCookie(response, localeCookieName, resolvedLocale);
+      return response;
+    }
+
     const sharedReferralCode = findSharedReferralCodeOfNavigation(request);
     if (sharedReferralCode) {
       request.cookies.set(referralCodeCookieName, sharedReferralCode);
@@ -181,12 +194,18 @@ async function localizedPageResponse(request: NextRequest) {
     return response;
   }
 
-  const redirectUrl = request.nextUrl.clone();
-  redirectUrl.pathname = getLocalizedRedirectPathname(
+  const localizedUrl = request.nextUrl.clone();
+  localizedUrl.pathname = getLocalizedRedirectPathname(
     request.nextUrl.pathname,
     resolvedLocale,
     locales
   );
+  // A retired account section link goes straight to its section's path.
+  const redirectUrl =
+    findLegacyAccountSectionRedirect(
+      resolvedLocale,
+      new URL(localizedUrl.href)
+    ) ?? localizedUrl;
 
   const response = NextResponse.redirect(redirectUrl);
   response.headers.set("Vary", "Accept-Language");

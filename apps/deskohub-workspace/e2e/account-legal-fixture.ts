@@ -409,9 +409,11 @@ const writeFixture = async (
   }: AccountLegalFixtureOptions & { readonly readinessMarker: string }
 ) => {
   const fixtureFiles: Readonly<Record<string, string>> = {
-    "app/[locale]/(site)/(full-header)/account/@modal/default.tsx": nullModalPage,
+    "app/[locale]/(site)/(full-header)/account/@modal/default.tsx":
+      nullModalPage,
     "app/[locale]/(site)/(full-header)/account/@modal/page.tsx": nullModalPage,
     "app/[locale]/(site)/(full-header)/account/page.tsx": privatePage,
+    "app/[locale]/(site)/(full-header)/account/[section]/page.tsx": privatePage,
     "app/[locale]/account-legal-fixture-ready/route.ts":
       fixtureReadinessRoute(readinessMarker),
     ...(realCookieConsent
@@ -533,7 +535,7 @@ const warmFixtureRoutes = async (
 ) => {
   for (const locale of supportedLocales) {
     for (const route of [
-      `/${locale}/account?section=profile`,
+      `/${locale}/account/profile`,
       `/${locale}/account/legal`,
       ...extraRoutes,
     ]) {

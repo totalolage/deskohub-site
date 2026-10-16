@@ -19,7 +19,6 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 let pathname = "/en-US/account";
-let searchParams = new URLSearchParams();
 const routerPush = mock((_href: string) => undefined);
 const routerRefresh = mock(() => undefined);
 const routerReplace = mock((_href: string) => undefined);
@@ -31,7 +30,6 @@ mock.module("next/navigation", () => ({
     refresh: routerRefresh,
     replace: routerReplace,
   }),
-  useSearchParams: () => searchParams,
   unstable_rethrow: (cause: unknown) => {
     throw cause;
   },
@@ -160,7 +158,6 @@ describe("AccountLayoutShell", () => {
   afterEach(() => {
     cleanup();
     pathname = "/en-US/account";
-    searchParams = new URLSearchParams();
     routerPush.mockClear();
     routerRefresh.mockClear();
     routerReplace.mockClear();
@@ -212,12 +209,10 @@ describe("AccountLayoutShell", () => {
       }
 
       expect(
-        (
-          getDesktopNavigation(view).getByRole("button", {
-            name: "Legal & Privacy",
-          }) as HTMLButtonElement
-        ).disabled
-      ).toBe(false);
+        getDesktopNavigation(view)
+          .getByRole("link", { name: "Legal & Privacy" })
+          .getAttribute("href")
+      ).toBe("/en-US/account/legal");
       expect(view.getByTestId("account-content")).toBeTruthy();
       expect(view.getByTestId("account-modal")).toBeTruthy();
       expect(view.getByTestId("accounts-enabled").textContent).toBe(
@@ -251,7 +246,7 @@ describe("AccountLayoutShell", () => {
       );
 
       fireEvent.click(
-        getDesktopNavigation(view).getByRole("button", {
+        getDesktopNavigation(view).getByRole("link", {
           name: "Legal & Privacy",
         })
       );
@@ -267,7 +262,7 @@ describe("AccountLayoutShell", () => {
     const view = renderLayout(<p>Account</p>);
 
     fireEvent.click(
-      getDesktopNavigation(view).getByRole("button", {
+      getDesktopNavigation(view).getByRole("link", {
         name: "Legal & Privacy",
       })
     );
@@ -276,35 +271,35 @@ describe("AccountLayoutShell", () => {
     pathname = "/en-US/account/legal";
     view.rerender(layoutElement(<p>Legal</p>));
     fireEvent.click(
-      getDesktopNavigation(view).getByRole("button", {
+      getDesktopNavigation(view).getByRole("link", {
         name: "Profile & Identity",
       })
     );
 
-    expect(routerPush).toHaveBeenCalledWith("/en-US/account?section=profile");
+    expect(routerPush).toHaveBeenCalledWith("/en-US/account/profile");
   });
 
-  test("updates active sections from query and pathname changes", () => {
-    searchParams = new URLSearchParams("section=profile");
+  test("updates active sections from pathname changes", () => {
+    pathname = "/en-US/account/profile";
     const view = renderLayout(<p>Account</p>);
 
     fireEvent.click(
-      getDesktopNavigation(view).getByRole("button", {
+      getDesktopNavigation(view).getByRole("link", {
         name: "Billing & Invoices",
       })
     );
     expect(routerPush).not.toHaveBeenCalled();
     expect(
       getDesktopNavigation(view)
-        .getByRole("button", { name: "Billing & Invoices" })
+        .getByRole("link", { name: "Billing & Invoices" })
         .getAttribute("aria-current")
     ).toBe("page");
 
-    searchParams = new URLSearchParams("section=danger");
+    pathname = "/en-US/account/danger";
     view.rerender(layoutElement(<p>Account from browser back</p>));
     expect(
       getDesktopNavigation(view)
-        .getByRole("button", { name: "Danger zone" })
+        .getByRole("link", { name: "Danger zone" })
         .getAttribute("aria-current")
     ).toBe("page");
 
@@ -312,56 +307,63 @@ describe("AccountLayoutShell", () => {
     view.rerender(layoutElement(<p>Legal from browser back</p>));
     expect(
       getDesktopNavigation(view)
-        .getByRole("button", { name: "Legal & Privacy" })
+        .getByRole("link", { name: "Legal & Privacy" })
         .getAttribute("aria-current")
     ).toBe("page");
 
-    pathname = "/en-US/account";
-    searchParams = new URLSearchParams("section=profile");
+    pathname = "/en-US/account/profile/";
     view.rerender(layoutElement(<p>Profile from browser back</p>));
     expect(
       getDesktopNavigation(view)
-        .getByRole("button", { name: "Profile & Identity" })
+        .getByRole("link", { name: "Profile & Identity" })
         .getAttribute("aria-current")
     ).toBe("page");
   });
 
   test("records a local section switch in the URL so a locale switch keeps it", () => {
     window.location.href = "http://localhost/en-US/account?ref=menu";
+    const historyLength = window.history.length;
     const view = renderLayout(<p>Account</p>);
 
     fireEvent.click(
-      getDesktopNavigation(view).getByRole("button", {
+      getDesktopNavigation(view).getByRole("link", {
         name: "Profile & Identity",
       })
     );
 
     expect(routerPush).not.toHaveBeenCalled();
-    expect(window.location.pathname).toBe("/en-US/account");
-    expect(window.location.search).toBe("?ref=menu&section=profile");
+    expect(window.location.pathname).toBe("/en-US/account/profile");
+    expect(window.location.search).toBe("?ref=menu");
+    expect(
+      getDesktopNavigation(view)
+        .getByRole("link", { name: "Profile & Identity" })
+        .getAttribute("aria-current")
+    ).toBe("page");
 
     fireEvent.click(
-      getDesktopNavigation(view).getByRole("button", { name: "Reservations" })
+      getDesktopNavigation(view).getByRole("link", { name: "Reservations" })
     );
 
+    expect(window.location.pathname).toBe("/en-US/account/reservations");
     expect(window.location.search).toBe("?ref=menu");
+    expect(window.history.length).toBe(historyLength);
   });
 
-  test("treats a withheld referral section like an unknown section", () => {
-    searchParams = new URLSearchParams("section=referrals");
+  test("never opens a withheld referral section, even at its path", () => {
+    pathname = "/en-US/account/referrals";
     const view = renderLayout(<ReferralBadgePublisher section="referrals" />, {
       referralsEnabled: false,
     });
 
     expect(
-      getDesktopNavigation(view).queryByRole("button", { name: /Referrals/ })
+      getDesktopNavigation(view).queryByRole("link", { name: /Referrals/ })
     ).toBeNull();
     expect(
-      getMobileNavigation(view).queryByRole("button", { name: "Referrals" })
+      getMobileNavigation(view).queryByRole("link", { name: "Referrals" })
     ).toBeNull();
     expect(
       getDesktopNavigation(view)
-        .getByRole("button", { name: "Reservations" })
+        .getByRole("link", { name: "Reservations" })
         .getAttribute("aria-current")
     ).toBe("page");
 
@@ -370,18 +372,18 @@ describe("AccountLayoutShell", () => {
     expect(view.queryByText("-15%")).toBeNull();
     expect(
       getDesktopNavigation(view)
-        .getByRole("button", { name: "Reservations" })
+        .getByRole("link", { name: "Reservations" })
         .getAttribute("aria-current")
     ).toBe("page");
     expect(routerPush).not.toHaveBeenCalled();
   });
 
   test("opens the released referral section with its badge", () => {
-    searchParams = new URLSearchParams("section=referrals");
+    pathname = "/en-US/account/referrals";
     const view = renderLayout(<ReferralBadgePublisher />);
 
     fireEvent.click(view.getByRole("button", { name: "Publish badge" }));
-    const referrals = getDesktopNavigation(view).getByRole("button", {
+    const referrals = getDesktopNavigation(view).getByRole("link", {
       name: /Referrals/,
     });
     expect(referrals.getAttribute("aria-current")).toBe("page");
@@ -389,28 +391,28 @@ describe("AccountLayoutShell", () => {
   });
 
   test("withholds Sign-in & security while passkeys are off", () => {
-    searchParams = new URLSearchParams("section=security");
+    pathname = "/en-US/account/security";
     const view = renderLayout(<p>Account</p>);
 
     expect(
-      getDesktopNavigation(view).queryByRole("button", {
+      getDesktopNavigation(view).queryByRole("link", {
         name: "Sign-in & security",
       })
     ).toBeNull();
     expect(
       getDesktopNavigation(view)
-        .getByRole("button", { name: "Reservations" })
+        .getByRole("link", { name: "Reservations" })
         .getAttribute("aria-current")
     ).toBe("page");
   });
 
-  test("opens Sign-in & security from the URL while passkeys are on", () => {
-    searchParams = new URLSearchParams("section=security");
+  test("opens Sign-in & security from its path while passkeys are on", () => {
+    pathname = "/en-US/account/security";
     const view = renderLayout(<p>Account</p>, { passkeysEnabled: true });
 
     expect(
       getDesktopNavigation(view)
-        .getByRole("button", { name: "Sign-in & security" })
+        .getByRole("link", { name: "Sign-in & security" })
         .getAttribute("aria-current")
     ).toBe("page");
   });

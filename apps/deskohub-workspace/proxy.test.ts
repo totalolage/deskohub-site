@@ -326,6 +326,62 @@ test.each([
   }
 );
 
+describe("legacy account section links", () => {
+  test("redirects a localized ?section= link to the section's path, keeping other parameters", async () => {
+    const response = await proxy(
+      new NextRequest(
+        "https://workspace.example/cs-CZ/account?section=security&utm_source=email"
+      )
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/cs-CZ/account/security?utm_source=email"
+    );
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.cookies.get(localeCookieName)?.value).toBe("cs-CZ");
+  });
+
+  test("redirects an unknown section to the account itself", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/account?section=unknown")
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/en-US/account"
+    );
+  });
+
+  test("redirects an unprefixed ?section= link straight to the localized section path", async () => {
+    const response = await proxy(
+      new NextRequest(
+        "https://workspace.example/account?section=billing&ref=RFL12345",
+        { headers: { "accept-language": "cs-CZ,cs;q=0.9" } }
+      )
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/cs-CZ/account/billing?ref=RFL12345"
+    );
+  });
+
+  test("serves section paths and other account pages without a redirect", async () => {
+    for (const path of [
+      "/en-US/account",
+      "/en-US/account/profile",
+      "/en-US/account/legal?section=profile",
+    ]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${path}`)
+      );
+
+      expect(response.headers.get("location")).toBeNull();
+    }
+  });
+});
+
 test("prevents private reservation responses from being cached", async () => {
   for (const path of [
     "/en-US/reservation/status/reservation-id?outcome=success",

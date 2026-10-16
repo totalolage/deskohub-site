@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Page, Route } from "@playwright/test";
+import { getAccountSectionPath } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import {
   type AccountLegalFixture,
@@ -223,11 +224,7 @@ const assertShellContinuity = (
   expect(observation.navigation).toEqual(expectedGeometry.navigation);
 };
 
-const isTargetRscRequest = (
-  route: Route,
-  expectedPathname: string,
-  expectedSection: string | undefined
-) => {
+const isTargetRscRequest = (route: Route, expectedPathname: string) => {
   const request = route.request();
   const requestHeaders = request.headers();
   if (requestHeaders.rsc !== "1") return false;
@@ -240,10 +237,7 @@ const isTargetRscRequest = (
   }
 
   const url = new URL(request.url());
-  if (url.pathname !== expectedPathname) return false;
-  return expectedSection === undefined
-    ? url.searchParams.get("section") === null
-    : url.searchParams.get("section") === expectedSection;
+  return url.pathname === expectedPathname;
 };
 
 const heldRscFetchAttempts = 3;
@@ -270,8 +264,7 @@ const fetchHeldRscResponse = async (route: Route) => {
 
 const holdRscNavigation = async (
   page: Page,
-  expectedPathname: string,
-  expectedSection: string | undefined
+  expectedPathname: string
 ): Promise<HeldRscNavigation> => {
   const intercepted = makeDeferred<void>();
   const release = makeDeferred<void>();
@@ -279,7 +272,7 @@ const holdRscNavigation = async (
   const routePattern = "**/*";
 
   const handler = async (route: Route) => {
-    if (!isTargetRscRequest(route, expectedPathname, expectedSection)) {
+    if (!isTargetRscRequest(route, expectedPathname)) {
       await route.continue();
       return;
     }
@@ -349,12 +342,12 @@ const accountNavigation = (page: Page, locale: Locale) =>
     name: m.accountNavigationLabel({}, { locale }),
   });
 
-const accountSectionButton = (
+const accountSectionLink = (
   page: Page,
   locale: Locale,
   section: AccountSection
 ) =>
-  accountNavigation(page, locale).getByRole("button", {
+  accountNavigation(page, locale).getByRole("link", {
     exact: true,
     name: accountSectionLabels(locale)[section],
   });
@@ -362,7 +355,8 @@ const accountSectionButton = (
 const assertAccountNavigationControls = async (
   page: Page,
   locale: Locale,
-  mode: ViewportMode
+  mode: ViewportMode,
+  privateNavigationEnabled: boolean
 ) => {
   const navigation = accountNavigation(page, locale);
   const navigationBox = await navigation.boundingBox();
@@ -377,31 +371,60 @@ const assertAccountNavigationControls = async (
   });
   expect(await mobileGroup.isVisible()).toBe(mode === "mobile");
 
-  for (const label of Object.values(accountSectionLabels(locale))) {
+  for (const [section, label] of Object.entries(accountSectionLabels(locale))) {
+    const privateSection = section !== "legal";
+    const enabled = !privateSection || privateNavigationEnabled;
+    const links = navigation.getByRole("link", {
+      exact: true,
+      includeHidden: true,
+      name: label,
+    });
     const buttons = navigation.getByRole("button", {
       exact: true,
       includeHidden: true,
       name: label,
     });
-    expect(await buttons.count()).toBe(2);
+    expect(await links.count()).toBe(enabled ? 2 : 0);
+    expect(await buttons.count()).toBe(enabled ? 0 : 2);
 
-    const buttonStates = await buttons.evaluateAll((elements) =>
-      elements.map((element) => {
-        const rect = element.getBoundingClientRect();
-        return {
-          height: rect.height,
-          visible:
-            rect.width > 0 &&
-            rect.height > 0 &&
-            getComputedStyle(element).visibility !== "hidden",
-          width: rect.width,
-        };
-      })
+    if (enabled) {
+      const expectedHref = getAccountSectionPath(
+        locale,
+        section as AccountSection
+      );
+      expect(
+        await links.evaluateAll(
+          (elements, href) =>
+            elements.every((element) => element.getAttribute("href") === href),
+          expectedHref
+        )
+      ).toBe(true);
+    } else {
+      expect(
+        await buttons.evaluateAll((elements) =>
+          elements.every((element) => (element as HTMLButtonElement).disabled)
+        )
+      ).toBe(true);
+    }
+
+    const controlStates = await (enabled ? links : buttons).evaluateAll(
+      (elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            height: rect.height,
+            visible:
+              rect.width > 0 &&
+              rect.height > 0 &&
+              getComputedStyle(element).visibility !== "hidden",
+            width: rect.width,
+          };
+        })
     );
-    const visibleButtons = buttonStates.filter(({ visible }) => visible);
-    expect(visibleButtons).toHaveLength(1);
-    expect(visibleButtons[0]?.width).toBeGreaterThan(0);
-    expect(visibleButtons[0]?.height).toBeGreaterThan(0);
+    const visibleControls = controlStates.filter(({ visible }) => visible);
+    expect(visibleControls).toHaveLength(1);
+    expect(visibleControls[0]?.width).toBeGreaterThan(0);
+    expect(visibleControls[0]?.height).toBeGreaterThan(0);
   }
 };
 
@@ -410,25 +433,25 @@ const assertMobileLegalScroll = async (page: Page) => {
     const mobileNavigation = document.querySelector(
       "[data-account-mobile-navigation]"
     );
-    const activeMobileButton = mobileNavigation?.querySelector(
-      "button[aria-current='page']"
+    const activeMobileLink = mobileNavigation?.querySelector(
+      "a[aria-current='page']"
     );
     if (
       !(mobileNavigation instanceof HTMLElement) ||
-      !(activeMobileButton instanceof HTMLButtonElement)
+      !(activeMobileLink instanceof HTMLAnchorElement)
     ) {
       return false;
     }
 
     const navigationRect = mobileNavigation.getBoundingClientRect();
-    const buttonRect = activeMobileButton.getBoundingClientRect();
+    const linkRect = activeMobileLink.getBoundingClientRect();
     return (
       navigationRect.width > 0 &&
       navigationRect.height > 0 &&
-      buttonRect.width > 0 &&
-      buttonRect.height > 0 &&
-      buttonRect.left >= navigationRect.left - 1 &&
-      buttonRect.right <= navigationRect.right + 1
+      linkRect.width > 0 &&
+      linkRect.height > 0 &&
+      linkRect.left >= navigationRect.left - 1 &&
+      linkRect.right <= navigationRect.right + 1
     );
   });
 
@@ -471,8 +494,8 @@ const assertMobileLegalScroll = async (page: Page) => {
     const mobileNavigation = navigation?.querySelector(
       "[data-account-mobile-navigation]"
     );
-    const activeMobileButton = mobileNavigation?.querySelector(
-      "button[aria-current='page']"
+    const activeMobileLink = mobileNavigation?.querySelector(
+      "a[aria-current='page']"
     );
     if (
       !(header instanceof HTMLElement) ||
@@ -482,7 +505,7 @@ const assertMobileLegalScroll = async (page: Page) => {
       !(content instanceof HTMLElement) ||
       !(mobileFooter instanceof HTMLElement) ||
       !(mobileNavigation instanceof HTMLElement) ||
-      !(activeMobileButton instanceof HTMLButtonElement)
+      !(activeMobileLink instanceof HTMLAnchorElement)
     ) {
       throw new Error("mobile legal scroll geometry elements are missing");
     }
@@ -491,16 +514,16 @@ const assertMobileLegalScroll = async (page: Page) => {
     const contentRect = content.getBoundingClientRect();
     const mobileFooterRect = mobileFooter.getBoundingClientRect();
     const mobileNavigationRect = mobileNavigation.getBoundingClientRect();
-    const activeMobileButtonRect = activeMobileButton.getBoundingClientRect();
+    const activeMobileLinkRect = activeMobileLink.getBoundingClientRect();
     const mobileNavigationStyle = getComputedStyle(mobileNavigation);
     const asideStyle = getComputedStyle(aside);
     const navigationRect = navigation.getBoundingClientRect();
     return {
-      activeMobileButtonBottom: activeMobileButtonRect.bottom,
-      activeMobileButtonHeight: activeMobileButtonRect.height,
-      activeMobileButtonLeft: activeMobileButtonRect.left,
-      activeMobileButtonRight: activeMobileButtonRect.right,
-      activeMobileButtonSection: activeMobileButton.dataset.accountSection,
+      activeMobileLinkBottom: activeMobileLinkRect.bottom,
+      activeMobileLinkHeight: activeMobileLinkRect.height,
+      activeMobileLinkLeft: activeMobileLinkRect.left,
+      activeMobileLinkRight: activeMobileLinkRect.right,
+      activeMobileLinkSection: activeMobileLink.dataset.accountSection,
       asidePosition: asideStyle.position,
       asideTop: Number.parseFloat(asideStyle.top),
       bodyWidth: document.body.scrollWidth,
@@ -543,12 +566,12 @@ const assertMobileLegalScroll = async (page: Page) => {
   expect(["x", "x proximity"]).toContain(
     observation.mobileNavigationScrollSnapType
   );
-  expect(observation.activeMobileButtonSection).toBe("legal");
-  expect(observation.activeMobileButtonHeight).toBe(44);
-  expect(observation.activeMobileButtonLeft).toBeGreaterThanOrEqual(
+  expect(observation.activeMobileLinkSection).toBe("legal");
+  expect(observation.activeMobileLinkHeight).toBe(44);
+  expect(observation.activeMobileLinkLeft).toBeGreaterThanOrEqual(
     observation.mobileNavigationLeft - 1
   );
-  expect(observation.activeMobileButtonRight).toBeLessThanOrEqual(
+  expect(observation.activeMobileLinkRight).toBeLessThanOrEqual(
     observation.mobileNavigationRight + 1
   );
   expect(observation.helpDisplay).not.toBe("none");
@@ -614,6 +637,43 @@ const waitForPublicLegalContent = async (page: Page, locale: Locale) => {
   expect(await legalNavigation.count()).toBe(1);
 };
 
+const assertBareReservationsClickIsNoop = async (
+  fixture: AccountLegalFixture,
+  locale: Locale
+) => {
+  const context = await openFixtureContext(fixture, {
+    extraHTTPHeaders: {
+      [accountFixtureAuthHeader]: "private",
+    },
+    viewport: { height: 900, width: 1440 },
+  });
+  const page = await context.newPage();
+  const accountUrl = `${fixture.serverUrl}/${locale}/account`;
+
+  try {
+    await page.goto(accountUrl, { waitUntil: "domcontentloaded" });
+    await page
+      .locator('[data-fixture-hydrated="true"]')
+      .waitFor({ state: "attached" });
+    await page
+      .locator('[data-testid="synthetic-private-content"]')
+      .waitFor({ state: "visible" });
+
+    const reservationsLink = accountSectionLink(page, locale, "reservations");
+    await reservationsLink.waitFor({ state: "visible" });
+    await waitForReactClickHandler(page, reservationsLink);
+    expect(await reservationsLink.getAttribute("href")).toBe(
+      getAccountSectionPath(locale, "reservations")
+    );
+    expect(await reservationsLink.getAttribute("aria-current")).toBe("page");
+
+    await reservationsLink.click();
+    expect(page.url()).toBe(accountUrl);
+  } finally {
+    await closeFixtureContext(fixture, context);
+  }
+};
+
 const runPrivateContinuity = async (
   fixture: AccountLegalFixture,
   viewport: Viewport,
@@ -634,7 +694,8 @@ const runPrivateContinuity = async (
   try {
     await page.goto(
       accountToLegal
-        ? `${fixture.serverUrl}/${locale}/account?section=profile`
+        ? new URL(getAccountSectionPath(locale, "profile"), fixture.serverUrl)
+            .href
         : `${fixture.serverUrl}/${locale}/account/legal`,
       {
         waitUntil: "domcontentloaded",
@@ -657,14 +718,14 @@ const runPrivateContinuity = async (
     expect(await page.locator(accountHeaderSelector).count()).toBe(1);
     expect(await page.locator(accountNavigationSelector).count()).toBe(1);
 
-    await assertAccountNavigationControls(page, locale, mode);
+    await assertAccountNavigationControls(page, locale, mode, true);
     const sourceSection = accountToLegal ? "profile" : "legal";
     const targetSection = accountToLegal ? "legal" : "profile";
-    const sourceButton = accountSectionButton(page, locale, sourceSection);
-    await sourceButton.waitFor({ state: "visible" });
-    await waitForReactClickHandler(page, sourceButton);
-    expect(await sourceButton.count()).toBe(1);
-    expect(await sourceButton.getAttribute("aria-current")).toBe("page");
+    const sourceLink = accountSectionLink(page, locale, sourceSection);
+    await sourceLink.waitFor({ state: "visible" });
+    await waitForReactClickHandler(page, sourceLink);
+    expect(await sourceLink.count()).toBe(1);
+    expect(await sourceLink.getAttribute("aria-current")).toBe("page");
 
     await captureShellReferences(page);
     const initialGeometry = await readGeometry(page);
@@ -672,15 +733,14 @@ const runPrivateContinuity = async (
 
     const forward = await holdRscNavigation(
       page,
-      accountToLegal ? `/${locale}/account/legal` : `/${locale}/account`,
-      accountToLegal ? undefined : "profile"
+      getAccountSectionPath(locale, targetSection)
     );
     try {
-      const targetButton = accountSectionButton(page, locale, targetSection);
-      await targetButton.waitFor({ state: "visible" });
-      await waitForReactClickHandler(page, targetButton);
-      expect(await targetButton.count()).toBe(1);
-      await targetButton.click();
+      const targetLink = accountSectionLink(page, locale, targetSection);
+      await targetLink.waitFor({ state: "visible" });
+      await waitForReactClickHandler(page, targetLink);
+      expect(await targetLink.count()).toBe(1);
+      await targetLink.click();
       await forward.waitForIntercept();
       assertShellContinuity(
         await inspectShellContinuity(page),
@@ -691,21 +751,20 @@ const runPrivateContinuity = async (
       if (accountToLegal) {
         await page.waitForURL(`${fixture.serverUrl}/${locale}/account/legal`);
         await waitForPublicLegalContent(page, locale);
-        await assertAccountNavigationControls(page, locale, mode);
+        await assertAccountNavigationControls(page, locale, mode, true);
         if (mode === "mobile") {
           await assertMobileLegalScroll(page);
           await restoreTopScroll(page);
         }
       } else {
         await page.waitForURL(
-          (url) =>
-            url.pathname === `/${locale}/account` &&
-            url.searchParams.get("section") === "profile"
+          new URL(getAccountSectionPath(locale, "profile"), fixture.serverUrl)
+            .href
         );
         await page
           .locator('[data-testid="synthetic-private-content"]')
           .waitFor({ state: "visible" });
-        await assertAccountNavigationControls(page, locale, mode);
+        await assertAccountNavigationControls(page, locale, mode, true);
       }
       await page
         .locator(accountContentLoadingSelector)
@@ -743,7 +802,7 @@ const assertAnonymousLegalRoute = async (
     expect(await page.locator(accountHeaderSelector).count()).toBe(1);
     expect(await page.locator(accountNavigationSelector).count()).toBe(1);
     await assertGlobalHeaderGeometry(page);
-    await assertAccountNavigationControls(page, locale, "mobile");
+    await assertAccountNavigationControls(page, locale, "mobile", false);
     await assertMobileLegalScroll(page);
     await restoreTopScroll(page);
 
@@ -751,17 +810,27 @@ const assertAnonymousLegalRoute = async (
     for (const [section, label] of Object.entries(
       accountSectionLabels(locale)
     )) {
+      const links = navigation.getByRole("link", {
+        exact: true,
+        includeHidden: true,
+        name: label,
+      });
       const buttons = navigation.getByRole("button", {
         exact: true,
         includeHidden: true,
         name: label,
       });
-      expect(await buttons.count()).toBe(2);
-      const disabledStates = await buttons.evaluateAll((elements) =>
-        elements.map((element) => (element as HTMLButtonElement).disabled)
-      );
-      for (const disabled of disabledStates) {
-        expect(disabled).toBe(section !== "legal");
+      if (section === "legal") {
+        expect(await links.count()).toBe(2);
+        expect(await buttons.count()).toBe(0);
+      } else {
+        expect(await links.count()).toBe(0);
+        expect(await buttons.count()).toBe(2);
+        expect(
+          await buttons.evaluateAll((elements) =>
+            elements.every((element) => (element as HTMLButtonElement).disabled)
+          )
+        ).toBe(true);
       }
     }
   } finally {
@@ -819,17 +888,12 @@ const assertSignedInRolloutOffLegalRoute = async (
       ).toBe(true);
     }
 
-    const legalButtons = navigation.getByRole("button", {
+    const legalLinks = navigation.getByRole("link", {
       exact: true,
       includeHidden: true,
       name: accountSectionLabels(locale).legal,
     });
-    expect(await legalButtons.count()).toBe(2);
-    expect(
-      await legalButtons.evaluateAll((elements) =>
-        elements.every((element) => !(element as HTMLButtonElement).disabled)
-      )
-    ).toBe(true);
+    expect(await legalLinks.count()).toBe(2);
 
     const dedicatedLinkContent = page.locator(
       '[data-marketing-preferences="pending-link"]'
@@ -847,7 +911,7 @@ const assertSignedInRolloutOffLegalRoute = async (
         .count()
     ).toBe(1);
     await assertGlobalHeaderGeometry(page);
-    await assertAccountNavigationControls(page, locale, "mobile");
+    await assertAccountNavigationControls(page, locale, "mobile", false);
     await assertMobileLegalScroll(page);
     await restoreTopScroll(page);
   } finally {
@@ -857,6 +921,12 @@ const assertSignedInRolloutOffLegalRoute = async (
 
 describe("account legal continuity browser fixture", () => {
   const requireFixture = registerAccountLegalFixture();
+
+  test("keeps the bare account URL when active Reservations is clicked", {
+    timeout: accountFixtureCaseTimeout,
+  }, async () => {
+    await assertBareReservationsClickIsNoop(requireFixture(), "en-US");
+  });
 
   for (const { locale, viewport } of continuityCases) {
     const { height, name, width } = viewport;

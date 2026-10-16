@@ -1,4 +1,4 @@
-import type { AccountSection } from "@/features/account/components/shell/account-shell";
+import type { AccountSection } from "@/features/account/sections";
 import type { ReservationCustomerMode } from "@/features/reservation/reservation-existing-customer";
 import type { WorkspaceE2EAccountCaseId } from "./catalog";
 import type { AccountReviewTarget } from "./review-screenshots";
