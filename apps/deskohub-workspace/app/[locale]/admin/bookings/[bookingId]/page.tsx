@@ -7,7 +7,7 @@ import {
 import {
   getAdministrationBookingGuestCount,
   getAdministrationBookingStatusLabel,
-} from "@/features/administration/booking-table";
+} from "@/features/administration/booking-presentation";
 import {
   AdministrationDetailSection,
   AdministrationFact,
