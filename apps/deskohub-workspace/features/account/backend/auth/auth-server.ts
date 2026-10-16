@@ -1,6 +1,11 @@
 import "server-only";
 
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
+import {
+  getAuthenticatorName,
+  type PasskeyOptions,
+  passkey,
+} from "@better-auth/passkey";
 import { getLocaleFromPathname } from "@deskohub/i18n/pathname";
 import {
   APIError,
@@ -9,7 +14,11 @@ import {
   betterAuth,
   type DBAdapter,
 } from "better-auth";
-import { createAuthMiddleware, isAPIError } from "better-auth/api";
+import {
+  createAuthMiddleware,
+  getSessionFromCtx,
+  isAPIError,
+} from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { emailOTP, magicLink } from "better-auth/plugins";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
@@ -39,6 +48,7 @@ import {
   lookupMagicLinkDeliveryLocale,
   type MagicLinkLocaleLookup,
 } from "../customer-locale-preference";
+import type { PasskeyRelyingParty } from "./auth-hosts";
 import {
   authOptions,
   betterAuthMagicLinkOptions,
@@ -74,6 +84,8 @@ export type WorkspaceAuthConfig = {
   readonly database: NonNullable<BetterAuthOptions["database"]>;
   readonly secrets: NonNullable<BetterAuthOptions["secrets"]>;
   readonly allowedHosts: readonly string[];
+  /** This deployment's passkey RP ID and origins, never the plugin default. */
+  readonly passkeyRelyingParty: PasskeyRelyingParty;
   readonly httpsOnly: boolean;
   /** Request-memoized feature-flag read; a rejection counts as disabled. */
   readonly areAccountsEnabled: () => Promise<boolean>;
@@ -82,6 +94,11 @@ export type WorkspaceAuthConfig = {
    * as disabled.
    */
   readonly isSignInCodeEnabled: () => Promise<boolean>;
+  /**
+   * The `login_passkeys` read, once per passkey registration request; a
+   * rejection counts as disabled.
+   */
+  readonly arePasskeysEnabled: () => Promise<boolean>;
   /** BotID verification of the current request. */
   readonly verifyHuman: (
     input: VerifyHumanInput
@@ -111,6 +128,14 @@ const accountSignInPaths = new Set([
   "/sign-in/magic-link",
   "/magic-link/verify",
   "/sign-in/email-otp",
+  "/passkey/generate-authenticate-options",
+  "/passkey/verify-authentication",
+]);
+
+/** Both steps of adding a passkey; `login_passkeys` gates them. */
+const passkeyRegistrationPaths = new Set([
+  "/passkey/generate-register-options",
+  "/passkey/verify-registration",
 ]);
 
 /**
@@ -167,6 +192,24 @@ const makeBotDetectedError = () =>
   new APIError("FORBIDDEN", {
     code: "BOT_DETECTED",
     message: "Automated request detected.",
+  });
+
+const makePasskeyRegistrationUnavailableError = () =>
+  new APIError("FORBIDDEN", {
+    code: "PASSKEY_REGISTRATION_UNAVAILABLE",
+    message: "Passkeys can't be added right now.",
+  });
+
+const makePasskeyAccountMismatchError = () =>
+  new APIError("FORBIDDEN", {
+    code: "PASSKEY_ACCOUNT_MISMATCH",
+    message: "This passkey belongs to a different account.",
+  });
+
+const makePasskeyUserVerificationRequiredError = () =>
+  new APIError("FORBIDDEN", {
+    code: "PASSKEY_USER_VERIFICATION_REQUIRED",
+    message: "Confirming with a passkey requires user verification.",
   });
 
 /** Better Auth's response to a wrong or used code. */
@@ -288,6 +331,18 @@ const requireAccounts = ({ config, request }: AuthRequestGuard) =>
     Effect.when(Effect.succeed(accountSignInPaths.has(request.path)))
   );
 
+/**
+ * Adding a passkey needs `login_passkeys` on; an unreadable flag counts as
+ * off. Passkey sign-in never reads it, so turning the flag off locks no one
+ * out.
+ */
+const requirePasskeyRegistration = ({ config, request }: AuthRequestGuard) =>
+  Effect.tryPromise(() => config.arePasskeysEnabled()).pipe(
+    Effect.orElseSucceed(() => false),
+    Effect.filterOrFail(Boolean, makePasskeyRegistrationUnavailableError),
+    Effect.when(Effect.succeed(passkeyRegistrationPaths.has(request.path)))
+  );
+
 const hasProfileFields = ({ path, body }: GuardedAuthRequest) =>
   path === "/update-user" ||
   (path === "/sign-in/magic-link" &&
@@ -397,13 +452,15 @@ const guardSignInPath = (guard: AuthRequestGuard) =>
   );
 
 /**
- * Rejects sign-in requests while accounts are disabled (an unreadable flag
- * counts as disabled), any request carrying profile fields, and code
+ * Rejects sign-in requests while accounts are disabled and passkey
+ * registrations while passkeys are disabled (an unreadable flag counts as
+ * disabled), any request carrying profile fields, and code
  * sign-ins carrying anything beyond the email, code, and callback URL.
  */
 const guardAuthRequest = (guard: AuthRequestGuard) =>
   Effect.succeed(guard).pipe(
     Effect.tap(requireAccounts),
+    Effect.tap(requirePasskeyRegistration),
     Effect.tap(rejectProfileFields),
     Effect.flatMap(guardSignInPath),
     Effect.withSpan("WorkspaceAuth.guardRequest")
@@ -607,6 +664,99 @@ const completeAuthRequest = (ctx: CompletedAuthRequest) =>
       })
     : undefined;
 
+type PasskeyAssertion = Parameters<
+  NonNullable<
+    NonNullable<PasskeyOptions["authentication"]>["afterVerification"]
+  >
+>[0];
+
+const passkeyOwnerSchema = Schema.Struct({ userId: Schema.String });
+
+/** The account a verified passkey belongs to, if its row still exists. */
+const passkeyOwner = ({ ctx, verification }: PasskeyAssertion) =>
+  Effect.promise(() =>
+    ctx.context.adapter.findOne({
+      model: "passkey",
+      where: [
+        {
+          field: "credentialID",
+          value: verification.authenticationInfo.credentialID,
+        },
+      ],
+    })
+  ).pipe(
+    Effect.map((row) =>
+      Option.map(
+        Schema.decodeUnknownOption(passkeyOwnerSchema)(row),
+        ({ userId }) => userId
+      )
+    )
+  );
+
+/**
+ * A passkey assertion from a browser that already holds a session confirms
+ * that same customer, as the delete-account and stale-enrolment
+ * reauthentication do: it must come from one of the session account's own
+ * passkeys and carry user verification. Otherwise it fails before the
+ * plugin creates a session, so the current session stays in place. Better
+ * Auth already limits the options' `allowCredentials` to the session
+ * account's passkeys; this check doesn't rely on the browser honouring it.
+ * An anonymous assertion is an ordinary passkey sign-in.
+ */
+const confirmSessionPasskey = (assertion: PasskeyAssertion) =>
+  Effect.promise(() => getSessionFromCtx(assertion.ctx)).pipe(
+    Effect.map(Option.fromNullishOr),
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.void,
+        onSome: (session) =>
+          passkeyOwner(assertion).pipe(
+            Effect.filterOrFail(
+              (owner) => Option.contains(owner, session.user.id),
+              makePasskeyAccountMismatchError
+            ),
+            Effect.filterOrFail(
+              () => assertion.verification.authenticationInfo.userVerified,
+              makePasskeyUserVerificationRequiredError
+            ),
+            Effect.asVoid
+          ),
+      })
+    ),
+    Effect.withSpan("WorkspaceAuth.confirmSessionPasskey")
+  );
+
+type PasskeyOptionsRequest = Parameters<
+  Parameters<typeof createAuthMiddleware>[0]
+>[0];
+
+/**
+ * Asks the browser for user verification on a reauthentication: options
+ * requested with a session, which `confirmSessionPasskey` then requires.
+ * Sign-in options keep the plugin's `preferred` setting.
+ */
+const requireReauthenticationUserVerification = (ctx: PasskeyOptionsRequest) =>
+  Option.liftPredicate(ctx.context.returned, Predicate.isObject).pipe(
+    Option.filter(
+      (returned) =>
+        ctx.path === "/passkey/generate-authenticate-options" &&
+        !isAPIError(returned)
+    ),
+    Option.match({
+      onNone: () => Effect.void,
+      onSome: (returned) =>
+        Effect.promise(() => getSessionFromCtx(ctx)).pipe(
+          Effect.flatMap((session) =>
+            session
+              ? Effect.promise(async () =>
+                  ctx.json({ ...returned, userVerification: "required" })
+                )
+              : Effect.void
+          )
+        ),
+    })
+  );
+
 /**
  * Picks the magic-link email language. A verified existing account uses its
  * saved preference. An account without a preference, a pre-account (first)
@@ -689,7 +839,13 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
           guardAuthRequest({ config, request: ctx })
         )
       ),
-      after: createAuthMiddleware(async (ctx) => completeAuthRequest(ctx)),
+      after: createAuthMiddleware(
+        async (ctx) =>
+          completeAuthRequest(ctx) ??
+          runWorkspaceEffect("account.passkey.reauthentication-options", {
+            boundary: "route",
+          })(requireReauthenticationUserVerification(ctx))
+      ),
     },
     plugins: [
       magicLink({
@@ -712,6 +868,25 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
         // Codes are issued only with a magic link; this plugin's own send
         // endpoint is disabled.
         sendVerificationOTP: () => Promise.reject(new APIError("NOT_FOUND")),
+      }),
+      passkey({
+        rpID: config.passkeyRelyingParty.rpID,
+        rpName: authOptions.appName,
+        origin: [...config.passkeyRelyingParty.origins],
+        registration: {
+          // Labels a passkey the client didn't name with its provider, such
+          // as "Google Password Manager". Unknown and anonymous authenticators
+          // stay unnamed, and the client shows a generic localized label.
+          afterVerification: ({ verification }) => ({
+            name: getAuthenticatorName(verification.registrationInfo?.aaguid),
+          }),
+        },
+        authentication: {
+          afterVerification: (assertion) =>
+            runWorkspaceEffect("account.passkey.confirm-session", {
+              boundary: "route",
+            })(confirmSessionPasskey(assertion)),
+        },
       }),
       // Better Auth requires `nextCookies` to be the last plugin: it forwards
       // Set-Cookie headers into the Next.js cookie store for Server Action

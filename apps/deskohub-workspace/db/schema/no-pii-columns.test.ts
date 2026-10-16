@@ -43,6 +43,9 @@ const allowedColumns = new Map([
   // Better Auth requires the column, but the auth server rejects profile
   // names; the customer profile lives in Dotypos.
   ["auth.user.name", "Better Auth required column, kept empty"],
+  // The passkey plugin's credential label: the authenticator's provider
+  // name, or the label a customer gives their passkey to tell it apart.
+  ["auth.passkey.name", "Better Auth passkey label"],
   // An email delivery identifier, explicitly allowed by the No-PII policy.
   [
     "public.workspace_reservations.active_customer_email_delivery_id",

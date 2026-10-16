@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.2",
+    "@better-auth/passkey": "1.7.2",
     "@deskohub/ares": "workspace:*",
     "@deskohub/cloudinary": "workspace:*",
     "@deskohub/cloudinary-image": "workspace:*",
@@ -150,6 +151,7 @@
     "@opentelemetry/context-async-hooks": "2.12.0",
     "@playwright/test": "1.61.1",
     "@react-email/ui": "6.11.1",
+    "@simplewebauthn/server": "13.3.3",
     "@testing-library/react": "^16.3.2",
     "@total-typescript/ts-reset": "^0.6.1",
     "@types/country-list": "^2.1.4",
