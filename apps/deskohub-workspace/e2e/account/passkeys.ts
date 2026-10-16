@@ -175,6 +175,10 @@ export const makeWorkspaceE2EAccountPasskeys = ({
     return authenticator;
   };
 
+  /** Runs a ceremony the customer starts, with the authenticator answering. */
+  const answerCeremony = <A>(ceremony: () => Promise<A>) =>
+    requireAuthenticator().answerCeremony(ceremony);
+
   return {
     readSignInOffer: operation(
       "account_passkey_sign_in_offer_failed",
@@ -217,24 +221,26 @@ export const makeWorkspaceE2EAccountPasskeys = ({
       "account_passkey_prompt_failed",
       "create a passkey from the post-sign-in prompt",
       async (page) => {
-        requireAuthenticator();
-        await clickHydrated(page, promptCreateSelector, uiTransition);
-        // The prompt closes itself once the passkey is saved.
-        await page
-          .locator(promptCreateSelector)
-          .waitFor({ state: "hidden", timeout: providerTransition });
+        await answerCeremony(async () => {
+          await clickHydrated(page, promptCreateSelector, uiTransition);
+          // The prompt closes itself once the passkey is saved.
+          await page
+            .locator(promptCreateSelector)
+            .waitFor({ state: "hidden", timeout: providerTransition });
+        });
       }
     ),
     signIn: operation(
       "account_passkey_sign_in_failed",
       "sign in with the passkey button",
       async (page) => {
-        requireAuthenticator();
-        await clickHydrated(page, signInPasskeySelector, uiTransition);
-        await page.waitForURL(
-          (url) => url.origin === origin && url.pathname === accountPathname,
-          { timeout: navigationTimeout }
-        );
+        await answerCeremony(async () => {
+          await clickHydrated(page, signInPasskeySelector, uiTransition);
+          await page.waitForURL(
+            (url) => url.origin === origin && url.pathname === accountPathname,
+            { timeout: navigationTimeout }
+          );
+        });
       }
     ),
     renameOnly: (name) =>
@@ -289,29 +295,30 @@ export const makeWorkspaceE2EAccountPasskeys = ({
       "account_passkey_settings_create_failed",
       "create a passkey from Sign-in & security",
       async (page) => {
-        requireAuthenticator();
         await openSecuritySection(page);
-        await clickHydrated(page, addPasskeySelector);
-        const create = page.locator(addPasskeyCreateSelector);
-        const reauthenticate = page.locator(addPasskeyReauthSendSelector);
-        const created = page
-          .locator(securityStatusSelector)
-          .filter({ hasText: createdStatus });
-        await create
-          .or(reauthenticate)
-          .or(created)
-          .first()
-          .waitFor({ state: "attached", timeout: uiTransition });
-        if (await reauthenticate.isVisible()) {
-          throw new PasskeyJourneyFailure(
-            "the fresh passkey session was asked to reauthenticate"
-          );
-        }
-        if (await create.isVisible()) {
-          await waitForReactClickHandler(page, create);
-          await create.click({ timeout: browserTimeout });
-        }
-        await waitSecurityStatus(page, createdStatus);
+        await answerCeremony(async () => {
+          await clickHydrated(page, addPasskeySelector);
+          const create = page.locator(addPasskeyCreateSelector);
+          const reauthenticate = page.locator(addPasskeyReauthSendSelector);
+          const created = page
+            .locator(securityStatusSelector)
+            .filter({ hasText: createdStatus });
+          await create
+            .or(reauthenticate)
+            .or(created)
+            .first()
+            .waitFor({ state: "attached", timeout: uiTransition });
+          if (await reauthenticate.isVisible()) {
+            throw new PasskeyJourneyFailure(
+              "the fresh passkey session was asked to reauthenticate"
+            );
+          }
+          if (await create.isVisible()) {
+            await waitForReactClickHandler(page, create);
+            await create.click({ timeout: browserTimeout });
+          }
+          await waitSecurityStatus(page, createdStatus);
+        });
         await waitPasskeyRowCount(page, 1);
       }
     ),
@@ -319,7 +326,6 @@ export const makeWorkspaceE2EAccountPasskeys = ({
       "account_passkey_deletion_reauth_failed",
       "confirm account deletion with a passkey",
       async (page) => {
-        requireAuthenticator();
         await selectAccountSection(page, "danger");
         await clickHydrated(page, deleteAccountTriggerSelector);
         await page
@@ -328,16 +334,18 @@ export const makeWorkspaceE2EAccountPasskeys = ({
         await page
           .locator(deleteAccountConfirmSelector)
           .click({ timeout: browserTimeout });
-        await clickHydrated(
-          page,
-          deleteAccountReauthPasskeySelector,
-          providerTransition
-        );
-        // A confirmed passkey returns the dialog to its destructive
-        // confirmation, which the customer has to confirm again.
-        await page
-          .locator(deleteAccountReauthPasskeySelector)
-          .waitFor({ state: "detached", timeout: providerTransition });
+        await answerCeremony(async () => {
+          await clickHydrated(
+            page,
+            deleteAccountReauthPasskeySelector,
+            providerTransition
+          );
+          // A confirmed passkey returns the dialog to its destructive
+          // confirmation, which the customer has to confirm again.
+          await page
+            .locator(deleteAccountReauthPasskeySelector)
+            .waitFor({ state: "detached", timeout: providerTransition });
+        });
         const confirm = page.locator(deleteAccountConfirmSelector);
         await confirm.waitFor({ state: "visible", timeout: uiTransition });
         await page.keyboard.press("Escape");

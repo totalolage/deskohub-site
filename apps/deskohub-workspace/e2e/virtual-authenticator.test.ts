@@ -49,7 +49,7 @@ const makeSession = (
   };
 };
 
-test("adds a CTAP2 internal discoverable authenticator that verifies the user", async () => {
+test("adds a CTAP2 internal discoverable authenticator that waits for presence", async () => {
   const session = makeSession();
   await attachVirtualAuthenticator(session);
 
@@ -61,7 +61,7 @@ test("adds a CTAP2 internal discoverable authenticator that verifies the user", 
     },
   ]);
   expect(virtualPlatformAuthenticatorOptions).toEqual({
-    automaticPresenceSimulation: true,
+    automaticPresenceSimulation: false,
     hasResidentKey: true,
     hasUserVerification: true,
     isUserVerified: true,
@@ -75,6 +75,33 @@ test("reads credentials without exposing their identifiers or keys", async () =>
 
   expect(await authenticator.readCredentials()).toEqual([
     { isResidentCredential: true, rpId: "preview.example.test" },
+  ]);
+});
+
+test("simulates presence only while a ceremony runs", async () => {
+  const session = makeSession();
+  const authenticator = await attachVirtualAuthenticator(session);
+  const presence = (enabled: boolean) => ({
+    method: "WebAuthn.setAutomaticPresenceSimulation",
+    params: { authenticatorId: "authenticator-1", enabled },
+  });
+
+  const result = await authenticator.answerCeremony(async () => {
+    expect(session.commands.at(-1)).toEqual(presence(true));
+    return "signed in";
+  });
+  await expect(
+    authenticator.answerCeremony(async () => {
+      throw new Error("ceremony failed");
+    })
+  ).rejects.toThrow("ceremony failed");
+
+  expect(result).toBe("signed in");
+  expect(session.commands.slice(2)).toEqual([
+    presence(true),
+    presence(false),
+    presence(true),
+    presence(false),
   ]);
 });
 

@@ -3,12 +3,18 @@ import type { CDPSession, Page } from "@playwright/test";
 /**
  * A platform passkey authenticator as Chromium's WebAuthn domain emulates it:
  * a CTAP2 internal authenticator that stores discoverable credentials and
- * verifies the user, answering every ceremony without a prompt. It runs the
- * browser's real origin and RP ID checks, unlike Playwright's credential
- * mocks, so a ceremony against the deployed host proves its WebAuthn config.
+ * verifies the user. It runs the browser's real origin and RP ID checks,
+ * unlike Playwright's credential mocks, so a ceremony against the deployed
+ * host proves its WebAuthn config.
+ *
+ * It starts without simulated presence. With presence on, Chromium answers a
+ * conditional (autofill) request at once, so every sign-in form would sign
+ * the customer straight back in. Without it, requests wait the way they do
+ * for a customer who ignores the browser's passkey autofill, and a test turns
+ * presence on only for the ceremony it drives.
  */
 export const virtualPlatformAuthenticatorOptions = {
-  automaticPresenceSimulation: true,
+  automaticPresenceSimulation: false,
   hasResidentKey: true,
   hasUserVerification: true,
   isUserVerified: true,
@@ -29,6 +35,12 @@ export type VirtualAuthenticator = {
   readonly readCredentials: () => Promise<
     readonly VirtualAuthenticatorCredential[]
   >;
+  /**
+   * Simulates the customer's presence while `ceremony` runs, so the WebAuthn
+   * requests it starts are answered. A conditional request already pending
+   * stays pending.
+   */
+  readonly answerCeremony: <A>(ceremony: () => Promise<A>) => Promise<A>;
   /** Removes the authenticator and detaches its session; repeat calls no-op. */
   readonly remove: () => Promise<void>;
 };
@@ -59,8 +71,22 @@ export const attachVirtualAuthenticator = async (
     throw cause;
   }
 
+  const setPresence = (enabled: boolean) =>
+    session.send("WebAuthn.setAutomaticPresenceSimulation", {
+      authenticatorId,
+      enabled,
+    });
+
   let removal: Promise<void> | undefined;
   return {
+    answerCeremony: async (ceremony) => {
+      await setPresence(true);
+      try {
+        return await ceremony();
+      } finally {
+        await setPresence(false);
+      }
+    },
     readCredentials: async () => {
       const { credentials } = await session.send("WebAuthn.getCredentials", {
         authenticatorId,
