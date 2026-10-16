@@ -14,6 +14,9 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 mock.module("server-only", () => ({}));
+mock.module("@/features/i18n/server/request-locale", () => ({
+  getRequestLocale: () => Promise.resolve("en-US"),
+}));
 mock.module("@/features/admin-cli/actions", () => ({
   approveCliAuthentication: mock(),
 }));
@@ -59,6 +62,7 @@ describe("CliAuthenticationApprovalPage", () => {
     const { CliAuthenticationRequest } = await import("./page");
     const view = render(
       await CliAuthenticationRequest({
+        locale: Promise.resolve("en-US"),
         searchParams: Promise.resolve({ code: "pending-code" }),
       })
     );
@@ -66,9 +70,33 @@ describe("CliAuthenticationApprovalPage", () => {
     expect(view.getByText(/Approving as/).textContent).toContain(
       "Approving as operator."
     );
-    expect(view.getByText("operator")).toBeTruthy();
     expect(view.getByText("Office Mac")).toBeTruthy();
     expect(view.getByRole("button", { name: "Approve this CLI" })).toBeTruthy();
+  });
+
+  test("renders the pending approval in Czech on a Czech route", async () => {
+    const { CliAuthenticationRequest } = await import("./page");
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        {
+          await CliAuthenticationRequest({
+            locale: Promise.resolve("cs-CZ"),
+            searchParams: Promise.resolve({ code: "pending-code" }),
+          })
+        }
+      </RouteLocaleProvider>
+    );
+
+    expect(view.getByText(/Schvalujete jako/).textContent).toContain(
+      "Schvalujete jako operator."
+    );
+    expect(view.getByText("Klient")).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Schválit toto CLI" })
+    ).toBeTruthy();
   });
 
   test("does not imply approval once the request reaches a terminal state", async () => {
@@ -79,12 +107,13 @@ describe("CliAuthenticationApprovalPage", () => {
     const { CliAuthenticationRequest } = await import("./page");
     const view = render(
       await CliAuthenticationRequest({
+        locale: Promise.resolve("en-US"),
         searchParams: Promise.resolve({ code: "granted-code" }),
       })
     );
 
     expect(view.queryByText(/Approving as/)).toBeNull();
-    expect(view.queryByText("operator")).toBeNull();
+    expect(view.queryByText(/operator/)).toBeNull();
     expect(view.getByText("CLI authenticated")).toBeTruthy();
   });
 });

@@ -9,7 +9,10 @@ import {
   AdministrationPageHeader,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
 import { AdministrationPanelLoading } from "@/features/administration/loading";
+import type { Locale } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function CliAuthenticationApprovalPage({
   searchParams,
@@ -19,41 +22,55 @@ export default function CliAuthenticationApprovalPage({
     readonly result?: string;
   }>;
 }) {
+  const locale = getRequestLocale();
   return (
     <AdministrationPage className="max-w-4xl">
-      <AdministrationPageHeader
-        description="Confirm that this command-line client may access the Workspace administration API."
-        eyebrow="CLI security"
-        title="Approve CLI authentication"
-      />
+      <CliAuthenticationHeader locale={locale} />
       <Suspense
         fallback={
           <AdministrationPanelLoading label="CLI authentication request" />
         }
       >
-        <CliAuthenticationRequest searchParams={searchParams} />
+        <CliAuthenticationRequest locale={locale} searchParams={searchParams} />
       </Suspense>
     </AdministrationPage>
   );
 }
 
+async function CliAuthenticationHeader({
+  locale: localePromise,
+}: {
+  readonly locale: Promise<Locale>;
+}) {
+  const locale = await localePromise;
+  return (
+    <AdministrationPageHeader
+      description={m.adminCliAuthenticateDescription({}, { locale })}
+      eyebrow={m.adminCliAuthenticateEyebrow({}, { locale })}
+      title={m.adminCliAuthenticateTitle({}, { locale })}
+    />
+  );
+}
+
 export async function CliAuthenticationRequest({
+  locale: localePromise,
   searchParams,
 }: {
+  readonly locale: Promise<Locale>;
   readonly searchParams: Promise<{
     readonly code?: string;
     readonly result?: string;
   }>;
 }) {
-  const params = await searchParams;
+  const [locale, params] = await Promise.all([localePromise, searchParams]);
   const approval = await loadCliAuthenticationApproval(params.code);
 
   if (!approval?.request) {
     return (
       <AuthenticationMessage
-        description="Return to the CLI and run dhw auth again to create a fresh request."
+        description={m.adminCliAuthenticateRestartDescription({}, { locale })}
         icon={ShieldAlert}
-        title="This authentication request is invalid or has expired"
+        title={m.adminCliAuthenticateInvalidTitle({}, { locale })}
       />
     );
   }
@@ -63,9 +80,12 @@ export async function CliAuthenticationRequest({
   return (
     <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
       <dl className="grid divide-y divide-navy-blue/10 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-        <AuthenticationDetail label="Client" value={request.clientName} />
         <AuthenticationDetail
-          label="CLI build"
+          label={m.adminCliAuthenticateClientLabel({}, { locale })}
+          value={request.clientName}
+        />
+        <AuthenticationDetail
+          label={m.adminCliAuthenticateBuildLabel({}, { locale })}
           value={`${request.cliVersion} · ${request.buildTarget}`}
         />
       </dl>
@@ -73,6 +93,7 @@ export async function CliAuthenticationRequest({
         <AuthenticationRequestState
           code={params.code}
           failed={params.result === "error"}
+          locale={locale}
           request={request}
           username={username}
         />
@@ -84,11 +105,13 @@ export async function CliAuthenticationRequest({
 function AuthenticationRequestState({
   code,
   failed,
+  locale,
   request,
   username,
 }: {
   readonly code?: string;
   readonly failed: boolean;
+  readonly locale: Locale;
   readonly request: NonNullable<
     NonNullable<
       Awaited<ReturnType<typeof loadCliAuthenticationApproval>>
@@ -101,18 +124,17 @@ function AuthenticationRequestState({
       <>
         <AdministrationAlert className="mb-5" status="warning">
           <p>
-            This request expires at{" "}
-            <strong>{formatAdministrationDateTime(request.expiresAt)}</strong>.
-            Approve it only if you initiated the request in your terminal.
-            Approving as <strong>{username}</strong>.
+            {m.adminCliAuthenticateRequestExpiresAt(
+              { expiresAt: formatAdministrationDateTime(request.expiresAt) },
+              { locale }
+            )}{" "}
+            {m.adminCliAuthenticateApproveOnlyOwnRequest({}, { locale })}{" "}
+            {m.adminCliAuthenticateApprovingAs({ username }, { locale })}
           </p>
         </AdministrationAlert>
         {failed && (
           <AdministrationAlert className="mb-5" status="error">
-            <p>
-              The CLI could not be approved. Check the session duration and try
-              again.
-            </p>
+            <p>{m.adminCliAuthenticateApprovalFailed({}, { locale })}</p>
           </AdministrationAlert>
         )}
         <ApproveCliAuthenticationForm code={code} />
@@ -124,9 +146,9 @@ function AuthenticationRequestState({
     return (
       <AuthenticationMessage
         compact
-        description="Return to your terminal. The CLI will complete the exchange automatically."
+        description={m.adminCliAuthenticateApprovedDescription({}, { locale })}
         icon={CheckCircle2}
-        title="Authentication approved"
+        title={m.adminCliAuthenticateApprovedTitle({}, { locale })}
       />
     );
   }
@@ -135,9 +157,9 @@ function AuthenticationRequestState({
     return (
       <AuthenticationMessage
         compact
-        description="The CLI has received its credential. You can close this page."
+        description={m.adminCliAuthenticateGrantedDescription({}, { locale })}
         icon={CheckCircle2}
-        title="CLI authenticated"
+        title={m.adminCliAuthenticateGrantedTitle({}, { locale })}
       />
     );
   }
@@ -145,12 +167,12 @@ function AuthenticationRequestState({
   return (
     <AuthenticationMessage
       compact
-      description="Return to the CLI and run dhw auth again to create a fresh request."
+      description={m.adminCliAuthenticateRestartDescription({}, { locale })}
       icon={ShieldAlert}
       title={
         request.state === "revoked"
-          ? "This CLI session has been revoked"
-          : "This authentication request has expired"
+          ? m.adminCliAuthenticateRevokedTitle({}, { locale })
+          : m.adminCliAuthenticateExpiredTitle({}, { locale })
       }
     />
   );

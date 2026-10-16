@@ -1,11 +1,18 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
-import type { CliSessionIdType } from "@deskohub/workspace-admin-api";
+import {
+  CliSessionId,
+  type CliSessionIdType,
+} from "@deskohub/workspace-admin-api";
+import { Option, Schema } from "effect";
 import { Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Dialog,
@@ -30,6 +37,28 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { renameCliSession } from "./actions";
 import { renameCliSessionSchema } from "./contracts";
 
+// The contract's client name rule fails with library messages in English, so
+// the dialog applies that rule and reports it in operator copy.
+const createRenameCliSessionFormSchema = (locale: Locale) =>
+  Schema.Struct({
+    sessionId: CliSessionId,
+    clientName: Schema.String.check(
+      Schema.makeFilter((clientName) => {
+        if (isValidClientName(clientName)) return true;
+        return clientName.trim() === ""
+          ? m.adminCliRenameLabelRequired({}, { locale })
+          : m.adminCliRenameLabelTooLong({}, { locale });
+      })
+    ),
+  });
+
+const isValidClientName = (clientName: string) =>
+  Option.isSome(
+    Schema.decodeUnknownOption(renameCliSessionSchema.fields.clientName)(
+      clientName
+    )
+  );
+
 type RenameCliSessionFormInput = {
   readonly sessionId: string;
   readonly clientName: string;
@@ -47,6 +76,7 @@ export function RenameCliSession({
   readonly clientName: string;
   readonly sessionId: CliSessionIdType;
 }) {
+  const locale = useRouteLocale();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +88,7 @@ export function RenameCliSession({
     defaultValues: { sessionId, clientName },
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(renameCliSessionSchema, {
+    resolver: effectSchemaResolver(createRenameCliSessionFormSchema(locale), {
       onExcessProperty: "error",
     }),
   });
@@ -71,10 +101,9 @@ export function RenameCliSession({
     },
     onError: ({ error: actionError }) =>
       setError(
-        actionError.serverError ?? "The CLI session label could not be updated."
+        actionError.serverError ?? m.adminCliRenameFailed({}, { locale })
       ),
-    onTransportError: () =>
-      setError("The CLI session label could not be updated."),
+    onTransportError: () => setError(m.adminCliRenameFailed({}, { locale })),
   });
 
   return (
@@ -89,15 +118,14 @@ export function RenameCliSession({
       <DialogTrigger asChild>
         <Button size="sm" type="button" variant="secondary">
           <Pencil aria-hidden className="size-4" />
-          Rename
+          {m.adminCliRenameTrigger({}, { locale })}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Rename CLI session</DialogTitle>
+          <DialogTitle>{m.adminCliRenameTitle({}, { locale })}</DialogTitle>
           <DialogDescription>
-            Choose a label that makes this machine easy to recognize. Renaming
-            does not change its access.
+            {m.adminCliRenameDescription({}, { locale })}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -118,7 +146,7 @@ export function RenameCliSession({
               name="clientName"
               render={({ field: { onChange, ...field }, fieldState }) => (
                 <FormItem>
-                  <FormLabel>Client label</FormLabel>
+                  <FormLabel>{m.adminCliRenameLabel({}, { locale })}</FormLabel>
                   <FormControl>
                     <Input
                       {...field}
@@ -147,11 +175,13 @@ export function RenameCliSession({
                   type="button"
                   variant="secondary"
                 >
-                  Cancel
+                  {m.adminCliRenameCancel({}, { locale })}
                 </Button>
               </DialogClose>
               <Button disabled={isExecuting} type="submit">
-                {isExecuting ? "Saving…" : "Save label"}
+                {isExecuting
+                  ? m.adminCliRenameSaving({}, { locale })
+                  : m.adminCliRenameSubmit({}, { locale })}
               </Button>
             </DialogFooter>
           </form>

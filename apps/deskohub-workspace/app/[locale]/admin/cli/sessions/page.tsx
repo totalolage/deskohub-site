@@ -6,38 +6,56 @@ import {
   AdministrationPage,
   AdministrationTableCount,
   AdministrationTableToolbar,
+  formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
 import { AdministrationCollectionLoading } from "@/features/administration/loading";
+import type { Locale } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function CliSessionsPage({
   searchParams,
 }: {
   readonly searchParams: Promise<{ readonly result?: string }>;
 }) {
+  const locale = getRequestLocale();
   return (
     <AdministrationPage>
-      <h1 className="sr-only">CLI sessions</h1>
+      <h1 className="sr-only">
+        <CliSessionsTitle locale={locale} />
+      </h1>
       <Suspense
         fallback={
           <AdministrationCollectionLoading label="CLI sessions" columns={8} />
         }
       >
-        <CliSessionsContent searchParams={searchParams} />
+        <CliSessionsContent locale={locale} searchParams={searchParams} />
       </Suspense>
     </AdministrationPage>
   );
 }
 
+async function CliSessionsTitle({
+  locale,
+}: {
+  readonly locale: Promise<Locale>;
+}) {
+  return m.adminCliSessionsTitle({}, { locale: await locale });
+}
+
 export async function CliSessionsContent({
+  locale: localePromise,
   searchParams,
 }: {
+  readonly locale: Promise<Locale>;
   readonly searchParams: Promise<{ readonly result?: string }>;
 }) {
-  const [{ sessions, username }, params] = await Promise.all([
+  const [{ sessions, username }, locale, params] = await Promise.all([
     loadCliSessions(),
+    localePromise,
     searchParams,
   ]);
-  const notice = getSessionsNotice(params.result);
+  const notice = getSessionsNotice(params.result, locale);
 
   return (
     <>
@@ -49,8 +67,7 @@ export async function CliSessionsContent({
               itemLabel="CLI session"
             />
             <p className="text-sm text-navy-blue/60">
-              Sessions approved by{" "}
-              <span className="font-medium">{username}</span>
+              {m.adminCliSessionsApprovedBy({ username }, { locale })}
             </p>
           </>
         }
@@ -58,18 +75,30 @@ export async function CliSessionsContent({
       />
       <AdministrationNoticeBanner notice={notice} />
 
-      <CliSessionsTable sessions={sessions} />
+      <CliSessionsTable
+        sessions={sessions.map((session) => ({
+          ...session,
+          createdAtText: formatAdministrationDateTime(session.createdAt),
+          expiresAtText: session.expiresAt
+            ? formatAdministrationDateTime(session.expiresAt)
+            : null,
+          lastUsedAtText: formatAdministrationDateTime(session.lastUsedAt),
+        }))}
+      />
     </>
   );
 }
 
-const getSessionsNotice = (result: string | undefined) => {
+const getSessionsNotice = (result: string | undefined, locale: Locale) => {
   if (result === "revoked") {
-    return { message: "CLI session revoked.", status: "success" as const };
+    return {
+      message: m.adminCliSessionsRevokedNotice({}, { locale }),
+      status: "success" as const,
+    };
   }
   if (result === "unchanged") {
     return {
-      message: "That CLI session was already revoked or no longer exists.",
+      message: m.adminCliSessionsUnchangedNotice({}, { locale }),
       status: "error" as const,
     };
   }
