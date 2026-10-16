@@ -12,6 +12,7 @@ import {
   ListFilter,
   Mail,
   Menu,
+  ShieldCheck,
   SquareTerminal,
   Ticket,
   Users,
@@ -86,6 +87,11 @@ const navigation = [
         href: "/admin/cli/sessions",
         icon: SquareTerminal,
         label: m.shellNavigationCliSessions,
+      },
+      {
+        href: "/admin/administrators",
+        icon: ShieldCheck,
+        label: m.administratorsNavigation,
       },
     ],
   },
@@ -187,6 +193,7 @@ function NavigationLink({
 const breadcrumbNames: Readonly<Record<string, ShellMessage>> = {
   admin: m.shellBreadcrumbOverview,
   "access-codes": m.shellBreadcrumbAccessCodes,
+  administrators: m.administratorsBreadcrumb,
   bookings: m.shellBreadcrumbBookings,
   cli: m.shellBreadcrumbCli,
   codes: m.shellBreadcrumbCodes,
