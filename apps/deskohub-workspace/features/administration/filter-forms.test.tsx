@@ -8,6 +8,7 @@ import {
 } from "bun:test";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { m } from "@/features/i18n";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -310,5 +311,19 @@ describe("administration filter forms", () => {
       ]);
       await expectNativeGetSubmission(form);
     });
+  });
+  // The server renders without an ambient locale, so a message that falls
+  // back to it would differ from the hydrated client on a Czech route.
+  test("names reservation types in the route locale", () => {
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        {reservationFilterForm({})}
+      </RouteLocaleProvider>
+    );
+
+    expect(
+      view.container.querySelector('#reservation-type option[value="office"]')
+        ?.textContent
+    ).toBe(m.reservationOfficeProductTitle({}, { locale: "cs-CZ" }));
   });
 });
