@@ -1,5 +1,7 @@
 export { dotyposApiTimeoutDefaultMilliseconds } from "./api-timeout";
 export type {
+  CustomerChanges,
+  CustomerChangesOptions,
   CustomerLookupField,
   DotyposCustomerBillingDetails,
   DotyposCustomerDetails,

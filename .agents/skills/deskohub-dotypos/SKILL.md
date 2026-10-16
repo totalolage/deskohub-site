@@ -1,11 +1,12 @@
 ---
 name: deskohub-dotypos
-description: Dotypos API, @deskohub/dotypos, DotyposService, OpenAPI contract, generated client, new endpoint, refresh token, Connector authorization, manual API inspection, request timeout, Dotypos customer email or phone.
+description: Dotypos API, @deskohub/dotypos, DotyposService, OpenAPI contract, generated client, new endpoint, refresh token, Connector authorization, manual API inspection, request timeout, Dotypos customer email or phone, PostHog customer source, Custom REST warehouse source, customer export, ANALYTICS_WAREHOUSE_SOURCE_TOKEN.
 ---
 
 # Deskohub Dotypos
 
 - For Connector authorization and refresh-token acquisition, read [references/authorization.md](references/authorization.md).
+- For the PostHog Custom REST customer source (contract, field allowlist, access token, and PostHog setup), read [references/posthog-customer-source.md](references/posthog-customer-source.md).
 - For manual API inspection, read [references/manual-diagnostics.md](references/manual-diagnostics.md). Before production access or log inspection, load `deskohub-workspace-operations` and follow its diagnostics reference.
 
 ## Package boundary

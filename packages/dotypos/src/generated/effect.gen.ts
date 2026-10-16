@@ -119,8 +119,8 @@ export type PatchReservation401 = ErrorResponse
 export const PatchReservation401 = ErrorResponse
 export type PatchReservation404 = ErrorResponse
 export const PatchReservation404 = ErrorResponse
-export type GetCustomersParams = { readonly "filter"?: string, readonly "page"?: number, readonly "limit"?: number }
-export const GetCustomersParams = Schema.Struct({ "filter": Schema.optionalKey(Schema.String), "page": Schema.optionalKey(Schema.Number.annotate({ "default": 1 }).check(Schema.isInt())), "limit": Schema.optionalKey(Schema.Number.annotate({ "default": 100 }).check(Schema.isInt()).check(Schema.isLessThanOrEqualTo(100))) })
+export type GetCustomersParams = { readonly "filter"?: string, readonly "sort"?: string, readonly "page"?: number, readonly "limit"?: number }
+export const GetCustomersParams = Schema.Struct({ "filter": Schema.optionalKey(Schema.String), "sort": Schema.optionalKey(Schema.String), "page": Schema.optionalKey(Schema.Number.annotate({ "default": 1 }).check(Schema.isInt())), "limit": Schema.optionalKey(Schema.Number.annotate({ "default": 100 }).check(Schema.isInt()).check(Schema.isLessThanOrEqualTo(100))) })
 export type GetCustomers200 = PaginatedCustomers
 export const GetCustomers200 = PaginatedCustomers
 export type GetCustomers401 = ErrorResponse
@@ -491,7 +491,7 @@ export const make = (
     }))
   ),
     "getCustomers": (cloudId, options) => HttpClientRequest.get(`/clouds/${cloudId}/customers`).pipe(
-    HttpClientRequest.setUrlParams({ "filter": options?.params?.["filter"] as any, "page": options?.params?.["page"] as any, "limit": options?.params?.["limit"] as any }),
+    HttpClientRequest.setUrlParams({ "filter": options?.params?.["filter"] as any, "sort": options?.params?.["sort"] as any, "page": options?.params?.["page"] as any, "limit": options?.params?.["limit"] as any }),
     withResponse(options?.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(GetCustomers200),
       "401": decodeError("GetCustomers401", GetCustomers401),

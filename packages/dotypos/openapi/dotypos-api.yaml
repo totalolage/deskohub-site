@@ -371,6 +371,11 @@ paths:
           description: Filter customers (e.g., by email or phone)
           schema:
             type: string
+        - name: sort
+          in: query
+          description: Sort customers (for example, "versionDate,id")
+          schema:
+            type: string
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
       responses:

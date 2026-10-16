@@ -72,7 +72,7 @@ Read the reference that matches your change before editing:
   staging, promotion, recovery, and deletion ordering.
 - [PostHog identity and privacy](references/posthog-identity-privacy.md):
   analytics consent, identity transitions, event and property limits, flag
-  requests, ingest host isolation, and connectors.
+  requests, ingest host isolation, and the Dotypos customer warehouse source.
 
 Upstream docs: [Next.js integration](https://better-auth.com/docs/integrations/next),
 [Drizzle adapter](https://better-auth.com/docs/adapters/drizzle),

@@ -611,7 +611,7 @@ const legalDocuments = {
     "privacy-policy": {
       title: "Privacy Policy",
       lead: "This page explains how Desktechub s.r.o. handles personal data on the Deskohub Workspace website, including customer accounts, contact forms, and reservations.",
-      updatedAt: "3 September 2026",
+      updatedAt: "16 October 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -725,6 +725,17 @@ const legalDocuments = {
               details such as name, email, phone, message, reservation date,
               selected tier, coffee preference, or monitor preference.
             </>,
+            <>
+              We also send selected customer data from our booking system
+              Dotypos to our analytics provider to understand how customers use
+              our services and how that relates to their activity on the
+              website: the customer identifier, name, company name, email,
+              phone, address, birthday, discount group, loyalty points, customer
+              tags, and when the customer record was created, last changed, or
+              deleted. Notes and other customer data stay in Dotypos. For a
+              signed-in customer who gave analytics consent, the customer
+              identifier links this data to their website analytics.
+            </>,
           ],
         },
         {
@@ -758,6 +769,12 @@ const legalDocuments = {
               cookie settings.
             </>,
             <>
+              Sending customer data from our booking system to our analytics
+              provider is based on our legitimate interest in understanding and
+              improving our services, where that interest is not overridden by
+              your rights. You can object to this processing at any time.
+            </>,
+            <>
               Future marketing communications are based on your separate
               consent. Giving this consent is voluntary and is not a condition
               of making or paying for a reservation.
@@ -788,9 +805,10 @@ const legalDocuments = {
               retention period.
             </>,
             <>
-              Analytics and campaign measurement data is retained according to
-              the applicable analytics and technical provider settings and only
-              as long as necessary for the stated measurement purposes.
+              Analytics and campaign measurement data, including customer data
+              sent to our analytics provider, is retained according to the
+              applicable analytics and technical provider settings and only as
+              long as necessary for the stated measurement purposes.
             </>,
             <>
               The customer-level marketing consent record remains tied to the
@@ -1059,7 +1077,7 @@ const legalDocuments = {
     "privacy-policy": {
       title: "Zásady ochrany osobních údajů",
       lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji zaslanými přes veřejný web Deskohub Workspace, včetně kontaktního a rezervačního formuláře.",
-      updatedAt: "12. srpna 2026",
+      updatedAt: "16. října 2026",
       sections: [
         {
           heading: "1. Správce",
@@ -1168,6 +1186,18 @@ const legalDocuments = {
               e-mail, telefon, zpráva, datum rezervace, vybraný tarif,
               preference kávy nebo preference monitorů.
             </>,
+            <>
+              Vybrané zákaznické údaje z našeho rezervačního systému Dotypos
+              také předáváme našemu analytickému poskytovateli, abychom
+              porozuměli tomu, jak zákazníci využívají naše služby a jak to
+              souvisí s jejich aktivitou na webu: identifikátor zákazníka,
+              jméno, název společnosti, e-mail, telefon, adresu, datum narození,
+              slevovou skupinu, věrnostní body, štítky zákazníka a údaj o tom,
+              kdy byl záznam zákazníka vytvořen, naposledy změněn nebo smazán.
+              Poznámky a další zákaznické údaje zůstávají v Dotypos. U
+              přihlášeného zákazníka, který udělil analytický souhlas, propojuje
+              identifikátor zákazníka tyto údaje s jeho analytikou webu.
+            </>,
           ],
         },
         {
@@ -1197,6 +1227,12 @@ const legalDocuments = {
               Nepovinné cookies zpracováváme pouze na základě vašeho souhlasu.
               Analytické a kampanové měření je založené na souhlasu, který
               můžete kdykoli odvolat nebo změnit v nastavení cookies.
+            </>,
+            <>
+              Předávání zákaznických údajů z našeho rezervačního systému
+              analytickému poskytovateli vychází z našeho oprávněného zájmu
+              porozumět našim službám a zlepšovat je, nepřevažují-li nad ním
+              vaše práva. Proti tomuto zpracování můžete kdykoli vznést námitku.
             </>,
             <>
               Budoucí marketingová sdělení jsou založena na vašem samostatném
@@ -1229,7 +1265,8 @@ const legalDocuments = {
               nebo oprávněnou dobu uchování.
             </>,
             <>
-              Analytické údaje a údaje pro kampanové měření uchováváme podle
+              Analytické údaje a údaje pro kampanové měření, včetně zákaznických
+              údajů předaných analytickému poskytovateli, uchováváme podle
               nastavení příslušných analytických a technických poskytovatelů a
               pouze po dobu potřebnou pro uvedené účely měření.
             </>,

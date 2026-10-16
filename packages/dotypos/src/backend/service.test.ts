@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { EMAIL_TEST_DOMAIN, testEmailAddress } from "@deskohub/test-email";
 import {
+  DateTime,
   Effect,
   Fiber,
   Layer,
@@ -1524,6 +1525,147 @@ describe("DotyposService customer lookup", () => {
           getUrl(call as FetchCall).includes("/customers")
       )
     ).toBe(false);
+  });
+});
+
+describe("DotyposService customer changes", () => {
+  const changedSince = DateTime.makeUnsafe("2026-10-01T12:00:00.000Z");
+
+  const customerListRequests = (fetchMock: { mock: { calls: unknown[][] } }) =>
+    fetchMock.mock.calls
+      .map((call) => new URL(getUrl(call as FetchCall)))
+      .filter((url) => url.pathname === "/clouds/cloud-id/customers");
+
+  test("reads the page holding the first wanted change with one request", async () => {
+    const customers = Array.from({ length: 100 }, (_, index) =>
+      customer({ id: `customer-${index}`, deleted: index === 1 })
+    );
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return Response.json({ data: customers, nextPage: "4" });
+    });
+
+    const changes = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listCustomerChanges({ changedSince, skip: 298 });
+      }),
+      fetchMock
+    );
+
+    const requests = customerListRequests(fetchMock);
+    expect(requests).toHaveLength(1);
+    expect(Object.fromEntries(requests[0]?.searchParams ?? [])).toEqual({
+      filter: `deleted|in|0,1;versionDate|gteq|${DateTime.toEpochMillis(changedSince)}`,
+      sort: "versionDate,id",
+      limit: "100",
+      page: "3",
+    });
+    expect(changes.customers.map(({ id }) => id)).toEqual([
+      dotyposCustomerId("customer-98"),
+      dotyposCustomerId("customer-99"),
+    ]);
+    expect(changes.hasMore).toBe(true);
+  });
+
+  test("lists every customer, deleted ones included, without a start", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return Response.json({
+        data: [customer({ id: "deleted-customer", deleted: true })],
+        nextPage: null,
+      });
+    });
+
+    const changes = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listCustomerChanges({ skip: 0 });
+      }),
+      fetchMock
+    );
+
+    const [request] = customerListRequests(fetchMock);
+    expect(request?.searchParams.get("filter")).toBe("deleted|in|0,1");
+    expect(request?.searchParams.get("page")).toBe("1");
+    expect(changes).toEqual({
+      customers: [customer({ id: "deleted-customer", deleted: true })],
+      hasMore: false,
+    });
+  });
+
+  test("treats a page Dotypos answers with 404 as the end of the list", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return Response.json(
+        { error: "not_found", error_description: "Not found", code: 404 },
+        { status: 404 }
+      );
+    });
+
+    const changes = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listCustomerChanges({ changedSince, skip: 100 });
+      }),
+      fetchMock
+    );
+
+    expect(changes).toEqual({ customers: [], hasMore: false });
+  });
+
+  test("leaves a rate-limited read to the caller instead of retrying it", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return Response.json(
+        {
+          error: "rate_limited",
+          error_description: "Too many requests",
+          code: 429,
+        },
+        { status: 429 }
+      );
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .listCustomerChanges({ changedSince, skip: 0 })
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ExternalAPIError", statusCode: 429 },
+    });
+    expect(customerListRequests(fetchMock)).toHaveLength(1);
+  });
+
+  test("rejects an invalid offset without calling Dotypos", async () => {
+    const fetchMock = mockDotyposFetch(() => tokenResponse());
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .listCustomerChanges({ skip: -1 })
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ValidationError" },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

@@ -1,6 +1,7 @@
 import {
   Context,
   Data,
+  DateTime,
   Duration,
   Effect,
   Layer,
@@ -68,6 +69,22 @@ export type ReservationListOptions = {
 export type CustomerListOptions = {
   readonly ids: readonly DotyposCustomerId[];
 };
+
+export type CustomerChangesOptions = {
+  /** Lists only customers whose `versionDate` is at or after this instant. */
+  readonly changedSince?: DateTime.Utc;
+  /** Number of customers to pass over at the start of the ordered list. */
+  readonly skip: number;
+};
+
+export type CustomerChanges = {
+  /** Customers ordered by `versionDate`, then `id`, deleted ones included. */
+  readonly customers: readonly DotyposCustomer[];
+  readonly hasMore: boolean;
+};
+
+/** Dotypos serves at most this many records per list page. */
+const dotyposMaximumPageSize = 100;
 
 type DotyposPage<A> = {
   readonly data?: readonly A[];
@@ -952,6 +969,66 @@ const makeDotyposService = Effect.gen(function* () {
     );
   });
 
+  /**
+   * Reads one page of customer changes for an incremental export. It sends
+   * exactly one list request and never retries it, so every call costs one
+   * request against the Dotypos rate limit and the caller decides when to try
+   * again. Dotypos pages by number only, so `skip` selects the page that holds
+   * the first wanted customer and drops the customers before it.
+   */
+  const listCustomerChanges = Effect.fn("listCustomerChanges")(function* (
+    options: CustomerChangesOptions
+  ) {
+    if (!Number.isSafeInteger(options.skip) || options.skip < 0) {
+      return yield* new ValidationError({
+        message: "Customer change offset is invalid",
+      });
+    }
+    const filter = [
+      "deleted|in|0,1",
+      ...(options.changedSince === undefined
+        ? []
+        : [`versionDate|gteq|${DateTime.toEpochMillis(options.changedSince)}`]),
+    ].join(";");
+    const page = Math.floor(options.skip / dotyposMaximumPageSize) + 1;
+
+    const result = yield* runDotyposRequest(
+      client.getCustomers(config.cloudId, {
+        params: {
+          filter,
+          sort: "versionDate,id",
+          limit: dotyposMaximumPageSize,
+          page,
+        },
+      }),
+      "listCustomerChanges"
+    ).pipe(
+      // Dotypos answers a page without customers with 404.
+      Effect.catchTag("ExternalAPIError", (error) =>
+        error.statusCode === 404
+          ? Effect.succeed({ data: [] as const })
+          : Effect.fail(error)
+      ),
+      Effect.flatMap((result) =>
+        decodeProviderPage(DotyposCustomerSchema, result, "listCustomerChanges")
+      ),
+      catchUnexpectedDotyposError("listCustomerChanges")
+    );
+    const nextPage = yield* getNextDotyposPageNumber({
+      currentPage: page,
+      nextPage: result.nextPage,
+      operation: "listCustomerChanges",
+    });
+
+    const changes: CustomerChanges = {
+      customers: (result.data ?? []).slice(
+        options.skip % dotyposMaximumPageSize
+      ),
+      hasMore: nextPage !== undefined,
+    };
+    return changes;
+  });
+
   const searchCustomers = Effect.fn("searchCustomers")(function* (
     rawQuery: string
   ) {
@@ -1796,6 +1873,7 @@ const makeDotyposService = Effect.gen(function* () {
     getReservationStatus,
     getCustomer,
     getCustomers,
+    listCustomerChanges,
     createCustomer,
     patchCustomer,
     searchCustomers,
