@@ -31,6 +31,8 @@ import { maskEmailAddress } from "@/shared/utils";
 
 type SignInCardProps = {
   readonly locale: Locale;
+  /** Where to continue after sign-in; validated before use. */
+  readonly returnTo?: string;
 };
 
 const signInEmailMaximumLength = 255;
@@ -57,7 +59,7 @@ type SignInFormSchema = ReturnType<typeof createSignInFormSchema>;
 type SignInFormInput = SignInFormSchema["Encoded"];
 type SignInFormValues = SignInFormSchema["Type"];
 
-export function SignInCard({ locale }: SignInCardProps) {
+export function SignInCard({ locale, returnTo }: SignInCardProps) {
   const [requested, setRequested] = useState(false);
   const [failure, setFailure] = useState<SignInEmailFailure | null>(null);
   const [codeRequest, setCodeRequest] = useSignInCodeRequest();
@@ -73,8 +75,8 @@ export function SignInCard({ locale }: SignInCardProps) {
       element.focus();
     };
   const authReturn = useMemo(
-    () => createAuthReturnLifecycle({ locale }),
-    [locale]
+    () => createAuthReturnLifecycle({ locale, returnTo }),
+    [locale, returnTo]
   );
   const signInFormSchema = createSignInFormSchema(locale);
   const form = useForm<SignInFormInput, unknown, SignInFormValues>({

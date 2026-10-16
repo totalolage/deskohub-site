@@ -20,6 +20,6 @@ test("runs the auth callback RSC regression in an isolated react-server process"
 
   const output = `${result.stdout}${result.stderr}`;
   expect(result.exitCode).toBe(0);
-  expect(output).toContain("10 pass");
+  expect(output).toContain("11 pass");
   expect(output).toContain("AUTH_CALLBACK_RSC_REGRESSION_PROOF");
 });

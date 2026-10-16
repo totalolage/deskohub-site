@@ -66,8 +66,10 @@ Preview line from Vercel runtime logs:
   stale, or ambiguous results.
 - Before navigating, resolve the logged callback against the immutable Preview
   origin: require HTTPS, the exact preview host, and the Better Auth callback
-  path. Keep the `attempt` query that `createAuthReturnLifecycle` adds; normal
-  sign-in needs it. Deduplicate identical URLs and reject distinct matches.
+  path. Keep the `attempt` and `returnTo` query that `createAuthReturnLifecycle`
+  adds; normal sign-in needs `attempt`, and a sign-in opened with `returnTo`
+  lands there. `e2e/account/callback-url.ts` is the shared callback grammar.
+  Deduplicate identical URLs and reject distinct matches.
 - `retrieveSignInEmail` returns the link and the sign-in code from one log
   line; the code is the only line that is exactly six digits.
 - Keep links, tokens, and codes in memory, and register the recipient, link,

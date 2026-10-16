@@ -67,7 +67,9 @@ describe("customer auth callback route boundary", () => {
   test("keeps the account gate inside the callback suspense boundary", async () => {
     const { default: CustomerAuthCallbackPage } = await import("./page");
 
-    const output = await CustomerAuthCallbackPage();
+    const output = await CustomerAuthCallbackPage({
+      searchParams: Promise.resolve({}),
+    });
 
     expect(output.type).toBe(Suspense);
     expect(events).toEqual([]);
@@ -81,7 +83,9 @@ describe("customer auth callback route boundary", () => {
       return false;
     });
     const { default: CustomerAuthCallbackPage } = await import("./page");
-    const output = await CustomerAuthCallbackPage();
+    const output = await CustomerAuthCallbackPage({
+      searchParams: Promise.resolve({}),
+    });
     const content = output.props.children;
     const Content = content.type as (props: {
       readonly locale: "en-US";

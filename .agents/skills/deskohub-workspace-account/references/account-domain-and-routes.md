@@ -52,6 +52,12 @@
   pass Next's generated `/[locale]/...` route patterns to
   `getLocalizedPagePath`, so typecheck proves the pages exist (the app doesn't
   enable `typedRoutes`).
+- Sign-in continues to `?returnTo=` (`signInReturnParam`) instead of the
+  account when it is a same-origin path; `getAccountSignInPath(locale,
+  returnTo)` adds it. The sign-in page passes it into the magic-link callback
+  URL, and every exit (link tab, original-tab hand-off, sign-in code, failed-link
+  retry) goes through `getSignInDestination`. Validate it with
+  `parseSameOriginPath` wherever it is read, because anyone can craft the URL.
 - The header account button links to sign-in for anonymous visitors and to
   `/account` for signed-in customers. Its href is an uncached
   `isCustomerSignedIn` promise that the header resolves with `use()` inside
