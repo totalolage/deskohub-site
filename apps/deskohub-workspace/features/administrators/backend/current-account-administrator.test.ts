@@ -1,15 +1,17 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect, Layer } from "effect";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import { AccountRoleGrants } from "./account-role-grants.service";
 
 const accountId = customerAccountIdSchema.make("synthetic-account");
 const signedInSession = {
   accountId,
-  email: "administrator@example.test",
+  email: reservationCustomerEmailSchema.make(testEmailAddress("administrator")),
   deletionRequested: false,
 } as const;
 

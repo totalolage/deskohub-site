@@ -24,7 +24,10 @@ mock.module("@/shared/components/guarded-link", () => ({
   }) => <a href={href.toString()} {...props} />,
 }));
 
+// Keeps the real exports: the mock replaces the module for the whole run.
+const navigation = await import("next/navigation");
 mock.module("next/navigation", () => ({
+  ...navigation,
   usePathname: () => "/cs-CZ",
   useSearchParams: () => new URLSearchParams(),
 }));
