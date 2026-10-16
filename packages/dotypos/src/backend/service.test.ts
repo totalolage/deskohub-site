@@ -6,6 +6,7 @@ import {
   Fiber,
   Layer,
   Logger,
+  Option,
   Predicate,
   References,
   Schema,
@@ -1536,40 +1537,74 @@ describe("DotyposService customer changes", () => {
       .map((call) => new URL(getUrl(call as FetchCall)))
       .filter((url) => url.pathname === "/clouds/cloud-id/customers");
 
-  test("reads the page holding the first wanted change with one request", async () => {
-    const customers = Array.from({ length: 100 }, (_, index) =>
-      customer({ id: `customer-${index}`, deleted: index === 1 })
-    );
-    const fetchMock = mockDotyposFetch((request) => {
-      const url = new URL(request.url);
-      if (url.pathname === "/signin/token") return tokenResponse();
-      return Response.json({ data: customers, nextPage: "4" });
-    });
-
-    const changes = await runWithService(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos.listCustomerChanges({ changedSince, skip: 298 });
-      }),
-      fetchMock
-    );
-
-    const requests = customerListRequests(fetchMock);
-    expect(requests).toHaveLength(1);
-    expect(Object.fromEntries(requests[0]?.searchParams ?? [])).toEqual({
+  test.each([
+    {
+      selection: { _tag: "Dated" } as const,
+      filter: "deleted|in|0,1;versionDate|eq|notnull",
+      sort: "versionDate",
+    },
+    {
+      selection: { _tag: "ChangedFrom", versionDate: changedSince } as const,
       filter: `deleted|in|0,1;versionDate|gteq|${DateTime.toEpochMillis(changedSince)}`,
-      sort: "versionDate,id",
-      limit: "100",
-      page: "3",
-    });
-    expect(changes.customers.map(({ id }) => id)).toEqual([
-      dotyposCustomerId("customer-98"),
-      dotyposCustomerId("customer-99"),
-    ]);
-    expect(changes.hasMore).toBe(true);
-  });
+      sort: "versionDate",
+    },
+    {
+      selection: { _tag: "ChangedAfter", versionDate: changedSince } as const,
+      filter: `deleted|in|0,1;versionDate|gt|${DateTime.toEpochMillis(changedSince)}`,
+      sort: "versionDate",
+    },
+    {
+      selection: { _tag: "ChangedAt", versionDate: changedSince } as const,
+      filter: `deleted|in|0,1;versionDate|eq|${DateTime.toEpochMillis(changedSince)}`,
+      sort: "id",
+    },
+    {
+      selection: { _tag: "Undated" } as const,
+      filter: "deleted|in|0,1;versionDate|eq|null",
+      sort: "id",
+    },
+  ])(
+    "reads one $selection._tag page with a single request",
+    async ({ selection, filter, sort }) => {
+      const customers = [
+        customer({ id: "customer-1" }),
+        customer({ id: "customer-2", deleted: true }),
+      ];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        return Response.json({
+          data: customers,
+          nextPage: "4",
+          totalItemsCount: "302",
+        });
+      });
 
-  test("lists every customer, deleted ones included, without a start", async () => {
+      const changes = await runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.listCustomerChanges({ selection, page: 3 });
+        }),
+        fetchMock
+      );
+
+      const requests = customerListRequests(fetchMock);
+      expect(requests).toHaveLength(1);
+      expect(Object.fromEntries(requests[0]?.searchParams ?? [])).toEqual({
+        filter,
+        sort,
+        limit: "100",
+        page: "3",
+      });
+      expect(changes).toEqual({
+        customers,
+        hasMore: true,
+        totalCount: Option.some(302),
+      });
+    }
+  );
+
+  test("reports an uncounted last page without a total", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
       if (url.pathname === "/signin/token") return tokenResponse();
@@ -1582,17 +1617,18 @@ describe("DotyposService customer changes", () => {
     const changes = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.listCustomerChanges({ skip: 0 });
+        return yield* dotypos.listCustomerChanges({
+          selection: { _tag: "Dated" },
+          page: 1,
+        });
       }),
       fetchMock
     );
 
-    const [request] = customerListRequests(fetchMock);
-    expect(request?.searchParams.get("filter")).toBe("deleted|in|0,1");
-    expect(request?.searchParams.get("page")).toBe("1");
     expect(changes).toEqual({
       customers: [customer({ id: "deleted-customer", deleted: true })],
       hasMore: false,
+      totalCount: Option.none(),
     });
   });
 
@@ -1609,12 +1645,19 @@ describe("DotyposService customer changes", () => {
     const changes = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.listCustomerChanges({ changedSince, skip: 100 });
+        return yield* dotypos.listCustomerChanges({
+          selection: { _tag: "ChangedAt", versionDate: changedSince },
+          page: 2,
+        });
       }),
       fetchMock
     );
 
-    expect(changes).toEqual({ customers: [], hasMore: false });
+    expect(changes).toEqual({
+      customers: [],
+      hasMore: false,
+      totalCount: Option.none(),
+    });
   });
 
   test("leaves a rate-limited read to the caller instead of retrying it", async () => {
@@ -1635,7 +1678,10 @@ describe("DotyposService customer changes", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos
-          .listCustomerChanges({ changedSince, skip: 0 })
+          .listCustomerChanges({
+            selection: { _tag: "ChangedFrom", versionDate: changedSince },
+            page: 1,
+          })
           .pipe(Effect.result);
       }),
       fetchMock
@@ -1648,14 +1694,14 @@ describe("DotyposService customer changes", () => {
     expect(customerListRequests(fetchMock)).toHaveLength(1);
   });
 
-  test("rejects an invalid offset without calling Dotypos", async () => {
+  test("rejects an invalid page without calling Dotypos", async () => {
     const fetchMock = mockDotyposFetch(() => tokenResponse());
 
     const result = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos
-          .listCustomerChanges({ skip: -1 })
+          .listCustomerChanges({ selection: { _tag: "Dated" }, page: 0 })
           .pipe(Effect.result);
       }),
       fetchMock

@@ -2,6 +2,7 @@ import { Effect, Layer } from "effect";
 import { respondWithDotyposCustomerSource } from "@/features/analytics-warehouse/backend/dotypos-customer-source";
 import { DotyposCustomerSourceAccess } from "@/features/analytics-warehouse/backend/dotypos-customer-source-access.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { RequestBudget } from "@/shared/backend/request-budget/request-budget.service";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
@@ -24,6 +25,7 @@ export const GET = defineWorkspaceRoute(
       Effect.provide(
         Layer.mergeAll(
           DotyposCustomerSourceAccess.Default,
+          RequestBudget.Live,
           WorkspaceDotyposLayer
         )
       ),

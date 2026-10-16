@@ -70,17 +70,30 @@ export type CustomerListOptions = {
   readonly ids: readonly DotyposCustomerId[];
 };
 
+/**
+ * Which customers a change listing reads, by `versionDate`. Dated selections
+ * list customers ordered by `versionDate`; a single version date and the
+ * undated customers are listed ordered by `id`.
+ */
+export type CustomerVersionSelection =
+  | { readonly _tag: "Dated" }
+  | { readonly _tag: "ChangedFrom"; readonly versionDate: DateTime.Utc }
+  | { readonly _tag: "ChangedAfter"; readonly versionDate: DateTime.Utc }
+  | { readonly _tag: "ChangedAt"; readonly versionDate: DateTime.Utc }
+  | { readonly _tag: "Undated" };
+
 export type CustomerChangesOptions = {
-  /** Lists only customers whose `versionDate` is at or after this instant. */
-  readonly changedSince?: DateTime.Utc;
-  /** Number of customers to pass over at the start of the ordered list. */
-  readonly skip: number;
+  readonly selection: CustomerVersionSelection;
+  /** One-based Dotypos page number. */
+  readonly page: number;
 };
 
 export type CustomerChanges = {
-  /** Customers ordered by `versionDate`, then `id`, deleted ones included. */
+  /** Customers in the selection's order, deleted ones included. */
   readonly customers: readonly DotyposCustomer[];
   readonly hasMore: boolean;
+  /** How many customers the whole selection holds, when Dotypos counts them. */
+  readonly totalCount: Option.Option<number>;
 };
 
 /** Dotypos serves at most this many records per list page. */
@@ -89,6 +102,7 @@ const dotyposMaximumPageSize = 100;
 type DotyposPage<A> = {
   readonly data?: readonly A[];
   readonly nextPage?: string | null;
+  readonly totalItemsCount?: string | null;
 };
 
 const isDotyposError = (error: unknown): error is DotyposError =>
@@ -192,6 +206,35 @@ const getActiveReservationOverlapFilter = (
         `endDate|gt|${interval.startDate.getTime()}`,
       ].join(";")
     )
+  );
+
+const customerVersionQuery = (
+  selection: CustomerVersionSelection
+): { readonly versionFilter: string; readonly sort: string } =>
+  Match.valueTags(selection, {
+    Dated: () => ({
+      versionFilter: "versionDate|eq|notnull",
+      sort: "versionDate",
+    }),
+    ChangedFrom: ({ versionDate }) => ({
+      versionFilter: `versionDate|gteq|${DateTime.toEpochMillis(versionDate)}`,
+      sort: "versionDate",
+    }),
+    ChangedAfter: ({ versionDate }) => ({
+      versionFilter: `versionDate|gt|${DateTime.toEpochMillis(versionDate)}`,
+      sort: "versionDate",
+    }),
+    ChangedAt: ({ versionDate }) => ({
+      versionFilter: `versionDate|eq|${DateTime.toEpochMillis(versionDate)}`,
+      sort: "id",
+    }),
+    Undated: () => ({ versionFilter: "versionDate|eq|null", sort: "id" }),
+  });
+
+const readTotalCount = (totalItemsCount: string | null | undefined) =>
+  Option.fromNullishOr(totalItemsCount).pipe(
+    Option.map(Number),
+    Option.filter((count) => Number.isSafeInteger(count) && count >= 0)
   );
 
 const getNextDotyposPageNumber = (input: {
@@ -973,32 +1016,45 @@ const makeDotyposService = Effect.gen(function* () {
    * Reads one page of customer changes for an incremental export. It sends
    * exactly one list request and never retries it, so every call costs one
    * request against the Dotypos rate limit and the caller decides when to try
-   * again. Dotypos pages by number only, so `skip` selects the page that holds
-   * the first wanted customer and drops the customers before it.
+   * again.
    */
-  const listCustomerChanges = Effect.fn("listCustomerChanges")(function* (
-    options: CustomerChangesOptions
-  ) {
-    if (!Number.isSafeInteger(options.skip) || options.skip < 0) {
-      return yield* new ValidationError({
-        message: "Customer change offset is invalid",
-      });
-    }
-    const filter = [
-      "deleted|in|0,1",
-      ...(options.changedSince === undefined
-        ? []
-        : [`versionDate|gteq|${DateTime.toEpochMillis(options.changedSince)}`]),
-    ].join(";");
-    const page = Math.floor(options.skip / dotyposMaximumPageSize) + 1;
+  const listCustomerChanges = (options: CustomerChangesOptions) =>
+    Effect.succeed(options).pipe(
+      Effect.filterOrFail(
+        ({ page }) => Number.isSafeInteger(page) && page >= 1,
+        () =>
+          new ValidationError({ message: "Customer change page is invalid" })
+      ),
+      Effect.let("query", ({ selection }) => customerVersionQuery(selection)),
+      Effect.bind("result", readCustomerChangePage),
+      Effect.bind("nextPage", ({ page, result }) =>
+        getNextDotyposPageNumber({
+          currentPage: page,
+          nextPage: result.nextPage,
+          operation: "listCustomerChanges",
+        })
+      ),
+      Effect.map(
+        ({ result, nextPage }): CustomerChanges => ({
+          customers: result.data ?? [],
+          hasMore: nextPage !== undefined,
+          totalCount: readTotalCount(result.totalItemsCount),
+        })
+      ),
+      Effect.withSpan("listCustomerChanges")
+    );
 
-    const result = yield* runDotyposRequest(
+  const readCustomerChangePage = (input: {
+    readonly page: number;
+    readonly query: ReturnType<typeof customerVersionQuery>;
+  }) =>
+    runDotyposRequest(
       client.getCustomers(config.cloudId, {
         params: {
-          filter,
-          sort: "versionDate,id",
+          filter: ["deleted|in|0,1", input.query.versionFilter].join(";"),
+          sort: input.query.sort,
           limit: dotyposMaximumPageSize,
-          page,
+          page: input.page,
         },
       }),
       "listCustomerChanges"
@@ -1014,20 +1070,6 @@ const makeDotyposService = Effect.gen(function* () {
       ),
       catchUnexpectedDotyposError("listCustomerChanges")
     );
-    const nextPage = yield* getNextDotyposPageNumber({
-      currentPage: page,
-      nextPage: result.nextPage,
-      operation: "listCustomerChanges",
-    });
-
-    const changes: CustomerChanges = {
-      customers: (result.data ?? []).slice(
-        options.skip % dotyposMaximumPageSize
-      ),
-      hasMore: nextPage !== undefined,
-    };
-    return changes;
-  });
 
   const searchCustomers = Effect.fn("searchCustomers")(function* (
     rawQuery: string

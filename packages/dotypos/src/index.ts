@@ -3,6 +3,7 @@ export type {
   CustomerChanges,
   CustomerChangesOptions,
   CustomerLookupField,
+  CustomerVersionSelection,
   DotyposCustomerBillingDetails,
   DotyposCustomerDetails,
   DotyposCustomerDiscount,
