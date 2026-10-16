@@ -49,6 +49,7 @@
     "@deskohub/next-effect": "workspace:*",
     "@deskohub/posthog": "workspace:*",
     "@deskohub/qr-code": "workspace:*",
+    "@deskohub/secret-comparison": "workspace:*",
     "@deskohub/standard-schema": "workspace:*",
     "@deskohub/test-email": "workspace:*",
     "@deskohub/workspace-admin-api": "workspace:*",

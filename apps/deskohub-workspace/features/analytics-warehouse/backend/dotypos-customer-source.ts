@@ -7,9 +7,9 @@ import {
   type NetworkError,
   type ValidationError,
 } from "@deskohub/dotypos";
+import { isMatchingSecret } from "@deskohub/secret-comparison";
 import { Data, DateTime, Effect, Option, Redacted, Schema } from "effect";
 import { NextResponse } from "next/server";
-import { isMatchingSecret } from "@/shared/backend/utils/secret-comparison";
 import { markPrivateResponse } from "@/shared/utils/private-response";
 import { DotyposCustomerSourceAccess } from "./dotypos-customer-source-access.service";
 
