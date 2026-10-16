@@ -266,7 +266,7 @@
     },
     "apps/dhw": {
       "name": "dhw",
-      "version": "1.17.0",
+      "version": "1.16.0",
       "dependencies": {
         "@deskohub/workspace-admin-api": "workspace:*",
         "@effect/platform-bun": "4.0.0-beta.85",
