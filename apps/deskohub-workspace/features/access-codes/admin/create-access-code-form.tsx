@@ -267,7 +267,10 @@ export function CreateStandaloneAccessCodeForm() {
               {m.accessCodesResultValidFrom({}, { locale })}
             </dt>
             <dd className="mt-0.5 font-medium">
-              {formatStandaloneAccessCodeLocalDateTime(outcome.startsAt, locale)}
+              {formatStandaloneAccessCodeLocalDateTime(
+                outcome.startsAt,
+                locale
+              )}
             </dd>
           </div>
           <div>
