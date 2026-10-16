@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
   AdministrationPage,
   AdministrationTableCount,
@@ -9,7 +8,11 @@ import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
 } from "@/features/administration/loading";
-import { AudienceList } from "@/features/email-campaigns/admin/audiences/audience-list";
+import {
+  AudienceList,
+  AudienceListHeading,
+  NewAudienceLink,
+} from "@/features/email-campaigns/admin/audiences/audience-list";
 import {
   type AudienceListItem,
   loadAudienceList,
@@ -22,11 +25,11 @@ export default function EmailAudiencesPage() {
   const audiences = loadAudienceList();
   return (
     <AdministrationPage>
-      <h1 className="sr-only">Email audiences</h1>
+      <AudienceListHeading />
       <AdministrationTableToolbar
         actions={
           <Button asChild size="sm">
-            <Link href="/admin/email-audiences/new">New audience</Link>
+            <NewAudienceLink />
           </Button>
         }
         count={

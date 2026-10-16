@@ -3,7 +3,9 @@ import "server-only";
 import { Effect, Option } from "effect";
 import { notFound } from "next/navigation";
 import type { CampaignAudienceRow } from "@/db/schema";
+import { formatAdministrationDateTime } from "@/features/administration/formatters";
 import type { Locale } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -31,6 +33,8 @@ export type AudienceListItem = {
   readonly archived: boolean;
   /** ISO instant. */
   readonly updatedAt: string;
+  /** `updatedAt` as the request locale writes it. */
+  readonly updatedAtText: string;
 };
 
 export type AudienceEditorData = {
@@ -66,9 +70,10 @@ export const loadAudienceList = async (): Promise<
   readonly AudienceListItem[]
 > => {
   await authorizeAdministratorPage();
-  const [audiences, discountGroups] = await Promise.all([
+  const [audiences, discountGroups, locale] = await Promise.all([
     runAudienceListing(true),
     loadDiscountGroupOptions(),
+    getRequestLocale(),
   ]);
   return audiences
     .toSorted(
@@ -79,9 +84,14 @@ export const loadAudienceList = async (): Promise<
     .map((audience) => ({
       id: audience.id,
       title: audience.title,
-      summary: describeAudienceFilter(audience.filter, { discountGroups }),
+      summary: describeAudienceFilter(audience.filter, locale, {
+        discountGroups,
+      }),
       archived: isArchived(audience),
       updatedAt: audience.updatedAt.toString(),
+      updatedAtText: formatAdministrationDateTime(
+        audience.updatedAt.toString()
+      ),
     }));
 };
 
@@ -90,15 +100,16 @@ export const loadAudienceOptions = async (): Promise<
   readonly AudienceOption[]
 > => {
   await authorizeAdministratorPage();
-  const [audiences, discountGroups] = await Promise.all([
+  const [audiences, discountGroups, locale] = await Promise.all([
     runAudienceListing(false),
     loadDiscountGroupOptions(),
+    getRequestLocale(),
   ]);
   return audiences
     .map(({ id, title, filter }) => ({
       id,
       title,
-      summary: describeAudienceFilter(filter, { discountGroups }),
+      summary: describeAudienceFilter(filter, locale, { discountGroups }),
       singleLocale: audienceSingleLocale(filter),
     }))
     .toSorted(byTitle);

@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { AudienceCountOperatorType } from "@deskohub/workspace-admin-api";
+import type { Locale } from "@/features/i18n";
 import type { AudienceCondition, AudienceFilter } from "../audience-filter";
 import type { DatePeriod } from "../date-period";
 import {
   describeAudienceFilter,
-  describeCount,
   hasPeriodEndingAtEvaluation,
 } from "./audience-filter-summary";
 import { describeDatePeriod } from "./date-period-phrases";
@@ -40,7 +40,19 @@ const reservations = (
   value,
 });
 
-const describe_ = (filter: AudienceFilter) => describeAudienceFilter(filter);
+const campaignEmails = (
+  operator: AudienceCountOperatorType,
+  value: number
+): AudienceCondition => ({
+  attribute: "campaignEmailCount",
+  _tag: "Condition",
+  params: { purpose: "any", period: { _tag: "AnyTime" } },
+  operator,
+  value,
+});
+
+const describe_ = (filter: AudienceFilter, locale: Locale = "en-US") =>
+  describeAudienceFilter(filter, locale);
 
 describe("describeAudienceFilter", () => {
   test("describes empty groups", () => {
@@ -100,9 +112,22 @@ describe("describeAudienceFilter", () => {
     ["gte", 3, "at least 3 emails"],
     ["gt", Number.NaN, "… emails"],
   ])("phrases %s %d as “%s”", (operator, value, phrase) => {
-    expect(
-      describeCount(operator, value, { one: "email", other: "emails" })
-    ).toBe(phrase);
+    expect(describe_(campaignEmails(operator, value))).toBe(
+      `Customers who received ${phrase.replace("email", "campaign email")}`
+    );
+  });
+
+  test.each<[AudienceCountOperatorType, number, string]>([
+    ["eq", 0, "neobdrželi žádný e-mail z kampaně"],
+    ["gte", 1, "obdrželi alespoň jeden e-mail z kampaně"],
+    ["eq", 1, "obdrželi přesně 1 e-mail z kampaně"],
+    ["gt", 2, "obdrželi více než 2 e-maily z kampaní"],
+    ["lte", 5, "obdrželi nejvýše 5 e-mailů z kampaní"],
+    ["ne", 3, "obdrželi jiný počet e-mailů z kampaní než 3"],
+  ])("phrases %s %d in Czech as “%s”", (operator, value, phrase) => {
+    expect(describe_(campaignEmails(operator, value), "cs-CZ")).toBe(
+      `Zákazníci, kteří ${phrase}`
+    );
   });
 
   test("describes date attributes", () => {
@@ -129,6 +154,46 @@ describe("describeAudienceFilter", () => {
     ).toBe("Customers who created a Workspace account since 2026-09-01");
   });
 
+  test("describes in Czech", () => {
+    expect(describe_(and(), "cs-CZ")).toBe(
+      "Každý zákazník, kterého Workspace zná"
+    );
+    expect(
+      describe_(
+        and(
+          czech,
+          reservations("gte", 2, {
+            dateBasis: "booking",
+            period: { _tag: "Last", count: 3, unit: "month" },
+            status: "cancelled",
+          }),
+          {
+            attribute: "lastVisit",
+            _tag: "Condition",
+            operator: "in",
+            value: { _tag: "Last", count: 30, unit: "day" },
+          }
+        ),
+        "cs-CZ"
+      )
+    ).toBe(
+      "Zákazníci, kteří mluví česky a mají alespoň 2 zrušené rezervace s potvrzením za poslední 3 měsíce a nás naposledy navštívili za posledních 30 dní"
+    );
+    expect(
+      describe_(
+        reservations("eq", 0, {
+          product: {
+            family: "office",
+            properties: [{ property: "seats", operator: "gte", value: 4 }],
+          },
+        }),
+        "cs-CZ"
+      )
+    ).toBe(
+      "Zákazníci, kteří nemají žádnou potvrzenou rezervaci (kancelář, alespoň 4 místa)"
+    );
+  });
+
   test("describes set and boolean attributes, with names for known groups", () => {
     expect(
       describeAudienceFilter(
@@ -153,6 +218,7 @@ describe("describeAudienceFilter", () => {
             value: false,
           }
         ),
+        "en-US",
         { discountGroups: [{ id: "1", name: "Students" }] }
       )
     ).toBe(
@@ -182,7 +248,7 @@ describe("describeDatePeriod", () => {
     [{ _tag: "Onward", date: "2026-01-01" }, "from 2026-01-01 onward"],
     [{ _tag: "Until", date: "2026-01-01" }, "until 2026-01-01"],
   ])("names %o as “%s”", (period, phrase) => {
-    expect(describeDatePeriod(period)).toBe(phrase);
+    expect(describeDatePeriod(period, "en-US")).toBe(phrase);
   });
 });
 
@@ -236,7 +302,7 @@ describe("reservation product phrasing", () => {
         })
       )
     ).toBe(
-      "Customers who have any booked Reserved Desk cowork reservations visiting in the last month"
+      "Customers who have any booked reservations for cowork with tier Reserved Desk visiting in the last month"
     );
   });
 
@@ -254,7 +320,7 @@ describe("reservation product phrasing", () => {
         })
       )
     ).toBe(
-      "Customers who have no booked office reservations with at least 4 seats and fewer than 3 days"
+      "Customers who have no booked reservations for office with at least 4 seats and fewer than 3 days"
     );
     expect(
       describe_({
@@ -272,7 +338,7 @@ describe("reservation product phrasing", () => {
         operator: "none",
       })
     ).toBe(
-      "Customers who have never visited for a cowork reservation with no coffee and tier other than Basic Day Pass"
+      "Customers who have never visited for cowork with no coffee and tier other than Basic Day Pass"
     );
   });
 });

@@ -8,8 +8,8 @@ import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
   EmptyState,
-  formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Badge } from "@/shared/components/ui/badge";
 import { cn } from "@/shared/utils";
@@ -23,10 +23,32 @@ export function AudienceStatusBadge({
 }: {
   readonly archived: boolean;
 }) {
+  const locale = useRouteLocale();
   return (
     <Badge variant={archived ? "subtle" : "default"}>
-      {archived ? "Archived" : "Active"}
+      {archived
+        ? m.emailCampaignsAudienceStatusArchived({}, { locale })
+        : m.emailCampaignsAudienceStatusActive({}, { locale })}
     </Badge>
+  );
+}
+
+/** The list page's heading, for screen readers. */
+export function AudienceListHeading() {
+  const locale = useRouteLocale();
+  return (
+    <h1 className="sr-only">
+      {m.emailCampaignsAudienceListTitle({}, { locale })}
+    </h1>
+  );
+}
+
+export function NewAudienceLink() {
+  const locale = useRouteLocale();
+  return (
+    <Link href="/admin/email-audiences/new">
+      {m.emailCampaignsAudienceListNew({}, { locale })}
+    </Link>
   );
 }
 
@@ -41,7 +63,7 @@ export function AudienceList({
     () => [
       {
         accessorKey: "title",
-        header: "Audience",
+        header: m.emailCampaignsAudienceListColumnAudience({}, { locale }),
         cell: ({ row }) => (
           <Link
             className={cn(
@@ -56,7 +78,7 @@ export function AudienceList({
       },
       {
         accessorKey: "summary",
-        header: "Who it reaches",
+        header: m.emailCampaignsAudienceListColumnReach({}, { locale }),
         enableSorting: false,
         cell: ({ row }) => (
           <span
@@ -71,33 +93,33 @@ export function AudienceList({
       },
       {
         accessorKey: "archived",
-        header: "Status",
+        header: m.emailCampaignsAudienceListColumnStatus({}, { locale }),
         cell: ({ row }) => (
           <AudienceStatusBadge archived={row.original.archived} />
         ),
       },
       {
         accessorKey: "updatedAt",
-        header: "Updated",
+        header: m.emailCampaignsAudienceListColumnUpdated({}, { locale }),
         cell: ({ row }) => (
           <span className="whitespace-nowrap text-navy-blue/70 text-sm">
-            {formatAdministrationDateTime(row.original.updatedAt)}
+            {row.original.updatedAtText}
           </span>
         ),
       },
     ],
-    []
+    [locale]
   );
 
   if (audiences.length === 0) {
     return (
-      <EmptyState message="No audiences yet. Create one to choose who a campaign reaches." />
+      <EmptyState message={m.emailCampaignsAudienceListEmpty({}, { locale })} />
     );
   }
 
   return (
     <AdministrationDataTable
-      ariaLabel="Email audiences"
+      ariaLabel={m.emailCampaignsAudienceListTitle({}, { locale })}
       columns={columns}
       data={audiences}
       getRowId={(audience) => audience.id}
@@ -131,7 +153,10 @@ export function AudienceList({
                   {audience.summary}
                 </span>
                 <span className="mt-3 block text-navy-blue/60 text-xs">
-                  Updated {formatAdministrationDateTime(audience.updatedAt)}
+                  {m.emailCampaignsAudienceListUpdated(
+                    { date: audience.updatedAtText },
+                    { locale }
+                  )}
                 </span>
               </Link>
             </li>
