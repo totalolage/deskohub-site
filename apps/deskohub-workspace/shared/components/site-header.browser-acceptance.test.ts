@@ -10,6 +10,8 @@ import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles
 const appDirectory = resolve(import.meta.dir, "../..");
 const mobileViewport = { height: 812, width: 375 } as const;
 const desktopViewport = { height: 900, width: 1440 } as const;
+const narrowDesktopViewport = { height: 800, width: 1280 } as const;
+const shortMobileViewport = { height: 600, width: 375 } as const;
 
 // The harness runs outside a Next.js app, so the router-bound modules render
 // plain elements; static image imports keep their real dimensions.
@@ -104,16 +106,20 @@ afterAll(async () => {
 
 const openSiteHeader = async (
   locale: Locale,
-  viewport: { readonly height: number; readonly width: number }
+  viewport: { readonly height: number; readonly width: number },
+  { administrator = false }: { readonly administrator?: boolean } = {}
 ) => {
   if (!browser) throw new Error("The SiteHeader browser has not launched.");
   const page = await browser.newPage({ reducedMotion: "reduce", viewport });
   await page.setContent(
-    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="site-header-test-root" data-locale="${locale}"></div></body></html>`
+    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="site-header-test-root" data-locale="${locale}" data-administrator="${administrator}"></div></body></html>`
   );
   await page.addStyleTag({ content: appStyles });
   await page.addScriptTag({ path: browserBundlePath });
   await page.getByRole("banner").waitFor();
+  if (administrator) {
+    await page.locator("[data-site-header-admin-ribbon]").waitFor();
+  }
   await page.evaluate(async () => {
     await document.fonts.ready;
     await Promise.all(
@@ -153,6 +159,34 @@ const expectNoHorizontalOverflow = async (page: Page) => {
   expect(overflow.overflowingElements).toEqual([]);
   expect(overflow.documentOverflow).toBeLessThanOrEqual(1);
 };
+
+// Each desktop navigation label has to stay on one line.
+const readWrappedNavigationLabels = (page: Page, navigationLabel: string) =>
+  page.evaluate((navigationLabel) => {
+    const navigation = document.querySelector(
+      `nav[aria-label="${navigationLabel}"]`
+    );
+    if (!navigation) throw new Error("The primary navigation is missing.");
+    return Array.from(navigation.querySelectorAll("a"))
+      .filter(
+        (link) =>
+          link.getBoundingClientRect().height >
+          Number.parseFloat(getComputedStyle(link).lineHeight) * 1.5
+      )
+      .map((link) => link.textContent);
+  }, navigationLabel);
+
+const readHeaderHeights = (page: Page) =>
+  page.evaluate(() => {
+    const header = document.querySelector("header");
+    if (!header) throw new Error("The site header is missing.");
+    const probe = document.createElement("div");
+    probe.style.height = "var(--site-header-height)";
+    document.body.append(probe);
+    const variable = probe.getBoundingClientRect().height;
+    probe.remove();
+    return { header: header.getBoundingClientRect().height, variable };
+  });
 
 for (const locale of locales) {
   test.skipIf(!chromiumAvailable)(
@@ -237,6 +271,144 @@ for (const locale of locales) {
         await menuButton.waitFor();
         expect(await menuButton.getAttribute("aria-expanded")).toBe("false");
         await mobileNavigation.waitFor({ state: "hidden" });
+      } finally {
+        await page.close();
+      }
+    }
+  );
+
+  test.skipIf(!chromiumAvailable)(
+    `hides the admin entry from a customer (${locale})`,
+    async () => {
+      const page = await openSiteHeader(locale, desktopViewport);
+      try {
+        expect(
+          await page
+            .getByRole("link", { name: m.siteHeaderAdminLabel({}, { locale }) })
+            .count()
+        ).toBe(0);
+        expect(
+          await page.locator("[data-site-header-admin-ribbon]").count()
+        ).toBe(0);
+        expect(await readHeaderHeights(page)).toEqual({
+          header: 96,
+          variable: 96,
+        });
+      } finally {
+        await page.close();
+      }
+    }
+  );
+
+  test.skipIf(!chromiumAvailable)(
+    `fits the admin header on the narrowest desktop without overflow (${locale})`,
+    async () => {
+      const page = await openSiteHeader(locale, narrowDesktopViewport, {
+        administrator: true,
+      });
+      try {
+        await expectNoHorizontalOverflow(page);
+        expect(
+          await page
+            .getByRole("link", {
+              exact: true,
+              name: m.siteHeaderAdminLabel({}, { locale }),
+            })
+            .first()
+            .isVisible()
+        ).toBe(true);
+      } finally {
+        await page.close();
+      }
+    }
+  );
+
+  test.skipIf(!chromiumAvailable)(
+    `fits the admin button and ribbon on one desktop line at 1440px (${locale})`,
+    async () => {
+      const page = await openSiteHeader(locale, desktopViewport, {
+        administrator: true,
+      });
+      try {
+        await expectNoHorizontalOverflow(page);
+        expect(
+          await readWrappedNavigationLabels(
+            page,
+            m.primaryNavigationLabel({}, { locale })
+          )
+        ).toEqual([]);
+        expect(
+          await page
+            .getByRole("link", {
+              exact: true,
+              name: m.siteHeaderAdminLabel({}, { locale }),
+            })
+            .first()
+            .isVisible()
+        ).toBe(true);
+        expect(
+          await page
+            .getByText(m.siteHeaderAdminRibbonLabel({}, { locale }))
+            .isVisible()
+        ).toBe(true);
+        // The ribbon's height joins the header's, so content clears both.
+        expect(await readHeaderHeights(page)).toEqual({
+          header: 140,
+          variable: 140,
+        });
+      } finally {
+        await page.close();
+      }
+    }
+  );
+
+  test.skipIf(!chromiumAvailable)(
+    `scrolls the administrator's mobile menu to the language switcher (${locale})`,
+    async () => {
+      const page = await openSiteHeader(locale, shortMobileViewport, {
+        administrator: true,
+      });
+      try {
+        await expectNoHorizontalOverflow(page);
+        expect(
+          await page
+            .getByText(m.siteHeaderAdminRibbonShortLabel({}, { locale }), {
+              exact: true,
+            })
+            .isVisible()
+        ).toBe(true);
+
+        await page
+          .getByRole("button", {
+            exact: true,
+            name: m.openNavigationMenuLabel({}, { locale }),
+          })
+          .click();
+        const menu = page.locator("#site-header-mobile-menu");
+        const menuAdminButton = menu.getByRole("link", {
+          exact: true,
+          name: m.siteHeaderAdminLabel({}, { locale }),
+        });
+        await menuAdminButton.waitFor();
+
+        const menuBox = await menu.boundingBox();
+        expect(menuBox).not.toBeNull();
+        expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(
+          shortMobileViewport.height + 1
+        );
+        expect(
+          await menu.evaluate(
+            (element) => element.scrollHeight > element.clientHeight
+          )
+        ).toBe(true);
+
+        const switcher = menu.locator("[data-locale-switcher]");
+        await switcher.scrollIntoViewIfNeeded();
+        const switcherBox = await switcher.boundingBox();
+        expect(
+          (switcherBox?.y ?? 0) + (switcherBox?.height ?? 0)
+        ).toBeLessThanOrEqual(shortMobileViewport.height + 1);
+        expect(switcherBox?.y ?? 0).toBeGreaterThanOrEqual(140);
       } finally {
         await page.close();
       }

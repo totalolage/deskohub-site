@@ -14,6 +14,8 @@ if (!(locale && isLocale(locale))) {
   throw new Error("The SiteHeader browser harness needs a supported locale.");
 }
 
+const administrator = mountPoint.dataset.administrator === "true";
+
 // Mirrors the full production menu so the header is measured at its widest.
 createRoot(mountPoint).render(
   <SiteHeader
@@ -21,6 +23,14 @@ createRoot(mountPoint).render(
       href: Promise.resolve(`/${locale}/account`),
       label: m.accountNavLabel({}, { locale }),
       signInHref: `/${locale}/auth/sign-in`,
+    }}
+    administrator={{
+      visible: Promise.resolve(administrator),
+      href: `/${locale}/admin`,
+      label: m.siteHeaderAdminLabel({}, { locale }),
+      ribbonLabel: m.siteHeaderAdminRibbonLabel({}, { locale }),
+      ribbonShortLabel: m.siteHeaderAdminRibbonShortLabel({}, { locale }),
+      ribbonActionLabel: m.siteHeaderAdminRibbonAction({}, { locale }),
     }}
     closeNavigationMenuLabel={m.closeNavigationMenuLabel({}, { locale })}
     contactHref={`/${locale}/reservation/cowork`}
