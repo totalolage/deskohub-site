@@ -29,10 +29,6 @@ const accountFixtureReadyPath = "/en-US/account-legal-fixture-ready";
 const appRoot = resolve(import.meta.dir, "..");
 const globalsCssPath = resolve(appRoot, "app/globals.css");
 export const accountFixtureAuthHeader = "x-deskohub-account-fixture";
-export const accountFixtureRolloutHeader = "x-deskohub-account-rollout";
-export const accountFixtureMarketingLinkHeader = "x-deskohub-marketing-link";
-export const accountFixtureRolloutOffValue = "off";
-export const accountFixtureMarketingLinkValue = "pending";
 const supportedLocales = [
   "en-US",
   "cs-CZ",
@@ -232,13 +228,6 @@ export class CustomerAuthentication extends Context.Service<
 `;
 
 const fixtureAccountFeatureFlag = `
-import { headers } from "next/headers";
-
-export async function areAccountsEnabled(): Promise<boolean> {
-  const requestHeaders = await headers();
-  return requestHeaders.get("${accountFixtureRolloutHeader}") !== "${accountFixtureRolloutOffValue}";
-}
-
 // The legal fixture has no Sign-in & security section, so passkeys stay off.
 export async function arePasskeysEnabled(): Promise<boolean> {
   return false;
@@ -254,26 +243,13 @@ export async function areReferralsEnabled(): Promise<boolean> {
 `;
 
 const fixtureMarketingPreferences = `
-import { headers } from "next/headers";
 import type { Locale } from "@/features/i18n";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 
 export async function getMarketingPreferences(
   _locale: Locale
 ): Promise<MarketingPreferencesState> {
-  const requestHeaders = await headers();
-  if (
-    requestHeaders.get("${accountFixtureMarketingLinkHeader}") !==
-    "${accountFixtureMarketingLinkValue}"
-  ) {
-    return { status: "unavailable" };
-  }
-
-  return {
-    context: "synthetic-marketing-management-context",
-    dismissalContext: "synthetic-marketing-management-dismissal-context",
-    status: "pending-link",
-  };
+  return { status: "unavailable" };
 }
 `;
 
@@ -409,7 +385,8 @@ const writeFixture = async (
   }: AccountLegalFixtureOptions & { readonly readinessMarker: string }
 ) => {
   const fixtureFiles: Readonly<Record<string, string>> = {
-    "app/[locale]/(site)/(full-header)/account/@modal/default.tsx": nullModalPage,
+    "app/[locale]/(site)/(full-header)/account/@modal/default.tsx":
+      nullModalPage,
     "app/[locale]/(site)/(full-header)/account/@modal/page.tsx": nullModalPage,
     "app/[locale]/(site)/(full-header)/account/page.tsx": privatePage,
     "app/[locale]/account-legal-fixture-ready/route.ts":

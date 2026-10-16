@@ -2,15 +2,12 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getLocalizedPagePath } from "@/features/i18n/routing";
+import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
 
 const events: string[] = [];
 const withSearchParams = (searchParams: Record<string, string | string[]>) => ({
   searchParams: Promise.resolve(searchParams),
 });
-const notFound = mock(() => {
-  throw new Error("NEXT_NOT_FOUND");
-});
-const areAccountsEnabled = mock(() => Promise.resolve(true));
 const arePasskeysEnabled = mock(() => Promise.resolve(false));
 type SignInCardProps = {
   readonly locale: string;
@@ -24,10 +21,8 @@ const SignInCard = (props: SignInCardProps) => {
 };
 const connection = mock(() => Promise.resolve());
 
-mock.module("next/navigation", () => ({ notFound }));
 mock.module("next/server", () => ({ connection }));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountsEnabled,
   arePasskeysEnabled,
 }));
 mock.module("@/features/account/components/sign-in-card", () => ({
@@ -42,44 +37,24 @@ mock.module("@/features/i18n/server/request-locale", () => ({
 describe("customer sign-in route boundary", () => {
   beforeEach(() => {
     events.length = 0;
-    notFound.mockReset();
-    notFound.mockImplementation(() => {
-      throw new Error("NEXT_NOT_FOUND");
-    });
-    areAccountsEnabled.mockReset();
-    areAccountsEnabled.mockImplementation(async () => {
-      events.push("gate");
-      return true;
-    });
     arePasskeysEnabled.mockReset();
-    arePasskeysEnabled.mockImplementation(async () => false);
+    arePasskeysEnabled.mockImplementation(async () => {
+      events.push("passkeys");
+      return false;
+    });
     connection.mockReset();
     connection.mockImplementation(async () => {
       events.push("connection");
     });
   });
 
-  test("checks the account gate after establishing the request-bound page", async () => {
+  test("reads the passkey flag after establishing the request-bound page", async () => {
     const { default: CustomerSignInPage } = await import("./page");
 
     const output = await CustomerSignInPage(withSearchParams({}));
 
     expect(output).toMatchObject({ type: "main" });
-    expect(events).toEqual(["connection", "gate"]);
-  });
-
-  test("returns not found after establishing a request when disabled", async () => {
-    areAccountsEnabled.mockImplementation(async () => {
-      events.push("gate");
-      return false;
-    });
-    const { default: CustomerSignInPage } = await import("./page");
-
-    await expect(CustomerSignInPage(withSearchParams({}))).rejects.toThrow(
-      "NEXT_NOT_FOUND"
-    );
-    expect(events).toEqual(["connection", "gate"]);
-    expect(connection).toHaveBeenCalledTimes(1);
+    expect(events).toEqual(["connection", "passkeys"]);
   });
 
   const renderSignInCardProps = async (
@@ -102,10 +77,7 @@ describe("customer sign-in route boundary", () => {
       await renderSignInCardProps({ returnTo: "/cs-CZ/admin/invoices?page=2" })
     ).toEqual(withReturnTo("/cs-CZ/admin/invoices?page=2"));
     for (const returnTo of [
-      "https://evil.example/admin",
-      "//evil.example/admin",
-      "/\\evil.example/admin",
-      "javascript:alert(1)",
+      ...unsafeReturnTargets,
       ["//evil.example/admin", "/admin"],
     ]) {
       expect(await renderSignInCardProps({ returnTo })).toEqual(

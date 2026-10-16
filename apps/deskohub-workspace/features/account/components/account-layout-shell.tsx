@@ -22,7 +22,6 @@ import { GuardedLink } from "@/shared/components/guarded-link";
 import { useConfirmDiscardChanges } from "@/shared/components/unsaved-changes-guard";
 
 export type AccountLayoutShellProps = {
-  readonly accountsEnabled: boolean;
   readonly locale: Locale;
   /** Whether `login_passkeys` is on; off, Sign-in & security has no section. */
   readonly passkeysEnabled: boolean;
@@ -33,7 +32,6 @@ export type AccountLayoutShellProps = {
 };
 
 export type AccountLayoutContextValue = {
-  readonly accountsEnabled: boolean;
   readonly activeSection: AccountSection;
   readonly changeSection: (section: AccountSection) => void;
   readonly setReservationCount: (count: number | undefined) => void;
@@ -120,7 +118,6 @@ function AccountHelp({ locale }: { readonly locale: Locale }) {
 }
 
 export function AccountLayoutShell({
-  accountsEnabled,
   children,
   locale,
   passkeysEnabled,
@@ -160,7 +157,6 @@ export function AccountLayoutShell({
     localNavigation.routeKey === routeKey
       ? localNavigation.activeSection
       : routeSection;
-  const privateNavigationEnabled = signedIn && accountsEnabled;
 
   const changeSection = useCallback(
     (section: AccountSection) => {
@@ -170,7 +166,7 @@ export function AccountLayoutShell({
         return;
       }
 
-      if (!privateNavigationEnabled) return;
+      if (!signedIn) return;
       if (!isSectionReleased(section, { passkeysEnabled, referralsEnabled })) {
         return;
       }
@@ -194,10 +190,10 @@ export function AccountLayoutShell({
       isLegalPathname,
       locale,
       passkeysEnabled,
-      privateNavigationEnabled,
       referralsEnabled,
       routeKey,
       router,
+      signedIn,
     ]
   );
 
@@ -209,13 +205,12 @@ export function AccountLayoutShell({
 
   const contextValue = useMemo<AccountLayoutContextValue>(
     () => ({
-      accountsEnabled,
       activeSection,
       changeSection,
       setReservationCount,
       setReferralBadge,
     }),
-    [accountsEnabled, activeSection, changeSection, setReservationCount]
+    [activeSection, changeSection, setReservationCount]
   );
 
   if (isDeletedPathname) {
@@ -227,9 +222,7 @@ export function AccountLayoutShell({
   return (
     <AccountShell
       activeSection={activeSection}
-      disabledSections={
-        privateNavigationEnabled ? undefined : anonymousDisabledSections
-      }
+      disabledSections={signedIn ? undefined : anonymousDisabledSections}
       hiddenSections={flagGatedSections.filter(
         (section) =>
           !isSectionReleased(section, { passkeysEnabled, referralsEnabled })

@@ -1,7 +1,6 @@
 import { Effect, Result } from "effect";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
@@ -11,7 +10,6 @@ import {
   getAccountSignInPath,
   signInReturnParam,
 } from "@/features/account/routes";
-import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -43,7 +41,6 @@ const CustomerAuthCallbackSession = async ({
   readonly searchParams: Promise<SearchParamsRecord>;
 }) => {
   await connection();
-  if (!(await areAccountsEnabled())) notFound();
 
   const session = await Effect.flatMap(
     CustomerAuthentication,

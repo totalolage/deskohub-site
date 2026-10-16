@@ -57,24 +57,27 @@ mock.module("@/features/feature-flags/backend/subject", () => ({
   },
 }));
 
-const { AccountFeatureFlagService } = await import(
-  "./account-feature-flag.service"
+const { WorkspaceFeatureFlagService } = await import(
+  "./workspace-feature-flag.service"
 );
 
-const makeAccountDefinition = (
+const makeDefinition = (
   constantEnabledValue: boolean
 ): PostHogFeatureFlagDefinition => ({
   constantEnabledValue,
-  key: "accounts",
+  key: "discount_codes",
   payloads: {},
   variants: [],
 });
 
-const readAccountFlag = () =>
+const readFlag = () =>
   Effect.gen(function* () {
-    const featureFlag = yield* AccountFeatureFlagService;
-    return yield* featureFlag.isEnabled;
-  }).pipe(Effect.provide(AccountFeatureFlagService.Live), Effect.runPromise);
+    const featureFlags = yield* WorkspaceFeatureFlagService;
+    return yield* featureFlags.isEnabled("discount_codes");
+  }).pipe(
+    Effect.provide(WorkspaceFeatureFlagService.Default),
+    Effect.runPromise
+  );
 
 const expectNoRequestDependentEvaluation = () => {
   expect(evaluateFlags).not.toHaveBeenCalled();
@@ -82,7 +85,7 @@ const expectNoRequestDependentEvaluation = () => {
   expect(getCurrentPostHogFeatureFlagSubject).not.toHaveBeenCalled();
 };
 
-describe("AccountFeatureFlagService prerender evaluation", () => {
+describe("WorkspaceFeatureFlagService prerender evaluation", () => {
   beforeEach(() => {
     definitions = [];
     env.POSTHOG_API_HOST = undefined;
@@ -99,12 +102,12 @@ describe("AccountFeatureFlagService prerender evaluation", () => {
   test.each([true, false])(
     "uses a constant %s management definition without request-dependent evaluation",
     async (enabled) => {
-      definitions = [makeAccountDefinition(enabled)];
+      definitions = [makeDefinition(enabled)];
       env.POSTHOG_API_HOST = "https://posthog.example";
       env.POSTHOG_API_KEY = "synthetic-management-key";
       env.POSTHOG_PROJECT_ID = "synthetic-project";
 
-      await expect(readAccountFlag()).resolves.toBe(enabled);
+      await expect(readFlag()).resolves.toBe(enabled);
 
       expect(loadPostHogFeatureFlagDefinitions).toHaveBeenCalledTimes(1);
       expect(cacheLife).toHaveBeenCalledWith("publicContent");
@@ -113,13 +116,13 @@ describe("AccountFeatureFlagService prerender evaluation", () => {
   );
 
   test("uses a true preview override over a constant false management definition", async () => {
-    definitions = [makeAccountDefinition(false)];
+    definitions = [makeDefinition(false)];
     env.POSTHOG_API_HOST = "https://posthog.example";
     env.POSTHOG_API_KEY = "synthetic-management-key";
     env.POSTHOG_PROJECT_ID = "synthetic-project";
-    postHogRuntimeConfig.featureFlagOverrides = { accounts: true };
+    postHogRuntimeConfig.featureFlagOverrides = { discount_codes: true };
 
-    await expect(readAccountFlag()).resolves.toBe(true);
+    await expect(readFlag()).resolves.toBe(true);
 
     expect(loadPostHogFeatureFlagDefinitions).toHaveBeenCalledTimes(1);
     expect(cacheLife).toHaveBeenCalledWith("publicContent");
@@ -129,9 +132,9 @@ describe("AccountFeatureFlagService prerender evaluation", () => {
   test.each([true, false])(
     "uses a preview %s override without management configuration or request-dependent evaluation",
     async (enabled) => {
-      postHogRuntimeConfig.featureFlagOverrides = { accounts: enabled };
+      postHogRuntimeConfig.featureFlagOverrides = { discount_codes: enabled };
 
-      await expect(readAccountFlag()).resolves.toBe(enabled);
+      await expect(readFlag()).resolves.toBe(enabled);
 
       expect(loadPostHogFeatureFlagDefinitions).not.toHaveBeenCalled();
       expect(cacheLife).toHaveBeenCalledWith("publicContent");
