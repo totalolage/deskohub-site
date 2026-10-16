@@ -42,7 +42,13 @@ export async function RecipientPreviewPage({
         description={
           preview.kind === "no-audience"
             ? undefined
-            : `${preview.audienceTitle}: ${preview.audienceSummary}`
+            : m.emailCampaignsRecipientPreviewAudienceDescription(
+                {
+                  audience: preview.audienceTitle,
+                  filter: preview.audienceSummary,
+                },
+                { locale }
+              )
         }
         eyebrow={preview.campaign.title}
         title={m.emailCampaignsRecipientPreviewTitle({}, { locale })}

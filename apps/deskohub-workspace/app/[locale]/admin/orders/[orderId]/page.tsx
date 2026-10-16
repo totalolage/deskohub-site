@@ -17,6 +17,7 @@ import {
 } from "@/features/administration/payment-components";
 import { getProviderValueLabel } from "@/features/administration/payment-presentation";
 import { OperationTable } from "@/features/administration/payment-tables";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function OrderAdministrationDetailPage({
   params,
@@ -26,7 +27,7 @@ export default function OrderAdministrationDetailPage({
   return (
     <AdministrationPage>
       <Suspense
-        fallback={<AdministrationDetailLoading label="order details" />}
+        fallback={<AdministrationDetailLoading label="Loading order details" />}
       >
         <OrderAdministrationDetail params={params} />
       </Suspense>
@@ -40,6 +41,7 @@ export async function OrderAdministrationDetail({
   readonly params: Promise<{ readonly orderId: string }>;
 }) {
   const { orderId } = await params;
+  const locale = await getRequestLocale();
   const order = await loadAdministrationOrder(orderId);
   const operations = (order.provider?.operations ?? []).map((operation) => ({
     ...operation,
@@ -51,6 +53,7 @@ export async function OrderAdministrationDetail({
         actions={
           <NexiOrderLink
             className="inline-flex rounded-lg border border-navy-blue/15 px-3 py-2 text-sm font-semibold hover:bg-navy-blue/5"
+            locale={locale}
             orderId={order.orderId}
           >
             Open in XPay
@@ -106,7 +109,8 @@ export async function OrderAdministrationDetail({
               <AdministrationFact
                 label="Last provider activity"
                 value={formatProviderDateTime(
-                  order.provider?.lastOperationTime
+                  order.provider?.lastOperationTime,
+                  locale
                 )}
               />
               <AdministrationFact
@@ -117,7 +121,10 @@ export async function OrderAdministrationDetail({
                 }
                 value={
                   order.link?.providerOrderCreatedAt
-                    ? formatProviderDateTime(order.link.providerOrderCreatedAt)
+                    ? formatProviderDateTime(
+                        order.link.providerOrderCreatedAt,
+                        locale
+                      )
                     : "Not recorded"
                 }
               />
@@ -157,7 +164,7 @@ export async function OrderAdministrationDetail({
             <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
               <h2 className="text-sm font-semibold">Local attempt</h2>
               <div className="mt-3">
-                <PaymentAttemptStatusBadge link={order.link} />
+                <PaymentAttemptStatusBadge link={order.link} locale={locale} />
               </div>
               <p className="mt-3 break-all font-mono text-xs text-navy-blue/65">
                 {order.link.paymentAttemptId}

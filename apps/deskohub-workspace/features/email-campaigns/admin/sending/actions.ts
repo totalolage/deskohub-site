@@ -39,7 +39,7 @@ const testSendAction = defineWorkspaceAction(
     logInput: false,
   },
   Effect.fn(
-    function* ({ campaignId, extraRecipients }, _context) {
+    function* ({ campaignId, extraRecipients }, { locale }) {
       yield* requireAdministratorAuthorization;
       const sending = yield* CampaignSendService;
       const receipt = yield* sending.testSend({
@@ -49,10 +49,9 @@ const testSendAction = defineWorkspaceAction(
       return {
         recipients: receipt.recipients,
         locales: receipt.locales,
-        // Formatted here: the dialog is a client component, and Node and the
-        // browser space date-times differently.
         codeExpiry: formatAdministrationDateTime(
-          receipt.codeExpiresAt.toString()
+          receipt.codeExpiresAt.toString(),
+          locale
         ),
       };
     },

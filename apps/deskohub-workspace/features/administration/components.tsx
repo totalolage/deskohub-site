@@ -3,7 +3,7 @@ import type {
   DotyposReservationId,
 } from "@deskohub/dotypos";
 import { ArrowRight } from "lucide-react";
-import type { ReactNode } from "react";
+import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
@@ -18,6 +18,7 @@ import {
   formatAdministrationDateTime,
   formatAdministrationReservationDate,
 } from "./formatters";
+import { m } from "./i18n";
 import { NexiOrderLink } from "./nexi-order-link";
 import {
   PaymentAmount,
@@ -49,6 +50,7 @@ export {
   AdministrationAlert,
   AdministrationNoticeBanner,
 } from "./notice";
+export { AdministrationPage, AdministrationPageHeader } from "./page-frame";
 export {
   PaymentAmount,
   PaymentRefundRequiredLabel,
@@ -68,64 +70,12 @@ export const getBookingTableLabel = (
   return booking.tableId ? "Details unavailable" : "Not assigned";
 };
 
-export function AdministrationPage({
-  children,
-  className,
-}: {
-  readonly children: ReactNode;
-  readonly className?: string;
-}) {
-  return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      className={cn(
-        "mx-auto w-full max-w-[92rem] px-4 py-7 sm:px-6 lg:px-8 lg:py-9",
-        className
-      )}
-    >
-      {children}
-    </main>
-  );
-}
-
-export function AdministrationPageHeader({
-  actions,
-  description,
-  eyebrow,
-  title,
-}: {
-  readonly actions?: ReactNode;
-  readonly description?: string;
-  readonly eyebrow?: string;
-  readonly title: string;
-}) {
-  return (
-    <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-      <div className="min-w-0 sm:flex-[1_1_24rem]">
-        {eyebrow && (
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-burned-orange-ink">
-            {eyebrow}
-          </p>
-        )}
-        <h1 className="text-3xl leading-tight tracking-[-0.025em] sm:text-4xl">
-          {title}
-        </h1>
-        {description && (
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-navy-blue/62">
-            {description}
-          </p>
-        )}
-      </div>
-      {actions}
-    </div>
-  );
-}
-
 export function PaymentAttemptList({
   attempts,
+  locale,
 }: {
   readonly attempts: readonly AdministrationPaymentAttempt[];
+  readonly locale: Locale;
 }) {
   return (
     <ul className="mt-4 divide-y divide-navy-blue/10">
@@ -137,12 +87,13 @@ export function PaymentAttemptList({
           <div>
             <p className="font-semibold">{attempt.providerLabel}</p>
             <p className="mt-1 text-sm text-navy-blue/65">
-              {formatAdministrationDateTime(attempt.createdAt)}
+              {formatAdministrationDateTime(attempt.createdAt, locale)}
             </p>
             {attempt.providerOrderId && (
               <div className="mt-2 text-sm font-semibold text-burned-orange-ink">
                 <NexiOrderLink
                   className="flex-wrap"
+                  locale={locale}
                   orderId={attempt.providerOrderId}
                 >
                   <span>Nexi order</span>
@@ -155,11 +106,11 @@ export function PaymentAttemptList({
           </div>
           <div className="text-right">
             <p className="font-semibold">
-              <PaymentAmount payment={attempt} />
+              <PaymentAmount locale={locale} payment={attempt} />
             </p>
             <p className="mt-1 text-sm text-navy-blue/65">
-              <PaymentStatusLabel payment={attempt} />
-              <PaymentRefundRequiredLabel payment={attempt} />
+              <PaymentStatusLabel locale={locale} payment={attempt} />
+              <PaymentRefundRequiredLabel locale={locale} payment={attempt} />
             </p>
           </div>
         </li>
@@ -170,8 +121,10 @@ export function PaymentAttemptList({
 
 export function ReservationTimeline({
   items,
+  locale,
 }: {
   readonly items: readonly AdministrationTimelineItem[];
+  readonly locale: Locale;
 }) {
   return (
     <ol className="relative space-y-0" aria-label="Reservation history">
@@ -209,7 +162,7 @@ export function ReservationTimeline({
                 className="text-xs text-navy-blue/65"
                 dateTime={item.occurredAt}
               >
-                {formatAdministrationDateTime(item.occurredAt)}
+                {formatAdministrationDateTime(item.occurredAt, locale)}
               </time>
             </div>
             <p className="mt-1 text-sm leading-5 text-navy-blue/65">
@@ -223,8 +176,10 @@ export function ReservationTimeline({
 }
 
 export function RelatedReservationLink({
+  locale,
   reservation,
 }: {
+  readonly locale: Locale;
   readonly reservation: AdministrationReservationSummary;
 }) {
   return (
@@ -234,7 +189,7 @@ export function RelatedReservationLink({
     >
       <span className="min-w-0">
         <span className="block text-sm font-semibold">
-          {formatAdministrationReservationDate(reservation) ??
+          {formatAdministrationReservationDate(reservation, locale) ??
             reservation.typeLabel}
         </span>
         <span className="mt-2 block text-sm font-medium">
@@ -327,12 +282,14 @@ function Reference({
 
 export function Pagination({
   basePath,
+  locale,
   page,
   pageCount,
   pageParam = "page",
   params = {},
 }: {
   readonly basePath: string;
+  readonly locale: Locale;
   readonly page: number;
   readonly pageCount: number;
   readonly pageParam?: string;
@@ -350,7 +307,7 @@ export function Pagination({
   if (pageCount <= 1) return null;
   return (
     <nav
-      aria-label="Pagination"
+      aria-label={m.administrationPaginationLabel({}, { locale })}
       className="mt-5 flex items-center justify-between"
     >
       <Button
@@ -360,13 +317,15 @@ export function Pagination({
         variant="secondary"
       >
         {page > 1 ? (
-          <Link href={href(page - 1)}>Previous</Link>
+          <Link href={href(page - 1)}>
+            {m.administrationPaginationPrevious({}, { locale })}
+          </Link>
         ) : (
-          <span>Previous</span>
+          <span>{m.administrationPaginationPrevious({}, { locale })}</span>
         )}
       </Button>
       <span className="text-sm text-navy-blue/65">
-        Page {page} of {pageCount}
+        {m.administrationPaginationStatus({ page, pageCount }, { locale })}
       </span>
       <Button
         asChild={page < pageCount}
@@ -375,9 +334,11 @@ export function Pagination({
         variant="secondary"
       >
         {page < pageCount ? (
-          <Link href={href(page + 1)}>Next</Link>
+          <Link href={href(page + 1)}>
+            {m.administrationPaginationNext({}, { locale })}
+          </Link>
         ) : (
-          <span>Next</span>
+          <span>{m.administrationPaginationNext({}, { locale })}</span>
         )}
       </Button>
     </nav>

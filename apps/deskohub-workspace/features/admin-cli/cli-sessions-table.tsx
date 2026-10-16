@@ -7,6 +7,7 @@ import {
 } from "@/features/administration/components";
 import { EmptyState } from "@/features/administration/empty-state";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import type { CliSessionAdministrationItem } from "./cli-authentication.service";
 import { RenameCliSession } from "./rename-cli-session";
@@ -17,6 +18,7 @@ export function CliSessionsTable({
 }: {
   readonly sessions: readonly CliSessionAdministrationItem[];
 }) {
+  const locale = useRouteLocale();
   const columns = useMemo<
     AdministrationDataTableColumn<CliSessionAdministrationItem>[]
   >(
@@ -59,13 +61,13 @@ export function CliSessionsTable({
         accessorKey: "createdAt",
         header: "Created",
         cell: ({ getValue }) =>
-          formatAdministrationDateTime(getValue<string>()),
+          formatAdministrationDateTime(getValue<string>(), locale),
       },
       {
         accessorKey: "lastUsedAt",
         header: "Last used",
         cell: ({ getValue }) =>
-          formatAdministrationDateTime(getValue<string>()),
+          formatAdministrationDateTime(getValue<string>(), locale),
       },
       {
         accessorFn: (session) => session.expiresAt ?? "",
@@ -73,7 +75,7 @@ export function CliSessionsTable({
         header: "Expires",
         cell: ({ row }) =>
           row.original.expiresAt
-            ? formatAdministrationDateTime(row.original.expiresAt)
+            ? formatAdministrationDateTime(row.original.expiresAt, locale)
             : "Never",
       },
       {
@@ -102,7 +104,7 @@ export function CliSessionsTable({
         ),
       },
     ],
-    []
+    [locale]
   );
 
   if (sessions.length === 0) {

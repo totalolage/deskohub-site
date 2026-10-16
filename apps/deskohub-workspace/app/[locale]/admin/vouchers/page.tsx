@@ -34,21 +34,30 @@ export default function VouchersAdminPage({
       <AdministrationTableToolbar
         actions={
           <Suspense
-            fallback={<AdministrationActionLoading label="voucher action" />}
+            fallback={
+              <AdministrationActionLoading label="Loading voucher action" />
+            }
           >
             <VouchersActions />
           </Suspense>
         }
         count={
-          <Suspense fallback={<AdministrationCountLoading label="voucher" />}>
+          <Suspense
+            fallback={
+              <AdministrationCountLoading label="Loading voucher count" />
+            }
+          >
             <VouchersCount data={data} />
           </Suspense>
         }
-        itemLabel="voucher"
+        label="voucher table controls"
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading columns={6} label="vouchers" />
+          <AdministrationCollectionLoading
+            columns={6}
+            label="Loading vouchers"
+          />
         }
       >
         <VouchersCollection data={data} />
@@ -78,10 +87,11 @@ async function VouchersCount({
 }: {
   readonly data: Promise<VouchersData>;
 }) {
+  const count = (await data).dashboard.vouchers.length;
   return (
     <AdministrationTableCount
-      count={(await data).dashboard.vouchers.length}
-      itemLabel="voucher"
+      count={count}
+      label={`${count} voucher${count === 1 ? "" : "s"}`}
     />
   );
 }

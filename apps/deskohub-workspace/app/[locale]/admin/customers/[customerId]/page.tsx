@@ -17,6 +17,7 @@ import {
   type DiscountAdminSearchParams,
   loadOptionalDiscountAdminCustomerPageData,
 } from "@/features/discounts/admin/page-data.server";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function DiscountCustomerAdminDetailPage({
   params,
@@ -43,6 +44,7 @@ export async function DiscountCustomerAdminDetail({
   readonly searchParams: DiscountAdminSearchParams;
 }) {
   const { customerId } = await params;
+  const locale = await getRequestLocale();
   const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
   const [liveData, activity, reservationActivity] = await Promise.all([
     loadOptionalDiscountAdminCustomerPageData(decodedCustomerId, searchParams),
@@ -84,6 +86,7 @@ export async function DiscountCustomerAdminDetail({
       notice={notice}
       profile={profile}
       activity={activity}
+      locale={locale}
       reservationActivity={reservationActivity}
     />
   );

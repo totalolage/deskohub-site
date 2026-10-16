@@ -13,6 +13,7 @@ import {
 } from "@/features/administration/components";
 import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationBooking } from "@/features/administration/page-data.server";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function BookingAdministrationDetailPage({
   params,
@@ -22,7 +23,9 @@ export default function BookingAdministrationDetailPage({
   return (
     <AdministrationPage>
       <Suspense
-        fallback={<AdministrationDetailLoading label="booking details" />}
+        fallback={
+          <AdministrationDetailLoading label="Loading booking details" />
+        }
       >
         <BookingAdministrationDetail params={params} />
       </Suspense>
@@ -36,12 +39,13 @@ export async function BookingAdministrationDetail({
   readonly params: Promise<{ readonly bookingId: string }>;
 }) {
   const { bookingId } = await params;
+  const locale = await getRequestLocale();
   const { booking, references } = await loadAdministrationBooking(bookingId);
   return (
     <>
       <AdministrationPageHeader
         actions={<BookingStatusBadge booking={booking} />}
-        description={`${formatAdministrationDateTime(booking.startsAt)} · ${booking.seats} ${booking.seats === "1" ? "guest" : "guests"}`}
+        description={`${formatAdministrationDateTime(booking.startsAt, locale)} · ${booking.seats} ${booking.seats === "1" ? "guest" : "guests"}`}
         eyebrow="Dotypos booking"
         title={booking.tableName ?? "Unassigned booking"}
       />
@@ -54,11 +58,11 @@ export async function BookingAdministrationDetail({
               <AdministrationFact label="Status" value={booking.statusLabel} />
               <AdministrationFact
                 label="Starts"
-                value={formatAdministrationDateTime(booking.startsAt)}
+                value={formatAdministrationDateTime(booking.startsAt, locale)}
               />
               <AdministrationFact
                 label="Ends"
-                value={formatAdministrationDateTime(booking.endsAt)}
+                value={formatAdministrationDateTime(booking.endsAt, locale)}
               />
               <AdministrationFact label="Guests" value={booking.seats} />
               <AdministrationFact
@@ -72,13 +76,19 @@ export async function BookingAdministrationDetail({
               {booking.createdAt && (
                 <AdministrationFact
                   label="Created"
-                  value={formatAdministrationDateTime(booking.createdAt)}
+                  value={formatAdministrationDateTime(
+                    booking.createdAt,
+                    locale
+                  )}
                 />
               )}
               {booking.updatedAt && (
                 <AdministrationFact
                   label="Last changed"
-                  value={formatAdministrationDateTime(booking.updatedAt)}
+                  value={formatAdministrationDateTime(
+                    booking.updatedAt,
+                    locale
+                  )}
                 />
               )}
             </dl>

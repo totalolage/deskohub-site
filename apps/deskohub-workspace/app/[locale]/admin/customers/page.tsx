@@ -15,6 +15,7 @@ import {
   loadAdministrationCustomersPage,
 } from "@/features/administration/page-data.server";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function DiscountCustomersAdminPage({
   searchParams,
@@ -28,16 +29,23 @@ export default function DiscountCustomersAdminPage({
       <h1 className="sr-only">Customers</h1>
       <AdministrationTableToolbar
         count={
-          <Suspense fallback={<AdministrationCountLoading label="customer" />}>
+          <Suspense
+            fallback={
+              <AdministrationCountLoading label="Loading customer count" />
+            }
+          >
             <CustomerCount result={result} />
           </Suspense>
         }
-        itemLabel="customer"
+        label="customer table controls"
         search={<CustomerSearch variant="toolbar" />}
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading label="customers" columns={4} />
+          <AdministrationCollectionLoading
+            label="Loading customers"
+            columns={4}
+          />
         }
       >
         <CustomersTable input={input} result={result} />
@@ -57,10 +65,11 @@ async function CustomerCount({
 }: {
   readonly result: Promise<CustomersData["result"]>;
 }) {
+  const count = (await result).total;
   return (
     <AdministrationTableCount
-      count={(await result).total}
-      itemLabel="customer"
+      count={count}
+      label={`${count} customer${count === 1 ? "" : "s"}`}
     />
   );
 }
@@ -73,6 +82,7 @@ export async function CustomersTable({
   readonly result: Promise<CustomersData["result"]>;
 }) {
   const [resolvedInput, resolvedResult] = await Promise.all([input, result]);
+  const locale = await getRequestLocale();
 
   return (
     <section className="mt-7">
@@ -85,6 +95,7 @@ export async function CustomersTable({
       />
       <Pagination
         basePath="/admin/customers"
+        locale={locale}
         page={resolvedResult.page}
         pageCount={resolvedResult.pageCount}
         params={{

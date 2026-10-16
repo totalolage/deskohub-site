@@ -24,7 +24,7 @@ const paidAttempt = {
 
 describe("getAdministrationPaymentStatus", () => {
   test("keeps the attempt state for a payment without a refund", () => {
-    expect(getAdministrationPaymentStatus(paidAttempt)).toEqual({
+    expect(getAdministrationPaymentStatus(paidAttempt, "en-US")).toEqual({
       label: "Paid",
       at: "2026-10-12T06:34:00Z",
       refunded: false,
@@ -35,21 +35,27 @@ describe("getAdministrationPaymentStatus", () => {
 
   test("flags a payment that still has to be refunded", () => {
     expect(
-      getAdministrationPaymentStatus({
-        ...paidAttempt,
-        refundState: "required",
-      })
+      getAdministrationPaymentStatus(
+        {
+          ...paidAttempt,
+          refundState: "required",
+        },
+        "en-US"
+      )
     ).toMatchObject({ label: "Paid", refunded: false, needsRefund: true });
   });
 
   test("replaces the paid state with the full refund and its time", () => {
     expect(
-      getAdministrationPaymentStatus({
-        ...paidAttempt,
-        refundState: "refunded",
-        refundedAmount: paidAttempt.amount,
-        refundedAt: "2026-10-12T09:00:00Z",
-      })
+      getAdministrationPaymentStatus(
+        {
+          ...paidAttempt,
+          refundState: "refunded",
+          refundedAmount: paidAttempt.amount,
+          refundedAt: "2026-10-12T09:00:00Z",
+        },
+        "en-US"
+      )
     ).toEqual({
       label: "Refunded",
       at: "2026-10-12T09:00:00Z",
@@ -61,17 +67,23 @@ describe("getAdministrationPaymentStatus", () => {
 
   test("names the refunded amount and keeps the rest of a partial refund", () => {
     expect(
-      getAdministrationPaymentStatus({
-        ...paidAttempt,
-        refundState: "refunded",
-        refundedAmount: { ...paidAttempt.amount, value: 10_000 },
-        refundedAt: "2026-10-12T09:00:00Z",
-      })
+      getAdministrationPaymentStatus(
+        {
+          ...paidAttempt,
+          refundState: "refunded",
+          refundedAmount: { ...paidAttempt.amount, value: 10_000 },
+          refundedAt: "2026-10-12T09:00:00Z",
+        },
+        "en-US"
+      )
     ).toEqual({
-      label: `Partially refunded ${formatAdministrationMoney({
-        ...paidAttempt.amount,
-        value: 10_000,
-      })}`,
+      label: `Partially refunded ${formatAdministrationMoney(
+        {
+          ...paidAttempt.amount,
+          value: 10_000,
+        },
+        "en-US"
+      )}`,
       at: "2026-10-12T09:00:00Z",
       refunded: true,
       retainedAmount: { value: 11_750, exponent: 2, currency: "CZK" },

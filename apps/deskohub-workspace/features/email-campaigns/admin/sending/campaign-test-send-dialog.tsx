@@ -1,6 +1,7 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import Interpolate from "@doist/react-interpolate";
 import { FlaskConical, Lock, Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -167,10 +168,19 @@ export function CampaignTestSendDialog({
               </AdministrationAlert>
             ) : (
               <p className="text-sm text-navy-blue/70">
-                {m.emailCampaignsTestSendPerLanguage({}, { locale })}{" "}
-                <span className="font-semibold text-navy-blue">
-                  {describeCampaignLocales(contentLocales, locale)}
-                </span>
+                <Interpolate
+                  mapping={{
+                    languages: (
+                      <span className="font-semibold text-navy-blue">
+                        {describeCampaignLocales(contentLocales, locale)}
+                      </span>
+                    ),
+                  }}
+                  string={m.emailCampaignsTestSendPerLanguage(
+                    { languages: "{languages}" },
+                    { locale }
+                  )}
+                />
               </p>
             )}
             <div>

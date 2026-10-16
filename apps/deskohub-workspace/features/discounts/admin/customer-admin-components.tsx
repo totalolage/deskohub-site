@@ -19,6 +19,7 @@ import {
   ReservationTable,
 } from "@/features/administration/components";
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
+import type { Locale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { VoucherEditor } from "./admin-tables";
@@ -171,9 +172,11 @@ export function CodeAdministrationDetailPage({
 
 export function VoucherAdministrationDetailPage({
   detail,
+  locale,
   notice,
 }: {
   readonly detail: AdminVoucherDetail;
+  readonly locale: Locale;
   readonly notice?: Notice;
 }) {
   const { voucher } = detail;
@@ -187,7 +190,7 @@ export function VoucherAdministrationDetailPage({
         </Button>
       </div>
 
-      <VoucherSummary voucher={voucher} />
+      <VoucherSummary locale={locale} voucher={voucher} />
 
       <section className="mt-5 rounded-xl border border-navy-blue/10 bg-white p-5">
         <h2 className="mb-4 font-semibold">Configuration</h2>
@@ -296,11 +299,13 @@ export function VoucherAdministrationDetailPage({
 
 export function CustomerAdministrationDetailPage({
   activity,
+  locale,
   notice,
   profile,
   reservationActivity,
 }: {
   readonly activity: AdministrationCustomerActivity;
+  readonly locale: Locale;
   readonly notice?: Notice;
   readonly profile: AdminCustomerProfile;
   readonly reservationActivity: AdministrationCustomerReservationActivity;
@@ -375,14 +380,18 @@ export function CustomerAdministrationDetailPage({
       <AdministrationPageHeader title={profile.customer.displayName} />
       <AdministrationNoticeBanner notice={notice} />
 
-      <CustomerReservationActivity activity={reservationActivity} />
+      <CustomerReservationActivity
+        activity={reservationActivity}
+        locale={locale}
+      />
 
       <div className="mb-7 grid gap-5 lg:grid-cols-2">
         <CustomerStats
           activity={activity}
           availableCodes={`${targetedCodeCount} (+ ${universalCodeCount})`}
+          locale={locale}
         />
-        <CustomerConsents consent={activity.marketingConsent} />
+        <CustomerConsents consent={activity.marketingConsent} locale={locale} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
@@ -565,9 +574,11 @@ export function CustomerAdministrationDetailPage({
 function CustomerStats({
   activity,
   availableCodes,
+  locale,
 }: {
   readonly activity: AdministrationCustomerActivity;
   readonly availableCodes: string;
+  readonly locale: Locale;
 }) {
   return (
     <section>
@@ -579,7 +590,7 @@ function CustomerStats({
         />
         <CustomerStat
           label="Total revenue"
-          value={formatMoneyTotals(activity.stats.revenue)}
+          value={formatMoneyTotals(activity.stats.revenue, locale)}
         />
         <CustomerStat
           label="Favourite product"
@@ -587,7 +598,7 @@ function CustomerStats({
         />
         <CustomerStat
           label="Discount savings"
-          value={formatMoneyTotals(activity.stats.discountSavings)}
+          value={formatMoneyTotals(activity.stats.discountSavings, locale)}
         />
         <CustomerStat label="Available codes" value={availableCodes} />
       </dl>
@@ -612,14 +623,16 @@ function CustomerStat({
 
 function CustomerConsents({
   consent,
+  locale,
 }: {
   readonly consent: AdministrationCustomerMarketingConsent | null;
+  readonly locale: Locale;
 }) {
   return (
     <section>
       <h2 className="mb-3 text-xl">Consents</h2>
       <dl className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-        <CustomerConsent consent={consent} />
+        <CustomerConsent consent={consent} locale={locale} />
       </dl>
     </section>
   );
@@ -627,8 +640,10 @@ function CustomerConsents({
 
 function CustomerConsent({
   consent,
+  locale,
 }: {
   readonly consent: AdministrationCustomerMarketingConsent | null;
+  readonly locale: Locale;
 }) {
   const withdrawnAt = consent?.withdrawnAt;
   return (
@@ -640,11 +655,16 @@ function CustomerConsent({
             <StatusBadge tone={withdrawnAt ? "attention" : "positive"}>
               {withdrawnAt ? "Withdrawn" : "Granted"}
             </StatusBadge>{" "}
-            · {formatAdministrationDateTime(withdrawnAt ?? consent.grantedAt)}
+            ·{" "}
+            {formatAdministrationDateTime(
+              withdrawnAt ?? consent.grantedAt,
+              locale
+            )}
             <span className="mt-0.5 block break-all text-xs">
               {withdrawnAt && (
                 <>
-                  Granted {formatAdministrationDateTime(consent.grantedAt)} ·{" "}
+                  Granted{" "}
+                  {formatAdministrationDateTime(consent.grantedAt, locale)} ·{" "}
                 </>
               )}
               {consent.locale} · {consent.documentHash}
@@ -669,8 +689,15 @@ function CustomerTransactionHistory({
   return <CustomerTransactionHistoryTable transactions={transactions} />;
 }
 
-const formatMoneyTotals = (totals: readonly AdministrationMoney[]) =>
-  totals.length > 0 ? totals.map(formatAdministrationMoney).join(" + ") : "—";
+const formatMoneyTotals = (
+  totals: readonly AdministrationMoney[],
+  locale: Locale
+) =>
+  totals.length > 0
+    ? totals
+        .map((total) => formatAdministrationMoney(total, locale))
+        .join(" + ")
+    : "—";
 
 function CodeSummary({
   code,
@@ -711,16 +738,22 @@ function CodeSummary({
   );
 }
 
-function VoucherSummary({ voucher }: { readonly voucher: AdminVoucher }) {
+function VoucherSummary({
+  locale,
+  voucher,
+}: {
+  readonly locale: Locale;
+  readonly voucher: AdminVoucher;
+}) {
   return (
     <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
       <SummaryFact
         label="Issued"
-        value={formatAdministrationMoney(voucher.issuedCredit)}
+        value={formatAdministrationMoney(voucher.issuedCredit, locale)}
       />
       <SummaryFact
         label="Remaining"
-        value={formatAdministrationMoney(voucher.remainingCredit)}
+        value={formatAdministrationMoney(voucher.remainingCredit, locale)}
       />
       <SummaryFact
         label="Status"

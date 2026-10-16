@@ -29,7 +29,11 @@ export default function OperationsAdministrationPage({
       <h1 className="sr-only">Operations</h1>
       <AdministrationTableToolbar
         count={
-          <Suspense fallback={<AdministrationCountLoading label="operation" />}>
+          <Suspense
+            fallback={
+              <AdministrationCountLoading label="Loading operation count" />
+            }
+          >
             <OperationCount result={result} />
           </Suspense>
         }
@@ -38,11 +42,14 @@ export default function OperationsAdministrationPage({
             <OperationFiltersContent criteria={criteria} />
           </Suspense>
         }
-        itemLabel="operation"
+        label="operation table controls"
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading label="operations" columns={6} />
+          <AdministrationCollectionLoading
+            label="Loading operations"
+            columns={6}
+          />
         }
       >
         <OperationResultsContent result={result} />
@@ -60,10 +67,11 @@ async function OperationCount({
 }: {
   readonly result: Promise<OperationsResult>;
 }) {
+  const count = (await result).items.length;
   return (
     <AdministrationTableCount
-      count={(await result).items.length}
-      itemLabel="operation"
+      count={count}
+      label={`${count} operation${count === 1 ? "" : "s"}`}
     />
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Interpolate from "@doist/react-interpolate";
 import { type ReactNode, useMemo } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
@@ -146,8 +147,17 @@ export function RecipientTable({
               <p className="break-all font-semibold">{recipient.email}</p>
               <p className="text-navy-blue/65">
                 {campaignLocaleName(recipient.locale, locale)} ·{" "}
-                {m.emailCampaignsRecipientPreviewCustomerInline({}, { locale })}{" "}
-                <CustomerLink customerId={recipient.dotyposCustomerId} />
+                <Interpolate
+                  mapping={{
+                    customer: (
+                      <CustomerLink customerId={recipient.dotyposCustomerId} />
+                    ),
+                  }}
+                  string={m.emailCampaignsRecipientPreviewCustomerInline(
+                    { customer: "{customer}" },
+                    { locale }
+                  )}
+                />
               </p>
             </MobileItem>
           ))}
@@ -188,8 +198,17 @@ export function ExclusionTable({
                 {describeExclusionReason(exclusion, locale)}
               </p>
               <p className="text-navy-blue/65">
-                {m.emailCampaignsRecipientPreviewCustomerInline({}, { locale })}{" "}
-                <CustomerLink customerId={exclusion.dotyposCustomerId} />
+                <Interpolate
+                  mapping={{
+                    customer: (
+                      <CustomerLink customerId={exclusion.dotyposCustomerId} />
+                    ),
+                  }}
+                  string={m.emailCampaignsRecipientPreviewCustomerInline(
+                    { customer: "{customer}" },
+                    { locale }
+                  )}
+                />
               </p>
             </MobileItem>
           ))}
@@ -231,8 +250,19 @@ export function DuplicateTable({
             <MobileItem key={duplicate.email}>
               <p className="break-all font-semibold">{duplicate.email}</p>
               <p className="text-navy-blue/65">
-                {m.emailCampaignsRecipientPreviewReceivesInline({}, { locale })}{" "}
-                <CustomerLink customerId={duplicate.recipientCustomerId} />
+                <Interpolate
+                  mapping={{
+                    customer: (
+                      <CustomerLink
+                        customerId={duplicate.recipientCustomerId}
+                      />
+                    ),
+                  }}
+                  string={m.emailCampaignsRecipientPreviewReceivesInline(
+                    { customer: "{customer}" },
+                    { locale }
+                  )}
+                />
               </p>
               <p className="flex flex-wrap gap-x-3 text-navy-blue/65">
                 {m.emailCampaignsRecipientPreviewSkippedInline({}, { locale })}

@@ -40,7 +40,7 @@ export async function SentCampaignPage({
       getRequestLocale(),
     ]);
   const sentAt =
-    send && formatAdministrationDateTime(send.createdAt.toString());
+    send && formatAdministrationDateTime(send.createdAt.toString(), locale);
   return (
     <AdministrationPage>
       <AdministrationPageHeader
@@ -100,7 +100,10 @@ export async function SentCampaignPage({
               label={m.emailCampaignsSentCompletedAt({}, { locale })}
               value={
                 send?.completedAt
-                  ? formatAdministrationDateTime(send.completedAt.toString())
+                  ? formatAdministrationDateTime(
+                      send.completedAt.toString(),
+                      locale
+                    )
                   : m.emailCampaignsSentCompletedAtPending({}, { locale })
               }
             />
@@ -130,14 +133,22 @@ export async function SentCampaignPage({
                             { discountGroups }
                           ),
                           sentAt: formatAdministrationDateTime(
-                            send.createdAt.toString()
+                            send.createdAt.toString(),
+                            locale
                           ),
                         },
                         { locale }
                       )
-                    : describeAudienceFilter(send.audienceFilter, locale, {
-                        discountGroups,
-                      })
+                    : m.emailCampaignsSentAudienceFilterSummary(
+                        {
+                          filter: describeAudienceFilter(
+                            send.audienceFilter,
+                            locale,
+                            { discountGroups }
+                          ),
+                        },
+                        { locale }
+                      )
                 }
               />
             </dl>
@@ -193,7 +204,8 @@ export async function SentCampaignPage({
                   skipReason: recipient.skipReason,
                   statusUpdatedAt: recipient.statusUpdatedAt.toString(),
                   statusSince: formatAdministrationDateTime(
-                    recipient.statusUpdatedAt.toString()
+                    recipient.statusUpdatedAt.toString(),
+                    locale
                   ),
                 }))}
               />
