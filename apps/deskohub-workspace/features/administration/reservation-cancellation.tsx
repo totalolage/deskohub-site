@@ -6,6 +6,8 @@ import { Schema } from "effect";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
@@ -29,6 +31,7 @@ import {
 } from "@/shared/components/ui/form";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { cancelAdministrationReservation } from "./actions";
+import { m } from "./i18n";
 import { AdministrationAlert } from "./notice";
 
 const reservationCancellationFormSchema = Schema.Struct({
@@ -36,7 +39,7 @@ const reservationCancellationFormSchema = Schema.Struct({
   sendCancellationEmail: Schema.Boolean,
 });
 
-const confirmedReservationCancellationFormSchema =
+const getConfirmedReservationCancellationFormSchema = (locale: Locale) =>
   reservationCancellationFormSchema.check(
     Schema.makeFilter<{
       readonly providerCredentialRemoved: boolean;
@@ -45,7 +48,10 @@ const confirmedReservationCancellationFormSchema =
       (values) =>
         values.providerCredentialRemoved || {
           path: ["providerCredentialRemoved"],
-          issue: "Confirm that the door PIN was removed from the lock.",
+          issue: m.administrationReservationCancellationPinRemovedRequired(
+            {},
+            { locale }
+          ),
         }
     )
   );
@@ -73,6 +79,7 @@ export function ReservationCancellation({
   readonly reservationId: AdministrationWorkspaceReservationIdType;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +92,7 @@ export function ReservationCancellation({
     mode: "onSubmit",
     resolver: effectSchemaResolver(
       requiresProviderCredentialRemoval
-        ? confirmedReservationCancellationFormSchema
+        ? getConfirmedReservationCancellationFormSchema(locale)
         : reservationCancellationFormSchema
     ),
   });
@@ -102,22 +109,22 @@ export function ReservationCancellation({
         setOpen(false);
         setMessage(
           {
-            failed:
-              "Reservation cancelled, but the cancellation email could not be sent.",
+            failed: m.administrationReservationCancellationEmailFailed,
             not_requested:
-              "Reservation cancelled without emailing the customer.",
-            sent: "Reservation cancelled and the customer was emailed.",
-          }[data.email]
+              m.administrationReservationCancellationEmailNotRequested,
+            sent: m.administrationReservationCancellationEmailSent,
+          }[data.email]({}, { locale })
         );
         router.refresh();
       },
       onError: ({ error: actionError }) =>
         setError(
-          actionError.serverError ?? "The reservation could not be cancelled."
+          actionError.serverError ??
+            m.administrationReservationCancellationFailed({}, { locale })
         ),
       onTransportError: () =>
         setError(
-          "The cancellation response was interrupted. Refresh before trying again."
+          m.administrationReservationCancellationInterrupted({}, { locale })
         ),
     }
   );
@@ -136,21 +143,27 @@ export function ReservationCancellation({
         >
           <DialogTrigger asChild>
             <Button type="button" variant="secondary">
-              Cancel reservation
+              {m.administrationReservationCancellationOpen({}, { locale })}
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent locale={locale}>
             <DialogHeader>
-              <DialogTitle>Cancel this reservation?</DialogTitle>
+              <DialogTitle>
+                {m.administrationReservationCancellationTitle({}, { locale })}
+              </DialogTitle>
               <DialogDescription>
-                This cancels the booking in Dotypos and cannot be undone. Any
-                paid online payment will be marked as needing a refund; no
-                refund is issued automatically.
+                {m.administrationReservationCancellationDescription(
+                  {},
+                  { locale }
+                )}
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form
-                aria-label="Cancel this reservation"
+                aria-label={m.administrationReservationCancellationFormLabel(
+                  {},
+                  { locale }
+                )}
                 noValidate
                 onSubmit={(event) => {
                   void form.handleSubmit((values) => {
@@ -182,8 +195,10 @@ export function ReservationCancellation({
                               />
                             </FormControl>
                             <span className="leading-6">
-                              I removed the active door PIN from the lock in
-                              Igloohome
+                              {m.administrationReservationCancellationPinRemoved(
+                                {},
+                                { locale }
+                              )}
                             </span>
                           </ChoiceCard>
                         </FormLabel>
@@ -208,7 +223,10 @@ export function ReservationCancellation({
                             />
                           </FormControl>
                           <span className="leading-6 text-navy-blue/70">
-                            Send a cancellation email to the customer
+                            {m.administrationReservationCancellationSendEmail(
+                              {},
+                              { locale }
+                            )}
                           </span>
                         </ChoiceCard>
                       </FormLabel>
@@ -228,7 +246,10 @@ export function ReservationCancellation({
                       type="button"
                       variant="secondary"
                     >
-                      Keep reservation
+                      {m.administrationReservationCancellationKeep(
+                        {},
+                        { locale }
+                      )}
                     </Button>
                   </DialogClose>
                   <Button
@@ -240,7 +261,15 @@ export function ReservationCancellation({
                     tone="burned-orange-ink"
                     type="submit"
                   >
-                    {isExecuting ? "Cancelling…" : "Cancel reservation"}
+                    {isExecuting
+                      ? m.administrationReservationCancellationSubmitting(
+                          {},
+                          { locale }
+                        )
+                      : m.administrationReservationCancellationSubmit(
+                          {},
+                          { locale }
+                        )}
                   </Button>
                 </DialogFooter>
               </form>

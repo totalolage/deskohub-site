@@ -1,15 +1,37 @@
 import { ArrowDown, ArrowRight, Check, CircleAlert } from "lucide-react";
+import type { Locale } from "@/features/i18n";
 import { cn } from "@/shared/utils";
+import { m } from "./i18n";
+import { getAdministrationLifecycleConditionLabel } from "./reservation-presentation";
 import type {
   AdministrationLifecycleStage,
   AdministrationReservationLifecycle,
 } from "./reservation-status";
 
+type LifecycleStageMessage =
+  typeof m.administrationReservationLifecycleStageHeld;
+
 const lifecycleStages = [
-  { stage: "started", label: "Started", note: "Checkout workflow created" },
-  { stage: "held", label: "Held", note: "Reservation is held" },
-  { stage: "paid", label: "Paid", note: "Payment was recorded" },
-  { stage: "complete", label: "Complete", note: "Access was delivered" },
+  {
+    stage: "started",
+    label: m.administrationReservationLifecycleStageStarted,
+    note: m.administrationReservationLifecycleStageStartedNote,
+  },
+  {
+    stage: "held",
+    label: m.administrationReservationLifecycleStageHeld,
+    note: m.administrationReservationLifecycleStageHeldNote,
+  },
+  {
+    stage: "paid",
+    label: m.administrationReservationLifecycleStagePaid,
+    note: m.administrationReservationLifecycleStagePaidNote,
+  },
+  {
+    stage: "complete",
+    label: m.administrationReservationLifecycleStageComplete,
+    note: m.administrationReservationLifecycleStageCompleteNote,
+  },
 ] as const;
 
 type CancellationLifecycleStage = Extract<
@@ -19,21 +41,27 @@ type CancellationLifecycleStage = Extract<
 
 const cancellationStagePresentation = {
   hold_expired: {
-    label: "Hold expired",
-    note: "Waiting for the held booking to be released",
+    label: m.administrationReservationLifecycleStageHoldExpired,
+    note: m.administrationReservationLifecycleStageHoldExpiredNote,
   },
   cancelling: {
-    label: "Cancelling",
-    note: "The held booking is being released",
+    label: m.administrationReservationLifecycleStageCancelling,
+    note: m.administrationReservationLifecycleStageCancellingNote,
   },
   cancellation_failed: {
-    label: "Cancellation issue",
-    note: "The held booking still needs attention",
+    label: m.administrationReservationLifecycleStageCancellationIssue,
+    note: m.administrationReservationLifecycleStageCancellationIssueNote,
   },
-  cancelled: { label: "Cancelled", note: "The hold was released" },
+  cancelled: {
+    label: m.administrationReservationLifecycleStageCancelled,
+    note: m.administrationReservationLifecycleStageCancelledNote,
+  },
 } satisfies Record<
   CancellationLifecycleStage,
-  { readonly label: string; readonly note: string }
+  {
+    readonly label: LifecycleStageMessage;
+    readonly note: LifecycleStageMessage;
+  }
 >;
 
 const isCancellationStage = (
@@ -43,8 +71,10 @@ const isCancellationStage = (
 
 export function ReservationLifecycleMap({
   lifecycle,
+  locale,
 }: {
   readonly lifecycle: AdministrationReservationLifecycle;
+  readonly locale: Locale;
 }) {
   const cancellationStage = isCancellationStage(lifecycle.currentStage)
     ? lifecycle.currentStage
@@ -57,6 +87,7 @@ export function ReservationLifecycleMap({
         <LifecycleStageCard
           className="md:col-start-1 md:row-start-1"
           lifecycle={lifecycle}
+          locale={locale}
           {...started}
         />
         <LifecycleConnector
@@ -66,6 +97,7 @@ export function ReservationLifecycleMap({
         <LifecycleStageCard
           className="md:col-start-3 md:row-start-1"
           lifecycle={lifecycle}
+          locale={locale}
           {...held}
         />
 
@@ -82,6 +114,7 @@ export function ReservationLifecycleMap({
           <LifecycleStageCard
             label={cancellation.label}
             lifecycle={lifecycle}
+            locale={locale}
             note={cancellation.note}
             stage={cancellationStage}
           />
@@ -89,12 +122,16 @@ export function ReservationLifecycleMap({
 
         <LifecycleConnector
           className="md:col-start-4 md:row-start-1"
-          mobileLabel="Or continue to payment"
+          mobileLabel={m.administrationReservationLifecycleContinueToPayment(
+            {},
+            { locale }
+          )}
           reached={lifecycle.reachedStages.includes("paid")}
         />
         <LifecycleStageCard
           className="md:col-start-5 md:row-start-1"
           lifecycle={lifecycle}
+          locale={locale}
           {...paid}
         />
         <LifecycleConnector
@@ -104,6 +141,7 @@ export function ReservationLifecycleMap({
         <LifecycleStageCard
           className="md:col-start-7 md:row-start-1"
           lifecycle={lifecycle}
+          locale={locale}
           {...complete}
         />
       </div>
@@ -138,13 +176,15 @@ function LifecycleStageCard({
   className,
   label,
   lifecycle,
+  locale,
   note,
   stage,
 }: {
   readonly className?: string;
-  readonly label: string;
+  readonly label: LifecycleStageMessage;
   readonly lifecycle: AdministrationReservationLifecycle;
-  readonly note: string;
+  readonly locale: Locale;
+  readonly note: LifecycleStageMessage;
   readonly stage: AdministrationLifecycleStage;
 }) {
   const current = lifecycle.currentStage === stage;
@@ -168,15 +208,22 @@ function LifecycleStageCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold">{label}</p>
+          <p className="text-sm font-semibold">{label({}, { locale })}</p>
           <p className="mt-1 text-xs leading-5">
-            {current ? lifecycle.label : note}
+            {current
+              ? getAdministrationLifecycleConditionLabel(
+                  lifecycle.condition,
+                  locale
+                )
+              : note({}, { locale })}
           </p>
         </div>
         {reached && !current && (
           <span className="grid size-5 shrink-0 place-items-center rounded-full bg-navy-blue/8">
             <Check aria-hidden className="size-3" />
-            <span className="sr-only">Reached</span>
+            <span className="sr-only">
+              {m.administrationReservationLifecycleStageReached({}, { locale })}
+            </span>
           </span>
         )}
         {current && (
@@ -193,7 +240,9 @@ function LifecycleStageCard({
             ) : (
               <span aria-hidden className="size-1.5 rounded-full bg-white" />
             )}
-            <span className="sr-only">Current stage</span>
+            <span className="sr-only">
+              {m.administrationReservationLifecycleStageCurrent({}, { locale })}
+            </span>
           </span>
         )}
       </div>

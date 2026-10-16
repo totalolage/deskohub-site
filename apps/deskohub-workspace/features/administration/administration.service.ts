@@ -112,15 +112,22 @@ import {
 } from "./reservation-date-range";
 import { getUniqueReservationId } from "./reservation-lookup.server";
 import {
+  type AdministrationReservationProduct,
+  getAdministrationReservationProduct,
+} from "./reservation-product";
+import {
+  type AdministrationReservationStatusNote,
   type AdministrationStatusGroup,
   canCancelReservation,
   getAdministrationReservationLifecycle,
   getAdministrationReservationStatus,
+  getAdministrationReservationStatusNoteFields,
 } from "./reservation-status";
 import {
   reservationStatusCondition,
   successfulReservationCondition,
 } from "./reservation-status-condition";
+import type { AdministrationReservationTimelineEvent } from "./reservation-timeline";
 
 const reservationPageSize = 24;
 const bookingPageSize = 24;
@@ -207,10 +214,13 @@ export type AdministrationReservationSummary = {
   readonly endsAt: string | null;
   readonly date: string | null;
   readonly type: "cowork" | "meeting-room" | "office";
+  readonly product: AdministrationReservationProduct;
+  /** The English product name the administration API shows. */
   readonly typeLabel: string;
   readonly purpose: WorkspaceReservation["reservationPurpose"];
   readonly status: ReturnType<typeof getAdministrationReservationStatus>;
   readonly statusNote: string | null;
+  readonly statusNoteCode: AdministrationReservationStatusNote | null;
   readonly createdAt: string;
   readonly latestPayment: AdministrationPaymentAttempt | null;
   readonly updatedAt: string;
@@ -238,6 +248,7 @@ export type AdministrationBookingSummary = {
   readonly linkedReservation: {
     readonly id: WorkspaceReservationId;
     readonly label: string;
+    readonly product: AdministrationReservationProduct;
   } | null;
   readonly createdAt: string | null;
   readonly updatedAt: string | null;
@@ -349,6 +360,9 @@ type AdministrationDiscountApplication = {
 
 export type AdministrationTimelineItem = {
   readonly id: string;
+  /** What happened, for the Admin UI's localized copy. */
+  readonly event?: AdministrationReservationTimelineEvent;
+  /** English copy the administration API shows. */
   readonly title: string;
   readonly description: string;
   readonly occurredAt: string;
@@ -363,9 +377,14 @@ export type AdministrationReservationDetail = {
   readonly booking: AdministrationBookingSummary | null;
   readonly lifecycle: ReturnType<typeof getAdministrationReservationLifecycle>;
   readonly operatorNotice: {
-    readonly message: string;
+    readonly kind:
+      | "late_payment_recovery_in_progress"
+      | "late_payment_recovered"
+      | "late_payment_recovery_review_required"
+      | "late_payment_refunded"
+      | "late_payment_refund_required"
+      | "payment_review";
     readonly status: "error" | "success" | "warning";
-    readonly title: string;
   } | null;
   readonly timeline: readonly AdministrationTimelineItem[];
   readonly paymentAttempts: readonly AdministrationPaymentAttempt[];
@@ -718,19 +737,19 @@ const getReservationStatusNote = ({
   readonly recoveryState?: LatePaymentRecoveryState;
   readonly refunded: boolean;
   readonly row: SafeReservationRow;
-}) => {
+}): AdministrationReservationStatusNote | null => {
   if (recoveryState === "pending" || recoveryState === "processing") {
-    return "Recovery in progress";
+    return "recovery_in_progress";
   }
-  if (recoveryState === "review_required") return "Recovery needs review";
-  if (refunded) return "Refunded";
-  if (latePayment) return "Refund required";
+  if (recoveryState === "review_required") return "recovery_review";
+  if (refunded) return "refunded";
+  if (latePayment) return "refund_required";
   if (row.failureCode === "payment_outcome_unconfirmed_before_cleanup") {
-    return "Payment needs review";
+    return "payment_review";
   }
   return live.reservation?.status === "CANCELLED" &&
     row.reservationState !== "cancelled"
-    ? "Cancelled in Dotypos"
+    ? "cancelled_in_dotypos"
     : null;
 };
 
@@ -766,6 +785,7 @@ const toReservationSummary = ({
       ? getReservationDate(live.reservation.startDate)
       : null,
     type: row.reservationDetails.kind,
+    product: getAdministrationReservationProduct(row.reservationDetails),
     typeLabel: getReservationTypeLabel(row),
     purpose: row.reservationPurpose,
     status: getAdministrationReservationStatus({
@@ -778,16 +798,17 @@ const toReservationSummary = ({
       refunded,
       reservationState: row.reservationState,
     }),
-    statusNote:
+    ...getAdministrationReservationStatusNoteFields(
       needsRefund || latestPayment?.refundState === "required"
-        ? "Needs refund"
+        ? "needs_refund"
         : getReservationStatusNote({
             latePayment,
             live,
             recoveryState,
             refunded,
             row,
-          }),
+          })
+    ),
     createdAt: toIsoString(row.createdAt),
     latestPayment,
     updatedAt: toIsoString(row.updatedAt),
@@ -833,7 +854,11 @@ const toBookingSummary = ({
     tableName: table?.name ?? null,
     tableLocation: table?.locationName ?? null,
     linkedReservation: row
-      ? { id: row.id, label: getReservationTypeLabel(row) }
+      ? {
+          id: row.id,
+          label: getReservationTypeLabel(row),
+          product: getAdministrationReservationProduct(row.reservationDetails),
+        }
       : null,
     createdAt: booking.created ?? null,
     updatedAt: booking.versionDate ?? null,
@@ -918,6 +943,7 @@ const buildTimeline = (row: SafeReservationRow) => {
   const items: AdministrationTimelineItem[] = [
     {
       id: "workflow-created",
+      event: { source: "reservation", kind: "workflow_created" },
       title: "Checkout workflow created",
       description: "Deskohub created the local reservation workflow.",
       occurredAt: toIsoString(row.createdAt),
@@ -926,6 +952,7 @@ const buildTimeline = (row: SafeReservationRow) => {
   ];
   const add = (
     id: string,
+    kind: AdministrationReservationTimelineEvent["kind"],
     title: string,
     description: string,
     occurredAt: Temporal.Instant | null,
@@ -934,6 +961,7 @@ const buildTimeline = (row: SafeReservationRow) => {
     if (occurredAt) {
       items.push({
         id,
+        event: { source: "reservation", kind },
         title,
         description,
         occurredAt: toIsoString(occurredAt),
@@ -943,6 +971,7 @@ const buildTimeline = (row: SafeReservationRow) => {
   };
   add(
     "reservation-created",
+    "reservation_held",
     "Reservation held",
     "The booking was held for the customer.",
     row.reservationCreatedAt,
@@ -950,6 +979,7 @@ const buildTimeline = (row: SafeReservationRow) => {
   );
   add(
     "payment-paid",
+    "payment_recorded",
     "Payment recorded by Deskohub",
     "Deskohub verified the provider payment and marked the reservation paid.",
     row.paidAt,
@@ -957,6 +987,7 @@ const buildTimeline = (row: SafeReservationRow) => {
   );
   add(
     "reservation-confirmed",
+    "reservation_confirmed",
     "Reservation confirmed",
     "The reservation was confirmed.",
     row.reservationConfirmedAt,
@@ -964,6 +995,7 @@ const buildTimeline = (row: SafeReservationRow) => {
   );
   add(
     "fulfilled",
+    "access_delivered",
     "Customer access sent",
     "The customer confirmation was delivered.",
     row.fulfilledAt,
@@ -971,6 +1003,7 @@ const buildTimeline = (row: SafeReservationRow) => {
   );
   add(
     "fulfillment-failed",
+    "confirmation_failed",
     "Customer confirmation failed",
     "The confirmation could not be completed.",
     row.fulfillmentFailedAt,
@@ -978,6 +1011,7 @@ const buildTimeline = (row: SafeReservationRow) => {
   );
   add(
     "hold-expired",
+    "hold_expired",
     "Reservation hold expired",
     "The held reservation reached its expiry time.",
     row.reservationHoldExpiredAt,
@@ -985,6 +1019,7 @@ const buildTimeline = (row: SafeReservationRow) => {
   );
   add(
     "cancelled",
+    "hold_cancelled",
     "Reservation cancelled",
     "The held reservation was cancelled.",
     row.reservationCancelledAt,
@@ -1038,6 +1073,7 @@ const buildLatePaymentTimeline = (
 ): readonly AdministrationTimelineItem[] =>
   events.map((event) => ({
     id: `late-payment-${event.eventId}`,
+    event: { source: "reservation", kind: "late_payment" },
     title: "Late payment — refund required",
     description:
       "Nexi reported payment after Workspace released the reservation. The reservation was not fulfilled and the payment requires an operator refund.",
@@ -1051,6 +1087,7 @@ const buildLatePaymentRecoveryTimeline = (
   recoveries.flatMap((recovery) => {
     const detected: AdministrationTimelineItem = {
       id: `late-payment-recovery-${recovery.paymentAttemptId}-detected`,
+      event: { source: "reservation", kind: "late_payment_recovery_started" },
       title: "Late payment recovery started",
       description:
         "Nexi reported payment after local expiration. Workspace is checking whether the reservation can still be fulfilled.",
@@ -1062,6 +1099,21 @@ const buildLatePaymentRecoveryTimeline = (
       detected,
       {
         id: `late-payment-recovery-${recovery.paymentAttemptId}-${recovery.state}`,
+        event: {
+          source: "reservation",
+          kind: (
+            {
+              recovered: "late_payment_recovered",
+              refund_required: "late_payment_recovery_refund_required",
+              review_required: "late_payment_recovery_review_required",
+            } as const
+          )[
+            recovery.state as Exclude<
+              LatePaymentRecoveryState,
+              "pending" | "processing"
+            >
+          ],
+        },
         title: {
           recovered: "Late payment recovered",
           refund_required: "Late payment — refund required",
@@ -1104,50 +1156,38 @@ const getReservationOperatorNotice = ({
 }): AdministrationReservationDetail["operatorNotice"] => {
   if (recovery?.state === "pending" || recovery?.state === "processing") {
     return {
+      kind: "late_payment_recovery_in_progress",
       status: "warning",
-      title: "Late payment recovery in progress",
-      message:
-        "Workspace is checking the original booking and current availability. Do not fulfil or refund manually while recovery is running.",
     };
   }
   if (recovery?.state === "recovered") {
     return {
+      kind: "late_payment_recovered",
       status: "success",
-      title: "Late payment recovered",
-      message:
-        "Workspace secured a valid booking and continued normal paid fulfillment.",
     };
   }
   if (recovery?.state === "review_required") {
     return {
+      kind: "late_payment_recovery_review_required",
       status: "error",
-      title: "Late payment recovery needs review",
-      message:
-        "Workspace could not safely complete recovery. Check the original and replacement Dotypos bookings before fulfilling or refunding.",
     };
   }
   if (latePayment && refunded) {
     return {
+      kind: "late_payment_refunded",
       status: "success",
-      title: "Late payment refunded",
-      message:
-        "Nexi reported a refund for the late payment. No further refund work is needed.",
     };
   }
   if (latePayment) {
     return {
+      kind: "late_payment_refund_required",
       status: "error",
-      title: "Late payment — refund required",
-      message:
-        "Nexi reported payment after Workspace released this reservation. Do not fulfil it; refund the payment in Nexi.",
     };
   }
   if (row.failureCode === "payment_outcome_unconfirmed_before_cleanup") {
     return {
+      kind: "payment_review",
       status: "warning",
-      title: "Payment needs review",
-      message:
-        "Automatic cleanup kept this reservation held because Nexi reported payment activity or its outcome could not be verified.",
     };
   }
   return null;
@@ -1183,9 +1223,12 @@ export class AdministrationService extends Context.Service<
       AdministrationReservationDetail | null,
       EffectDrizzleQueryError
     >;
-    readonly loadReservationBreadcrumbLabel: (
+    readonly loadReservationProduct: (
       id: WorkspaceReservationId
-    ) => Effect.Effect<string | null, EffectDrizzleQueryError>;
+    ) => Effect.Effect<
+      AdministrationReservationProduct | null,
+      EffectDrizzleQueryError
+    >;
     readonly findReservationId: (
       identifier: string
     ) => Effect.Effect<WorkspaceReservationId | null, EffectDrizzleQueryError>;
@@ -2237,8 +2280,8 @@ export class AdministrationService extends Context.Service<
         }
       );
 
-      const loadReservationBreadcrumbLabel = Effect.fn(
-        "AdministrationService.loadReservationBreadcrumbLabel"
+      const loadReservationProduct = Effect.fn(
+        "AdministrationService.loadReservationProduct"
       )(function* (id: WorkspaceReservationId) {
         const [row] = yield* db
           .select({
@@ -2247,7 +2290,9 @@ export class AdministrationService extends Context.Service<
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, id))
           .limit(1);
-        return row ? getReservationTypeLabel(row) : null;
+        return row
+          ? getAdministrationReservationProduct(row.reservationDetails)
+          : null;
       });
 
       /** The Dotypos booking, or null when Dotypos no longer has it. */
@@ -2907,7 +2952,7 @@ export class AdministrationService extends Context.Service<
         countReservationsNeedingRefund,
         listReservations,
         loadReservation,
-        loadReservationBreadcrumbLabel,
+        loadReservationProduct,
         findReservationId,
         listBookings,
         loadBooking,

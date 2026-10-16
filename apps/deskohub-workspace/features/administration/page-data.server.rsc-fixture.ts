@@ -17,6 +17,9 @@ mock.module("next/navigation", () => ({
   notFound: () => {},
   unstable_rethrow: () => {},
 }));
+mock.module("next/root-params", () => ({
+  locale: () => Promise.resolve("en-US"),
+}));
 
 let authorized = true;
 let authorizationCalls = 0;
@@ -68,7 +71,7 @@ AdministrationService.Live = Layer.succeed(AdministrationService, {
   countReservationsNeedingRefund: unused,
   listReservations: unused,
   loadReservation: unused,
-  loadReservationBreadcrumbLabel: unused,
+  loadReservationProduct: unused,
   findReservationId: unused,
   listBookings: unused,
   loadBooking: unused,

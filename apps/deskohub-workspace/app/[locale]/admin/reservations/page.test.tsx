@@ -13,6 +13,7 @@ import type {
   AdministrationReservationListInput,
   AdministrationReservationPage,
 } from "@/features/administration/administration.service";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -20,8 +21,10 @@ import {
 
 mock.module("server-only", () => ({}));
 mock.module("next/server", () => ({ connection: () => Promise.resolve() }));
+let routeLocale: "cs-CZ" | "en-US" = "en-US";
+
 mock.module("next/root-params", () => ({
-  locale: () => Promise.resolve("en-US"),
+  locale: () => Promise.resolve(routeLocale),
 }));
 
 type LoadedReservationPage = {
@@ -64,7 +67,9 @@ mock.module("@/features/administration/reservation-lookup", () => ({
 async function prerenderReservationsPage() {
   const { default: ReservationsAdministrationPage } = await import("./page");
   const { prelude } = await prerender(
-    <ReservationsAdministrationPage searchParams={Promise.resolve({})} />,
+    <RouteLocaleProvider locale={routeLocale}>
+      <ReservationsAdministrationPage searchParams={Promise.resolve({})} />
+    </RouteLocaleProvider>,
     // Inline every completed boundary instead of streaming hidden segments.
     { progressiveChunkSize: Number.POSITIVE_INFINITY }
   );
@@ -78,6 +83,7 @@ describe("ReservationsAdministrationPage", () => {
   afterEach(() => {
     reservationPage = defaultReservationPage;
     reservationPageInput = undefined;
+    routeLocale = "en-US";
   });
   afterAll(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -124,10 +130,16 @@ describe("ReservationsAdministrationPage", () => {
             endsAt: null,
             date: null,
             type: "cowork",
+            product: { kind: "cowork", tier: "basic" },
             typeLabel: "Cowork Basic",
             purpose: null,
-            status: { group: "in_progress", label: "Awaiting payment" },
+            status: {
+              group: "in_progress",
+              code: "awaiting_payment",
+              label: "Awaiting payment",
+            },
             statusNote: null,
+            statusNoteCode: null,
             createdAt: "2026-08-10T08:00:00Z",
             latestPayment: null,
             updatedAt: "2026-08-10T08:00:00Z",
@@ -194,5 +206,44 @@ describe("ReservationsAdministrationPage", () => {
     ).toBe(
       "/en-US/admin/reservations?direction=asc&from=2026-08-04&sort=status&status=complete&to=2026-08-10&type=cowork"
     );
+  });
+
+  test("renders the reservation list in Czech on a Czech route", async () => {
+    routeLocale = "cs-CZ";
+    reservationPage = {
+      input: { customerId: "customer-one" },
+      result: {
+        ...defaultReservationPage.result,
+        total: 3,
+        dateFilterUnavailable: true,
+      },
+    };
+    const view = await prerenderReservationsPage();
+
+    expect(view.getByRole("heading", { level: 1 }).textContent).toBe(
+      "Rezervace"
+    );
+    expect(view.getByLabelText("3 rezervace")).toBeDefined();
+    expect(
+      view.getByText("Zobrazují se rezervace vybraného zákazníka.")
+    ).toBeDefined();
+    expect(
+      view.getByRole("link", { name: "Zrušit výběr zákazníka" })
+    ).toBeDefined();
+    expect(
+      view.getByText(
+        "Data rezervací jsou dočasně nedostupná. Zkuste toto datum znovu za chvíli."
+      )
+    ).toBeDefined();
+    expect(
+      view.getByText("Tomuto zobrazení neodpovídají žádné rezervace.")
+    ).toBeDefined();
+  });
+
+  test("counts Czech reservations with the right plural form", async () => {
+    routeLocale = "cs-CZ";
+    const view = await prerenderReservationsPage();
+
+    expect(view.getByLabelText("115 rezervací")).toBeDefined();
   });
 });
