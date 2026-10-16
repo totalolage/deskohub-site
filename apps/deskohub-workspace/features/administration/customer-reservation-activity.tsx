@@ -6,6 +6,7 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import type { Locale } from "@/features/i18n";
 import { cn } from "@/shared/utils";
+import { formatWeekday } from "@/shared/utils/date-time-format";
 import type {
   AdministrationCustomerReservationActivity,
   AdministrationCustomerReservationActivityCategory,
@@ -162,11 +163,11 @@ function ReservationActivityGrid({
               className="grid grid-rows-7 gap-1 text-xs leading-none text-navy-blue/55"
             >
               <span />
-              <span>{formatWeekday(1, locale)}</span>
+              <span>{formatWeekday({ isoDay: 1, locale })}</span>
               <span />
-              <span>{formatWeekday(3, locale)}</span>
+              <span>{formatWeekday({ isoDay: 3, locale })}</span>
               <span />
-              <span>{formatWeekday(5, locale)}</span>
+              <span>{formatWeekday({ isoDay: 5, locale })}</span>
               <span />
             </div>
             <div
@@ -251,10 +252,3 @@ const formatReservationActivityLabel = (
         { locale }
       );
 };
-
-/** 2024-01-01 is a Monday, so `isoDay` 1–7 picks Monday–Sunday. */
-const formatWeekday = (isoDay: number, locale: Locale) =>
-  Temporal.PlainDate.from({ year: 2024, month: 1, day: isoDay }).toLocaleString(
-    locale,
-    { weekday: "short" }
-  );
