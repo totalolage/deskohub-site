@@ -17,7 +17,7 @@ import {
   setSyntheticCustomerProfileTags,
 } from "../account/fixtures";
 import { getWorkspaceE2EMarketingDocumentHash } from "../account/marketing-document-hash";
-import { makeWorkspaceE2EAdminCredential } from "../admin-basic-auth";
+import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import {
   type ActionResponseOutcome,
   openAdminBrowserPage,
@@ -27,6 +27,10 @@ import {
   runFinalizedCase,
   sanitizedBrowserOperation,
 } from "../admin-case";
+import {
+  makeWorkspaceE2EAdministrationIdentities,
+  type WorkspaceE2EAdministrationIdentities,
+} from "../administrators/identities";
 import { type DatasourceConfig, getDatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -69,9 +73,11 @@ test("previews the tagged synthetic customer as a draft marketing campaign recip
   runContext,
   runEffect,
 }) => {
-  const credential = makeWorkspaceE2EAdminCredential(
-    environment.WORKSPACE_E2E_ADMIN_BASIC_AUTH
-  );
+  const identities = makeWorkspaceE2EAdministrationIdentities<"ecp-admin">({
+    ownerId: emailCampaignPreviewCaseId,
+    runId: runContext.runId,
+    secret: resolveWorkspaceE2ESessionSigningSecret(environment),
+  });
   addRedaction(environment.VERCEL_AUTOMATION_BYPASS_SECRET);
   const datasourceConfig = getDatasourceConfig(environment);
   const plan = planEmailCampaignPreview();
@@ -79,7 +85,6 @@ test("previews the tagged synthetic customer as a draft marketing campaign recip
     baseURL,
     browser,
     caseName: "email campaign recipient preview",
-    credential,
   });
   try {
     await runEffect(
@@ -87,6 +92,7 @@ test("previews the tagged synthetic customer as a draft marketing campaign recip
         bypassSecret: environment.VERCEL_AUTOMATION_BYPASS_SECRET,
         context,
         datasourceConfig,
+        identities,
         origin,
         page,
         plan,
@@ -106,6 +112,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
     readonly bypassSecret: string | undefined;
     readonly context: BrowserContext;
     readonly datasourceConfig: DatasourceConfig;
+    readonly identities: WorkspaceE2EAdministrationIdentities<"ecp-admin">;
     readonly origin: string;
     readonly page: Page;
     readonly plan: EmailCampaignPreviewPlan;
@@ -263,6 +270,16 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
             context: input.context,
             origin: input.origin,
           })
+        );
+        yield* step(
+          "sign-in-seeded-administrator",
+          workspaceE2ETimeouts.datasource,
+          Effect.gen(function* () {
+            const administrator = yield* input.identities.seed("ecp-admin", [
+              "administrator",
+            ]);
+            yield* input.identities.signIn(administrator, input);
+          }).pipe(Effect.provideService(E2EDatabase, E2EDatabase.of({ db })))
         );
         yield* browserStep(
           "open-audience-form",

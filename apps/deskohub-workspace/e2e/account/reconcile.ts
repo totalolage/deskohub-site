@@ -43,6 +43,8 @@ type WorkspaceE2EAccountCleanupIds = Pick<
 export type WorkspaceE2EAccountLaneReconciliation =
   WorkspaceE2EAccountCleanupIds & {
     readonly journal: WorkspaceE2EAccountJournal;
+    /** Where completion persists the journal; the checkout suite's when absent. */
+    readonly journalDirectory?: string;
   };
 
 /*
@@ -65,10 +67,12 @@ const toWorkspaceE2EFailure = (cause: unknown): WorkspaceE2EError =>
 const reconcileWorkspaceE2EAccountJournal = ({
   datasourceConfig,
   journal,
+  journalDirectory,
   candidates = journal,
 }: {
   readonly datasourceConfig: DatasourceConfig;
   readonly journal: WorkspaceE2EAccountJournal;
+  readonly journalDirectory?: string;
   readonly candidates?: WorkspaceE2EAccountLaneCandidates;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
@@ -133,7 +137,10 @@ const reconcileWorkspaceE2EAccountJournal = ({
           operation: "persist workspace account e2e journal",
         }),
       try: () =>
-        writeWorkspaceE2EAccountJournal({ ...journal, completed: true }),
+        writeWorkspaceE2EAccountJournal(
+          { ...journal, completed: true },
+          journalDirectory
+        ),
     });
   });
 
@@ -156,6 +163,7 @@ export const reconcileWorkspaceE2EAccountJournals = (
           datasourceConfig,
           candidates,
           journal: candidates.journal,
+          journalDirectory: candidates.journalDirectory,
         })
       );
       if (Exit.isFailure(exit)) {
@@ -185,6 +193,8 @@ const accountLaneRecipientLabels = [
  * labels whose synthetic identities it may own.
  */
 export type WorkspaceE2EAccountJournalOwner = {
+  /** The suite's journal directory; the checkout suite's when absent. */
+  readonly journalDirectory?: string;
   readonly ownerId: WorkspaceE2EAccountJournalOwnerId;
   readonly recipientLabels: readonly string[];
 };
@@ -290,7 +300,8 @@ export const prepareWorkspaceE2EAccountLaneReconciliation = (
           cause,
           operation: "read workspace account e2e lane journal",
         }),
-      try: () => dependencies.readJournal(owner.ownerId),
+      try: () =>
+        dependencies.readJournal(owner.ownerId, owner.journalDirectory),
     });
     if (!journal) return undefined;
 
@@ -331,13 +342,16 @@ export const prepareWorkspaceE2EAccountLaneReconciliation = (
         )
     );
     try {
-      return validateWorkspaceE2EAccountLaneJournalOwnership({
+      const validated = validateWorkspaceE2EAccountLaneJournalOwnership({
         journal,
         recipientEmails,
         authUserOwners: new Map(authUserOwners),
         customerOwners: new Map(customerOwners),
         reservationOwners: new Map(reservationOwners),
       });
+      return owner.journalDirectory === undefined
+        ? validated
+        : { ...validated, journalDirectory: owner.journalDirectory };
     } catch (cause) {
       return yield* workspaceE2EError(
         "Workspace account e2e journal ownership validation failed",

@@ -1,7 +1,6 @@
 import { AssertionError } from "node:assert";
 import type { Browser, BrowserContext, Page, Request } from "@playwright/test";
 import { Cause, Effect, Exit, Option } from "effect";
-import type { WorkspaceE2EAdminCredential } from "./admin-basic-auth";
 import { WorkspaceE2EError, workspaceE2EError } from "./errors";
 import { withinWorkspaceE2EDeadline } from "./polling";
 import { toE2EResult } from "./services/telemetry";
@@ -37,14 +36,14 @@ export const sanitizedBrowserOperation = <A>(
   });
 
 /**
- * Opens an isolated admin browser context that sends the E2E Basic auth pair
- * on every request to the preview origin.
+ * Opens an isolated, signed-out admin browser context for the preview origin.
+ * The case signs it in as a seeded synthetic administrator
+ * (`e2e/administrators/identities.ts`) before it opens an admin page.
  */
 export const openAdminBrowserPage = async (input: {
   readonly baseURL: string | undefined;
   readonly browser: Browser;
   readonly caseName: string;
-  readonly credential: WorkspaceE2EAdminCredential;
 }): Promise<{
   readonly context: BrowserContext;
   readonly origin: string;
@@ -62,12 +61,6 @@ export const openAdminBrowserPage = async (input: {
   try {
     context = await input.browser.newContext({
       baseURL,
-      httpCredentials: {
-        origin,
-        password: input.credential.password,
-        send: "always",
-        username: input.credential.username,
-      },
       viewport: { height: 900, width: 1440 },
     });
   } catch {
