@@ -50,4 +50,12 @@ describe("sanitizeAnalyticsUrl", () => {
       "https://deskohub.test/en-US/checkout/pay?discountCodeError=unavailable"
     );
   });
+
+  test("strips the sign-in return target", () => {
+    expect(
+      sanitizeAnalyticsUrl(
+        "https://deskohub.test/cs-CZ/auth/sign-in?returnTo=%2Fcs-CZ%2Fadmin%2Fcustomers%3Fq%3Dsynthetic"
+      )
+    ).toBe("https://deskohub.test/cs-CZ/auth/sign-in");
+  });
 });

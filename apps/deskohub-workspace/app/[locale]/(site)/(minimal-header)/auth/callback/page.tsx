@@ -7,13 +7,17 @@ import { Suspense } from "react";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { AuthCallbackLoading } from "@/features/account/components/auth-callback-loading";
 import { AuthCallbackRedirect } from "@/features/account/components/auth-callback-redirect";
-import { getAccountSignInPath } from "@/features/account/routes";
+import {
+  getAccountSignInPath,
+  signInReturnParam,
+} from "@/features/account/routes";
 import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
+import { getSearchParam, type SearchParamsRecord } from "@/shared/utils";
 
 export const instant = false;
 
@@ -27,14 +31,16 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /**
  * Recovery page for consumed magic links. The authoritative session is the
- * only success signal: any signed-in visitor is sent to the account, and
- * everyone else sees one safe failure state for expired, replayed, and
- * unknown links alike.
+ * only success signal: any signed-in visitor continues to the validated
+ * `returnTo` or the account, and everyone else sees one safe failure state
+ * for expired, replayed, and unknown links alike.
  */
 const CustomerAuthCallbackSession = async ({
   locale,
+  searchParams,
 }: {
   readonly locale: Locale;
+  readonly searchParams: Promise<SearchParamsRecord>;
 }) => {
   await connection();
   if (!(await areAccountsEnabled())) notFound();
@@ -50,6 +56,11 @@ const CustomerAuthCallbackSession = async ({
   if (Result.isSuccess(session) && session.success) {
     return <AuthCallbackRedirect locale={locale} />;
   }
+  // Signing in again keeps the original return target.
+  const signInPath = getAccountSignInPath(
+    locale,
+    getSearchParam(await searchParams, signInReturnParam)
+  );
 
   return (
     <main className="relative min-h-[calc(100vh-var(--site-header-height))] overflow-hidden bg-[#f4f3ef] px-4 pb-20 pt-[calc(var(--site-header-height)+4rem)] sm:px-6">
@@ -64,7 +75,7 @@ const CustomerAuthCallbackSession = async ({
               {m.accountCallbackFailedBody({}, { locale })}
             </p>
             <Button asChild className="mt-8">
-              <Link href={getAccountSignInPath(locale)} prefetch={false}>
+              <Link href={signInPath} prefetch={false}>
                 {m.accountCallbackFailedAction({}, { locale })}
               </Link>
             </Button>
@@ -75,10 +86,17 @@ const CustomerAuthCallbackSession = async ({
   );
 };
 
-export default async function CustomerAuthCallbackPage() {
+export default async function CustomerAuthCallbackPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<SearchParamsRecord>;
+}) {
   return runWithRequestLocale((locale) => (
     <Suspense fallback={<AuthCallbackLoading locale={locale} />}>
-      <CustomerAuthCallbackSession locale={locale} />
+      <CustomerAuthCallbackSession
+        locale={locale}
+        searchParams={searchParams}
+      />
     </Suspense>
   ));
 }

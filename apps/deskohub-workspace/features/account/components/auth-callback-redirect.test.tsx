@@ -35,9 +35,10 @@ let originalClose: typeof window.close;
 let originalClosed: PropertyDescriptor | undefined;
 let originalSearch: PropertyDescriptor | undefined;
 
-const setAttempt = (attemptId?: string, error?: string) => {
+const setAttempt = (attemptId?: string, error?: string, returnTo?: string) => {
   const search = new URLSearchParams();
   if (attemptId !== undefined) search.set("attempt", attemptId);
+  if (returnTo !== undefined) search.set("returnTo", returnTo);
   if (error !== undefined) search.set("error", error);
   const query = search.toString();
   Object.defineProperty(window.location, "search", {
@@ -247,5 +248,60 @@ describe("AuthCallbackRedirect", () => {
     });
     expect(replace).toHaveBeenCalledWith("/en-US/account");
     expect(effects).toEqual(["record", "navigate"]);
+  });
+
+  describe("with a return target", () => {
+    const returnTo = "/cs-CZ/admin/invoices?page=2";
+
+    test("continues to it when no other tab takes the hand-off", async () => {
+      setAttempt(VALID_ATTEMPT_ID, undefined, returnTo);
+      const replace = mock((_href: string) => undefined);
+      window.location.replace = replace as typeof window.location.replace;
+
+      await renderAndFlush("en-US");
+
+      expect(handOffReturn).toHaveBeenCalledWith({
+        attemptId: VALID_ATTEMPT_ID,
+      });
+      expect(replace).toHaveBeenCalledWith(returnTo);
+    });
+
+    test("continues to it when the acknowledged tab cannot close", async () => {
+      setAttempt(VALID_ATTEMPT_ID, undefined, returnTo);
+      handOffReturn.mockResolvedValue(true);
+      setClosed(false);
+      window.close = mock(() => undefined) as typeof window.close;
+      const replace = mock((_href: string) => undefined);
+      window.location.replace = replace as typeof window.location.replace;
+
+      await renderAndFlush("en-US");
+
+      expect(replace).toHaveBeenCalledWith(returnTo);
+    });
+
+    test("continues to it for a signed-in visitor on a reported error", async () => {
+      setAttempt(VALID_ATTEMPT_ID, "INVALID_TOKEN", "/admin");
+      const replace = mock((_href: string) => undefined);
+      window.location.replace = replace as typeof window.location.replace;
+
+      await renderAndFlush("en-US");
+
+      expect(replace).toHaveBeenCalledWith("/admin");
+    });
+
+    test.each([
+      "https://evil.example/admin",
+      "//evil.example/admin",
+      "/\\evil.example/admin",
+      "javascript:alert(1)",
+    ])("ignores %s and continues to the account", async (unsafeReturnTo) => {
+      setAttempt(VALID_ATTEMPT_ID, undefined, unsafeReturnTo);
+      const replace = mock((_href: string) => undefined);
+      window.location.replace = replace as typeof window.location.replace;
+
+      await renderAndFlush("en-US");
+
+      expect(replace).toHaveBeenCalledWith("/en-US/account");
+    });
   });
 });

@@ -185,7 +185,9 @@ const FixtureShell = ({ children }: { readonly children: React.ReactNode }) =>
     React.createElement("footer", { "data-fixture-shell": "footer" })
   );
 
-const importCallbackModel = async () => {
+const importCallbackModel = async (
+  searchParams: Record<string, string> = {}
+) => {
   const { default: CustomerAuthCallbackPage } = await import(
     "@/app/[locale]/(site)/(minimal-header)/auth/callback/page"
   );
@@ -193,7 +195,9 @@ const importCallbackModel = async () => {
   return React.createElement(
     Suspense,
     { fallback: null },
-    React.createElement(CustomerAuthCallbackPage)
+    React.createElement(CustomerAuthCallbackPage, {
+      searchParams: Promise.resolve(searchParams),
+    })
   );
 };
 
@@ -203,7 +207,8 @@ const renderModel = (model: React.ReactNode) =>
     clientManifest
   );
 
-const renderCallback = async () => renderModel(await importCallbackModel());
+const renderCallback = async (searchParams?: Record<string, string>) =>
+  renderModel(await importCallbackModel(searchParams));
 
 class ReadDeadlineExceeded extends Error {
   constructor() {
@@ -333,14 +338,15 @@ const observeWhileSessionIsBlocked = async (nextLocale: Locale) => {
 
 const settledOutput = async (
   nextLocale: Locale,
-  nextCurrentUser: Effect.Effect<CustomerSession | null, unknown>
+  nextCurrentUser: Effect.Effect<CustomerSession | null, unknown>,
+  searchParams?: Record<string, string>
 ) => {
   configure({
     connection: "resolved",
     currentUser: nextCurrentUser,
     locale: nextLocale,
   });
-  return readAll(await renderCallback());
+  return readAll(await renderCallback(searchParams));
 };
 
 const loadingModel = (output: string, nextLocale: Locale) => ({
@@ -440,6 +446,21 @@ describe("auth callback RSC regression", () => {
       expect(output).not.toContain("NEXT_REDIRECT");
     }
   );
+
+  test("keeps only a same-origin return target on the failure link", async () => {
+    const kept = await settledOutput("en-US", Effect.succeed(null), {
+      returnTo: "/en-US/admin/invoices?page=2",
+    });
+    expect(kept).toContain(
+      "/en-US/auth/sign-in?returnTo=%2Fen-US%2Fadmin%2Finvoices%3Fpage%3D2"
+    );
+
+    const dropped = await settledOutput("en-US", Effect.succeed(null), {
+      returnTo: "//evil.example/admin",
+    });
+    expect(dropped).toContain('"href":"/en-US/auth/sign-in"');
+    expect(dropped).not.toContain("/en-US/auth/sign-in?");
+  });
 
   test.each(["en-US", "cs-CZ"] as const)(
     "renders the existing failure link for a %s service failure",
