@@ -36,6 +36,10 @@ import {
 } from "./journal";
 import { verifyAccountLocaleSwitchTransition } from "./locale-switch-transition";
 import { verifyWorkspaceE2EMarketingPreferences } from "./marketing-preferences";
+import {
+  makeWorkspaceE2EAccountPasskeys,
+  type WorkspaceE2EAccountPasskeys,
+} from "./passkeys";
 import { workspaceE2EAccountProfileName } from "./profile-fixture";
 import { verifyProfileNavigation } from "./profile-navigation";
 import { makeMagicLinkRateBudget } from "./rate-budget";
@@ -76,6 +80,11 @@ type WorkspaceE2EAccountLane = {
    * it stays in memory only and never joins the cleanup journal.
    */
   readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff;
+  /**
+   * The passkey journeys on the lane page, owned by the worker so their
+   * virtual authenticator spans the cases that add, use, and remove it.
+   */
+  readonly passkeys: WorkspaceE2EAccountPasskeys;
   readonly previewLogs: WorkspaceE2EPreviewLogs;
   readonly journalRef: {
     readonly journal: WorkspaceE2EAccountJournal;
@@ -111,6 +120,18 @@ const accountTest = runtimeTest.extend<
       const runPlan = await readWorkspaceE2ERunPlan();
       const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
       const lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff = {};
+      const passkeys = makeWorkspaceE2EAccountPasskeys({
+        baseUrl: config.baseUrl,
+        getPage: () => {
+          const pages = browser
+            .contexts()
+            .flatMap((context) => context.pages());
+          const page = pages.length === 1 ? pages[0] : undefined;
+          if (!page) throw new Error("The account lane has no single page");
+          return page;
+        },
+        locale: config.locale,
+      });
       let journal = emptyWorkspaceE2EAccountJournal();
       const mergeIds = (
         existing: readonly string[],
@@ -150,6 +171,7 @@ const accountTest = runtimeTest.extend<
                   config,
                   lifecycleHandoff,
                   journalRef,
+                  passkeys,
                   previewLogs,
                   rateBudget: makeMagicLinkRateBudget(),
                   runPlan,
@@ -161,6 +183,9 @@ const accountTest = runtimeTest.extend<
           )
         );
       } finally {
+        // A failed passkey case leaves its authenticator behind; the lane
+        // page closes with the session either way.
+        await runEffect(Effect.ignore(passkeys.removeAuthenticator));
         await run.close?.();
       }
     },
@@ -190,6 +215,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         config: accountLane.config,
         datasourceConfig,
         lifecycleHandoff: accountLane.lifecycleHandoff,
+        passkeys: accountLane.passkeys,
         previewLogs: accountLane.previewLogs,
         rateBudget: accountLane.rateBudget,
         run: accountLane.run,

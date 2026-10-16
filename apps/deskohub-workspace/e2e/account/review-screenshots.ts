@@ -35,6 +35,7 @@ export type AccountReviewTarget =
   | "linked-profile-language-mobile"
   | "locale-preference-redirect-desktop"
   | "locale-switcher-saved-desktop"
+  | "linked-security-desktop"
   | "linked-billing-desktop"
   | "linked-billing-mobile"
   | "linked-legal-desktop"
@@ -265,6 +266,11 @@ const accountReviewTargetMetadata = {
     path: "/en-US/account/legal",
     viewport: { height: 900, width: 375 },
   },
+  "linked-security-desktop": {
+    filename: "linked-security-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
   "linked-danger-desktop": {
     filename: "linked-danger-desktop.png",
     path: "/en-US/account",
@@ -340,6 +346,7 @@ const privateLinkedAccountSections = [
   "reservations",
   "referrals",
   "profile",
+  "security",
   "billing",
   "danger",
 ] as const;
@@ -370,6 +377,7 @@ const isPrivateLinkedAccountTarget = (target: ReviewTarget): boolean =>
   target === "linked-profile-language-desktop-cs" ||
   target === "linked-profile-language-mobile" ||
   target === "locale-switcher-saved-desktop" ||
+  target === "linked-security-desktop" ||
   target === "linked-billing-desktop" ||
   target === "linked-billing-mobile" ||
   target === "linked-danger-desktop" ||
