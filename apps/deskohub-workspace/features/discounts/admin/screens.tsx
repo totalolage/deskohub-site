@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { type ReactNode, Suspense } from "react";
 import {
   AdministrationNoticeBanner,
   AdministrationPage,
@@ -10,6 +10,7 @@ import {
   AdministrationActionLoading,
   AdministrationCollectionLoading,
   AdministrationCountLoading,
+  AdministrationDetailLoading,
 } from "@/features/administration/loading";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
@@ -49,23 +50,34 @@ export async function DiscountCodesAdministrationScreen({
       <AdministrationTableToolbar
         actions={
           <Suspense
-            fallback={<AdministrationActionLoading label="code action" />}
+            fallback={
+              <AdministrationActionLoading
+                label={m.discountsCodesLoadingActions({}, { locale })}
+              />
+            }
           >
             <CodesActions data={data} />
           </Suspense>
         }
         count={
           <Suspense
-            fallback={<AdministrationCountLoading label="discount code" />}
+            fallback={
+              <AdministrationCountLoading
+                label={m.discountsCodesLoadingCount({}, { locale })}
+              />
+            }
           >
-            <CodesCount data={data} />
+            <CodesCount data={data} locale={locale} />
           </Suspense>
         }
-        itemLabel="discount code"
+        label={m.discountsCodesTableControls({}, { locale })}
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading columns={6} label="discount codes" />
+          <AdministrationCollectionLoading
+            columns={6}
+            label={m.discountsCodesLoadingCollection({}, { locale })}
+          />
         }
       >
         <CodesCollection data={data} locale={locale} />
@@ -82,11 +94,18 @@ async function CodesActions({ data }: { readonly data: Promise<CodesData> }) {
   return <CodesAdministrationActions dashboard={(await data).dashboard} />;
 }
 
-async function CodesCount({ data }: { readonly data: Promise<CodesData> }) {
+async function CodesCount({
+  data,
+  locale,
+}: {
+  readonly data: Promise<CodesData>;
+  readonly locale: Locale;
+}) {
+  const count = (await data).dashboard.codes.length;
   return (
     <AdministrationTableCount
-      count={(await data).dashboard.codes.length}
-      itemLabel="discount code"
+      count={count}
+      label={m.discountsCodesCount({ count }, { locale })}
     />
   );
 }
@@ -128,21 +147,34 @@ export async function VouchersAdministrationScreen({
       <AdministrationTableToolbar
         actions={
           <Suspense
-            fallback={<AdministrationActionLoading label="voucher action" />}
+            fallback={
+              <AdministrationActionLoading
+                label={m.discountsVouchersLoadingActions({}, { locale })}
+              />
+            }
           >
             <VouchersAdministrationActions />
           </Suspense>
         }
         count={
-          <Suspense fallback={<AdministrationCountLoading label="voucher" />}>
-            <VouchersCount data={data} />
+          <Suspense
+            fallback={
+              <AdministrationCountLoading
+                label={m.discountsVouchersLoadingCount({}, { locale })}
+              />
+            }
+          >
+            <VouchersCount data={data} locale={locale} />
           </Suspense>
         }
-        itemLabel="voucher"
+        label={m.discountsVouchersTableControls({}, { locale })}
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading columns={6} label="vouchers" />
+          <AdministrationCollectionLoading
+            columns={6}
+            label={m.discountsVouchersLoadingCollection({}, { locale })}
+          />
         }
       >
         <VouchersCollection data={data} locale={locale} />
@@ -161,13 +193,16 @@ async function VouchersNotice({
 
 async function VouchersCount({
   data,
+  locale,
 }: {
   readonly data: Promise<VouchersData>;
+  readonly locale: Locale;
 }) {
+  const count = (await data).dashboard.vouchers.length;
   return (
     <AdministrationTableCount
-      count={(await data).dashboard.vouchers.length}
-      itemLabel="voucher"
+      count={count}
+      label={m.discountsVouchersCount({ count }, { locale })}
     />
   );
 }
@@ -205,14 +240,25 @@ export async function SalesAdministrationScreen({
       <AdministrationTableToolbar
         actions={<SalesAdministrationActions />}
         count={
-          <Suspense fallback={<AdministrationCountLoading label="sale" />}>
-            <SalesCount data={data} />
+          <Suspense
+            fallback={
+              <AdministrationCountLoading
+                label={m.discountsSalesLoadingCount({}, { locale })}
+              />
+            }
+          >
+            <SalesCount data={data} locale={locale} />
           </Suspense>
         }
-        itemLabel="sale"
+        label={m.discountsSalesTableControls({}, { locale })}
       />
       <Suspense
-        fallback={<AdministrationCollectionLoading columns={6} label="sales" />}
+        fallback={
+          <AdministrationCollectionLoading
+            columns={6}
+            label={m.discountsSalesLoadingCollection({}, { locale })}
+          />
+        }
       >
         <SalesCollection data={data} locale={locale} />
       </Suspense>
@@ -224,11 +270,18 @@ async function SalesNotice({ data }: { readonly data: Promise<SalesData> }) {
   return <AdministrationNoticeBanner notice={(await data).notice} />;
 }
 
-async function SalesCount({ data }: { readonly data: Promise<SalesData> }) {
+async function SalesCount({
+  data,
+  locale,
+}: {
+  readonly data: Promise<SalesData>;
+  readonly locale: Locale;
+}) {
+  const count = (await data).dashboard.calendar.events.length;
   return (
     <AdministrationTableCount
-      count={(await data).dashboard.calendar.events.length}
-      itemLabel="sale"
+      count={count}
+      label={m.discountsSalesCount({ count }, { locale })}
     />
   );
 }
@@ -245,5 +298,49 @@ async function SalesCollection({
       dashboard={(await data).dashboard}
       locale={locale}
     />
+  );
+}
+
+export async function CustomerDiscountCodeCreationScreen({
+  children,
+}: {
+  readonly children: ReactNode;
+}) {
+  const locale = await getRequestLocale();
+
+  return (
+    <AdministrationPage>
+      <Suspense
+        fallback={
+          <AdministrationDetailLoading
+            label={m.discountsCustomerCodeCreateLoading({}, { locale })}
+          />
+        }
+      >
+        {children}
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+export async function CustomerVoucherCreationScreen({
+  children,
+}: {
+  readonly children: ReactNode;
+}) {
+  const locale = await getRequestLocale();
+
+  return (
+    <AdministrationPage>
+      <Suspense
+        fallback={
+          <AdministrationDetailLoading
+            label={m.discountsCustomerVoucherCreateLoading({}, { locale })}
+          />
+        }
+      >
+        {children}
+      </Suspense>
+    </AdministrationPage>
   );
 }

@@ -187,8 +187,12 @@ const dateTimePattern = /^\d{4}-\d{2}-\d{2}T/;
 // Calendar sale dates are formatted here on the server: an event with a time
 // would otherwise format differently in the client tree and fail hydration.
 const formatCalendarSaleDate = (value: string, locale: Locale) => {
-  if (plainDatePattern.test(value)) return formatAdministrationPlainDate(value);
-  if (dateTimePattern.test(value)) return formatAdministrationDateTime(value);
+  if (plainDatePattern.test(value)) {
+    return formatAdministrationPlainDate(value, locale);
+  }
+  if (dateTimePattern.test(value)) {
+    return formatAdministrationDateTime(value, locale);
+  }
   return m.discountsCalendarUnknownDate({}, { locale });
 };
 

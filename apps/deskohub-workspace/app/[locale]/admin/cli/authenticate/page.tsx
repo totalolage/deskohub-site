@@ -10,6 +10,8 @@ import {
   formatAdministrationDateTime,
 } from "@/features/administration/components";
 import { AdministrationPanelLoading } from "@/features/administration/loading";
+import type { Locale } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function CliAuthenticationApprovalPage({
   searchParams,
@@ -28,7 +30,7 @@ export default function CliAuthenticationApprovalPage({
       />
       <Suspense
         fallback={
-          <AdministrationPanelLoading label="CLI authentication request" />
+          <AdministrationPanelLoading label="Loading CLI authentication request" />
         }
       >
         <CliAuthenticationRequest searchParams={searchParams} />
@@ -45,6 +47,7 @@ export async function CliAuthenticationRequest({
     readonly result?: string;
   }>;
 }) {
+  const locale = await getRequestLocale();
   const params = await searchParams;
   const approval = await loadCliAuthenticationApproval(params.code);
 
@@ -73,6 +76,7 @@ export async function CliAuthenticationRequest({
         <AuthenticationRequestState
           code={params.code}
           failed={params.result === "error"}
+          locale={locale}
           request={request}
           username={username}
         />
@@ -84,11 +88,13 @@ export async function CliAuthenticationRequest({
 function AuthenticationRequestState({
   code,
   failed,
+  locale,
   request,
   username,
 }: {
   readonly code?: string;
   readonly failed: boolean;
+  readonly locale: Locale;
   readonly request: NonNullable<
     NonNullable<
       Awaited<ReturnType<typeof loadCliAuthenticationApproval>>
@@ -102,8 +108,10 @@ function AuthenticationRequestState({
         <AdministrationAlert className="mb-5" status="warning">
           <p>
             This request expires at{" "}
-            <strong>{formatAdministrationDateTime(request.expiresAt)}</strong>.
-            Approve it only if you initiated the request in your terminal.
+            <strong>
+              {formatAdministrationDateTime(request.expiresAt, locale)}
+            </strong>
+            . Approve it only if you initiated the request in your terminal.
             Approving as <strong>{username}</strong>.
           </p>
         </AdministrationAlert>

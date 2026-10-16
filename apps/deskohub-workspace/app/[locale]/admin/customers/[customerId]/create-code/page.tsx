@@ -1,14 +1,10 @@
-import { Suspense } from "react";
-import {
-  AdministrationPage,
-  AdministrationPageHeader,
-} from "@/features/administration/components";
+import { AdministrationPageHeader } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
-import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { requireDotyposCustomerRouteId } from "@/features/administration/route-identifiers.server";
 import { CustomerDiscountCodeCreationForm } from "@/features/discounts/admin/customer-code-creation";
 import { formatDiscountAdminCustomerName } from "@/features/discounts/admin/customer-display-name";
 import { loadDiscountAdminCustomerCodeCreationPageData } from "@/features/discounts/admin/page-data.server";
+import { CustomerDiscountCodeCreationScreen } from "@/features/discounts/admin/screens";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function CustomerDiscountCodeCreationPage({
@@ -17,13 +13,9 @@ export default function CustomerDiscountCodeCreationPage({
   readonly params: Promise<{ readonly customerId: string }>;
 }) {
   return (
-    <AdministrationPage>
-      <Suspense
-        fallback={<AdministrationDetailLoading label="discount code form" />}
-      >
-        <CustomerDiscountCodeCreationContent params={params} />
-      </Suspense>
-    </AdministrationPage>
+    <CustomerDiscountCodeCreationScreen>
+      <CustomerDiscountCodeCreationContent params={params} />
+    </CustomerDiscountCodeCreationScreen>
   );
 }
 

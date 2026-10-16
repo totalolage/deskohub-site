@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
 import { AdministrationAlert } from "@/features/administration/notice";
 import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Dialog,
@@ -53,6 +54,7 @@ export function CampaignTestSendDialog({
   readonly contentLocales: readonly Locale[];
   readonly unsavedChanges: boolean;
 }) {
+  const locale = useRouteLocale();
   const [extraRecipients, setExtraRecipients] = useState<readonly string[]>([]);
   const [receipt, setReceipt] = useState<TestSendReceipt | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +134,7 @@ export function CampaignTestSendDialog({
               </ul>
               <p className="mt-2">
                 The confirmation code expires{" "}
-                {formatAdministrationDateTime(receipt.codeExpiresAt)}.
+                {formatAdministrationDateTime(receipt.codeExpiresAt, locale)}.
               </p>
             </AdministrationAlert>
           )}

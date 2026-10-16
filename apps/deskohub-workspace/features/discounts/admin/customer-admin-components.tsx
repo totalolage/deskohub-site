@@ -22,7 +22,6 @@ import { groupCustomerReservations } from "@/features/administration/customer-ac
 import { m } from "@/features/administration/i18n";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import type { Locale } from "@/features/i18n";
-import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { VoucherEditor } from "./admin-tables";
@@ -204,6 +203,7 @@ export function CodeAdministrationDetailPage({
           ariaLabel={m.discountsCodeClaimHistoryLabel({}, { locale })}
           claims={detail.claims}
           emptyMessage={m.discountsCodeClaimsEmpty({}, { locale })}
+          locale={locale}
           subject="customer"
         />
       </section>
@@ -362,6 +362,7 @@ export function VoucherAdministrationDetailPage({
           ariaLabel={m.discountsVoucherClaimHistoryLabel({}, { locale })}
           claims={detail.claims}
           emptyMessage={m.discountsVoucherClaimsEmpty({}, { locale })}
+          locale={locale}
           subject="customer"
         />
       </section>
@@ -369,28 +370,19 @@ export function VoucherAdministrationDetailPage({
   );
 }
 
-type CustomerAdministrationDetailProps = {
-  readonly activity: AdministrationCustomerActivity;
-  readonly notice?: Notice;
-  readonly profile: AdminCustomerProfile;
-  readonly reservationActivity: AdministrationCustomerReservationActivity;
-};
-
-/** The customer screen; it resolves the route locale for its content. */
-export async function CustomerAdministrationDetailPage(
-  props: CustomerAdministrationDetailProps
-) {
-  const locale = await getRequestLocale();
-  return <CustomerAdministrationDetail {...props} locale={locale} />;
-}
-
-export function CustomerAdministrationDetail({
+export function CustomerAdministrationDetailPage({
   activity,
   locale,
   notice,
   profile,
   reservationActivity,
-}: CustomerAdministrationDetailProps & { readonly locale: Locale }) {
+}: {
+  readonly activity: AdministrationCustomerActivity;
+  readonly locale: Locale;
+  readonly notice?: Notice;
+  readonly profile: AdminCustomerProfile;
+  readonly reservationActivity: AdministrationCustomerReservationActivity;
+}) {
   const customerName = formatDiscountAdminCustomerName(
     profile.customer.displayName,
     locale
@@ -471,7 +463,10 @@ export function CustomerAdministrationDetail({
       <AdministrationPageHeader title={customerName} />
       <AdministrationNoticeBanner notice={notice} />
 
-      <CustomerReservationActivity activity={reservationActivity} />
+      <CustomerReservationActivity
+        activity={reservationActivity}
+        locale={locale}
+      />
 
       <div className="mb-7 grid gap-5 lg:grid-cols-2">
         <CustomerStats
@@ -625,6 +620,7 @@ export function CustomerAdministrationDetail({
                   Temporal.Instant.compare(right.reservedAt, left.reservedAt)
               )}
               emptyMessage={m.discountsCustomerClaimsEmpty({}, { locale })}
+              locale={locale}
               promotionCodes={
                 new Map([
                   ...profile.codes.map(
@@ -711,7 +707,7 @@ function CustomerStats({
         />
         <CustomerStat
           label={m.discountsCustomerStatRevenue({}, { locale })}
-          value={formatMoneyTotals(activity.stats.revenue)}
+          value={formatMoneyTotals(activity.stats.revenue, locale)}
         />
         <CustomerStat
           label={m.discountsCustomerStatFavoriteProduct({}, { locale })}
@@ -719,7 +715,7 @@ function CustomerStats({
         />
         <CustomerStat
           label={m.discountsCustomerStatDiscountSavings({}, { locale })}
-          value={formatMoneyTotals(activity.stats.discountSavings)}
+          value={formatMoneyTotals(activity.stats.discountSavings, locale)}
         />
         <CustomerStat
           label={m.discountsCustomerStatAvailableCodes({}, { locale })}
@@ -785,12 +781,21 @@ function CustomerConsent({
                 ? m.discountsCustomerConsentWithdrawn({}, { locale })
                 : m.discountsCustomerConsentGranted({}, { locale })}
             </StatusBadge>{" "}
-            · {formatAdministrationDateTime(withdrawnAt ?? consent.grantedAt)}
+            ·{" "}
+            {formatAdministrationDateTime(
+              withdrawnAt ?? consent.grantedAt,
+              locale
+            )}
             <span className="mt-0.5 block break-all text-xs">
               {withdrawnAt && (
                 <>
                   {m.discountsCustomerConsentGrantedAt(
-                    { date: formatAdministrationDateTime(consent.grantedAt) },
+                    {
+                      date: formatAdministrationDateTime(
+                        consent.grantedAt,
+                        locale
+                      ),
+                    },
                     { locale }
                   )}{" "}
                   ·{" "}
@@ -826,15 +831,23 @@ function CustomerTransactionHistory({
       transactions={transactions.map((transaction) => ({
         ...transaction,
         updatedAtLabel: formatAdministrationDateTime(
-          transaction.attempt.updatedAt
+          transaction.attempt.updatedAt,
+          locale
         ),
       }))}
     />
   );
 }
 
-const formatMoneyTotals = (totals: readonly AdministrationMoney[]) =>
-  totals.length > 0 ? totals.map(formatAdministrationMoney).join(" + ") : "—";
+const formatMoneyTotals = (
+  totals: readonly AdministrationMoney[],
+  locale: Locale
+) =>
+  totals.length > 0
+    ? totals
+        .map((total) => formatAdministrationMoney(total, locale))
+        .join(" + ")
+    : "—";
 
 const getSummaryStatus = (enabled: boolean, locale: Locale) =>
   enabled
@@ -867,11 +880,11 @@ function CodeSummary({
       />
       <SummaryFact
         label={m.discountsValidFromLabel({}, { locale })}
-        value={formatOptionalInstant(code.validFrom)}
+        value={formatOptionalInstant(code.validFrom, locale)}
       />
       <SummaryFact
         label={m.discountsValidUntilLabel({}, { locale })}
-        value={formatOptionalInstant(code.validUntil)}
+        value={formatOptionalInstant(code.validUntil, locale)}
       />
       <SummaryFact
         label={m.discountsColumnAudience({}, { locale })}
@@ -908,11 +921,11 @@ function VoucherSummary({
     <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
       <SummaryFact
         label={m.discountsColumnIssued({}, { locale })}
-        value={formatAdministrationMoney(voucher.issuedCredit)}
+        value={formatAdministrationMoney(voucher.issuedCredit, locale)}
       />
       <SummaryFact
         label={m.discountsColumnRemaining({}, { locale })}
-        value={formatAdministrationMoney(voucher.remainingCredit)}
+        value={formatAdministrationMoney(voucher.remainingCredit, locale)}
       />
       <SummaryFact
         label={m.discountsColumnStatus({}, { locale })}
@@ -924,11 +937,11 @@ function VoucherSummary({
       />
       <SummaryFact
         label={m.discountsValidFromLabel({}, { locale })}
-        value={formatOptionalInstant(voucher.validFrom)}
+        value={formatOptionalInstant(voucher.validFrom, locale)}
       />
       <SummaryFact
         label={m.discountsValidUntilLabel({}, { locale })}
-        value={formatOptionalInstant(voucher.validUntil)}
+        value={formatOptionalInstant(voucher.validUntil, locale)}
       />
       <SummaryFact
         label={m.discountsColumnReserved({}, { locale })}
@@ -963,12 +976,14 @@ function ClaimHistory({
   ariaLabel,
   claims,
   emptyMessage,
+  locale,
   promotionCodes,
   subject,
 }: {
   readonly ariaLabel: string;
   readonly claims: readonly (AdminDiscountCodeClaim | AdminVoucherClaim)[];
   readonly emptyMessage: string;
+  readonly locale: Locale;
   /** Code values keyed by `discount-code:<id>` or `voucher:<id>`. */
   readonly promotionCodes?: ReadonlyMap<string, string>;
   readonly subject: "customer" | "promotion-code";
@@ -1001,10 +1016,11 @@ function ClaimHistory({
           releaseReason: claim.releaseReason,
           reservedAt: claim.reservedAt.toString(),
           reservedAtLabel: formatAdministrationDateTime(
-            claim.reservedAt.toString()
+            claim.reservedAt.toString(),
+            locale
           ),
           completedAtLabel: completedAt
-            ? formatAdministrationDateTime(completedAt.toString())
+            ? formatAdministrationDateTime(completedAt.toString(), locale)
             : null,
           state: claim.state,
           workspaceReservationId: claim.workspaceReservationId,
@@ -1015,5 +1031,7 @@ function ClaimHistory({
   );
 }
 
-const formatOptionalInstant = (instant: Temporal.Instant | null) =>
-  instant ? formatAdministrationDateTime(instant.toString()) : "—";
+const formatOptionalInstant = (
+  instant: Temporal.Instant | null,
+  locale: Locale
+) => (instant ? formatAdministrationDateTime(instant.toString(), locale) : "—");

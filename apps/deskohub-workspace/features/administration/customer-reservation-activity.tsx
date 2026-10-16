@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
+import type { Locale } from "@/features/i18n";
 import { reservationProductFamilies } from "@/features/reservation/reservation-product-descriptor";
 import { cn } from "@/shared/utils";
 import type {
@@ -54,8 +55,10 @@ const reservationActivityCategoryStyles = {
 
 export function CustomerReservationActivity({
   activity,
+  locale,
 }: {
   readonly activity: AdministrationCustomerReservationActivity;
+  readonly locale: Locale;
 }) {
   const total = activity.dates?.reduce((sum, { count }) => sum + count, 0);
 
@@ -74,7 +77,11 @@ export function CustomerReservationActivity({
       </div>
       <div className="rounded-xl border border-navy-blue/10 bg-white p-4 sm:p-5">
         {activity.dates ? (
-          <ReservationActivityGrid activity={activity} dates={activity.dates} />
+          <ReservationActivityGrid
+            activity={activity}
+            dates={activity.dates}
+            locale={locale}
+          />
         ) : (
           <p className="py-7 text-center text-sm text-navy-blue/65">
             Reservation activity is temporarily unavailable.
@@ -88,11 +95,13 @@ export function CustomerReservationActivity({
 function ReservationActivityGrid({
   activity,
   dates,
+  locale,
 }: {
   readonly activity: AdministrationCustomerReservationActivity;
   readonly dates: NonNullable<
     AdministrationCustomerReservationActivity["dates"]
   >;
+  readonly locale: Locale;
 }) {
   const from = Temporal.PlainDate.from(activity.from);
   const to = Temporal.PlainDate.from(activity.to);
@@ -181,7 +190,11 @@ function ReservationActivityGrid({
                     className={className}
                     dateTime={dateString}
                     key={dateString}
-                    title={formatReservationActivityLabel(dateString, count)}
+                    title={formatReservationActivityLabel(
+                      dateString,
+                      count,
+                      locale
+                    )}
                   />
                 );
               })}
@@ -190,7 +203,9 @@ function ReservationActivityGrid({
         </div>
         <ul className="sr-only">
           {dates.map(({ count, date }) => (
-            <li key={date}>{formatReservationActivityLabel(date, count)}</li>
+            <li key={date}>
+              {formatReservationActivityLabel(date, count, locale)}
+            </li>
           ))}
         </ul>
       </section>
@@ -214,7 +229,11 @@ function ReservationActivityGrid({
   );
 }
 
-const formatReservationActivityLabel = (date: string, count: number) =>
+const formatReservationActivityLabel = (
+  date: string,
+  count: number,
+  locale: Locale
+) =>
   count === 0
-    ? `No reservations on ${formatAdministrationPlainDate(date)}`
-    : `${count} ${count === 1 ? "reservation" : "reservations"} on ${formatAdministrationPlainDate(date)}`;
+    ? `No reservations on ${formatAdministrationPlainDate(date, locale)}`
+    : `${count} ${count === 1 ? "reservation" : "reservations"} on ${formatAdministrationPlainDate(date, locale)}`;

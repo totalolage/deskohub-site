@@ -25,6 +25,8 @@ import {
   getAdministrationReservationListDefaultDateRange,
 } from "@/features/administration/reservation-date-range";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
+import type { Locale } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function ReservationsAdministrationPage({
   searchParams,
@@ -43,7 +45,9 @@ export default function ReservationsAdministrationPage({
       <AdministrationTableToolbar
         count={
           <Suspense
-            fallback={<AdministrationCountLoading label="reservation" />}
+            fallback={
+              <AdministrationCountLoading label="Loading reservation count" />
+            }
           >
             <ReservationCount result={result} />
           </Suspense>
@@ -53,12 +57,15 @@ export default function ReservationsAdministrationPage({
             <ReservationFiltersContent input={input} />
           </Suspense>
         }
-        itemLabel="reservation"
+        label="reservation table controls"
         search={<ReservationLookup variant="toolbar" />}
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading label="reservations" columns={6} />
+          <AdministrationCollectionLoading
+            label="Loading reservations"
+            columns={6}
+          />
         }
       >
         <ReservationResultsContent input={input} result={result} />
@@ -78,10 +85,11 @@ async function ReservationCount({
 }: {
   readonly result: Promise<ReservationsData["result"]>;
 }) {
+  const count = (await result).total;
   return (
     <AdministrationTableCount
-      count={(await result).total}
-      itemLabel="reservation"
+      count={count}
+      label={`${count} reservation${count === 1 ? "" : "s"}`}
     />
   );
 }
@@ -122,10 +130,21 @@ async function ReservationResultsContent({
   readonly result: Promise<ReservationsData["result"]>;
 }) {
   const [resolvedInput, resolvedResult] = await Promise.all([input, result]);
-  return <ReservationResults input={resolvedInput} result={resolvedResult} />;
+  const locale = await getRequestLocale();
+  return (
+    <ReservationResults
+      input={resolvedInput}
+      locale={locale}
+      result={resolvedResult}
+    />
+  );
 }
 
-function ReservationResults({ input, result }: ReservationsData) {
+function ReservationResults({
+  input,
+  locale,
+  result,
+}: ReservationsData & { readonly locale: Locale }) {
   const clearCustomerSearch = new URLSearchParams();
   for (const [key, value] of Object.entries({
     direction: input.direction,
@@ -183,6 +202,7 @@ function ReservationResults({ input, result }: ReservationsData) {
       />
       <Pagination
         basePath="/admin/reservations"
+        locale={locale}
         page={result.page}
         pageCount={result.pageCount}
         params={{

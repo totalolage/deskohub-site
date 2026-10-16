@@ -42,18 +42,12 @@ const emptyReservationActivity = {
 } as const;
 
 mock.module("next/navigation", () => ({
-  notFound: mock(),
   useParams: () => ({ locale: "en-US" }),
   useRouter: () => ({
     back,
     refresh,
     replace,
   }),
-}));
-
-// The customer screen resolves the route locale; the tests render its content.
-mock.module("next/root-params", () => ({
-  locale: async () => "en-US",
 }));
 
 mock.module("./actions", () => ({
@@ -288,7 +282,7 @@ describe("discount administration pages", () => {
   });
 
   test("shows only explicit and unrestricted customer codes with guarded icon actions", async () => {
-    const { CustomerAdministrationDetail } = await import(
+    const { CustomerAdministrationDetailPage } = await import(
       "./customer-admin-components"
     );
     const profile: AdminCustomerProfile = {
@@ -380,7 +374,7 @@ describe("discount administration pages", () => {
     expect(paidReservation?.latestPayment).toBeDefined();
     if (!paidReservation?.latestPayment) return;
     const view = render(
-      <CustomerAdministrationDetail
+      <CustomerAdministrationDetailPage
         locale="en-US"
         activity={{
           reservations,
@@ -440,8 +434,8 @@ describe("discount administration pages", () => {
     expect(
       within(table).getByRole("link", { name: "GIFT100" }).getAttribute("href")
     ).toBe("/en-US/admin/vouchers/019c91dd-c560-7e55-b9d8-c95065efd55d");
-    expect(within(table).getByText(/CZK.?100\.00 credit/)).toBeDefined();
-    expect(within(table).getByText(/CZK.?65\.00 remaining/)).toBeDefined();
+    expect(within(table).getByText(/CZK.?100 credit/)).toBeDefined();
+    expect(within(table).getByText(/CZK.?65 remaining/)).toBeDefined();
     expect(within(table).getAllByText("Discount code")).toHaveLength(3);
     expect(within(table).getAllByText("Voucher")).toHaveLength(1);
     expect(
@@ -493,7 +487,7 @@ describe("discount administration pages", () => {
     expect(within(table).getAllByText("Enabled")).toHaveLength(3);
     expect(within(table).getByText("Disabled")).toBeDefined();
     expect(within(table).getByText("Only me discount · 10%")).toBeDefined();
-    expect(within(table).getByText("Open discount · CZK 75.00")).toBeDefined();
+    expect(within(table).getByText("Open discount · CZK 75")).toBeDefined();
     const onlyMeLink = within(table).getByRole("link", { name: "ONLYME" });
     expect(onlyMeLink.getAttribute("href")).toBe(
       `/en-US/admin/codes/${dashboard.codes[0].id}`
@@ -505,17 +499,17 @@ describe("discount administration pages", () => {
         name: "Reservation activity for the past 365 days",
       })
     ).toBeDefined();
-    expect(view.getByText("2 reservations on 10 Aug 2026")).toBeDefined();
+    expect(view.getByText("2 reservations on Aug 10, 2026")).toBeDefined();
     expect(
       view.container
         .querySelector('time[datetime="2026-08-10"]')
         ?.getAttribute("title")
-    ).toBe("2 reservations on 10 Aug 2026");
+    ).toBe("2 reservations on Aug 10, 2026");
     expect(
       view.container
         .querySelector('time[datetime="2026-08-11"]')
         ?.getAttribute("title")
-    ).toBe("No reservations on 11 Aug 2026");
+    ).toBe("No reservations on Aug 11, 2026");
     const reservationActivitySection = view
       .getByRole("heading", { name: "Reservation activity" })
       .closest("section");

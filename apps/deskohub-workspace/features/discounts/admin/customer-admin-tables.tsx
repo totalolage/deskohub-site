@@ -108,14 +108,14 @@ const getPromotionCodeBenefit = (
 ) => {
   if (item.kind === "voucher") {
     return m.discountsVoucherCreditBenefit(
-      { amount: formatAdministrationMoney(item.issuedCredit) },
+      { amount: formatAdministrationMoney(item.issuedCredit, locale) },
       { locale }
     );
   }
   return `${item.discountLabel} · ${
     item.discountAdjustment.kind === "percentage"
       ? formatDiscountAdjustment(item.discountAdjustment, locale)
-      : formatAdministrationMoney(item.discountAdjustment.amount)
+      : formatAdministrationMoney(item.discountAdjustment.amount, locale)
   }`;
 };
 
@@ -179,7 +179,8 @@ export function CustomerPromotionCodeTable({
                 {m.discountsVoucherCreditRemaining(
                   {
                     amount: formatAdministrationMoney(
-                      row.original.remainingCredit
+                      row.original.remainingCredit,
+                      locale
                     ),
                   },
                   { locale }
@@ -270,7 +271,7 @@ export function CustomerTransactionHistoryTable({
         header: m.discountsColumnStatus({}, { locale }),
         cell: ({ row }) => {
           const { attempt } = row.original;
-          const status = getAdministrationPaymentStatus(attempt);
+          const status = getAdministrationPaymentStatus(attempt, locale);
           return (
             <StatusBadge
               tone={
@@ -301,7 +302,9 @@ export function CustomerTransactionHistoryTable({
         accessorFn: ({ attempt }) => attempt.amount.value,
         id: "amount",
         header: m.discountsColumnAmount({}, { locale }),
-        cell: ({ row }) => <PaymentAmount payment={row.original.attempt} />,
+        cell: ({ row }) => (
+          <PaymentAmount locale={locale} payment={row.original.attempt} />
+        ),
         meta: { cellClassName: "whitespace-nowrap font-semibold" },
       },
       {
@@ -312,6 +315,7 @@ export function CustomerTransactionHistoryTable({
           row.original.attempt.providerOrderId ? (
             <NexiOrderLink
               className="font-mono text-xs"
+              locale={locale}
               orderId={row.original.attempt.providerOrderId}
             />
           ) : (
@@ -417,7 +421,7 @@ export function ClaimHistoryTable({
         id: "amount",
         header: m.discountsColumnAmount({}, { locale }),
         cell: ({ row }) =>
-          formatAdministrationMoney(row.original.appliedAmount),
+          formatAdministrationMoney(row.original.appliedAmount, locale),
         meta: { cellClassName: "whitespace-nowrap" },
       },
       {

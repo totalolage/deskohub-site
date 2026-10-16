@@ -15,6 +15,7 @@ import {
   ProviderStatusBadge,
 } from "@/features/administration/payment-components";
 import { getProviderValueLabel } from "@/features/administration/payment-presentation";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function OperationAdministrationDetailPage({
   params,
@@ -24,7 +25,9 @@ export default function OperationAdministrationDetailPage({
   return (
     <AdministrationPage>
       <Suspense
-        fallback={<AdministrationDetailLoading label="operation details" />}
+        fallback={
+          <AdministrationDetailLoading label="Loading operation details" />
+        }
       >
         <OperationAdministrationDetail params={params} />
       </Suspense>
@@ -38,6 +41,7 @@ export async function OperationAdministrationDetail({
   readonly params: Promise<{ readonly operationId: string }>;
 }) {
   const { operationId } = await params;
+  const locale = await getRequestLocale();
   const detail = await loadAdministrationOperation(operationId);
   const operation = detail.operation;
   return (
@@ -93,7 +97,7 @@ export async function OperationAdministrationDetail({
               />
               <AdministrationFact
                 label="Occurred"
-                value={formatProviderDateTime(operation.operationTime)}
+                value={formatProviderDateTime(operation.operationTime, locale)}
               />
               <AdministrationFact
                 label="Amount"

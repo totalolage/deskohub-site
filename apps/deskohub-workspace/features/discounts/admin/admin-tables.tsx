@@ -18,12 +18,10 @@ import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
 } from "@/features/administration/data-table";
+import { formatAdministrationMoney } from "@/features/administration/formatters";
 import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
-import {
-  formatWorkspaceMoney,
-  type WorkspaceMoney,
-} from "@/features/checkout/workspace-money";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type {
   DiscountCodeId,
@@ -319,14 +317,14 @@ export function VouchersAdminTable({
         id: "issuedCredit",
         header: m.discountsColumnIssued({}, { locale }),
         cell: ({ row }) =>
-          formatWorkspaceMoney(row.original.issuedCredit, locale),
+          formatAdministrationMoney(row.original.issuedCredit, locale),
       },
       {
         accessorFn: (voucher) => voucher.remainingCredit.value,
         id: "remainingCredit",
         header: m.discountsColumnRemaining({}, { locale }),
         cell: ({ row }) =>
-          formatWorkspaceMoney(row.original.remainingCredit, locale),
+          formatAdministrationMoney(row.original.remainingCredit, locale),
       },
       {
         accessorFn: (voucher) => getStatusLabel(voucher.enabled, locale),

@@ -1,5 +1,8 @@
 "use client";
 
+import { useMemo } from "react";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { AdministrationLink as Link } from "./admin-link";
 import type {
   AdministrationCustomerSort,
@@ -16,60 +19,59 @@ import {
   getAdministrationTableSortHref,
 } from "./table-sort";
 
-const columns: readonly AdministrationDataTableColumn<AdministrationCustomerSummary>[] =
-  [
-    {
-      accessorFn: (item) => item.customer?.displayName ?? "Details unavailable",
-      cell: ({ row }) => (
-        <Link
-          className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
-          href={`/admin/customers/${row.original.customerId}`}
-        >
-          {row.original.customer?.displayName ?? "Details unavailable"}
-        </Link>
-      ),
-      enableSorting: false,
-      header: "Name",
-      id: "name",
-    },
-    {
-      accessorFn: (item) => item.customer?.email ?? "—",
-      enableSorting: false,
-      header: "Email",
-      id: "email",
-      meta: { cellClassName: "text-navy-blue/68" },
-    },
-    {
-      accessorFn: (item) => item.customer?.phone ?? "—",
-      enableSorting: false,
-      header: "Phone",
-      id: "phone",
-      meta: { cellClassName: "text-navy-blue/68" },
-    },
-    {
-      accessorKey: "reservationCount",
-      cell: ({ row }) => (
-        <>
-          <span className="font-semibold">{row.original.reservationCount}</span>{" "}
-          <span className="text-navy-blue/60">
-            {row.original.reservationCount === 1
-              ? "reservation"
-              : "reservations"}
-          </span>
-        </>
-      ),
-      header: "Reservations",
-      id: "reservations",
-    },
-    {
-      accessorKey: "lastActivityAt",
-      cell: ({ row }) =>
-        formatAdministrationDateTime(row.original.lastActivityAt),
-      header: "Last activity",
-      id: "activity",
-      meta: { cellClassName: "text-navy-blue/68" },
-    },
-  ];
+const getColumns = (
+  locale: Locale
+): readonly AdministrationDataTableColumn<AdministrationCustomerSummary>[] => [
+  {
+    accessorFn: (item) => item.customer?.displayName ?? "Details unavailable",
+    cell: ({ row }) => (
+      <Link
+        className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
+        href={`/admin/customers/${row.original.customerId}`}
+      >
+        {row.original.customer?.displayName ?? "Details unavailable"}
+      </Link>
+    ),
+    enableSorting: false,
+    header: "Name",
+    id: "name",
+  },
+  {
+    accessorFn: (item) => item.customer?.email ?? "—",
+    enableSorting: false,
+    header: "Email",
+    id: "email",
+    meta: { cellClassName: "text-navy-blue/68" },
+  },
+  {
+    accessorFn: (item) => item.customer?.phone ?? "—",
+    enableSorting: false,
+    header: "Phone",
+    id: "phone",
+    meta: { cellClassName: "text-navy-blue/68" },
+  },
+  {
+    accessorKey: "reservationCount",
+    cell: ({ row }) => (
+      <>
+        <span className="font-semibold">{row.original.reservationCount}</span>{" "}
+        <span className="text-navy-blue/60">
+          {row.original.reservationCount === 1 ? "reservation" : "reservations"}
+        </span>
+      </>
+    ),
+    header: "Reservations",
+    id: "reservations",
+  },
+  {
+    accessorKey: "lastActivityAt",
+    cell: ({ row }) =>
+      formatAdministrationDateTime(row.original.lastActivityAt, locale),
+    header: "Last activity",
+    id: "activity",
+    meta: { cellClassName: "text-navy-blue/68" },
+  },
+];
 
 export function AdministrationCustomerTable({
   customers,
@@ -78,6 +80,8 @@ export function AdministrationCustomerTable({
   readonly customers: readonly AdministrationCustomerSummary[];
   readonly sorting?: AdministrationTableSorting<AdministrationCustomerSort>;
 }) {
+  const locale = useRouteLocale();
+  const columns = useMemo(() => getColumns(locale), [locale]);
   if (customers.length === 0) {
     return <EmptyState message="No customers have reservations yet." />;
   }
@@ -117,7 +121,8 @@ export function AdministrationCustomerTable({
                 <p className="mt-3 text-xs text-navy-blue/60">
                   {item.reservationCount}{" "}
                   {item.reservationCount === 1 ? "reservation" : "reservations"}{" "}
-                  · Updated {formatAdministrationDateTime(item.lastActivityAt)}
+                  · Updated{" "}
+                  {formatAdministrationDateTime(item.lastActivityAt, locale)}
                 </p>
               </Link>
             </li>

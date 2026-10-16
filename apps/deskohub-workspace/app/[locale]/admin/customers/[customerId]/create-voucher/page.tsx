@@ -1,14 +1,10 @@
-import { Suspense } from "react";
-import {
-  AdministrationPage,
-  AdministrationPageHeader,
-} from "@/features/administration/components";
+import { AdministrationPageHeader } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
-import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { requireDotyposCustomerRouteId } from "@/features/administration/route-identifiers.server";
 import { formatDiscountAdminCustomerName } from "@/features/discounts/admin/customer-display-name";
 import { CustomerVoucherCreationForm } from "@/features/discounts/admin/customer-voucher-creation";
 import { loadDiscountAdminCustomerVoucherCreationPageData } from "@/features/discounts/admin/page-data.server";
+import { CustomerVoucherCreationScreen } from "@/features/discounts/admin/screens";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function CustomerVoucherCreationPage({
@@ -17,11 +13,9 @@ export default function CustomerVoucherCreationPage({
   readonly params: Promise<{ readonly customerId: string }>;
 }) {
   return (
-    <AdministrationPage>
-      <Suspense fallback={<AdministrationDetailLoading label="voucher form" />}>
-        <CustomerVoucherCreationContent params={params} />
-      </Suspense>
-    </AdministrationPage>
+    <CustomerVoucherCreationScreen>
+      <CustomerVoucherCreationContent params={params} />
+    </CustomerVoucherCreationScreen>
   );
 }
 
