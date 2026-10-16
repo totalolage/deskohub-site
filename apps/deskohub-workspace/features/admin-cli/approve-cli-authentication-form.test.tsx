@@ -98,3 +98,22 @@ test("submits only the never-expire choice while the duration is disabled", asyn
     ["neverExpire", "on"],
   ]);
 });
+
+test("reports an invalid duration in Czech on a Czech route", async () => {
+  const { ApproveCliAuthenticationForm } = await import(
+    "./approve-cli-authentication-form"
+  );
+  const { RouteLocaleProvider } = await import("@/features/i18n/route-locale");
+  const view = render(
+    <RouteLocaleProvider locale="cs-CZ">
+      <ApproveCliAuthenticationForm code={code} />
+    </RouteLocaleProvider>
+  );
+
+  fireEvent.input(view.getByLabelText("Délka"), { target: { value: "0" } });
+  await submitForm(view);
+
+  expect(approveCliAuthenticationAction).not.toHaveBeenCalled();
+  expect(view.getByText("Zadejte celé číslo od 1 do 999.")).toBeTruthy();
+  expect(view.getByRole("button", { name: "Schválit toto CLI" })).toBeTruthy();
+});

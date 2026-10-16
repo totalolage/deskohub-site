@@ -1,1 +1,16 @@
-{}
+{
+  "administrationConfirmDialogCancel": "Zrušit",
+  "administrationLoadingBreadcrumb": "Načítání drobečkové navigace",
+  "administrationLoadingCustomerActivity": "Načítání aktivity zákazníků",
+  "administrationLoadingDiscountForm": "Načítání formuláře slevového kódu",
+  "administrationLoadingPage": "Načítání stránky administrace",
+  "administrationLoadingReservationActivity": "Načítání aktivity rezervací",
+  "administrationLoadingTableFilters": "Načítání filtrů tabulky",
+  "administrationNexiOrderLinkLabel": "{order} (otevře se v XPay)",
+  "administrationNexiOrderName": "Objednávka Nexi {orderId}",
+  "administrationPaginationLabel": "Stránkování",
+  "administrationPaginationNext": "Další",
+  "administrationPaginationPrevious": "Předchozí",
+  "administrationPaginationStatus": "Strana {page} z {pageCount}",
+  "administrationTableActions": "Akce"
+}

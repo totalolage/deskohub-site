@@ -1,6 +1,8 @@
 import { EMAIL_TEST_DOMAIN } from "@deskohub/test-email";
 import { type Effect, type Layer, Match } from "effect";
+import { m } from "@/features/administration/i18n";
 import type { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
+import type { Locale } from "@/features/i18n";
 import type {
   CampaignService,
   ICampaignService,
@@ -9,18 +11,20 @@ import type { ICampaignSendService } from "../../backend/campaign-send.service";
 import type { CampaignConfirmationRejection } from "../../errors";
 
 const confirmationRejectionMessages = {
-  "unknown-code":
-    "That code doesn't match the latest test email. Check it for typos and try again.",
-  superseded:
-    "A newer test email replaced that code. Use the code from the latest test email.",
-  expired: "That code expired. Send a new test email to get a fresh code.",
-  "content-changed":
-    "The campaign changed after that test email. Send a new test email and use its code.",
-  "too-many-attempts":
-    "Too many wrong codes, so that code no longer works. Send a new test email to get a fresh code.",
-} as const satisfies Record<CampaignConfirmationRejection, string>;
+  "unknown-code": m.emailCampaignsSendingFailureCodeUnknown,
+  superseded: m.emailCampaignsSendingFailureCodeSuperseded,
+  expired: m.emailCampaignsSendingFailureCodeExpired,
+  "content-changed": m.emailCampaignsSendingFailureCodeContentChanged,
+  "too-many-attempts": m.emailCampaignsSendingFailureCodeTooManyAttempts,
+} as const satisfies Record<
+  CampaignConfirmationRejection,
+  typeof m.emailCampaignsSendingFailureCodeUnknown
+>;
 
-const unexpectedFailureMessage = "Something went wrong. Try again in a moment.";
+const recipientSourceUnavailableMessages = {
+  dotypos: m.emailCampaignsSendingFailureDotyposUnavailable,
+  database: m.emailCampaignsSendingFailureDatabaseUnavailable,
+} as const;
 
 /** Every failure a sending action can report, including service setup. */
 export type CampaignSendingFailure =
@@ -31,50 +35,63 @@ export type CampaignSendingFailure =
   | Effect.Error<ReturnType<ICampaignService["duplicate"]>>
   | Layer.Error<typeof CampaignService.Live>;
 
-/** Admin copy for every failure a sending action reports. */
-export const describeCampaignSendingFailure = (cause: CampaignSendingFailure) =>
-  Match.value(cause).pipe(
+/** Admin copy, in the admin's locale, for every failure a sending action reports. */
+export const describeCampaignSendingFailure = (
+  cause: CampaignSendingFailure,
+  locale: Locale
+) => {
+  const options = { locale };
+  const unexpectedFailure = () =>
+    m.emailCampaignsSendingFailureUnexpected({}, options);
+  return Match.value(cause).pipe(
     Match.tagsExhaustive({
       AdministratorUnauthorizedError: () =>
-        "Your admin sign-in is no longer valid. Reload the page and sign in again.",
-      CampaignNotFound: () => "This campaign no longer exists.",
+        m.emailCampaignsSendingFailureUnauthorized({}, options),
+      CampaignNotFound: () =>
+        m.emailCampaignsSendingFailureCampaignNotFound({}, options),
       CampaignReadOnly: () =>
-        "This campaign already left Draft. Duplicate it to send a new copy.",
+        m.emailCampaignsSendingFailureCampaignReadOnly({}, options),
       CampaignConfirmationRejected: ({ reason }) =>
-        confirmationRejectionMessages[reason],
+        confirmationRejectionMessages[reason]({}, options),
       CampaignTestRecipientInvalid: ({ email }) =>
-        `${email} isn't a valid email address.`,
+        m.emailCampaignsSendingFailureTestRecipientInvalid({ email }, options),
       CampaignContentMissing: () =>
-        "Add a subject and body in at least one language first.",
+        m.emailCampaignsSendingFailureContentMissing({}, options),
       CampaignFallbackContentMissing: () =>
-        "Customers without content in their language get the Czech version, so add Czech content, or restrict the audience to one language this campaign has. Nothing was sent.",
+        m.emailCampaignsSendingFailureFallbackContentMissing({}, options),
       CampaignEmailDeliveryFailed: () =>
-        "The email provider didn't accept the test email. Try again in a moment.",
+        m.emailCampaignsSendingFailureEmailDeliveryFailed({}, options),
       CampaignSigningKeyInvalid: () =>
-        "Confirmation codes can't be issued because the signing secret is misconfigured. Ask a developer to check BETTER_AUTH_SECRETS.",
+        m.emailCampaignsSendingFailureSigningKeyInvalid({}, options),
       CampaignEmailNotConfigured: ({ variables }) =>
-        `Campaign email isn't configured for this deployment. Ask a developer to set ${variables.join(", ")}.`,
+        m.emailCampaignsSendingFailureEmailNotConfigured(
+          { variables: variables.join(", ") },
+          options
+        ),
       WorkspaceUrlConfigError: () =>
-        "The test email couldn't be built because the site URL isn't configured. Ask a developer to check the deployment's URL settings.",
+        m.emailCampaignsSendingFailureSiteUrlNotConfigured({}, options),
       CampaignAudienceMissing: () =>
-        "Choose an audience for this campaign before sending it.",
+        m.emailCampaignsSendingFailureAudienceMissing({}, options),
       CampaignAudienceNotFound: () =>
-        "This campaign's audience no longer exists. Choose another audience; nothing was sent and the code still works.",
+        m.emailCampaignsSendingFailureAudienceNotFound({}, options),
       CampaignRecipientResolutionError: ({ source }) =>
-        `Recipients couldn't be resolved because ${{ dotypos: "Dotypos", database: "the database" }[source]} is unavailable. Nothing was sent and the code still works; try again in a moment.`,
+        recipientSourceUnavailableMessages[source]({}, options),
       CampaignRecipientsOutsideTestDomain: ({ recipientCount }) =>
-        `Outside production, campaign email can only go to @${EMAIL_TEST_DOMAIN} addresses, and ${recipientCount} ${recipientCount === 1 ? "address is" : "addresses are"} outside it. Nothing was sent.`,
+        m.emailCampaignsSendingFailureOutsideTestDomain(
+          { count: recipientCount, domain: EMAIL_TEST_DOMAIN },
+          options
+        ),
       CampaignNoRecipients: () =>
-        "The audience has no reachable recipients right now, so nothing was sent.",
+        m.emailCampaignsSendingFailureNoRecipients({}, options),
       CampaignDeliveryQueueFailed: () =>
-        "Delivery couldn't be queued, so the campaign is marked Failed. Retry undelivered recipients in a moment.",
+        m.emailCampaignsSendingFailureDeliveryQueueFailed({}, options),
       CampaignNotRetryable: () =>
-        "Only a failed campaign can retry undelivered recipients.",
-      ConfigError: () =>
-        "Campaign sending isn't configured correctly for this deployment. Ask a developer to check its environment variables.",
-      PlatformError: () => unexpectedFailureMessage,
-      SchemaError: () => unexpectedFailureMessage,
-      EffectDrizzleQueryError: () => unexpectedFailureMessage,
-      SqlError: () => unexpectedFailureMessage,
+        m.emailCampaignsSendingFailureNotRetryable({}, options),
+      ConfigError: () => m.emailCampaignsSendingFailureConfigError({}, options),
+      PlatformError: unexpectedFailure,
+      SchemaError: unexpectedFailure,
+      EffectDrizzleQueryError: unexpectedFailure,
+      SqlError: unexpectedFailure,
     })
   );
+};

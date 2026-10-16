@@ -1,8 +1,9 @@
 "use server";
 
 import { Effect, Match, Schema } from "effect";
+import { m } from "@/features/administration/i18n";
 import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
-import { locales } from "@/features/i18n";
+import { type Locale, locales } from "@/features/i18n";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -41,43 +42,44 @@ const CampaignDraftUpdate = Schema.Struct({
   campaignId: campaignIdSchema,
 });
 
-const campaignSaveError = (cause: { readonly _tag: string }) =>
-  new PublicSafeActionError({
-    message: Match.value(cause._tag).pipe(
-      Match.when(
-        "CampaignContentInvalid",
-        () => "The content has problems. Fix the listed issues, then save."
+const campaignSaveError =
+  (locale: Locale) => (cause: { readonly _tag: string }) =>
+    new PublicSafeActionError({
+      message: Match.value(cause._tag).pipe(
+        Match.when("CampaignContentInvalid", () =>
+          m.emailCampaignsComposerSaveContentInvalid({}, { locale })
+        ),
+        Match.when("CampaignAudienceArchived", () =>
+          m.emailCampaignsComposerSaveAudienceArchived({}, { locale })
+        ),
+        Match.when("CampaignAudienceNotFound", () =>
+          m.emailCampaignsComposerSaveAudienceNotFound({}, { locale })
+        ),
+        Match.when("CampaignReadOnly", () =>
+          m.emailCampaignsComposerSaveReadOnly({}, { locale })
+        ),
+        Match.when("CampaignNotFound", () =>
+          m.emailCampaignsDraftNotFound({}, { locale })
+        ),
+        Match.orElse(() => m.emailCampaignsComposerSaveFailed({}, { locale }))
       ),
-      Match.when(
-        "CampaignAudienceArchived",
-        () => "The selected audience is archived. Choose another audience."
-      ),
-      Match.when(
-        "CampaignAudienceNotFound",
-        () => "The selected audience no longer exists."
-      ),
-      Match.when(
-        "CampaignReadOnly",
-        () => "This campaign has left Draft and can no longer be edited."
-      ),
-      Match.when("CampaignNotFound", () => "This campaign no longer exists."),
-      Match.orElse(() => "The campaign could not be saved. Try again.")
-    ),
-    cause,
-  });
+      cause,
+    });
 
-const campaignDeleteError = (cause: { readonly _tag: string }) =>
-  new PublicSafeActionError({
-    message: Match.value(cause._tag).pipe(
-      Match.when(
-        "CampaignReadOnly",
-        () => "This campaign has left Draft and can no longer be deleted."
+const campaignDeleteError =
+  (locale: Locale) => (cause: { readonly _tag: string }) =>
+    new PublicSafeActionError({
+      message: Match.value(cause._tag).pipe(
+        Match.when("CampaignReadOnly", () =>
+          m.emailCampaignsDraftDeleteReadOnly({}, { locale })
+        ),
+        Match.when("CampaignNotFound", () =>
+          m.emailCampaignsDraftNotFound({}, { locale })
+        ),
+        Match.orElse(() => m.emailCampaignsDraftDeleteFailed({}, { locale }))
       ),
-      Match.when("CampaignNotFound", () => "This campaign no longer exists."),
-      Match.orElse(() => "The campaign could not be deleted. Try again.")
-    ),
-    cause,
-  });
+      cause,
+    });
 
 const createCampaignDraft = Effect.fn("CampaignComposer.create")(function* (
   input: typeof CampaignDraft.Type
@@ -100,11 +102,11 @@ const createCampaignAction = defineWorkspaceAction(
     operation: "email-campaigns.admin.create",
     schema: Schema.toStandardSchemaV1(CampaignDraft, { parseOptions }),
   },
-  (input) =>
+  (input, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(createCampaignDraft(input)),
       Effect.provide(CampaignService.Live),
-      Effect.mapError(campaignSaveError)
+      Effect.mapError(campaignSaveError(locale))
     )
 );
 
@@ -113,11 +115,11 @@ const updateCampaignAction = defineWorkspaceAction(
     operation: "email-campaigns.admin.update",
     schema: Schema.toStandardSchemaV1(CampaignDraftUpdate, { parseOptions }),
   },
-  (input) =>
+  (input, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(updateCampaignDraft(input)),
       Effect.provide(CampaignService.Live),
-      Effect.mapError(campaignSaveError)
+      Effect.mapError(campaignSaveError(locale))
     )
 );
 
@@ -126,7 +128,7 @@ const deleteCampaignAction = defineWorkspaceAction(
     operation: "email-campaigns.admin.delete",
     schema: campaignReferenceStandardSchema,
   },
-  ({ campaignId }) =>
+  ({ campaignId }, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
@@ -136,7 +138,7 @@ const deleteCampaignAction = defineWorkspaceAction(
         })
       ),
       Effect.provide(CampaignService.Live),
-      Effect.mapError(campaignDeleteError)
+      Effect.mapError(campaignDeleteError(locale))
     )
 );
 
@@ -200,14 +202,14 @@ const previewCampaignEmailAction = defineWorkspaceAction(
     }),
     logInput: false,
   },
-  (input) =>
+  (input, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(renderCampaignEmailPreview(input)),
       Effect.map(({ html, subject }) => ({ html, subject })),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
-            message: "The preview could not be rendered.",
+            message: m.emailCampaignsEmailPreviewRenderFailed({}, { locale }),
             cause,
           })
       )

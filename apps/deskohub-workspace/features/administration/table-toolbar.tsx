@@ -1,24 +1,28 @@
-import { Predicate } from "effect";
+"use client";
+
 import type { ReactNode } from "react";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Badge } from "@/shared/components/ui/badge";
 import { cn } from "@/shared/utils";
+import { formatCount } from "@/shared/utils/number";
 
 export function AdministrationTableToolbar({
   actions,
   count,
   filters,
-  itemLabel,
+  label,
   search,
 }: {
   readonly actions?: ReactNode;
-  readonly count: number | ReactNode;
+  readonly count: ReactNode;
   readonly filters?: ReactNode;
-  readonly itemLabel: string;
+  /** The accessible name of the controls section, such as "Order table controls". */
+  readonly label: string;
   readonly search?: ReactNode;
 }) {
   return (
     <section
-      aria-label={`${itemLabel} table controls`}
+      aria-label={label}
       className={cn(
         "mb-5 grid gap-4 rounded-xl border border-navy-blue/10 bg-white p-4",
         filters
@@ -27,11 +31,7 @@ export function AdministrationTableToolbar({
       )}
     >
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
-        {Predicate.isNumber(count) ? (
-          <AdministrationTableCount count={count} itemLabel={itemLabel} />
-        ) : (
-          count
-        )}
+        {count}
         {search && <div className="w-full sm:max-w-[32rem]">{search}</div>}
       </div>
       {(filters || actions) && (
@@ -46,18 +46,16 @@ export function AdministrationTableToolbar({
 
 export function AdministrationTableCount({
   count,
-  itemLabel,
+  label,
 }: {
   readonly count: number;
-  readonly itemLabel: string;
+  /** The count with its noun, such as "3 orders". */
+  readonly label: string;
 }) {
+  const locale = useRouteLocale();
   return (
-    <Badge
-      aria-label={`${count} ${itemLabel}${count === 1 ? "" : "s"}`}
-      className="w-fit"
-      variant="subtle"
-    >
-      {count}
+    <Badge aria-label={label} className="w-fit" variant="subtle">
+      {formatCount(count, locale)}
     </Badge>
   );
 }

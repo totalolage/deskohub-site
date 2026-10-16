@@ -15,6 +15,9 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 mock.module("server-only", () => ({}));
+mock.module("@/features/i18n/server/request-locale", () => ({
+  getRequestLocale: () => Promise.resolve("en-US"),
+}));
 mock.module("@/features/admin-cli/actions", () => ({
   approveCliAuthentication: mock(),
 }));
@@ -50,7 +53,7 @@ mock.module("@/features/admin-cli/page-data.server", () => ({
   loadCliAuthenticationApproval: () => Promise.resolve(approval),
 }));
 
-describe("CliAuthenticationApprovalPage", () => {
+describe("CliAuthenticationRequest", () => {
   beforeAll(() => registerWorkspaceComponentTestEnv());
   afterEach(() => {
     cleanup();
@@ -59,9 +62,12 @@ describe("CliAuthenticationApprovalPage", () => {
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
   test("names the authenticated administrator while approval is pending", async () => {
-    const { CliAuthenticationRequest } = await import("./page");
+    const { CliAuthenticationRequest } = await import(
+      "./cli-authentication-screen"
+    );
     const view = render(
       await CliAuthenticationRequest({
+        locale: "en-US",
         searchParams: Promise.resolve({ code: "pending-code" }),
       })
     );
@@ -69,9 +75,37 @@ describe("CliAuthenticationApprovalPage", () => {
     expect(view.getByText(/Approving as/).textContent).toContain(
       `Approving as ${operatorEmail}.`
     );
-    expect(view.getByText(operatorEmail)).toBeTruthy();
+    expect(view.getByText(operatorEmail).tagName).toBe("STRONG");
     expect(view.getByText("Office Mac")).toBeTruthy();
     expect(view.getByRole("button", { name: "Approve this CLI" })).toBeTruthy();
+  });
+
+  test("renders the pending approval in Czech on a Czech route", async () => {
+    const { CliAuthenticationRequest } = await import(
+      "./cli-authentication-screen"
+    );
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        {
+          await CliAuthenticationRequest({
+            locale: "cs-CZ",
+            searchParams: Promise.resolve({ code: "pending-code" }),
+          })
+        }
+      </RouteLocaleProvider>
+    );
+
+    expect(view.getByText(/Schvalujete jako/).textContent).toContain(
+      `Schvalujete jako ${operatorEmail}.`
+    );
+    expect(view.getByText(operatorEmail).tagName).toBe("STRONG");
+    expect(view.getByText("Klient")).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Schválit toto CLI" })
+    ).toBeTruthy();
   });
 
   test("does not imply approval once the request reaches a terminal state", async () => {
@@ -79,9 +113,12 @@ describe("CliAuthenticationApprovalPage", () => {
       administratorEmail: operatorEmail,
       request: { ...pendingRequest, state: "granted" },
     };
-    const { CliAuthenticationRequest } = await import("./page");
+    const { CliAuthenticationRequest } = await import(
+      "./cli-authentication-screen"
+    );
     const view = render(
       await CliAuthenticationRequest({
+        locale: "en-US",
         searchParams: Promise.resolve({ code: "granted-code" }),
       })
     );

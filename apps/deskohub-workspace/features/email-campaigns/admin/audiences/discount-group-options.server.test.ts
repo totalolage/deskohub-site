@@ -10,6 +10,9 @@ mock.module(
 );
 
 let discountGroupsResult: Effect.Effect<unknown, unknown> = Effect.succeed([]);
+mock.module("@/features/i18n/server/request-locale", () => ({
+  getRequestLocale: async () => "en-US",
+}));
 const getDiscountGroups = mock(() => discountGroupsResult);
 mock.module("@/shared/backend/config/dotypos.config", () => ({
   WorkspaceDotyposLayer: Layer.succeed(DotyposService, {

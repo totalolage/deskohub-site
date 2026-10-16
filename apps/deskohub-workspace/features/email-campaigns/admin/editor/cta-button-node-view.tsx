@@ -3,6 +3,8 @@
 import { NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react";
 import { Pencil } from "lucide-react";
 import { useState } from "react";
+import { m } from "@/features/administration/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import { CtaButtonDialog } from "./cta-button-dialog";
@@ -15,6 +17,7 @@ export function CtaButtonNodeView({
   selected,
   updateAttributes,
 }: ReactNodeViewProps) {
+  const locale = useRouteLocale();
   const [editing, setEditing] = useState(false);
   const label = String(node.attrs.label ?? "");
   const href = String(node.attrs.href ?? "");
@@ -33,7 +36,7 @@ export function CtaButtonNodeView({
           )}
           data-drag-handle=""
         >
-          {label || "Button text missing"}
+          {label || m.emailCampaignsCtaLabelMissing({}, { locale })}
         </span>
         {selected && editor.isEditable && (
           <Button
@@ -45,7 +48,9 @@ export function CtaButtonNodeView({
             variant="secondary"
           >
             <Pencil aria-hidden className="size-3.5" />
-            <span className="sr-only">Edit button</span>
+            <span className="sr-only">
+              {m.emailCampaignsCtaEdit({}, { locale })}
+            </span>
           </Button>
         )}
       </div>
@@ -56,7 +61,7 @@ export function CtaButtonNodeView({
         )}
         contentEditable={false}
       >
-        {href || "Link missing"}
+        {href || m.emailCampaignsCtaHrefMissing({}, { locale })}
       </span>
       <CtaButtonDialog
         initialValues={{ label, href }}

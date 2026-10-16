@@ -4,6 +4,7 @@ import { CliSessionId } from "@deskohub/workspace-admin-api";
 import { Effect, Predicate, Schema } from "effect";
 import { redirect } from "next/navigation";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import { m } from "@/features/administration/i18n";
 import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { resolveActionLocale } from "@/features/i18n/server/action-locale";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
@@ -94,7 +95,7 @@ const renameCliSessionAction = defineWorkspaceAction(
     schema: renameCliSessionStandardSchema,
   },
   Effect.fn(
-    function* (input) {
+    function* (input, { locale }) {
       const administrator = yield* requireAdministratorAuthorization;
       const authentication = yield* CliAuthentication;
       const renamed = yield* authentication.renameSession({
@@ -104,20 +105,20 @@ const renameCliSessionAction = defineWorkspaceAction(
       });
       if (!renamed) {
         return yield* new PublicSafeActionError({
-          message: "That CLI session no longer exists.",
+          message: m.adminCliRenameSessionMissing({}, { locale }),
         });
       }
       yield* Effect.sync(() => revalidateLocalizedPath("/admin/cli/sessions"));
-      return { notice: "CLI session label updated." };
+      return { notice: m.adminCliRenameSaved({}, { locale }) };
     },
-    (effect) =>
+    (effect, _input, { locale }) =>
       effect.pipe(
         Effect.provide(CliAuthentication.Live),
         Effect.mapError((cause) =>
           cause instanceof PublicSafeActionError
             ? cause
             : new PublicSafeActionError({
-                message: "The CLI session label could not be updated.",
+                message: m.adminCliRenameFailed({}, { locale }),
                 cause,
               })
         )

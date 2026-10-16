@@ -15,6 +15,8 @@ import {
 import { NexiOrderLink } from "@/features/administration/nexi-order-link";
 import { PaymentAmount } from "@/features/administration/payment-status";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { CustomerPromotionCodeAction } from "./customer-admin-client";
 import type {
@@ -74,14 +76,17 @@ const getPromotionCodeHref = (item: {
     ? `/admin/vouchers/${item.id}`
     : `/admin/codes/${item.id}`;
 
-const getPromotionCodeBenefit = (item: CustomerPromotionCodeItem) => {
+const getPromotionCodeBenefit = (
+  item: CustomerPromotionCodeItem,
+  locale: Locale
+) => {
   if (item.kind === "voucher") {
-    return `${formatAdministrationMoney(item.issuedCredit)} credit`;
+    return `${formatAdministrationMoney(item.issuedCredit, locale)} credit`;
   }
   return `${item.discountLabel} · ${
     item.discountAdjustment.kind === "percentage"
       ? `${item.discountAdjustment.basisPoints / 100}%`
-      : formatAdministrationMoney(item.discountAdjustment.amount)
+      : formatAdministrationMoney(item.discountAdjustment.amount, locale)
   }`;
 };
 
@@ -100,6 +105,7 @@ export function CustomerPromotionCodeTable({
   readonly customerName: string;
   readonly items: readonly CustomerPromotionCodeItem[];
 }) {
+  const locale = useRouteLocale();
   const columns = useMemo<
     AdministrationDataTableColumn<CustomerPromotionCodeItem>[]
   >(
@@ -124,15 +130,18 @@ export function CustomerPromotionCodeTable({
         meta: { cellClassName: "whitespace-nowrap" },
       },
       {
-        accessorFn: getPromotionCodeBenefit,
+        accessorFn: (item) => getPromotionCodeBenefit(item, locale),
         id: "benefit",
         header: "Benefit",
         cell: ({ row }) => (
           <>
-            {getPromotionCodeBenefit(row.original)}
+            {getPromotionCodeBenefit(row.original, locale)}
             {row.original.kind === "voucher" && (
               <span className="mt-0.5 block text-xs text-navy-blue/65">
-                {formatAdministrationMoney(row.original.remainingCredit)}{" "}
+                {formatAdministrationMoney(
+                  row.original.remainingCredit,
+                  locale
+                )}{" "}
                 remaining
               </span>
             )}
@@ -175,7 +184,7 @@ export function CustomerPromotionCodeTable({
         meta: { cellClassName: "relative z-10 text-right" },
       },
     ],
-    [customerId, customerName]
+    [customerId, customerName, locale]
   );
 
   return (
@@ -194,6 +203,7 @@ export function CustomerTransactionHistoryTable({
 }: {
   readonly transactions: readonly AdministrationCustomerTransaction[];
 }) {
+  const locale = useRouteLocale();
   const columns = useMemo<
     AdministrationDataTableColumn<AdministrationCustomerTransaction>[]
   >(
@@ -203,7 +213,7 @@ export function CustomerTransactionHistoryTable({
         id: "date",
         header: "Date",
         cell: ({ row }) =>
-          formatAdministrationDateTime(row.original.attempt.updatedAt),
+          formatAdministrationDateTime(row.original.attempt.updatedAt, locale),
         meta: {
           cellClassName: "whitespace-nowrap text-navy-blue/68",
         },
@@ -214,7 +224,7 @@ export function CustomerTransactionHistoryTable({
         header: "Status",
         cell: ({ row }) => {
           const { attempt } = row.original;
-          const status = getAdministrationPaymentStatus(attempt);
+          const status = getAdministrationPaymentStatus(attempt, locale);
           return (
             <StatusBadge
               tone={
@@ -245,7 +255,9 @@ export function CustomerTransactionHistoryTable({
         accessorFn: ({ attempt }) => attempt.amount.value,
         id: "amount",
         header: "Amount",
-        cell: ({ row }) => <PaymentAmount payment={row.original.attempt} />,
+        cell: ({ row }) => (
+          <PaymentAmount locale={locale} payment={row.original.attempt} />
+        ),
         meta: { cellClassName: "whitespace-nowrap font-semibold" },
       },
       {
@@ -256,6 +268,7 @@ export function CustomerTransactionHistoryTable({
           row.original.attempt.providerOrderId ? (
             <NexiOrderLink
               className="font-mono text-xs"
+              locale={locale}
               orderId={row.original.attempt.providerOrderId}
             />
           ) : (
@@ -263,7 +276,7 @@ export function CustomerTransactionHistoryTable({
           ),
       },
     ],
-    []
+    [locale]
   );
 
   return (
@@ -291,6 +304,7 @@ export function ClaimHistoryTable({
   readonly claims: readonly ClaimHistoryItem[];
   readonly subject: "customer" | "promotion-code";
 }) {
+  const locale = useRouteLocale();
   const columns = useMemo<AdministrationDataTableColumn<ClaimHistoryItem>[]>(
     () => [
       subject === "customer"
@@ -359,14 +373,14 @@ export function ClaimHistoryTable({
         id: "amount",
         header: "Amount",
         cell: ({ row }) =>
-          formatAdministrationMoney(row.original.appliedAmount),
+          formatAdministrationMoney(row.original.appliedAmount, locale),
         meta: { cellClassName: "whitespace-nowrap" },
       },
       {
         accessorKey: "reservedAt",
         header: "Reserved",
         cell: ({ row }) =>
-          formatAdministrationDateTime(row.original.reservedAt),
+          formatAdministrationDateTime(row.original.reservedAt, locale),
         meta: { cellClassName: "whitespace-nowrap" },
       },
       {
@@ -376,7 +390,8 @@ export function ClaimHistoryTable({
         cell: ({ row }) =>
           row.original.redeemedAt || row.original.releasedAt
             ? formatAdministrationDateTime(
-                row.original.redeemedAt ?? row.original.releasedAt ?? ""
+                row.original.redeemedAt ?? row.original.releasedAt ?? "",
+                locale
               )
             : "—",
         meta: { cellClassName: "whitespace-nowrap" },
@@ -394,7 +409,7 @@ export function ClaimHistoryTable({
         ),
       },
     ],
-    [subject]
+    [locale, subject]
   );
 
   return (

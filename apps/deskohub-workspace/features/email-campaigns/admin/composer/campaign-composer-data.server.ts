@@ -1,11 +1,17 @@
 import "server-only";
 
 import { Effect } from "effect";
+import { m } from "@/features/administration/i18n";
 import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
+import type { Locale } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CampaignEmailConfig } from "../../backend/campaign-email.config";
 import { campaignBodyFormatVersion } from "../../body/campaign-body-document";
-import type { CampaignLocaleContent } from "../../body/campaign-content";
+import type {
+  CampaignLocaleContent,
+  CampaignTemplateKey,
+} from "../../body/campaign-content";
 import { campaignTemplates } from "../../body/campaign-templates";
 import {
   CampaignEmailFooter,
@@ -65,9 +71,16 @@ const templateSampleContent: CampaignLocaleContent = {
   },
 };
 
-const loadTemplates = Effect.forEach(
-  Object.values(campaignTemplates),
-  (template) =>
+/**
+ * Admin descriptions of the templates. The template's own description stays
+ * English for the administration API.
+ */
+const campaignTemplateDescriptions = {
+  workspace: m.emailCampaignsComposerTemplateWorkspaceDescription,
+} as const satisfies Record<CampaignTemplateKey, (...args: never) => string>;
+
+const loadTemplates = (locale: Locale) =>
+  Effect.forEach(Object.values(campaignTemplates), (template) =>
     renderCampaignEmail({
       templateKey: template.key,
       locale: "en-US",
@@ -80,12 +93,15 @@ const loadTemplates = Effect.forEach(
         ({ html }): CampaignComposerTemplate => ({
           key: template.key,
           name: template.name,
-          description: template.description,
+          description: campaignTemplateDescriptions[template.key](
+            {},
+            { locale }
+          ),
           previewHtml: html,
         })
       )
     )
-);
+  );
 
 /**
  * The fixed test-send inbox, or null where campaign email isn't configured:
@@ -97,9 +113,9 @@ const loadAdminInbox = CampaignEmailConfig.pipe(
   Effect.catchTag("CampaignEmailNotConfigured", () => Effect.succeed(null))
 );
 
-const loadComposerOptions = () =>
+const loadComposerOptions = (locale: Locale) =>
   Effect.all(
-    { templates: loadTemplates, adminInbox: loadAdminInbox },
+    { templates: loadTemplates(locale), adminInbox: loadAdminInbox },
     { concurrency: "unbounded" }
   ).pipe(
     runWorkspaceEffect("email-campaigns.admin.load-composer", {
@@ -110,9 +126,10 @@ const loadComposerOptions = () =>
 /** Audiences, templates, and the test inbox the composer offers. */
 export const loadCampaignComposerOptions = async () => {
   await authorizeAdministratorPage();
+  const locale = await getRequestLocale();
   const [audiences, options] = await Promise.all([
     loadAudienceOptions(),
-    loadComposerOptions(),
+    loadComposerOptions(locale),
   ]);
   return { audiences, ...options };
 };

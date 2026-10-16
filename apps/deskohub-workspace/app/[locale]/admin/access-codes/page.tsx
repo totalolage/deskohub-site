@@ -14,7 +14,7 @@ export default function AccessCodesAdminPage() {
       <Suspense
         fallback={
           <div className="max-w-3xl">
-            <AdministrationPanelLoading label="access-code form" />
+            <AdministrationPanelLoading label="Loading access-code form" />
           </div>
         }
       >

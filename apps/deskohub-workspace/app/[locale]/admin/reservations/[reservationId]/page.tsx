@@ -26,6 +26,7 @@ import { ReservationOrderList } from "@/features/administration/payment-componen
 import { ReservationAccessAdministration } from "@/features/administration/reservation-access-administration";
 import { ReservationCancellation } from "@/features/administration/reservation-cancellation";
 import { ReservationLifecycleMap } from "@/features/administration/reservation-lifecycle-map";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function ReservationAdministrationDetailPage({
   params,
@@ -35,7 +36,9 @@ export default function ReservationAdministrationDetailPage({
   return (
     <AdministrationPage>
       <Suspense
-        fallback={<AdministrationDetailLoading label="reservation details" />}
+        fallback={
+          <AdministrationDetailLoading label="Loading reservation details" />
+        }
       >
         <ReservationAdministrationDetail params={params} />
       </Suspense>
@@ -49,6 +52,7 @@ export async function ReservationAdministrationDetail({
   readonly params: Promise<{ readonly reservationId: string }>;
 }) {
   const { reservationId } = await params;
+  const locale = await getRequestLocale();
   const detail = await loadAdministrationReservation(reservationId);
   const { booking, reservation } = detail;
   return (
@@ -101,7 +105,7 @@ export async function ReservationAdministrationDetail({
                 <AdministrationFact
                   label="Date"
                   value={
-                    formatAdministrationReservationDate(reservation) ??
+                    formatAdministrationReservationDate(reservation, locale) ??
                     "Unavailable"
                   }
                 />
@@ -111,7 +115,10 @@ export async function ReservationAdministrationDetail({
                     label="Starts"
                     value={
                       reservation.startsAt
-                        ? formatAdministrationDateTime(reservation.startsAt)
+                        ? formatAdministrationDateTime(
+                            reservation.startsAt,
+                            locale
+                          )
                         : "Unavailable"
                     }
                   />
@@ -119,7 +126,10 @@ export async function ReservationAdministrationDetail({
                     label="Ends"
                     value={
                       reservation.endsAt
-                        ? formatAdministrationDateTime(reservation.endsAt)
+                        ? formatAdministrationDateTime(
+                            reservation.endsAt,
+                            locale
+                          )
                         : "Unavailable"
                     }
                   />
@@ -139,7 +149,10 @@ export async function ReservationAdministrationDetail({
               />
               <AdministrationFact
                 label="Created"
-                value={formatAdministrationDateTime(reservation.createdAt)}
+                value={formatAdministrationDateTime(
+                  reservation.createdAt,
+                  locale
+                )}
               />
             </dl>
           </section>
@@ -172,19 +185,27 @@ export async function ReservationAdministrationDetail({
               {reservation.latestPayment ? (
                 <>
                   <p className="font-semibold">
-                    <PaymentAmount payment={reservation.latestPayment} />
+                    <PaymentAmount
+                      locale={locale}
+                      payment={reservation.latestPayment}
+                    />
                   </p>
                   <p className="mt-1 text-sm text-navy-blue/60">
-                    <PaymentStatusText payment={reservation.latestPayment} />
+                    <PaymentStatusText
+                      locale={locale}
+                      payment={reservation.latestPayment}
+                    />
                   </p>
                   <PaymentRefundRequiredLabel
                     className="mt-2 text-sm"
+                    locale={locale}
                     payment={reservation.latestPayment}
                   />
                   {reservation.latestPayment.providerOrderId && (
                     <NexiOrderLink
                       accessibleLabel={`Payment ${reservation.latestPayment.providerOrderId}`}
                       className="mt-2 block break-all font-mono text-xs font-semibold text-burned-orange-ink underline underline-offset-4"
+                      locale={locale}
                       orderId={reservation.latestPayment.providerOrderId}
                     />
                   )}
@@ -206,7 +227,7 @@ export async function ReservationAdministrationDetail({
                     >
                       <span>{discount.label}</span>
                       <span className="font-semibold">
-                        −{formatAdministrationMoney(discount.amount)}
+                        −{formatAdministrationMoney(discount.amount, locale)}
                       </span>
                     </li>
                   ))}
@@ -228,17 +249,20 @@ export async function ReservationAdministrationDetail({
             {detail.paymentAttempts.length > 0 && (
               <div className="mb-4 rounded-xl border border-navy-blue/10 bg-white p-5">
                 <h3 className="text-sm font-semibold">Local attempts</h3>
-                <PaymentAttemptList attempts={detail.paymentAttempts} />
+                <PaymentAttemptList
+                  attempts={detail.paymentAttempts}
+                  locale={locale}
+                />
               </div>
             )}
-            <ReservationOrderList orders={detail.orders} />
+            <ReservationOrderList orders={detail.orders} locale={locale} />
           </section>
 
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
             <div className="mb-6">
               <h2 className="text-xl">History</h2>
             </div>
-            <ReservationTimeline items={detail.timeline} />
+            <ReservationTimeline items={detail.timeline} locale={locale} />
           </section>
 
           <details className="rounded-xl border border-navy-blue/10 bg-white">
@@ -255,6 +279,7 @@ export async function ReservationAdministrationDetail({
               detail.otherCustomerReservations.map((related) => (
                 <RelatedReservationLink
                   key={related.id}
+                  locale={locale}
                   reservation={related}
                 />
               ))
@@ -266,12 +291,13 @@ export async function ReservationAdministrationDetail({
           </RelatedSection>
           {reservation.date && (
             <RelatedSection
-              title={`Also on ${formatAdministrationPlainDate(reservation.date)}`}
+              title={`Also on ${formatAdministrationPlainDate(reservation.date, locale)}`}
             >
               {detail.sameDateReservations.length > 0 ? (
                 detail.sameDateReservations.map((related) => (
                   <RelatedReservationLink
                     key={related.id}
+                    locale={locale}
                     reservation={related}
                   />
                 ))
