@@ -14,6 +14,7 @@ export const accountReviewTargetBySection = {
   reservations: "linked-reservations-desktop",
   referrals: "linked-referrals-desktop",
   profile: "linked-profile-desktop",
+  security: "linked-security-desktop",
   billing: "linked-billing-desktop",
   legal: "linked-legal-desktop",
   danger: "linked-danger-desktop",
@@ -27,6 +28,7 @@ export const mobileAccountReviewTargetBySection: Readonly<
   billing: "linked-billing-mobile",
   danger: "linked-danger-mobile",
   profile: "linked-profile-language-mobile",
+  security: undefined,
   legal: undefined,
 };
 

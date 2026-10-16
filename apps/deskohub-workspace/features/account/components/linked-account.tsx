@@ -7,6 +7,8 @@ import { useAccountLayout } from "@/features/account/components/account-layout-s
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { LegalScreen } from "@/features/account/components/legal/legal-screen";
+import { SignInSecuritySection } from "@/features/account/components/passkeys/sign-in-security-section";
+import { useAccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
 import { ProfileCompletionReferralNotice } from "@/features/account/components/profile-completion-referral-notice";
 import { ProfileForm } from "@/features/account/components/profile-form";
 import { ReferralScreen } from "@/features/account/components/referral-screen";
@@ -14,6 +16,7 @@ import type {
   CustomerAvatarPresentation,
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
+import type { AccountPasskeySettings } from "@/features/account/passkeys";
 import { getAccountPath } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import {
@@ -39,12 +42,15 @@ type LinkedAccountProps = {
    */
   readonly reservations: ReactNode;
   readonly signupReferral?: ProfileCompletionReferralOutcome;
+  /** The account's passkeys; absent while `login_passkeys` is off. */
+  readonly passkeys?: AccountPasskeySettings;
 };
 
 export function LinkedAccount({
   avatarPresentation,
   email,
   locale,
+  passkeys,
   profile,
   referrals,
   referralsEnabled,
@@ -65,6 +71,7 @@ export function LinkedAccount({
     normalizedPathname === getAccountPath(locale);
   const profileSection = activeSection === "billing" ? "billing" : "profile";
   const copy = getAccountScreenCopy(locale);
+  const accountPasskeys = useAccountPasskeys(passkeys);
 
   const referralDiscount = referralsEnabled
     ? referrals?.summary.discount
@@ -125,6 +132,15 @@ export function LinkedAccount({
         />
       </div>
 
+      {accountPasskeys && (
+        <SignInSecuritySection
+          accountPasskeys={accountPasskeys}
+          email={email}
+          hidden={activeSection !== "security"}
+          locale={locale}
+        />
+      )}
+
       {activeSection === "legal" && isPrivateAccountPathname && (
         <LegalScreen locale={locale} />
       )}
@@ -135,6 +151,7 @@ export function LinkedAccount({
           email={email}
           heading={copy.dangerTitle}
           locale={locale}
+          passkeys={accountPasskeys}
         />
       </div>
     </>
