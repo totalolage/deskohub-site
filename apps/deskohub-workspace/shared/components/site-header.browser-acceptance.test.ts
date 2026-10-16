@@ -325,28 +325,43 @@ for (const locale of locales) {
     }
   );
 
-  test.skipIf(!chromiumAvailable)(
-    `fits the admin header on the narrowest desktop without overflow (${locale})`,
-    async () => {
-      const page = await openSiteHeader(locale, narrowDesktopViewport, "full", {
-        administrator: true,
-      });
-      try {
-        await expectNoHorizontalOverflow(page);
-        expect(
-          await page
-            .getByRole("link", {
-              exact: true,
-              name: m.siteHeaderAdminLabel({}, { locale }),
-            })
-            .first()
-            .isVisible()
-        ).toBe(true);
-      } finally {
-        await page.close();
-      }
+  for (const viewport of [narrowDesktopViewport, desktopViewport]) {
+    for (const administrator of [false, true]) {
+      const state = administrator ? "an administrator" : "a customer";
+      test.skipIf(!chromiumAvailable)(
+        `keeps every desktop label on one line for ${state} at ${viewport.width}px (${locale})`,
+        async () => {
+          const page = await openSiteHeader(locale, viewport, "full", {
+            administrator,
+          });
+          try {
+            await expectNoHorizontalOverflow(page);
+            expect(
+              await readWrappedNavigationLabels(
+                page,
+                m.primaryNavigationLabel({}, { locale })
+              )
+            ).toEqual([]);
+            if (administrator) {
+              // The desktop button comes first and keeps its visible label.
+              const adminButton = page
+                .getByRole("link", {
+                  exact: true,
+                  name: m.siteHeaderAdminLabel({}, { locale }),
+                })
+                .first();
+              expect(await adminButton.isVisible()).toBe(true);
+              expect((await adminButton.innerText()).trim().toLowerCase()).toBe(
+                m.siteHeaderAdminLabel({}, { locale }).toLowerCase()
+              );
+            }
+          } finally {
+            await page.close();
+          }
+        }
+      );
     }
-  );
+  }
 
   test.skipIf(!chromiumAvailable)(
     `fits the admin button and ribbon on one desktop line at 1440px (${locale})`,

@@ -97,9 +97,9 @@ test("shows an administrator the header button, the menu button, and the ribbon"
     administratorEntry(Promise.resolve(true))
   );
 
-  // Desktop label and icon buttons (CSS picks one), the menu button, the ribbon.
-  expect(adminLinks(view)).toHaveLength(4);
-  expect(view.getAllByRole("link", { name: "Admin" })).toHaveLength(3);
+  // The header button, the menu button, and the ribbon action.
+  expect(adminLinks(view)).toHaveLength(3);
+  expect(view.getAllByRole("link", { name: "Admin" })).toHaveLength(2);
   expect(view.getByRole("link", { name: "Otevřít administraci" })).toBeTruthy();
   expect(view.getByText("Přihlášeni jako administrátor")).toBeTruthy();
   expect(

@@ -33,10 +33,7 @@ function AdministratorOnly(props: {
   );
 }
 
-/**
- * The filled Admin button beside the account control. While the full
- * navigation shares the bar below 1440px, it shrinks to its icon.
- */
+/** The filled Admin button beside the account control. */
 export function AdministratorEntryButton({
   entry,
   onNavigate,
@@ -49,27 +46,11 @@ export function AdministratorEntryButton({
         tone="chilean-fire"
         size="sm"
         caps
-        className="hidden shrink-0 md:inline-flex xl:max-[90rem]:hidden"
+        className="hidden shrink-0 md:inline-flex"
       >
         <Link href={entry.href} onClick={onNavigate}>
           <ShieldCheck className="size-4" aria-hidden />
           {entry.label}
-        </Link>
-      </Button>
-      <Button
-        asChild
-        variant="primary"
-        tone="chilean-fire"
-        size="icon"
-        className="hidden shrink-0 xl:max-[90rem]:inline-flex"
-      >
-        <Link
-          href={entry.href}
-          aria-label={entry.label}
-          title={entry.label}
-          onClick={onNavigate}
-        >
-          <ShieldCheck className="size-4" aria-hidden />
         </Link>
       </Button>
     </AdministratorOnly>
