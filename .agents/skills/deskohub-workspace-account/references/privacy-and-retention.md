@@ -14,6 +14,7 @@ what the privacy copy promises. Privacy copy lives in
 | Dotypos | Profile and reservation history | Account deletion sets the profile's expiry; retained records stay |
 | Resend | Sent message, recipient, delivery metadata | Provider retention only; Workspace keeps no copy |
 | Cloudinary | Avatar asset | Destroyed before identity removal |
+| PostHog warehouse | Allowlisted Dotypos customer fields in `dotypos_customers` | PostHog retention settings; a Dotypos deletion arrives as `deleted: true`, not erasure |
 
 ## Rules
 

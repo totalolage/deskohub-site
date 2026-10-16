@@ -167,6 +167,9 @@ export const workspaceServerEnvSchema = Schema.Struct({
     Schema.optional(Schema.String.check(Schema.isMinLength(32)))
   ),
   CRON_SECRET: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
+  ANALYTICS_WAREHOUSE_SOURCE_TOKEN: toEnvSchema(
+    Schema.optional(Schema.String.check(Schema.isMinLength(32)))
+  ),
   NEXI_API_KEY: nonEmptyStringSchema,
   NEXI_API_ORIGIN: urlEnvSchema,
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: toEnvSchema(

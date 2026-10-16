@@ -1,11 +1,12 @@
 ---
 name: deskohub-dotypos
-description: Dotypos API, @deskohub/dotypos, DotyposService, OpenAPI contract, generated client, new endpoint, refresh token, Connector authorization, manual API inspection, request timeout, Dotypos customer email or phone.
+description: Dotypos API, @deskohub/dotypos, DotyposService, OpenAPI contract, generated client, new endpoint, refresh token, Connector authorization, manual API inspection, request timeout, Dotypos customer email or phone, PostHog customer source, Custom REST warehouse source, customer export, ANALYTICS_WAREHOUSE_SOURCE_TOKEN.
 ---
 
 # Deskohub Dotypos
 
 - For Connector authorization and refresh-token acquisition, read [references/authorization.md](references/authorization.md).
+- For the PostHog Custom REST customer source (contract, field allowlist, access token, and PostHog setup), read [references/posthog-customer-source.md](references/posthog-customer-source.md).
 - For manual API inspection, read [references/manual-diagnostics.md](references/manual-diagnostics.md). Before production access or log inspection, load `deskohub-workspace-operations` and follow its diagnostics reference.
 
 ## Package boundary
@@ -35,5 +36,6 @@ If a real response fails generated decoding, fix the OpenAPI schema and regenera
 ## Customer records
 
 - Dotypos filters customer `email` only with `email|like|value`, a case-insensitive substring match (`ILIKE '%value%'`). Treat results as candidates and identify a customer only by a whole-address, case-insensitive comparison. Customers whose emails differ only by case are ambiguous; never merge them silently.
+- Customer `versionDate` and `created` carry microseconds, and filters compare at that precision. Decode them with `DotyposTimestampFromString` and filter with `formatDotyposTimestamp`; `Date`, `DateTime`, and epoch-millisecond filter values drop the microseconds. Dotypos can't sort customers by `id`.
 - Store the email as the customer entered it. Lookups, not writes, are case-insensitive.
 - An absent or unparseable phone never overwrites the stored Dotypos phone: omit the field from update patches. Only an explicit, validated clearing path, such as the customer's own profile edit, sends a blank value.
