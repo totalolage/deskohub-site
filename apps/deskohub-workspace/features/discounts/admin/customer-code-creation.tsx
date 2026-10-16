@@ -9,7 +9,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationAlert } from "@/features/administration/notice";
 import { storedDiscountIdSchema } from "@/features/discounts/persistence-contracts";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";

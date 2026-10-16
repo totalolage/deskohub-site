@@ -4,7 +4,7 @@ import { type MouseEvent, Suspense } from "react";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import { type Locale, locales } from "@/features/i18n";
 import { getLanguageLabels } from "@/features/i18n/language-labels";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { useLocaleSwitch } from "@/shared/components/locale-switcher-links";
 import { m } from "./i18n";
 

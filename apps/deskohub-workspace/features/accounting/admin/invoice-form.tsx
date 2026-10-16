@@ -10,7 +10,7 @@ import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import type { InvoiceAdministrationCustomer } from "@/features/accounting/admin/invoice-administration.service";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationAlert } from "@/features/administration/components";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";

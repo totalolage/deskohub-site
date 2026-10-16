@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { isLocale, locales } from "@/features/i18n";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import "../globals.css";
 
 const sculpin = localFont({
@@ -57,7 +58,9 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale} className={sculpin.variable}>
-      <body>{children}</body>
+      <body>
+        <RouteLocaleProvider locale={locale}>{children}</RouteLocaleProvider>
+      </body>
     </html>
   );
 }

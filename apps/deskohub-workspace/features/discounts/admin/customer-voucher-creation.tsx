@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import {
   Dialog,
   DialogContent,

@@ -11,6 +11,7 @@ The administration serves `en-US` and `cs-CZ` under the locale segment: `app/[lo
 
 - Write administration paths unprefixed (`/admin/reservations/${id}`). `AdministrationLink` and `AdministrationRecordLink` add the route locale themselves.
 - For any other in-app use, place the path with `localizeAdministrationHref(path, locale)` (`features/administration/administration-href.ts`): form `action`s, `router.push`, plain `<a>` to route handlers such as the invoice PDF. Client components take `locale` from `useRouteLocale()`, server components from `getRequestLocale()`, and Server Actions from `resolveActionLocale()`.
+- `useRouteLocale()` (`features/i18n/route-locale.tsx`) reads the locale the root layout provides. Don't read it from `useParams()` or `usePathname()`: on a dynamic route those are request data, and a client component reading them outside Suspense fails the prerender. The compile-only build check doesn't prerender, so only a full build (the Vercel preview) catches it.
 - Revalidate an administration page with `revalidateLocalizedPath(path)` (`features/i18n/server/revalidate-localized-path.ts`). A mutation doesn't know which locale's copy is cached, so it revalidates both.
 - Keep a URL unprefixed when it leaves the app, such as the `dhw auth` approval URL or a link in the administration API contract. The proxy opens it in the operator's language.
 - Administration pages and layouts stay synchronous (`no-blocking-administration-routes`). A synchronous page that only redirects may redirect to the unprefixed path and let the proxy place it.

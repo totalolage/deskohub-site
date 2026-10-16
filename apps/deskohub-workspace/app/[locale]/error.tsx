@@ -1,7 +1,7 @@
 "use client";
 
 import { m } from "@/features/i18n";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 
 export default function ErrorPage({ retry }: { readonly retry: () => void }) {

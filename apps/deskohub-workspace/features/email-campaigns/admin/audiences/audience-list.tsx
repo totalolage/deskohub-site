@@ -10,7 +10,7 @@ import {
   EmptyState,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Badge } from "@/shared/components/ui/badge";
 import { cn } from "@/shared/utils";
 import type { AudienceListItem } from "./audience-page-data.server";

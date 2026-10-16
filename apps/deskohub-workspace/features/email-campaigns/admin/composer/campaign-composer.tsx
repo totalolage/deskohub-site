@@ -8,7 +8,7 @@ import { type Control, useForm, useWatch } from "react-hook-form";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationPageHeader } from "@/features/administration/components";
 import { type Locale, m } from "@/features/i18n";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";

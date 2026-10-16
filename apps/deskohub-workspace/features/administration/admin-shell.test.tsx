@@ -7,6 +7,9 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import type { ReactNode } from "react";
+import type { Locale } from "@/features/i18n";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -15,7 +18,6 @@ import {
 let currentPathname = "/en-US/admin";
 
 mock.module("next/navigation", () => ({
-  useParams: () => ({ locale: currentPathname.split("/")[1] }),
   usePathname: () => currentPathname,
   useSearchParams: () => new URLSearchParams("status=paid"),
 }));
@@ -32,13 +34,21 @@ afterAll(async () => {
   await unregisterWorkspaceComponentTestEnv();
 });
 
+// The root layout provides the locale of the current route.
+const renderInRoute = (ui: ReactNode) =>
+  render(
+    <RouteLocaleProvider locale={currentPathname.split("/")[1] as Locale}>
+      {ui}
+    </RouteLocaleProvider>
+  );
+
 const renderShell = async (pathname: string) => {
   currentPathname = pathname;
   const { AdminShell } = await import("./admin-shell");
   const { AdministrationLocaleSwitcher } = await import(
     "./administration-locale-switcher"
   );
-  return render(
+  return renderInRoute(
     <AdminShell
       breadcrumb={null}
       localeSwitcher={<AdministrationLocaleSwitcher />}
@@ -113,7 +123,7 @@ test("a signed-in switch saves the preference before navigating", async () => {
   const { AdministrationLocaleSwitcher } = await import(
     "./administration-locale-switcher"
   );
-  const view = render(
+  const view = renderInRoute(
     <AdministrationLocaleSwitcher
       localePreference={{
         signedIn,
@@ -136,7 +146,7 @@ test("a signed-in switch saves the preference before navigating", async () => {
 test("labels and links breadcrumbs in the route locale", async () => {
   currentPathname = "/cs-CZ/admin/reservations/reservation-id";
   const { AdministrationBreadcrumbs } = await import("./admin-shell");
-  const view = render(
+  const view = renderInRoute(
     <AdministrationBreadcrumbs
       segments={["admin", "reservations", "reservation-id"]}
     />

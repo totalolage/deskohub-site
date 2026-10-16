@@ -4,7 +4,7 @@ import { Copy, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";

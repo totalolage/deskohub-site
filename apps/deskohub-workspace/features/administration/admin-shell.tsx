@@ -24,7 +24,7 @@ import {
   type SVGProps,
 } from "react";
 import { type Locale, locales } from "@/features/i18n";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { SkipLink } from "@/shared/components/skip-link";
 import { Button } from "@/shared/components/ui/button";
 import { NavItem } from "@/shared/components/ui/nav-item";

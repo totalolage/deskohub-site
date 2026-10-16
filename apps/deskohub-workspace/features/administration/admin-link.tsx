@@ -2,7 +2,7 @@
 
 import NextLink from "next/link";
 import type { ComponentProps } from "react";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { localizeAdministrationHref } from "./administration-href";
 
 /**

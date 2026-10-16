@@ -13,7 +13,7 @@ import {
 } from "@/features/administration/components";
 import { ConfirmDialog } from "@/features/administration/confirm-dialog";
 import { AdministrationAlert } from "@/features/administration/notice";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Form,

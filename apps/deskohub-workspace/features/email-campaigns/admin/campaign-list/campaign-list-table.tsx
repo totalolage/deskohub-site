@@ -9,7 +9,7 @@ import {
 } from "@/features/administration/data-table";
 import { EmptyState } from "@/features/administration/empty-state";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
-import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { CampaignPurposeBadge, CampaignStatusBadge } from "./campaign-badges";
 import type { CampaignListItem } from "./campaign-list-page-data.server";
 
