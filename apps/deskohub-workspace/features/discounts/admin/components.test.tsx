@@ -495,8 +495,8 @@ describe("discount administration pages", () => {
     // Tier names come from the product catalog.
     for (const label of [
       "Profi Workstation",
-      "Meeting room",
-      "Office",
+      "Meeting Room",
+      "Private office",
       "Basic Day Pass",
       "Cowork Plus",
     ]) {
