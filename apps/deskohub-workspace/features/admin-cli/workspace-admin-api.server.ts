@@ -45,6 +45,7 @@ import {
   type ReservationAdministrationError,
   ReservationAdministrationService,
 } from "@/features/administration/reservation-administration.service";
+import { LegacyAdministratorBackfill } from "@/features/administrators";
 import { refreshCalendarDiscountSourceAfterMutation } from "@/features/discounts/admin/calendar-discount-source-maintenance.server";
 import {
   type AdminCustomerProfile,
@@ -73,6 +74,7 @@ import {
   mapAdministrationApiFailure,
   mapServiceFailure,
 } from "./administration-api-failure";
+import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
@@ -936,10 +938,12 @@ const WorkspaceAdminApiLive = Layer.mergeAll(
     Layer.provide(AdminCliApiHandlers),
     Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(AdminCliCampaignsApiHandlers),
+    Layer.provide(AdminCliAdministratorsApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(AdministrationService.Live),
     Layer.provide(ReservationAdministrationService.Live),
     Layer.provide(ReservationProductDetailsBackfill.Live),
+    Layer.provide(LegacyAdministratorBackfill.Live),
     Layer.provide(ReservationAccessAdministration.Live),
     Layer.provide(DiscountAdministration.Live),
     Layer.provide(InvoiceAdministrationService.Live),

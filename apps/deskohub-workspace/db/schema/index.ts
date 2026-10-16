@@ -1,3 +1,4 @@
+export { accountRoleGrants } from "./account-role-grants";
 export { accountingDocumentSnapshots } from "./accounting-document-snapshots";
 export {
   type CliAuthenticationRequestRow,
@@ -65,6 +66,7 @@ export {
   type LegalEvidenceEvent,
   legalEvidenceEvents,
 } from "./legal-evidence-events";
+export { manualInvoiceActors } from "./manual-invoice-actors";
 export { manualInvoiceCreationRequests } from "./manual-invoice-creation-requests";
 export {
   type PaymentAttemptRow,

@@ -10,6 +10,10 @@ import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles
 const appDirectory = resolve(import.meta.dir, "../..");
 const mobileViewport = { height: 812, width: 375 } as const;
 const desktopViewport = { height: 900, width: 1440 } as const;
+// The narrowest supported phone up to the largest common one.
+const phoneWidths = [320, 390, 430] as const;
+const headerVariants = ["full", "minimal"] as const;
+type HeaderVariant = (typeof headerVariants)[number];
 
 // The harness runs outside a Next.js app, so the router-bound modules render
 // plain elements; static image imports keep their real dimensions.
@@ -104,12 +108,13 @@ afterAll(async () => {
 
 const openSiteHeader = async (
   locale: Locale,
-  viewport: { readonly height: number; readonly width: number }
+  viewport: { readonly height: number; readonly width: number },
+  variant: HeaderVariant = "full"
 ) => {
   if (!browser) throw new Error("The SiteHeader browser has not launched.");
   const page = await browser.newPage({ reducedMotion: "reduce", viewport });
   await page.setContent(
-    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="site-header-test-root" data-locale="${locale}"></div></body></html>`
+    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="site-header-test-root" data-locale="${locale}" data-variant="${variant}"></div></body></html>`
   );
   await page.addStyleTag({ content: appStyles });
   await page.addScriptTag({ path: browserBundlePath });
@@ -155,6 +160,26 @@ const expectNoHorizontalOverflow = async (page: Page) => {
 };
 
 for (const locale of locales) {
+  for (const variant of headerVariants) {
+    for (const width of phoneWidths) {
+      test.skipIf(!chromiumAvailable)(
+        `fits the ${variant} header on a ${width}px phone (${locale})`,
+        async () => {
+          const page = await openSiteHeader(
+            locale,
+            { height: 844, width },
+            variant
+          );
+          try {
+            await expectNoHorizontalOverflow(page);
+          } finally {
+            await page.close();
+          }
+        }
+      );
+    }
+  }
+
   test.skipIf(!chromiumAvailable)(
     `shows the primary navigation without a menu button on desktop (${locale})`,
     async () => {

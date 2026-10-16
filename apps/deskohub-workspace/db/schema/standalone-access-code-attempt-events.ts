@@ -24,8 +24,10 @@ import {
   standaloneAccessCodeSources,
   standaloneAccessCodeTerminalEventKinds,
 } from "@/features/access-codes/standalone-access-code";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
+import { authUser } from "./auth";
 import { quotedSqlList } from "./sql-list";
 
 export const standaloneAccessCodeAttemptEvents = pgTable(
@@ -42,6 +44,10 @@ export const standaloneAccessCodeAttemptEvents = pgTable(
       .notNull()
       .$type<(typeof standaloneAccessCodeAttemptEventKinds)[number]>(),
     actor: text("actor").notNull().$type<AdministrationActorUsername>(),
+    actorAccountId: text("actor_account_id")
+      .$type<CustomerAccountId>()
+      .references(() => authUser.id, { onDelete: "set null" }),
+    actorAccountEmail: text("actor_account_email"),
     source: text("source").notNull().$type<StandaloneAccessCodeSource>(),
     name: text("name")
       .notNull()
@@ -109,6 +115,10 @@ export const standaloneAccessCodeAttemptEvents = pgTable(
     check(
       "standalone_access_code_attempt_events_actor_check",
       sql`char_length(${t.actor}) between 1 and 80`
+    ),
+    check(
+      "standalone_access_code_attempt_events_actor_account_check",
+      sql`${t.actorAccountId} is null or (${t.actorAccountEmail} is not null and btrim(${t.actorAccountEmail}) <> '')`
     ),
     check(
       "standalone_access_code_attempt_events_interval_check",

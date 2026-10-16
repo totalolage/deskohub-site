@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.16.0...dhw-v1.17.0) (2026-10-16)
+
+
+### Features
+
+* **dhw:** grant administrator roles and backfill legacy administrators ([8873d2a](https://github.com/totalolage/deskohub-site/commit/8873d2a067a5bfab617cd6b80cd0e1d49c808a35))
+* **dhw:** grant administrator roles and backfill legacy administrators ([3cc3064](https://github.com/totalolage/deskohub-site/commit/3cc306486ae4919196f866267e5c707ef9c7378c))
+
 ## [1.16.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.15.0...dhw-v1.16.0) (2026-10-15)
 
 

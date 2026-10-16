@@ -45,6 +45,8 @@ import {
   type AdministrationInvoicePageType,
   type AdministrationInvoiceQueryType,
   type AdministrationInvoiceRetryResultType,
+  type AdministrationLegacyAdministratorBackfillInputType,
+  type AdministrationLegacyAdministratorBackfillResultType,
   type AdministrationNexiOperationIdType,
   type AdministrationNexiOrderIdType,
   type AdministrationOperationDetailType,
@@ -172,6 +174,16 @@ interface IWorkspaceAdminApiClient {
   ) => Effect.Effect<
     AdministrationReservationProductDetailsBackfillBatchType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly backfillLegacyAdministrator: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AdministrationLegacyAdministratorBackfillInputType
+  ) => Effect.Effect<
+    AdministrationLegacyAdministratorBackfillResultType,
+    | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
   >;
   readonly cancelReservation: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
@@ -821,6 +833,22 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
             })
           ),
           Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    backfillLegacyAdministrator: Effect.fn(
+      "WorkspaceAdminApiClient.backfillLegacyAdministrator"
+    )(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        input: AdministrationLegacyAdministratorBackfillInputType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administrators.backfillLegacyAdministrator({
+              payload: input,
+            })
+          ),
+          Effect.mapError(sanitizeResourceError)
         )
     ),
     cancelReservation: Effect.fn("WorkspaceAdminApiClient.cancelReservation")(

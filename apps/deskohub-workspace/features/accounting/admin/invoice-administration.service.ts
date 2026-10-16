@@ -58,7 +58,6 @@ import {
   plainDateStringSchema,
   temporalInstantToPlainDate,
 } from "@/shared/utils/temporal";
-import { AccountingDocumentSnapshotRepository } from "../backend/accounting-document-snapshot.repository";
 import { AccountingSnapshotKeyService } from "../backend/accounting-snapshot-key.service";
 import {
   type InvoiceDeliveryStatus,
@@ -727,17 +726,11 @@ function getDependencies() {
     WorkspaceDatabase.Default,
     AccountingSnapshotKeyService.Default
   );
-  const snapshots = AccountingDocumentSnapshotRepository.Default.pipe(
-    Layer.provide(storage)
-  );
-  const invoices = InvoiceRepository.Default.pipe(
-    Layer.provide(Layer.merge(storage, snapshots))
-  );
   const creationRequests = ManualInvoiceCreationRequests.Default.pipe(
     Layer.provide(storage)
   );
   return Layer.mergeAll(
-    invoices,
+    InvoiceRepository.Live,
     creationRequests,
     InvoiceEmailDeliveryService.Live,
     WorkspaceDotyposLayer

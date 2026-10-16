@@ -60,6 +60,17 @@ Meeting-room and office snapshots (`workspace_reservations.reservation_details`)
 
 Don't run it in production while a deployment that predates the optional snapshot fields can still read reservations: those deployments decode snapshots strictly and reject the new keys. That includes Skew Protection, pinned late-payment recovery queue messages, and an instant rollback target. See [database-and-releases.md](../../deskohub-workspace-operations/references/database-and-releases.md).
 
+## Administrator role grants and legacy actor backfill
+
+Administrators are moving from Basic-auth usernames to customer accounts. Basic authentication still gates `/admin`, and the new records are written but not yet read for authorization.
+
+- `account_role_grants` stores one row per account and role (only `administrator`): `account_id` (cascades with `auth.user`), `granted_by_account_id` (null for bootstrap grants; set to null when the granter is deleted), and `granted_at`. `AccountRoleGrants` (`features/administrators/backend/account-role-grants.service.ts`) grants, revokes, and checks. `has` reads the database on every call, so a revocation applies on the next check; never cache it.
+- An account actor is the account id plus a snapshot of its login email. CLI sessions (`approved_by_account_*`) and standalone access-code events (`actor_account_*`) carry it in nullable columns beside the legacy username. Issued invoices are immutable (`invoices_immutable` trigger), so a manual invoice's account actor lives in `manual_invoice_actors`. The id is set to null when the account is deleted, and the email snapshot stays. A record counts as linked once it has an email snapshot.
+- `dhw administrators backfill-legacy --legacy-username <name> --email <email>` calls `POST /administrators/legacy-backfill`, served by `LegacyAdministratorBackfill` (`features/administrators/backend/legacy-administrator-backfill.service.ts`). In one transaction, under an advisory lock per username, it grants the role to the active account (verified email, no pending deletion) that signs in with the email, and links that username's unlinked CLI sessions, events, and manual invoices to the account. Manual invoices store their legacy actor only in the encrypted document, so it decrypts every manual invoice; one undecryptable invoice fails the run.
+- It reports per table how many records it `linked`, were `alreadyLinked` to this account, or were `linkedToOtherAccount` (left unchanged), and whether the role was `granted` or `already_granted`. A rerun links only records written since the last run, so rerun it after the gate stops writing usernames. No account for the email fails with `CliResourceNotFound`, so the person must sign in once first.
+- `--dry-run` reports the same result without writing and needs no confirmation. A real run needs `--yes` with `--json` or without a TTY.
+- The username-to-email mapping is runtime input. Emails are PII: never commit the mapping, and keep it out of logs and issues.
+
 ## Standalone access codes
 
 `dhw access-codes create` shares the server workflow in [dashboard.md](dashboard.md#standalone-access-codes). The CLI adds local state:

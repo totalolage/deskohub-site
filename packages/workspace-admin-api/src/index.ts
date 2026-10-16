@@ -1,4 +1,15 @@
 export {
+  AdminCliAdministratorsApi,
+  AdministrationAccountEmail,
+  type AdministrationAccountEmail as AdministrationAccountEmailType,
+  AdministrationLegacyActorRecordCounts,
+  type AdministrationLegacyActorRecordCounts as AdministrationLegacyActorRecordCountsType,
+  AdministrationLegacyAdministratorBackfillInput,
+  type AdministrationLegacyAdministratorBackfillInput as AdministrationLegacyAdministratorBackfillInputType,
+  AdministrationLegacyAdministratorBackfillResult,
+  type AdministrationLegacyAdministratorBackfillResult as AdministrationLegacyAdministratorBackfillResultType,
+} from "./administrators";
+export {
   type AudienceAttributeDefinition,
   type AudienceAttributeKind,
   type AudienceAttributeSection,

@@ -28,9 +28,11 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
+import { authUser } from "./auth";
 import { quotedSqlList } from "./sql-list";
 
 export const cliSessions = pgTable(
@@ -43,6 +45,10 @@ export const cliSessions = pgTable(
     approvedBy: text("approved_by")
       .notNull()
       .$type<AdministrationActorUsernameType>(),
+    approvedByAccountId: text("approved_by_account_id")
+      .$type<CustomerAccountId>()
+      .references(() => authUser.id, { onDelete: "set null" }),
+    approvedByAccountEmail: text("approved_by_account_email"),
     tokenHash: text("token_hash").notNull(),
     clientName: text("client_name").notNull(),
     cliVersion: text("cli_version").notNull(),
@@ -86,6 +92,10 @@ export const cliSessions = pgTable(
     check(
       "cli_sessions_approved_by_check",
       sql`${t.approvedBy} ~ '^[a-z0-9][a-z0-9._-]{0,79}$'`
+    ),
+    check(
+      "cli_sessions_approved_by_account_check",
+      sql`${t.approvedByAccountId} is null or (${t.approvedByAccountEmail} is not null and btrim(${t.approvedByAccountEmail}) <> '')`
     ),
   ]
 );
