@@ -656,9 +656,7 @@ describe("DeleteAccountCard", () => {
     });
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     await act(async () => {
-      fireEvent.click(
-        view.getByRole("button", { name: "Confirm by email" })
-      );
+      fireEvent.click(view.getByRole("button", { name: "Confirm by email" }));
     });
 
     expect(view.getByRole("alert").textContent).toBe(
