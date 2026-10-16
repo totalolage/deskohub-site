@@ -1,11 +1,7 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { SignInCard } from "@/features/account/components/sign-in-card";
-import {
-  areAccountsEnabled,
-  arePasskeysEnabled,
-} from "@/features/account/server/account-feature-flag.server";
+import { arePasskeysEnabled } from "@/features/account/server/account-feature-flag.server";
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 
@@ -21,7 +17,6 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function CustomerSignInPage() {
   await connection();
-  if (!(await areAccountsEnabled())) notFound();
   // Passkey sign-in itself stays open while the flag is off; only the
   // sign-in page's offer hides.
   const passkeysEnabled = await arePasskeysEnabled();

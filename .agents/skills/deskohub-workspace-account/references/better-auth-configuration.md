@@ -53,9 +53,7 @@ Keep these settings unless a reviewed decision changes them:
   canonical customer-facing host, the exact Vercel project, deployment, and
   branch hosts, and `localhost:3000` in development. Wildcards fail closed.
   Don't trust arbitrary request hosts or add a fallback host.
-- Email and password sign-in is disabled. The magic-link paths and
-  `/sign-in/email-otp` return 503 while the accounts feature flag is off or
-  unreadable.
+- Email and password sign-in is disabled.
 - Sign-in codes (`login_email_code`): the stock `emailOTP` plugin stores a
   hashed six-digit code that lives as long as the link (600 s) and burns after
   five wrong attempts. `/sign-in/magic-link` stays the only send path: its

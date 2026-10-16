@@ -5,8 +5,8 @@ import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { MinimalSiteHeader } from "@/shared/components/minimal-site-header";
 import { PublicSiteFooter } from "@/shared/components/public-site-footer";
 import {
+  createLocalePreferenceSaving,
   getSiteHeaderAccessibilityLabels,
-  getSiteHeaderLocalePreference,
 } from "@/shared/components/site-header-config";
 import { SkipLink } from "@/shared/components/skip-link";
 
@@ -20,7 +20,7 @@ export default async function MinimalHeaderLayout({
   const locale = await getRequestLocale();
   const languageLabels = getLanguageLabels(locale);
   const { languageSwitcherLabel } = getSiteHeaderAccessibilityLabels(locale);
-  const localePreference = await getSiteHeaderLocalePreference();
+  const localePreference = createLocalePreferenceSaving();
 
   return (
     <>

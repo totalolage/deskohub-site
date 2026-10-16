@@ -87,8 +87,6 @@ export type WorkspaceAuthConfig = {
   /** This deployment's passkey RP ID and origins, never the plugin default. */
   readonly passkeyRelyingParty: PasskeyRelyingParty;
   readonly httpsOnly: boolean;
-  /** Request-memoized feature-flag read; a rejection counts as disabled. */
-  readonly areAccountsEnabled: () => Promise<boolean>;
   /**
    * The `login_email_code` read, once per sign-in email; a rejection counts
    * as disabled.
@@ -124,14 +122,6 @@ export type WorkspaceAuthConfig = {
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
 };
 
-const accountSignInPaths = new Set([
-  "/sign-in/magic-link",
-  "/magic-link/verify",
-  "/sign-in/email-otp",
-  "/passkey/generate-authenticate-options",
-  "/passkey/verify-authentication",
-]);
-
 /** Both steps of adding a passkey; `login_passkeys` gates them. */
 const passkeyRegistrationPaths = new Set([
   "/passkey/generate-register-options",
@@ -157,18 +147,6 @@ const disabledSignInCodePaths = [
 
 /** The only body fields code sign-in accepts; none reach the user insert. */
 const signInCodeBodyFields = new Set(["email", "otp", "callbackURL"]);
-const accountsUnavailableErrors = new WeakSet<object>();
-
-const makeAccountsUnavailableError = () => {
-  const error = new APIError("SERVICE_UNAVAILABLE", {
-    message: "Service Unavailable",
-  });
-  accountsUnavailableErrors.add(error);
-  return error;
-};
-
-const isAccountsUnavailableError = (error: APIError) =>
-  accountsUnavailableErrors.has(error);
 
 const magicLinkMetadataSchema = Schema.Struct({
   locale: Schema.optional(Schema.Literals(locales)),
@@ -323,14 +301,6 @@ const verifySignInHuman = (config: WorkspaceAuthConfig) =>
     config.verifyHuman({ verificationFailurePolicy: "allow" })
   ).pipe(Effect.mapError(() => makeBotDetectedError()));
 
-/** Sign-in requests need accounts on; an unreadable flag counts as off. */
-const requireAccounts = ({ config, request }: AuthRequestGuard) =>
-  Effect.tryPromise(() => config.areAccountsEnabled()).pipe(
-    Effect.orElseSucceed(() => false),
-    Effect.filterOrFail(Boolean, makeAccountsUnavailableError),
-    Effect.when(Effect.succeed(accountSignInPaths.has(request.path)))
-  );
-
 /**
  * Adding a passkey needs `login_passkeys` on; an unreadable flag counts as
  * off. Passkey sign-in never reads it, so turning the flag off locks no one
@@ -452,14 +422,12 @@ const guardSignInPath = (guard: AuthRequestGuard) =>
   );
 
 /**
- * Rejects sign-in requests while accounts are disabled and passkey
- * registrations while passkeys are disabled (an unreadable flag counts as
- * disabled), any request carrying profile fields, and code
+ * Rejects passkey registrations while passkeys are disabled (an unreadable
+ * flag counts as disabled), any request carrying profile fields, and code
  * sign-ins carrying anything beyond the email, code, and callback URL.
  */
 const guardAuthRequest = (guard: AuthRequestGuard) =>
   Effect.succeed(guard).pipe(
-    Effect.tap(requireAccounts),
     Effect.tap(requirePasskeyRegistration),
     Effect.tap(rejectProfileFields),
     Effect.flatMap(guardSignInPath),
@@ -815,12 +783,7 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     logger: { disabled: true },
     onAPIError: {
       onError: (error) => {
-        if (
-          isAPIError(error) &&
-          (error.statusCode < 500 || isAccountsUnavailableError(error))
-        ) {
-          return;
-        }
+        if (isAPIError(error) && error.statusCode < 500) return;
 
         void runWorkspaceEffect("account.auth.handler", { boundary: "route" })(
           Effect.logError("Better Auth request failed.", {

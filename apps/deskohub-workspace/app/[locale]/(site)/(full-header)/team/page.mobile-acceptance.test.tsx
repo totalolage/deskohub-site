@@ -28,9 +28,6 @@ mock.module("@/features/i18n/server/request-locale", () => ({
   getRequestLocale,
   runWithRequestLocale,
 }));
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountsEnabled: async () => false,
-}));
 mock.module("@/features/account/server/customer-session.server", () => ({
   isCustomerSignedIn: async () => false,
 }));

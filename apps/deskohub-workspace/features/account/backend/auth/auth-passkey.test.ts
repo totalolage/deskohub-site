@@ -3,7 +3,6 @@ import {
   type CapturedMagicLink,
   callHandler,
   cookieJar,
-  expectAccountsUnavailable,
   getSessionCookie,
   HOST,
   makeTestAuth,
@@ -226,19 +225,6 @@ describe.skipIf(!testDatabase)(
       expect(signedIn.status).toBe(200);
       const cookie = cookieJar(getSessionCookie(signedIn)!);
       expect(await sessionUserId(auth, cookie)).toBe(customer.userId);
-    });
-
-    test("closes passkey sign-in while accounts are off", async () => {
-      const auth = makeTestAuth({ areAccountsEnabled: async () => false });
-
-      await expectAccountsUnavailable(await requestAuthenticationOptions(auth));
-      await expectAccountsUnavailable(
-        await callHandler(auth, "/passkey/verify-authentication", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ response: {} }),
-        })
-      );
     });
 
     test("asks for user verification and the account's own passkeys only on reauthentication", async () => {

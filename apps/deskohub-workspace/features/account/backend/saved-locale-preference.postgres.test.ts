@@ -50,7 +50,6 @@ describe.skipIf(!testDatabase)(
         passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
         arePasskeysEnabled: async () => false,
         httpsOnly: true,
-        areAccountsEnabled: async () => true,
         sendMagicLink: (data) => {
           sentMagicLinks.push(data.url);
         },
