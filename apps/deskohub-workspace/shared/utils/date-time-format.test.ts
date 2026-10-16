@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
 import {
   formatInstantDate,
+  formatInstantDateTime,
   formatPlainDate,
   formatPlainDateRange,
 } from "./date-time-format";
@@ -20,6 +21,25 @@ describe("date-time formatting", () => {
     expect(
       formatInstantDate({ instant, locale: "en-US", timeZone: "UTC" })
     ).toBe("Feb 3, 2099");
+  });
+
+  test("formats an instant's date and time in the requested locale", () => {
+    const instant = Temporal.Instant.from("2099-02-03T23:30:00Z");
+
+    expect(
+      formatInstantDateTime({
+        instant,
+        locale: "cs-CZ",
+        timeZone: "Europe/Prague",
+      }).replace(/\s/gu, " ")
+    ).toBe("4. 2. 2099 0:30");
+    expect(
+      formatInstantDateTime({
+        instant,
+        locale: "en-US",
+        timeZone: "UTC",
+      }).replace(/\s/gu, " ")
+    ).toBe("Feb 3, 2099, 11:30 PM");
   });
 
   test("formats plain dates without applying an environmental time zone", () => {

@@ -114,6 +114,28 @@ export const AdministrationActorEmail = Schema.Trim.check(Schema.isNonEmpty())
   });
 export type AdministrationActorEmail = typeof AdministrationActorEmail.Type;
 
+const maxActorNameLength = 80;
+
+export const AdministrationActorName = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(maxActorNameLength)
+)
+  .pipe(Schema.brand("AdministrationActorName"))
+  .annotate({
+    identifier: "AdministrationActorName",
+    description:
+      "Short name of the administrator that approved an action: the account email, shortened to 80 characters, or the Basic-auth username from servers that predate administrator accounts.",
+  });
+export type AdministrationActorName = typeof AdministrationActorName.Type;
+
+/** The account email as an actor name, ending in an ellipsis when too long. */
+export const toAdministrationActorName = (email: AdministrationActorEmail) =>
+  AdministrationActorName.make(
+    email.length <= maxActorNameLength
+      ? email
+      : `${email.slice(0, maxActorNameLength - 1).replace(/[\uD800-\uDBFF]$/, "")}…`
+  );
+
 export const CLI_BUILD_TARGETS = [
   "development",
   "darwin-arm64",
@@ -195,8 +217,15 @@ export type ExchangeCliGrant = typeof ExchangeCliGrant.Type;
 
 export const CliSession = Schema.Struct({
   id: CliSessionId,
+  /**
+   * Released dhw versions cap the approver at 80 characters and read null as a
+   * legacy session, so this stays a short name.
+   */
+  approvedBy: Schema.NullOr(AdministrationActorName).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   /** Null only from servers that predate administrator accounts. */
-  approvedBy: Schema.NullOr(AdministrationActorEmail).pipe(
+  approvedByEmail: Schema.NullOr(AdministrationActorEmail).pipe(
     Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
   ),
   clientName: CliClientName,

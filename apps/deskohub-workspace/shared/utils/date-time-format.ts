@@ -9,18 +9,37 @@ interface InstantDateFormatOptions extends DateFormatOptions {
   readonly timeZone: string;
 }
 
+interface InstantDateTimeFormatOptions extends InstantDateFormatOptions {
+  readonly timeStyle?: Intl.DateTimeFormatOptions["timeStyle"];
+}
+
 const makeDateFormatter = ({
   locale,
   dateStyle = "medium",
+  timeStyle,
   timeZone,
-}: InstantDateFormatOptions) =>
-  new Intl.DateTimeFormat(locale, { dateStyle, timeZone });
+}: InstantDateTimeFormatOptions) =>
+  new Intl.DateTimeFormat(locale, { dateStyle, timeStyle, timeZone });
 
 export const formatInstantDate = ({
   instant,
   ...options
 }: InstantDateFormatOptions & { readonly instant: Temporal.Instant }) =>
   makeDateFormatter(options).format(temporalInstantToDate(instant));
+
+/**
+ * The instant's date and time of day. Format it on the server: Node and
+ * browsers separate the time with different spaces, so a client-side value
+ * fails hydration.
+ */
+export const formatInstantDateTime = ({
+  instant,
+  timeStyle = "short",
+  ...options
+}: InstantDateTimeFormatOptions & { readonly instant: Temporal.Instant }) =>
+  makeDateFormatter({ ...options, timeStyle }).format(
+    temporalInstantToDate(instant)
+  );
 
 export const formatInstantDateRange = ({
   start,

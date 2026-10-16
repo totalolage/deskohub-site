@@ -16,6 +16,7 @@ import {
   type ExchangeCliGrantType,
   makeCliAuthenticationSecret,
   type StartCliAuthenticationType,
+  toAdministrationActorName,
 } from "@deskohub/workspace-admin-api";
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
 import { NodeCrypto } from "@effect/platform-node";
@@ -596,12 +597,18 @@ const toSessionStatus = (
   return "active";
 };
 
+const toSessionApprover = (accountEmail: string | null) => {
+  if (accountEmail === null) return { approvedBy: null, approvedByEmail: null };
+  const email = AdministrationActorEmail.make(accountEmail);
+  return {
+    approvedBy: toAdministrationActorName(email),
+    approvedByEmail: email,
+  };
+};
+
 const toCliSession = (row: CliSessionRow): CliSessionType => ({
   id: row.id,
-  approvedBy:
-    row.approvedByAccountEmail === null
-      ? null
-      : AdministrationActorEmail.make(row.approvedByAccountEmail),
+  ...toSessionApprover(row.approvedByAccountEmail),
   clientName: row.clientName,
   cliVersion: row.cliVersion,
   buildTarget: row.buildTarget,

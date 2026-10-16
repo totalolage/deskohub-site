@@ -166,6 +166,8 @@ export {
   type AdminCliInfo as AdminCliInfoType,
   AdministrationActorEmail,
   type AdministrationActorEmail as AdministrationActorEmailType,
+  AdministrationActorName,
+  type AdministrationActorName as AdministrationActorNameType,
   AdministrationBookingDetail,
   type AdministrationBookingDetail as AdministrationBookingDetailType,
   AdministrationBookingPage,
@@ -469,6 +471,7 @@ export {
   type StartCliAuthentication as StartCliAuthenticationType,
   StartedCliAuthentication,
   type StartedCliAuthentication as StartedCliAuthenticationType,
+  toAdministrationActorName,
   WORKSPACE_ADMIN_API_VERSION,
 } from "./workspace-admin-api";
 export { WorkspaceAdminApi } from "./workspace-admin-http-api";

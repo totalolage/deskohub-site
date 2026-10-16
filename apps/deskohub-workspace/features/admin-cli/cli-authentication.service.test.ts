@@ -236,6 +236,7 @@ describe.skipIf(!postgresDatabase)(
       );
       expect(aliceSessions.map((row) => row.id)).toEqual([aliceSession.id]);
       expect(aliceSessions[0]?.approvedBy).toBe(alice.email);
+      expect(aliceSessions[0]?.approvedByEmail).toBe(alice.email);
       expect(bobSessions.map((row) => row.id)).toEqual([bobSession.id]);
 
       const foreignRename = await Effect.runPromise(
@@ -395,6 +396,7 @@ describe.skipIf(!postgresDatabase)(
       );
       fixtureSessionIds.push(granted.session.id);
       expect(granted.session.approvedBy).toBe(alice.email);
+      expect(granted.session.approvedByEmail).toBe(alice.email);
       expect(await countSessions()).toBe(sessionsBefore + 1);
       const row = await loadSessionRow(granted.session.id);
       expect(row).toMatchObject({
@@ -459,6 +461,7 @@ describe.skipIf(!postgresDatabase)(
       );
       fixtureSessionIds.push(granted.session.id);
       expect(granted.session.approvedBy).toBe(alice.email);
+      expect(granted.session.approvedByEmail).toBe(alice.email);
 
       const aliceSessions = await Effect.runPromise(
         authentication.listSessions(alice.accountId)
@@ -476,6 +479,7 @@ describe.skipIf(!postgresDatabase)(
       );
       expect(authenticated.id).toBe(granted.session.id);
       expect(authenticated.approvedBy).toBe(alice.email);
+      expect(authenticated.approvedByEmail).toBe(alice.email);
     });
 
     const authenticateThroughApproval = async (

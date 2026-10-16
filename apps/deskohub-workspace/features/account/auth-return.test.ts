@@ -10,6 +10,7 @@ import {
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
 import type { AuthReturnLifecycle } from "./auth-return";
 
 const customerEmail = testEmailAddress("ada");
@@ -286,27 +287,27 @@ describe("account auth return lifecycle", () => {
       expect(events).toContain(`replace:${returnTo}`);
     });
 
-    test.each([
-      "https://evil.example/admin",
-      "//evil.example/admin",
-      "/\\evil.example/admin",
-      "javascript:alert(1)",
-    ])("ignores %s and continues to the account", async (unsafeReturnTo) => {
-      signedIn();
-      const lifecycle = authReturn.createAuthReturnLifecycle({
-        locale: "en-US",
-        returnTo: unsafeReturnTo,
-      });
-      await lifecycle.sendSignInEmail(customerEmail);
+    test.each(unsafeReturnTargets)(
+      "ignores %p and continues to the account",
+      async (unsafeReturnTo) => {
+        signedIn();
+        const lifecycle = authReturn.createAuthReturnLifecycle({
+          locale: "en-US",
+          returnTo: unsafeReturnTo,
+        });
+        await lifecycle.sendSignInEmail(customerEmail);
 
-      expect(magicLink).toHaveBeenCalledWith({
-        email: customerEmail,
-        callbackURL: `/en-US/auth/callback?attempt=${VALID_ATTEMPT_ID}`,
-        metadata: { locale: "en-US" },
-      });
-      expect(await listener?.onReturn(new AbortController().signal)).toBe(true);
-      expect(events.slice(-2)).toEqual(["replace:/en-US/account", "focus"]);
-    });
+        expect(magicLink).toHaveBeenCalledWith({
+          email: customerEmail,
+          callbackURL: `/en-US/auth/callback?attempt=${VALID_ATTEMPT_ID}`,
+          metadata: { locale: "en-US" },
+        });
+        expect(await listener?.onReturn(new AbortController().signal)).toBe(
+          true
+        );
+        expect(events.slice(-2)).toEqual(["replace:/en-US/account", "focus"]);
+      }
+    );
   });
 
   test("disposes the listener on rejected, thrown, cancelled, and resent emails", async () => {

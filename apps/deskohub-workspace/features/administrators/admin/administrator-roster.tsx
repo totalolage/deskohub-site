@@ -6,7 +6,6 @@ import {
   type AdministrationDataTableColumn,
 } from "@/features/administration/components";
 import { EmptyState } from "@/features/administration/empty-state";
-import { formatAdministrationDateTime } from "@/features/administration/formatters";
 import { m } from "@/features/administration/i18n";
 import {
   type AdministrationNotice,
@@ -54,7 +53,7 @@ export function AdministratorRoster({
     {
       accessorKey: "grantedAt",
       header: m.administratorsColumnGrantedAt({}, { locale }),
-      cell: ({ getValue }) => formatAdministrationDateTime(getValue<string>()),
+      cell: ({ row }) => row.original.grantedAtLabel,
     },
   ];
 

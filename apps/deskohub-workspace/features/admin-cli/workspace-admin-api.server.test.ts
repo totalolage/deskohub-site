@@ -31,6 +31,7 @@ import {
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
   CurrentCliSession,
+  toAdministrationActorName,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
@@ -144,7 +145,10 @@ const ActorAuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
   bearer: (httpEffect) =>
     Effect.provideService(httpEffect, CurrentCliSession, {
       ...session,
-      approvedBy: AdministrationActorEmail.make(cliAdministrator.email),
+      approvedBy: toAdministrationActorName(
+        AdministrationActorEmail.make(cliAdministrator.email)
+      ),
+      approvedByEmail: AdministrationActorEmail.make(cliAdministrator.email),
     }),
 });
 

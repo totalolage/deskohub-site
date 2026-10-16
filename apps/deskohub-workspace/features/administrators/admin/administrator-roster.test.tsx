@@ -47,12 +47,14 @@ const pageData: AdministratorsPageData = {
       email: actorEmail,
       grantedByEmail: null,
       grantedAt: "2026-10-01T08:00:00Z",
+      grantedAtLabel: "1. 10. 2026 10:00",
     },
     {
       accountId: customerAccountIdSchema.make("fixture-other"),
       email: otherEmail,
       grantedByEmail: actorEmail,
       grantedAt: "2026-10-02T08:00:00Z",
+      grantedAtLabel: "2. 10. 2026 10:00",
     },
   ],
 };
@@ -98,6 +100,9 @@ describe("AdministratorRoster", () => {
       within(rowOf(view, actorEmail)).getByText("Systém (počáteční nastavení)")
     ).toBeDefined();
     expect(within(rowOf(view, otherEmail)).getByText(actorEmail)).toBeDefined();
+    expect(
+      within(rowOf(view, otherEmail)).getByText("2. 10. 2026 10:00")
+    ).toBeDefined();
     expect(
       within(rowOf(view, otherEmail)).getByRole("button", {
         name: `Odebrat roli administrátora účtu ${otherEmail}`,

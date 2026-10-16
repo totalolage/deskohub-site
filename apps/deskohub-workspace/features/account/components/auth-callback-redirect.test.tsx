@@ -9,6 +9,7 @@ import {
 } from "bun:test";
 import { act, cleanup, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -289,19 +290,17 @@ describe("AuthCallbackRedirect", () => {
       expect(replace).toHaveBeenCalledWith("/admin");
     });
 
-    test.each([
-      "https://evil.example/admin",
-      "//evil.example/admin",
-      "/\\evil.example/admin",
-      "javascript:alert(1)",
-    ])("ignores %s and continues to the account", async (unsafeReturnTo) => {
-      setAttempt(VALID_ATTEMPT_ID, undefined, unsafeReturnTo);
-      const replace = mock((_href: string) => undefined);
-      window.location.replace = replace as typeof window.location.replace;
+    test.each(unsafeReturnTargets)(
+      "ignores %p and continues to the account",
+      async (unsafeReturnTo) => {
+        setAttempt(VALID_ATTEMPT_ID, undefined, unsafeReturnTo);
+        const replace = mock((_href: string) => undefined);
+        window.location.replace = replace as typeof window.location.replace;
 
-      await renderAndFlush("en-US");
+        await renderAndFlush("en-US");
 
-      expect(replace).toHaveBeenCalledWith("/en-US/account");
-    });
+        expect(replace).toHaveBeenCalledWith("/en-US/account");
+      }
+    );
   });
 });
