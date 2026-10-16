@@ -286,9 +286,11 @@ export function SignInSecurityScreen({
           <Mail aria-hidden className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-3">
+          {/* The title wraps before the badge does; the badge drops below
+              only when even the title's longest word can't sit beside it. */}
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h3
-              className="min-w-0 font-semibold text-navy-blue"
+              className="min-w-min max-w-max grow basis-0 font-semibold text-navy-blue"
               id="account-security-email-title"
             >
               {m.accountSecurityEmailTitle({}, { locale })}
