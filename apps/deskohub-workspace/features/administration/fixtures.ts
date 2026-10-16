@@ -334,8 +334,9 @@ export const loadFixtureReservation = (
     timeline: [
       {
         id: "fixture-checkout",
-        title: "Checkout started",
-        description: "The customer began checkout.",
+        event: { source: "reservation", kind: "workflow_created" },
+        title: "Checkout workflow created",
+        description: "Deskohub created the local reservation workflow.",
         occurredAt: startedAt,
         tone: "neutral",
       },
@@ -361,6 +362,7 @@ export const loadFixtureReservation = (
       },
       {
         id: "fixture-order-created",
+        event: { source: "payment", kind: "orderCreated", estimated: false },
         title: "Nexi order created",
         description: "Nexi accepted the hosted-payment request.",
         occurredAt: providerOrderCreatedAt,
@@ -369,6 +371,14 @@ export const loadFixtureReservation = (
       },
       {
         id: "fixture-operation",
+        event: {
+          source: "payment",
+          kind: "operationReported",
+          outcome: "executed",
+          operationType: "CAPTURE",
+          operationResult: "EXECUTED",
+          channel: "ECOMMERCE",
+        },
         title: "Payment executed by Nexi",
         description: "Nexi reported this Ecommerce operation.",
         occurredAt: Temporal.Instant.from(paidAt)

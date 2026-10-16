@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { AdministrationPaymentAttempt } from "./administration.service";
 import {
+  formatAdministrationDateTime,
   formatAdministrationMoney,
+  formatAdministrationPlainDate,
+  formatAdministrationReservationDate,
   getAdministrationPaymentStatus,
 } from "./formatters";
 
@@ -23,6 +26,68 @@ const paidAttempt = {
   | "state"
   | "updatedAt"
 >;
+
+describe("administration formatters", () => {
+  test("formats dates and cowork reservations in en-US", () => {
+    expect(formatAdministrationDateTime("2026-10-12T06:34:00Z", "en-US")).toBe(
+      "Oct 12, 2026, 08:34"
+    );
+    expect(formatAdministrationPlainDate("2026-10-12", "en-US")).toBe(
+      "Oct 12, 2026"
+    );
+    expect(
+      formatAdministrationReservationDate(
+        { date: "2026-10-12", startsAt: null, type: "cowork" },
+        "en-US"
+      )
+    ).toBe("Oct 12, 2026");
+  });
+
+  test("formats dates and cowork reservations in cs-CZ", () => {
+    expect(formatAdministrationDateTime("2026-10-12T06:34:00Z", "cs-CZ")).toBe(
+      "12. 10. 2026 8:34"
+    );
+    expect(formatAdministrationPlainDate("2026-10-12", "cs-CZ")).toBe(
+      "12. 10. 2026"
+    );
+    expect(
+      formatAdministrationReservationDate(
+        { date: "2026-10-12", startsAt: null, type: "cowork" },
+        "cs-CZ"
+      )
+    ).toBe("12. 10. 2026");
+  });
+
+  test("formats money in en-US", () => {
+    expect(
+      formatAdministrationMoney(
+        { value: 21_750, exponent: 2, currency: "CZK" },
+        "en-US"
+      )
+    ).toBe("CZK\u00a0217.50");
+    expect(
+      formatAdministrationMoney(
+        { value: 120_000, exponent: 2, currency: "CZK" },
+        "en-US"
+      )
+    ).toBe("CZK\u00a01,200");
+  });
+
+  test("formats money in cs-CZ", () => {
+    expect(
+      formatAdministrationMoney(
+        { value: 21_750, exponent: 2, currency: "CZK" },
+        "cs-CZ"
+      )
+    ).toBe("217,50\u00a0Kč");
+    expect(
+      formatAdministrationMoney(
+        { value: 120_000, exponent: 2, currency: "CZK" },
+        "cs-CZ"
+      )
+    ).toBe("1\u00a0200\u00a0Kč");
+  });
+});
 
 describe("getAdministrationPaymentStatus", () => {
   test("keeps the attempt state for a payment without a refund", () => {

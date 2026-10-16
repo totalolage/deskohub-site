@@ -19,6 +19,7 @@ import {
 import { m } from "@/features/administration/i18n";
 import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationBooking } from "@/features/administration/page-data.server";
+import { getAdministrationReservationProductTitle } from "@/features/administration/reservation-product";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
@@ -204,7 +205,10 @@ export async function BookingAdministrationDetail({
                 href={`/admin/reservations/${booking.linkedReservation.id}`}
               >
                 <span className="block font-semibold">
-                  {booking.linkedReservation.label}
+                  {getAdministrationReservationProductTitle(
+                    booking.linkedReservation.product,
+                    locale
+                  )}
                 </span>
                 <span className="mt-1 block text-sm text-navy-blue/65">
                   {m.administrationBookingViewReservationHistory(

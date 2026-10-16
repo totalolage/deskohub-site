@@ -16,6 +16,7 @@ import {
 import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
 import { m } from "./i18n";
+import { getAdministrationReservationProductTitle } from "./reservation-product";
 import {
   type AdministrationTableSorting,
   getAdministrationTableSortHref,
@@ -123,14 +124,23 @@ const getColumns = (
     id: "table",
   },
   {
-    accessorFn: (booking) => booking.linkedReservation?.label ?? "",
+    accessorFn: (booking) =>
+      booking.linkedReservation
+        ? getAdministrationReservationProductTitle(
+            booking.linkedReservation.product,
+            locale
+          )
+        : "",
     cell: ({ row }) =>
       row.original.linkedReservation ? (
         <Link
           className="relative z-10 font-medium hover:underline"
           href={`/admin/reservations/${row.original.linkedReservation.id}`}
         >
-          {row.original.linkedReservation.label}
+          {getAdministrationReservationProductTitle(
+            row.original.linkedReservation.product,
+            locale
+          )}
         </Link>
       ) : (
         <span className="text-sm text-navy-blue/65">

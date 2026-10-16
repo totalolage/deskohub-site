@@ -4,7 +4,6 @@ import { Effect, Option, Predicate } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import type { Locale } from "@/features/i18n";
-import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -191,16 +190,13 @@ export const loadAdministrationReservation = cache(async (id: string) => {
 });
 
 export const loadAdministrationReservationBreadcrumbLabel = cache(
-  async (id: string) => {
+  async (id: string, locale: Locale) => {
     await authorizeAdministratorPage();
     const reservationId = requireWorkspaceReservationRouteId(id);
-    const [product, locale] = await Promise.all([
-      Effect.gen(function* () {
-        const administration = yield* AdministrationService;
-        return yield* administration.loadReservationProduct(reservationId);
-      }).pipe(runAdministration("administration.reservation-breadcrumb")),
-      getRequestLocale(),
-    ]);
+    const product = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadReservationProduct(reservationId);
+    }).pipe(runAdministration("administration.reservation-breadcrumb"));
     return product && getAdministrationReservationProductTitle(product, locale);
   }
 );

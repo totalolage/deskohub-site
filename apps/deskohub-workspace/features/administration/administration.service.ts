@@ -96,6 +96,7 @@ import {
   type IPaymentAdministrationService,
   PaymentAdministrationService,
 } from "./payment-administration.service";
+import type { AdministrationPaymentTimelineEvent } from "./payment-timeline";
 import {
   buildPaymentAttemptTimeline,
   getOrderTimeline,
@@ -363,7 +364,9 @@ type AdministrationDiscountApplication = {
 export type AdministrationTimelineItem = {
   readonly id: string;
   /** What happened, for the Admin UI's localized copy. */
-  readonly event?: AdministrationReservationTimelineEvent;
+  readonly event:
+    | AdministrationReservationTimelineEvent
+    | AdministrationPaymentTimelineEvent;
   /** English copy the administration API shows. */
   readonly title: string;
   readonly description: string;

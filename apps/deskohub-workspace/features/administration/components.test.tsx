@@ -34,6 +34,7 @@ import {
   PaymentAttemptList,
   RelatedReservationLink,
   ReservationTable,
+  ReservationTimeline,
 } from "./components";
 import { loadFixtureReservation, loadFixtureReservations } from "./fixtures";
 import { ReservationOrderList } from "./payment-components";
@@ -823,6 +824,33 @@ describe("administration reservation components", () => {
     ).toBeDefined();
   });
 
+  test("words reservation and payment history in Czech", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    if (!detail) throw new Error("Expected a fixture reservation");
+
+    const view = render(
+      <ReservationTimeline items={detail.timeline} locale="cs-CZ" />
+    );
+
+    const timeline = view.getByRole("list", { name: "Historie rezervace" });
+    // A reservation event uses the reservation copy.
+    expect(
+      within(timeline).getByText("Objednávkový proces byl vytvořen")
+    ).toBeDefined();
+    expect(
+      within(timeline).getByText("Deskohub vytvořil místní proces rezervace.")
+    ).toBeDefined();
+    // Payment events use the payment copy, never the API's English.
+    expect(
+      within(timeline).getByRole("link", { name: "Objednávka Nexi vytvořena" })
+    ).toBeDefined();
+    expect(
+      within(timeline).getByRole("link", { name: "Nexi platbu provedlo" })
+    ).toBeDefined();
+    expect(within(timeline).queryByText("Nexi order created")).toBeNull();
+    expect(within(timeline).queryByText("Payment executed by Nexi")).toBeNull();
+  });
+
   test("words Dotypos bookings in Czech", () => {
     const booking = loadFixtureReservation(
       "0198-admin-fixture-attention"
@@ -857,6 +885,10 @@ describe("administration reservation components", () => {
     expect(within(table).getByText("Zrušená")).toBeDefined();
     expect(within(table).getByText("Nepřiřazeno")).toBeDefined();
     expect(within(table).getByText("Nepřipojeno")).toBeDefined();
+    // The linked reservation is named by the customer catalog's product name.
+    expect(
+      within(table).getByRole("link", { name: "Zasedací místnost" })
+    ).toBeDefined();
     expect(
       within(table).getByText("Podrobnosti nejsou k dispozici")
     ).toBeDefined();

@@ -26,6 +26,7 @@ import {
   PaymentRefundRequiredLabel,
   PaymentStatusLabel,
 } from "./payment-status";
+import { getAdministrationPaymentTimelineCopy } from "./payment-timeline";
 import {
   getAdministrationReservationStatusLabel,
   getAdministrationReservationStatusNoteLabel,
@@ -169,10 +170,10 @@ function ReservationTimelineEntry({
   readonly lastIndex: number;
   readonly locale: Locale;
 }) {
-  // Items without an event keep the English copy the administration API shows.
-  const { description, title } = item.event
-    ? getAdministrationReservationTimelineCopy(item.event, locale)
-    : item;
+  const { description, title } =
+    item.event.source === "payment"
+      ? getAdministrationPaymentTimelineCopy(item.event, locale)
+      : getAdministrationReservationTimelineCopy(item.event, locale);
   return (
     <li className="relative grid grid-cols-[1.25rem_minmax(0,1fr)] gap-4 pb-7 last:pb-0">
       {index < lastIndex && (
