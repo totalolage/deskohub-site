@@ -83,6 +83,7 @@ export {
   referralInvitationClaims,
   referralSignupIntents,
 } from "./referrals";
+export { requestBudgetSpends } from "./request-budget-spends";
 export { reservationAccessGrants } from "./reservation-access-grants";
 export {
   type StandaloneAccessCodeAttemptEventRow,
