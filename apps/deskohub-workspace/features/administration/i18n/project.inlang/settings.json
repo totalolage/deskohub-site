@@ -16,7 +16,8 @@
       "./messages/accounting/{languageTag}.json",
       "./messages/access-codes/{languageTag}.json",
       "./messages/email-campaigns/{languageTag}.json",
-      "./messages/admin-cli/{languageTag}.json"
+      "./messages/admin-cli/{languageTag}.json",
+      "./messages/administrators/{languageTag}.json"
     ]
   }
 }
