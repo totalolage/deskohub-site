@@ -1,14 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
   EmptyState,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { useRouteLocale } from "@/features/i18n/use-route-locale";
 import { Badge } from "@/shared/components/ui/badge";
 import { cn } from "@/shared/utils";
 import type { AudienceListItem } from "./audience-page-data.server";
@@ -34,6 +36,7 @@ export function AudienceList({
   readonly audiences: readonly AudienceListItem[];
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   const columns = useMemo<AdministrationDataTableColumn<AudienceListItem>[]>(
     () => [
       {
@@ -135,7 +138,11 @@ export function AudienceList({
           ))}
         </ul>
       }
-      onRowActivate={(audience) => router.push(audienceHref(audience.id))}
+      onRowActivate={(audience) =>
+        router.push(
+          localizeAdministrationHref(audienceHref(audience.id), locale)
+        )
+      }
       tableClassName="min-w-[720px]"
     />
   );

@@ -6,12 +6,14 @@ import {
   InvoicePaymentStatusBadge,
 } from "@/features/accounting/admin/invoice-detail";
 import { loadInvoiceAdministrationDetail } from "@/features/accounting/admin/page-data.server";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationDetailSection,
   AdministrationPage,
   AdministrationPageHeader,
 } from "@/features/administration/components";
 import { AdministrationRouteLoading } from "@/features/administration/loading";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function InvoiceAdministrationDetailPage({
   params,
@@ -30,6 +32,7 @@ async function InvoiceDetailContent({
 }: {
   readonly params: Promise<{ readonly invoiceId: string }>;
 }) {
+  const locale = await getRequestLocale();
   const { invoiceId } = await params;
   const invoice = await loadInvoiceAdministrationDetail(invoiceId);
   return (
@@ -44,7 +47,7 @@ async function InvoiceDetailContent({
         <section className="overflow-hidden rounded-2xl border border-navy-blue/10 bg-white">
           <iframe
             className="h-[75vh] min-h-[40rem] w-full"
-            src={invoice.pdfUrl}
+            src={localizeAdministrationHref(invoice.pdfUrl, locale)}
             title={`PDF for ${invoice.invoiceNumber}`}
           />
         </section>

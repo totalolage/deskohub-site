@@ -1,7 +1,9 @@
 "use client";
 
 import type { ComponentProps, ReactNode } from "react";
+import { useRouteLocale } from "@/features/i18n/use-route-locale";
 import { cn } from "@/shared/utils";
+import { localizeAdministrationHref } from "./administration-href";
 
 const controlClassName =
   "h-10 w-full rounded-lg border border-navy-blue/15 bg-white px-3 text-sm text-navy-blue outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15 disabled:cursor-not-allowed disabled:opacity-50";
@@ -46,14 +48,22 @@ export function AdministrationFilterSelect({
 }
 
 export function AdministrationFilterForm({
+  action,
   children,
   className,
   method = "get",
   variant = "toolbar",
   ...props
-}: ComponentProps<"form"> & {
+}: Omit<ComponentProps<"form">, "action"> & {
+  readonly action?: string;
   readonly variant?: "standalone" | "toolbar";
 }) {
+  const locale = useRouteLocale();
+  const localizedAction =
+    action === undefined
+      ? undefined
+      : localizeAdministrationHref(action, locale);
+
   return (
     <form
       className={cn(
@@ -63,6 +73,7 @@ export function AdministrationFilterForm({
         }[variant],
         className
       )}
+      action={localizedAction}
       method={method}
       {...props}
     >

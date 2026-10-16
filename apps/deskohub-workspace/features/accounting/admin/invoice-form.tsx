@@ -8,7 +8,9 @@ import type * as React from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import type { InvoiceAdministrationCustomer } from "@/features/accounting/admin/invoice-administration.service";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationAlert } from "@/features/administration/components";
+import { useRouteLocale } from "@/features/i18n/use-route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
@@ -198,6 +200,7 @@ export function InvoiceCreationForm({
   readonly suggestedVariableSymbol: string;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   const draftRef = useRef<{
     readonly fingerprint: string;
     readonly invoiceId: string;
@@ -286,7 +289,12 @@ export function InvoiceCreationForm({
       onSuccess: ({ data }) => {
         if (data) {
           draftRef.current = null;
-          router.push(`/admin/invoices/${data.invoiceId}`);
+          router.push(
+            localizeAdministrationHref(
+              `/admin/invoices/${data.invoiceId}`,
+              locale
+            )
+          );
         }
       },
       onError: ({ error: actionError }) =>

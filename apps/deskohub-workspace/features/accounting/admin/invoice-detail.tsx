@@ -3,7 +3,9 @@
 import { Download, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationAlert } from "@/features/administration/components";
+import { useRouteLocale } from "@/features/i18n/use-route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
@@ -41,6 +43,7 @@ export function InvoiceDetailActions({
   readonly invoice: InvoiceAdministrationDetail;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(
     retryAdministrationInvoice,
@@ -62,7 +65,7 @@ export function InvoiceDetailActions({
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="secondary">
-          <a download href={invoice.pdfUrl}>
+          <a download href={localizeAdministrationHref(invoice.pdfUrl, locale)}>
             <Download aria-hidden className="size-4" /> Download PDF
           </a>
         </Button>

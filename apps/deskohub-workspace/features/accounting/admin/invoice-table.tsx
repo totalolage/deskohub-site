@@ -4,6 +4,7 @@ import { CircleAlert, Download, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationAlert,
   AdministrationDataTable,
@@ -12,6 +13,7 @@ import {
   formatAdministrationDateTime,
 } from "@/features/administration/components";
 import { getAdministrationTableSortHref } from "@/features/administration/table-sort";
+import { useRouteLocale } from "@/features/i18n/use-route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
@@ -182,6 +184,7 @@ function InvoiceRowActions({
   readonly invoice: InvoiceAdministrationListItem;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(
     retryAdministrationInvoice,
@@ -208,7 +211,13 @@ function InvoiceRowActions({
           size="icon"
           variant="ghost"
         >
-          <a download href={`/admin/invoices/${invoice.id}/pdf`}>
+          <a
+            download
+            href={localizeAdministrationHref(
+              `/admin/invoices/${invoice.id}/pdf`,
+              locale
+            )}
+          >
             <Download aria-hidden className="size-4" />
           </a>
         </Button>

@@ -6,8 +6,10 @@ import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationAlert } from "@/features/administration/notice";
 import { storedDiscountIdSchema } from "@/features/discounts/persistence-contracts";
+import { useRouteLocale } from "@/features/i18n/use-route-locale";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
@@ -72,12 +74,14 @@ export function DiscountCodeCreationForm({
   readonly discounts: readonly Pick<AdminDiscount, "id" | "labels">[];
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const customerPath = customerId ? `/admin/customers/${customerId}` : null;
   const close = () => {
     if (completion === "back") router.back();
-    else if (customerPath) router.replace(customerPath);
+    else if (customerPath)
+      router.replace(localizeAdministrationHref(customerPath, locale));
   };
   const form = useForm<DiscountCodeCreationFormValues>({
     defaultValues: discountCodeCreationFormDefaults(discounts),

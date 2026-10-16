@@ -12,11 +12,13 @@ import {
   loadAudienceBreadcrumbLabel,
   loadCampaignBreadcrumbLabel,
 } from "@/features/email-campaigns/admin/campaign-page-data.server";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import { m } from "./i18n";
 
-const newEntityLabels: Readonly<Record<string, string>> = {
-  "email-audiences": "New audience",
-  "email-campaigns": "New campaign",
-};
+const newEntityLabels = new Map([
+  ["email-audiences", m.shellBreadcrumbNewAudience],
+  ["email-campaigns", m.shellBreadcrumbNewCampaign],
+]);
 
 export async function AdministrationBreadcrumb({
   segments,
@@ -42,7 +44,8 @@ export async function AdministrationBreadcrumb({
   ) {
     entityLabel = await loadInvoiceAdministrationBreadcrumbLabel(segments[1]);
   } else if (segments[0] && segments[1] === "new") {
-    entityLabel = newEntityLabels[segments[0]];
+    const locale = await getRequestLocale();
+    entityLabel = newEntityLabels.get(segments[0])?.({}, { locale });
   } else if (segments[0] === "email-campaigns" && segments[1]) {
     entityLabel = await loadCampaignBreadcrumbLabel(segments[1]);
   } else if (segments[0] === "email-audiences" && segments[1]) {

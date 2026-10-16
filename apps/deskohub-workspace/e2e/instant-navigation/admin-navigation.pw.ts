@@ -38,7 +38,7 @@ test("serves the administration shell and granular loading regions", async ({
   await instant(
     page,
     async () => {
-      await page.goto("/admin/reservations");
+      await page.goto("/en-US/admin/reservations");
 
       await expect(
         page.getByRole("navigation", { name: "Administration" }).first()
@@ -57,7 +57,7 @@ test("serves the administration shell and granular loading regions", async ({
 });
 
 test("hydrates the customer activity section", async ({ page }, testInfo) => {
-  await page.goto("/admin");
+  await page.goto("/en-US/admin");
 
   const customerActivity = page.getByRole("region", {
     name: "Customer activity",

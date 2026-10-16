@@ -217,9 +217,12 @@ describe("email campaign composer actions", () => {
     expect(created?.data).toEqual({ campaignId });
     expect(updated?.data).toEqual({ campaignId });
     expect(revalidatePath.mock.calls).toEqual([
-      ["/admin/email-campaigns"],
-      ["/admin/email-campaigns"],
-      [`/admin/email-campaigns/${campaignId}`],
+      ["/en-US/admin/email-campaigns"],
+      ["/cs-CZ/admin/email-campaigns"],
+      ["/en-US/admin/email-campaigns"],
+      ["/cs-CZ/admin/email-campaigns"],
+      [`/en-US/admin/email-campaigns/${campaignId}`],
+      [`/cs-CZ/admin/email-campaigns/${campaignId}`],
     ]);
     expect(createCalls).toHaveLength(1);
     expect(updateCalls).toHaveLength(1);
@@ -234,8 +237,10 @@ describe("email campaign composer actions", () => {
     expect(authorizationCalls).toBe(1);
     expect(deleteCalls).toEqual([campaignId]);
     expect(revalidatePath.mock.calls).toEqual([
-      ["/admin/email-campaigns"],
-      [`/admin/email-campaigns/${campaignId}`],
+      ["/en-US/admin/email-campaigns"],
+      ["/cs-CZ/admin/email-campaigns"],
+      [`/en-US/admin/email-campaigns/${campaignId}`],
+      [`/cs-CZ/admin/email-campaigns/${campaignId}`],
     ]);
   });
 

@@ -148,9 +148,9 @@ describe("ReservationsAdministrationPage", () => {
     ).toBe("ascending");
     expect(
       view.getByRole("link", { name: "Previous" }).getAttribute("href")
-    ).toBe("/admin/reservations?direction=asc&sort=reservation");
+    ).toBe("/en-US/admin/reservations?direction=asc&sort=reservation");
     expect(view.getByRole("link", { name: "Next" }).getAttribute("href")).toBe(
-      "/admin/reservations?direction=asc&sort=reservation&page=3"
+      "/en-US/admin/reservations?direction=asc&sort=reservation&page=3"
     );
   });
 
@@ -167,7 +167,7 @@ describe("ReservationsAdministrationPage", () => {
     const view = await prerenderReservationsPage();
 
     expect(view.getByRole("link", { name: "Next" }).getAttribute("href")).toBe(
-      "/admin/reservations?direction=asc&from=2026-08-04&sort=date&to=2026-08-10&page=3"
+      "/en-US/admin/reservations?direction=asc&from=2026-08-04&sort=date&to=2026-08-10&page=3"
     );
   });
 
@@ -189,7 +189,7 @@ describe("ReservationsAdministrationPage", () => {
     expect(
       view.getByRole("link", { name: "Clear customer" }).getAttribute("href")
     ).toBe(
-      "/admin/reservations?direction=asc&from=2026-08-04&sort=status&status=complete&to=2026-08-10&type=cowork"
+      "/en-US/admin/reservations?direction=asc&from=2026-08-04&sort=status&status=complete&to=2026-08-10&type=cowork"
     );
   });
 });

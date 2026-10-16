@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import type { ReactNode } from "react";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,

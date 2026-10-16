@@ -1,13 +1,31 @@
+"use client";
+
 import NextLink from "next/link";
 import type { ComponentProps } from "react";
+import { useRouteLocale } from "@/features/i18n/use-route-locale";
+import { localizeAdministrationHref } from "./administration-href";
 
-export function AdministrationLink(props: ComponentProps<typeof NextLink>) {
-  return <NextLink {...props} prefetch={false} />;
+/**
+ * Links an unprefixed administration path (`/admin/...`) to its page in the
+ * current route locale.
+ */
+export function AdministrationLink({
+  href,
+  ...props
+}: Omit<ComponentProps<typeof NextLink>, "href"> & { readonly href: string }) {
+  const locale = useRouteLocale();
+  return (
+    <NextLink
+      {...props}
+      href={localizeAdministrationHref(href, locale)}
+      prefetch={false}
+    />
+  );
 }
 
 /** A linked summary of a related record on an administration detail page. */
 export function AdministrationRecordLink(
-  props: Omit<ComponentProps<typeof NextLink>, "className">
+  props: Omit<ComponentProps<typeof AdministrationLink>, "className">
 ) {
   return (
     <AdministrationLink

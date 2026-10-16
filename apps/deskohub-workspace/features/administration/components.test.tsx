@@ -45,6 +45,13 @@ mock.module("./actions", () => ({
   getAdministrationReservation: mock(),
   mutateReservationAccess: mock(),
 }));
+mock.module("next/navigation", () => ({
+  useParams: () => ({ locale: "en-US" }),
+  useRouter: () => ({
+    push: workspaceRouterPush,
+    refresh: workspaceRouterRefresh,
+  }),
+}));
 
 describe("administration reservation components", () => {
   beforeAll(() => registerWorkspaceComponentTestEnv());
@@ -177,7 +184,7 @@ describe("administration reservation components", () => {
       within(table)
         .getAllByRole("link")
         .map((link) => link.getAttribute("href"))
-    ).toContain("/admin/reservations/0198-admin-fixture-attention");
+    ).toContain("/en-US/admin/reservations/0198-admin-fixture-attention");
     expect(
       within(table)
         .getByRole("link", {
@@ -251,15 +258,17 @@ describe("administration reservation components", () => {
       "ascending"
     );
     expect(reservationHeader.getAttribute("href")).toBe(
-      "/admin/reservations?status=complete&sort=reservation&direction=desc"
+      "/en-US/admin/reservations?status=complete&sort=reservation&direction=desc"
     );
     expect(
       within(table).getByRole("link", { name: "Status" }).getAttribute("href")
-    ).toBe("/admin/reservations?status=complete&sort=status&direction=asc");
+    ).toBe(
+      "/en-US/admin/reservations?status=complete&sort=status&direction=asc"
+    );
     const dateHeader = within(table).getByRole("link", { name: "Date" });
     expect(dateHeader.closest("th")?.getAttribute("aria-sort")).toBe("none");
     expect(dateHeader.getAttribute("href")).toBe(
-      "/admin/reservations?status=complete&sort=date&direction=asc"
+      "/en-US/admin/reservations?status=complete&sort=date&direction=asc"
     );
   });
 
@@ -592,7 +601,7 @@ describe("administration reservation components", () => {
     expect(execute).toHaveBeenCalledWith({ identifier: "payment-123" });
     onSuccess?.({ data: { reservationId: "reservation-456" } });
     expect(workspaceRouterPush).toHaveBeenCalledWith(
-      "/admin/reservations/reservation-456"
+      "/en-US/admin/reservations/reservation-456"
     );
   });
 });

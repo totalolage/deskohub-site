@@ -3,6 +3,8 @@
 import { Copy, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import { useRouteLocale } from "@/features/i18n/use-route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
@@ -26,6 +28,7 @@ export function SentCampaignActions({
   readonly unconfirmedCount: number;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   const includeUnconfirmedId = useId();
   const [includeUnconfirmed, setIncludeUnconfirmed] = useState(false);
   const [feedback, setFeedback] = useState<{
@@ -35,7 +38,13 @@ export function SentCampaignActions({
   const duplicate = useWorkspaceAction(duplicateCampaign, {
     actionName: "duplicateCampaign",
     onSuccess: ({ data }) => {
-      if (data) router.push(`/admin/email-campaigns/${data.campaignId}`);
+      if (data)
+        router.push(
+          localizeAdministrationHref(
+            `/admin/email-campaigns/${data.campaignId}`,
+            locale
+          )
+        );
     },
     onError: ({ error }) =>
       setFeedback({

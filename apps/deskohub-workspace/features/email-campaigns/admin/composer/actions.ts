@@ -1,8 +1,8 @@
 "use server";
 
 import { Effect, Match, Schema } from "effect";
-import { revalidatePath } from "next/cache";
 import { locales } from "@/features/i18n";
+import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
 import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -145,7 +145,7 @@ export const createCampaign: typeof createCampaignAction = async (
 ) => {
   "use server";
   const result = await createCampaignAction(...args);
-  if (result?.data) revalidatePath("/admin/email-campaigns");
+  if (result?.data) revalidateLocalizedPath("/admin/email-campaigns");
   return result;
 };
 
@@ -155,8 +155,8 @@ export const updateCampaign: typeof updateCampaignAction = async (
   "use server";
   const result = await updateCampaignAction(...args);
   if (result?.data) {
-    revalidatePath("/admin/email-campaigns");
-    revalidatePath(`/admin/email-campaigns/${result.data.campaignId}`);
+    revalidateLocalizedPath("/admin/email-campaigns");
+    revalidateLocalizedPath(`/admin/email-campaigns/${result.data.campaignId}`);
   }
   return result;
 };
@@ -167,8 +167,8 @@ export const deleteCampaign: typeof deleteCampaignAction = async (
   "use server";
   const result = await deleteCampaignAction(...args);
   if (result?.data) {
-    revalidatePath("/admin/email-campaigns");
-    revalidatePath(`/admin/email-campaigns/${result.data.campaignId}`);
+    revalidateLocalizedPath("/admin/email-campaigns");
+    revalidateLocalizedPath(`/admin/email-campaigns/${result.data.campaignId}`);
   }
   return result;
 };

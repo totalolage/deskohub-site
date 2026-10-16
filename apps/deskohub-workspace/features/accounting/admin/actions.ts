@@ -6,7 +6,7 @@ import {
   AdministrationInvoiceId,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Match, Schema } from "effect";
-import { revalidatePath } from "next/cache";
+import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
 import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -31,8 +31,8 @@ const createInvoiceAction = defineWorkspaceAction(
         actor,
       });
       yield* Effect.sync(() => {
-        revalidatePath("/admin/invoices");
-        revalidatePath(`/admin/invoices/${result.invoiceId}`);
+        revalidateLocalizedPath("/admin/invoices");
+        revalidateLocalizedPath(`/admin/invoices/${result.invoiceId}`);
       });
       return result;
     },
@@ -136,8 +136,8 @@ const retryInvoiceAction = defineWorkspaceAction(
           const administration = yield* InvoiceAdministrationService;
           const result = yield* administration.retry(input.invoiceId);
           yield* Effect.sync(() => {
-            revalidatePath("/admin/invoices");
-            revalidatePath(`/admin/invoices/${input.invoiceId}`);
+            revalidateLocalizedPath("/admin/invoices");
+            revalidateLocalizedPath(`/admin/invoices/${input.invoiceId}`);
           });
           return result;
         })

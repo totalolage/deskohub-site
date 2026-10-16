@@ -10,7 +10,7 @@
 
 ## Authentication and sessions
 
-1. `dhw auth` creates a five-minute authentication request and prints an `/admin/cli/authenticate` URL.
+1. `dhw auth` creates a five-minute authentication request and prints an unprefixed `/admin/cli/authenticate` URL, which the proxy redirects into the operator's locale.
 2. An administrator approves it behind `/admin` Basic authentication and picks the session lifetime.
 3. The CLI exchanges a single-use grant bound to its local verifier and stores the opaque bearer in macOS Keychain or the Linux Secret Service.
 

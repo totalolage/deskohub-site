@@ -1,12 +1,11 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { baseLocale, isLocale, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/use-route-locale";
 import { Button } from "@/shared/components/ui/button";
 
 export default function ErrorPage({ retry }: { readonly retry: () => void }) {
-  const { locale: routeLocale } = useParams<{ locale: string }>();
-  const locale = isLocale(routeLocale) ? routeLocale : baseLocale;
+  const locale = useRouteLocale();
 
   return (
     <main className="grid min-h-dvh place-items-center bg-[#f4f1ea] px-4 py-20 text-navy-blue">

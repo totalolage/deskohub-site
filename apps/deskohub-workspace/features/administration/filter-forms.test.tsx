@@ -203,7 +203,7 @@ describe("administration filter forms", () => {
       const type = view.getByLabelText("Reservation type") as HTMLSelectElement;
 
       expect(form.getAttribute("method")).toBe("get");
-      expect(form.getAttribute("action")).toBe("/admin/reservations");
+      expect(form.getAttribute("action")).toBe("/en-US/admin/reservations");
       expect(type.value).toBe("office");
       expect(type.selectedOptions[0]?.textContent).toBe(
         m.reservationOfficeProductTitle()
@@ -247,7 +247,7 @@ describe("administration filter forms", () => {
       ).toBe("2026-08-05");
       expect(
         view.getByRole("link", { name: "Clear" }).getAttribute("href")
-      ).toBe("/admin/reservations");
+      ).toBe("/en-US/admin/reservations");
 
       view.rerender(
         reservationFilterForm({ direction: "desc", sort: "created" })
@@ -281,7 +281,9 @@ describe("administration filter forms", () => {
       });
       expect(
         view.getByRole("link", { name: "Upcoming" }).getAttribute("href")
-      ).toBe("/admin/reservations?direction=desc&from=2026-08-13&sort=created");
+      ).toBe(
+        "/en-US/admin/reservations?direction=desc&from=2026-08-13&sort=created"
+      );
 
       view.rerender(
         reservationFilterForm({

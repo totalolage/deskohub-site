@@ -18,6 +18,7 @@
       "!.taskmaster",
       "!**/generated",
       "!**/features/i18n/paraglide",
+      "!**/features/administration/i18n/paraglide",
       "!**/db/migrations/**/snapshot.json"
     ]
   },

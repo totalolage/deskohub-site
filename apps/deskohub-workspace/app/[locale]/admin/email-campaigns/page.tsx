@@ -1,6 +1,6 @@
 import { Plus } from "lucide-react";
-import Link from "next/link";
 import { Suspense } from "react";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
   AdministrationPage,
   AdministrationTableCount,

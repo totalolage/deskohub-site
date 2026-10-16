@@ -1,7 +1,7 @@
 "use client";
 
 import { Users } from "lucide-react";
-import Link from "next/link";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import type { Locale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import type { CampaignId } from "../../campaign-identifiers";

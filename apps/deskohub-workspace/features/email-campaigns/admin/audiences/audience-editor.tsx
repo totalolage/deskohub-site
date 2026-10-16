@@ -2,16 +2,18 @@
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { Archive, ArchiveRestore, Trash2 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { get, useForm, useWatch } from "react-hook-form";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationPage,
   AdministrationPageHeader,
 } from "@/features/administration/components";
 import { ConfirmDialog } from "@/features/administration/confirm-dialog";
 import { AdministrationAlert } from "@/features/administration/notice";
+import { useRouteLocale } from "@/features/i18n/use-route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Form,
@@ -99,6 +101,7 @@ function AudienceForm({
   readonly discountGroups: readonly DiscountGroupOption[] | undefined;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const form = useForm({
     defaultValues: {
@@ -119,7 +122,9 @@ function AudienceForm({
     onSuccess: ({ data, input }) => {
       if (!data) return;
       if (!audience) {
-        router.push(audienceHref(data.audienceId));
+        router.push(
+          localizeAdministrationHref(audienceHref(data.audienceId), locale)
+        );
         return;
       }
       form.reset({ title: input.title, filter: input.filter });
@@ -338,13 +343,14 @@ function DeleteAudienceControl({
   readonly audienceId: CampaignAudienceId;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(deleteAudience, {
     actionName: "email-campaigns.admin.delete-audience",
     onSuccess: ({ data }) => {
       if (!data) return;
-      router.push(audienceListHref);
+      router.push(localizeAdministrationHref(audienceListHref, locale));
     },
     onError: ({ error }) =>
       setError(error.serverError ?? "The audience could not be deleted."),

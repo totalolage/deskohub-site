@@ -13,6 +13,7 @@ import {
   useWatch,
 } from "react-hook-form";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -33,6 +34,7 @@ import {
   type WorkspaceProductTarget,
 } from "@/features/discounts/product-target";
 import { generatePromotionCode } from "@/features/discounts/promotion-code";
+import { useRouteLocale } from "@/features/i18n/use-route-locale";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
 import { ChoiceCard } from "@/shared/components/ui/choice-card";
@@ -345,6 +347,7 @@ export function VoucherEditor({
   readonly voucher: VoucherTableItem;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   return (
     <div>
       <p className="mb-5 break-all font-mono text-xs text-navy-blue/70">
@@ -369,7 +372,12 @@ export function VoucherEditor({
               label={`Delete ${voucher.code}`}
               mutation={() => ({ kind: "delete-voucher", id: voucher.id })}
               onDeleted={
-                deleteRedirect ? () => router.push(deleteRedirect) : undefined
+                deleteRedirect
+                  ? () =>
+                      router.push(
+                        localizeAdministrationHref(deleteRedirect, locale)
+                      )
+                  : undefined
               }
             />
           ) : undefined

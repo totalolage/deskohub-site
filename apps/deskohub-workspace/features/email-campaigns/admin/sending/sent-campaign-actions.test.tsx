@@ -9,12 +9,20 @@ import {
   test,
 } from "bun:test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
+import {
+  workspaceRouterPush,
+  workspaceUseAction,
+} from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import { campaignIdSchema } from "../../campaign-identifiers";
+
+mock.module("next/navigation", () => ({
+  useParams: () => ({ locale: "en-US" }),
+  useRouter: () => ({ push: workspaceRouterPush }),
+}));
 
 const duplicateCampaign = mock();
 const retryUndeliveredCampaignRecipients = mock();

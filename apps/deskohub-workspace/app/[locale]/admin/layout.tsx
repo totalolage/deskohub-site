@@ -1,14 +1,21 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { AdminShell } from "@/features/administration/admin-shell";
+import { AdministrationLocaleSwitcher } from "@/features/administration/administration-locale-switcher";
+import { m } from "@/features/administration/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import { createStreamedLocalePreference } from "@/shared/components/site-header-config";
 
-export const metadata: Metadata = {
-  title: "Administration · Deskohub Workspace",
-  robots: {
-    index: false,
-    follow: false,
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getRequestLocale();
+  return {
+    title: m.shellMetadataTitle({}, { locale }),
+    robots: {
+      index: false,
+      follow: false,
+    },
+  };
+}
 
 export const instant = true;
 
@@ -23,7 +30,16 @@ export default function AdminLayout({
 }) {
   return (
     <>
-      <AdminShell breadcrumb={breadcrumb}>{children}</AdminShell>
+      <AdminShell
+        breadcrumb={breadcrumb}
+        localeSwitcher={
+          <AdministrationLocaleSwitcher
+            localePreference={createStreamedLocalePreference()}
+          />
+        }
+      >
+        {children}
+      </AdminShell>
       {modal}
     </>
   );
