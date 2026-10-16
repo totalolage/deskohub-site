@@ -7,6 +7,7 @@ import {
   type ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -16,9 +17,11 @@ import {
   AccountShell,
 } from "@/features/account/components/shell/account-shell";
 import { SignOutButton } from "@/features/account/components/sign-out-button";
+import { getAccountPageTitle } from "@/features/account/page-title";
 import {
   findAccountSectionOfPathname,
   getAccountSectionPath,
+  isAccountPathname,
 } from "@/features/account/routes";
 import {
   type AccountSection,
@@ -135,6 +138,23 @@ export function AccountLayoutShell({
       ? localNavigation.activeSection
       : routeSection;
   const privateNavigationEnabled = signedIn && accountsEnabled;
+  // The page metadata keeps titling the section the page was loaded at, also
+  // after an in-place switch and when Back restores a switched path, so the
+  // title follows the path's section as a reload of it would. Without
+  // accounts, the page is not found and keeps its own title.
+  const pageTitle =
+    !accountsEnabled ||
+    pathnameSection === undefined ||
+    pathnameSection === "legal" ||
+    pathnameSection !== routeSection
+      ? undefined
+      : getAccountPageTitle(
+          locale,
+          isAccountPathname(locale, routeKey) ? undefined : pathnameSection
+        );
+  useEffect(() => {
+    if (pageTitle !== undefined) document.title = pageTitle;
+  }, [pageTitle]);
 
   const changeSection = useCallback(
     (section: AccountSection) => {

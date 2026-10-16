@@ -349,6 +349,46 @@ describe("AccountLayoutShell", () => {
     expect(window.history.length).toBe(historyLength);
   });
 
+  test("titles the page after its path's section when Back restores a switched path", () => {
+    pathname = "/en-US/account/legal";
+    document.title = "Legal metadata";
+    const view = renderLayout(<p>Legal</p>);
+    expect(document.title).toBe("Legal metadata");
+
+    // Back to a path a switch moved to restores the metadata of the section
+    // the page was loaded at.
+    pathname = "/en-US/account/billing";
+    document.title = "Sign-in & security | My account | Deskohub Workspace";
+    view.rerender(layoutElement(<p>Account from browser back</p>));
+    expect(document.title).toBe(
+      "Billing & Invoices | My account | Deskohub Workspace"
+    );
+
+    pathname = "/en-US/account/";
+    view.rerender(layoutElement(<p>Account from browser back</p>));
+    expect(document.title).toBe("My account | Deskohub Workspace");
+  });
+
+  test.each([
+    { name: "a withheld section", path: "/en-US/account/security" },
+    { name: "the deleted-account page", path: "/en-US/account/deleted" },
+    { name: "a page outside the sections", path: "/en-US/account/unknown" },
+  ])("leaves the title of $name to its page", ({ path }) => {
+    pathname = path;
+    document.title = "Page metadata";
+    renderLayout(<p>Page</p>);
+
+    expect(document.title).toBe("Page metadata");
+  });
+
+  test("leaves the title to the not-found page while accounts are off", () => {
+    pathname = "/en-US/account/billing";
+    document.title = "Not found metadata";
+    renderLayout(<p>Not found</p>, { accountsEnabled: false });
+
+    expect(document.title).toBe("Not found metadata");
+  });
+
   test("never opens a withheld referral section, even at its path", () => {
     pathname = "/en-US/account/referrals";
     const view = renderLayout(<ReferralBadgePublisher section="referrals" />, {

@@ -79,6 +79,13 @@
   the unsaved-changes guard questions every Back traversal, although a section
   switch keeps all drafts. Moving to or from `/account/legal` is a router
   navigation behind the guard. Modified clicks stay the browser's.
+- The page metadata keeps the title of the section the page loaded at, even
+  after an in-place switch or a Back to a switched path. `AccountLayoutShell`
+  sets `document.title` from the path's section with `getAccountPageTitle`
+  (`features/account/page-title.ts`), the same helper the metadata uses, so
+  the title always matches what a reload would show. The bare `/account` keeps
+  the generic account title. After a switch the path always names a section,
+  Reservations included.
 - Pass a section withheld by a release flag (Referrals behind `referrals`,
   Sign-in & security behind `login_passkeys`) to `AccountShell` as
   `hiddenSections`: it leaves both navigations, and its path is not found. The

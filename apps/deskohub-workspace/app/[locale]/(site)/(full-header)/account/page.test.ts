@@ -17,7 +17,17 @@ mock.module("@/features/i18n/server/request-locale", () => ({
     callback("en-US"),
 }));
 
-const { default: CustomerAccountPageRoute } = await import("./page");
+const { default: CustomerAccountPageRoute, generateMetadata } = await import(
+  "./page"
+);
+
+test("titles the bare account page after the account", async () => {
+  expect(await generateMetadata()).toEqual({
+    title: "synthetic-title",
+    description: "synthetic-description",
+    robots: { index: false, follow: false },
+  });
+});
 
 test("renders the default section's account page without a section", async () => {
   const route = (await CustomerAccountPageRoute()) as ReactElement<{

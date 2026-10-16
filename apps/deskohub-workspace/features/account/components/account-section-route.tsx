@@ -4,11 +4,10 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { AccountContentLoading } from "@/features/account/components/account-loading";
 import { AccountPage } from "@/features/account/components/account-page";
-import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { loadCustomerAccountPage } from "@/features/account/page-data.server";
+import { getAccountPageTitle } from "@/features/account/page-title";
 import {
-  type AccountSection,
-  isAccountSection,
+  isAccountPageSection,
   isAccountSectionReleased,
 } from "@/features/account/sections";
 import {
@@ -18,15 +17,6 @@ import {
 import { type Locale, m } from "@/features/i18n";
 import { areReferralsEnabled } from "@/features/referrals/referral-feature-flag.server";
 
-/**
- * A section the signed-in account page renders at `/account/<section>`.
- * Legal & Privacy has its own public page.
- */
-type AccountPageSection = Exclude<AccountSection, "legal">;
-
-const isAccountPageSection = (value: string): value is AccountPageSection =>
-  isAccountSection(value) && value !== "legal";
-
 export function getAccountSectionMetadata(
   locale: Locale,
   section: string
@@ -34,10 +24,7 @@ export function getAccountSectionMetadata(
   if (!isAccountPageSection(section)) notFound();
 
   return {
-    title: m.accountSectionMetadataTitle(
-      { section: getAccountScreenCopy(locale).shell.sections[section] },
-      { locale }
-    ),
+    title: getAccountPageTitle(locale, section),
     description: m.accountMetadataDescription({}, { locale }),
     robots: { index: false, follow: false },
   };

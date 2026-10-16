@@ -22,6 +22,16 @@ export const defaultAccountSection: AccountSection = "reservations";
 
 export const isAccountSection = Schema.is(accountSectionSchema);
 
+/**
+ * A section the signed-in account page renders at `/account/<section>`.
+ * Legal & Privacy has its own public page.
+ */
+export type AccountPageSection = Exclude<AccountSection, "legal">;
+
+export const isAccountPageSection = (
+  value: string
+): value is AccountPageSection => isAccountSection(value) && value !== "legal";
+
 export type AccountSectionRelease = {
   readonly passkeysEnabled: boolean;
   readonly referralsEnabled: boolean;

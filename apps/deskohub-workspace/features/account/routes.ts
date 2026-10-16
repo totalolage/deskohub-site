@@ -28,6 +28,10 @@ export const getAccountSectionPath = (
 const withoutTrailingSlashes = (pathname: string) =>
   pathname.replace(/\/+$/, "");
 
+/** Whether a pathname is the bare account path, without a section. */
+export const isAccountPathname = (locale: Locale, pathname: string) =>
+  withoutTrailingSlashes(pathname) === getAccountPath(locale);
+
 /**
  * The section an account pathname shows: the default section on the bare
  * account path, nothing outside the sections (such as the deleted page).
@@ -36,9 +40,9 @@ export const findAccountSectionOfPathname = (
   locale: Locale,
   pathname: string
 ): AccountSection | undefined => {
+  if (isAccountPathname(locale, pathname)) return defaultAccountSection;
   const accountPath = getAccountPath(locale);
   const normalizedPathname = withoutTrailingSlashes(pathname);
-  if (normalizedPathname === accountPath) return defaultAccountSection;
   if (!normalizedPathname.startsWith(`${accountPath}/`)) return undefined;
 
   const segment = normalizedPathname.slice(accountPath.length + 1);
