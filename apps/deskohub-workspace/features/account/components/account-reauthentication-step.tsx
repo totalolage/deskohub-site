@@ -190,10 +190,9 @@ export function AccountReauthenticationStep({
         {!failure && !passkeyFailure && linkSent && copy.linkSent}
       </div>
       {!codeStep && (
-        // Two options stack full-width, so long labels never overflow.
-        <DialogFooter
-          className={cn(confirmWithPasskey && "sm:flex-col-reverse")}
-        >
+        // The options stack full-width under the centred header, so long
+        // labels never overflow.
+        <DialogFooter className={cn(iconHeader && "sm:flex-col-reverse")}>
           <Button
             id={copy.sendId}
             wrap

@@ -286,14 +286,14 @@ export function SignInSecurityScreen({
           <Mail aria-hidden className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="flex items-baseline gap-3">
             <h3
-              className="font-semibold text-navy-blue"
+              className="min-w-0 font-semibold text-navy-blue"
               id="account-security-email-title"
             >
               {m.accountSecurityEmailTitle({}, { locale })}
             </h3>
-            <span className="rounded-full bg-aquamarine-ink/10 px-2.5 py-0.5 text-xs font-semibold text-aquamarine-ink">
+            <span className="shrink-0 whitespace-nowrap rounded-full bg-aquamarine-ink/10 px-2.5 py-0.5 text-xs font-semibold text-aquamarine-ink">
               {m.accountSecurityEmailBadge({}, { locale })}
             </span>
           </div>
