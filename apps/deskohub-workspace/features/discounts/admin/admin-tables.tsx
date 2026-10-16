@@ -1,6 +1,7 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import { formatCurrencyName } from "@deskohub/i18n/currency";
 import type { Schema } from "effect";
 import { ArrowUpRight, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -1267,7 +1268,11 @@ export function DiscountDefinitionFields({
                           )}
                         {workspaceCurrencyDefinitions.map((currency) => (
                           <option key={currency.code} value={currency.code}>
-                            {currency.code} — {currency.name}
+                            {currency.code} —{" "}
+                            {formatCurrencyName({
+                              currency: currency.code,
+                              locale,
+                            })}
                           </option>
                         ))}
                       </select>
@@ -1584,7 +1589,8 @@ function VoucherCreditFields(_props: {
                 >
                   {workspaceCurrencyDefinitions.map((currency) => (
                     <option key={currency.code} value={currency.code}>
-                      {currency.code} — {currency.name}
+                      {currency.code} —{" "}
+                      {formatCurrencyName({ currency: currency.code, locale })}
                     </option>
                   ))}
                 </select>
