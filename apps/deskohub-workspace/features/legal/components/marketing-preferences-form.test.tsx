@@ -100,16 +100,9 @@ afterAll(unregisterWorkspaceComponentTestEnv);
 
 function renderForm(
   state: MarketingPreferencesState,
-  locale: Locale = "en-US",
-  accountsEnabled = true
+  locale: Locale = "en-US"
 ) {
-  return render(
-    <MarketingPreferencesForm
-      accountsEnabled={accountsEnabled}
-      locale={locale}
-      state={state}
-    />
-  );
+  return render(<MarketingPreferencesForm locale={locale} state={state} />);
 }
 
 function getSwitch(
@@ -559,30 +552,7 @@ test("renders unavailable guidance without presenting account availability as a 
 });
 
 test.each(["en-US"] as const)(
-  "hides sign-in affordances when accounts are disabled in %s",
-  (locale) => {
-    const view = renderForm({ status: "unavailable" }, locale, false);
-
-    expect(
-      view.getByText(
-        m.marketingPreferencesFormUnavailableNextStep({}, { locale })
-      )
-    ).toBeTruthy();
-    expect(
-      view.queryByText(
-        m.marketingPreferencesFormUnavailableSignInNextStep({}, { locale })
-      )
-    ).toBeNull();
-    expect(
-      view.queryByRole("link", {
-        name: m.marketingPreferencesFormSignInAction({}, { locale }),
-      })
-    ).toBeNull();
-  }
-);
-
-test.each(["en-US"] as const)(
-  "keeps a link-authorized preference actionable when accounts are disabled in %s",
+  "keeps a link-authorized preference actionable in %s",
   async (locale) => {
     const context = `synthetic-${locale}-link-save-context`;
     const view = renderForm(
@@ -592,8 +562,7 @@ test.each(["en-US"] as const)(
         source: "link",
         status: "absent",
       },
-      locale,
-      false
+      locale
     );
 
     expect(

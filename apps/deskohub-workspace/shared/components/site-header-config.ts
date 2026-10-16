@@ -3,7 +3,6 @@ import {
   getAccountPath,
   getAccountSignInPath,
 } from "@/features/account/routes";
-import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import { isCustomerSignedIn } from "@/features/account/server/customer-session.server";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import { type Locale, m } from "@/features/i18n";
@@ -58,15 +57,12 @@ export const getSiteHeaderAccessibilityLabels = (locale: Locale) => ({
 });
 
 export async function getSiteHeaderConfig(locale: Locale) {
-  const [accountsEnabled, meetingRoomPageEnabled, officePageEnabled] =
-    await Promise.all([
-      areAccountsEnabled(),
-      isMeetingRoomPageEnabled(),
-      isOfficePageEnabled(),
-    ]);
+  const [meetingRoomPageEnabled, officePageEnabled] = await Promise.all([
+    isMeetingRoomPageEnabled(),
+    isOfficePageEnabled(),
+  ]);
 
   return createSiteHeaderConfig(locale, {
-    accountsEnabled,
     disabledMenuItems: {
       meetingRoom: !meetingRoomPageEnabled,
       office: !officePageEnabled,
@@ -77,10 +73,8 @@ export async function getSiteHeaderConfig(locale: Locale) {
 const createSiteHeaderConfig = (
   locale: Locale,
   {
-    accountsEnabled,
     disabledMenuItems,
   }: {
-    readonly accountsEnabled: boolean;
     readonly disabledMenuItems: DisabledSiteHeaderMenuItems;
   }
 ) => {
@@ -126,10 +120,8 @@ const createSiteHeaderConfig = (
 
   return {
     ...getSiteHeaderAccessibilityLabels(locale),
-    ...(accountsEnabled && {
-      account: createSiteHeaderAccountEntry(locale),
-      localePreference: createLocalePreferenceSaving(),
-    }),
+    account: createSiteHeaderAccountEntry(locale),
+    localePreference: createLocalePreferenceSaving(),
     languageLabels: getLanguageLabels(locale),
     links: links.filter(({ id }) => disabledMenuItems[id] !== true),
     contactLabel: m.reservationNavCta({}, { locale }),
@@ -153,24 +145,9 @@ const createSiteHeaderAccountEntry = (
 
 // Not awaited, like the account entry: the switcher learns after the shell
 // whether a switch must save the signed-in customer's preference.
-const createLocalePreferenceSaving = (): LocalePreferenceSaving => ({
+export const createLocalePreferenceSaving = (): LocalePreferenceSaving => ({
   signedIn: isCustomerSignedIn().catch(() => false),
   save: updateLocalePreference,
 });
-
-/**
- * The switcher's preference saving for a static shell that can't await the
- * accounts flag: the flag and session checks both stream after the shell.
- */
-export const createStreamedLocalePreference = (): LocalePreferenceSaving => ({
-  signedIn: areAccountsEnabled()
-    .then((enabled) => enabled && isCustomerSignedIn())
-    .catch(() => false),
-  save: updateLocalePreference,
-});
-
-/** The switcher's preference saving for headers without an account entry. */
-export const getSiteHeaderLocalePreference = async () =>
-  (await areAccountsEnabled()) ? createLocalePreferenceSaving() : undefined;
 
 export { siteHeaderSectionIds };

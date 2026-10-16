@@ -277,8 +277,7 @@ export const assertAuthSessionReady = async (
 /**
  * Production smoke against the customer-facing host: the anonymous session
  * endpoint and public landing page must both be healthy on the domain
- * customers actually use. The landing page is independent of account rollout
- * state; delivery is proven by the exact-SHA preview E2E.
+ * customers actually use. Delivery is proven by the exact-SHA preview E2E.
  */
 export const assertCanonicalLandingReady = async (
   fetchImpl: typeof fetch = fetch

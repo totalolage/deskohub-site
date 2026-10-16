@@ -5,10 +5,7 @@ import { ReferralFeatureFlagService } from "@/features/referrals/referral-featur
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { CustomerAuthentication } from "./backend/customer-authentication.service";
 import { CustomerAccountAccessError } from "./customer-account";
-import {
-  areAccountAvatarsEnabled,
-  areAccountsEnabled,
-} from "./server/account-feature-flag.server";
+import { areAccountAvatarsEnabled } from "./server/account-feature-flag.server";
 
 export const requireVerifiedSession = Effect.flatMap(
   CustomerAuthentication,
@@ -46,18 +43,6 @@ const accountActionErrorMessage = (
   }
   return m.accountProfileError({}, { locale });
 };
-
-export const requireAccountsEnabled = (locale: Locale) =>
-  Effect.promise(areAccountsEnabled).pipe(
-    Effect.filterOrFail(
-      (enabled) => enabled,
-      () =>
-        new PublicSafeActionError({
-          message: m.accountUnavailableDescription({}, { locale }),
-        })
-    ),
-    Effect.asVoid
-  );
 
 /** A withheld referral program rejects referral-only account actions. */
 export const requireReferralsEnabled = (locale: Locale) =>

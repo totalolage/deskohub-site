@@ -26,7 +26,6 @@ import {
   captureFailure,
   cookieJar,
   emitWorkspaceLog,
-  expectAccountsUnavailable,
   getSessionCookie,
   HOST,
   linkAccount,
@@ -240,227 +239,32 @@ test("rejects password sign-up and sign-in", async () => {
   expect(store.session).toHaveLength(0);
 });
 
-test("blocks magic-link issuance without creating a token when accounts are disabled", async () => {
+test("reads the session and revokes it on sign-out", async () => {
   const sentLinks: CapturedMagicLink[] = [];
-  const { auth, store } = makeMemoryTestAuth({
-    sentLinks,
-    areAccountsEnabled: async () => false,
-  });
+  const { auth } = makeMemoryTestAuth({ sentLinks });
+  const email = uniqueEmail("session-sign-out");
 
-  const response = await signInForMagicLink(
-    auth,
-    uniqueEmail("accounts-off-issuance")
-  );
-
-  await expectAccountsUnavailable(response);
-  expect(sentLinks).toHaveLength(0);
-  expect(store.verification).toHaveLength(0);
-  expect(store.user).toHaveLength(0);
-});
-
-test("does not consume an enabled token while verification is disabled", async () => {
-  const sentLinks: CapturedMagicLink[] = [];
-  const enabled = makeMemoryTestAuth({
-    sentLinks,
-    areAccountsEnabled: async () => true,
-  });
-  const email = uniqueEmail("accounts-off-verification");
-
-  const requested = await signInForMagicLink(enabled.auth, email);
-  expect(requested.status).toBe(200);
-  const link = sentLinks[0]!;
-  expect(enabled.store.verification).toHaveLength(1);
-
-  const disabled = makeTestAuth({
-    database: memoryAdapter(enabled.store),
-    sentLinks,
-    areAccountsEnabled: async () => false,
-  });
-  const blocked = await verifyMagicLink(disabled, link);
-
-  await expectAccountsUnavailable(blocked);
-  expect(getSessionCookie(blocked)).toBeUndefined();
-  expect(enabled.store.session).toHaveLength(0);
-  expect(enabled.store.verification).toHaveLength(1);
-
-  const reenabled = makeTestAuth({
-    database: memoryAdapter(enabled.store),
-    sentLinks,
-    areAccountsEnabled: async () => true,
-  });
-  const verified = await verifyMagicLink(reenabled, link);
-
-  expect(verified.status).toBe(302);
-  expect(getSessionCookie(verified)).toBeTruthy();
-  expect(enabled.store.session).toHaveLength(1);
-  expect(enabled.store.verification).toHaveLength(0);
-});
-
-test("fails closed when the account feature evaluator rejects", async () => {
-  const sentLinks: CapturedMagicLink[] = [];
-  const evaluatorError = `synthetic evaluator failure ${crypto.randomUUID()}`;
-  const { auth, store } = makeMemoryTestAuth({
-    sentLinks,
-    areAccountsEnabled: async () => {
-      throw new Error(evaluatorError);
-    },
-  });
-
-  const response = await signInForMagicLink(
-    auth,
-    uniqueEmail("accounts-evaluator-error")
-  );
-  const body = await response.text();
-
-  expect(response.status).toBe(503);
-  expect(body).toBe(JSON.stringify({ message: "Service Unavailable" }));
-  expect(body).not.toContain(evaluatorError);
-  expect(sentLinks).toHaveLength(0);
-  expect(store.verification).toHaveLength(0);
-});
-
-test("fails closed when the evaluator rejects verification without consuming the enabled token", async () => {
-  const sentLinks: CapturedMagicLink[] = [];
-  const enabled = makeMemoryTestAuth({
-    sentLinks,
-    areAccountsEnabled: async () => true,
-  });
-  const email = uniqueEmail("accounts-evaluator-verification-error");
-
-  const requested = await signInForMagicLink(enabled.auth, email);
-  expect(requested.status).toBe(200);
-  const link = sentLinks[0]!;
-  expect(enabled.store.verification).toHaveLength(1);
-
-  const evaluatorError = `synthetic verification evaluator failure ${crypto.randomUUID()}`;
-  const rejected = makeTestAuth({
-    database: memoryAdapter(enabled.store),
-    sentLinks,
-    areAccountsEnabled: async () => {
-      throw new Error(evaluatorError);
-    },
-  });
-  const response = await verifyMagicLink(rejected, link);
-  const body = await response.text();
-
-  expect(response.status).toBe(503);
-  expect(body).toBe(JSON.stringify({ message: "Service Unavailable" }));
-  expect(body).not.toContain(evaluatorError);
-  expect(getSessionCookie(response)).toBeUndefined();
-  expect(enabled.store.verification).toHaveLength(1);
-  expect(enabled.store.session).toHaveLength(0);
-});
-
-test("keeps existing sessions and logout available while accounts are disabled", async () => {
-  const sentLinks: CapturedMagicLink[] = [];
-  const enabled = makeMemoryTestAuth({
-    sentLinks,
-    areAccountsEnabled: async () => true,
-  });
-  const email = uniqueEmail("accounts-off-session");
-
-  await signInForMagicLink(enabled.auth, email);
-  const verified = await verifyMagicLink(enabled.auth, sentLinks[0]!);
+  await signInForMagicLink(auth, email);
+  const verified = await verifyMagicLink(auth, sentLinks[0]!);
   const cookie = cookieJar(getSessionCookie(verified)!);
 
-  const disabled = makeTestAuth({
-    database: memoryAdapter(enabled.store),
-    sentLinks,
-    areAccountsEnabled: async () => false,
-  });
-  const session = await callHandler(disabled, "/get-session", {
+  const session = await callHandler(auth, "/get-session", {
     headers: { cookie },
   });
   expect(session.status).toBe(200);
   expect((await session.json()).user.email).toBe(email);
 
-  const signOut = await callHandler(disabled, "/sign-out", {
+  const signOut = await callHandler(auth, "/sign-out", {
     method: "POST",
     headers: { cookie, "content-type": "application/json" },
     body: "{}",
   });
   expect(signOut.status).toBe(200);
 
-  const revoked = await callHandler(disabled, "/get-session", {
+  const revoked = await callHandler(auth, "/get-session", {
     headers: { cookie },
   });
   expect(await revoked.json()).toBeNull();
-});
-
-test("allows fresh deletion while accounts are disabled", async () => {
-  const sentLinks: CapturedMagicLink[] = [];
-  const enabled = makeMemoryTestAuth({
-    sentLinks,
-    areAccountsEnabled: async () => true,
-  });
-  const email = uniqueEmail("accounts-off-delete");
-
-  await signInForMagicLink(enabled.auth, email);
-  const verified = await verifyMagicLink(enabled.auth, sentLinks[0]!);
-  const cookie = cookieJar(getSessionCookie(verified)!);
-
-  let beforeDeleteCalls = 0;
-  const disabled = makeTestAuth({
-    database: memoryAdapter(enabled.store),
-    areAccountsEnabled: async () => false,
-    beforeDeleteUser: () =>
-      Effect.sync(() => {
-        beforeDeleteCalls += 1;
-      }),
-  });
-  const deleted = await callHandler(disabled, "/delete-user", {
-    method: "POST",
-    headers: { cookie, "content-type": "application/json" },
-    body: "{}",
-  });
-
-  expect(deleted.status).toBe(200);
-  expect(beforeDeleteCalls).toBe(1);
-  expect(enabled.store.user).toHaveLength(0);
-  expect(enabled.store.session).toHaveLength(0);
-});
-
-test("does not issue reauthentication links for stale deletion while accounts are disabled", async () => {
-  const sentLinks: CapturedMagicLink[] = [];
-  const enabled = makeMemoryTestAuth({
-    sentLinks,
-    areAccountsEnabled: async () => true,
-  });
-  const email = uniqueEmail("accounts-off-stale-delete");
-
-  await signInForMagicLink(enabled.auth, email);
-  const verified = await verifyMagicLink(enabled.auth, sentLinks[0]!);
-  const cookie = cookieJar(getSessionCookie(verified)!);
-  enabled.store.session[0]!.createdAt = new Date(Date.now() - 11 * 60 * 1000);
-
-  const disabled = makeTestAuth({
-    database: memoryAdapter(enabled.store),
-    areAccountsEnabled: async () => false,
-    beforeDeleteUser: () =>
-      Effect.die(new Error("deletion hook must not run for a stale session")),
-  });
-  const stale = await callHandler(disabled, "/delete-user", {
-    method: "POST",
-    headers: { cookie, "content-type": "application/json" },
-    body: "{}",
-  });
-
-  expect(stale.status).toBe(400);
-  expect(sentLinks).toHaveLength(1);
-  expect(enabled.store.user).toHaveLength(1);
-  expect(enabled.store.session).toHaveLength(1);
-
-  const deliveriesBeforeReauthentication = sentLinks.length;
-  const verificationsBeforeReauthentication = enabled.store.verification.length;
-  const sessionsBeforeReauthentication = enabled.store.session.length;
-  const reauthentication = await signInForMagicLink(disabled, email);
-
-  await expectAccountsUnavailable(reauthentication);
-  expect(sentLinks).toHaveLength(deliveriesBeforeReauthentication);
-  expect(enabled.store.verification).toHaveLength(
-    verificationsBeforeReauthentication
-  );
-  expect(enabled.store.session).toHaveLength(sessionsBeforeReauthentication);
 });
 
 describe.skipIf(!testDatabase)(
