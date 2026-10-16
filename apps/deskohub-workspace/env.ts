@@ -77,6 +77,13 @@ export const createWorkspaceEnv = (runtimeEnv: WorkspaceRuntimeEnv) =>
           };
         }
 
+        if (hasPath("ANALYTICS_WAREHOUSE_SOURCE_TOKEN")) {
+          return {
+            ...issue,
+            message: "Invalid analytics warehouse source token configuration.",
+          };
+        }
+
         if (hasPath("CRON_SECRET")) {
           return {
             ...issue,
@@ -139,6 +146,8 @@ export const env = createWorkspaceEnv({
     process.env.CHECKOUT_RETURN_STATE_TOKEN_SECRET,
   RESERVATION_ACCESS_TOKEN_SECRET: process.env.RESERVATION_ACCESS_TOKEN_SECRET,
   CRON_SECRET: process.env.CRON_SECRET,
+  ANALYTICS_WAREHOUSE_SOURCE_TOKEN:
+    process.env.ANALYTICS_WAREHOUSE_SOURCE_TOKEN,
   NEXI_API_KEY: process.env.NEXI_API_KEY,
   NEXI_API_ORIGIN: process.env.NEXI_API_ORIGIN,
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: process.env.NEXI_CHECKOUT_CURRENCY_OVERRIDE,
