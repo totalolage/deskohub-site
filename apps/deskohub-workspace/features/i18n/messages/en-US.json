@@ -851,7 +851,6 @@
   "accountNavLabel": "Account",
   "siteHeaderAdminLabel": "Admin",
   "siteHeaderAdminRibbonLabel": "Signed in as administrator",
-  "siteHeaderAdminRibbonShortLabel": "Administrator",
   "siteHeaderAdminRibbonAction": "Open admin",
   "accountSignInMetadataTitle": "Sign in | Deskohub Workspace",
   "accountSignInMetadataDescription": "Sign in to your Deskohub Workspace customer account with a secure, single-use magic link.",

@@ -51,7 +51,6 @@ export type SiteHeaderAdministratorEntry = {
   readonly href: string;
   readonly label: string;
   readonly ribbonLabel: string;
-  readonly ribbonShortLabel: string;
   readonly ribbonActionLabel: string;
 };
 
@@ -178,7 +177,6 @@ const createSiteHeaderAdministratorEntry = (
   href: `/${locale}/admin`,
   label: m.siteHeaderAdminLabel({}, { locale }),
   ribbonLabel: m.siteHeaderAdminRibbonLabel({}, { locale }),
-  ribbonShortLabel: m.siteHeaderAdminRibbonShortLabel({}, { locale }),
   ribbonActionLabel: m.siteHeaderAdminRibbonAction({}, { locale }),
 });
 

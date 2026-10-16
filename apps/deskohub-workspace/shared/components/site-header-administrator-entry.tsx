@@ -118,7 +118,7 @@ export function AdministratorRibbon({
         <div className="mx-auto flex h-full w-full max-w-8xl items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
           <span className="inline-flex min-w-0 items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em]">
             <ShieldCheck className="size-4 shrink-0" aria-hidden />
-            <span className="truncate sm:hidden">{entry.ribbonShortLabel}</span>
+            <span className="truncate sm:hidden">{entry.label}</span>
             <span className="hidden truncate sm:inline">
               {entry.ribbonLabel}
             </span>

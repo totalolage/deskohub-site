@@ -372,9 +372,8 @@ for (const locale of locales) {
         await expectNoHorizontalOverflow(page);
         expect(
           await page
-            .getByText(m.siteHeaderAdminRibbonShortLabel({}, { locale }), {
-              exact: true,
-            })
+            .locator("[data-site-header-admin-ribbon]")
+            .getByText(m.siteHeaderAdminLabel({}, { locale }), { exact: true })
             .isVisible()
         ).toBe(true);
 

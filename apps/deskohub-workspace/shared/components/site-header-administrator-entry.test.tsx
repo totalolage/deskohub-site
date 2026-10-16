@@ -46,7 +46,6 @@ const administratorEntry = (
   href: `/${locale}/admin`,
   label: m.siteHeaderAdminLabel({}, { locale }),
   ribbonLabel: m.siteHeaderAdminRibbonLabel({}, { locale }),
-  ribbonShortLabel: m.siteHeaderAdminRibbonShortLabel({}, { locale }),
   ribbonActionLabel: m.siteHeaderAdminRibbonAction({}, { locale }),
 });
 
