@@ -294,6 +294,7 @@ test("refuses cancellation while the confirmation email is still delivering", as
   expect(result).toBeInstanceOf(ReservationAdministrationError);
   expect(result).toMatchObject({
     code: "not_cancellable",
+    reason: "delivery_in_progress",
     message:
       "The confirmation email is still being delivered. Try again after delivery completes.",
   });
@@ -364,7 +365,10 @@ test("does not adopt a pre-existing provider cancellation", async () => {
   );
 
   expect(result).toBeInstanceOf(ReservationAdministrationError);
-  expect(result).toMatchObject({ code: "not_cancellable" });
+  expect(result).toMatchObject({
+    code: "not_cancellable",
+    reason: "cancelled_in_dotypos",
+  });
   expect(claimAdministrationCancellation).not.toHaveBeenCalled();
 });
 

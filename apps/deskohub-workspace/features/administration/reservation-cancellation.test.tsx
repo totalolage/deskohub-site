@@ -15,6 +15,7 @@ import {
   render,
   within,
 } from "@testing-library/react";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -87,19 +88,22 @@ const renderCancellation = async (
     accessGrantUpdatedAt: string | null;
     requiresProviderCredentialRemoval: boolean;
     reservationId: string;
-  }>
+  }>,
+  locale: "cs-CZ" | "en-US" = "en-US"
 ) => {
   const { ReservationCancellation } = await import(
     "./reservation-cancellation"
   );
   return render(
-    <ReservationCancellation
-      accessGrantUpdatedAt="2026-09-28T10:00:00.000Z"
-      canCancel={true}
-      requiresProviderCredentialRemoval={false}
-      reservationId={fixtureReservationId}
-      {...props}
-    />
+    <RouteLocaleProvider locale={locale}>
+      <ReservationCancellation
+        accessGrantUpdatedAt="2026-09-28T10:00:00.000Z"
+        canCancel={true}
+        requiresProviderCredentialRemoval={false}
+        reservationId={fixtureReservationId}
+        {...props}
+      />
+    </RouteLocaleProvider>
   );
 };
 
@@ -215,5 +219,42 @@ describe("ReservationCancellation", () => {
     expect(
       view.queryByRole("form", { name: "Cancel this reservation" })
     ).toBeNull();
+  });
+
+  test("speaks Czech on a Czech route, including validation and outcome", async () => {
+    withActionOptions();
+    const view = await renderCancellation(
+      { requiresProviderCredentialRemoval: true },
+      "cs-CZ"
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Zrušit rezervaci" }));
+    });
+
+    const dialog = within(view.getByRole("dialog"));
+    expect(dialog.getByText("Zrušit tuto rezervaci?")).toBeDefined();
+    expect(
+      dialog.getByRole("checkbox", {
+        name: "Poslat zákazníkovi e-mail o zrušení",
+      })
+    ).toBeDefined();
+    await act(async () => {
+      fireEvent.submit(
+        dialog.getByRole("form", { name: "Zrušit tuto rezervaci" })
+      );
+    });
+    expect(
+      await dialog.findByText(
+        "Potvrďte, že byl PIN ke dveřím odebrán ze zámku."
+      )
+    ).toBeDefined();
+    expect(execute).not.toHaveBeenCalled();
+
+    act(() => {
+      actionOptions?.onSuccess({ data: { email: "sent" } });
+    });
+    expect(
+      view.getByText("Rezervace byla zrušena a zákazník dostal e-mail.")
+    ).toBeDefined();
   });
 });

@@ -39,6 +39,9 @@ import { loadFixtureReservation, loadFixtureReservations } from "./fixtures";
 import { ReservationOrderList } from "./payment-components";
 import { OperationTable, OrderTable } from "./payment-tables";
 import { ReservationAccessAdministration } from "./reservation-access-administration";
+import { ReservationLifecycleMap } from "./reservation-lifecycle-map";
+import { ReservationLookup } from "./reservation-lookup";
+import { getAdministrationReservationLifecycle } from "./reservation-status";
 
 /** Text content with the formatter's non-breaking spaces as plain spaces. */
 const readableText = (element: Element | null | undefined) =>
@@ -172,8 +175,13 @@ describe("administration reservation components", () => {
           index === 1
             ? {
                 ...item,
-                status: { group: "in_progress", label: "Awaiting payment" },
+                status: {
+                  group: "in_progress",
+                  code: "awaiting_payment",
+                  label: "Awaiting payment",
+                },
                 statusNote: "Cancelled in Dotypos",
+                statusNoteCode: "cancelled_in_dotypos",
               }
             : item
         )}
@@ -283,10 +291,16 @@ describe("administration reservation components", () => {
 
     const view = render(
       <RelatedReservationLink
+        locale="en-US"
         reservation={{
           ...reservation,
-          status: { group: "in_progress", label: "Awaiting payment" },
+          status: {
+            group: "in_progress",
+            code: "awaiting_payment",
+            label: "Awaiting payment",
+          },
           statusNote: "Cancelled in Dotypos",
+          statusNoteCode: "cancelled_in_dotypos",
         }}
       />
     );
@@ -295,6 +309,166 @@ describe("administration reservation components", () => {
     expect(view.getByText("Deskohub: Awaiting payment")).toBeDefined();
     expect(view.getByText("Alex Morgan")).toBeDefined();
     expect(view.getByText(testEmailAddress("alex.morgan"))).toBeDefined();
+  });
+
+  test("renders the reservation table in Czech on a Czech route", () => {
+    const { items } = loadFixtureReservations({});
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <ReservationTable
+          reservations={items.map((item, index) =>
+            index === 1
+              ? {
+                  ...item,
+                  status: {
+                    group: "in_progress",
+                    code: "awaiting_payment",
+                    label: "Awaiting payment",
+                  },
+                  statusNote: "Cancelled in Dotypos",
+                  statusNoteCode: "cancelled_in_dotypos",
+                }
+              : item
+          )}
+        />
+      </RouteLocaleProvider>
+    );
+
+    const table = view.getByRole("table", { name: "Rezervace" });
+    for (const header of ["Datum", "Stav", "Zákazník", "Vytvořeno", "Platba"]) {
+      expect(
+        within(table).getByRole("columnheader", { name: header })
+      ).toBeDefined();
+    }
+    expect(within(table).getAllByText("Problém s potvrzením")).not.toHaveLength(
+      0
+    );
+    expect(within(table).getAllByText("Zasedací místnost")).not.toHaveLength(0);
+    expect(within(table).getAllByText("Profi Workstation")).not.toHaveLength(0);
+    expect(within(table).getByText("Zrušeno v Dotyposu")).toBeDefined();
+    expect(within(table).getByText("Deskohub: Čeká na platbu")).toBeDefined();
+    expect(
+      within(table).getAllByRole("link", {
+        name: "Platba ORDER-0198-admin-fixture-attention (otevře se v XPay)",
+      })
+    ).toHaveLength(1);
+    expect(view.queryByText("Awaiting payment")).toBeNull();
+  });
+
+  test("renders an empty Czech reservation table message", () => {
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <ReservationTable reservations={[]} />
+      </RouteLocaleProvider>
+    );
+
+    expect(
+      view.getByText("Tomuto zobrazení neodpovídají žádné rezervace.")
+    ).toBeDefined();
+  });
+
+  test("renders a related reservation in Czech", () => {
+    const reservation = loadFixtureReservations({}).items[4];
+    expect(reservation).toBeDefined();
+    if (!reservation) return;
+
+    const view = render(
+      <RelatedReservationLink
+        locale="cs-CZ"
+        reservation={{
+          ...reservation,
+          customer: null,
+          date: null,
+          endsAt: null,
+          startsAt: null,
+        }}
+      />
+    );
+
+    expect(view.getByText("Zasedací místnost")).toBeDefined();
+    expect(view.getByText("Zákazník není k dispozici")).toBeDefined();
+    expect(view.getByText("Zrušeno")).toBeDefined();
+  });
+
+  test("shows door access in Czech on a Czech route", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail?.accessGrant).not.toBeNull();
+    if (!detail?.accessGrant) return;
+    workspaceUseAction.mockReturnValue({
+      execute: mock(),
+      isExecuting: false,
+    } as never);
+
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <ReservationAccessAdministration
+          grant={{ ...detail.accessGrant, state: "uncertain" }}
+          reservationId={detail.reservation.id}
+        />
+      </RouteLocaleProvider>
+    );
+
+    expect(view.getByText("Přístup ke dveřím")).toBeDefined();
+    expect(view.getByText("Vyžaduje sladění")).toBeDefined();
+    expect(view.getByText("Sladit přístup")).toBeDefined();
+    expect(
+      view.getByText(
+        `U zámku se v aplikaci Igloohome připojte přes Bluetooth a najděte „${detail.accessGrant.accessName}“.`,
+        { exact: false }
+      )
+    ).toBeDefined();
+    expect(view.getByText("Platí od")).toBeDefined();
+  });
+
+  test("looks up reservations in Czech and reports an unmatched ID", async () => {
+    const execute = mock();
+    let onSuccess:
+      | ((args: { readonly data?: { readonly reservationId: null } }) => void)
+      | undefined;
+    workspaceUseAction.mockImplementation((_action, options) => {
+      onSuccess = (options as { onSuccess: typeof onSuccess }).onSuccess;
+      return { execute, isExecuting: false } as never;
+    });
+
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <ReservationLookup />
+      </RouteLocaleProvider>
+    );
+
+    const button = view.getByRole("button", { name: "Najít rezervaci" });
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(
+      await view.findByText("Zadejte ID rezervace nebo platby.")
+    ).toBeDefined();
+    expect(execute).not.toHaveBeenCalled();
+
+    act(() => onSuccess?.({ data: { reservationId: null } }));
+    expect(
+      view.getByText("Tomuto ID neodpovídá žádná rezervace.")
+    ).toBeDefined();
+    expect(view.getByLabelText("ID rezervace nebo platby")).toBeDefined();
+  });
+
+  test("names lifecycle stages and the current condition in Czech", () => {
+    const view = render(
+      <ReservationLifecycleMap
+        lifecycle={getAdministrationReservationLifecycle({
+          fulfillmentState: "not_started",
+          paymentState: "expired",
+          reservationState: "held",
+        })}
+        locale="cs-CZ"
+      />
+    );
+
+    expect(view.getByText("Zahájeno")).toBeDefined();
+    expect(view.getByText("Platba vypršela")).toBeDefined();
+    expect(view.getByText("Aktuální fáze")).toBeDefined();
+    expect(view.getByText("Nebo pokračovat k platbě")).toBeDefined();
+    expect(view.queryByText("Payment expired")).toBeNull();
   });
 
   test("shows a recorded refund instead of the refund requirement", () => {
