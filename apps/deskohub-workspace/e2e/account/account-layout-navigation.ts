@@ -8,6 +8,8 @@ import {
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   accountSectionLandmarks,
+  flagGatedAccountSections,
+  isAccountSectionOffered,
   selectAccountSection,
 } from "./account-sections";
 import type { AccountReviewDestination } from "./review-screenshots";
@@ -18,6 +20,7 @@ const accountSections = [
   "reservations",
   "referrals",
   "profile",
+  "security",
   "billing",
   "legal",
   "danger",
@@ -154,6 +157,11 @@ export async function verifyAccountLayoutNavigation(
     const desktopSections: readonly AccountSection[] =
       capture === undefined ? [desktopSentinelSection] : accountSections;
     for (const section of desktopSections) {
+      if (
+        flagGatedAccountSections.includes(section) &&
+        !(await isAccountSectionOffered(page, section))
+      )
+        continue;
       await switchAccountSection(page, section, desktopViewport);
       if (capture !== undefined) {
         await runAccountLayoutNavigationPhase(

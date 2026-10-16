@@ -384,11 +384,11 @@ describe("DeleteAccountCard", () => {
     expect(
       view.getByText(
         "Your sign-in is too old for deleting the account. Use a new magic link, then confirm the deletion again."
-      )
-    ).toBeTruthy();
+      ).className
+    ).not.toContain("sr-only");
 
     await act(async () => {
-      fireEvent.click(view.getByText("Email me a new link"));
+      fireEvent.click(view.getByText("Confirm by email"));
     });
 
     expect(signInMagicLink).toHaveBeenCalledWith(
@@ -398,6 +398,91 @@ describe("DeleteAccountCard", () => {
       })
     );
     expect(view.getByText(/a new link is on its way/)).toBeTruthy();
+  });
+
+  const requestStaleDeletion = async (view: ReturnType<typeof render>) => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: "reauthentication-required" } })
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          m.accountDeletionConfirmLabel({}, { locale: "en-US" })
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Delete permanently"));
+    });
+  };
+
+  test("presents the passkey-era confirmation while passkeys are on, even without one", async () => {
+    const { DeleteAccountCard } = await import("./delete-account-card");
+    const view = render(
+      <DeleteAccountCard
+        email={adaAddress}
+        locale="en-US"
+        deletionPending={false}
+        passkeys={{ confirmWithPasskey: undefined }}
+      />
+    );
+    await requestStaleDeletion(view);
+
+    expect(
+      view.getByRole("heading", { name: "Sign in again to delete" })
+    ).toBeTruthy();
+    expect(
+      view.getByText(m.accountDeletionReauthBody({}, { locale: "en-US" }))
+        .className
+    ).toContain("sr-only");
+    expect(
+      view.container.ownerDocument.querySelector("svg.lucide-shield-check")
+    ).toBeTruthy();
+    expect(
+      view.queryByRole("button", {
+        name: m.accountReauthPasskey({}, { locale: "en-US" }),
+      })
+    ).toBeNull();
+    expect(
+      view.getByRole("button", {
+        name: m.accountReauthSendEmail({}, { locale: "en-US" }),
+      }).id
+    ).toBe("delete-account-reauth-send");
+  });
+
+  test("confirms with a passkey and returns to the final confirmation", async () => {
+    const confirmWithPasskey = mock(() =>
+      Promise.resolve("confirmed" as const)
+    );
+    const { DeleteAccountCard } = await import("./delete-account-card");
+    const view = render(
+      <DeleteAccountCard
+        email={adaAddress}
+        locale="en-US"
+        deletionPending={false}
+        passkeys={{ confirmWithPasskey }}
+      />
+    );
+    await requestStaleDeletion(view);
+
+    expect(
+      view.getByText(
+        m.accountDeletionReauthPasskeyBody({}, { locale: "en-US" })
+      ).className
+    ).toContain("sr-only");
+    const passkey = view.getByRole("button", {
+      name: m.accountReauthPasskey({}, { locale: "en-US" }),
+    });
+    expect(passkey.id).toBe("delete-account-reauth-passkey");
+    await act(async () => {
+      fireEvent.click(passkey);
+    });
+
+    expect(confirmWithPasskey).toHaveBeenCalledTimes(1);
+    expect(
+      view.getByText(m.accountDeletionConfirmTitle({}, { locale: "en-US" }))
+    ).toBeTruthy();
   });
 
   test("re-authenticates with a typed code and returns to the final confirmation", async () => {
@@ -439,7 +524,7 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
     await act(async () => {
-      fireEvent.click(view.getByText("Email me a new link"));
+      fireEvent.click(view.getByText("Confirm by email"));
     });
 
     expect(
@@ -525,7 +610,7 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
     await act(async () => {
-      fireEvent.click(view.getByText("Email me a new link"));
+      fireEvent.click(view.getByText("Confirm by email"));
     });
     const resend = view.getByText(
       m.accountSignInCodeResend({}, { locale: "en-US" })
@@ -599,7 +684,7 @@ describe("DeleteAccountCard", () => {
     });
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     const send = view.getByRole("button", {
-      name: "Email me a new link",
+      name: "Confirm by email",
     }) as HTMLButtonElement;
     await act(async () => {
       fireEvent.click(send);
@@ -656,9 +741,7 @@ describe("DeleteAccountCard", () => {
     });
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     await act(async () => {
-      fireEvent.click(
-        view.getByRole("button", { name: "Email me a new link" })
-      );
+      fireEvent.click(view.getByRole("button", { name: "Confirm by email" }));
     });
 
     expect(view.getByRole("alert").textContent).toBe(
@@ -667,7 +750,7 @@ describe("DeleteAccountCard", () => {
     expect(
       (
         view.getByRole("button", {
-          name: "Email me a new link",
+          name: "Confirm by email",
         }) as HTMLButtonElement
       ).disabled
     ).toBe(false);
@@ -717,7 +800,7 @@ describe("DeleteAccountCard", () => {
     });
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     const send = view.getByRole("button", {
-      name: "Email me a new link",
+      name: "Confirm by email",
     }) as HTMLButtonElement;
     await act(async () => {
       fireEvent.click(send);

@@ -47,6 +47,8 @@ describe.skipIf(!testDatabase)(
         }),
         secrets: [{ version: 1, value: SECRET }],
         allowedHosts: [HOST],
+        passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
+        arePasskeysEnabled: async () => false,
         httpsOnly: true,
         areAccountsEnabled: async () => true,
         sendMagicLink: (data) => {

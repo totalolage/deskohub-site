@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { passkey } from "@better-auth/passkey";
 import { getAuthTables } from "better-auth/db";
 import { getTableConfig, PgDialect, type PgTable } from "drizzle-orm/pg-core";
 import { authOptions } from "@/features/account/backend/auth/auth-options";
 import {
   authAccount,
+  authPasskey,
   authRateLimit,
   authSession,
   authUser,
@@ -21,8 +23,9 @@ interface BetterAuthField {
   };
 }
 
+// An acronym such as the passkey `credentialID` is one word.
 const snakeCase = (field: string) =>
-  field.replace(/[A-Z]/g, (character) => `_${character.toLowerCase()}`);
+  field.replace(/[A-Z]+/g, (word) => `_${word.toLowerCase()}`);
 
 const drizzleAuthTables = {
   user: authUser,
@@ -30,6 +33,7 @@ const drizzleAuthTables = {
   account: authAccount,
   verification: authVerification,
   rateLimit: authRateLimit,
+  passkey: authPasskey,
 };
 
 const uniqueIndexColumns = (table: PgTable) =>
@@ -38,7 +42,8 @@ const uniqueIndexColumns = (table: PgTable) =>
     .flatMap((index) => index.config.columns.map((column) => column.name));
 
 describe("Better Auth schema", () => {
-  const authTables = getAuthTables(authOptions);
+  // The runtime adds the passkey plugin, the only plugin that brings a table.
+  const authTables = getAuthTables({ ...authOptions, plugins: [passkey()] });
 
   test("isolates every auth table in the auth schema", () => {
     for (const [model, table] of Object.entries(drizzleAuthTables)) {
@@ -135,6 +140,10 @@ describe("Better Auth schema", () => {
     expect(new PgDialect().sqlToQuery(check!.value).sql).toBe(
       `"auth"."user"."locale" in ('en-US', 'cs-CZ')`
     );
+  });
+
+  test("keeps one passkey row per WebAuthn credential", () => {
+    expect(uniqueIndexColumns(authPasskey)).toEqual(["credential_id"]);
   });
 
   test("keeps timestamps decoding as Date, not Temporal", () => {
