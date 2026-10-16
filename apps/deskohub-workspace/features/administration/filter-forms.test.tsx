@@ -326,4 +326,51 @@ describe("administration filter forms", () => {
         ?.textContent
     ).toBe(m.reservationOfficeProductTitle({}, { locale: "cs-CZ" }));
   });
+
+  test("labels the reservation filters in Czech", () => {
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        {reservationFilterForm({ status: "cancelled" })}
+      </RouteLocaleProvider>
+    );
+
+    const status = view.getByLabelText("Stav v Deskohubu") as HTMLSelectElement;
+    expect(status.selectedOptions[0]?.textContent).toBe("Zrušeno");
+    expect(view.getByLabelText("Začátek od")).toBeDefined();
+    expect(
+      view.getByRole("navigation", { name: "Rychlý výběr termínu rezervace" })
+    ).toBeDefined();
+    expect(
+      view.getByRole("link", { name: "Nadcházející" }).getAttribute("href")
+    ).toBe("/cs-CZ/admin/reservations?from=2026-08-13&status=cancelled");
+    expect(view.getByRole("link", { name: "Vymazat" })).toBeDefined();
+    expect(view.getByRole("button", { name: "Použít filtry" })).toBeDefined();
+  });
+
+  test("labels the payment filters in Czech", () => {
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <BookingsAdministrationFilterForm
+          input={{ date: "2026-08-11", direction: "asc", sort: "booking" }}
+        />
+        <OperationsAdministrationFilterForm
+          input={{}}
+          range={{ from: "2026-07-01", to: "2026-07-08" }}
+        />
+      </RouteLocaleProvider>
+    );
+
+    expect(view.getByLabelText("Datum rezervace stolu")).toBeDefined();
+    expect(
+      view.getByRole("button", { name: "Zobrazit rezervace stolů" })
+    ).toBeDefined();
+    const origin = view.getByLabelText("Původ") as HTMLSelectElement;
+    expect(origin.selectedOptions[0]?.textContent).toBe("Vše");
+    expect(
+      Array.from(origin.options).map(({ textContent }) => textContent)
+    ).toContain("Backoffice");
+    expect(
+      view.getByRole("button", { name: "Zobrazit operace" })
+    ).toBeDefined();
+  });
 });

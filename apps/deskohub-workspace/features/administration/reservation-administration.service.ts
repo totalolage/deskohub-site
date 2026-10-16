@@ -25,10 +25,26 @@ type ReservationCancellationResult = {
   readonly email: "not_requested" | "sent" | "failed";
 };
 
+export type ReservationCancellationFailureReason =
+  | "not_found"
+  | "delivery_in_progress"
+  | "confirmation_in_progress"
+  | "invalid_state"
+  | "cancelled_in_dotypos"
+  | "pending_payment"
+  | "changed"
+  | "reservation_unavailable"
+  | "details_unavailable"
+  | "claim_failed"
+  | "dotypos_failed"
+  | "record_failed";
+
 export class ReservationAdministrationError extends Data.TaggedError(
   "ReservationAdministrationError"
 )<{
   readonly code: "not_found" | "not_cancellable" | "cancellation_failed";
+  /** Why the cancellation stopped, so the Admin UI can explain it in the operator's language. */
+  readonly reason: ReservationCancellationFailureReason;
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -66,6 +82,7 @@ export class ReservationAdministrationService extends Context.Service<
               .pipe(
                 Effect.mapError((cause) =>
                   cancellationFailed(
+                    "reservation_unavailable",
                     "The reservation could not be loaded.",
                     cause
                   )
@@ -74,6 +91,7 @@ export class ReservationAdministrationService extends Context.Service<
             if (!current) {
               return yield* new ReservationAdministrationError({
                 code: "not_found",
+                reason: "not_found",
                 message: "The reservation was not found.",
               });
             }
@@ -99,6 +117,7 @@ export class ReservationAdministrationService extends Context.Service<
               if (current.fulfillmentState === "awaiting_delivery") {
                 return yield* new ReservationAdministrationError({
                   code: "not_cancellable",
+                  reason: "delivery_in_progress",
                   message:
                     "The confirmation email is still being delivered. Try again after delivery completes.",
                 });
@@ -106,12 +125,14 @@ export class ReservationAdministrationService extends Context.Service<
               if (current.fulfillmentState === "processing") {
                 return yield* new ReservationAdministrationError({
                   code: "not_cancellable",
+                  reason: "confirmation_in_progress",
                   message:
                     "The reservation is being confirmed. Try again after confirmation finishes.",
                 });
               }
               return yield* new ReservationAdministrationError({
                 code: "not_cancellable",
+                reason: "invalid_state",
                 message:
                   "The reservation cannot be cancelled in its current state.",
               });
@@ -122,6 +143,7 @@ export class ReservationAdministrationService extends Context.Service<
               .pipe(
                 Effect.mapError((cause) =>
                   cancellationFailed(
+                    "details_unavailable",
                     "The current reservation details could not be loaded.",
                     cause
                   )
@@ -135,6 +157,7 @@ export class ReservationAdministrationService extends Context.Service<
             ) {
               return yield* new ReservationAdministrationError({
                 code: "not_cancellable",
+                reason: "cancelled_in_dotypos",
                 message:
                   "Dotypos already reports this reservation as cancelled. Use the recovery workflow instead.",
               });
@@ -143,6 +166,7 @@ export class ReservationAdministrationService extends Context.Service<
               if (!forcedPendingPayment || !current.activePaymentAttemptId) {
                 return yield* new ReservationAdministrationError({
                   code: "not_cancellable",
+                  reason: "pending_payment",
                   message:
                     "The reservation has a pending payment. Retry with force only after reviewing the provider payment.",
                 });
@@ -171,6 +195,7 @@ export class ReservationAdministrationService extends Context.Service<
               .pipe(
                 Effect.mapError((cause) =>
                   cancellationFailed(
+                    "claim_failed",
                     "The reservation could not be claimed for cancellation.",
                     cause
                   )
@@ -179,6 +204,7 @@ export class ReservationAdministrationService extends Context.Service<
             if (!claimed) {
               return yield* new ReservationAdministrationError({
                 code: "not_cancellable",
+                reason: "changed",
                 message:
                   "The reservation changed while cancellation was starting, or an active door PIN still needs removal. Refresh and try again.",
               });
@@ -214,6 +240,7 @@ export class ReservationAdministrationService extends Context.Service<
                   ),
                   Effect.mapError((cause) =>
                     cancellationFailed(
+                      "dotypos_failed",
                       "Dotypos could not cancel the reservation.",
                       cause
                     )
@@ -244,6 +271,7 @@ export class ReservationAdministrationService extends Context.Service<
                 ),
                 Effect.mapError((cause) =>
                   cancellationFailed(
+                    "record_failed",
                     "The completed cancellation could not be recorded.",
                     cause
                   )
@@ -313,9 +341,14 @@ const sendLoadedCancellationEmail = ({
     Effect.map(Option.getOrElse(() => "not_requested" as const))
   );
 
-const cancellationFailed = (message: string, cause: unknown) =>
+const cancellationFailed = (
+  reason: ReservationCancellationFailureReason,
+  message: string,
+  cause: unknown
+) =>
   new ReservationAdministrationError({
     code: "cancellation_failed",
+    reason,
     message,
     cause,
   });

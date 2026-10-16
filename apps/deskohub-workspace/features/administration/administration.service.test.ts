@@ -371,6 +371,11 @@ describe("AdministrationService", () => {
 
     expect(result.items[0]?.statusNote).toBe("Recovery in progress");
     expect(result.items[0]?.status.label).toBe("Recovering payment");
+    expect(result.items[0]).toMatchObject({
+      product: { kind: "meeting-room" },
+      status: { code: "recovering_payment" },
+      statusNoteCode: "recovery_in_progress",
+    });
     expect(recoveryOrderByCalls).toBe(1);
   });
 
@@ -1114,7 +1119,7 @@ describe("AdministrationService", () => {
     }
   });
 
-  test("loads a reservation breadcrumb from only its product projection", async () => {
+  test("loads a reservation product from only its details projection", async () => {
     const database = {
       select: () =>
         makeQuery([{ reservationDetails: { kind: "meeting-room" } }] as const),
@@ -1122,7 +1127,7 @@ describe("AdministrationService", () => {
 
     const result = await Effect.gen(function* () {
       const administration = yield* AdministrationService;
-      return yield* administration.loadReservationBreadcrumbLabel(
+      return yield* administration.loadReservationProduct(
         "workspace-reservation"
       );
     }).pipe(
@@ -1149,7 +1154,7 @@ describe("AdministrationService", () => {
       Effect.runPromise
     );
 
-    expect(result).toBe("Meeting Room");
+    expect(result).toEqual({ kind: "meeting-room" });
   });
 
   test("loads a booking breadcrumb without the full booking detail", async () => {

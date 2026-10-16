@@ -7,6 +7,7 @@ import {
   Pagination,
 } from "@/features/administration/components";
 import { BookingsAdministrationFilterForm } from "@/features/administration/filter-forms";
+import { m } from "@/features/administration/i18n";
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
@@ -24,19 +25,32 @@ export default function BookingsAdministrationPage({
 }: {
   readonly searchParams: AdministrationSearchParams;
 }) {
+  return <BookingsAdministration searchParams={searchParams} />;
+}
+
+async function BookingsAdministration({
+  searchParams,
+}: {
+  readonly searchParams: AdministrationSearchParams;
+}) {
+  const locale = await getRequestLocale();
   const { input, result } = loadAdministrationBookingsPage(searchParams);
 
   return (
     <AdministrationPage>
-      <h1 className="sr-only">Bookings</h1>
+      <h1 className="sr-only">
+        {m.administrationBookingListTitle({}, { locale })}
+      </h1>
       <AdministrationTableToolbar
         count={
           <Suspense
             fallback={
-              <AdministrationCountLoading label="Loading booking count" />
+              <AdministrationCountLoading
+                label={m.administrationBookingCountLoading({}, { locale })}
+              />
             }
           >
-            <BookingCount result={result} />
+            <BookingCount locale={locale} result={result} />
           </Suspense>
         }
         filters={
@@ -44,17 +58,17 @@ export default function BookingsAdministrationPage({
             <BookingFiltersContent input={input} />
           </Suspense>
         }
-        label="booking table controls"
+        label={m.administrationBookingTableControls({}, { locale })}
       />
       <Suspense
         fallback={
           <AdministrationCollectionLoading
-            label="Loading bookings"
+            label={m.administrationBookingListLoading({}, { locale })}
             columns={5}
           />
         }
       >
-        <BookingResultsContent input={input} result={result} />
+        <BookingResultsContent input={input} locale={locale} result={result} />
       </Suspense>
     </AdministrationPage>
   );
@@ -67,15 +81,17 @@ type BookingsData = {
 };
 
 async function BookingCount({
+  locale,
   result,
 }: {
+  readonly locale: Locale;
   readonly result: Promise<BookingsData["result"]>;
 }) {
   const count = (await result).total;
   return (
     <AdministrationTableCount
       count={count}
-      label={`${count} booking${count === 1 ? "" : "s"}`}
+      label={m.administrationBookingCount({ count }, { locale })}
     />
   );
 }
@@ -90,13 +106,14 @@ async function BookingFiltersContent({
 
 async function BookingResultsContent({
   input,
+  locale,
   result,
 }: {
   readonly input: Promise<BookingsData["input"]>;
+  readonly locale: Locale;
   readonly result: Promise<BookingsData["result"]>;
 }) {
   const [resolvedInput, resolvedResult] = await Promise.all([input, result]);
-  const locale = await getRequestLocale();
   return (
     <BookingResults
       input={resolvedInput}
