@@ -66,6 +66,22 @@ export const signInEmailLimit = {
 } as const;
 
 /**
+ * Per-IP limits on the passkey endpoints, in line with the sign-in limits.
+ * Option generation runs on every sign-in page visit (the email field's
+ * passkey autofill), so it allows more requests than the ceremonies that
+ * verify or change credentials. No window exceeds the magic-link window the
+ * cleanup cron keeps rate-limit rows for.
+ */
+const betterAuthPasskeyRateLimits = {
+  "/passkey/generate-authenticate-options": { window: 600, max: 30 },
+  "/passkey/verify-authentication": { window: 600, max: 10 },
+  "/passkey/generate-register-options": { window: 600, max: 10 },
+  "/passkey/verify-registration": { window: 600, max: 10 },
+  "/passkey/update-passkey": { window: 600, max: 20 },
+  "/passkey/delete-passkey": { window: 600, max: 20 },
+} as const;
+
+/**
  * Connectionless Better Auth options shared between schema generation and the
  * runtime instance. The runtime singleton adds the database adapter, dynamic
  * `baseURL`, secrets, plugins, and lifecycle hooks on top of this object.
@@ -103,6 +119,7 @@ export const authOptions = {
   rateLimit: {
     enabled: true,
     storage: "database",
+    customRules: betterAuthPasskeyRateLimits,
   },
   advanced: {
     crossSubDomainCookies: {

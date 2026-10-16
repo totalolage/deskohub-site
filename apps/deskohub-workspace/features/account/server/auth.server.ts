@@ -4,7 +4,11 @@ import { Effect } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import { env } from "@/env";
-import { resolveBetterAuthAllowedHosts } from "@/features/account/backend/auth/auth-hosts";
+import {
+  type BetterAuthHostEnvironment,
+  resolveBetterAuthAllowedHosts,
+  resolvePasskeyRelyingParty,
+} from "@/features/account/backend/auth/auth-hosts";
 import { parseBetterAuthSecrets } from "@/features/account/backend/auth/auth-secrets";
 import {
   makeWorkspaceAuth,
@@ -17,6 +21,7 @@ import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protec
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   areAccountsEnabled,
+  arePasskeysEnabled,
   isSignInCodeEnabled,
 } from "./account-feature-flag.server";
 
@@ -25,16 +30,25 @@ if (secrets.kind === "invalid") {
   throw new Error(`Workspace account bootstrap failed: ${secrets.message}`);
 }
 
-const allowedHosts = resolveBetterAuthAllowedHosts({
+const hostEnvironment: BetterAuthHostEnvironment = {
   vercelEnv: env.VERCEL_ENV,
   customerFacingHost: workspaceSiteConstants.brand.domain,
   projectProductionUrl: env.VERCEL_PROJECT_PRODUCTION_URL,
   deploymentUrl: env.VERCEL_URL,
   branchUrl: env.VERCEL_BRANCH_URL,
-});
+};
+
+const allowedHosts = resolveBetterAuthAllowedHosts(hostEnvironment);
 if (allowedHosts.kind === "invalid") {
   throw new Error(
     `Workspace account bootstrap failed: ${allowedHosts.message}`
+  );
+}
+
+const passkeyRelyingParty = resolvePasskeyRelyingParty(hostEnvironment);
+if (passkeyRelyingParty.kind === "invalid") {
+  throw new Error(
+    `Workspace account bootstrap failed: ${passkeyRelyingParty.message}`
   );
 }
 
@@ -47,9 +61,11 @@ export const auth = makeWorkspaceAuth({
   database: makeWorkspaceAuthDatabase(),
   secrets: secrets.secrets,
   allowedHosts: allowedHosts.hosts,
+  passkeyRelyingParty: passkeyRelyingParty.relyingParty,
   httpsOnly: env.VERCEL_ENV !== "development",
   areAccountsEnabled,
   isSignInCodeEnabled,
+  arePasskeysEnabled,
   verifyHuman: (input) =>
     Effect.flatMap(BotProtectionService, (botProtection) =>
       botProtection.verifyHuman(input)
