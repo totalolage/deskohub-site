@@ -2,6 +2,8 @@
 
 import type { NexiOrderId } from "@deskohub/nexi";
 import { useMemo } from "react";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
 import type {
@@ -62,6 +64,7 @@ export function ReservationTable({
   readonly showCustomer?: boolean;
   readonly sorting?: ReservationTableSorting;
 }) {
+  const locale = useRouteLocale();
   const columns = useMemo<
     AdministrationDataTableColumn<AdministrationReservationSummary>[]
   >(
@@ -69,7 +72,9 @@ export function ReservationTable({
       {
         accessorFn: (reservation) =>
           reservation.date ?? reservation.startsAt ?? "",
-        cell: ({ row }) => <ReservationDate reservation={row.original} />,
+        cell: ({ row }) => (
+          <ReservationDate locale={locale} reservation={row.original} />
+        ),
         header: "Date",
         id: "date",
       },
@@ -103,7 +108,7 @@ export function ReservationTable({
         accessorKey: "createdAt",
         cell: ({ row }) => (
           <span className="text-sm text-navy-blue/65">
-            {formatAdministrationDateTime(row.original.createdAt)}
+            {formatAdministrationDateTime(row.original.createdAt, locale)}
           </span>
         ),
         header: "Created",
@@ -111,13 +116,15 @@ export function ReservationTable({
       },
       {
         accessorFn: (reservation) => reservation.latestPayment?.amount.value,
-        cell: ({ row }) => <ReservationPayment reservation={row.original} />,
+        cell: ({ row }) => (
+          <ReservationPayment locale={locale} reservation={row.original} />
+        ),
         enableSorting: false,
         header: "Payment",
         id: "payment",
       },
     ],
-    [showCustomer]
+    [locale, showCustomer]
   );
 
   if (reservations.length === 0) {
@@ -160,8 +167,10 @@ export function ReservationTable({
                       </Link>
                     </p>
                     <p className="mt-1 text-sm text-navy-blue/65">
-                      {formatAdministrationReservationDate(reservation) ??
-                        "Booking details unavailable"}
+                      {formatAdministrationReservationDate(
+                        reservation,
+                        locale
+                      ) ?? "Booking details unavailable"}
                     </p>
                   </div>
                   <ReservationStatus reservation={reservation} alignRight />
@@ -171,13 +180,18 @@ export function ReservationTable({
                   {reservation.latestPayment && (
                     <>
                       {" "}
-                      · <PaymentAmount payment={reservation.latestPayment} />
+                      ·{" "}
+                      <PaymentAmount
+                        locale={locale}
+                        payment={reservation.latestPayment}
+                      />
                     </>
                   )}
                 </p>
                 {reservation.latestPayment?.providerOrderId && (
                   <PaymentLink
                     className="mt-2 block break-all font-mono text-xs text-burned-orange-ink underline underline-offset-4"
+                    locale={locale}
                     providerOrderId={reservation.latestPayment.providerOrderId}
                   />
                 )}
@@ -199,8 +213,10 @@ export function ReservationTable({
 }
 
 function ReservationDate({
+  locale,
   reservation,
 }: {
+  readonly locale: Locale;
   readonly reservation: AdministrationReservationSummary;
 }) {
   return (
@@ -209,7 +225,8 @@ function ReservationDate({
         className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
         href={`/admin/reservations/${reservation.id}`}
       >
-        {formatAdministrationReservationDate(reservation) ?? "Date unavailable"}
+        {formatAdministrationReservationDate(reservation, locale) ??
+          "Date unavailable"}
       </Link>
       <p className="mt-1 text-xs text-navy-blue/65">{reservation.typeLabel}</p>
     </>
@@ -290,8 +307,10 @@ function ReservationReference({
 }
 
 function ReservationPayment({
+  locale,
   reservation,
 }: {
+  readonly locale: Locale;
   readonly reservation: AdministrationReservationSummary;
 }) {
   const payment = reservation.latestPayment;
@@ -301,14 +320,15 @@ function ReservationPayment({
   return (
     <>
       <p className="font-medium">
-        <PaymentAmount payment={payment} />
+        <PaymentAmount locale={locale} payment={payment} />
       </p>
       <p className="mt-1 text-xs text-navy-blue/65">
-        <PaymentStatusText payment={payment} />
+        <PaymentStatusText locale={locale} payment={payment} />
       </p>
       {payment.providerOrderId && (
         <PaymentLink
           className="relative z-10 mt-1 block max-w-44 break-all font-mono text-xs text-burned-orange-ink underline underline-offset-4"
+          locale={locale}
           providerOrderId={payment.providerOrderId}
         />
       )}
@@ -318,15 +338,18 @@ function ReservationPayment({
 
 function PaymentLink({
   className,
+  locale,
   providerOrderId,
 }: {
   readonly className: string;
+  readonly locale: Locale;
   readonly providerOrderId: NexiOrderId;
 }) {
   return (
     <NexiOrderLink
       accessibleLabel={`Payment ${providerOrderId}`}
       className={className}
+      locale={locale}
       orderId={providerOrderId}
     />
   );

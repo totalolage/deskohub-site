@@ -1,34 +1,61 @@
 import type { DatePeriodUnitType } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
+import { formatAdministrationPlainDate } from "@/features/administration/formatters";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
 import type { DatePeriod } from "../date-period";
+import type { AudienceMessage } from "./audiences/audience-attribute-wording";
 
-/** A unit's name for one, and for any other count. */
-export const datePeriodUnitNames: Readonly<
-  Record<DatePeriodUnitType, { readonly one: string; readonly other: string }>
+const lastPeriods: Readonly<
+  Record<DatePeriodUnitType, AudienceMessage<{ readonly count: number }>>
 > = {
-  day: { one: "day", other: "days" },
-  week: { one: "week", other: "weeks" },
-  month: { one: "month", other: "months" },
-  year: { one: "year", other: "years" },
+  day: m.emailCampaignsAudienceSummaryPeriodLastDay,
+  week: m.emailCampaignsAudienceSummaryPeriodLastWeek,
+  month: m.emailCampaignsAudienceSummaryPeriodLastMonth,
+  year: m.emailCampaignsAudienceSummaryPeriodLastYear,
 };
 
+/** A period's date in `locale`; a date still being entered reads as a gap. */
+const periodDate = (date: string, locale: Locale) =>
+  date === ""
+    ? m.emailCampaignsAudienceSummaryGap({}, { locale })
+    : formatAdministrationPlainDate(date, locale);
+
 /**
- * The period as the Admin UI and audience summaries name it: "at any time",
- * "in the last 10 days", "from 2026-01-01 to 2026-03-31", "since 2026-01-01"
- * (through now), "from 2026-01-01 onward" (future included), or "until
- * 2026-01-01".
+ * The period as audience summaries name it: "at any time", "in the last 10
+ * days", "from Jan 1, 2026 to Mar 31, 2026", "since Jan 1, 2026" (through
+ * now), "from Jan 1, 2026 onward" (future included), or "until Jan 1, 2026",
+ * with dates in `locale`.
  */
-export const describeDatePeriod = (period: DatePeriod): string =>
-  Match.value(period).pipe(
+export const describeDatePeriod = (
+  period: DatePeriod,
+  locale: Locale
+): string => {
+  const options = { locale };
+  return Match.value(period).pipe(
     Match.tagsExhaustive({
-      AnyTime: () => "at any time",
-      Last: ({ count, unit }) =>
-        count === 1
-          ? `in the last ${datePeriodUnitNames[unit].one}`
-          : `in the last ${count} ${datePeriodUnitNames[unit].other}`,
-      Range: ({ from, to }) => `from ${from} to ${to}`,
-      Since: ({ date }) => `since ${date}`,
-      Onward: ({ date }) => `from ${date} onward`,
-      Until: ({ date }) => `until ${date}`,
+      AnyTime: () => m.emailCampaignsAudienceSummaryPeriodAnyTime({}, options),
+      Last: ({ count, unit }) => lastPeriods[unit]({ count }, options),
+      Range: ({ from, to }) =>
+        m.emailCampaignsAudienceSummaryPeriodRange(
+          { from: periodDate(from, locale), to: periodDate(to, locale) },
+          options
+        ),
+      Since: ({ date }) =>
+        m.emailCampaignsAudienceSummaryPeriodSince(
+          { date: periodDate(date, locale) },
+          options
+        ),
+      Onward: ({ date }) =>
+        m.emailCampaignsAudienceSummaryPeriodOnward(
+          { date: periodDate(date, locale) },
+          options
+        ),
+      Until: ({ date }) =>
+        m.emailCampaignsAudienceSummaryPeriodUntil(
+          { date: periodDate(date, locale) },
+          options
+        ),
     })
   );
+};

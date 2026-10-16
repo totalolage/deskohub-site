@@ -25,9 +25,11 @@ mock.module("@/instrumentation", () => ({
     getLogger: () => ({ emit: () => undefined }),
   },
 }));
+let refererLocale = "en-US";
 mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [] }),
-  headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
+  headers: async () =>
+    new Headers({ referer: `https://deskohub.test/${refererLocale}` }),
 }));
 
 let authorizationCalls = 0;
@@ -142,6 +144,7 @@ const saveErrorCases = [
 ] as const;
 
 beforeEach(() => {
+  refererLocale = "en-US";
   authorizationCalls = 0;
   authorizationResult = Effect.succeed("Fixture Operator");
   createResult = Effect.succeed({ id: campaignId });
@@ -276,6 +279,16 @@ describe("email campaign composer actions", () => {
       expect(revalidatePath).not.toHaveBeenCalled();
     }
   );
+
+  test("words the public message in the admin's language", async () => {
+    refererLocale = "cs-CZ";
+    deleteResult = Effect.fail(new CampaignNotFound({ campaignId }));
+
+    const { deleteCampaign: deleteCampaignAction } = await import("./actions");
+    const result = await deleteCampaignAction({ campaignId });
+
+    expect(result?.serverError).toBe("Tato kampaň už neexistuje.");
+  });
 
   test("does not delete a campaign when administrator authorization fails", async () => {
     authorizationResult = Effect.fail(

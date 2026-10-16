@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { formatNamesWithNumericRanges } from "./number";
+import { formatCount, formatNamesWithNumericRanges } from "./number";
+
+describe("formatCount", () => {
+  test("groups digits for the locale", () => {
+    expect(formatCount(1000, "en-US")).toBe("1,000");
+    expect(formatCount(1000, "cs-CZ")).toBe("1\u00a0000");
+    expect(formatCount(7, "cs-CZ")).toBe("7");
+  });
+});
 
 describe("formatNamesWithNumericRanges", () => {
   test("formats the required table-name example", () => {

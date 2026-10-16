@@ -7,7 +7,8 @@ import { useState } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationPageHeader } from "@/features/administration/components";
-import { type Locale, m } from "@/features/i18n";
+import { m } from "@/features/administration/i18n";
+import { m as customerMessages, type Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -42,12 +43,14 @@ import type {
 import type { CampaignId } from "../../campaign-identifiers";
 import type { AudienceOption } from "../audiences/audience-page-data.server";
 import { CampaignBodyEditor } from "../editor/campaign-body-editor";
+import { campaignLocaleName } from "../sending/campaign-locale-names";
 import { CampaignSendControls } from "../sending/campaign-send-controls";
 import { createCampaign, updateCampaign } from "./actions";
 import {
-  CampaignComposerFields,
+  type CampaignComposerFields,
   type CampaignComposerLocaleFields,
   composerLocales,
+  createCampaignComposerFields,
   hasLocaleContent,
   localeContentIssues,
   toCampaignLocalizedContent,
@@ -71,29 +74,34 @@ export type CampaignComposerDraft = {
   readonly contentLocales: readonly Locale[];
 };
 
-const localeLabels: Readonly<Record<Locale, string>> = {
-  "cs-CZ": "Czech",
-  "en-US": "English",
-};
+type CampaignComposerSchema = ReturnType<typeof createCampaignComposerFields>;
 
 const purposeOptions: ReadonlyArray<{
   readonly value: CampaignPurpose;
-  readonly label: string;
-  readonly description: string;
+  readonly label: typeof m.emailCampaignsComposerPurposeMarketing;
+  readonly description: typeof m.emailCampaignsComposerPurposeMarketingDescription;
 }> = [
   {
     value: "marketing",
-    label: "Marketing",
-    description:
-      "Only customers with marketing consent. Every email links to unsubscribe.",
+    label: m.emailCampaignsComposerPurposeMarketing,
+    description: m.emailCampaignsComposerPurposeMarketingDescription,
   },
   {
     value: "operational",
-    label: "Operational",
-    description:
-      "Service announcements for every matching customer. The footer says why they get it.",
+    label: m.emailCampaignsComposerPurposeOperational,
+    description: m.emailCampaignsComposerPurposeOperationalDescription,
   },
 ];
+
+const singleLocaleAudienceMessages = {
+  "cs-CZ": m.emailCampaignsComposerSingleLocaleAudienceCzech,
+  "en-US": m.emailCampaignsComposerSingleLocaleAudienceEnglish,
+} as const satisfies Record<Locale, (...args: never) => string>;
+
+const hiddenContentMessages = {
+  "cs-CZ": m.emailCampaignsComposerHiddenContentCzech,
+  "en-US": m.emailCampaignsComposerHiddenContentEnglish,
+} as const satisfies Record<Locale, (...args: never) => string>;
 
 const noAudience = "none";
 
@@ -113,11 +121,11 @@ export function CampaignComposer({
   const router = useRouter();
   const routeLocale = useRouteLocale();
   const form = useForm<
-    typeof CampaignComposerFields.Encoded,
+    CampaignComposerSchema["Encoded"],
     unknown,
     CampaignComposerFields
   >({
-    resolver: effectSchemaResolver(CampaignComposerFields),
+    resolver: effectSchemaResolver(createCampaignComposerFields(routeLocale)),
     defaultValues: initialFields,
   });
   const [title, purpose, templateKey, audienceId, localeFields] = useWatch({
@@ -144,7 +152,8 @@ export function CampaignComposer({
     readonly error: { readonly serverError?: string };
   }) =>
     setSaveError(
-      error.serverError ?? "The campaign could not be saved. Check the fields."
+      error.serverError ??
+        m.emailCampaignsComposerSaveCheckFields({}, { locale: routeLocale })
     );
   const create = useWorkspaceAction(createCampaign, {
     actionName: "createCampaign",
@@ -198,10 +207,17 @@ export function CampaignComposer({
                     aria-hidden
                     className="size-2 rounded-full bg-burned-orange"
                   />
-                  Unsaved changes
+                  {m.emailCampaignsComposerUnsavedChanges(
+                    {},
+                    { locale: routeLocale }
+                  )}
                 </>
               ) : (
-                draft && "All changes saved"
+                draft &&
+                m.emailCampaignsComposerAllChangesSaved(
+                  {},
+                  { locale: routeLocale }
+                )
               )}
             </span>
             {draft && (
@@ -218,19 +234,40 @@ export function CampaignComposer({
               size="sm"
               type="submit"
             >
-              {saving && "Saving…"}
-              {!saving && (draft ? "Save draft" : "Create draft")}
+              {saving &&
+                m.emailCampaignsComposerSaving({}, { locale: routeLocale })}
+              {!saving &&
+                (draft
+                  ? m.emailCampaignsComposerSaveDraft(
+                      {},
+                      { locale: routeLocale }
+                    )
+                  : m.emailCampaignsComposerCreateDraft(
+                      {},
+                      { locale: routeLocale }
+                    ))}
             </Button>
             {draft && <DeleteCampaignDraftControl campaignId={draft.id} />}
           </div>
         }
         description={
           draft
-            ? "Draft. Save your changes, then send a test to get the confirmation code for the real send."
-            : "Write the campaign, then create the draft to test-send it."
+            ? m.emailCampaignsComposerDraftDescription(
+                {},
+                { locale: routeLocale }
+              )
+            : m.emailCampaignsComposerNewDescription(
+                {},
+                { locale: routeLocale }
+              )
         }
-        eyebrow="Email campaign"
-        title={title.trim() || (draft ? "Untitled campaign" : "New campaign")}
+        eyebrow={m.emailCampaignsComposerEyebrow({}, { locale: routeLocale })}
+        title={
+          title.trim() ||
+          (draft
+            ? m.emailCampaignsComposerUntitledTitle({}, { locale: routeLocale })
+            : m.emailCampaignsComposerNewTitle({}, { locale: routeLocale }))
+        }
       />
       <p
         className="mb-5 rounded-lg border border-burned-orange/25 bg-burned-orange/5 px-4 py-3 text-burned-orange-ink text-sm empty:hidden"
@@ -246,19 +283,38 @@ export function CampaignComposer({
             noValidate
             onSubmit={save}
           >
-            <ComposerSection title="Campaign">
+            <ComposerSection
+              title={m.emailCampaignsComposerCampaignSection(
+                {},
+                { locale: routeLocale }
+              )}
+            >
               <div className="space-y-5">
                 <FormField
                   control={form.control}
                   name="title"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel required>Title</FormLabel>
+                      <FormLabel required>
+                        {m.emailCampaignsComposerTitleLabel(
+                          {},
+                          { locale: routeLocale }
+                        )}
+                      </FormLabel>
                       <FormControl>
-                        <Input placeholder="Spring opening hours" {...field} />
+                        <Input
+                          placeholder={m.emailCampaignsComposerTitlePlaceholder(
+                            {},
+                            { locale: routeLocale }
+                          )}
+                          {...field}
+                        />
                       </FormControl>
                       <p className="text-navy-blue/55 text-xs">
-                        Only admins see the title.
+                        {m.emailCampaignsComposerTitleHint(
+                          {},
+                          { locale: routeLocale }
+                        )}
                       </p>
                       <FormMessage />
                     </FormItem>
@@ -270,7 +326,10 @@ export function CampaignComposer({
                   render={({ field }) => (
                     <fieldset className="space-y-2">
                       <legend className="font-medium text-sm leading-none">
-                        Purpose
+                        {m.emailCampaignsComposerPurposeLabel(
+                          {},
+                          { locale: routeLocale }
+                        )}
                       </legend>
                       <div className="grid items-stretch gap-2 sm:grid-cols-2">
                         {purposeOptions.map((option) => (
@@ -286,10 +345,13 @@ export function CampaignComposer({
                             />
                             <span className="flex flex-col gap-1 text-sm">
                               <span className="font-semibold">
-                                {option.label}
+                                {option.label({}, { locale: routeLocale })}
                               </span>
                               <span className="text-navy-blue/60 text-xs leading-5">
-                                {option.description}
+                                {option.description(
+                                  {},
+                                  { locale: routeLocale }
+                                )}
                               </span>
                             </span>
                           </ChoiceCard>
@@ -303,7 +365,12 @@ export function CampaignComposer({
                   name="templateKey"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Template</FormLabel>
+                      <FormLabel>
+                        {m.emailCampaignsComposerTemplateLabel(
+                          {},
+                          { locale: routeLocale }
+                        )}
+                      </FormLabel>
                       <div className="flex flex-wrap items-center gap-2">
                         <Select
                           onValueChange={field.onChange}
@@ -339,7 +406,12 @@ export function CampaignComposer({
                   name="audienceId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Audience</FormLabel>
+                      <FormLabel>
+                        {m.emailCampaignsComposerAudienceLabel(
+                          {},
+                          { locale: routeLocale }
+                        )}
+                      </FormLabel>
                       <Select
                         onValueChange={(value) =>
                           field.onChange(value === noAudience ? "" : value)
@@ -353,7 +425,10 @@ export function CampaignComposer({
                         </FormControl>
                         <SelectContent>
                           <SelectItem value={noAudience}>
-                            No audience yet
+                            {m.emailCampaignsComposerAudienceNone(
+                              {},
+                              { locale: routeLocale }
+                            )}
                           </SelectItem>
                           {audiences.map((option) => (
                             <SelectItem key={option.id} value={option.id}>
@@ -366,23 +441,37 @@ export function CampaignComposer({
                         {audience && `${audience.summary}.`}
                         {!audience &&
                           audiences.length > 0 &&
-                          "Choose who receives the campaign before sending it."}
+                          m.emailCampaignsComposerAudienceHint(
+                            {},
+                            { locale: routeLocale }
+                          )}
                         {audiences.length === 0 &&
-                          "No audiences yet. Create one under Audiences."}
+                          m.emailCampaignsComposerAudiencesEmpty(
+                            {},
+                            { locale: routeLocale }
+                          )}
                       </p>
                     </FormItem>
                   )}
                 />
               </div>
             </ComposerSection>
-            <ComposerSection title="Content">
+            <ComposerSection
+              title={m.emailCampaignsComposerContentSection(
+                {},
+                { locale: routeLocale }
+              )}
+            >
               <Tabs
                 onValueChange={(value) => setSelectedLocale(value as Locale)}
                 value={locale}
               >
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                   <TabsList
-                    aria-label="Content language"
+                    aria-label={m.emailCampaignsComposerContentLanguageLabel(
+                      {},
+                      { locale: routeLocale }
+                    )}
                     className="flex w-full sm:inline-flex sm:w-auto"
                   >
                     {editable.map((option) => (
@@ -391,9 +480,10 @@ export function CampaignComposer({
                         key={option}
                         value={option}
                       >
-                        {localeLabels[option]}
+                        {campaignLocaleName(option, routeLocale)}
                         <LocaleStatus
                           fields={localeFields[option]}
+                          locale={routeLocale}
                           required={option === required}
                         />
                       </TabsTrigger>
@@ -401,16 +491,26 @@ export function CampaignComposer({
                   </TabsList>
                   <p className="text-navy-blue/55 text-xs">
                     {audience?.singleLocale
-                      ? `The audience only includes ${localeLabels[audience.singleLocale]} speakers.`
-                      : "Czech is required: recipients without content in their language get it."}
+                      ? singleLocaleAudienceMessages[audience.singleLocale](
+                          {},
+                          { locale: routeLocale }
+                        )
+                      : m.emailCampaignsComposerFallbackLocaleHint(
+                          {},
+                          { locale: routeLocale }
+                        )}
                   </p>
                 </div>
                 {hiddenLocalesWithContent.length > 0 && (
                   <p className="mb-4 rounded-md bg-sunset-yellow/15 px-3 py-2 text-navy-blue/80 text-sm">
                     {hiddenLocalesWithContent
-                      .map((option) => localeLabels[option])
-                      .join(" and ")}{" "}
-                    content is hidden for this audience and won't be saved.
+                      .map((option) =>
+                        hiddenContentMessages[option](
+                          {},
+                          { locale: routeLocale }
+                        )
+                      )
+                      .join(" ")}
                   </p>
                 )}
                 {editable.map((option) => (
@@ -422,8 +522,9 @@ export function CampaignComposer({
                   >
                     <LocaleContentFields
                       control={form.control}
+                      contentLocale={option}
                       fields={localeFields[option]}
-                      locale={option}
+                      locale={routeLocale}
                       purpose={purpose}
                     />
                   </TabsContent>
@@ -466,75 +567,90 @@ function ComposerSection({
 
 function LocaleStatus({
   fields,
+  locale,
   required,
 }: {
   readonly fields: CampaignComposerLocaleFields;
+  readonly locale: Locale;
   readonly required: boolean;
 }) {
   if (!hasLocaleContent(fields)) {
     return required ? (
       <Badge className="px-1.5 py-0 text-[11px]" variant="emphasis">
-        Required
+        {m.emailCampaignsComposerLocaleRequired({}, { locale })}
       </Badge>
     ) : (
       <Badge className="px-1.5 py-0 text-[11px]" variant="subtle">
-        Optional
+        {m.emailCampaignsComposerLocaleOptional({}, { locale })}
       </Badge>
     );
   }
-  const issueCount = localeContentIssues(fields).length;
+  const issueCount = localeContentIssues(fields, locale).length;
   return issueCount > 0 ? (
     <Badge className="px-1.5 py-0 text-[11px]" variant="default">
-      {issueCount} to fix
+      {m.emailCampaignsComposerLocaleIssues({ count: issueCount }, { locale })}
     </Badge>
   ) : (
-    <CheckCircle2 aria-label="Ready" className="size-3.5 text-emerald-700" />
+    <CheckCircle2
+      aria-label={m.emailCampaignsComposerLocaleReady({}, { locale })}
+      className="size-3.5 text-emerald-700"
+    />
   );
 }
 
 function LocaleContentFields({
+  contentLocale,
   control,
   fields,
   locale,
   purpose,
 }: {
+  /** The language of the campaign content these fields edit. */
+  readonly contentLocale: Locale;
   readonly control: Control<
-    typeof CampaignComposerFields.Encoded,
+    CampaignComposerSchema["Encoded"],
     unknown,
     CampaignComposerFields
   >;
   readonly fields: CampaignComposerLocaleFields;
+  /** The admin's language. */
   readonly locale: Locale;
   readonly purpose: CampaignPurpose;
 }) {
-  const issues = hasLocaleContent(fields) ? localeContentIssues(fields) : [];
-  const bodyId = `campaign-body-${locale}`;
+  const issues = hasLocaleContent(fields)
+    ? localeContentIssues(fields, locale)
+    : [];
+  const bodyId = `campaign-body-${contentLocale}`;
 
   return (
-    <div className="space-y-5" lang={locale}>
+    <div className="space-y-5">
       <FormField
         control={control}
-        name={`locales.${locale}.subject`}
+        name={`locales.${contentLocale}.subject`}
         render={({ field }) => (
           <FormItem>
-            <FormLabel>Subject</FormLabel>
+            <FormLabel>
+              {m.emailCampaignsComposerSubjectLabel({}, { locale })}
+            </FormLabel>
             <FormControl>
-              <Input {...field} />
+              <Input lang={contentLocale} {...field} />
             </FormControl>
           </FormItem>
         )}
       />
       <FormField
         control={control}
-        name={`locales.${locale}.preheader`}
+        name={`locales.${contentLocale}.preheader`}
         render={({ field }) => (
           <FormItem>
-            <FormLabel>Preview text</FormLabel>
+            <FormLabel>
+              {m.emailCampaignsComposerPreheaderLabel({}, { locale })}
+            </FormLabel>
             <FormControl>
-              <Input {...field} />
+              <Input lang={contentLocale} {...field} />
             </FormControl>
             <p className="text-navy-blue/55 text-xs">
-              Most inboxes show it after the subject.
+              {m.emailCampaignsComposerPreheaderHint({}, { locale })}
             </p>
           </FormItem>
         )}
@@ -542,19 +658,24 @@ function LocaleContentFields({
       {purpose === "operational" && (
         <FormField
           control={control}
-          name={`locales.${locale}.operationalReason`}
+          name={`locales.${contentLocale}.operationalReason`}
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Footer reason</FormLabel>
+              <FormLabel>
+                {m.emailCampaignsComposerOperationalReasonLabel({}, { locale })}
+              </FormLabel>
               <FormControl>
                 <Input
-                  placeholder={m.emailCampaignOperationalFooter({}, { locale })}
+                  lang={contentLocale}
+                  placeholder={customerMessages.emailCampaignOperationalFooter(
+                    {},
+                    { locale: contentLocale }
+                  )}
                   {...field}
                 />
               </FormControl>
               <p className="text-navy-blue/55 text-xs">
-                Why the customer gets this email. Leave it empty to use the
-                standard line.
+                {m.emailCampaignsComposerOperationalReasonHint({}, { locale })}
               </p>
             </FormItem>
           )}
@@ -562,16 +683,20 @@ function LocaleContentFields({
       )}
       <FormField
         control={control}
-        name={`locales.${locale}.body`}
+        name={`locales.${contentLocale}.body`}
         render={({ field }) => (
           <div className="space-y-2">
             <label className="font-medium text-sm" htmlFor={bodyId}>
-              Body
+              {m.emailCampaignsComposerBodyLabel({}, { locale })}
             </label>
             <CampaignBodyEditor
+              contentLocale={contentLocale}
               id={bodyId}
               invalid={issues.some(({ path }) => path[0] !== "subject")}
-              label={`Body, ${localeLabels[locale]}`}
+              label={m.emailCampaignsComposerBodyEditorLabel(
+                { language: campaignLocaleName(contentLocale, locale) },
+                { locale }
+              )}
               onChange={field.onChange}
               value={field.value}
             />

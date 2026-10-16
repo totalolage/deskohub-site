@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { isReservationAccessProvisioningStale } from "@/features/reservation-access/reservation-access";
 import { Button } from "@/shared/components/ui/button";
@@ -19,6 +20,7 @@ export function ReservationAccessAdministration({
   readonly grant: AdministrationReservationAccessGrant | null;
   readonly reservationId: WorkspaceReservationId;
 }) {
+  const locale = useRouteLocale();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(mutateReservationAccess, {
@@ -128,11 +130,11 @@ export function ReservationAccessAdministration({
         <AdministrationFact label="Target device" value={grant.deviceId} />
         <AdministrationFact
           label="Valid from"
-          value={formatAdministrationDateTime(grant.startsAt)}
+          value={formatAdministrationDateTime(grant.startsAt, locale)}
         />
         <AdministrationFact
           label="Valid until"
-          value={formatAdministrationDateTime(grant.endsAt)}
+          value={formatAdministrationDateTime(grant.endsAt, locale)}
         />
         <AdministrationFact
           label="Provider credential"

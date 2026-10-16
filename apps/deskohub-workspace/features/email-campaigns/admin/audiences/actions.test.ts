@@ -128,13 +128,9 @@ describe("email campaign audience actions", () => {
       title: "   ",
     });
 
-    expect(result).toMatchObject({
-      validationErrors: {
-        fieldErrors: {
-          title: ["Enter a title for this audience."],
-        },
-      },
-    });
+    // The editor words the issue in its locale before it submits; the action
+    // only rejects the title.
+    expect(result?.validationErrors?.fieldErrors?.title).toHaveLength(1);
     expect(authorizationCalls).toBe(0);
     expect(createCalls).toHaveLength(0);
   });
