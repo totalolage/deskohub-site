@@ -4,7 +4,9 @@ import {
   type CustomerChangesOptions,
   type DotyposCustomer,
   DotyposCustomerSchema,
+  DotyposTimestampFromString,
   ExternalAPIError,
+  formatDotyposTimestamp,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { testEmailAddress } from "@deskohub/test-email";
@@ -180,8 +182,7 @@ const requestSource = async (input: {
 const singlePage = (
   customers: readonly DotyposCustomer[],
   hasMore = false
-): Effect.Effect<CustomerChanges> =>
-  Effect.succeed({ customers, hasMore, totalCount: Option.none() });
+): Effect.Effect<CustomerChanges> => Effect.succeed({ customers, hasMore });
 
 const readPage = async (response: Response) =>
   (await response.json()) as {
@@ -189,59 +190,94 @@ const readPage = async (response: Response) =>
     readonly next_cursor: string | null;
   };
 
-const epochMillis = (iso: string) =>
-  DateTime.toEpochMillis(DateTime.makeUnsafe(iso));
+const timestampOf = Schema.decodeSync(DotyposTimestampFromString);
+
+/** A Dotypos timestamp in the epoch microseconds cursors carry. */
+const micros = (iso: string) => `${timestampOf(iso)}`;
 
 const firstVersion = "2026-10-01T12:00:00.000Z";
 const laterVersion = "2026-10-01T12:05:00.000Z";
+const firstCreated = timestampOf("2026-01-01T00:00:00.000Z");
+
+const optionalTimestamp = (value: string | null | undefined) =>
+  value === null || value === undefined ? undefined : timestampOf(value);
 
 /**
- * A synthetic Dotypos customer list that filters, orders, pages, and counts
- * like the customer list endpoint. Tests edit `customers` between requests.
+ * A synthetic Dotypos customer list that filters at microsecond precision and
+ * serves the first page of 100 like the customer list endpoint. Tests edit
+ * `customers` between requests. Customers that tie on the sort key come back
+ * in a different order on every request, as Dotypos doesn't promise one.
  */
-const makeDotyposStore = (
-  customers: DotyposCustomer[],
-  options: { readonly counted?: boolean } = {}
-) => {
-  const versionOf = (candidate: DotyposCustomer) =>
-    candidate.versionDate === undefined
-      ? undefined
-      : epochMillis(candidate.versionDate);
-  const listCustomerChanges: ListCustomerChanges = ({ selection, page }) => {
+const makeDotyposStore = (customers: DotyposCustomer[]) => {
+  let requestCount = 0;
+  const listCustomerChanges: ListCustomerChanges = ({ selection }) => {
+    requestCount++;
+    const isAtLeast = (
+      value: bigint | undefined,
+      lowest: Option.Option<bigint>
+    ) =>
+      value !== undefined &&
+      Option.match(lowest, {
+        onNone: () => true,
+        onSome: (bound) => value >= bound,
+      });
     const matching = customers.filter((candidate) => {
-      const version = versionOf(candidate);
+      const version = optionalTimestamp(candidate.versionDate);
+      const created = optionalTimestamp(candidate.created);
       return Match.valueTags(selection, {
         Dated: () => version !== undefined,
         ChangedFrom: ({ versionDate }) =>
-          version !== undefined &&
-          version >= DateTime.toEpochMillis(versionDate),
+          version !== undefined && version >= versionDate,
         ChangedAfter: ({ versionDate }) =>
-          version !== undefined &&
-          version > DateTime.toEpochMillis(versionDate),
-        ChangedAt: ({ versionDate }) =>
-          version === DateTime.toEpochMillis(versionDate),
-        Undated: () => version === undefined,
+          version !== undefined && version > versionDate,
+        ChangedAt: ({ versionDate, createdFrom }) =>
+          version === versionDate && isAtLeast(created, createdFrom),
+        Undated: ({ createdFrom }) =>
+          version === undefined && isAtLeast(created, createdFrom),
       });
     });
-    const ordered = matching.sort((left, right) =>
-      selection._tag === "ChangedAt" || selection._tag === "Undated"
-        ? Number(left.id) - Number(right.id)
-        : (versionOf(left) ?? 0) - (versionOf(right) ?? 0)
-    );
+    const sortKey = (candidate: DotyposCustomer) =>
+      (selection._tag === "ChangedAt" || selection._tag === "Undated"
+        ? optionalTimestamp(candidate.created)
+        : optionalTimestamp(candidate.versionDate)) ?? BigInt(0);
+    const tieOrder = requestCount % 2 === 0 ? 1 : -1;
+    const ordered = matching.sort((left, right) => {
+      const difference = sortKey(left) - sortKey(right);
+      return difference === BigInt(0)
+        ? tieOrder * (Number(left.id) - Number(right.id))
+        : Number(difference);
+    });
     return Effect.succeed({
-      customers: ordered.slice((page - 1) * 100, page * 100),
-      hasMore: ordered.length > page * 100,
-      totalCount:
-        options.counted === false ? Option.none() : Option.some(ordered.length),
+      customers: ordered.slice(0, 100),
+      hasMore: ordered.length > 100,
     });
   };
   return { customers, listCustomerChanges };
 };
 
+/** Customers sharing one version date, each created a microsecond apart. */
 const customersAt = (versionDate: string, count: number, firstId = 1) =>
   Array.from({ length: count }, (_, index) =>
-    customer({ id: `${firstId + index}`, versionDate })
+    customer({
+      id: `${firstId + index}`,
+      versionDate,
+      created: formatDotyposTimestamp(firstCreated + BigInt(firstId + index)),
+    })
   );
+
+const runSourceRequest = (input: {
+  readonly store: ReturnType<typeof makeDotyposStore>;
+  readonly since?: string;
+  readonly cursor: string | null;
+}) => {
+  const query = new URLSearchParams();
+  if (input.since !== undefined) query.set("since", input.since);
+  if (input.cursor !== null) query.set("cursor", input.cursor);
+  return requestSource({
+    url: `${sourceUrl}?${query}`,
+    dotypos: input.store.listCustomerChanges,
+  });
+};
 
 /**
  * Follows `next_cursor` the way PostHog's cursor-in-body paginator does,
@@ -257,21 +293,11 @@ const syncLikePostHog = async (input: {
   let cursor: string | null = null;
   for (let requestIndex = 0; requestIndex < 50; requestIndex++) {
     input.beforeRequest?.(requestIndex);
-    const query = new URLSearchParams();
-    if (input.since !== undefined) query.set("since", input.since);
-    if (cursor !== null) query.set("cursor", cursor);
-    const run = await requestSource({
-      url: `${sourceUrl}?${query}`,
-      dotypos: input.store.listCustomerChanges,
-    });
+    const run = await runSourceRequest({ ...input, cursor });
     expect(run.response.status).toBe(200);
     const page = await readPage(run.response);
     rows.push(...page.results);
-    selections.push(
-      ...run.listRequests.map(
-        ({ selection, page: number }) => `${selection._tag}:${number}`
-      )
-    );
+    selections.push(...run.listRequests.map(({ selection }) => selection._tag));
     cursor = page.next_cursor;
     if (cursor === null) return { rows, selections };
   }
@@ -285,6 +311,9 @@ const exportedIds = (rows: readonly ExportedRow[]) =>
 
 const idsFromOne = (count: number) =>
   Array.from({ length: count }, (_, index) => `${index + 1}`);
+
+const idsOf = (customers: readonly DotyposCustomer[]) =>
+  customers.map(({ id }) => `${id}`);
 
 describe("Dotypos customer source", () => {
   test("answers 404 without reading Dotypos while disabled", async () => {
@@ -314,9 +343,11 @@ describe("Dotypos customer source", () => {
     "since=not-a-date",
     "cursor=12.x",
     "cursor=",
-    "cursor=at.1759320000000.0",
-    "cursor=undated.1.x",
+    "cursor=at.x",
+    "cursor=at.1759320000000.1.100",
+    "cursor=undated.1.2",
     "cursor=from.",
+    "cursor=from.12345678901234567",
   ]) {
     test(`answers 400 without reading Dotypos for ${query}`, async () => {
       const { response, calls } = await requestSource({
@@ -358,7 +389,7 @@ describe("Dotypos customer source", () => {
       points: "12",
       tags: ["member"],
       created: "2026-01-01T00:00:00.000Z",
-      versionDate: "2026-10-01T12:00:00.000Z",
+      versionDate: "2026-10-01T12:00:00.000000Z",
       deleted: false,
     });
     expect(body).not.toContain(excludedValueMarker);
@@ -376,24 +407,46 @@ describe("Dotypos customer source", () => {
     expect(page.results).toMatchObject([{ id: "1001", deleted: true }]);
   });
 
-  test("fills absent fields with null and normalizes the version date", async () => {
+  test("fills absent fields with null and keeps the version date to the microsecond in UTC", async () => {
     const { response } = await requestSource({
       url: `${sourceUrl}?since=${firstVersion}`,
       changes: singlePage([
         customer({
+          id: "1",
           lastName: undefined,
           tags: undefined,
           versionDate: "2026-10-01T14:00:00.000+02:00",
         }),
+        customer({ id: "2", versionDate: "2026-10-01T12:00:00.74702Z" }),
       ]),
     });
     const page = await readPage(response);
 
-    expect(page.results[0]).toMatchObject({
-      lastName: null,
-      tags: null,
-      versionDate: "2026-10-01T12:00:00.000Z",
+    expect(page.results).toMatchObject([
+      {
+        lastName: null,
+        tags: null,
+        versionDate: "2026-10-01T12:00:00.000000Z",
+      },
+      { versionDate: "2026-10-01T12:00:00.747020Z" },
+    ]);
+  });
+
+  test("treats an explicitly null version date as undated", async () => {
+    const { response } = await requestSource({
+      changes: singlePage([
+        customer({ id: "1", versionDate: null }),
+        customer({ id: "2", versionDate: undefined }),
+      ]),
     });
+    const page = await readPage(response);
+
+    expect(response.status).toBe(200);
+    expect(page.results).toMatchObject([
+      { id: "1", versionDate: null },
+      { id: "2", versionDate: null },
+    ]);
+    expect(page.next_cursor).toBe("dated");
   });
 
   test("starts at PostHog's last version date and holds back the version date a full page cuts", async () => {
@@ -410,26 +463,27 @@ describe("Dotypos customer source", () => {
     });
     const page = await readPage(response);
 
-    expect(listRequests).toHaveLength(1);
-    expect(listRequests[0]?.page).toBe(1);
-    expect(listRequests[0]?.selection).toMatchObject({ _tag: "ChangedFrom" });
-    expect(
-      listRequests[0]?.selection._tag === "ChangedFrom" &&
-        DateTime.toEpochMillis(listRequests[0].selection.versionDate)
-    ).toBe(epochMillis(firstVersion));
+    expect(listRequests).toEqual([
+      {
+        selection: {
+          _tag: "ChangedFrom",
+          versionDate: timestampOf(firstVersion),
+        },
+      },
+    ]);
     expect(page.results.map(({ id }) => id)).toEqual(["1"]);
-    expect(page.next_cursor).toBe(`from.${epochMillis(laterVersion)}`);
+    expect(page.next_cursor).toBe(`from.${micros(laterVersion)}`);
   });
 
   test("reads a version date that fills a page as a group of its own", async () => {
     const { response } = await requestSource({
-      url: `${sourceUrl}?cursor=from.${epochMillis(firstVersion)}`,
+      url: `${sourceUrl}?cursor=from.${micros(firstVersion)}`,
       changes: singlePage(customersAt(firstVersion, 100), true),
     });
     const page = await readPage(response);
 
     expect(page.results).toHaveLength(100);
-    expect(page.next_cursor).toBe(`at.${epochMillis(firstVersion)}.1`);
+    expect(page.next_cursor).toBe(`at.${micros(firstVersion)}`);
   });
 
   test("an incremental sync exports every changed customer and no undated one", async () => {
@@ -445,26 +499,43 @@ describe("Dotypos customer source", () => {
       since: firstVersion,
     });
 
-    expect(exportedIds(rows)).toEqual(
-      [
-        ...customersAt(firstVersion, 150, 10),
-        ...customersAt(laterVersion, 120, 200),
-      ].map(({ id }) => `${id}`)
+    expect(exportedIds(rows)).toEqual([
+      ...idsOf(customersAt(firstVersion, 150, 10)),
+      ...idsOf(customersAt(laterVersion, 120, 200)),
+    ]);
+    expect(selections).not.toContain("Undated");
+  });
+
+  test("tells apart version dates within one millisecond", async () => {
+    // Dotypos stores microseconds: 150 customers edited within one
+    // millisecond have distinct version dates and need no group.
+    const store = makeDotyposStore(
+      Array.from({ length: 150 }, (_, index) =>
+        customer({
+          id: `${index + 1}`,
+          versionDate: `2026-10-01T12:00:00.000${`${index + 1}`.padStart(3, "0")}Z`,
+        })
+      )
     );
-    expect(
-      selections.some((selection) => selection.startsWith("Undated"))
-    ).toBe(false);
+
+    const { rows, selections } = await syncLikePostHog({
+      store,
+      since: firstVersion,
+    });
+
+    expect(exportedIds(rows)).toEqual(idsFromOne(150));
+    expect(selections).toEqual(["ChangedFrom", "ChangedFrom"]);
   });
 
   test("a first sync exports undated customers and then every dated one", async () => {
     const store = makeDotyposStore([
       customer({ id: "1", versionDate: undefined }),
-      customer({ id: "2", versionDate: undefined }),
+      customer({ id: "2", versionDate: null }),
       ...Array.from({ length: 248 }, (_, index) =>
         customer({
           id: `${index + 3}`,
           versionDate: new Date(
-            epochMillis(firstVersion) + Math.floor(index / 7) * 1000
+            Date.parse(firstVersion) + Math.floor(index / 7) * 1000
           ).toISOString(),
         })
       ),
@@ -472,28 +543,23 @@ describe("Dotypos customer source", () => {
 
     const { rows, selections } = await syncLikePostHog({ store });
 
-    expect(selections[0]).toBe("Undated:1");
+    expect(selections[0]).toBe("Undated");
     expect(exportedIds(rows)).toEqual(idsFromOne(250));
     expect(
-      rows.filter(({ versionDate }) => versionDate === null).map(({ id }) => id)
+      exportedIds(rows.filter(({ versionDate }) => versionDate === null))
     ).toEqual(["1", "2"]);
   });
 
   test("keeps paging undated customers that span several pages", async () => {
     const store = makeDotyposStore(
-      Array.from({ length: 230 }, (_, index) =>
-        customer({ id: `${index + 1}`, versionDate: undefined })
+      customersAt(firstVersion, 230).map((undated) =>
+        customer({ ...undated, versionDate: undefined })
       )
     );
 
     const { rows, selections } = await syncLikePostHog({ store });
 
-    expect(selections).toEqual([
-      "Undated:1",
-      "Undated:2",
-      "Undated:3",
-      "Dated:1",
-    ]);
+    expect(selections).toEqual(["Undated", "Undated", "Undated", "Dated"]);
     expect(exportedIds(rows)).toEqual(idsFromOne(230));
   });
 
@@ -501,14 +567,17 @@ describe("Dotypos customer source", () => {
     // Review counterexample: 101 customers share a version date; after the
     // first page, customer 1 moves to a later version date.
     const store = makeDotyposStore(customersAt(firstVersion, 101));
-    const editedVersion = "2026-10-01T12:00:00.001Z";
+    const editedVersion = "2026-10-01T12:00:00.000001Z";
 
     const { rows } = await syncLikePostHog({
       store,
       since: firstVersion,
       beforeRequest: (requestIndex) => {
         if (requestIndex !== 1) return;
-        store.customers[0] = customer({ id: "1", versionDate: editedVersion });
+        store.customers[0] = customer({
+          ...store.customers[0],
+          versionDate: editedVersion,
+        });
       },
     });
 
@@ -518,64 +587,175 @@ describe("Dotypos customer source", () => {
     );
   });
 
-  test("restarts a version-date group whose count changed between its pages", async () => {
+  test("a version-date group edited between its pages loses no customer", async () => {
     const store = makeDotyposStore(customersAt(firstVersion, 250));
-    const editedVersion = "2026-10-01T12:00:00.001Z";
+    const editedVersion = "2026-10-01T12:00:00.000001Z";
 
     const { rows, selections } = await syncLikePostHog({
       store,
       since: firstVersion,
       beforeRequest: (requestIndex) => {
-        // Requests: from-range, group page 1, then the edit before page 2.
+        // Requests: from-range, then group pages; edit an already-read and
+        // an unread customer before the second group page.
         if (requestIndex !== 2) return;
-        store.customers[4] = customer({ id: "5", versionDate: editedVersion });
+        for (const index of [4, 180]) {
+          store.customers[index] = customer({
+            ...store.customers[index],
+            versionDate: editedVersion,
+          });
+        }
       },
     });
 
     expect(selections).toEqual([
-      "ChangedFrom:1",
-      "ChangedAt:1",
-      "ChangedAt:2",
-      "ChangedAt:1",
-      "ChangedAt:2",
-      "ChangedAt:3",
-      "ChangedAfter:1",
+      "ChangedFrom",
+      "ChangedAt",
+      "ChangedAt",
+      "ChangedAt",
+      "ChangedAfter",
     ]);
     expect(exportedIds(rows)).toEqual(idsFromOne(250));
+    expect(rows.findLast(({ id }) => id === "181")?.versionDate).toBe(
+      editedVersion
+    );
   });
 
-  test("fails loudly when Dotypos doesn't count a group that spans pages", async () => {
-    const store = makeDotyposStore(customersAt(firstVersion, 150), {
-      counted: false,
+  test("fails instead of skipping when Dotypos repeats a group page", async () => {
+    // Review counterexample: a 250-customer group whose pages came back as
+    // customers 1-100, 1-100 again, then 201-250. Paging by number served 200
+    // rows and dropped 101-200 for good.
+    const group = customersAt(firstVersion, 250);
+    const replies = [
+      group.slice(0, 100),
+      group.slice(0, 100),
+      group.slice(200),
+    ];
+    const store = {
+      customers: group,
+      listCustomerChanges: () =>
+        singlePage(replies.shift() ?? [], replies.length > 0),
+    };
+
+    const first = await runSourceRequest({
+      store,
+      cursor: `at.${micros(firstVersion)}`,
+    });
+    const firstPage = await readPage(first.response);
+    const second = await runSourceRequest({
+      store,
+      cursor: firstPage.next_cursor,
     });
 
+    expect(first.response.status).toBe(200);
+    expect(idsOf([...firstPage.results] as DotyposCustomer[])).toEqual(
+      idsFromOne(99)
+    );
+    expect(firstPage.next_cursor).toBe(
+      `at.${micros(firstVersion)}.${firstCreated + BigInt(100)}`
+    );
+    expect(second.response.status).toBe(502);
+    expect(second.listRequests).toEqual([
+      {
+        selection: {
+          _tag: "ChangedAt",
+          versionDate: timestampOf(firstVersion),
+          createdFrom: Option.some(firstCreated + BigInt(100)),
+        },
+      },
+    ]);
+  });
+
+  test("fails instead of guessing when a whole group page shares one creation time", async () => {
     const { response } = await requestSource({
-      url: `${sourceUrl}?cursor=at.${epochMillis(firstVersion)}.1`,
-      dotypos: store.listCustomerChanges,
+      url: `${sourceUrl}?cursor=at.${micros(firstVersion)}`,
+      changes: singlePage(
+        Array.from({ length: 100 }, (_, index) =>
+          customer({ id: `${index + 1}`, versionDate: firstVersion })
+        ),
+        true
+      ),
     });
 
     expect(response.status).toBe(502);
   });
 
-  test("fails loudly when Dotypos returns a customer outside the requested version dates", async () => {
-    const { response } = await requestSource({
-      url: `${sourceUrl}?since=${laterVersion}`,
-      changes: singlePage([
+  for (const [name, url, customers, hasMore] of [
+    [
+      "an undated customer on a dated page",
+      `${sourceUrl}?since=${laterVersion}`,
+      [
         customer({ id: "1", versionDate: laterVersion }),
-        customer({ id: "2", versionDate: undefined }),
-      ]),
+        customer({ id: "2", versionDate: null }),
+      ],
+      false,
+    ],
+    [
+      "a dated customer on an undated page",
+      sourceUrl,
+      [customer({ id: "1", versionDate: firstVersion })],
+      false,
+    ],
+    [
+      "a version date before the requested one",
+      `${sourceUrl}?cursor=after.${micros(firstVersion)}`,
+      [customer({ id: "1", versionDate: firstVersion })],
+      false,
+    ],
+    [
+      "version dates out of order",
+      `${sourceUrl}?since=${firstVersion}`,
+      [
+        customer({ id: "1", versionDate: laterVersion }),
+        customer({ id: "2", versionDate: firstVersion }),
+      ],
+      true,
+    ],
+    [
+      "a group customer of another version date",
+      `${sourceUrl}?cursor=at.${micros(firstVersion)}`,
+      [customer({ id: "1", versionDate: laterVersion })],
+      false,
+    ],
+    [
+      "group creation times out of order",
+      `${sourceUrl}?cursor=at.${micros(firstVersion)}`,
+      [...customersAt(firstVersion, 2)].reverse(),
+      false,
+    ],
+    [
+      "a group creation time before the requested one",
+      `${sourceUrl}?cursor=at.${micros(firstVersion)}.${firstCreated + BigInt(2)}`,
+      customersAt(firstVersion, 2),
+      false,
+    ],
+    [
+      "a group customer without a creation time",
+      `${sourceUrl}?cursor=undated`,
+      [customer({ id: "1", versionDate: null, created: null })],
+      false,
+    ],
+    [
+      "an unreadable version date",
+      `${sourceUrl}?since=${firstVersion}`,
+      [customer({ id: "1", versionDate: "2026-10-01 12:00:00" })],
+      false,
+    ],
+    [
+      "an empty page that claims more follow",
+      `${sourceUrl}?since=${firstVersion}`,
+      [],
+      true,
+    ],
+  ] as const) {
+    test(`answers 502 for ${name}`, async () => {
+      const { response } = await requestSource({
+        url,
+        changes: singlePage(customers, hasMore),
+      });
+
+      expect(response.status).toBe(502);
     });
-
-    expect(response.status).toBe(502);
-  });
-
-  test("fails loudly when an undated page holds a dated customer", async () => {
-    const { response } = await requestSource({
-      changes: singlePage([customer({ id: "1", versionDate: firstVersion })]),
-    });
-
-    expect(response.status).toBe(502);
-  });
+  }
 
   test("spends the export budget once before reading Dotypos", async () => {
     const { response, calls, budgetPolicies } = await requestSource({

@@ -1,7 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { EMAIL_TEST_DOMAIN, testEmailAddress } from "@deskohub/test-email";
 import {
-  DateTime,
   Effect,
   Fiber,
   Layer,
@@ -24,6 +23,7 @@ import type {
   Reservation,
   Table,
 } from "../generated/effect.gen";
+import { DotyposTimestampSchema } from "../timestamp";
 import {
   DotyposCategorySchema,
   DotyposCustomerIdSchema,
@@ -1530,7 +1530,8 @@ describe("DotyposService customer lookup", () => {
 });
 
 describe("DotyposService customer changes", () => {
-  const changedSince = DateTime.makeUnsafe("2026-10-01T12:00:00.000Z");
+  const changedSince = DotyposTimestampSchema.make(BigInt("1759320000123456"));
+  const createdFrom = DotyposTimestampSchema.make(BigInt("1759310000000001"));
 
   const customerListRequests = (fetchMock: { mock: { calls: unknown[][] } }) =>
     fetchMock.mock.calls
@@ -1545,26 +1546,49 @@ describe("DotyposService customer changes", () => {
     },
     {
       selection: { _tag: "ChangedFrom", versionDate: changedSince } as const,
-      filter: `deleted|in|0,1;versionDate|gteq|${DateTime.toEpochMillis(changedSince)}`,
+      filter: "deleted|in|0,1;versionDate|gteq|2025-10-01T12:00:00.123456Z",
       sort: "versionDate",
     },
     {
       selection: { _tag: "ChangedAfter", versionDate: changedSince } as const,
-      filter: `deleted|in|0,1;versionDate|gt|${DateTime.toEpochMillis(changedSince)}`,
+      filter: "deleted|in|0,1;versionDate|gt|2025-10-01T12:00:00.123456Z",
       sort: "versionDate",
     },
     {
-      selection: { _tag: "ChangedAt", versionDate: changedSince } as const,
-      filter: `deleted|in|0,1;versionDate|eq|${DateTime.toEpochMillis(changedSince)}`,
-      sort: "id",
+      selection: {
+        _tag: "ChangedAt",
+        versionDate: changedSince,
+        createdFrom: Option.none(),
+      } as const,
+      filter: "deleted|in|0,1;versionDate|eq|2025-10-01T12:00:00.123456Z",
+      sort: "created",
     },
     {
-      selection: { _tag: "Undated" } as const,
+      selection: {
+        _tag: "ChangedAt",
+        versionDate: changedSince,
+        createdFrom: Option.some(createdFrom),
+      } as const,
+      filter:
+        "deleted|in|0,1;versionDate|eq|2025-10-01T12:00:00.123456Z;created|gteq|2025-10-01T09:13:20.000001Z",
+      sort: "created",
+    },
+    {
+      selection: { _tag: "Undated", createdFrom: Option.none() } as const,
       filter: "deleted|in|0,1;versionDate|eq|null",
-      sort: "id",
+      sort: "created",
+    },
+    {
+      selection: {
+        _tag: "Undated",
+        createdFrom: Option.some(createdFrom),
+      } as const,
+      filter:
+        "deleted|in|0,1;versionDate|eq|null;created|gteq|2025-10-01T09:13:20.000001Z",
+      sort: "created",
     },
   ])(
-    "reads one $selection._tag page with a single request",
+    "reads the first $selection._tag page with a single request and microsecond filters",
     async ({ selection, filter, sort }) => {
       const customers = [
         customer({ id: "customer-1" }),
@@ -1575,7 +1599,7 @@ describe("DotyposService customer changes", () => {
         if (url.pathname === "/signin/token") return tokenResponse();
         return Response.json({
           data: customers,
-          nextPage: "4",
+          nextPage: "2",
           totalItemsCount: "302",
         });
       });
@@ -1583,7 +1607,7 @@ describe("DotyposService customer changes", () => {
       const changes = await runWithService(
         Effect.gen(function* () {
           const dotypos = yield* DotyposService;
-          return yield* dotypos.listCustomerChanges({ selection, page: 3 });
+          return yield* dotypos.listCustomerChanges({ selection });
         }),
         fetchMock
       );
@@ -1594,22 +1618,21 @@ describe("DotyposService customer changes", () => {
         filter,
         sort,
         limit: "100",
-        page: "3",
+        page: "1",
       });
-      expect(changes).toEqual({
-        customers,
-        hasMore: true,
-        totalCount: Option.some(302),
-      });
+      expect(changes).toEqual({ customers, hasMore: true });
     }
   );
 
-  test("reports an uncounted last page without a total", async () => {
+  test("keeps an explicitly null version date, as an absent one", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
       if (url.pathname === "/signin/token") return tokenResponse();
       return Response.json({
-        data: [customer({ id: "deleted-customer", deleted: true })],
+        data: [
+          customer({ id: "null-version", versionDate: null }),
+          customer({ id: "absent-version" }),
+        ],
         nextPage: null,
       });
     });
@@ -1618,18 +1641,17 @@ describe("DotyposService customer changes", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos.listCustomerChanges({
-          selection: { _tag: "Dated" },
-          page: 1,
+          selection: { _tag: "Undated", createdFrom: Option.none() },
         });
       }),
       fetchMock
     );
 
-    expect(changes).toEqual({
-      customers: [customer({ id: "deleted-customer", deleted: true })],
-      hasMore: false,
-      totalCount: Option.none(),
-    });
+    expect(changes.hasMore).toBe(false);
+    expect(changes.customers.map(({ versionDate }) => versionDate)).toEqual([
+      null,
+      undefined,
+    ]);
   });
 
   test("treats a page Dotypos answers with 404 as the end of the list", async () => {
@@ -1646,72 +1668,48 @@ describe("DotyposService customer changes", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos.listCustomerChanges({
-          selection: { _tag: "ChangedAt", versionDate: changedSince },
-          page: 2,
+          selection: {
+            _tag: "ChangedAt",
+            versionDate: changedSince,
+            createdFrom: Option.none(),
+          },
         });
       }),
       fetchMock
     );
 
-    expect(changes).toEqual({
-      customers: [],
-      hasMore: false,
-      totalCount: Option.none(),
-    });
+    expect(changes).toEqual({ customers: [], hasMore: false });
   });
 
-  test("leaves a rate-limited read to the caller instead of retrying it", async () => {
-    const fetchMock = mockDotyposFetch((request) => {
-      const url = new URL(request.url);
-      if (url.pathname === "/signin/token") return tokenResponse();
-      return Response.json(
-        {
-          error: "rate_limited",
-          error_description: "Too many requests",
-          code: 429,
-        },
-        { status: 429 }
+  test("leaves a rejected or rate-limited read to the caller instead of retrying it", async () => {
+    for (const status of [400, 429]) {
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        return Response.json(
+          { error: "rejected", error_description: "Rejected", code: status },
+          { status }
+        );
+      });
+
+      const result = await runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .listCustomerChanges({
+              selection: { _tag: "ChangedFrom", versionDate: changedSince },
+            })
+            .pipe(Effect.result);
+        }),
+        fetchMock
       );
-    });
 
-    const result = await runWithService(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos
-          .listCustomerChanges({
-            selection: { _tag: "ChangedFrom", versionDate: changedSince },
-            page: 1,
-          })
-          .pipe(Effect.result);
-      }),
-      fetchMock
-    );
-
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: { _tag: "ExternalAPIError", statusCode: 429 },
-    });
-    expect(customerListRequests(fetchMock)).toHaveLength(1);
-  });
-
-  test("rejects an invalid page without calling Dotypos", async () => {
-    const fetchMock = mockDotyposFetch(() => tokenResponse());
-
-    const result = await runWithService(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos
-          .listCustomerChanges({ selection: { _tag: "Dated" }, page: 0 })
-          .pipe(Effect.result);
-      }),
-      fetchMock
-    );
-
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: { _tag: "ValidationError" },
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "ExternalAPIError", statusCode: status },
+      });
+      expect(customerListRequests(fetchMock)).toHaveLength(1);
+    }
   });
 });
 

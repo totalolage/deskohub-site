@@ -54,16 +54,17 @@ Response (`Cache-Control: private, no-store`):
       "addressLine1": "…", "addressLine2": "…", "city": "…", "zip": "…",
       "country": "…", "birthday": "…",
       "_discountGroupId": "…", "points": "…", "tags": ["…"],
-      "created": "…", "versionDate": "2026-10-01T12:00:00.000Z",
+      "created": "…", "versionDate": "2026-10-01T12:00:00.123456Z",
       "deleted": false
     }
   ],
-  "next_cursor": "from.1759320300000"
+  "next_cursor": "from.1759320000123456"
 }
 ```
 
-- `versionDate` is normalized to UTC ISO 8601, or `null` for an undated
-  customer; other fields keep Dotypos values, and absent fields are `null`.
+- `versionDate` is normalized to UTC ISO 8601 with six fraction digits, or
+  `null` for an undated customer (Dotypos sends `null` or omits it). Other
+  fields keep Dotypos values, and absent fields are `null`.
 - `next_cursor` is `null` after the last page. A page can be empty while
   `next_cursor` is set; PostHog's cursor paginator stops only on an empty
   cursor.
@@ -72,56 +73,97 @@ Response (`Cache-Control: private, no-store`):
 
 ### Cursor
 
-Dotypos filters customer `versionDate` with `eq`, `gt`, `gteq`, `null`, and
-`notnull`, but filters `id` only with `eq` and `in`
-([customer entity](https://docs.api.dotypos.com/entity/customer/),
-[filtering](https://docs.api.dotypos.com/api-reference/general/filter/)).
-Positions are therefore keyed on version dates, never on an offset into a
-list that edits can shift. Every request reads exactly one Dotypos page.
+Dotypos customer list facts this design rests on, checked against the
+synthetic dev/preview cloud on 2026-10-16 (read-only probe; production wasn't
+called):
 
-| Cursor | Dotypos read |
+- `sort=id` and `sort=-id` answer 400 ("unsupported sorting direction"), as
+  does an unknown field. `versionDate`, `created`, their `-` forms, and
+  `versionDate,created` sort.
+- `id` filters only with `eq` and `in`
+  ([customer entity](https://docs.api.dotypos.com/entity/customer/),
+  [filtering](https://docs.api.dotypos.com/api-reference/general/filter/)).
+- `versionDate` and `created` carry up to microsecond precision, with
+  trailing zeros trimmed (`2026-05-30T16:04:35.74702Z`). Filters compare at
+  microseconds. An ISO value with six fraction digits filters exactly
+  (`eq`, `gt`, `gteq`); an epoch-millisecond value is read as that exact
+  millisecond, so `eq|<ms>` misses sub-millisecond values and `gt|<ms>`
+  includes them.
+- `versionDate|eq|null` is accepted; the synthetic cloud has no undated
+  customer, so how Dotypos encodes one is unobserved.
+- Lists report `totalItemsCount` and `nextPage`; a filter matching nothing
+  answers 404. No response carries rate-limit headers.
+
+So every request reads page 1 of a selection, and positions move by narrowing
+the selection, never by page number. `DotyposTimestamp` (`@deskohub/dotypos`)
+holds microseconds; cursors carry them as epoch microseconds and filters send
+them as six-digit ISO values.
+
+| Cursor | Dotypos read (page 1) |
 | --- | --- |
-| (none, no `since`) | `undated.1` |
-| (none, `since`) | `versionDate\|gteq\|since`, page 1, sorted by `versionDate` |
-| `undated.<page>[.<size>]` | `versionDate\|eq\|null`, that page, sorted by `id` |
-| `dated` | `versionDate\|eq\|notnull`, page 1 |
-| `from.<ms>` / `after.<ms>` | `versionDate\|gteq` / `gt`, page 1 |
-| `at.<ms>.<page>[.<size>]` | `versionDate\|eq\|<ms>`, that page, sorted by `id` |
+| (none, no `since`) | as `undated` |
+| (none, `since`) | `versionDate\|gteq\|since`, sorted by `versionDate` |
+| `undated[.<created>]` | `versionDate\|eq\|null[;created\|gteq\|<created>]`, sorted by `created` |
+| `dated` | `versionDate\|eq\|notnull`, sorted by `versionDate` |
+| `from.<version>` / `after.<version>` | `versionDate\|gteq` / `gt`, sorted by `versionDate` |
+| `at.<version>[.<created>]` | `versionDate\|eq\|<version>[;created\|gteq\|<created>]`, sorted by `created` |
 
-- A range page (`from`, `after`, `dated`) always reads page 1. When more
-  pages follow, the last version date on the page may continue past it, so
-  its customers are held back and the next cursor is `from.<that version>`.
-  Every customer with an earlier version date is on the page, so none can be
-  skipped. When a whole page shares one version date, the page is served and
-  that version date is read as a group (`at.<ms>.1`).
-- A group (`at`, `undated`) is paged by number because Dotypos can't compare
-  IDs. Customers only leave a group whose version date is past: an edit moves
-  them to a newer version date, which the sync reaches later. The first page
-  records the group's `totalItemsCount` as `<size>`; a later page reporting
-  another count, or an empty later page, restarts the group from page 1. A
-  multi-page group without a count fails with 502 instead of risking a skip.
-  After the group, the cursor continues with `after.<ms>`.
-- Every page is checked against its selection: an undated customer on a dated
-  page, a dated one on an undated page, or a version date out of order fails
-  with 502, because continuing could skip customers silently.
-- Group pages sort by `id`, which the Dotypos reference doesn't list as
-  sortable. If Dotypos rejects it, group pages fail with 502; range pages sort
-  by `versionDate` only.
+- A range page (`from`, `after`, `dated`) holds back its last version date
+  when more pages follow, because that version date may continue past the
+  page; the next cursor is `from.<that version>`. Every customer with an
+  earlier version date is on the page, so none can be skipped. When a whole
+  page shares one version date, the page is served and that version date is
+  read as a group (`at.<version>`).
+- A group (`at`, `undated`) is read the same way along `created`: a full page
+  holds back its last creation time and continues at
+  `at.<version>.<created>`. Customers only leave a group whose version date
+  is past (an edit moves them to a newer version date, which the sync reaches
+  later), and creation times don't change, so the boundary stays put. After
+  the group, `undated` continues with `dated` and `at.<version>` with
+  `after.<version>`.
+- Every page is checked against its selection before any position advances:
+  each timestamp readable, every customer inside the selection (dated or
+  undated, at or after the bound, the group's exact version date), and the
+  sort key non-decreasing from the cursor's bound. A violation, or an empty
+  page that claims more follow, answers 502. So a Dotypos page that repeats
+  earlier customers, like the round-2 review's `1-100, 1-100, 201-250`,
+  fails instead of skipping.
+- A full group page whose customers all share one creation time can't be
+  split, so it answers 502 rather than guess. The sync stays stuck until one
+  of those customers changes; see the assumptions below.
+- PostHog's `since` is read from its millisecond start, a superset of the
+  microsecond version date PostHog stored, so the boundary customers repeat
+  rather than drop.
 
 ### Undated customers
 
 The Dotypos reference types customer `versionDate` as optional
-(`timestamp?`), so it isn't proven non-null. Incremental syncs filter on
-`versionDate` and can never reach an undated customer, so a first sync
-(PostHog omits `since`) starts with them: it pages `versionDate|eq|null`, then
-every dated customer. An undated customer edited meanwhile gains a version
-date and is read among the dated ones. Undated rows carry `versionDate: null`.
+(`timestamp?`), and the contract accepts `null` or absence alike. Incremental
+syncs filter on `versionDate` and can never reach an undated customer, so a
+first sync (PostHog omits `since`) starts with them: it reads
+`versionDate|eq|null` by `created`, then every dated customer. An undated
+customer edited meanwhile gains a version date and is read among the dated
+ones. Undated rows carry `versionDate: null`.
+
+### Assumptions not verified against production
+
+- Production behaves like the synthetic cloud above (sorting, microsecond
+  filters, 404 for empty filters).
+- Every undated customer has a `created` timestamp; one without fails its
+  group page with 502.
+- Fewer than 100 customers share one exact `versionDate` and `created`. The
+  synthetic cloud stamps each row separately (neighbors differ by
+  microseconds); a bulk import or edit that stamps a whole batch with one
+  value would make its group answer 502.
+- `versionDate` grows with each edit, so an edited customer never moves to an
+  earlier, already-read position.
 
 ### Statuses
 
 400 for an invalid `since` or `cursor`, 401, 404, 429 with `Retry-After` when
 the export budget is spent (see below) or Dotypos rate-limits (60 seconds),
-502 for other Dotypos failures and the unsafe pages above, and 503 when the
+502 for other Dotypos failures (including a rejected sort or filter) and the
+unsafe pages above, and 503 when the
 budget store is unavailable. PostHog retries 429 and 5xx answers.
 
 ## Field allowlist
@@ -213,7 +255,8 @@ In PostHog, open **Data pipelines → Sources → New source → Custom REST**:
 
 Run the colocated tests in `features/analytics-warehouse/backend/`, the
 `DotyposService customer changes` block in
-`packages/dotypos/src/backend/service.test.ts`, and
+`packages/dotypos/src/backend/service.test.ts`,
+`packages/dotypos/src/timestamp.test.ts`, and
 `shared/backend/request-budget/request-budget.service.postgres.test.ts`
 against a disposable Postgres. Never call the production
 endpoint or production Dotypos to test this source; use synthetic fixtures.

@@ -5,7 +5,12 @@ import {
   type CustomerVersionSelection,
   type DotyposCustomer,
   DotyposService,
+  type DotyposTimestamp,
+  DotyposTimestampFromString,
+  DotyposTimestampSchema,
+  dotyposTimestampFromDateTime,
   type ExternalAPIError,
+  formatDotyposTimestamp,
   type NetworkError,
   type ValidationError,
 } from "@deskohub/dotypos";
@@ -65,9 +70,9 @@ export const respondWithDotyposCustomerSource = (request: Request) =>
           : failUpstream(error, 502, unavailableMessage),
       NetworkError: (error) => failUpstream(error, 502, unavailableMessage),
       ValidationError: (error) => failUpstream(error, 502, unavailableMessage),
-      UnexpectedDotyposCustomerVersion: (error) =>
+      UnexpectedDotyposCustomerPage: (error) =>
         failUpstream(error, 502, unavailableMessage),
-      UncountedDotyposCustomerGroup: (error) =>
+      UnpageableDotyposCustomerGroup: (error) =>
         failUpstream(error, 502, unavailableMessage),
     }),
     Effect.map(markPrivateResponse)
@@ -133,66 +138,46 @@ const DotyposCustomerSourcePageSchema = Schema.Struct({
 type DotyposCustomerSourcePage = typeof DotyposCustomerSourcePageSchema.Type;
 
 /**
- * Where the next page starts. Dotypos filters `versionDate` with `eq`, `gt`,
- * and `gteq` but can't compare customer IDs, so positions are keyed on version
- * dates:
+ * Where the next page starts. Every request reads the first Dotypos page of a
+ * selection, and positions move by narrowing the selection, never by page
+ * number: Dotypos can't sort customers by ID, so a page number into a list
+ * whose order isn't unique could repeat or skip customers.
  *
- * - `Range` reads the first Dotypos page of dated customers ordered by version
+ * - A range (`Dated`, `ChangedFrom`, `ChangedAfter`) is ordered by version
  *   date. Only whole version dates are served; the last one on a full page is
  *   read again from the next page's start.
- * - `Group` reads one version date, or the undated customers, page by page
- *   ordered by ID, when they fill a whole page. `size` is the group's count on
- *   its first page; a page reporting another count restarts the group, since
- *   an edit that moved a customer out would shift the remaining ones.
+ * - A group (`ChangedAt` one version date, or `Undated`) is ordered by
+ *   `created` from `createdFrom` on, when a version date fills a whole page.
+ *   Only whole creation times are served; the last one on a full page is read
+ *   again from the next page's start.
+ *
+ * Dotypos stores both timestamps to the microsecond and filters at that
+ * precision, so positions carry microseconds.
  */
-type SourcePosition =
-  | {
-      readonly _tag: "Range";
-      readonly selection: RangeSelection;
-    }
-  | {
-      readonly _tag: "Group";
-      readonly selection: GroupSelection;
-      readonly page: number;
-      readonly size: Option.Option<number>;
-    };
-
-type RangeSelection = Extract<
-  CustomerVersionSelection,
-  { readonly _tag: "Dated" | "ChangedFrom" | "ChangedAfter" }
->;
-
 type GroupSelection = Extract<
   CustomerVersionSelection,
   { readonly _tag: "ChangedAt" | "Undated" }
 >;
-
-const rangeAt = (selection: RangeSelection): SourcePosition => ({
-  _tag: "Range",
-  selection,
-});
-
-const groupAt = (
-  selection: GroupSelection,
-  page = 1,
-  size: Option.Option<number> = Option.none()
-): SourcePosition => ({ _tag: "Group", selection, page, size });
 
 /**
  * A first sync, which PostHog sends without `since`, starts with the undated
  * customers: incremental syncs can't reach them, and one that gains a version
  * date meanwhile still appears among the dated customers read after them.
  */
-const firstSyncPosition = groupAt({ _tag: "Undated" });
+const firstSyncSelection: CustomerVersionSelection = {
+  _tag: "Undated",
+  createdFrom: Option.none(),
+};
 
-type VersionedCustomer = {
+type StampedCustomer = {
   readonly customer: DotyposCustomer;
-  readonly version: Option.Option<number>;
+  readonly version: Option.Option<DotyposTimestamp>;
+  readonly created: Option.Option<DotyposTimestamp>;
 };
 
 type PageContinuation = {
-  readonly served: readonly VersionedCustomer[];
-  readonly next: Option.Option<SourcePosition>;
+  readonly served: readonly StampedCustomer[];
+  readonly next: Option.Option<CustomerVersionSelection>;
 };
 
 class DotyposCustomerSourceDisabled extends Data.TaggedError(
@@ -212,19 +197,21 @@ class DotyposCustomerExportBudgetExhausted extends Data.TaggedError(
 )<{ readonly retryAt: DateTime.Utc }> {}
 
 /**
- * Dotypos returned a customer whose version date is unreadable or outside the
- * requested selection and order. Continuing could skip customers silently.
+ * Dotypos returned a page that breaks the requested selection or order: an
+ * unreadable timestamp, a customer outside the selection, timestamps out of
+ * order, or an empty page that claims more follow. Continuing could skip
+ * customers silently.
  */
-class UnexpectedDotyposCustomerVersion extends Data.TaggedError(
-  "UnexpectedDotyposCustomerVersion"
+class UnexpectedDotyposCustomerPage extends Data.TaggedError(
+  "UnexpectedDotyposCustomerPage"
 ) {}
 
 /**
- * A group spans several pages but Dotypos didn't count it, so an edit that
- * shifted it between pages would go unnoticed.
+ * A whole page of a group shares one creation time, so no position can split
+ * it without risking a skip.
  */
-class UncountedDotyposCustomerGroup extends Data.TaggedError(
-  "UncountedDotyposCustomerGroup"
+class UnpageableDotyposCustomerGroup extends Data.TaggedError(
+  "UnpageableDotyposCustomerGroup"
 ) {}
 
 const unavailableMessage = "Dotypos customers are unavailable.";
@@ -233,13 +220,13 @@ const readDotyposCustomerSourcePage = (request: Request) =>
   Effect.Do.pipe(
     Effect.bind("access", () => Effect.service(DotyposCustomerSourceAccess)),
     Effect.tap(({ access }) => authorizeRequest({ request, access })),
-    Effect.bind("position", () => readSourcePosition(request)),
+    Effect.bind("selection", () => readSourceSelection(request)),
     Effect.tap(() => spendExportBudget),
-    Effect.bind("changes", ({ position }) => listCustomerChanges(position)),
+    Effect.bind("changes", ({ selection }) => listCustomerChanges(selection)),
     Effect.bind("page", toSourcePage),
-    Effect.tap(({ position, page }) =>
+    Effect.tap(({ selection, page }) =>
       Effect.logInfo("Dotypos customer source served a page", {
-        position: position.selection._tag,
+        position: selection._tag,
         rowCount: page.results.length,
         hasNextPage: page.next_cursor !== null,
       })
@@ -284,7 +271,11 @@ const DotyposCustomerSourceQuerySchema = Schema.Struct({
   cursor: Schema.optionalKey(Schema.String),
 });
 
-const readSourcePosition = (request: Request) =>
+/**
+ * PostHog's `since` is read from its millisecond start, a superset of the
+ * customers at or after the microsecond version date it stored.
+ */
+const readSourceSelection = (request: Request) =>
   Schema.decodeUnknownEffect(DotyposCustomerSourceQuerySchema)(
     Object.fromEntries(new URL(request.url).searchParams)
   ).pipe(
@@ -292,8 +283,11 @@ const readSourcePosition = (request: Request) =>
       cursor === undefined
         ? Option.some(
             since === undefined
-              ? firstSyncPosition
-              : rangeAt({ _tag: "ChangedFrom", versionDate: since })
+              ? firstSyncSelection
+              : {
+                  _tag: "ChangedFrom" as const,
+                  versionDate: dotyposTimestampFromDateTime(since),
+                }
           )
         : decodeCursor(cursor)
     ),
@@ -312,29 +306,24 @@ const spendExportBudget = Effect.service(RequestBudget).pipe(
   )
 );
 
-const listCustomerChanges = (position: SourcePosition) =>
+const listCustomerChanges = (selection: CustomerVersionSelection) =>
   Effect.service(DotyposService).pipe(
-    Effect.flatMap((dotypos) =>
-      dotypos.listCustomerChanges({
-        selection: position.selection,
-        page: position._tag === "Group" ? position.page : 1,
-      })
-    )
+    Effect.flatMap((dotypos) => dotypos.listCustomerChanges({ selection }))
   );
 
 const toSourcePage = (input: {
-  readonly position: SourcePosition;
+  readonly selection: CustomerVersionSelection;
   readonly changes: CustomerChanges;
 }): Effect.Effect<
   DotyposCustomerSourcePage,
-  UnexpectedDotyposCustomerVersion | UncountedDotyposCustomerGroup
+  UnexpectedDotyposCustomerPage | UnpageableDotyposCustomerGroup
 > =>
   Effect.succeed(input).pipe(
     Effect.bind("customers", ({ changes }) =>
-      Effect.forEach(changes.customers, readCustomerVersion)
+      Effect.forEach(changes.customers, readCustomerTimestamps)
     ),
     Effect.tap(checkSelectionOrder),
-    Effect.bind("continuation", continuePosition),
+    Effect.bind("continuation", continueSelection),
     Effect.map(
       ({ continuation }): DotyposCustomerSourcePage => ({
         results: continuation.served.flatMap(toSourceRow),
@@ -346,78 +335,97 @@ const toSourcePage = (input: {
     )
   );
 
-const readCustomerVersion = (
+/** Dotypos marks an undated customer with a null or absent `versionDate`. */
+const readTimestamp = (value: string | null | undefined) =>
+  Option.match(Option.fromNullishOr(value), {
+    onNone: () => Effect.succeedNone,
+    onSome: (timestamp) =>
+      Schema.decodeUnknownEffect(DotyposTimestampFromString)(timestamp).pipe(
+        Effect.map(Option.some)
+      ),
+  });
+
+const readCustomerTimestamps = (
   customer: DotyposCustomer
-): Effect.Effect<VersionedCustomer, UnexpectedDotyposCustomerVersion> =>
-  customer.versionDate === undefined
-    ? Effect.succeed({ customer, version: Option.none() })
-    : Effect.fromOption(DateTime.make(customer.versionDate)).pipe(
-        Effect.map((version) => ({
-          customer,
-          version: Option.some(DateTime.toEpochMillis(version)),
-        })),
-        Effect.mapError(() => new UnexpectedDotyposCustomerVersion())
-      );
+): Effect.Effect<StampedCustomer, UnexpectedDotyposCustomerPage> =>
+  Effect.all({
+    version: readTimestamp(customer.versionDate),
+    created: readTimestamp(customer.created),
+  }).pipe(
+    Effect.map(({ version, created }) => ({ customer, version, created })),
+    Effect.mapError(() => new UnexpectedDotyposCustomerPage())
+  );
 
 /**
- * Checks that Dotypos applied the version filter and order: positions are
+ * Checks that Dotypos applied the selection's filter and order: positions are
  * only safe to advance when every customer is where the selection says.
  */
 const checkSelectionOrder = (input: {
-  readonly position: SourcePosition;
-  readonly customers: readonly VersionedCustomer[];
+  readonly selection: CustomerVersionSelection;
+  readonly customers: readonly StampedCustomer[];
 }) =>
-  Effect.succeed(input.customers.map(({ version }) => version)).pipe(
+  Effect.succeed(input).pipe(
     Effect.filterOrFail(
-      (versions) => isInSelectionOrder(input.position.selection, versions),
-      () => new UnexpectedDotyposCustomerVersion()
+      ({ selection, customers }) => isInSelectionOrder(selection, customers),
+      () => new UnexpectedDotyposCustomerPage()
     ),
     Effect.asVoid
   );
 
 const isInSelectionOrder = (
   selection: CustomerVersionSelection,
-  versions: readonly Option.Option<number>[]
-) =>
-  Match.valueTags(selection, {
-    Undated: () => versions.every(Option.isNone),
-    ChangedAt: ({ versionDate }) =>
-      versions.every((version) =>
-        Option.contains(version, DateTime.toEpochMillis(versionDate))
-      ),
-    Dated: () => isAscending(versions, Number.NEGATIVE_INFINITY),
-    ChangedFrom: ({ versionDate }) =>
-      isAscending(versions, DateTime.toEpochMillis(versionDate)),
-    ChangedAfter: ({ versionDate }) =>
-      isAscending(versions, DateTime.toEpochMillis(versionDate) + 1),
-  });
-
-const isAscending = (
-  versions: readonly Option.Option<number>[],
-  lowest: number
+  customers: readonly StampedCustomer[]
 ) => {
-  const dated = Arr.getSomes(versions);
+  const versions = customers.map(({ version }) => version);
+  const created = customers.map((customer) => customer.created);
+  return Match.valueTags(selection, {
+    Dated: () => isAscendingFrom(versions, Option.none()),
+    ChangedFrom: ({ versionDate }) =>
+      isAscendingFrom(versions, Option.some(versionDate)),
+    ChangedAfter: ({ versionDate }) =>
+      isAscendingFrom(versions, Option.some(versionDate + BigInt(1))),
+    ChangedAt: ({ versionDate, createdFrom }) =>
+      versions.every((version) => Option.contains(version, versionDate)) &&
+      isAscendingFrom(created, createdFrom),
+    Undated: ({ createdFrom }) =>
+      versions.every(Option.isNone) && isAscendingFrom(created, createdFrom),
+  });
+};
+
+/** Every timestamp is present, at least `lowest`, and at least the one before. */
+const isAscendingFrom = (
+  timestamps: readonly Option.Option<DotyposTimestamp>[],
+  lowest: Option.Option<bigint>
+) => {
+  const present = Arr.getSomes(timestamps);
   return (
-    dated.length === versions.length &&
-    dated.every((value, index) => value >= (dated[index - 1] ?? lowest))
+    present.length === timestamps.length &&
+    present.every((timestamp, index) =>
+      Option.match(
+        index === 0 ? lowest : Option.fromNullishOr(present[index - 1]),
+        {
+          onNone: () => true,
+          onSome: (previous) => timestamp >= previous,
+        }
+      )
+    )
   );
 };
 
-const continuePosition = (input: {
-  readonly position: SourcePosition;
+const continueSelection = (input: {
+  readonly selection: CustomerVersionSelection;
   readonly changes: CustomerChanges;
-  readonly customers: readonly VersionedCustomer[];
-}): Effect.Effect<PageContinuation, UncountedDotyposCustomerGroup> =>
-  Match.valueTags(input.position, {
-    Range: () => Effect.succeed(continueRange(input)),
-    Group: (position) =>
-      Effect.succeed({ ...input, position }).pipe(
-        Effect.filterOrFail(
-          (group) => hasGroupChanged(group) || isGroupCounted(group),
-          () => new UncountedDotyposCustomerGroup()
-        ),
-        Effect.map(continueGroup)
-      ),
+  readonly customers: readonly StampedCustomer[];
+}): Effect.Effect<
+  PageContinuation,
+  UnexpectedDotyposCustomerPage | UnpageableDotyposCustomerGroup
+> =>
+  Match.valueTags(input.selection, {
+    Dated: () => continueRange(input),
+    ChangedFrom: () => continueRange(input),
+    ChangedAfter: () => continueRange(input),
+    ChangedAt: (selection) => continueGroup({ ...input, selection }),
+    Undated: (selection) => continueGroup({ ...input, selection }),
   });
 
 /**
@@ -427,148 +435,158 @@ const continuePosition = (input: {
  * back, so it is served and its version date is read as a group.
  */
 const continueRange = (input: {
-  readonly customers: readonly VersionedCustomer[];
+  readonly customers: readonly StampedCustomer[];
   readonly changes: CustomerChanges;
-}): PageContinuation => {
-  const last = Option.flatten(
-    Option.fromNullishOr(input.customers.at(-1)?.version)
-  );
-  if (!input.changes.hasMore || Option.isNone(last)) {
-    return { served: input.customers, next: Option.none() };
-  }
-  const versionDate = DateTime.makeUnsafe(last.value);
-  const wholeVersions = input.customers.filter(({ version }) =>
-    Option.exists(version, (value) => value < last.value)
-  );
-  return wholeVersions.length === 0
-    ? {
+}): Effect.Effect<PageContinuation, UnexpectedDotyposCustomerPage> =>
+  input.changes.hasMore
+    ? holdBackLast(input.customers, ({ version }) => version).pipe(
+        Effect.map(({ last, whole }) =>
+          whole.length === 0
+            ? {
+                served: input.customers,
+                next: Option.some<CustomerVersionSelection>({
+                  _tag: "ChangedAt",
+                  versionDate: last,
+                  createdFrom: Option.none(),
+                }),
+              }
+            : {
+                served: whole,
+                next: Option.some<CustomerVersionSelection>({
+                  _tag: "ChangedFrom",
+                  versionDate: last,
+                }),
+              }
+        )
+      )
+    : Effect.succeed({ served: input.customers, next: Option.none() });
+
+/**
+ * Serves every whole creation time in the group page. When more pages follow,
+ * the last creation time is held back and the next page starts at it. Then
+ * the version dates after the group follow.
+ *
+ * Customers only leave a group whose version date is past: an edit moves them
+ * to a newer version date, which the sync reaches later. Creation times don't
+ * change, so a page boundary between two of them stays put.
+ */
+const continueGroup = (input: {
+  readonly selection: GroupSelection;
+  readonly customers: readonly StampedCustomer[];
+  readonly changes: CustomerChanges;
+}): Effect.Effect<
+  PageContinuation,
+  UnexpectedDotyposCustomerPage | UnpageableDotyposCustomerGroup
+> =>
+  input.changes.hasMore
+    ? holdBackLast(input.customers, ({ created }) => created).pipe(
+        Effect.filterOrFail(
+          ({ whole }) => whole.length > 0,
+          () => new UnpageableDotyposCustomerGroup()
+        ),
+        Effect.map(({ last, whole }) => ({
+          served: whole,
+          next: Option.some<CustomerVersionSelection>({
+            ...input.selection,
+            createdFrom: Option.some(last),
+          }),
+        }))
+      )
+    : Effect.succeed({
         served: input.customers,
-        next: Option.some(groupAt({ _tag: "ChangedAt", versionDate })),
-      }
-    : {
-        served: wholeVersions,
-        next: Option.some(rangeAt({ _tag: "ChangedFrom", versionDate })),
-      };
-};
-
-type GroupPage = {
-  readonly position: Extract<SourcePosition, { readonly _tag: "Group" }>;
-  readonly changes: CustomerChanges;
-  readonly customers: readonly VersionedCustomer[];
-};
+        next: Option.some(afterGroup(input.selection)),
+      });
 
 /**
- * Customers only leave a group whose version date is past, so a count that
- * matches the group's first page means the pages so far covered the same
- * customers. An empty later page means the group shrank as well.
+ * Splits a full page before the last timestamp on it, which may continue on
+ * the next page. A full page always ends in a timestamp; an empty one that
+ * claims more pages follow is unexpected.
  */
-const hasGroupChanged = ({ position, changes, customers }: GroupPage) =>
-  Option.exists(position.size, (size) =>
-    Option.match(changes.totalCount, {
-      onNone: () => customers.length === 0,
-      onSome: (count) => count !== size,
-    })
+const holdBackLast = (
+  customers: readonly StampedCustomer[],
+  timestampOf: (customer: StampedCustomer) => Option.Option<DotyposTimestamp>
+) =>
+  Effect.fromOption(
+    Option.flatMap(Option.fromNullishOr(customers.at(-1)), timestampOf)
+  ).pipe(
+    Effect.mapError(() => new UnexpectedDotyposCustomerPage()),
+    Effect.map((last) => ({
+      last,
+      whole: customers.filter((customer) =>
+        Option.exists(timestampOf(customer), (timestamp) => timestamp < last)
+      ),
+    }))
   );
 
-/** A group read in one page needs no count. */
-const isGroupCounted = ({ position, changes }: GroupPage) =>
-  Option.isSome(changes.totalCount) ||
-  (!changes.hasMore && position.page === 1);
-
-/**
- * Pages through a group by number, and restarts it from its first page when
- * its count changed. The customers already read are served either way;
- * PostHog merges repeats on `id`.
- */
-const continueGroup = (group: GroupPage): PageContinuation => ({
-  served: group.customers,
-  next: Option.some(nextGroupPosition(group)),
-});
-
-const nextGroupPosition = ({ position, changes, customers }: GroupPage) => {
-  if (hasGroupChanged({ position, changes, customers })) {
-    return groupAt(position.selection);
-  }
-  if (changes.hasMore) {
-    return groupAt(position.selection, position.page + 1, changes.totalCount);
-  }
-  return afterGroup(position.selection);
-};
-
-const afterGroup = (selection: GroupSelection): SourcePosition =>
+const afterGroup = (selection: GroupSelection): CustomerVersionSelection =>
   Match.valueTags(selection, {
-    Undated: () => rangeAt({ _tag: "Dated" }),
-    ChangedAt: ({ versionDate }) =>
-      rangeAt({ _tag: "ChangedAfter", versionDate }),
+    Undated: () => ({ _tag: "Dated" }),
+    ChangedAt: ({ versionDate }) => ({ _tag: "ChangedAfter", versionDate }),
   });
 
 /**
- * Cursors are opaque to PostHog: `dated`, `from.<ms>`, `after.<ms>`,
- * `at.<ms>.<page>[.<size>]`, and `undated.<page>[.<size>]`, with version dates
- * in epoch milliseconds.
+ * Cursors are opaque to PostHog: `dated`, `from.<version>`, `after.<version>`,
+ * `at.<version>[.<created>]`, and `undated[.<created>]`, with timestamps in
+ * epoch microseconds.
  */
-const encodeCursor = (position: SourcePosition): string =>
-  Match.valueTags(position, {
-    Range: ({ selection }) =>
-      Match.valueTags(selection, {
-        Dated: () => "dated",
-        ChangedFrom: ({ versionDate }) =>
-          `from.${DateTime.toEpochMillis(versionDate)}`,
-        ChangedAfter: ({ versionDate }) =>
-          `after.${DateTime.toEpochMillis(versionDate)}`,
-      }),
-    Group: ({ selection, page, size }) =>
-      [
-        ...Match.valueTags(selection, {
-          ChangedAt: ({ versionDate }) => [
-            "at",
-            `${DateTime.toEpochMillis(versionDate)}`,
-          ],
-          Undated: () => ["undated"],
-        }),
-        `${page}`,
-        ...Option.match(size, {
-          onNone: () => [],
-          onSome: (count) => [`${count}`],
-        }),
-      ].join("."),
+const encodeCursor = (selection: CustomerVersionSelection): string =>
+  Match.valueTags(selection, {
+    Dated: () => "dated",
+    ChangedFrom: ({ versionDate }) => `from.${versionDate}`,
+    ChangedAfter: ({ versionDate }) => `after.${versionDate}`,
+    ChangedAt: ({ versionDate, createdFrom }) =>
+      ["at", `${versionDate}`, ...Option.toArray(createdFrom).map(String)].join(
+        "."
+      ),
+    Undated: ({ createdFrom }) =>
+      ["undated", ...Option.toArray(createdFrom).map(String)].join("."),
   });
 
-const millisPattern = String.raw`(\d{1,15})`;
-const groupPagePattern = String.raw`([1-9]\d{0,8})(?:\.(\d{1,9}))?`;
+const timestampPattern = String.raw`(\d{1,16})`;
 
 const cursorFormats: readonly {
   readonly pattern: RegExp;
-  readonly decode: (groups: readonly string[]) => SourcePosition;
+  readonly decode: (
+    groups: readonly (string | undefined)[]
+  ) => CustomerVersionSelection;
 }[] = [
-  { pattern: /^dated$/, decode: () => rangeAt({ _tag: "Dated" }) },
+  { pattern: /^dated$/, decode: () => ({ _tag: "Dated" }) },
   {
-    pattern: new RegExp(`^from\\.${millisPattern}$`),
-    decode: ([millis]) =>
-      rangeAt({ _tag: "ChangedFrom", versionDate: versionDateAt(millis) }),
+    pattern: new RegExp(`^from\\.${timestampPattern}$`),
+    decode: ([version]) => ({
+      _tag: "ChangedFrom",
+      versionDate: timestampAt(version),
+    }),
   },
   {
-    pattern: new RegExp(`^after\\.${millisPattern}$`),
-    decode: ([millis]) =>
-      rangeAt({ _tag: "ChangedAfter", versionDate: versionDateAt(millis) }),
+    pattern: new RegExp(`^after\\.${timestampPattern}$`),
+    decode: ([version]) => ({
+      _tag: "ChangedAfter",
+      versionDate: timestampAt(version),
+    }),
   },
   {
-    pattern: new RegExp(`^at\\.${millisPattern}\\.${groupPagePattern}$`),
-    decode: ([millis, page, size]) =>
-      groupAt(
-        { _tag: "ChangedAt", versionDate: versionDateAt(millis) },
-        Number(page),
-        groupSize(size)
-      ),
+    pattern: new RegExp(
+      `^at\\.${timestampPattern}(?:\\.${timestampPattern})?$`
+    ),
+    decode: ([version, created]) => ({
+      _tag: "ChangedAt",
+      versionDate: timestampAt(version),
+      createdFrom: optionalTimestampAt(created),
+    }),
   },
   {
-    pattern: new RegExp(`^undated\\.${groupPagePattern}$`),
-    decode: ([page, size]) =>
-      groupAt({ _tag: "Undated" }, Number(page), groupSize(size)),
+    pattern: new RegExp(`^undated(?:\\.${timestampPattern})?$`),
+    decode: ([created]) => ({
+      _tag: "Undated",
+      createdFrom: optionalTimestampAt(created),
+    }),
   },
 ];
 
-const decodeCursor = (cursor: string): Option.Option<SourcePosition> =>
+const decodeCursor = (
+  cursor: string
+): Option.Option<CustomerVersionSelection> =>
   Option.firstSomeOf(
     cursorFormats.map(({ pattern, decode }) =>
       Option.fromNullishOr(pattern.exec(cursor)).pipe(
@@ -577,11 +595,11 @@ const decodeCursor = (cursor: string): Option.Option<SourcePosition> =>
     )
   );
 
-const versionDateAt = (millis: string | undefined) =>
-  DateTime.makeUnsafe(Number(millis));
+const timestampAt = (micros: string | undefined) =>
+  DotyposTimestampSchema.make(BigInt(micros ?? "0"));
 
-const groupSize = (size: string | undefined) =>
-  Option.fromNullishOr(size).pipe(Option.map(Number));
+const optionalTimestampAt = (micros: string | undefined) =>
+  Option.fromNullishOr(micros).pipe(Option.map(timestampAt));
 
 /**
  * Projects a customer onto the allowlist field by field. A customer without
@@ -590,7 +608,7 @@ const groupSize = (size: string | undefined) =>
 const toSourceRow = ({
   customer,
   version,
-}: VersionedCustomer): readonly DotyposCustomerSourceRow[] =>
+}: StampedCustomer): readonly DotyposCustomerSourceRow[] =>
   customer.id === undefined
     ? []
     : [
@@ -613,7 +631,7 @@ const toSourceRow = ({
           created: customer.created ?? null,
           versionDate: Option.match(version, {
             onNone: () => null,
-            onSome: (millis) => DateTime.formatIso(DateTime.makeUnsafe(millis)),
+            onSome: formatDotyposTimestamp,
           }),
           deleted: customer.deleted,
         },
@@ -667,8 +685,8 @@ const failUpstream = (
     | NetworkError
     | ValidationError
     | RequestBudgetUnavailable
-    | UnexpectedDotyposCustomerVersion
-    | UncountedDotyposCustomerGroup,
+    | UnexpectedDotyposCustomerPage
+    | UnpageableDotyposCustomerGroup,
   status: 429 | 502 | 503,
   message: string
 ) =>

@@ -25,6 +25,13 @@ export {
   NetworkError,
   ValidationError,
 } from "./errors";
+export type { DotyposTimestamp } from "./timestamp";
+export {
+  DotyposTimestampFromString,
+  DotyposTimestampSchema,
+  dotyposTimestampFromDateTime,
+  formatDotyposTimestamp,
+} from "./timestamp";
 export type {
   CreateDotyposReservationInput,
   DotyposBranchId,
