@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
@@ -38,7 +39,7 @@ test("labels the close button in Czech on a Czech route", async () => {
   const view = render(
     <RouteLocaleProvider locale="cs-CZ">
       <CampaignTestSendDialog
-        adminInbox="admin@example.test"
+        adminInbox={testEmailAddress("campaign-admin-inbox")}
         campaignId={campaignIdSchema.make("synthetic-campaign")}
         contentLocales={["cs-CZ"]}
         unsavedChanges={false}
