@@ -2,16 +2,11 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const isMeetingRoomPageEnabled = mock();
 const isOfficePageEnabled = mock();
-const areAccountsEnabled = mock();
 const isCustomerSignedIn = mock();
 const updateLocalePreference = mock();
 
 mock.module("@/features/account/actions", () => ({
   updateLocalePreference,
-}));
-
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountsEnabled,
 }));
 
 mock.module("@/features/account/server/customer-session.server", () => ({
@@ -31,11 +26,9 @@ mock.module(
 
 describe("getSiteHeaderConfig", () => {
   beforeEach(() => {
-    areAccountsEnabled.mockReset();
     isCustomerSignedIn.mockReset();
     isMeetingRoomPageEnabled.mockReset();
     isOfficePageEnabled.mockReset();
-    areAccountsEnabled.mockResolvedValue(true);
     isCustomerSignedIn.mockResolvedValue(false);
     isMeetingRoomPageEnabled.mockResolvedValue(false);
     isOfficePageEnabled.mockResolvedValue(false);
@@ -69,12 +62,12 @@ describe("getSiteHeaderConfig", () => {
     isCustomerSignedIn.mockResolvedValue(true);
 
     const en = await getSiteHeaderConfig("en-US");
-    expect(await en.account?.href).toBe("/en-US/account");
-    expect(en.account?.label).toBe("Account");
+    expect(await en.account.href).toBe("/en-US/account");
+    expect(en.account.label).toBe("Account");
 
     const cs = await getSiteHeaderConfig("cs-CZ");
-    expect(await cs.account?.href).toBe("/cs-CZ/account");
-    expect(cs.account?.label).toBe("Účet");
+    expect(await cs.account.href).toBe("/cs-CZ/account");
+    expect(cs.account.label).toBe("Účet");
     expect(isCustomerSignedIn).toHaveBeenCalledWith();
   });
 
@@ -82,12 +75,12 @@ describe("getSiteHeaderConfig", () => {
     const { getSiteHeaderConfig } = await import("./site-header-config");
 
     const en = await getSiteHeaderConfig("en-US");
-    expect(await en.account?.href).toBe("/en-US/auth/sign-in");
-    expect(en.account?.signInHref).toBe("/en-US/auth/sign-in");
+    expect(await en.account.href).toBe("/en-US/auth/sign-in");
+    expect(en.account.signInHref).toBe("/en-US/auth/sign-in");
 
     const cs = await getSiteHeaderConfig("cs-CZ");
-    expect(await cs.account?.href).toBe("/cs-CZ/auth/sign-in");
-    expect(cs.account?.signInHref).toBe("/cs-CZ/auth/sign-in");
+    expect(await cs.account.href).toBe("/cs-CZ/auth/sign-in");
+    expect(cs.account.signInHref).toBe("/cs-CZ/auth/sign-in");
   });
 
   test("falls back to the sign-in page when the session check fails", async () => {
@@ -96,26 +89,15 @@ describe("getSiteHeaderConfig", () => {
 
     const config = await getSiteHeaderConfig("en-US");
 
-    expect(await config.account?.href).toBe("/en-US/auth/sign-in");
-  });
-
-  test("omits the account entry when its release flag is disabled", async () => {
-    const { getSiteHeaderConfig } = await import("./site-header-config");
-    areAccountsEnabled.mockResolvedValue(false);
-
-    const config = await getSiteHeaderConfig("en-US");
-
-    expect(config).not.toHaveProperty("account");
-    expect(config).not.toHaveProperty("localePreference");
-    expect(isCustomerSignedIn).not.toHaveBeenCalled();
+    expect(await config.account.href).toBe("/en-US/auth/sign-in");
   });
 
   test("treats a failed session check as a guest switch", async () => {
-    const { getSiteHeaderLocalePreference } = await import(
+    const { createLocalePreferenceSaving } = await import(
       "./site-header-config"
     );
     isCustomerSignedIn.mockRejectedValue(new Error("synthetic failure"));
 
-    expect(await (await getSiteHeaderLocalePreference())?.signedIn).toBe(false);
+    expect(await createLocalePreferenceSaving().signedIn).toBe(false);
   });
 });

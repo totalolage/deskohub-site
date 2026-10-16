@@ -22,19 +22,16 @@ import { Switch } from "@/shared/components/ui/switch";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 
 export interface MarketingPreferencesFormProps {
-  readonly accountsEnabled?: boolean;
   readonly locale: Locale;
   readonly state: MarketingPreferencesState;
 }
 
 export function MarketingPreferencesForm({
-  accountsEnabled = true,
   locale,
   state,
 }: MarketingPreferencesFormProps) {
   return (
     <MarketingPreferencesFormContent
-      accountsEnabled={accountsEnabled}
       // Fence local feedback to one management context. The status stays out of
       // the key: router.refresh() delivers the saved status as new props, and
       // remounting would drop the success feedback and the switch's focus.
@@ -54,11 +51,9 @@ type MarketingFeedback = {
 };
 
 function MarketingPreferencesFormContent({
-  accountsEnabled,
   locale,
   state,
 }: {
-  readonly accountsEnabled: boolean;
   readonly locale: Locale;
   readonly state: MarketingPreferencesState;
 }) {
@@ -213,7 +208,7 @@ function MarketingPreferencesFormContent({
         data-marketing-preferences={state.status}
         data-marketing-preferences-source={source}
       >
-        <UnavailableState accountsEnabled={accountsEnabled} locale={locale} />
+        <UnavailableState locale={locale} />
       </div>
     );
   }
@@ -412,13 +407,7 @@ function PendingLinkState({
   );
 }
 
-function UnavailableState({
-  accountsEnabled,
-  locale,
-}: {
-  readonly accountsEnabled: boolean;
-  readonly locale: Locale;
-}) {
+function UnavailableState({ locale }: { readonly locale: Locale }) {
   return (
     <div className="min-w-0 space-y-2">
       <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
@@ -427,22 +416,15 @@ function UnavailableState({
       <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
         {m.marketingPreferencesFormUnavailableNextStep({}, { locale })}
       </p>
-      {accountsEnabled && (
-        <>
-          <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
-            {m.marketingPreferencesFormUnavailableSignInNextStep(
-              {},
-              { locale }
-            )}
-          </p>
-          <a
-            className="inline-flex max-w-full wrap-break-word pt-1 text-sm font-semibold text-burned-orange underline decoration-burned-orange/40 underline-offset-4 hover:text-burned-orange-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
-            href={getAccountSignInPath(locale)}
-          >
-            {m.marketingPreferencesFormSignInAction({}, { locale })}
-          </a>
-        </>
-      )}
+      <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
+        {m.marketingPreferencesFormUnavailableSignInNextStep({}, { locale })}
+      </p>
+      <a
+        className="inline-flex max-w-full wrap-break-word pt-1 text-sm font-semibold text-burned-orange underline decoration-burned-orange/40 underline-offset-4 hover:text-burned-orange-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
+        href={getAccountSignInPath(locale)}
+      >
+        {m.marketingPreferencesFormSignInAction({}, { locale })}
+      </a>
     </div>
   );
 }

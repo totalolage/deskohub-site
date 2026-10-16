@@ -340,20 +340,6 @@ describe("sign-in code gate", () => {
     expect(store.user[0]!.name).toBe("");
   });
 
-  test("closes code sign-in while accounts are disabled", async () => {
-    const { auth } = makeMemoryTestAuth({
-      areAccountsEnabled: async () => false,
-    });
-
-    const response = await signInWithCode(
-      auth,
-      uniqueEmail("code-accounts-off"),
-      "123456"
-    );
-
-    expect(response.status).toBe(503);
-  });
-
   test("BotID-checks code sign-in always and sign-in emails only while codes are on", async () => {
     const checks: VerifyHumanInput[] = [];
     const bot = (input: VerifyHumanInput) =>

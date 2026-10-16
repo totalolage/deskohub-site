@@ -3,7 +3,6 @@ import { Context, Effect, Layer } from "effect";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 
 export interface IAccountFeatureFlagService {
-  readonly isEnabled: Effect.Effect<boolean>;
   /** `login_email_code`: sign-in emails carry a code. Fails closed. */
   readonly isSignInCodeEnabled: Effect.Effect<boolean>;
   /**
@@ -27,13 +26,6 @@ export class AccountFeatureFlagService extends Context.Service<
       const featureFlags = yield* WorkspaceFeatureFlagService;
 
       return {
-        isEnabled: featureFlags.isEnabled("accounts").pipe(
-          Effect.map((value) => value === true),
-          Effect.tapError(() =>
-            Effect.logWarning("Account feature flag evaluation unavailable")
-          ),
-          Effect.orElseSucceed(() => false)
-        ),
         isSignInCodeEnabled: featureFlags.isEnabled("login_email_code").pipe(
           Effect.map((value) => value === true),
           Effect.tapError(() =>

@@ -8,7 +8,6 @@ import {
 import { PreferenceRowGroup } from "@/shared/components/ui/preference-row";
 
 export interface LegalPreferenceSettingsProps {
-  readonly accountsEnabled?: boolean;
   readonly locale: Locale;
   readonly marketingPreferences?: MarketingPreferencesState;
 }
@@ -20,17 +19,12 @@ export interface LegalPreferenceSettingsProps {
  * outside the row group instead of pretending to be a card.
  */
 export function LegalPreferenceSettings({
-  accountsEnabled = true,
   locale,
   marketingPreferences,
 }: LegalPreferenceSettingsProps) {
   const state = marketingPreferences ?? { status: "unavailable" };
   const marketingForm = (
-    <MarketingPreferencesForm
-      accountsEnabled={accountsEnabled}
-      locale={locale}
-      state={state}
-    />
+    <MarketingPreferencesForm locale={locale} state={state} />
   );
 
   return isManagedMarketingState(state) ? (
