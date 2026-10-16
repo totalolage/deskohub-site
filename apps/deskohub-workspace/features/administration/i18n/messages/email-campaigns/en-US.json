@@ -132,11 +132,24 @@
   "emailCampaignsLinkUpdate": "Update link",
   "emailCampaignsListAudienceColumn": "Audience",
   "emailCampaignsListCampaignColumn": "Campaign",
+  "emailCampaignsListCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} campaign",
+        "countPlural=other": "{count} campaigns"
+      }
+    }
+  ],
+  "emailCampaignsListCountLoading": "Loading the campaign count",
   "emailCampaignsListEmpty": "No campaigns yet. Create one to compose your first email.",
+  "emailCampaignsListLoading": "Loading campaigns",
   "emailCampaignsListNewCampaign": "New campaign",
   "emailCampaignsListNoAudience": "No audience",
   "emailCampaignsListPurposeColumn": "Purpose",
   "emailCampaignsListStatusColumn": "Status",
+  "emailCampaignsListTableControls": "Campaign table controls",
   "emailCampaignsListTitle": "Email campaigns",
   "emailCampaignsListUpdatedAt": "Updated {updatedAt}",
   "emailCampaignsListUpdatedColumn": "Updated",

@@ -132,11 +132,25 @@
   "emailCampaignsLinkUpdate": "Upravit odkaz",
   "emailCampaignsListAudienceColumn": "Okruh příjemců",
   "emailCampaignsListCampaignColumn": "Kampaň",
+  "emailCampaignsListCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} kampaň",
+        "countPlural=few": "{count} kampaně",
+        "countPlural=other": "{count} kampaní"
+      }
+    }
+  ],
+  "emailCampaignsListCountLoading": "Načítání počtu kampaní",
   "emailCampaignsListEmpty": "Zatím tu nejsou žádné kampaně. Vytvořte první a napište svůj první e-mail.",
+  "emailCampaignsListLoading": "Načítání kampaní",
   "emailCampaignsListNewCampaign": "Nová kampaň",
   "emailCampaignsListNoAudience": "Bez okruhu příjemců",
   "emailCampaignsListPurposeColumn": "Účel",
   "emailCampaignsListStatusColumn": "Stav",
+  "emailCampaignsListTableControls": "Ovládání tabulky kampaní",
   "emailCampaignsListTitle": "E-mailové kampaně",
   "emailCampaignsListUpdatedAt": "Upraveno {updatedAt}",
   "emailCampaignsListUpdatedColumn": "Upraveno",
