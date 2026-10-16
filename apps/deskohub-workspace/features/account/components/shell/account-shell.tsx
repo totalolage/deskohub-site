@@ -4,6 +4,7 @@ import {
   CalendarDays,
   CreditCard,
   Gift,
+  KeyRound,
   ShieldCheck,
   TriangleAlert,
   UserRound,
@@ -31,6 +32,7 @@ export type AccountSection =
   | "reservations"
   | "referrals"
   | "profile"
+  | "security"
   | "billing"
   | "legal"
   | "danger";
@@ -87,6 +89,7 @@ export function AccountShell({
       { icon: CalendarDays, key: "reservations" },
       { icon: Gift, key: "referrals" },
       { icon: UserRound, key: "profile" },
+      { icon: KeyRound, key: "security" },
       { icon: CreditCard, key: "billing" },
       { icon: ShieldCheck, key: "legal" },
       { icon: TriangleAlert, key: "danger" },

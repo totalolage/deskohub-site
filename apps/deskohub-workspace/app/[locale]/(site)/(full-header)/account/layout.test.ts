@@ -15,6 +15,7 @@ type TestSession = {
 type AccountLayoutShellProps = {
   readonly accountsEnabled: boolean;
   readonly locale: "en-US";
+  readonly passkeysEnabled: boolean;
   readonly referralsEnabled: boolean;
   readonly signedIn: boolean;
   readonly children: ReactNode;
@@ -51,6 +52,7 @@ Object.assign(Authentication, { Default: AuthenticationLayer });
 const connection = mock(() => Promise.resolve());
 let accountsEnabled = true;
 const areAccountsEnabled = mock(() => Promise.resolve(accountsEnabled));
+const arePasskeysEnabled = mock(() => Promise.resolve(true));
 let referralsEnabled = true;
 const areReferralsEnabled = mock(() => Promise.resolve(referralsEnabled));
 const runWithRequestLocale = mock(
@@ -60,6 +62,7 @@ const runWithRequestLocale = mock(
 mock.module("next/server", () => ({ connection }));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
   areAccountsEnabled,
+  arePasskeysEnabled,
 }));
 mock.module("@/features/referrals/referral-feature-flag.server", () => ({
   areReferralsEnabled,
@@ -95,6 +98,7 @@ describe("account route layout", () => {
     connection.mockClear();
     areAccountsEnabled.mockClear();
     areReferralsEnabled.mockClear();
+    arePasskeysEnabled.mockClear();
     runWithRequestLocale.mockClear();
     accountsEnabled = true;
     referralsEnabled = true;
@@ -148,10 +152,12 @@ describe("account route layout", () => {
       expect(connection).toHaveBeenCalled();
       expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
       expect(areReferralsEnabled).toHaveBeenCalledTimes(1);
+      expect(arePasskeysEnabled).toHaveBeenCalledTimes(1);
       expect(output.type).toBe(AccountLayoutShell);
       expect(output.props).toMatchObject({
         accountsEnabled: true,
         locale: "en-US",
+        passkeysEnabled: true,
         referralsEnabled: true,
         signedIn: expectedSignedIn,
       });

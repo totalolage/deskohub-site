@@ -46,6 +46,7 @@ const sections = [
   "reservations",
   "referrals",
   "profile",
+  "security",
   "billing",
   "legal",
   "danger",
@@ -83,6 +84,12 @@ const sectionPanel = (section: AccountSection) => {
         firstName: "E2E",
         lastName: null,
       });
+    case "security":
+      return createElement(
+        "h2",
+        { id: "account-security-passkeys-title" },
+        "Passkeys"
+      );
     case "billing":
       return createElement(
         "section",
@@ -111,7 +118,11 @@ const sectionPanel = (section: AccountSection) => {
 
 let selectedSections: AccountSection[] = [];
 
-function AccountShellHarness() {
+function AccountShellHarness({
+  hiddenSections = [],
+}: {
+  readonly hiddenSections?: readonly AccountSection[];
+} = {}) {
   const [activeSection, setActiveSection] =
     useState<AccountSection>("reservations");
   const selectSection = (section: AccountSection) => {
@@ -129,6 +140,7 @@ function AccountShellHarness() {
         // AccountShell receives the rendered panels as variadic children below.
         // biome-ignore lint/correctness/noChildrenProp: AccountShellProps requires children in this createElement call.
         children: null,
+        hiddenSections,
         labels: shellLabels,
         onSectionChange: selectSection,
         signOut: createElement("button", { type: "button" }, "Sign out"),
@@ -333,6 +345,23 @@ test("visits and captures every desktop section in review runs", async () => {
   expect(capturedSections).toEqual(sections);
   expect(selectedSections).toEqual([...sections, "reservations"]);
   expect(reservationsPanelIsVisible()).toBe(true);
+});
+
+test("skips a flag-hidden section in review runs", async () => {
+  let capturedSections: readonly AccountSection[] = [];
+  render(createElement(AccountShellHarness, { hiddenSections: ["security"] }));
+
+  await verifyAccountLayoutNavigation(
+    makeFakePage(),
+    async (section) => {
+      capturedSections = [...capturedSections, section];
+    },
+    { screenshots: true }
+  );
+
+  const offered = sections.filter((section) => section !== "security");
+  expect(capturedSections).toEqual(offered);
+  expect(selectedSections).toEqual([...offered, "reservations"]);
 });
 
 const accountLayoutFailureMarker = `https://private.example.test/account?email=${testEmailAddress("secret")}&token=secret-token`;

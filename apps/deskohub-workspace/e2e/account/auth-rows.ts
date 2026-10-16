@@ -1,7 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import { authSession, authUser } from "@/db/schema/auth";
+import { authPasskey, authSession, authUser } from "@/db/schema/auth";
 import { customerAccountLinks } from "@/db/schema/customer-account-links";
 import type { Locale } from "@/features/i18n";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
@@ -167,6 +167,45 @@ export const setSessionCreatedAt = (
         .set({ createdAt: value })
         .where(eq(authSession.userId, accountId))
     );
+  });
+
+/**
+ * The number of passkeys the synthetic account holds. Only the exact
+ * synthetic user's rows are counted.
+ */
+export const countAccountPasskeys = (
+  accountId: string
+): Effect.Effect<number, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runDatabaseOperation(
+      "count synthetic account passkeys",
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(authPasskey)
+        .where(eq(authPasskey.userId, accountId))
+    );
+    return rows[0]?.count ?? 0;
+  });
+
+/**
+ * When the synthetic account's newest session was created, so a passkey
+ * reauthentication can be shown to have opened a fresh one.
+ */
+export const readNewestSessionCreatedAt = (
+  accountId: string
+): Effect.Effect<Date | undefined, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runDatabaseOperation(
+      "read synthetic newest session creation time",
+      db
+        .select({ createdAt: sql<Date>`max(${authSession.createdAt})` })
+        .from(authSession)
+        .where(eq(authSession.userId, accountId))
+    );
+    const value = rows[0]?.createdAt;
+    return value == null ? undefined : new Date(value);
   });
 
 export const assertNoAuthRows = (

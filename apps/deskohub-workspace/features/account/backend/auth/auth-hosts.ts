@@ -74,3 +74,68 @@ export const resolveBetterAuthAllowedHosts = (
 
   return { kind: "valid", hosts };
 };
+
+/**
+ * The WebAuthn relying party of one deployment: the RP ID every passkey is
+ * scoped to and the exact origins its ceremonies may come from.
+ */
+export type PasskeyRelyingParty = {
+  readonly rpID: string;
+  readonly origins: readonly string[];
+};
+
+type PasskeyRelyingPartyMessage =
+  | BetterAuthHostsMessage
+  | "The preview deployment host is not configured for passkeys.";
+
+export type PasskeyRelyingPartyResult =
+  | { readonly kind: "valid"; readonly relyingParty: PasskeyRelyingParty }
+  | { readonly kind: "invalid"; readonly message: PasskeyRelyingPartyMessage };
+
+const hostname = (host: string) => host.replace(/:\d+$/, "");
+
+const localRelyingPartyId = "localhost";
+
+/**
+ * Resolves the passkey relying party from the same environment as the
+ * `allowedHosts` list. Production uses the canonical customer-facing host,
+ * which stays fixed because changing it orphans every passkey. A preview
+ * uses its immutable deployment host, since `vercel.app` is a public suffix
+ * and its branch alias can't share the RP ID. Local development uses
+ * `localhost` over plain HTTP on each allowed localhost port. The RP ID is
+ * always explicit: the plugin's own fallback reads only a string `baseURL`.
+ */
+export const resolvePasskeyRelyingParty = (
+  environment: BetterAuthHostEnvironment
+): PasskeyRelyingPartyResult => {
+  const allowedHosts = resolveBetterAuthAllowedHosts(environment);
+  if (allowedHosts.kind === "invalid") return allowedHosts;
+
+  if (environment.vercelEnv === "development") {
+    return {
+      kind: "valid",
+      relyingParty: {
+        rpID: localRelyingPartyId,
+        origins: allowedHosts.hosts
+          .filter((host) => hostname(host) === localRelyingPartyId)
+          .map((host) => `http://${host}`),
+      },
+    };
+  }
+
+  const relyingPartyUrl =
+    environment.vercelEnv === "production"
+      ? environment.customerFacingHost
+      : environment.deploymentUrl;
+  if (!relyingPartyUrl) {
+    return {
+      kind: "invalid",
+      message: "The preview deployment host is not configured for passkeys.",
+    };
+  }
+  const host = toHost(relyingPartyUrl);
+  return {
+    kind: "valid",
+    relyingParty: { rpID: hostname(host), origins: [`https://${host}`] },
+  };
+};

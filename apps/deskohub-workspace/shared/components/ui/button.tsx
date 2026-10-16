@@ -25,7 +25,8 @@ interface ButtonTones {
     | "outline"
     | "tinted"
     | "success"
-    | "warning";
+    | "warning"
+    | "danger";
   link: "burned-orange" | "inverse";
   tile: "muted";
 }
@@ -193,6 +194,11 @@ const buttonClasses = cva(
         variant: "ghost",
         tone: "warning",
         class: "text-amber-800 hover:bg-amber-50",
+      },
+      {
+        variant: "ghost",
+        tone: "danger",
+        class: "text-rose-700 hover:bg-rose-50 hover:text-rose-800",
       },
       {
         variant: "link",

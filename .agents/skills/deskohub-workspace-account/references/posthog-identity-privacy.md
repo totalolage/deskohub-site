@@ -124,8 +124,9 @@ non-production traffic apart:
   Consented request events use the browser's `distinct_id` and `$session_id`.
   Webhooks can't join a browser without an approved persisted consent link.
 - Sign-in analytics live in `features/account/sign-in-analytics.ts`:
-  `sign-in completed` with `method: "link" | "code"` and `sign-in code
-  rejected` with `reason`. PostHog drops events until the new account identity
+  `sign-in completed` with `method: "link" | "code" | "passkey"`, `sign-in
+  code rejected` with `reason`, `passkey added` with `source: "prompt" |
+  "settings"`, `passkey removed`, and `passkey prompt dismissed`. PostHog drops events until the new account identity
   settles on the next page, so a finished sign-in is recorded in the tab's
   sessionStorage (only with analytics consent) and captured from the PostHog
   ready handler once the identity is authenticated. Never add the email or
