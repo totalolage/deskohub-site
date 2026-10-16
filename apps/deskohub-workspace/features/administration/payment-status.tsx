@@ -6,14 +6,16 @@ import {
   formatAdministrationMoney,
   getAdministrationPaymentStatus,
 } from "./formatters";
+import { m } from "./i18n";
 
 type DisplayedPayment = Pick<
   AdministrationPaymentAttempt,
   | "amount"
+  | "failureCode"
   | "refundState"
   | "refundedAmount"
   | "refundedAt"
-  | "stateLabel"
+  | "state"
   | "updatedAt"
 >;
 
@@ -37,14 +39,20 @@ export function PaymentAmount({
       <del className="font-normal text-navy-blue/55 line-through">
         {amount}
         <span className="sr-only">
-          {status.retainedAmount ? " before refund" : " refunded"}
+          {" "}
+          {status.retainedAmount
+            ? m.administrationPaymentAmountBeforeRefund({}, { locale })
+            : m.administrationPaymentAmountRefunded({}, { locale })}
         </span>
       </del>
       {status.retainedAmount && (
         <>
           {" "}
           {formatAdministrationMoney(status.retainedAmount, locale)}
-          <span className="sr-only"> after refund</span>
+          <span className="sr-only">
+            {" "}
+            {m.administrationPaymentAmountAfterRefund({}, { locale })}
+          </span>
         </>
       )}
     </>
@@ -60,7 +68,13 @@ export function PaymentStatusText({
   readonly payment: DisplayedPayment;
 }) {
   const status = getAdministrationPaymentStatus(payment, locale);
-  return `${status.label} · ${formatAdministrationDateTime(status.at, locale)}`;
+  return m.administrationPaymentStatusAt(
+    {
+      status: status.label,
+      time: formatAdministrationDateTime(status.at, locale),
+    },
+    { locale }
+  );
 }
 
 /** The payment status, with the refund time once refunded, such as "Paid". */
@@ -73,7 +87,13 @@ export function PaymentStatusLabel({
 }) {
   const status = getAdministrationPaymentStatus(payment, locale);
   return status.refunded
-    ? `${status.label} · ${formatAdministrationDateTime(status.at, locale)}`
+    ? m.administrationPaymentStatusAt(
+        {
+          status: status.label,
+          time: formatAdministrationDateTime(status.at, locale),
+        },
+        { locale }
+      )
     : status.label;
 }
 
@@ -91,7 +111,7 @@ export function PaymentRefundRequiredLabel({
     <span
       className={cn("block font-semibold text-burned-orange-ink", className)}
     >
-      Needs refund
+      {m.administrationPaymentNeedsRefund({}, { locale })}
     </span>
   );
 }

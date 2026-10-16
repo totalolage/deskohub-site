@@ -34,8 +34,10 @@ export async function AdministrationBreadcrumb({
     );
   } else if (segments[0] === "reservations" && segments[1]) {
     entityLabel =
-      (await loadAdministrationReservationBreadcrumbLabel(segments[1])) ??
-      undefined;
+      (await loadAdministrationReservationBreadcrumbLabel(
+        segments[1],
+        locale
+      )) ?? undefined;
   } else if (segments[0] === "bookings" && segments[1]) {
     entityLabel = await loadAdministrationBookingBreadcrumbLabel(
       segments[1],

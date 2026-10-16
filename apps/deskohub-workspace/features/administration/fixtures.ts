@@ -76,6 +76,7 @@ const makeFixturePayment = (
   state: "paid",
   refundState: "not_required",
   providerOrderId: fixtureNexiOrderId(`ORDER-${id}`),
+  provider: "nexi",
   providerLabel: "Online payment",
   stateLabel: "Paid",
   failureCode: null,
@@ -106,10 +107,16 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       endsAt: atTime(currentDate, 16),
       date: currentDate.toString(),
       type: "meeting-room",
+      product: { kind: "meeting-room" },
       typeLabel: "Meeting Room",
       purpose: "business",
-      status: { group: "attention", label: "Confirmation issue" },
+      status: {
+        group: "attention",
+        code: "confirmation_issue",
+        label: "Confirmation issue",
+      },
       statusNote: null,
+      statusNoteCode: null,
       createdAt: atTime(currentDate, 8),
       latestPayment: makeFixturePayment(
         "0198-admin-fixture-attention",
@@ -126,10 +133,16 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       endsAt: atTime(currentDate, 18),
       date: currentDate.toString(),
       type: "cowork",
+      product: { kind: "cowork", tier: "profi" },
       typeLabel: "Cowork Profi",
       purpose: "personal",
-      status: { group: "in_progress", label: "Payment pending" },
+      status: {
+        group: "in_progress",
+        code: "payment_pending",
+        label: "Payment pending",
+      },
       statusNote: null,
+      statusNoteCode: null,
       createdAt: atTime(currentDate, 8),
       latestPayment: {
         ...makeFixturePayment(
@@ -150,10 +163,12 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       endsAt: atTime(tomorrow, 17),
       date: tomorrow.toString(),
       type: "cowork",
+      product: { kind: "cowork", tier: "plus" },
       typeLabel: "Cowork Plus",
       purpose: "personal",
-      status: { group: "in_progress", label: "Confirming" },
+      status: { group: "in_progress", code: "confirming", label: "Confirming" },
       statusNote: null,
+      statusNoteCode: null,
       createdAt: atTime(yesterday, 16),
       latestPayment: makeFixturePayment(
         "0198-admin-fixture-confirming",
@@ -170,10 +185,12 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       endsAt: atTime(lastWeek, 18),
       date: lastWeek.toString(),
       type: "cowork",
+      product: { kind: "cowork", tier: "basic" },
       typeLabel: "Cowork Basic",
       purpose: "personal",
-      status: { group: "complete", label: "Complete" },
+      status: { group: "complete", code: "complete", label: "Complete" },
       statusNote: null,
+      statusNoteCode: null,
       createdAt: atTime(lastWeek, 7),
       latestPayment: makeFixturePayment(
         "0198-admin-fixture-complete",
@@ -190,10 +207,12 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       endsAt: atTime(yesterday, 15),
       date: yesterday.toString(),
       type: "meeting-room",
+      product: { kind: "meeting-room" },
       typeLabel: "Meeting Room",
       purpose: null,
-      status: { group: "cancelled", label: "Cancelled" },
+      status: { group: "cancelled", code: "cancelled", label: "Cancelled" },
       statusNote: null,
+      statusNoteCode: null,
       createdAt: atTime(yesterday, 7),
       latestPayment: null,
       updatedAt: atTime(yesterday, 8),
@@ -225,6 +244,7 @@ const makeBookings = (): readonly AdministrationBookingSummary[] =>
     linkedReservation: {
       id: reservation.id,
       label: reservation.typeLabel,
+      product: reservation.product,
     },
     createdAt: Temporal.Instant.from(reservation.updatedAt)
       .subtract({ hours: 2 })
@@ -233,26 +253,26 @@ const makeBookings = (): readonly AdministrationBookingSummary[] =>
   }));
 
 const getFixtureLifecycle = (reservation: AdministrationReservationSummary) => {
-  switch (reservation.status.label) {
-    case "Confirmation issue":
+  switch (reservation.status.code) {
+    case "confirmation_issue":
       return getAdministrationReservationLifecycle({
         fulfillmentState: "failed",
         paymentState: "paid",
         reservationState: "confirmed",
       });
-    case "Complete":
+    case "complete":
       return getAdministrationReservationLifecycle({
         fulfillmentState: "fulfilled",
         paymentState: "paid",
         reservationState: "confirmed",
       });
-    case "Cancelled":
+    case "cancelled":
       return getAdministrationReservationLifecycle({
         fulfillmentState: "not_started",
         paymentState: "cancelled",
         reservationState: "cancelled",
       });
-    case "Confirming":
+    case "confirming":
       return getAdministrationReservationLifecycle({
         fulfillmentState: "processing",
         paymentState: "paid",
@@ -314,13 +334,15 @@ export const loadFixtureReservation = (
     timeline: [
       {
         id: "fixture-checkout",
-        title: "Checkout started",
-        description: "The customer began checkout.",
+        event: { source: "reservation", kind: "workflow_created" },
+        title: "Checkout workflow created",
+        description: "Deskohub created the local reservation workflow.",
         occurredAt: startedAt,
         tone: "neutral",
       },
       {
         id: "fixture-hold",
+        event: { source: "reservation", kind: "reservation_held" },
         title: "Reservation held",
         description: "The booking was held for the customer.",
         occurredAt: Temporal.Instant.from(startedAt)
@@ -330,6 +352,7 @@ export const loadFixtureReservation = (
       },
       {
         id: "fixture-payment-started",
+        event: { source: "reservation", kind: "payment_started" },
         title: "Payment started",
         description: "An online payment attempt began.",
         occurredAt: Temporal.Instant.from(paidAt)
@@ -339,6 +362,7 @@ export const loadFixtureReservation = (
       },
       {
         id: "fixture-order-created",
+        event: { source: "payment", kind: "orderCreated", estimated: false },
         title: "Nexi order created",
         description: "Nexi accepted the hosted-payment request.",
         occurredAt: providerOrderCreatedAt,
@@ -347,6 +371,14 @@ export const loadFixtureReservation = (
       },
       {
         id: "fixture-operation",
+        event: {
+          source: "payment",
+          kind: "operationReported",
+          outcome: "executed",
+          operationType: "CAPTURE",
+          operationResult: "EXECUTED",
+          channel: "ECOMMERCE",
+        },
         title: "Payment executed by Nexi",
         description: "Nexi reported this Ecommerce operation.",
         occurredAt: Temporal.Instant.from(paidAt)
@@ -357,6 +389,7 @@ export const loadFixtureReservation = (
       },
       {
         id: "fixture-paid",
+        event: { source: "reservation", kind: "payment_recorded" },
         title: "Payment recorded by Deskohub",
         description:
           "Deskohub verified the provider payment and marked the reservation paid.",
@@ -367,6 +400,10 @@ export const loadFixtureReservation = (
         ? [
             {
               id: "fixture-attention",
+              event: {
+                source: "reservation",
+                kind: "confirmation_failed",
+              } as const,
               title: "Customer confirmation failed",
               description: "The confirmation could not be completed.",
               occurredAt: reservation.updatedAt,
@@ -381,6 +418,7 @@ export const loadFixtureReservation = (
         state: "paid",
         refundState: "not_required",
         providerOrderId: fixtureNexiOrderId("DADMINFIXTUREPAYMENT"),
+        provider: "nexi",
         providerLabel: "Online payment",
         stateLabel: "Paid",
         failureCode: null,
@@ -434,6 +472,7 @@ export const loadFixtureReservation = (
           state: "paid",
           refundState: "not_required",
           stateLabel: "Paid",
+          failureCode: null,
           amount: { value: 240000, exponent: 2, currency: "CZK" },
           refundedAmount: null,
           refundedAt: null,

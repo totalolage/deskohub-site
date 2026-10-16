@@ -1,10 +1,12 @@
 "use client";
 
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
+import { Schema } from "effect";
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -20,11 +22,28 @@ import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { getAdministrationReservation } from "./actions";
 import { localizeAdministrationHref } from "./administration-href";
-import {
-  type ReservationLookupInput,
-  reservationLookupSchema,
-} from "./contracts";
+import type { ReservationLookupInput } from "./contracts";
+import { m } from "./i18n";
 import { AdministrationAlert } from "./notice";
+
+const reservationLookupIdentifierMaximumLength = 256;
+
+// The lookup action validates the same rules with `reservationLookupSchema`;
+// this copy only adds the operator's language to the form errors.
+const getReservationLookupFormSchema = (locale: Locale) =>
+  Schema.Struct({
+    identifier: Schema.Trim.check(
+      Schema.isNonEmpty({
+        message: m.administrationReservationLookupRequired({}, { locale }),
+      }),
+      Schema.isMaxLength(reservationLookupIdentifierMaximumLength, {
+        message: m.administrationReservationLookupTooLong(
+          { maximum: reservationLookupIdentifierMaximumLength },
+          { locale }
+        ),
+      })
+    ),
+  });
 
 export function ReservationLookup({
   variant = "card",
@@ -39,7 +58,7 @@ export function ReservationLookup({
       defaultValues: { identifier: "" },
       mode: "onSubmit",
       reValidateMode: "onChange",
-      resolver: effectSchemaResolver(reservationLookupSchema, {
+      resolver: effectSchemaResolver(getReservationLookupFormSchema(locale), {
         onExcessProperty: "error",
       }),
     }
@@ -51,7 +70,7 @@ export function ReservationLookup({
       onSuccess: ({ data }) => {
         if (!data) return;
         if (!data.reservationId) {
-          setError("No reservation matched that ID.");
+          setError(m.administrationReservationLookupNoMatch({}, { locale }));
           return;
         }
         setError(null);
@@ -65,10 +84,10 @@ export function ReservationLookup({
       onError: ({ error: actionError }) =>
         setError(
           actionError.serverError ??
-            "The reservation lookup could not be completed."
+            m.administrationReservationLookupFailed({}, { locale })
         ),
       onTransportError: () =>
-        setError("The reservation lookup could not be completed."),
+        setError(m.administrationReservationLookupFailed({}, { locale })),
     }
   );
 
@@ -94,14 +113,19 @@ export function ReservationLookup({
             name="identifier"
             render={({ field: { onChange, ...field }, fieldState }) => (
               <FormItem>
-                <FormLabel>Reservation or payment ID</FormLabel>
+                <FormLabel>
+                  {m.administrationReservationLookupLabel({}, { locale })}
+                </FormLabel>
                 <FormControl>
                   <Input
                     {...field}
                     autoComplete="off"
-                    maxLength={256}
+                    maxLength={reservationLookupIdentifierMaximumLength}
                     onInput={onChange}
-                    placeholder="Paste any associated ID"
+                    placeholder={m.administrationReservationLookupPlaceholder(
+                      {},
+                      { locale }
+                    )}
                     required
                     type="search"
                     variant={fieldState.error ? "error" : "default"}
@@ -113,7 +137,9 @@ export function ReservationLookup({
           />
           <Button disabled={isExecuting} type="submit">
             <Search aria-hidden className="size-4" />
-            {isExecuting ? "Looking up…" : "Get reservation"}
+            {isExecuting
+              ? m.administrationReservationLookupSubmitting({}, { locale })
+              : m.administrationReservationLookupSubmit({}, { locale })}
           </Button>
         </form>
       </Form>

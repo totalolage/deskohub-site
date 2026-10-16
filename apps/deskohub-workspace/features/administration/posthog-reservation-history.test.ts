@@ -58,6 +58,7 @@ describe("PostHog reservation history", () => {
       items: [
         {
           id: "posthog-event-uuid",
+          event: { source: "reservation", kind: "payment_started" },
           title: "Payment started",
           description: "An online payment attempt began.",
           occurredAt: "2026-08-04T12:30:00Z",

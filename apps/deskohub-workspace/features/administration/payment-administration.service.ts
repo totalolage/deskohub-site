@@ -53,6 +53,7 @@ type AdministrationOrderLink = {
   readonly state: PaymentAttemptState;
   readonly refundState: PaymentRefundState;
   readonly stateLabel: string;
+  readonly failureCode: string | null;
   readonly amount: AdministrationOrderMoney;
   /** Total Nexi reports as refunded; set only when `refundState` is `refunded`. */
   readonly refundedAmount: AdministrationOrderMoney | null;
@@ -143,6 +144,7 @@ const toOrderLink = (row: LocalOrderRow): AdministrationOrderLink => {
       row.failureCode === "payment_abandoned_after_provider_cutoff"
         ? "Abandoned"
         : paymentAttemptStateLabels[row.state],
+    failureCode: row.failureCode,
     amount: {
       value: row.amountValue,
       exponent: row.amountExponent,
