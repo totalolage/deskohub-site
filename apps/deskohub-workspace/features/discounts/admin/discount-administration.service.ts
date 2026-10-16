@@ -160,7 +160,9 @@ export type AdminDiscountCodeClaim = {
 
 export type AdminDiscountCodeDetail = {
   readonly code: AdminDiscountCode;
+  /** The English label the administration API returns. */
   readonly discountLabel: string;
+  readonly discountLabels: DiscountLabels;
   readonly customers: readonly {
     readonly customerId: DotyposCustomerId;
     readonly customer: AdminDotyposCustomer | null;
@@ -184,7 +186,9 @@ export type AdminVoucherDetail = {
 
 type AdminCustomerCode = AdminDiscountCode & {
   readonly discountAdjustment: DiscountAdjustment;
+  /** The English label the administration API returns. */
   readonly discountLabel: string;
+  readonly discountLabels: DiscountLabels;
   readonly eligible: boolean;
 };
 
@@ -986,6 +990,7 @@ export class DiscountAdministration extends Context.Service<
               Effect.map(({ customers, row }) => ({
                 code: toAdminDiscountCode(row),
                 discountLabel: row.discount.labels["en-US"],
+                discountLabels: row.discount.labels,
                 customers,
                 claims: row.redemptions
                   .map(toAdminDiscountCodeClaim)
@@ -1242,6 +1247,7 @@ export class DiscountAdministration extends Context.Service<
                 ...toAdminDiscountCode(row),
                 discountAdjustment: toDiscountAdjustment(row.discount),
                 discountLabel: row.discount.labels["en-US"],
+                discountLabels: row.discount.labels,
                 eligible: row.promotion.customers.some(
                   ({ dotyposCustomerId }) =>
                     dotyposCustomerId === input.customerId

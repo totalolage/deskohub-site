@@ -81,7 +81,7 @@ export function CodeAdministrationDetailPage({
 
       <CodeSummary
         code={code}
-        discountLabel={detail.discountLabel}
+        discountLabel={detail.discountLabels[locale]}
         locale={locale}
       />
 
@@ -408,7 +408,7 @@ export function CustomerAdministrationDetailPage({
         audienceSize,
         code,
         discountAdjustment,
-        discountLabel,
+        discountLabels,
         eligible,
         enabled,
         id,
@@ -417,7 +417,7 @@ export function CustomerAdministrationDetailPage({
         audienceSize,
         code,
         discountAdjustment,
-        discountLabel,
+        discountLabel: discountLabels[locale],
         eligible,
         enabled,
         id,

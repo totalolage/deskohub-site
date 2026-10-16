@@ -171,7 +171,10 @@ const dashboard: DiscountAdminDashboard = {
         association: {
           kind: "associated",
           discountId: "019c91dd-c560-7e55-b9d8-c95065efd51d",
-          discountLabel: "Summer discount",
+          discountLabels: {
+            "en-US": "Summer discount",
+            "cs-CZ": "Summer discount",
+          },
         },
       },
     ],
@@ -303,7 +306,10 @@ describe("discount administration pages", () => {
             kind: "percentage",
             basisPoints: 1000,
           },
-          discountLabel: "Only me discount",
+          discountLabels: {
+            "en-US": "Only me discount",
+            "cs-CZ": "Only me discount",
+          },
           eligible: true,
         },
         {
@@ -315,7 +321,10 @@ describe("discount administration pages", () => {
             kind: "fixed",
             amount: { value: 7500, exponent: 2, currency: "CZK" },
           },
-          discountLabel: "Open discount",
+          discountLabels: {
+            "en-US": "Open discount",
+            "cs-CZ": "Open discount",
+          },
           eligible: false,
         },
         {
@@ -327,7 +336,10 @@ describe("discount administration pages", () => {
             kind: "percentage",
             basisPoints: 500,
           },
-          discountLabel: "Disabled discount",
+          discountLabels: {
+            "en-US": "Disabled discount",
+            "cs-CZ": "Disabled discount",
+          },
           eligible: true,
           enabled: false,
         },
@@ -340,7 +352,10 @@ describe("discount administration pages", () => {
             kind: "percentage",
             basisPoints: 1000,
           },
-          discountLabel: "Restricted discount",
+          discountLabels: {
+            "en-US": "Restricted discount",
+            "cs-CZ": "Restricted discount",
+          },
           eligible: false,
         },
       ],

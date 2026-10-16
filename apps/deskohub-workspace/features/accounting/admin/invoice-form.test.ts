@@ -397,6 +397,19 @@ test("shows validation feedback and skips the preview for an invalid invoice", a
   expect(preview).not.toHaveBeenCalled();
 });
 
+test("keeps a typed decimal comma as the decimal point", () => {
+  mockPreviewAction();
+  const view = renderInvoiceCreationForm({ locale: "cs-CZ" });
+  const price = view.getByLabelText("Cena") as HTMLInputElement;
+  for (const typed of ["1", "12", "125", "1250", "1250,"]) {
+    fireEvent.input(price, { target: { value: typed } });
+  }
+  expect(price.value).toBe("1250.");
+
+  fireEvent.input(price, { target: { value: "99,9" } });
+  expect(price.value).toBe("99.9");
+});
+
 test("shows Czech copy and validation feedback on a Czech route", async () => {
   const preview = mockPreviewAction();
   const view = renderInvoiceCreationForm({ locale: "cs-CZ" });

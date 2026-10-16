@@ -1302,6 +1302,10 @@ export const isInvoicePriceInput = (value: string, exponent: number) =>
     exponent === 0 ? "^[+-]?\\d*$" : `^[+-]?\\d*(?:\\.\\d{0,${exponent}})?$`
   ).test(value);
 
+/** Czech operators type a decimal comma; the price keeps the canonical dot. */
+export const normalizeInvoicePriceInput = (value: string) =>
+  value.replace(",", ".");
+
 const invoicePricePattern = (exponent: number) =>
   exponent === 0 ? "[+-]?\\d+" : `[+-]?\\d+(?:\\.\\d{1,${exponent}})?`;
 
@@ -1331,7 +1335,9 @@ function InvoicePriceInput({
     const input = inputRef.current;
     if (!input) return;
     const handleNativeChange = (event: Event) => {
-      const price = (event.currentTarget as HTMLInputElement).value;
+      const price = normalizeInvoicePriceInput(
+        (event.currentTarget as HTMLInputElement).value
+      );
       if (!isInvoicePriceInput(price, exponent)) {
         // Rejected input never reaches form state, so restore the DOM to the
         // accepted value instead of letting it drift.
@@ -1349,14 +1355,14 @@ function InvoicePriceInput({
       inputMode="decimal"
       onBlur={onBlur}
       onChange={(event) => {
-        const price = event.target.value;
+        const price = normalizeInvoicePriceInput(event.target.value);
         if (!isInvoicePriceInput(price, exponent)) return;
         onChange(price);
       }}
       onInput={(event) => {
         // Mirrors the other form fields: real typing dispatches input
         // events, which React's synthetic onChange does not always surface.
-        const price = event.currentTarget.value;
+        const price = normalizeInvoicePriceInput(event.currentTarget.value);
         if (!isInvoicePriceInput(price, exponent)) return;
         if (price !== value) onChange(price);
       }}
