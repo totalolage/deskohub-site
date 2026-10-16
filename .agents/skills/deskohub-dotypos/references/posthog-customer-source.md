@@ -151,10 +151,11 @@ ones. Undated rows carry `versionDate: null`.
   filters, 404 for empty filters).
 - Every undated customer has a `created` timestamp; one without fails its
   group page with 502.
-- At most 100 customers share one exact `versionDate` and `created`. The
-  synthetic cloud stamps each row separately (neighbors differ by
-  microseconds); a bulk import or edit that stamps 101 or more customers with
-  one value makes its group answer 502.
+- A tie group of 100 customers with identical `versionDate` and `created`
+  blocks the sync with 502 when more customers with that `versionDate` follow
+  it. A group of 100 that is last for its `versionDate` succeeds. Only groups
+  of 101 or more always block. The synthetic cloud stamps each row separately
+  (neighbors differ by microseconds).
 - `versionDate` grows with each edit, so an edited customer never moves to an
   earlier, already-read position.
 
@@ -187,12 +188,14 @@ Never print or copy customer data into logs, tickets, or chat.
 
 ### Known causes and remedies
 
-1. More than 100 customers share the same `versionDate` and `created`, such
-   as after a bulk import or bulk edit in Dotypos. Exactly 100 is fine; 101
-   blocks because the next page cannot split that timestamp group. Editing
-   one customer may not unblock a larger batch. Re-save the affected
-   customers in smaller batches so their `versionDate` values differ, or
-   implement a separately verified pagination fallback.
+1. A tie group of 100 customers shares the same `versionDate` and `created`,
+   such as after a bulk import or bulk edit in Dotypos, and more customers with
+   that `versionDate` follow it. A group of 100 that is last for its
+   `versionDate` succeeds; groups of 101 or more always block because the next
+   page cannot split that timestamp group. Editing one customer may not unblock
+   a larger batch. Re-save the affected customers in smaller batches so their
+   `versionDate` values differ, or implement a separately verified pagination
+   fallback.
 2. A customer has no `id`. Escalate to Dotypos support.
 3. Dotypos returned an out-of-order or repeated page. Escalate to Dotypos
    support.
