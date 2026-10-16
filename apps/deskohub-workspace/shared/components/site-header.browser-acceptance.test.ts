@@ -17,6 +17,21 @@ const phoneWidths = [320, 390, 430] as const;
 const desktopWidths = [1024, 1280, 1440] as const;
 const headerVariants = ["full", "minimal"] as const;
 type HeaderVariant = (typeof headerVariants)[number];
+type AccountSession = "signed-in" | "signed-out";
+const desktopHeaders = [
+  { name: "full header signed out", variant: "full", session: "signed-out" },
+  {
+    name: "full header on the signed-in account page",
+    variant: "full",
+    session: "signed-in",
+  },
+  { name: "minimal header", variant: "minimal", session: "signed-out" },
+] as const satisfies readonly {
+  readonly name: string;
+  readonly session: AccountSession;
+  readonly variant: HeaderVariant;
+}[];
+const harnessOrigin = "http://site-header.test";
 
 // The harness runs outside a Next.js app, so the router-bound modules render
 // plain elements; static image imports keep their real dimensions.
@@ -117,18 +132,33 @@ type SiteHeaderPageOptions = {
   // A long desktop page reserves a classic scrollbar, so the header is
   // narrower than the media queries' viewport width.
   readonly scrollbar?: boolean;
+  // A signed-in customer is shown on their account page, where the header
+  // marks the account link as the current page.
+  readonly session?: AccountSession;
   readonly variant?: HeaderVariant;
 };
 
 const openSiteHeader = async (
   locale: Locale,
   viewport: { readonly height: number; readonly width: number },
-  { scrollbar = false, variant = "full" }: SiteHeaderPageOptions = {}
+  {
+    scrollbar = false,
+    session = "signed-out",
+    variant = "full",
+  }: SiteHeaderPageOptions = {}
 ) => {
   if (!browser) throw new Error("The SiteHeader browser has not launched.");
   const page = await browser.newPage({ reducedMotion: "reduce", viewport });
-  await page.setContent(
-    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="site-header-test-root" data-locale="${locale}" data-variant="${variant}"></div></body></html>`
+  // The header reads the current page from the URL, so the harness is served
+  // at the page it stands in for.
+  await page.route(`${harnessOrigin}/**`, (route) =>
+    route.fulfill({
+      body: `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="site-header-test-root" data-locale="${locale}" data-session="${session}" data-variant="${variant}"></div></body></html>`,
+      contentType: "text/html",
+    })
+  );
+  await page.goto(
+    `${harnessOrigin}/${locale}${session === "signed-in" ? "/account" : ""}`
   );
   await page.addStyleTag({ content: appStyles });
   if (scrollbar) {
@@ -223,17 +253,29 @@ for (const locale of locales) {
         }
       );
     }
+  }
 
+  for (const { name, session, variant } of desktopHeaders) {
     for (const width of desktopWidths) {
       test.skipIf(!chromiumAvailable)(
-        `fits the ${variant} header on a ${width}px desktop with a scrollbar (${locale})`,
+        `fits the ${name} on a ${width}px desktop with a scrollbar (${locale})`,
         async () => {
           const page = await openSiteHeader(
             locale,
             { height: 900, width },
-            { scrollbar: true, variant }
+            { scrollbar: true, session, variant }
           );
           try {
+            if (session === "signed-in") {
+              // The mobile menu's copy has a visible label instead.
+              const currentPageLink = page.locator(
+                'header a[aria-current="page"][aria-label]'
+              );
+              await currentPageLink.waitFor();
+              expect(await currentPageLink.getAttribute("aria-label")).toBe(
+                m.accountNavLabel({}, { locale })
+              );
+            }
             await expectNoHorizontalOverflow(page, { insideRowPadding: true });
           } finally {
             await page.close();
