@@ -2,6 +2,8 @@
 
 import { Check, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 
 type AccessCodeDigitsProps = {
@@ -31,7 +33,13 @@ export function AccessCodeDigits({ code, className }: AccessCodeDigitsProps) {
   );
 }
 
-export function AccessCodeCopyButton({ code }: { readonly code: string }) {
+export function AccessCodeCopyButton({
+  code,
+  locale,
+}: {
+  readonly code: string;
+  readonly locale: Locale;
+}) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -56,7 +64,9 @@ export function AccessCodeCopyButton({ code }: { readonly code: string }) {
       ) : (
         <Copy aria-hidden className="size-4" />
       )}
-      {copied ? "Copied" : "Copy code"}
+      {copied
+        ? m.accessCodesCopied({}, { locale })
+        : m.accessCodesCopyCode({}, { locale })}
     </Button>
   );
 }

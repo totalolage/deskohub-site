@@ -119,7 +119,7 @@
     "features/access-codes/admin/create-access-code.test.ts": 184,
     "features/access-codes/backend/standalone-access-code-administration.service.test.ts": 240,
     "features/access-codes/backend/standalone-access-code-attempt-log.repository.test.ts": 817,
-    "features/access-codes/components/access-code-digits.test.tsx": 239,
+    "features/access-codes/admin/access-code-digits.test.tsx": 239,
     "features/access-codes/standalone-access-code.test.ts": 94,
     "features/account/actions.test.ts": 475,
     "features/account/analytics-customer-link.test.ts": 134,
