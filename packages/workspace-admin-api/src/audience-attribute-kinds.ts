@@ -117,10 +117,21 @@ export const audienceAttributeSections = [
 export type AudienceAttributeSection =
   (typeof audienceAttributeSections)[number];
 
+/** One value of a choice parameter: its control label and summary wording. */
+export type AudienceChoiceOption = {
+  readonly label: string;
+  /** Words the summary puts before the counted noun ("booked "). */
+  readonly nounBefore?: string;
+  /** Words the summary puts after the counted noun (" in progress"). */
+  readonly nounAfter?: string;
+  /** Words before the period in the summary ("visiting in the last …"). */
+  readonly periodVerb?: string;
+};
+
 /**
  * A parameter of a count attribute that picks one of a few values, such as
- * the date basis or campaign purpose. `field` is its struct field schema and
- * `options` its values in control order; an optional choice can be unset.
+ * the date basis or campaign purpose. `field` is its struct field schema;
+ * an optional choice reads as `absent` when unset.
  */
 export type AudienceChoiceParam<
   Field extends Schema.Top = Schema.Top,
@@ -128,37 +139,37 @@ export type AudienceChoiceParam<
 > = {
   readonly part: "choice";
   readonly field: Field;
+  /** Names the control for screen readers. */
+  readonly label: string;
   readonly control: "select" | "toggle";
-  readonly options: readonly Value[];
-  readonly optional: boolean;
+  readonly options: { readonly [Option in Value]: AudienceChoiceOption };
+  readonly absent?: AudienceChoiceOption;
 };
 
 type ChoiceSchema = Schema.Top & { readonly Type: string };
 
 export const choiceParam = <Choice extends ChoiceSchema>(
   schema: Choice,
-  presentation: Pick<
+  presentation: Omit<
     AudienceChoiceParam<Choice, Choice["Type"]>,
-    "control" | "options"
+    "part" | "field" | "absent"
   >
 ): AudienceChoiceParam<Choice, Choice["Type"]> => ({
   part: "choice",
   field: schema,
   ...presentation,
-  optional: false,
 });
 
 export const optionalChoiceParam = <Choice extends ChoiceSchema>(
   schema: Choice,
-  presentation: Pick<
+  presentation: Omit<
     AudienceChoiceParam<Schema.optionalKey<Choice>, Choice["Type"]>,
-    "control" | "options"
-  >
+    "part" | "field" | "absent"
+  > & { readonly absent: AudienceChoiceOption }
 ): AudienceChoiceParam<Schema.optionalKey<Choice>, Choice["Type"]> => ({
   part: "choice",
   field: Schema.optionalKey(schema),
   ...presentation,
-  optional: true,
 });
 
 /** The period a count attribute counts in; every count attribute has one. */
@@ -171,10 +182,18 @@ type CountParams = { readonly [param: string]: AudienceParam } & {
   readonly period: AudiencePeriodParam;
 };
 
-/**
- * The English name `dhw` and the API schema describe an attribute by, and its
- * Admin UI menu section. The Admin UI's own wording lives in Workspace.
- */
+type ChoiceKeys<Params> = {
+  readonly [Param in keyof Params]: Params[Param] extends AudienceChoiceParam
+    ? Param
+    : never;
+}[keyof Params] &
+  string;
+
+/** Editor wording between the controls of a sentence-like line. */
+export type AudienceEditorToken<Param extends string = string> =
+  | { readonly text: string }
+  | { readonly param: Param };
+
 type Presentation = {
   readonly label: string;
   readonly section: AudienceAttributeSection;
@@ -242,7 +261,9 @@ const countParamsFields = <Params extends CountParams, Product extends boolean>(
 /**
  * A count attribute, such as reservations or campaign emails received. Its
  * params are its choice parameters and period, in wire order, then, for
- * reservation-based attributes, an optional product filter.
+ * reservation-based attributes, an optional product filter. The editor reads "Number of
+ * <lead> … <period> is <comparison>" and the summary "<verb> <count> <noun>
+ * <period>", with each chosen value's words around the noun.
  */
 export const countAttribute = <
   const Attribute extends string,
@@ -253,6 +274,17 @@ export const countAttribute = <
   definition: Presentation & {
     readonly params: Params;
     readonly reservationProduct?: Product;
+    readonly editor: {
+      readonly lead: readonly AudienceEditorToken<ChoiceKeys<Params>>[];
+      /** Names the period control for screen readers. */
+      readonly period: string;
+      /** Names the comparison for screen readers. */
+      readonly count: string;
+    };
+    readonly summary: {
+      readonly verb: string;
+      readonly noun: { readonly one: string; readonly other: string };
+    };
     readonly defaults: NoInfer<{
       readonly params: Schema.Struct<
         CountParamsFields<Params, Product>
@@ -286,7 +318,9 @@ type DateParamsFields<Product extends boolean> = Product extends true
 
 /**
  * A date attribute, such as the last visit. A condition puts its value in a
- * period, outside one, or requires it to be missing.
+ * period, outside one, or requires it to be missing. The summary reads
+ * "<withValue>" for any time, "<inPeriod> <period>", "<withValue><notInPeriod>
+ * <period>", or "<withoutValue>".
  */
 export const dateAttribute = <
   const Attribute extends string,
@@ -295,6 +329,16 @@ export const dateAttribute = <
   attribute: Attribute,
   definition: Presentation & {
     readonly reservationProduct?: Product;
+    readonly editor: {
+      /** The operator choice for a missing value ("never visited"). */
+      readonly noValue: string;
+    };
+    readonly summary: {
+      readonly withValue: string;
+      readonly inPeriod: string;
+      readonly notInPeriod: string;
+      readonly withoutValue: string;
+    };
     readonly defaults:
       | { readonly operator: "in" | "notIn"; readonly value: DatePeriod }
       | { readonly operator: "none" };
@@ -334,36 +378,73 @@ export const dateAttribute = <
  * lookup isn't available).
  */
 export type AudienceSetValues<Value extends string = string> =
-  | { readonly _tag: "Options"; readonly options: readonly Value[] }
-  | { readonly _tag: "FreeText" }
-  | { readonly _tag: "Lookup"; readonly lookup: AudienceValueLookup };
+  | {
+      readonly _tag: "Options";
+      readonly noun: string;
+      readonly options: {
+        readonly [Option in Value]: {
+          /** In the editor ("Czech (cs-CZ)"). */
+          readonly label: string;
+          /** In the summary ("Czech"). */
+          readonly name: string;
+        };
+      };
+    }
+  | {
+      readonly _tag: "FreeText";
+      readonly noun: string;
+      readonly placeholder: string;
+    }
+  | {
+      readonly _tag: "Lookup";
+      readonly lookup: AudienceValueLookup;
+      readonly noun: string;
+      /** The button that opens the looked-up list ("Choose groups"). */
+      readonly choose: string;
+      readonly freeText: {
+        readonly noun: string;
+        readonly placeholder: string;
+      };
+    };
 
 /** Value lists Workspace loads for the Admin UI and summaries. */
 export type AudienceValueLookup = "discountGroups";
 
-/** A fixed list of options, in control order. */
 export const optionValues = <Choice extends ChoiceSchema>(
   schema: Choice,
-  options: readonly Choice["Type"][]
+  presentation: Omit<
+    Extract<AudienceSetValues<Choice["Type"]>, { readonly _tag: "Options" }>,
+    "_tag"
+  >
 ) => ({
   schema,
-  presentation: { _tag: "Options" as const, options },
+  presentation: { _tag: "Options" as const, ...presentation },
 });
 
-export const freeTextValues = () => ({
+export const freeTextValues = (
+  presentation: Omit<
+    Extract<AudienceSetValues, { readonly _tag: "FreeText" }>,
+    "_tag"
+  >
+) => ({
   schema: Schema.NonEmptyString,
-  presentation: { _tag: "FreeText" as const },
+  presentation: { _tag: "FreeText" as const, ...presentation },
 });
 
-export const lookupValues = (lookup: AudienceValueLookup) => ({
+export const lookupValues = (
+  presentation: Omit<
+    Extract<AudienceSetValues, { readonly _tag: "Lookup" }>,
+    "_tag"
+  >
+) => ({
   schema: Schema.NonEmptyString,
-  presentation: { _tag: "Lookup" as const, lookup },
+  presentation: { _tag: "Lookup" as const, ...presentation },
 });
 
 /**
- * A set attribute, such as Dotypos tags. `narrowsLocales` marks an attribute
- * whose values are the recipient's campaign locale, so campaign content needs
- * only those.
+ * A set attribute, such as Dotypos tags. The summary reads "<phrase for the
+ * operator> <values>"; `narrowsLocales` marks an attribute whose values are
+ * the recipient's campaign locale, so campaign content needs only those.
  */
 export const setAttribute = <
   const Attribute extends string,
@@ -383,6 +464,11 @@ export const setAttribute = <
     readonly narrowsLocales?: Value["Type"] extends AdministrationCampaignLocale
       ? boolean
       : false;
+    readonly editor: {
+      /** Wording before the operator ("Tags"). */
+      readonly lead: string;
+    };
+    readonly summary: { readonly [Operator in Operators[number]]: string };
     readonly defaults: NoInfer<{
       readonly operator: Operators[number];
       readonly value: readonly Value["Type"][];
@@ -406,6 +492,13 @@ export const setAttribute = <
 export const booleanAttribute = <const Attribute extends string>(
   attribute: Attribute,
   definition: Presentation & {
+    readonly editor: {
+      readonly true: string;
+      readonly false: string;
+      /** Wording after the toggle ("a Workspace account"). */
+      readonly object: string;
+    };
+    readonly summary: { readonly true: string; readonly false: string };
     readonly defaults: {
       readonly operator: "is";
       readonly value: boolean;
@@ -467,6 +560,15 @@ export type AudienceCountAttributeDefinition = Presentation & {
   readonly attribute: string;
   readonly params: { readonly [param: string]: AudienceParam };
   readonly reservationProduct: boolean;
+  readonly editor: {
+    readonly lead: readonly AudienceEditorToken[];
+    readonly period: string;
+    readonly count: string;
+  };
+  readonly summary: {
+    readonly verb: string;
+    readonly noun: { readonly one: string; readonly other: string };
+  };
   readonly defaults: object;
   readonly conditions: ConditionShapes;
 };
@@ -475,6 +577,13 @@ export type AudienceDateAttributeDefinition = Presentation & {
   readonly kind: "date";
   readonly attribute: string;
   readonly reservationProduct: boolean;
+  readonly editor: { readonly noValue: string };
+  readonly summary: {
+    readonly withValue: string;
+    readonly inPeriod: string;
+    readonly notInPeriod: string;
+    readonly withoutValue: string;
+  };
   readonly defaults: object;
   readonly conditions: ConditionShapes;
 };
@@ -485,6 +594,8 @@ export type AudienceSetAttributeDefinition = Presentation & {
   readonly values: AudienceSetValues;
   readonly operators: readonly AudienceSetOperator[];
   readonly narrowsLocales: boolean;
+  readonly editor: { readonly lead: string };
+  readonly summary: { readonly [Operator in AudienceSetOperator]?: string };
   readonly defaults: object;
   readonly conditions: ConditionShapes;
 };
@@ -492,6 +603,12 @@ export type AudienceSetAttributeDefinition = Presentation & {
 export type AudienceBooleanAttributeDefinition = Presentation & {
   readonly kind: "boolean";
   readonly attribute: string;
+  readonly editor: {
+    readonly true: string;
+    readonly false: string;
+    readonly object: string;
+  };
+  readonly summary: { readonly true: string; readonly false: string };
   readonly defaults: object;
   readonly conditions: ConditionShapes;
 };
