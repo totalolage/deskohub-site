@@ -28,6 +28,11 @@ type AccountReauthenticationStepProps = {
   readonly locale: Locale;
   readonly authReturn: AuthReturnLifecycle;
   /**
+   * Whether `login_passkeys` is on, which gives the step its passkey-era
+   * presentation. Adding a passkey implies it.
+   */
+  readonly passkeysEnabled?: boolean;
+  /**
    * Confirms with one of the account's own passkeys. Absent when the account
    * has none or `login_passkeys` is off.
    */
@@ -47,6 +52,7 @@ export function AccountReauthenticationStep({
   email,
   locale,
   authReturn,
+  passkeysEnabled = false,
   confirmWithPasskey,
   onReauthenticated,
 }: AccountReauthenticationStepProps) {
@@ -114,6 +120,7 @@ export function AccountReauthenticationStep({
   };
 
   const codeStep = codeRequestedAt !== null;
+  const iconHeader = purpose === "add-passkey" || passkeysEnabled;
   const passkeyPending = passkeyStatus === "pending";
   const passkeyFailure =
     passkeyStatus === "wrong-account" || passkeyStatus === "failed"
@@ -145,7 +152,7 @@ export function AccountReauthenticationStep({
           />
         </>
       )}
-      {!codeStep && purpose === "add-passkey" && (
+      {!codeStep && iconHeader && (
         // The title says it all; the reason stays for screen readers.
         <DialogHeader className="justify-items-center pt-2 text-center">
           <span className="flex size-16 items-center justify-center rounded-2xl bg-[radial-gradient(circle_at_30%_20%,rgba(236,164,35,0.28),transparent_60%),radial-gradient(circle_at_80%_90%,rgba(0,223,153,0.2),transparent_55%)] bg-[#f4f3ef] text-burned-orange">
@@ -157,7 +164,7 @@ export function AccountReauthenticationStep({
           </DialogDescription>
         </DialogHeader>
       )}
-      {!codeStep && purpose === "delete-account" && (
+      {!codeStep && !iconHeader && (
         <DialogHeader>
           <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription id={copy.descriptionId}>

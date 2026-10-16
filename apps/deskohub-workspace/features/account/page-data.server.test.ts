@@ -915,6 +915,68 @@ describe("loadCustomerAccountPage", () => {
     expect(passkeyListCalls).toBe(0);
   });
 
+  test("lists passkeys from the session in every signed-in state without a usable profile", async () => {
+    arePasskeysEnabled.mockResolvedValue(true);
+    const passkeys = { accountId, passkeys: [accountPasskey] };
+    const failingProfileLayer = Layer.succeed(Profile, {
+      load: () => Effect.fail(new Error("profile gone")),
+    });
+    Object.assign(Profile, { Live: failingProfileLayer });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "authenticated-unavailable",
+      email: customerEmail,
+      passkeys,
+    });
+    Object.assign(Profile, { Live: ProfileLayer });
+
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "link-required",
+      linkReason: "not-found",
+    });
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "completion-required",
+      passkeys,
+    });
+
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "link-required",
+      linkReason: "ambiguous",
+    });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "support-required",
+      email: customerEmail,
+      passkeys,
+    });
+
+    currentUserEffect = Effect.succeed({
+      ...activeSession,
+      deletionRequested: true,
+    });
+    const resolutionsBeforeDeletion = resolverCalls;
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "deletion-pending",
+      email: customerEmail,
+      passkeys,
+    });
+    expect(resolverCalls).toBe(resolutionsBeforeDeletion);
+    expect(passkeyListCalls).toBe(4);
+  });
+
+  test("lists no passkeys once resolution finds no session", async () => {
+    arePasskeysEnabled.mockResolvedValue(true);
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "unauthenticated",
+    });
+
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "unauthenticated",
+    });
+    expect(passkeyListCalls).toBe(0);
+  });
+
   test("renders the authenticated unavailable state when the profile read fails after a successful link", async () => {
     const failingProfileLayer = Layer.succeed(Profile, {
       load: () => Effect.fail(new Error("profile gone")),

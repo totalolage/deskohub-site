@@ -246,6 +246,7 @@ describe("AccountPage states", () => {
       <AccountLayoutShell
         accountsEnabled
         locale={locale}
+        passkeysEnabled={"passkeys" in state && state.passkeys !== undefined}
         referralsEnabled
         signedIn={signedIn}
       >
@@ -694,6 +695,60 @@ describe("AccountPage states", () => {
         name: m.accountUnavailableTitle({}, en),
       })
     ).toBeTruthy();
+  });
+
+  test("manages passkeys under Sign-in & security while the profile is unavailable", async () => {
+    const view = await renderState({
+      kind: "authenticated-unavailable",
+      email: adaAddress,
+      passkeys: {
+        accountId: "account-1",
+        passkeys: [
+          {
+            id: "passkey-1",
+            name: "Work laptop",
+            provider: undefined,
+            createdAt: "2026-10-14T16:40:00.000Z",
+          },
+        ],
+      },
+    });
+    const unavailableTitle = view.getByText(m.accountUnavailableTitle({}, en));
+    expect(unavailableTitle.closest("[hidden]")).toBeNull();
+
+    fireEvent.click(
+      within(
+        view.getByRole("group", { name: m.accountSectionLabel({}, en) })
+      ).getByRole("button", { name: m.accountSectionSecurity({}, en) })
+    );
+
+    const list = view.getByRole("list", {
+      name: m.accountSecurityPasskeysTitle({}, en),
+    });
+    expect(within(list).getByText("Work laptop")).toBeTruthy();
+    expect(
+      view.getByText(m.accountSecurityPasskeysAdd({}, en)).closest("[hidden]")
+    ).toBeNull();
+    expect(unavailableTitle.closest("[hidden]")).not.toBeNull();
+  });
+
+  test("keeps Sign-in & security out of an account pending deletion", async () => {
+    const view = await renderState({
+      kind: "deletion-pending",
+      email: adaAddress,
+      passkeys: { accountId: "account-1", passkeys: [] },
+    });
+
+    fireEvent.click(
+      within(
+        view.getByRole("group", { name: m.accountSectionLabel({}, en) })
+      ).getByRole("button", { name: m.accountSectionSecurity({}, en) })
+    );
+
+    expect(view.queryByText(m.accountSecurityPasskeysTitle({}, en))).toBeNull();
+    expect(
+      view.getByText(m.accountDeletionPendingTitle({}, en)).closest("[hidden]")
+    ).toBeNull();
   });
 
   test("asks the account identity adapter to refresh once per authenticated view", async () => {

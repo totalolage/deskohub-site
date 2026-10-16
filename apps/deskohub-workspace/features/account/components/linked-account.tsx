@@ -165,11 +165,11 @@ export function LinkedAccount({
 
       <div hidden={activeSection !== "danger"}>
         <DeleteAccountCard
-          confirmWithPasskey={accountPasskeys?.confirmWithPasskey}
           deletionPending={false}
           email={email}
           heading={copy.dangerTitle}
           locale={locale}
+          passkeys={accountPasskeys}
         />
       </div>
     </>

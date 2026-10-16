@@ -11,8 +11,8 @@ import {
 } from "@/features/account/analytics-identity";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
 import { AccountReauthenticationStep } from "@/features/account/components/account-reauthentication-step";
+import type { AccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
-import type { PasskeyConfirmationResult } from "@/features/account/passkeys";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
@@ -36,14 +36,14 @@ type DeleteAccountCardProps = {
   readonly deletionPending: boolean;
   readonly heading?: string;
   /**
-   * Lets a stale session confirm with one of the account's passkeys. Absent
-   * when the account has none or `login_passkeys` is off.
+   * The account's passkeys; absent while `login_passkeys` is off. A stale
+   * session can confirm with one of them.
    */
-  readonly confirmWithPasskey?: () => Promise<PasskeyConfirmationResult>;
+  readonly passkeys?: Pick<AccountPasskeys, "confirmWithPasskey">;
 };
 
 export function DeleteAccountCard({
-  confirmWithPasskey,
+  passkeys,
   email,
   locale,
   deletionPending,
@@ -163,7 +163,8 @@ export function DeleteAccountCard({
           {reauthRequired ? (
             <AccountReauthenticationStep
               purpose="delete-account"
-              confirmWithPasskey={confirmWithPasskey}
+              passkeysEnabled={passkeys !== undefined}
+              confirmWithPasskey={passkeys?.confirmWithPasskey}
               email={email}
               locale={locale}
               authReturn={authReturn}
