@@ -1,8 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "349f0164-af45-4dbc-b268-409a3fe6ef5c",
+  "id": "481dc72b-9942-4178-b2be-dd4cdf3f0843",
   "prevIds": [
+    "5598c69b-08bc-43d6-b16c-874356cb8b08",
     "9c320b1d-0713-415a-a9a0-9889b1063c0a"
   ],
   "ddl": [
@@ -211,6 +212,12 @@
     {
       "isRlsEnabled": false,
       "name": "referral_signup_intents",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "request_budget_spends",
       "entityType": "tables",
       "schema": "public"
     },
@@ -3898,6 +3905,45 @@
       "name": "id",
       "entityType": "columns",
       "schema": "public",
+      "table": "request_budget_spends"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "budget_key",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "request_budget_spends"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "spent_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "request_budget_spends"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuid_generate_v7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
       "table": "reservation_access_grants"
     },
     {
@@ -6859,6 +6905,34 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "budget_key",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "spent_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "request_budget_spends_budget_key_spent_at_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "request_budget_spends"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "workspace_reservation_id",
           "isExpression": false,
           "asc": true,
@@ -8833,6 +8907,16 @@
       "name": "referral_signup_intents_pkey",
       "schema": "public",
       "table": "referral_signup_intents",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "request_budget_spends_pkey",
+      "schema": "public",
+      "table": "request_budget_spends",
       "entityType": "pks"
     },
     {
