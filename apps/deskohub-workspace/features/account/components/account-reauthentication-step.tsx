@@ -66,7 +66,6 @@ export function AccountReauthenticationStep({
         : m.accountDeletionReauthBody({}, { locale }),
       codeTitle: m.accountDeletionReauthCodeTitle({}, { locale }),
       verified: m.accountDeletionReauthCodeVerified({}, { locale }),
-      send: m.accountDeletionReauthSendLink({}, { locale }),
       linkSent: m.accountDeletionReauthLinkSent({}, { locale }),
     },
     "add-passkey": {
@@ -77,7 +76,6 @@ export function AccountReauthenticationStep({
       body: m.accountPasskeyReauthBody({}, { locale }),
       codeTitle: m.accountPasskeyReauthTitle({}, { locale }),
       verified: m.accountPasskeyReauthVerified({}, { locale }),
-      send: m.accountPasskeyReauthSendEmail({}, { locale }),
       linkSent: m.accountPasskeyReauthLinkSent({}, { locale }),
     },
   }[purpose];
@@ -197,7 +195,7 @@ export function AccountReauthenticationStep({
             disabled={sending || linkSent || passkeyPending}
             onClick={requestReauthLink}
           >
-            {copy.send}
+            {m.accountReauthSendEmail({}, { locale })}
           </Button>
           {confirmWithPasskey && (
             <Button

@@ -388,7 +388,7 @@ describe("DeleteAccountCard", () => {
     ).toBeTruthy();
 
     await act(async () => {
-      fireEvent.click(view.getByText("Email me a new link"));
+      fireEvent.click(view.getByText("Confirm by email"));
     });
 
     expect(signInMagicLink).toHaveBeenCalledWith(
@@ -439,7 +439,7 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
     await act(async () => {
-      fireEvent.click(view.getByText("Email me a new link"));
+      fireEvent.click(view.getByText("Confirm by email"));
     });
 
     expect(
@@ -525,7 +525,7 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
     await act(async () => {
-      fireEvent.click(view.getByText("Email me a new link"));
+      fireEvent.click(view.getByText("Confirm by email"));
     });
     const resend = view.getByText(
       m.accountSignInCodeResend({}, { locale: "en-US" })
@@ -599,7 +599,7 @@ describe("DeleteAccountCard", () => {
     });
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     const send = view.getByRole("button", {
-      name: "Email me a new link",
+      name: "Confirm by email",
     }) as HTMLButtonElement;
     await act(async () => {
       fireEvent.click(send);
@@ -657,7 +657,7 @@ describe("DeleteAccountCard", () => {
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     await act(async () => {
       fireEvent.click(
-        view.getByRole("button", { name: "Email me a new link" })
+        view.getByRole("button", { name: "Confirm by email" })
       );
     });
 
@@ -667,7 +667,7 @@ describe("DeleteAccountCard", () => {
     expect(
       (
         view.getByRole("button", {
-          name: "Email me a new link",
+          name: "Confirm by email",
         }) as HTMLButtonElement
       ).disabled
     ).toBe(false);
@@ -717,7 +717,7 @@ describe("DeleteAccountCard", () => {
     });
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     const send = view.getByRole("button", {
-      name: "Email me a new link",
+      name: "Confirm by email",
     }) as HTMLButtonElement;
     await act(async () => {
       fireEvent.click(send);
