@@ -6,7 +6,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { invoices } from "@/db/schema";
 
 interface IInvoiceBreadcrumbService {
-  readonly getLabel: (
+  readonly getInvoiceNumber: (
     invoiceId: AdministrationInvoiceIdType
   ) => Effect.Effect<string | null, EffectDrizzleQueryError>;
 }
@@ -20,18 +20,18 @@ export class InvoiceBreadcrumbService extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
 
-      const getLabel = Effect.fn("InvoiceBreadcrumbService.getLabel")(
-        function* (invoiceId: AdministrationInvoiceIdType) {
-          const [row] = yield* db
-            .select({ invoiceNumber: invoices.invoiceNumber })
-            .from(invoices)
-            .where(eq(invoices.id, invoiceId))
-            .limit(1);
-          return row ? `Invoice ${row.invoiceNumber}` : null;
-        }
-      );
+      const getInvoiceNumber = Effect.fn(
+        "InvoiceBreadcrumbService.getInvoiceNumber"
+      )(function* (invoiceId: AdministrationInvoiceIdType) {
+        const [row] = yield* db
+          .select({ invoiceNumber: invoices.invoiceNumber })
+          .from(invoices)
+          .where(eq(invoices.id, invoiceId))
+          .limit(1);
+        return row?.invoiceNumber ?? null;
+      });
 
-      return { getLabel } satisfies IInvoiceBreadcrumbService;
+      return { getInvoiceNumber } satisfies IInvoiceBreadcrumbService;
     })
   );
 
