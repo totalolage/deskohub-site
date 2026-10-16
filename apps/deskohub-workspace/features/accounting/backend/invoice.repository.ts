@@ -1,4 +1,4 @@
-import { eq, type SQL, sql } from "drizzle-orm";
+import { eq, isNull, type SQL, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -26,9 +26,11 @@ import {
   makeManualInvoiceDocument,
 } from "@/features/accounting/invoice";
 import {
+  type InvoiceId,
   invoiceIdSchema,
   isInvoiceCurrencyPayable,
   type ManualInvoiceInput,
+  type ManualInvoiceProvenance,
   ManualInvoiceValidationError,
   manualInvoiceInputSchema,
   type NormalizedManualInvoiceInput,
@@ -151,11 +153,24 @@ export interface IInvoiceRepository {
     readonly InvoiceListItem[],
     EffectDrizzleQueryError | InvoiceStorageError
   >;
+  /** Decrypts every manual invoice to read who issued it, and through what. */
+  readonly listManualInvoiceProvenance: () => Effect.Effect<
+    readonly {
+      readonly invoiceId: InvoiceId;
+      readonly provenance: ManualInvoiceProvenance;
+    }[],
+    EffectDrizzleQueryError | InvoiceStorageError
+  >;
   readonly getSuggestedVariableSymbol: () => Effect.Effect<
     string,
     EffectDrizzleQueryError
   >;
 }
+
+const invoiceStorage = Layer.merge(
+  WorkspaceDatabase.Default,
+  AccountingSnapshotKeyService.Default
+);
 
 export class InvoiceRepository extends Context.Service<
   InvoiceRepository,
@@ -745,6 +760,32 @@ export class InvoiceRepository extends Context.Service<
         });
       });
 
+      const listManualInvoiceProvenance = Effect.fn(
+        "InvoiceRepository.listManualInvoiceProvenance"
+      )(function* () {
+        const rows = yield* db
+          .select({ id: invoices.id })
+          .from(invoices)
+          .where(isNull(invoices.workspaceReservationId));
+        const loaded = yield* Effect.all(
+          rows.map(({ id }) => findById(id)),
+          { concurrency: "inherit" }
+        );
+        return loaded.flatMap((invoice) =>
+          invoice && isManualInvoiceDocument(invoice.document)
+            ? [
+                {
+                  invoiceId: invoice.document.invoiceId,
+                  provenance: {
+                    source: invoice.document.provenance.source,
+                    actor: invoice.document.provenance.actor,
+                  },
+                },
+              ]
+            : []
+        );
+      });
+
       const getSuggestedVariableSymbol = Effect.fn(
         "InvoiceRepository.getSuggestedVariableSymbol"
       )(function* () {
@@ -769,9 +810,21 @@ export class InvoiceRepository extends Context.Service<
         issue,
         issueManual,
         list,
+        listManualInvoiceProvenance,
         getSuggestedVariableSymbol,
       } satisfies IInvoiceRepository;
     })
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(
+      Layer.merge(
+        invoiceStorage,
+        AccountingDocumentSnapshotRepository.Default.pipe(
+          Layer.provide(invoiceStorage)
+        )
+      )
+    )
   );
 }
 

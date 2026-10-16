@@ -19,7 +19,9 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
   phone, and personal or business billing) and live reservation facts.
 - Workspace stores only the one-to-one opaque link in
   `public.customer_account_links`. Never copy profile or auth data anywhere
-  else.
+  else. The one exception is an administrator account actor: records an
+  administrator writes keep the account's login-email snapshot as provenance
+  (see the `deskohub-workspace-administration` skill's `dhw` reference).
 - Domain code sees only `CustomerAccountId` and `DotyposCustomerId` through the
   exports of `features/account/index.ts`. Keep Better Auth types and names
   inside the auth boundary; `lint/no-better-auth-in-account-domain.grit` and the

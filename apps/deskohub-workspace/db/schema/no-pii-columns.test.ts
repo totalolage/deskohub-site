@@ -61,6 +61,20 @@ const allowedColumns = new Map([
     "public.workspace_reservations.active_customer_email_delivery_locale",
     "customer email delivery locale",
   ],
+  // An administrator's login email recorded as provenance on what they did,
+  // so it stays readable after the account is deleted.
+  [
+    "public.cli_sessions.approved_by_account_email",
+    "administrator login-email snapshot",
+  ],
+  [
+    "public.manual_invoice_actors.actor_account_email",
+    "administrator login-email snapshot",
+  ],
+  [
+    "public.standalone_access_code_attempt_events.actor_account_email",
+    "administrator login-email snapshot",
+  ],
   // Operator-side labels, not customer data.
   ["public.cli_sessions.client_name", "dhw CLI client label"],
   ["public.cli_authentication_requests.client_name", "dhw CLI client label"],

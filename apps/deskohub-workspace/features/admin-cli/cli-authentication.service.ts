@@ -376,6 +376,8 @@ export class CliAuthentication extends Context.Service<
             return {
               id: sessionId,
               approvedBy,
+              approvedByAccountId: null,
+              approvedByAccountEmail: null,
               tokenHash,
               clientName: request.clientName,
               cliVersion: request.cliVersion,
