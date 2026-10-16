@@ -25,7 +25,7 @@ import { formatDiscountAdjustment } from "@/features/checkout/format-discount-ad
 import type { Locale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
-import { formatInteger } from "@/shared/utils/number";
+import { formatCount } from "@/shared/utils/number";
 import { VoucherEditor } from "./admin-tables";
 import {
   AddCodeCustomerForm,
@@ -902,11 +902,11 @@ function CodeSummary({
       />
       <SummaryFact
         label={m.discountsColumnReserved({}, { locale })}
-        value={formatInteger(code.reservedUses, locale)}
+        value={formatCount(code.reservedUses, locale)}
       />
       <SummaryFact
         label={m.discountsColumnRedeemed({}, { locale })}
-        value={formatInteger(code.redeemedUses, locale)}
+        value={formatCount(code.redeemedUses, locale)}
       />
       <SummaryFact
         label={m.discountsColumnRemainingGlobally({}, { locale })}
@@ -955,11 +955,11 @@ function VoucherSummary({
       />
       <SummaryFact
         label={m.discountsColumnReserved({}, { locale })}
-        value={formatInteger(voucher.reservedUses, locale)}
+        value={formatCount(voucher.reservedUses, locale)}
       />
       <SummaryFact
         label={m.discountsColumnRedeemed({}, { locale })}
-        value={formatInteger(voucher.redeemedUses, locale)}
+        value={formatCount(voucher.redeemedUses, locale)}
       />
     </dl>
   );

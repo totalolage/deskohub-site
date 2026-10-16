@@ -59,7 +59,7 @@ import {
   temporalInstantToLocalDateTimeString,
   workspaceSiteConstants,
 } from "@/shared/utils";
-import { formatInteger } from "@/shared/utils/number";
+import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
@@ -230,12 +230,12 @@ export function DiscountCodesAdminTable({
       {
         accessorKey: "reservedUses",
         header: m.discountsColumnReserved({}, { locale }),
-        cell: ({ row }) => formatInteger(row.original.reservedUses, locale),
+        cell: ({ row }) => formatCount(row.original.reservedUses, locale),
       },
       {
         accessorKey: "redeemedUses",
         header: m.discountsColumnRedeemed({}, { locale }),
-        cell: ({ row }) => formatInteger(row.original.redeemedUses, locale),
+        cell: ({ row }) => formatCount(row.original.redeemedUses, locale),
       },
       {
         accessorFn: (code) => code.remainingUses ?? Number.POSITIVE_INFINITY,
@@ -348,7 +348,7 @@ export function VouchersAdminTable({
       {
         accessorKey: "redeemedUses",
         header: m.discountsColumnRedemptions({}, { locale }),
-        cell: ({ row }) => formatInteger(row.original.redeemedUses, locale),
+        cell: ({ row }) => formatCount(row.original.redeemedUses, locale),
       },
     ],
     [locale]

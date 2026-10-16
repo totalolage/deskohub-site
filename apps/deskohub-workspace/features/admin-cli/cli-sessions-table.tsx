@@ -6,26 +6,34 @@ import {
   type AdministrationDataTableColumn,
 } from "@/features/administration/components";
 import { EmptyState } from "@/features/administration/empty-state";
-import { formatAdministrationDateTime } from "@/features/administration/formatters";
+import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import type { CliSessionAdministrationItem } from "./cli-authentication.service";
 import { RenameCliSession } from "./rename-cli-session";
 import { RevokeCliSession } from "./revoke-cli-session";
 
+/**
+ * A CLI session with its date-times already formatted on the server, where the
+ * locale data matches the rendered HTML.
+ */
+export type CliSessionsTableRow = CliSessionAdministrationItem & {
+  readonly createdAtText: string;
+  readonly expiresAtText: string | null;
+  readonly lastUsedAtText: string;
+};
+
 export function CliSessionsTable({
   sessions,
 }: {
-  readonly sessions: readonly CliSessionAdministrationItem[];
+  readonly sessions: readonly CliSessionsTableRow[];
 }) {
   const locale = useRouteLocale();
-  const columns = useMemo<
-    AdministrationDataTableColumn<CliSessionAdministrationItem>[]
-  >(
+  const columns = useMemo<AdministrationDataTableColumn<CliSessionsTableRow>[]>(
     () => [
       {
         accessorKey: "clientName",
-        header: "Client",
+        header: m.adminCliSessionsTableClient({}, { locale }),
         cell: ({ row }) => (
           <>
             <p className="font-semibold">{row.original.clientName}</p>
@@ -37,7 +45,7 @@ export function CliSessionsTable({
       },
       {
         accessorKey: "cliVersion",
-        header: "Build",
+        header: m.adminCliSessionsTableBuild({}, { locale }),
         cell: ({ row }) => (
           <>
             <p className="font-medium">{row.original.cliVersion}</p>
@@ -50,37 +58,35 @@ export function CliSessionsTable({
       {
         accessorFn: (session) => session.approvedBy ?? "",
         id: "approvedBy",
-        header: "Approved by",
+        header: m.adminCliSessionsTableApprovedBy({}, { locale }),
         cell: ({ row }) => (
           <p className="font-medium">
-            {row.original.approvedBy ?? "Unavailable"}
+            {row.original.approvedBy ??
+              m.adminCliSessionsTableApproverUnavailable({}, { locale })}
           </p>
         ),
       },
       {
         accessorKey: "createdAt",
-        header: "Created",
-        cell: ({ getValue }) =>
-          formatAdministrationDateTime(getValue<string>(), locale),
+        header: m.adminCliSessionsTableCreated({}, { locale }),
+        cell: ({ row }) => row.original.createdAtText,
       },
       {
         accessorKey: "lastUsedAt",
-        header: "Last used",
-        cell: ({ getValue }) =>
-          formatAdministrationDateTime(getValue<string>(), locale),
+        header: m.adminCliSessionsTableLastUsed({}, { locale }),
+        cell: ({ row }) => row.original.lastUsedAtText,
       },
       {
         accessorFn: (session) => session.expiresAt ?? "",
         id: "expiresAt",
-        header: "Expires",
+        header: m.adminCliSessionsTableExpires({}, { locale }),
         cell: ({ row }) =>
-          row.original.expiresAt
-            ? formatAdministrationDateTime(row.original.expiresAt, locale)
-            : "Never",
+          row.original.expiresAtText ??
+          m.adminCliSessionsTableExpiresNever({}, { locale }),
       },
       {
         accessorKey: "status",
-        header: "Status",
+        header: m.adminCliSessionsTableStatus({}, { locale }),
         cell: ({ row }) => (
           <StatusBadge
             tone={
@@ -93,13 +99,11 @@ export function CliSessionsTable({
               )[row.original.status]
             }
           >
-            {
-              {
-                active: "Active",
-                expired: "Expired",
-                revoked: "Revoked",
-              }[row.original.status]
-            }
+            {{
+              active: m.adminCliSessionsTableStatusActive,
+              expired: m.adminCliSessionsTableStatusExpired,
+              revoked: m.adminCliSessionsTableStatusRevoked,
+            }[row.original.status]({}, { locale })}
           </StatusBadge>
         ),
       },
@@ -108,15 +112,13 @@ export function CliSessionsTable({
   );
 
   if (sessions.length === 0) {
-    return (
-      <EmptyState message="No CLI sessions yet. Sessions will appear after a user completes dhw auth." />
-    );
+    return <EmptyState message={m.adminCliSessionsEmpty({}, { locale })} />;
   }
 
   return (
     <AdministrationDataTable
-      actionsLabel="Action"
-      ariaLabel="CLI sessions"
+      actionsLabel={m.adminCliSessionsTableActions({}, { locale })}
+      ariaLabel={m.adminCliSessionsTitle({}, { locale })}
       columns={columns}
       data={sessions}
       getRowId={(session) => session.id}

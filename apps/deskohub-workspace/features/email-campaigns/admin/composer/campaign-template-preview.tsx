@@ -1,6 +1,8 @@
 "use client";
 
 import { Eye } from "lucide-react";
+import { m } from "@/features/administration/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Dialog,
@@ -18,15 +20,17 @@ export function CampaignTemplatePreview({
 }: {
   readonly template: CampaignComposerTemplate;
 }) {
+  const locale = useRouteLocale();
+
   return (
     <Dialog>
       <DialogTrigger asChild>
         <Button size="sm" type="button" variant="secondary">
           <Eye aria-hidden className="size-4" />
-          Preview template
+          {m.emailCampaignsComposerTemplatePreview({}, { locale })}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-3xl" locale={locale}>
         <DialogHeader>
           <DialogTitle>{template.name}</DialogTitle>
           <DialogDescription>{template.description}</DialogDescription>
@@ -35,7 +39,10 @@ export function CampaignTemplatePreview({
           className="mt-4 h-[70vh] w-full rounded-lg border border-navy-blue/10 bg-white"
           sandbox=""
           srcDoc={template.previewHtml}
-          title={`${template.name} template with sample content`}
+          title={m.emailCampaignsComposerTemplatePreviewFrameTitle(
+            { template: template.name },
+            { locale }
+          )}
         />
       </DialogContent>
     </Dialog>

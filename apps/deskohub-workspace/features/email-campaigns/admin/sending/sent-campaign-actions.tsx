@@ -4,6 +4,7 @@ import { Copy, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
@@ -49,7 +50,9 @@ export function SentCampaignActions({
     onError: ({ error }) =>
       setFeedback({
         kind: "error",
-        message: error.serverError ?? "The campaign could not be duplicated.",
+        message:
+          error.serverError ??
+          m.emailCampaignsSentDuplicateFailed({}, { locale }),
       }),
   });
   const retry = useWorkspaceAction(retryUndeliveredCampaignRecipients, {
@@ -58,7 +61,10 @@ export function SentCampaignActions({
       if (!data) return;
       setFeedback({
         kind: "success",
-        message: `Retrying ${data.retriedCount} undelivered ${data.retriedCount === 1 ? "recipient" : "recipients"}.`,
+        message: m.emailCampaignsSentRetryStarted(
+          { count: data.retriedCount },
+          { locale }
+        ),
       });
       router.refresh();
     },
@@ -66,7 +72,7 @@ export function SentCampaignActions({
       setFeedback({
         kind: "error",
         message:
-          error.serverError ?? "Undelivered recipients could not be retried.",
+          error.serverError ?? m.emailCampaignsSentRetryFailed({}, { locale }),
       }),
   });
   const busy = duplicate.isExecuting || retry.isExecuting;
@@ -89,7 +95,9 @@ export function SentCampaignActions({
             variant="secondary"
           >
             <RotateCw aria-hidden className="size-4" />
-            {retry.isExecuting ? "Retrying…" : "Retry undelivered"}
+            {retry.isExecuting
+              ? m.emailCampaignsSentRetrying({}, { locale })
+              : m.emailCampaignsSentRetry({}, { locale })}
           </Button>
         )}
         <Button
@@ -102,7 +110,9 @@ export function SentCampaignActions({
           type="button"
         >
           <Copy aria-hidden className="size-4" />
-          {duplicate.isExecuting ? "Duplicating…" : "Duplicate"}
+          {duplicate.isExecuting
+            ? m.emailCampaignsSentDuplicating({}, { locale })
+            : m.emailCampaignsSentDuplicate({}, { locale })}
         </Button>
       </div>
       {retryable && unconfirmedCount > 0 && (
@@ -118,7 +128,7 @@ export function SentCampaignActions({
               setIncludeUnconfirmed(checked === true)
             }
           />
-          Also resend to unconfirmed recipients (they may receive it twice)
+          {m.emailCampaignsSentIncludeUnconfirmed({}, { locale })}
         </label>
       )}
       <p className="text-sm font-semibold" role="status">

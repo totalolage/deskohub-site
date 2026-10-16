@@ -1,9 +1,12 @@
 export const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
-/** A whole number with the locale's digit grouping, such as "1 250" in Czech. */
-export const formatInteger = (value: number, locale: string) =>
-  new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value);
+/**
+ * Formats a count with the locale's digit grouping: "1,000" in English,
+ * "1 000" (with a no-break space) in Czech.
+ */
+export const formatCount = (count: number, locale: string) =>
+  new Intl.NumberFormat(locale).format(count);
 
 export const formatNamesWithNumericRanges = (
   names: readonly (string | null | undefined)[]
