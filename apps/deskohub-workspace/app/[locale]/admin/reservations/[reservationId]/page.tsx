@@ -141,7 +141,7 @@ export async function ReservationAdministrationDetail({
               />
               <AdministrationFact
                 label="Table"
-                value={getBookingTableLabel(booking)}
+                value={getBookingTableLabel(booking, locale)}
               />
               <AdministrationFact
                 label="Guests"

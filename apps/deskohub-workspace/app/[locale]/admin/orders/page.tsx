@@ -6,6 +6,7 @@ import {
   AdministrationTableToolbar,
 } from "@/features/administration/components";
 import { OrdersAdministrationFilterForm } from "@/features/administration/filter-forms";
+import { m } from "@/features/administration/i18n";
 import {
   AdministrationCollectionLoading,
   AdministrationCountLoading,
@@ -16,25 +17,40 @@ import {
   loadAdministrationOrdersPage,
 } from "@/features/administration/page-data.server";
 import { OrderTable } from "@/features/administration/payment-tables";
+import type { Locale } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function OrdersAdministrationPage({
   searchParams,
 }: {
   readonly searchParams: AdministrationSearchParams;
 }) {
+  return <OrdersAdministration searchParams={searchParams} />;
+}
+
+async function OrdersAdministration({
+  searchParams,
+}: {
+  readonly searchParams: AdministrationSearchParams;
+}) {
+  const locale = await getRequestLocale();
   const { range, result } = loadAdministrationOrdersPage(searchParams);
 
   return (
     <AdministrationPage>
-      <h1 className="sr-only">Orders</h1>
+      <h1 className="sr-only">
+        {m.administrationOrderListTitle({}, { locale })}
+      </h1>
       <AdministrationTableToolbar
         count={
           <Suspense
             fallback={
-              <AdministrationCountLoading label="Loading order count" />
+              <AdministrationCountLoading
+                label={m.administrationOrderCountLoading({}, { locale })}
+              />
             }
           >
-            <OrderCount result={result} />
+            <OrderCount locale={locale} result={result} />
           </Suspense>
         }
         filters={
@@ -42,14 +58,17 @@ export default function OrdersAdministrationPage({
             <OrderFiltersContent range={range} />
           </Suspense>
         }
-        label="order table controls"
+        label={m.administrationOrderTableControls({}, { locale })}
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading label="Loading orders" columns={6} />
+          <AdministrationCollectionLoading
+            label={m.administrationOrderListLoading({}, { locale })}
+            columns={6}
+          />
         }
       >
-        <OrderResultsContent result={result} />
+        <OrderResultsContent locale={locale} result={result} />
       </Suspense>
     </AdministrationPage>
   );
@@ -62,15 +81,17 @@ type OrdersData = {
 };
 
 async function OrderCount({
+  locale,
   result,
 }: {
+  readonly locale: Locale;
   readonly result: Promise<OrdersData["result"]>;
 }) {
   const count = (await result).items.length;
   return (
     <AdministrationTableCount
       count={count}
-      label={`${count} order${count === 1 ? "" : "s"}`}
+      label={m.administrationOrderCount({ count }, { locale })}
     />
   );
 }
@@ -84,26 +105,32 @@ async function OrderFiltersContent({
 }
 
 async function OrderResultsContent({
+  locale,
   result,
 }: {
+  readonly locale: Locale;
   readonly result: Promise<OrdersData["result"]>;
 }) {
-  return <OrderResults result={await result} />;
+  return <OrderResults locale={locale} result={await result} />;
 }
 
-function OrderResults({ result }: { readonly result: OrdersData["result"] }) {
+function OrderResults({
+  locale,
+  result,
+}: {
+  readonly locale: Locale;
+  readonly result: OrdersData["result"];
+}) {
   return (
     <>
       {!result.providerAvailable && (
         <AdministrationAlert className="mb-5" status="warning">
-          Nexi is temporarily unavailable. Local orders are still shown, but
-          provider-only orders and current status may be missing.
+          {m.administrationOrderListProviderUnavailable({}, { locale })}
         </AdministrationAlert>
       )}
       {result.truncated && (
         <p className="mb-4 text-sm text-navy-blue/65">
-          Showing the first matching records. Narrow the date range to inspect
-          older activity.
+          {m.administrationOrderListTruncated({}, { locale })}
         </p>
       )}
       <OrderTable orders={result.items} />

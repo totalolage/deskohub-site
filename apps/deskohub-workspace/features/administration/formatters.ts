@@ -7,6 +7,8 @@ import type {
   AdministrationPaymentAttempt,
   AdministrationReservationSummary,
 } from "./administration.service";
+import { m } from "./i18n";
+import { getAdministrationPaymentStateLabel } from "./payment-presentation";
 
 // Operators work on Prague time, so every locale shows the 24-hour clock. A
 // day period could also differ between server and browser: depending on its
@@ -53,7 +55,7 @@ export const formatAdministrationMoney = (
   });
 
 export type AdministrationPaymentStatus = {
-  /** "Paid", "Refunded", or "Partially refunded" with the refunded amount. */
+  /** "Paid", "Refunded", or "Partially refunded" with the refunded amount, in the locale. */
   readonly label: string;
   /** When the payment reached this status: the refund time once refunded. */
   readonly at: string;
@@ -72,10 +74,11 @@ export const getAdministrationPaymentStatus = (
   attempt: Pick<
     AdministrationPaymentAttempt,
     | "amount"
+    | "failureCode"
     | "refundState"
     | "refundedAmount"
     | "refundedAt"
-    | "stateLabel"
+    | "state"
     | "updatedAt"
   >,
   locale: Locale
@@ -83,7 +86,7 @@ export const getAdministrationPaymentStatus = (
   const { refundedAmount, refundedAt } = attempt;
   if (attempt.refundState !== "refunded" || !refundedAmount || !refundedAt) {
     return {
-      label: attempt.stateLabel,
+      label: getAdministrationPaymentStateLabel(attempt, locale),
       at: attempt.updatedAt,
       refunded: false,
       retainedAmount: null,
@@ -93,8 +96,11 @@ export const getAdministrationPaymentStatus = (
   const partial = refundedAmount.value < attempt.amount.value;
   return {
     label: partial
-      ? `Partially refunded ${formatAdministrationMoney(refundedAmount, locale)}`
-      : "Refunded",
+      ? m.administrationPaymentStatusPartiallyRefunded(
+          { amount: formatAdministrationMoney(refundedAmount, locale) },
+          { locale }
+        )
+      : m.administrationPaymentStatusRefunded({}, { locale }),
     at: refundedAt,
     refunded: true,
     retainedAmount: partial

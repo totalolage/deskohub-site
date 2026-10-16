@@ -5,6 +5,7 @@ import type { AdministrationPaymentAttempt } from "./administration.service";
 import type { AdministrationOrder } from "./payment-administration.service";
 import {
   buildPaymentAttemptTimeline,
+  getAdministrationPaymentTimelineCopy,
   getOrderTimeline,
 } from "./payment-timeline";
 
@@ -15,6 +16,7 @@ const refundedAttempt: AdministrationPaymentAttempt = {
   state: "paid",
   refundState: "refunded",
   providerOrderId,
+  provider: "nexi",
   providerLabel: "Online payment",
   stateLabel: "Paid",
   failureCode: null,
@@ -117,5 +119,81 @@ describe("payment timeline", () => {
         ...getOrderTimeline(orders),
       ])
     ).toEqual(["Payment started", "Refund recorded"]);
+  });
+
+  test("words each payment event in the route locale", () => {
+    const orders = [orderWithBackOfficeRefund];
+    const items = [
+      ...buildPaymentAttemptTimeline([refundedAttempt], orders),
+      ...getOrderTimeline(orders),
+    ];
+
+    expect(
+      items.map(({ event }) =>
+        getAdministrationPaymentTimelineCopy(event, "cs-CZ")
+      )
+    ).toEqual([
+      {
+        title: "Platba zahájena",
+        description: "Pokus o platbu synthetic-payment (Online platba).",
+      },
+      {
+        title: "Nexi platbu provedlo",
+        description: "Nexi hlásí tuto platební operaci.",
+      },
+      {
+        title: "Nexi hlásí vrácení peněz",
+        description: "Nexi hlásí tuto platební operaci.",
+      },
+    ]);
+  });
+
+  test("keeps the English API wording beside the localized event", () => {
+    const [started, ended] = buildPaymentAttemptTimeline(
+      [
+        {
+          ...refundedAttempt,
+          state: "cancelled",
+          failureCode: "payment_abandoned_after_provider_cutoff",
+          refundedAt: null,
+        },
+      ],
+      []
+    );
+
+    expect(started).toMatchObject({
+      title: "Payment started",
+      description: "Online payment attempt synthetic-payment.",
+    });
+    expect(ended).toMatchObject({
+      title: "Payment abandoned",
+      event: { source: "payment", kind: "attemptEnded", outcome: "abandoned" },
+    });
+    expect(
+      ended && getAdministrationPaymentTimelineCopy(ended.event, "en-US")
+    ).toEqual({
+      title: "Payment abandoned",
+      description:
+        "Workspace released the reservation after the local payment window elapsed and Nexi still reported no payment activity.",
+    });
+  });
+
+  test("names an unclassified Nexi operation by its type, result and channel", () => {
+    expect(
+      getAdministrationPaymentTimelineCopy(
+        {
+          source: "payment",
+          kind: "operationReported",
+          outcome: "other",
+          operationType: "INCREMENTAL_AUTHORIZATION",
+          operationResult: "PENDING",
+          channel: "BACK_OFFICE",
+        },
+        "cs-CZ"
+      )
+    ).toEqual({
+      title: "Incremental Authorization: Pending",
+      description: "Nexi hlásí tuto operaci z kanálu Back Office.",
+    });
   });
 });

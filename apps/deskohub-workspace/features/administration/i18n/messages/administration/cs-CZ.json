@@ -1,4 +1,81 @@
 {
+  "administrationBookingColumnBooking": "Rezervace stolu",
+  "administrationBookingColumnCustomer": "Zákazník",
+  "administrationBookingColumnReservation": "Rezervace",
+  "administrationBookingColumnStatus": "Stav",
+  "administrationBookingColumnTable": "Stůl",
+  "administrationBookingCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} rezervace stolu",
+        "countPlural=few": "{count} rezervace stolů",
+        "countPlural=other": "{count} rezervací stolů"
+      }
+    }
+  ],
+  "administrationBookingCountLoading": "Načítání počtu rezervací stolů",
+  "administrationBookingCustomerDetailsMissing": "Údaje o zákazníkovi nejsou k dispozici.",
+  "administrationBookingCustomerDetailsUnavailable": "Podrobnosti nejsou k dispozici",
+  "administrationBookingCustomerUnavailable": "Zákazník není k dispozici",
+  "administrationBookingDetailDescription": "{startsAt} · {guests}",
+  "administrationBookingDetailEyebrow": "Rezervace stolu v Dotypos",
+  "administrationBookingDetailLoading": "Načítání podrobností rezervace stolu",
+  "administrationBookingDetailTitle": "Podrobnosti rezervace stolu",
+  "administrationBookingDetailUnassignedTitle": "Rezervace bez přiřazeného stolu",
+  "administrationBookingFactCreated": "Vytvořeno",
+  "administrationBookingFactEnds": "Konec",
+  "administrationBookingFactGuests": "Počet osob",
+  "administrationBookingFactLastChanged": "Naposledy změněno",
+  "administrationBookingFactLocation": "Umístění",
+  "administrationBookingFactStarts": "Začátek",
+  "administrationBookingFactStatus": "Stav",
+  "administrationBookingFactTable": "Stůl",
+  "administrationBookingGuestCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} osoba",
+        "countPlural=few": "{count} osoby",
+        "countPlural=other": "{count} osob"
+      }
+    }
+  ],
+  "administrationBookingListLoading": "Načítání rezervací stolů",
+  "administrationBookingListTitle": "Rezervace stolů",
+  "administrationBookingLocationNotSpecified": "Neuvedeno",
+  "administrationBookingNoLinkedReservation": "Není připojena žádná rezervace Workspace.",
+  "administrationBookingNoTableAssigned": "Bez přiřazeného stolu",
+  "administrationBookingReferenceBooking": "Záznam rezervace stolu",
+  "administrationBookingReferenceCustomer": "Zákazník",
+  "administrationBookingReferenceReservation": "Rezervace",
+  "administrationBookingReferencesTitle": "Identifikátory",
+  "administrationBookingRelatedCustomer": "Zákazník",
+  "administrationBookingRelatedReservation": "Rezervace Workspace",
+  "administrationBookingReservationNotLinked": "Nepřipojeno",
+  "administrationBookingStatusCancelled": "Zrušená",
+  "administrationBookingStatusConfirmed": "Potvrzená",
+  "administrationBookingStatusNew": "Nová",
+  "administrationBookingTableControls": "Ovládání tabulky rezervací stolů",
+  "administrationBookingTableDetailsUnavailable": "Podrobnosti nejsou k dispozici",
+  "administrationBookingTableEmpty": "K tomuto datu neexistují žádné rezervace stolů.",
+  "administrationBookingTableLabel": "Rezervace stolů",
+  "administrationBookingTableNotAssigned": "Nepřiřazeno",
+  "administrationBookingTableUnavailable": "Nedostupné",
+  "administrationBookingViewCustomer": "Zobrazit zákazníka",
+  "administrationBookingViewReservationHistory": "Zobrazit průběh rezervace a historii plateb",
   "administrationConfirmDialogCancel": "Zrušit",
   "administrationCustomerActivityCalendarLabel": "Aktivita rezervací za posledních 365 dní",
   "administrationCustomerActivityDay": [
@@ -8,7 +85,9 @@
         "input date",
         "local countPlural = count: plural"
       ],
-      "selectors": ["countPlural"],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{date}: {count} rezervace",
         "countPlural=few": "{date}: {count} rezervace",
@@ -21,8 +100,13 @@
   "administrationCustomerActivityUnavailable": "Aktivita rezervací je dočasně nedostupná.",
   "administrationCustomerActivityYearTotal": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} rezervace za posledních 365 dní",
         "countPlural=few": "{count} rezervace za posledních 365 dní",
@@ -33,8 +117,13 @@
   "administrationCustomerContactUnavailable": "Údaje o zákazníkovi nejsou k dispozici",
   "administrationCustomerCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} zákazník",
         "countPlural=few": "{count} zákazníci",
@@ -58,7 +147,9 @@
         "input date",
         "local countPlural = count: plural"
       ],
-      "selectors": ["countPlural"],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} rezervace · Aktualizováno {date}",
         "countPlural=few": "{count} rezervace · Aktualizováno {date}",
@@ -75,8 +166,13 @@
   "administrationCustomerTablePhone": "Telefon",
   "administrationCustomerTableReservationCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "<count>{count}</count> rezervace",
         "countPlural=few": "<count>{count}</count> rezervace",
@@ -120,6 +216,112 @@
   "administrationLoadingTableFilters": "Načítání filtrů tabulky",
   "administrationNexiOrderLinkLabel": "{order} (otevře se v XPay)",
   "administrationNexiOrderName": "Objednávka Nexi {orderId}",
+  "administrationOperationColumnAmount": "Částka",
+  "administrationOperationColumnOperation": "Operace",
+  "administrationOperationColumnOrder": "Objednávka",
+  "administrationOperationColumnOrigin": "Původ",
+  "administrationOperationColumnReservation": "Rezervace",
+  "administrationOperationColumnResult": "Výsledek",
+  "administrationOperationColumnType": "Typ",
+  "administrationOperationCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} operace",
+        "countPlural=few": "{count} operace",
+        "countPlural=other": "{count} operací"
+      }
+    }
+  ],
+  "administrationOperationCountLoading": "Načítání počtu operací",
+  "administrationOperationDetailDescription": "Aktuální údaje o operaci z Nexi bez citlivých dat a s nimi propojené záznamy Deskohub.",
+  "administrationOperationDetailEyebrow": "Operace Nexi",
+  "administrationOperationDetailLoading": "Načítání podrobností operace",
+  "administrationOperationDetailNotFound": "Nexi tuto operaci nenašlo.",
+  "administrationOperationDetailTitle": "Podrobnosti operace",
+  "administrationOperationDetailUnavailable": "Podrobnosti operace z Nexi jsou dočasně nedostupné.",
+  "administrationOperationFactAmount": "Částka",
+  "administrationOperationFactOccurred": "Čas",
+  "administrationOperationFactOrigin": "Původ",
+  "administrationOperationFactResult": "Výsledek",
+  "administrationOperationFactReverses": "Ruší operaci",
+  "administrationOperationFactType": "Typ",
+  "administrationOperationListLoading": "Načítání operací",
+  "administrationOperationListProviderUnavailable": "Operace Nexi jsou dočasně nedostupné. Místně se žádný záznam operací neukládá, zkuste to proto později.",
+  "administrationOperationListTitle": "Operace",
+  "administrationOperationListTruncated": "Zobrazuje se prvních 100 odpovídajících operací. Pro menší časový úsek zužte filtry.",
+  "administrationOperationNotApplicable": "Netýká se",
+  "administrationOperationNotReported": "Neuvedeno",
+  "administrationOperationRelatedOrder": "Objednávka",
+  "administrationOperationRelatedReservation": "Rezervace",
+  "administrationOperationReservationNotLinked": "Nepřipojeno",
+  "administrationOperationTableControls": "Ovládání tabulky operací",
+  "administrationOperationTableEmpty": "Těmto filtrům neodpovídají žádné operace Nexi.",
+  "administrationOperationTableLabel": "Operace Nexi",
+  "administrationOperationViewReservation": "Zobrazit rezervaci",
+  "administrationOrderColumnAmount": "Částka",
+  "administrationOrderColumnLastOperation": "Poslední operace",
+  "administrationOrderColumnOrder": "Objednávka",
+  "administrationOrderColumnReconciliation": "Párování",
+  "administrationOrderColumnReservation": "Rezervace",
+  "administrationOrderCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} objednávka",
+        "countPlural=few": "{count} objednávky",
+        "countPlural=other": "{count} objednávek"
+      }
+    }
+  ],
+  "administrationOrderCountLoading": "Načítání počtu objednávek",
+  "administrationOrderDetailDescription": "Údaje z Nexi, místní párování a všechny operace, které Nexi k této objednávce vrátilo.",
+  "administrationOrderDetailEyebrow": "Objednávka Nexi",
+  "administrationOrderDetailLoading": "Načítání podrobností objednávky",
+  "administrationOrderDetailNotFound": "Nexi tuto místně evidovanou objednávku nenašlo. Obchodní účet a identifikátor ověřte přes odkaz do XPay.",
+  "administrationOrderDetailTitle": "Podrobnosti objednávky",
+  "administrationOrderDetailUnavailable": "Údaje z Nexi jsou dočasně nedostupné. Místní vazby se níže zobrazují dál.",
+  "administrationOrderFactAmount": "Částka",
+  "administrationOrderFactAuthorized": "Autorizováno",
+  "administrationOrderFactCaptured": "Strženo",
+  "administrationOrderFactCreated": "Objednávka Nexi vytvořena",
+  "administrationOrderFactCreatedEstimated": "Objednávka Nexi vytvořena (odhad)",
+  "administrationOrderFactLastActivity": "Poslední aktivita v Nexi",
+  "administrationOrderFactLastOperation": "Poslední operace",
+  "administrationOrderListLoading": "Načítání objednávek",
+  "administrationOrderListProviderUnavailable": "Nexi je dočasně nedostupné. Místní objednávky se dál zobrazují, ale objednávky známé jen v Nexi a jejich aktuální stav mohou chybět.",
+  "administrationOrderListTitle": "Objednávky",
+  "administrationOrderListTruncated": "Zobrazují se jen první odpovídající záznamy. Starší aktivitu zobrazíte zúžením rozsahu dat.",
+  "administrationOrderLocalAttempt": "Místní pokus o platbu",
+  "administrationOrderNoLinkedAttempt": "K této objednávce není připojen žádný místní pokus o platbu.",
+  "administrationOrderNoOperationReported": "Žádná nehlášena",
+  "administrationOrderNotRecorded": "Nezaznamenáno",
+  "administrationOrderNotReported": "Neuvedeno",
+  "administrationOrderOpenInXPay": "Otevřít v XPay",
+  "administrationOrderOperationsDescription": "Aktuální údaje o operacích z Nexi bez citlivých dat.",
+  "administrationOrderOperationsTitle": "Operace",
+  "administrationOrderReconciliationNotFound": "Nenalezeno",
+  "administrationOrderReconciliationNotReturned": "Chybí v odpovědi Nexi",
+  "administrationOrderReconciliationProviderOnly": "Pouze v Nexi",
+  "administrationOrderReconciliationUnavailable": "Nexi nedostupné",
+  "administrationOrderRelatedReservation": "Rezervace",
+  "administrationOrderReservationNotLinked": "Nepřipojeno",
+  "administrationOrderTableControls": "Ovládání tabulky objednávek",
+  "administrationOrderTableEmpty": "V tomto období nejsou žádné objednávky Nexi.",
+  "administrationOrderTableLabel": "Objednávky Nexi",
+  "administrationOrderViewReservation": "Zobrazit rezervaci",
   "administrationOverviewCustomerActivityTitle": "Aktivita zákazníků",
   "administrationOverviewCustomerCreationDatesUnavailable": "Data založení zákazníků nejsou k dispozici",
   "administrationOverviewFindTitle": "Vyhledat záznam",
@@ -128,8 +330,13 @@
   "administrationOverviewLiveBookingDatesUnavailable": "Aktuální termíny rezervací nejsou k dispozici",
   "administrationOverviewMoreCustomers": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "… a {count} další",
         "countPlural=few": "… a {count} další",
@@ -148,7 +355,9 @@
         "input completed",
         "local countPlural = count: plural"
       ],
-      "selectors": ["countPlural"],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "Dokončeno: {completed} z {count} rezervace",
         "countPlural=few": "Dokončeno: {completed} z {count} rezervací",
@@ -167,12 +376,70 @@
   "administrationPaginationNext": "Další",
   "administrationPaginationPrevious": "Předchozí",
   "administrationPaginationStatus": "Strana {page} z {pageCount}",
+  "administrationPaymentAmountAfterRefund": "po vrácení peněz",
+  "administrationPaymentAmountBeforeRefund": "před vrácením peněz",
+  "administrationPaymentAmountRefunded": "vráceno",
+  "administrationPaymentAttemptStateCancelled": "Zrušeno",
+  "administrationPaymentAttemptStateCreated": "Vytvořeno",
+  "administrationPaymentAttemptStateExpired": "Vypršelo",
+  "administrationPaymentAttemptStateFailed": "Selhalo",
+  "administrationPaymentAttemptStatePaid": "Zaplaceno",
+  "administrationPaymentAttemptStatePending": "Čeká na platbu",
+  "administrationPaymentInvalidProviderTime": "Neplatný čas od poskytovatele",
+  "administrationPaymentNeedsRefund": "Vyžaduje vrácení peněz",
+  "administrationPaymentNexiOrder": "Objednávka Nexi",
+  "administrationPaymentNoLocalAttempt": "Bez místního pokusu o platbu",
+  "administrationPaymentNotReported": "Neuvedeno",
+  "administrationPaymentOperationFallback": "Platební operace",
+  "administrationPaymentOrderActivityHeld": "Nexi hlásí platební aktivitu. Automatické čištění ponechá tuto rezervaci blokovanou, dokud platbu nezkontrolujete.",
+  "administrationPaymentOrderNoOperations": "Nexi u této objednávky nehlásí žádné operace.",
+  "administrationPaymentOrderNotFound": "Tuto místně připojenou objednávku Nexi nevrací. Číslo objednávky a místní údaje o platbě zůstávají k dispozici výše.",
+  "administrationPaymentOrderOperationsLabel": "Operace objednávky {orderId}",
+  "administrationPaymentOrderUnavailable": "Aktuální operace objednávky jsou z Nexi dočasně nedostupné.",
+  "administrationPaymentOrderWindowElapsed": "Ani po uplynutí místní lhůty pro platbu Nexi nehlásí žádnou aktivitu. Automatické čištění by mělo blokaci této rezervace uvolnit.",
+  "administrationPaymentOrderWindowOpen": "Místní lhůta pro platbu trvá do {time}. Pokud v Nexi nepřibude žádná aktivita, automatické čištění může blokaci uvolnit.",
+  "administrationPaymentProviderIncluded": "V ceně",
+  "administrationPaymentProviderOnline": "Online platba",
+  "administrationPaymentReservationOrdersEmpty": "K této rezervaci není připojena žádná objednávka Nexi.",
+  "administrationPaymentStateAbandoned": "Nedokončeno",
+  "administrationPaymentStatePaid": "Zaplaceno",
+  "administrationPaymentStatePending": "Čeká na platbu",
+  "administrationPaymentStateStarted": "Zahájeno",
+  "administrationPaymentStateUnsuccessful": "Nezdařilo se",
+  "administrationPaymentStatusAt": "{status} · {time}",
+  "administrationPaymentStatusPartiallyRefunded": "Částečně vráceno {amount}",
+  "administrationPaymentStatusRefunded": "Vráceno",
+  "administrationPaymentTimelineAbandonedDescription": "Workspace rezervaci uvolnil, protože uplynula místní lhůta pro platbu a Nexi stále nehlásilo žádnou platební aktivitu.",
+  "administrationPaymentTimelineAbandonedTitle": "Platba nedokončena",
+  "administrationPaymentTimelineAuthorizedTitle": "Nexi platbu autorizovalo",
+  "administrationPaymentTimelineEndedDescription": "Pokus skončil bez zaznamenané platby.",
+  "administrationPaymentTimelineExecutedTitle": "Nexi platbu provedlo",
+  "administrationPaymentTimelineFailedTitle": "Platba selhala",
+  "administrationPaymentTimelineOperationChannelDescription": "Nexi hlásí tuto operaci z kanálu {channel}.",
+  "administrationPaymentTimelineOperationDescription": "Nexi hlásí tuto platební operaci.",
+  "administrationPaymentTimelineOperationResultTitle": "{type}: {result}",
+  "administrationPaymentTimelineOrderCreatedDescription": "Nexi přijalo požadavek na platební bránu.",
+  "administrationPaymentTimelineOrderCreatedEstimatedDescription": "Tato připojená relace Nexi vznikla před přesným sledováním vytvoření objednávky, proto je uveden čas místního pokusu o platbu.",
+  "administrationPaymentTimelineOrderCreatedEstimatedTitle": "Objednávka Nexi vytvořena (odhad)",
+  "administrationPaymentTimelineOrderCreatedTitle": "Objednávka Nexi vytvořena",
+  "administrationPaymentTimelineRefundRecordedDescription": "Nexi u této platby hlásí vrácení peněz, takže už nevyžaduje žádné další kroky.",
+  "administrationPaymentTimelineRefundRecordedTitle": "Vrácení peněz zaznamenáno",
+  "administrationPaymentTimelineRefundReportedTitle": "Nexi hlásí vrácení peněz",
+  "administrationPaymentTimelineReversalTitle": "Nexi hlásí zrušení platby",
+  "administrationPaymentTimelineStartedDescription": "Pokus o platbu {attemptId} ({provider}).",
+  "administrationPaymentTimelineStartedTitle": "Platba zahájena",
+  "administrationPaymentTimelineUnsuccessfulTitle": "Platba se nezdařila",
   "administrationRefundAttentionDescription": "Platba za ně byla přijata, ale rezervaci se nepodařilo poskytnout nebo byla zrušena. Peníze se nevracejí automaticky. Vraťte je v Nexi; ze seznamu zmizí, jakmile Nexi vrácení peněz nahlásí.",
   "administrationRefundAttentionReview": "Zkontrolovat vrácení peněz",
   "administrationRefundAttentionTitle": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} rezervace čeká na vrácení peněz.",
         "countPlural=few": "{count} rezervace čekají na vrácení peněz.",

@@ -264,6 +264,8 @@ export type AdministrationPaymentAttempt = {
   readonly state: PaymentAttemptState;
   readonly refundState: PaymentRefundState;
   readonly providerOrderId: NexiOrderId | null;
+  /** Who collects the payment: Nexi online, or nobody for an included reservation. */
+  readonly provider: "internal" | "nexi";
   readonly providerLabel: string;
   readonly stateLabel: string;
   readonly failureCode: string | null;
@@ -612,6 +614,7 @@ const toAdministrationPaymentAttempt = (
   state: attempt.state,
   refundState: attempt.refundState,
   providerOrderId: attempt.providerOrderId,
+  provider: attempt.provider,
   providerLabel:
     attempt.provider === "internal" ? "Included" : "Online payment",
   stateLabel:
