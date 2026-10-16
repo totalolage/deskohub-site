@@ -207,12 +207,8 @@ async function localizedPageResponse(
   return response;
 }
 
-// Better Auth's optimistic cookie check: a page load without a session cookie
-// can't belong to an administrator, so it goes straight to sign-in and comes
-// back afterwards. The page and Server Action guards verify the session and
-// the administrator grant on every request; this check only saves a render.
-const administrationSignInRedirect = (request: NextRequest) => {
-  const locale = resolveWorkspaceLocale(
+const requestLocale = (request: NextRequest) =>
+  resolveWorkspaceLocale(
     {
       pathname: request.nextUrl.pathname,
       cookies: request.cookies,
@@ -220,27 +216,55 @@ const administrationSignInRedirect = (request: NextRequest) => {
     },
     undefined
   );
-  return NextResponse.redirect(
+
+// Sends a signed-out page load to sign-in, coming back afterwards.
+const administrationSignInRedirect = (request: NextRequest) =>
+  NextResponse.redirect(
     new URL(
       getAccountSignInPath(
-        locale,
+        requestLocale(request),
         `${request.nextUrl.pathname}${request.nextUrl.search}`
       ),
       request.nextUrl
     )
   );
+
+// Serves the ordinary customer 404 page: the catch-all route answers any
+// unknown path with it, so the administration isn't advertised.
+const ordinaryNotFound = (request: NextRequest) =>
+  NextResponse.rewrite(
+    new URL(
+      `/${requestLocale(request)}/administration-not-found`,
+      request.nextUrl
+    )
+  );
+
+// Who a page load acts as. Pages stream behind a static shell, so their own
+// guards can't change the status or hide the shell once it is sent; the
+// proxy reads the session and the grant first. Without a session cookie
+// (Better Auth's optimistic check) there is nothing to read.
+const administrationPageAccess = async (request: NextRequest) => {
+  if (!getSessionCookie(request)) return "signed-out" as const;
+  const { readAdministrationRequestAccess } = await import(
+    "./features/administrators/server/administration-request-access.server"
+  );
+  return readAdministrationRequestAccess(request.headers);
 };
 
 async function administrationResponse(request: NextRequest) {
-  // A Server Action without a session reaches its guard, which fails closed.
+  // A Server Action reaches its guard, which fails closed without a redirect.
   if (request.method === "POST" && request.headers.has("next-action")) {
     return NextResponse.next();
   }
-  if (
-    (request.method === "GET" || request.method === "HEAD") &&
-    !getSessionCookie(request)
-  ) {
-    return administrationSignInRedirect(request);
+  if (request.method === "GET" || request.method === "HEAD") {
+    const access = await administrationPageAccess(request).catch(
+      () => "unavailable" as const
+    );
+    if (access === "signed-out") return administrationSignInRedirect(request);
+    if (access === "not-administrator") return ordinaryNotFound(request);
+    if (access === "unavailable") {
+      return new NextResponse(null, { status: 503 });
+    }
   }
   request.headers.set(
     administrationRequestPathHeader,

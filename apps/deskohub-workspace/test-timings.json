@@ -61,7 +61,6 @@
     "e2e/account/runner.test.ts": 201,
     "e2e/account/seeded-session.test.ts": 460,
     "e2e/account/vercel-log-retrieval.test.ts": 2313,
-    "e2e/admin-basic-auth.test.ts": 164,
     "e2e/admin-case.test.ts": 139,
     "e2e/allocation.test.ts": 14,
     "e2e/browser-react-form-submit.browser-acceptance.test.ts": 797,
@@ -507,7 +506,6 @@
     "proxy.test.ts": 3268,
     "scripts/account-e2e-graph.test.ts": 615,
     "scripts/anti-slop.test.ts": 2853,
-    "scripts/generate-administrator-credentials.test.ts": 216,
     "scripts/no-source-string-tests.test.ts": 134,
     "scripts/posthog-identity-fixture-bundle.test.ts": 170,
     "scripts/posthog-sdk-version.test.ts": 74,
@@ -528,10 +526,6 @@
     "scripts/workspace-e2e-scheduling.test.ts": 8358,
     "scripts/workspace-e2e-workflow.test.ts": 1564,
     "scripts/workspace-tests-workflow.test.ts": 429,
-    "shared/administrator/administrator-authorization.server.test.ts": 1171,
-    "shared/administrator/administrator-basic-auth.test.ts": 155,
-    "shared/administrator/administrator-credentials.test.ts": 182,
-    "shared/administrator/configured-administrators.service.test.ts": 146,
     "shared/backend/analytics/posthog-event.service.test.ts": 161,
     "shared/backend/bot-protection/bot-protection.service.test.ts": 93,
     "shared/backend/config/dotypos.config.process-cache.test.ts": 192,
@@ -588,7 +582,6 @@
     "shared/utils/posthog-session-cookies.test.ts": 74,
     "shared/utils/preloadable-module.test.ts": 12,
     "shared/utils/temporal.test.ts": 74,
-    "shared/utils/url-credentials.test.ts": 11,
     "shared/utils/use-workspace-action.test.tsx": 141
   }
 }

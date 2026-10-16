@@ -10,7 +10,7 @@ import { AccountRoleGrants } from "./account-role-grants.service";
  * - `not-administrator`: a signed-in account without the role, or one
  *   awaiting deletion.
  */
-export type AdministratorAccess =
+type AdministratorAccess =
   | {
       readonly kind: "administrator";
       readonly actor: AdministratorAccountActor;
