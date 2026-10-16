@@ -1,8 +1,8 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Exit, Layer } from "effect";
+import { Effect, Exit, Layer, Predicate } from "effect";
 import {
   type CustomerAccountSession,
   CustomerAuthentication,
@@ -27,13 +27,6 @@ let currentUser: CustomerAuthentication["Service"]["currentUser"] =
 let granted = true;
 let requestHeaders = new Headers();
 
-class RedirectSignal extends Error {
-  constructor(readonly location: string) {
-    super("redirect");
-  }
-}
-class NotFoundSignal extends Error {}
-
 mock.module("server-only", () => ({}));
 mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined }),
@@ -42,15 +35,6 @@ mock.module("next/headers", () => ({
 mock.module("next/server", () => ({
   after: () => {},
   connection: () => Promise.resolve(),
-}));
-mock.module("next/navigation", () => ({
-  redirect: (location: string) => {
-    throw new RedirectSignal(location);
-  },
-  notFound: () => {
-    throw new NotFoundSignal();
-  },
-  unstable_rethrow: () => undefined,
 }));
 mock.module("./administrator-access-layer.server", () => ({
   administratorAccessLayer: Layer.mergeAll(
@@ -68,14 +52,21 @@ mock.module("./administrator-access-layer.server", () => ({
 const { authorizeAdministratorPage, requireAdministratorAuthorization } =
   await import("./administrator-authorization.server");
 
+// The real `redirect` and `notFound` throw errors whose digest names the
+// outcome; other test files share the module, so it isn't mocked here.
 const pageOutcome = async () => {
   try {
     return { kind: "ok" as const, value: await authorizeAdministratorPage() };
   } catch (signal) {
-    if (signal instanceof RedirectSignal) {
-      return { kind: "redirect" as const, location: signal.location };
+    const digest = Predicate.hasProperty(signal, "digest")
+      ? signal.digest
+      : undefined;
+    if (!Predicate.isString(digest)) throw signal;
+    const redirect = /^NEXT_REDIRECT;\w+;(.*);\d+;$/.exec(digest);
+    if (redirect) return { kind: "redirect" as const, location: redirect[1] };
+    if (digest === "NEXT_HTTP_ERROR_FALLBACK;404") {
+      return { kind: "not-found" as const };
     }
-    if (signal instanceof NotFoundSignal) return { kind: "not-found" as const };
     throw signal;
   }
 };
@@ -167,5 +158,151 @@ describe("requireAdministratorAuthorization", () => {
     expect(exit).toMatchObject(
       Exit.fail({ _tag: "AdministratorUnauthorizedError" })
     );
+  });
+});
+
+// The mocked access layer is bound once per process, so every guard test
+// shares this file's session and grant state.
+describe("administration entry points without the administrator grant", () => {
+  beforeEach(() => {
+    currentUser = Effect.succeed(session);
+    granted = false;
+  });
+
+  test("rejects direct invocations of every exported admin action", async () => {
+    requestHeaders = new Headers({
+      referer: "https://deskohub.test/admin/reservations",
+    });
+    const { mutateDiscountAdmin, searchDiscountAdminCustomers } = await import(
+      "@/features/discounts/admin/actions"
+    );
+    const { getAdministrationReservation } = await import(
+      "@/features/administration/actions"
+    );
+
+    const mutation = await mutateDiscountAdmin({
+      kind: "delete-discount",
+      id: "00000000-0000-0000-0000-000000000001",
+    });
+    const search = await searchDiscountAdminCustomers({
+      query: "attacker-controlled-name",
+    });
+    const reservation = await getAdministrationReservation({
+      identifier: "attacker-controlled-id",
+    });
+    const { grantAdministrator, revokeAdministrator } = await import(
+      "@/features/administrators/admin/actions"
+    );
+    const grant = await grantAdministrator({
+      email: testEmailAddress("attacker-chosen-administrator"),
+    });
+    const revoke = await revokeAdministrator({ accountId: session.accountId });
+
+    expect(mutation).toHaveProperty("serverError");
+    expect(mutation).not.toHaveProperty("data");
+    expect(search).toHaveProperty("serverError");
+    expect(search).not.toHaveProperty("data");
+    expect(reservation).toHaveProperty("serverError");
+    expect(reservation).not.toHaveProperty("data");
+    for (const result of [grant, revoke]) {
+      expect(result).toHaveProperty("serverError");
+      expect(result).not.toHaveProperty("data");
+    }
+  });
+
+  test("rejects direct invocations of every exported admin page-data loader", async () => {
+    const authorization = await import("./administrator-authorization.server");
+    const administrators = await import(
+      "@/features/administrators/admin/page-data.server"
+    );
+    const administration = await import(
+      "@/features/administration/page-data.server"
+    );
+    const discounts = await import(
+      "@/features/discounts/admin/page-data.server"
+    );
+    const accounting = await import(
+      "@/features/accounting/admin/page-data.server"
+    );
+    const invoiceBreadcrumb = await import(
+      "@/features/accounting/admin/invoice-breadcrumb.server"
+    );
+    const adminCli = await import("@/features/admin-cli/page-data.server");
+    const searchParams = Promise.resolve({});
+    const operations = [
+      authorization.authorizeAdministratorPage,
+      administration.loadAdministrationOverview,
+      administration.loadAdministrationRefundAttention,
+      administration.loadAdministrationReservationOverview,
+      () =>
+        administration.loadAdministrationReservationsPage(searchParams).result,
+      () => administration.loadAdministrationReservation("reservation-id"),
+      () =>
+        administration.loadAdministrationReservationBreadcrumbLabel(
+          "reservation-id"
+        ),
+      () => administration.loadAdministrationBookingsPage(searchParams).result,
+      () => administration.loadAdministrationBooking("booking-id"),
+      () =>
+        administration.loadAdministrationBookingBreadcrumbLabel("booking-id"),
+      () => administration.loadAdministrationCustomersPage(searchParams).result,
+      () =>
+        administration.loadAdministrationCustomerReservations(
+          "customer-id",
+          searchParams
+        ),
+      () => administration.loadAdministrationCustomerActivity("customer-id"),
+      () =>
+        administration.loadAdministrationCustomerReservationActivity(
+          "customer-id"
+        ),
+      () => administration.loadAdministrationOrdersPage(searchParams).result,
+      () => administration.loadAdministrationOrder("order-id"),
+      () =>
+        administration.loadAdministrationOperationsPage(searchParams).result,
+      () => administration.loadAdministrationOperation("operation-id"),
+      () => discounts.loadDiscountAdminPageData(searchParams),
+      () => discounts.loadDiscountAdminCodesPageData(searchParams),
+      () => discounts.loadDiscountAdminSalesPageData(searchParams),
+      () => discounts.loadDiscountAdminShellPageData(searchParams),
+      () =>
+        discounts.loadDiscountAdminCodePageData(
+          "00000000-0000-0000-0000-000000000001",
+          searchParams
+        ),
+      () =>
+        discounts.loadDiscountAdminCustomerPageData(
+          "customer-id",
+          searchParams
+        ),
+      () =>
+        discounts.loadDiscountAdminCustomerCodeCreationPageData("customer-id"),
+      () =>
+        discounts.loadOptionalDiscountAdminCustomerPageData(
+          "customer-id",
+          searchParams
+        ),
+      () => discounts.loadDiscountAdminCustomerBreadcrumbLabel("customer-id"),
+      () => accounting.loadInvoiceAdministrationList(searchParams),
+      () => accounting.loadInvoiceCreationPage(),
+      () => accounting.loadInvoiceAdministrationDetail("invoice-id"),
+      () => accounting.loadInvoiceAdministrationPdf("invoice-id"),
+      () =>
+        invoiceBreadcrumb.loadInvoiceAdministrationBreadcrumbLabel(
+          "invoice-id"
+        ),
+      () => adminCli.loadCliAuthenticationApproval("code"),
+      () => adminCli.loadCliSessions(),
+      () => administrators.loadAdministrators(),
+    ] as const;
+
+    for (const operation of operations) {
+      const error = await operation().then(
+        () => null,
+        (cause: unknown) => cause
+      );
+
+      expect(error).toHaveProperty("digest", "NEXT_HTTP_ERROR_FALLBACK;404");
+    }
   });
 });
