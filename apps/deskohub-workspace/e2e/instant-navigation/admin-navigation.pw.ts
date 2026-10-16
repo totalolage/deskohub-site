@@ -1,5 +1,7 @@
 import { instant } from "@next/playwright";
 import { expect, test } from "@playwright/test";
+import { m } from "@/features/administration/i18n";
+import { m as customerMessages } from "@/features/i18n";
 import {
   instantNavigationAdministratorSkipReason,
   signInInstantNavigationAdministrator,
@@ -9,6 +11,7 @@ import {
   requireBaseUrl,
   reviewScreenshots,
 } from "./navigation-test-helpers";
+import { preparePublicLegalBrowser } from "./public-account-legal-assertions";
 
 test.skip(
   instantNavigationAdministratorSkipReason !== undefined,
@@ -65,5 +68,38 @@ test("hydrates the customer activity section", async ({ page }, testInfo) => {
       path: screenshotPath,
     });
   }
+  await page.close();
+});
+
+test("renders an unknown administration address in the administration frame", async ({
+  context,
+  page,
+}) => {
+  // Lets the consent banner show if the customer providers render.
+  await preparePublicLegalBrowser(context);
+  await page.goto("/en-US/admin/route-fallback-unknown-address");
+
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: m.shellNotFoundTitle({}, { locale: "en-US" }),
+    })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Administration" }).first()
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: customerMessages.notFoundTitle({}, { locale: "en-US" }),
+    })
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: customerMessages.cookieConsentConsentModalAcceptNecessaryBtn(
+        {},
+        { locale: "en-US" }
+      ),
+    })
+  ).toHaveCount(0);
   await page.close();
 });
