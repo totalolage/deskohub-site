@@ -53,5 +53,11 @@
   "shellBreadcrumbSales": "Sales",
   "shellBreadcrumbSessions": "Sessions",
   "shellBreadcrumbVouchers": "Vouchers",
-  "shellBreadcrumbVoucher": "Voucher"
+  "shellBreadcrumbVoucher": "Voucher",
+  "shellNotFoundTitle": "Page not found",
+  "shellNotFoundDescription": "This administration page does not exist or has moved.",
+  "shellNotFoundOverviewLink": "Back to the overview",
+  "shellErrorTitle": "This page could not be loaded",
+  "shellErrorDescription": "Something went wrong while loading this administration page.",
+  "shellErrorRetry": "Try again"
 }

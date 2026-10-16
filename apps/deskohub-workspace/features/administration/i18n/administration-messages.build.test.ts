@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { createContext, runInContext } from "node:vm";
-import { Schema } from "effect";
+import {
+  type CatalogText,
+  classifyChunks,
+  findTexts,
+  readCatalogTexts,
+  selectLeakEvidence,
+} from "./administration-message-leaks.test-utils";
 
 // Checks the client chunks of a production build, so it stays out of the
 // default suite. Build, then select it by path:
@@ -61,116 +67,103 @@ const readRootChunks = async (): Promise<string[]> =>
     await readFile(path.join(nextDirectory, "build-manifest.json"), "utf8")
   ).rootMainFiles.map(toChunkFile);
 
-// A catalog maps each key to a pattern, or to variants of a matched message.
-const decodeCatalog = Schema.decodeUnknownSync(
-  Schema.fromJsonString(
-    Schema.Record(
-      Schema.String,
-      Schema.Union([
-        Schema.String,
-        Schema.Array(
-          Schema.Struct({ match: Schema.Record(Schema.String, Schema.String) })
-        ),
-      ])
+// Every emitted client script, including lazily loaded chunks no route
+// manifest lists.
+const readEmittedChunks = async () => {
+  const files = (
+    await readdir(path.join(nextDirectory, "static"), { recursive: true })
+  ).filter((file) => file.endsWith(".js"));
+  return new Map(
+    await Promise.all(
+      files.map(async (file) => {
+        const chunk = path.posix.join("static", file.split(path.sep).join("/"));
+        return [
+          chunk,
+          await readFile(path.join(nextDirectory, chunk), "utf8"),
+        ] as const;
+      })
     )
-  )
-);
+  );
+};
 
-// Texts with placeholders compile into fragments, so only plain texts count.
-const isPlainText = (pattern: string) => !/[{}]/.test(pattern);
-
-const readCatalogTexts = async (directory: string) => {
+const readCatalogDirectory = async (directory: string) => {
   const catalogs = (await readdir(directory, { recursive: true })).filter(
     (file) => file.endsWith(".json")
   );
-  const texts: { readonly locale: string; readonly text: string }[] = [];
+  const texts: CatalogText[] = [];
   for (const file of catalogs) {
-    const catalog = decodeCatalog(
-      await readFile(path.join(directory, file), "utf8")
+    texts.push(
+      ...readCatalogTexts(
+        path.basename(file, ".json"),
+        await readFile(path.join(directory, file), "utf8")
+      )
     );
-    const locale = path.basename(file, ".json");
-    for (const message of Object.values(catalog)) {
-      const patterns = Array.isArray(message)
-        ? message.flatMap(({ match }) => Object.values(match))
-        : [message];
-      for (const text of patterns.filter(isPlainText)) {
-        texts.push({ locale, text });
-      }
-    }
   }
   return texts;
 };
-
-// A short single word ("Codes") can be a coincidental literal in customer
-// code; any multi-word or longer text can't.
-const isDistinctive = (text: string) =>
-  /\S\s+\S/.test(text) || text.length >= 12;
-
-const stringLiterals = (text: string) => [
-  JSON.stringify(text),
-  `'${text.replaceAll("'", "\\'")}'`,
-  `\`${text}\``,
-];
-
-const findTexts = <T extends { readonly text: string }>(
-  texts: readonly T[],
-  source: string
-) =>
-  texts.filter(({ text }) =>
-    stringLiterals(text).some((literal) => source.includes(literal))
-  );
 
 const isAdministrationRoute = (route: string) =>
   route === "/[locale]/admin" || route.startsWith("/[locale]/admin/");
 
 const routeChunks = await readRouteChunks();
 const rootChunks = await readRootChunks();
-const customerTextSet = new Set(
-  (await readCatalogTexts(customerMessagesDirectory)).map(({ text }) => text)
+const chunks = await readEmittedChunks();
+const customerCatalogTexts = await readCatalogDirectory(
+  customerMessagesDirectory
 );
-// Copy shared with the customer catalog may appear anywhere.
-const administrationTexts = (
-  await readCatalogTexts(administrationMessagesDirectory)
-).filter(({ text }) => isDistinctive(text) && !customerTextSet.has(text));
-const customerTexts = [...customerTextSet]
-  .filter(isDistinctive)
-  .map((text) => ({ text }));
+const administrationTexts = selectLeakEvidence(
+  await readCatalogDirectory(administrationMessagesDirectory),
+  customerCatalogTexts
+);
+const customerTexts = selectLeakEvidence(customerCatalogTexts, []);
 
 const customerRoutesByChunk = new Map<string, string[]>();
 for (const chunk of rootChunks) customerRoutesByChunk.set(chunk, ["(root)"]);
-for (const [route, chunks] of routeChunks) {
+for (const [route, routeChunkSet] of routeChunks) {
   if (isAdministrationRoute(route)) continue;
-  for (const chunk of chunks) {
+  for (const chunk of routeChunkSet) {
     customerRoutesByChunk.set(chunk, [
       ...(customerRoutesByChunk.get(chunk) ?? []),
       route,
     ]);
   }
 }
-const administrationChunks = new Set(
-  [...routeChunks]
-    .filter(([route]) => isAdministrationRoute(route))
-    .flatMap(([, chunks]) => [...chunks])
-);
-const readChunk = (chunk: string) =>
-  readFile(path.join(nextDirectory, chunk), "utf8");
+const { administrationOnly, customerReachable } = classifyChunks({
+  administrationEntryChunks: new Set(
+    [...routeChunks]
+      .filter(([route]) => isAdministrationRoute(route))
+      .flatMap(([, routeChunkSet]) => [...routeChunkSet])
+  ),
+  chunks,
+  customerEntryChunks: new Set(customerRoutesByChunk.keys()),
+});
+
+const describeChunk = (chunk: string) => {
+  const routes = customerRoutesByChunk.get(chunk);
+  return routes
+    ? `loaded by ${routes.slice(0, 3).join(", ")}`
+    : "not attributable to an administration route";
+};
 
 describe("administration messages in a production build", () => {
-  test("finds administration and customer routes in the build", () => {
-    expect(administrationChunks.size).toBeGreaterThan(0);
+  test("finds administration and customer chunks in the build", () => {
+    expect(
+      [...customerRoutesByChunk.keys()].every((chunk) => chunks.has(chunk))
+    ).toBe(true);
+    expect(administrationOnly.size).toBeGreaterThan(0);
     expect(customerRoutesByChunk.size).toBeGreaterThan(rootChunks.length);
     expect(administrationTexts.length).toBeGreaterThan(0);
   });
 
-  test("keeps administration message text out of every customer route chunk", async () => {
+  test("keeps administration message text out of every chunk a customer route can load", () => {
     const leaks: string[] = [];
-    for (const [chunk, routes] of customerRoutesByChunk) {
+    for (const chunk of customerReachable) {
       for (const { locale, text } of findTexts(
         administrationTexts,
-        await readChunk(chunk)
+        chunks.get(chunk) ?? ""
       )) {
         leaks.push(
-          `${locale} ${JSON.stringify(text)} in ${chunk} (loaded by ${routes.slice(0, 3).join(", ")})`
+          `${locale} ${JSON.stringify(text)} in ${chunk} (${describeChunk(chunk)})`
         );
       }
     }
@@ -180,12 +173,12 @@ describe("administration messages in a production build", () => {
 
   // Without these the check above could pass on a build or matcher that sees
   // no message text at all.
-  test("finds administration message text in administration chunks in each locale", async () => {
+  test("finds administration message text in administration chunks in each locale", () => {
     const found = new Set<string>();
-    for (const chunk of administrationChunks) {
+    for (const chunk of administrationOnly) {
       for (const { locale } of findTexts(
         administrationTexts,
-        await readChunk(chunk)
+        chunks.get(chunk) ?? ""
       )) {
         found.add(locale);
       }
@@ -194,12 +187,33 @@ describe("administration messages in a production build", () => {
     expect([...found].sort()).toEqual(["cs-CZ", "en-US"]);
   });
 
-  test("finds customer message text in customer chunks", async () => {
+  test("finds customer message text in customer chunks", () => {
     let found = 0;
-    for (const chunk of customerRoutesByChunk.keys()) {
-      found += findTexts(customerTexts, await readChunk(chunk)).length;
+    for (const chunk of customerReachable) {
+      found += findTexts(customerTexts, chunks.get(chunk) ?? "").length;
     }
 
     expect(found).toBeGreaterThan(0);
+  });
+
+  test("reports a parameterized administration message planted in a customer chunk", () => {
+    const probeTexts = selectLeakEvidence(
+      readCatalogTexts(
+        "en-US",
+        JSON.stringify({
+          probe: "Showing {count} audit entries for operator {operator}",
+        })
+      ),
+      customerCatalogTexts
+    );
+    const [rootChunk] = rootChunks;
+    const source = chunks.get(rootChunk) ?? "";
+    const planted = `${source};return\`Showing \${e?.count} audit entries for operator \${e?.operator}\``;
+
+    expect(customerReachable.has(rootChunk)).toBe(true);
+    expect(findTexts(probeTexts, source)).toEqual([]);
+    expect(findTexts(probeTexts, planted).map(({ text }) => text)).toEqual([
+      " audit entries for operator ",
+    ]);
   });
 });

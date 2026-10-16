@@ -53,5 +53,11 @@
   "shellBreadcrumbSales": "Akce",
   "shellBreadcrumbSessions": "Relace",
   "shellBreadcrumbVouchers": "Poukazy",
-  "shellBreadcrumbVoucher": "Poukaz"
+  "shellBreadcrumbVoucher": "Poukaz",
+  "shellNotFoundTitle": "Stránka nenalezena",
+  "shellNotFoundDescription": "Tato stránka administrace neexistuje nebo byla přesunuta.",
+  "shellNotFoundOverviewLink": "Zpět na přehled",
+  "shellErrorTitle": "Stránku se nepodařilo načíst",
+  "shellErrorDescription": "Při načítání této stránky administrace se něco pokazilo.",
+  "shellErrorRetry": "Zkusit znovu"
 }

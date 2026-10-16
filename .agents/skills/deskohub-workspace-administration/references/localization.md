@@ -5,7 +5,7 @@ The administration serves `en-US` and `cs-CZ` under the locale segment: `app/[lo
 ## Routes and the proxy
 
 - `proxy.ts` asks for Basic auth on every path whose first or second decoded segment is `admin`, before any locale handling or Server Action pass-through. An authorized unprefixed `/admin/...` URL then redirects to the resolved locale and keeps its query, so bookmarks, emailed links, and the `dhw auth` URL keep working. Every administration response is `private, no-store` and varies on `Authorization`.
-- Customer providers (GTM, PostHog, cookie consent, referral remembrance, unsaved-changes guard) live in `app/[locale]/(site)/layout.tsx`. The administration sits beside `(site)` and gets only the root `<html>`, so it never loads them. Put new customer routes inside `(site)`.
+- Customer providers (GTM, PostHog, cookie consent, referral remembrance, unsaved-changes guard) live in `app/[locale]/(site)/layout.tsx`. The administration sits beside `(site)` and gets only the root `<html>`, so it never loads them. Put new customer routes inside `(site)`. Each side has its own `error.tsx` and `not-found.tsx` (`(site)/` with customer copy, `admin/` with shell copy), so a fallback renders inside its own layout; a boundary at `[locale]` would replace the whole `(site)` subtree and drop the customer providers. `admin/[...not-found]` keeps unknown administration paths out of the customer catch-all.
 
 ## Paths in code
 
@@ -31,7 +31,9 @@ Only a separate project keeps this copy out of customer bundles. Every client-us
 
 ## Build-output check
 
-`features/administration/i18n/administration-messages.build.test.ts` reads a production build. It fails if any administration message text appears in a chunk a customer route loads, and also if administration chunks contain no administration text in either locale or customer chunks no customer text, so a broken build or matcher can't pass. It matches message text, not names, because Turbopack renames modules. It guards multi-word or 12-character texts that the customer catalog doesn't share. Shorter single words could be coincidental literals.
+`features/administration/i18n/administration-messages.build.test.ts` reads a production build. It fails if any administration message text appears in a chunk a customer route loads, and also if administration chunks contain no administration text in either locale or customer chunks no customer text, so a broken build or matcher can't pass. It matches message text, not names, because Turbopack renames modules. It guards multi-word or 12-character texts that the customer catalog doesn't share. Shorter single words could be coincidental literals. Paraglide compiles a message with placeholders into a template literal split around each input, so such a message is matched by its distinctive static runs, anywhere in the chunk. Matching decodes `\xNN` and `\uNNNN` escapes first, because the minifier writes Czech letters such as `ú` as `\xfa`.
+
+The guard scans every emitted script under `.next/static`, not only the ones route manifests list. A chunk counts as administration-only when administration route manifests list it or another chunk loads it lazily by file name, and no customer-reachable chunk loads it. Customer route chunks, `rootMainFiles`, and chunks nothing accounts for are customer-reachable, as is everything they load. The pure logic lives in `administration-message-leaks.test-utils.ts`, with unit tests in the default suite.
 
 The `*.build.test.ts` pattern is excluded from the Workspace `test` script and runs by path:
 
