@@ -9,9 +9,9 @@ import type {
 } from "./administration.service";
 
 // Operators work on Prague time, so every locale shows the 24-hour clock. A
-// day period would also differ between server and browser: Node's ICU
-// separates "PM" with a narrow no-break space that Chromium writes as a plain
-// space, which fails hydration in the client tables that format dates.
+// day period could also differ between server and browser: depending on its
+// ICU version, Node separates "PM" with a narrow no-break space that Chromium
+// writes as a plain space, which fails hydration in the client tables.
 export const formatAdministrationDateTime = (value: string, locale: Locale) =>
   new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
