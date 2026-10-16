@@ -170,6 +170,8 @@ it covers every Dotypos customer regardless of cookie consent; the privacy
 policy (`features/legal/content.tsx`, both locales) discloses the fields and
 the right to object. Deleted customers stay as rows with `deleted: true`, and
 PostHog's settings govern retention, as for other analytics data.
+Staff can record an objection with the Dotypos `no-analytics` tag, which
+blanks the row and marks it deleted on the next sync.
 
 - The response schema is the field allowlist. Adding a field needs the user's
   approval and a matching privacy-policy change.

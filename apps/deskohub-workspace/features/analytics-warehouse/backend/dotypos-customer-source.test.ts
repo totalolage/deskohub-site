@@ -412,6 +412,68 @@ describe("Dotypos customer source", () => {
     expect(page.results).toMatchObject([{ id: "1001", deleted: true }]);
   });
 
+  test("blanks an opted-out customer and keeps its identity timestamps", async () => {
+    const { response } = await requestSource({
+      url: `${sourceUrl}?since=${firstVersion}`,
+      changes: singlePage([customer({ tags: ["member", "no-analytics"] })]),
+    });
+    const page = await readPage(response);
+
+    expect(response.status).toBe(200);
+    expect(page.results).toEqual([
+      {
+        id: "1001",
+        firstName: null,
+        lastName: null,
+        companyName: null,
+        email: null,
+        phone: null,
+        addressLine1: null,
+        addressLine2: null,
+        city: null,
+        zip: null,
+        country: null,
+        birthday: null,
+        _discountGroupId: null,
+        points: null,
+        tags: null,
+        created: "2026-01-01T00:00:00.000Z",
+        versionDate: "2026-10-01T12:00:00.000000Z",
+        deleted: true,
+      },
+    ]);
+  });
+
+  test("matches the opt-out tag without case or surrounding whitespace", async () => {
+    const { response } = await requestSource({
+      url: `${sourceUrl}?since=${firstVersion}`,
+      changes: singlePage([customer({ tags: ["member", " No-Analytics "] })]),
+    });
+    const page = await readPage(response);
+
+    expect(page.results).toMatchObject([
+      { id: "1001", firstName: null, email: null, tags: null, deleted: true },
+    ]);
+  });
+
+  test("leaves a customer without the opt-out tag unchanged", async () => {
+    const { response } = await requestSource({
+      url: `${sourceUrl}?since=${firstVersion}`,
+      changes: singlePage([customer({ tags: ["member"] })]),
+    });
+    const page = await readPage(response);
+
+    expect(page.results).toMatchObject([
+      {
+        id: "1001",
+        firstName: "Ada",
+        email: testEmailAddress("ada"),
+        tags: ["member"],
+        deleted: false,
+      },
+    ]);
+  });
+
   test("fills absent fields with null and keeps the version date to the microsecond in UTC", async () => {
     const { response } = await requestSource({
       url: `${sourceUrl}?since=${firstVersion}`,
@@ -495,6 +557,35 @@ describe("Dotypos customer source", () => {
       },
     ]);
     expect(page.results.map(({ id }) => id)).toEqual(["1"]);
+    expect(page.next_cursor).toBe(`from.${micros(laterVersion)}`);
+  });
+
+  test("keeps the paging cursor when serving an opted-out row", async () => {
+    const { response } = await requestSource({
+      url: `${sourceUrl}?since=${firstVersion}`,
+      changes: singlePage(
+        [
+          customer({
+            id: "1",
+            versionDate: firstVersion,
+            tags: ["no-analytics"],
+          }),
+          customer({ id: "2", versionDate: laterVersion }),
+          customer({ id: "3", versionDate: laterVersion }),
+        ],
+        true
+      ),
+    });
+    const page = await readPage(response);
+
+    expect(page.results).toMatchObject([
+      {
+        id: "1",
+        firstName: null,
+        deleted: true,
+        versionDate: "2026-10-01T12:00:00.000000Z",
+      },
+    ]);
     expect(page.next_cursor).toBe(`from.${micros(laterVersion)}`);
   });
 

@@ -145,6 +145,20 @@ first sync (PostHog omits `since`) starts with them: it reads
 customer edited meanwhile gains a version date and is read among the dated
 ones. Undated rows carry `versionDate: null`.
 
+## Customer objection (opt-out)
+
+Staff record a customer's objection by adding the `no-analytics` tag to the
+customer in Dotypos. The next sync blanks the row in PostHog and marks it
+deleted. PostHog merges rows on `id`, and the join filter `deleted = false`
+drops the customer.
+
+This relies on a tag edit bumping the customer's `versionDate`; that behavior
+is unverified against production and shares the monotonic-`versionDate`
+assumption described below. To force the change immediately, trigger a resync
+in PostHog using the unverified UI path below.
+
+Do not remove the tag later unless the customer withdraws the objection.
+
 ### Assumptions not verified against production
 
 - Production behaves like the synthetic cloud above (sorting, microsecond

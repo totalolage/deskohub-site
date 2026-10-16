@@ -625,33 +625,42 @@ const timestampAt = (micros: string | undefined) =>
 const optionalTimestampAt = (micros: string | undefined) =>
   Option.fromNullishOr(micros).pipe(Option.map(timestampAt));
 
+const dotyposCustomerAnalyticsOptOutTag = "no-analytics";
+
 /** Projects an identified customer onto the allowlist field by field. */
 const toSourceRow = ({
   customer,
   version,
-}: IdentifiedStampedCustomer): DotyposCustomerSourceRow => ({
-  id: customer.id,
-  firstName: customer.firstName ?? null,
-  lastName: customer.lastName ?? null,
-  companyName: customer.companyName ?? null,
-  email: customer.email ?? null,
-  phone: customer.phone ?? null,
-  addressLine1: customer.addressLine1 ?? null,
-  addressLine2: customer.addressLine2 ?? null,
-  city: customer.city ?? null,
-  zip: customer.zip ?? null,
-  country: customer.country ?? null,
-  birthday: customer.birthday ?? null,
-  _discountGroupId: customer._discountGroupId ?? null,
-  points: customer.points,
-  tags: customer.tags ?? null,
-  created: customer.created ?? null,
-  versionDate: Option.match(version, {
-    onNone: () => null,
-    onSome: formatDotyposTimestamp,
-  }),
-  deleted: customer.deleted,
-});
+}: IdentifiedStampedCustomer): DotyposCustomerSourceRow => {
+  const optedOut =
+    customer.tags?.some(
+      (tag) => tag.trim().toLowerCase() === dotyposCustomerAnalyticsOptOutTag
+    ) ?? false;
+
+  return {
+    id: customer.id,
+    firstName: optedOut ? null : (customer.firstName ?? null),
+    lastName: optedOut ? null : (customer.lastName ?? null),
+    companyName: optedOut ? null : (customer.companyName ?? null),
+    email: optedOut ? null : (customer.email ?? null),
+    phone: optedOut ? null : (customer.phone ?? null),
+    addressLine1: optedOut ? null : (customer.addressLine1 ?? null),
+    addressLine2: optedOut ? null : (customer.addressLine2 ?? null),
+    city: optedOut ? null : (customer.city ?? null),
+    zip: optedOut ? null : (customer.zip ?? null),
+    country: optedOut ? null : (customer.country ?? null),
+    birthday: optedOut ? null : (customer.birthday ?? null),
+    _discountGroupId: optedOut ? null : (customer._discountGroupId ?? null),
+    points: optedOut ? null : customer.points,
+    tags: optedOut ? null : (customer.tags ?? null),
+    created: customer.created ?? null,
+    versionDate: Option.match(version, {
+      onNone: () => null,
+      onSome: formatDotyposTimestamp,
+    }),
+    deleted: optedOut || customer.deleted,
+  };
+};
 
 const rejectRequest = (status: 400 | 401 | 404, message: string) =>
   Effect.logWarning("Dotypos customer source rejected a request", {
