@@ -35,7 +35,8 @@ Settle a subprocess promise before you assert on it. `expect(pending).rejects` a
 
 ## CI
 
-- Workspace CI runs on every pull request. Keep `test-functional` as the fail-closed required check over the test shards, Workspace validation, and migration-count validation.
+- Workspace CI runs on every pull request. Keep `test-functional` as the fail-closed required check over the test shards, Workspace validation, migration-count validation, and the administration-messages build check.
+- A colocated `*.build.test.ts` checks production build output. The Workspace `test` script ignores the pattern; a job runs the build and then the file by path. `validate-administration-messages` is the example ([administration localization](../../deskohub-workspace-administration/references/localization.md#build-output-check)).
 - Workspace tests run in four Bun shards, each with its own disposable Postgres. Keep `--parallel=1`, because suites mutate process-wide state. Database suites skip without `WORKSPACE_TEST_DATABASE_URL`, so keep it in the shard job's job-level `env`, where the first step fails the shard if it's empty.
 - Bun cuts shards by the per-file durations in `apps/deskohub-workspace/test-timings.json`. One slow file bounds the balance, so split slow test files instead of adding shards. After you add, rename, split, or substantially slow test files, refresh the file from a Workspace CI run of your commit where every shard passed, then commit it:
 

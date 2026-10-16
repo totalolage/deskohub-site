@@ -52,7 +52,7 @@ The customer's single Order and pay activation starts checkout (`features/checko
 
 Never pre-open a placeholder tab or require a second activation. Zero-total completion, `pricing_changed`, validation failures, and any other non-provider result open or manage no tab. Keep the existing scoped Web Lock ownership (`shared/browser/return-window.ts`, `checkout-payment-window.tsx`): the owner holds an exclusive lock scoped to the status path and preempts a returned payment tab; an unmarked returned tab closes when the lock is unavailable or preempted, and stays open if the original tab is gone.
 
-The provider return route (`app/[locale]/(minimal-header)/checkout/pay/return/[orderId]/route.ts`) only redirects to the canonical status page. Provider returns may lack auth cookies, so authorization, verification, and reconciliation stay on the status page. The return route exposes no data and grants no access.
+The provider return route (`app/[locale]/(site)/(minimal-header)/checkout/pay/return/[orderId]/route.ts`) only redirects to the canonical status page. Provider returns may lack auth cookies, so authorization, verification, and reconciliation stay on the status page. The return route exposes no data and grants no access.
 
 ## Status page
 

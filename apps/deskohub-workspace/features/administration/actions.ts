@@ -2,7 +2,7 @@
 
 import { AdministrationWorkspaceReservationId } from "@deskohub/workspace-admin-api";
 import { Effect, Schema } from "effect";
-import { revalidatePath } from "next/cache";
+import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
 import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -69,7 +69,9 @@ const cancelAdministrationReservationAction = defineWorkspaceAction(
           const administration = yield* ReservationAdministrationService;
           const result = yield* administration.cancel(input);
           yield* Effect.sync(() =>
-            revalidatePath(`/admin/reservations/${input.reservationId}`)
+            revalidateLocalizedPath(
+              `/admin/reservations/${input.reservationId}`
+            )
           );
           return result;
         })
@@ -120,7 +122,9 @@ const mutateReservationAccessAction = defineWorkspaceAction(
           const administration = yield* ReservationAccessAdministration;
           const grant = yield* administration.mutate(input);
           yield* Effect.sync(() =>
-            revalidatePath(`/admin/reservations/${input.reservationId}`)
+            revalidateLocalizedPath(
+              `/admin/reservations/${input.reservationId}`
+            )
           );
           return {
             grantState: grant.state,

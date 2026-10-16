@@ -13,7 +13,10 @@ import { AdministrationInvoiceCreateInput } from "@deskohub/workspace-admin-api"
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { Schema } from "effect";
 import { createElement } from "react";
-import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
+import {
+  workspaceRouterPush,
+  workspaceUseAction,
+} from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -26,6 +29,10 @@ mock.module("./actions", () => ({
   createAdministrationInvoice: async () => ({}),
   previewAdministrationInvoice: async () => ({}),
   searchAdministrationInvoiceCustomers: async () => ({}),
+}));
+mock.module("next/navigation", () => ({
+  useParams: () => ({ locale: "en-US" }),
+  useRouter: () => ({ push: workspaceRouterPush }),
 }));
 
 // The form module (and the Radix dialog it renders) must be imported after
@@ -50,7 +57,7 @@ beforeAll(async () => {
 });
 beforeEach(() => {
   workspaceUseAction.mockReset();
-  window.happyDOM.setURL("https://deskohub.test/admin/invoices/new");
+  window.happyDOM.setURL("https://deskohub.test/en-US/admin/invoices/new");
 });
 afterEach(async () => {
   cleanup();

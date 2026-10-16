@@ -13,7 +13,10 @@ import {
 const appRouteExists = (path: string) =>
   existsSync(
     fileURLToPath(
-      new URL(`../../app/[locale]/(minimal-header)${path}`, import.meta.url)
+      new URL(
+        `../../app/[locale]/(site)/(minimal-header)${path}`,
+        import.meta.url
+      )
     )
   );
 

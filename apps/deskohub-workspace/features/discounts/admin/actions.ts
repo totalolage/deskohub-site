@@ -1,7 +1,7 @@
 "use server";
 
 import { Effect, Match } from "effect";
-import { revalidatePath } from "next/cache";
+import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
 import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -148,7 +148,7 @@ export const mutateDiscountAdmin: typeof discountAdminMutationAction = async (
   // database callback can run under another request's Next.js work store,
   // where revalidatePath throws because that request is rendering.
   const customerPath = result?.data ? getMutatedCustomerPath(args[0]) : null;
-  if (customerPath) revalidatePath(customerPath);
+  if (customerPath) revalidateLocalizedPath(customerPath);
   return result;
 };
 

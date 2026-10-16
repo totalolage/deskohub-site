@@ -233,8 +233,10 @@ describe("email campaign sending actions", () => {
 
     expect(result?.data).toEqual(sendReceipt);
     expect(revalidatePath.mock.calls).toEqual([
-      ["/admin/email-campaigns"],
-      [`/admin/email-campaigns/${campaignId}`],
+      ["/en-US/admin/email-campaigns"],
+      ["/cs-CZ/admin/email-campaigns"],
+      [`/en-US/admin/email-campaigns/${campaignId}`],
+      [`/cs-CZ/admin/email-campaigns/${campaignId}`],
     ]);
   });
 
@@ -261,8 +263,10 @@ describe("email campaign sending actions", () => {
       });
       expect(retryCalls).toEqual([{ campaignId, includeUnconfirmed }]);
       expect(revalidatePath.mock.calls).toEqual([
-        ["/admin/email-campaigns"],
-        [`/admin/email-campaigns/${campaignId}`],
+        ["/en-US/admin/email-campaigns"],
+        ["/cs-CZ/admin/email-campaigns"],
+        [`/en-US/admin/email-campaigns/${campaignId}`],
+        [`/cs-CZ/admin/email-campaigns/${campaignId}`],
       ]);
     }
   );
@@ -291,6 +295,9 @@ describe("email campaign sending actions", () => {
 
     expect(result?.data).toEqual({ campaignId: duplicateCampaignId });
     expect(duplicateCalls).toEqual([campaignId]);
-    expect(revalidatePath.mock.calls).toEqual([["/admin/email-campaigns"]]);
+    expect(revalidatePath.mock.calls).toEqual([
+      ["/en-US/admin/email-campaigns"],
+      ["/cs-CZ/admin/email-campaigns"],
+    ]);
   });
 });

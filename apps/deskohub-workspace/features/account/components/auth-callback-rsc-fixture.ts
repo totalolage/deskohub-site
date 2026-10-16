@@ -187,7 +187,7 @@ const FixtureShell = ({ children }: { readonly children: React.ReactNode }) =>
 
 const importCallbackModel = async () => {
   const { default: CustomerAuthCallbackPage } = await import(
-    "@/app/[locale]/(minimal-header)/auth/callback/page"
+    "@/app/[locale]/(site)/(minimal-header)/auth/callback/page"
   );
 
   return React.createElement(

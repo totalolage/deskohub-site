@@ -1,13 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
 } from "@/features/administration/data-table";
 import { EmptyState } from "@/features/administration/empty-state";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { CampaignPurposeBadge, CampaignStatusBadge } from "./campaign-badges";
 import type { CampaignListItem } from "./campaign-list-page-data.server";
 
@@ -56,6 +58,7 @@ export function CampaignListTable({
   readonly campaigns: readonly CampaignListItem[];
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   if (campaigns.length === 0) {
     return (
       <EmptyState message="No campaigns yet. Create one to compose your first email." />
@@ -92,7 +95,12 @@ export function CampaignListTable({
         </ul>
       }
       onRowActivate={(campaign) =>
-        router.push(`/admin/email-campaigns/${campaign.id}`)
+        router.push(
+          localizeAdministrationHref(
+            `/admin/email-campaigns/${campaign.id}`,
+            locale
+          )
+        )
       }
       tableClassName="min-w-[720px]"
     />

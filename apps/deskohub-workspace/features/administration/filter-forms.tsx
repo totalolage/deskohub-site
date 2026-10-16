@@ -4,6 +4,7 @@ import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import type { FormEvent } from "react";
 import { useForm } from "react-hook-form";
 import { m } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { AdministrationLink as Link } from "./admin-link";
 import type { AdministrationReservationStatusFilter } from "./administration.service";
@@ -248,6 +249,7 @@ export function ReservationsAdministrationFilterForm({
     readonly past: AdministrationReservationDateRange;
   };
 }) {
+  const locale = useRouteLocale();
   const values: ReservationFilterValues = {
     status: input.status ?? "",
     type: input.type ?? "",
@@ -322,7 +324,9 @@ export function ReservationsAdministrationFilterForm({
           <option value="">All reservation types</option>
           <option value="cowork">Coworking</option>
           <option value="meeting-room">Meeting room</option>
-          <option value="office">{m.reservationOfficeProductTitle()}</option>
+          <option value="office">
+            {m.reservationOfficeProductTitle({}, { locale })}
+          </option>
         </AdministrationFilterSelect>
       </AdministrationFilterField>
       <AdministrationFilterField

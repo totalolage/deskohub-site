@@ -3,6 +3,8 @@ import "server-only";
 import { Effect, Layer } from "effect";
 import { redirect } from "next/navigation";
 import type { CampaignRow } from "@/db/schema";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CampaignAudienceService } from "../../backend/campaign-audience.service";
 import {
@@ -43,7 +45,12 @@ export const loadRecipientPreview = async (
 ): Promise<RecipientPreview> => {
   const campaign = await loadAdminCampaign(campaignId);
   if (campaign.status !== "draft") {
-    redirect(`/admin/email-campaigns/${campaignId}`);
+    redirect(
+      localizeAdministrationHref(
+        `/admin/email-campaigns/${campaignId}`,
+        await getRequestLocale()
+      )
+    );
   }
   const { audienceId } = campaign;
   if (audienceId === null) return { kind: "no-audience", campaign };

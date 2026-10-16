@@ -207,6 +207,7 @@ export class CliAuthentication extends Context.Service<
 
         return {
           code,
+          // The proxy opens this unprefixed CLI URL in the operator's language.
           approvalPath: `/admin/cli/authenticate?code=${encodeURIComponent(code)}`,
           expiresAt: toIsoString(expiresAt),
         };

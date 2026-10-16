@@ -404,14 +404,14 @@ const writeFixture = async (
   }: AccountLegalFixtureOptions & { readonly readinessMarker: string }
 ) => {
   const fixtureFiles: Readonly<Record<string, string>> = {
-    "app/[locale]/(full-header)/account/@modal/default.tsx": nullModalPage,
-    "app/[locale]/(full-header)/account/@modal/page.tsx": nullModalPage,
-    "app/[locale]/(full-header)/account/page.tsx": privatePage,
+    "app/[locale]/(site)/(full-header)/account/@modal/default.tsx": nullModalPage,
+    "app/[locale]/(site)/(full-header)/account/@modal/page.tsx": nullModalPage,
+    "app/[locale]/(site)/(full-header)/account/page.tsx": privatePage,
     "app/[locale]/account-legal-fixture-ready/route.ts":
       fixtureReadinessRoute(readinessMarker),
     ...(realCookieConsent
       ? {
-          "app/[locale]/(full-header)/consent-waypoint/page.tsx":
+          "app/[locale]/(site)/(full-header)/consent-waypoint/page.tsx":
             syntheticConsentWaypointPage,
         }
       : {}),
@@ -488,10 +488,10 @@ const writeFixture = async (
   await writeFile(join(fixtureRoot, "tsconfig.json"), JSON.stringify(tsconfig));
 
   for (const relativePath of [
-    "app/[locale]/(full-header)/account/layout.tsx",
-    "app/[locale]/(full-header)/account/loading.tsx",
-    "app/[locale]/(full-header)/account/legal/page.tsx",
-    "app/[locale]/(full-header)/layout.tsx",
+    "app/[locale]/(site)/(full-header)/account/layout.tsx",
+    "app/[locale]/(site)/(full-header)/account/loading.tsx",
+    "app/[locale]/(site)/(full-header)/account/legal/page.tsx",
+    "app/[locale]/(site)/(full-header)/layout.tsx",
   ]) {
     const destination = join(fixtureRoot, relativePath);
     await mkdir(resolve(destination, ".."), { recursive: true });
