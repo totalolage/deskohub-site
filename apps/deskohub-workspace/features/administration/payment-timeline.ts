@@ -9,6 +9,7 @@ import type {
 import { m } from "./i18n";
 import type { AdministrationOrder } from "./payment-administration.service";
 import {
+  formatProviderCode,
   getAdministrationPaymentProviderLabel,
   getProviderOperationTimelineTone,
   getProviderValueLabel,
@@ -181,10 +182,10 @@ const getOperationTimelineTitle = (
 ) => {
   if (outcome !== "other") return operationTitles[outcome];
   const typeLabel = operationType
-    ? getProviderValueLabel(operationType)
+    ? formatProviderCode(operationType)
     : "Payment operation";
   return operationResult
-    ? `${typeLabel}: ${getProviderValueLabel(operationResult)}`
+    ? `${typeLabel}: ${formatProviderCode(operationResult)}`
     : typeLabel;
 };
 
@@ -228,7 +229,7 @@ export const getOrderTimeline = (
           operationResult
         ),
         description: operation.channel
-          ? `Nexi reported this ${getProviderValueLabel(operation.channel)} operation.`
+          ? `Nexi reported this ${formatProviderCode(operation.channel)} operation.`
           : "Nexi reported this payment operation.",
         occurredAt,
         tone: getProviderOperationTimelineTone(
@@ -272,10 +273,13 @@ const getOperationCopyTitle = (
       if (!event.operationType) {
         return m.administrationPaymentOperationFallback({}, { locale });
       }
-      const type = getProviderValueLabel(event.operationType);
+      const type = getProviderValueLabel(event.operationType, locale);
       return event.operationResult
         ? m.administrationPaymentTimelineOperationResultTitle(
-            { result: getProviderValueLabel(event.operationResult), type },
+            {
+              result: getProviderValueLabel(event.operationResult, locale),
+              type,
+            },
             { locale }
           )
         : type;
@@ -357,7 +361,7 @@ export const getAdministrationPaymentTimelineCopy = (
         title: getOperationCopyTitle(event, locale),
         description: event.channel
           ? m.administrationPaymentTimelineOperationChannelDescription(
-              { channel: getProviderValueLabel(event.channel) },
+              { channel: getProviderValueLabel(event.channel, locale) },
               { locale }
             )
           : m.administrationPaymentTimelineOperationDescription({}, { locale }),

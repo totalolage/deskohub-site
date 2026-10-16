@@ -63,7 +63,10 @@ export async function OperationAdministrationDetail({
       <AdministrationPageHeader
         actions={
           operation?.operationResult ? (
-            <ProviderStatusBadge value={operation.operationResult} />
+            <ProviderStatusBadge
+              locale={locale}
+              value={operation.operationResult}
+            />
           ) : undefined
         }
         description={m.administrationOperationDetailDescription({}, { locale })}
@@ -91,7 +94,7 @@ export async function OperationAdministrationDetail({
                 label={m.administrationOperationFactType({}, { locale })}
                 value={
                   operation.operationType
-                    ? getProviderValueLabel(operation.operationType)
+                    ? getProviderValueLabel(operation.operationType, locale)
                     : m.administrationOperationNotReported({}, { locale })
                 }
               />
@@ -99,7 +102,7 @@ export async function OperationAdministrationDetail({
                 label={m.administrationOperationFactResult({}, { locale })}
                 value={
                   operation.operationResult
-                    ? getProviderValueLabel(operation.operationResult)
+                    ? getProviderValueLabel(operation.operationResult, locale)
                     : m.administrationOperationNotReported({}, { locale })
                 }
               />
@@ -107,7 +110,7 @@ export async function OperationAdministrationDetail({
                 label={m.administrationOperationFactOrigin({}, { locale })}
                 value={
                   operation.channel
-                    ? getProviderValueLabel(operation.channel)
+                    ? getProviderValueLabel(operation.channel, locale)
                     : m.administrationOperationNotReported({}, { locale })
                 }
               />

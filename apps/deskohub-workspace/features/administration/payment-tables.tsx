@@ -90,7 +90,10 @@ export function OrderTable({
         cell: ({ row }) =>
           row.original.provider?.lastOperationType ? (
             <span className="font-medium">
-              {getProviderValueLabel(row.original.provider.lastOperationType)}
+              {getProviderValueLabel(
+                row.original.provider.lastOperationType,
+                locale
+              )}
             </span>
           ) : (
             <span className="text-sm text-navy-blue/65">
@@ -212,7 +215,7 @@ export function OperationTable({
         header: m.administrationOperationColumnType({}, { locale }),
         cell: ({ row }) =>
           row.original.operationType
-            ? getProviderValueLabel(row.original.operationType)
+            ? getProviderValueLabel(row.original.operationType, locale)
             : m.administrationOperationNotReported({}, { locale }),
         meta: { cellClassName: "font-medium" },
       },
@@ -221,7 +224,10 @@ export function OperationTable({
         header: m.administrationOperationColumnResult({}, { locale }),
         cell: ({ row }) =>
           row.original.operationResult ? (
-            <ProviderStatusBadge value={row.original.operationResult} />
+            <ProviderStatusBadge
+              locale={locale}
+              value={row.original.operationResult}
+            />
           ) : (
             <span className="text-sm text-navy-blue/65">
               {m.administrationOperationNotReported({}, { locale })}
@@ -233,7 +239,7 @@ export function OperationTable({
         header: m.administrationOperationColumnOrigin({}, { locale }),
         cell: ({ row }) =>
           row.original.channel
-            ? getProviderValueLabel(row.original.channel)
+            ? getProviderValueLabel(row.original.channel, locale)
             : m.administrationOperationNotReported({}, { locale }),
       },
       {

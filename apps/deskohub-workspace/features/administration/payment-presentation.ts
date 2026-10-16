@@ -3,12 +3,50 @@ import type { Locale } from "@/features/i18n";
 import type { AdministrationPaymentAttempt } from "./administration.service";
 import { m } from "./i18n";
 
-export const getProviderValueLabel = (value: string) =>
+/** A raw Nexi code in English words, as the administration API shows it. */
+export const formatProviderCode = (value: string) =>
   value
     .toLowerCase()
     .split("_")
     .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
     .join(" ");
+
+const providerValueMessages = {
+  BACKOFFICE: m.administrationProviderChannelBackoffice,
+  ECOMMERCE: m.administrationProviderChannelEcommerce,
+  POS: m.administrationProviderChannelPos,
+  AUTHORIZATION: m.administrationProviderOperationTypeAuthorization,
+  CANCEL: m.administrationProviderOperationTypeCancel,
+  CAPTURE: m.administrationProviderOperationTypeCapture,
+  REFUND: m.administrationProviderOperationTypeRefund,
+  VOID: m.administrationProviderOperationTypeVoid,
+  AUTHORIZED: m.administrationProviderResultAuthorized,
+  CANCELED: m.administrationProviderResultCancelled,
+  CANCELLED: m.administrationProviderResultCancelled,
+  DECLINED: m.administrationProviderResultDeclined,
+  DENIED: m.administrationProviderResultDenied,
+  DENIED_BY_RISK: m.administrationProviderResultDeniedByRisk,
+  EXECUTED: m.administrationProviderResultExecuted,
+  FAILED: m.administrationProviderResultFailed,
+  PENDING: m.administrationProviderResultPending,
+  REFUNDED: m.administrationProviderResultRefunded,
+  THREEDS_FAILED: m.administrationProviderResultThreeDSecureFailed,
+  THREEDS_VALIDATED: m.administrationProviderResultThreeDSecureValidated,
+  VOIDED: m.administrationProviderResultVoided,
+} as const;
+
+const isKnownProviderCode = (
+  code: string
+): code is keyof typeof providerValueMessages =>
+  Object.hasOwn(providerValueMessages, code);
+
+/** A Nexi channel, operation type, or result in the route locale; unknown codes keep their English words. */
+export const getProviderValueLabel = (value: string, locale: Locale) => {
+  const code = value.toUpperCase();
+  return isKnownProviderCode(code)
+    ? providerValueMessages[code]({}, { locale })
+    : formatProviderCode(value);
+};
 
 const operationFailureResults = new Set([
   "CANCELED",
