@@ -19,6 +19,7 @@ export const accountSectionLabels = {
   reservations: "Reservations",
   referrals: "Referrals",
   profile: "Profile & Identity",
+  security: "Sign-in & security",
   billing: "Billing & Invoices",
   legal: "Legal & Privacy",
   danger: "Danger zone",
@@ -33,6 +34,7 @@ export const accountSectionLandmarks = {
   reservations: "#account-reservations-past-title",
   referrals: "[data-screen='referrals-screen']",
   profile: "[data-screen='profile-screen']",
+  security: "#account-security-passkeys-title",
   billing: "#account-profile-billing-kind",
   legal: "main a[href$='/privacy-policy']",
   danger: "#delete-account-trigger",
@@ -175,6 +177,7 @@ const accountSectionHydrationAnchors: Readonly<
   reservations: accountSectionLandmarks.reservations,
   referrals: accountSectionLandmarks.referrals,
   profile: accountSectionLandmarks.profile,
+  security: accountSectionLandmarks.security,
   billing: accountSectionLandmarks.profile,
   danger: accountSectionLandmarks.danger,
 };
@@ -205,6 +208,33 @@ const readDesktopMode = (
         return value === "true";
       })
     )
+  );
+
+/**
+ * Sections the account navigation shows only while their feature flag is on:
+ * "Sign-in & security" follows `login_passkeys`.
+ */
+export const flagGatedAccountSections: readonly AccountSection[] = ["security"];
+
+/**
+ * Whether the hydrated desktop account navigation offers the section. A
+ * caller that walks every section skips a flag-gated one that is hidden.
+ */
+export const isAccountSectionOffered = (
+  page: Pick<Page, "evaluate">,
+  section: AccountSection
+): Promise<boolean> =>
+  page.evaluate(
+    ({ label, navigationLabel }) =>
+      Array.from(
+        document.querySelectorAll(
+          `nav[aria-label=${JSON.stringify(navigationLabel)}] button:not([data-account-section])`
+        )
+      ).some((button) => button.textContent?.includes(label) === true),
+    {
+      label: accountSectionLabels[section],
+      navigationLabel: accountNavigationLabel,
+    }
   );
 
 export const selectAccountSection = async (

@@ -2,7 +2,7 @@ import Interpolate from "@doist/react-interpolate";
 import Link from "next/link";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { AccountSignInRedirect } from "@/features/account/components/account-sign-in-redirect";
-import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
+import { AccountWithoutProfile } from "@/features/account/components/account-without-profile";
 import { LinkedAccount } from "@/features/account/components/linked-account";
 import { ProfileForm } from "@/features/account/components/profile-form";
 import { ReservationHistory } from "@/features/account/components/reservation-history";
@@ -35,6 +35,7 @@ export function AccountPage({
           avatarPresentation={state.avatar}
           email={state.email}
           locale={locale}
+          passkeys={state.passkeys}
           profile={state.profile}
           referrals={state.referrals}
           referralsEnabled={state.referralsEnabled}
@@ -76,35 +77,47 @@ function renderState(
       return <UnavailableCard locale={locale} />;
     case "authenticated-unavailable":
       return (
-        <div className="grid items-start gap-6">
+        <AccountWithoutProfile
+          email={state.email}
+          locale={locale}
+          passkeys={state.passkeys}
+        >
           <UnavailableCard locale={locale} />
-          <DeleteAccountCard
-            email={state.email}
-            locale={locale}
-            deletionPending={false}
-          />
-        </div>
+        </AccountWithoutProfile>
       );
     case "completion-required":
       return (
-        <CompletionCard
+        <AccountWithoutProfile
           email={state.email}
           locale={locale}
-          referralCode={state.referralCode}
-          referralsEnabled={state.referralsEnabled}
-        />
-      );
-    case "support-required":
-      return <SupportRequiredCard email={state.email} locale={locale} />;
-    case "deletion-pending":
-      return (
-        <div className="grid items-start gap-6">
-          <DeleteAccountCard
+          passkeys={state.passkeys}
+        >
+          <CompletionCard
             email={state.email}
             locale={locale}
-            deletionPending
+            referralCode={state.referralCode}
+            referralsEnabled={state.referralsEnabled}
           />
-        </div>
+        </AccountWithoutProfile>
+      );
+    case "support-required":
+      return (
+        <AccountWithoutProfile
+          email={state.email}
+          locale={locale}
+          passkeys={state.passkeys}
+        >
+          <SupportRequiredCard locale={locale} />
+        </AccountWithoutProfile>
+      );
+    case "deletion-pending":
+      return (
+        <AccountWithoutProfile
+          deletionPending
+          email={state.email}
+          locale={locale}
+          passkeys={state.passkeys}
+        />
       );
   }
 }
@@ -134,71 +147,51 @@ function CompletionCard({
   readonly referralsEnabled: boolean;
 }) {
   return (
-    <div className="grid items-start gap-6">
-      <Card className={`mx-auto max-w-2xl ${cardClassName}`}>
-        <CardContent className="p-6 @xl:p-10">
-          <h2 className="text-3xl text-navy-blue @xl:text-4xl">
-            {m.accountCompletionTitle({}, { locale })}
-          </h2>
-          <p className="mt-3 text-sm leading-6 text-navy-blue/68">
-            {m.accountCompletionBody({}, { locale })}
-          </p>
-          <div className="mt-8">
-            <ProfileForm
-              email={email}
-              locale={locale}
-              mode="complete"
-              referralCode={referralCode}
-              referralsEnabled={referralsEnabled}
-            />
-          </div>
-        </CardContent>
-      </Card>
-      <DeleteAccountCard
-        email={email}
-        locale={locale}
-        deletionPending={false}
-      />
-    </div>
+    <Card className={`mx-auto max-w-2xl ${cardClassName}`}>
+      <CardContent className="p-6 @xl:p-10">
+        <h2 className="text-3xl text-navy-blue @xl:text-4xl">
+          {m.accountCompletionTitle({}, { locale })}
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-navy-blue/68">
+          {m.accountCompletionBody({}, { locale })}
+        </p>
+        <div className="mt-8">
+          <ProfileForm
+            email={email}
+            locale={locale}
+            mode="complete"
+            referralCode={referralCode}
+            referralsEnabled={referralsEnabled}
+          />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-function SupportRequiredCard({
-  email,
-  locale,
-}: {
-  readonly email: string;
-  readonly locale: Locale;
-}) {
+function SupportRequiredCard({ locale }: { readonly locale: Locale }) {
   return (
-    <div className="grid items-start gap-6">
-      <Card className={`mx-auto max-w-2xl ${cardClassName}`}>
-        <CardContent className="p-6 text-center @xl:p-10">
-          <h2 className="text-3xl text-navy-blue @xl:text-4xl">
-            {m.accountSupportTitle({}, { locale })}
-          </h2>
-          <p className="mt-4 leading-7 text-navy-blue/68">
-            <Interpolate
-              string={m.accountSupportContact({}, { locale })}
-              mapping={{
-                contact: (label) => (
-                  <Link
-                    href={`/${locale}/contact`}
-                    className="text-burned-orange underline underline-offset-4"
-                  >
-                    {label}
-                  </Link>
-                ),
-              }}
-            />
-          </p>
-        </CardContent>
-      </Card>
-      <DeleteAccountCard
-        email={email}
-        locale={locale}
-        deletionPending={false}
-      />
-    </div>
+    <Card className={`mx-auto max-w-2xl ${cardClassName}`}>
+      <CardContent className="p-6 text-center @xl:p-10">
+        <h2 className="text-3xl text-navy-blue @xl:text-4xl">
+          {m.accountSupportTitle({}, { locale })}
+        </h2>
+        <p className="mt-4 leading-7 text-navy-blue/68">
+          <Interpolate
+            string={m.accountSupportContact({}, { locale })}
+            mapping={{
+              contact: (label) => (
+                <Link
+                  href={`/${locale}/contact`}
+                  className="text-burned-orange underline underline-offset-4"
+                >
+                  {label}
+                </Link>
+              ),
+            }}
+          />
+        </p>
+      </CardContent>
+    </Card>
   );
 }

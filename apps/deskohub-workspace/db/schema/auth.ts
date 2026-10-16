@@ -141,6 +141,36 @@ export const authRateLimit = authSchema.table(
 );
 
 /**
+ * WebAuthn credentials of the `@better-auth/passkey` plugin. Each row belongs
+ * to one customer and goes with the user by cascade, so account deletion
+ * removes every passkey with the identity rows. `transports` holds the
+ * comma-joined transport hints and `aaguid` the authenticator model.
+ */
+export const authPasskey = authSchema.table(
+  "passkey",
+  {
+    id: text("id").primaryKey(),
+    name: text("name"),
+    publicKey: text("public_key").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => authUser.id, { onDelete: "cascade" }),
+    credentialID: text("credential_id").notNull(),
+    // The WebAuthn signature counter is an unsigned 32-bit value.
+    counter: bigint("counter", { mode: "number" }).notNull(),
+    deviceType: text("device_type").notNull(),
+    backedUp: boolean("backed_up").notNull(),
+    transports: text("transports"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    aaguid: text("aaguid"),
+  },
+  (t) => [
+    index("passkey_user_id_idx").on(t.userId),
+    uniqueIndex("passkey_credential_id_unique_idx").on(t.credentialID),
+  ]
+);
+
+/**
  * Auth-only Drizzle table map: the single source of truth for the tables the
  * Better Auth Drizzle adapter and the auth Drizzle facade operate on. Not
  * re-exported from db/schema/index.ts — auth tables never join the app graph.
@@ -151,10 +181,16 @@ export const drizzleAuthTables = {
   account: authAccount,
   verification: authVerification,
   rateLimit: authRateLimit,
+  passkey: authPasskey,
 };
 
 export const authRelations = defineRelationsPart(
-  { user: authUser, session: authSession, account: authAccount },
+  {
+    user: authUser,
+    session: authSession,
+    account: authAccount,
+    passkey: authPasskey,
+  },
   (r) => ({
     user: {
       sessions: r.many.session({
@@ -164,6 +200,10 @@ export const authRelations = defineRelationsPart(
       accounts: r.many.account({
         from: r.user.id,
         to: r.account.userId,
+      }),
+      passkeys: r.many.passkey({
+        from: r.user.id,
+        to: r.passkey.userId,
       }),
     },
     session: {
@@ -175,6 +215,12 @@ export const authRelations = defineRelationsPart(
     account: {
       user: r.one.user({
         from: r.account.userId,
+        to: r.user.id,
+      }),
+    },
+    passkey: {
+      user: r.one.user({
+        from: r.passkey.userId,
         to: r.user.id,
       }),
     },

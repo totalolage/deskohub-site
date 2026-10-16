@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { noteEmailSignInForPasskeyPrompt } from "@/features/account/passkey-prompt";
 import {
   getSignInDestination,
   signInAttemptParam,
@@ -41,6 +42,7 @@ export function AuthCallbackRedirect({ locale }: { readonly locale: Locale }) {
     const completeSignIn = () => {
       if (!active) return;
       recordSignInCompletion("link", { keepRecorded: true });
+      noteEmailSignInForPasskeyPrompt();
       forgetSignInCodeRequest();
       leaveForDestination();
     };

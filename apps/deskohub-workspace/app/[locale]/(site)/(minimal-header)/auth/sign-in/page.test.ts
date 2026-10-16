@@ -1,32 +1,35 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { getLocalizedPagePath } from "@/features/i18n/routing";
 
 const events: string[] = [];
 const withSearchParams = (searchParams: Record<string, string | string[]>) => ({
   searchParams: Promise.resolve(searchParams),
 });
-
-type Node = ReactElement<{ readonly children?: Node | readonly Node[] }>;
-const findSignInCard = (node: Node): Node | undefined =>
-  node.type === SignInCard
-    ? node
-    : [node.props.children ?? []]
-        .flat()
-        .map(findSignInCard)
-        .find((found) => found !== undefined);
 const notFound = mock(() => {
   throw new Error("NEXT_NOT_FOUND");
 });
 const areAccountsEnabled = mock(() => Promise.resolve(true));
+const arePasskeysEnabled = mock(() => Promise.resolve(false));
+type SignInCardProps = {
+  readonly locale: string;
+  readonly passkeysEnabled: boolean;
+  readonly returnTo?: string;
+};
+const signInCardProps: SignInCardProps[] = [];
+const SignInCard = (props: SignInCardProps) => {
+  signInCardProps.push(props);
+  return null;
+};
 const connection = mock(() => Promise.resolve());
 
 mock.module("next/navigation", () => ({ notFound }));
 mock.module("next/server", () => ({ connection }));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
   areAccountsEnabled,
+  arePasskeysEnabled,
 }));
-const SignInCard = () => null;
 mock.module("@/features/account/components/sign-in-card", () => ({
   SignInCard,
 }));
@@ -48,6 +51,8 @@ describe("customer sign-in route boundary", () => {
       events.push("gate");
       return true;
     });
+    arePasskeysEnabled.mockReset();
+    arePasskeysEnabled.mockImplementation(async () => false);
     connection.mockReset();
     connection.mockImplementation(async () => {
       events.push("connection");
@@ -77,18 +82,25 @@ describe("customer sign-in route boundary", () => {
     expect(connection).toHaveBeenCalledTimes(1);
   });
 
-  test("passes only a same-origin return target to the sign-in card", async () => {
+  const renderSignInCardProps = async (
+    searchParams: Record<string, string | string[]>
+  ) => {
     const { default: CustomerSignInPage } = await import("./page");
-    const returnToFor = async (
-      searchParams: Record<string, string | string[]>
-    ) =>
-      findSignInCard(
-        (await CustomerSignInPage(withSearchParams(searchParams))) as Node
-      )?.props;
+    signInCardProps.length = 0;
+    renderToStaticMarkup(
+      (await CustomerSignInPage(withSearchParams(searchParams))) as ReactElement
+    );
+    return signInCardProps;
+  };
+
+  test("passes only a same-origin return target to the sign-in card", async () => {
+    const withReturnTo = (returnTo: string | undefined) => [
+      { locale: "en-US", passkeysEnabled: false, returnTo },
+    ];
 
     expect(
-      await returnToFor({ returnTo: "/cs-CZ/admin/invoices?page=2" })
-    ).toEqual({ locale: "en-US", returnTo: "/cs-CZ/admin/invoices?page=2" });
+      await renderSignInCardProps({ returnTo: "/cs-CZ/admin/invoices?page=2" })
+    ).toEqual(withReturnTo("/cs-CZ/admin/invoices?page=2"));
     for (const returnTo of [
       "https://evil.example/admin",
       "//evil.example/admin",
@@ -96,14 +108,21 @@ describe("customer sign-in route boundary", () => {
       "javascript:alert(1)",
       ["//evil.example/admin", "/admin"],
     ]) {
-      expect(await returnToFor({ returnTo })).toEqual({
-        locale: "en-US",
-        returnTo: undefined,
-      });
+      expect(await renderSignInCardProps({ returnTo })).toEqual(
+        withReturnTo(undefined)
+      );
     }
-    expect(await returnToFor({})).toEqual({
-      locale: "en-US",
-      returnTo: undefined,
-    });
+    expect(await renderSignInCardProps({})).toEqual(withReturnTo(undefined));
   });
+
+  test.each([true, false])(
+    "passes the passkey flag (%p) to the sign-in card",
+    async (passkeysEnabled) => {
+      arePasskeysEnabled.mockImplementation(async () => passkeysEnabled);
+
+      expect(await renderSignInCardProps({})).toEqual([
+        { locale: "en-US", passkeysEnabled, returnTo: undefined },
+      ]);
+    }
+  );
 });

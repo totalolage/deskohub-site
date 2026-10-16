@@ -64,6 +64,7 @@ function layoutElement(
   children: ReactNode,
   options: {
     readonly accountsEnabled?: boolean;
+    readonly passkeysEnabled?: boolean;
     readonly referralsEnabled?: boolean;
     readonly signedIn?: boolean;
   } = {}
@@ -72,6 +73,7 @@ function layoutElement(
     <AccountLayoutShell
       accountsEnabled={options.accountsEnabled ?? true}
       locale="en-US"
+      passkeysEnabled={options.passkeysEnabled ?? false}
       referralsEnabled={options.referralsEnabled ?? true}
       signedIn={options.signedIn ?? true}
     >
@@ -84,6 +86,7 @@ function renderLayout(
   children: ReactNode,
   options: {
     readonly accountsEnabled?: boolean;
+    readonly passkeysEnabled?: boolean;
     readonly referralsEnabled?: boolean;
     readonly signedIn?: boolean;
   } = {}
@@ -383,6 +386,33 @@ describe("AccountLayoutShell", () => {
     });
     expect(referrals.getAttribute("aria-current")).toBe("page");
     expect(within(referrals).getByText("-15%")).toBeTruthy();
+  });
+
+  test("withholds Sign-in & security while passkeys are off", () => {
+    searchParams = new URLSearchParams("section=security");
+    const view = renderLayout(<p>Account</p>);
+
+    expect(
+      getDesktopNavigation(view).queryByRole("button", {
+        name: "Sign-in & security",
+      })
+    ).toBeNull();
+    expect(
+      getDesktopNavigation(view)
+        .getByRole("button", { name: "Reservations" })
+        .getAttribute("aria-current")
+    ).toBe("page");
+  });
+
+  test("opens Sign-in & security from the URL while passkeys are on", () => {
+    searchParams = new URLSearchParams("section=security");
+    const view = renderLayout(<p>Account</p>, { passkeysEnabled: true });
+
+    expect(
+      getDesktopNavigation(view)
+        .getByRole("button", { name: "Sign-in & security" })
+        .getAttribute("aria-current")
+    ).toBe("page");
   });
 
   test("bypasses the frame on the deleted-account route", () => {

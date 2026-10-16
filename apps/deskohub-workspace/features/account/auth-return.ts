@@ -8,6 +8,7 @@ import {
 import type { Locale } from "@/features/i18n";
 import { listenForReturn } from "@/shared/browser/return-window";
 import { authClient } from "./auth.client";
+import { noteEmailSignInForPasskeyPrompt } from "./passkey-prompt";
 import {
   captureSignInCodeRejection,
   recordSignInCompletion,
@@ -293,7 +294,10 @@ export const createAuthReturnLifecycle = ({
                 return false;
               }
               // The link tab hands off and closes, so this tab records it.
-              if (!requireFreshSession) recordSignInCompletion("link");
+              if (!requireFreshSession) {
+                recordSignInCompletion("link");
+                noteEmailSignInForPasskeyPrompt();
+              }
               return leaveFor(destination, { focus: true });
             },
             ttlMs: RETURN_LISTENER_TTL_MS,
@@ -369,7 +373,10 @@ export const createAuthReturnLifecycle = ({
 
   const continueWithVerifiedCode = () => {
     if (verifiedCallbackURL === undefined) return false;
-    if (!leaving) recordSignInCompletion("code");
+    if (!leaving) {
+      recordSignInCompletion("code");
+      noteEmailSignInForPasskeyPrompt();
+    }
     return leaveFor(verifiedCallbackURL, { focus: false });
   };
 
