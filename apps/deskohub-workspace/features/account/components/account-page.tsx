@@ -35,6 +35,7 @@ export function AccountPage({
           avatarPresentation={state.avatar}
           email={state.email}
           locale={locale}
+          passkeys={state.passkeys}
           profile={state.profile}
           referrals={state.referrals}
           referralsEnabled={state.referralsEnabled}

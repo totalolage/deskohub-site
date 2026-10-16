@@ -24,6 +24,8 @@ import { useConfirmDiscardChanges } from "@/shared/components/unsaved-changes-gu
 export type AccountLayoutShellProps = {
   readonly accountsEnabled: boolean;
   readonly locale: Locale;
+  /** Whether `login_passkeys` is on; off, Sign-in & security has no section. */
+  readonly passkeysEnabled: boolean;
   /** Whether the referral program is released; withheld, it has no section. */
   readonly referralsEnabled: boolean;
   readonly signedIn: boolean;
@@ -53,20 +55,31 @@ const anonymousDisabledSections = [
   "danger",
 ] as const;
 
-// TODO(login_passkeys): show "security" once the flag is in the contract.
-const withheldPasskeySections = ["security"] as const;
-const withheldReferralAndPasskeySections = [
-  "referrals",
-  ...withheldPasskeySections,
-] as const;
+type AccountSectionRelease = {
+  readonly passkeysEnabled: boolean;
+  readonly referralsEnabled: boolean;
+};
+
+/** Whether a flag-gated section is released; other sections always are. */
+const isSectionReleased = (
+  section: AccountSection,
+  { passkeysEnabled, referralsEnabled }: AccountSectionRelease
+) => {
+  if (section === "referrals") return referralsEnabled;
+  if (section === "security") return passkeysEnabled;
+  return true;
+};
+
+const flagGatedSections = ["referrals", "security"] as const;
 
 function sectionFromQuery(
   value: string | null,
-  referralsEnabled: boolean
+  release: AccountSectionRelease
 ): AccountSection | undefined {
   switch (value) {
     case "referrals":
-      return referralsEnabled ? value : undefined;
+    case "security":
+      return isSectionReleased(value, release) ? value : undefined;
     case "reservations":
     case "profile":
     case "billing":
@@ -110,6 +123,7 @@ export function AccountLayoutShell({
   accountsEnabled,
   children,
   locale,
+  passkeysEnabled,
   referralsEnabled,
   signedIn,
 }: AccountLayoutShellProps) {
@@ -125,7 +139,8 @@ export function AccountLayoutShell({
   const isDeletedPathname =
     normalizedPathname?.endsWith("/account/deleted") ?? false;
   let routeSection =
-    sectionFromQuery(requestedSection, referralsEnabled) ?? "reservations";
+    sectionFromQuery(requestedSection, { passkeysEnabled, referralsEnabled }) ??
+    "reservations";
   if (isLegalPathname) routeSection = "legal";
   const routeKey = `${normalizedPathname ?? ""}|${requestedSection ?? ""}`;
   const [localNavigation, setLocalNavigation] = useState(() => ({
@@ -156,7 +171,9 @@ export function AccountLayoutShell({
       }
 
       if (!privateNavigationEnabled) return;
-      if (section === "referrals" && !referralsEnabled) return;
+      if (!isSectionReleased(section, { passkeysEnabled, referralsEnabled })) {
+        return;
+      }
       if (isLegalPathname) {
         if (!confirmDiscardChanges()) return;
         router.push(`/${locale}/account?section=${section}`);
@@ -176,6 +193,7 @@ export function AccountLayoutShell({
       confirmDiscardChanges,
       isLegalPathname,
       locale,
+      passkeysEnabled,
       privateNavigationEnabled,
       referralsEnabled,
       routeKey,
@@ -212,11 +230,10 @@ export function AccountLayoutShell({
       disabledSections={
         privateNavigationEnabled ? undefined : anonymousDisabledSections
       }
-      hiddenSections={
-        referralsEnabled
-          ? withheldPasskeySections
-          : withheldReferralAndPasskeySections
-      }
+      hiddenSections={flagGatedSections.filter(
+        (section) =>
+          !isSectionReleased(section, { passkeysEnabled, referralsEnabled })
+      )}
       labels={copy.shell}
       onSectionChange={changeSection}
       referralBadge={referralsEnabled ? referralBadge : undefined}

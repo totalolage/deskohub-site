@@ -1,15 +1,16 @@
 "use client";
 
 import { KeyRound, Loader2, Mail, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
-import type { AuthReturnLifecycle } from "@/features/account/auth-return";
+import { useEffect, useMemo, useState } from "react";
+import { createAuthReturnLifecycle } from "@/features/account/auth-return";
 import { AccountReauthenticationStep } from "@/features/account/components/account-reauthentication-step";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
-import type {
-  AccountPasskey,
-  PasskeyChangeResult,
-  PasskeyConfirmationResult,
-  PasskeyCreationResult,
+import {
+  type AccountPasskey,
+  type PasskeyChangeResult,
+  type PasskeyConfirmationResult,
+  type PasskeyCreationResult,
+  passkeyDisplayName,
 } from "@/features/account/passkeys";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -29,9 +30,8 @@ import { PasskeyRenameDialog } from "./passkey-rename-dialog";
 type SignInSecurityScreenProps = {
   readonly locale: Locale;
   readonly email: string;
-  readonly passkeys: readonly AccountPasskey[];
-  /** Re-authenticates a stale session by email before adding a passkey. */
-  readonly authReturn: AuthReturnLifecycle;
+  /** Null when the list couldn't be read. */
+  readonly passkeys: readonly AccountPasskey[] | null;
   readonly createPasskey: () => Promise<PasskeyCreationResult>;
   /** Re-authenticates with an existing passkey; absent without passkeys. */
   readonly confirmWithPasskey?: () => Promise<PasskeyConfirmationResult>;
@@ -48,13 +48,11 @@ type AddDialogStep = "closed" | "reauthenticate" | "ready";
 /**
  * The account's sign-in methods: email, which always works, and the passkeys
  * the customer can add, rename and delete.
- * TODO(login_passkeys): the section hides while the flag is off.
  */
 export function SignInSecurityScreen({
   locale,
   email,
   passkeys,
-  authReturn,
   createPasskey,
   confirmWithPasskey,
   renamePasskey,
@@ -66,6 +64,13 @@ export function SignInSecurityScreen({
   const [addDialogFailed, setAddDialogFailed] = useState(false);
   const [renaming, setRenaming] = useState<AccountPasskey | null>(null);
   const [deleting, setDeleting] = useState<AccountPasskey | null>(null);
+  // Re-authenticates a stale session by email before adding a passkey.
+  const authReturn = useMemo(
+    () => createAuthReturnLifecycle({ locale, requireFreshSession: true }),
+    [locale]
+  );
+
+  useEffect(() => authReturn.cancel, [authReturn]);
 
   // WebAuthn needs a fresh user gesture, so each click starts its own
   // ceremony; after re-authentication the customer clicks once more.
@@ -123,7 +128,7 @@ export function SignInSecurityScreen({
           >
             {m.accountSecurityPasskeysTitle({}, { locale })}
           </h3>
-          {passkeys.length > 0 && (
+          {passkeys !== null && passkeys.length > 0 && (
             <Button
               className="@xl:w-auto"
               disabled={creating}
@@ -140,12 +145,21 @@ export function SignInSecurityScreen({
           )}
         </div>
 
-        {passkeys.length > 0 ? (
+        {passkeys === null && (
+          <p
+            className="mt-5 rounded-xl border border-[#dfe4ec] px-4 py-5 text-sm leading-6 text-navy-blue/68"
+            id="account-security-passkeys-unavailable"
+          >
+            {m.accountSecurityPasskeysUnavailable({}, { locale })}
+          </p>
+        )}
+        {passkeys !== null && passkeys.length > 0 && (
           <ul
             aria-labelledby="account-security-passkeys-title"
             className="mt-5 divide-y divide-[#e6ebf1] rounded-xl border border-[#dfe4ec]"
           >
             {passkeys.map((passkey) => {
+              const name = passkeyDisplayName(passkey, locale);
               const date = formatInstantDate({
                 instant: Temporal.Instant.from(passkey.createdAt),
                 locale,
@@ -162,11 +176,11 @@ export function SignInSecurityScreen({
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold text-navy-blue">
-                      {passkey.name}
+                      {name}
                     </p>
                     <p className="mt-0.5 text-sm text-navy-blue/60">
                       {passkey.provider === undefined ||
-                      passkey.provider === passkey.name
+                      passkey.provider === name
                         ? m.accountSecurityPasskeyCreatedOn(
                             { date },
                             { locale }
@@ -180,7 +194,7 @@ export function SignInSecurityScreen({
                   <div className="flex shrink-0 items-center @xl:gap-1">
                     <Button
                       aria-label={m.accountSecurityPasskeyRenameLabel(
-                        { name: passkey.name },
+                        { name },
                         { locale }
                       )}
                       onClick={() => setRenaming(passkey)}
@@ -197,13 +211,13 @@ export function SignInSecurityScreen({
                     </Button>
                     <Button
                       aria-label={m.accountSecurityPasskeyDeleteLabel(
-                        { name: passkey.name },
+                        { name },
                         { locale }
                       )}
-                      className="text-rose-700 hover:text-rose-800"
                       onClick={() => setDeleting(passkey)}
                       shape="rounded"
                       size="sm"
+                      tone="danger"
                       type="button"
                       variant="ghost"
                     >
@@ -217,7 +231,8 @@ export function SignInSecurityScreen({
               );
             })}
           </ul>
-        ) : (
+        )}
+        {passkeys?.length === 0 && (
           <div className="mt-5 flex flex-col items-center rounded-xl border border-dashed border-[#cfd6e0] bg-[#fbfcfd] px-6 py-8 text-center">
             <span className="flex size-12 items-center justify-center rounded-2xl bg-white text-burned-orange shadow-[0_12px_28px_-18px_rgba(0,2,79,0.45)]">
               <KeyRound aria-hidden className="size-6" />
@@ -363,7 +378,7 @@ export function SignInSecurityScreen({
         renamePasskey={renamePasskey}
       />
       <PasskeyDeleteDialog
-        last={passkeys.length === 1}
+        last={passkeys?.length === 1}
         locale={locale}
         passkey={deleting}
         onClose={() => setDeleting(null)}

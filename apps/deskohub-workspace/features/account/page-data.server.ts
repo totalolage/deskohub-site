@@ -2,6 +2,7 @@ import "server-only";
 
 import { Effect, Layer, Result } from "effect";
 import { cache } from "react";
+import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { acceptAutoLinkedReferral } from "@/features/account/backend/auto-linked-referral";
 import { resolveCurrentCustomerAccount } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
@@ -16,8 +17,15 @@ import type {
   CustomerReservationHistory,
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
-import type { LinkedCustomerAccount } from "@/features/account/customer-account";
-import { areAccountAvatarsEnabled } from "@/features/account/server/account-feature-flag.server";
+import type {
+  CustomerAccountId,
+  LinkedCustomerAccount,
+} from "@/features/account/customer-account";
+import type { AccountPasskeySettings } from "@/features/account/passkeys";
+import {
+  areAccountAvatarsEnabled,
+  arePasskeysEnabled,
+} from "@/features/account/server/account-feature-flag.server";
 import { ReferralService } from "@/features/referrals";
 import {
   getReferralShareUrl,
@@ -68,6 +76,8 @@ export type CustomerAccountPageState =
        * customer's settled referral has made moot, so the page forgets it.
        */
       readonly rememberedReferralCodeUsed?: true;
+      /** The account's passkeys; absent while `login_passkeys` is off. */
+      readonly passkeys?: AccountPasskeySettings;
     }
   | { readonly kind: "support-required"; readonly email: string }
   | { readonly kind: "deletion-pending"; readonly email: string };
@@ -90,6 +100,30 @@ const withOperation = (operation: string) =>
 const referralsReleased = ReferralFeatureFlagService.pipe(
   Effect.flatMap((featureFlag) => featureFlag.isEnabled)
 );
+
+/**
+ * The Sign-in & security section's passkeys while `login_passkeys` is on. An
+ * unreadable flag counts as off; an unreadable list keeps the section with
+ * an unavailable notice.
+ */
+const loadPasskeySettings = Effect.fn(function* (accountId: CustomerAccountId) {
+  const passkeysEnabled = yield* Effect.tryPromise(() =>
+    arePasskeysEnabled()
+  ).pipe(Effect.orElseSucceed(() => false));
+  if (!passkeysEnabled) return undefined;
+  const passkeys = yield* Effect.flatMap(
+    CustomerPasskeys,
+    (service) => service.list
+  ).pipe(
+    Effect.provide(CustomerPasskeys.Default),
+    Effect.tapError(() =>
+      logDegradedAccountSection("account.passkeys.unavailable")
+    ),
+    Effect.orElseSucceed(() => null),
+    withOperation("account.passkeys")
+  );
+  return { accountId, passkeys } satisfies AccountPasskeySettings;
+});
 
 const loadLinkedAccount = Effect.fn(function* (
   user: { readonly email: string },
@@ -182,6 +216,7 @@ const loadLinkedAccount = Effect.fn(function* (
   const referrals = referralsEnabled
     ? yield* loadReferralOverview(account)
     : undefined;
+  const passkeys = yield* loadPasskeySettings(account.accountId);
 
   return {
     kind: "linked",
@@ -195,6 +230,7 @@ const loadLinkedAccount = Effect.fn(function* (
     ...(rememberedReferralCodeUsed && {
       rememberedReferralCodeUsed: true as const,
     }),
+    ...(passkeys && { passkeys }),
   } satisfies CustomerAccountPageState;
 });
 

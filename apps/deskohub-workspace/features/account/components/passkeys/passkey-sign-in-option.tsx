@@ -1,30 +1,49 @@
 "use client";
 
 import { KeyRound, Loader2 } from "lucide-react";
-import { useState } from "react";
-import type { PasskeySignInResult } from "@/features/account/passkeys";
+import { useEffect, useState } from "react";
+import { signInWithPasskey } from "@/features/account/passkey-client";
 import { type Locale, m } from "@/features/i18n";
+import { supportsPasskeyAutofill } from "@/shared/browser/webauthn-capabilities";
 import { Button } from "@/shared/components/ui/button";
 
 type PasskeySignInOptionProps = {
   readonly locale: Locale;
   readonly ready: boolean;
-  readonly signInWithPasskey: () => Promise<PasskeySignInResult>;
 };
 
-/** The sign-in card's explicit passkey entry below the email form. */
+/**
+ * The sign-in card's explicit passkey entry below the email form. While it is
+ * mounted, the email field above also offers saved passkeys in its autofill.
+ */
 export function PasskeySignInOption({
   locale,
   ready,
-  signInWithPasskey,
 }: PasskeySignInOptionProps) {
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
+  // An autofill request waits until the customer picks a passkey. The
+  // button's ceremony replaces it, so it is armed again once the button
+  // attempt settles. Its failures stay quiet: the customer never asked for
+  // it, and hosts that can't run passkey ceremonies reject it.
+  useEffect(() => {
+    if (pending) return;
+    let active = true;
+    void supportsPasskeyAutofill().then((supported) => {
+      if (supported && active) {
+        void signInWithPasskey({ locale, autoFill: true });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [locale, pending]);
 
   const signIn = async () => {
     setFailed(false);
     setPending(true);
-    const result = await signInWithPasskey();
+    const result = await signInWithPasskey({ locale });
+    if (result === "signed-in") return;
     setPending(false);
     setFailed(result === "failed");
   };

@@ -20,7 +20,7 @@ import {
 import { cn, maskEmailAddress } from "@/shared/utils";
 
 /** The sensitive change a stale session must confirm before it proceeds. */
-export type AccountReauthenticationPurpose = "delete-account" | "add-passkey";
+type AccountReauthenticationPurpose = "delete-account" | "add-passkey";
 
 type AccountReauthenticationStepProps = {
   readonly purpose: AccountReauthenticationPurpose;
@@ -126,7 +126,7 @@ export function AccountReauthenticationStep({
   // fallback after a resend is announced.
   return (
     <>
-      {codeStep ? (
+      {codeStep && (
         <>
           <DialogHeader>
             <DialogTitle>{copy.codeTitle}</DialogTitle>
@@ -146,7 +146,8 @@ export function AccountReauthenticationStep({
             requestNewEmail={sendReauthEmail}
           />
         </>
-      ) : purpose === "add-passkey" ? (
+      )}
+      {!codeStep && purpose === "add-passkey" && (
         // The title says it all; the reason stays for screen readers.
         <DialogHeader className="justify-items-center pt-2 text-center">
           <span className="flex size-16 items-center justify-center rounded-2xl bg-[radial-gradient(circle_at_30%_20%,rgba(236,164,35,0.28),transparent_60%),radial-gradient(circle_at_80%_90%,rgba(0,223,153,0.2),transparent_55%)] bg-[#f4f3ef] text-burned-orange">
@@ -157,7 +158,8 @@ export function AccountReauthenticationStep({
             {copy.body}
           </DialogDescription>
         </DialogHeader>
-      ) : (
+      )}
+      {!codeStep && purpose === "delete-account" && (
         <DialogHeader>
           <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription id={copy.descriptionId}>
@@ -168,7 +170,10 @@ export function AccountReauthenticationStep({
       <div
         id={copy.statusId}
         aria-live={failure || passkeyFailure ? "assertive" : "polite"}
-        className={cn("text-sm text-navy-blue/78", !codeStep && "mt-4 min-h-5 empty:mt-0 empty:min-h-0")}
+        className={cn(
+          "text-sm text-navy-blue/78",
+          !codeStep && "mt-4 min-h-5 empty:mt-0 empty:min-h-0"
+        )}
         role={failure || passkeyFailure ? "alert" : undefined}
       >
         {failure && signInEmailFailureMessage(failure, locale)}

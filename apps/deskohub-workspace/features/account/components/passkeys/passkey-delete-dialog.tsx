@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type {
-  AccountPasskey,
-  PasskeyChangeResult,
+import {
+  type AccountPasskey,
+  type PasskeyChangeResult,
+  passkeyDisplayName,
 } from "@/features/account/passkeys";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -66,7 +67,7 @@ export function PasskeyDeleteDialog({
         <DialogHeader>
           <DialogTitle>
             {m.accountPasskeyDeleteTitle(
-              { name: shown?.name ?? "" },
+              { name: shown ? passkeyDisplayName(shown, locale) : "" },
               { locale }
             )}
           </DialogTitle>

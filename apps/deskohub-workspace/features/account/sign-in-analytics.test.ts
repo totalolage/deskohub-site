@@ -10,16 +10,18 @@ import {
 } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type {
+  PasskeyAddedSource,
   SignInCodeRejectionReason,
   SignInMethod,
 } from "./sign-in-analytics";
 
 type SignInAnalyticsProperties =
   | { readonly method: SignInMethod }
-  | { readonly reason: SignInCodeRejectionReason };
+  | { readonly reason: SignInCodeRejectionReason }
+  | { readonly source: PasskeyAddedSource };
 
 const posthogCapture = mock(
-  (_event: string, _properties: SignInAnalyticsProperties) => undefined
+  (_event: string, _properties?: SignInAnalyticsProperties) => undefined
 );
 
 mock.module("posthog-js", () => ({
@@ -140,5 +142,34 @@ describe("sign-in analytics", () => {
     signInAnalytics.captureSignInCodeRejection("too_many_attempts");
 
     expect(posthogCapture).not.toHaveBeenCalled();
+  });
+
+  test("captures a recorded passkey sign-in", () => {
+    setAnalyticsConsent();
+    signInAnalytics.recordSignInCompletion("passkey");
+
+    signInAnalytics.captureRecordedSignInCompletion();
+
+    expect(posthogCapture.mock.calls).toEqual([
+      [signInAnalytics.SIGN_IN_COMPLETED_EVENT, { method: "passkey" }],
+    ]);
+  });
+
+  test("captures passkey changes and the prompt dismissal with consent only", () => {
+    signInAnalytics.capturePasskeyAdded("prompt");
+    signInAnalytics.capturePasskeyRemoved();
+    signInAnalytics.capturePasskeyPromptDismissed();
+    expect(posthogCapture).not.toHaveBeenCalled();
+
+    setAnalyticsConsent();
+    signInAnalytics.capturePasskeyAdded("settings");
+    signInAnalytics.capturePasskeyRemoved();
+    signInAnalytics.capturePasskeyPromptDismissed();
+
+    expect(posthogCapture.mock.calls).toEqual([
+      [signInAnalytics.PASSKEY_ADDED_EVENT, { source: "settings" }],
+      [signInAnalytics.PASSKEY_REMOVED_EVENT],
+      [signInAnalytics.PASSKEY_PROMPT_DISMISSED_EVENT],
+    ]);
   });
 });

@@ -7,6 +7,9 @@ import { useAccountLayout } from "@/features/account/components/account-layout-s
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { LegalScreen } from "@/features/account/components/legal/legal-screen";
+import { PasskeyPrompt } from "@/features/account/components/passkeys/passkey-prompt";
+import { SignInSecurityScreen } from "@/features/account/components/passkeys/sign-in-security-screen";
+import { useAccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
 import { ProfileCompletionReferralNotice } from "@/features/account/components/profile-completion-referral-notice";
 import { ProfileForm } from "@/features/account/components/profile-form";
 import { ReferralScreen } from "@/features/account/components/referral-screen";
@@ -14,6 +17,7 @@ import type {
   CustomerAvatarPresentation,
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
+import type { AccountPasskeySettings } from "@/features/account/passkeys";
 import { getAccountPath } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import {
@@ -39,12 +43,15 @@ type LinkedAccountProps = {
    */
   readonly reservations: ReactNode;
   readonly signupReferral?: ProfileCompletionReferralOutcome;
+  /** The account's passkeys; absent while `login_passkeys` is off. */
+  readonly passkeys?: AccountPasskeySettings;
 };
 
 export function LinkedAccount({
   avatarPresentation,
   email,
   locale,
+  passkeys,
   profile,
   referrals,
   referralsEnabled,
@@ -65,6 +72,7 @@ export function LinkedAccount({
     normalizedPathname === getAccountPath(locale);
   const profileSection = activeSection === "billing" ? "billing" : "profile";
   const copy = getAccountScreenCopy(locale);
+  const accountPasskeys = useAccountPasskeys(passkeys);
 
   const referralDiscount = referralsEnabled
     ? referrals?.summary.discount
@@ -125,12 +133,39 @@ export function LinkedAccount({
         />
       </div>
 
+      {accountPasskeys && (
+        <>
+          <PasskeyPrompt
+            accountHasPasskeys={
+              accountPasskeys.passkeys === null
+                ? undefined
+                : accountPasskeys.passkeys.length > 0
+            }
+            accountId={accountPasskeys.accountId}
+            createPasskey={() => accountPasskeys.createPasskey("prompt")}
+            locale={locale}
+          />
+          <div hidden={activeSection !== "security"}>
+            <SignInSecurityScreen
+              confirmWithPasskey={accountPasskeys.confirmWithPasskey}
+              createPasskey={() => accountPasskeys.createPasskey("settings")}
+              deletePasskey={accountPasskeys.deletePasskey}
+              email={email}
+              locale={locale}
+              passkeys={accountPasskeys.passkeys}
+              renamePasskey={accountPasskeys.renamePasskey}
+            />
+          </div>
+        </>
+      )}
+
       {activeSection === "legal" && isPrivateAccountPathname && (
         <LegalScreen locale={locale} />
       )}
 
       <div hidden={activeSection !== "danger"}>
         <DeleteAccountCard
+          confirmWithPasskey={accountPasskeys?.confirmWithPasskey}
           deletionPending={false}
           email={email}
           heading={copy.dangerTitle}
