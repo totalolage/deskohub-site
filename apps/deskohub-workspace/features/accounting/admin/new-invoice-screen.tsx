@@ -1,3 +1,4 @@
+import { formatCurrencyName } from "@deskohub/i18n/currency";
 import { Suspense } from "react";
 import {
   AdministrationPage,
@@ -21,7 +22,6 @@ export async function NewInvoiceAdministrationScreen() {
 
 async function NewInvoiceContent({ locale }: { readonly locale: Locale }) {
   const { currencies, ...defaults } = await loadInvoiceCreationPage();
-  const currencyNames = new Intl.DisplayNames([locale], { type: "currency" });
   return (
     <AdministrationPage className="max-w-6xl">
       <AdministrationPageHeader
@@ -33,7 +33,7 @@ async function NewInvoiceContent({ locale }: { readonly locale: Locale }) {
         {...defaults}
         currencies={currencies.map((currency) => ({
           ...currency,
-          name: currencyNames.of(currency.code) ?? currency.name,
+          name: formatCurrencyName({ currency: currency.code, locale }),
         }))}
       />
     </AdministrationPage>

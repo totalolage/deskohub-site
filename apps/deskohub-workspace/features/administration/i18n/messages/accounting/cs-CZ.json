@@ -94,7 +94,7 @@
   "accountingInvoiceFormSearchPlaceholder": "Hledat zákazníky v Dotyposu",
   "accountingInvoiceFormSearch": "Hledat",
   "accountingInvoiceFormSearching": "Hledám…",
-  "accountingInvoiceFormSearchEmpty": "Hledání neodpovídá žádný zákazník.",
+  "accountingInvoiceFormSearchEmpty": "Hledanému výrazu neodpovídá žádný zákazník.",
   "accountingInvoiceFormSearchError": "Hledání zákazníků se nezdařilo.",
   "accountingInvoiceFormCustomerNoEmail": "Bez e-mailu",
   "accountingInvoiceFormSelectCustomer": "Vybrat",
