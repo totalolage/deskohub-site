@@ -520,8 +520,11 @@ const holdBackLast = (
 
 const afterGroup = (selection: GroupSelection): CustomerVersionSelection =>
   Match.valueTags(selection, {
-    Undated: () => ({ _tag: "Dated" }),
-    ChangedAt: ({ versionDate }) => ({ _tag: "ChangedAfter", versionDate }),
+    Undated: () => ({ _tag: "Dated" as const }),
+    ChangedAt: ({ versionDate }) => ({
+      _tag: "ChangedAfter" as const,
+      versionDate,
+    }),
   });
 
 /**
