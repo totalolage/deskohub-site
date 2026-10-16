@@ -1,14 +1,20 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "d885c81f-0430-4aec-99df-9dad197fe642",
+  "id": "349f0164-af45-4dbc-b268-409a3fe6ef5c",
   "prevIds": [
-    "95a2f013-b31f-46a2-9396-871299f7e844"
+    "9c320b1d-0713-415a-a9a0-9889b1063c0a"
   ],
   "ddl": [
     {
       "name": "auth",
       "entityType": "schemas"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "account_role_grants",
+      "entityType": "tables",
+      "schema": "public"
     },
     {
       "isRlsEnabled": false,
@@ -156,6 +162,12 @@
     },
     {
       "isRlsEnabled": false,
+      "name": "manual_invoice_actors",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
       "name": "manual_invoice_creation_requests",
       "entityType": "tables",
       "schema": "public"
@@ -273,6 +285,58 @@
       "name": "verification",
       "entityType": "tables",
       "schema": "auth"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "account_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "account_role_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "role",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "account_role_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "granted_by_account_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "account_role_grants"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "granted_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "account_role_grants"
     },
     {
       "type": "text",
@@ -634,6 +698,32 @@
       "generated": null,
       "identity": null,
       "name": "approved_by",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_sessions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "approved_by_account_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_sessions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "approved_by_account_email",
       "entityType": "columns",
       "schema": "public",
       "table": "cli_sessions"
@@ -2911,6 +3001,45 @@
       "name": "invoice_id",
       "entityType": "columns",
       "schema": "public",
+      "table": "manual_invoice_actors"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "actor_account_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_actors"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "actor_account_email",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_actors"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "invoice_id",
+      "entityType": "columns",
+      "schema": "public",
       "table": "manual_invoice_creation_requests"
     },
     {
@@ -4027,6 +4156,32 @@
       "generated": null,
       "identity": null,
       "name": "actor",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "standalone_access_code_attempt_events"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "actor_account_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "standalone_access_code_attempt_events"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "actor_account_email",
       "entityType": "columns",
       "schema": "public",
       "table": "standalone_access_code_attempt_events"
@@ -7487,6 +7642,40 @@
     {
       "nameExplicit": false,
       "columns": [
+        "account_id"
+      ],
+      "schemaTo": "auth",
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "account_role_grants_account_id_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "account_role_grants"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "granted_by_account_id"
+      ],
+      "schemaTo": "auth",
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "account_role_grants_granted_by_account_id_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "account_role_grants"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "payment_attempt_id"
       ],
       "schemaTo": "public",
@@ -7551,6 +7740,23 @@
       "entityType": "fks",
       "schema": "public",
       "table": "cli_mutation_requests"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "approved_by_account_id"
+      ],
+      "schemaTo": "auth",
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "cli_sessions_approved_by_account_id_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "cli_sessions"
     },
     {
       "nameExplicit": false,
@@ -7931,6 +8137,40 @@
     {
       "nameExplicit": false,
       "columns": [
+        "invoice_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "invoices",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "manual_invoice_actors_invoice_id_invoices_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "manual_invoice_actors"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "actor_account_id"
+      ],
+      "schemaTo": "auth",
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "manual_invoice_actors_actor_account_id_user_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "manual_invoice_actors"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "workspace_reservation_id"
       ],
       "schemaTo": "public",
@@ -8094,6 +8334,23 @@
     {
       "nameExplicit": false,
       "columns": [
+        "actor_account_id"
+      ],
+      "schemaTo": "auth",
+      "tableTo": "user",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "name": "standalone_access_code_attempt_events_Rg7DUJXLu6hM_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "standalone_access_code_attempt_events"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "voucher_id"
       ],
       "schemaTo": "public",
@@ -8228,6 +8485,17 @@
       "entityType": "fks",
       "schema": "auth",
       "table": "session"
+    },
+    {
+      "columns": [
+        "account_id",
+        "role"
+      ],
+      "nameExplicit": false,
+      "name": "account_role_grants_pkey",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "account_role_grants"
     },
     {
       "columns": [
@@ -8502,6 +8770,16 @@
         "invoice_id"
       ],
       "nameExplicit": false,
+      "name": "manual_invoice_actors_pkey",
+      "schema": "public",
+      "table": "manual_invoice_actors",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "invoice_id"
+      ],
+      "nameExplicit": false,
       "name": "manual_invoice_creation_requests_pkey",
       "schema": "public",
       "table": "manual_invoice_creation_requests",
@@ -8722,6 +9000,13 @@
       "entityType": "uniques"
     },
     {
+      "value": "\"role\" in ('administrator')",
+      "name": "account_role_grants_role_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "account_role_grants"
+    },
+    {
       "value": "\"key_id\" ~ '^[A-Z][A-Z0-9_]{2,31}$'",
       "name": "accounting_document_snapshots_key_id_check",
       "entityType": "checks",
@@ -8850,6 +9135,13 @@
     {
       "value": "\"approved_by\" ~ '^[a-z0-9][a-z0-9._-]{0,79}$'",
       "name": "cli_sessions_approved_by_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "cli_sessions"
+    },
+    {
+      "value": "\"approved_by_account_id\" is null or (\"approved_by_account_email\" is not null and btrim(\"approved_by_account_email\") <> '')",
+      "name": "cli_sessions_approved_by_account_check",
       "entityType": "checks",
       "schema": "public",
       "table": "cli_sessions"
@@ -9240,6 +9532,13 @@
       "table": "legal_evidence_events"
     },
     {
+      "value": "btrim(\"actor_account_email\") <> ''",
+      "name": "manual_invoice_actors_email_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_actors"
+    },
+    {
       "value": "\"invoice_id\" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'",
       "name": "manual_invoice_creation_requests_invoice_id_check",
       "entityType": "checks",
@@ -9522,6 +9821,13 @@
     {
       "value": "char_length(\"actor\") between 1 and 80",
       "name": "standalone_access_code_attempt_events_actor_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "standalone_access_code_attempt_events"
+    },
+    {
+      "value": "\"actor_account_id\" is null or (\"actor_account_email\" is not null and btrim(\"actor_account_email\") <> '')",
+      "name": "standalone_access_code_attempt_events_actor_account_check",
       "entityType": "checks",
       "schema": "public",
       "table": "standalone_access_code_attempt_events"
