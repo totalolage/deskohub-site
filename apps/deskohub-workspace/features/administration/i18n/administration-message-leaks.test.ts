@@ -101,6 +101,17 @@ describe("administration messages a chunk holds", () => {
         rename:
           "Choose a label that makes this machine easy to recognize. Renaming does not change its access.",
         contract: "Campaign emails received",
+        contractSentence: "campaign emails received",
+        contractError:
+          "“≥ 0” always matches. Use “≥ 1” for any, or remove the condition.",
+        contractPeriod: [
+          {
+            match: {
+              "count=one": "in the last day",
+              "count=other": "in the last {count} days",
+            },
+          },
+        ],
       })
     ),
     ...readCatalogTexts(
@@ -113,14 +124,34 @@ describe("administration messages a chunk holds", () => {
         rename:
           "Zvolte označení, podle kterého tento počítač snadno poznáte. Přejmenování nemění jeho přístup.",
         contract: "Přijaté e-maily kampaní",
+        contractSentence: "e-mailů z kampaní, které zákazník obdržel",
+        contractError:
+          "„≥ 0“ vyhovuje vždy. Pro alespoň jeden použijte „≥ 1“, nebo podmínku odeberte.",
+        contractPeriod: [
+          {
+            match: {
+              "count=one": "za poslední den",
+              "count=few": "za poslední {count} dny",
+              "count=other": "za posledních {count} dní",
+            },
+          },
+        ],
       })
     ),
   ];
   const evidence = selectLeakEvidence(catalogTexts, []);
   const leaked = (source: string) =>
-    findMessageTexts(evidence, catalogTexts, source, new Set(["contract"])).map(
-      ({ locale, text }) => `${locale} ${text}`
-    );
+    findMessageTexts(
+      evidence,
+      catalogTexts,
+      source,
+      new Set([
+        "Campaign emails received",
+        "campaign emails received",
+        "“≥ 0” always matches. Use “≥ 1” for any, or remove the condition.",
+        "in the last ",
+      ])
+    ).map(({ locale, text }) => `${locale} ${text}`);
 
   test("reports a message whose texts arrive in every locale", () => {
     expect(
@@ -155,6 +186,32 @@ describe("administration messages a chunk holds", () => {
     ).toEqual([
       "en-US Campaign emails received",
       "cs-CZ Přijaté e-maily kampaní",
+    ]);
+  });
+
+  test("ignores English the API contract also declares in a template", () => {
+    expect(
+      leaked(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: compiled chunk source
+        'summary:`visiting in the last ${n} days`;e="“≥ 0” always matches. Use “≥ 1” for any, or remove the condition."'
+      )
+    ).toEqual([]);
+  });
+
+  test("reports a Czech sentence of a message whose English the API contract declares", () => {
+    expect(
+      leaked(
+        'm="\\u201E\\u2265 0\\u201C vyhovuje v\\u017Edy. Pro alespo\\u0148 jeden pou\\u017Eijte \\u201E\\u2265 1\\u201C, nebo podm\\xednku odeberte.";l="e-mail\\u016F z kampan\\xed, kter\\xe9 z\\xe1kazn\\xedk obdr\\u017Eel"'
+      )
+    ).toEqual([
+      "cs-CZ e-mailů z kampaní, které zákazník obdržel",
+      "cs-CZ „≥ 0“ vyhovuje vždy. Pro alespoň jeden použijte „≥ 1“, nebo podmínku odeberte.",
+    ]);
+  });
+
+  test("reports a Czech variant of a message whose English template the API contract declares", () => {
+    expect(leaked('d="za posledn\\xed den"')).toEqual([
+      "cs-CZ za poslední den",
     ]);
   });
 

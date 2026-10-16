@@ -138,10 +138,10 @@ const administrationTexts = selectLeakEvidence(
 const customerTexts = selectLeakEvidence(customerCatalogTexts, []);
 // The administration API contract declares English labels and errors for
 // `dhw` that the Admin UI catalog repeats. The contract ships wherever its
-// schemas do, so its text alone doesn't show that a message leaked.
-const contractMessages = new Set(
+// schemas do, so those texts alone don't show that a message leaked.
+const contractTexts = new Set(
   findTexts(administrationTexts, await readContractSource()).map(
-    ({ message }) => message
+    ({ text }) => text
   )
 );
 
@@ -190,7 +190,7 @@ describe("administration messages in a production build", () => {
         administrationTexts,
         administrationCatalogTexts,
         chunks.get(chunk) ?? "",
-        contractMessages
+        contractTexts
       )) {
         leaks.push(
           `${locale} ${JSON.stringify(text)} in ${chunk} (${describeChunk(chunk)})`
