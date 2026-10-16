@@ -1,19 +1,32 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 const events: string[] = [];
 const notFound = mock(() => {
   throw new Error("NEXT_NOT_FOUND");
 });
 const areAccountsEnabled = mock(() => Promise.resolve(true));
+const arePasskeysEnabled = mock(() => Promise.resolve(false));
+type SignInCardProps = {
+  readonly locale: string;
+  readonly passkeysEnabled: boolean;
+};
+const signInCardProps: SignInCardProps[] = [];
+const SignInCard = (props: SignInCardProps) => {
+  signInCardProps.push(props);
+  return null;
+};
 const connection = mock(() => Promise.resolve());
 
 mock.module("next/navigation", () => ({ notFound }));
 mock.module("next/server", () => ({ connection }));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
   areAccountsEnabled,
+  arePasskeysEnabled,
 }));
 mock.module("@/features/account/components/sign-in-card", () => ({
-  SignInCard: () => null,
+  SignInCard,
 }));
 mock.module("@/features/i18n", () => ({ m: {} }));
 mock.module("@/features/i18n/server/request-locale", () => ({
@@ -33,6 +46,8 @@ describe("customer sign-in route boundary", () => {
       events.push("gate");
       return true;
     });
+    arePasskeysEnabled.mockReset();
+    arePasskeysEnabled.mockImplementation(async () => false);
     connection.mockReset();
     connection.mockImplementation(async () => {
       events.push("connection");
@@ -59,4 +74,17 @@ describe("customer sign-in route boundary", () => {
     expect(events).toEqual(["connection", "gate"]);
     expect(connection).toHaveBeenCalledTimes(1);
   });
+
+  test.each([true, false])(
+    "passes the passkey flag (%p) to the sign-in card",
+    async (passkeysEnabled) => {
+      arePasskeysEnabled.mockImplementation(async () => passkeysEnabled);
+      const { default: CustomerSignInPage } = await import("./page");
+
+      signInCardProps.length = 0;
+      renderToStaticMarkup((await CustomerSignInPage()) as ReactElement);
+
+      expect(signInCardProps).toEqual([{ locale: "en-US", passkeysEnabled }]);
+    }
+  );
 });

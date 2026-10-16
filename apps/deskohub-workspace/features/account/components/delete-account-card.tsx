@@ -36,8 +36,8 @@ type DeleteAccountCardProps = {
   readonly deletionPending: boolean;
   readonly heading?: string;
   /**
-   * Lets a stale session confirm with one of the account's passkeys.
-   * TODO(login_passkeys): wire to the passkey client when the account has one.
+   * Lets a stale session confirm with one of the account's passkeys. Absent
+   * when the account has none or `login_passkeys` is off.
    */
   readonly confirmWithPasskey?: () => Promise<PasskeyConfirmationResult>;
 };

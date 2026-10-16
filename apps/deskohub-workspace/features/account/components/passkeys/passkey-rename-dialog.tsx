@@ -8,6 +8,7 @@ import {
   type AccountPasskey,
   PASSKEY_NAME_MAXIMUM_LENGTH,
   type PasskeyChangeResult,
+  passkeyDisplayName,
 } from "@/features/account/passkeys";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -101,12 +102,13 @@ function PasskeyRenameForm({
   readonly passkey: AccountPasskey;
 }) {
   const [failed, setFailed] = useState(false);
+  const currentName = passkeyDisplayName(passkey, locale);
   const form = useForm<
     RenameFormSchema["Encoded"],
     unknown,
     RenameFormSchema["Type"]
   >({
-    defaultValues: { name: passkey.name },
+    defaultValues: { name: currentName },
     mode: "onSubmit",
     reValidateMode: "onChange",
     resolver: effectSchemaResolver(createRenameFormSchema(locale)),
@@ -115,7 +117,7 @@ function PasskeyRenameForm({
 
   const save = async ({ name }: RenameFormSchema["Type"]) => {
     setFailed(false);
-    if (name === passkey.name) {
+    if (name === currentName) {
       onClose();
       return;
     }

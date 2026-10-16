@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { noteEmailSignInForPasskeyPrompt } from "@/features/account/passkey-prompt";
 import { getAccountPath } from "@/features/account/routes";
 import { recordSignInCompletion } from "@/features/account/sign-in-analytics";
 import { forgetSignInCodeRequest } from "@/features/account/sign-in-code-request";
@@ -25,6 +26,7 @@ export function AuthCallbackRedirect({ locale }: { readonly locale: Locale }) {
     const completeSignIn = () => {
       if (!active) return;
       recordSignInCompletion("link", { keepRecorded: true });
+      noteEmailSignInForPasskeyPrompt();
       forgetSignInCodeRequest();
       leaveForAccount();
     };

@@ -23,6 +23,7 @@ const sectionKeys: readonly AccountSection[] = [
   "reservations",
   "referrals",
   "profile",
+  "security",
   "billing",
   "legal",
   "danger",
@@ -38,6 +39,7 @@ const labels: AccountShellProps["labels"] = {
     profile: "Profile & identity",
     referrals: "Referrals",
     reservations: "Reservations",
+    security: "Sign-in & security",
   },
 };
 
@@ -642,7 +644,7 @@ describe("AccountShell", () => {
 
   test("leaves hidden sections out of both navigations", () => {
     const view = renderShell({
-      hiddenSections: ["referrals"],
+      hiddenSections: ["referrals", "security"],
       referralBadge: { text: "-15%", label: "15% referral discount" },
     });
 

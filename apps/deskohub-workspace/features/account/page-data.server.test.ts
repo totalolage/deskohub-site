@@ -335,9 +335,39 @@ mock.module("@/features/referrals/remembered-referral-code.server", () => ({
 }));
 
 const areAccountAvatarsEnabled = mock(() => Promise.resolve(true));
+const arePasskeysEnabled = mock(() => Promise.resolve(false));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
   areAccountAvatarsEnabled,
+  arePasskeysEnabled,
 }));
+
+const accountPasskey = {
+  id: "passkey-1",
+  name: "Google Password Manager",
+  provider: "Google Password Manager",
+  createdAt: "2026-10-14T16:40:00.000Z",
+} as const;
+let passkeyListEffect: Effect.Effect<
+  readonly (typeof accountPasskey)[],
+  unknown
+>;
+let passkeyListCalls = 0;
+const Passkeys = Context.Service<
+  Passkeys,
+  { readonly list: typeof passkeyListEffect }
+>()("@test/CustomerPasskeys");
+Object.assign(Passkeys, {
+  Default: Layer.succeed(Passkeys, {
+    list: Effect.suspend(() => {
+      passkeyListCalls += 1;
+      return passkeyListEffect;
+    }),
+  }),
+});
+mock.module(
+  "@/features/account/backend/auth/customer-passkeys.service",
+  () => ({ CustomerPasskeys: Passkeys })
+);
 const areReferralsEnabled = mock(() => Promise.resolve(true));
 mock.module("@/features/referrals/referral-feature-flag.server", () => ({
   areReferralsEnabled,
@@ -381,6 +411,10 @@ describe("loadCustomerAccountPage", () => {
     events = [];
     areAccountAvatarsEnabled.mockReset();
     areAccountAvatarsEnabled.mockResolvedValue(true);
+    arePasskeysEnabled.mockReset();
+    arePasskeysEnabled.mockResolvedValue(false);
+    passkeyListEffect = Effect.succeed([accountPasskey]);
+    passkeyListCalls = 0;
     areReferralsEnabled.mockReset();
     areReferralsEnabled.mockResolvedValue(true);
     historyEffect = Effect.succeed({
@@ -849,6 +883,36 @@ describe("loadCustomerAccountPage", () => {
       history: { kind: "available" },
     });
     expect(avatarLookupCalls).toBe(0);
+  });
+
+  test("lists the account's passkeys only while passkeys are on", async () => {
+    await expect(loadPageState()).resolves.not.toHaveProperty("passkeys");
+    expect(passkeyListCalls).toBe(0);
+
+    arePasskeysEnabled.mockResolvedValue(true);
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      passkeys: { accountId, passkeys: [accountPasskey] },
+    });
+    expect(passkeyListCalls).toBe(1);
+  });
+
+  test("keeps the linked page with an unavailable passkey list", async () => {
+    arePasskeysEnabled.mockResolvedValue(true);
+    passkeyListEffect = Effect.fail(new Error("passkeys down"));
+
+    await expect(loadPageState()).resolves.toMatchObject({
+      kind: "linked",
+      profile: { firstName: "Ada" },
+      passkeys: { accountId, passkeys: null },
+    });
+  });
+
+  test("fails closed without listing passkeys when the flag is unavailable", async () => {
+    arePasskeysEnabled.mockRejectedValue(new Error("flag unavailable"));
+
+    await expect(loadPageState()).resolves.not.toHaveProperty("passkeys");
+    expect(passkeyListCalls).toBe(0);
   });
 
   test("renders the authenticated unavailable state when the profile read fails after a successful link", async () => {

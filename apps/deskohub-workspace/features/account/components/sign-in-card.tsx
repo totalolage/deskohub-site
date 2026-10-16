@@ -14,7 +14,6 @@ import {
 import { PasskeySignInOption } from "@/features/account/components/passkeys/passkey-sign-in-option";
 import { SignInCodeStep } from "@/features/account/components/sign-in-code-step";
 import { signInEmailFailureMessage } from "@/features/account/components/sign-in-email-failure-message";
-import type { PasskeySignInResult } from "@/features/account/passkeys";
 import { useSignInCodeRequest } from "@/features/account/sign-in-code-request";
 import { type Locale, m } from "@/features/i18n";
 import { useClientReady } from "@/shared/browser/use-client-ready";
@@ -35,11 +34,9 @@ type SignInCardProps = {
   readonly locale: Locale;
   /**
    * Offers passkey sign-in: the button below the form and passkey autofill
-   * on the email field. Absent while `login_passkeys` is off.
-   * TODO(login_passkeys): wire to the passkey client, including conditional
-   * mediation for the autofill.
+   * on the email field. Off while `login_passkeys` is off.
    */
-  readonly signInWithPasskey?: () => Promise<PasskeySignInResult>;
+  readonly passkeysEnabled?: boolean;
 };
 
 const signInEmailMaximumLength = 255;
@@ -66,7 +63,10 @@ type SignInFormSchema = ReturnType<typeof createSignInFormSchema>;
 type SignInFormInput = SignInFormSchema["Encoded"];
 type SignInFormValues = SignInFormSchema["Type"];
 
-export function SignInCard({ locale, signInWithPasskey }: SignInCardProps) {
+export function SignInCard({
+  locale,
+  passkeysEnabled = false,
+}: SignInCardProps) {
   const [requested, setRequested] = useState(false);
   const [failure, setFailure] = useState<SignInEmailFailure | null>(null);
   const [codeRequest, setCodeRequest] = useSignInCodeRequest();
@@ -267,7 +267,7 @@ export function SignInCard({ locale, signInWithPasskey }: SignInCardProps) {
                         type="email"
                         required
                         autoComplete={
-                          signInWithPasskey ? "email webauthn" : "email"
+                          passkeysEnabled ? "email webauthn" : "email"
                         }
                         placeholder={m.accountSignInEmailPlaceholder(
                           {},
@@ -290,12 +290,8 @@ export function SignInCard({ locale, signInWithPasskey }: SignInCardProps) {
         <div aria-live="polite" className="mt-4 min-h-5 text-sm text-red-700">
           {failure && signInEmailFailureMessage(failure, locale)}
         </div>
-        {signInWithPasskey && (
-          <PasskeySignInOption
-            locale={locale}
-            ready={clientReady}
-            signInWithPasskey={signInWithPasskey}
-          />
+        {passkeysEnabled && (
+          <PasskeySignInOption locale={locale} ready={clientReady} />
         )}
       </CardContent>
     </Card>
@@ -314,7 +310,9 @@ function SignInSubmitButton({
   return (
     <Button
       id="account-sign-in-submit"
-      className="min-h-12 w-full sm:w-auto sm:shrink-0"
+      className="sm:w-auto sm:shrink-0"
+      fullWidth
+      size="lg"
       type="submit"
       disabled={!ready}
       pending={pending}

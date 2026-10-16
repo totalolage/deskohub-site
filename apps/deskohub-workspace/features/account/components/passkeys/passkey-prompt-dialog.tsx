@@ -28,7 +28,6 @@ type PasskeyPromptDialogProps = {
 /**
  * Offers a passkey on the account page right after an email sign-in, on a
  * browser that can create one and doesn't hold one for this account yet.
- * TODO(login_passkeys): show only while the flag is on.
  */
 export function PasskeyPromptDialog({
   locale,
