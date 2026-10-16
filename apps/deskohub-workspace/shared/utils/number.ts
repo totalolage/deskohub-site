@@ -1,6 +1,10 @@
 export const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
+/** A whole number with the locale's digit grouping, such as "1 234" in Czech. */
+export const formatInteger = (value: number, locale: Intl.LocalesArgument) =>
+  new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value);
+
 export const formatNamesWithNumericRanges = (
   names: readonly (string | null | undefined)[]
 ): string => {

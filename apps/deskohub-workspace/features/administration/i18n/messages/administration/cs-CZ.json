@@ -34,12 +34,16 @@
   "administrationBookingFactTable": "Stůl",
   "administrationBookingGuestCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local formattedCount = count: number",
+        "local countPlural = count: plural"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} osoba",
-        "countPlural=few": "{count} osoby",
-        "countPlural=other": "{count} osob"
+        "countPlural=one": "{formattedCount} osoba",
+        "countPlural=few": "{formattedCount} osoby",
+        "countPlural=other": "{formattedCount} osob"
       }
     }
   ],
@@ -73,13 +77,14 @@
       "declarations": [
         "input count",
         "input date",
+        "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{date}: {count} rezervace",
-        "countPlural=few": "{date}: {count} rezervace",
-        "countPlural=other": "{date}: {count} rezervací"
+        "countPlural=one": "{date}: {formattedCount} rezervace",
+        "countPlural=few": "{date}: {formattedCount} rezervace",
+        "countPlural=other": "{date}: {formattedCount} rezervací"
       }
     }
   ],
@@ -88,12 +93,16 @@
   "administrationCustomerActivityUnavailable": "Aktivita rezervací je dočasně nedostupná.",
   "administrationCustomerActivityYearTotal": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local formattedCount = count: number",
+        "local countPlural = count: plural"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} rezervace za posledních 365 dní",
-        "countPlural=few": "{count} rezervace za posledních 365 dní",
-        "countPlural=other": "{count} rezervací za posledních 365 dní"
+        "countPlural=one": "{formattedCount} rezervace za posledních 365 dní",
+        "countPlural=few": "{formattedCount} rezervace za posledních 365 dní",
+        "countPlural=other": "{formattedCount} rezervací za posledních 365 dní"
       }
     }
   ],
@@ -124,13 +133,14 @@
       "declarations": [
         "input count",
         "input date",
+        "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} rezervace · Aktualizováno {date}",
-        "countPlural=few": "{count} rezervace · Aktualizováno {date}",
-        "countPlural=other": "{count} rezervací · Aktualizováno {date}"
+        "countPlural=one": "{formattedCount} rezervace · Aktualizováno {date}",
+        "countPlural=few": "{formattedCount} rezervace · Aktualizováno {date}",
+        "countPlural=other": "{formattedCount} rezervací · Aktualizováno {date}"
       }
     }
   ],
@@ -143,12 +153,16 @@
   "administrationCustomerTablePhone": "Telefon",
   "administrationCustomerTableReservationCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local formattedCount = count: number",
+        "local countPlural = count: plural"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "<count>{count}</count> rezervace",
-        "countPlural=few": "<count>{count}</count> rezervace",
-        "countPlural=other": "<count>{count}</count> rezervací"
+        "countPlural=one": "<count>{formattedCount}</count> rezervace",
+        "countPlural=few": "<count>{formattedCount}</count> rezervace",
+        "countPlural=other": "<count>{formattedCount}</count> rezervací"
       }
     }
   ],
@@ -292,12 +306,16 @@
   "administrationOverviewLiveBookingDatesUnavailable": "Aktuální termíny rezervací nejsou k dispozici",
   "administrationOverviewMoreCustomers": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local formattedCount = count: number",
+        "local countPlural = count: plural"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "… a {count} další",
-        "countPlural=few": "… a {count} další",
-        "countPlural=other": "… a {count} dalších"
+        "countPlural=one": "… a {formattedCount} další",
+        "countPlural=few": "… a {formattedCount} další",
+        "countPlural=other": "… a {formattedCount} dalších"
       }
     }
   ],
@@ -310,13 +328,15 @@
       "declarations": [
         "input count",
         "input completed",
+        "local formattedCompleted = completed: number",
+        "local formattedCount = count: number",
         "local countPlural = count: plural"
       ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "Dokončeno: {completed} z {count} rezervace",
-        "countPlural=few": "Dokončeno: {completed} z {count} rezervací",
-        "countPlural=other": "Dokončeno: {completed} z {count} rezervací"
+        "countPlural=one": "Dokončeno: {formattedCompleted} z {formattedCount} rezervace",
+        "countPlural=few": "Dokončeno: {formattedCompleted} z {formattedCount} rezervací",
+        "countPlural=other": "Dokončeno: {formattedCompleted} z {formattedCount} rezervací"
       }
     }
   ],
@@ -408,12 +428,16 @@
   "administrationRefundAttentionReview": "Zkontrolovat vrácení peněz",
   "administrationRefundAttentionTitle": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
+      "declarations": [
+        "input count",
+        "local formattedCount = count: number",
+        "local countPlural = count: plural"
+      ],
       "selectors": ["countPlural"],
       "match": {
-        "countPlural=one": "{count} rezervace čeká na vrácení peněz.",
-        "countPlural=few": "{count} rezervace čekají na vrácení peněz.",
-        "countPlural=other": "{count} rezervací čeká na vrácení peněz."
+        "countPlural=one": "{formattedCount} rezervace čeká na vrácení peněz.",
+        "countPlural=few": "{formattedCount} rezervace čekají na vrácení peněz.",
+        "countPlural=other": "{formattedCount} rezervací čeká na vrácení peněz."
       }
     }
   ],

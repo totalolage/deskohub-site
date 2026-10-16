@@ -68,6 +68,29 @@ describe("AdministrationCustomerTable", () => {
     ).toBeDefined();
   });
 
+  test("groups the digits of a large reservation count for the locale", () => {
+    for (const [locale, text] of [
+      ["cs-CZ", "1\u00a0234 rezervací"],
+      ["en-US", "1,234 reservations"],
+    ] as const) {
+      const view = render(
+        <RouteLocaleProvider locale={locale}>
+          <AdministrationCustomerTable
+            customers={[customerSummary("many", 1234)]}
+          />
+        </RouteLocaleProvider>
+      );
+
+      expect(
+        view.getAllByText(
+          (_, element) =>
+            element?.tagName === "TD" && element.textContent === text
+        )
+      ).toHaveLength(1);
+      view.unmount();
+    }
+  });
+
   test("explains an empty list in Czech", () => {
     const view = render(
       <RouteLocaleProvider locale="cs-CZ">
