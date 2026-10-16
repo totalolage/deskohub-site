@@ -172,7 +172,7 @@ const secondaryAdminAuthorization = toAuthorization(
   secondaryAdministrator.password
 );
 
-const administrationPaths = [
+const unprefixedAdministrationPaths = [
   "/admin",
   "/admin/",
   "/admin/bookings",
@@ -187,7 +187,16 @@ const administrationPaths = [
   "/admin/codes",
   "/admin/codes/code-id",
   "/admin/sales",
+  "/admin/invoices/invoice-id/pdf",
 ] as const;
+
+const administrationPaths = [
+  ...unprefixedAdministrationPaths,
+  ...unprefixedAdministrationPaths.flatMap((pathname) => [
+    `/en-US${pathname}`,
+    `/cs-CZ${pathname}`,
+  ]),
+];
 
 describe("administration route boundary", () => {
   test("matches every administration route including dotted identifiers", () => {
@@ -197,6 +206,8 @@ describe("administration route boundary", () => {
       "/admin/reservations/reservation.with.dots",
       "/admin/reservations/reservation%2Ewith%2Edots",
       "/admin/customers/customer.with.dots/create-code",
+      "/cs-CZ/admin/reservations/reservation.with.dots",
+      "/en-US/admin/invoices/invoice.with.dots/pdf",
     ]) {
       expect(
         unstable_doesMiddlewareMatch({
@@ -230,6 +241,22 @@ describe("administration route boundary", () => {
       expect(response.headers.get("www-authenticate")).toContain(
         "Basic realm="
       );
+    }
+  });
+
+  test("challenges every spelling of an administration URL", async () => {
+    for (const pathname of [
+      "/xx-XX/admin",
+      "/cs-cz/admin/reservations",
+      "/%61dmin/reservations",
+      "/cs-CZ/%61dmin",
+      "/en-US/admin%2Freservations",
+    ]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${pathname}`)
+      );
+
+      expect(response.status).toBe(401);
     }
   });
 
@@ -480,20 +507,58 @@ test("challenges unauthenticated administration requests", async () => {
   expect(response.headers.get("vary")).toBe("Authorization");
 });
 
-test("passes authenticated administration requests without localization", async () => {
+test("passes authenticated localized administration requests", async () => {
   for (const authorization of [
     primaryAdminAuthorization,
     secondaryAdminAuthorization,
   ]) {
+    for (const locale of ["en-US", "cs-CZ"]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example/${locale}/admin/discounts`, {
+          headers: { authorization },
+        })
+      );
+
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("vary")).toBe("Authorization");
+      expect(response.cookies.get(localeCookieName)?.value).toBe(locale);
+    }
+  }
+});
+
+test("redirects authenticated unprefixed administration URLs to the resolved locale", async () => {
+  const cases = [
+    {
+      url: "https://workspace.example/admin/cli/authenticate?code=SYNTHETIC-CODE",
+      headers: {},
+      location:
+        "https://workspace.example/en-US/admin/cli/authenticate?code=SYNTHETIC-CODE",
+    },
+    {
+      url: "https://workspace.example/admin",
+      headers: { "accept-language": "cs-CZ,cs;q=0.9" },
+      location: "https://workspace.example/cs-CZ/admin",
+    },
+    {
+      url: "https://workspace.example/admin/reservations?status=paid",
+      headers: { cookie: `${localeCookieName}=cs-CZ` },
+      location:
+        "https://workspace.example/cs-CZ/admin/reservations?status=paid",
+    },
+  ];
+
+  for (const { url, headers, location } of cases) {
     const response = await proxy(
-      new NextRequest("https://workspace.example/admin/discounts", {
-        headers: { authorization },
+      new NextRequest(url, {
+        headers: { ...headers, authorization: primaryAdminAuthorization },
       })
     );
 
-    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(location);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("vary")).toBe("Authorization");
+    expect(response.headers.get("vary")).toBe("Accept-Language, Authorization");
   }
 });
 
@@ -515,24 +580,27 @@ test("fails closed for wrong, crossed, and unknown administrator credentials", a
 });
 
 test("checks administration Server Action posts before the general pass-through", async () => {
-  const unauthorized = await proxy(
-    new NextRequest("https://workspace.example/admin/discounts", {
-      method: "POST",
-      headers: { "next-action": "action-id" },
-    })
-  );
-  const authorized = await proxy(
-    new NextRequest("https://workspace.example/admin/discounts", {
-      method: "POST",
-      headers: {
-        authorization: primaryAdminAuthorization,
-        "next-action": "action-id",
-      },
-    })
-  );
+  for (const pathname of ["/admin/discounts", "/cs-CZ/admin/discounts"]) {
+    const unauthorized = await proxy(
+      new NextRequest(`https://workspace.example${pathname}`, {
+        method: "POST",
+        headers: { "next-action": "action-id" },
+      })
+    );
+    const authorized = await proxy(
+      new NextRequest(`https://workspace.example${pathname}`, {
+        method: "POST",
+        headers: {
+          authorization: primaryAdminAuthorization,
+          "next-action": "action-id",
+        },
+      })
+    );
 
-  expect(unauthorized.status).toBe(401);
-  expect(authorized.headers.get("x-middleware-next")).toBe("1");
+    expect(unauthorized.status).toBe(401);
+    expect(authorized.headers.get("x-middleware-next")).toBe("1");
+    expect(authorized.headers.get("cache-control")).toBe("private, no-store");
+  }
 });
 
 describe("shared referral code hand-off", () => {

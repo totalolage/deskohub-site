@@ -44,7 +44,8 @@ mock.module("next/link", () => ({
 }));
 
 mock.module("next/navigation", () => ({
-  usePathname: () => "/admin/customers",
+  useParams: () => ({ locale: "en-US" }),
+  usePathname: () => "/en-US/admin/customers",
 }));
 
 beforeAll(() => {
@@ -88,9 +89,9 @@ test("does not prefetch live administration routes", async () => {
   expect(capturedLinks.length).toBeGreaterThan(0);
   expect(capturedLinks.every(({ prefetch }) => prefetch === false)).toBe(true);
   expect(capturedLinks.map(({ href }) => href)).toContain(
-    "/admin/customers?sort=reservations&direction=asc"
+    "/en-US/admin/customers?sort=reservations&direction=asc"
   );
   expect(capturedLinks.map(({ href }) => href)).toContain(
-    "/admin/customers?sort=activity&direction=asc"
+    "/en-US/admin/customers?sort=activity&direction=asc"
   );
 });

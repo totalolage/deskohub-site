@@ -1,16 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { notFound } from "next/navigation";
-import { type ReactNode, Suspense } from "react";
-import { env } from "@/env";
-import { ConsentAwareAnalytics } from "@/features/cookie-consent/components/consent-aware-analytics";
-import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";
-import { DeferredTagManager } from "@/features/cookie-consent/components/deferred-tag-manager";
-import { PostHogProvider } from "@/features/cookie-consent/components/posthog-analytics";
+import type { ReactNode } from "react";
 import { isLocale, locales } from "@/features/i18n";
-import { RememberSharedReferralCodeWhenEnabled } from "@/features/referrals/remember-shared-referral-code-when-enabled";
-import { postHogRuntimeConfig } from "@/shared/backend/config/posthog.config";
-import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import "../globals.css";
 
 const sculpin = localFont({
@@ -62,23 +55,11 @@ export default async function LocaleLayout({
 }: LocaleLayoutProps) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
-  const gtmId = env.NEXT_PUBLIC_GTM_ID;
 
   return (
     <html lang={locale} className={sculpin.variable}>
       <body>
-        {gtmId && <DeferredTagManager gtmId={gtmId} />}
-        <PostHogProvider>
-          <CookieConsentProvider locale={locale} />
-          <RememberSharedReferralCodeWhenEnabled />
-          <Suspense fallback={null}>
-            <ConsentAwareAnalytics
-              featureFlagOverrides={postHogRuntimeConfig.featureFlagOverrides}
-              posthogEnvironment={env.VERCEL_ENV}
-            />
-          </Suspense>
-          <UnsavedChangesProvider>{children}</UnsavedChangesProvider>
-        </PostHogProvider>
+        <RouteLocaleProvider locale={locale}>{children}</RouteLocaleProvider>
       </body>
     </html>
   );

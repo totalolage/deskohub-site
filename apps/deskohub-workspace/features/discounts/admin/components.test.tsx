@@ -42,6 +42,7 @@ const emptyReservationActivity = {
 } as const;
 
 mock.module("next/navigation", () => ({
+  useParams: () => ({ locale: "en-US" }),
   useRouter: () => ({
     back,
     refresh,
@@ -395,18 +396,18 @@ describe("discount administration pages", () => {
       name: "Create discount code",
     });
     expect(createCodeLink.getAttribute("href")).toBe(
-      "/admin/customers/dotypos-customer/create-code"
+      "/en-US/admin/customers/dotypos-customer/create-code"
     );
     expect(
       view.getByRole("link", { name: "Create voucher" }).getAttribute("href")
-    ).toBe("/admin/customers/dotypos-customer/create-voucher");
+    ).toBe("/en-US/admin/customers/dotypos-customer/create-voucher");
 
     expect(within(table).getByText("ONLYME")).toBeDefined();
     expect(within(table).getByText("OPEN")).toBeDefined();
     expect(within(table).getByText("AADISABLED")).toBeDefined();
     expect(
       within(table).getByRole("link", { name: "GIFT100" }).getAttribute("href")
-    ).toBe("/admin/vouchers/019c91dd-c560-7e55-b9d8-c95065efd55d");
+    ).toBe("/en-US/admin/vouchers/019c91dd-c560-7e55-b9d8-c95065efd55d");
     expect(within(table).getByText(/CZK.?100\.00 credit/)).toBeDefined();
     expect(within(table).getByText(/CZK.?65\.00 remaining/)).toBeDefined();
     expect(within(table).getAllByText("Discount code")).toHaveLength(3);
@@ -463,7 +464,7 @@ describe("discount administration pages", () => {
     expect(within(table).getByText("Open discount · CZK 75.00")).toBeDefined();
     const onlyMeLink = within(table).getByRole("link", { name: "ONLYME" });
     expect(onlyMeLink.getAttribute("href")).toBe(
-      `/admin/codes/${dashboard.codes[0].id}`
+      `/en-US/admin/codes/${dashboard.codes[0].id}`
     );
     expect(view.getByRole("heading", { name: "Stats" })).toBeDefined();
     expect(view.getByRole("heading", { name: "Consents" })).toBeDefined();

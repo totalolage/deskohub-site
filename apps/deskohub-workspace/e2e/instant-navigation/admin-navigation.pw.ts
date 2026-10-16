@@ -1,5 +1,7 @@
 import { instant } from "@next/playwright";
 import { expect, test } from "@playwright/test";
+import { m } from "@/features/administration/i18n";
+import { m as customerMessages } from "@/features/i18n";
 import { workspaceTestAdminCredentials } from "@/shared/testing/workspace-test-environment";
 import { resolveInstantNavigationAdminCredentials } from "../admin-basic-auth";
 import {
@@ -7,6 +9,7 @@ import {
   requireBaseUrl,
   reviewScreenshots,
 } from "./navigation-test-helpers";
+import { preparePublicLegalBrowser } from "./public-account-legal-assertions";
 
 const remoteBaseUrl = process.env.WORKSPACE_E2E_BASE_URL;
 // Fail closed at collection time when a remote preview is targeted without the
@@ -38,7 +41,7 @@ test("serves the administration shell and granular loading regions", async ({
   await instant(
     page,
     async () => {
-      await page.goto("/admin/reservations");
+      await page.goto("/en-US/admin/reservations");
 
       await expect(
         page.getByRole("navigation", { name: "Administration" }).first()
@@ -57,7 +60,7 @@ test("serves the administration shell and granular loading regions", async ({
 });
 
 test("hydrates the customer activity section", async ({ page }, testInfo) => {
-  await page.goto("/admin");
+  await page.goto("/en-US/admin");
 
   const customerActivity = page.getByRole("region", {
     name: "Customer activity",
@@ -74,5 +77,38 @@ test("hydrates the customer activity section", async ({ page }, testInfo) => {
       path: screenshotPath,
     });
   }
+  await page.close();
+});
+
+test("renders an unknown administration address in the administration frame", async ({
+  context,
+  page,
+}) => {
+  // Lets the consent banner show if the customer providers render.
+  await preparePublicLegalBrowser(context);
+  await page.goto("/en-US/admin/route-fallback-unknown-address");
+
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: m.shellNotFoundTitle({}, { locale: "en-US" }),
+    })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Administration" }).first()
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: customerMessages.notFoundTitle({}, { locale: "en-US" }),
+    })
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: customerMessages.cookieConsentConsentModalAcceptNecessaryBtn(
+        {},
+        { locale: "en-US" }
+      ),
+    })
+  ).toHaveCount(0);
   await page.close();
 });

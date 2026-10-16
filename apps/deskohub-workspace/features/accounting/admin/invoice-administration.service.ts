@@ -638,6 +638,7 @@ const toDetail = (
       variableSymbol: document.variableSymbol,
       lines: document.lines,
       buyer: document.buyer,
+      // The API keeps this unprefixed; the proxy opens it in the operator's language.
       pdfUrl: `/admin/invoices/${item.invoice.id}/pdf`,
     };
   }
@@ -661,6 +662,7 @@ const toDetail = (
       price: amount,
     })),
     buyer: document.buyer,
+    // The API keeps this unprefixed; the proxy opens it in the operator's language.
     pdfUrl: `/admin/invoices/${item.invoice.id}/pdf`,
   };
 };

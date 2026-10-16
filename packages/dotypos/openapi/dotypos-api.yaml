@@ -371,6 +371,11 @@ paths:
           description: Filter customers (e.g., by email or phone)
           schema:
             type: string
+        - name: sort
+          in: query
+          description: Sort customers by a supported field, such as "versionDate" or "created" (prefix "-" for descending). Dotypos rejects "id" with 400.
+          schema:
+            type: string
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
       responses:
@@ -1799,7 +1804,8 @@ components:
           description: Is deleted
         versionDate:
           type: string
-          description: Last modification timestamp (ISO 8601)
+          nullable: true
+          description: Last modification timestamp (ISO 8601, up to microsecond precision); null or absent when the customer is undated
 
     DiscountGroup:
       type: object

@@ -136,13 +136,17 @@ describe.skipIf(!postgresDatabase)(
       const foreignError = await invokeRedirect(() =>
         revokeCliSession(toFormData({ sessionId: operatorSessionId }))
       );
-      expect(foreignError.digest).toContain("result=unchanged");
+      expect(foreignError.digest).toContain(
+        "/en-US/admin/cli/sessions?result=unchanged"
+      );
       expect((await loadSessionRow(operatorSessionId))?.revokedAt).toBeNull();
 
       const ownError = await invokeRedirect(() =>
         revokeCliSession(toFormData({ sessionId: adminSessionId }))
       );
-      expect(ownError.digest).toContain("result=revoked");
+      expect(ownError.digest).toContain(
+        "/en-US/admin/cli/sessions?result=revoked"
+      );
       expect((await loadSessionRow(adminSessionId))?.revokedAt).not.toBeNull();
     });
 

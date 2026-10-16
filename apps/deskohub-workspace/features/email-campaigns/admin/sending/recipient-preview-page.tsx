@@ -1,5 +1,5 @@
 import { ArrowLeft, RotateCw } from "lucide-react";
-import Link from "next/link";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
   AdministrationAlert,
   AdministrationDetailSection,
@@ -55,10 +55,10 @@ export async function RecipientPreviewPage({
             Nothing was changed.
           </p>
           <Button asChild className="mt-3" size="sm" variant="secondary">
-            <a href={`${campaignHref}/recipients`}>
+            <Link href={`${campaignHref}/recipients`}>
               <RotateCw aria-hidden className="size-4" />
               Try again
-            </a>
+            </Link>
           </Button>
         </AdministrationAlert>
       )}

@@ -1,10 +1,14 @@
-import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+
+mock.module("next/navigation", () => ({
+  useParams: () => ({ locale: "en-US" }),
+}));
 
 const { SentRecipientTable } = await import("./sent-recipient-table");
 

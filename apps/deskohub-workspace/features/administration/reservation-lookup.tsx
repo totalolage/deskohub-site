@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Form,
@@ -18,6 +19,7 @@ import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { getAdministrationReservation } from "./actions";
+import { localizeAdministrationHref } from "./administration-href";
 import {
   type ReservationLookupInput,
   reservationLookupSchema,
@@ -30,6 +32,7 @@ export function ReservationLookup({
   readonly variant?: "card" | "toolbar";
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
   const [error, setError] = useState<string | null>(null);
   const form = useForm<ReservationLookupInput, unknown, ReservationLookupInput>(
     {
@@ -53,7 +56,10 @@ export function ReservationLookup({
         }
         setError(null);
         router.push(
-          `/admin/reservations/${encodeURIComponent(data.reservationId)}`
+          localizeAdministrationHref(
+            `/admin/reservations/${encodeURIComponent(data.reservationId)}`,
+            locale
+          )
         );
       },
       onError: ({ error: actionError }) =>

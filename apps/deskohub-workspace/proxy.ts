@@ -23,8 +23,28 @@ import { isAdministratorAuthorizationValid } from "./shared/administrator/admini
 import { resolveWorkspaceRuntimeCallbackOrigin } from "./shared/backend/config/workspace-url.config";
 import { markPrivateResponse } from "./shared/utils/private-response";
 
-const isAdministrationPath = (pathname: string) =>
-  pathname === "/admin" || pathname.startsWith("/admin/");
+const decodePathname = (pathname: string) => {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return pathname;
+  }
+};
+
+// The administration lives under the locale segment, and its unprefixed URLs
+// redirect there. Any first or second segment naming it counts, whatever the
+// prefix and however it is encoded, so no spelling of an administration URL
+// skips Basic auth.
+const isAdministrationPath = (pathname: string) => {
+  const [first, second] = decodePathname(pathname).split("/").slice(1, 3);
+  return first === "admin" || second === "admin";
+};
+
+const markAdministrationResponse = <T extends Response>(response: T) => {
+  response.headers.set("Cache-Control", "private, no-store");
+  response.headers.append("Vary", "Authorization");
+  return response;
+};
 
 const isPrivateReservationPath = (pathname: string) =>
   pathname.includes("/reservation/status/") ||
@@ -118,54 +138,8 @@ const pageLocalePreference = async (request: NextRequest) => {
   }
 };
 
-export async function proxy(request: NextRequest) {
-  if (isAdministrationPath(request.nextUrl.pathname)) {
-    if (
-      !isAdministratorAuthorizationValid(
-        request.headers.get("authorization"),
-        env.ADMIN_BASIC_AUTH_CREDENTIALS
-      )
-    ) {
-      return new NextResponse(null, {
-        status: 401,
-        headers: {
-          "Cache-Control": "private, no-store",
-          Vary: "Authorization",
-          "WWW-Authenticate":
-            'Basic realm="Deskohub administration", charset="UTF-8"',
-        },
-      });
-    }
-
-    const response = NextResponse.next();
-    response.headers.set("Cache-Control", "private, no-store");
-    response.headers.set("Vary", "Authorization");
-    return response;
-  }
-
-  if (request.method === "POST" && request.headers.has("next-action")) {
-    return NextResponse.next();
-  }
-
-  if (
-    env.VERCEL_ENV === "preview" &&
-    (request.method === "GET" || request.method === "HEAD")
-  ) {
-    const callbackOrigin = Result.getOrThrow(
-      resolveWorkspaceRuntimeCallbackOrigin()
-    );
-    if (request.nextUrl.origin !== callbackOrigin.origin) {
-      const redirectUrl = new URL(
-        `${request.nextUrl.pathname}${request.nextUrl.search}`,
-        callbackOrigin
-      );
-      appendVercelPreviewProtectionBypass(redirectUrl, {
-        setBypassCookie: true,
-      });
-      return markPrivateResponse(NextResponse.redirect(redirectUrl));
-    }
-  }
-
+// Places a page request on the URL the Workspace locale chain resolves.
+async function localizedPageResponse(request: NextRequest) {
   const localeFromUrl = getLocaleFromRequestPathname(request, locales);
 
   // A reservation capability is bound to the locale it was issued in, so it is
@@ -226,9 +200,62 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+export async function proxy(request: NextRequest) {
+  if (isAdministrationPath(request.nextUrl.pathname)) {
+    if (
+      !isAdministratorAuthorizationValid(
+        request.headers.get("authorization"),
+        env.ADMIN_BASIC_AUTH_CREDENTIALS
+      )
+    ) {
+      return new NextResponse(null, {
+        status: 401,
+        headers: {
+          "Cache-Control": "private, no-store",
+          Vary: "Authorization",
+          "WWW-Authenticate":
+            'Basic realm="Deskohub administration", charset="UTF-8"',
+        },
+      });
+    }
+
+    return markAdministrationResponse(
+      request.method === "POST" && request.headers.has("next-action")
+        ? NextResponse.next()
+        : await localizedPageResponse(request)
+    );
+  }
+
+  if (request.method === "POST" && request.headers.has("next-action")) {
+    return NextResponse.next();
+  }
+
+  if (
+    env.VERCEL_ENV === "preview" &&
+    (request.method === "GET" || request.method === "HEAD")
+  ) {
+    const callbackOrigin = Result.getOrThrow(
+      resolveWorkspaceRuntimeCallbackOrigin()
+    );
+    if (request.nextUrl.origin !== callbackOrigin.origin) {
+      const redirectUrl = new URL(
+        `${request.nextUrl.pathname}${request.nextUrl.search}`,
+        callbackOrigin
+      );
+      appendVercelPreviewProtectionBypass(redirectUrl, {
+        setBypassCookie: true,
+      });
+      return markPrivateResponse(NextResponse.redirect(redirectUrl));
+    }
+  }
+
+  return localizedPageResponse(request);
+}
+
 export const config: MiddlewareConfig = {
   matcher: [
     "/admin/:path*",
+    "/:locale/admin/:path*",
     "/((?!api|_next/static|_next/image|favicon.ico|favicon.svg|.*\\..*).*)",
   ],
 };

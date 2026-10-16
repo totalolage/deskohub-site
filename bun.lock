@@ -133,6 +133,7 @@
         "@deskohub/next-effect": "workspace:*",
         "@deskohub/posthog": "workspace:*",
         "@deskohub/qr-code": "workspace:*",
+        "@deskohub/secret-comparison": "workspace:*",
         "@deskohub/standard-schema": "workspace:*",
         "@deskohub/test-email": "workspace:*",
         "@deskohub/workspace-admin-api": "workspace:*",
@@ -417,6 +418,7 @@
       "name": "@deskohub/nexi",
       "version": "0.1.0",
       "dependencies": {
+        "@deskohub/secret-comparison": "workspace:*",
         "effect": "4.0.0-beta.85",
       },
       "devDependencies": {
@@ -492,6 +494,13 @@
     "packages/reservation": {
       "name": "@deskohub/reservation",
       "version": "0.1.0",
+    },
+    "packages/secret-comparison": {
+      "name": "@deskohub/secret-comparison",
+      "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "npm:@typescript/typescript6@6.0.2",
+      },
     },
     "packages/standard-schema": {
       "name": "@deskohub/standard-schema",
@@ -748,6 +757,8 @@
     "@deskohub/qr-code": ["@deskohub/qr-code@workspace:packages/qr-code"],
 
     "@deskohub/reservation": ["@deskohub/reservation@workspace:packages/reservation"],
+
+    "@deskohub/secret-comparison": ["@deskohub/secret-comparison@workspace:packages/secret-comparison"],
 
     "@deskohub/standard-schema": ["@deskohub/standard-schema@workspace:packages/standard-schema"],
 

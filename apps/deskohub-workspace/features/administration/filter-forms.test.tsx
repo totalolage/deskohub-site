@@ -8,6 +8,7 @@ import {
 } from "bun:test";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { m } from "@/features/i18n";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -203,7 +204,7 @@ describe("administration filter forms", () => {
       const type = view.getByLabelText("Reservation type") as HTMLSelectElement;
 
       expect(form.getAttribute("method")).toBe("get");
-      expect(form.getAttribute("action")).toBe("/admin/reservations");
+      expect(form.getAttribute("action")).toBe("/en-US/admin/reservations");
       expect(type.value).toBe("office");
       expect(type.selectedOptions[0]?.textContent).toBe(
         m.reservationOfficeProductTitle()
@@ -247,7 +248,7 @@ describe("administration filter forms", () => {
       ).toBe("2026-08-05");
       expect(
         view.getByRole("link", { name: "Clear" }).getAttribute("href")
-      ).toBe("/admin/reservations");
+      ).toBe("/en-US/admin/reservations");
 
       view.rerender(
         reservationFilterForm({ direction: "desc", sort: "created" })
@@ -281,7 +282,9 @@ describe("administration filter forms", () => {
       });
       expect(
         view.getByRole("link", { name: "Upcoming" }).getAttribute("href")
-      ).toBe("/admin/reservations?direction=desc&from=2026-08-13&sort=created");
+      ).toBe(
+        "/en-US/admin/reservations?direction=desc&from=2026-08-13&sort=created"
+      );
 
       view.rerender(
         reservationFilterForm({
@@ -308,5 +311,19 @@ describe("administration filter forms", () => {
       ]);
       await expectNativeGetSubmission(form);
     });
+  });
+  // The server renders without an ambient locale, so a message that falls
+  // back to it would differ from the hydrated client on a Czech route.
+  test("names reservation types in the route locale", () => {
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        {reservationFilterForm({})}
+      </RouteLocaleProvider>
+    );
+
+    expect(
+      view.container.querySelector('#reservation-type option[value="office"]')
+        ?.textContent
+    ).toBe(m.reservationOfficeProductTitle({}, { locale: "cs-CZ" }));
   });
 });

@@ -55,13 +55,11 @@ const isPlainClick = (event: MouseEvent<HTMLAnchorElement>) =>
   !event.shiftKey &&
   !event.altKey;
 
-export function LocaleSwitcherLinks({
-  currentLocale,
-  languageLabels,
-  closeMenu,
-  isMobile = false,
-  localePreference,
-}: LocaleSwitcherLinksProps) {
+/**
+ * Hrefs and click handling for links that switch the current page to another
+ * locale.
+ */
+export function useLocaleSwitch(localePreference?: LocalePreferenceSaving) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const signedIn = useSignedIn(localePreference);
@@ -81,6 +79,18 @@ export function LocaleSwitcherLinks({
           void switchLocale(locale, localePreference);
         }
       : undefined;
+
+  return { getLocaleHref, selectLocale };
+}
+
+export function LocaleSwitcherLinks({
+  currentLocale,
+  languageLabels,
+  closeMenu,
+  isMobile = false,
+  localePreference,
+}: LocaleSwitcherLinksProps) {
+  const { getLocaleHref, selectLocale } = useLocaleSwitch(localePreference);
 
   return (
     <LocaleSwitcherLabels

@@ -7,6 +7,7 @@ import { areAccountsEnabled } from "@/features/account/server/account-feature-fl
 import { isCustomerSignedIn } from "@/features/account/server/customer-session.server";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import { type Locale, m } from "@/features/i18n";
+import { getLanguageLabels } from "@/features/i18n/language-labels";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
 import {
@@ -47,13 +48,6 @@ export type SiteHeaderAccountEntry = {
 type DisabledSiteHeaderMenuItems = Partial<
   Record<SiteHeaderMenuItemId, boolean>
 >;
-
-export const getSiteHeaderLanguageLabels = (
-  locale: Locale
-): Record<Locale, string> => ({
-  "cs-CZ": m.languageCzech({}, { locale }),
-  "en-US": m.languageEnglish({}, { locale }),
-});
 
 export const getSiteHeaderAccessibilityLabels = (locale: Locale) => ({
   closeNavigationMenuLabel: m.closeNavigationMenuLabel({}, { locale }),
@@ -136,7 +130,7 @@ const createSiteHeaderConfig = (
       account: createSiteHeaderAccountEntry(locale),
       localePreference: createLocalePreferenceSaving(),
     }),
-    languageLabels: getSiteHeaderLanguageLabels(locale),
+    languageLabels: getLanguageLabels(locale),
     links: links.filter(({ id }) => disabledMenuItems[id] !== true),
     contactLabel: m.reservationNavCta({}, { locale }),
     contactHref: getCoworkReservationPath(locale),
@@ -161,6 +155,17 @@ const createSiteHeaderAccountEntry = (
 // whether a switch must save the signed-in customer's preference.
 const createLocalePreferenceSaving = (): LocalePreferenceSaving => ({
   signedIn: isCustomerSignedIn().catch(() => false),
+  save: updateLocalePreference,
+});
+
+/**
+ * The switcher's preference saving for a static shell that can't await the
+ * accounts flag: the flag and session checks both stream after the shell.
+ */
+export const createStreamedLocalePreference = (): LocalePreferenceSaving => ({
+  signedIn: areAccountsEnabled()
+    .then((enabled) => enabled && isCustomerSignedIn())
+    .catch(() => false),
   save: updateLocalePreference,
 });
 

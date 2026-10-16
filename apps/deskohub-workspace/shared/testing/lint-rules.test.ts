@@ -156,7 +156,7 @@ const browserRunner =
 const accountBackend = `${account}/backend`;
 const authServer = `${accountBackend}/auth/auth-server.ts`;
 const authOptions = `${accountBackend}/auth/auth-options.ts`;
-const admin = "apps/deskohub-workspace/app/admin";
+const admin = "apps/deskohub-workspace/app/[locale]/admin";
 const capabilityClass =
   'export class ReservationService extends Context.Service<ReservationService, { readonly hold: () => Effect.Effect<void> }>()("ReservationService") {\n  static Default = Layer.succeed(this, { hold: () => Effect.void });\n}\n';
 const breadcrumbLoader =

@@ -24,6 +24,7 @@ import type {
   UpdateCustomerRequest,
   UpdateReservationRequest,
 } from "../generated/effect.gen";
+import { type DotyposTimestamp, formatDotyposTimestamp } from "../timestamp";
 import type {
   CreateDotyposReservationInput,
   DotyposCategoryId,
@@ -68,6 +69,40 @@ export type ReservationListOptions = {
 export type CustomerListOptions = {
   readonly ids: readonly DotyposCustomerId[];
 };
+
+/**
+ * Which customers a change listing reads, by `versionDate`. Dated selections
+ * list customers ordered by `versionDate`. A single version date and the
+ * undated customers are listed ordered by `created`, from `createdFrom` on
+ * when it is set. Dotypos can't sort by `id`, and compares timestamps at
+ * microsecond precision.
+ */
+export type CustomerVersionSelection = Data.TaggedEnum<{
+  Dated: Record<never, never>;
+  ChangedFrom: { readonly versionDate: DotyposTimestamp };
+  ChangedAfter: { readonly versionDate: DotyposTimestamp };
+  ChangedAt: {
+    readonly versionDate: DotyposTimestamp;
+    readonly createdFrom: Option.Option<DotyposTimestamp>;
+  };
+  Undated: { readonly createdFrom: Option.Option<DotyposTimestamp> };
+}>;
+
+export const CustomerVersionSelection =
+  Data.taggedEnum<CustomerVersionSelection>();
+
+export type CustomerChangesOptions = {
+  readonly selection: CustomerVersionSelection;
+};
+
+export type CustomerChanges = {
+  /** Customers in the selection's order, deleted ones included. */
+  readonly customers: readonly DotyposCustomer[];
+  readonly hasMore: boolean;
+};
+
+/** Dotypos serves at most this many records per list page. */
+const dotyposMaximumPageSize = 100;
 
 type DotyposPage<A> = {
   readonly data?: readonly A[];
@@ -176,6 +211,38 @@ const getActiveReservationOverlapFilter = (
       ].join(";")
     )
   );
+
+const customerVersionQuery = (
+  selection: CustomerVersionSelection
+): { readonly filters: readonly string[]; readonly sort: string } =>
+  Match.valueTags(selection, {
+    Dated: () => ({ filters: ["versionDate|eq|notnull"], sort: "versionDate" }),
+    ChangedFrom: ({ versionDate }) => ({
+      filters: [`versionDate|gteq|${formatDotyposTimestamp(versionDate)}`],
+      sort: "versionDate",
+    }),
+    ChangedAfter: ({ versionDate }) => ({
+      filters: [`versionDate|gt|${formatDotyposTimestamp(versionDate)}`],
+      sort: "versionDate",
+    }),
+    ChangedAt: ({ versionDate, createdFrom }) => ({
+      filters: [
+        `versionDate|eq|${formatDotyposTimestamp(versionDate)}`,
+        ...createdFromFilter(createdFrom),
+      ],
+      sort: "created",
+    }),
+    Undated: ({ createdFrom }) => ({
+      filters: ["versionDate|eq|null", ...createdFromFilter(createdFrom)],
+      sort: "created",
+    }),
+  });
+
+const createdFromFilter = (createdFrom: Option.Option<DotyposTimestamp>) =>
+  Option.match(createdFrom, {
+    onNone: () => [],
+    onSome: (created) => [`created|gteq|${formatDotyposTimestamp(created)}`],
+  });
 
 const getNextDotyposPageNumber = (input: {
   readonly currentPage: number;
@@ -951,6 +1018,59 @@ const makeDotyposService = Effect.gen(function* () {
       catchUnexpectedDotyposError("getCustomers")
     );
   });
+
+  /**
+   * Reads the first page of customer changes for an incremental export; the
+   * caller moves through the changes by narrowing the selection, never by
+   * page number. It sends exactly one list request and never retries it, so
+   * every call costs one request against the Dotypos rate limit and the
+   * caller decides when to try again.
+   */
+  const listCustomerChanges = (options: CustomerChangesOptions) =>
+    Effect.succeed(options).pipe(
+      Effect.let("query", ({ selection }) => customerVersionQuery(selection)),
+      Effect.bind("result", readCustomerChangePage),
+      Effect.bind("nextPage", ({ result }) =>
+        getNextDotyposPageNumber({
+          currentPage: 1,
+          nextPage: result.nextPage,
+          operation: "listCustomerChanges",
+        })
+      ),
+      Effect.map(
+        ({ result, nextPage }): CustomerChanges => ({
+          customers: result.data ?? [],
+          hasMore: nextPage !== undefined,
+        })
+      ),
+      Effect.withSpan("listCustomerChanges")
+    );
+
+  const readCustomerChangePage = (input: {
+    readonly query: ReturnType<typeof customerVersionQuery>;
+  }) =>
+    runDotyposRequest(
+      client.getCustomers(config.cloudId, {
+        params: {
+          filter: ["deleted|in|0,1", ...input.query.filters].join(";"),
+          sort: input.query.sort,
+          limit: dotyposMaximumPageSize,
+          page: 1,
+        },
+      }),
+      "listCustomerChanges"
+    ).pipe(
+      // Dotypos answers a page without customers with 404.
+      Effect.catchTag("ExternalAPIError", (error) =>
+        error.statusCode === 404
+          ? Effect.succeed({ data: [] as const })
+          : Effect.fail(error)
+      ),
+      Effect.flatMap((result) =>
+        decodeProviderPage(DotyposCustomerSchema, result, "listCustomerChanges")
+      ),
+      catchUnexpectedDotyposError("listCustomerChanges")
+    );
 
   const searchCustomers = Effect.fn("searchCustomers")(function* (
     rawQuery: string
@@ -1796,6 +1916,7 @@ const makeDotyposService = Effect.gen(function* () {
     getReservationStatus,
     getCustomer,
     getCustomers,
+    listCustomerChanges,
     createCustomer,
     patchCustomer,
     searchCustomers,
