@@ -232,7 +232,10 @@ describe("discount administration pages", () => {
             }
           }}
         >
-          <CodesAdministrationCollection dashboard={sortableDashboard} />
+          <CodesAdministrationCollection
+            locale="en-US"
+            dashboard={sortableDashboard}
+          />
         </Profiler>
       </StrictMode>
     );
@@ -254,6 +257,28 @@ describe("discount administration pages", () => {
       );
       expect(renderCount).toBeLessThan(20);
     });
+  });
+
+  test("renders the code list in the operator's locale", async () => {
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <CodesAdministrationCollection dashboard={dashboard} locale="cs-CZ" />
+      </RouteLocaleProvider>
+    );
+    const table = view.getByRole("table", { name: "Slevové kódy" });
+
+    expect(view.getByRole("heading", { name: "Kódy" })).toBeDefined();
+    expect(within(table).getByRole("button", { name: /^Kód/ })).toBeDefined();
+    expect(within(table).getByText("Aktivní")).toBeDefined();
+    expect(within(table).getByText("2 zákazníci")).toBeDefined();
+    expect(within(table).getByText("Všechny úrovně coworku")).toBeDefined();
+    expect(
+      within(table).getByRole("button", { name: "Smazat SUMMER10" })
+    ).toBeDefined();
   });
 
   test("shows only explicit and unrestricted customer codes with guarded icon actions", async () => {
@@ -789,7 +814,7 @@ describe("discount administration pages", () => {
     const captured = captureWorkspaceActions(/^updateDiscount\./);
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
-      <CodesAdministrationCollection dashboard={dashboard} />
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
     );
     fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
 
@@ -860,7 +885,7 @@ describe("discount administration pages", () => {
     const captured = captureWorkspaceActions(/^updateDiscount\./);
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
-      <CodesAdministrationCollection dashboard={dashboard} />
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
     );
     fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
 
@@ -913,7 +938,7 @@ describe("discount administration pages", () => {
     const captured = captureWorkspaceActions(/^updateDiscount\./);
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
-      <CodesAdministrationCollection dashboard={dashboard} />
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
     );
     fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
 
@@ -968,7 +993,7 @@ describe("discount administration pages", () => {
     );
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
-      <CodesAdministrationCollection dashboard={dashboard} />
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
     );
     fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
 
@@ -1144,6 +1169,7 @@ describe("discount administration pages", () => {
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
       <CodesAdministrationCollection
+        locale="en-US"
         dashboard={{
           ...dashboard,
           discounts: [
@@ -1199,7 +1225,7 @@ describe("discount administration pages", () => {
   });
 
   test("sets and clears a customer discount group", async () => {
-    const captured = captureWorkspaceActions(/^Save group$/);
+    const captured = captureWorkspaceActions(/^setCustomerDiscountGroup$/);
     const { CustomerDiscountGroupForm } = await import(
       "./customer-admin-client"
     );
@@ -1217,7 +1243,7 @@ describe("discount administration pages", () => {
 
     fireEvent.change(select, { target: { value: "group-1" } });
     fireEvent.submit(form);
-    const { execute } = captured("Save group");
+    const { execute } = captured("setCustomerDiscountGroup");
     await waitFor(() =>
       expect(execute).toHaveBeenCalledWith({
         kind: "set-customer-discount-group",

@@ -8,12 +8,13 @@ import {
   type AdministrationDataTableColumn,
 } from "@/features/administration/data-table";
 import {
-  formatAdministrationDateTime,
   formatAdministrationMoney,
   getAdministrationPaymentStatus,
 } from "@/features/administration/formatters";
+import { m } from "@/features/administration/i18n";
 import { NexiOrderLink } from "@/features/administration/nexi-order-link";
 import { PaymentAmount } from "@/features/administration/payment-status";
+import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -48,7 +49,11 @@ type CustomerPromotionCodeItem =
       readonly remainingCredit: Money;
     };
 
-type ClaimHistoryItem = {
+/**
+ * Times arrive formatted from the server: formatting them in this client tree
+ * would differ from the server render and fail hydration.
+ */
+export type ClaimHistoryItem = {
   readonly id: string;
   readonly kind: CustomerPromotionCodeItem["kind"];
   readonly appliedAmount: Money;
@@ -59,14 +64,35 @@ type ClaimHistoryItem = {
   readonly releasedAt: string | null;
   readonly releaseReason: string | null;
   readonly reservedAt: string;
+  readonly reservedAtLabel: string;
+  /** When the claim was redeemed or released, if it was. */
+  readonly completedAtLabel: string | null;
   readonly state: AdminDiscountCodeClaim["state"];
   readonly workspaceReservationId: string;
 };
 
-const promotionCodeKindLabels = {
-  "discount-code": "Discount code",
-  voucher: "Voucher",
-} satisfies Record<CustomerPromotionCodeItem["kind"], string>;
+/** A transaction whose time arrives formatted from the server. */
+export type CustomerTransactionTableItem = AdministrationCustomerTransaction & {
+  readonly updatedAtLabel: string;
+};
+
+const getPromotionCodeKindLabel = (
+  kind: CustomerPromotionCodeItem["kind"],
+  locale: Locale
+) =>
+  kind === "voucher"
+    ? m.discountsPromotionKindVoucher({}, { locale })
+    : m.discountsPromotionKindDiscountCode({}, { locale });
+
+const getClaimStateLabel = (
+  state: AdminDiscountCodeClaim["state"],
+  locale: Locale
+) =>
+  ({
+    reserved: m.discountsClaimStateReserved,
+    redeemed: m.discountsClaimStateRedeemed,
+    released: m.discountsClaimStateReleased,
+  })[state]({}, { locale });
 
 const getPromotionCodeHref = (item: {
   readonly id: string;
@@ -81,19 +107,31 @@ const getPromotionCodeBenefit = (
   locale: Locale
 ) => {
   if (item.kind === "voucher") {
-    return `${formatAdministrationMoney(item.issuedCredit, locale)} credit`;
+    return m.discountsVoucherCreditBenefit(
+      { amount: formatAdministrationMoney(item.issuedCredit, locale) },
+      { locale }
+    );
   }
   return `${item.discountLabel} · ${
     item.discountAdjustment.kind === "percentage"
-      ? `${item.discountAdjustment.basisPoints / 100}%`
+      ? formatDiscountAdjustment(item.discountAdjustment, locale)
       : formatAdministrationMoney(item.discountAdjustment.amount, locale)
   }`;
 };
 
-const getPromotionCodeAvailability = (item: CustomerPromotionCodeItem) => {
-  if (item.audienceSize === 0) return "Available to all";
-  if (item.eligible && item.audienceSize === 1) return "Only this customer";
-  return `${item.audienceSize} selected customers`;
+const getPromotionCodeAvailability = (
+  item: CustomerPromotionCodeItem,
+  locale: Locale
+) => {
+  if (item.audienceSize === 0)
+    return m.discountsAvailabilityAll({}, { locale });
+  if (item.eligible && item.audienceSize === 1) {
+    return m.discountsAvailabilityOnlyCustomer({}, { locale });
+  }
+  return m.discountsAvailabilitySelectedCustomers(
+    { count: item.audienceSize },
+    { locale }
+  );
 };
 
 export function CustomerPromotionCodeTable({
@@ -112,7 +150,7 @@ export function CustomerPromotionCodeTable({
     () => [
       {
         accessorKey: "code",
-        header: "Code",
+        header: m.discountsColumnCode({}, { locale }),
         cell: ({ row }) => (
           <Link
             className="font-mono font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
@@ -124,25 +162,29 @@ export function CustomerPromotionCodeTable({
         meta: { cellClassName: "whitespace-nowrap" },
       },
       {
-        accessorFn: (item) => promotionCodeKindLabels[item.kind],
+        accessorFn: (item) => getPromotionCodeKindLabel(item.kind, locale),
         id: "type",
-        header: "Type",
+        header: m.discountsColumnType({}, { locale }),
         meta: { cellClassName: "whitespace-nowrap" },
       },
       {
         accessorFn: (item) => getPromotionCodeBenefit(item, locale),
         id: "benefit",
-        header: "Benefit",
+        header: m.discountsColumnBenefit({}, { locale }),
         cell: ({ row }) => (
           <>
             {getPromotionCodeBenefit(row.original, locale)}
             {row.original.kind === "voucher" && (
               <span className="mt-0.5 block text-xs text-navy-blue/65">
-                {formatAdministrationMoney(
-                  row.original.remainingCredit,
-                  locale
-                )}{" "}
-                remaining
+                {m.discountsVoucherCreditRemaining(
+                  {
+                    amount: formatAdministrationMoney(
+                      row.original.remainingCredit,
+                      locale
+                    ),
+                  },
+                  { locale }
+                )}
               </span>
             )}
           </>
@@ -151,21 +193,27 @@ export function CustomerPromotionCodeTable({
       },
       {
         accessorKey: "enabled",
-        header: "Status",
+        header: m.discountsColumnStatus({}, { locale }),
         cell: ({ row }) => (
           <StatusBadge tone={row.original.enabled ? "positive" : "neutral"}>
-            {row.original.enabled ? "Enabled" : "Disabled"}
+            {row.original.enabled
+              ? m.discountsStatusEnabled({}, { locale })
+              : m.discountsStatusDisabled({}, { locale })}
           </StatusBadge>
         ),
       },
       {
         accessorKey: "audienceSize",
-        header: "Availability",
-        cell: ({ row }) => getPromotionCodeAvailability(row.original),
+        header: m.discountsColumnAvailability({}, { locale }),
+        cell: ({ row }) => getPromotionCodeAvailability(row.original, locale),
       },
       {
         id: "action",
-        header: () => <span className="sr-only">Manage eligibility</span>,
+        header: () => (
+          <span className="sr-only">
+            {m.discountsColumnManageEligibility({}, { locale })}
+          </span>
+        ),
         enableSorting: false,
         cell: ({ row }) => (
           <CustomerPromotionCodeAction
@@ -189,7 +237,7 @@ export function CustomerPromotionCodeTable({
 
   return (
     <AdministrationDataTable
-      ariaLabel="Customer codes and vouchers"
+      ariaLabel={m.discountsCustomerCodesTableLabel({}, { locale })}
       columns={columns}
       data={items}
       getRowId={(item) => `${item.kind}:${item.id}`}
@@ -201,19 +249,18 @@ export function CustomerPromotionCodeTable({
 export function CustomerTransactionHistoryTable({
   transactions,
 }: {
-  readonly transactions: readonly AdministrationCustomerTransaction[];
+  readonly transactions: readonly CustomerTransactionTableItem[];
 }) {
   const locale = useRouteLocale();
   const columns = useMemo<
-    AdministrationDataTableColumn<AdministrationCustomerTransaction>[]
+    AdministrationDataTableColumn<CustomerTransactionTableItem>[]
   >(
     () => [
       {
         accessorFn: ({ attempt }) => attempt.updatedAt,
         id: "date",
-        header: "Date",
-        cell: ({ row }) =>
-          formatAdministrationDateTime(row.original.attempt.updatedAt, locale),
+        header: m.discountsColumnDate({}, { locale }),
+        cell: ({ row }) => row.original.updatedAtLabel,
         meta: {
           cellClassName: "whitespace-nowrap text-navy-blue/68",
         },
@@ -221,7 +268,7 @@ export function CustomerTransactionHistoryTable({
       {
         accessorFn: ({ attempt }) => attempt.state,
         id: "status",
-        header: "Status",
+        header: m.discountsColumnStatus({}, { locale }),
         cell: ({ row }) => {
           const { attempt } = row.original;
           const status = getAdministrationPaymentStatus(attempt, locale);
@@ -241,7 +288,7 @@ export function CustomerTransactionHistoryTable({
       {
         accessorFn: ({ reservation }) => reservation.typeLabel,
         id: "reservation",
-        header: "Reservation",
+        header: m.discountsColumnReservation({}, { locale }),
         cell: ({ row }) => (
           <Link
             className="font-semibold underline decoration-navy-blue/20 underline-offset-4"
@@ -254,7 +301,7 @@ export function CustomerTransactionHistoryTable({
       {
         accessorFn: ({ attempt }) => attempt.amount.value,
         id: "amount",
-        header: "Amount",
+        header: m.discountsColumnAmount({}, { locale }),
         cell: ({ row }) => (
           <PaymentAmount locale={locale} payment={row.original.attempt} />
         ),
@@ -263,7 +310,7 @@ export function CustomerTransactionHistoryTable({
       {
         accessorFn: ({ attempt }) => attempt.providerOrderId ?? attempt.id,
         id: "paymentId",
-        header: "Payment ID",
+        header: m.discountsColumnPaymentId({}, { locale }),
         cell: ({ row }) =>
           row.original.attempt.providerOrderId ? (
             <NexiOrderLink
@@ -281,7 +328,7 @@ export function CustomerTransactionHistoryTable({
 
   return (
     <AdministrationDataTable
-      ariaLabel="Customer transaction history"
+      ariaLabel={m.discountsCustomerTransactionsTableLabel({}, { locale })}
       columns={columns}
       data={transactions}
       getRowId={({ attempt }) => attempt.id}
@@ -310,20 +357,20 @@ export function ClaimHistoryTable({
       subject === "customer"
         ? {
             accessorKey: "dotyposCustomerId",
-            header: "Customer",
+            header: m.discountsColumnCustomer({}, { locale }),
             cell: ({ row }) => (
               <Link
                 className="font-semibold underline underline-offset-4"
                 href={`/admin/customers/${row.original.dotyposCustomerId}`}
               >
-                View customer
+                {m.discountsViewCustomer({}, { locale })}
               </Link>
             ),
           }
         : {
             accessorFn: (claim) => claim.promotion.code ?? claim.promotion.id,
             id: "code",
-            header: "Code",
+            header: m.discountsColumnCode({}, { locale }),
             cell: ({ row }) => (
               <Link
                 className="font-mono font-semibold underline underline-offset-4"
@@ -333,7 +380,9 @@ export function ClaimHistoryTable({
                 })}
               >
                 {row.original.promotion.code ??
-                  `View ${promotionCodeKindLabels[row.original.kind].toLowerCase()}`}
+                  (row.original.kind === "voucher"
+                    ? m.discountsViewVoucher({}, { locale })
+                    : m.discountsViewDiscountCode({}, { locale }))}
               </Link>
             ),
             meta: { cellClassName: "whitespace-nowrap" },
@@ -342,23 +391,22 @@ export function ClaimHistoryTable({
         ? [
             {
               accessorFn: (claim: ClaimHistoryItem) =>
-                promotionCodeKindLabels[claim.kind],
+                getPromotionCodeKindLabel(claim.kind, locale),
               id: "type",
-              header: "Type",
+              header: m.discountsColumnType({}, { locale }),
               meta: { cellClassName: "whitespace-nowrap" },
             } satisfies AdministrationDataTableColumn<ClaimHistoryItem>,
           ]
         : []),
       {
         accessorKey: "state",
-        header: "State",
+        header: m.discountsColumnState({}, { locale }),
         cell: ({ row }) => (
           <>
             <StatusBadge
               tone={row.original.state === "released" ? "neutral" : "positive"}
             >
-              {row.original.state[0]?.toUpperCase()}
-              {row.original.state.slice(1)}
+              {getClaimStateLabel(row.original.state, locale)}
             </StatusBadge>
             {row.original.releaseReason && (
               <p className="mt-1 max-w-48 text-xs text-navy-blue/65">
@@ -371,40 +419,33 @@ export function ClaimHistoryTable({
       {
         accessorFn: (claim) => claim.appliedAmount.value,
         id: "amount",
-        header: "Amount",
+        header: m.discountsColumnAmount({}, { locale }),
         cell: ({ row }) =>
           formatAdministrationMoney(row.original.appliedAmount, locale),
         meta: { cellClassName: "whitespace-nowrap" },
       },
       {
         accessorKey: "reservedAt",
-        header: "Reserved",
-        cell: ({ row }) =>
-          formatAdministrationDateTime(row.original.reservedAt, locale),
+        header: m.discountsColumnReserved({}, { locale }),
+        cell: ({ row }) => row.original.reservedAtLabel,
         meta: { cellClassName: "whitespace-nowrap" },
       },
       {
         accessorFn: (claim) => claim.redeemedAt ?? claim.releasedAt ?? "",
         id: "completed",
-        header: "Completed",
-        cell: ({ row }) =>
-          row.original.redeemedAt || row.original.releasedAt
-            ? formatAdministrationDateTime(
-                row.original.redeemedAt ?? row.original.releasedAt ?? "",
-                locale
-              )
-            : "—",
+        header: m.discountsColumnCompleted({}, { locale }),
+        cell: ({ row }) => row.original.completedAtLabel ?? "—",
         meta: { cellClassName: "whitespace-nowrap" },
       },
       {
         accessorKey: "workspaceReservationId",
-        header: "Reservation",
+        header: m.discountsColumnReservation({}, { locale }),
         cell: ({ row }) => (
           <Link
             className="font-semibold underline underline-offset-4"
             href={`/admin/reservations/${row.original.workspaceReservationId}`}
           >
-            Open reservation
+            {m.discountsOpenReservation({}, { locale })}
           </Link>
         ),
       },

@@ -71,6 +71,7 @@ import {
   type VoucherClaimId,
   type VoucherId,
 } from "../persistence-contracts";
+import { untitledCalendarEventTitle } from "./calendar-sale-title";
 import type {
   CreateCustomerDiscountCodeAdminInput,
   CreateCustomerVoucherAdminInput,
@@ -82,6 +83,7 @@ import type {
   UpdateDiscountCodeAdminInput,
   UpdateVoucherAdminInput,
 } from "./contracts";
+import { unnamedCustomerDisplayName } from "./customer-display-name";
 
 export type AdminDiscount = {
   readonly id: StoredDiscountId;
@@ -1077,6 +1079,7 @@ export class DiscountAdministration extends Context.Service<
               const usedValue = usage?.value ?? 0;
               if (usedValue > input.credit.value) {
                 return yield* new DiscountAdminConflictError({
+                  reason: "voucher-credit-below-usage",
                   message:
                     "Voucher credit cannot be lower than its reserved and redeemed value.",
                 });
@@ -1092,6 +1095,7 @@ export class DiscountAdministration extends Context.Service<
                 })
               ) {
                 return yield* new DiscountAdminConflictError({
+                  reason: "voucher-currency-locked",
                   message:
                     "Voucher currency cannot change after it has claim history.",
                 });
@@ -1396,6 +1400,7 @@ export class DiscountAdministration extends Context.Service<
               }
               if (audience.length === 1) {
                 return yield* new DiscountAdminAudienceError({
+                  promotionKind: "discount-code",
                   message:
                     "Removing the final customer would make this code unrestricted. Use Make unrestricted instead.",
                 });
@@ -1522,6 +1527,7 @@ export class DiscountAdministration extends Context.Service<
               }
               if (audience.length === 1) {
                 return yield* new DiscountAdminAudienceError({
+                  promotionKind: "voucher",
                   message:
                     "Removing the final customer would make this voucher unrestricted. Use Make unrestricted instead.",
                 });
@@ -1664,45 +1670,75 @@ type DiscountAdminMissingResource =
       readonly id: DotyposCustomerId;
     };
 
-class DiscountAdminNotFoundError extends Data.TaggedError(
+export class DiscountAdminNotFoundError extends Data.TaggedError(
   "DiscountAdminNotFoundError"
 )<{
   readonly resource: DiscountAdminMissingResource;
   readonly message: string;
 }> {}
 
-class DiscountAdminAudienceError extends Data.TaggedError(
+export class DiscountAdminAudienceError extends Data.TaggedError(
   "DiscountAdminAudienceError"
 )<{
+  /** The promotion whose final audience customer the removal targeted. */
+  readonly promotionKind: "discount-code" | "voucher";
   readonly message: string;
 }> {}
+
+export type DiscountAdminConflictReason =
+  | "promotion-code-taken"
+  | "discount-referenced"
+  | "discount-code-claimed"
+  | "voucher-claimed"
+  | "voucher-credit-below-usage"
+  | "voucher-currency-locked";
 
 export class DiscountAdminConflictError extends Data.TaggedError(
   "DiscountAdminConflictError"
 )<{
+  readonly reason: DiscountAdminConflictReason;
   readonly message: string;
 }> {}
 
-const discountAdminConstraintMessages = new Map([
+const discountAdminConstraintConflicts = new Map<
+  string,
+  Pick<DiscountAdminConflictError, "message" | "reason">
+>([
   [
     "promotion_codes_code_unique_idx",
-    "A promotion code with this value already exists.",
+    {
+      reason: "promotion-code-taken",
+      message: "A promotion code with this value already exists.",
+    },
   ],
   [
     "discount_codes_discount_id_discounts_id_fk",
-    "This discount is still referenced by a discount code and cannot be deleted.",
+    {
+      reason: "discount-referenced",
+      message:
+        "This discount is still referenced by a discount code and cannot be deleted.",
+    },
   ],
   [
     "discount_code_redemptions_code_id_discount_codes_id_fk",
-    "This discount code has claims and cannot be deleted.",
+    {
+      reason: "discount-code-claimed",
+      message: "This discount code has claims and cannot be deleted.",
+    },
   ],
   [
     "discount_code_redemptions_code_kind_fk",
-    "This discount code has claims and cannot be deleted.",
+    {
+      reason: "discount-code-claimed",
+      message: "This discount code has claims and cannot be deleted.",
+    },
   ],
   [
     "voucher_redemptions_voucher_id_vouchers_id_fkey",
-    "This voucher has claims and cannot be deleted.",
+    {
+      reason: "voucher-claimed",
+      message: "This voucher has claims and cannot be deleted.",
+    },
   ],
 ]);
 
@@ -1720,9 +1756,9 @@ export const findDiscountAdminConflict = (
 ): DiscountAdminConflictError | undefined =>
   findViolatedConstraint(cause).pipe(
     Option.flatMapNullishOr((constraint) =>
-      discountAdminConstraintMessages.get(constraint)
+      discountAdminConstraintConflicts.get(constraint)
     ),
-    Option.map((message) => new DiscountAdminConflictError({ message })),
+    Option.map((conflict) => new DiscountAdminConflictError(conflict)),
     Option.getOrUndefined
   );
 
@@ -1864,7 +1900,7 @@ const toAdminDotyposCustomer = (
       personName ||
       customer.email?.trim() ||
       customer.phone?.trim() ||
-      "Unnamed customer",
+      unnamedCustomerDisplayName,
     email: customer.email?.trim() || null,
     phone: customer.phone?.trim() || null,
     discountGroupId: Option.getOrNull(
@@ -2137,7 +2173,7 @@ const toAdminCalendarSale = (input: {
 
   return {
     eventReference: input.event.id ?? input.event.iCalUID ?? undefined,
-    title: input.event.summary?.trim() || "Untitled event",
+    title: input.event.summary?.trim() || untitledCalendarEventTitle,
     description,
     start:
       input.event.start?.date ?? input.event.start?.dateTime ?? "Unknown start",
