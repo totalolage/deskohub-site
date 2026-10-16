@@ -73,6 +73,7 @@ import { legalEvidenceEventIdSchema } from "@/features/checkout/legal-evidence";
 import {
   getWorkspaceProductByTier,
   type WorkspaceCoworkProductTier,
+  workspaceCoworkTiers,
 } from "@/features/checkout/product-catalog";
 import {
   type DiscountApplicationId,
@@ -301,7 +302,10 @@ export type AdministrationCustomerTransaction = {
   readonly reservation: Pick<
     AdministrationReservationSummary,
     "id" | "typeLabel"
-  >;
+  > & {
+    /** The booked product; the Admin UI names it in the operator's language. */
+    readonly product: AdministrationReservationProduct;
+  };
 };
 
 export type AdministrationCustomerMarketingConsent = {
@@ -319,6 +323,8 @@ export type AdministrationCustomerActivity = {
   readonly stats: {
     readonly reservationCount: number;
     readonly favoriteProduct: string | null;
+    /** The product behind `favoriteProduct`, which the Admin UI names. */
+    readonly favoriteReservationProduct: AdministrationReservationProduct | null;
     readonly revenue: readonly AdministrationMoney[];
     readonly discountSavings: readonly AdministrationMoney[];
   };
@@ -673,6 +679,21 @@ const toMoneyTotals = (
   rows
     .map((row) => ({ ...row, value: Number(row.value ?? 0) }))
     .toSorted((left, right) => left.currency.localeCompare(right.currency));
+
+const isWorkspaceCoworkProductTier = Schema.is(
+  Schema.Literals(workspaceCoworkTiers)
+);
+
+const getFavoriteReservationProduct = (
+  row: { readonly kind: string; readonly tier: string | null } | undefined
+): AdministrationReservationProduct | null => {
+  if (row?.kind === "meeting-room" || row?.kind === "office") {
+    return { kind: row.kind };
+  }
+  return row?.tier && isWorkspaceCoworkProductTier(row.tier)
+    ? { kind: "cowork", tier: row.tier }
+    : null;
+};
 
 const getReservationTypeLabel = (
   row: Pick<SafeReservationRow, "reservationDetails">
@@ -2538,6 +2559,7 @@ export class AdministrationService extends Context.Service<
             stats: {
               reservationCount: 0,
               favoriteProduct: null,
+              favoriteReservationProduct: null,
               revenue: [],
               discountSavings: [],
             },
@@ -2670,6 +2692,9 @@ export class AdministrationService extends Context.Service<
             reservation: {
               id: reservation.id,
               typeLabel: getReservationTypeLabel(reservation),
+              product: getAdministrationReservationProduct(
+                reservation.reservationDetails
+              ),
             },
           })),
           transactionHistoryTruncated:
@@ -2677,6 +2702,8 @@ export class AdministrationService extends Context.Service<
           stats: {
             reservationCount: Number(reservationCountRows[0]?.value ?? 0),
             favoriteProduct: favoriteProductLabel,
+            favoriteReservationProduct:
+              getFavoriteReservationProduct(favoriteProduct),
             revenue: toMoneyTotals(revenueRows),
             discountSavings: toMoneyTotals(applicationRows),
           },
