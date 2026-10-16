@@ -5,6 +5,7 @@ import { createContext, runInContext } from "node:vm";
 import {
   type CatalogText,
   classifyChunks,
+  findMessageTexts,
   findTexts,
   readCatalogTexts,
   selectLeakEvidence,
@@ -111,8 +112,11 @@ const chunks = await readEmittedChunks();
 const customerCatalogTexts = await readCatalogDirectory(
   customerMessagesDirectory
 );
+const administrationCatalogTexts = await readCatalogDirectory(
+  administrationMessagesDirectory
+);
 const administrationTexts = selectLeakEvidence(
-  await readCatalogDirectory(administrationMessagesDirectory),
+  administrationCatalogTexts,
   customerCatalogTexts
 );
 const customerTexts = selectLeakEvidence(customerCatalogTexts, []);
@@ -158,8 +162,9 @@ describe("administration messages in a production build", () => {
   test("keeps administration message text out of every chunk a customer route can load", () => {
     const leaks: string[] = [];
     for (const chunk of customerReachable) {
-      for (const { locale, text } of findTexts(
+      for (const { locale, text } of findMessageTexts(
         administrationTexts,
+        administrationCatalogTexts,
         chunks.get(chunk) ?? ""
       )) {
         leaks.push(
@@ -196,23 +201,31 @@ describe("administration messages in a production build", () => {
   });
 
   test("reports a parameterized administration message planted in a customer chunk", () => {
-    const probeTexts = selectLeakEvidence(
-      readCatalogTexts(
+    const probeTexts = [
+      ...readCatalogTexts(
         "en-US",
         JSON.stringify({
           probe: "Showing {count} audit entries for operator {operator}",
         })
       ),
-      customerCatalogTexts
-    );
+      ...readCatalogTexts(
+        "cs-CZ",
+        JSON.stringify({
+          probe: "Zobrazeno {count} záznamů auditu pro správce {operator}",
+        })
+      ),
+    ];
+    const probeEvidence = selectLeakEvidence(probeTexts, customerCatalogTexts);
     const [rootChunk] = rootChunks;
     const source = chunks.get(rootChunk) ?? "";
-    const planted = `${source};return\`Showing \${e?.count} audit entries for operator \${e?.operator}\``;
+    const planted = `${source};const en=e=>\`Showing \${e?.count} audit entries for operator \${e?.operator}\`,cs=e=>\`Zobrazeno \${e?.count} z\\xe1znam\\u016F auditu pro spr\\xe1vce \${e?.operator}\``;
 
     expect(customerReachable.has(rootChunk)).toBe(true);
-    expect(findTexts(probeTexts, source)).toEqual([]);
-    expect(findTexts(probeTexts, planted).map(({ text }) => text)).toEqual([
-      " audit entries for operator ",
-    ]);
+    expect(findMessageTexts(probeEvidence, probeTexts, source)).toEqual([]);
+    expect(
+      findMessageTexts(probeEvidence, probeTexts, planted).map(
+        ({ text }) => text
+      )
+    ).toEqual([" audit entries for operator ", " záznamů auditu pro správce "]);
   });
 });

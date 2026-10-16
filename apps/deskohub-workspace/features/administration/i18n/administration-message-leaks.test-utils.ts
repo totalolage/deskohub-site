@@ -13,6 +13,8 @@ const decodeCatalog = Schema.decodeUnknownSync(
 );
 
 export type CatalogText = {
+  /** The message key; keys are unique across catalogs. */
+  readonly message: string;
   readonly locale: string;
   readonly text: string;
   /** A static run of a pattern with placeholders, matched anywhere. */
@@ -32,19 +34,18 @@ const isDistinctive = (text: string) =>
  * pattern contributes its static runs as fragments.
  */
 export const readCatalogTexts = (locale: string, json: string): CatalogText[] =>
-  Object.values(decodeCatalog(json))
-    .flatMap((message): readonly string[] =>
-      isMatchedMessage(message)
-        ? message.flatMap(({ match }) => Object.values(match))
-        : [message]
-    )
-    .flatMap((pattern): CatalogText[] =>
+  Object.entries(decodeCatalog(json)).flatMap(([message, value]) =>
+    (isMatchedMessage(value)
+      ? value.flatMap(({ match }) => Object.values(match))
+      : [value]
+    ).flatMap((pattern): CatalogText[] =>
       placeholder.test(pattern)
         ? pattern
             .split(placeholder)
-            .map((text) => ({ locale, text, fragment: true }))
-        : [{ locale, text: pattern, fragment: false }]
-    );
+            .map((text) => ({ message, locale, text, fragment: true }))
+        : [{ message, locale, text: pattern, fragment: false }]
+    )
+  );
 
 /**
  * Keeps the administration texts whose presence in a chunk proves a leak: long
@@ -94,6 +95,40 @@ export const findTexts = <T extends Pick<CatalogText, "text" | "fragment">>(
   return texts.filter(({ text, fragment }) =>
     sourceForms(text, fragment).some((form) => decoded.includes(form))
   );
+};
+
+// Too short to say anything about which message a chunk holds.
+const isTrivial = (text: string) => text.trim().length < 3;
+
+/**
+ * Returns the evidence texts of the administration messages a chunk holds.
+ * Paraglide compiles every locale of a message into one module, so a leaked
+ * message brings its texts in each locale. A distinctive text counts only when
+ * the chunk also holds a text of the same message in every other locale that
+ * has one; a library literal that happens to read "at least" doesn't come with
+ * its Czech translation.
+ */
+export const findMessageTexts = (
+  evidence: readonly CatalogText[],
+  catalogTexts: readonly CatalogText[],
+  source: string
+) => {
+  const substantial = catalogTexts.filter(({ text }) => !isTrivial(text));
+  const expected = localesByMessage(substantial);
+  const found = localesByMessage(findTexts(substantial, source));
+  return findTexts(evidence, source).filter(({ message }) =>
+    [...(expected.get(message) ?? [])].every((locale) =>
+      found.get(message)?.has(locale)
+    )
+  );
+};
+
+const localesByMessage = (texts: readonly CatalogText[]) => {
+  const locales = new Map<string, Set<string>>();
+  for (const { message, locale } of texts) {
+    locales.set(message, (locales.get(message) ?? new Set()).add(locale));
+  }
+  return locales;
 };
 
 /**
