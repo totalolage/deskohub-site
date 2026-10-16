@@ -6,6 +6,9 @@ import { Option, Schema } from "effect";
 import { useRef, useTransition } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { approveCliAuthentication } from "@/features/admin-cli/actions";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
@@ -38,28 +41,36 @@ const approveCliAuthenticationFields = Schema.Struct({
   neverExpire: Schema.Boolean,
 });
 
-const approveCliAuthenticationFormSchema = approveCliAuthenticationFields.check(
-  // The duration is disabled while "Never expire" is checked, so only an
-  // active duration carries a validation rule.
-  Schema.makeFilter<typeof approveCliAuthenticationFields.Type>(
-    (value) =>
-      value.neverExpire ||
-      Option.isSome(
-        Schema.decodeUnknownOption(cliSessionLifetimeAmountFieldSchema)(
-          value.lifetimeAmount
-        )
-      ) || {
-        path: ["lifetimeAmount"],
-        issue: `Enter a whole number from ${cliSessionLifetimeAmountLimits.minimum} to ${cliSessionLifetimeAmountLimits.maximum}.`,
-      }
-  )
-);
+const createApproveCliAuthenticationFormSchema = (locale: Locale) =>
+  approveCliAuthenticationFields.check(
+    // The duration is disabled while "Never expire" is checked, so only an
+    // active duration carries a validation rule.
+    Schema.makeFilter<typeof approveCliAuthenticationFields.Type>(
+      (value) =>
+        value.neverExpire ||
+        Option.isSome(
+          Schema.decodeUnknownOption(cliSessionLifetimeAmountFieldSchema)(
+            value.lifetimeAmount
+          )
+        ) || {
+          path: ["lifetimeAmount"],
+          issue: m.adminCliApprovalFormDurationInvalid(
+            cliSessionLifetimeAmountLimits,
+            { locale }
+          ),
+        }
+    )
+  );
+
+type ApproveCliAuthenticationFormSchema = ReturnType<
+  typeof createApproveCliAuthenticationFormSchema
+>;
 
 type ApproveCliAuthenticationFormInput =
-  typeof approveCliAuthenticationFormSchema.Encoded;
+  ApproveCliAuthenticationFormSchema["Encoded"];
 
 type ApproveCliAuthenticationFormValues =
-  typeof approveCliAuthenticationFormSchema.Type;
+  ApproveCliAuthenticationFormSchema["Type"];
 
 const sessionLifetimeDefaults = {
   lifetimeAmount: "30",
@@ -68,12 +79,15 @@ const sessionLifetimeDefaults = {
 } satisfies Omit<ApproveCliAuthenticationFormInput, "code">;
 
 const sessionLifetimeUnitLabels = {
-  hours: "Hours",
-  days: "Days",
-  weeks: "Weeks",
-  months: "Months",
-  years: "Years",
-} satisfies Record<(typeof cliSessionLifetimeUnits)[number], string>;
+  hours: m.adminCliApprovalFormUnitHours,
+  days: m.adminCliApprovalFormUnitDays,
+  weeks: m.adminCliApprovalFormUnitWeeks,
+  months: m.adminCliApprovalFormUnitMonths,
+  years: m.adminCliApprovalFormUnitYears,
+} satisfies Record<
+  (typeof cliSessionLifetimeUnits)[number],
+  typeof m.adminCliApprovalFormUnitHours
+>;
 
 const toApprovalFormData = (values: ApproveCliAuthenticationFormValues) => {
   const formData = new FormData();
@@ -92,6 +106,7 @@ export function ApproveCliAuthenticationForm({
 }: {
   readonly code?: string;
 }) {
+  const locale = useRouteLocale();
   const [isPending, startTransition] = useTransition();
   const submissionStarted = useRef(false);
   const form = useForm<
@@ -102,9 +117,12 @@ export function ApproveCliAuthenticationForm({
     defaultValues: { code: code ?? "", ...sessionLifetimeDefaults },
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(approveCliAuthenticationFormSchema, {
-      onExcessProperty: "error",
-    }),
+    resolver: effectSchemaResolver(
+      createApproveCliAuthenticationFormSchema(locale),
+      {
+        onExcessProperty: "error",
+      }
+    ),
   });
   const neverExpire = useWatch({ control: form.control, name: "neverExpire" });
 
@@ -131,7 +149,7 @@ export function ApproveCliAuthenticationForm({
         <input type="hidden" {...form.register("code")} />
         <fieldset className="mb-5 grid gap-3">
           <legend className="mb-3 text-sm font-semibold">
-            Keep this CLI authenticated for
+            {m.adminCliApprovalFormLifetimeLegend({}, { locale })}
           </legend>
           <div className="grid grid-cols-[minmax(0,8rem)_minmax(0,12rem)] gap-3 items-start">
             <FormField
@@ -139,7 +157,9 @@ export function ApproveCliAuthenticationForm({
               name="lifetimeAmount"
               render={({ field: { onChange, ...field }, fieldState }) => (
                 <FormItem>
-                  <FormLabel className="sr-only">Duration</FormLabel>
+                  <FormLabel className="sr-only">
+                    {m.adminCliApprovalFormDurationLabel({}, { locale })}
+                  </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
@@ -162,7 +182,9 @@ export function ApproveCliAuthenticationForm({
               name="lifetimeUnit"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="sr-only">Unit</FormLabel>
+                  <FormLabel className="sr-only">
+                    {m.adminCliApprovalFormUnitLabel({}, { locale })}
+                  </FormLabel>
                   <Select
                     disabled={neverExpire}
                     onValueChange={field.onChange}
@@ -176,7 +198,7 @@ export function ApproveCliAuthenticationForm({
                     <SelectContent>
                       {cliSessionLifetimeUnits.map((unit) => (
                         <SelectItem key={unit} value={unit}>
-                          {sessionLifetimeUnitLabels[unit]}
+                          {sessionLifetimeUnitLabels[unit]({}, { locale })}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -199,14 +221,16 @@ export function ApproveCliAuthenticationForm({
                       onCheckedChange={(checked) => onChange(checked === true)}
                     />
                   </FormControl>
-                  <span>Never expire</span>
+                  <span>
+                    {m.adminCliApprovalFormNeverExpire({}, { locale })}
+                  </span>
                 </FormLabel>
               </FormItem>
             )}
           />
         </fieldset>
         <Button aria-busy={isPending} disabled={isPending} type="submit">
-          Approve this CLI
+          {m.adminCliApprovalFormSubmit({}, { locale })}
         </Button>
       </form>
     </Form>

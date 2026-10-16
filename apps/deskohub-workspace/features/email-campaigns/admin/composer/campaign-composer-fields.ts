@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import type { CampaignRow } from "@/db/schema";
+import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import {
   type CampaignBodyNode,
@@ -20,6 +21,7 @@ import {
   campaignFallbackLocale,
   campaignLocales,
 } from "../../recipient-locale";
+import { campaignBodyIssueMessage } from "./campaign-body-issue-message";
 
 const CampaignComposerLocaleFields = Schema.Struct({
   subject: Schema.String,
@@ -32,24 +34,32 @@ const CampaignComposerLocaleFields = Schema.Struct({
 export type CampaignComposerLocaleFields =
   typeof CampaignComposerLocaleFields.Type;
 
-/** The composer form: one set of localized fields per supported locale. */
-export const CampaignComposerFields = Schema.Struct({
-  title: Schema.String.check(
-    Schema.makeFilter(
-      (title) => title.trim().length > 0 || "Give the campaign a title."
-    )
-  ),
-  purpose: CampaignPurpose,
-  templateKey: CampaignTemplateKey,
-  /** Empty means no audience yet. */
-  audienceId: Schema.String,
-  locales: Schema.Struct({
-    "cs-CZ": CampaignComposerLocaleFields,
-    "en-US": CampaignComposerLocaleFields,
-  }),
-});
+/**
+ * The composer form: one set of localized fields per supported locale.
+ * `locale` is the admin's language for validation messages.
+ */
+export const createCampaignComposerFields = (locale: Locale) =>
+  Schema.Struct({
+    title: Schema.String.check(
+      Schema.makeFilter(
+        (title) =>
+          title.trim().length > 0 ||
+          m.emailCampaignsComposerTitleRequired({}, { locale })
+      )
+    ),
+    purpose: CampaignPurpose,
+    templateKey: CampaignTemplateKey,
+    /** Empty means no audience yet. */
+    audienceId: Schema.String,
+    locales: Schema.Struct({
+      "cs-CZ": CampaignComposerLocaleFields,
+      "en-US": CampaignComposerLocaleFields,
+    }),
+  });
 
-export type CampaignComposerFields = typeof CampaignComposerFields.Type;
+export type CampaignComposerFields = ReturnType<
+  typeof createCampaignComposerFields
+>["Type"];
 
 const emptyCampaignBody: CampaignBodyNode = {
   type: "doc",
@@ -152,14 +162,31 @@ export const toCampaignLocalizedContent = (
       ])
   );
 
-/** Problems in one locale's content that a send would trip over. */
+/**
+ * Problems in one locale's content that a send would trip over, described in
+ * the admin's `locale`.
+ */
 export const localeContentIssues = (
-  fields: CampaignComposerLocaleFields
+  fields: CampaignComposerLocaleFields,
+  locale: Locale
 ): readonly CampaignBodyIssue[] => [
   ...(fields.subject.trim().length === 0
-    ? [{ path: ["subject"], issue: "Add a subject." }]
+    ? [
+        {
+          path: ["subject"],
+          issue: m.emailCampaignsComposerSubjectMissing({}, { locale }),
+        },
+      ]
     : []),
   ...(isCampaignBodyEmpty(fields.body)
-    ? [{ path: ["body"], issue: "Write the email body." }]
-    : campaignBodyIssues(fields.body)),
+    ? [
+        {
+          path: ["body"],
+          issue: m.emailCampaignsBodyMissing({}, { locale }),
+        },
+      ]
+    : campaignBodyIssues(fields.body).map((issue) => ({
+        path: issue.path,
+        issue: campaignBodyIssueMessage(fields.body, issue, locale),
+      }))),
 ];

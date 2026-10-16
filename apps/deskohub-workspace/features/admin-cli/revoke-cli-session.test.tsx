@@ -87,3 +87,27 @@ test("requires confirmation and submits only the session ID to the server action
   expect([...formData.keys()]).toEqual(["sessionId"]);
   expect(formData.get("sessionId")).toBe(sessionId);
 });
+
+test("asks for confirmation in Czech on a Czech route", async () => {
+  const { RevokeCliSession } = await import("./revoke-cli-session");
+  const { RouteLocaleProvider } = await import("@/features/i18n/route-locale");
+  const view = render(
+    <RouteLocaleProvider locale="cs-CZ">
+      <RevokeCliSession
+        clientName="Office Mac"
+        revoked={false}
+        sessionId={sessionId}
+      />
+    </RouteLocaleProvider>
+  );
+
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Odvolat" }));
+  });
+  const dialog = view.getByRole("dialog");
+
+  expect(dialog.textContent).toContain("Odvolat relaci CLI?");
+  expect(dialog.textContent).toContain("„Office Mac“");
+  expect(view.getByRole("button", { name: "Odvolat přístup" })).toBeTruthy();
+  expect(view.getByRole("button", { name: "Zavřít" })).toBeTruthy();
+});

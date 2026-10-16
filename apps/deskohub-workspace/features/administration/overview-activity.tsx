@@ -1,5 +1,5 @@
 import type { Locale } from "@/features/i18n";
-import { formatInteger } from "@/shared/utils/number";
+import { formatCount } from "@/shared/utils/number";
 import { AdministrationLink as Link } from "./admin-link";
 import type { AdministrationOverviewMetric } from "./administration.service";
 import { getAdministrationCustomerName } from "./customer-presentation";
@@ -120,7 +120,7 @@ function CustomerActivityMetric({
             <span aria-hidden="true">—</span>
           </>
         ) : (
-          formatInteger(metric.value, locale)
+          formatCount(metric.value, locale)
         )}
       </dd>
       <dd className="mt-3 text-xs leading-5 text-navy-blue/58">
@@ -210,10 +210,10 @@ function OverviewMetric({
               )}
             </span>
             <span aria-hidden="true" className="text-aquamarine-ink">
-              {formatInteger(metric.completed, locale)}
+              {formatCount(metric.completed, locale)}
             </span>
             <span aria-hidden="true" className="text-lg text-navy-blue/58">
-              / {formatInteger(metric.value, locale)}
+              / {formatCount(metric.value, locale)}
             </span>
           </>
         )}

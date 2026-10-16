@@ -1,6 +1,8 @@
 "use server";
 
 import { Effect } from "effect";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
 import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import {
@@ -9,30 +11,33 @@ import {
 } from "@/shared/utils/safe-action-client";
 import { CampaignAudienceService } from "../../backend/campaign-audience.service";
 import { CampaignAudienceInUse, CampaignAudienceNotFound } from "../../errors";
+import type { AudienceMessage } from "./audience-attribute-wording";
 import {
   audienceReferenceStandardSchema,
   saveAudienceStandardSchema,
 } from "./audience-contracts";
 
-const inUseMessage = ({ draftCampaignIds }: CampaignAudienceInUse) =>
-  `${
-    draftCampaignIds.length === 1
-      ? "A draft campaign uses"
-      : `${draftCampaignIds.length} draft campaigns use`
-  } this audience, so it can only be archived. Move those drafts to another audience before deleting it.`;
-
-const audienceErrorMessage = (cause: SafeActionFailure, fallback: string) => {
+const audienceErrorMessage = (
+  cause: SafeActionFailure,
+  fallback: AudienceMessage,
+  locale: Locale
+) => {
   if (cause instanceof CampaignAudienceNotFound) {
-    return "This audience no longer exists.";
+    return m.emailCampaignsAudienceNotFound({}, { locale });
   }
-  if (cause instanceof CampaignAudienceInUse) return inUseMessage(cause);
-  return fallback;
+  if (cause instanceof CampaignAudienceInUse) {
+    return m.emailCampaignsAudienceInUse(
+      { count: cause.draftCampaignIds.length },
+      { locale }
+    );
+  }
+  return fallback({}, { locale });
 };
 
 const toPublicAudienceError =
-  (fallback: string) => (cause: SafeActionFailure) =>
+  (fallback: AudienceMessage, locale: Locale) => (cause: SafeActionFailure) =>
     new PublicSafeActionError({
-      message: audienceErrorMessage(cause, fallback),
+      message: audienceErrorMessage(cause, fallback, locale),
       cause,
     });
 
@@ -41,7 +46,7 @@ const saveAudienceAction = defineWorkspaceAction(
     operation: "email-campaigns.admin.save-audience",
     schema: saveAudienceStandardSchema,
   },
-  ({ audienceId, title, filter }) =>
+  ({ audienceId, title, filter }, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
@@ -55,7 +60,8 @@ const saveAudienceAction = defineWorkspaceAction(
       Effect.provide(CampaignAudienceService.Live),
       Effect.mapError(
         toPublicAudienceError(
-          "The audience could not be saved. Check the filters and try again."
+          m.emailCampaignsAudienceSaveFailedCheckFilters,
+          locale
         )
       )
     )
@@ -66,7 +72,7 @@ const archiveAudienceAction = defineWorkspaceAction(
     operation: "email-campaigns.admin.archive-audience",
     schema: audienceReferenceStandardSchema,
   },
-  ({ audienceId }) =>
+  ({ audienceId }, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
@@ -77,7 +83,10 @@ const archiveAudienceAction = defineWorkspaceAction(
       ),
       Effect.provide(CampaignAudienceService.Live),
       Effect.mapError(
-        toPublicAudienceError("The audience could not be archived. Try again.")
+        toPublicAudienceError(
+          m.emailCampaignsAudienceArchiveFailedRetry,
+          locale
+        )
       )
     )
 );
@@ -87,7 +96,7 @@ const unarchiveAudienceAction = defineWorkspaceAction(
     operation: "email-campaigns.admin.unarchive-audience",
     schema: audienceReferenceStandardSchema,
   },
-  ({ audienceId }) =>
+  ({ audienceId }, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
@@ -99,7 +108,8 @@ const unarchiveAudienceAction = defineWorkspaceAction(
       Effect.provide(CampaignAudienceService.Live),
       Effect.mapError(
         toPublicAudienceError(
-          "The audience could not be unarchived. Try again."
+          m.emailCampaignsAudienceUnarchiveFailedRetry,
+          locale
         )
       )
     )
@@ -110,7 +120,7 @@ const deleteAudienceAction = defineWorkspaceAction(
     operation: "email-campaigns.admin.delete-audience",
     schema: audienceReferenceStandardSchema,
   },
-  ({ audienceId }) =>
+  ({ audienceId }, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
@@ -121,7 +131,7 @@ const deleteAudienceAction = defineWorkspaceAction(
       ),
       Effect.provide(CampaignAudienceService.Live),
       Effect.mapError(
-        toPublicAudienceError("The audience could not be deleted. Try again.")
+        toPublicAudienceError(m.emailCampaignsAudienceDeleteFailedRetry, locale)
       )
     )
 );
