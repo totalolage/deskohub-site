@@ -6,7 +6,6 @@ import { revalidatePath } from "next/cache";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   accountActionError,
-  requireAccountsEnabled,
   requireReferralsEnabled,
   requireVerifiedSession,
 } from "@/features/account/account-action-guards";
@@ -174,7 +173,6 @@ const completeCustomerProfileAction = defineWorkspaceAction(
     { referralCode, prefilledReferralCode, ...input },
     { locale }
   ) {
-    yield* requireAccountsEnabled(locale);
     const outcome = yield* saveCustomerProfile(
       input,
       { code: referralCode, prefilledCode: prefilledReferralCode },
@@ -196,12 +194,9 @@ const updateCustomerProfileAction = defineWorkspaceAction(
     logInput: false,
   },
   (input, { locale }) =>
-    Effect.andThen(
-      requireAccountsEnabled(locale),
-      Effect.as(saveCustomerProfile(input, undefined, locale), {
-        status: "updated" as const,
-      })
-    ).pipe(Effect.provide(ReferralFeatureFlagRequest))
+    Effect.as(saveCustomerProfile(input, undefined, locale), {
+      status: "updated" as const,
+    }).pipe(Effect.provide(ReferralFeatureFlagRequest))
 );
 
 const acknowledgeSignupReferralNoticeSchema = Schema.toStandardSchemaV1(
@@ -222,10 +217,7 @@ const acknowledgeSignupReferralNoticeAction = defineWorkspaceAction(
   },
   (_input, { locale }) =>
     Effect.andThen(
-      Effect.andThen(
-        requireAccountsEnabled(locale),
-        requireReferralsEnabled(locale)
-      ),
+      requireReferralsEnabled(locale),
       CustomerAccountResolver.pipe(
         Effect.flatMap((resolver) => resolver.resolve),
         Effect.flatMap((account) =>
@@ -254,15 +246,12 @@ const updateLocalePreferenceAction = defineWorkspaceAction(
     logInput: false,
   },
   (input, { locale }) =>
-    Effect.andThen(
-      requireAccountsEnabled(locale),
-      Effect.flatMap(requireVerifiedSession, (user) =>
-        saveLocalePreference(user.accountId, input.locale)
-      ).pipe(
-        Effect.mapError(accountActionError(locale)),
-        Effect.provide(CustomerAuthentication.Default),
-        Effect.as({ status: "saved" as const })
-      )
+    Effect.flatMap(requireVerifiedSession, (user) =>
+      saveLocalePreference(user.accountId, input.locale)
+    ).pipe(
+      Effect.mapError(accountActionError(locale)),
+      Effect.provide(CustomerAuthentication.Default),
+      Effect.as({ status: "saved" as const })
     )
 );
 
@@ -405,8 +394,8 @@ const lookupAresBusinessWorkflow = Effect.fn(function* (
 
 /**
  * Looks up one Czech company in the public ARES registry for the business
- * billing form. Runs behind the account-wide gate, the verified session, and
- * the durable deletion marker, and performs exactly one provider request per
+ * billing form. Runs behind the verified session and the durable deletion
+ * marker, and performs exactly one provider request per
  * invocation without any retry loop and without any customer classify,
  * reactivate, claim, create, update, or other provider write.
  */
@@ -417,13 +406,10 @@ const lookupAresBusinessAction = defineWorkspaceAction(
     logInput: false,
   },
   (input, { locale }) =>
-    Effect.andThen(
-      requireAccountsEnabled(locale),
-      lookupAresBusinessWorkflow(input, locale).pipe(
-        Effect.mapError(accountActionError(locale)),
-        Effect.provide(
-          Layer.mergeAll(CustomerAuthentication.Default, AresLookupService.Live)
-        )
+    lookupAresBusinessWorkflow(input, locale).pipe(
+      Effect.mapError(accountActionError(locale)),
+      Effect.provide(
+        Layer.mergeAll(CustomerAuthentication.Default, AresLookupService.Live)
       )
     )
 );

@@ -1,7 +1,7 @@
 import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
-import { expect, mock } from "bun:test";
+import { mock } from "bun:test";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
 import type { Passkey } from "@better-auth/passkey";
 import type {
@@ -71,7 +71,6 @@ export type TestAuthOptions = {
   readonly database?: WorkspaceAuthConfig["database"];
   readonly secrets?: { readonly version: number; readonly value: string }[];
   readonly sentLinks?: CapturedMagicLink[];
-  readonly areAccountsEnabled?: WorkspaceAuthConfig["areAccountsEnabled"];
   readonly isSignInCodeEnabled?: WorkspaceAuthConfig["isSignInCodeEnabled"];
   readonly arePasskeysEnabled?: WorkspaceAuthConfig["arePasskeysEnabled"];
   readonly verifyHuman?: WorkspaceAuthConfig["verifyHuman"];
@@ -142,7 +141,6 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
     allowedHosts: [HOST],
     passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
     httpsOnly: true,
-    areAccountsEnabled: options.areAccountsEnabled ?? (async () => true),
     isSignInCodeEnabled: options.isSignInCodeEnabled ?? (async () => false),
     arePasskeysEnabled: options.arePasskeysEnabled ?? (async () => true),
     verifyHuman: options.verifyHuman ?? (() => Effect.void),
@@ -263,10 +261,3 @@ export const verifyMagicLink = (
   callHandler(auth, verifyLinkPath(link), {
     headers: { "x-vercel-forwarded-for": ip },
   });
-
-export const expectAccountsUnavailable = async (response: Response) => {
-  expect(response.status).toBe(503);
-  expect(await response.text()).toBe(
-    JSON.stringify({ message: "Service Unavailable" })
-  );
-};

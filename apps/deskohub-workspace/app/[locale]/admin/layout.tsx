@@ -4,7 +4,7 @@ import { AdminShell } from "@/features/administration/admin-shell";
 import { AdministrationLocaleSwitcher } from "@/features/administration/administration-locale-switcher";
 import { m } from "@/features/administration/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { createStreamedLocalePreference } from "@/shared/components/site-header-config";
+import { createLocalePreferenceSaving } from "@/shared/components/site-header-config";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getRequestLocale();
@@ -34,7 +34,7 @@ export default function AdminLayout({
         breadcrumb={breadcrumb}
         localeSwitcher={
           <AdministrationLocaleSwitcher
-            localePreference={createStreamedLocalePreference()}
+            localePreference={createLocalePreferenceSaving()}
           />
         }
       >
