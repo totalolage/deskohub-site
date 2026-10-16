@@ -3,7 +3,6 @@ export type {
   CustomerChanges,
   CustomerChangesOptions,
   CustomerLookupField,
-  CustomerVersionSelection,
   DotyposCustomerBillingDetails,
   DotyposCustomerDetails,
   DotyposCustomerDiscount,
@@ -11,7 +10,11 @@ export type {
   DotyposCustomerLookupData,
   FindCustomerOptions,
 } from "./backend/service";
-export { DotyposService, FindCustomerResult } from "./backend/service";
+export {
+  CustomerVersionSelection,
+  DotyposService,
+  FindCustomerResult,
+} from "./backend/service";
 export type { DotyposRuntimeConfigObj } from "./config";
 export {
   DotyposRuntimeConfig,

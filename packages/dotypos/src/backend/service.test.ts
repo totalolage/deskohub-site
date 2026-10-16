@@ -35,7 +35,7 @@ import {
   DotyposTableSchema,
 } from "../types";
 import { DotyposAccessToken, DotyposGeneratedClient } from "./api";
-import { DotyposService } from "./service";
+import { CustomerVersionSelection, DotyposService } from "./service";
 
 const adaAddress = testEmailAddress("ada");
 const mixedCaseAdaAddress = testEmailAddress("Ada");
@@ -1540,49 +1540,52 @@ describe("DotyposService customer changes", () => {
 
   test.each([
     {
-      selection: { _tag: "Dated" } as const,
+      selection: CustomerVersionSelection.Dated(),
       filter: "deleted|in|0,1;versionDate|eq|notnull",
       sort: "versionDate",
     },
     {
-      selection: { _tag: "ChangedFrom", versionDate: changedSince } as const,
+      selection: CustomerVersionSelection.ChangedFrom({
+        versionDate: changedSince,
+      }),
       filter: "deleted|in|0,1;versionDate|gteq|2025-10-01T12:00:00.123456Z",
       sort: "versionDate",
     },
     {
-      selection: { _tag: "ChangedAfter", versionDate: changedSince } as const,
+      selection: CustomerVersionSelection.ChangedAfter({
+        versionDate: changedSince,
+      }),
       filter: "deleted|in|0,1;versionDate|gt|2025-10-01T12:00:00.123456Z",
       sort: "versionDate",
     },
     {
-      selection: {
-        _tag: "ChangedAt",
+      selection: CustomerVersionSelection.ChangedAt({
         versionDate: changedSince,
         createdFrom: Option.none(),
-      } as const,
+      }),
       filter: "deleted|in|0,1;versionDate|eq|2025-10-01T12:00:00.123456Z",
       sort: "created",
     },
     {
-      selection: {
-        _tag: "ChangedAt",
+      selection: CustomerVersionSelection.ChangedAt({
         versionDate: changedSince,
         createdFrom: Option.some(createdFrom),
-      } as const,
+      }),
       filter:
         "deleted|in|0,1;versionDate|eq|2025-10-01T12:00:00.123456Z;created|gteq|2025-10-01T09:13:20.000001Z",
       sort: "created",
     },
     {
-      selection: { _tag: "Undated", createdFrom: Option.none() } as const,
+      selection: CustomerVersionSelection.Undated({
+        createdFrom: Option.none(),
+      }),
       filter: "deleted|in|0,1;versionDate|eq|null",
       sort: "created",
     },
     {
-      selection: {
-        _tag: "Undated",
+      selection: CustomerVersionSelection.Undated({
         createdFrom: Option.some(createdFrom),
-      } as const,
+      }),
       filter:
         "deleted|in|0,1;versionDate|eq|null;created|gteq|2025-10-01T09:13:20.000001Z",
       sort: "created",
@@ -1641,7 +1644,9 @@ describe("DotyposService customer changes", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos.listCustomerChanges({
-          selection: { _tag: "Undated", createdFrom: Option.none() },
+          selection: CustomerVersionSelection.Undated({
+            createdFrom: Option.none(),
+          }),
         });
       }),
       fetchMock
@@ -1668,11 +1673,10 @@ describe("DotyposService customer changes", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos.listCustomerChanges({
-          selection: {
-            _tag: "ChangedAt",
+          selection: CustomerVersionSelection.ChangedAt({
             versionDate: changedSince,
             createdFrom: Option.none(),
-          },
+          }),
         });
       }),
       fetchMock
@@ -1697,7 +1701,9 @@ describe("DotyposService customer changes", () => {
           const dotypos = yield* DotyposService;
           return yield* dotypos
             .listCustomerChanges({
-              selection: { _tag: "ChangedFrom", versionDate: changedSince },
+              selection: CustomerVersionSelection.ChangedFrom({
+                versionDate: changedSince,
+              }),
             })
             .pipe(Effect.result);
         }),

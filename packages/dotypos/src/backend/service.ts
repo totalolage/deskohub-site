@@ -77,19 +77,19 @@ export type CustomerListOptions = {
  * when it is set. Dotypos can't sort by `id`, and compares timestamps at
  * microsecond precision.
  */
-export type CustomerVersionSelection =
-  | { readonly _tag: "Dated" }
-  | { readonly _tag: "ChangedFrom"; readonly versionDate: DotyposTimestamp }
-  | { readonly _tag: "ChangedAfter"; readonly versionDate: DotyposTimestamp }
-  | {
-      readonly _tag: "ChangedAt";
-      readonly versionDate: DotyposTimestamp;
-      readonly createdFrom: Option.Option<DotyposTimestamp>;
-    }
-  | {
-      readonly _tag: "Undated";
-      readonly createdFrom: Option.Option<DotyposTimestamp>;
-    };
+export type CustomerVersionSelection = Data.TaggedEnum<{
+  Dated: Record<never, never>;
+  ChangedFrom: { readonly versionDate: DotyposTimestamp };
+  ChangedAfter: { readonly versionDate: DotyposTimestamp };
+  ChangedAt: {
+    readonly versionDate: DotyposTimestamp;
+    readonly createdFrom: Option.Option<DotyposTimestamp>;
+  };
+  Undated: { readonly createdFrom: Option.Option<DotyposTimestamp> };
+}>;
+
+export const CustomerVersionSelection =
+  Data.taggedEnum<CustomerVersionSelection>();
 
 export type CustomerChangesOptions = {
   readonly selection: CustomerVersionSelection;
@@ -107,7 +107,6 @@ const dotyposMaximumPageSize = 100;
 type DotyposPage<A> = {
   readonly data?: readonly A[];
   readonly nextPage?: string | null;
-  readonly totalItemsCount?: string | null;
 };
 
 const isDotyposError = (error: unknown): error is DotyposError =>

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   type CustomerChanges,
   type CustomerChangesOptions,
+  CustomerVersionSelection,
   type DotyposCustomer,
   DotyposCustomerSchema,
   DotyposTimestampFromString,
@@ -237,9 +238,13 @@ const makeDotyposStore = (customers: DotyposCustomer[]) => {
       });
     });
     const sortKey = (candidate: DotyposCustomer) =>
-      (selection._tag === "ChangedAt" || selection._tag === "Undated"
-        ? optionalTimestamp(candidate.created)
-        : optionalTimestamp(candidate.versionDate)) ?? BigInt(0);
+      Match.valueTags(selection, {
+        Dated: () => optionalTimestamp(candidate.versionDate),
+        ChangedFrom: () => optionalTimestamp(candidate.versionDate),
+        ChangedAfter: () => optionalTimestamp(candidate.versionDate),
+        ChangedAt: () => optionalTimestamp(candidate.created),
+        Undated: () => optionalTimestamp(candidate.created),
+      }) ?? BigInt(0);
     const tieOrder = requestCount % 2 === 0 ? 1 : -1;
     const ordered = matching.sort((left, right) => {
       const difference = sortKey(left) - sortKey(right);
@@ -449,6 +454,25 @@ describe("Dotypos customer source", () => {
     expect(page.next_cursor).toBe("dated");
   });
 
+  test("rejects a whole page when a customer has no ID", async () => {
+    const { response, listRequests } = await requestSource({
+      url: `${sourceUrl}?since=${firstVersion}`,
+      changes: singlePage(
+        [
+          customer({ id: undefined, versionDate: firstVersion }),
+          customer({ id: "2", versionDate: laterVersion }),
+        ],
+        true
+      ),
+    });
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: "Dotypos customers are unavailable.",
+    });
+    expect(listRequests).toHaveLength(1);
+  });
+
   test("starts at PostHog's last version date and holds back the version date a full page cuts", async () => {
     const { response, listRequests } = await requestSource({
       url: `${sourceUrl}?since=${encodeURIComponent("2026-10-01T12:00:00.000000+00:00")}`,
@@ -465,10 +489,9 @@ describe("Dotypos customer source", () => {
 
     expect(listRequests).toEqual([
       {
-        selection: {
-          _tag: "ChangedFrom",
+        selection: CustomerVersionSelection.ChangedFrom({
           versionDate: timestampOf(firstVersion),
-        },
+        }),
       },
     ]);
     expect(page.results.map(({ id }) => id)).toEqual(["1"]);
@@ -656,11 +679,10 @@ describe("Dotypos customer source", () => {
     expect(second.response.status).toBe(502);
     expect(second.listRequests).toEqual([
       {
-        selection: {
-          _tag: "ChangedAt",
+        selection: CustomerVersionSelection.ChangedAt({
           versionDate: timestampOf(firstVersion),
           createdFrom: Option.some(firstCreated + BigInt(100)),
-        },
+        }),
       },
     ]);
   });

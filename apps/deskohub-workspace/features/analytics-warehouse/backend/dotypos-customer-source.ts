@@ -2,7 +2,7 @@ import "server-only";
 
 import {
   type CustomerChanges,
-  type CustomerVersionSelection,
+  CustomerVersionSelection,
   type DotyposCustomer,
   DotyposService,
   type DotyposTimestamp,
@@ -164,10 +164,10 @@ type GroupSelection = Extract<
  * customers: incremental syncs can't reach them, and one that gains a version
  * date meanwhile still appears among the dated customers read after them.
  */
-const firstSyncSelection: CustomerVersionSelection = {
-  _tag: "Undated",
-  createdFrom: Option.none(),
-};
+const firstSyncSelection: CustomerVersionSelection =
+  CustomerVersionSelection.Undated({
+    createdFrom: Option.none(),
+  });
 
 type StampedCustomer = {
   readonly customer: DotyposCustomer;
@@ -175,8 +175,14 @@ type StampedCustomer = {
   readonly created: Option.Option<DotyposTimestamp>;
 };
 
+type IdentifiedStampedCustomer = StampedCustomer & {
+  readonly customer: DotyposCustomer & {
+    readonly id: NonNullable<DotyposCustomer["id"]>;
+  };
+};
+
 type PageContinuation = {
-  readonly served: readonly StampedCustomer[];
+  readonly served: readonly IdentifiedStampedCustomer[];
   readonly next: Option.Option<CustomerVersionSelection>;
 };
 
@@ -284,10 +290,9 @@ const readSourceSelection = (request: Request) =>
         ? Option.some(
             since === undefined
               ? firstSyncSelection
-              : {
-                  _tag: "ChangedFrom" as const,
+              : CustomerVersionSelection.ChangedFrom({
                   versionDate: dotyposTimestampFromDateTime(since),
-                }
+                })
           )
         : decodeCursor(cursor)
     ),
@@ -326,7 +331,7 @@ const toSourcePage = (input: {
     Effect.bind("continuation", continueSelection),
     Effect.map(
       ({ continuation }): DotyposCustomerSourcePage => ({
-        results: continuation.served.flatMap(toSourceRow),
+        results: continuation.served.map(toSourceRow),
         next_cursor: Option.match(continuation.next, {
           onNone: () => null,
           onSome: encodeCursor,
@@ -347,12 +352,17 @@ const readTimestamp = (value: string | null | undefined) =>
 
 const readCustomerTimestamps = (
   customer: DotyposCustomer
-): Effect.Effect<StampedCustomer, UnexpectedDotyposCustomerPage> =>
+): Effect.Effect<IdentifiedStampedCustomer, UnexpectedDotyposCustomerPage> =>
   Effect.all({
+    id: Effect.fromOption(Option.fromNullishOr(customer.id)),
     version: readTimestamp(customer.versionDate),
     created: readTimestamp(customer.created),
   }).pipe(
-    Effect.map(({ version, created }) => ({ customer, version, created })),
+    Effect.map(({ id, version, created }) => ({
+      customer: { ...customer, id },
+      version,
+      created,
+    })),
     Effect.mapError(() => new UnexpectedDotyposCustomerPage())
   );
 
@@ -415,7 +425,7 @@ const isAscendingFrom = (
 const continueSelection = (input: {
   readonly selection: CustomerVersionSelection;
   readonly changes: CustomerChanges;
-  readonly customers: readonly StampedCustomer[];
+  readonly customers: readonly IdentifiedStampedCustomer[];
 }): Effect.Effect<
   PageContinuation,
   UnexpectedDotyposCustomerPage | UnpageableDotyposCustomerGroup
@@ -435,7 +445,7 @@ const continueSelection = (input: {
  * back, so it is served and its version date is read as a group.
  */
 const continueRange = (input: {
-  readonly customers: readonly StampedCustomer[];
+  readonly customers: readonly IdentifiedStampedCustomer[];
   readonly changes: CustomerChanges;
 }): Effect.Effect<PageContinuation, UnexpectedDotyposCustomerPage> =>
   input.changes.hasMore
@@ -444,18 +454,20 @@ const continueRange = (input: {
           whole.length === 0
             ? {
                 served: input.customers,
-                next: Option.some<CustomerVersionSelection>({
-                  _tag: "ChangedAt",
-                  versionDate: last,
-                  createdFrom: Option.none(),
-                }),
+                next: Option.some(
+                  CustomerVersionSelection.ChangedAt({
+                    versionDate: last,
+                    createdFrom: Option.none(),
+                  })
+                ),
               }
             : {
                 served: whole,
-                next: Option.some<CustomerVersionSelection>({
-                  _tag: "ChangedFrom",
-                  versionDate: last,
-                }),
+                next: Option.some(
+                  CustomerVersionSelection.ChangedFrom({
+                    versionDate: last,
+                  })
+                ),
               }
         )
       )
@@ -472,7 +484,7 @@ const continueRange = (input: {
  */
 const continueGroup = (input: {
   readonly selection: GroupSelection;
-  readonly customers: readonly StampedCustomer[];
+  readonly customers: readonly IdentifiedStampedCustomer[];
   readonly changes: CustomerChanges;
 }): Effect.Effect<
   PageContinuation,
@@ -486,10 +498,19 @@ const continueGroup = (input: {
         ),
         Effect.map(({ last, whole }) => ({
           served: whole,
-          next: Option.some<CustomerVersionSelection>({
-            ...input.selection,
-            createdFrom: Option.some(last),
-          }),
+          next: Option.some(
+            Match.valueTags(input.selection, {
+              ChangedAt: ({ versionDate }) =>
+                CustomerVersionSelection.ChangedAt({
+                  versionDate,
+                  createdFrom: Option.some(last),
+                }),
+              Undated: () =>
+                CustomerVersionSelection.Undated({
+                  createdFrom: Option.some(last),
+                }),
+            })
+          ),
         }))
       )
     : Effect.succeed({
@@ -502,8 +523,8 @@ const continueGroup = (input: {
  * the next page. A full page always ends in a timestamp; an empty one that
  * claims more pages follow is unexpected.
  */
-const holdBackLast = (
-  customers: readonly StampedCustomer[],
+const holdBackLast = <A extends StampedCustomer>(
+  customers: readonly A[],
   timestampOf: (customer: StampedCustomer) => Option.Option<DotyposTimestamp>
 ) =>
   Effect.fromOption(
@@ -520,11 +541,11 @@ const holdBackLast = (
 
 const afterGroup = (selection: GroupSelection): CustomerVersionSelection =>
   Match.valueTags(selection, {
-    Undated: () => ({ _tag: "Dated" as const }),
-    ChangedAt: ({ versionDate }) => ({
-      _tag: "ChangedAfter" as const,
-      versionDate,
-    }),
+    Undated: () => CustomerVersionSelection.Dated(),
+    ChangedAt: ({ versionDate }) =>
+      CustomerVersionSelection.ChangedAfter({
+        versionDate,
+      }),
   });
 
 /**
@@ -553,37 +574,37 @@ const cursorFormats: readonly {
     groups: readonly (string | undefined)[]
   ) => CustomerVersionSelection;
 }[] = [
-  { pattern: /^dated$/, decode: () => ({ _tag: "Dated" }) },
+  { pattern: /^dated$/, decode: () => CustomerVersionSelection.Dated() },
   {
     pattern: new RegExp(`^from\\.${timestampPattern}$`),
-    decode: ([version]) => ({
-      _tag: "ChangedFrom",
-      versionDate: timestampAt(version),
-    }),
+    decode: ([version]) =>
+      CustomerVersionSelection.ChangedFrom({
+        versionDate: timestampAt(version),
+      }),
   },
   {
     pattern: new RegExp(`^after\\.${timestampPattern}$`),
-    decode: ([version]) => ({
-      _tag: "ChangedAfter",
-      versionDate: timestampAt(version),
-    }),
+    decode: ([version]) =>
+      CustomerVersionSelection.ChangedAfter({
+        versionDate: timestampAt(version),
+      }),
   },
   {
     pattern: new RegExp(
       `^at\\.${timestampPattern}(?:\\.${timestampPattern})?$`
     ),
-    decode: ([version, created]) => ({
-      _tag: "ChangedAt",
-      versionDate: timestampAt(version),
-      createdFrom: optionalTimestampAt(created),
-    }),
+    decode: ([version, created]) =>
+      CustomerVersionSelection.ChangedAt({
+        versionDate: timestampAt(version),
+        createdFrom: optionalTimestampAt(created),
+      }),
   },
   {
     pattern: new RegExp(`^undated(?:\\.${timestampPattern})?$`),
-    decode: ([created]) => ({
-      _tag: "Undated",
-      createdFrom: optionalTimestampAt(created),
-    }),
+    decode: ([created]) =>
+      CustomerVersionSelection.Undated({
+        createdFrom: optionalTimestampAt(created),
+      }),
   },
 ];
 
@@ -604,41 +625,33 @@ const timestampAt = (micros: string | undefined) =>
 const optionalTimestampAt = (micros: string | undefined) =>
   Option.fromNullishOr(micros).pipe(Option.map(timestampAt));
 
-/**
- * Projects a customer onto the allowlist field by field. A customer without
- * an ID can't be joined or merged, so it yields no row.
- */
+/** Projects an identified customer onto the allowlist field by field. */
 const toSourceRow = ({
   customer,
   version,
-}: StampedCustomer): readonly DotyposCustomerSourceRow[] =>
-  customer.id === undefined
-    ? []
-    : [
-        {
-          id: customer.id,
-          firstName: customer.firstName ?? null,
-          lastName: customer.lastName ?? null,
-          companyName: customer.companyName ?? null,
-          email: customer.email ?? null,
-          phone: customer.phone ?? null,
-          addressLine1: customer.addressLine1 ?? null,
-          addressLine2: customer.addressLine2 ?? null,
-          city: customer.city ?? null,
-          zip: customer.zip ?? null,
-          country: customer.country ?? null,
-          birthday: customer.birthday ?? null,
-          _discountGroupId: customer._discountGroupId ?? null,
-          points: customer.points,
-          tags: customer.tags ?? null,
-          created: customer.created ?? null,
-          versionDate: Option.match(version, {
-            onNone: () => null,
-            onSome: formatDotyposTimestamp,
-          }),
-          deleted: customer.deleted,
-        },
-      ];
+}: IdentifiedStampedCustomer): DotyposCustomerSourceRow => ({
+  id: customer.id,
+  firstName: customer.firstName ?? null,
+  lastName: customer.lastName ?? null,
+  companyName: customer.companyName ?? null,
+  email: customer.email ?? null,
+  phone: customer.phone ?? null,
+  addressLine1: customer.addressLine1 ?? null,
+  addressLine2: customer.addressLine2 ?? null,
+  city: customer.city ?? null,
+  zip: customer.zip ?? null,
+  country: customer.country ?? null,
+  birthday: customer.birthday ?? null,
+  _discountGroupId: customer._discountGroupId ?? null,
+  points: customer.points,
+  tags: customer.tags ?? null,
+  created: customer.created ?? null,
+  versionDate: Option.match(version, {
+    onNone: () => null,
+    onSome: formatDotyposTimestamp,
+  }),
+  deleted: customer.deleted,
+});
 
 const rejectRequest = (status: 400 | 401 | 404, message: string) =>
   Effect.logWarning("Dotypos customer source rejected a request", {

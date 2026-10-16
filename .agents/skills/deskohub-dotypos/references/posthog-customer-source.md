@@ -151,10 +151,10 @@ ones. Undated rows carry `versionDate: null`.
   filters, 404 for empty filters).
 - Every undated customer has a `created` timestamp; one without fails its
   group page with 502.
-- Fewer than 100 customers share one exact `versionDate` and `created`. The
+- At most 100 customers share one exact `versionDate` and `created`. The
   synthetic cloud stamps each row separately (neighbors differ by
-  microseconds); a bulk import or edit that stamps a whole batch with one
-  value would make its group answer 502.
+  microseconds); a bulk import or edit that stamps 101 or more customers with
+  one value makes its group answer 502.
 - `versionDate` grows with each edit, so an edited customer never moves to an
   earlier, already-read position.
 
@@ -165,6 +165,46 @@ the export budget is spent (see below) or Dotypos rate-limits (60 seconds),
 502 for other Dotypos failures (including a rejected sort or filter) and the
 unsafe pages above, and 503 when the
 budget store is unavailable. PostHog retries 429 and 5xx answers.
+
+## Sync blocked by 502
+
+### Symptom and diagnosis
+
+PostHog's sync for `dotypos_customers` fails repeatedly because the source
+returns 502. In Workspace logs, filter for
+`operation=analyticsWarehouseDotyposCustomers` and `statusCode=502`. The
+failure event is logged as `Dotypos customer source could not read Dotypos`;
+its `errorTag` is `UnpageableDotyposCustomerGroup` when a timestamp group
+cannot be split, or `UnexpectedDotyposCustomerPage` for a missing ID or a
+selection/order violation.
+
+The `position` field on the preceding `Dotypos customer source served a page`
+event identifies the selection kind (`Undated`, `ChangedAt`, `ChangedFrom`,
+and so on); `rowCount` and `hasNextPage` describe that completed page. The
+Workspace failure event does not log the exact cursor. Use the PostHog run's
+`cursor` or `since` request value to locate the blocked position, if shown.
+Never print or copy customer data into logs, tickets, or chat.
+
+### Known causes and remedies
+
+1. More than 100 customers share the same `versionDate` and `created`, such
+   as after a bulk import or bulk edit in Dotypos. Exactly 100 is fine; 101
+   blocks because the next page cannot split that timestamp group. Editing
+   one customer may not unblock a larger batch. Re-save the affected
+   customers in smaller batches so their `versionDate` values differ, or
+   implement a separately verified pagination fallback.
+2. A customer has no `id`. Escalate to Dotypos support.
+3. Dotypos returned an out-of-order or repeated page. Escalate to Dotypos
+   support.
+
+After the cause is fixed, run the PostHog sync again. A failed run has not
+committed its watermark past the blocked page, so no rows were skipped.
+
+**Unverified UI path:** try **Data pipelines → Sources → the Dotypos source →
+`dotypos_customers` → Sync now**. PostHog's
+[sync monitoring docs](https://posthog.com/docs/data-warehouse/monitoring)
+describe finding failed runs but do not confirm this manual resync control or
+its exact location.
 
 ## Field allowlist
 
