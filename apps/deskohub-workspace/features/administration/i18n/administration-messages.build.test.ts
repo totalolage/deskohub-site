@@ -24,6 +24,10 @@ const customerMessagesDirectory = path.join(
   appDirectory,
   "features/i18n/messages"
 );
+const administrationContractDirectory = path.resolve(
+  appDirectory,
+  "../../packages/workspace-admin-api/src"
+);
 
 type ClientReferenceManifest = {
   readonly clientModules?: Record<string, { readonly chunks: string[] }>;
@@ -103,6 +107,18 @@ const readCatalogDirectory = async (directory: string) => {
   return texts;
 };
 
+const readContractSource = async () => {
+  const files = (
+    await readdir(administrationContractDirectory, { recursive: true })
+  ).filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"));
+  const sources = await Promise.all(
+    files.map((file) =>
+      readFile(path.join(administrationContractDirectory, file), "utf8")
+    )
+  );
+  return sources.join("\n");
+};
+
 const isAdministrationRoute = (route: string) =>
   route === "/[locale]/admin" || route.startsWith("/[locale]/admin/");
 
@@ -120,6 +136,14 @@ const administrationTexts = selectLeakEvidence(
   customerCatalogTexts
 );
 const customerTexts = selectLeakEvidence(customerCatalogTexts, []);
+// The administration API contract declares English labels and errors for
+// `dhw` that the Admin UI catalog repeats. The contract ships wherever its
+// schemas do, so its text alone doesn't show that a message leaked.
+const contractMessages = new Set(
+  findTexts(administrationTexts, await readContractSource()).map(
+    ({ message }) => message
+  )
+);
 
 const customerRoutesByChunk = new Map<string, string[]>();
 for (const chunk of rootChunks) customerRoutesByChunk.set(chunk, ["(root)"]);
@@ -165,7 +189,8 @@ describe("administration messages in a production build", () => {
       for (const { locale, text } of findMessageTexts(
         administrationTexts,
         administrationCatalogTexts,
-        chunks.get(chunk) ?? ""
+        chunks.get(chunk) ?? "",
+        contractMessages
       )) {
         leaks.push(
           `${locale} ${JSON.stringify(text)} in ${chunk} (${describeChunk(chunk)})`
@@ -227,5 +252,29 @@ describe("administration messages in a production build", () => {
         ({ text }) => text
       )
     ).toEqual([" audit entries for operator ", " záznamů auditu pro správce "]);
+  });
+
+  test("reports an administration sentence copied into a customer chunk without its translation", () => {
+    const probeTexts = [
+      ...readCatalogTexts(
+        "en-US",
+        JSON.stringify({ probe: "Archive this audit trail for every operator" })
+      ),
+      ...readCatalogTexts(
+        "cs-CZ",
+        JSON.stringify({ probe: "Archivovat tento záznam pro všechny správce" })
+      ),
+    ];
+    const probeEvidence = selectLeakEvidence(probeTexts, customerCatalogTexts);
+    const [rootChunk] = rootChunks;
+    const source = chunks.get(rootChunk) ?? "";
+    const planted = `${source};const t="Archive this audit trail for every operator"`;
+
+    expect(findMessageTexts(probeEvidence, probeTexts, source)).toEqual([]);
+    expect(
+      findMessageTexts(probeEvidence, probeTexts, planted).map(
+        ({ text }) => text
+      )
+    ).toEqual(["Archive this audit trail for every operator"]);
   });
 });

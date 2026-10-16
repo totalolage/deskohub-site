@@ -98,6 +98,9 @@ describe("administration messages a chunk holds", () => {
         status: "Reservation status",
         provider: "Nexi payment gateway",
         count: "{count} to fix",
+        rename:
+          "Choose a label that makes this machine easy to recognize. Renaming does not change its access.",
+        contract: "Campaign emails received",
       })
     ),
     ...readCatalogTexts(
@@ -107,12 +110,15 @@ describe("administration messages a chunk holds", () => {
         status: "Stav rezervace",
         provider: "Nexi payment gateway",
         count: "{count}",
+        rename:
+          "Zvolte označení, podle kterého tento počítač snadno poznáte. Přejmenování nemění jeho přístup.",
+        contract: "Přijaté e-maily kampaní",
       })
     ),
   ];
   const evidence = selectLeakEvidence(catalogTexts, []);
   const leaked = (source: string) =>
-    findMessageTexts(evidence, catalogTexts, source).map(
+    findMessageTexts(evidence, catalogTexts, source, new Set(["contract"])).map(
       ({ locale, text }) => `${locale} ${text}`
     );
 
@@ -120,6 +126,36 @@ describe("administration messages a chunk holds", () => {
     expect(
       leaked('const en=()=>"Reservation status",cs=()=>"Stav rezervace"')
     ).toEqual(["en-US Reservation status", "cs-CZ Stav rezervace"]);
+  });
+
+  test("reports an English sentence copied without its translation", () => {
+    expect(
+      leaked(
+        'children:"Choose a label that makes this machine easy to recognize. Renaming does not change its access."'
+      )
+    ).toEqual([
+      "en-US Choose a label that makes this machine easy to recognize. Renaming does not change its access.",
+    ]);
+  });
+
+  test("reports a Czech sentence copied without its translation", () => {
+    expect(
+      leaked(
+        'children:"Zvolte ozna\\u010Den\\xed, podle kter\\xe9ho tento po\\u010D\\xedta\\u010D snadno pozn\\xe1te. P\\u0159ejmenov\\xe1n\\xed nem\\u011Bn\\xed jeho p\\u0159\\xedstup."'
+      )
+    ).toEqual([
+      "cs-CZ Zvolte označení, podle kterého tento počítač snadno poznáte. Přejmenování nemění jeho přístup.",
+    ]);
+  });
+
+  test("ignores a label the API contract also declares without its translation", () => {
+    expect(leaked('{label:"Campaign emails received"}')).toEqual([]);
+    expect(
+      leaked('{label:"Campaign emails received"};m="Přijaté e-maily kampaní"')
+    ).toEqual([
+      "en-US Campaign emails received",
+      "cs-CZ Přijaté e-maily kampaní",
+    ]);
   });
 
   test("ignores an English library literal without the message's translation", () => {
