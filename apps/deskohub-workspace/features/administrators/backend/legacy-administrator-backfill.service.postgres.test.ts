@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
@@ -27,10 +27,16 @@ import {
 import { InvoiceRepository } from "@/features/accounting/backend/invoice.repository";
 import { manualInvoiceInputSchema } from "@/features/accounting/manual-invoice";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  deleteTestAccounts,
+  insertTestAccount,
+} from "@/shared/testing/workspace-test-accounts.test-utils";
+import type { AdministratorAccountActor } from "../account-role";
 import { AccountRoleGrants } from "./account-role-grants.service";
 import { LegacyAdministratorBackfill } from "./legacy-administrator-backfill.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
+const testAccounts: AdministratorAccountActor[] = [];
 
 const testKey: AccountingSnapshotKey = {
   id: accountingSnapshotKeyIdSchema.make("K202610"),
@@ -121,15 +127,13 @@ const runIsolated = <A, E>(
   }).pipe(Effect.provide(makeLayer()), Effect.runPromise);
 
 const insertAccount = (local: string) =>
-  Effect.gen(function* () {
-    const { db } = yield* WorkspaceDatabase;
-    const id = customerAccountIdSchema.make(randomUUID());
-    const email = testEmailAddress(`${local}-${id}`);
-    yield* db.execute(
-      sql`insert into auth."user" (id, name, email, email_verified) values (${id}, '', ${email}, true)`
-    );
-    return { accountId: id, email };
-  });
+  Effect.promise(() => insertTestAccount(testDatabase!, local)).pipe(
+    Effect.tap((account) =>
+      Effect.sync(() => {
+        testAccounts.push(account);
+      })
+    )
+  );
 
 const insertCliSession = (input: {
   readonly approvedBy: AdministrationLegacyUsernameType;
@@ -167,11 +171,14 @@ const insertAccessCodeEvent = (actor: AdministrationLegacyUsernameType) =>
     `);
   });
 
-const issueManualInvoice = (actor: string) =>
+const issueManualInvoice = (
+  actor: string,
+  issuedBy: AdministratorAccountActor
+) =>
   InvoiceRepository.pipe(
     Effect.flatMap((repository) =>
-      repository.issueManual(
-        Schema.decodeUnknownSync(manualInvoiceInputSchema)({
+      repository.issueManual({
+        ...Schema.decodeUnknownSync(manualInvoiceInputSchema)({
           invoiceId: randomUUID(),
           dotyposCustomerId: `legacy-administrator-customer-${randomUUID()}`,
           buyer: {
@@ -191,8 +198,9 @@ const issueManualInvoice = (actor: string) =>
           currency: "CZK",
           lines: [{ description: "Synthetic line", price: "100.00" }],
           provenance: { source: "dhw-cli", actor },
-        })
-      )
+        }),
+        issuedBy,
+      })
     ),
     Effect.map(({ invoice }) => invoice.id)
   );
@@ -212,6 +220,10 @@ const backfill = (input: {
 describe.skipIf(!testDatabase)(
   "LegacyAdministratorBackfill on disposable Postgres",
   () => {
+    afterAll(async () => {
+      await deleteTestAccounts(testDatabase!, testAccounts);
+    });
+
     test("reports, then links, a legacy username's records to the account", async () => {
       const outcome = await runIsolated(
         Effect.gen(function* () {
@@ -235,10 +247,21 @@ describe.skipIf(!testDatabase)(
           yield* insertAccessCodeEvent(legacyUsername);
           yield* insertAccessCodeEvent(otherUsername);
           const legacyInvoices = [
-            yield* issueManualInvoice(legacyUsername),
-            yield* issueManualInvoice(legacyUsername),
+            yield* issueManualInvoice(legacyUsername, target),
+            yield* issueManualInvoice(legacyUsername, target),
           ];
-          const unrelatedInvoice = yield* issueManualInvoice(otherUsername);
+          const unrelatedInvoice = yield* issueManualInvoice(
+            otherUsername,
+            other
+          );
+          yield* db
+            .delete(manualInvoiceActors)
+            .where(
+              inArray(manualInvoiceActors.invoiceId, [
+                ...legacyInvoices,
+                unrelatedInvoice,
+              ])
+            );
 
           const dryRun = yield* backfill({
             legacyUsername,

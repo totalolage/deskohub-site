@@ -76,7 +76,7 @@ describe.skipIf(!testDatabase)(
           invoiceId,
           normalizedRequestJson: getManualInvoiceCreationRequestJson(input, {
             source: "admin-ui",
-            actor: "admin",
+            actor: testEmailAddress("invoice-claim-administrator"),
           }),
         })
       );
