@@ -221,7 +221,10 @@ interface AuthoritySessionModule {
   readonly auth: {
     readonly api: {
       readonly getSession: (input: {
-        readonly query: { readonly disableRefresh: true };
+        readonly query: {
+          readonly disableRefresh: true;
+          readonly disableCookieCache: true;
+        };
         readonly headers: Headers;
       }) => Promise<AuthoritySession>;
     };
@@ -253,7 +256,10 @@ const readAuthoritySession = (
       Effect.tryPromise({
         try: () =>
           authority.auth.api.getSession({
-            query: { disableRefresh: true },
+            // Cookie caching is off in the auth options; asking again keeps
+            // every read authoritative even if that setting changes, so a
+            // revoked session or administrator stops on the next request.
+            query: { disableRefresh: true, disableCookieCache: true },
             headers: requestHeaders,
           }),
         catch: AuthorityStageFailure.at("get-session"),

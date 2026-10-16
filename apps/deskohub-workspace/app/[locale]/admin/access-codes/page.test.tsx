@@ -6,7 +6,7 @@ let administratorAuthorization: Promise<void> = Promise.resolve();
 let authorizationChecks = 0;
 
 mock.module(
-  "@/shared/administrator/administrator-authorization.server",
+  "@/features/administrators/server/administrator-authorization.server",
   () => ({
     authorizeAdministratorPage: () => {
       authorizationChecks += 1;

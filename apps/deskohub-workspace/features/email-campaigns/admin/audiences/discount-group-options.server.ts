@@ -4,7 +4,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { unstable_rethrow } from "next/navigation";
 import { cache } from "react";
-import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
+import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import type { DiscountGroupOption } from "../audience-filter-summary";

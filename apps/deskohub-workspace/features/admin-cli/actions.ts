@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { resolveActionLocale } from "@/features/i18n/server/action-locale";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
+import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";

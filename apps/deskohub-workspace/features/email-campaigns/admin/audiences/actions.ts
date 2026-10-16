@@ -1,7 +1,7 @@
 "use server";
 
 import { Effect } from "effect";
-import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
+import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import {
   PublicSafeActionError,

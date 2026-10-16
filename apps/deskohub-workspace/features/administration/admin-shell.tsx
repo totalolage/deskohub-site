@@ -38,7 +38,6 @@ import {
   SheetTrigger,
 } from "@/shared/components/ui/sheet";
 import { AdministrationLink as Link } from "./admin-link";
-import { useCredentialFreeDocumentUrl } from "./credential-free-url";
 import { m } from "./i18n";
 import { AdministrationBreadcrumbLoading } from "./loading";
 
@@ -301,7 +300,6 @@ export function AdminShell({
   readonly children: ReactNode;
   readonly localeSwitcher: ReactNode;
 }) {
-  useCredentialFreeDocumentUrl();
   const locale = useRouteLocale();
 
   return (

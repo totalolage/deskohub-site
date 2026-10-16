@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
-import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
+import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import type { DiscountCodeId, VoucherId } from "../persistence-contracts";
 import { DiscountAdministration } from "./discount-administration.service";

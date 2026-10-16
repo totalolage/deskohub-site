@@ -7,7 +7,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Match, Schema } from "effect";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
+import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { InvoiceAdministrationService } from "./invoice-administration.service";

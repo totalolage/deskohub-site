@@ -5,7 +5,7 @@ import {
   AdministrationPageHeader,
 } from "@/features/administration/components";
 import { AdministrationPanelLoading } from "@/features/administration/loading";
-import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
+import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 
 export default function AccessCodesAdminPage() {
   return (

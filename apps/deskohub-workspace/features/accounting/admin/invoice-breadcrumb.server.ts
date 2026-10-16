@@ -2,7 +2,7 @@ import "server-only";
 
 import { Effect } from "effect";
 import { cache } from "react";
-import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
+import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { decodeInvoiceAdministrationId } from "./invoice-administration-identifier";
 import { InvoiceBreadcrumbService } from "./invoice-breadcrumb.service";

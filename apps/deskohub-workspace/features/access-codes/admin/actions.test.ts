@@ -60,7 +60,7 @@ mock.module("@/features/access-codes", () => ({
 }));
 
 mock.module(
-  "@/shared/administrator/administrator-authorization.server",
+  "@/features/administrators/server/administrator-authorization.server",
   () => ({
     requireAdministratorAuthorization: Effect.gen(function* () {
       authorizationCalls += 1;

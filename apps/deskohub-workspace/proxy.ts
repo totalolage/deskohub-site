@@ -10,6 +10,8 @@ import {
   type NextRequest,
   NextResponse,
 } from "next/server";
+import { getAccountSignInPath } from "@/features/account/routes";
+import { administrationRequestPathHeader } from "@/features/administrators/administration-request-path";
 import { resolveWorkspaceLocale } from "@/features/i18n/locale-resolution";
 import { localeCookieName, locales } from "@/features/i18n/routing";
 import {
@@ -19,7 +21,6 @@ import {
 import { env } from "./env";
 import { appendVercelPreviewProtectionBypass } from "./features/checkout/backend/checkout/vercel-preview-protection-bypass";
 import { reservationAccessTokenQueryParam } from "./features/reservation/reservation-access-token";
-import { isAdministratorAuthorizationValid } from "./shared/administrator/administrator-basic-auth";
 import { resolveWorkspaceRuntimeCallbackOrigin } from "./shared/backend/config/workspace-url.config";
 import { markPrivateResponse } from "./shared/utils/private-response";
 
@@ -34,7 +35,7 @@ const decodePathname = (pathname: string) => {
 // The administration lives under the locale segment, and its unprefixed URLs
 // redirect there. Any first or second segment naming it counts, whatever the
 // prefix and however it is encoded, so no spelling of an administration URL
-// skips Basic auth.
+// skips the sign-in redirect or the private cache headers.
 const isAdministrationPath = (pathname: string) => {
   const [first, second] = decodePathname(pathname).split("/").slice(1, 3);
   return first === "admin" || second === "admin";
@@ -42,7 +43,7 @@ const isAdministrationPath = (pathname: string) => {
 
 const markAdministrationResponse = <T extends Response>(response: T) => {
   response.headers.set("Cache-Control", "private, no-store");
-  response.headers.append("Vary", "Authorization");
+  response.headers.append("Vary", "Cookie");
   return response;
 };
 
@@ -139,7 +140,12 @@ const pageLocalePreference = async (request: NextRequest) => {
 };
 
 // Places a page request on the URL the Workspace locale chain resolves.
-async function localizedPageResponse(request: NextRequest) {
+// `forwardRequestHeaders` passes headers the proxy set on the request on to
+// the page.
+async function localizedPageResponse(
+  request: NextRequest,
+  { forwardRequestHeaders = false } = {}
+) {
   const localeFromUrl = getLocaleFromRequestPathname(request, locales);
 
   // A reservation capability is bound to the locale it was issued in, so it is
@@ -168,9 +174,10 @@ async function localizedPageResponse(request: NextRequest) {
     if (sharedReferralCode) {
       request.cookies.set(referralCodeCookieName, sharedReferralCode);
     }
-    const response = sharedReferralCode
-      ? NextResponse.next({ request: { headers: request.headers } })
-      : NextResponse.next();
+    const response =
+      sharedReferralCode || forwardRequestHeaders
+        ? NextResponse.next({ request: { headers: request.headers } })
+        : NextResponse.next();
     if (
       isPrivateReservationPath(request.nextUrl.pathname) ||
       isPrivateAccountPath(request.nextUrl.pathname)
@@ -200,30 +207,51 @@ async function localizedPageResponse(request: NextRequest) {
   return response;
 }
 
+// Better Auth's optimistic cookie check: a page load without a session cookie
+// can't belong to an administrator, so it goes straight to sign-in and comes
+// back afterwards. The page and Server Action guards verify the session and
+// the administrator grant on every request; this check only saves a render.
+const administrationSignInRedirect = (request: NextRequest) => {
+  const locale = resolveWorkspaceLocale(
+    {
+      pathname: request.nextUrl.pathname,
+      cookies: request.cookies,
+      headers: request.headers,
+    },
+    undefined
+  );
+  return NextResponse.redirect(
+    new URL(
+      getAccountSignInPath(
+        locale,
+        `${request.nextUrl.pathname}${request.nextUrl.search}`
+      ),
+      request.nextUrl
+    )
+  );
+};
+
+async function administrationResponse(request: NextRequest) {
+  // A Server Action without a session reaches its guard, which fails closed.
+  if (request.method === "POST" && request.headers.has("next-action")) {
+    return NextResponse.next();
+  }
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    !getSessionCookie(request)
+  ) {
+    return administrationSignInRedirect(request);
+  }
+  request.headers.set(
+    administrationRequestPathHeader,
+    `${request.nextUrl.pathname}${request.nextUrl.search}`
+  );
+  return localizedPageResponse(request, { forwardRequestHeaders: true });
+}
+
 export async function proxy(request: NextRequest) {
   if (isAdministrationPath(request.nextUrl.pathname)) {
-    if (
-      !isAdministratorAuthorizationValid(
-        request.headers.get("authorization"),
-        env.ADMIN_BASIC_AUTH_CREDENTIALS
-      )
-    ) {
-      return new NextResponse(null, {
-        status: 401,
-        headers: {
-          "Cache-Control": "private, no-store",
-          Vary: "Authorization",
-          "WWW-Authenticate":
-            'Basic realm="Deskohub administration", charset="UTF-8"',
-        },
-      });
-    }
-
-    return markAdministrationResponse(
-      request.method === "POST" && request.headers.has("next-action")
-        ? NextResponse.next()
-        : await localizedPageResponse(request)
-    );
+    return markAdministrationResponse(await administrationResponse(request));
   }
 
   if (request.method === "POST" && request.headers.has("next-action")) {

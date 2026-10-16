@@ -1,6 +1,6 @@
 import { EMAIL_TEST_DOMAIN } from "@deskohub/test-email";
 import { type Effect, type Layer, Match } from "effect";
-import type { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
+import type { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import type {
   CampaignService,
   ICampaignService,

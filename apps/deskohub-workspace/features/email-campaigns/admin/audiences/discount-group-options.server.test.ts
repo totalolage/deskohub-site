@@ -5,7 +5,7 @@ import { Effect, Layer } from "effect";
 
 const authorizeAdministratorPage = mock(async () => "Fixture Operator");
 mock.module(
-  "@/shared/administrator/administrator-authorization.server",
+  "@/features/administrators/server/administrator-authorization.server",
   () => ({ authorizeAdministratorPage })
 );
 

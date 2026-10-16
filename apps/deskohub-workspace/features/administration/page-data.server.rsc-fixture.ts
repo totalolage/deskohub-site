@@ -84,7 +84,7 @@ AdministrationService.Live = Layer.succeed(AdministrationService, {
 } satisfies AdministrationServiceType["Service"]);
 
 mock.module(
-  "@/shared/administrator/administrator-authorization.server",
+  "@/features/administrators/server/administrator-authorization.server",
   () => ({
     authorizeAdministratorPage: async () => {
       authorizationCalls += 1;

@@ -6,7 +6,7 @@ import {
   type CliAuthenticationCodeType,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Option, Schema } from "effect";
-import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
+import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import type {
   CliApprovalRequest,

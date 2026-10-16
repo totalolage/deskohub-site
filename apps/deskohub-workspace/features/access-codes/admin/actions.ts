@@ -2,7 +2,7 @@
 
 import { Effect, Result } from "effect";
 import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
-import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
+import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
