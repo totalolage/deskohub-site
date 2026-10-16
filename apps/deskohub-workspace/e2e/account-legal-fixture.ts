@@ -238,6 +238,11 @@ export async function areAccountsEnabled(): Promise<boolean> {
   const requestHeaders = await headers();
   return requestHeaders.get("${accountFixtureRolloutHeader}") !== "${accountFixtureRolloutOffValue}";
 }
+
+// The legal fixture has no Sign-in & security section, so passkeys stay off.
+export async function arePasskeysEnabled(): Promise<boolean> {
+  return false;
+}
 `;
 
 // The account layout reads the referral flag; the legal fixture has no
