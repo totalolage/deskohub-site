@@ -111,22 +111,23 @@ const isSentence = (text: string) => text.trim().split(/\s+/).length >= 3;
  * so it counts only when the chunk also holds a text of the same message in
  * every other locale that has one. Paraglide compiles every locale of a
  * message into one module, so an imported message always brings them along.
- * Messages in `sharedMessages` repeat text that other source declares, such
- * as the administration API contract's English labels, and also need their
- * translations.
+ * Texts in `sharedTexts` also occur in other source, such as the
+ * administration API contract's English labels, and need the message's other
+ * locales alongside however long they are. The message's other texts keep the
+ * usual rule.
  */
 export const findMessageTexts = (
   evidence: readonly CatalogText[],
   catalogTexts: readonly CatalogText[],
   source: string,
-  sharedMessages: ReadonlySet<string> = new Set()
+  sharedTexts: ReadonlySet<string> = new Set()
 ) => {
   const substantial = catalogTexts.filter(({ text }) => !isTrivial(text));
   const expected = localesByMessage(substantial);
   const found = localesByMessage(findTexts(substantial, source));
   return findTexts(evidence, source).filter(
     ({ message, text }) =>
-      (isSentence(text) && !sharedMessages.has(message)) ||
+      (isSentence(text) && !sharedTexts.has(text)) ||
       [...(expected.get(message) ?? [])].every((locale) =>
         found.get(message)?.has(locale)
       )
