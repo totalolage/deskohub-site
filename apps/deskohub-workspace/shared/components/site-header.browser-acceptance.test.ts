@@ -12,6 +12,10 @@ const mobileViewport = { height: 812, width: 375 } as const;
 const desktopViewport = { height: 900, width: 1440 } as const;
 const narrowDesktopViewport = { height: 800, width: 1280 } as const;
 const shortMobileViewport = { height: 600, width: 375 } as const;
+// The narrowest supported phone up to the largest common one.
+const phoneWidths = [320, 390, 430] as const;
+const headerVariants = ["full", "minimal"] as const;
+type HeaderVariant = (typeof headerVariants)[number];
 
 // The harness runs outside a Next.js app, so the router-bound modules render
 // plain elements; static image imports keep their real dimensions.
@@ -107,12 +111,13 @@ afterAll(async () => {
 const openSiteHeader = async (
   locale: Locale,
   viewport: { readonly height: number; readonly width: number },
+  variant: HeaderVariant = "full",
   { administrator = false }: { readonly administrator?: boolean } = {}
 ) => {
   if (!browser) throw new Error("The SiteHeader browser has not launched.");
   const page = await browser.newPage({ reducedMotion: "reduce", viewport });
   await page.setContent(
-    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="site-header-test-root" data-locale="${locale}" data-administrator="${administrator}"></div></body></html>`
+    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="site-header-test-root" data-locale="${locale}" data-variant="${variant}" data-administrator="${administrator}"></div></body></html>`
   );
   await page.addStyleTag({ content: appStyles });
   await page.addScriptTag({ path: browserBundlePath });
@@ -189,6 +194,26 @@ const readHeaderHeights = (page: Page) =>
   });
 
 for (const locale of locales) {
+  for (const variant of headerVariants) {
+    for (const width of phoneWidths) {
+      test.skipIf(!chromiumAvailable)(
+        `fits the ${variant} header on a ${width}px phone (${locale})`,
+        async () => {
+          const page = await openSiteHeader(
+            locale,
+            { height: 844, width },
+            variant
+          );
+          try {
+            await expectNoHorizontalOverflow(page);
+          } finally {
+            await page.close();
+          }
+        }
+      );
+    }
+  }
+
   test.skipIf(!chromiumAvailable)(
     `shows the primary navigation without a menu button on desktop (${locale})`,
     async () => {
@@ -303,7 +328,7 @@ for (const locale of locales) {
   test.skipIf(!chromiumAvailable)(
     `fits the admin header on the narrowest desktop without overflow (${locale})`,
     async () => {
-      const page = await openSiteHeader(locale, narrowDesktopViewport, {
+      const page = await openSiteHeader(locale, narrowDesktopViewport, "full", {
         administrator: true,
       });
       try {
@@ -326,7 +351,7 @@ for (const locale of locales) {
   test.skipIf(!chromiumAvailable)(
     `fits the admin button and ribbon on one desktop line at 1440px (${locale})`,
     async () => {
-      const page = await openSiteHeader(locale, desktopViewport, {
+      const page = await openSiteHeader(locale, desktopViewport, "full", {
         administrator: true,
       });
       try {
@@ -365,7 +390,7 @@ for (const locale of locales) {
   test.skipIf(!chromiumAvailable)(
     `scrolls the administrator's mobile menu to the language switcher (${locale})`,
     async () => {
-      const page = await openSiteHeader(locale, shortMobileViewport, {
+      const page = await openSiteHeader(locale, shortMobileViewport, "full", {
         administrator: true,
       });
       try {

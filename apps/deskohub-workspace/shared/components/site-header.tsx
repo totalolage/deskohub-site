@@ -10,7 +10,6 @@ import {
   LocaleSwitcherLabels,
   LocaleSwitcherLinks,
 } from "@/shared/components/locale-switcher-links";
-import { HorizontalLogo, Logo } from "@/shared/components/logo";
 import {
   AdministratorEntryButton,
   AdministratorEntryMenuButton,
@@ -21,6 +20,7 @@ import type {
   SiteHeaderAdministratorEntry,
   SiteHeaderMenuItem,
 } from "@/shared/components/site-header-config";
+import { SiteHeaderLogo } from "@/shared/components/site-header-logo";
 import { Button } from "@/shared/components/ui/button";
 import { NavItem } from "@/shared/components/ui/nav-item";
 import { cn } from "@/shared/utils";
@@ -191,20 +191,7 @@ export function SiteHeader({
           className="shrink-0"
           onClick={closeMenu}
         >
-          <span className="block sm:hidden">
-            <Logo
-              styling={{ color: "dark", variant: "color" }}
-              alt=""
-              height={48}
-            />
-          </span>
-          <span className="hidden sm:block">
-            {/* The negative margin returns the width scale-80 leaves empty. */}
-            <HorizontalLogo
-              styling={{ color: "dark", variant: "color" }}
-              className="-mr-6.5 scale-80"
-            />
-          </span>
+          <SiteHeaderLogo />
         </Link>
 
         <nav
