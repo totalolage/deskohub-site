@@ -340,7 +340,7 @@ const readTimestamp = (value: string | null | undefined) =>
   Option.match(Option.fromNullishOr(value), {
     onNone: () => Effect.succeedNone,
     onSome: (timestamp) =>
-      Schema.decodeUnknownEffect(DotyposTimestampFromString)(timestamp).pipe(
+      Schema.decodeEffect(DotyposTimestampFromString)(timestamp).pipe(
         Effect.map(Option.some)
       ),
   });

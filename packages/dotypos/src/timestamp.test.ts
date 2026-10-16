@@ -19,7 +19,9 @@ describe("DotyposTimestampFromString", () => {
     ["2026-05-28T16:26:25Z", "1779985585000000"],
     ["2026-05-28T18:26:25.000001+02:00", "1779985585000001"],
   ])("decodes %s to its exact microsecond", (value, micros) => {
-    expect(decode(value)).toEqual(Result.succeed(BigInt(micros)));
+    expect(decode(value)).toEqual(
+      Result.succeed(DotyposTimestampSchema.make(BigInt(micros)))
+    );
   });
 
   test.each([
