@@ -14,6 +14,9 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 mock.module("server-only", () => ({}));
+mock.module("next/root-params", () => ({
+  locale: () => Promise.resolve("en-US"),
+}));
 mock.module("@/features/admin-cli/actions", () => ({
   approveCliAuthentication: mock(),
 }));

@@ -30,15 +30,22 @@ export default function EmailAudiencesPage() {
           </Button>
         }
         count={
-          <Suspense fallback={<AdministrationCountLoading label="audience" />}>
+          <Suspense
+            fallback={
+              <AdministrationCountLoading label="Loading audience count" />
+            }
+          >
             <AudiencesCount audiences={audiences} />
           </Suspense>
         }
-        itemLabel="audience"
+        label="audience table controls"
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading columns={4} label="audiences" />
+          <AdministrationCollectionLoading
+            columns={4}
+            label="Loading audiences"
+          />
         }
       >
         <AudiencesCollection audiences={audiences} />
@@ -52,10 +59,11 @@ async function AudiencesCount({
 }: {
   readonly audiences: AudienceListData;
 }) {
+  const count = (await audiences).length;
   return (
     <AdministrationTableCount
-      count={(await audiences).length}
-      itemLabel="audience"
+      count={count}
+      label={`${count} audience${count === 1 ? "" : "s"}`}
     />
   );
 }

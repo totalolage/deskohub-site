@@ -25,7 +25,9 @@ export async function AccessCodesAdministrationScreen() {
       <Suspense
         fallback={
           <div className="max-w-3xl">
-            <AdministrationPanelLoading label="access-code form" />
+            <AdministrationPanelLoading
+              label={m.accessCodesFormLoading({}, { locale })}
+            />
           </div>
         }
       >

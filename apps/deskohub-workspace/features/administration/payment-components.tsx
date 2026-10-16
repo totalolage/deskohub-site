@@ -3,6 +3,7 @@ import {
   getProviderOrderAbandonmentState,
   hasProviderPaymentActivity,
 } from "@/features/checkout/provider-order-abandonment";
+import type { Locale } from "@/features/i18n";
 import {
   StatusBadge,
   type StatusTone,
@@ -44,10 +45,13 @@ export const formatOrderMoney = (order: AdministrationOrder) => {
   return "Not reported";
 };
 
-export const formatProviderDateTime = (value: string | undefined) => {
+export const formatProviderDateTime = (
+  value: string | undefined,
+  locale: Locale
+) => {
   if (!value) return "Not reported";
   try {
-    return formatAdministrationDateTime(value);
+    return formatAdministrationDateTime(value, locale);
   } catch {
     return "Invalid provider timestamp";
   }
@@ -83,31 +87,36 @@ export function ProviderStatusBadge({ value }: { readonly value: string }) {
  * the same wording as every other payment summary.
  */
 export const getPaymentAttemptStatusLabel = (
-  link: NonNullable<AdministrationOrder["link"]>
+  link: NonNullable<AdministrationOrder["link"]>,
+  locale: Locale
 ) => {
-  const status = getAdministrationPaymentStatus(link);
+  const status = getAdministrationPaymentStatus(link, locale);
   return status.refunded ? status.label : getProviderValueLabel(link.state);
 };
 
 export function PaymentAttemptStatusBadge({
   link,
+  locale,
 }: {
   readonly link: NonNullable<AdministrationOrder["link"]>;
+  readonly locale: Locale;
 }) {
-  if (!getAdministrationPaymentStatus(link).refunded) {
+  if (!getAdministrationPaymentStatus(link, locale).refunded) {
     return <ProviderStatusBadge value={link.state} />;
   }
   return (
     <StatusBadge tone="attention">
-      {getPaymentAttemptStatusLabel(link)}
+      {getPaymentAttemptStatusLabel(link, locale)}
     </StatusBadge>
   );
 }
 
 export function ReservationOrderList({
   orders,
+  locale,
 }: {
   readonly orders: readonly AdministrationOrder[];
+  readonly locale: Locale;
 }) {
   if (orders.length === 0) {
     return (
@@ -153,20 +162,21 @@ export function ReservationOrderList({
                 </p>
                 <NexiOrderLink
                   className="mt-1 inline-flex max-w-full items-baseline gap-1.5 break-all font-mono text-sm font-semibold text-burned-orange-ink underline decoration-burned-orange/30 underline-offset-4"
+                  locale={locale}
                   orderId={order.orderId}
                 />
               </div>
               <div className="sm:text-right">
                 <p className="font-semibold">
                   {order.link ? (
-                    <PaymentAmount payment={order.link} />
+                    <PaymentAmount locale={locale} payment={order.link} />
                   ) : (
                     formatOrderMoney(order)
                   )}
                 </p>
                 <p className="mt-1 text-xs text-navy-blue/60">
                   {order.link ? (
-                    <PaymentStatusLabel payment={order.link} />
+                    <PaymentStatusLabel locale={locale} payment={order.link} />
                   ) : (
                     "No local payment attempt"
                   )}
@@ -197,7 +207,8 @@ export function ReservationOrderList({
                 {formatAdministrationDateTime(
                   getProviderOrderAbandonmentCutoff(
                     pendingProviderOrder.providerOrderCreatedAt
-                  ).toString()
+                  ).toString(),
+                  locale
                 )}
                 . If Nexi remains empty, automatic cleanup can release the hold.
               </p>
@@ -240,7 +251,10 @@ export function ReservationOrderList({
                           )}
                         </div>
                         <p className="mt-1 text-xs text-navy-blue/60">
-                          {formatProviderDateTime(operation.operationTime)}
+                          {formatProviderDateTime(
+                            operation.operationTime,
+                            locale
+                          )}
                           {operation.channel && (
                             <> · {getProviderValueLabel(operation.channel)}</>
                           )}

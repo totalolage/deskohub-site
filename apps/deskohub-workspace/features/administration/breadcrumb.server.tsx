@@ -25,6 +25,7 @@ export async function AdministrationBreadcrumb({
 }: {
   readonly segments: readonly string[];
 }) {
+  const locale = await getRequestLocale();
   let entityLabel: string | undefined;
 
   if (segments[0] === "customers" && segments[1]) {
@@ -36,7 +37,10 @@ export async function AdministrationBreadcrumb({
       (await loadAdministrationReservationBreadcrumbLabel(segments[1])) ??
       undefined;
   } else if (segments[0] === "bookings" && segments[1]) {
-    entityLabel = await loadAdministrationBookingBreadcrumbLabel(segments[1]);
+    entityLabel = await loadAdministrationBookingBreadcrumbLabel(
+      segments[1],
+      locale
+    );
   } else if (
     segments[0] === "invoices" &&
     segments[1] &&
@@ -44,7 +48,6 @@ export async function AdministrationBreadcrumb({
   ) {
     entityLabel = await loadInvoiceAdministrationBreadcrumbLabel(segments[1]);
   } else if (segments[0] && segments[1] === "new") {
-    const locale = await getRequestLocale();
     entityLabel = newEntityLabels.get(segments[0])?.({}, { locale });
   } else if (segments[0] === "email-campaigns" && segments[1]) {
     entityLabel = await loadCampaignBreadcrumbLabel(segments[1]);

@@ -554,6 +554,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
     });
 
     expect(view.getByText("Platí od")).toBeDefined();
+    expect(view.getByText("10. 9. 2026 10:00")).toBeDefined();
     expect(view.getByText("2 hodiny")).toBeDefined();
     expect(view.getByRole("button", { name: "Zkopírovat kód" })).toBeDefined();
   });

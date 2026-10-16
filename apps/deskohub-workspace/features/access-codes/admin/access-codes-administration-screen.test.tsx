@@ -40,9 +40,9 @@ describe("access codes administration screen", () => {
     const screen = await AccessCodesAdministrationScreen();
 
     expect(authorizationChecks).toBe(0);
-    expect(renderToStaticMarkup(screen)).toContain(
-      "Vytvoření přístupového kódu"
-    );
+    const markup = renderToStaticMarkup(screen);
+    expect(markup).toContain("Vytvoření přístupového kódu");
+    expect(markup).toContain("Načítání formuláře přístupového kódu");
   });
 
   test("renders no access-code form when administrator authorization fails", async () => {

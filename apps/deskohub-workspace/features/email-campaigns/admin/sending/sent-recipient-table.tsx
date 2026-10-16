@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
   AdministrationDataTable,
@@ -8,6 +9,7 @@ import {
 import { EmptyState } from "@/features/administration/empty-state";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
 import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import type {
   CampaignRecipientSkipReason,
   CampaignRecipientStatus,
@@ -34,7 +36,9 @@ const skipReasonLabels = {
   "outside-test-domain": "Outside the test email domain",
 } as const satisfies Record<CampaignRecipientSkipReason, string>;
 
-const columns: AdministrationDataTableColumn<SentRecipientRow>[] = [
+const getColumns = (
+  locale: Locale
+): AdministrationDataTableColumn<SentRecipientRow>[] => [
   {
     accessorKey: "dotyposCustomerId",
     header: "Customer",
@@ -69,7 +73,7 @@ const columns: AdministrationDataTableColumn<SentRecipientRow>[] = [
     accessorKey: "statusUpdatedAt",
     header: "Status since",
     cell: ({ row }) =>
-      formatAdministrationDateTime(row.original.statusUpdatedAt),
+      formatAdministrationDateTime(row.original.statusUpdatedAt, locale),
   },
 ];
 
@@ -78,6 +82,8 @@ export function SentRecipientTable({
 }: {
   readonly recipients: readonly SentRecipientRow[];
 }) {
+  const locale = useRouteLocale();
+  const columns = useMemo(() => getColumns(locale), [locale]);
   if (recipients.length === 0) {
     return <EmptyState message="This send froze no recipients." />;
   }
@@ -110,7 +116,10 @@ export function SentRecipientTable({
               )}
               <p className="text-navy-blue/65">
                 {campaignLocaleNames[recipient.locale]} · since{" "}
-                {formatAdministrationDateTime(recipient.statusUpdatedAt)}
+                {formatAdministrationDateTime(
+                  recipient.statusUpdatedAt,
+                  locale
+                )}
               </p>
             </li>
           ))}

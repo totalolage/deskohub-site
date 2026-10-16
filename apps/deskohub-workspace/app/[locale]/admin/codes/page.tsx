@@ -35,23 +35,30 @@ export default function DiscountCodesAdminPage({
       <AdministrationTableToolbar
         actions={
           <Suspense
-            fallback={<AdministrationActionLoading label="code action" />}
+            fallback={
+              <AdministrationActionLoading label="Loading code action" />
+            }
           >
             <CodesActions data={data} />
           </Suspense>
         }
         count={
           <Suspense
-            fallback={<AdministrationCountLoading label="discount code" />}
+            fallback={
+              <AdministrationCountLoading label="Loading discount code count" />
+            }
           >
             <CodesCount data={data} />
           </Suspense>
         }
-        itemLabel="discount code"
+        label="discount code table controls"
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading columns={6} label="discount codes" />
+          <AdministrationCollectionLoading
+            columns={6}
+            label="Loading discount codes"
+          />
         }
       >
         <CodesCollection data={data} />
@@ -71,10 +78,11 @@ async function CodesActions({ data }: { readonly data: Promise<CodesData> }) {
 }
 
 async function CodesCount({ data }: { readonly data: Promise<CodesData> }) {
+  const count = (await data).dashboard.codes.length;
   return (
     <AdministrationTableCount
-      count={(await data).dashboard.codes.length}
-      itemLabel="discount code"
+      count={count}
+      label={`${count} discount code${count === 1 ? "" : "s"}`}
     />
   );
 }

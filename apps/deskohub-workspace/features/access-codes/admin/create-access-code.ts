@@ -307,12 +307,16 @@ export const createStandaloneAccessCodeFormDefaults = {
 } satisfies CreateStandaloneAccessCodeFormInput;
 
 /** Formats a whole-hour site-local date-time of an access window. */
-export const formatStandaloneAccessCodeLocalDateTime = (value: string) =>
+export const formatStandaloneAccessCodeLocalDateTime = (
+  value: string,
+  locale: Locale
+) =>
   formatAdministrationDateTime(
     localDateTimeToTemporalInstantString({
       dateTime: value,
       timeZone: WORKSPACE_SITE_TIME_ZONE,
-    })
+    }),
+    locale
   );
 
 export const formatStandaloneAccessCodeDuration = (

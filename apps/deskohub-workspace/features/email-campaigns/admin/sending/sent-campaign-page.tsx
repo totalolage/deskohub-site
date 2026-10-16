@@ -7,6 +7,7 @@ import {
   AdministrationPageHeader,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { campaignRecipientStatuses } from "../../campaign-states";
 import {
   describeAudienceFilter,
@@ -30,6 +31,7 @@ export async function SentCampaignPage({
 }: {
   readonly campaign: CampaignRow;
 }) {
+  const locale = await getRequestLocale();
   const [{ send, audienceTitle }, discountGroups, emails] = await Promise.all([
     loadSentCampaign(campaign.id),
     loadDiscountGroupOptions(),
@@ -81,7 +83,10 @@ export async function SentCampaignPage({
               label="Sent"
               value={
                 send
-                  ? formatAdministrationDateTime(send.createdAt.toString())
+                  ? formatAdministrationDateTime(
+                      send.createdAt.toString(),
+                      locale
+                    )
                   : "Not recorded"
               }
             />
@@ -89,7 +94,10 @@ export async function SentCampaignPage({
               label="Completed"
               value={
                 send?.completedAt
-                  ? formatAdministrationDateTime(send.completedAt.toString())
+                  ? formatAdministrationDateTime(
+                      send.completedAt.toString(),
+                      locale
+                    )
                   : "Not yet"
               }
             />
@@ -106,7 +114,7 @@ export async function SentCampaignPage({
                 label="Filter"
                 value={
                   hasPeriodEndingAtEvaluation(send.audienceFilter)
-                    ? `${describeAudienceFilter(send.audienceFilter, { discountGroups })}, counted back from the send time (${formatAdministrationDateTime(send.createdAt.toString())}).`
+                    ? `${describeAudienceFilter(send.audienceFilter, { discountGroups })}, counted back from the send time (${formatAdministrationDateTime(send.createdAt.toString(), locale)}).`
                     : describeAudienceFilter(send.audienceFilter, {
                         discountGroups,
                       })

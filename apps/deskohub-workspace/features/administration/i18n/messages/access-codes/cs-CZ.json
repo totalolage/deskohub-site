@@ -1,5 +1,6 @@
 {
   "accessCodesPageTitle": "Vytvoření přístupového kódu",
+  "accessCodesFormLoading": "Načítání formuláře přístupového kódu",
   "accessCodesFormName": "Vytvoření přístupového kódu",
   "accessCodesNameLabel": "Název",
   "accessCodesNameRequired": "Zadejte název tohoto přístupového kódu.",

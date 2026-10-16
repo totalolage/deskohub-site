@@ -1,3 +1,4 @@
+import type { Locale } from "@/features/i18n";
 import { cn } from "@/shared/utils";
 import type { AdministrationPaymentAttempt } from "./administration.service";
 import {
@@ -22,12 +23,14 @@ type DisplayedPayment = Pick<
  * readers, which do not announce the strikethrough.
  */
 export function PaymentAmount({
+  locale,
   payment,
 }: {
+  readonly locale: Locale;
   readonly payment: DisplayedPayment;
 }) {
-  const status = getAdministrationPaymentStatus(payment);
-  const amount = formatAdministrationMoney(payment.amount);
+  const status = getAdministrationPaymentStatus(payment, locale);
+  const amount = formatAdministrationMoney(payment.amount, locale);
   if (!status.refunded) return amount;
   return (
     <>
@@ -40,7 +43,7 @@ export function PaymentAmount({
       {status.retainedAmount && (
         <>
           {" "}
-          {formatAdministrationMoney(status.retainedAmount)}
+          {formatAdministrationMoney(status.retainedAmount, locale)}
           <span className="sr-only"> after refund</span>
         </>
       )}
@@ -48,36 +51,42 @@ export function PaymentAmount({
   );
 }
 
-/** The payment status and when it was reached, such as "Paid · 12 Oct 2026, 08:34". */
+/** The payment status and when it was reached, such as "Paid · Oct 12, 2026, 08:34". */
 export function PaymentStatusText({
+  locale,
   payment,
 }: {
+  readonly locale: Locale;
   readonly payment: DisplayedPayment;
 }) {
-  const status = getAdministrationPaymentStatus(payment);
-  return `${status.label} · ${formatAdministrationDateTime(status.at)}`;
+  const status = getAdministrationPaymentStatus(payment, locale);
+  return `${status.label} · ${formatAdministrationDateTime(status.at, locale)}`;
 }
 
 /** The payment status, with the refund time once refunded, such as "Paid". */
 export function PaymentStatusLabel({
+  locale,
   payment,
 }: {
+  readonly locale: Locale;
   readonly payment: DisplayedPayment;
 }) {
-  const status = getAdministrationPaymentStatus(payment);
+  const status = getAdministrationPaymentStatus(payment, locale);
   return status.refunded
-    ? `${status.label} · ${formatAdministrationDateTime(status.at)}`
+    ? `${status.label} · ${formatAdministrationDateTime(status.at, locale)}`
     : status.label;
 }
 
 export function PaymentRefundRequiredLabel({
   className,
+  locale,
   payment,
 }: {
   readonly className?: string;
+  readonly locale: Locale;
   readonly payment: DisplayedPayment;
 }) {
-  if (!getAdministrationPaymentStatus(payment).needsRefund) return null;
+  if (!getAdministrationPaymentStatus(payment, locale).needsRefund) return null;
   return (
     <span
       className={cn("block font-semibold text-burned-orange-ink", className)}

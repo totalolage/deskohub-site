@@ -19,7 +19,10 @@ export default function CliSessionsPage({
       <h1 className="sr-only">CLI sessions</h1>
       <Suspense
         fallback={
-          <AdministrationCollectionLoading label="CLI sessions" columns={8} />
+          <AdministrationCollectionLoading
+            label="Loading CLI sessions"
+            columns={8}
+          />
         }
       >
         <CliSessionsContent searchParams={searchParams} />
@@ -46,7 +49,7 @@ export async function CliSessionsContent({
           <>
             <AdministrationTableCount
               count={sessions.length}
-              itemLabel="CLI session"
+              label={`${sessions.length} CLI session${sessions.length === 1 ? "" : "s"}`}
             />
             <p className="text-sm text-navy-blue/60">
               Sessions approved by{" "}
@@ -54,7 +57,7 @@ export async function CliSessionsContent({
             </p>
           </>
         }
-        itemLabel="CLI session"
+        label="CLI session table controls"
       />
       <AdministrationNoticeBanner notice={notice} />
 

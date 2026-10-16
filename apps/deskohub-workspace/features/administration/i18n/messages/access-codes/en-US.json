@@ -1,5 +1,6 @@
 {
   "accessCodesPageTitle": "Create an access code",
+  "accessCodesFormLoading": "Loading the access-code form",
   "accessCodesFormName": "Create an access code",
   "accessCodesNameLabel": "Name",
   "accessCodesNameRequired": "Enter a name for this access code.",

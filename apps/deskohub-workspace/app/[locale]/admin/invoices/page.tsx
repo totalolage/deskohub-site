@@ -15,6 +15,7 @@ import {
   Pagination,
 } from "@/features/administration/components";
 import { AdministrationCollectionLoading } from "@/features/administration/loading";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { Button } from "@/shared/components/ui/button";
 
 export default function InvoiceAdministrationPage({
@@ -42,7 +43,10 @@ export default function InvoiceAdministrationPage({
       </Suspense>
       <Suspense
         fallback={
-          <AdministrationCollectionLoading columns={8} label="invoices" />
+          <AdministrationCollectionLoading
+            columns={8}
+            label="Loading invoices"
+          />
         }
       >
         <InvoiceCollection data={data} />
@@ -57,15 +61,16 @@ async function InvoiceToolbar({
 }: {
   readonly data: Promise<InvoiceData>;
 }) {
+  const count = (await data).items.total;
   return (
     <AdministrationTableToolbar
       count={
         <AdministrationTableCount
-          count={(await data).items.total}
-          itemLabel="invoice"
+          count={count}
+          label={`${count} invoice${count === 1 ? "" : "s"}`}
         />
       }
-      itemLabel="invoice"
+      label="invoice table controls"
     />
   );
 }
@@ -75,6 +80,7 @@ async function InvoiceCollection({
   readonly data: Promise<InvoiceData>;
 }) {
   const result = await data;
+  const locale = await getRequestLocale();
   if (result.items.items.length === 0) {
     return <EmptyState message="No invoices have been issued yet." />;
   }
@@ -86,6 +92,7 @@ async function InvoiceCollection({
       />
       <Pagination
         basePath="/admin/invoices"
+        locale={locale}
         page={result.items.page}
         pageCount={result.items.pageCount}
         params={{ sort: result.query.sort, direction: result.query.direction }}
