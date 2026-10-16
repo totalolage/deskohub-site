@@ -1,5 +1,6 @@
 "use client";
 
+import Interpolate from "@doist/react-interpolate";
 import { useMemo } from "react";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -14,6 +15,7 @@ import {
 } from "./data-table";
 import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
+import { m } from "./i18n";
 import {
   type AdministrationTableSorting,
   getAdministrationTableSortHref,
@@ -23,51 +25,61 @@ const getColumns = (
   locale: Locale
 ): readonly AdministrationDataTableColumn<AdministrationCustomerSummary>[] => [
   {
-    accessorFn: (item) => item.customer?.displayName ?? "Details unavailable",
+    accessorFn: (item) =>
+      item.customer?.displayName ??
+      m.administrationCustomerDetailsUnavailable({}, { locale }),
     cell: ({ row }) => (
       <Link
         className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
         href={`/admin/customers/${row.original.customerId}`}
       >
-        {row.original.customer?.displayName ?? "Details unavailable"}
+        {row.original.customer?.displayName ??
+          m.administrationCustomerDetailsUnavailable({}, { locale })}
       </Link>
     ),
     enableSorting: false,
-    header: "Name",
+    header: m.administrationCustomerTableName({}, { locale }),
     id: "name",
   },
   {
     accessorFn: (item) => item.customer?.email ?? "—",
     enableSorting: false,
-    header: "Email",
+    header: m.administrationCustomerTableEmail({}, { locale }),
     id: "email",
     meta: { cellClassName: "text-navy-blue/68" },
   },
   {
     accessorFn: (item) => item.customer?.phone ?? "—",
     enableSorting: false,
-    header: "Phone",
+    header: m.administrationCustomerTablePhone({}, { locale }),
     id: "phone",
     meta: { cellClassName: "text-navy-blue/68" },
   },
   {
     accessorKey: "reservationCount",
     cell: ({ row }) => (
-      <>
-        <span className="font-semibold">{row.original.reservationCount}</span>{" "}
-        <span className="text-navy-blue/60">
-          {row.original.reservationCount === 1 ? "reservation" : "reservations"}
-        </span>
-      </>
+      <span className="text-navy-blue/60">
+        <Interpolate
+          string={m.administrationCustomerTableReservationCount(
+            { count: row.original.reservationCount },
+            { locale }
+          )}
+          mapping={{
+            count: (count) => (
+              <span className="font-semibold text-navy-blue">{count}</span>
+            ),
+          }}
+        />
+      </span>
     ),
-    header: "Reservations",
+    header: m.administrationCustomerTableReservations({}, { locale }),
     id: "reservations",
   },
   {
     accessorKey: "lastActivityAt",
     cell: ({ row }) =>
       formatAdministrationDateTime(row.original.lastActivityAt, locale),
-    header: "Last activity",
+    header: m.administrationCustomerTableLastActivity({}, { locale }),
     id: "activity",
     meta: { cellClassName: "text-navy-blue/68" },
   },
@@ -83,11 +95,13 @@ export function AdministrationCustomerTable({
   const locale = useRouteLocale();
   const columns = useMemo(() => getColumns(locale), [locale]);
   if (customers.length === 0) {
-    return <EmptyState message="No customers have reservations yet." />;
+    return (
+      <EmptyState message={m.administrationCustomerListEmpty({}, { locale })} />
+    );
   }
   return (
     <AdministrationDataTable
-      ariaLabel="Customers"
+      ariaLabel={m.administrationCustomerListTitle({}, { locale })}
       columns={columns}
       data={customers}
       getRowId={(item) => item.customerId}
@@ -111,18 +125,25 @@ export function AdministrationCustomerTable({
                 href={`/admin/customers/${item.customerId}`}
               >
                 <p className="font-semibold">
-                  {item.customer?.displayName ?? "Details unavailable"}
+                  {item.customer?.displayName ??
+                    m.administrationCustomerDetailsUnavailable({}, { locale })}
                 </p>
                 <p className="mt-1 text-sm text-navy-blue/65">
                   {item.customer?.email ??
                     item.customer?.phone ??
-                    "Customer details unavailable"}
+                    m.administrationCustomerContactUnavailable({}, { locale })}
                 </p>
                 <p className="mt-3 text-xs text-navy-blue/60">
-                  {item.reservationCount}{" "}
-                  {item.reservationCount === 1 ? "reservation" : "reservations"}{" "}
-                  · Updated{" "}
-                  {formatAdministrationDateTime(item.lastActivityAt, locale)}
+                  {m.administrationCustomerListItemSummary(
+                    {
+                      count: item.reservationCount,
+                      date: formatAdministrationDateTime(
+                        item.lastActivityAt,
+                        locale
+                      ),
+                    },
+                    { locale }
+                  )}
                 </p>
               </Link>
             </li>

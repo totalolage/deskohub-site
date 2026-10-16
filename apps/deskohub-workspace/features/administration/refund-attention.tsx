@@ -1,4 +1,6 @@
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { AdministrationLink as Link } from "./admin-link";
+import { m } from "./i18n";
 import { AdministrationAlert } from "./notice";
 
 /**
@@ -10,26 +12,26 @@ export async function RefundAttention({
 }: {
   readonly count: Promise<number>;
 }) {
-  const reservationCount = await count;
+  const [reservationCount, locale] = await Promise.all([
+    count,
+    getRequestLocale(),
+  ]);
   if (reservationCount === 0) return null;
 
   return (
     <AdministrationAlert className="mb-6" status="error">
       <p className="font-semibold">
-        {reservationCount === 1
-          ? "1 reservation needs a refund."
-          : `${reservationCount} reservations need a refund.`}
+        {m.administrationRefundAttentionTitle(
+          { count: reservationCount },
+          { locale }
+        )}
       </p>
-      <p>
-        Their payment was received, but the reservation could not be provided or
-        was cancelled. Refunds are not issued automatically; refund them in Nexi
-        and they leave this list once Nexi reports the refund.
-      </p>
+      <p>{m.administrationRefundAttentionDescription({}, { locale })}</p>
       <Link
         className="mt-1 inline-block font-semibold underline underline-offset-4"
         href="/admin/reservations?status=needs_refund"
       >
-        Review refunds
+        {m.administrationRefundAttentionReview({}, { locale })}
       </Link>
     </AdministrationAlert>
   );

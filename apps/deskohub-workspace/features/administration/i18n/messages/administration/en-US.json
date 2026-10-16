@@ -1,5 +1,112 @@
 {
   "administrationConfirmDialogCancel": "Cancel",
+  "administrationCustomerActivityCalendarLabel": "Reservation activity for the past 365 days",
+  "administrationCustomerActivityDay": [
+    {
+      "declarations": [
+        "input count",
+        "input date",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} reservation on {date}",
+        "countPlural=other": "{count} reservations on {date}"
+      }
+    }
+  ],
+  "administrationCustomerActivityDayEmpty": "No reservations on {date}",
+  "administrationCustomerActivityTitle": "Reservation activity",
+  "administrationCustomerActivityUnavailable": "Reservation activity is temporarily unavailable.",
+  "administrationCustomerActivityYearTotal": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} reservation in the past 365 days",
+        "countPlural=other": "{count} reservations in the past 365 days"
+      }
+    }
+  ],
+  "administrationCustomerContactUnavailable": "Customer details unavailable",
+  "administrationCustomerCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} customer",
+        "countPlural=other": "{count} customers"
+      }
+    }
+  ],
+  "administrationCustomerCountLoading": "Loading customer count",
+  "administrationCustomerDetailEyebrow": "Customer",
+  "administrationCustomerDetailNoReservations": "This customer has no reservations.",
+  "administrationCustomerDetailReservationsTruncated": "Showing the 24 most recently updated reservations.",
+  "administrationCustomerDetailUnavailableDescription": "Customer and discount details are temporarily unavailable. Associated reservations remain visible.",
+  "administrationCustomerDetailUnavailableTitle": "Customer details unavailable",
+  "administrationCustomerDetailViewAllReservations": "View all reservations",
+  "administrationCustomerDetailsUnavailable": "Details unavailable",
+  "administrationCustomerListEmpty": "No customers have reservations yet.",
+  "administrationCustomerListItemSummary": [
+    {
+      "declarations": [
+        "input count",
+        "input date",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} reservation · Updated {date}",
+        "countPlural=other": "{count} reservations · Updated {date}"
+      }
+    }
+  ],
+  "administrationCustomerListLoading": "Loading customers",
+  "administrationCustomerListTitle": "Customers",
+  "administrationCustomerTableControls": "Customer table controls",
+  "administrationCustomerTableEmail": "Email",
+  "administrationCustomerTableLastActivity": "Last activity",
+  "administrationCustomerTableName": "Name",
+  "administrationCustomerTablePhone": "Phone",
+  "administrationCustomerTableReservationCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "<count>{count}</count> reservation",
+        "countPlural=other": "<count>{count}</count> reservations"
+      }
+    }
+  ],
+  "administrationCustomerTableReservations": "Reservations",
+  "administrationFilterActions": "Filter actions",
+  "administrationFilterApply": "Apply filters",
+  "administrationFilterBookingDate": "Booking date",
+  "administrationFilterClear": "Clear",
+  "administrationFilterFrom": "From",
+  "administrationFilterOperationAll": "All",
+  "administrationFilterOperationOrigin": "Origin",
+  "administrationFilterOperationType": "Type",
+  "administrationFilterReservationFrom": "Start date from",
+  "administrationFilterReservationPast": "Past",
+  "administrationFilterReservationShortcuts": "Reservation date shortcuts",
+  "administrationFilterReservationStatus": "Deskohub status",
+  "administrationFilterReservationStatusAll": "All statuses",
+  "administrationFilterReservationStatusCancelled": "Cancelled",
+  "administrationFilterReservationStatusComplete": "Complete",
+  "administrationFilterReservationStatusInProgress": "In progress",
+  "administrationFilterReservationStatusNeedsRefund": "Needs refund",
+  "administrationFilterReservationTo": "Start date to",
+  "administrationFilterReservationToday": "Today",
+  "administrationFilterReservationType": "Reservation type",
+  "administrationFilterReservationTypeAll": "All reservation types",
+  "administrationFilterReservationTypeCowork": "Coworking",
+  "administrationFilterReservationUpcoming": "Upcoming",
+  "administrationFilterShowBookings": "Show bookings",
+  "administrationFilterShowOperations": "Show operations",
+  "administrationFilterShowOrders": "Show orders",
+  "administrationFilterTo": "To",
   "administrationLoadingBreadcrumb": "Loading breadcrumb",
   "administrationLoadingCustomerActivity": "Loading customer activity",
   "administrationLoadingDiscountForm": "Loading discount code form",
@@ -8,9 +115,62 @@
   "administrationLoadingTableFilters": "Loading table filters",
   "administrationNexiOrderLinkLabel": "{order} (opens in XPay)",
   "administrationNexiOrderName": "Nexi order {orderId}",
+  "administrationOverviewCustomerActivityTitle": "Customer activity",
+  "administrationOverviewCustomerCreationDatesUnavailable": "Customer creation dates unavailable",
+  "administrationOverviewFindTitle": "Find a record",
+  "administrationOverviewLastSevenDaysLabel": "Last 7 days",
+  "administrationOverviewLastSevenDaysNote": "Started during this period",
+  "administrationOverviewLiveBookingDatesUnavailable": "Live booking dates unavailable",
+  "administrationOverviewMoreCustomers": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "… and {count} more",
+        "countPlural=other": "… and {count} more"
+      }
+    }
+  ],
+  "administrationOverviewNewCustomerCountUnavailable": "New customer count unavailable",
+  "administrationOverviewNewCustomersLabel": "New customers",
+  "administrationOverviewNoCustomers": "No customers in this period",
+  "administrationOverviewReservationActivityTitle": "Reservation activity",
+  "administrationOverviewReservationCompletion": [
+    {
+      "declarations": [
+        "input count",
+        "input completed",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{completed} completed out of {count} total reservation",
+        "countPlural=other": "{completed} completed out of {count} total reservations"
+      }
+    }
+  ],
+  "administrationOverviewReservationCountUnavailable": "Reservation count unavailable",
+  "administrationOverviewTodayLabel": "Today",
+  "administrationOverviewTodayNote": "Reservations starting today",
+  "administrationOverviewUniqueCustomerCountUnavailable": "Unique customer count unavailable",
+  "administrationOverviewUniqueCustomersLabel": "Unique customers",
+  "administrationOverviewUpcomingLabel": "Upcoming",
+  "administrationOverviewUpcomingNote": "Starting in the next 30 days",
   "administrationPaginationLabel": "Pagination",
   "administrationPaginationNext": "Next",
   "administrationPaginationPrevious": "Previous",
   "administrationPaginationStatus": "Page {page} of {pageCount}",
+  "administrationRefundAttentionDescription": "Their payment was received, but the reservation could not be provided or was cancelled. Refunds are not issued automatically; refund them in Nexi and they leave this list once Nexi reports the refund.",
+  "administrationRefundAttentionReview": "Review refunds",
+  "administrationRefundAttentionTitle": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} reservation needs a refund.",
+        "countPlural=other": "{count} reservations need a refund."
+      }
+    }
+  ],
   "administrationTableActions": "Actions"
 }

@@ -1,5 +1,117 @@
 {
   "administrationConfirmDialogCancel": "Zrušit",
+  "administrationCustomerActivityCalendarLabel": "Aktivita rezervací za posledních 365 dní",
+  "administrationCustomerActivityDay": [
+    {
+      "declarations": [
+        "input count",
+        "input date",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{date}: {count} rezervace",
+        "countPlural=few": "{date}: {count} rezervace",
+        "countPlural=other": "{date}: {count} rezervací"
+      }
+    }
+  ],
+  "administrationCustomerActivityDayEmpty": "{date}: žádné rezervace",
+  "administrationCustomerActivityTitle": "Aktivita rezervací",
+  "administrationCustomerActivityUnavailable": "Aktivita rezervací je dočasně nedostupná.",
+  "administrationCustomerActivityYearTotal": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} rezervace za posledních 365 dní",
+        "countPlural=few": "{count} rezervace za posledních 365 dní",
+        "countPlural=other": "{count} rezervací za posledních 365 dní"
+      }
+    }
+  ],
+  "administrationCustomerContactUnavailable": "Údaje o zákazníkovi nejsou k dispozici",
+  "administrationCustomerCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} zákazník",
+        "countPlural=few": "{count} zákazníci",
+        "countPlural=other": "{count} zákazníků"
+      }
+    }
+  ],
+  "administrationCustomerCountLoading": "Načítání počtu zákazníků",
+  "administrationCustomerDetailEyebrow": "Zákazník",
+  "administrationCustomerDetailNoReservations": "Tento zákazník nemá žádné rezervace.",
+  "administrationCustomerDetailReservationsTruncated": "Zobrazuje se 24 naposledy aktualizovaných rezervací.",
+  "administrationCustomerDetailUnavailableDescription": "Údaje o zákazníkovi a slevách jsou dočasně nedostupné. Související rezervace zůstávají zobrazené.",
+  "administrationCustomerDetailUnavailableTitle": "Údaje o zákazníkovi nejsou k dispozici",
+  "administrationCustomerDetailViewAllReservations": "Zobrazit všechny rezervace",
+  "administrationCustomerDetailsUnavailable": "Údaje nejsou k dispozici",
+  "administrationCustomerListEmpty": "Zatím žádný zákazník nemá rezervaci.",
+  "administrationCustomerListItemSummary": [
+    {
+      "declarations": [
+        "input count",
+        "input date",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} rezervace · Aktualizováno {date}",
+        "countPlural=few": "{count} rezervace · Aktualizováno {date}",
+        "countPlural=other": "{count} rezervací · Aktualizováno {date}"
+      }
+    }
+  ],
+  "administrationCustomerListLoading": "Načítání zákazníků",
+  "administrationCustomerListTitle": "Zákazníci",
+  "administrationCustomerTableControls": "Ovládání tabulky zákazníků",
+  "administrationCustomerTableEmail": "E-mail",
+  "administrationCustomerTableLastActivity": "Poslední aktivita",
+  "administrationCustomerTableName": "Jméno",
+  "administrationCustomerTablePhone": "Telefon",
+  "administrationCustomerTableReservationCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "<count>{count}</count> rezervace",
+        "countPlural=few": "<count>{count}</count> rezervace",
+        "countPlural=other": "<count>{count}</count> rezervací"
+      }
+    }
+  ],
+  "administrationCustomerTableReservations": "Rezervace",
+  "administrationFilterActions": "Akce filtru",
+  "administrationFilterApply": "Použít filtry",
+  "administrationFilterBookingDate": "Datum rezervace stolu",
+  "administrationFilterClear": "Vymazat",
+  "administrationFilterFrom": "Od",
+  "administrationFilterOperationAll": "Vše",
+  "administrationFilterOperationOrigin": "Původ",
+  "administrationFilterOperationType": "Typ",
+  "administrationFilterReservationFrom": "Začátek od",
+  "administrationFilterReservationPast": "Minulé",
+  "administrationFilterReservationShortcuts": "Rychlý výběr termínu rezervace",
+  "administrationFilterReservationStatus": "Stav v Deskohubu",
+  "administrationFilterReservationStatusAll": "Všechny stavy",
+  "administrationFilterReservationStatusCancelled": "Zrušeno",
+  "administrationFilterReservationStatusComplete": "Dokončeno",
+  "administrationFilterReservationStatusInProgress": "Probíhá",
+  "administrationFilterReservationStatusNeedsRefund": "Čeká na vrácení peněz",
+  "administrationFilterReservationTo": "Začátek do",
+  "administrationFilterReservationToday": "Dnes",
+  "administrationFilterReservationType": "Typ rezervace",
+  "administrationFilterReservationTypeAll": "Všechny typy rezervací",
+  "administrationFilterReservationTypeCowork": "Coworking",
+  "administrationFilterReservationUpcoming": "Nadcházející",
+  "administrationFilterShowBookings": "Zobrazit rezervace stolů",
+  "administrationFilterShowOperations": "Zobrazit operace",
+  "administrationFilterShowOrders": "Zobrazit objednávky",
+  "administrationFilterTo": "Do",
   "administrationLoadingBreadcrumb": "Načítání drobečkové navigace",
   "administrationLoadingCustomerActivity": "Načítání aktivity zákazníků",
   "administrationLoadingDiscountForm": "Načítání formuláře slevového kódu",
@@ -8,9 +120,65 @@
   "administrationLoadingTableFilters": "Načítání filtrů tabulky",
   "administrationNexiOrderLinkLabel": "{order} (otevře se v XPay)",
   "administrationNexiOrderName": "Objednávka Nexi {orderId}",
+  "administrationOverviewCustomerActivityTitle": "Aktivita zákazníků",
+  "administrationOverviewCustomerCreationDatesUnavailable": "Data založení zákazníků nejsou k dispozici",
+  "administrationOverviewFindTitle": "Vyhledat záznam",
+  "administrationOverviewLastSevenDaysLabel": "Posledních 7 dní",
+  "administrationOverviewLastSevenDaysNote": "Začaly v tomto období",
+  "administrationOverviewLiveBookingDatesUnavailable": "Aktuální termíny rezervací nejsou k dispozici",
+  "administrationOverviewMoreCustomers": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "… a {count} další",
+        "countPlural=few": "… a {count} další",
+        "countPlural=other": "… a {count} dalších"
+      }
+    }
+  ],
+  "administrationOverviewNewCustomerCountUnavailable": "Počet nových zákazníků není k dispozici",
+  "administrationOverviewNewCustomersLabel": "Noví zákazníci",
+  "administrationOverviewNoCustomers": "V tomto období nejsou žádní zákazníci",
+  "administrationOverviewReservationActivityTitle": "Aktivita rezervací",
+  "administrationOverviewReservationCompletion": [
+    {
+      "declarations": [
+        "input count",
+        "input completed",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Dokončeno: {completed} z {count} rezervace",
+        "countPlural=few": "Dokončeno: {completed} z {count} rezervací",
+        "countPlural=other": "Dokončeno: {completed} z {count} rezervací"
+      }
+    }
+  ],
+  "administrationOverviewReservationCountUnavailable": "Počet rezervací není k dispozici",
+  "administrationOverviewTodayLabel": "Dnes",
+  "administrationOverviewTodayNote": "Rezervace začínající dnes",
+  "administrationOverviewUniqueCustomerCountUnavailable": "Počet unikátních zákazníků není k dispozici",
+  "administrationOverviewUniqueCustomersLabel": "Unikátní zákazníci",
+  "administrationOverviewUpcomingLabel": "Nadcházející",
+  "administrationOverviewUpcomingNote": "Začínají během příštích 30 dní",
   "administrationPaginationLabel": "Stránkování",
   "administrationPaginationNext": "Další",
   "administrationPaginationPrevious": "Předchozí",
   "administrationPaginationStatus": "Strana {page} z {pageCount}",
+  "administrationRefundAttentionDescription": "Platba za ně byla přijata, ale rezervaci se nepodařilo poskytnout nebo byla zrušena. Peníze se nevracejí automaticky. Vraťte je v Nexi; ze seznamu zmizí, jakmile Nexi vrácení peněz nahlásí.",
+  "administrationRefundAttentionReview": "Zkontrolovat vrácení peněz",
+  "administrationRefundAttentionTitle": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} rezervace čeká na vrácení peněz.",
+        "countPlural=few": "{count} rezervace čekají na vrácení peněz.",
+        "countPlural=other": "{count} rezervací čeká na vrácení peněz."
+      }
+    }
+  ],
   "administrationTableActions": "Akce"
 }

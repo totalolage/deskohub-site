@@ -6,6 +6,7 @@ import {
   AdministrationPageHeader,
   ReservationTable,
 } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
 import { AdministrationRouteLoading } from "@/features/administration/loading";
 import {
   loadAdministrationCustomerActivity,
@@ -57,24 +58,36 @@ export async function DiscountCustomerAdminDetail({
     return (
       <AdministrationPage>
         <AdministrationPageHeader
-          description="Customer and discount details are temporarily unavailable. Associated reservations remain visible."
-          eyebrow="Customer"
-          title="Customer details unavailable"
+          description={m.administrationCustomerDetailUnavailableDescription(
+            {},
+            { locale }
+          )}
+          eyebrow={m.administrationCustomerDetailEyebrow({}, { locale })}
+          title={m.administrationCustomerDetailUnavailableTitle({}, { locale })}
         />
         <AdministrationNoticeBanner notice={notice} />
         {activity.reservationHistoryTruncated && (
           <p className="mb-3 text-sm text-navy-blue/65">
-            Showing the 24 most recently updated reservations.{" "}
+            {m.administrationCustomerDetailReservationsTruncated(
+              {},
+              { locale }
+            )}{" "}
             <Link
               className="font-semibold underline underline-offset-4"
               href={`/admin/reservations?customerId=${encodeURIComponent(customerId)}`}
             >
-              View all reservations
+              {m.administrationCustomerDetailViewAllReservations(
+                {},
+                { locale }
+              )}
             </Link>
           </p>
         )}
         <ReservationTable
-          emptyMessage="This customer has no reservations."
+          emptyMessage={m.administrationCustomerDetailNoReservations(
+            {},
+            { locale }
+          )}
           reservations={activity.reservations}
         />
       </AdministrationPage>
