@@ -164,7 +164,7 @@ working instead of throwing, and never fall back to a same-host proxy.
 
 PostHog's Custom REST source pulls an allowlisted set of Dotypos customer
 fields, including contact data, from a production-only Workspace route into a
-`dotypos_customers` warehouse table. Analysts join it to persons on
+`custom.dotypos_customers` warehouse table. Analysts join it to persons on
 `properties.dotypos_customer_id`. The legal basis is legitimate interest, so
 it covers every Dotypos customer regardless of cookie consent; the privacy
 policy (`features/legal/content.tsx`, both locales) discloses the fields and
