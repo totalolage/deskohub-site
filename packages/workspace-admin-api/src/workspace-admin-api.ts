@@ -92,17 +92,27 @@ export const AdministrationStandaloneAccessCodeCleanupTarget = Schema.Struct({
 export type AdministrationStandaloneAccessCodeCleanupTarget =
   typeof AdministrationStandaloneAccessCodeCleanupTarget.Type;
 
-export const AdministrationActorUsername = Schema.Trim.check(
+export const AdministrationLegacyUsername = Schema.Trim.check(
   Schema.isNonEmpty(),
   Schema.isMaxLength(80)
 )
-  .pipe(Schema.brand("AdministrationActorUsername"))
+  .pipe(Schema.brand("AdministrationLegacyUsername"))
   .annotate({
-    identifier: "AdministrationActorUsername",
-    description: "Validated Basic-auth username identifying an administrator.",
+    identifier: "AdministrationLegacyUsername",
+    description:
+      "Basic-auth username an administrator used before administrator accounts; only records written before then carry it.",
   });
-export type AdministrationActorUsername =
-  typeof AdministrationActorUsername.Type;
+export type AdministrationLegacyUsername =
+  typeof AdministrationLegacyUsername.Type;
+
+export const AdministrationActorEmail = Schema.Trim.check(Schema.isNonEmpty())
+  .pipe(Schema.brand("AdministrationActorEmail"))
+  .annotate({
+    identifier: "AdministrationActorEmail",
+    description:
+      "Login email of the administrator account that approved or performed an action, as it was at that time.",
+  });
+export type AdministrationActorEmail = typeof AdministrationActorEmail.Type;
 
 export const CLI_BUILD_TARGETS = [
   "development",
@@ -185,7 +195,8 @@ export type ExchangeCliGrant = typeof ExchangeCliGrant.Type;
 
 export const CliSession = Schema.Struct({
   id: CliSessionId,
-  approvedBy: Schema.NullOr(AdministrationActorUsername).pipe(
+  /** Null only from servers that predate administrator accounts. */
+  approvedBy: Schema.NullOr(AdministrationActorEmail).pipe(
     Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
   ),
   clientName: CliClientName,

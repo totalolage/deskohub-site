@@ -1,9 +1,15 @@
 import "@/shared/testing/workspace-test-env";
 
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import {
-  AdministrationActorUsername,
-  type AdministrationActorUsernameType,
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+import {
+  AdministrationLegacyUsername,
   CliAuthenticationChallenge,
   CliAuthenticationCode,
   type CliAuthenticationCodeType,
@@ -24,18 +30,23 @@ import { TestClock } from "effect/testing";
 import { cliAuthenticationRequests, cliSessions } from "@/db/schema";
 import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 import { cliAuthenticationRequestIdSchema } from "@/features/admin-cli/cli-identifiers";
-import { makeConfiguredAdministratorsMock } from "@/shared/administrator/configured-administrators.service.mock";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import { AccountRoleGrants } from "@/features/administrators/backend/account-role-grants.service";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  deleteTestAccounts,
+  insertTestAccount,
+  insertTestAdministrator,
+} from "@/shared/testing/workspace-test-accounts.test-utils";
 import { CliAuthentication } from "./cli-authentication.service";
 import { type CliSessionLifetime, cliSessionLifetimeSchema } from "./contracts";
 
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
 
-const alice = AdministrationActorUsername.make("alice");
-const bob = AdministrationActorUsername.make("bob");
+const legacyUsername = AdministrationLegacyUsername.make("legacy-admin");
 
 const digestSecret = (secret: string) =>
   digestCliAuthenticationSecret(secret).pipe(Effect.provide(NodeCrypto.layer));
@@ -44,40 +55,39 @@ const newSecret = () =>
   makeCliAuthenticationSecret().pipe(Effect.provide(NodeCrypto.layer));
 
 describe.skipIf(!postgresDatabase)(
-  "CliAuthentication administrator ownership on Postgres",
+  "CliAuthentication administrator accounts on Postgres",
   () => {
     const postgres = postgresDatabase as WorkspacePostgresTestDatabase;
-    const configured: readonly AdministrationActorUsernameType[] = [alice, bob];
-    const withoutAlice: readonly AdministrationActorUsernameType[] = [bob];
     let authentication: CliAuthentication["Service"];
-    let authenticationWithoutAlice: CliAuthentication["Service"];
+    let grants: AccountRoleGrants["Service"];
+    let alice: AdministratorAccountActor;
+    let bob: AdministratorAccountActor;
+    const fixtureAccounts: AdministratorAccountActor[] = [];
     const fixtureSessionIds: CliSessionId[] = [];
     const fixtureRequestIds: CliAuthenticationRequestId[] = [];
     const fixtureCodeHashes: string[] = [];
 
     beforeAll(async () => {
-      const makeService = (
-        usernames: readonly AdministrationActorUsernameType[]
-      ) =>
-        Effect.runPromise(
-          Effect.gen(function* () {
-            return yield* CliAuthentication;
-          }).pipe(
-            Effect.provide(
-              CliAuthentication.Default.pipe(
-                Layer.provide(
-                  Layer.mergeAll(
-                    postgres.layer,
-                    NodeCrypto.layer,
-                    makeConfiguredAdministratorsMock(usernames)
-                  )
-                )
-              )
+      const services = await Effect.runPromise(
+        Effect.all({
+          authentication: CliAuthentication,
+          grants: AccountRoleGrants,
+        }).pipe(
+          Effect.provide(
+            CliAuthentication.Default.pipe(
+              Layer.provideMerge(
+                AccountRoleGrants.Default.pipe(Layer.provide(postgres.layer))
+              ),
+              Layer.provide(Layer.merge(postgres.layer, NodeCrypto.layer))
             )
           )
-        );
-      authentication = await makeService(configured);
-      authenticationWithoutAlice = await makeService(withoutAlice);
+        )
+      );
+      authentication = services.authentication;
+      grants = services.grants;
+      alice = await insertTestAdministrator(postgres, "cli-alice");
+      bob = await insertTestAdministrator(postgres, "cli-bob");
+      fixtureAccounts.push(alice, bob);
     });
 
     afterEach(async () => {
@@ -110,17 +120,31 @@ describe.skipIf(!postgresDatabase)(
       }
     });
 
+    afterAll(() => deleteTestAccounts(postgres, fixtureAccounts));
+
+    const insertAdministrator = async (label: string) => {
+      const administrator = await insertTestAdministrator(postgres, label);
+      fixtureAccounts.push(administrator);
+      return administrator;
+    };
+
+    /** A session approved by `owner`, or a legacy Basic-auth one. */
     const insertSessionFixture = async (
-      owner: AdministrationActorUsernameType
+      owner: AdministratorAccountActor | "legacy"
     ) => {
       const bearer = await Effect.runPromise(newSecret());
       const id = CliSessionId.make(crypto.randomUUID());
       await Effect.runPromise(
         postgres.db.insert(cliSessions).values({
           id,
-          approvedBy: owner,
+          ...(owner === "legacy"
+            ? { approvedBy: legacyUsername }
+            : {
+                approvedByAccountId: owner.accountId,
+                approvedByAccountEmail: owner.email,
+              }),
           tokenHash: await Effect.runPromise(digestSecret(bearer)),
-          clientName: `${owner} CLI`,
+          clientName: "Fixture CLI",
           cliVersion: "1.0.0",
           buildTarget: "development",
           createdAt: Temporal.Instant.from("2026-08-10T10:00:00.000Z"),
@@ -131,8 +155,9 @@ describe.skipIf(!postgresDatabase)(
       return { bearer, id };
     };
 
+    /** A request approved by `approver`, or by a legacy Basic-auth user. */
     const insertApprovedGrantFixture = async (
-      approvedBy: AdministrationActorUsernameType | null
+      approver: AdministratorAccountActor | "legacy"
     ) => {
       const code = await Effect.runPromise(newSecret());
       const verifier = await Effect.runPromise(newSecret());
@@ -149,7 +174,12 @@ describe.skipIf(!postgresDatabase)(
           createdAt: Temporal.Instant.from("2026-08-10T10:00:00.000Z"),
           expiresAt: Temporal.Instant.from("2026-08-10T10:05:00.000Z"),
           approvedAt: Temporal.Instant.from("2026-08-10T10:01:00.000Z"),
-          approvedBy,
+          ...(approver === "legacy"
+            ? { approvedBy: legacyUsername }
+            : {
+                approvedByAccountId: approver.accountId,
+                approvedByAccountEmail: approver.email,
+              }),
           grantToken,
           grantExpiresAt: Temporal.Now.instant().add({ hours: 1 }),
         })
@@ -163,10 +193,9 @@ describe.skipIf(!postgresDatabase)(
         code: string;
         grantToken: string;
         verifier: string;
-      }>,
-      service: CliAuthentication["Service"] = authentication
+      }>
     ) =>
-      service.exchange({
+      authentication.exchange({
         code: CliAuthenticationCode.make(grant.code),
         grantToken: CliGrantToken.make(grant.grantToken),
         verifier: CliAuthenticationVerifier.make(grant.verifier),
@@ -190,39 +219,49 @@ describe.skipIf(!postgresDatabase)(
       return rows.length;
     };
 
-    test("lists, renames, and revokes only the exact owner's sessions", async () => {
+    const authenticateBearer = (bearer: string) =>
+      Effect.runPromise(
+        Effect.result(authentication.authenticateSession(`Bearer ${bearer}`))
+      );
+
+    test("lists, renames, and revokes only the owning account's sessions", async () => {
       const aliceSession = await insertSessionFixture(alice);
       const bobSession = await insertSessionFixture(bob);
 
       const aliceSessions = await Effect.runPromise(
-        authentication.listSessions(alice)
+        authentication.listSessions(alice.accountId)
       );
       const bobSessions = await Effect.runPromise(
-        authentication.listSessions(bob)
+        authentication.listSessions(bob.accountId)
       );
       expect(aliceSessions.map((row) => row.id)).toEqual([aliceSession.id]);
+      expect(aliceSessions[0]?.approvedBy).toBe(alice.email);
       expect(bobSessions.map((row) => row.id)).toEqual([bobSession.id]);
 
       const foreignRename = await Effect.runPromise(
         authentication.renameSession({
-          owner: bob,
+          owner: bob.accountId,
           sessionId: aliceSession.id,
           clientName: "Hijacked label",
         })
       );
       expect(foreignRename).toBe(false);
       expect(
-        (await Effect.runPromise(authentication.listSessions(alice)))[0]
-          ?.clientName
-      ).toBe(`${alice} CLI`);
+        (
+          await Effect.runPromise(authentication.listSessions(alice.accountId))
+        )[0]?.clientName
+      ).toBe("Fixture CLI");
 
       const foreignRevoke = await Effect.runPromise(
-        authentication.revoke({ owner: bob, sessionId: aliceSession.id })
+        authentication.revoke({
+          owner: bob.accountId,
+          sessionId: aliceSession.id,
+        })
       );
       expect(foreignRevoke).toBe(false);
       const unknownRevoke = await Effect.runPromise(
         authentication.revoke({
-          owner: alice,
+          owner: alice.accountId,
           sessionId: CliSessionId.make(crypto.randomUUID()),
         })
       );
@@ -230,110 +269,142 @@ describe.skipIf(!postgresDatabase)(
 
       const selfRename = await Effect.runPromise(
         authentication.renameSession({
-          owner: alice,
+          owner: alice.accountId,
           sessionId: aliceSession.id,
           clientName: "Alice laptop",
         })
       );
       expect(selfRename).toBe(true);
       expect(
-        (await Effect.runPromise(authentication.listSessions(alice)))[0]
-          ?.clientName
+        (
+          await Effect.runPromise(authentication.listSessions(alice.accountId))
+        )[0]?.clientName
       ).toBe("Alice laptop");
 
       const selfRevoke = await Effect.runPromise(
-        authentication.revoke({ owner: alice, sessionId: aliceSession.id })
+        authentication.revoke({
+          owner: alice.accountId,
+          sessionId: aliceSession.id,
+        })
       );
       expect(selfRevoke).toBe(true);
       const repeatRevoke = await Effect.runPromise(
-        authentication.revoke({ owner: alice, sessionId: aliceSession.id })
+        authentication.revoke({
+          owner: alice.accountId,
+          sessionId: aliceSession.id,
+        })
       );
       expect(repeatRevoke).toBe(false);
     });
 
-    test("rejects a removed administrator's bearer before mutating last use and keeps same-username rotation valid", async () => {
-      const fixture = await insertSessionFixture(alice);
+    test("rejects a legacy session without an approving account before touching last use", async () => {
+      const fixture = await insertSessionFixture("legacy");
 
-      const removedError = await Effect.runPromise(
-        Effect.flip(
-          authenticationWithoutAlice.authenticateSession(
-            `Bearer ${fixture.bearer}`
-          )
-        )
-      );
-      expect(removedError).toBeInstanceOf(CliSessionUnauthorized);
-      const untouchedRow = await loadSessionRow(fixture.id);
+      const result = await authenticateBearer(fixture.bearer);
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure).toBeInstanceOf(CliSessionUnauthorized);
+      }
       expect(
-        untouchedRow?.lastUsedAt.equals(
+        (await loadSessionRow(fixture.id))?.lastUsedAt.equals(
           Temporal.Instant.from("2026-08-10T10:00:00.000Z")
         )
       ).toBe(true);
+    });
 
-      const rotated = await Effect.runPromise(
-        authentication.authenticateSession(`Bearer ${fixture.bearer}`)
+    test("rejects a bearer on the next request after its approver loses the grant", async () => {
+      const carol = await insertAdministrator("cli-carol");
+      const fixture = await insertSessionFixture(carol);
+
+      const accepted = await authenticateBearer(fixture.bearer);
+      expect(accepted._tag).toBe("Success");
+      expect(
+        await Effect.runPromise(authentication.sessionAdministrator(fixture.id))
+      ).toEqual(carol);
+
+      await Effect.runPromise(
+        grants.revoke({ accountId: carol.accountId, role: "administrator" })
       );
-      expect(rotated.id).toBe(fixture.id);
+      const revoked = await authenticateBearer(fixture.bearer);
+      expect(revoked._tag).toBe("Failure");
+      if (revoked._tag === "Failure") {
+        expect(revoked.failure).toBeInstanceOf(CliSessionUnauthorized);
+      }
 
-      const malformedError = await Effect.runPromise(
+      await Effect.runPromise(
+        grants.grant({
+          accountId: carol.accountId,
+          role: "administrator",
+          grantedBy: alice.accountId,
+        })
+      );
+      expect((await authenticateBearer(fixture.bearer))._tag).toBe("Success");
+
+      const malformed = await Effect.runPromise(
         Effect.flip(
           authentication.authenticateSession("Bearer malformed-token")
         )
       );
-      expect(malformedError).toBeInstanceOf(CliSessionUnauthorized);
+      expect(malformed).toBeInstanceOf(CliSessionUnauthorized);
     });
 
-    test("rejects null, padded, malformed, and removed approvers at grant exchange before inserting a session", async () => {
+    test("rejects a bearer whose approving account awaits deletion or was deleted", async () => {
+      const dana = await insertAdministrator("cli-dana");
+      const fixture = await insertSessionFixture(dana);
+      expect((await authenticateBearer(fixture.bearer))._tag).toBe("Success");
+
+      await postgres.pool.query(
+        `update auth."user" set deletion_requested_at = now() where id = $1`,
+        [dana.accountId]
+      );
+      expect((await authenticateBearer(fixture.bearer))._tag).toBe("Failure");
+
+      await deleteTestAccounts(postgres, [dana]);
+      const orphaned = await loadSessionRow(fixture.id);
+      expect(orphaned?.approvedByAccountId).toBeNull();
+      expect(orphaned?.approvedByAccountEmail).toBe(dana.email);
+      expect((await authenticateBearer(fixture.bearer))._tag).toBe("Failure");
+      const orphanedAdministrator = await Effect.runPromise(
+        Effect.flip(authentication.sessionAdministrator(fixture.id))
+      );
+      expect(orphanedAdministrator).toBeInstanceOf(CliSessionUnauthorized);
+    });
+
+    test("rejects legacy and no-longer-granted approvers at grant exchange before inserting a session", async () => {
       const sessionsBefore = await countSessions();
 
-      const legacyGrant = await insertApprovedGrantFixture(null);
       const legacyError = await Effect.runPromise(
-        Effect.flip(exchangeGrant(legacyGrant))
+        Effect.flip(exchangeGrant(await insertApprovedGrantFixture("legacy")))
       );
       expect(legacyError).toBeInstanceOf(CliGrantRejected);
       expect(await countSessions()).toBe(sessionsBefore);
 
-      const paddedGrant = await insertApprovedGrantFixture(
-        ` ${alice} ` as AdministrationActorUsernameType
+      const signedInOnly = await insertTestAccount(postgres, "cli-not-admin");
+      fixtureAccounts.push(signedInOnly);
+      const ungrantedError = await Effect.runPromise(
+        Effect.flip(
+          exchangeGrant(await insertApprovedGrantFixture(signedInOnly))
+        )
       );
-      const paddedError = await Effect.runPromise(
-        Effect.flip(exchangeGrant(paddedGrant))
-      );
-      expect(paddedError).toBeInstanceOf(CliGrantRejected);
+      expect(ungrantedError).toBeInstanceOf(CliGrantRejected);
       expect(await countSessions()).toBe(sessionsBefore);
 
-      const malformedGrant = await insertApprovedGrantFixture(
-        "   " as AdministrationActorUsernameType
+      const granted = await Effect.runPromise(
+        exchangeGrant(await insertApprovedGrantFixture(alice))
       );
-      const malformedError = await Effect.runPromise(
-        Effect.flip(exchangeGrant(malformedGrant))
-      );
-      expect(malformedError).toBeInstanceOf(CliGrantRejected);
-      expect(await countSessions()).toBe(sessionsBefore);
-
-      const nonconformingGrant = await insertApprovedGrantFixture(
-        AdministrationActorUsername.make("Alice!")
-      );
-      const nonconformingError = await Effect.runPromise(
-        Effect.flip(exchangeGrant(nonconformingGrant))
-      );
-      expect(nonconformingError).toBeInstanceOf(CliGrantRejected);
-      expect(await countSessions()).toBe(sessionsBefore);
-
-      const removedGrant = await insertApprovedGrantFixture(alice);
-      const removedError = await Effect.runPromise(
-        Effect.flip(exchangeGrant(removedGrant, authenticationWithoutAlice))
-      );
-      expect(removedError).toBeInstanceOf(CliGrantRejected);
-      expect(await countSessions()).toBe(sessionsBefore);
-
-      const configuredGrant = await insertApprovedGrantFixture(alice);
-      const granted = await Effect.runPromise(exchangeGrant(configuredGrant));
       fixtureSessionIds.push(granted.session.id);
-      expect(granted.session.approvedBy).toBe(alice);
+      expect(granted.session.approvedBy).toBe(alice.email);
       expect(await countSessions()).toBe(sessionsBefore + 1);
+      const row = await loadSessionRow(granted.session.id);
+      expect(row).toMatchObject({
+        approvedBy: null,
+        approvedByAccountId: alice.accountId,
+        approvedByAccountEmail: alice.email,
+      });
     });
 
-    test("attributes exchanged sessions to the approving administrator and keeps the flow owner-scoped", async () => {
+    test("records the approving account on the request and attributes the exchanged session to it", async () => {
       const verifier = await Effect.runPromise(
         makeCliAuthenticationVerifier.pipe(Effect.provide(NodeCrypto.layer))
       );
@@ -350,9 +421,8 @@ describe.skipIf(!postgresDatabase)(
           buildTarget: "development",
         })
       );
-      fixtureCodeHashes.push(
-        await Effect.runPromise(digestSecret(started.code))
-      );
+      const codeHash = await Effect.runPromise(digestSecret(started.code));
+      fixtureCodeHashes.push(codeHash);
 
       const approved = await Effect.runPromise(
         authentication.approve({
@@ -362,6 +432,17 @@ describe.skipIf(!postgresDatabase)(
         })
       );
       expect(approved.state).toBe("approved");
+      const [request] = await Effect.runPromise(
+        postgres.db
+          .select()
+          .from(cliAuthenticationRequests)
+          .where(eq(cliAuthenticationRequests.codeHash, codeHash))
+      );
+      expect(request).toMatchObject({
+        approvedBy: null,
+        approvedByAccountId: alice.accountId,
+        approvedByAccountEmail: alice.email,
+      });
 
       const status = await Effect.runPromise(
         authentication.status(started.code)
@@ -377,14 +458,14 @@ describe.skipIf(!postgresDatabase)(
         })
       );
       fixtureSessionIds.push(granted.session.id);
-      expect(granted.session.approvedBy).toBe(alice);
+      expect(granted.session.approvedBy).toBe(alice.email);
 
       const aliceSessions = await Effect.runPromise(
-        authentication.listSessions(alice)
+        authentication.listSessions(alice.accountId)
       );
       expect(aliceSessions.map((row) => row.id)).toContain(granted.session.id);
       const bobSessions = await Effect.runPromise(
-        authentication.listSessions(bob)
+        authentication.listSessions(bob.accountId)
       );
       expect(bobSessions.map((row) => row.id)).not.toContain(
         granted.session.id
@@ -394,6 +475,7 @@ describe.skipIf(!postgresDatabase)(
         authentication.authenticateSession(`Bearer ${granted.accessToken}`)
       );
       expect(authenticated.id).toBe(granted.session.id);
+      expect(authenticated.approvedBy).toBe(alice.email);
     });
 
     const authenticateThroughApproval = async (
@@ -568,7 +650,7 @@ describe.skipIf(!postgresDatabase)(
       ).toBe(true);
 
       const listed = await Effect.runPromise(
-        authentication.listSessions(alice)
+        authentication.listSessions(alice.accountId)
       );
       expect(
         listed.find((session) => session.id === granted.session.id)?.status

@@ -2,8 +2,8 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import {
-  AdministrationActorUsername,
   AdministrationInstant,
+  AdministrationLegacyUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeName,
@@ -14,7 +14,7 @@ import { DEFAULT_SERVER_ERROR_MESSAGE } from "next-safe-action";
 
 interface StubCreateCall {
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
-  readonly actor: AdministrationActorUsername;
+  readonly actor: AdministrationLegacyUsername;
   readonly source: string;
   readonly request: {
     readonly name: string;
@@ -28,7 +28,7 @@ interface StubCreateCall {
 
 let authorizationCalls = 0;
 let authorizationAllowed = true;
-const actor = AdministrationActorUsername.make("Fixture Operator");
+const actor = AdministrationLegacyUsername.make("Fixture Operator");
 
 const serviceCreateCalls: StubCreateCall[] = [];
 const serviceCreate = mock((input: StubCreateCall) => {

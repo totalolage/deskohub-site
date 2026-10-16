@@ -10,7 +10,7 @@ import {
 } from "bun:test";
 import { AlgoPinSchema, IgloohomeDeviceIdSchema } from "@deskohub/igloohome";
 import {
-  AdministrationActorUsername,
+  AdministrationLegacyUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeName,
@@ -46,7 +46,7 @@ const attemptIds = [
 ];
 let nextAttemptIdIndex = 0;
 
-const actor = AdministrationActorUsername.make("Fixture Operator");
+const actor = AdministrationLegacyUsername.make("Fixture Operator");
 const source = "dhw-cli";
 const deviceId = Schema.decodeUnknownSync(IgloohomeDeviceIdSchema)(
   "fixture-ek1"
@@ -326,7 +326,7 @@ describe.skipIf(!postgresDatabase)(
         claim({
           attempt: {
             ...attempt,
-            actor: AdministrationActorUsername.make("Other Operator"),
+            actor: AdministrationLegacyUsername.make("Other Operator"),
           },
         })
       );

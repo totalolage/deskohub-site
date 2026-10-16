@@ -1,4 +1,4 @@
-import type { AdministrationActorUsername } from "@deskohub/workspace-admin-api";
+import type { AdministrationLegacyUsername } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { Context, Data, Effect, Layer, Option } from "effect";
@@ -56,7 +56,7 @@ interface ILegacyAdministratorBackfill {
    * nothing. A dry run reports the same counts without writing.
    */
   readonly run: (input: {
-    readonly legacyUsername: AdministrationActorUsername;
+    readonly legacyUsername: AdministrationLegacyUsername;
     readonly email: string;
     readonly dryRun: boolean;
   }) => Effect.Effect<
@@ -289,5 +289,5 @@ export class LegacyAdministratorBackfill extends Context.Service<
 type LinkInput = {
   readonly account: AdministratorAccountActor;
   readonly dryRun: boolean;
-  readonly legacyUsername: AdministrationActorUsername;
+  readonly legacyUsername: AdministrationLegacyUsername;
 };

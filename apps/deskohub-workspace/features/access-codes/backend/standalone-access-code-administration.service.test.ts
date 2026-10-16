@@ -9,7 +9,7 @@ import {
   IgloohomeService,
 } from "@deskohub/igloohome";
 import {
-  AdministrationActorUsername,
+  AdministrationLegacyUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeCreateInput,
@@ -34,7 +34,7 @@ const priorCleanupTarget = {
   attemptId: priorAttemptId,
   name: AdministrationStandaloneAccessCodeName.make("Prior Booth"),
 };
-const actor = AdministrationActorUsername.make("Fixture Operator");
+const actor = AdministrationLegacyUsername.make("Fixture Operator");
 const source = "dhw-cli";
 const request = decodeRequest({
   name: "Booth A",

@@ -4,7 +4,7 @@
 
 ## Authentication and sessions
 
-An operator starts authentication in the CLI and approves the short-lived request through the existing protected administration experience. Successful approval creates a named administration session for that device.
+An operator starts authentication in the CLI and approves the short-lived request in the administration while signed in to an account that holds the administrator role. Successful approval creates a named administration session for that device. The session acts as the approving account: it records that account on the invoices and access codes it creates, and it stops working as soon as the account loses the administrator role.
 
 Sessions may be listed, renamed, and revoked. A session label helps an operator recognize a device but does not change its identity or access. Revoked access is removed from the device when the service reports it.
 

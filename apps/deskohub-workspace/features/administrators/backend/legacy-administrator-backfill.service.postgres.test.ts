@@ -4,8 +4,8 @@ import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
-  AdministrationActorUsername,
-  type AdministrationActorUsernameType,
+  AdministrationLegacyUsername,
+  type AdministrationLegacyUsernameType,
 } from "@deskohub/workspace-admin-api";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Data, Effect, Layer, Schema } from "effect";
@@ -132,7 +132,7 @@ const insertAccount = (local: string) =>
   });
 
 const insertCliSession = (input: {
-  readonly approvedBy: AdministrationActorUsernameType;
+  readonly approvedBy: AdministrationLegacyUsernameType;
   readonly account?: { readonly accountId: string; readonly email: string };
 }) =>
   Effect.gen(function* () {
@@ -154,7 +154,7 @@ const insertCliSession = (input: {
     return row!.id;
   });
 
-const insertAccessCodeEvent = (actor: AdministrationActorUsernameType) =>
+const insertAccessCodeEvent = (actor: AdministrationLegacyUsernameType) =>
   Effect.gen(function* () {
     const { db } = yield* WorkspaceDatabase;
     yield* db.execute(sql`
@@ -198,10 +198,10 @@ const issueManualInvoice = (actor: string) =>
   );
 
 const uniqueUsername = () =>
-  AdministrationActorUsername.make(`legacy-${randomUUID().slice(0, 8)}`);
+  AdministrationLegacyUsername.make(`legacy-${randomUUID().slice(0, 8)}`);
 
 const backfill = (input: {
-  readonly legacyUsername: AdministrationActorUsernameType;
+  readonly legacyUsername: AdministrationLegacyUsernameType;
   readonly email: string;
   readonly dryRun: boolean;
 }) =>

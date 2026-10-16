@@ -49,13 +49,6 @@ export const createWorkspaceEnv = (runtimeEnv: WorkspaceRuntimeEnv) =>
           };
         }
 
-        if (hasPath("ADMIN_BASIC_AUTH_CREDENTIALS")) {
-          return {
-            ...issue,
-            message: "Invalid administrator credential registry configuration.",
-          };
-        }
-
         if (hasPath("BETTER_AUTH_SECRETS")) {
           return {
             ...issue,
@@ -105,7 +98,6 @@ export const env = createWorkspaceEnv({
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
   DATABASE_URL: process.env.DATABASE_URL,
   DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
-  ADMIN_BASIC_AUTH_CREDENTIALS: process.env.ADMIN_BASIC_AUTH_CREDENTIALS,
   BETTER_AUTH_SECRETS: process.env.BETTER_AUTH_SECRETS,
   DOTYPOS_API_TIMEOUT: process.env.DOTYPOS_API_TIMEOUT,
   DOTYPOS_API_URL: process.env.DOTYPOS_API_URL,

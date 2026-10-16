@@ -15,7 +15,6 @@ import {
   postHogFeatureFlagOverridesSchema,
   vercelEnvironmentSchema,
 } from "./features/feature-flags/feature-flag-overrides.schema";
-import { administratorCredentialRegistrySchema } from "./shared/administrator/administrator-credentials";
 import { urlStringSchema } from "./shared/utils/url-schema";
 
 const nonEmptyStringSchema = toEnvSchema(Schema.NonEmptyString);
@@ -110,9 +109,6 @@ export const workspaceServerEnvSchema = Schema.Struct({
   CLOUDINARY_API_SECRET: nonEmptyStringSchema,
   DATABASE_URL: urlEnvSchema,
   DATABASE_URL_UNPOOLED: optionalUrlEnvSchema,
-  ADMIN_BASIC_AUTH_CREDENTIALS: toEnvSchema(
-    administratorCredentialRegistrySchema
-  ),
   BETTER_AUTH_SECRETS: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
   DOTYPOS_API_TIMEOUT: toEnvSchema(
     Schema.FiniteFromString.check(Schema.isInt())

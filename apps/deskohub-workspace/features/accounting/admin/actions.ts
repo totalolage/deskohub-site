@@ -6,8 +6,8 @@ import {
   AdministrationInvoiceId,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Match, Schema } from "effect";
-import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
 import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
+import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { InvoiceAdministrationService } from "./invoice-administration.service";
@@ -24,11 +24,11 @@ const createInvoiceAction = defineWorkspaceAction(
   },
   Effect.fn(
     function* (input) {
-      const actor = yield* requireAdministratorAuthorization;
+      const administrator = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const result = yield* administration.create(input, {
         source: "admin-ui",
-        actor,
+        administrator,
       });
       yield* Effect.sync(() => {
         revalidateLocalizedPath("/admin/invoices");
@@ -70,11 +70,11 @@ const previewInvoiceAction = defineWorkspaceAction(
   },
   Effect.fn(
     function* (input) {
-      const actor = yield* requireAdministratorAuthorization;
+      const administrator = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const pdf = yield* administration.preview(input, {
         source: "admin-ui",
-        actor,
+        administrator,
       });
       return {
         dataUrl: `data:application/pdf;base64,${Buffer.from(pdf).toString("base64")}`,

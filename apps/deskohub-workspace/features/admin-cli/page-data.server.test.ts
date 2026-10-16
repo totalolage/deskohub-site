@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
-  AdministrationActorUsername,
+  AdministrationLegacyUsername,
   CliSessionId,
   digestCliAuthenticationSecret,
   makeCliAuthenticationSecret,
@@ -84,7 +84,7 @@ describe.skipIf(!postgresDatabase)("admin CLI page-data projections", () => {
     await Effect.runPromise(
       postgres.db.insert(cliSessions).values({
         id,
-        approvedBy: AdministrationActorUsername.make(username),
+        approvedBy: AdministrationLegacyUsername.make(username),
         tokenHash: await Effect.runPromise(
           digestSecret(await Effect.runPromise(randomSecret()))
         ),

@@ -1,6 +1,6 @@
 import type { IgloohomeDeviceId } from "@deskohub/igloohome";
 import type {
-  AdministrationActorUsername,
+  AdministrationLegacyUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeName,
@@ -43,7 +43,8 @@ export const standaloneAccessCodeAttemptEvents = pgTable(
     eventKind: text("event_kind")
       .notNull()
       .$type<(typeof standaloneAccessCodeAttemptEventKinds)[number]>(),
-    actor: text("actor").notNull().$type<AdministrationActorUsername>(),
+    /** The Basic-auth username of an attempt made before accounts. */
+    actor: text("actor").$type<AdministrationLegacyUsername>(),
     actorAccountId: text("actor_account_id")
       .$type<CustomerAccountId>()
       .references(() => authUser.id, { onDelete: "set null" }),
@@ -119,6 +120,10 @@ export const standaloneAccessCodeAttemptEvents = pgTable(
     check(
       "standalone_access_code_attempt_events_actor_account_check",
       sql`${t.actorAccountId} is null or (${t.actorAccountEmail} is not null and btrim(${t.actorAccountEmail}) <> '')`
+    ),
+    check(
+      "standalone_access_code_attempt_events_actor_present_check",
+      sql`${t.actor} is not null or ${t.actorAccountEmail} is not null`
     ),
     check(
       "standalone_access_code_attempt_events_interval_check",

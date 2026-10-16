@@ -4,8 +4,8 @@ import { describe, expect, test } from "bun:test";
 import { IgloohomeService } from "@deskohub/igloohome";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
-  AdministrationActorUsername,
   AdministrationInstant,
+  AdministrationLegacyUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeAttemptIdType,
@@ -129,7 +129,7 @@ const ActorAuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
   bearer: (httpEffect) =>
     Effect.provideService(httpEffect, CurrentCliSession, {
       ...session,
-      approvedBy: AdministrationActorUsername.make("admin"),
+      approvedBy: AdministrationLegacyUsername.make("admin"),
     }),
 });
 
