@@ -15,6 +15,7 @@ The administration serves `en-US` and `cs-CZ` under the locale segment: `app/[lo
 - Revalidate an administration page with `revalidateLocalizedPath(path)` (`features/i18n/server/revalidate-localized-path.ts`). A mutation doesn't know which locale's copy is cached, so it revalidates both.
 - Keep a URL unprefixed when it leaves the app, such as the `dhw auth` approval URL or a link in the administration API contract. The proxy opens it in the operator's language.
 - Administration pages and layouts stay synchronous (`no-blocking-administration-routes`). A synchronous page that only redirects may redirect to the unprefixed path and let the proxy place it.
+- A page frame with copy (the sr-only `<h1>`, toolbar labels, Suspense fallback labels) can't read the locale in the synchronous default export. Render a feature-level async screen component named for the screen, such as `DiscountCodesAdministrationScreen`, whose only top-level await is `getRequestLocale()`. That reads `next/root-params`, which the prerender knows, so the frame stays in the instant shell. The screen renders the frame and the Suspense boundaries and passes `locale` to the async data children. Don't await anything else before the frame.
 
 ## Messages
 
