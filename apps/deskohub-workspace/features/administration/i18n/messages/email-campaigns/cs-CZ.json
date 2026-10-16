@@ -20,13 +20,8 @@
   "emailCampaignsAudienceCampaignEmailCountNone": "neobdrželi žádný {single}{period}",
   "emailCampaignsAudienceCampaignEmailCountNounAny": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "e-mail z kampaně",
         "countPlural=few": "e-maily z kampaní",
@@ -36,13 +31,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "marketingový e-mail z kampaně",
         "countPlural=few": "marketingové e-maily z kampaní",
@@ -52,13 +42,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounOperational": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "provozní e-mail z kampaně",
         "countPlural=few": "provozní e-maily z kampaní",
@@ -80,12 +65,8 @@
   "emailCampaignsAudienceCountNumberOf": "Počet",
   "emailCampaignsAudienceCountOperator": [
     {
-      "declarations": [
-        "input operator"
-      ],
-      "selectors": [
-        "operator"
-      ],
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
       "match": {
         "operator=eq": "rovná se",
         "operator=ne": "není",
@@ -165,13 +146,8 @@
   "emailCampaignsAudienceHasAccountTrue": "Má",
   "emailCampaignsAudienceInUse": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Tento okruh příjemců používá koncept kampaně, takže ho lze jen archivovat. Než okruh smažete, přesuňte koncept na jiný okruh příjemců.",
         "countPlural=few": "Tento okruh příjemců používají {count} koncepty kampaní, takže ho lze jen archivovat. Než okruh smažete, přesuňte koncepty na jiný okruh příjemců.",
@@ -191,13 +167,8 @@
   "emailCampaignsAudienceListColumnUpdated": "Upraveno",
   "emailCampaignsAudienceListCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} okruh příjemců",
         "countPlural=few": "{count} okruhy příjemců",
@@ -228,12 +199,8 @@
   "emailCampaignsAudiencePeriodEndLabel": "{subject}: datum konce",
   "emailCampaignsAudiencePeriodKind": [
     {
-      "declarations": [
-        "input kind"
-      ],
-      "selectors": [
-        "kind"
-      ],
+      "declarations": ["input kind"],
+      "selectors": ["kind"],
       "match": {
         "kind=AnyTime": "kdykoli",
         "kind=Last": "za posledních",
@@ -247,13 +214,8 @@
   "emailCampaignsAudiencePeriodLabel": "{subject}: období",
   "emailCampaignsAudiencePeriodLast": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "za poslední",
         "countPlural=few": "za poslední",
@@ -267,13 +229,8 @@
   "emailCampaignsAudiencePeriodTo": "do",
   "emailCampaignsAudiencePeriodUnitDay": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "den",
         "countPlural=few": "dny",
@@ -284,13 +241,8 @@
   "emailCampaignsAudiencePeriodUnitLabel": "{subject}: jednotka období",
   "emailCampaignsAudiencePeriodUnitMonth": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "měsíc",
         "countPlural=few": "měsíce",
@@ -300,13 +252,8 @@
   ],
   "emailCampaignsAudiencePeriodUnitWeek": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "týden",
         "countPlural=few": "týdny",
@@ -316,13 +263,8 @@
   ],
   "emailCampaignsAudiencePeriodUnitYear": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "rok",
         "countPlural=few": "roky",
@@ -350,13 +292,8 @@
   "emailCampaignsAudienceProductSelectLabel": "Produkt rezervace",
   "emailCampaignsAudienceProductUnitDays": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "den",
         "countPlural=few": "dny",
@@ -366,13 +303,8 @@
   ],
   "emailCampaignsAudienceProductUnitSeats": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "místo",
         "countPlural=few": "místa",
@@ -398,9 +330,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "potvrzenou rezervaci{product}",
         "countPlural=few": "potvrzené rezervace{product}",
@@ -415,9 +345,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "zrušenou rezervaci{product}",
         "countPlural=few": "zrušené rezervace{product}",
@@ -432,9 +360,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "dokončenou rezervaci{product}",
         "countPlural=few": "dokončené rezervace{product}",
@@ -449,9 +375,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "probíhající rezervaci{product}",
         "countPlural=few": "probíhající rezervace{product}",
@@ -466,9 +390,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "rezervaci{product} k vrácení peněz",
         "countPlural=few": "rezervace{product} k vrácení peněz",
@@ -493,12 +415,8 @@
   "emailCampaignsAudienceSetMatchLabel": "{subject}: shoda",
   "emailCampaignsAudienceSetOperator": [
     {
-      "declarations": [
-        "input operator"
-      ],
-      "selectors": [
-        "operator"
-      ],
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
       "match": {
         "operator=allOf": "všechny z",
         "operator=noneOf": "žádný z",
@@ -516,9 +434,7 @@
         "input noun",
         "input none"
       ],
-      "selectors": [
-        "operator"
-      ],
+      "selectors": ["operator"],
       "match": {
         "operator=eq": "přesně {count} {noun}",
         "operator=ne": "jiný počet {none} než {count}",
@@ -542,13 +458,8 @@
   "emailCampaignsAudienceSummaryPeriodAnyTime": "kdykoli",
   "emailCampaignsAudienceSummaryPeriodLastDay": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "za poslední den",
         "countPlural=few": "za poslední {count} dny",
@@ -558,13 +469,8 @@
   ],
   "emailCampaignsAudienceSummaryPeriodLastMonth": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "za poslední měsíc",
         "countPlural=few": "za poslední {count} měsíce",
@@ -574,13 +480,8 @@
   ],
   "emailCampaignsAudienceSummaryPeriodLastWeek": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "za poslední týden",
         "countPlural=few": "za poslední {count} týdny",
@@ -590,13 +491,8 @@
   ],
   "emailCampaignsAudienceSummaryPeriodLastYear": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "za poslední rok",
         "countPlural=few": "za poslední {count} roky",
@@ -756,13 +652,8 @@
   "emailCampaignsListCampaignColumn": "Kampaň",
   "emailCampaignsListCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} kampaň",
         "countPlural=few": "{count} kampaně",
@@ -845,13 +736,8 @@
   "emailCampaignsSendingFailureNotRetryable": "Znovu odeslat nedoručeným příjemcům lze jen u kampaně, která selhala.",
   "emailCampaignsSendingFailureOutsideTestDomain": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Mimo produkci lze e-maily kampaní posílat jen na adresy @{domain} a {count} adresa mezi ně nepatří. Nic nebylo odesláno.",
         "countPlural=few": "Mimo produkci lze e-maily kampaní posílat jen na adresy @{domain} a {count} adresy mezi ně nepatří. Nic nebylo odesláno.",
@@ -876,13 +762,8 @@
   "emailCampaignsSentContentTitle": "Obsah",
   "emailCampaignsSentDeliveryRecipientCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} příjemce",
         "countPlural=few": "{count} příjemci",
@@ -916,13 +797,8 @@
   "emailCampaignsSentRetryFailed": "Nedoručeným příjemcům se nepodařilo odeslat e-mail znovu.",
   "emailCampaignsSentRetryStarted": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Znovu odesíláme {count} nedoručenému příjemci.",
         "countPlural=few": "Znovu odesíláme {count} nedoručeným příjemcům.",
@@ -960,13 +836,8 @@
   "emailCampaignsTestSendRemoveRecipient": "Odebrat {email}",
   "emailCampaignsTestSendSent": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Odeslán {count} testovací e-mail ({languages}).",
         "countPlural=few": "Odeslány {count} testovací e-maily ({languages}).",

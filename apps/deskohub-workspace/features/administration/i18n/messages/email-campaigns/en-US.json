@@ -20,13 +20,8 @@
   "emailCampaignsAudienceCampaignEmailCountNone": "received no {none}{period}",
   "emailCampaignsAudienceCampaignEmailCountNounAny": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "campaign email",
         "countPlural=other": "campaign emails"
@@ -35,13 +30,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "marketing campaign email",
         "countPlural=other": "marketing campaign emails"
@@ -50,13 +40,8 @@
   ],
   "emailCampaignsAudienceCampaignEmailCountNounOperational": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "operational campaign email",
         "countPlural=other": "operational campaign emails"
@@ -77,12 +62,8 @@
   "emailCampaignsAudienceCountNumberOf": "Number of",
   "emailCampaignsAudienceCountOperator": [
     {
-      "declarations": [
-        "input operator"
-      ],
-      "selectors": [
-        "operator"
-      ],
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
       "match": {
         "operator=eq": "equals",
         "operator=ne": "is not",
@@ -162,13 +143,8 @@
   "emailCampaignsAudienceHasAccountTrue": "Has",
   "emailCampaignsAudienceInUse": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "A draft campaign uses this audience, so it can only be archived. Move those drafts to another audience before deleting it.",
         "countPlural=other": "{count} draft campaigns use this audience, so it can only be archived. Move those drafts to another audience before deleting it."
@@ -187,13 +163,8 @@
   "emailCampaignsAudienceListColumnUpdated": "Updated",
   "emailCampaignsAudienceListCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} audience",
         "countPlural=other": "{count} audiences"
@@ -223,12 +194,8 @@
   "emailCampaignsAudiencePeriodEndLabel": "{subject} end date",
   "emailCampaignsAudiencePeriodKind": [
     {
-      "declarations": [
-        "input kind"
-      ],
-      "selectors": [
-        "kind"
-      ],
+      "declarations": ["input kind"],
+      "selectors": ["kind"],
       "match": {
         "kind=AnyTime": "any time",
         "kind=Last": "in the last",
@@ -242,13 +209,8 @@
   "emailCampaignsAudiencePeriodLabel": "{subject} period",
   "emailCampaignsAudiencePeriodLast": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "in the last",
         "countPlural=other": "in the last"
@@ -261,13 +223,8 @@
   "emailCampaignsAudiencePeriodTo": "to",
   "emailCampaignsAudiencePeriodUnitDay": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "day",
         "countPlural=other": "days"
@@ -277,13 +234,8 @@
   "emailCampaignsAudiencePeriodUnitLabel": "{subject} period unit",
   "emailCampaignsAudiencePeriodUnitMonth": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "month",
         "countPlural=other": "months"
@@ -292,13 +244,8 @@
   ],
   "emailCampaignsAudiencePeriodUnitWeek": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "week",
         "countPlural=other": "weeks"
@@ -307,13 +254,8 @@
   ],
   "emailCampaignsAudiencePeriodUnitYear": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "year",
         "countPlural=other": "years"
@@ -340,13 +282,8 @@
   "emailCampaignsAudienceProductSelectLabel": "Reservation product",
   "emailCampaignsAudienceProductUnitDays": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "day",
         "countPlural=other": "days"
@@ -355,13 +292,8 @@
   ],
   "emailCampaignsAudienceProductUnitSeats": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "seat",
         "countPlural=other": "seats"
@@ -386,9 +318,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "booked reservation{product}",
         "countPlural=other": "booked reservations{product}"
@@ -402,9 +332,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "cancelled reservation{product}",
         "countPlural=other": "cancelled reservations{product}"
@@ -418,9 +346,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "complete reservation{product}",
         "countPlural=other": "complete reservations{product}"
@@ -434,9 +360,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "reservation in progress{product}",
         "countPlural=other": "reservations in progress{product}"
@@ -450,9 +374,7 @@
         "local countPlural = count: plural",
         "input product"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "reservation{product} needing a refund",
         "countPlural=other": "reservations{product} needing a refund"
@@ -476,12 +398,8 @@
   "emailCampaignsAudienceSetMatchLabel": "{subject} match",
   "emailCampaignsAudienceSetOperator": [
     {
-      "declarations": [
-        "input operator"
-      ],
-      "selectors": [
-        "operator"
-      ],
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
       "match": {
         "operator=allOf": "includes all of",
         "operator=noneOf": "is none of",
@@ -493,14 +411,8 @@
   "emailCampaignsAudienceStatusArchived": "Archived",
   "emailCampaignsAudienceSummaryAmount": [
     {
-      "declarations": [
-        "input operator",
-        "input count",
-        "input noun"
-      ],
-      "selectors": [
-        "operator"
-      ],
+      "declarations": ["input operator", "input count", "input noun"],
+      "selectors": ["operator"],
       "match": {
         "operator=eq": "exactly {count} {noun}",
         "operator=ne": "other than {count} {noun}",
@@ -524,13 +436,8 @@
   "emailCampaignsAudienceSummaryPeriodAnyTime": "at any time",
   "emailCampaignsAudienceSummaryPeriodLastDay": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "in the last day",
         "countPlural=other": "in the last {count} days"
@@ -539,13 +446,8 @@
   ],
   "emailCampaignsAudienceSummaryPeriodLastMonth": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "in the last month",
         "countPlural=other": "in the last {count} months"
@@ -554,13 +456,8 @@
   ],
   "emailCampaignsAudienceSummaryPeriodLastWeek": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "in the last week",
         "countPlural=other": "in the last {count} weeks"
@@ -569,13 +466,8 @@
   ],
   "emailCampaignsAudienceSummaryPeriodLastYear": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "in the last year",
         "countPlural=other": "in the last {count} years"
@@ -734,13 +626,8 @@
   "emailCampaignsListCampaignColumn": "Campaign",
   "emailCampaignsListCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} campaign",
         "countPlural=other": "{count} campaigns"
@@ -822,13 +709,8 @@
   "emailCampaignsSendingFailureNotRetryable": "Only a failed campaign can retry undelivered recipients.",
   "emailCampaignsSendingFailureOutsideTestDomain": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Outside production, campaign email can only go to @{domain} addresses, and {count} address is outside it. Nothing was sent.",
         "countPlural=other": "Outside production, campaign email can only go to @{domain} addresses, and {count} addresses are outside it. Nothing was sent."
@@ -852,13 +734,8 @@
   "emailCampaignsSentContentTitle": "Content",
   "emailCampaignsSentDeliveryRecipientCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} recipient",
         "countPlural=other": "{count} recipients"
@@ -891,13 +768,8 @@
   "emailCampaignsSentRetryFailed": "Undelivered recipients could not be retried.",
   "emailCampaignsSentRetryStarted": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Retrying {count} undelivered recipient.",
         "countPlural=other": "Retrying {count} undelivered recipients."
@@ -934,13 +806,8 @@
   "emailCampaignsTestSendRemoveRecipient": "Remove {email}",
   "emailCampaignsTestSendSent": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Sent {count} test email ({languages}).",
         "countPlural=other": "Sent {count} test emails ({languages})."
