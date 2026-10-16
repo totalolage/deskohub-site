@@ -117,6 +117,7 @@
   "emailCampaignsAudienceDiscountGroupSummaryAnyOf": "jsou ve slevové skupině {values}",
   "emailCampaignsAudienceDiscountGroupSummaryNoneOf": "nejsou ve slevové skupině {values}",
   "emailCampaignsAudienceDiscountGroupUnknown": "Neznámá slevová skupina {id}",
+  "emailCampaignsAudienceDiscountGroupUnnamed": "Skupina {id}",
   "emailCampaignsAudienceDotyposTagsAdd": "Přidat štítek",
   "emailCampaignsAudienceDotyposTagsEmptyError": "Přidejte alespoň jeden štítek.",
   "emailCampaignsAudienceDotyposTagsLabel": "Štítky v Dotyposu",

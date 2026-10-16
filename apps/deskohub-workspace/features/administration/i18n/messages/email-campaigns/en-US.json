@@ -114,6 +114,7 @@
   "emailCampaignsAudienceDiscountGroupSummaryAnyOf": "are in discount group {values}",
   "emailCampaignsAudienceDiscountGroupSummaryNoneOf": "aren’t in discount group {values}",
   "emailCampaignsAudienceDiscountGroupUnknown": "Unknown discount group {id}",
+  "emailCampaignsAudienceDiscountGroupUnnamed": "Group {id}",
   "emailCampaignsAudienceDotyposTagsAdd": "Add tag",
   "emailCampaignsAudienceDotyposTagsEmptyError": "Add at least one tag.",
   "emailCampaignsAudienceDotyposTagsLabel": "Dotypos tags",
