@@ -10,15 +10,17 @@ const paidAttempt = {
   refundState: "not_required",
   refundedAmount: null,
   refundedAt: null,
-  stateLabel: "Paid",
+  state: "paid",
+  failureCode: null,
   updatedAt: "2026-10-12T06:34:00Z",
 } satisfies Pick<
   AdministrationPaymentAttempt,
   | "amount"
+  | "failureCode"
   | "refundState"
   | "refundedAmount"
   | "refundedAt"
-  | "stateLabel"
+  | "state"
   | "updatedAt"
 >;
 
@@ -89,5 +91,51 @@ describe("getAdministrationPaymentStatus", () => {
       retainedAmount: { value: 11_750, exponent: 2, currency: "CZK" },
       needsRefund: false,
     });
+  });
+
+  test("labels the payment state in the route locale", () => {
+    expect(getAdministrationPaymentStatus(paidAttempt, "cs-CZ").label).toBe(
+      "Zaplaceno"
+    );
+    expect(
+      getAdministrationPaymentStatus(
+        { ...paidAttempt, state: "expired" },
+        "cs-CZ"
+      ).label
+    ).toBe("Nezdařilo se");
+  });
+
+  test("labels a payment the hold cleanup abandoned", () => {
+    expect(
+      getAdministrationPaymentStatus(
+        {
+          ...paidAttempt,
+          state: "cancelled",
+          failureCode: "payment_abandoned_after_provider_cutoff",
+        },
+        "en-US"
+      ).label
+    ).toBe("Abandoned");
+  });
+
+  test("labels refunds in the route locale", () => {
+    const refunded = {
+      ...paidAttempt,
+      refundState: "refunded",
+      refundedAt: "2026-10-12T09:00:00Z",
+    } as const;
+    expect(
+      getAdministrationPaymentStatus(
+        { ...refunded, refundedAmount: paidAttempt.amount },
+        "cs-CZ"
+      ).label
+    ).toBe("Vráceno");
+    const refundedAmount = { ...paidAttempt.amount, value: 10_000 };
+    expect(
+      getAdministrationPaymentStatus({ ...refunded, refundedAmount }, "cs-CZ")
+        .label
+    ).toBe(
+      `Částečně vráceno ${formatAdministrationMoney(refundedAmount, "cs-CZ")}`
+    );
   });
 });

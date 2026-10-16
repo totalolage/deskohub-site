@@ -17,6 +17,7 @@ import {
   render,
   within,
 } from "@testing-library/react";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   workspaceRouterPush,
   workspaceRouterRefresh,
@@ -27,14 +28,16 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import {
+  BookingTable,
   formatAdministrationDateTime,
+  formatAdministrationMoney,
   PaymentAttemptList,
   RelatedReservationLink,
   ReservationTable,
 } from "./components";
 import { loadFixtureReservation, loadFixtureReservations } from "./fixtures";
 import { ReservationOrderList } from "./payment-components";
-import { OrderTable } from "./payment-tables";
+import { OperationTable, OrderTable } from "./payment-tables";
 import { ReservationAccessAdministration } from "./reservation-access-administration";
 
 /** Text content with the formatter's non-breaking spaces as plain spaces. */
@@ -303,6 +306,7 @@ describe("administration reservation components", () => {
 
     const view = render(
       <PaymentAttemptList
+        locale="en-US"
         attempts={[
           {
             ...attempt,
@@ -549,6 +553,151 @@ describe("administration reservation components", () => {
       />
     );
     expect(activity.getByText(/Nexi reports payment activity/i)).toBeDefined();
+  });
+
+  test("words payment attempts and Nexi orders in Czech", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    const attempt = detail?.paymentAttempts[0];
+    const order = detail?.orders[0];
+    if (!(attempt && order?.link)) {
+      throw new Error("Expected a fixture payment and linked order");
+    }
+    const refundedAt = "2026-10-12T09:00:00Z";
+    const refundedAmount = { ...attempt.amount, value: 100_000 };
+
+    const attempts = render(
+      <PaymentAttemptList
+        attempts={[
+          {
+            ...attempt,
+            refundState: "refunded",
+            refundedAmount,
+            refundedAt,
+          },
+        ]}
+        locale="cs-CZ"
+      />
+    );
+    expect(attempts.getByText("Online platba")).toBeDefined();
+    expect(attempts.getByText("Objednávka Nexi")).toBeDefined();
+    const attemptText = readableText(attempts.container);
+    expect(attemptText).toContain(
+      `Částečně vráceno ${formatAdministrationMoney(refundedAmount, "cs-CZ")} · ${formatAdministrationDateTime(refundedAt, "cs-CZ")}`.replace(
+        /\s+/g,
+        " "
+      )
+    );
+    expect(readableText(attempts.container.querySelector("del"))).toBe(
+      `${formatAdministrationMoney(attempt.amount, "cs-CZ")} před vrácením peněz`.replace(
+        /\s+/g,
+        " "
+      )
+    );
+    attempts.unmount();
+
+    const orders = render(
+      <ReservationOrderList
+        locale="cs-CZ"
+        orders={[
+          {
+            ...order,
+            provider: null,
+            providerAvailable: false,
+            providerStatus: "unavailable",
+          },
+        ]}
+      />
+    );
+    expect(
+      orders.getByText(
+        "Aktuální operace objednávky jsou z Nexi dočasně nedostupné."
+      )
+    ).toBeDefined();
+    expect(orders.getByText("Zaplaceno", { exact: false })).toBeDefined();
+    orders.unmount();
+
+    const orderTable = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <OrderTable
+          orders={[
+            order,
+            {
+              ...order,
+              orderId: NexiOrderIdSchema.make("DADMINFIXTURENEXIONLY"),
+              link: null,
+            },
+          ]}
+        />
+      </RouteLocaleProvider>
+    );
+    const table = orderTable.getByRole("table", { name: "Objednávky Nexi" });
+    expect(
+      within(table).getByRole("columnheader", { name: "Párování" })
+    ).toBeDefined();
+    expect(within(table).getByText("Zaplaceno")).toBeDefined();
+    expect(within(table).getByText("Pouze v Nexi")).toBeDefined();
+    expect(within(table).getAllByText("Zobrazit rezervaci")).toHaveLength(1);
+    orderTable.unmount();
+
+    const empty = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <OperationTable operations={[]} />
+      </RouteLocaleProvider>
+    );
+    expect(
+      empty.getByText("Těmto filtrům neodpovídají žádné operace Nexi.")
+    ).toBeDefined();
+  });
+
+  test("words Dotypos bookings in Czech", () => {
+    const booking = loadFixtureReservation(
+      "0198-admin-fixture-attention"
+    )?.booking;
+    if (!booking) throw new Error("Expected a fixture booking");
+
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <BookingTable
+          bookings={[
+            { ...booking, seats: "3", status: "CANCELLED" },
+            {
+              ...booking,
+              id: `${booking.id}-unassigned` as typeof booking.id,
+              customer: null,
+              customerId: null,
+              linkedReservation: null,
+              seats: "5",
+              tableName: null,
+            },
+          ]}
+        />
+      </RouteLocaleProvider>
+    );
+
+    const table = view.getByRole("table", { name: "Rezervace stolů" });
+    expect(
+      within(table).getByRole("columnheader", { name: /Stůl/ })
+    ).toBeDefined();
+    expect(within(table).getByText("3 osoby")).toBeDefined();
+    expect(within(table).getByText("5 osob")).toBeDefined();
+    expect(within(table).getByText("Zrušená")).toBeDefined();
+    expect(within(table).getByText("Nepřiřazeno")).toBeDefined();
+    expect(within(table).getByText("Nepřipojeno")).toBeDefined();
+    expect(
+      within(table).getByText("Podrobnosti nejsou k dispozici")
+    ).toBeDefined();
+    // The mobile list words the same booking.
+    expect(view.getByText("Bez přiřazeného stolu · 5 osob")).toBeDefined();
+    view.unmount();
+
+    const empty = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <BookingTable bookings={[]} />
+      </RouteLocaleProvider>
+    );
+    expect(
+      empty.getByText("K tomuto datu neexistují žádné rezervace stolů.")
+    ).toBeDefined();
   });
 
   test("keeps the customer visible when booking details are unavailable", () => {

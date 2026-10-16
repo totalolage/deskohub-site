@@ -1,15 +1,63 @@
 import { isNexiRefundOperation, type NexiOperation } from "@deskohub/nexi";
 import { Option } from "effect";
+import type { Locale } from "@/features/i18n";
 import { parseInstant } from "@/shared/utils/temporal";
 import type {
   AdministrationPaymentAttempt,
   AdministrationTimelineItem,
 } from "./administration.service";
+import { m } from "./i18n";
 import type { AdministrationOrder } from "./payment-administration.service";
 import {
+  getAdministrationPaymentProviderLabel,
   getProviderOperationTimelineTone,
   getProviderValueLabel,
+  isAbandonedPayment,
 } from "./payment-presentation";
+
+/** What a Nexi operation did, as far as the timeline names it. */
+type ProviderOperationOutcome =
+  | "authorized"
+  | "executed"
+  | "other"
+  | "refund"
+  | "reversal";
+
+/**
+ * The payment event a timeline item records. The Admin UI words it in the
+ * route locale; the item's `title` and `description` keep the English the
+ * administration API returns.
+ */
+export type AdministrationPaymentTimelineEvent =
+  | {
+      readonly source: "payment";
+      readonly kind: "attemptStarted";
+      readonly attemptId: string;
+      readonly provider: AdministrationPaymentAttempt["provider"];
+    }
+  | { readonly source: "payment"; readonly kind: "refundRecorded" }
+  | {
+      readonly source: "payment";
+      readonly kind: "attemptEnded";
+      readonly outcome: "abandoned" | "failed" | "unsuccessful";
+    }
+  | {
+      readonly source: "payment";
+      readonly kind: "orderCreated";
+      readonly estimated: boolean;
+    }
+  | {
+      readonly source: "payment";
+      readonly kind: "operationReported";
+      readonly outcome: ProviderOperationOutcome;
+      readonly operationType?: string;
+      readonly operationResult?: string;
+      readonly channel?: string;
+    };
+
+export type AdministrationPaymentTimelineItem = AdministrationTimelineItem & {
+  readonly event: AdministrationPaymentTimelineEvent;
+};
 
 /** The operation's time as an instant, or nothing when Nexi sent none or an unreadable one. */
 const getOperationOccurredAt = (operation: NexiOperation) =>
@@ -28,17 +76,29 @@ const hasRefundOperationItem = (order: AdministrationOrder | undefined) =>
       getOperationOccurredAt(operation) !== undefined
   ) ?? false;
 
+const attemptEndedTitles = {
+  abandoned: "Payment abandoned",
+  failed: "Payment failed",
+  unsuccessful: "Payment unsuccessful",
+} as const;
+
 export const buildPaymentAttemptTimeline = (
   attempts: readonly AdministrationPaymentAttempt[],
   orders: readonly AdministrationOrder[]
-): readonly AdministrationTimelineItem[] =>
+): readonly AdministrationPaymentTimelineItem[] =>
   attempts.flatMap((attempt) => {
-    const started: AdministrationTimelineItem = {
+    const started: AdministrationPaymentTimelineItem = {
       id: `payment-attempt-${attempt.id}-started`,
       title: "Payment started",
       description: `${attempt.providerLabel} attempt ${attempt.id}.`,
       occurredAt: attempt.createdAt,
       tone: "neutral",
+      event: {
+        source: "payment",
+        kind: "attemptStarted",
+        attemptId: attempt.id,
+        provider: attempt.provider,
+      },
     };
     // The order timeline already shows "Refund reported by Nexi" for each
     // refund operation; the local record stands in only when the live Nexi
@@ -59,6 +119,7 @@ export const buildPaymentAttemptTimeline = (
             "Nexi reported a refund for this payment, so it no longer needs refund work.",
           occurredAt: attempt.refundedAt,
           tone: "neutral" as const,
+          event: { source: "payment", kind: "refundRecorded" } as const,
         },
       ];
     }
@@ -69,45 +130,56 @@ export const buildPaymentAttemptTimeline = (
     ) {
       return [started];
     }
-    const abandoned =
-      attempt.failureCode === "payment_abandoned_after_provider_cutoff";
+    const abandoned = isAbandonedPayment(attempt);
+    let outcome: "abandoned" | "failed" | "unsuccessful" = "unsuccessful";
+    if (abandoned) outcome = "abandoned";
+    else if (attempt.state === "failed") outcome = "failed";
     return [
       started,
       {
         id: `payment-attempt-${attempt.id}-${attempt.state}`,
-        title: abandoned
-          ? "Payment abandoned"
-          : {
-              cancelled: "Payment unsuccessful",
-              expired: "Payment unsuccessful",
-              failed: "Payment failed",
-            }[attempt.state],
+        title: attemptEndedTitles[outcome],
         description: abandoned
           ? "Workspace released the reservation after the local payment window elapsed and Nexi still reported no payment activity."
           : "The attempt ended without a recorded payment.",
         occurredAt: attempt.updatedAt,
         tone: "warning" as const,
+        event: { source: "payment", kind: "attemptEnded", outcome } as const,
       },
     ];
   });
 
-const getOperationTimelineTitle = (
+const getOperationOutcome = (
   operationType: string | undefined,
   operationResult: string | undefined
-) => {
+): ProviderOperationOutcome => {
   if (operationType === "AUTHORIZATION" && operationResult === "AUTHORIZED") {
-    return "Payment authorized by Nexi";
+    return "authorized";
   }
   if (
     (operationType === "AUTHORIZATION" || operationType === "CAPTURE") &&
     operationResult === "EXECUTED"
   ) {
-    return "Payment executed by Nexi";
+    return "executed";
   }
-  if (operationType === "REFUND") return "Refund reported by Nexi";
-  if (operationType === "CANCEL" || operationType === "VOID") {
-    return "Payment reversal reported by Nexi";
-  }
+  if (operationType === "REFUND") return "refund";
+  if (operationType === "CANCEL" || operationType === "VOID") return "reversal";
+  return "other";
+};
+
+const operationTitles = {
+  authorized: "Payment authorized by Nexi",
+  executed: "Payment executed by Nexi",
+  refund: "Refund reported by Nexi",
+  reversal: "Payment reversal reported by Nexi",
+} as const;
+
+const getOperationTimelineTitle = (
+  outcome: ProviderOperationOutcome,
+  operationType: string | undefined,
+  operationResult: string | undefined
+) => {
+  if (outcome !== "other") return operationTitles[outcome];
   const typeLabel = operationType
     ? getProviderValueLabel(operationType)
     : "Payment operation";
@@ -118,21 +190,23 @@ const getOperationTimelineTitle = (
 
 export const getOrderTimeline = (
   orders: readonly AdministrationOrder[]
-): readonly AdministrationTimelineItem[] => {
-  const items: AdministrationTimelineItem[] = [];
+): readonly AdministrationPaymentTimelineItem[] => {
+  const items: AdministrationPaymentTimelineItem[] = [];
   for (const order of orders) {
     if (order.link?.providerOrderCreatedAt) {
+      const estimated = order.link.providerOrderCreatedAtEstimated;
       items.push({
         id: `order-${order.orderId}-created`,
-        title: order.link.providerOrderCreatedAtEstimated
+        title: estimated
           ? "Nexi order created (estimated)"
           : "Nexi order created",
-        description: order.link.providerOrderCreatedAtEstimated
+        description: estimated
           ? "This attached Nexi session predates exact order-creation tracking; the local payment-attempt time is shown."
           : "Nexi accepted the hosted-payment request.",
         occurredAt: order.link.providerOrderCreatedAt,
         tone: "neutral",
         href: `#order-${order.orderId}`,
+        event: { source: "payment", kind: "orderCreated", estimated },
       });
     }
     for (const [index, operation] of (
@@ -140,15 +214,18 @@ export const getOrderTimeline = (
     ).entries()) {
       const occurredAt = getOperationOccurredAt(operation);
       if (!occurredAt) continue;
-      const result = operation.operationResult?.toUpperCase();
+      const operationType = operation.operationType?.toUpperCase();
+      const operationResult = operation.operationResult?.toUpperCase();
+      const outcome = getOperationOutcome(operationType, operationResult);
       const operationId = operation.operationId;
       items.push({
         id: operationId
           ? `nexi-operation-${operationId}`
           : `nexi-operation-${order.orderId}-${index}`,
         title: getOperationTimelineTitle(
-          operation.operationType?.toUpperCase(),
-          result
+          outcome,
+          operationType,
+          operationResult
         ),
         description: operation.channel
           ? `Nexi reported this ${getProviderValueLabel(operation.channel)} operation.`
@@ -161,8 +238,129 @@ export const getOrderTimeline = (
         ...(operationId && {
           href: `#operation-${operationId}`,
         }),
+        event: {
+          source: "payment",
+          kind: "operationReported",
+          outcome,
+          ...(operationType && { operationType }),
+          ...(operationResult && { operationResult }),
+          ...(operation.channel && { channel: operation.channel }),
+        },
       });
     }
   }
   return items;
+};
+
+const getOperationCopyTitle = (
+  event: Extract<
+    AdministrationPaymentTimelineEvent,
+    { readonly kind: "operationReported" }
+  >,
+  locale: Locale
+) => {
+  switch (event.outcome) {
+    case "authorized":
+      return m.administrationPaymentTimelineAuthorizedTitle({}, { locale });
+    case "executed":
+      return m.administrationPaymentTimelineExecutedTitle({}, { locale });
+    case "refund":
+      return m.administrationPaymentTimelineRefundReportedTitle({}, { locale });
+    case "reversal":
+      return m.administrationPaymentTimelineReversalTitle({}, { locale });
+    case "other": {
+      if (!event.operationType) {
+        return m.administrationPaymentOperationFallback({}, { locale });
+      }
+      const type = getProviderValueLabel(event.operationType);
+      return event.operationResult
+        ? m.administrationPaymentTimelineOperationResultTitle(
+            { result: getProviderValueLabel(event.operationResult), type },
+            { locale }
+          )
+        : type;
+    }
+  }
+};
+
+/** The payment event's title and description in the route locale. */
+export const getAdministrationPaymentTimelineCopy = (
+  event: AdministrationPaymentTimelineEvent,
+  locale: Locale
+): { readonly title: string; readonly description: string } => {
+  switch (event.kind) {
+    case "attemptStarted":
+      return {
+        title: m.administrationPaymentTimelineStartedTitle({}, { locale }),
+        description: m.administrationPaymentTimelineStartedDescription(
+          {
+            attemptId: event.attemptId,
+            provider: getAdministrationPaymentProviderLabel(
+              event.provider,
+              locale
+            ),
+          },
+          { locale }
+        ),
+      };
+    case "refundRecorded":
+      return {
+        title: m.administrationPaymentTimelineRefundRecordedTitle(
+          {},
+          { locale }
+        ),
+        description: m.administrationPaymentTimelineRefundRecordedDescription(
+          {},
+          { locale }
+        ),
+      };
+    case "attemptEnded":
+      return {
+        title: {
+          abandoned: m.administrationPaymentTimelineAbandonedTitle,
+          failed: m.administrationPaymentTimelineFailedTitle,
+          unsuccessful: m.administrationPaymentTimelineUnsuccessfulTitle,
+        }[event.outcome]({}, { locale }),
+        description:
+          event.outcome === "abandoned"
+            ? m.administrationPaymentTimelineAbandonedDescription(
+                {},
+                { locale }
+              )
+            : m.administrationPaymentTimelineEndedDescription({}, { locale }),
+      };
+    case "orderCreated":
+      return event.estimated
+        ? {
+            title: m.administrationPaymentTimelineOrderCreatedEstimatedTitle(
+              {},
+              { locale }
+            ),
+            description:
+              m.administrationPaymentTimelineOrderCreatedEstimatedDescription(
+                {},
+                { locale }
+              ),
+          }
+        : {
+            title: m.administrationPaymentTimelineOrderCreatedTitle(
+              {},
+              { locale }
+            ),
+            description: m.administrationPaymentTimelineOrderCreatedDescription(
+              {},
+              { locale }
+            ),
+          };
+    case "operationReported":
+      return {
+        title: getOperationCopyTitle(event, locale),
+        description: event.channel
+          ? m.administrationPaymentTimelineOperationChannelDescription(
+              { channel: getProviderValueLabel(event.channel) },
+              { locale }
+            )
+          : m.administrationPaymentTimelineOperationDescription({}, { locale }),
+      };
+  }
 };

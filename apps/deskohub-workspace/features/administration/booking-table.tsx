@@ -15,18 +15,38 @@ import {
 } from "./data-table";
 import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
+import { m } from "./i18n";
 import {
   type AdministrationTableSorting,
   getAdministrationTableSortHref,
 } from "./table-sort";
 
+export const getAdministrationBookingStatusLabel = (
+  status: AdministrationBookingSummary["status"],
+  locale: Locale
+) => {
+  switch (status) {
+    case "NEW":
+      return m.administrationBookingStatusNew({}, { locale });
+    case "CONFIRMED":
+      return m.administrationBookingStatusConfirmed({}, { locale });
+    case "CANCELLED":
+      return m.administrationBookingStatusCancelled({}, { locale });
+  }
+};
+
+/** The booking's party size, such as "4 guests". */
+export const getAdministrationBookingGuestCount = (
+  seats: AdministrationBookingSummary["seats"],
+  locale: Locale
+) => m.administrationBookingGuestCount({ count: Number(seats) }, { locale });
+
 export function BookingStatusBadge({
   booking,
+  locale,
 }: {
-  readonly booking: Pick<
-    AdministrationBookingSummary,
-    "status" | "statusLabel"
-  >;
+  readonly booking: Pick<AdministrationBookingSummary, "status">;
+  readonly locale: Locale;
 }) {
   return (
     <StatusBadge
@@ -38,7 +58,7 @@ export function BookingStatusBadge({
         }[booking.status] as "neutral" | "positive" | "progress"
       }
     >
-      {booking.statusLabel}
+      {getAdministrationBookingStatusLabel(booking.status, locale)}
     </StatusBadge>
   );
 }
@@ -57,11 +77,11 @@ const getColumns = (
           {formatAdministrationDateTime(row.original.startsAt, locale)}
         </Link>
         <p className="mt-1 text-xs text-navy-blue/65">
-          {row.original.seats} {row.original.seats === "1" ? "guest" : "guests"}
+          {getAdministrationBookingGuestCount(row.original.seats, locale)}
         </p>
       </>
     ),
-    header: "Booking",
+    header: m.administrationBookingColumnBooking({}, { locale }),
     id: "booking",
   },
   {
@@ -75,10 +95,12 @@ const getColumns = (
           {row.original.customer.displayName}
         </Link>
       ) : (
-        <span className="text-sm text-navy-blue/65">Details unavailable</span>
+        <span className="text-sm text-navy-blue/65">
+          {m.administrationBookingCustomerDetailsUnavailable({}, { locale })}
+        </span>
       ),
     enableSorting: false,
-    header: "Customer",
+    header: m.administrationBookingColumnCustomer({}, { locale }),
     id: "customer",
   },
   {
@@ -86,7 +108,8 @@ const getColumns = (
     cell: ({ row }) => (
       <>
         <p className="font-medium">
-          {row.original.tableName ?? "Not assigned"}
+          {row.original.tableName ??
+            m.administrationBookingTableNotAssigned({}, { locale })}
         </p>
         {row.original.tableLocation && (
           <p className="mt-1 text-xs text-navy-blue/65">
@@ -96,7 +119,7 @@ const getColumns = (
       </>
     ),
     enableSorting: false,
-    header: "Table",
+    header: m.administrationBookingColumnTable({}, { locale }),
     id: "table",
   },
   {
@@ -110,35 +133,41 @@ const getColumns = (
           {row.original.linkedReservation.label}
         </Link>
       ) : (
-        <span className="text-sm text-navy-blue/65">Not linked</span>
+        <span className="text-sm text-navy-blue/65">
+          {m.administrationBookingReservationNotLinked({}, { locale })}
+        </span>
       ),
     enableSorting: false,
-    header: "Reservation",
+    header: m.administrationBookingColumnReservation({}, { locale }),
     id: "reservation",
   },
   {
     accessorKey: "status",
-    cell: ({ row }) => <BookingStatusBadge booking={row.original} />,
-    header: "Status",
+    cell: ({ row }) => (
+      <BookingStatusBadge booking={row.original} locale={locale} />
+    ),
+    header: m.administrationBookingColumnStatus({}, { locale }),
     id: "status",
   },
 ];
 
 export function BookingTable({
   bookings,
-  emptyMessage = "No bookings match this date.",
   sorting,
 }: {
   readonly bookings: readonly AdministrationBookingSummary[];
-  readonly emptyMessage?: string;
   readonly sorting?: AdministrationTableSorting<AdministrationBookingSort>;
 }) {
   const locale = useRouteLocale();
   const columns = useMemo(() => getColumns(locale), [locale]);
-  if (bookings.length === 0) return <EmptyState message={emptyMessage} />;
+  if (bookings.length === 0) {
+    return (
+      <EmptyState message={m.administrationBookingTableEmpty({}, { locale })} />
+    );
+  }
   return (
     <AdministrationDataTable
-      ariaLabel="Bookings"
+      ariaLabel={m.administrationBookingTableLabel({}, { locale })}
       columns={columns}
       data={bookings}
       getRowId={(booking) => booking.id}
@@ -167,14 +196,19 @@ export function BookingTable({
                       {formatAdministrationDateTime(booking.startsAt, locale)}
                     </p>
                     <p className="mt-1 text-sm text-navy-blue/65">
-                      {booking.customer?.displayName ?? "Customer unavailable"}
+                      {booking.customer?.displayName ??
+                        m.administrationBookingCustomerUnavailable(
+                          {},
+                          { locale }
+                        )}
                     </p>
                   </div>
-                  <BookingStatusBadge booking={booking} />
+                  <BookingStatusBadge booking={booking} locale={locale} />
                 </div>
                 <p className="mt-3 text-xs text-navy-blue/65">
-                  {booking.tableName ?? "No table assigned"} · {booking.seats}{" "}
-                  {booking.seats === "1" ? "guest" : "guests"}
+                  {booking.tableName ??
+                    m.administrationBookingNoTableAssigned({}, { locale })}{" "}
+                  · {getAdministrationBookingGuestCount(booking.seats, locale)}
                 </p>
               </Link>
             </li>

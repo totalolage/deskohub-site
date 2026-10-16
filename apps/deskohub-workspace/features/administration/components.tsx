@@ -20,6 +20,7 @@ import {
 } from "./formatters";
 import { m } from "./i18n";
 import { NexiOrderLink } from "./nexi-order-link";
+import { getAdministrationPaymentProviderLabel } from "./payment-presentation";
 import {
   PaymentAmount,
   PaymentRefundRequiredLabel,
@@ -63,11 +64,14 @@ export {
 } from "./table-toolbar";
 
 export const getBookingTableLabel = (
-  booking: Pick<AdministrationBookingSummary, "tableId" | "tableName"> | null
+  booking: Pick<AdministrationBookingSummary, "tableId" | "tableName"> | null,
+  locale: Locale
 ) => {
-  if (!booking) return "Unavailable";
+  if (!booking) return m.administrationBookingTableUnavailable({}, { locale });
   if (booking.tableName) return booking.tableName;
-  return booking.tableId ? "Details unavailable" : "Not assigned";
+  return booking.tableId
+    ? m.administrationBookingTableDetailsUnavailable({}, { locale })
+    : m.administrationBookingTableNotAssigned({}, { locale });
 };
 
 export function PaymentAttemptList({
@@ -85,7 +89,9 @@ export function PaymentAttemptList({
           key={attempt.id}
         >
           <div>
-            <p className="font-semibold">{attempt.providerLabel}</p>
+            <p className="font-semibold">
+              {getAdministrationPaymentProviderLabel(attempt.provider, locale)}
+            </p>
             <p className="mt-1 text-sm text-navy-blue/65">
               {formatAdministrationDateTime(attempt.createdAt, locale)}
             </p>
@@ -96,7 +102,9 @@ export function PaymentAttemptList({
                   locale={locale}
                   orderId={attempt.providerOrderId}
                 >
-                  <span>Nexi order</span>
+                  <span>
+                    {m.administrationPaymentNexiOrder({}, { locale })}
+                  </span>
                   <span className="break-all font-mono text-xs">
                     {attempt.providerOrderId}
                   </span>
