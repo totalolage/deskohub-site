@@ -154,9 +154,14 @@ test("sends a signed-out administration URL to sign-in with its return path, whi
                 "open the sign-in return path as the administrator",
                 async () => {
                   ok(returnPath, "the sign-in return path was not captured");
+                  // The page streams its data behind the shell; the gate
+                  // decision is in the status and the shell, not the data.
                   const response = await page.goto(
                     new URL(returnPath, origin).toString(),
-                    { timeout: workspaceE2ETimeouts.browserNavigation }
+                    {
+                      timeout: workspaceE2ETimeouts.browserNavigation,
+                      waitUntil: "commit",
+                    }
                   );
                   equal(response?.status(), 200);
                   const url = new URL(page.url());
