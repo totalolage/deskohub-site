@@ -191,7 +191,7 @@ export function SiteHeader({
           className="shrink-0"
           onClick={closeMenu}
         >
-          <SiteHeaderLogo />
+          <SiteHeaderLogo sharesBarWithNavigation />
         </Link>
 
         <nav

@@ -181,6 +181,33 @@ const readWrappedNavigationLabels = (page: Page, navigationLabel: string) =>
       .map((link) => link.textContent);
   }, navigationLabel);
 
+// The horizontal logo's resolved styling and its box against the home link's.
+const readHorizontalLogoLayout = (page: Page) =>
+  page.evaluate(() => {
+    const link = document.querySelector(
+      'header a[aria-label="Deskohub Workspace"]'
+    );
+    const logo = link?.querySelector(":scope > span:last-child > div");
+    if (!(link && logo instanceof HTMLElement)) {
+      throw new Error("The horizontal site header logo is missing.");
+    }
+    const style = getComputedStyle(logo);
+    const linkBox = link.getBoundingClientRect();
+    const logoBox = logo.getBoundingClientRect();
+    return {
+      // Computed sizes ignore the scale and keep subpixel precision.
+      layoutHeight: Number.parseFloat(style.height),
+      layoutWidth: Number.parseFloat(style.width),
+      linkLeft: linkBox.left,
+      linkWidth: linkBox.width,
+      logoLeft: logoBox.left,
+      logoWidth: logoBox.width,
+      marginRight: style.marginRight,
+      scale: style.scale,
+      transformOrigin: style.transformOrigin.split(" ").map(Number.parseFloat),
+    };
+  });
+
 const readHeaderHeights = (page: Page) =>
   page.evaluate(() => {
     const header = document.querySelector("header");
@@ -361,6 +388,32 @@ for (const locale of locales) {
         }
       );
     }
+  }
+
+  for (const viewport of [narrowDesktopViewport, desktopViewport]) {
+    test.skipIf(!chromiumAvailable)(
+      `keeps the minimal header logo at its default scale at ${viewport.width}px (${locale})`,
+      async () => {
+        const page = await openSiteHeader(locale, viewport, "minimal");
+        try {
+          const layout = await readHorizontalLogoLayout(page);
+          // Only the full header compacts its logo beside the navigation.
+          expect(layout.scale).toBe("0.8");
+          expect(layout.marginRight).toBe("0px");
+          const [originX, originY] = layout.transformOrigin;
+          expect(originX).toBeCloseTo(layout.layoutWidth / 2, 1);
+          expect(originY).toBeCloseTo(layout.layoutHeight / 2, 1);
+          expect(layout.linkWidth).toBeCloseTo(layout.layoutWidth, 1);
+          expect(layout.logoWidth).toBeCloseTo(layout.layoutWidth * 0.8, 1);
+          expect(layout.logoLeft - layout.linkLeft).toBeCloseTo(
+            layout.layoutWidth * 0.1,
+            1
+          );
+        } finally {
+          await page.close();
+        }
+      }
+    );
   }
 
   test.skipIf(!chromiumAvailable)(

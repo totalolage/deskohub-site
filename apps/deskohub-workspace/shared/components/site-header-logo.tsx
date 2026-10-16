@@ -1,9 +1,15 @@
 import { HorizontalLogo, Logo } from "@/shared/components/logo";
+import { cn } from "@/shared/utils";
 
 // The horizontal logo keeps its full layout width under `scale-80`, so phones
-// get the compact mark to leave room for the header controls. Narrow desktops,
-// where the full navigation shares the bar, scale it further from its left edge.
-export function SiteHeaderLogo() {
+// get the compact mark to leave room for the header controls. When the logo
+// shares the bar with the desktop navigation, narrow desktops scale it further
+// from its left edge.
+export function SiteHeaderLogo({
+  sharesBarWithNavigation = false,
+}: {
+  readonly sharesBarWithNavigation?: boolean;
+}) {
   return (
     <>
       <span className="block sm:hidden">
@@ -17,7 +23,11 @@ export function SiteHeaderLogo() {
         {/* The negative margins return the width the scale leaves empty. */}
         <HorizontalLogo
           styling={{ color: "dark", variant: "color" }}
-          className="-mr-6.5 scale-80 xl:max-2xl:-mr-20 xl:max-2xl:origin-left xl:max-2xl:scale-70"
+          className={cn(
+            "scale-80",
+            sharesBarWithNavigation &&
+              "-mr-6.5 xl:max-2xl:-mr-20 xl:max-2xl:origin-left xl:max-2xl:scale-70"
+          )}
         />
       </span>
     </>
