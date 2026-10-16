@@ -1,6 +1,6 @@
 # Administration dashboard
 
-The dashboard lives in `apps/deskohub-workspace/app/admin` and `features/administration`. The [administration specification](../../../../apps/deskohub-workspace/docs/administration-dashboard.md) defines navigation, operator-visible statuses, metric definitions, and invoice presentation. This reference covers how to implement them.
+The dashboard lives in `apps/deskohub-workspace/app/[locale]/admin` and `features/administration`. The [administration specification](../../../../apps/deskohub-workspace/docs/administration-dashboard.md) defines navigation, operator-visible statuses, metric definitions, and invoice presentation. This reference covers how to implement them.
 
 ## Rendering
 

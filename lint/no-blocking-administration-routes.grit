@@ -5,8 +5,8 @@ language js(typescript, jsx)
 // data through local Suspense boundaries; an async default export blocks the
 // instant shell. Parallel breadcrumb slots may await their narrow label.
 file($name, $body) where {
-  $name <: r".*apps/deskohub-workspace/app/admin/(?:.*/)?(?:page|layout)\.tsx$",
-  not $name <: r".*/app/admin/@breadcrumb/.*",
+  $name <: r".*apps/deskohub-workspace/app/\[locale\]/admin/(?:.*/)?(?:page|layout)\.tsx$",
+  not $name <: r".*/app/\[locale\]/admin/@breadcrumb/.*",
   $body <: r"(?s).*export\s+default\s+async\b.*",
   $body <: contains bubble {
     JsExport() as $export where {

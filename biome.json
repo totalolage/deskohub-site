@@ -151,7 +151,7 @@
     },
     {
       "includes": [
-        "apps/deskohub-workspace/app/admin/**",
+        "apps/deskohub-workspace/app/\\[locale\\]/admin/**",
         "apps/deskohub-workspace/features/accounting/admin/**",
         "apps/deskohub-workspace/features/admin-cli/**",
         "apps/deskohub-workspace/features/administration/**",

@@ -42,7 +42,7 @@ Render the PDF on demand from the issued JSON. Never persist the PDF or read cur
 
 ## Post-order request
 
-The protected page (`app/[locale]/(minimal-header)/reservation/invoice/[orderId]/page.tsx`, action `features/accounting/actions/manage-post-order-invoice.ts`) reuses the reservation-access token claims and secret with its own route.
+The protected page (`app/[locale]/(site)/(minimal-header)/reservation/invoice/[orderId]/page.tsx`, action `features/accounting/actions/manage-post-order-invoice.ts`) reuses the reservation-access token claims and secret with its own route.
 
 - Verify the capability before any database or provider lookup, then recheck locale, payment, fulfilment, active attempt, snapshot, recipient, purpose, and eligibility on the server. Run BotID before every mutation.
 - Offer creation only for an eligible paid personal reservation without a request or invoice. With an invoice, offer only a customer resend, never another internal copy.
