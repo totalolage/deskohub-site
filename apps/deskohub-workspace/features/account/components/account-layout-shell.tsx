@@ -48,11 +48,17 @@ const anonymousDisabledSections = [
   "reservations",
   "referrals",
   "profile",
+  "security",
   "billing",
   "danger",
 ] as const;
 
-const withheldReferralSections = ["referrals"] as const;
+// TODO(login_passkeys): show "security" once the flag is in the contract.
+const withheldPasskeySections = ["security"] as const;
+const withheldReferralAndPasskeySections = [
+  "referrals",
+  ...withheldPasskeySections,
+] as const;
 
 function sectionFromQuery(
   value: string | null,
@@ -206,7 +212,11 @@ export function AccountLayoutShell({
       disabledSections={
         privateNavigationEnabled ? undefined : anonymousDisabledSections
       }
-      hiddenSections={referralsEnabled ? undefined : withheldReferralSections}
+      hiddenSections={
+        referralsEnabled
+          ? withheldPasskeySections
+          : withheldReferralAndPasskeySections
+      }
       labels={copy.shell}
       onSectionChange={changeSection}
       referralBadge={referralsEnabled ? referralBadge : undefined}

@@ -10,8 +10,9 @@ import {
   refreshAnalyticsAccountIdentity,
 } from "@/features/account/analytics-identity";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
-import { DeleteAccountReauthStep } from "@/features/account/components/delete-account-reauth-step";
+import { AccountReauthenticationStep } from "@/features/account/components/account-reauthentication-step";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
+import type { PasskeyConfirmationResult } from "@/features/account/passkeys";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
@@ -34,9 +35,15 @@ type DeleteAccountCardProps = {
   /** True when the durable deletion marker is set and deletion is retryable. */
   readonly deletionPending: boolean;
   readonly heading?: string;
+  /**
+   * Lets a stale session confirm with one of the account's passkeys.
+   * TODO(login_passkeys): wire to the passkey client when the account has one.
+   */
+  readonly confirmWithPasskey?: () => Promise<PasskeyConfirmationResult>;
 };
 
 export function DeleteAccountCard({
+  confirmWithPasskey,
   email,
   locale,
   deletionPending,
@@ -154,12 +161,14 @@ export function DeleteAccountCard({
           locale={locale}
         >
           {reauthRequired ? (
-            <DeleteAccountReauthStep
+            <AccountReauthenticationStep
+              purpose="delete-account"
+              confirmWithPasskey={confirmWithPasskey}
               email={email}
               locale={locale}
               authReturn={authReturn}
               onReauthenticated={() => {
-                // The typed code created a fresh session; confirm again.
+                // The code or passkey created a fresh session; confirm again.
                 setReauthRequired(false);
                 reset();
               }}

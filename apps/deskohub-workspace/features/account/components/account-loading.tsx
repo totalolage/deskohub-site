@@ -18,7 +18,8 @@ const disabledAccountSections = [
 
 // The static shell renders before the referral flag is known, so the
 // skeleton never shows the referral section of an unreleased program.
-const hiddenAccountSections = ["referrals"] as const;
+// TODO(login_passkeys): the skeleton hides "security" like the shell does.
+const hiddenAccountSections = ["referrals", "security"] as const;
 
 const noopSectionChange: AccountShellProps["onSectionChange"] = () => undefined;
 
