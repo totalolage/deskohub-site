@@ -112,12 +112,10 @@ describe.skipIf(!postgresDatabase)("cli session ownership on Postgres", () => {
     const approvedAt = new Date();
     const grantExpiresAt = new Date(Date.now() + 60_000);
 
+    // Requests approved before approvers were recorded have none, and stay valid.
     await expect(
       insertAuthenticationRequest({ approvedAt, grantExpiresAt })
-    ).rejects.toMatchObject({
-      code: "23514",
-      constraint: "cli_authentication_requests_approval_check",
-    });
+    ).resolves.toBeUndefined();
     await expect(
       insertAuthenticationRequest({
         approvedByAccountId: account.accountId,
