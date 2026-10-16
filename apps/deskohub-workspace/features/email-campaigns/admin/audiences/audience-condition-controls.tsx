@@ -1,7 +1,6 @@
 "use client";
 
 import type {
-  AudienceBooleanAttributeDefinition,
   AudienceBooleanCondition,
   AudienceChoiceParam,
   AudienceCountAttributeDefinition,
@@ -10,10 +9,14 @@ import type {
   AudienceDateCondition,
   AudienceSetAttributeDefinition,
   AudienceSetCondition,
+  DatePeriodUnitType,
 } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
 import { ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
@@ -38,7 +41,15 @@ import type {
   AudienceValueLookups,
   AudienceValueOption,
 } from "../audience-filter-summary";
-import { datePeriodUnitNames } from "../date-period-phrases";
+import type {
+  AudienceBooleanWording,
+  AudienceChoiceWording,
+  AudienceCountWording,
+  AudienceDateWording,
+  AudienceMessage,
+  AudienceSetWording,
+  AudienceValueEntryWording,
+} from "./audience-attribute-wording";
 import {
   ConditionLine,
   ConditionText,
@@ -63,17 +74,33 @@ import {
 } from "./audience-filter-editing";
 import { ProductFilterControl } from "./reservation-product-filter-control";
 
-const datePeriodKinds: Readonly<Record<DatePeriodKind, string>> = {
-  AnyTime: "any time",
-  Last: "in the last",
-  Range: "from … to …",
-  Since: "since",
-  Onward: "from … onward",
-  Until: "until",
-};
+const datePeriodKinds: readonly DatePeriodKind[] = [
+  "AnyTime",
+  "Last",
+  "Range",
+  "Since",
+  "Onward",
+  "Until",
+];
 
 const isDatePeriodKind = (value: string): value is DatePeriodKind =>
-  Object.hasOwn(datePeriodKinds, value);
+  datePeriodKinds.some((kind) => kind === value);
+
+/** The unit after "in the last N", for N. */
+const datePeriodUnits: Readonly<
+  Record<DatePeriodUnitType, AudienceMessage<{ readonly count: number }>>
+> = {
+  day: m.emailCampaignsAudiencePeriodUnitDay,
+  week: m.emailCampaignsAudiencePeriodUnitWeek,
+  month: m.emailCampaignsAudiencePeriodUnitMonth,
+  year: m.emailCampaignsAudiencePeriodUnitYear,
+};
+
+const datePeriodUnit = (
+  unit: DatePeriodUnitType,
+  count: number,
+  locale: Locale
+) => datePeriodUnits[unit]({ count }, { locale });
 
 const today = () => getCurrentWorkspaceDate().toString();
 
@@ -90,6 +117,8 @@ function DatePeriodControl({
   /** What the period applies to, for screen readers. */
   readonly label: string;
 }) {
+  const locale = useRouteLocale();
+  const subject = { subject: label };
   const dateInput = (
     date: string,
     field: string,
@@ -102,7 +131,7 @@ function DatePeriodControl({
       value={date}
       {...bounds}
       onChange={(event) => onChange(update(event.target.value))}
-      aria-label={`${label} ${fieldLabel}`}
+      aria-label={fieldLabel}
       variant={errorAt(field) || errorAt("") ? "error" : "default"}
       className={cn(compactInputClassName, "w-40 max-w-full")}
     />
@@ -119,15 +148,20 @@ function DatePeriodControl({
         }}
       >
         <SelectTrigger
-          aria-label={`${label} period`}
+          aria-label={m.emailCampaignsAudiencePeriodLabel(subject, { locale })}
           className={compactSelectClassName}
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {Object.entries(datePeriodKinds).map(([kind, kindLabel]) => (
+          {datePeriodKinds.map((kind) => (
             <SelectItem key={kind} value={kind}>
-              {kindLabel}
+              {kind === "Last" && value._tag === "Last"
+                ? m.emailCampaignsAudiencePeriodLast(
+                    { count: value.count },
+                    { locale }
+                  )
+                : m.emailCampaignsAudiencePeriodKind({ kind }, { locale })}
             </SelectItem>
           ))}
         </SelectContent>
@@ -146,7 +180,11 @@ function DatePeriodControl({
                 count: numberFromInput(event.target.value),
               })
             }
-            aria-label={`${label} number of ${datePeriodUnitNames[value.unit].other}`}
+            aria-label={m.emailCampaignsAudiencePeriodCountLabel(
+              // Any count above one names the units in general.
+              { subject: label, units: datePeriodUnit(value.unit, 2, locale) },
+              { locale }
+            )}
             variant={errorAt("count") ? "error" : "default"}
             className={cn(compactInputClassName, "w-20")}
           />
@@ -157,17 +195,21 @@ function DatePeriodControl({
             }}
           >
             <SelectTrigger
-              aria-label={`${label} period unit`}
+              aria-label={m.emailCampaignsAudiencePeriodUnitLabel(subject, {
+                locale,
+              })}
               className={compactSelectClassName}
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {Object.entries(datePeriodUnitNames).map(([unit, names]) => (
-                <SelectItem key={unit} value={unit}>
-                  {value.count === 1 ? names.one : names.other}
-                </SelectItem>
-              ))}
+              {Object.keys(datePeriodUnits)
+                .filter(isDatePeriodUnit)
+                .map((unit) => (
+                  <SelectItem key={unit} value={unit}>
+                    {datePeriodUnit(unit, value.count, locale)}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
         </span>
@@ -177,59 +219,87 @@ function DatePeriodControl({
           {dateInput(
             value.from,
             "from",
-            "start date",
+            m.emailCampaignsAudiencePeriodStartLabel(subject, { locale }),
             (from) => ({ ...value, from }),
             { max: value.to }
           )}
-          <ConditionText>to</ConditionText>
-          {dateInput(value.to, "to", "end date", (to) => ({ ...value, to }), {
-            min: value.from,
-          })}
+          <ConditionText>
+            {m.emailCampaignsAudiencePeriodTo({}, { locale })}
+          </ConditionText>
+          {dateInput(
+            value.to,
+            "to",
+            m.emailCampaignsAudiencePeriodEndLabel(subject, { locale }),
+            (to) => ({ ...value, to }),
+            { min: value.from }
+          )}
         </>
       )}
       {(value._tag === "Since" ||
         value._tag === "Onward" ||
         value._tag === "Until") &&
-        dateInput(value.date, "date", "date", (date) => ({ ...value, date }))}
-      {value._tag === "Onward" && <ConditionText>onward</ConditionText>}
+        dateInput(
+          value.date,
+          "date",
+          m.emailCampaignsAudiencePeriodDateLabel(subject, { locale }),
+          (date) => ({ ...value, date })
+        )}
+      {value._tag === "Onward" && (
+        <ConditionText>
+          {m.emailCampaignsAudiencePeriodOnward({}, { locale })}
+        </ConditionText>
+      )}
     </span>
   );
 }
 
 /** Plain instructions for a period's invalid fields. */
-const datePeriodErrors = (errorAt: FieldErrorLookup) =>
-  [
-    errorAt("count") && "Enter a whole number of 1 or more.",
-    (errorAt("from") || errorAt("to") || errorAt("date")) &&
-      "Enter a valid date.",
-    errorAt("") && "The start date must be on or before the end date.",
-  ].filter((message): message is string => Boolean(message));
+const datePeriodErrors = (
+  errorAt: FieldErrorLookup,
+  locale: Locale
+): readonly string[] => [
+  ...(errorAt("count")
+    ? [m.emailCampaignsAudiencePeriodCountError({}, { locale })]
+    : []),
+  ...(errorAt("from") || errorAt("to") || errorAt("date")
+    ? [m.emailCampaignsAudiencePeriodDateError({}, { locale })]
+    : []),
+  ...(errorAt("")
+    ? [m.emailCampaignsAudiencePeriodOrderError({}, { locale })]
+    : []),
+];
 
 /** A choice parameter's value; an optional one can be unset. */
 function ChoiceParamControl({
   param,
+  wording,
   value,
   onChange,
 }: {
   readonly param: AudienceChoiceParam;
+  readonly wording: AudienceChoiceWording | undefined;
   readonly value: unknown;
   readonly onChange: (value: string | undefined) => void;
 }) {
-  const options = Object.entries(param.options);
-  const chosen = Object.keys(param.options).find((option) => option === value);
+  const options = param.options.map((option) => ({
+    option,
+    label: wording?.options[option] ?? option,
+  }));
+  const label = wording?.label ?? "";
+  const chosen = param.options.find((option) => option === value);
   const pick = (next: string) => {
-    if (next === absentValue && param.absent) onChange(undefined);
-    else if (Object.hasOwn(param.options, next)) onChange(next);
+    if (next === absentValue && param.optional) onChange(undefined);
+    else if (param.options.includes(next)) onChange(next);
   };
   const name = useId();
   return Match.value(param.control).pipe(
     Match.when("toggle", () => (
       <SegmentedControl
-        label={param.label}
+        label={label}
         name={name}
         onValueChange={pick}
-        options={options.map(([option, { label }]) => ({
-          label,
+        options={options.map(({ option, label: optionLabel }) => ({
+          label: optionLabel,
           value: option,
         }))}
         size="sm"
@@ -238,19 +308,16 @@ function ChoiceParamControl({
     )),
     Match.when("select", () => (
       <Select value={chosen ?? absentValue} onValueChange={pick}>
-        <SelectTrigger
-          aria-label={param.label}
-          className={compactSelectClassName}
-        >
+        <SelectTrigger aria-label={label} className={compactSelectClassName}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {param.absent && (
-            <SelectItem value={absentValue}>{param.absent.label}</SelectItem>
+          {param.optional && (
+            <SelectItem value={absentValue}>{wording?.absent ?? ""}</SelectItem>
           )}
-          {options.map(([option, { label }]) => (
+          {options.map(({ option, label: optionLabel }) => (
             <SelectItem key={option} value={option}>
-              {label}
+              {optionLabel}
             </SelectItem>
           ))}
         </SelectContent>
@@ -266,18 +333,21 @@ const absentValue = "absent";
 /**
  * "Number of <lead>", the reservation product for reservation-based
  * attributes, then "<period> is <comparison>". Every count attribute edits
- * through it, worded by its catalogue entry.
+ * through it: its catalogue entry gives the parameters, its wording the words.
  */
 export function CountConditionControls<
   Condition extends AudienceCountCondition,
 >({
   entry,
+  wording,
   value: condition,
   onChange,
   errorAt,
 }: ControlProps<Condition> & {
   readonly entry: AudienceCountAttributeDefinition;
+  readonly wording: AudienceCountWording;
 }) {
+  const locale = useRouteLocale();
   const { params } = condition;
   const changeParams = (next: AudienceCountCondition["params"]) =>
     // The entry's params keep the condition's own shape.
@@ -286,8 +356,10 @@ export function CountConditionControls<
   return (
     <div className="space-y-2">
       <ConditionLine>
-        <ConditionText>Number of</ConditionText>
-        {entry.editor.lead.map((token) => {
+        <ConditionText>
+          {m.emailCampaignsAudienceCountNumberOf({}, { locale })}
+        </ConditionText>
+        {wording.lead.map((token) => {
           if ("text" in token) {
             return <ConditionText key={token.text}>{token.text}</ConditionText>;
           }
@@ -297,6 +369,7 @@ export function CountConditionControls<
               <ChoiceParamControl
                 key={token.param}
                 param={param}
+                wording={wording.choices[token.param]}
                 value={params[token.param]}
                 onChange={(value) => {
                   const { [token.param]: _, ...rest } = params;
@@ -326,18 +399,23 @@ export function CountConditionControls<
           value={params.period}
           onChange={(period) => changeParams({ ...params, period })}
           errorAt={periodErrorAt}
-          label={entry.editor.period}
+          label={wording.period}
         />
-        <ConditionText>is</ConditionText>
+        <ConditionText>
+          {m.emailCampaignsAudienceCountIs({}, { locale })}
+        </ConditionText>
         <CountComparisonControl
           operator={condition.operator}
           value={condition.value}
           onChange={(comparison) => onChange({ ...condition, ...comparison })}
           errorAt={errorAt}
-          label={entry.editor.count}
+          label={wording.count}
         />
       </ConditionLine>
-      {[...datePeriodErrors(periodErrorAt), countComparisonError(errorAt)].map(
+      {[
+        ...datePeriodErrors(periodErrorAt, locale),
+        countComparisonError(errorAt, condition.operator, locale),
+      ].map(
         (message) => message && <FieldError key={message} message={message} />
       )}
     </div>
@@ -352,21 +430,24 @@ const dateOperatorKeys = ["in", "notIn", "none"] as const;
  * reservation product for reservation-based attributes.
  */
 export function DateConditionControls<Condition extends AudienceDateCondition>({
-  entry: { label, editor, reservationProduct },
+  entry: { reservationProduct },
+  wording: { label, noValue },
   value: condition,
   onChange,
   errorAt,
 }: ControlProps<Condition> & {
   readonly entry: AudienceDateAttributeDefinition;
+  readonly wording: AudienceDateWording;
 }) {
+  const locale = useRouteLocale();
   const period =
     condition.operator === "none"
       ? ({ _tag: "Last", count: 30, unit: "day" } as const)
       : condition.value;
   const operatorLabels = {
-    in: "is",
-    notIn: "is not",
-    none: editor.noValue,
+    in: m.emailCampaignsAudienceDateIn({}, { locale }),
+    notIn: m.emailCampaignsAudienceDateNotIn({}, { locale }),
+    none: noValue,
   } as const;
   const periodErrorAt = withPath(errorAt, "value");
   // Attribute parameters, such as a last visit's product, stay.
@@ -397,7 +478,10 @@ export function DateConditionControls<Condition extends AudienceDateCondition>({
           }}
         >
           <SelectTrigger
-            aria-label={`${label} condition`}
+            aria-label={m.emailCampaignsAudienceDateConditionLabel(
+              { subject: label },
+              { locale }
+            )}
             className={compactSelectClassName}
           >
             <SelectValue />
@@ -419,7 +503,7 @@ export function DateConditionControls<Condition extends AudienceDateCondition>({
           />
         )}
       </ConditionLine>
-      {datePeriodErrors(periodErrorAt).map((message) => (
+      {datePeriodErrors(periodErrorAt, locale).map((message) => (
         <FieldError key={message} message={message} />
       ))}
       {reservationProduct && (
@@ -442,14 +526,12 @@ export function DateConditionControls<Condition extends AudienceDateCondition>({
 function ValueEntry({
   values,
   onChange,
-  noun,
-  placeholder,
+  wording,
   invalid,
 }: {
   readonly values: readonly string[];
   readonly onChange: (values: readonly string[]) => void;
-  readonly noun: string;
-  readonly placeholder: string;
+  readonly wording: AudienceValueEntryWording;
   readonly invalid: boolean;
 }) {
   const [draft, setDraft] = useState("");
@@ -464,7 +546,7 @@ function ValueEntry({
         values={values}
         labelOf={(value) => value}
         onRemove={(value) => onChange(values.filter((v) => v !== value))}
-        noun={noun}
+        removeLabel={wording.remove}
       />
       <Input
         value={draft}
@@ -476,8 +558,8 @@ function ValueEntry({
           }
         }}
         onBlur={commit}
-        placeholder={placeholder}
-        aria-label={`Add ${noun}`}
+        placeholder={wording.placeholder}
+        aria-label={wording.add}
         variant={invalid ? "error" : "default"}
         className={cn(compactInputClassName, "w-44 max-w-full")}
       />
@@ -490,26 +572,27 @@ function LookupPicker({
   values,
   onChange,
   options,
-  noun,
-  choose,
+  wording,
   invalid,
 }: {
   readonly values: readonly string[];
   readonly onChange: (values: readonly string[]) => void;
   readonly options: readonly AudienceValueOption[];
-  readonly noun: string;
-  readonly choose: string;
+  readonly wording: Extract<
+    AudienceSetWording["values"],
+    { readonly _tag: "Lookup" }
+  >;
   readonly invalid: boolean;
 }) {
   const nameOf = (id: string) =>
-    options.find((option) => option.id === id)?.name ?? `Unknown ${noun} ${id}`;
+    options.find((option) => option.id === id)?.name ?? wording.unknown(id);
   return (
     <>
       <ValueChips
         values={values}
         labelOf={nameOf}
         onRemove={(id) => onChange(toggleSetValue(values, id, false))}
-        noun={noun}
+        removeLabel={wording.remove}
       />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -520,7 +603,7 @@ function LookupPicker({
             size="sm"
             aria-invalid={invalid}
           >
-            {choose}
+            {wording.choose}
             <ChevronDown className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </DropdownMenuTrigger>
@@ -549,6 +632,7 @@ function LookupPicker({
  */
 export function SetConditionControls<Condition extends AudienceSetCondition>({
   entry,
+  wording,
   value: condition,
   onChange,
   errorAt,
@@ -556,6 +640,7 @@ export function SetConditionControls<Condition extends AudienceSetCondition>({
   lookups,
 }: ControlProps<Condition> & {
   readonly entry: AudienceSetAttributeDefinition;
+  readonly wording: AudienceSetWording;
   /** Form path of the condition, for checkbox IDs. */
   readonly path: string;
   readonly lookups: AudienceValueLookups;
@@ -563,29 +648,29 @@ export function SetConditionControls<Condition extends AudienceSetCondition>({
   const invalid = errorAt("value") !== undefined;
   const setValues = (value: readonly string[]) =>
     onChange({ ...condition, value });
-  const freeText = (noun: string, placeholder: string) => (
+  const freeText = (entryWording: AudienceValueEntryWording) => (
     <ValueEntry
       values={condition.value}
       onChange={setValues}
-      noun={noun}
-      placeholder={placeholder}
+      wording={entryWording}
       invalid={invalid}
     />
   );
+  const values = wording.values;
   return (
     <div className="space-y-2">
       <ConditionLine>
-        <ConditionText>{entry.editor.lead}</ConditionText>
+        <ConditionText>{wording.lead}</ConditionText>
         <SetOperatorSelect
           operators={entry.operators}
           value={condition.operator}
           onChange={(operator) => onChange({ ...condition, operator })}
-          label={entry.label}
+          label={wording.label}
         />
         {Match.value(entry.values).pipe(
           Match.tagsExhaustive({
             Options: ({ options }) =>
-              Object.entries(options).map(([option, { label }]) => {
+              options.map((option) => {
                 const id = `${path}.value.${option}`;
                 return (
                   <label
@@ -603,34 +688,33 @@ export function SetConditionControls<Condition extends AudienceSetCondition>({
                       }
                       className="size-5"
                     />
-                    {label}
+                    {(values._tag === "Options" &&
+                      values.options[option]?.label) ||
+                      option}
                   </label>
                 );
               }),
-            FreeText: ({ noun, placeholder }) => freeText(noun, placeholder),
-            Lookup: ({ lookup, noun, choose, freeText: fallback }) => {
+            FreeText: () =>
+              values._tag === "FreeText" && freeText(values.entry),
+            Lookup: ({ lookup }) => {
+              if (values._tag !== "Lookup") return null;
               const options = lookups[lookup];
               return options ? (
                 <LookupPicker
                   values={condition.value}
                   onChange={setValues}
                   options={options}
-                  noun={noun}
-                  choose={choose}
+                  wording={values}
                   invalid={invalid}
                 />
               ) : (
-                freeText(fallback.noun, fallback.placeholder)
+                freeText(values.entry)
               );
             },
           })
         )}
       </ConditionLine>
-      {invalid && (
-        <FieldError
-          message={`${entry.values._tag === "FreeText" ? "Add" : "Choose"} at least one ${entry.values.noun}.`}
-        />
-      )}
+      {invalid && <FieldError message={wording.emptyError} />}
     </div>
   );
 }
@@ -639,30 +723,30 @@ export function SetConditionControls<Condition extends AudienceSetCondition>({
 export function BooleanConditionControls<
   Condition extends AudienceBooleanCondition,
 >({
-  entry,
+  wording,
   value: condition,
   onChange,
 }: ControlProps<Condition> & {
-  readonly entry: AudienceBooleanAttributeDefinition;
+  readonly wording: AudienceBooleanWording;
 }) {
   const name = useId();
 
   return (
     <ConditionLine>
       <SegmentedControl
-        label={entry.label}
+        label={wording.label}
         name={name}
         onValueChange={(next) =>
           onChange({ ...condition, value: next === "true" })
         }
         options={[
-          { label: entry.editor.true, value: "true" },
-          { label: entry.editor.false, value: "false" },
+          { label: wording.true, value: "true" },
+          { label: wording.false, value: "false" },
         ]}
         size="sm"
         value={String(condition.value)}
       />
-      <ConditionText>{entry.editor.object}</ConditionText>
+      <ConditionText>{wording.object}</ConditionText>
     </ConditionLine>
   );
 }
