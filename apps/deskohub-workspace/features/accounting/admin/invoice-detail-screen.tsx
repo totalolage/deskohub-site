@@ -91,7 +91,7 @@ async function InvoiceDetailContent({
                       {m.accountingInvoiceDetailDueDate({}, { locale })}
                     </dt>
                     <dd className="font-semibold">
-                      {formatAdministrationPlainDate(invoice.dueDate)}
+                      {formatAdministrationPlainDate(invoice.dueDate, locale)}
                     </dd>
                   </div>
                 )}
@@ -101,7 +101,7 @@ async function InvoiceDetailContent({
                     {m.accountingInvoiceDetailPaidOn({}, { locale })}
                   </dt>
                   <dd className="font-semibold">
-                    {formatAdministrationPlainDate(invoice.paidOn)}
+                    {formatAdministrationPlainDate(invoice.paidOn, locale)}
                   </dd>
                 </div>
               )}
@@ -138,7 +138,7 @@ async function InvoiceDetailContent({
                   {m.accountingInvoiceDetailIssued({}, { locale })}
                 </dt>
                 <dd className="font-semibold">
-                  {formatAdministrationDateTime(invoice.issuedAt)}
+                  {formatAdministrationDateTime(invoice.issuedAt, locale)}
                 </dd>
               </div>
             </dl>

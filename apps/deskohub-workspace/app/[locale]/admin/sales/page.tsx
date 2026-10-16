@@ -34,14 +34,18 @@ export default function SalesAdminPage({
       <AdministrationTableToolbar
         actions={<SalesAdministrationActions />}
         count={
-          <Suspense fallback={<AdministrationCountLoading label="sale" />}>
+          <Suspense
+            fallback={<AdministrationCountLoading label="Loading sale count" />}
+          >
             <SalesCount data={data} />
           </Suspense>
         }
-        itemLabel="sale"
+        label="sale table controls"
       />
       <Suspense
-        fallback={<AdministrationCollectionLoading columns={6} label="sales" />}
+        fallback={
+          <AdministrationCollectionLoading columns={6} label="Loading sales" />
+        }
       >
         <SalesCollection data={data} />
       </Suspense>
@@ -56,10 +60,11 @@ async function SalesNotice({ data }: { readonly data: Promise<SalesData> }) {
 }
 
 async function SalesCount({ data }: { readonly data: Promise<SalesData> }) {
+  const count = (await data).dashboard.calendar.events.length;
   return (
     <AdministrationTableCount
-      count={(await data).dashboard.calendar.events.length}
-      itemLabel="sale"
+      count={count}
+      label={`${count} sale${count === 1 ? "" : "s"}`}
     />
   );
 }

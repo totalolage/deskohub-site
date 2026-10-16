@@ -20,6 +20,9 @@ import {
 
 mock.module("server-only", () => ({}));
 mock.module("next/server", () => ({ connection: () => Promise.resolve() }));
+mock.module("next/root-params", () => ({
+  locale: () => Promise.resolve("en-US"),
+}));
 
 type LoadedReservationPage = {
   readonly input: AdministrationReservationListInput;

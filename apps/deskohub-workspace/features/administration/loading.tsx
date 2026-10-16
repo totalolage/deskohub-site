@@ -1,7 +1,15 @@
+"use client";
+
 import type { ReactNode } from "react";
-import { AdministrationPage } from "@/features/administration/components";
-import { AdministrationTableFrame } from "@/features/administration/table-frame";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { m } from "./i18n";
+import { AdministrationPage } from "./page-frame";
+import { AdministrationTableFrame } from "./table-frame";
+
+// Loaders that name what they load take the complete accessible `label` from
+// the screen. Loaders with fixed copy are route `loading.tsx` defaults and
+// prop-less fallbacks, so they read the route locale themselves.
 
 const skeletonKeys = (group: string, count: number) =>
   Array.from({ length: count }, (_, position) => `${group}-${position + 1}`);
@@ -22,8 +30,9 @@ function LoadingRegion({
 }
 
 export function AdministrationBreadcrumbLoading() {
+  const locale = useRouteLocale();
   return (
-    <LoadingRegion label="Loading breadcrumb">
+    <LoadingRegion label={m.administrationLoadingBreadcrumb({}, { locale })}>
       <div className="flex items-center gap-2">
         <Skeleton className="h-4 w-16" />
         <span className="text-navy-blue/25">/</span>
@@ -39,7 +48,7 @@ export function AdministrationCountLoading({
   readonly label: string;
 }) {
   return (
-    <LoadingRegion label={`Loading ${label} count`}>
+    <LoadingRegion label={label}>
       <Skeleton className="h-5 w-9 rounded-full" />
     </LoadingRegion>
   );
@@ -51,7 +60,7 @@ export function AdministrationActionLoading({
   readonly label: string;
 }) {
   return (
-    <LoadingRegion label={`Loading ${label}`}>
+    <LoadingRegion label={label}>
       <Skeleton className="h-10 w-36" />
     </LoadingRegion>
   );
@@ -62,8 +71,9 @@ export function AdministrationFiltersLoading({
 }: {
   readonly fields?: number;
 }) {
+  const locale = useRouteLocale();
   return (
-    <LoadingRegion label="Loading table filters">
+    <LoadingRegion label={m.administrationLoadingTableFilters({}, { locale })}>
       <div className="flex flex-wrap items-end gap-3">
         {skeletonKeys("filter-field", fields).map((key) => (
           <div className="w-36" key={key}>
@@ -78,8 +88,11 @@ export function AdministrationFiltersLoading({
 }
 
 export function AdministrationMetricsLoading() {
+  const locale = useRouteLocale();
   return (
-    <LoadingRegion label="Loading reservation activity">
+    <LoadingRegion
+      label={m.administrationLoadingReservationActivity({}, { locale })}
+    >
       <div className="grid gap-3 lg:grid-cols-3">
         {["today", "upcoming", "recent"].map((key) => (
           <div
@@ -97,8 +110,11 @@ export function AdministrationMetricsLoading() {
 }
 
 export function AdministrationCustomerMetricsLoading() {
+  const locale = useRouteLocale();
   return (
-    <LoadingRegion label="Loading customer activity">
+    <LoadingRegion
+      label={m.administrationLoadingCustomerActivity({}, { locale })}
+    >
       <div className="grid gap-3 lg:grid-cols-2">
         {["unique", "new"].map((key) => (
           <div
@@ -126,7 +142,7 @@ export function AdministrationPanelLoading({
   readonly label: string;
 }) {
   return (
-    <LoadingRegion label={`Loading ${label}`}>
+    <LoadingRegion label={label}>
       <div className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
         <Skeleton className="h-6 w-64 max-w-full" />
         <Skeleton className="mt-4 h-4 w-full" />
@@ -147,7 +163,7 @@ export function AdministrationCollectionLoading({
   readonly rows?: number;
 }) {
   return (
-    <LoadingRegion label={`Loading ${label}`}>
+    <LoadingRegion label={label}>
       <AdministrationTableFrame>
         <div className="overflow-hidden p-4">
           <div
@@ -187,12 +203,12 @@ export function AdministrationCollectionLoading({
 }
 
 export function AdministrationDetailLoading({
-  label = "record details",
+  label,
 }: {
-  readonly label?: string;
+  readonly label: string;
 }) {
   return (
-    <LoadingRegion label={`Loading ${label}`}>
+    <LoadingRegion label={label}>
       <div className="mb-7">
         <Skeleton className="h-3 w-24" />
         <Skeleton className="mt-3 h-8 w-72 max-w-full" />
@@ -237,18 +253,22 @@ export function AdministrationDetailLoading({
 }
 
 export function AdministrationRouteLoading() {
+  const locale = useRouteLocale();
   return (
     <AdministrationPage>
-      <AdministrationDetailLoading label="administration page" />
+      <AdministrationDetailLoading
+        label={m.administrationLoadingPage({}, { locale })}
+      />
     </AdministrationPage>
   );
 }
 
 export function AdministrationModalLoading() {
+  const locale = useRouteLocale();
   return (
     <output
       aria-busy="true"
-      aria-label="Loading discount code form"
+      aria-label={m.administrationLoadingDiscountForm({}, { locale })}
       className="fixed inset-0 z-50 grid place-items-center bg-navy-blue/35 p-4"
     >
       <div

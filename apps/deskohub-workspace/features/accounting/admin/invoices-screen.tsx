@@ -45,11 +45,14 @@ export async function InvoicesAdministrationScreen({
         title={m.accountingInvoiceListTitle({}, { locale })}
       />
       <Suspense fallback={null}>
-        <InvoiceToolbar data={data} />
+        <InvoiceToolbar data={data} locale={locale} />
       </Suspense>
       <Suspense
         fallback={
-          <AdministrationCollectionLoading columns={8} label="invoices" />
+          <AdministrationCollectionLoading
+            columns={8}
+            label={m.accountingInvoiceListLoading({}, { locale })}
+          />
         }
       >
         <InvoiceCollection data={data} locale={locale} />
@@ -62,18 +65,21 @@ type InvoiceData = Awaited<ReturnType<typeof loadInvoiceAdministrationList>>;
 
 async function InvoiceToolbar({
   data,
+  locale,
 }: {
   readonly data: Promise<InvoiceData>;
+  readonly locale: Locale;
 }) {
+  const count = (await data).items.total;
   return (
     <AdministrationTableToolbar
       count={
         <AdministrationTableCount
-          count={(await data).items.total}
-          itemLabel="invoice"
+          count={count}
+          label={m.accountingInvoiceListCount({ count }, { locale })}
         />
       }
-      itemLabel="invoice"
+      label={m.accountingInvoiceListTableControls({}, { locale })}
     />
   );
 }
@@ -96,13 +102,14 @@ async function InvoiceCollection({
       <InvoiceAdministrationTable
         items={result.items.items.map((invoice) => ({
           ...invoice,
-          issuedAtLabel: formatAdministrationDateTime(invoice.issuedAt),
+          issuedAtLabel: formatAdministrationDateTime(invoice.issuedAt, locale),
           totalLabel: formatInvoiceTotal(invoice, locale),
         }))}
         query={result.query}
       />
       <Pagination
         basePath="/admin/invoices"
+        locale={locale}
         page={result.items.page}
         pageCount={result.items.pageCount}
         params={{ sort: result.query.sort, direction: result.query.direction }}
