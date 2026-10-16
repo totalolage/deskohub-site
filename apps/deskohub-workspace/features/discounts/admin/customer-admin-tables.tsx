@@ -20,6 +20,7 @@ import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
+import { getClaimReleaseReasonLabel } from "./claim-release-reason";
 import { CustomerPromotionCodeAction } from "./customer-admin-client";
 import type {
   AdminCustomerProfile,
@@ -415,7 +416,7 @@ export function ClaimHistoryTable({
             </StatusBadge>
             {row.original.releaseReason && (
               <p className="mt-1 max-w-48 text-xs text-navy-blue/65">
-                {row.original.releaseReason}
+                {getClaimReleaseReasonLabel(row.original.releaseReason, locale)}
               </p>
             )}
           </>

@@ -25,6 +25,7 @@ import { formatDiscountAdjustment } from "@/features/checkout/format-discount-ad
 import type { Locale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
+import { formatInteger } from "@/shared/utils/number";
 import { VoucherEditor } from "./admin-tables";
 import {
   AddCodeCustomerForm,
@@ -47,6 +48,7 @@ import type {
   AdminVoucherClaim,
   AdminVoucherDetail,
 } from "./discount-administration.service";
+import { formatDiscountUsageLimit } from "./usage-limit";
 
 type Notice = {
   readonly message: string;
@@ -900,19 +902,19 @@ function CodeSummary({
       />
       <SummaryFact
         label={m.discountsColumnReserved({}, { locale })}
-        value={code.reservedUses}
+        value={formatInteger(code.reservedUses, locale)}
       />
       <SummaryFact
         label={m.discountsColumnRedeemed({}, { locale })}
-        value={code.redeemedUses}
+        value={formatInteger(code.redeemedUses, locale)}
       />
       <SummaryFact
         label={m.discountsColumnRemainingGlobally({}, { locale })}
-        value={code.remainingUses ?? m.discountsUnlimited({}, { locale })}
+        value={formatDiscountUsageLimit(code.remainingUses, locale)}
       />
       <SummaryFact
         label={m.discountsColumnUsesPerCustomer({}, { locale })}
-        value={code.maxUsesPerCustomer ?? m.discountsUnlimited({}, { locale })}
+        value={formatDiscountUsageLimit(code.maxUsesPerCustomer, locale)}
       />
     </dl>
   );
@@ -953,11 +955,11 @@ function VoucherSummary({
       />
       <SummaryFact
         label={m.discountsColumnReserved({}, { locale })}
-        value={voucher.reservedUses}
+        value={formatInteger(voucher.reservedUses, locale)}
       />
       <SummaryFact
         label={m.discountsColumnRedeemed({}, { locale })}
-        value={voucher.redeemedUses}
+        value={formatInteger(voucher.redeemedUses, locale)}
       />
     </dl>
   );

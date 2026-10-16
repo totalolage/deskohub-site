@@ -59,6 +59,7 @@ import {
   temporalInstantToLocalDateTimeString,
   workspaceSiteConstants,
 } from "@/shared/utils";
+import { formatInteger } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
@@ -83,6 +84,7 @@ import {
   formatDiscountProductTargets,
   getDiscountProductTargetLabel,
 } from "./product-target-options";
+import { formatDiscountUsageLimit } from "./usage-limit";
 
 export type DiscountTableItem = {
   readonly id: StoredDiscountId;
@@ -228,17 +230,19 @@ export function DiscountCodesAdminTable({
       {
         accessorKey: "reservedUses",
         header: m.discountsColumnReserved({}, { locale }),
+        cell: ({ row }) => formatInteger(row.original.reservedUses, locale),
       },
       {
         accessorKey: "redeemedUses",
         header: m.discountsColumnRedeemed({}, { locale }),
+        cell: ({ row }) => formatInteger(row.original.redeemedUses, locale),
       },
       {
         accessorFn: (code) => code.remainingUses ?? Number.POSITIVE_INFINITY,
         id: "remaining",
         header: m.discountsColumnRemainingGlobally({}, { locale }),
         cell: ({ row }) =>
-          row.original.remainingUses ?? m.discountsUnlimited({}, { locale }),
+          formatDiscountUsageLimit(row.original.remainingUses, locale),
       },
       {
         accessorFn: (code) =>
@@ -246,8 +250,7 @@ export function DiscountCodesAdminTable({
         id: "maxUsesPerCustomer",
         header: m.discountsColumnUsesPerCustomer({}, { locale }),
         cell: ({ row }) =>
-          row.original.maxUsesPerCustomer ??
-          m.discountsUnlimited({}, { locale }),
+          formatDiscountUsageLimit(row.original.maxUsesPerCustomer, locale),
       },
     ],
     [discountLabels, discountProducts, locale]
@@ -345,6 +348,7 @@ export function VouchersAdminTable({
       {
         accessorKey: "redeemedUses",
         header: m.discountsColumnRedemptions({}, { locale }),
+        cell: ({ row }) => formatInteger(row.original.redeemedUses, locale),
       },
     ],
     [locale]

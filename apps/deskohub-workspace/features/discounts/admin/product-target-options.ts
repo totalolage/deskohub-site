@@ -1,5 +1,5 @@
 import { m } from "@/features/administration/i18n";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
 import {
   getWorkspaceProductTargetKey,
   type WorkspaceProductTarget,
@@ -17,7 +17,7 @@ export const getDiscountProductTargetLabel = (
     return target.tier === undefined
       ? m.discountsProductAllCoworkTiers({}, { locale })
       : m.discountsProductCoworkTierOnly(
-          { product: getWorkspaceProductByTier(target.tier).label },
+          { product: getWorkspaceProductTierTitle(target.tier, locale) },
           { locale }
         );
   }

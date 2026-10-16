@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatNamesWithNumericRanges } from "./number";
+import { formatInteger, formatNamesWithNumericRanges } from "./number";
 
 describe("formatNamesWithNumericRanges", () => {
   test("formats the required table-name example", () => {
@@ -56,5 +56,13 @@ describe("formatNamesWithNumericRanges", () => {
     ).toBe(
       "2, 10, 9007199254740991, 01, alpha2, 9007199254740992, +3, 1.5, -4"
     );
+  });
+});
+
+describe("formatInteger", () => {
+  test("groups digits for the locale", () => {
+    expect(formatInteger(1250, "en-US")).toBe("1,250");
+    expect(formatInteger(1250, "cs-CZ")).toBe("1\u00a0250");
+    expect(formatInteger(7, "cs-CZ")).toBe("7");
   });
 });

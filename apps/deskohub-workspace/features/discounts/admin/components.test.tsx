@@ -284,6 +284,140 @@ describe("discount administration pages", () => {
     ).toBeDefined();
   });
 
+  test("formats code counts and cowork tier targets in the operator's locale", async () => {
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { CodesAdministrationCollection } = await import("./components");
+    const [discount] = dashboard.discounts;
+    const [code] = dashboard.codes;
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <CodesAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            discounts: [
+              {
+                ...discount,
+                products: [{ kind: "cowork", tier: "reserved-desk" }],
+              },
+            ],
+            codes: [
+              {
+                ...code,
+                reservedUses: 1250,
+                redeemedUses: 2400,
+                remainingUses: 6350,
+                maxUsesPerCustomer: null,
+              },
+            ],
+          }}
+          locale="cs-CZ"
+        />
+      </RouteLocaleProvider>
+    );
+    const table = within(view.getByRole("table", { name: "Slevové kódy" }));
+
+    expect(table.getByText("Pouze Vyhrazené místo")).toBeDefined();
+    expect(table.getByText(/^1\s250$/)).toBeDefined();
+    expect(table.getByText(/^2\s400$/)).toBeDefined();
+    expect(table.getByText(/^6\s350$/)).toBeDefined();
+    expect(table.getByText("Neomezeně")).toBeDefined();
+  });
+
+  test("renders customer payments and claim releases in the operator's locale", async () => {
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { ClaimHistoryTable, CustomerTransactionHistoryTable } = await import(
+      "./customer-admin-tables"
+    );
+    const paidReservation = loadFixtureReservations({
+      customerId: "customer-alex",
+    }).items.find(({ latestPayment }) => latestPayment?.state === "paid");
+    const attempt = paidReservation?.latestPayment;
+    if (!paidReservation || !attempt) {
+      throw new Error("The fixtures have no paid reservation");
+    }
+    const reservation = {
+      ...paidReservation,
+      product: { kind: "cowork", tier: "reserved-desk" },
+    } as const;
+    const claim = {
+      kind: "discount-code",
+      appliedAmount: { value: 7500, exponent: 2, currency: "CZK" },
+      promotion: { id: dashboard.codes[0].id, code: "SUMMER10" },
+      dotyposCustomerId: "dotypos-customer",
+      redeemedAt: null,
+      releasedAt: "2026-08-02T08:00:00Z",
+      reservedAt: "2026-08-01T08:00:00Z",
+      reservedAtLabel: "1. 8. 2026 10:00",
+      completedAtLabel: "2. 8. 2026 10:00",
+      state: "released",
+      workspaceReservationId: paidReservation.id,
+    } as const;
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <CustomerTransactionHistoryTable
+          transactions={[
+            { attempt, reservation, updatedAtLabel: "1. 8. 2026 10:00" },
+            {
+              attempt: {
+                ...attempt,
+                id: `${attempt.id}-refunded`,
+                refundState: "refunded",
+                refundedAmount: {
+                  ...attempt.amount,
+                  value: attempt.amount.value / 2,
+                },
+                refundedAt: "2026-08-03T08:00:00Z",
+              },
+              reservation,
+              updatedAtLabel: "3. 8. 2026 10:00",
+            },
+          ]}
+        />
+        <ClaimHistoryTable
+          ariaLabel="Historie uplatnění"
+          claims={[
+            {
+              ...claim,
+              id: "claim-abandoned",
+              releaseReason: "payment_abandoned_after_provider_cutoff",
+            },
+            {
+              ...claim,
+              id: "claim-unknown",
+              releaseReason: "synthetic_terminal",
+            },
+          ]}
+          subject="promotion-code"
+        />
+      </RouteLocaleProvider>
+    );
+    const transactions = within(
+      view.getByRole("table", { name: "Historie transakcí zákazníka" })
+    );
+    const [paidRow, refundedRow] = transactions.getAllByRole("row").slice(1);
+
+    expect(within(paidRow!).getByText("Zaplaceno")).toBeDefined();
+    expect(within(refundedRow!).getByText(/^Částečně vráceno /)).toBeDefined();
+    expect(refundedRow?.textContent).toContain("před vrácením peněz");
+    expect(refundedRow?.textContent).toContain("po vrácení peněz");
+    expect(transactions.getAllByText("Vyhrazené místo")).toHaveLength(2);
+
+    const claims = within(
+      view.getByRole("table", { name: "Historie uplatnění" })
+    );
+    expect(
+      claims.getByText("Platba nebyla dokončena ve lhůtě pro zaplacení")
+    ).toBeDefined();
+    expect(claims.getByText("Uvolněno z jiného důvodu")).toBeDefined();
+    expect(
+      claims.queryByText(/payment_abandoned|synthetic_terminal/)
+    ).toBeNull();
+  });
+
   test("shows only explicit and unrestricted customer codes with guarded icon actions", async () => {
     const { CustomerAdministrationDetailPage } = await import(
       "./customer-admin-components"
