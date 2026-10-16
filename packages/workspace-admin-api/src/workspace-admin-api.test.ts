@@ -813,7 +813,7 @@ describe("CLI session contract", () => {
   });
   const shortEmail = AdministrationActorEmail.make(syntheticAddress);
   const longEmail = AdministrationActorEmail.make(
-    `${"a".repeat(64)}@${"b".repeat(56)}.example.com`
+    testEmailAddress("a".repeat(120))
   );
   const sessionFor = (email: AdministrationActorEmail) =>
     Schema.encodeSync(CliSession)({
@@ -860,7 +860,7 @@ describe("CLI session contract", () => {
 
   test("shortens an approver email without splitting a character", () => {
     const email = AdministrationActorEmail.make(
-      `${"a".repeat(78)}😀@example.com`
+      testEmailAddress(`${"a".repeat(78)}😀`)
     );
 
     expect<string>(toAdministrationActorName(email)).toBe(`${"a".repeat(78)}…`);

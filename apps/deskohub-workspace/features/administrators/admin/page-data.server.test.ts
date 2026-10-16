@@ -44,8 +44,8 @@ mock.module(
   () => ({ authorizeAdministratorPage: async () => actor })
 );
 
-mock.module("@/features/i18n/server/request-locale", () => ({
-  getRequestLocale: async () => requestLocale,
+mock.module("next/root-params", () => ({
+  locale: async () => requestLocale,
 }));
 
 mock.module("@/instrumentation", () => ({

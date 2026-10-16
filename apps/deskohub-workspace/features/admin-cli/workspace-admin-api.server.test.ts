@@ -130,6 +130,7 @@ const UnusedStandaloneAccessCodeAdministration = Layer.succeed(
 const session = {
   id: "01980000-0000-7000-8000-000000000000",
   approvedBy: null,
+  approvedByEmail: null,
   clientName: "test client",
   cliVersion: "1.0.0",
   buildTarget: "development",
@@ -137,6 +138,13 @@ const session = {
   lastUsedAt: "2026-08-10T10:00:00.000Z",
   expiresAt: null,
 } as const;
+const cliAdministratorEmail = AdministrationActorEmail.make(
+  cliAdministrator.email
+);
+const cliAdministratorApprover = {
+  approvedBy: toAdministrationActorName(cliAdministratorEmail),
+  approvedByEmail: cliAdministratorEmail,
+};
 const AuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
   bearer: (httpEffect) =>
     Effect.provideService(httpEffect, CurrentCliSession, session),
@@ -145,10 +153,7 @@ const ActorAuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
   bearer: (httpEffect) =>
     Effect.provideService(httpEffect, CurrentCliSession, {
       ...session,
-      approvedBy: toAdministrationActorName(
-        AdministrationActorEmail.make(cliAdministrator.email)
-      ),
-      approvedByEmail: AdministrationActorEmail.make(cliAdministrator.email),
+      ...cliAdministratorApprover,
     }),
 });
 
@@ -640,7 +645,7 @@ describe("Workspace Admin API", () => {
           Effect.as([
             {
               ...session,
-              approvedBy: AdministrationActorEmail.make(cliAdministrator.email),
+              ...cliAdministratorApprover,
               revokedAt: null,
               status: "active" as const,
             },
@@ -718,7 +723,7 @@ describe("Workspace Admin API", () => {
     );
 
     expect(result.sessions).toEqual([
-      { ...session, approvedBy: cliAdministrator.email, revokedAt: null },
+      { ...session, ...cliAdministratorApprover, revokedAt: null },
     ]);
     expect(result.renamed).toEqual({ changed: true });
     expect(result.revoked).toEqual({ changed: true });
