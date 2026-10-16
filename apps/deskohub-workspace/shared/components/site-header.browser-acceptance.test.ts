@@ -12,6 +12,9 @@ const mobileViewport = { height: 812, width: 375 } as const;
 const desktopViewport = { height: 900, width: 1440 } as const;
 // The narrowest supported phone up to the largest common one.
 const phoneWidths = [320, 390, 430] as const;
+// Small laptops, the `xl` breakpoint where the full header adds its desktop
+// navigation and language switcher, and a common desktop.
+const desktopWidths = [1024, 1280, 1440] as const;
 const headerVariants = ["full", "minimal"] as const;
 type HeaderVariant = (typeof headerVariants)[number];
 
@@ -97,7 +100,11 @@ beforeAll(async () => {
 :root { --font-sculpin: "Sculpin"; }
 ${await compileWorkspaceAppStyles()}`;
 
-  browser = await chromium.launch({ headless: true });
+  // Desktop cases need classic scrollbars, which headless Chromium hides.
+  browser = await chromium.launch({
+    headless: true,
+    ignoreDefaultArgs: ["--hide-scrollbars"],
+  });
 });
 
 afterAll(async () => {
@@ -106,10 +113,17 @@ afterAll(async () => {
     await rm(buildDirectory, { force: true, recursive: true });
 });
 
+type SiteHeaderPageOptions = {
+  // A long desktop page reserves a classic scrollbar, so the header is
+  // narrower than the media queries' viewport width.
+  readonly scrollbar?: boolean;
+  readonly variant?: HeaderVariant;
+};
+
 const openSiteHeader = async (
   locale: Locale,
   viewport: { readonly height: number; readonly width: number },
-  variant: HeaderVariant = "full"
+  { scrollbar = false, variant = "full" }: SiteHeaderPageOptions = {}
 ) => {
   if (!browser) throw new Error("The SiteHeader browser has not launched.");
   const page = await browser.newPage({ reducedMotion: "reduce", viewport });
@@ -117,6 +131,9 @@ const openSiteHeader = async (
     `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="site-header-test-root" data-locale="${locale}" data-variant="${variant}"></div></body></html>`
   );
   await page.addStyleTag({ content: appStyles });
+  if (scrollbar) {
+    await page.addStyleTag({ content: "html { overflow-y: scroll; }" });
+  }
   await page.addScriptTag({ path: browserBundlePath });
   await page.getByRole("banner").waitFor();
   await page.evaluate(async () => {
@@ -129,33 +146,61 @@ const openSiteHeader = async (
 };
 
 // The header is fixed, so its overflow would not widen the document; every
-// rendered header element has to fit inside the viewport instead.
+// rendered header element has to fit inside the viewport, which excludes a
+// classic scrollbar, instead. A squeezed desktop row pushes its controls into
+// its padding before they leave the viewport, so desktop checks keep them
+// inside the padding too.
 const readHorizontalOverflow = (page: Page) =>
   page.evaluate(() => {
     const viewportWidth = document.documentElement.clientWidth;
     const header = document.querySelector("header");
-    if (!header) throw new Error("The site header is missing.");
-    const overflowingElements = [header, ...header.querySelectorAll("*")]
-      .filter((element) =>
-        element.checkVisibility({ visibilityProperty: true })
-      )
-      .filter((element) => {
-        const rect = element.getBoundingClientRect();
-        return (
-          rect.width > 0 && (rect.left < -1 || rect.right > viewportWidth + 1)
-        );
-      })
-      .map((element) => element.outerHTML.slice(0, 120));
+    const row = header?.firstElementChild;
+    if (!(header && row)) throw new Error("The site header is missing.");
+    const rowStyle = getComputedStyle(row);
+    const rowRect = row.getBoundingClientRect();
+    const rowContentLeft =
+      rowRect.left + Number.parseFloat(rowStyle.paddingLeft);
+    const rowContentRight =
+      rowRect.right - Number.parseFloat(rowStyle.paddingRight);
+    const overflowingElements = (
+      elements: Iterable<Element>,
+      left: number,
+      right: number
+    ) =>
+      Array.from(elements)
+        .filter((element) =>
+          element.checkVisibility({ visibilityProperty: true })
+        )
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.width > 0 && (rect.left < left - 1 || rect.right > right + 1)
+          );
+        })
+        .map((element) => element.outerHTML.slice(0, 120));
     return {
       documentOverflow:
         document.documentElement.scrollWidth - window.innerWidth,
-      overflowingElements,
+      outsideRowPadding: overflowingElements(
+        row.querySelectorAll("*"),
+        rowContentLeft,
+        rowContentRight
+      ),
+      outsideViewport: overflowingElements(
+        [header, ...header.querySelectorAll("*")],
+        0,
+        viewportWidth
+      ),
     };
   });
 
-const expectNoHorizontalOverflow = async (page: Page) => {
+const expectNoHorizontalOverflow = async (
+  page: Page,
+  { insideRowPadding = false } = {}
+) => {
   const overflow = await readHorizontalOverflow(page);
-  expect(overflow.overflowingElements).toEqual([]);
+  expect(overflow.outsideViewport).toEqual([]);
+  if (insideRowPadding) expect(overflow.outsideRowPadding).toEqual([]);
   expect(overflow.documentOverflow).toBeLessThanOrEqual(1);
 };
 
@@ -168,10 +213,28 @@ for (const locale of locales) {
           const page = await openSiteHeader(
             locale,
             { height: 844, width },
-            variant
+            { variant }
           );
           try {
             await expectNoHorizontalOverflow(page);
+          } finally {
+            await page.close();
+          }
+        }
+      );
+    }
+
+    for (const width of desktopWidths) {
+      test.skipIf(!chromiumAvailable)(
+        `fits the ${variant} header on a ${width}px desktop with a scrollbar (${locale})`,
+        async () => {
+          const page = await openSiteHeader(
+            locale,
+            { height: 900, width },
+            { scrollbar: true, variant }
+          );
+          try {
+            await expectNoHorizontalOverflow(page, { insideRowPadding: true });
           } finally {
             await page.close();
           }
@@ -185,7 +248,7 @@ for (const locale of locales) {
     async () => {
       const page = await openSiteHeader(locale, desktopViewport);
       try {
-        await expectNoHorizontalOverflow(page);
+        await expectNoHorizontalOverflow(page, { insideRowPadding: true });
         expect(
           await page
             .getByRole("navigation", {

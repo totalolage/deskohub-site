@@ -188,7 +188,7 @@ export function SiteHeader({
 
         <nav
           aria-label={primaryNavigationLabel}
-          className="hidden items-center gap-6 xl:flex"
+          className="hidden items-center gap-4 xl:flex 2xl:gap-6"
         >
           {links.map((link) => (
             <CurrentPageNavigationLink
