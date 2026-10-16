@@ -11,6 +11,7 @@ import {
   createAuthReturnLifecycle,
   type SignInEmailFailure,
 } from "@/features/account/auth-return";
+import { PasskeySignInOption } from "@/features/account/components/passkeys/passkey-sign-in-option";
 import { SignInCodeStep } from "@/features/account/components/sign-in-code-step";
 import { signInEmailFailureMessage } from "@/features/account/components/sign-in-email-failure-message";
 import { useSignInCodeRequest } from "@/features/account/sign-in-code-request";
@@ -31,6 +32,11 @@ import { maskEmailAddress } from "@/shared/utils";
 
 type SignInCardProps = {
   readonly locale: Locale;
+  /**
+   * Offers passkey sign-in: the button below the form and passkey autofill
+   * on the email field. Off while `login_passkeys` is off.
+   */
+  readonly passkeysEnabled?: boolean;
 };
 
 const signInEmailMaximumLength = 255;
@@ -57,7 +63,10 @@ type SignInFormSchema = ReturnType<typeof createSignInFormSchema>;
 type SignInFormInput = SignInFormSchema["Encoded"];
 type SignInFormValues = SignInFormSchema["Type"];
 
-export function SignInCard({ locale }: SignInCardProps) {
+export function SignInCard({
+  locale,
+  passkeysEnabled = false,
+}: SignInCardProps) {
   const [requested, setRequested] = useState(false);
   const [failure, setFailure] = useState<SignInEmailFailure | null>(null);
   const [codeRequest, setCodeRequest] = useSignInCodeRequest();
@@ -243,38 +252,47 @@ export function SignInCard({ locale }: SignInCardProps) {
                   <FormLabel htmlFor="account-sign-in-email">
                     {m.accountSignInEmailLabel({}, { locale })}
                   </FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      ref={(element) => {
-                        field.ref(element);
-                        focusOnMount("email")(element);
-                      }}
-                      disabled={!clientReady}
-                      id="account-sign-in-email"
-                      type="email"
-                      required
-                      autoComplete="email"
-                      placeholder={m.accountSignInEmailPlaceholder(
-                        {},
-                        { locale }
-                      )}
+                  {/* The button joins the input's row once it fits beside it. */}
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <FormControl>
+                      <Input
+                        className="min-w-0 sm:flex-1"
+                        {...field}
+                        ref={(element) => {
+                          field.ref(element);
+                          focusOnMount("email")(element);
+                        }}
+                        disabled={!clientReady}
+                        id="account-sign-in-email"
+                        type="email"
+                        required
+                        autoComplete={
+                          passkeysEnabled ? "email webauthn" : "email"
+                        }
+                        placeholder={m.accountSignInEmailPlaceholder(
+                          {},
+                          { locale }
+                        )}
+                      />
+                    </FormControl>
+                    <SignInSubmitButton
+                      locale={locale}
+                      pending={form.formState.isSubmitting}
+                      ready={clientReady}
                     />
-                  </FormControl>
+                  </div>
                   <FormMessage className="text-sm font-normal text-red-700" />
                 </FormItem>
               )}
-            />
-            <SignInSubmitButton
-              locale={locale}
-              pending={form.formState.isSubmitting}
-              ready={clientReady}
             />
           </form>
         </Form>
         <div aria-live="polite" className="mt-4 min-h-5 text-sm text-red-700">
           {failure && signInEmailFailureMessage(failure, locale)}
         </div>
+        {passkeysEnabled && (
+          <PasskeySignInOption locale={locale} ready={clientReady} />
+        )}
       </CardContent>
     </Card>
   );
@@ -292,6 +310,9 @@ function SignInSubmitButton({
   return (
     <Button
       id="account-sign-in-submit"
+      className="sm:w-auto sm:shrink-0"
+      fullWidth
+      size="lg"
       type="submit"
       disabled={!ready}
       pending={pending}
