@@ -27,7 +27,7 @@ The target is always the immutable `.vercel.app` deployment origin for the exact
 
 - **Manual dispatch.** Run the workflow with `sha` (40 characters), `url` (immutable HTTPS deployment URL), and `ref` (internal PR head branch). The same PR guards apply, and the job fails before it allocates or mutates shared state unless GitHub deployment metadata records that URL as a successful Workspace deployment for that SHA. Set `cleanup_stale_e2e_reservations` only for an intentional stale-reservation cleanup (see [suite orchestration](suite-orchestration.md#dotypos-capacity-and-stale-reservations)).
 - **Local run against a preview.** From the repository root, run `bun turbo test:e2e --filter=deskohub-workspace` with the variables in [runner variables](#runner-variables). The task depends on `i18n:compile` and `@deskohub/igloohome#generate`.
-- **Instant navigation only.** `bun run test:instant-navigation` from `apps/deskohub-workspace`. Without `WORKSPACE_E2E_BASE_URL`, the Playwright configs start `turbo dev` and target `http://localhost:3000`.
+- **Instant navigation only.** `bun run test:instant-navigation` from `apps/deskohub-workspace`. Without `WORKSPACE_E2E_BASE_URL`, the Playwright configs start `turbo dev` and target `http://localhost:3000`, and the administration navigation skips because its seeded administrator needs a preview and its E2E database.
 
 Bun loads dotenv files before the entry module runs. Email-provider secrets that exist only in Vercel are intentionally unavailable to local E2E.
 
@@ -44,7 +44,6 @@ Inspect settings and deployment metadata without printing values.
 - `EMAIL_CAMPAIGN_ADMIN_INBOX` set to an `@deskohub.test` address, so campaign test sends and their confirmation codes stay on Console and in the server logs. `EMAIL_CAMPAIGN_FROM` and `EMAIL_CAMPAIGN_REPLY_TO` are optional in Preview.
 - `POSTHOG_FEATURE_FLAG_OVERRIDES={"accounts":true,"calendar_sales":true,"customer_discounts":true,"discount_codes":true,"meeting_room_page":true,"office_page":true,"referrals":true}`. Account E2E needs `accounts:true`, and the referral lane `referrals:true`, even when the production rollout is off. A branch-scoped override replaces the whole map, so include every flag. Set it before the preview is built.
 - `GOOGLE_CALENDAR_SALES_ID` for the dedicated E2E sales calendar (see [fixtures](fixtures.md#calendar-sale-event)).
-- `ADMIN_BASIC_AUTH_CREDENTIALS` (see [fixtures](fixtures.md#admin-basic-auth)).
 - `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.
 
 Never put production Nexi, Dotypos, or database credentials in Preview. Never add callback-origin or BotID test overrides.
@@ -58,7 +57,7 @@ Never put production Nexi, Dotypos, or database credentials in Preview. Never ad
 | `WORKSPACE_E2E_VERCEL_PROJECT` | Variable | Project for log retrieval. |
 | `WORKSPACE_E2E_COORDINATOR_DATABASE_URL` | Secret | Allocator role; used only by the trusted allocation action. |
 | `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL` | Secret | Connect-only role for the replay permit. |
-| `WORKSPACE_E2E_ADMIN_BASIC_AUTH` | Secret | `username:password` for admin pages. |
+| `WORKSPACE_E2E_BETTER_AUTH_SECRETS` | Secret | Copy of the Preview-only `BETTER_AUTH_SECRETS` that signs seeded referral and administrator sessions ([seeded sessions](referral-lane.md#seeded-sessions)). |
 | `WORKSPACE_E2E_DOTYPOS_*` | Secrets | E2E Dotypos cloud; mapped to `DOTYPOS_*` per step. |
 | `VERCEL_AUTOMATION_BYPASS_SECRET`, `NEON_API_KEY`, `TURBO_TOKEN` | Secrets | Protection bypass, branch lookup, remote cache. |
 

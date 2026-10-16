@@ -7,7 +7,6 @@ import {
 import { createEnv } from "@t3-oss/env-core";
 import { Schema } from "effect";
 import { urlStringSchema } from "../shared/utils/url-schema";
-import { isAdminBasicAuthCredentialPair } from "./admin-basic-auth";
 
 const toEnvironmentSchema = <S extends Schema.Decoder<unknown>>(schema: S) =>
   Schema.toStandardSchemaV1(schema);
@@ -45,15 +44,6 @@ const optionalDirectPostgresUrl = toEnvironmentSchema(
   )
 );
 const nonEmptyString = toEnvironmentSchema(Schema.NonEmptyString);
-const optionalAdminBasicAuthPair = toEnvironmentSchema(
-  Schema.optional(
-    Schema.String.check(
-      Schema.makeFilter(isAdminBasicAuthCredentialPair, {
-        expected: "a Basic auth username:password credential",
-      })
-    )
-  )
-);
 const optionalUrl = toEnvironmentSchema(Schema.optional(urlStringSchema));
 const url = toEnvironmentSchema(urlStringSchema);
 const optionalReviewScreenshotOptIn = toEnvironmentSchema(
@@ -90,7 +80,6 @@ const e2eEnvironmentSchema = Schema.Struct({
   TMPDIR: optionalNonEmptyString,
   USER: optionalNonEmptyString,
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalNonEmptyString,
-  WORKSPACE_E2E_ADMIN_BASIC_AUTH: optionalAdminBasicAuthPair,
   WORKSPACE_E2E_BETTER_AUTH_SECRETS: optionalNonEmptyString,
   WORKSPACE_E2E_VERCEL_TOKEN: optionalNonEmptyString,
   WORKSPACE_E2E_VERCEL_PROJECT: optionalNonEmptyString,
@@ -146,8 +135,6 @@ export const makeE2EEnvironment = (
       USER: runtimeEnvironment.USER,
       VERCEL_AUTOMATION_BYPASS_SECRET:
         runtimeEnvironment.VERCEL_AUTOMATION_BYPASS_SECRET,
-      WORKSPACE_E2E_ADMIN_BASIC_AUTH:
-        runtimeEnvironment.WORKSPACE_E2E_ADMIN_BASIC_AUTH,
       WORKSPACE_E2E_BETTER_AUTH_SECRETS:
         runtimeEnvironment.WORKSPACE_E2E_BETTER_AUTH_SECRETS,
       WORKSPACE_E2E_VERCEL_TOKEN: runtimeEnvironment.WORKSPACE_E2E_VERCEL_TOKEN,
