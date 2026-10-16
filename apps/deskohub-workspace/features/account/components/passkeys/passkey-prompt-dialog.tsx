@@ -8,7 +8,6 @@ import { Button } from "@/shared/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/shared/components/ui/dialog";
@@ -63,7 +62,7 @@ export function PasskeyPromptDialog({
       }}
     >
       <DialogContent
-        aria-describedby="passkey-prompt-description"
+        aria-describedby="passkey-prompt-points"
         className="max-w-sm overflow-hidden p-0"
         locale={locale}
       >
@@ -77,14 +76,11 @@ export function PasskeyPromptDialog({
             <DialogTitle className="pr-0 text-center text-2xl">
               {m.accountPasskeyPromptTitle({}, { locale })}
             </DialogTitle>
-            <DialogDescription
-              className="text-center"
-              id="passkey-prompt-description"
-            >
-              {m.accountPasskeyPromptBody({}, { locale })}
-            </DialogDescription>
           </DialogHeader>
-          <ul className="mt-5 space-y-2 text-sm leading-5 text-navy-blue/78">
+          <ul
+            className="mt-5 space-y-2 text-sm leading-5 text-navy-blue/78"
+            id="passkey-prompt-points"
+          >
             {[
               m.accountPasskeyPromptPointStorage({}, { locale }),
               m.accountPasskeyPromptPointEmail({}, { locale }),
@@ -98,10 +94,7 @@ export function PasskeyPromptDialog({
               </li>
             ))}
           </ul>
-          <div
-            aria-live="polite"
-            className="mt-4 min-h-5 text-sm text-red-700"
-          >
+          <div aria-live="polite" className="mt-4 min-h-5 text-sm text-red-700">
             {failed && m.accountPasskeyCreateFailed({}, { locale })}
           </div>
           <div className="mt-2 flex flex-col gap-2">

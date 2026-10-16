@@ -116,18 +116,13 @@ export function SignInSecurityScreen({
       bodyClassName="space-y-6"
     >
       <section aria-labelledby="account-security-passkeys-title">
-        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
-          <div className="min-w-0 max-w-xl">
-            <h3
-              className="text-lg font-bold text-navy-blue"
-              id="account-security-passkeys-title"
-            >
-              {m.accountSecurityPasskeysTitle({}, { locale })}
-            </h3>
-            <p className="mt-1 text-sm leading-6 text-navy-blue/68">
-              {m.accountSecurityPasskeysBody({}, { locale })}
-            </p>
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+          <h3
+            className="min-w-0 text-lg font-bold text-navy-blue"
+            id="account-security-passkeys-title"
+          >
+            {m.accountSecurityPasskeysTitle({}, { locale })}
+          </h3>
           {passkeys.length > 0 && (
             <Button
               className="@xl:w-auto"
@@ -229,9 +224,6 @@ export function SignInSecurityScreen({
             </span>
             <p className="mt-4 font-semibold text-navy-blue">
               {m.accountSecurityPasskeysEmptyTitle({}, { locale })}
-            </p>
-            <p className="mt-1 max-w-sm text-sm leading-6 text-navy-blue/68">
-              {m.accountSecurityPasskeysEmptyBody({}, { locale })}
             </p>
             <Button
               className="mt-5"

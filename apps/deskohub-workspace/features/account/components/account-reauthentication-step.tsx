@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyRound, Loader2 } from "lucide-react";
+import { KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import type {
   AuthReturnLifecycle,
@@ -146,6 +146,17 @@ export function AccountReauthenticationStep({
             requestNewEmail={sendReauthEmail}
           />
         </>
+      ) : purpose === "add-passkey" ? (
+        // The title says it all; the reason stays for screen readers.
+        <DialogHeader className="justify-items-center pt-2 text-center">
+          <span className="flex size-16 items-center justify-center rounded-2xl bg-[radial-gradient(circle_at_30%_20%,rgba(236,164,35,0.28),transparent_60%),radial-gradient(circle_at_80%_90%,rgba(0,223,153,0.2),transparent_55%)] bg-[#f4f3ef] text-burned-orange">
+            <ShieldCheck aria-hidden className="size-8" strokeWidth={1.75} />
+          </span>
+          <DialogTitle className="mt-2 pr-0 text-2xl">{copy.title}</DialogTitle>
+          <DialogDescription className="sr-only" id={copy.descriptionId}>
+            {copy.body}
+          </DialogDescription>
+        </DialogHeader>
       ) : (
         <DialogHeader>
           <DialogTitle>{copy.title}</DialogTitle>
@@ -157,24 +168,25 @@ export function AccountReauthenticationStep({
       <div
         id={copy.statusId}
         aria-live={failure || passkeyFailure ? "assertive" : "polite"}
-        className={cn("text-sm text-navy-blue/78", !codeStep && "mt-4 min-h-5")}
+        className={cn("text-sm text-navy-blue/78", !codeStep && "mt-4 min-h-5 empty:mt-0 empty:min-h-0")}
         role={failure || passkeyFailure ? "alert" : undefined}
       >
         {failure && signInEmailFailureMessage(failure, locale)}
         {passkeyFailure &&
           {
-            "wrong-account": m.accountReauthPasskeyWrongAccount(
-              {},
-              { locale }
-            ),
+            "wrong-account": m.accountReauthPasskeyWrongAccount({}, { locale }),
             failed: m.accountReauthPasskeyFailed({}, { locale }),
           }[passkeyFailure]}
         {!failure && !passkeyFailure && linkSent && copy.linkSent}
       </div>
       {!codeStep && (
-        <DialogFooter>
+        // Two options stack full-width, so long labels never overflow.
+        <DialogFooter
+          className={cn(confirmWithPasskey && "sm:flex-col-reverse")}
+        >
           <Button
             id={copy.sendId}
+            wrap
             type="button"
             variant={confirmWithPasskey ? "secondary" : undefined}
             disabled={sending || linkSent || passkeyPending}
@@ -185,6 +197,7 @@ export function AccountReauthenticationStep({
           {confirmWithPasskey && (
             <Button
               id={`${purpose}-reauth-passkey`}
+              wrap
               type="button"
               disabled={sending || passkeyPending}
               onClick={confirmPasskey}

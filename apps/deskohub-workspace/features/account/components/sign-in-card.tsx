@@ -252,34 +252,38 @@ export function SignInCard({ locale, signInWithPasskey }: SignInCardProps) {
                   <FormLabel htmlFor="account-sign-in-email">
                     {m.accountSignInEmailLabel({}, { locale })}
                   </FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      ref={(element) => {
-                        field.ref(element);
-                        focusOnMount("email")(element);
-                      }}
-                      disabled={!clientReady}
-                      id="account-sign-in-email"
-                      type="email"
-                      required
-                      autoComplete={
-                        signInWithPasskey ? "email webauthn" : "email"
-                      }
-                      placeholder={m.accountSignInEmailPlaceholder(
-                        {},
-                        { locale }
-                      )}
+                  {/* The button joins the input's row once it fits beside it. */}
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <FormControl>
+                      <Input
+                        className="min-w-0 sm:flex-1"
+                        {...field}
+                        ref={(element) => {
+                          field.ref(element);
+                          focusOnMount("email")(element);
+                        }}
+                        disabled={!clientReady}
+                        id="account-sign-in-email"
+                        type="email"
+                        required
+                        autoComplete={
+                          signInWithPasskey ? "email webauthn" : "email"
+                        }
+                        placeholder={m.accountSignInEmailPlaceholder(
+                          {},
+                          { locale }
+                        )}
+                      />
+                    </FormControl>
+                    <SignInSubmitButton
+                      locale={locale}
+                      pending={form.formState.isSubmitting}
+                      ready={clientReady}
                     />
-                  </FormControl>
+                  </div>
                   <FormMessage className="text-sm font-normal text-red-700" />
                 </FormItem>
               )}
-            />
-            <SignInSubmitButton
-              locale={locale}
-              pending={form.formState.isSubmitting}
-              ready={clientReady}
             />
           </form>
         </Form>
@@ -310,6 +314,7 @@ function SignInSubmitButton({
   return (
     <Button
       id="account-sign-in-submit"
+      className="min-h-12 w-full sm:w-auto sm:shrink-0"
       type="submit"
       disabled={!ready}
       pending={pending}

@@ -79,7 +79,10 @@ export function PasskeyDeleteDialog({
             {m.accountPasskeyDeleteLastBody({}, { locale })}
           </p>
         )}
-        <div aria-live="assertive" className="mt-4 min-h-5 text-sm text-red-700">
+        <div
+          aria-live="assertive"
+          className="mt-4 min-h-5 text-sm text-red-700"
+        >
           {failed && m.accountPasskeyDeleteFailed({}, { locale })}
         </div>
         <DialogFooter>
