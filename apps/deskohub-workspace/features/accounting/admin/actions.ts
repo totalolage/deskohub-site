@@ -24,11 +24,11 @@ const createInvoiceAction = defineWorkspaceAction(
   },
   Effect.fn(
     function* (input) {
-      const actor = yield* requireAdministratorAuthorization;
+      const administrator = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const result = yield* administration.create(input, {
         source: "admin-ui",
-        actor,
+        administrator,
       });
       yield* Effect.sync(() => {
         revalidateLocalizedPath("/admin/invoices");
@@ -70,11 +70,11 @@ const previewInvoiceAction = defineWorkspaceAction(
   },
   Effect.fn(
     function* (input) {
-      const actor = yield* requireAdministratorAuthorization;
+      const administrator = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const pdf = yield* administration.preview(input, {
         source: "admin-ui",
-        actor,
+        administrator,
       });
       return {
         dataUrl: `data:application/pdf;base64,${Buffer.from(pdf).toString("base64")}`,

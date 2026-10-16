@@ -1,4 +1,3 @@
-import type { AdministrationActorUsernameType } from "@deskohub/workspace-admin-api";
 import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { Suspense } from "react";
 import { ApproveCliAuthenticationForm } from "@/features/admin-cli/approve-cli-authentication-form";
@@ -58,7 +57,7 @@ export async function CliAuthenticationRequest({
     );
   }
 
-  const { request, username } = approval;
+  const { request, administratorEmail } = approval;
 
   return (
     <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
@@ -74,7 +73,7 @@ export async function CliAuthenticationRequest({
           code={params.code}
           failed={params.result === "error"}
           request={request}
-          username={username}
+          administratorEmail={administratorEmail}
         />
       </div>
     </div>
@@ -85,7 +84,7 @@ function AuthenticationRequestState({
   code,
   failed,
   request,
-  username,
+  administratorEmail,
 }: {
   readonly code?: string;
   readonly failed: boolean;
@@ -94,7 +93,7 @@ function AuthenticationRequestState({
       Awaited<ReturnType<typeof loadCliAuthenticationApproval>>
     >["request"]
   >;
-  readonly username: AdministrationActorUsernameType;
+  readonly administratorEmail: string;
 }) {
   if (request.state === "pending") {
     return (
@@ -104,7 +103,7 @@ function AuthenticationRequestState({
             This request expires at{" "}
             <strong>{formatAdministrationDateTime(request.expiresAt)}</strong>.
             Approve it only if you initiated the request in your terminal.
-            Approving as <strong>{username}</strong>.
+            Approving as <strong>{administratorEmail}</strong>.
           </p>
         </AdministrationAlert>
         {failed && (

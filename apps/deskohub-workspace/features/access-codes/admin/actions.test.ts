@@ -1,8 +1,8 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
-  AdministrationActorUsername,
   AdministrationInstant,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
@@ -11,10 +11,12 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Context, Effect, Layer, Schema } from "effect";
 import { DEFAULT_SERVER_ERROR_MESSAGE } from "next-safe-action";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 
 interface StubCreateCall {
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
-  readonly actor: AdministrationActorUsername;
+  readonly actor: AdministratorAccountActor;
   readonly source: string;
   readonly request: {
     readonly name: string;
@@ -28,7 +30,10 @@ interface StubCreateCall {
 
 let authorizationCalls = 0;
 let authorizationAllowed = true;
-const actor = AdministrationActorUsername.make("Fixture Operator");
+const actor: AdministratorAccountActor = {
+  accountId: customerAccountIdSchema.make(crypto.randomUUID()),
+  email: testEmailAddress("fixture-operator"),
+};
 
 const serviceCreateCalls: StubCreateCall[] = [];
 const serviceCreate = mock((input: StubCreateCall) => {
@@ -159,6 +164,7 @@ describe("createStandaloneAccessCode action", () => {
         endsAt: "2026-09-10T12:00",
       },
     });
+    expect(serviceCreateCalls[0]?.actor).toBe(actor);
     expect(
       serviceCreateCalls[0]?.providerCredentialRemovedAttemptId
     ).toBeUndefined();

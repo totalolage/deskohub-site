@@ -33,7 +33,7 @@ export async function CliSessionsContent({
 }: {
   readonly searchParams: Promise<{ readonly result?: string }>;
 }) {
-  const [{ sessions, username }, params] = await Promise.all([
+  const [{ sessions, administratorEmail }, params] = await Promise.all([
     loadCliSessions(),
     searchParams,
   ]);
@@ -50,7 +50,7 @@ export async function CliSessionsContent({
             />
             <p className="text-sm text-navy-blue/60">
               Sessions approved by{" "}
-              <span className="font-medium">{username}</span>
+              <span className="font-medium">{administratorEmail}</span>
             </p>
           </>
         }

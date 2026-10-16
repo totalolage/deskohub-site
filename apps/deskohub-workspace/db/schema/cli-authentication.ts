@@ -1,5 +1,4 @@
 import type {
-  AdministrationActorUsernameType,
   AdministrationCampaignAudienceInputType,
   AdministrationCampaignAudienceType,
   AdministrationCampaignCreateInputType,
@@ -7,6 +6,7 @@ import type {
   AdministrationCampaignIdType,
   AdministrationDiscountMutationResultType,
   AdministrationDiscountMutationType,
+  AdministrationLegacyUsernameType,
   AdministrationReservationAccessGrantType,
   AdministrationReservationAccessMutationType,
   AdministrationStandaloneAccessCodeAttemptIdType,
@@ -42,9 +42,8 @@ export const cliSessions = pgTable(
       .primaryKey()
       .default(postgresUuidV7)
       .$type<CliSessionIdType>(),
-    approvedBy: text("approved_by")
-      .notNull()
-      .$type<AdministrationActorUsernameType>(),
+    /** The approving Basic-auth username of a session issued before accounts. */
+    approvedBy: text("approved_by").$type<AdministrationLegacyUsernameType>(),
     approvedByAccountId: text("approved_by_account_id")
       .$type<CustomerAccountId>()
       .references(() => authUser.id, { onDelete: "set null" }),
@@ -97,6 +96,10 @@ export const cliSessions = pgTable(
       "cli_sessions_approved_by_account_check",
       sql`${t.approvedByAccountId} is null or (${t.approvedByAccountEmail} is not null and btrim(${t.approvedByAccountEmail}) <> '')`
     ),
+    check(
+      "cli_sessions_approver_check",
+      sql`${t.approvedBy} is not null or ${t.approvedByAccountEmail} is not null`
+    ),
   ]
 );
 
@@ -115,7 +118,12 @@ export const cliAuthenticationRequests = pgTable(
     createdAt: instant("created_at").notNull().default(sql`now()`),
     expiresAt: instant("expires_at").notNull(),
     approvedAt: instant("approved_at"),
-    approvedBy: text("approved_by").$type<AdministrationActorUsernameType>(),
+    /** The approving Basic-auth username of a request approved before accounts. */
+    approvedBy: text("approved_by").$type<AdministrationLegacyUsernameType>(),
+    approvedByAccountId: text("approved_by_account_id")
+      .$type<CustomerAccountId>()
+      .references(() => authUser.id, { onDelete: "set null" }),
+    approvedByAccountEmail: text("approved_by_account_email"),
     grantToken: text("grant_token"),
     grantExpiresAt: instant("grant_expires_at"),
     sessionExpiresAt: instant("session_expires_at"),
@@ -157,12 +165,19 @@ export const cliAuthenticationRequests = pgTable(
       sql`(
         ${t.approvedAt} is null
         and ${t.approvedBy} is null
+        and ${t.approvedByAccountId} is null
+        and ${t.approvedByAccountEmail} is null
         and ${t.grantToken} is null
         and ${t.grantExpiresAt} is null
       ) or (
         ${t.approvedAt} is not null
         and ${t.grantExpiresAt} is not null
+        and (${t.approvedBy} is not null or ${t.approvedByAccountEmail} is not null)
       )`
+    ),
+    check(
+      "cli_authentication_requests_approved_by_account_check",
+      sql`${t.approvedByAccountId} is null or (${t.approvedByAccountEmail} is not null and btrim(${t.approvedByAccountEmail}) <> '')`
     ),
     check(
       "cli_authentication_requests_session_expiry_check",

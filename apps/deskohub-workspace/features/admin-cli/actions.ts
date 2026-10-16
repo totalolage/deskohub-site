@@ -61,12 +61,15 @@ const decodeCliSessionLifetime = (formData: FormData) =>
 
 export async function revokeCliSession(formData: FormData) {
   const revoked = await Effect.gen(function* () {
-    const owner = yield* requireAdministratorAuthorization;
+    const administrator = yield* requireAdministratorAuthorization;
     const sessionId = yield* Schema.decodeUnknownEffect(CliSessionId)(
       formData.get("sessionId")
     );
     const authentication = yield* CliAuthentication;
-    return yield* authentication.revoke({ owner, sessionId });
+    return yield* authentication.revoke({
+      owner: administrator.accountId,
+      sessionId,
+    });
   }).pipe(
     Effect.catch(() => Effect.succeed(false)),
     Effect.provide(CliAuthentication.Live),
@@ -92,10 +95,10 @@ const renameCliSessionAction = defineWorkspaceAction(
   },
   Effect.fn(
     function* (input) {
-      const owner = yield* requireAdministratorAuthorization;
+      const administrator = yield* requireAdministratorAuthorization;
       const authentication = yield* CliAuthentication;
       const renamed = yield* authentication.renameSession({
-        owner,
+        owner: administrator.accountId,
         sessionId: input.sessionId,
         clientName: input.clientName,
       });
