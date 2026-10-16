@@ -50,7 +50,7 @@ mock.module("@/features/admin-cli/page-data.server", () => ({
   loadCliAuthenticationApproval: () => Promise.resolve(approval),
 }));
 
-describe("CliAuthenticationApprovalPage", () => {
+describe("CliAuthenticationRequest", () => {
   beforeAll(() => registerWorkspaceComponentTestEnv());
   afterEach(() => {
     cleanup();
@@ -59,10 +59,12 @@ describe("CliAuthenticationApprovalPage", () => {
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
   test("names the authenticated administrator while approval is pending", async () => {
-    const { CliAuthenticationRequest } = await import("./page");
+    const { CliAuthenticationRequest } = await import(
+      "./cli-authentication-screen"
+    );
     const view = render(
       await CliAuthenticationRequest({
-        locale: Promise.resolve("en-US"),
+        locale: "en-US",
         searchParams: Promise.resolve({ code: "pending-code" }),
       })
     );
@@ -70,12 +72,15 @@ describe("CliAuthenticationApprovalPage", () => {
     expect(view.getByText(/Approving as/).textContent).toContain(
       "Approving as operator."
     );
+    expect(view.getByText("operator").tagName).toBe("STRONG");
     expect(view.getByText("Office Mac")).toBeTruthy();
     expect(view.getByRole("button", { name: "Approve this CLI" })).toBeTruthy();
   });
 
   test("renders the pending approval in Czech on a Czech route", async () => {
-    const { CliAuthenticationRequest } = await import("./page");
+    const { CliAuthenticationRequest } = await import(
+      "./cli-authentication-screen"
+    );
     const { RouteLocaleProvider } = await import(
       "@/features/i18n/route-locale"
     );
@@ -83,7 +88,7 @@ describe("CliAuthenticationApprovalPage", () => {
       <RouteLocaleProvider locale="cs-CZ">
         {
           await CliAuthenticationRequest({
-            locale: Promise.resolve("cs-CZ"),
+            locale: "cs-CZ",
             searchParams: Promise.resolve({ code: "pending-code" }),
           })
         }
@@ -93,6 +98,7 @@ describe("CliAuthenticationApprovalPage", () => {
     expect(view.getByText(/Schvalujete jako/).textContent).toContain(
       "Schvalujete jako operator."
     );
+    expect(view.getByText("operator").tagName).toBe("STRONG");
     expect(view.getByText("Klient")).toBeTruthy();
     expect(
       view.getByRole("button", { name: "Schválit toto CLI" })
@@ -104,10 +110,12 @@ describe("CliAuthenticationApprovalPage", () => {
       username: "operator",
       request: { ...pendingRequest, state: "granted" },
     };
-    const { CliAuthenticationRequest } = await import("./page");
+    const { CliAuthenticationRequest } = await import(
+      "./cli-authentication-screen"
+    );
     const view = render(
       await CliAuthenticationRequest({
-        locale: Promise.resolve("en-US"),
+        locale: "en-US",
         searchParams: Promise.resolve({ code: "granted-code" }),
       })
     );

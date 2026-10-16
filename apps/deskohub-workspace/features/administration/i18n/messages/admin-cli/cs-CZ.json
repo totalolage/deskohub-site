@@ -14,7 +14,7 @@
   "adminCliAuthenticateApproveOnlyOwnRequest": "Schvalte ji pouze tehdy, pokud jste žádost zahájili ve svém terminálu.",
   "adminCliAuthenticateApprovedDescription": "Vraťte se do terminálu. CLI výměnu dokončí automaticky.",
   "adminCliAuthenticateApprovedTitle": "Přihlášení je schválené",
-  "adminCliAuthenticateApprovingAs": "Schvalujete jako {username}.",
+  "adminCliAuthenticateApprovingAs": "Schvalujete jako <username/>.",
   "adminCliAuthenticateBuildLabel": "Sestavení CLI",
   "adminCliAuthenticateClientLabel": "Klient",
   "adminCliAuthenticateDescription": "Potvrďte, že tento klient příkazové řádky smí přistupovat k API administrace Workspace.",
@@ -24,7 +24,7 @@
   "adminCliAuthenticateGrantedTitle": "CLI je přihlášené",
   "adminCliAuthenticateInvalidTitle": "Tato žádost o přihlášení je neplatná nebo vypršela",
   "adminCliAuthenticateLoading": "Načítání žádosti o přihlášení CLI",
-  "adminCliAuthenticateRequestExpiresAt": "Platnost této žádosti vyprší {expiresAt}.",
+  "adminCliAuthenticateRequestExpiresAt": "Platnost této žádosti vyprší <expiresAt/>.",
   "adminCliAuthenticateRestartDescription": "Vraťte se do CLI a spusťte znovu dhw auth, aby vznikla nová žádost.",
   "adminCliAuthenticateRevokedTitle": "Tato relace CLI byla odvolána",
   "adminCliAuthenticateTitle": "Schválení přihlášení CLI",
@@ -46,7 +46,7 @@
   "adminCliRevokeSubmitting": "Odvolávání…",
   "adminCliRevokeTitle": "Odvolat relaci CLI?",
   "adminCliRevokeTrigger": "Odvolat",
-  "adminCliSessionsApprovedBy": "Relace schválené účtem {username}",
+  "adminCliSessionsApprovedBy": "Relace schválené účtem <username/>",
   "adminCliSessionsCount": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

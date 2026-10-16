@@ -29,15 +29,22 @@ export default function EmailCampaignsPage() {
           </Button>
         }
         count={
-          <Suspense fallback={<AdministrationCountLoading label="campaign" />}>
+          <Suspense
+            fallback={
+              <AdministrationCountLoading label="Loading campaign count" />
+            }
+          >
             <CampaignCount campaigns={campaigns} />
           </Suspense>
         }
-        itemLabel="campaign"
+        label="campaign table controls"
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading columns={5} label="campaigns" />
+          <AdministrationCollectionLoading
+            columns={5}
+            label="Loading campaigns"
+          />
         }
       >
         <CampaignCollection campaigns={campaigns} />
@@ -49,10 +56,11 @@ export default function EmailCampaignsPage() {
 type Campaigns = ReturnType<typeof loadCampaignList>;
 
 async function CampaignCount({ campaigns }: { readonly campaigns: Campaigns }) {
+  const count = (await campaigns).length;
   return (
     <AdministrationTableCount
-      count={(await campaigns).length}
-      itemLabel="campaign"
+      count={count}
+      label={`${count} campaign${count === 1 ? "" : "s"}`}
     />
   );
 }

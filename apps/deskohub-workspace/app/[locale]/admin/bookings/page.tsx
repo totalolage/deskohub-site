@@ -16,6 +16,8 @@ import {
   type AdministrationSearchParams,
   loadAdministrationBookingsPage,
 } from "@/features/administration/page-data.server";
+import type { Locale } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function BookingsAdministrationPage({
   searchParams,
@@ -29,7 +31,11 @@ export default function BookingsAdministrationPage({
       <h1 className="sr-only">Bookings</h1>
       <AdministrationTableToolbar
         count={
-          <Suspense fallback={<AdministrationCountLoading label="booking" />}>
+          <Suspense
+            fallback={
+              <AdministrationCountLoading label="Loading booking count" />
+            }
+          >
             <BookingCount result={result} />
           </Suspense>
         }
@@ -38,11 +44,14 @@ export default function BookingsAdministrationPage({
             <BookingFiltersContent input={input} />
           </Suspense>
         }
-        itemLabel="booking"
+        label="booking table controls"
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading label="bookings" columns={5} />
+          <AdministrationCollectionLoading
+            label="Loading bookings"
+            columns={5}
+          />
         }
       >
         <BookingResultsContent input={input} result={result} />
@@ -62,10 +71,11 @@ async function BookingCount({
 }: {
   readonly result: Promise<BookingsData["result"]>;
 }) {
+  const count = (await result).total;
   return (
     <AdministrationTableCount
-      count={(await result).total}
-      itemLabel="booking"
+      count={count}
+      label={`${count} booking${count === 1 ? "" : "s"}`}
     />
   );
 }
@@ -86,10 +96,21 @@ async function BookingResultsContent({
   readonly result: Promise<BookingsData["result"]>;
 }) {
   const [resolvedInput, resolvedResult] = await Promise.all([input, result]);
-  return <BookingResults input={resolvedInput} result={resolvedResult} />;
+  const locale = await getRequestLocale();
+  return (
+    <BookingResults
+      input={resolvedInput}
+      locale={locale}
+      result={resolvedResult}
+    />
+  );
 }
 
-function BookingResults({ input, result }: BookingsData) {
+function BookingResults({
+  input,
+  locale,
+  result,
+}: BookingsData & { readonly locale: Locale }) {
   return (
     <>
       <BookingTable
@@ -102,6 +123,7 @@ function BookingResults({ input, result }: BookingsData) {
       />
       <Pagination
         basePath="/admin/bookings"
+        locale={locale}
         page={result.page}
         pageCount={result.pageCount}
         params={{

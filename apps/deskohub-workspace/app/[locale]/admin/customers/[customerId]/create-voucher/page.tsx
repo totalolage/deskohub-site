@@ -15,7 +15,9 @@ export default function CustomerVoucherCreationPage({
 }) {
   return (
     <AdministrationPage>
-      <Suspense fallback={<AdministrationDetailLoading label="voucher form" />}>
+      <Suspense
+        fallback={<AdministrationDetailLoading label="Loading voucher form" />}
+      >
         <CustomerVoucherCreationContent params={params} />
       </Suspense>
     </AdministrationPage>

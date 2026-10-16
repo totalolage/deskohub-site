@@ -15,6 +15,7 @@ import {
   useTable,
 } from "@tanstack/react-table";
 import { Fragment, type ReactNode, useState } from "react";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import {
   Table,
   TableBody,
@@ -24,6 +25,7 @@ import {
   TableRow,
 } from "@/shared/components/ui/table";
 import { cn } from "@/shared/utils";
+import { m } from "./i18n";
 import { AdministrationSortHead } from "./sort-head";
 import {
   AdministrationResponsiveTable,
@@ -58,7 +60,7 @@ const isTableRowControl = (target: EventTarget | null) =>
   Boolean(target.closest("a, button, input, select, textarea, label, summary"));
 
 export function AdministrationDataTable<T extends RowData>({
-  actionsLabel = "Actions",
+  actionsLabel,
   ariaLabel,
   canRowActivate,
   columns,
@@ -91,6 +93,7 @@ export function AdministrationDataTable<T extends RowData>({
   readonly sorting?: AdministrationDataTableSorting;
   readonly tableClassName?: string;
 }) {
+  const locale = useRouteLocale();
   const [sorting, setSorting] = useState<AdministrationDataTableSorting>([]);
   const table = useTable({
     columns,
@@ -138,7 +141,9 @@ export function AdministrationDataTable<T extends RowData>({
               );
             })}
             {renderActions && (
-              <TableHead className="w-24 text-right">{actionsLabel}</TableHead>
+              <TableHead className="w-24 text-right">
+                {actionsLabel ?? m.administrationTableActions({}, { locale })}
+              </TableHead>
             )}
           </TableRow>
         ))}

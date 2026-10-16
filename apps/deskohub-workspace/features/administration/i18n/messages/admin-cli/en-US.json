@@ -14,7 +14,7 @@
   "adminCliAuthenticateApproveOnlyOwnRequest": "Approve it only if you initiated the request in your terminal.",
   "adminCliAuthenticateApprovedDescription": "Return to your terminal. The CLI will complete the exchange automatically.",
   "adminCliAuthenticateApprovedTitle": "Authentication approved",
-  "adminCliAuthenticateApprovingAs": "Approving as {username}.",
+  "adminCliAuthenticateApprovingAs": "Approving as <username/>.",
   "adminCliAuthenticateBuildLabel": "CLI build",
   "adminCliAuthenticateClientLabel": "Client",
   "adminCliAuthenticateDescription": "Confirm that this command-line client may access the Workspace administration API.",
@@ -24,7 +24,7 @@
   "adminCliAuthenticateGrantedTitle": "CLI authenticated",
   "adminCliAuthenticateInvalidTitle": "This authentication request is invalid or has expired",
   "adminCliAuthenticateLoading": "Loading CLI authentication request",
-  "adminCliAuthenticateRequestExpiresAt": "This request expires at {expiresAt}.",
+  "adminCliAuthenticateRequestExpiresAt": "This request expires at <expiresAt/>.",
   "adminCliAuthenticateRestartDescription": "Return to the CLI and run dhw auth again to create a fresh request.",
   "adminCliAuthenticateRevokedTitle": "This CLI session has been revoked",
   "adminCliAuthenticateTitle": "Approve CLI authentication",
@@ -46,7 +46,7 @@
   "adminCliRevokeSubmitting": "Revoking…",
   "adminCliRevokeTitle": "Revoke CLI session?",
   "adminCliRevokeTrigger": "Revoke",
-  "adminCliSessionsApprovedBy": "Sessions approved by {username}",
+  "adminCliSessionsApprovedBy": "Sessions approved by <username/>",
   "adminCliSessionsCount": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
