@@ -149,8 +149,8 @@ ones. Undated rows carry `versionDate: null`.
 
 Staff record a customer's objection by adding the `no-analytics` tag to the
 customer in Dotypos. The next sync blanks the row in PostHog and marks it
-deleted. PostHog merges rows on `id`, and the join filter `deleted = false`
-drops the customer.
+deleted. PostHog merges rows on `id`, and the filter
+`custom.dotypos_customers.deleted = false` drops the customer.
 
 This relies on a tag edit bumping the customer's `versionDate`; that behavior
 is unverified against production and shares the monotonic-`versionDate`
@@ -228,7 +228,10 @@ its exact location.
 The response schema is the allowlist: `id`, `firstName`, `lastName`,
 `companyName`, `email`, `phone`, `addressLine1`, `addressLine2`, `city`, `zip`,
 `country`, `birthday`, `_discountGroupId`, `points`, `tags`, `created`,
-`versionDate`, `deleted`. Rows are built field by field, and
+`versionDate`, `deleted`. These are JSON keys; PostHog snake-cases them for
+warehouse columns, so `versionDate` becomes `version_date`, `firstName`
+becomes `first_name`, `_discountGroupId` becomes `_discount_group_id`, and
+`deleted` stays `deleted`. Rows are built field by field, and
 `dotypos-customer-source.test.ts` pins the exact key set and checks that
 excluded values never appear. Never export free-text fields (`note`,
 `internalNote`, `headerPrint`), `barcode`, `companyId`, `companyId2`, `vatId`,
@@ -287,14 +290,16 @@ In PostHog, open **Data pipelines → Sources → New source → Custom REST**:
 2. Authentication: **Bearer token**, with the
    `ANALYTICS_WAREHOUSE_SOURCE_TOKEN` value. Enter it in PostHog directly;
    never paste it into chat, issues, or logs.
-3. Add one stream named `dotypos_customers` (if PostHog prefixes the table
-   name, use the name it shows in the steps below):
+3. Add one stream named `dotypos_customers`. PostHog stores the table as
+   `custom.dotypos_customers` and snake-cases the JSON keys into column names:
+   the incremental cursor is `version_date`, and the deletion flag is
+   `deleted`.
    - Path `/api/analytics-warehouse/dotypos-customers`, method `GET`.
    - Records JSONPath `results`.
    - Primary key `id`.
    - Pagination: **Cursor in JSON body** with cursor JSONPath `next_cursor`
      and cursor query parameter `cursor`.
-4. Sync method: **Incremental**, cursor field `versionDate`, type
+4. Sync method: **Incremental**, cursor field `version_date`, type
    **Datetime**, start query parameter `since`, upstream row order
    **Ascending**. Leave the initial value empty so the first sync reads every
    customer.
@@ -303,10 +308,26 @@ In PostHog, open **Data pipelines → Sources → New source → Custom REST**:
    either way.
 6. After the first sync, open the `persons` table in the data warehouse and
    add a join: source key `properties.dotypos_customer_id`, joining table
-   `dotypos_customers`, joining key `id`, field name `dotypos_customer`.
-7. Exclude deleted customers in SQL with `dotypos_customers.deleted = false`,
+   `custom.dotypos_customers`, joining key `id`, field name
+   `dotypos_customer`.
+7. Exclude deleted customers in SQL with
+   `custom.dotypos_customers.deleted = false`,
    and in person-based insights with the filter
    `persons.dotypos_customer.deleted = false`.
+
+### Live setup recorded on 2026-10-16
+
+- Source ID: `01a145ac-851a-0000-9b5d-9647ca72a295`.
+- Schema ID: `01a145ac-853e-0000-11d9-da862d10d2f3`.
+- Join ID: `01a145b0-4283-0000-7e73-8004e424ce6e`.
+- First sync: 63 rows, 63 distinct IDs, 0 deleted.
+
+### API setup notes
+
+- The UI's upstream order **Ascending** maps to the manifest field
+  `sort_mode: "asc"`.
+- Creating the source through the API defaults its sync frequency to 6 hours.
+  PATCH the schema to 24 hours after creating the source.
 
 ## Verification
 
@@ -315,5 +336,8 @@ Run the colocated tests in `features/analytics-warehouse/backend/`, the
 `packages/dotypos/src/backend/service.test.ts`,
 `packages/dotypos/src/timestamp.test.ts`, and
 `shared/backend/request-budget/request-budget.service.postgres.test.ts`
-against a disposable Postgres. Never call the production
-endpoint or production Dotypos to test this source; use synthetic fixtures.
+against a disposable Postgres. Use synthetic fixtures by default; never call
+production Dotypos to test this source. One explicitly authorized smoke
+request to the production source endpoint is allowed. Record only the response
+status, row count, and whether a cursor is present. Never print or save the
+response body or row contents.
