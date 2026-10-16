@@ -34,7 +34,7 @@ Operators may:
 - create, update, archive, unarchive, or delete saved campaign audiences;
 - send a campaign's test emails, then send the campaign with the confirmation code from the latest test email, and retry the recipients it didn't reach, optionally including those whose delivery is unconfirmed and who may already have the email;
 - fill the booked product of older meeting-room and office reservations from their Dotypos booking, first as a dry run;
-- grant an account the administrator role and link a legacy Basic-auth administrator's records to it, first as a dry run; and
+- grant an account the administrator role and link the records a pre-account administrator username wrote to it, first as a dry run; and
 - rename or revoke administration sessions.
 
 Creating a code may create its discount benefit atomically. Fixed-money values use the currency's minor units. An omitted schedule or global-use limit means unrestricted along that dimension.
