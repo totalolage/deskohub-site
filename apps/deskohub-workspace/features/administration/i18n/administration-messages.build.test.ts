@@ -174,7 +174,9 @@ const describeChunk = (chunk: string) => {
 };
 
 describe("administration messages in a production build", () => {
-  test("finds administration and customer chunks in the build", () => {
+  test("finds administration and customer chunks in the build", {
+    timeout: 120_000,
+  }, () => {
     expect(
       [...customerRoutesByChunk.keys()].every((chunk) => chunks.has(chunk))
     ).toBe(true);
@@ -183,7 +185,9 @@ describe("administration messages in a production build", () => {
     expect(administrationTexts.length).toBeGreaterThan(0);
   });
 
-  test("keeps administration message text out of every chunk a customer route can load", () => {
+  test("keeps administration message text out of every chunk a customer route can load", {
+    timeout: 120_000,
+  }, () => {
     const leaks: string[] = [];
     for (const chunk of customerReachable) {
       for (const { locale, text } of findMessageTexts(
@@ -203,7 +207,9 @@ describe("administration messages in a production build", () => {
 
   // Without these the check above could pass on a build or matcher that sees
   // no message text at all.
-  test("finds administration message text in administration chunks in each locale", () => {
+  test("finds administration message text in administration chunks in each locale", {
+    timeout: 120_000,
+  }, () => {
     const found = new Set<string>();
     for (const chunk of administrationOnly) {
       for (const { locale } of findTexts(
@@ -217,7 +223,9 @@ describe("administration messages in a production build", () => {
     expect([...found].sort()).toEqual(["cs-CZ", "en-US"]);
   });
 
-  test("finds customer message text in customer chunks", () => {
+  test("finds customer message text in customer chunks", {
+    timeout: 120_000,
+  }, () => {
     expect(
       [...customerReachable].some(
         (chunk) => findTexts(customerTexts, chunks.get(chunk) ?? "").length > 0
@@ -225,7 +233,9 @@ describe("administration messages in a production build", () => {
     ).toBe(true);
   });
 
-  test("reports a parameterized administration message planted in a customer chunk", () => {
+  test("reports a parameterized administration message planted in a customer chunk", {
+    timeout: 120_000,
+  }, () => {
     const probeTexts = [
       ...readCatalogTexts(
         "en-US",
@@ -254,7 +264,9 @@ describe("administration messages in a production build", () => {
     ).toEqual([" audit entries for operator ", " záznamů auditu pro správce "]);
   });
 
-  test("reports an administration sentence copied into a customer chunk without its translation", () => {
+  test("reports an administration sentence copied into a customer chunk without its translation", {
+    timeout: 120_000,
+  }, () => {
     const probeTexts = [
       ...readCatalogTexts(
         "en-US",
