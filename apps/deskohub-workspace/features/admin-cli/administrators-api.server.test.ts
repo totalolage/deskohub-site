@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
+  AdministrationActorEmail,
   type AdministrationLegacyAdministratorBackfillResultType,
   AdministrationLegacyUsername,
   CliBearerAuthentication,
@@ -22,7 +23,7 @@ import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
 
 const session = {
   id: "01980000-0000-7000-8000-000000000000",
-  approvedBy: AdministrationLegacyUsername.make("admin"),
+  approvedBy: AdministrationActorEmail.make(testEmailAddress("cli-admin")),
   clientName: "test client",
   cliVersion: "1.0.0",
   buildTarget: "development",
