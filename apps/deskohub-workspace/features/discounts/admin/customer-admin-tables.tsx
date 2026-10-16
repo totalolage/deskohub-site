@@ -14,6 +14,7 @@ import {
 import { m } from "@/features/administration/i18n";
 import { NexiOrderLink } from "@/features/administration/nexi-order-link";
 import { PaymentAmount } from "@/features/administration/payment-status";
+import { getAdministrationReservationProductTitle } from "@/features/administration/reservation-product";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
@@ -286,7 +287,8 @@ export function CustomerTransactionHistoryTable({
         },
       },
       {
-        accessorFn: ({ reservation }) => reservation.typeLabel,
+        accessorFn: ({ reservation }) =>
+          getAdministrationReservationProductTitle(reservation.product, locale),
         id: "reservation",
         header: m.discountsColumnReservation({}, { locale }),
         cell: ({ row }) => (
@@ -294,7 +296,10 @@ export function CustomerTransactionHistoryTable({
             className="font-semibold underline decoration-navy-blue/20 underline-offset-4"
             href={`/admin/reservations/${row.original.reservation.id}`}
           >
-            {row.original.reservation.typeLabel}
+            {getAdministrationReservationProductTitle(
+              row.original.reservation.product,
+              locale
+            )}
           </Link>
         ),
       },

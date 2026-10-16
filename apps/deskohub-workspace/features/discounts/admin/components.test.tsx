@@ -397,13 +397,17 @@ describe("discount administration pages", () => {
           transactions: [
             {
               attempt: paidReservation.latestPayment,
-              reservation: paidReservation,
+              reservation: {
+                ...paidReservation,
+                product: { kind: "cowork", tier: "basic" },
+              },
             },
           ],
           transactionHistoryTruncated: true,
           stats: {
             reservationCount: reservations.length,
             favoriteProduct: "Cowork Basic",
+            favoriteReservationProduct: { kind: "cowork", tier: "basic" },
             revenue: [paidReservation.latestPayment.amount],
             discountSavings: [{ value: 7500, exponent: 2, currency: "CZK" }],
           },
@@ -554,6 +558,9 @@ describe("discount administration pages", () => {
         view.getByRole("heading", { name: "Consents" })
       )
     ).toBe(true);
+    // The favourite product and the transaction come from the customer
+    // catalog's product names, not the API's English labels.
+    expect(view.getAllByText("Basic Day Pass").length).toBeGreaterThan(0);
     expect(view.getByText("Granted")).toBeDefined();
     expect(view.queryByText("Declined")).toBeNull();
     expect(view.queryByText("Privacy policy")).toBeNull();

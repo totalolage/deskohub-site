@@ -20,6 +20,7 @@ import {
 } from "@/features/administration/components";
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
 import { m } from "@/features/administration/i18n";
+import { getAdministrationReservationProductTitle } from "@/features/administration/reservation-product";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import type { Locale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -711,7 +712,14 @@ function CustomerStats({
         />
         <CustomerStat
           label={m.discountsCustomerStatFavoriteProduct({}, { locale })}
-          value={activity.stats.favoriteProduct ?? "—"}
+          value={
+            activity.stats.favoriteReservationProduct
+              ? getAdministrationReservationProductTitle(
+                  activity.stats.favoriteReservationProduct,
+                  locale
+                )
+              : "—"
+          }
         />
         <CustomerStat
           label={m.discountsCustomerStatDiscountSavings({}, { locale })}
