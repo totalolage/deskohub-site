@@ -7,6 +7,10 @@ import {
   ReactNodeViewRenderer,
   useEditor,
 } from "@tiptap/react";
+import { useMemo } from "react";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { cn } from "@/shared/utils";
 import type { CampaignBodyNode } from "../../body/campaign-body-document";
 import { campaignBodyExtensions } from "../../body/campaign-body-extensions";
@@ -14,8 +18,11 @@ import { CampaignCtaButton } from "../../body/campaign-cta-button";
 import { CampaignBodyToolbar } from "./campaign-body-toolbar";
 import { CtaButtonNodeView } from "./cta-button-node-view";
 
-/** The shared content set plus editing-only behavior: history, hints, views. */
-const campaignBodyEditorExtensions = [
+/**
+ * The shared content set plus editing-only behavior: history, hints, views.
+ * `locale` is the admin's language for the empty-body hint.
+ */
+const campaignBodyEditorExtensions = (locale: Locale) => [
   ...campaignBodyExtensions.filter(
     (extension) => extension.name !== CampaignCtaButton.name
   ),
@@ -24,19 +31,21 @@ const campaignBodyEditorExtensions = [
   }),
   UndoRedo,
   Placeholder.configure({
-    placeholder:
-      "Write the email. Use the toolbar for headings, links, images, and buttons.",
+    placeholder: m.emailCampaignsEditorPlaceholder({}, { locale }),
   }),
 ];
 
 /** Rich-text editor for one locale's campaign body. */
 export function CampaignBodyEditor({
+  contentLocale,
   id,
   invalid,
   label,
   onChange,
   value,
 }: {
+  /** The language of the body being written. */
+  readonly contentLocale: Locale;
   readonly id?: string;
   readonly invalid?: boolean;
   readonly label: string;
@@ -44,8 +53,13 @@ export function CampaignBodyEditor({
   /** The initial document; later changes come from the editor itself. */
   readonly value: CampaignBodyNode;
 }) {
+  const locale = useRouteLocale();
+  const extensions = useMemo(
+    () => campaignBodyEditorExtensions(locale),
+    [locale]
+  );
   const editor = useEditor({
-    extensions: campaignBodyEditorExtensions,
+    extensions,
     content: value as JSONContent,
     immediatelyRender: false,
     shouldRerenderOnTransaction: false,
@@ -53,6 +67,7 @@ export function CampaignBodyEditor({
       attributes: {
         "aria-label": label,
         "aria-multiline": "true",
+        lang: contentLocale,
         ...(id && { id }),
         ...(invalid && { "aria-invalid": "true" }),
         class: cn(

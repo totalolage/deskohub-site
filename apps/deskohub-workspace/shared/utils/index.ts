@@ -19,7 +19,6 @@ export {
   temporalInstantToDate,
   temporalInstantToIsoString,
   temporalInstantToLocalDateTimeString,
-  temporalPlainDateToDate,
 } from "./temporal";
 export { cn } from "./utils";
 export type { VariableStyle } from "./variable-style";

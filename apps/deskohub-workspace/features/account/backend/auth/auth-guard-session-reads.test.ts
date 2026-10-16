@@ -79,7 +79,6 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
     arePasskeysEnabled: async () => false,
     httpsOnly: true,
-    areAccountsEnabled: async () => true,
     sendMagicLink,
     beforeDeleteUser: () => Effect.void,
     captureAccountLocalePreference: captureLocalePreference,

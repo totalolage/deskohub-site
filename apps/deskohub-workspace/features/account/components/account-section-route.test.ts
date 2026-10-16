@@ -5,7 +5,6 @@ const events: string[] = [];
 const notFound = mock(() => {
   throw new Error("NEXT_NOT_FOUND");
 });
-const areAccountsEnabled = mock(() => Promise.resolve(true));
 const arePasskeysEnabled = mock(() => Promise.resolve(true));
 const areReferralsEnabled = mock(() => Promise.resolve(true));
 const connection = mock(() => Promise.resolve());
@@ -18,7 +17,6 @@ const AccountContentLoading = mock(() => null);
 mock.module("next/navigation", () => ({ notFound }));
 mock.module("next/server", () => ({ connection }));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountsEnabled,
   arePasskeysEnabled,
 }));
 mock.module("@/features/referrals/referral-feature-flag.server", () => ({
@@ -77,11 +75,6 @@ describe("customer account route boundary", () => {
     notFound.mockImplementation(() => {
       throw new Error("NEXT_NOT_FOUND");
     });
-    areAccountsEnabled.mockReset();
-    areAccountsEnabled.mockImplementation(async () => {
-      events.push("gate");
-      return true;
-    });
     arePasskeysEnabled.mockReset();
     arePasskeysEnabled.mockImplementation(async () => {
       events.push("passkeys");
@@ -104,7 +97,7 @@ describe("customer account route boundary", () => {
     AccountPage.mockClear();
   });
 
-  test("checks the account gate after connection and before loading private account data", async () => {
+  test("loads private account data after connection", async () => {
     const { content, route } = renderContent();
 
     expect(route.type).toBe(Suspense);
@@ -114,7 +107,7 @@ describe("customer account route boundary", () => {
 
     const output = await content();
 
-    expect(events).toEqual(["connection", "gate", "load"]);
+    expect(events).toEqual(["connection", "load"]);
     expect(loadCustomerAccountPage).toHaveBeenCalledWith();
     expect(output).toMatchObject({
       type: AccountPage,
@@ -122,29 +115,10 @@ describe("customer account route boundary", () => {
     });
   });
 
-  test("returns not found without touching private account data when disabled", async () => {
-    areAccountsEnabled.mockImplementation(async () => {
-      events.push("gate");
-      return false;
-    });
-
-    await expect(renderContent("profile").content()).rejects.toThrow(
-      "NEXT_NOT_FOUND"
-    );
-    expect(events).toEqual(["connection", "gate"]);
-    expect(loadCustomerAccountPage).not.toHaveBeenCalled();
-  });
-
   test("renders the same account page for a released section's path", async () => {
     const output = await renderContent("security").content();
 
-    expect(events).toEqual([
-      "connection",
-      "gate",
-      "passkeys",
-      "referrals",
-      "load",
-    ]);
+    expect(events).toEqual(["connection", "passkeys", "referrals", "load"]);
     expect(output).toMatchObject({
       type: AccountPage,
       props: { locale: "en-US", state: { kind: "unavailable" } },
@@ -163,7 +137,7 @@ describe("customer account route boundary", () => {
       await expect(renderContent(section).content()).rejects.toThrow(
         "NEXT_NOT_FOUND"
       );
-      expect(events).toEqual(["connection", "gate"]);
+      expect(events).toEqual(["connection"]);
       expect(loadCustomerAccountPage).not.toHaveBeenCalled();
     }
   );

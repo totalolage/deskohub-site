@@ -15,6 +15,9 @@ import {
   Undo2,
 } from "lucide-react";
 import { type ReactNode, useId, useRef, useState } from "react";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -40,10 +43,7 @@ import {
 import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { uploadCampaignImage } from "./actions";
-import {
-  campaignLinkHrefHint,
-  normalizeCampaignLinkHref,
-} from "./campaign-link-href";
+import { normalizeCampaignLinkHref } from "./campaign-link-href";
 import { CtaButtonDialog, type CtaButtonValues } from "./cta-button-dialog";
 
 type BlockType = "paragraph" | "h1" | "h2" | "h3";
@@ -74,6 +74,7 @@ export function CampaignBodyToolbar({
 }: {
   readonly editor: Editor | null;
 }) {
+  const locale = useRouteLocale();
   // useEditorState selects again only on a transaction, so before the first
   // one (usually focus) it still holds the selection from the null editor.
   const state =
@@ -100,7 +101,7 @@ export function CampaignBodyToolbar({
   return (
     <TooltipProvider>
       <div
-        aria-label="Formatting"
+        aria-label={m.emailCampaignsEditorToolbar({}, { locale })}
         className="flex items-start gap-1 border-navy-blue/10 border-b bg-navy-blue/[0.03] px-2 py-1.5"
         role="toolbar"
       >
@@ -116,22 +117,30 @@ export function CampaignBodyToolbar({
             value={blockType}
           >
             <SelectTrigger
-              aria-label="Text style"
+              aria-label={m.emailCampaignsEditorTextStyle({}, { locale })}
               className="h-8 min-h-8 w-[8.5rem] rounded-md px-2.5 py-1 text-sm"
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="paragraph">Paragraph</SelectItem>
-              <SelectItem value="h1">Heading 1</SelectItem>
-              <SelectItem value="h2">Heading 2</SelectItem>
-              <SelectItem value="h3">Heading 3</SelectItem>
+              <SelectItem value="paragraph">
+                {m.emailCampaignsEditorParagraph({}, { locale })}
+              </SelectItem>
+              <SelectItem value="h1">
+                {m.emailCampaignsEditorHeading1({}, { locale })}
+              </SelectItem>
+              <SelectItem value="h2">
+                {m.emailCampaignsEditorHeading2({}, { locale })}
+              </SelectItem>
+              <SelectItem value="h3">
+                {m.emailCampaignsEditorHeading3({}, { locale })}
+              </SelectItem>
             </SelectContent>
           </Select>
           <ToolbarSeparator />
           <ToolbarToggle
             disabled={disabled}
-            label="Bold"
+            label={m.emailCampaignsEditorBold({}, { locale })}
             onPressedChange={() => chain()?.toggleBold().run()}
             pressed={state?.bold ?? false}
           >
@@ -139,7 +148,7 @@ export function CampaignBodyToolbar({
           </ToolbarToggle>
           <ToolbarToggle
             disabled={disabled}
-            label="Italic"
+            label={m.emailCampaignsEditorItalic({}, { locale })}
             onPressedChange={() => chain()?.toggleItalic().run()}
             pressed={state?.italic ?? false}
           >
@@ -150,11 +159,12 @@ export function CampaignBodyToolbar({
             currentHref={state?.linkHref ?? ""}
             disabled={disabled}
             editor={editor}
+            locale={locale}
           />
           <ToolbarSeparator />
           <ToolbarToggle
             disabled={disabled}
-            label="Bulleted list"
+            label={m.emailCampaignsEditorBulletList({}, { locale })}
             onPressedChange={() => chain()?.toggleBulletList().run()}
             pressed={state?.bulletList ?? false}
           >
@@ -162,24 +172,32 @@ export function CampaignBodyToolbar({
           </ToolbarToggle>
           <ToolbarToggle
             disabled={disabled}
-            label="Numbered list"
+            label={m.emailCampaignsEditorNumberedList({}, { locale })}
             onPressedChange={() => chain()?.toggleOrderedList().run()}
             pressed={state?.orderedList ?? false}
           >
             <ListOrdered aria-hidden className="size-4" />
           </ToolbarToggle>
           <ToolbarSeparator />
-          <ImageUploadControl disabled={disabled} editor={editor} />
+          <ImageUploadControl
+            disabled={disabled}
+            editor={editor}
+            locale={locale}
+          />
           <ToolbarButton
             disabled={disabled}
-            label={state?.ctaButton ? "Edit button" : "Insert button"}
+            label={
+              state?.ctaButton
+                ? m.emailCampaignsCtaEdit({}, { locale })
+                : m.emailCampaignsCtaInsert({}, { locale })
+            }
             onClick={() => setCtaDialogOpen(true)}
           >
             <MousePointerClick aria-hidden className="size-4" />
           </ToolbarButton>
           <ToolbarButton
             disabled={disabled}
-            label="Divider"
+            label={m.emailCampaignsEditorDivider({}, { locale })}
             onClick={() => chain()?.setHorizontalRule().run()}
           >
             <Minus aria-hidden className="size-4" />
@@ -188,14 +206,14 @@ export function CampaignBodyToolbar({
         <div className="flex shrink-0 items-center gap-1 border-navy-blue/10 border-l pl-1">
           <ToolbarButton
             disabled={!state?.canUndo}
-            label="Undo"
+            label={m.emailCampaignsEditorUndo({}, { locale })}
             onClick={() => chain()?.undo().run()}
           >
             <Undo2 aria-hidden className="size-4" />
           </ToolbarButton>
           <ToolbarButton
             disabled={!state?.canRedo}
-            label="Redo"
+            label={m.emailCampaignsEditorRedo({}, { locale })}
             onClick={() => chain()?.redo().run()}
           >
             <Redo2 aria-hidden className="size-4" />
@@ -303,11 +321,13 @@ function LinkControl({
   currentHref,
   disabled,
   editor,
+  locale,
 }: {
   readonly active: boolean;
   readonly currentHref: string;
   readonly disabled: boolean;
   readonly editor: Editor | null;
+  readonly locale: Locale;
 }) {
   const [open, setOpen] = useState(false);
   const [href, setHref] = useState("");
@@ -318,7 +338,7 @@ function LinkControl({
   const applyLink = () => {
     const normalized = normalizeCampaignLinkHref(href);
     if (!normalized) {
-      setError(campaignLinkHrefHint);
+      setError(m.emailCampaignsLinkHrefHint({}, { locale }));
       return;
     }
     const chain = editor?.chain().focus().extendMarkRange("link");
@@ -347,16 +367,22 @@ function LinkControl({
       }}
       open={open}
     >
-      <ToolbarHint label="Link">
+      <ToolbarHint label={m.emailCampaignsLinkToggle({}, { locale })}>
         <PopoverTrigger asChild>
-          <Toggle aria-label="Link" disabled={disabled} pressed={active}>
+          <Toggle
+            aria-label={m.emailCampaignsLinkToggle({}, { locale })}
+            disabled={disabled}
+            pressed={active}
+          >
             <Link2 aria-hidden className="size-4" />
           </Toggle>
         </PopoverTrigger>
       </ToolbarHint>
       <PopoverContent align="start" className="w-80 space-y-3">
         <div className="space-y-1.5">
-          <Label htmlFor={inputId}>Link address</Label>
+          <Label htmlFor={inputId}>
+            {m.emailCampaignsLinkHrefLabel({}, { locale })}
+          </Label>
           <Input
             aria-describedby={errorId}
             id={inputId}
@@ -401,11 +427,13 @@ function LinkControl({
               type="button"
               variant="ghost"
             >
-              Remove link
+              {m.emailCampaignsLinkRemove({}, { locale })}
             </Button>
           )}
           <Button onClick={applyLink} size="sm" type="button">
-            {active ? "Update link" : "Add link"}
+            {active
+              ? m.emailCampaignsLinkUpdate({}, { locale })
+              : m.emailCampaignsLinkAdd({}, { locale })}
           </Button>
         </div>
       </PopoverContent>
@@ -416,9 +444,11 @@ function LinkControl({
 function ImageUploadControl({
   disabled,
   editor,
+  locale,
 }: {
   readonly disabled: boolean;
   readonly editor: Editor | null;
+  readonly locale: Locale;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string>();
@@ -432,7 +462,7 @@ function ImageUploadControl({
       setError(
         error.serverError ??
           error.validationErrors?.formErrors?.[0] ??
-          "The image could not be uploaded. Try again."
+          m.emailCampaignsImageUploadFailed({}, { locale })
       ),
   });
 
@@ -440,7 +470,11 @@ function ImageUploadControl({
     <>
       <ToolbarButton
         disabled={disabled || upload.isExecuting}
-        label={upload.isExecuting ? "Uploading image…" : "Insert image"}
+        label={
+          upload.isExecuting
+            ? m.emailCampaignsImageUploading({}, { locale })
+            : m.emailCampaignsImageUploadInsert({}, { locale })
+        }
         onClick={() => fileInput.current?.click()}
       >
         {upload.isExecuting ? (
@@ -468,7 +502,9 @@ function ImageUploadControl({
         className={cn("text-burned-orange-ink text-xs", !error && "sr-only")}
         role="status"
       >
-        {upload.isExecuting ? "Uploading image…" : error}
+        {upload.isExecuting
+          ? m.emailCampaignsImageUploading({}, { locale })
+          : error}
       </span>
     </>
   );

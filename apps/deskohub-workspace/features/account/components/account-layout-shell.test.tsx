@@ -61,7 +61,6 @@ const { AccountLayoutShell, useAccountLayout } = await import(
 function layoutElement(
   children: ReactNode,
   options: {
-    readonly accountsEnabled?: boolean;
     readonly passkeysEnabled?: boolean;
     readonly referralsEnabled?: boolean;
     readonly signedIn?: boolean;
@@ -69,7 +68,6 @@ function layoutElement(
 ) {
   return (
     <AccountLayoutShell
-      accountsEnabled={options.accountsEnabled ?? true}
       locale="en-US"
       passkeysEnabled={options.passkeysEnabled ?? false}
       referralsEnabled={options.referralsEnabled ?? true}
@@ -83,7 +81,6 @@ function layoutElement(
 function renderLayout(
   children: ReactNode,
   options: {
-    readonly accountsEnabled?: boolean;
     readonly passkeysEnabled?: boolean;
     readonly referralsEnabled?: boolean;
     readonly signedIn?: boolean;
@@ -142,13 +139,6 @@ function ReferralBadgePublisher({
   );
 }
 
-function AccountContextProbe() {
-  const { accountsEnabled } = useAccountLayout();
-  return (
-    <output data-testid="accounts-enabled">{String(accountsEnabled)}</output>
-  );
-}
-
 describe("AccountLayoutShell", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
@@ -168,63 +158,48 @@ describe("AccountLayoutShell", () => {
     await unregisterWorkspaceComponentTestEnv();
   });
 
-  test.each([
-    ["signed-out with rollout on", false, true],
-    ["signed-in with rollout off", true, false],
-    ["signed-out with rollout off", false, false],
-  ] as const)(
-    "renders content and disables private sections for %s",
-    (_name, signedIn, accountsEnabled) => {
-      pathname = "/en-US/account/legal";
-      const view = renderLayout(
-        <>
-          <p data-testid="account-content">Public legal</p>
-          <p data-testid="account-modal">Account modal</p>
-          <AccountContextProbe />
-        </>,
-        { accountsEnabled, signedIn }
-      );
-      const sectionKeys = [
-        "Reservations",
-        "Profile & Identity",
-        "Billing & Invoices",
-        "Danger zone",
-      ];
+  test("renders content and disables private sections when signed out", () => {
+    pathname = "/en-US/account/legal";
+    const view = renderLayout(
+      <>
+        <p data-testid="account-content">Public legal</p>
+        <p data-testid="account-modal">Account modal</p>
+      </>,
+      { signedIn: false }
+    );
+    const sectionKeys = [
+      "Reservations",
+      "Profile & Identity",
+      "Billing & Invoices",
+      "Danger zone",
+    ];
 
-      for (const label of sectionKeys) {
-        expect(
-          (
-            getDesktopNavigation(view).getByRole("button", {
-              name: label,
-            }) as HTMLButtonElement
-          ).disabled
-        ).toBe(true);
-        expect(
-          (
-            getMobileNavigation(view).getByRole("button", {
-              name: label,
-            }) as HTMLButtonElement
-          ).disabled
-        ).toBe(true);
-      }
-
+    for (const label of sectionKeys) {
       expect(
-        getDesktopNavigation(view)
-          .getByRole("link", { name: "Legal & Privacy" })
-          .getAttribute("href")
-      ).toBe("/en-US/account/legal");
-      expect(view.getByTestId("account-content")).toBeTruthy();
-      expect(view.getByTestId("account-modal")).toBeTruthy();
-      expect(view.getByTestId("accounts-enabled").textContent).toBe(
-        String(accountsEnabled)
-      );
-      if (signedIn) {
-        expect(view.queryByRole("button", { name: "Sign out" })).toBeTruthy();
-      } else {
-        expect(view.queryByRole("button", { name: "Sign out" })).toBeNull();
-      }
+        (
+          getDesktopNavigation(view).getByRole("button", {
+            name: label,
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+      expect(
+        (
+          getMobileNavigation(view).getByRole("button", {
+            name: label,
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
     }
-  );
+
+    expect(
+      getDesktopNavigation(view)
+        .getByRole("link", { name: "Legal & Privacy" })
+        .getAttribute("href")
+    ).toBe("/en-US/account/legal");
+    expect(view.getByTestId("account-content")).toBeTruthy();
+    expect(view.getByTestId("account-modal")).toBeTruthy();
+    expect(view.queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
 
   test("cancels legal navigation when the existing dirty guard rejects it", () => {
     const originalConfirm = window.confirm;
@@ -234,12 +209,7 @@ describe("AccountLayoutShell", () => {
     try {
       const view = render(
         <UnsavedChangesProvider>
-          <AccountLayoutShell
-            accountsEnabled
-            locale="en-US"
-            referralsEnabled
-            signedIn
-          >
+          <AccountLayoutShell locale="en-US" referralsEnabled signedIn>
             <DirtyContent />
           </AccountLayoutShell>
         </UnsavedChangesProvider>
@@ -379,14 +349,6 @@ describe("AccountLayoutShell", () => {
     renderLayout(<p>Page</p>);
 
     expect(document.title).toBe("Page metadata");
-  });
-
-  test("leaves the title to the not-found page while accounts are off", () => {
-    pathname = "/en-US/account/billing";
-    document.title = "Not found metadata";
-    renderLayout(<p>Not found</p>, { accountsEnabled: false });
-
-    expect(document.title).toBe("Not found metadata");
   });
 
   test("never opens a withheld referral section, even at its path", () => {

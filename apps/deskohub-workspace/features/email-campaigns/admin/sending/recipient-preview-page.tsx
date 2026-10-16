@@ -7,7 +7,10 @@ import {
   AdministrationPage,
   AdministrationPageHeader,
 } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { Button } from "@/shared/components/ui/button";
+import { formatCount } from "@/shared/utils/number";
 import type { CampaignId } from "../../campaign-identifiers";
 import { loadRecipientPreview } from "./recipient-preview.server";
 import {
@@ -21,7 +24,10 @@ export async function RecipientPreviewPage({
 }: {
   readonly campaignId: CampaignId;
 }) {
-  const preview = await loadRecipientPreview(campaignId);
+  const [preview, locale] = await Promise.all([
+    loadRecipientPreview(campaignId),
+    getRequestLocale(),
+  ]);
   const campaignHref = `/admin/email-campaigns/${campaignId}`;
   return (
     <AdministrationPage>
@@ -30,73 +36,102 @@ export async function RecipientPreviewPage({
           <Button asChild size="sm" variant="secondary">
             <Link href={campaignHref}>
               <ArrowLeft aria-hidden className="size-4" />
-              Back to campaign
+              {m.emailCampaignsRecipientPreviewBackToCampaign({}, { locale })}
             </Link>
           </Button>
         }
         description={
           preview.kind === "no-audience"
             ? undefined
-            : `${preview.audienceTitle}: ${preview.audienceSummary}`
+            : m.emailCampaignsRecipientPreviewAudienceDescription(
+                {
+                  audience: preview.audienceTitle,
+                  filter: preview.audienceSummary,
+                },
+                { locale }
+              )
         }
         eyebrow={preview.campaign.title}
-        title="Recipient preview"
+        title={m.emailCampaignsRecipientPreviewTitle({}, { locale })}
       />
       {preview.kind === "no-audience" && (
         <AdministrationAlert status="warning">
-          This campaign has no audience yet. Choose one in the composer to
-          preview its recipients.
+          {m.emailCampaignsRecipientPreviewNoAudience({}, { locale })}
         </AdministrationAlert>
       )}
       {preview.kind === "unavailable" && (
         <AdministrationAlert role="alert" status="error">
-          <p>
-            Recipients couldn&apos;t be resolved because Dotypos is unavailable.
-            Nothing was changed.
-          </p>
+          <p>{m.emailCampaignsRecipientPreviewUnavailable({}, { locale })}</p>
           <Button asChild className="mt-3" size="sm" variant="secondary">
             <Link href={`${campaignHref}/recipients`}>
               <RotateCw aria-hidden className="size-4" />
-              Try again
+              {m.emailCampaignsRecipientPreviewTryAgain({}, { locale })}
             </Link>
           </Button>
         </AdministrationAlert>
       )}
       {preview.kind === "resolved" && (
         <div className="space-y-6">
-          <AdministrationDetailSection title="Summary">
+          <AdministrationDetailSection
+            title={m.emailCampaignsRecipientPreviewSummary({}, { locale })}
+          >
             <dl className="grid gap-4 sm:grid-cols-3">
               <AdministrationFact
-                label="Recipients"
-                value={preview.resolution.recipients.length}
+                label={m.emailCampaignsRecipientPreviewRecipients(
+                  {},
+                  { locale }
+                )}
+                value={formatCount(
+                  preview.resolution.recipients.length,
+                  locale
+                )}
                 valueClassName="text-2xl"
               />
               <AdministrationFact
-                label="Excluded"
-                value={preview.resolution.exclusions.length}
+                label={m.emailCampaignsRecipientPreviewExcluded({}, { locale })}
+                value={formatCount(
+                  preview.resolution.exclusions.length,
+                  locale
+                )}
                 valueClassName="text-2xl"
               />
               <AdministrationFact
-                label="Shared emails"
-                value={preview.resolution.duplicates.length}
+                label={m.emailCampaignsRecipientPreviewSharedEmails(
+                  {},
+                  { locale }
+                )}
+                value={formatCount(
+                  preview.resolution.duplicates.length,
+                  locale
+                )}
                 valueClassName="text-2xl"
               />
             </dl>
             <p className="mt-4 text-sm text-navy-blue/65">
-              This resolves the audience as of now. Sending resolves it again
-              and freezes that list.
+              {m.emailCampaignsRecipientPreviewAsOfNow({}, { locale })}
             </p>
           </AdministrationDetailSection>
-          <AdministrationDetailSection title="Recipients">
+          <AdministrationDetailSection
+            title={m.emailCampaignsRecipientPreviewRecipients({}, { locale })}
+          >
             <RecipientTable recipients={preview.resolution.recipients} />
           </AdministrationDetailSection>
-          <AdministrationDetailSection title="Excluded customers">
+          <AdministrationDetailSection
+            title={m.emailCampaignsRecipientPreviewExcludedCustomers(
+              {},
+              { locale }
+            )}
+          >
             <ExclusionTable exclusions={preview.resolution.exclusions} />
           </AdministrationDetailSection>
-          <AdministrationDetailSection title="Shared email addresses">
+          <AdministrationDetailSection
+            title={m.emailCampaignsRecipientPreviewSharedEmailsTitle(
+              {},
+              { locale }
+            )}
+          >
             <p className="mb-4 text-sm text-navy-blue/65">
-              Customers sharing an email get one email, sent to the customer who
-              reserved most recently.
+              {m.emailCampaignsRecipientPreviewSharedEmailsNote({}, { locale })}
             </p>
             <DuplicateTable duplicates={preview.resolution.duplicates} />
           </AdministrationDetailSection>

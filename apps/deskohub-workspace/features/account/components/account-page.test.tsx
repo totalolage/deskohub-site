@@ -244,7 +244,6 @@ describe("AccountPage states", () => {
       state.kind !== "unauthenticated" && state.kind !== "unavailable";
     const view = render(
       <AccountLayoutShell
-        accountsEnabled
         locale={locale}
         passkeysEnabled={"passkeys" in state && state.passkeys !== undefined}
         referralsEnabled
@@ -354,7 +353,7 @@ describe("AccountPage states", () => {
         setState({ ...linkedState, signupReferral: { status: "applied" } });
 
       return (
-        <AccountLayoutShell accountsEnabled locale="en-US" signedIn>
+        <AccountLayoutShell locale="en-US" signedIn>
           <AccountPage locale="en-US" state={state} />
         </AccountLayoutShell>
       );
@@ -423,7 +422,7 @@ describe("AccountPage states", () => {
         );
 
       return (
-        <AccountLayoutShell accountsEnabled locale="en-US" signedIn>
+        <AccountLayoutShell locale="en-US" signedIn>
           <AccountPage locale="en-US" state={state} />
         </AccountLayoutShell>
       );
@@ -550,7 +549,7 @@ describe("AccountPage states", () => {
       const { AccountLayoutShell } = await import("./account-layout-shell");
       const { AccountPage } = await import("./account-page");
       const page = (state: CustomerAccountPageState) => (
-        <AccountLayoutShell accountsEnabled locale="en-US" signedIn>
+        <AccountLayoutShell locale="en-US" signedIn>
           <AccountPage locale="en-US" state={state} />
         </AccountLayoutShell>
       );

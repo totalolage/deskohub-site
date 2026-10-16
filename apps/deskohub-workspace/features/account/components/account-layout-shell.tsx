@@ -34,7 +34,6 @@ import { GuardedLink } from "@/shared/components/guarded-link";
 import { useConfirmDiscardChanges } from "@/shared/components/unsaved-changes-guard";
 
 export type AccountLayoutShellProps = {
-  readonly accountsEnabled: boolean;
   readonly locale: Locale;
   /** Whether `login_passkeys` is on; off, Sign-in & security has no section. */
   readonly passkeysEnabled: boolean;
@@ -45,7 +44,6 @@ export type AccountLayoutShellProps = {
 };
 
 export type AccountLayoutContextValue = {
-  readonly accountsEnabled: boolean;
   readonly activeSection: AccountSection;
   readonly changeSection: (section: AccountSection) => void;
   readonly setReservationCount: (count: number | undefined) => void;
@@ -96,7 +94,6 @@ function AccountHelp({ locale }: { readonly locale: Locale }) {
 }
 
 export function AccountLayoutShell({
-  accountsEnabled,
   children,
   locale,
   passkeysEnabled,
@@ -137,13 +134,10 @@ export function AccountLayoutShell({
     localNavigation.routeKey === routeKey
       ? localNavigation.activeSection
       : routeSection;
-  const privateNavigationEnabled = signedIn && accountsEnabled;
   // The page metadata keeps titling the section the page was loaded at, also
   // after an in-place switch and when Back restores a switched path, so the
-  // title follows the path's section as a reload of it would. Without
-  // accounts, the page is not found and keeps its own title.
+  // title follows the path's section as a reload of it would.
   const pageTitle =
-    !accountsEnabled ||
     pathnameSection === undefined ||
     pathnameSection === "legal" ||
     pathnameSection !== routeSection
@@ -165,7 +159,7 @@ export function AccountLayoutShell({
         return;
       }
 
-      if (!privateNavigationEnabled) return;
+      if (!signedIn) return;
       if (
         !isAccountSectionReleased(section, {
           passkeysEnabled,
@@ -198,10 +192,10 @@ export function AccountLayoutShell({
       isLegalPathname,
       locale,
       passkeysEnabled,
-      privateNavigationEnabled,
       referralsEnabled,
       routeKey,
       router,
+      signedIn,
     ]
   );
 
@@ -213,13 +207,12 @@ export function AccountLayoutShell({
 
   const contextValue = useMemo<AccountLayoutContextValue>(
     () => ({
-      accountsEnabled,
       activeSection,
       changeSection,
       setReservationCount,
       setReferralBadge,
     }),
-    [accountsEnabled, activeSection, changeSection, setReservationCount]
+    [activeSection, changeSection, setReservationCount]
   );
 
   if (isDeletedPathname) {
@@ -231,9 +224,7 @@ export function AccountLayoutShell({
   return (
     <AccountShell
       activeSection={activeSection}
-      disabledSections={
-        privateNavigationEnabled ? undefined : anonymousDisabledSections
-      }
+      disabledSections={signedIn ? undefined : anonymousDisabledSections}
       hiddenSections={flagGatedAccountSections.filter(
         (section) =>
           !isAccountSectionReleased(section, {

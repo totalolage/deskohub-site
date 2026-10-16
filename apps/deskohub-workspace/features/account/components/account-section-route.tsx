@@ -10,10 +10,7 @@ import {
   isAccountPageSection,
   isAccountSectionReleased,
 } from "@/features/account/sections";
-import {
-  areAccountsEnabled,
-  arePasskeysEnabled,
-} from "@/features/account/server/account-feature-flag.server";
+import { arePasskeysEnabled } from "@/features/account/server/account-feature-flag.server";
 import { type Locale, m } from "@/features/i18n";
 import { areReferralsEnabled } from "@/features/referrals/referral-feature-flag.server";
 
@@ -58,7 +55,6 @@ async function AccountSectionContent({
   readonly section?: Promise<string>;
 }) {
   await connection();
-  if (!(await areAccountsEnabled())) notFound();
   if (section !== undefined) {
     const requestedSection = await section;
     if (!isAccountPageSection(requestedSection)) notFound();

@@ -6,10 +6,6 @@ import {
   type AccountLegalFixture,
   accountFixtureAuthHeader,
   accountFixtureCaseTimeout,
-  accountFixtureMarketingLinkHeader,
-  accountFixtureMarketingLinkValue,
-  accountFixtureRolloutHeader,
-  accountFixtureRolloutOffValue,
   closeFixtureContext,
   openFixtureContext,
   registerAccountLegalFixture,
@@ -838,87 +834,6 @@ const assertAnonymousLegalRoute = async (
   }
 };
 
-const assertSignedInRolloutOffLegalRoute = async (
-  fixture: AccountLegalFixture,
-  locale: Locale
-) => {
-  const context = await openFixtureContext(fixture, {
-    extraHTTPHeaders: {
-      [accountFixtureAuthHeader]: "private",
-      [accountFixtureMarketingLinkHeader]: accountFixtureMarketingLinkValue,
-      [accountFixtureRolloutHeader]: accountFixtureRolloutOffValue,
-    },
-    viewport: { height: 900, width: 375 },
-  });
-  const page = await context.newPage();
-
-  try {
-    await page.goto(`${fixture.serverUrl}/${locale}/account/legal`, {
-      waitUntil: "domcontentloaded",
-    });
-    await waitForPublicLegalContent(page, locale);
-    await page.locator(accountHeaderSelector).waitFor({ state: "visible" });
-    await page.locator(accountNavigationSelector).waitFor({ state: "visible" });
-    await page.locator(siteHeaderSelector).waitFor({ state: "visible" });
-
-    const signOutButton = page.getByRole("button", {
-      exact: true,
-      name: m.accountSignOut({}, { locale }),
-    });
-    await signOutButton.waitFor({ state: "visible" });
-    expect(await signOutButton.count()).toBe(1);
-
-    const navigation = accountNavigation(page, locale);
-    for (const section of [
-      "reservations",
-      "profile",
-      "billing",
-      "danger",
-    ] as const) {
-      const buttons = navigation.getByRole("button", {
-        exact: true,
-        includeHidden: true,
-        name: accountSectionLabels(locale)[section],
-      });
-      expect(await buttons.count()).toBe(2);
-      expect(
-        await buttons.evaluateAll((elements) =>
-          elements.every((element) => (element as HTMLButtonElement).disabled)
-        )
-      ).toBe(true);
-    }
-
-    const legalLinks = navigation.getByRole("link", {
-      exact: true,
-      includeHidden: true,
-      name: accountSectionLabels(locale).legal,
-    });
-    expect(await legalLinks.count()).toBe(2);
-
-    const dedicatedLinkContent = page.locator(
-      '[data-marketing-preferences="pending-link"]'
-    );
-    await dedicatedLinkContent.waitFor({ state: "visible" });
-    expect(await dedicatedLinkContent.count()).toBe(1);
-    expect(
-      await page
-        .getByText(
-          m.marketingPreferencesFormPendingDescription({}, { locale }),
-          {
-            exact: true,
-          }
-        )
-        .count()
-    ).toBe(1);
-    await assertGlobalHeaderGeometry(page);
-    await assertAccountNavigationControls(page, locale, "mobile", false);
-    await assertMobileLegalScroll(page);
-    await restoreTopScroll(page);
-  } finally {
-    await closeFixtureContext(fixture, context);
-  }
-};
-
 describe("account legal continuity browser fixture", () => {
   const requireFixture = registerAccountLegalFixture();
 
@@ -948,11 +863,5 @@ describe("account legal continuity browser fixture", () => {
     timeout: accountFixtureCaseTimeout,
   }, async () => {
     await assertAnonymousLegalRoute(requireFixture(), "cs-CZ");
-  });
-
-  test("keeps signed-in en-US public legal usable when the account rollout is off", {
-    timeout: accountFixtureCaseTimeout,
-  }, async () => {
-    await assertSignedInRolloutOffLegalRoute(requireFixture(), "en-US");
   });
 });

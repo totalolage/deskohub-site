@@ -8,13 +8,11 @@ import { GuardedLink } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
 
 export interface LegalScreenProps {
-  readonly accountsEnabled?: boolean;
   readonly locale: Locale;
   readonly marketingPreferences?: MarketingPreferencesState;
 }
 
 export function LegalScreen({
-  accountsEnabled = true,
   locale,
   marketingPreferences,
 }: LegalScreenProps) {
@@ -48,7 +46,6 @@ export function LegalScreen({
       </nav>
 
       <LegalPreferenceSettings
-        accountsEnabled={accountsEnabled}
         locale={locale}
         marketingPreferences={marketingPreferences}
       />

@@ -25,13 +25,7 @@ function ActiveSectionProbe() {
 }
 
 createRoot(mountPoint).render(
-  <AccountLayoutShell
-    accountsEnabled
-    locale={locale}
-    passkeysEnabled
-    referralsEnabled
-    signedIn
-  >
+  <AccountLayoutShell locale={locale} passkeysEnabled referralsEnabled signedIn>
     <ActiveSectionProbe />
   </AccountLayoutShell>
 );

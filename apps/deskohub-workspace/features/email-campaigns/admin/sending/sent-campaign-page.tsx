@@ -7,6 +7,9 @@ import {
   AdministrationPageHeader,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import { formatCount } from "@/shared/utils/number";
 import { campaignRecipientStatuses } from "../../campaign-states";
 import {
   describeAudienceFilter,
@@ -30,11 +33,15 @@ export async function SentCampaignPage({
 }: {
   readonly campaign: CampaignRow;
 }) {
-  const [{ send, audienceTitle }, discountGroups, emails] = await Promise.all([
-    loadSentCampaign(campaign.id),
-    loadDiscountGroupOptions(),
-    loadSentCampaignEmails(campaign),
-  ]);
+  const [{ send, audienceTitle }, discountGroups, emails, locale] =
+    await Promise.all([
+      loadSentCampaign(campaign.id),
+      loadDiscountGroupOptions(),
+      loadSentCampaignEmails(campaign),
+      getRequestLocale(),
+    ]);
+  const sentAt =
+    send && formatAdministrationDateTime(send.createdAt.toString(), locale);
   return (
     <AdministrationPage>
       <AdministrationPageHeader
@@ -45,7 +52,7 @@ export async function SentCampaignPage({
             unconfirmedCount={send?.counts.unconfirmed ?? 0}
           />
         }
-        eyebrow="Email campaign"
+        eyebrow={m.emailCampaignsSentEyebrow({}, { locale })}
         title={campaign.title}
       />
       <div className="space-y-6">
@@ -54,100 +61,142 @@ export async function SentCampaignPage({
             draft: null,
             sending: (
               <AdministrationAlert status="warning">
-                Delivery is in progress. Recipient statuses update as the email
-                provider reports them.
+                {m.emailCampaignsSentSendingNotice({}, { locale })}
               </AdministrationAlert>
             ),
             sent: null,
             failed: (
               <AdministrationAlert status="error">
-                Delivery failed for some recipients. Retry undelivered sends
-                only to recipients who didn&apos;t get the email.
+                {m.emailCampaignsSentFailedNotice({}, { locale })}
               </AdministrationAlert>
             ),
           }[campaign.status]
         }
-        <AdministrationDetailSection title="Campaign">
+        <AdministrationDetailSection
+          title={m.emailCampaignsSentCampaignTitle({}, { locale })}
+        >
           <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <AdministrationFact
-              label="Status"
-              value={<CampaignStatusBadge status={campaign.status} />}
-            />
-            <AdministrationFact
-              label="Purpose"
-              value={<CampaignPurposeBadge purpose={campaign.purpose} />}
-            />
-            <AdministrationFact
-              label="Sent"
+              label={m.emailCampaignsSentStatus({}, { locale })}
               value={
-                send
-                  ? formatAdministrationDateTime(send.createdAt.toString())
-                  : "Not recorded"
+                <CampaignStatusBadge locale={locale} status={campaign.status} />
               }
             />
             <AdministrationFact
-              label="Completed"
+              label={m.emailCampaignsSentPurpose({}, { locale })}
+              value={
+                <CampaignPurposeBadge
+                  locale={locale}
+                  purpose={campaign.purpose}
+                />
+              }
+            />
+            <AdministrationFact
+              label={m.emailCampaignsSentSentAt({}, { locale })}
+              value={
+                sentAt ?? m.emailCampaignsSentSentAtNotRecorded({}, { locale })
+              }
+            />
+            <AdministrationFact
+              label={m.emailCampaignsSentCompletedAt({}, { locale })}
               value={
                 send?.completedAt
-                  ? formatAdministrationDateTime(send.completedAt.toString())
-                  : "Not yet"
+                  ? formatAdministrationDateTime(
+                      send.completedAt.toString(),
+                      locale
+                    )
+                  : m.emailCampaignsSentCompletedAtPending({}, { locale })
               }
             />
           </dl>
         </AdministrationDetailSection>
-        <AdministrationDetailSection title="Audience at send time">
+        <AdministrationDetailSection
+          title={m.emailCampaignsSentAudienceTitle({}, { locale })}
+        >
           {send ? (
             <dl className="grid gap-4 sm:grid-cols-2">
               <AdministrationFact
-                label="Audience"
-                value={audienceTitle ?? "Deleted audience"}
+                label={m.emailCampaignsSentAudience({}, { locale })}
+                value={
+                  audienceTitle ??
+                  m.emailCampaignsSentAudienceDeleted({}, { locale })
+                }
               />
               <AdministrationFact
-                label="Filter"
+                label={m.emailCampaignsSentAudienceFilter({}, { locale })}
                 value={
                   hasPeriodEndingAtEvaluation(send.audienceFilter)
-                    ? `${describeAudienceFilter(send.audienceFilter, { discountGroups })}, counted back from the send time (${formatAdministrationDateTime(send.createdAt.toString())}).`
-                    : describeAudienceFilter(send.audienceFilter, {
-                        discountGroups,
-                      })
+                    ? m.emailCampaignsSentAudienceFilterCountedBack(
+                        {
+                          filter: describeAudienceFilter(
+                            send.audienceFilter,
+                            locale,
+                            { discountGroups }
+                          ),
+                          sentAt: formatAdministrationDateTime(
+                            send.createdAt.toString(),
+                            locale
+                          ),
+                        },
+                        { locale }
+                      )
+                    : m.emailCampaignsSentAudienceFilterSummary(
+                        {
+                          filter: describeAudienceFilter(
+                            send.audienceFilter,
+                            locale,
+                            { discountGroups }
+                          ),
+                        },
+                        { locale }
+                      )
                 }
               />
             </dl>
           ) : (
             <p className="text-sm text-navy-blue/65">
-              No send was recorded for this campaign.
+              {m.emailCampaignsSentNoSendRecorded({}, { locale })}
             </p>
           )}
         </AdministrationDetailSection>
-        <AdministrationDetailSection title="Content">
+        <AdministrationDetailSection
+          title={m.emailCampaignsSentContentTitle({}, { locale })}
+        >
           <SentCampaignEmailPreview emails={emails} />
         </AdministrationDetailSection>
         {send && (
           <>
-            <AdministrationDetailSection title="Delivery">
+            <AdministrationDetailSection
+              title={m.emailCampaignsSentDeliveryTitle({}, { locale })}
+            >
               <p className="text-2xl font-semibold">
-                {send.recipients.length}{" "}
-                {send.recipients.length === 1 ? "recipient" : "recipients"}
+                {m.emailCampaignsSentDeliveryRecipientCount(
+                  { count: send.recipients.length },
+                  { locale }
+                )}
               </p>
               <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-3">
                 {campaignRecipientStatuses.map((status) => (
                   <li className="flex items-center gap-2" key={status}>
-                    <CampaignRecipientStatusBadge status={status} />
+                    <CampaignRecipientStatusBadge
+                      locale={locale}
+                      status={status}
+                    />
                     <span className="text-lg font-semibold tabular-nums">
-                      {send.counts[status]}
+                      {formatCount(send.counts[status], locale)}
                     </span>
                   </li>
                 ))}
               </ul>
               {send.counts.unconfirmed > 0 && (
                 <p className="mt-4 max-w-prose text-sm text-navy-blue/65">
-                  Unconfirmed recipients may already have the email: the
-                  provider never confirmed their batch. Retry undelivered skips
-                  them unless you also choose to resend to them.
+                  {m.emailCampaignsSentDeliveryUnconfirmedNote({}, { locale })}
                 </p>
               )}
             </AdministrationDetailSection>
-            <AdministrationDetailSection title="Recipients">
+            <AdministrationDetailSection
+              title={m.emailCampaignsSentRecipientsTitle({}, { locale })}
+            >
               <SentRecipientTable
                 recipients={send.recipients.map((recipient) => ({
                   dotyposCustomerId: recipient.dotyposCustomerId,
@@ -155,6 +204,10 @@ export async function SentCampaignPage({
                   status: recipient.status,
                   skipReason: recipient.skipReason,
                   statusUpdatedAt: recipient.statusUpdatedAt.toString(),
+                  statusSince: formatAdministrationDateTime(
+                    recipient.statusUpdatedAt.toString(),
+                    locale
+                  ),
                 }))}
               />
             </AdministrationDetailSection>

@@ -237,7 +237,6 @@ function withAccountLayout(
 ) {
   return (
     <AccountLayoutShell
-      accountsEnabled
       locale={locale}
       passkeysEnabled={passkeysEnabled}
       referralsEnabled
@@ -512,7 +511,7 @@ describe("LinkedAccount", () => {
           <>
             <React.Activity mode="hidden">{privateAccount}</React.Activity>
             <div data-testid="public-account-legal-peer">
-              <PublicAccountLegal accountsEnabled locale={locale} />
+              <PublicAccountLegal locale={locale} />
             </div>
           </>,
           { locale }
@@ -691,12 +690,7 @@ describe("LinkedAccount", () => {
     const code = parseReferralCode("RFL12345");
     if (code === undefined) throw new Error("Invalid referral test code");
     const view = render(
-      <AccountLayoutShell
-        accountsEnabled
-        locale="en-US"
-        referralsEnabled={false}
-        signedIn
-      >
+      <AccountLayoutShell locale="en-US" referralsEnabled={false} signedIn>
         <LinkedAccount
           avatarPresentation={hiddenAvatarPresentation}
           email={adaAddress}

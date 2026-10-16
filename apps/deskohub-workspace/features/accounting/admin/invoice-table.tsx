@@ -123,6 +123,7 @@ export function InvoiceAdministrationTable({
   readonly items: readonly InvoiceAdministrationListItem[];
   readonly query: InvoiceAdministrationListQuery;
 }) {
+  const locale = useRouteLocale();
   const sorting: AdministrationDataTableSorting = query.sort
     ? [{ id: query.sort, desc: query.direction === "desc" }]
     : [];
@@ -162,7 +163,7 @@ export function InvoiceAdministrationTable({
                 {invoice.total} {invoice.currency}
               </p>
               <p className="mt-1 text-xs text-navy-blue/60">
-                Issued {formatAdministrationDateTime(invoice.issuedAt)}
+                Issued {formatAdministrationDateTime(invoice.issuedAt, locale)}
               </p>
               <div className="mt-3 flex items-start justify-between gap-3">
                 <InvoiceDeliveryBadge invoice={invoice} />

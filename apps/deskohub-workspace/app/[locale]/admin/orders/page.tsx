@@ -29,7 +29,11 @@ export default function OrdersAdministrationPage({
       <h1 className="sr-only">Orders</h1>
       <AdministrationTableToolbar
         count={
-          <Suspense fallback={<AdministrationCountLoading label="order" />}>
+          <Suspense
+            fallback={
+              <AdministrationCountLoading label="Loading order count" />
+            }
+          >
             <OrderCount result={result} />
           </Suspense>
         }
@@ -38,11 +42,11 @@ export default function OrdersAdministrationPage({
             <OrderFiltersContent range={range} />
           </Suspense>
         }
-        itemLabel="order"
+        label="order table controls"
       />
       <Suspense
         fallback={
-          <AdministrationCollectionLoading label="orders" columns={6} />
+          <AdministrationCollectionLoading label="Loading orders" columns={6} />
         }
       >
         <OrderResultsContent result={result} />
@@ -62,10 +66,11 @@ async function OrderCount({
 }: {
   readonly result: Promise<OrdersData["result"]>;
 }) {
+  const count = (await result).items.length;
   return (
     <AdministrationTableCount
-      count={(await result).items.length}
-      itemLabel="order"
+      count={count}
+      label={`${count} order${count === 1 ? "" : "s"}`}
     />
   );
 }
