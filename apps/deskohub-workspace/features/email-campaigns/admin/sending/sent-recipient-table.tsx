@@ -1,19 +1,21 @@
 "use client";
 
+import { useMemo } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
 } from "@/features/administration/data-table";
 import { EmptyState } from "@/features/administration/empty-state";
-import { formatAdministrationDateTime } from "@/features/administration/formatters";
+import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import type {
   CampaignRecipientSkipReason,
   CampaignRecipientStatus,
 } from "../../campaign-states";
 import { CampaignRecipientStatusBadge } from "../campaign-list/campaign-badges";
-import { campaignLocaleNames } from "./campaign-locale-names";
+import { campaignLocaleName } from "./campaign-locale-names";
 
 export type SentRecipientRow = {
   readonly dotyposCustomerId: string;
@@ -21,23 +23,33 @@ export type SentRecipientRow = {
   readonly status: CampaignRecipientStatus;
   /** Why a `skipped` recipient wasn't mailed; null for other statuses. */
   readonly skipReason: CampaignRecipientSkipReason | null;
-  /** ISO instant. */
+  /** ISO instant, for sorting. */
   readonly statusUpdatedAt: string;
+  /**
+   * `statusUpdatedAt` formatted on the server: Node and the browser space
+   * date-times differently.
+   */
+  readonly statusSince: string;
 };
 
-const skipReasonLabels = {
-  "missing-from-dotypos": "No longer in Dotypos",
-  "deleted-customer": "Customer deleted",
-  "missing-email": "No email address",
-  "invalid-email": "Invalid email address",
-  "consent-withdrawn": "Marketing consent withdrawn",
-  "outside-test-domain": "Outside the test email domain",
-} as const satisfies Record<CampaignRecipientSkipReason, string>;
+const skipReasonMessages = {
+  "missing-from-dotypos": m.emailCampaignsSentSkipReasonMissingFromDotypos,
+  "deleted-customer": m.emailCampaignsSentSkipReasonDeletedCustomer,
+  "missing-email": m.emailCampaignsSentSkipReasonMissingEmail,
+  "invalid-email": m.emailCampaignsSentSkipReasonInvalidEmail,
+  "consent-withdrawn": m.emailCampaignsSentSkipReasonConsentWithdrawn,
+  "outside-test-domain": m.emailCampaignsSentSkipReasonOutsideTestDomain,
+} as const satisfies Record<
+  CampaignRecipientSkipReason,
+  typeof m.emailCampaignsSentSkipReasonMissingFromDotypos
+>;
 
-const columns: AdministrationDataTableColumn<SentRecipientRow>[] = [
+const createColumns = (
+  locale: Locale
+): AdministrationDataTableColumn<SentRecipientRow>[] => [
   {
     accessorKey: "dotyposCustomerId",
-    header: "Customer",
+    header: m.emailCampaignsSentRecipientsCustomerColumn({}, { locale }),
     cell: ({ row }) => (
       <Link
         className="font-mono underline decoration-navy-blue/25 underline-offset-4 hover:decoration-navy-blue"
@@ -48,28 +60,31 @@ const columns: AdministrationDataTableColumn<SentRecipientRow>[] = [
     ),
   },
   {
-    accessorFn: (recipient) => campaignLocaleNames[recipient.locale],
+    accessorFn: (recipient) => campaignLocaleName(recipient.locale, locale),
     id: "locale",
-    header: "Language",
+    header: m.emailCampaignsSentRecipientsLanguageColumn({}, { locale }),
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: m.emailCampaignsSentRecipientsStatusColumn({}, { locale }),
     cell: ({ row }) => (
-      <CampaignRecipientStatusBadge status={row.original.status} />
+      <CampaignRecipientStatusBadge
+        locale={locale}
+        status={row.original.status}
+      />
     ),
   },
   {
     accessorFn: (recipient) =>
-      recipient.skipReason && skipReasonLabels[recipient.skipReason],
+      recipient.skipReason &&
+      skipReasonMessages[recipient.skipReason]({}, { locale }),
     id: "skipReason",
-    header: "Skip reason",
+    header: m.emailCampaignsSentRecipientsSkipReasonColumn({}, { locale }),
   },
   {
     accessorKey: "statusUpdatedAt",
-    header: "Status since",
-    cell: ({ row }) =>
-      formatAdministrationDateTime(row.original.statusUpdatedAt),
+    header: m.emailCampaignsSentRecipientsStatusSinceColumn({}, { locale }),
+    cell: ({ row }) => row.original.statusSince,
   },
 ];
 
@@ -78,12 +93,18 @@ export function SentRecipientTable({
 }: {
   readonly recipients: readonly SentRecipientRow[];
 }) {
+  const locale = useRouteLocale();
+  const columns = useMemo(() => createColumns(locale), [locale]);
   if (recipients.length === 0) {
-    return <EmptyState message="This send froze no recipients." />;
+    return (
+      <EmptyState
+        message={m.emailCampaignsSentRecipientsEmpty({}, { locale })}
+      />
+    );
   }
   return (
     <AdministrationDataTable
-      ariaLabel="Campaign recipients"
+      ariaLabel={m.emailCampaignsSentRecipientsTableLabel({}, { locale })}
       columns={columns}
       data={recipients}
       getRowId={(recipient) => recipient.dotyposCustomerId}
@@ -101,16 +122,32 @@ export function SentRecipientTable({
                 >
                   {recipient.dotyposCustomerId}
                 </Link>
-                <CampaignRecipientStatusBadge status={recipient.status} />
+                <CampaignRecipientStatusBadge
+                  locale={locale}
+                  status={recipient.status}
+                />
               </p>
               {recipient.skipReason && (
                 <p className="text-navy-blue/65">
-                  Skipped: {skipReasonLabels[recipient.skipReason]}
+                  {m.emailCampaignsSentRecipientsSkipped(
+                    {
+                      reason: skipReasonMessages[recipient.skipReason](
+                        {},
+                        { locale }
+                      ),
+                    },
+                    { locale }
+                  )}
                 </p>
               )}
               <p className="text-navy-blue/65">
-                {campaignLocaleNames[recipient.locale]} · since{" "}
-                {formatAdministrationDateTime(recipient.statusUpdatedAt)}
+                {m.emailCampaignsSentRecipientsLanguageSince(
+                  {
+                    language: campaignLocaleName(recipient.locale, locale),
+                    statusUpdatedAt: recipient.statusSince,
+                  },
+                  { locale }
+                )}
               </p>
             </li>
           ))}
