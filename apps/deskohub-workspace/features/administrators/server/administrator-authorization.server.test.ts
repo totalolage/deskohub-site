@@ -36,6 +36,9 @@ mock.module("next/server", () => ({
   after: () => {},
   connection: () => Promise.resolve(),
 }));
+mock.module("next/root-params", () => ({
+  locale: () => Promise.resolve("en-US"),
+}));
 mock.module("./administrator-access-layer.server", () => ({
   administratorAccessLayer: Layer.mergeAll(
     Layer.succeed(CustomerAuthentication, {
