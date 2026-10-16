@@ -6,13 +6,8 @@
   "administrationBookingColumnTable": "Table",
   "administrationBookingCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} booking",
         "countPlural=other": "{count} bookings"
@@ -38,13 +33,8 @@
   "administrationBookingFactTable": "Table",
   "administrationBookingGuestCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} guest",
         "countPlural=other": "{count} guests"
@@ -83,9 +73,7 @@
         "input date",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} reservation on {date}",
         "countPlural=other": "{count} reservations on {date}"
@@ -97,13 +85,8 @@
   "administrationCustomerActivityUnavailable": "Reservation activity is temporarily unavailable.",
   "administrationCustomerActivityYearTotal": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} reservation in the past 365 days",
         "countPlural=other": "{count} reservations in the past 365 days"
@@ -113,13 +96,8 @@
   "administrationCustomerContactUnavailable": "Customer details unavailable",
   "administrationCustomerCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} customer",
         "countPlural=other": "{count} customers"
@@ -142,9 +120,7 @@
         "input date",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} reservation · Updated {date}",
         "countPlural=other": "{count} reservations · Updated {date}"
@@ -160,13 +136,8 @@
   "administrationCustomerTablePhone": "Phone",
   "administrationCustomerTableReservationCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "<count>{count}</count> reservation",
         "countPlural=other": "<count>{count}</count> reservations"
@@ -218,13 +189,8 @@
   "administrationOperationColumnType": "Type",
   "administrationOperationCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} operation",
         "countPlural=other": "{count} operations"
@@ -264,13 +230,8 @@
   "administrationOrderColumnReservation": "Reservation",
   "administrationOrderCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} order",
         "countPlural=other": "{count} orders"
@@ -321,13 +282,8 @@
   "administrationOverviewLiveBookingDatesUnavailable": "Live booking dates unavailable",
   "administrationOverviewMoreCustomers": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "… and {count} more",
         "countPlural=other": "… and {count} more"
@@ -345,9 +301,7 @@
         "input completed",
         "local countPlural = count: plural"
       ],
-      "selectors": [
-        "countPlural"
-      ],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{completed} completed out of {count} total reservation",
         "countPlural=other": "{completed} completed out of {count} total reservations"
@@ -422,13 +376,8 @@
   "administrationRefundAttentionReview": "Review refunds",
   "administrationRefundAttentionTitle": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} reservation needs a refund.",
         "countPlural=other": "{count} reservations need a refund."
@@ -560,13 +509,8 @@
   "administrationReservationLifecycleWaitingForCleanup": "Waiting for cleanup",
   "administrationReservationListCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} reservation",
         "countPlural=other": "{count} reservations"
