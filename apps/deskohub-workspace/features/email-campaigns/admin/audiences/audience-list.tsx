@@ -8,7 +8,6 @@ import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
   EmptyState,
-  formatAdministrationDateTime,
 } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -85,7 +84,7 @@ export function AudienceList({
         header: m.emailCampaignsAudienceListColumnUpdated({}, { locale }),
         cell: ({ row }) => (
           <span className="whitespace-nowrap text-navy-blue/70 text-sm">
-            {formatAdministrationDateTime(row.original.updatedAt, locale)}
+            {row.original.updatedAtText}
           </span>
         ),
       },
@@ -136,12 +135,7 @@ export function AudienceList({
                 </span>
                 <span className="mt-3 block text-navy-blue/60 text-xs">
                   {m.emailCampaignsAudienceListUpdated(
-                    {
-                      date: formatAdministrationDateTime(
-                        audience.updatedAt,
-                        locale
-                      ),
-                    },
+                    { date: audience.updatedAtText },
                     { locale }
                   )}
                 </span>
