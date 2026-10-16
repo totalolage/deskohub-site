@@ -3,10 +3,13 @@ import {
   AdministrationPage,
   AdministrationPageHeader,
 } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
 import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { requireDotyposCustomerRouteId } from "@/features/administration/route-identifiers.server";
+import { formatDiscountAdminCustomerName } from "@/features/discounts/admin/customer-display-name";
 import { CustomerVoucherCreationForm } from "@/features/discounts/admin/customer-voucher-creation";
 import { loadDiscountAdminCustomerVoucherCreationPageData } from "@/features/discounts/admin/page-data.server";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function CustomerVoucherCreationPage({
   params,
@@ -27,22 +30,33 @@ async function CustomerVoucherCreationContent({
 }: {
   readonly params: Promise<{ readonly customerId: string }>;
 }) {
+  const locale = await getRequestLocale();
   const { customerId } = await params;
   const { customer } = await loadDiscountAdminCustomerVoucherCreationPageData(
     requireDotyposCustomerRouteId(customerId)
+  );
+  const customerName = formatDiscountAdminCustomerName(
+    customer.displayName,
+    locale
   );
 
   return (
     <>
       <AdministrationPageHeader
-        description="Issue promotional credit that only this customer can spend."
-        eyebrow="Voucher"
-        title={`Create a voucher for ${customer.displayName}`}
+        description={m.discountsCustomerVoucherCreateDescription(
+          {},
+          { locale }
+        )}
+        eyebrow={m.discountsVoucherEyebrow({}, { locale })}
+        title={m.discountsCustomerVoucherCreateTitle(
+          { customerName },
+          { locale }
+        )}
       />
       <div className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
         <CustomerVoucherCreationForm
           completion="customer"
-          customer={{ displayName: customer.displayName, id: customer.id }}
+          customer={{ displayName: customerName, id: customer.id }}
         />
       </div>
     </>

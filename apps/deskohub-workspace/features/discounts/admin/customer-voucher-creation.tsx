@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import { m } from "@/features/administration/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import {
   Dialog,
@@ -51,6 +52,7 @@ export function CustomerVoucherCreationDialog({
   readonly customer: VoucherCustomer;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
 
   return (
     <Dialog
@@ -59,11 +61,19 @@ export function CustomerVoucherCreationDialog({
       }}
       open
     >
-      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-4xl overflow-y-auto">
+      <DialogContent
+        className="max-h-[calc(100vh-2rem)] max-w-4xl overflow-y-auto"
+        locale={locale}
+      >
         <DialogHeader>
-          <DialogTitle>Create voucher for {customer.displayName}</DialogTitle>
+          <DialogTitle>
+            {m.discountsCustomerVoucherCreateTitle(
+              { customerName: customer.displayName },
+              { locale }
+            )}
+          </DialogTitle>
           <DialogDescription>
-            Issue promotional credit that only this customer can spend.
+            {m.discountsCustomerVoucherCreateDescription({}, { locale })}
           </DialogDescription>
         </DialogHeader>
         <div className="mt-5">

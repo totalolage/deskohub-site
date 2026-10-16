@@ -1,3 +1,4 @@
+import { m } from "@/features/administration/i18n";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceProductTargetKey,
@@ -6,18 +7,23 @@ import {
   workspaceCoworkTierProductTargets,
   workspaceProductTargets,
 } from "@/features/discounts/product-target";
+import type { Locale } from "@/features/i18n";
 
-const getDiscountProductTargetLabel = (
-  target: WorkspaceProductTarget
+export const getDiscountProductTargetLabel = (
+  target: WorkspaceProductTarget,
+  locale: Locale
 ): string => {
   if (target.kind === "cowork") {
     return target.tier === undefined
-      ? "All cowork tiers"
-      : `${getWorkspaceProductByTier(target.tier).label} only`;
+      ? m.discountsProductAllCoworkTiers({}, { locale })
+      : m.discountsProductCoworkTierOnly(
+          { product: getWorkspaceProductByTier(target.tier).label },
+          { locale }
+        );
   }
-  return { "meeting-room": "Meeting room", office: "Private office" }[
-    target.kind
-  ];
+  return target.kind === "meeting-room"
+    ? m.discountsProductMeetingRoom({}, { locale })
+    : m.discountsProductPrivateOffice({}, { locale });
 };
 
 /** Every target an operator can choose, with each cowork tier after cowork. */
@@ -29,7 +35,6 @@ export const discountProductTargetOptions = workspaceProductTargets
   )
   .map((target) => ({
     key: getWorkspaceProductTargetKey(target),
-    label: getDiscountProductTargetLabel(target),
     target,
   }));
 
@@ -46,5 +51,9 @@ export const toDiscountProductTargets = (
     .map(({ target }) => target);
 
 export const formatDiscountProductTargets = (
-  targets: readonly WorkspaceProductTarget[]
-) => targets.map(getDiscountProductTargetLabel).join(", ");
+  targets: readonly WorkspaceProductTarget[],
+  locale: Locale
+) =>
+  targets
+    .map((target) => getDiscountProductTargetLabel(target, locale))
+    .join(", ");

@@ -1,6 +1,8 @@
 "use server";
 
-import { Effect, Match } from "effect";
+import { Effect } from "effect";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
 import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
@@ -14,10 +16,35 @@ import {
 } from "./contracts";
 import { DiscountAdministration } from "./discount-administration.service";
 import { executeDiscountAdminMutation } from "./execute-discount-admin-mutation";
+import { getDiscountAdminMutationErrorMessage } from "./mutation-error-message";
+
+const discountAdminMutationNotices = {
+  "create-discount": m.discountsNoticeDiscountCreated,
+  "update-discount": m.discountsNoticeDiscountUpdated,
+  "delete-discount": m.discountsNoticeDiscountDeleted,
+  "create-code": m.discountsNoticeCodeCreated,
+  "create-customer-code": m.discountsNoticeCustomerCodeCreated,
+  "update-code": m.discountsNoticeCodeUpdated,
+  "delete-code": m.discountsNoticeCodeDeleted,
+  "add-code-customer": m.discountsNoticeCodeCustomerAdded,
+  "remove-code-customer": m.discountsNoticeCodeCustomerRemoved,
+  "make-code-unrestricted": m.discountsNoticeCodeMadeUnrestricted,
+  "create-voucher": m.discountsNoticeVoucherCreated,
+  "create-customer-voucher": m.discountsNoticeCustomerVoucherCreated,
+  "update-voucher": m.discountsNoticeVoucherUpdated,
+  "delete-voucher": m.discountsNoticeVoucherDeleted,
+  "add-voucher-customer": m.discountsNoticeVoucherCustomerAdded,
+  "remove-voucher-customer": m.discountsNoticeVoucherCustomerRemoved,
+  "make-voucher-unrestricted": m.discountsNoticeVoucherMadeUnrestricted,
+  "set-customer-discount-group": m.discountsNoticeCustomerDiscountGroupUpdated,
+} satisfies Record<
+  DiscountAdminMutation["kind"],
+  typeof m.discountsNoticeDiscountCreated
+>;
 
 const executeDiscountAdminActionMutation = Effect.fn(
   "DiscountAdministration.executeActionMutation"
-)(function* (input: DiscountAdminMutation) {
+)(function* (input: DiscountAdminMutation, locale: Locale) {
   const result = yield* executeDiscountAdminMutation(input);
   yield* refreshCalendarDiscountSourceAfterMutation(input);
 
@@ -25,51 +52,7 @@ const executeDiscountAdminActionMutation = Effect.fn(
     ...(result.createdDiscountId && {
       createdDiscountId: result.createdDiscountId,
     }),
-    notice: Match.value(input.kind).pipe(
-      Match.when("create-discount", () => "Discount created."),
-      Match.when("update-discount", () => "Discount updated."),
-      Match.when("delete-discount", () => "Discount deleted."),
-      Match.when("create-code", () => "Discount code created."),
-      Match.when(
-        "create-customer-code",
-        () => "Discount code created for this customer."
-      ),
-      Match.when("update-code", () => "Discount code updated."),
-      Match.when("delete-code", () => "Discount code deleted."),
-      Match.when(
-        "add-code-customer",
-        () => "Customer added to the code audience."
-      ),
-      Match.when(
-        "remove-code-customer",
-        () => "Customer removed from the code audience."
-      ),
-      Match.when("make-code-unrestricted", () => "Code made unrestricted."),
-      Match.when("create-voucher", () => "Voucher created."),
-      Match.when(
-        "create-customer-voucher",
-        () => "Voucher created for this customer."
-      ),
-      Match.when("update-voucher", () => "Voucher updated."),
-      Match.when("delete-voucher", () => "Voucher deleted."),
-      Match.when(
-        "add-voucher-customer",
-        () => "Customer added to the voucher audience."
-      ),
-      Match.when(
-        "remove-voucher-customer",
-        () => "Customer removed from the voucher audience."
-      ),
-      Match.when(
-        "make-voucher-unrestricted",
-        () => "Voucher made unrestricted."
-      ),
-      Match.when(
-        "set-customer-discount-group",
-        () => "Customer discount group updated."
-      ),
-      Match.exhaustive
-    ),
+    notice: discountAdminMutationNotices[input.kind]({}, { locale }),
   };
 });
 
@@ -78,22 +61,14 @@ const discountAdminMutationAction = defineWorkspaceAction(
     operation: "discount-administration.mutate",
     schema: discountAdminMutationStandardSchema,
   },
-  (input) =>
+  (input, { locale }) =>
     requireAdministratorAuthorization.pipe(
-      Effect.andThen(executeDiscountAdminActionMutation(input)),
+      Effect.andThen(executeDiscountAdminActionMutation(input, locale)),
       Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
-            message: Match.value(cause).pipe(
-              Match.tag("DiscountAdminNotFoundError", ({ message }) => message),
-              Match.tag("DiscountAdminAudienceError", ({ message }) => message),
-              Match.tag("DiscountAdminConflictError", ({ message }) => message),
-              Match.orElse(
-                () =>
-                  "The change could not be saved. Check the values and any existing references, then try again."
-              )
-            ),
+            message: getDiscountAdminMutationErrorMessage(cause, locale),
             cause,
           })
       )
@@ -113,14 +88,14 @@ const discountAdminCustomerSearchAction = defineWorkspaceAction(
     schema: discountAdminCustomerSearchStandardSchema,
     logInput: false,
   },
-  (input) =>
+  (input, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(executeCustomerSearch(input)),
       Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
-            message: "Customer search is temporarily unavailable.",
+            message: m.discountsErrorCustomerSearchUnavailable({}, { locale }),
             cause,
           })
       )

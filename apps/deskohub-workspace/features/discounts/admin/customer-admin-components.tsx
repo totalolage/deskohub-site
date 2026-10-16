@@ -19,6 +19,10 @@ import {
   ReservationTable,
 } from "@/features/administration/components";
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
+import { m } from "@/features/administration/i18n";
+import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
+import type { Locale } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { VoucherEditor } from "./admin-tables";
@@ -33,6 +37,7 @@ import {
   CustomerPromotionCodeTable,
   CustomerTransactionHistoryTable,
 } from "./customer-admin-tables";
+import { formatDiscountAdminCustomerName } from "./customer-display-name";
 import type {
   AdminCustomerProfile,
   AdminDiscountCode,
@@ -50,9 +55,11 @@ type Notice = {
 
 export function CodeAdministrationDetailPage({
   detail,
+  locale,
   notice,
 }: {
   readonly detail: AdminDiscountCodeDetail;
+  readonly locale: Locale;
   readonly notice?: Notice;
 }) {
   const { code } = detail;
@@ -62,40 +69,56 @@ export function CodeAdministrationDetailPage({
       <AdministrationNoticeBanner notice={notice} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/admin/codes">← Back to codes</Link>
+          <Link href="/admin/codes">
+            {m.discountsBackToCodes({}, { locale })}
+          </Link>
         </Button>
         <Button asChild size="sm" variant="secondary">
-          <Link href="/admin/codes">Edit or delete code</Link>
+          <Link href="/admin/codes">
+            {m.discountsEditOrDeleteCode({}, { locale })}
+          </Link>
         </Button>
       </div>
 
-      <CodeSummary code={code} discountLabel={detail.discountLabel} />
+      <CodeSummary
+        code={code}
+        discountLabel={detail.discountLabel}
+        locale={locale}
+      />
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <section className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-navy-blue/10 px-5 py-4">
             <div>
-              <h2 className="font-semibold">Audience</h2>
+              <h2 className="font-semibold">
+                {m.discountsColumnAudience({}, { locale })}
+              </h2>
               <p className="mt-1 text-sm text-navy-blue/65">
                 {detail.customers.length === 0
-                  ? "Any Dotypos customer can use this code."
-                  : `${detail.customers.length} customers can use this code.`}
+                  ? m.discountsCodeAudienceUnrestricted({}, { locale })
+                  : m.discountsCodeAudienceCount(
+                      { count: detail.customers.length },
+                      { locale }
+                    )}
               </p>
             </div>
             {detail.customers.length > 0 && (
               <AdminMutationButton
-                confirmation="Make this code unrestricted? Every Dotypos customer will be eligible."
+                confirmation={m.discountsCodeMakeUnrestrictedConfirmation(
+                  {},
+                  { locale }
+                )}
                 mutation={{
                   kind: "make-code-unrestricted",
                   codeId: code.id,
                 }}
               >
-                Make unrestricted
+                {m.discountsMakeUnrestricted({}, { locale })}
               </AdminMutationButton>
             )}
           </div>
           {detail.customers.length === 0 ? (
-            <EmptyState message="Unrestricted audience" />
+            <EmptyState message={m.discountsAudienceEmpty({}, { locale })} />
           ) : (
             <ul className="divide-y divide-navy-blue/10">
               {detail.customers.map(({ customer, customerId }) => (
@@ -108,30 +131,46 @@ export function CodeAdministrationDetailPage({
                       className="font-semibold underline decoration-navy-blue/25 underline-offset-4"
                       href={`/admin/customers/${customerId}`}
                     >
-                      {customer?.displayName ?? "Details unavailable"}
+                      {customer
+                        ? formatDiscountAdminCustomerName(
+                            customer.displayName,
+                            locale
+                          )
+                        : m.discountsCustomerDetailsUnavailable({}, { locale })}
                     </Link>
                     <p className="mt-1 text-sm text-navy-blue/65">
                       {customer
                         ? [customer.email, customer.phone]
                             .filter(Boolean)
-                            .join(" · ") || "No contact details"
+                            .join(" · ") ||
+                          m.discountsCustomerNoContactDetails({}, { locale })
                         : customerId}
                     </p>
                   </div>
                   {detail.customers.length > 1 ? (
                     <AdminMutationButton
-                      confirmation={`Remove ${customer?.displayName ?? customerId} from this code audience?`}
+                      confirmation={m.discountsCodeRemoveCustomerConfirmation(
+                        {
+                          customerName: customer
+                            ? formatDiscountAdminCustomerName(
+                                customer.displayName,
+                                locale
+                              )
+                            : customerId,
+                        },
+                        { locale }
+                      )}
                       mutation={{
                         kind: "remove-code-customer",
                         codeId: code.id,
                         customerId,
                       }}
                     >
-                      Remove
+                      {m.discountsRemove({}, { locale })}
                     </AdminMutationButton>
                   ) : (
                     <span className="text-xs text-navy-blue/65">
-                      Use Make unrestricted
+                      {m.discountsUseMakeUnrestricted({}, { locale })}
                     </span>
                   )}
                 </li>
@@ -141,27 +180,30 @@ export function CodeAdministrationDetailPage({
         </section>
 
         <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5">
-          <h2 className="font-semibold">Add customer</h2>
+          <h2 className="font-semibold">
+            {m.discountsAddCustomer({}, { locale })}
+          </h2>
           <p className="mb-4 mt-1 text-sm leading-5 text-navy-blue/65">
-            Adding the first customer changes an unrestricted code into a
-            restricted code.
+            {m.discountsCodeAddCustomerDescription({}, { locale })}
           </p>
           <AddCodeCustomerForm codeId={code.id} />
           <Link
             className="mt-4 inline-block text-sm font-semibold underline underline-offset-4"
             href="/admin/customers"
           >
-            Find a Dotypos customer
+            {m.discountsFindDotyposCustomer({}, { locale })}
           </Link>
         </aside>
       </div>
 
       <section className="mt-5">
-        <h2 className="mb-3 font-semibold">Claim history</h2>
+        <h2 className="mb-3 font-semibold">
+          {m.discountsClaimHistoryTitle({}, { locale })}
+        </h2>
         <ClaimHistory
-          ariaLabel="Discount code claim history"
+          ariaLabel={m.discountsCodeClaimHistoryLabel({}, { locale })}
           claims={detail.claims}
-          emptyMessage="No discount code claims yet."
+          emptyMessage={m.discountsCodeClaimsEmpty({}, { locale })}
           subject="customer"
         />
       </section>
@@ -171,9 +213,11 @@ export function CodeAdministrationDetailPage({
 
 export function VoucherAdministrationDetailPage({
   detail,
+  locale,
   notice,
 }: {
   readonly detail: AdminVoucherDetail;
+  readonly locale: Locale;
   readonly notice?: Notice;
 }) {
   const { voucher } = detail;
@@ -183,14 +227,18 @@ export function VoucherAdministrationDetailPage({
       <AdministrationNoticeBanner notice={notice} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/admin/vouchers">← Back to vouchers</Link>
+          <Link href="/admin/vouchers">
+            {m.discountsBackToVouchers({}, { locale })}
+          </Link>
         </Button>
       </div>
 
-      <VoucherSummary voucher={voucher} />
+      <VoucherSummary locale={locale} voucher={voucher} />
 
       <section className="mt-5 rounded-xl border border-navy-blue/10 bg-white p-5">
-        <h2 className="mb-4 font-semibold">Configuration</h2>
+        <h2 className="mb-4 font-semibold">
+          {m.discountsConfigurationTitle({}, { locale })}
+        </h2>
         <VoucherEditor
           deletable
           deleteRedirect="/admin/vouchers"
@@ -206,27 +254,35 @@ export function VoucherAdministrationDetailPage({
         <section className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-navy-blue/10 px-5 py-4">
             <div>
-              <h2 className="font-semibold">Audience</h2>
+              <h2 className="font-semibold">
+                {m.discountsColumnAudience({}, { locale })}
+              </h2>
               <p className="mt-1 text-sm text-navy-blue/65">
                 {detail.customers.length === 0
-                  ? "Any Dotypos customer can use this voucher."
-                  : `${detail.customers.length} customers can use this voucher.`}
+                  ? m.discountsVoucherAudienceUnrestricted({}, { locale })
+                  : m.discountsVoucherAudienceCount(
+                      { count: detail.customers.length },
+                      { locale }
+                    )}
               </p>
             </div>
             {detail.customers.length > 0 && (
               <AdminMutationButton
-                confirmation="Make this voucher unrestricted? Every Dotypos customer will be eligible."
+                confirmation={m.discountsVoucherMakeUnrestrictedConfirmation(
+                  {},
+                  { locale }
+                )}
                 mutation={{
                   kind: "make-voucher-unrestricted",
                   voucherId: voucher.id,
                 }}
               >
-                Make unrestricted
+                {m.discountsMakeUnrestricted({}, { locale })}
               </AdminMutationButton>
             )}
           </div>
           {detail.customers.length === 0 ? (
-            <EmptyState message="Unrestricted audience" />
+            <EmptyState message={m.discountsAudienceEmpty({}, { locale })} />
           ) : (
             <ul className="divide-y divide-navy-blue/10">
               {detail.customers.map(({ customer, customerId }) => (
@@ -239,30 +295,46 @@ export function VoucherAdministrationDetailPage({
                       className="font-semibold underline decoration-navy-blue/25 underline-offset-4"
                       href={`/admin/customers/${customerId}`}
                     >
-                      {customer?.displayName ?? "Details unavailable"}
+                      {customer
+                        ? formatDiscountAdminCustomerName(
+                            customer.displayName,
+                            locale
+                          )
+                        : m.discountsCustomerDetailsUnavailable({}, { locale })}
                     </Link>
                     <p className="mt-1 text-sm text-navy-blue/65">
                       {customer
                         ? [customer.email, customer.phone]
                             .filter(Boolean)
-                            .join(" · ") || "No contact details"
+                            .join(" · ") ||
+                          m.discountsCustomerNoContactDetails({}, { locale })
                         : customerId}
                     </p>
                   </div>
                   {detail.customers.length > 1 ? (
                     <AdminMutationButton
-                      confirmation={`Remove ${customer?.displayName ?? customerId} from this voucher audience?`}
+                      confirmation={m.discountsVoucherRemoveCustomerConfirmation(
+                        {
+                          customerName: customer
+                            ? formatDiscountAdminCustomerName(
+                                customer.displayName,
+                                locale
+                              )
+                            : customerId,
+                        },
+                        { locale }
+                      )}
                       mutation={{
                         kind: "remove-voucher-customer",
                         voucherId: voucher.id,
                         customerId,
                       }}
                     >
-                      Remove
+                      {m.discountsRemove({}, { locale })}
                     </AdminMutationButton>
                   ) : (
                     <span className="text-xs text-navy-blue/65">
-                      Use Make unrestricted
+                      {m.discountsUseMakeUnrestricted({}, { locale })}
                     </span>
                   )}
                 </li>
@@ -272,21 +344,24 @@ export function VoucherAdministrationDetailPage({
         </section>
 
         <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5">
-          <h2 className="font-semibold">Add customer</h2>
+          <h2 className="font-semibold">
+            {m.discountsAddCustomer({}, { locale })}
+          </h2>
           <p className="mb-4 mt-1 text-sm leading-5 text-navy-blue/65">
-            Adding the first customer changes an unrestricted voucher into a
-            restricted voucher.
+            {m.discountsVoucherAddCustomerDescription({}, { locale })}
           </p>
           <AddVoucherCustomerForm voucherId={voucher.id} />
         </aside>
       </div>
 
       <section className="mt-5">
-        <h2 className="mb-3 font-semibold">Claim history</h2>
+        <h2 className="mb-3 font-semibold">
+          {m.discountsClaimHistoryTitle({}, { locale })}
+        </h2>
         <ClaimHistory
-          ariaLabel="Voucher claim history"
+          ariaLabel={m.discountsVoucherClaimHistoryLabel({}, { locale })}
           claims={detail.claims}
-          emptyMessage="No voucher claims yet."
+          emptyMessage={m.discountsVoucherClaimsEmpty({}, { locale })}
           subject="customer"
         />
       </section>
@@ -294,25 +369,46 @@ export function VoucherAdministrationDetailPage({
   );
 }
 
-export function CustomerAdministrationDetailPage({
-  activity,
-  notice,
-  profile,
-  reservationActivity,
-}: {
+type CustomerAdministrationDetailProps = {
   readonly activity: AdministrationCustomerActivity;
   readonly notice?: Notice;
   readonly profile: AdminCustomerProfile;
   readonly reservationActivity: AdministrationCustomerReservationActivity;
-}) {
+};
+
+/** The customer screen; it resolves the route locale for its content. */
+export async function CustomerAdministrationDetailPage(
+  props: CustomerAdministrationDetailProps
+) {
+  const locale = await getRequestLocale();
+  return <CustomerAdministrationDetail {...props} locale={locale} />;
+}
+
+export function CustomerAdministrationDetail({
+  activity,
+  locale,
+  notice,
+  profile,
+  reservationActivity,
+}: CustomerAdministrationDetailProps & { readonly locale: Locale }) {
+  const customerName = formatDiscountAdminCustomerName(
+    profile.customer.displayName,
+    locale
+  );
   const currentGroup = profile.discountGroups.find(
     ({ id }) => id === profile.customer.discountGroupId
   );
-  let currentGroupLabel = "None";
+  let currentGroupLabel: string = m.discountsCustomerGroupNone({}, { locale });
   if (currentGroup) {
-    currentGroupLabel = `${currentGroup.name} (${currentGroup.basisPoints / 100}%)`;
+    currentGroupLabel = `${currentGroup.name} (${formatDiscountAdjustment(
+      { kind: "percentage", basisPoints: currentGroup.basisPoints },
+      locale
+    )})`;
   } else if (profile.customer.discountGroupId) {
-    currentGroupLabel = `Unavailable (${profile.customer.discountGroupId})`;
+    currentGroupLabel = m.discountsCustomerGroupUnavailable(
+      { groupId: profile.customer.discountGroupId },
+      { locale }
+    );
   }
   const visiblePromotionCodes = [
     ...profile.codes.map(
@@ -372,7 +468,7 @@ export function CustomerAdministrationDetailPage({
   const reservationGroups = groupCustomerReservations(activity.reservations);
   return (
     <AdministrationPage>
-      <AdministrationPageHeader title={profile.customer.displayName} />
+      <AdministrationPageHeader title={customerName} />
       <AdministrationNoticeBanner notice={notice} />
 
       <CustomerReservationActivity activity={reservationActivity} />
@@ -381,33 +477,42 @@ export function CustomerAdministrationDetailPage({
         <CustomerStats
           activity={activity}
           availableCodes={`${targetedCodeCount} (+ ${universalCodeCount})`}
+          locale={locale}
         />
-        <CustomerConsents consent={activity.marketingConsent} />
+        <CustomerConsents consent={activity.marketingConsent} locale={locale} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-7">
           <section>
-            <h2 className="mb-3 text-xl">Reservations</h2>
+            <h2 className="mb-3 text-xl">
+              {m.discountsCustomerReservationsTitle({}, { locale })}
+            </h2>
             {activity.reservationHistoryTruncated && (
               <p className="mb-3 text-sm text-navy-blue/65">
-                Showing the 24 most recently updated reservations.{" "}
+                {m.discountsCustomerReservationsTruncated({}, { locale })}{" "}
                 <Link
                   className="font-semibold underline underline-offset-4"
                   href={`/admin/reservations?customerId=${encodeURIComponent(profile.customer.id)}`}
                 >
-                  View all reservations
+                  {m.discountsCustomerViewAllReservations({}, { locale })}
                 </Link>
               </p>
             )}
             <div className="space-y-4">
               <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
                 <summary className="cursor-pointer px-5 py-4 font-semibold">
-                  Past reservations ({reservationGroups.past.length})
+                  {m.discountsCustomerPastReservations(
+                    { count: reservationGroups.past.length },
+                    { locale }
+                  )}
                 </summary>
                 <div className="border-t border-navy-blue/10 p-3">
                   <ReservationTable
-                    emptyMessage="This customer has no past reservations."
+                    emptyMessage={m.discountsCustomerPastReservationsEmpty(
+                      {},
+                      { locale }
+                    )}
                     reservations={reservationGroups.past}
                     showCustomer={false}
                   />
@@ -419,13 +524,19 @@ export function CustomerAdministrationDetailPage({
                   className="mb-3 font-semibold"
                   id="current-reservations-heading"
                 >
-                  Current and future reservations
+                  {m.discountsCustomerCurrentReservations({}, { locale })}
                 </h3>
                 <ReservationTable
                   emptyMessage={
                     activity.reservationHistoryTruncated
-                      ? "No current or future reservations are present in this recent activity view."
-                      : "This customer has no current or future reservations."
+                      ? m.discountsCustomerCurrentReservationsTruncatedEmpty(
+                          {},
+                          { locale }
+                        )
+                      : m.discountsCustomerCurrentReservationsEmpty(
+                          {},
+                          { locale }
+                        )
                   }
                   reservations={reservationGroups.currentAndFuture}
                   showCustomer={false}
@@ -435,8 +546,10 @@ export function CustomerAdministrationDetailPage({
               {reservationGroups.unavailable.length > 0 && (
                 <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
                   <summary className="cursor-pointer px-5 py-4 font-semibold">
-                    Reservations with unavailable dates (
-                    {reservationGroups.unavailable.length})
+                    {m.discountsCustomerUnavailableDateReservations(
+                      { count: reservationGroups.unavailable.length },
+                      { locale }
+                    )}
                   </summary>
                   <div className="border-t border-navy-blue/10 p-3">
                     <ReservationTable
@@ -450,25 +563,32 @@ export function CustomerAdministrationDetailPage({
           </section>
 
           <section>
-            <h2 className="mb-3 text-xl">Transactions</h2>
+            <h2 className="mb-3 text-xl">
+              {m.discountsCustomerTransactionsTitle({}, { locale })}
+            </h2>
             {activity.transactionHistoryTruncated && (
               <p className="mb-3 text-sm text-navy-blue/65">
-                Showing the 50 latest transactions.
+                {m.discountsCustomerTransactionsTruncated({}, { locale })}
               </p>
             )}
-            <CustomerTransactionHistory transactions={activity.transactions} />
+            <CustomerTransactionHistory
+              locale={locale}
+              transactions={activity.transactions}
+            />
           </section>
 
           <section>
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-              <h2 className="text-xl">Codes and vouchers</h2>
+              <h2 className="text-xl">
+                {m.discountsCustomerCodesTitle({}, { locale })}
+              </h2>
               <div className="flex flex-wrap gap-2">
                 <Button asChild size="sm">
                   <Link
                     href={`/admin/customers/${profile.customer.id}/create-code`}
                   >
                     <Plus aria-hidden className="size-4" />
-                    Create discount code
+                    {m.discountsCodeCreateSubmit({}, { locale })}
                   </Link>
                 </Button>
                 <Button asChild size="sm">
@@ -476,31 +596,35 @@ export function CustomerAdministrationDetailPage({
                     href={`/admin/customers/${profile.customer.id}/create-voucher`}
                   >
                     <Plus aria-hidden className="size-4" />
-                    Create voucher
+                    {m.discountsVoucherCreateSubmit({}, { locale })}
                   </Link>
                 </Button>
               </div>
             </div>
             {visiblePromotionCodes.length === 0 ? (
-              <EmptyState message="No discount codes or vouchers are available to this customer." />
+              <EmptyState
+                message={m.discountsCustomerCodesEmpty({}, { locale })}
+              />
             ) : (
               <CustomerPromotionCodeTable
                 customerId={profile.customer.id}
-                customerName={profile.customer.displayName}
+                customerName={customerName}
                 items={visiblePromotionCodes}
               />
             )}
           </section>
 
           <section>
-            <h2 className="mb-3 text-xl">Claim history</h2>
+            <h2 className="mb-3 text-xl">
+              {m.discountsClaimHistoryTitle({}, { locale })}
+            </h2>
             <ClaimHistory
-              ariaLabel="Customer claim history"
+              ariaLabel={m.discountsCustomerClaimHistoryLabel({}, { locale })}
               claims={[...profile.claims, ...profile.voucherClaims].toSorted(
                 (left, right) =>
                   Temporal.Instant.compare(right.reservedAt, left.reservedAt)
               )}
-              emptyMessage="No claims yet."
+              emptyMessage={m.discountsCustomerClaimsEmpty({}, { locale })}
               promotionCodes={
                 new Map([
                   ...profile.codes.map(
@@ -518,25 +642,29 @@ export function CustomerAdministrationDetailPage({
 
         <aside className="space-y-5 xl:sticky xl:top-24 xl:h-fit">
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
-            <h2 className="font-semibold">Contact</h2>
+            <h2 className="font-semibold">
+              {m.discountsCustomerContactTitle({}, { locale })}
+            </h2>
             <dl className="mt-4 grid gap-4 text-sm">
               <AdministrationFact
-                label="Email"
+                label={m.discountsCustomerEmailLabel({}, { locale })}
                 value={profile.customer.email ?? "—"}
               />
               <AdministrationFact
-                label="Phone"
+                label={m.discountsCustomerPhoneLabel({}, { locale })}
                 value={profile.customer.phone ?? "—"}
               />
               <AdministrationFact
-                label="Current group"
+                label={m.discountsCustomerCurrentGroupLabel({}, { locale })}
                 value={currentGroupLabel}
               />
             </dl>
           </section>
 
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
-            <h2 className="mb-4 font-semibold">Discount group</h2>
+            <h2 className="mb-4 font-semibold">
+              {m.discountsCustomerDiscountGroupTitle({}, { locale })}
+            </h2>
             <CustomerDiscountGroupForm
               currentGroupId={profile.customer.discountGroupId}
               customerId={profile.customer.id}
@@ -546,11 +674,11 @@ export function CustomerAdministrationDetailPage({
 
           <details className="rounded-xl border border-navy-blue/10 bg-white">
             <summary className="cursor-pointer px-5 py-4 text-sm font-semibold">
-              Reference
+              {m.discountsCustomerReferenceTitle({}, { locale })}
             </summary>
             <div className="border-t border-navy-blue/10 px-5 py-4">
               <AdministrationFact
-                label="Customer ID"
+                label={m.discountsCustomerIdLabel({}, { locale })}
                 value={profile.customer.id}
                 valueClassName="break-all font-mono text-xs"
               />
@@ -565,31 +693,38 @@ export function CustomerAdministrationDetailPage({
 function CustomerStats({
   activity,
   availableCodes,
+  locale,
 }: {
   readonly activity: AdministrationCustomerActivity;
   readonly availableCodes: string;
+  readonly locale: Locale;
 }) {
   return (
     <section>
-      <h2 className="mb-3 text-xl">Stats</h2>
+      <h2 className="mb-3 text-xl">
+        {m.discountsCustomerStatsTitle({}, { locale })}
+      </h2>
       <dl className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
         <CustomerStat
-          label="Reservations"
+          label={m.discountsCustomerStatReservations({}, { locale })}
           value={activity.stats.reservationCount}
         />
         <CustomerStat
-          label="Total revenue"
+          label={m.discountsCustomerStatRevenue({}, { locale })}
           value={formatMoneyTotals(activity.stats.revenue)}
         />
         <CustomerStat
-          label="Favourite product"
+          label={m.discountsCustomerStatFavoriteProduct({}, { locale })}
           value={activity.stats.favoriteProduct ?? "—"}
         />
         <CustomerStat
-          label="Discount savings"
+          label={m.discountsCustomerStatDiscountSavings({}, { locale })}
           value={formatMoneyTotals(activity.stats.discountSavings)}
         />
-        <CustomerStat label="Available codes" value={availableCodes} />
+        <CustomerStat
+          label={m.discountsCustomerStatAvailableCodes({}, { locale })}
+          value={availableCodes}
+        />
       </dl>
     </section>
   );
@@ -612,14 +747,18 @@ function CustomerStat({
 
 function CustomerConsents({
   consent,
+  locale,
 }: {
   readonly consent: AdministrationCustomerMarketingConsent | null;
+  readonly locale: Locale;
 }) {
   return (
     <section>
-      <h2 className="mb-3 text-xl">Consents</h2>
+      <h2 className="mb-3 text-xl">
+        {m.discountsCustomerConsentsTitle({}, { locale })}
+      </h2>
       <dl className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-        <CustomerConsent consent={consent} />
+        <CustomerConsent consent={consent} locale={locale} />
       </dl>
     </section>
   );
@@ -627,31 +766,41 @@ function CustomerConsents({
 
 function CustomerConsent({
   consent,
+  locale,
 }: {
   readonly consent: AdministrationCustomerMarketingConsent | null;
+  readonly locale: Locale;
 }) {
   const withdrawnAt = consent?.withdrawnAt;
   return (
     <div className="grid gap-1 border-b border-navy-blue/8 px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <dt className="font-medium">Marketing communications</dt>
+      <dt className="font-medium">
+        {m.discountsCustomerConsentMarketing({}, { locale })}
+      </dt>
       <dd className="text-sm text-navy-blue/65 sm:text-right">
         {consent ? (
           <>
             <StatusBadge tone={withdrawnAt ? "attention" : "positive"}>
-              {withdrawnAt ? "Withdrawn" : "Granted"}
+              {withdrawnAt
+                ? m.discountsCustomerConsentWithdrawn({}, { locale })
+                : m.discountsCustomerConsentGranted({}, { locale })}
             </StatusBadge>{" "}
             · {formatAdministrationDateTime(withdrawnAt ?? consent.grantedAt)}
             <span className="mt-0.5 block break-all text-xs">
               {withdrawnAt && (
                 <>
-                  Granted {formatAdministrationDateTime(consent.grantedAt)} ·{" "}
+                  {m.discountsCustomerConsentGrantedAt(
+                    { date: formatAdministrationDateTime(consent.grantedAt) },
+                    { locale }
+                  )}{" "}
+                  ·{" "}
                 </>
               )}
               {consent.locale} · {consent.documentHash}
             </span>
           </>
         ) : (
-          "Not granted"
+          m.discountsCustomerConsentNotGranted({}, { locale })
         )}
       </dd>
     </div>
@@ -659,91 +808,136 @@ function CustomerConsent({
 }
 
 function CustomerTransactionHistory({
+  locale,
   transactions,
 }: {
+  readonly locale: Locale;
   readonly transactions: readonly AdministrationCustomerTransaction[];
 }) {
   if (transactions.length === 0) {
-    return <EmptyState message="This customer has no payments." />;
+    return (
+      <EmptyState
+        message={m.discountsCustomerTransactionsEmpty({}, { locale })}
+      />
+    );
   }
-  return <CustomerTransactionHistoryTable transactions={transactions} />;
+  return (
+    <CustomerTransactionHistoryTable
+      transactions={transactions.map((transaction) => ({
+        ...transaction,
+        updatedAtLabel: formatAdministrationDateTime(
+          transaction.attempt.updatedAt
+        ),
+      }))}
+    />
+  );
 }
 
 const formatMoneyTotals = (totals: readonly AdministrationMoney[]) =>
   totals.length > 0 ? totals.map(formatAdministrationMoney).join(" + ") : "—";
 
+const getSummaryStatus = (enabled: boolean, locale: Locale) =>
+  enabled
+    ? m.discountsStatusEnabled({}, { locale })
+    : m.discountsStatusDisabled({}, { locale });
+
+const getSummaryAudience = (audienceSize: number, locale: Locale) =>
+  audienceSize === 0
+    ? m.discountsAudienceUnrestricted({}, { locale })
+    : m.discountsAudienceCustomerCount({ count: audienceSize }, { locale });
+
 function CodeSummary({
   code,
   discountLabel,
+  locale,
 }: {
   readonly code: AdminDiscountCode;
   readonly discountLabel: string;
+  readonly locale: Locale;
 }) {
-  const benefit = discountLabel;
   return (
     <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
-      <SummaryFact label="Benefit" value={benefit} />
       <SummaryFact
-        label="Status"
-        value={code.enabled ? "Enabled" : "Disabled"}
-      />
-      <SummaryFact label="Valid from" value={formatInstant(code.validFrom)} />
-      <SummaryFact label="Valid until" value={formatInstant(code.validUntil)} />
-      <SummaryFact
-        label="Audience"
-        value={
-          code.audienceSize === 0
-            ? "Unrestricted"
-            : `${code.audienceSize} customers`
-        }
-      />
-      <SummaryFact label="Reserved" value={code.reservedUses} />
-      <SummaryFact label="Redeemed" value={code.redeemedUses} />
-      <SummaryFact
-        label="Remaining globally"
-        value={code.remainingUses ?? "Unlimited"}
+        label={m.discountsColumnBenefit({}, { locale })}
+        value={discountLabel}
       />
       <SummaryFact
-        label="Uses per customer"
-        value={code.maxUsesPerCustomer ?? "Unlimited"}
+        label={m.discountsColumnStatus({}, { locale })}
+        value={getSummaryStatus(code.enabled, locale)}
+      />
+      <SummaryFact
+        label={m.discountsValidFromLabel({}, { locale })}
+        value={formatOptionalInstant(code.validFrom)}
+      />
+      <SummaryFact
+        label={m.discountsValidUntilLabel({}, { locale })}
+        value={formatOptionalInstant(code.validUntil)}
+      />
+      <SummaryFact
+        label={m.discountsColumnAudience({}, { locale })}
+        value={getSummaryAudience(code.audienceSize, locale)}
+      />
+      <SummaryFact
+        label={m.discountsColumnReserved({}, { locale })}
+        value={code.reservedUses}
+      />
+      <SummaryFact
+        label={m.discountsColumnRedeemed({}, { locale })}
+        value={code.redeemedUses}
+      />
+      <SummaryFact
+        label={m.discountsColumnRemainingGlobally({}, { locale })}
+        value={code.remainingUses ?? m.discountsUnlimited({}, { locale })}
+      />
+      <SummaryFact
+        label={m.discountsColumnUsesPerCustomer({}, { locale })}
+        value={code.maxUsesPerCustomer ?? m.discountsUnlimited({}, { locale })}
       />
     </dl>
   );
 }
 
-function VoucherSummary({ voucher }: { readonly voucher: AdminVoucher }) {
+function VoucherSummary({
+  locale,
+  voucher,
+}: {
+  readonly locale: Locale;
+  readonly voucher: AdminVoucher;
+}) {
   return (
     <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
       <SummaryFact
-        label="Issued"
+        label={m.discountsColumnIssued({}, { locale })}
         value={formatAdministrationMoney(voucher.issuedCredit)}
       />
       <SummaryFact
-        label="Remaining"
+        label={m.discountsColumnRemaining({}, { locale })}
         value={formatAdministrationMoney(voucher.remainingCredit)}
       />
       <SummaryFact
-        label="Status"
-        value={voucher.enabled ? "Enabled" : "Disabled"}
+        label={m.discountsColumnStatus({}, { locale })}
+        value={getSummaryStatus(voucher.enabled, locale)}
       />
       <SummaryFact
-        label="Audience"
-        value={
-          voucher.audienceSize === 0
-            ? "Unrestricted"
-            : `${voucher.audienceSize} customers`
-        }
+        label={m.discountsColumnAudience({}, { locale })}
+        value={getSummaryAudience(voucher.audienceSize, locale)}
       />
       <SummaryFact
-        label="Valid from"
-        value={formatInstant(voucher.validFrom)}
+        label={m.discountsValidFromLabel({}, { locale })}
+        value={formatOptionalInstant(voucher.validFrom)}
       />
       <SummaryFact
-        label="Valid until"
-        value={formatInstant(voucher.validUntil)}
+        label={m.discountsValidUntilLabel({}, { locale })}
+        value={formatOptionalInstant(voucher.validUntil)}
       />
-      <SummaryFact label="Reserved" value={voucher.reservedUses} />
-      <SummaryFact label="Redeemed" value={voucher.redeemedUses} />
+      <SummaryFact
+        label={m.discountsColumnReserved({}, { locale })}
+        value={voucher.reservedUses}
+      />
+      <SummaryFact
+        label={m.discountsColumnRedeemed({}, { locale })}
+        value={voucher.redeemedUses}
+      />
     </dl>
   );
 }
@@ -791,6 +985,7 @@ function ClaimHistory({
           "codeId" in claim
             ? { kind: "discount-code" as const, id: claim.codeId }
             : { kind: "voucher" as const, id: claim.voucherId };
+        const completedAt = claim.redeemedAt ?? claim.releasedAt;
         return {
           id: claim.id,
           kind: promotion.kind,
@@ -805,6 +1000,12 @@ function ClaimHistory({
           releasedAt: claim.releasedAt?.toString() ?? null,
           releaseReason: claim.releaseReason,
           reservedAt: claim.reservedAt.toString(),
+          reservedAtLabel: formatAdministrationDateTime(
+            claim.reservedAt.toString()
+          ),
+          completedAtLabel: completedAt
+            ? formatAdministrationDateTime(completedAt.toString())
+            : null,
           state: claim.state,
           workspaceReservationId: claim.workspaceReservationId,
         };
@@ -814,10 +1015,5 @@ function ClaimHistory({
   );
 }
 
-const formatInstant = (instant: Temporal.Instant | null) =>
-  instant
-    ? instant.toZonedDateTimeISO("Europe/Prague").toLocaleString("en-GB", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "—";
+const formatOptionalInstant = (instant: Temporal.Instant | null) =>
+  instant ? formatAdministrationDateTime(instant.toString()) : "—";

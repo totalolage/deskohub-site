@@ -8,6 +8,7 @@ import {
   loadDiscountAdminVoucherPageData,
 } from "@/features/discounts/admin/page-data.server";
 import { voucherIdSchema } from "@/features/discounts/persistence-contracts";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function VoucherAdminDetailPage({
   params,
@@ -30,6 +31,7 @@ async function VoucherAdminDetail({
   readonly params: Promise<{ readonly voucherId: string }>;
   readonly searchParams: DiscountAdminSearchParams;
 }) {
+  const locale = await getRequestLocale();
   const { voucherId } = await params;
   const decodedVoucherId = Option.getOrElse(
     Schema.decodeUnknownOption(voucherIdSchema)(voucherId),
@@ -39,5 +41,11 @@ async function VoucherAdminDetail({
     decodedVoucherId,
     searchParams
   );
-  return <VoucherAdministrationDetailPage detail={detail} notice={notice} />;
+  return (
+    <VoucherAdministrationDetailPage
+      detail={detail}
+      locale={locale}
+      notice={notice}
+    />
+  );
 }
