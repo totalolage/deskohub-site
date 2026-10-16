@@ -120,7 +120,8 @@ Keep these settings unless a reviewed decision changes them:
 - `auth.account` stays empty: the magic-link flow creates no account rows, and
   passwords, OAuth, and social providers stay disabled.
 - What remains in Neon is the login email, the email inside each pending
-  verification row, and raw `IP|path` rate-limit keys. Sign-in code, claim, current-claim,
+  verification row, raw `IP|path` rate-limit keys, and `auth.passkey` rows
+  (credential ID, public key, AAGUID, and the customer-written label). Sign-in code, claim, current-claim,
   binding, and per-email send rows store only hashed identifiers and values. Better Auth has no
   native option to hash or encrypt these, so don't build a custom adapter or
   HMAC rate-limit storage to remove them.
