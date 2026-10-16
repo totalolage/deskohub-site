@@ -732,7 +732,50 @@ describe("AccountPage states", () => {
     expect(unavailableTitle.closest("[hidden]")).not.toBeNull();
   });
 
+  const withEmailSignInOnCapableBrowser = async () => {
+    Object.defineProperty(globalThis, "PublicKeyCredential", {
+      configurable: true,
+      value: {
+        getClientCapabilities: async () => ({
+          passkeyPlatformAuthenticator: true,
+        }),
+      },
+    });
+    const { noteEmailSignInForPasskeyPrompt } = await import(
+      "@/features/account/passkey-prompt"
+    );
+    noteEmailSignInForPasskeyPrompt();
+  };
+
+  const withoutPasskeyBrowser = () => {
+    Reflect.deleteProperty(globalThis, "PublicKeyCredential");
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+  };
+
+  test("offers a passkey after an email sign-in while the profile is unavailable", async () => {
+    await withEmailSignInOnCapableBrowser();
+    try {
+      const view = await renderState({
+        kind: "authenticated-unavailable",
+        email: adaAddress,
+        passkeys: { accountId: "account-1", passkeys: [] },
+      });
+
+      await waitFor(() =>
+        expect(
+          view.getByRole("dialog", {
+            name: m.accountPasskeyPromptTitle({}, en),
+          })
+        ).toBeTruthy()
+      );
+    } finally {
+      withoutPasskeyBrowser();
+    }
+  });
+
   test("keeps Sign-in & security out of an account pending deletion", async () => {
+    await withEmailSignInOnCapableBrowser();
     const view = await renderState({
       kind: "deletion-pending",
       email: adaAddress,
@@ -749,6 +792,9 @@ describe("AccountPage states", () => {
     expect(
       view.getByText(m.accountDeletionPendingTitle({}, en)).closest("[hidden]")
     ).toBeNull();
+    await flushWorkspaceComponentWork();
+    expect(view.queryByText(m.accountPasskeyPromptTitle({}, en))).toBeNull();
+    withoutPasskeyBrowser();
   });
 
   test("asks the account identity adapter to refresh once per authenticated view", async () => {

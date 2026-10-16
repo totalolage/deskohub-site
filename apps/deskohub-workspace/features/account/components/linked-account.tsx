@@ -7,8 +7,7 @@ import { useAccountLayout } from "@/features/account/components/account-layout-s
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { LegalScreen } from "@/features/account/components/legal/legal-screen";
-import { PasskeyPrompt } from "@/features/account/components/passkeys/passkey-prompt";
-import { SignInSecurityScreen } from "@/features/account/components/passkeys/sign-in-security-screen";
+import { SignInSecuritySection } from "@/features/account/components/passkeys/sign-in-security-section";
 import { useAccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
 import { ProfileCompletionReferralNotice } from "@/features/account/components/profile-completion-referral-notice";
 import { ProfileForm } from "@/features/account/components/profile-form";
@@ -134,29 +133,12 @@ export function LinkedAccount({
       </div>
 
       {accountPasskeys && (
-        <>
-          <PasskeyPrompt
-            accountHasPasskeys={
-              accountPasskeys.passkeys === null
-                ? undefined
-                : accountPasskeys.passkeys.length > 0
-            }
-            accountId={accountPasskeys.accountId}
-            createPasskey={() => accountPasskeys.createPasskey("prompt")}
-            locale={locale}
-          />
-          <div hidden={activeSection !== "security"}>
-            <SignInSecurityScreen
-              confirmWithPasskey={accountPasskeys.confirmWithPasskey}
-              createPasskey={() => accountPasskeys.createPasskey("settings")}
-              deletePasskey={accountPasskeys.deletePasskey}
-              email={email}
-              locale={locale}
-              passkeys={accountPasskeys.passkeys}
-              renamePasskey={accountPasskeys.renamePasskey}
-            />
-          </div>
-        </>
+        <SignInSecuritySection
+          accountPasskeys={accountPasskeys}
+          email={email}
+          hidden={activeSection !== "security"}
+          locale={locale}
+        />
       )}
 
       {activeSection === "legal" && isPrivateAccountPathname && (

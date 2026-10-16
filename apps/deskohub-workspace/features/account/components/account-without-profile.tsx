@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useAccountLayout } from "@/features/account/components/account-layout-shell";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
-import { SignInSecurityScreen } from "@/features/account/components/passkeys/sign-in-security-screen";
+import { SignInSecuritySection } from "@/features/account/components/passkeys/sign-in-security-section";
 import { useAccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
 import type { Locale } from "@/features/i18n";
@@ -21,8 +21,8 @@ type AccountWithoutProfileProps = {
 
 /**
  * A signed-in account whose profile can't be shown. Sign-in methods need only
- * the session, so Sign-in & security still manages passkeys; an account
- * pending deletion only confirms the deletion.
+ * the session, so Sign-in & security and the post-sign-in passkey prompt
+ * still work; an account pending deletion only confirms the deletion.
  */
 export function AccountWithoutProfile({
   children,
@@ -50,17 +50,12 @@ export function AccountWithoutProfile({
         </div>
       </div>
       {signInSecurity && (
-        <div hidden={!securityActive}>
-          <SignInSecurityScreen
-            confirmWithPasskey={accountPasskeys.confirmWithPasskey}
-            createPasskey={() => accountPasskeys.createPasskey("settings")}
-            deletePasskey={accountPasskeys.deletePasskey}
-            email={email}
-            locale={locale}
-            passkeys={accountPasskeys.passkeys}
-            renamePasskey={accountPasskeys.renamePasskey}
-          />
-        </div>
+        <SignInSecuritySection
+          accountPasskeys={accountPasskeys}
+          email={email}
+          hidden={!securityActive}
+          locale={locale}
+        />
       )}
     </>
   );
