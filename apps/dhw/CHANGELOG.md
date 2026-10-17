@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.18.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.17.0...dhw-v1.18.0) (2026-10-17)
+
+
+### Features
+
+* **admin:** sign administrators in with their accounts and remove Basic auth ([cfb8afa](https://github.com/totalolage/deskohub-site/commit/cfb8afab11ec7347bc886a84bde129b9002a5935))
+* **dhw:** CLI sessions follow the approving administrator account ([30b4a21](https://github.com/totalolage/deskohub-site/commit/30b4a21f57c179ae0b29cb40e501723c835f364b))
+
+
+### Bug Fixes
+
+* **admin:** close dot-segment return redirects and keep released dhw sessions readable ([9f8a9f2](https://github.com/totalolage/deskohub-site/commit/9f8a9f2ae59169e72967eb94ecf0808784d73ae1))
+
 ## [1.17.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.16.0...dhw-v1.17.0) (2026-10-16)
 
 
