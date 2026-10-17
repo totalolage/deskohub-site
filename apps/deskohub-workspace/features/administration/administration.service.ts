@@ -7,6 +7,7 @@ import {
   type DotyposTableId,
   DotyposTableIdSchema,
   type ExternalAPIError,
+  getCustomerDisplayName,
   type NetworkError,
   type ValidationError,
 } from "@deskohub/dotypos";
@@ -581,9 +582,7 @@ const toCustomer = (
   customer: DotyposCustomer,
   fallbackId: DotyposCustomerId
 ): AdministrationCustomer => {
-  const name =
-    [customer.firstName, customer.lastName].filter(Boolean).join(" ").trim() ||
-    customer.companyName?.trim();
+  const name = getCustomerDisplayName(customer);
   return {
     id:
       Option.getOrUndefined(decodeDotyposCustomerId(customer.id)) ?? fallbackId,

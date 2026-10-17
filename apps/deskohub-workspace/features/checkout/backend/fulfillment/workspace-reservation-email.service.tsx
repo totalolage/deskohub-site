@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { getCustomerDisplayName } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import type { EmailDeliveryId } from "@deskohub/email";
 import {
@@ -138,11 +139,7 @@ export const createCustomerEmailLocaleResolver =
     );
 
 const getCustomerName = (customer: Customer) =>
-  [customer.firstName, customer.lastName]
-    .map((part) => part?.trim())
-    .filter((part): part is string => Boolean(part))
-    .join(" ") ||
-  customer.companyName?.trim() ||
+  getCustomerDisplayName(customer) ||
   customer.email?.trim() ||
   "Workspace customer";
 

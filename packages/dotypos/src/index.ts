@@ -80,4 +80,5 @@ export {
   DotyposTableIdSchema,
   DotyposTableSchema,
 } from "./types";
+export { getCustomerDisplayName } from "./utils/customer-name";
 export { normalizePhoneNumber } from "./utils/phone-formatting";
