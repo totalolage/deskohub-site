@@ -2,7 +2,11 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { getOfficeReservationDefaultValuesFromSearchParams } from "./office-reservation-checkout-query";
+import {
+  getOfficeReservationDefaultValuesFromSearchParams,
+  getOfficeReservationSearchParams,
+} from "./office-reservation-checkout-query";
+import { getCurrentWorkspaceDate } from "./reservation-date";
 
 describe("getOfficeReservationDefaultValuesFromSearchParams", () => {
   test("prefills safe office shape on a fresh date", () => {
@@ -74,5 +78,30 @@ describe("customer last reservation defaults", () => {
         { lastReservation, seatCapacity: 2, startsOn: "2099-06-12" }
       )
     ).toMatchObject({ dayCount: 2, seats: 1 });
+  });
+});
+
+describe("getOfficeReservationSearchParams", () => {
+  test("restores selected office options for the current Workspace date", () => {
+    const startsOn = getCurrentWorkspaceDate().toString();
+    const searchParams = getOfficeReservationSearchParams({
+      dayCount: 3,
+      seats: 4,
+    });
+
+    expect(
+      getOfficeReservationDefaultValuesFromSearchParams(searchParams, {
+        seatCapacity: 6,
+        startsOn,
+      })
+    ).toMatchObject({ startsOn, dayCount: 3, seats: 4 });
+  });
+
+  test("omits options that were not selected", () => {
+    const searchParams = getOfficeReservationSearchParams({});
+
+    expect(searchParams.toString()).toBe("");
+    expect(searchParams.has("dayCount")).toBe(false);
+    expect(searchParams.has("seats")).toBe(false);
   });
 });

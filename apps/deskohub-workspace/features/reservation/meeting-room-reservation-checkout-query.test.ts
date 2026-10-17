@@ -3,7 +3,10 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "./meeting-room-reservation-checkout-query";
+import {
+  getMeetingRoomReservationDefaultValuesFromSearchParams,
+  getMeetingRoomReservationSearchParams,
+} from "./meeting-room-reservation-checkout-query";
 import { getMeetingRoomReservationInterval } from "./meeting-room-reservation-time";
 
 const adaEmail = testEmailAddress("ada");
@@ -194,5 +197,35 @@ describe("customer last reservation defaults", () => {
         { kind: "meeting-room", duration: "hour:4" }
       ).duration
     ).toBe("hour:1");
+  });
+});
+
+describe("getMeetingRoomReservationSearchParams", () => {
+  const now = Temporal.Instant.from("2099-06-09T08:00:00Z");
+
+  for (const duration of ["hour:1", "hour:4", "day:1"] as const) {
+    test(`restores a future ${duration} reservation`, () => {
+      const startDateTime = "2099-06-10T09:00";
+      const searchParams = getMeetingRoomReservationSearchParams({
+        duration,
+        startDateTime,
+      });
+
+      expect(
+        getMeetingRoomReservationDefaultValuesFromSearchParams(
+          searchParams,
+          now
+        )
+      ).toMatchObject({ duration, startDateTime });
+    });
+  }
+
+  test("omits a start time when none was selected", () => {
+    const searchParams = getMeetingRoomReservationSearchParams({
+      duration: "hour:1",
+    });
+
+    expect(searchParams.toString()).toBe("duration=hour%3A1");
+    expect(searchParams.has("startDateTime")).toBe(false);
   });
 });

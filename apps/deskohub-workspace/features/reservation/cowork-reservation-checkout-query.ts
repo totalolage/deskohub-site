@@ -3,6 +3,8 @@ import { Schema } from "effect";
 import {
   getWorkspaceProductByTier,
   isWorkspaceCoworkCurrentProductTier,
+  type WorkspaceCoworkCurrentTier,
+  type WorkspaceProductMonitorOption,
   workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
@@ -84,6 +86,25 @@ const decodeReservationCheckoutQuery = (
     ...decodeReservationCheckoutCustomer(searchParams),
   };
 };
+
+/**
+ * The query of a link that opens the cowork form on an offer, which
+ * `getReservationDefaultValuesFromSearchParams` reads back.
+ */
+export const getCoworkReservationSearchParams = (offer: {
+  readonly entryTier: WorkspaceCoworkCurrentTier;
+  readonly date?: string;
+  readonly coffee?: boolean;
+  readonly monitorOption?: WorkspaceProductMonitorOption;
+}) =>
+  new URLSearchParams({
+    entryTier: offer.entryTier,
+    ...(offer.date !== undefined && { date: offer.date }),
+    ...(offer.coffee !== undefined && { coffee: String(offer.coffee) }),
+    ...(offer.monitorOption !== undefined && {
+      monitorOption: offer.monitorOption,
+    }),
+  });
 
 /**
  * Cowork form values from a link. The customer's last cowork reservation

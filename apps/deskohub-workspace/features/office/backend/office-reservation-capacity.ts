@@ -5,6 +5,7 @@ import {
   getWorkspaceTableSeatCapacity,
   workspaceOfficeReservationTableTag,
 } from "@/features/checkout/backend/reservation";
+import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 
 export const getOfficeReservationSeatCapacity = Effect.fn(function* (
   tables: readonly DotyposTable[]
@@ -21,3 +22,14 @@ export const getOfficeReservationSeatCapacity = Effect.fn(function* (
 
   return yield* getWorkspaceTableSeatCapacity(candidates[0]!);
 });
+
+/**
+ * The office seat capacity from the shared advisory table snapshot, for reads
+ * that must not reach Dotypos on their own.
+ */
+export const loadAdvisoryOfficeSeatCapacity =
+  AdvisoryAvailabilityInventory.pipe(
+    Effect.flatMap((inventory) => inventory.tables),
+    Effect.flatMap(getOfficeReservationSeatCapacity),
+    Effect.withSpan("office.loadAdvisorySeatCapacity")
+  );

@@ -109,6 +109,23 @@ export const plainDateStringSchema = Schema.String.check(isPlainDateString())
 
 export type PlainDate = typeof plainDateStringSchema.Type;
 
+/** Every calendar date from `start` through `end`, inclusive. */
+export const getPlainDatesBetween = (
+  start: Temporal.PlainDate,
+  end: Temporal.PlainDate
+): Temporal.PlainDate[] => {
+  const dates: Temporal.PlainDate[] = [];
+  for (
+    let cursor = start;
+    Temporal.PlainDate.compare(cursor, end) <= 0;
+    cursor = cursor.add({ days: 1 })
+  ) {
+    dates.push(cursor);
+  }
+
+  return dates;
+};
+
 export const temporalInstantToDate = (instant: Temporal.Instant) =>
   new Date(instant.epochMilliseconds);
 
