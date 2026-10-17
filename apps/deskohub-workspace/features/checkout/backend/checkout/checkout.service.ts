@@ -1100,7 +1100,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             // paths above stay reachable without the lock.
             return yield* accountActivity
               .guardStateCreation(
-                Effect.gen(function* () {
+                Effect.fn(function* () {
                   yield* reservations.updateReservationDetails({
                     id: reservation.id,
                     reservationDetails:
