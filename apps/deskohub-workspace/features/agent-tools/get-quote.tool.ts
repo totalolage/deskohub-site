@@ -9,7 +9,7 @@ import {
   workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
-import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
+import { getReservationQuoteDiscount } from "@/features/checkout/reservation-quote-schema";
 import { type Locale, m } from "@/features/i18n";
 import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-reservation-capacity";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
@@ -156,10 +156,7 @@ const toQuoteResult = ({
     total: toAgentToolMoney(expectedPrice),
     regular_price: toAgentToolMoney(undiscountedPrice),
     discount: toAgentToolMoney(
-      workspaceMoneyWithValue(
-        undiscountedPrice.value - expectedPrice.value,
-        expectedPrice
-      )
+      getReservationQuoteDiscount(advertised.quote.payment)
     ),
     quoted_at: now.toString(),
     note: m.agentToolQuoteNote({}, { locale }),

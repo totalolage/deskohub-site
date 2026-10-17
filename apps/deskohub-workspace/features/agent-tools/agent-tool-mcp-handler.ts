@@ -20,7 +20,7 @@ const { address } = workspaceSiteConstants.location;
 const agentToolServerInstructions = [
   `${workspaceSiteConstants.brand.name} is a coworking space at ${address.street}, ${address.postalCode} ${address.city}, open 24/7.`,
   "It offers cowork desks by the day, a meeting room by the hour or the day, and a private office for whole days.",
-  "Use list_offerings for products and regular prices, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
+  "Use list_offerings for products with their regular and today's advertised prices, check_availability to see whether a selection looks free, and get_quote for the exact price of a selection.",
   "Bookings are made and paid on the website: give the customer the reservation_url from a result to finish there. Availability and price are confirmed on the website before payment.",
 ].join(" ");
 
