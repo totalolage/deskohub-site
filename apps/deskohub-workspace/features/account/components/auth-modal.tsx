@@ -40,10 +40,13 @@ export function AuthModal({
       <DialogContent
         aria-describedby="auth-modal-description"
         locale={locale}
-        className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto border-0 bg-transparent p-0 shadow-none [&>button]:right-4 [&>button]:top-4"
+        className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto border-0 bg-transparent p-0 shadow-none [&>button]:right-4 [&>button]:top-4 [&>div]:bg-white"
       >
+        {/* The card shows its own heading, so the dialog's label isn't one. */}
         <DialogHeader className="sr-only">
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle asChild>
+            <p>{title}</p>
+          </DialogTitle>
           <DialogDescription id="auth-modal-description">
             {description}
           </DialogDescription>

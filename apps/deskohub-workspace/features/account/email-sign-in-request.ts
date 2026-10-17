@@ -1,12 +1,11 @@
 "use client";
 
 import { Option, Schema } from "effect";
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
 import {
   readSessionStorageItem,
   writeSessionStorageItem,
 } from "@/shared/browser/session-storage";
-import { useClientReady } from "@/shared/browser/use-client-ready";
 
 /** A request stays usable for as long as its link and code (10 minutes). */
 const EMAIL_SIGN_IN_REQUEST_TTL_MS = 10 * 60 * 1000;
@@ -37,54 +36,66 @@ export type EmailSignInRequest = typeof emailSignInRequestSchema.Type;
 export const hasSignInCode = (request: EmailSignInRequest) =>
   request.signInCode !== false;
 
-const readStoredEmailSignInRequest = (): EmailSignInRequest | null => {
-  const raw = readSessionStorageItem(storageKey);
-  const request =
+// The tab's current request: kept in memory, so a tab without storage still
+// works, and mirrored to sessionStorage for a reload or another page.
+// `undefined` until it is first read from storage.
+let currentRaw: string | null | undefined;
+let currentRequest: EmailSignInRequest | null = null;
+const listeners = new Set<() => void>();
+
+const setCurrentRaw = (raw: string | null) => {
+  currentRaw = raw;
+  currentRequest =
     raw === null ? null : Option.getOrNull(decodeEmailSignInRequest(raw));
-  return request !== null &&
-    Date.now() - request.requestedAt < EMAIL_SIGN_IN_REQUEST_TTL_MS
-    ? request
-    : null;
 };
 
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
+
+const getSnapshot = () => {
+  if (currentRaw === undefined) {
+    setCurrentRaw(readSessionStorageItem(storageKey));
+  }
+  return currentRequest;
+};
+
+// Absent during server rendering and hydration.
+const getServerSnapshot = () => undefined;
+
+const isUsable = (request: EmailSignInRequest) =>
+  Date.now() - request.requestedAt < EMAIL_SIGN_IN_REQUEST_TTL_MS;
+
 /**
- * The pending sign-in email request of this tab. It lives in React state and
- * is mirrored to sessionStorage on a best-effort basis, so only restoring the
- * request after a reload or on another page, such as the verify page,
- * depends on storage. It never enters the URL and reads as absent during
- * server rendering and hydration; `restored` tells the two apart.
+ * The pending sign-in email request of this tab, shared by every page that
+ * shows it, such as the sign-in card and the verify page. It never enters
+ * the URL and reads as absent during server rendering and hydration;
+ * `restored` tells that apart from no request.
  */
 export const useEmailSignInRequest = () => {
-  const clientReady = useClientReady();
-  const [{ restored, request }, setState] = useState<{
-    readonly restored: boolean;
-    readonly request: EmailSignInRequest | null;
-  }>({ restored: false, request: null });
-
-  // Restore the stored request once, in the first render after hydration.
-  if (clientReady && !restored) {
-    setState({ restored: true, request: readStoredEmailSignInRequest() });
-  }
-
-  const updateRequest = (next: EmailSignInRequest | null) => {
-    setState({ restored: true, request: next });
-    rememberEmailSignInRequest(next);
-  };
-
-  return [request, updateRequest, restored] as const;
+  const stored = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot
+  );
+  const request = stored && isUsable(stored) ? stored : null;
+  return [request, rememberEmailSignInRequest, stored !== undefined] as const;
 };
 
 /**
- * Stores this tab's pending request, for a page that sends the email and
- * then moves to the verify page; null forgets it.
+ * Replaces this tab's pending request, such as after a page sent the email
+ * and before it moves to the verify page; null drops it.
  */
 export const rememberEmailSignInRequest = (
   request: EmailSignInRequest | null
 ) => {
-  writeSessionStorageItem(
-    storageKey,
-    request === null ? null : JSON.stringify(request)
-  );
+  const raw = request === null ? null : JSON.stringify(request);
+  setCurrentRaw(raw);
+  writeSessionStorageItem(storageKey, raw);
+  for (const listener of listeners) listener();
 };
 
 /**
@@ -92,5 +103,5 @@ export const rememberEmailSignInRequest = (
  * is signed in and leaving the page; the step on screen stays.
  */
 export const forgetEmailSignInRequest = () => {
-  rememberEmailSignInRequest(null);
+  writeSessionStorageItem(storageKey, null);
 };

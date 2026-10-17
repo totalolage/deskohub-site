@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
 import { parseAuthReturnPath } from "@/features/account/auth-return-path";
 import { AuthCard } from "@/features/account/components/auth-card";
 import { SignInEmailSentStep } from "@/features/account/components/sign-in-email-sent-step";
 import {
   forgetEmailSignInRequest,
+  rememberEmailSignInRequest,
   useEmailSignInRequest,
 } from "@/features/account/email-sign-in-request";
 import { getAccountSignInPath } from "@/features/account/routes";
@@ -43,6 +44,18 @@ export function SignInVerifyCard({
   const authReturn = useMemo(
     () => createAuthReturnLifecycle({ locale, returnPath }),
     [locale, returnPath]
+  );
+
+  // "Use a different email" drops the request once this card is gone, so the
+  // step stays on screen while the page leaves.
+  const discardWhenGone = useRef(false);
+  useEffect(
+    () => () => {
+      if (!discardWhenGone.current) return;
+      discardWhenGone.current = false;
+      rememberEmailSignInRequest(null);
+    },
+    []
   );
 
   useEffect(() => {
@@ -97,7 +110,7 @@ export function SignInVerifyCard({
         onRequestChange={setRequest}
         onUseDifferentEmail={() => {
           authReturn.cancel();
-          // The step stays on screen while this page leaves.
+          discardWhenGone.current = true;
           forgetEmailSignInRequest();
           if (presentation === "modal") router.back();
           else router.replace(returnPath ?? getAccountSignInPath(locale));

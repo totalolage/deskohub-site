@@ -3,6 +3,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import {
+  authCallbackReturnParam,
+  readAuthCallbackReturnPath,
+} from "@/features/account/auth-return-path";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { AuthCallbackLoading } from "@/features/account/components/auth-callback-loading";
 import { AuthCallbackRedirect } from "@/features/account/components/auth-callback-redirect";
@@ -10,6 +14,10 @@ import { getAccountSignInPath } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import {
+  getSearchParam,
+  type SearchParamsRecord,
+} from "@/shared/utils/search-params";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
 
@@ -31,8 +39,10 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 const CustomerAuthCallbackSession = async ({
   locale,
+  searchParams,
 }: {
   readonly locale: Locale;
+  readonly searchParams: Promise<SearchParamsRecord>;
 }) => {
   await connection();
 
@@ -61,7 +71,16 @@ const CustomerAuthCallbackSession = async ({
               {m.accountCallbackFailedBody({}, { locale })}
             </p>
             <Button asChild className="mt-8">
-              <Link href={getAccountSignInPath(locale)} prefetch={false}>
+              <Link
+                href={getAccountSignInPath(
+                  locale,
+                  // A new link continues to where the expired one led.
+                  readAuthCallbackReturnPath(
+                    getSearchParam(await searchParams, authCallbackReturnParam)
+                  )
+                )}
+                prefetch={false}
+              >
                 {m.accountCallbackFailedAction({}, { locale })}
               </Link>
             </Button>
@@ -72,10 +91,17 @@ const CustomerAuthCallbackSession = async ({
   );
 };
 
-export default async function CustomerAuthCallbackPage() {
+export default async function CustomerAuthCallbackPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<SearchParamsRecord>;
+}) {
   return runWithRequestLocale((locale) => (
     <Suspense fallback={<AuthCallbackLoading locale={locale} />}>
-      <CustomerAuthCallbackSession locale={locale} />
+      <CustomerAuthCallbackSession
+        locale={locale}
+        searchParams={searchParams}
+      />
     </Suspense>
   ));
 }
