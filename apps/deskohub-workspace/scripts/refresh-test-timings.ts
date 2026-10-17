@@ -26,6 +26,13 @@ const workspaceRoot = resolve(import.meta.dir, "..");
 export const testTimingsPath = join(workspaceRoot, "test-timings.json");
 export const shardTimingsArtifactPattern = "workspace-test-timings-shard-*";
 const testFilePattern = "**/*{.,_}{test,spec}.{ts,tsx,js,jsx,mjs,cjs}";
+// The `test` script skips build-output checks; CI runs them after a build.
+const buildOutputTestPattern = new Bun.Glob("**/*.build.test.ts");
+
+/** Whether the sharded `test` script runs this workspace-relative file. */
+export const isShardedTestFile = (file: string) =>
+  !file.split("/").includes("node_modules") &&
+  !buildOutputTestPattern.match(file);
 
 /** Orders entries by path code units, as Bun orders test files. */
 const byPath = (
@@ -98,7 +105,7 @@ export const predictShardDurations = (
 const discoverTestFiles = async (): Promise<ReadonlyArray<string>> => {
   const files: string[] = [];
   for await (const file of new Bun.Glob(testFilePattern).scan(workspaceRoot)) {
-    if (!file.split("/").includes("node_modules")) files.push(file);
+    if (isShardedTestFile(file)) files.push(file);
   }
   return files;
 };
