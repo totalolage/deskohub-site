@@ -671,6 +671,64 @@ const assertBareReservationsClickIsNoop = async (
   }
 };
 
+// The navigation switches sections by replacing the URL, so a revalidating
+// Server Action then renders the switched path's route over the one the page
+// loaded at. Neither a remount nor a full reload may drop open client state.
+const assertDraftSurvivesRevalidationAfterSwitch = async (
+  fixture: AccountLegalFixture,
+  entryPath: string
+) => {
+  const locale = "en-US";
+  const context = await openFixtureContext(fixture, {
+    extraHTTPHeaders: { [accountFixtureAuthHeader]: "private" },
+    viewport: { height: 900, width: 1440 },
+  });
+  const page = await context.newPage();
+  const documentLoads: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() === "document")
+      documentLoads.push(request.url());
+  });
+
+  try {
+    await page.goto(`${fixture.serverUrl}${entryPath}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page
+      .locator('[data-fixture-hydrated="true"]')
+      .waitFor({ state: "attached" });
+    const openDraft = page.getByTestId("fixture-draft-open");
+    await waitForReactClickHandler(page, openDraft);
+    await openDraft.click();
+    const draft = page.getByTestId("fixture-draft");
+    await draft.waitFor({ state: "visible" });
+    await draft.evaluate((element) => {
+      element.setAttribute("data-draft-marker", "original");
+    });
+    const documentLoadsBefore = documentLoads.length;
+
+    const dangerLink = accountSectionLink(page, locale, "danger");
+    await waitForReactClickHandler(page, dangerLink);
+    await dangerLink.click();
+    await page.waitForURL(
+      `${fixture.serverUrl}${getAccountSectionPath(locale, "danger")}`
+    );
+
+    await page.getByTestId("fixture-draft-revalidate").click();
+    await page
+      .locator('[data-testid="fixture-draft-revalidations"]', { hasText: "1" })
+      .waitFor({ state: "visible" });
+
+    expect(documentLoads.slice(documentLoadsBefore)).toEqual([]);
+    expect(await draft.getAttribute("data-draft-marker")).toBe("original");
+    expect(new URL(page.url()).pathname).toBe(
+      getAccountSectionPath(locale, "danger")
+    );
+  } finally {
+    await closeFixtureContext(fixture, context);
+  }
+};
+
 const runPrivateContinuity = async (
   fixture: AccountLegalFixture,
   viewport: Viewport,
@@ -954,6 +1012,14 @@ describe("account legal continuity browser fixture", () => {
         await assertSectionPathNotFound(requireFixture(), path, { signedIn });
       });
     }
+  }
+
+  for (const path of ["/en-US/account", "/en-US/account/profile"]) {
+    test(`keeps client state through a revalidating action after switching from ${path}`, {
+      timeout: accountFixtureCaseTimeout,
+    }, async () => {
+      await assertDraftSurvivesRevalidationAfterSwitch(requireFixture(), path);
+    });
   }
 
   for (const path of ["/en-US/account", "/en-US/account/profile"]) {

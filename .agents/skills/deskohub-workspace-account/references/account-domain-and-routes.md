@@ -61,15 +61,21 @@
   tree on the path the page loaded at; a Server Action that revalidates, or
   `router.refresh()`, then renders the switched path's route, and Next
   remounts whatever differs between the two routes' trees. Only the pages
-  differ, so open dialogs and drafts survive. Don't serve section paths
+  differ, so open dialogs and drafts survive; the legal continuity fixture
+  covers this from `/account` and from a section's path. Don't serve section paths
   through a proxy rewrite either: the account shell is server-rendered with
   the rewritten pathname and hydrates with a mismatch.
 - The account layout's `@modal` slot owns only the intercepted
   `(..)reservation/{status,access}/[orderId]` modals. `@modal/page.tsx` renders
-  nothing at `/account`, and `@modal/default.tsx` renders nothing on hard
-  navigation to other account routes, including section paths. Don't add a catch-all slot page. If a
-  modal ever links to another account route, add an explicit null slot page for
-  that route.
+  nothing at `/account`, `@modal/[section]/page.tsx` nothing at a section's
+  path (and at `/account/legal` and `/account/deleted`), and
+  `@modal/default.tsx` nothing wherever no slot page matches.
+  Keep the `[section]` slot page: without it the slot falls back to its
+  default at section paths, and a revalidating Server Action after an
+  in-place switch from `/account` returns a slot tree the router cannot patch
+  onto the bare path's, so it reloads the page and closes open dialogs.
+  Don't add a catch-all slot page. If a modal ever links to another account
+  route, add an explicit null slot page for that route.
 - Every route into `/account/legal` and `/account/deleted` starts with the
   modal closed. The dialog makes the background inert, closing it goes back to
   `/account`, and deletion leaves through a document navigation.
