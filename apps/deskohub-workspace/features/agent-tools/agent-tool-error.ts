@@ -9,7 +9,8 @@ export type AgentToolErrorCode =
   | "availability_unavailable"
   | "quote_unavailable"
   | "offerings_unavailable"
-  | "rate_limited";
+  | "rate_limited"
+  | "service_unavailable";
 
 export type AgentToolUnavailableCode =
   | "availability_unavailable"
@@ -66,6 +67,7 @@ export const agentToolErrorResultSchema = Schema.Struct({
         "quote_unavailable",
         "offerings_unavailable",
         "rate_limited",
+        "service_unavailable",
       ]),
       message: agentToolErrorMessageField,
     }),
@@ -94,6 +96,10 @@ export class AgentToolError extends Data.TaggedError("AgentToolError")<{
 
   static rateLimited = () =>
     new AgentToolError({ details: { code: "rate_limited" } });
+
+  /** Calls can't be admitted, such as while the rate limit can't be checked. */
+  static serviceUnavailable = () =>
+    new AgentToolError({ details: { code: "service_unavailable" } });
 
   /** Wraps an unexpected failure as the tool's unavailable code. */
   static unavailable = (code: AgentToolUnavailableCode) => (cause: unknown) =>
@@ -125,6 +131,8 @@ export const getAgentToolErrorMessage = (
       offerings_unavailable: () =>
         m.agentToolErrorOfferingsUnavailable({}, { locale }),
       rate_limited: () => m.agentToolErrorRateLimited({}, { locale }),
+      service_unavailable: () =>
+        m.agentToolErrorServiceUnavailable({}, { locale }),
     })
   );
 

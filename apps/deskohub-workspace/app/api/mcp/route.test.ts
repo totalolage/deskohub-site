@@ -302,12 +302,53 @@ describe("customer MCP route", () => {
     });
   });
 
-  test("admits calls while the rate-limit rule is missing", async () => {
+  test("fails closed while the rate-limit rule is missing", async () => {
     rateLimit = { rateLimited: false, error: "not-found" };
 
-    const { result } = await callTool("list_offerings", {});
+    const english = await callTool("list_offerings", {});
+    const czech = await callTool("list_offerings", { locale: "cs-CZ" });
 
-    expect(result?.isError).toBeFalsy();
+    expect(english.result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {
+          code: "service_unavailable",
+          message:
+            "The tools are temporarily unavailable. Try again later or use the website.",
+        },
+      },
+    });
+    expect(czech.result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {
+          code: "service_unavailable",
+          message:
+            "Nástroje jsou dočasně nedostupné. Zkus to později nebo použij web.",
+        },
+      },
+    });
+    expect(
+      await validateStructuredContent("list_offerings", english.result)
+    ).toMatchObject({ valid: true });
+    expect(services.dotyposRequests).toEqual([]);
+  });
+
+  test("fails closed when the firewall check rejects", async () => {
+    checkRateLimit.mockImplementationOnce(async () => {
+      throw new Error("firewall unreachable");
+    });
+
+    const { result } = await callTool("get_quote", {
+      family: "cowork",
+      date: workspaceDateFromToday(2),
+      tier: "open-space",
+    });
+
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: "service_unavailable" } },
+    });
   });
 
   test("answers session requests with 405", async () => {

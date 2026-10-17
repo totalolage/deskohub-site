@@ -20,6 +20,7 @@ const errors = [
   AgentToolError.unavailable("availability_unavailable")(null),
   AgentToolError.unavailable("quote_unavailable")(null),
   AgentToolError.unavailable("offerings_unavailable")(null),
+  AgentToolError.serviceUnavailable(),
 ];
 
 describe("getAgentToolErrorMessage", () => {
@@ -35,6 +36,7 @@ describe("getAgentToolErrorMessage", () => {
       "Availability can't be checked right now. Try again shortly or check the website.",
       "A price can't be quoted right now. Try again shortly or check the website.",
       "The offerings can't be listed right now. Try again shortly.",
+      "The tools are temporarily unavailable. Try again later or use the website.",
     ]);
   });
 
@@ -50,6 +52,7 @@ describe("getAgentToolErrorMessage", () => {
       "Dostupnost teď nejde ověřit. Zkus to za chvíli znovu nebo se podívej na web.",
       "Cenu teď nejde spočítat. Zkus to za chvíli znovu nebo se podívej na web.",
       "Nabídku teď nejde načíst. Zkus to za chvíli znovu.",
+      "Nástroje jsou dočasně nedostupné. Zkus to později nebo použij web.",
     ]);
   });
 });

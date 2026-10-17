@@ -171,6 +171,7 @@ const callAgentTool = <R>({
 }): Effect.Effect<CallToolResult, never, R | AgentToolAdmission> =>
   AgentToolAdmission.pipe(
     Effect.flatMap((admission) => admission.isCallAllowed(headers)),
+    Effect.mapError(() => AgentToolError.serviceUnavailable()),
     Effect.filterOrFail(
       (allowed) => allowed,
       () => AgentToolError.rateLimited()

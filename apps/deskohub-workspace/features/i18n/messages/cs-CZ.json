@@ -1076,6 +1076,7 @@
   "agentToolErrorQuoteUnavailable": "Cenu teď nejde spočítat. Zkus to za chvíli znovu nebo se podívej na web.",
   "agentToolErrorOfferingsUnavailable": "Nabídku teď nejde načíst. Zkus to za chvíli znovu.",
   "agentToolErrorRateLimited": "Příliš mnoho požadavků. Počkej minutu a zkus to znovu.",
+  "agentToolErrorServiceUnavailable": "Nástroje jsou dočasně nedostupné. Zkus to později nebo použij web.",
   "agentToolAvailabilityAdvisoryNote": "Dostupnost je odhad z nedávných dat. Potvrdí se až při rezervaci na webu.",
   "agentToolQuoteNote": "Toto je aktuální cena za výběr. Před platbou se potvrdí na webu, kde se rezervace dokončí a zaplatí.",
   "agentToolBookingHandoff": "Rezervace se vytváří a platí na webu. Otevři odkaz na rezervaci, vyber podrobnosti a zaplať.",

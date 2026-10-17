@@ -1067,6 +1067,7 @@
   "agentToolErrorQuoteUnavailable": "A price can't be quoted right now. Try again shortly or check the website.",
   "agentToolErrorOfferingsUnavailable": "The offerings can't be listed right now. Try again shortly.",
   "agentToolErrorRateLimited": "Too many requests. Wait a minute and try again.",
+  "agentToolErrorServiceUnavailable": "The tools are temporarily unavailable. Try again later or use the website.",
   "agentToolAvailabilityAdvisoryNote": "Availability is an estimate from recent data. It is confirmed when the booking is made on the website.",
   "agentToolQuoteNote": "This is the current price for the selection. It is confirmed on the website before payment, where the booking is made and paid.",
   "agentToolBookingHandoff": "Bookings are made and paid on the website. Open the reservation link to choose the details and pay.",
