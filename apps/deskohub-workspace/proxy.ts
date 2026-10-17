@@ -24,11 +24,7 @@ import {
 import { env } from "./env";
 import { appendVercelPreviewProtectionBypass } from "./features/checkout/backend/checkout/vercel-preview-protection-bypass";
 import { reservationAccessTokenQueryParam } from "./features/reservation/reservation-access-token";
-import {
-  classifyAgentTraffic,
-  forwardAgentTraffic,
-  readForwardedAgentTraffic,
-} from "./shared/agent-traffic/agent-traffic";
+import { classifyAgentTraffic } from "./shared/agent-traffic/agent-traffic";
 import { scheduleAgentPageRequest } from "./shared/backend/agent-traffic/agent-page-request";
 import { resolveWorkspaceRuntimeCallbackOrigin } from "./shared/backend/config/workspace-url.config";
 import { withRequestPathname } from "./shared/backend/utils/request-pathname";
@@ -258,9 +254,10 @@ async function localizedPageResponse(
 }
 
 // One event per agent page load that reaches a render; humans and other
-// unclassified traffic send none.
+// unclassified traffic send none. A path no page matches renders the
+// not-found page and is reported as the `unknown` route.
 const recordAgentPageRequest = (request: NextRequest, locale: string) => {
-  const traffic = readForwardedAgentTraffic(request.headers);
+  const traffic = classifyAgentTraffic(request.headers);
   if (
     traffic.category === "unclassified" ||
     !isDocumentNavigation(request) ||
@@ -319,15 +316,10 @@ const administrationPageAccess = async (request: NextRequest) => {
   return readAdministrationRequestAccess(request.headers);
 };
 
-async function administrationResponse(
-  request: NextRequest,
-  { forwardRequestHeaders }: { readonly forwardRequestHeaders: boolean }
-) {
+async function administrationResponse(request: NextRequest) {
   // A Server Action reaches its guard, which fails closed without a redirect.
   if (request.method === "POST" && request.headers.has("next-action")) {
-    return forwardRequestHeaders
-      ? NextResponse.next({ request: { headers: request.headers } })
-      : NextResponse.next();
+    return NextResponse.next();
   }
   if (request.method === "GET" || request.method === "HEAD") {
     const access = await administrationPageAccess(request).catch(
@@ -347,23 +339,12 @@ async function administrationResponse(
 }
 
 export async function proxy(request: NextRequest) {
-  // Every render the proxy hands a request to, Server Actions included, reads
-  // its agent category from the proxy rather than from the client.
-  const agentTrafficForwarded = forwardAgentTraffic(
-    request.headers,
-    classifyAgentTraffic(request.headers)
-  );
-
   if (isAdministrationPath(request.nextUrl.pathname)) {
-    return markAdministrationResponse(
-      await administrationResponse(request, {
-        forwardRequestHeaders: agentTrafficForwarded,
-      })
-    );
+    return markAdministrationResponse(await administrationResponse(request));
   }
 
   if (request.method === "POST" && request.headers.has("next-action")) {
-    return continueRequest(request, { headersChanged: agentTrafficForwarded });
+    return continueRequest(request, { headersChanged: false });
   }
 
   if (
@@ -385,9 +366,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  return localizedPageResponse(request, {
-    forwardRequestHeaders: agentTrafficForwarded,
-  });
+  return localizedPageResponse(request);
 }
 
 // Every account route, dotted segments included, passes through the proxy: the

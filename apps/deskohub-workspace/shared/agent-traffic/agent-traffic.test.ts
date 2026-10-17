@@ -4,8 +4,6 @@ import {
   agentTrafficProperties,
   classifyAgentTraffic,
   classifyVerifiedBot,
-  forwardAgentTraffic,
-  readForwardedAgentTraffic,
 } from "./agent-traffic";
 
 const chromeOnMac =
@@ -200,66 +198,6 @@ describe("classifyVerifiedBot", () => {
         verifiedBotCategory: "constructor",
       })
     ).toEqual({ category: "other_bot", name: "other" });
-  });
-});
-
-describe("forwarded agent traffic", () => {
-  test("hands the proxy's classification on, replacing a client's value", () => {
-    const headers = new Headers({
-      "user-agent": "Mozilla/5.0 (compatible; Googlebot/2.1)",
-      "x-deskohub-agent-category": "ai_user_agent",
-      "x-deskohub-agent-name": "claude",
-    });
-
-    expect(forwardAgentTraffic(headers, classifyAgentTraffic(headers))).toBe(
-      true
-    );
-    expect(readForwardedAgentTraffic(headers)).toEqual({
-      category: "search_crawler",
-      name: "google",
-    });
-  });
-
-  test("strips a client's value from unclassified traffic", () => {
-    const headers = new Headers({
-      "user-agent": chromeOnMac,
-      "x-deskohub-agent-category": "ai_user_agent",
-      "x-deskohub-agent-name": "claude",
-    });
-
-    expect(forwardAgentTraffic(headers, classifyAgentTraffic(headers))).toBe(
-      true
-    );
-    expect(headers.has("x-deskohub-agent-category")).toBe(false);
-    expect(headers.has("x-deskohub-agent-name")).toBe(false);
-    expect(readForwardedAgentTraffic(headers)).toEqual({
-      category: "unclassified",
-    });
-  });
-
-  test("leaves unclassified traffic without a client value unchanged", () => {
-    const headers = new Headers({ "user-agent": chromeOnMac });
-
-    expect(forwardAgentTraffic(headers, classifyAgentTraffic(headers))).toBe(
-      false
-    );
-    expect([...headers.keys()]).toEqual(["user-agent"]);
-  });
-
-  test("reads values outside the fixed sets as unclassified or nameless", () => {
-    expect(
-      readForwardedAgentTraffic(
-        new Headers({ "x-deskohub-agent-category": "Mozilla/5.0" })
-      )
-    ).toEqual({ category: "unclassified" });
-    expect(
-      readForwardedAgentTraffic(
-        new Headers({
-          "x-deskohub-agent-category": "automation",
-          "x-deskohub-agent-name": "Mozilla/5.0",
-        })
-      )
-    ).toEqual({ category: "automation" });
   });
 });
 

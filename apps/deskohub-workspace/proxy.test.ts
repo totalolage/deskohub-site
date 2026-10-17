@@ -997,12 +997,8 @@ describe("agent traffic", () => {
     "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot";
   const chromeOnMac =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
-  const forwardedCategory = (response: Response) =>
-    response.headers.get("x-middleware-request-x-deskohub-agent-category");
-  const forwardedName = (response: Response) =>
-    response.headers.get("x-middleware-request-x-deskohub-agent-name");
 
-  test("forwards an agent page load's category and records it once", async () => {
+  test("records an agent page load once", async () => {
     const response = await proxy(
       new NextRequest(
         "https://workspace.example/en-US/reservation/status/019edbcf-5026-7ecc-821b-eda46998eaaa?statusToken=synthetic",
@@ -1011,8 +1007,6 @@ describe("agent traffic", () => {
     );
 
     expect(response.headers.get("x-middleware-next")).toBe("1");
-    expect(forwardedCategory(response)).toBe("ai_user_agent");
-    expect(forwardedName(response)).toBe("chatgpt");
     expect(scheduledAgentPageRequests).toEqual([
       {
         traffic: { category: "ai_user_agent", name: "chatgpt" },
@@ -1024,44 +1018,38 @@ describe("agent traffic", () => {
   });
 
   test("records nothing for a human page load", async () => {
-    const response = await proxy(
+    await proxy(
       new NextRequest("https://workspace.example/en-US/reservation/cowork", {
         headers: { "user-agent": chromeOnMac, "sec-fetch-dest": "document" },
       })
     );
 
-    expect(response.headers.get("x-middleware-override-headers")).toBeNull();
     expect(scheduledAgentPageRequests).toEqual([]);
   });
 
-  test("strips a client-sent category from a human's render", async () => {
-    const response = await proxy(
+  test("ignores a client-sent category on a human page load", async () => {
+    await proxy(
       new NextRequest("https://workspace.example/en-US/reservation/cowork", {
         headers: {
           "user-agent": chromeOnMac,
+          "sec-fetch-dest": "document",
           "x-deskohub-agent-category": "ai_user_agent",
           "x-deskohub-agent-name": "claude",
         },
       })
     );
 
-    const overridden =
-      response.headers.get("x-middleware-override-headers") ?? "";
-    expect(overridden).not.toContain("x-deskohub-agent-category");
-    expect(overridden).not.toContain("x-deskohub-agent-name");
-    expect(forwardedCategory(response)).toBeNull();
     expect(scheduledAgentPageRequests).toEqual([]);
   });
 
-  test("forwards the category to an agent's Server Action without recording a page load", async () => {
-    const response = await proxy(
+  test("records no page load for an agent's Server Action", async () => {
+    await proxy(
       new NextRequest("https://workspace.example/en-US/checkout/pay", {
         method: "POST",
         headers: { "next-action": "action-id", "user-agent": chatGptUser },
       })
     );
 
-    expect(forwardedCategory(response)).toBe("ai_user_agent");
     expect(scheduledAgentPageRequests).toEqual([]);
   });
 
@@ -1071,13 +1059,12 @@ describe("agent traffic", () => {
     ["a speculative prefetch", { "sec-purpose": "prefetch" }],
     ["a subresource load", { "sec-fetch-dest": "image" }],
   ])("records nothing for %s", async (_, headers) => {
-    const response = await proxy(
+    await proxy(
       new NextRequest("https://workspace.example/en-US/reservation/cowork", {
         headers: { "user-agent": chatGptUser, ...headers },
       })
     );
 
-    expect(forwardedCategory(response)).toBe("ai_user_agent");
     expect(scheduledAgentPageRequests).toEqual([]);
   });
 

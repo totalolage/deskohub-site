@@ -13,6 +13,7 @@ describe("Workspace routes", () => {
       {
         operation: "test.agent-traffic",
         cancellation: "interrupt-on-disconnect",
+        caller: "client",
       },
       () => Effect.map(CurrentAgentTraffic, (traffic) => Response.json(traffic))
     );
@@ -25,7 +26,7 @@ describe("Workspace routes", () => {
         },
       })
     );
-    // Routes bypass the proxy, so a client-sent category is never trusted.
+    // A client-sent category header is never trusted.
     const spoofed = await GET(
       new Request("https://deskohub.test/api/mcp", {
         headers: {
@@ -44,12 +45,35 @@ describe("Workspace routes", () => {
     await expect(spoofed.json()).resolves.toEqual({ category: "unclassified" });
   });
 
+  test("leaves a service route's work unclassified whoever calls it", async () => {
+    const POST = defineWorkspaceRoute(
+      {
+        operation: "test.service-agent-traffic",
+        cancellation: "continue-after-disconnect",
+        caller: "service",
+      },
+      () => Effect.map(CurrentAgentTraffic, (traffic) => Response.json(traffic))
+    );
+
+    const response = await POST(
+      new Request("https://deskohub.test/api/webhooks/nexi", {
+        method: "POST",
+        headers: { "user-agent": "python-requests/2.32.3" },
+      })
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      category: "unclassified",
+    });
+  });
+
   test("recovers typed failures without exposing their cause", async () => {
     const cause = new TestLayerError({ message: "private setup" });
     const GET = defineWorkspaceRoute(
       {
         operation: "test.failure",
         cancellation: "continue-after-disconnect",
+        caller: "client",
       },
       () =>
         Effect.fail(
@@ -81,6 +105,7 @@ describe("Workspace routes", () => {
       {
         operation: "test.interrupt",
         cancellation: "interrupt-on-disconnect",
+        caller: "client",
       },
       () => Effect.sync(markStarted).pipe(Effect.andThen(Effect.never))
     );
@@ -97,6 +122,7 @@ describe("Workspace routes", () => {
       {
         operation: "test.continue",
         cancellation: "continue-after-disconnect",
+        caller: "client",
       },
       () => Effect.succeed(new Response("continued"))
     );

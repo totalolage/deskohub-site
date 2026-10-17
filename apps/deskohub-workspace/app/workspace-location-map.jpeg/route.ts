@@ -10,6 +10,7 @@ export const GET = defineWorkspaceRoute(
   {
     operation: "workspaceLocationMap.get",
     cancellation: "interrupt-on-disconnect",
+    caller: "client",
   },
   (_request) =>
     generateWorkspaceLocationMapImage().pipe(

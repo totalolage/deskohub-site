@@ -1,6 +1,6 @@
 import { Data, Effect } from "effect";
 import { NextResponse } from "next/server";
-import { classifyAgentTraffic } from "@/shared/agent-traffic/agent-traffic";
+import { unclassifiedTraffic } from "@/shared/agent-traffic/agent-traffic";
 import {
   runWorkspaceEffect,
   scheduleWorkspaceTelemetryFlush,
@@ -34,6 +34,13 @@ export interface WorkspaceRouteOptions {
   /** Stable, low-cardinality name without IDs, URLs, or payload data. */
   readonly operation: string;
   readonly cancellation: WorkspaceRouteCancellation;
+  /**
+   * Who calls the route. A `service` route, such as a webhook or a cron run,
+   * serves no customer request, so its work is unclassified agent traffic
+   * rather than the calling service's. A `client` route classifies the
+   * request's own headers.
+   */
+  readonly caller: "client" | "service";
 }
 
 export const defineWorkspaceRoute =
@@ -48,10 +55,9 @@ export const defineWorkspaceRoute =
     const request = args[0];
     const invocation = Effect.suspend(() => handler(...args)).pipe(
       Effect.catch(recoverWorkspaceRouteFailure),
-      // Routes bypass the proxy, so they classify their own headers.
       withWorkspaceRequestContext(
         request.headers,
-        classifyAgentTraffic(request.headers)
+        options.caller === "service" ? unclassifiedTraffic : undefined
       )
     );
     const effect = Effect.andThen(

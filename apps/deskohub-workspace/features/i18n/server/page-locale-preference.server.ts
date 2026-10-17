@@ -6,7 +6,6 @@ import {
   type LocaleBoundContinuation,
   preferenceApplyingTo,
 } from "@/features/checkout/locale-bound-continuation";
-import { readForwardedAgentTraffic } from "@/shared/agent-traffic/agent-traffic";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
 
@@ -33,7 +32,7 @@ export const pageLocalePreference = (headers: Headers, page: Page) =>
     Effect.flatMap((preference) =>
       preferenceApplyingTo(page, preference, continuesInIssuedLocale)
     ),
-    withWorkspaceRequestContext(headers, readForwardedAgentTraffic(headers))
+    withWorkspaceRequestContext(headers)
   );
 
 /** The proxy's runtime edge for {@link pageLocalePreference}. */

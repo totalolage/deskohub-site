@@ -1,6 +1,7 @@
 import { Context, Effect } from "effect";
 import {
   type AgentTraffic,
+  classifyAgentTraffic,
   unclassifiedTraffic,
 } from "@/shared/agent-traffic/agent-traffic";
 import {
@@ -16,17 +17,23 @@ export const CurrentWorkspaceRequestHeaders = Context.Reference(
 );
 
 /**
- * The agent category of the request being served. Work outside a request,
- * such as a scheduled task, counts as unclassified.
+ * The agent category of the request being served. Work that serves no
+ * customer request, such as a task, a cron run, or a webhook, counts as
+ * unclassified.
  */
 export const CurrentAgentTraffic = Context.Reference(
   "@deskohub-workspace/CurrentAgentTraffic",
   { defaultValue: (): AgentTraffic => unclassifiedTraffic }
 );
 
+/**
+ * Provides the request's context. The agent category comes from the
+ * request's own `User-Agent` and `Signature-Agent` headers unless the caller
+ * supplies one.
+ */
 export const withWorkspaceRequestContext = (
   headers: Headers,
-  agentTraffic: AgentTraffic
+  agentTraffic: AgentTraffic = classifyAgentTraffic(headers)
 ) =>
   function provideWorkspaceRequestContext<A, E, R>(
     effect: Effect.Effect<A, E, R>

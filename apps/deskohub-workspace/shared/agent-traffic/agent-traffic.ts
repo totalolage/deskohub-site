@@ -160,8 +160,7 @@ const signatureAgentOperators: readonly {
 
 /**
  * Classifies a request from its `User-Agent` and `Signature-Agent` headers.
- * String checks only, so the proxy can run it on every page request. It never
- * reads the proxy's forwarded category, so a client can't choose its own.
+ * String checks only, so the proxy can run it on every page request.
  */
 export const classifyAgentTraffic = (headers: Headers): AgentTraffic => {
   const userAgent = headers.get("user-agent")?.toLowerCase() ?? "";
@@ -210,41 +209,3 @@ export const agentTrafficProperties = ({ category, name }: AgentTraffic) => ({
   agent_category: category,
   agent_name: name,
 });
-
-const forwardedCategoryHeader = "x-deskohub-agent-category";
-const forwardedNameHeader = "x-deskohub-agent-name";
-
-/**
- * Hands the proxy's classification to the request's render, replacing any
- * value the client sent. Unclassified traffic carries no header. Returns
- * whether the request headers changed and so must be forwarded.
- */
-export const forwardAgentTraffic = (
-  headers: Headers,
-  traffic: AgentTraffic
-) => {
-  const clientSentValue =
-    headers.has(forwardedCategoryHeader) || headers.has(forwardedNameHeader);
-  headers.delete(forwardedCategoryHeader);
-  headers.delete(forwardedNameHeader);
-  if (traffic.category === "unclassified") return clientSentValue;
-
-  headers.set(forwardedCategoryHeader, traffic.category);
-  if (traffic.name) headers.set(forwardedNameHeader, traffic.name);
-  return true;
-};
-
-const isAgentCategory = Schema.is(AgentCategory);
-const isAgentName = Schema.is(AgentName);
-
-/**
- * The proxy's classification of a request it handed on. Only requests that
- * pass through the proxy, which replaces any client value, may be read this
- * way; route handlers classify their own headers.
- */
-export const readForwardedAgentTraffic = (headers: Headers): AgentTraffic => {
-  const category = headers.get(forwardedCategoryHeader);
-  if (!isAgentCategory(category)) return unclassifiedTraffic;
-  const name = headers.get(forwardedNameHeader);
-  return isAgentName(name) ? { category, name } : { category };
-};
