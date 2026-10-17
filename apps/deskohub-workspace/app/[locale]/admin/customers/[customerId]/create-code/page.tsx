@@ -30,10 +30,7 @@ async function CustomerDiscountCodeCreationContent({
     await loadDiscountAdminCustomerCodeCreationPageData(
       requireDotyposCustomerRouteId(customerId)
     );
-  const customerName = formatDiscountAdminCustomerName(
-    customer.displayName,
-    locale
-  );
+  const customerName = formatDiscountAdminCustomerName(customer, locale);
 
   return (
     <>

@@ -134,10 +134,7 @@ export function CodeAdministrationDetailPage({
                       href={`/admin/customers/${customerId}`}
                     >
                       {customer
-                        ? formatDiscountAdminCustomerName(
-                            customer.displayName,
-                            locale
-                          )
+                        ? formatDiscountAdminCustomerName(customer, locale)
                         : m.discountsCustomerDetailsUnavailable({}, { locale })}
                     </Link>
                     <p className="mt-1 text-sm text-navy-blue/65">
@@ -154,10 +151,7 @@ export function CodeAdministrationDetailPage({
                       confirmation={m.discountsCodeRemoveCustomerConfirmation(
                         {
                           customerName: customer
-                            ? formatDiscountAdminCustomerName(
-                                customer.displayName,
-                                locale
-                              )
+                            ? formatDiscountAdminCustomerName(customer, locale)
                             : customerId,
                         },
                         { locale }
@@ -299,10 +293,7 @@ export function VoucherAdministrationDetailPage({
                       href={`/admin/customers/${customerId}`}
                     >
                       {customer
-                        ? formatDiscountAdminCustomerName(
-                            customer.displayName,
-                            locale
-                          )
+                        ? formatDiscountAdminCustomerName(customer, locale)
                         : m.discountsCustomerDetailsUnavailable({}, { locale })}
                     </Link>
                     <p className="mt-1 text-sm text-navy-blue/65">
@@ -319,10 +310,7 @@ export function VoucherAdministrationDetailPage({
                       confirmation={m.discountsVoucherRemoveCustomerConfirmation(
                         {
                           customerName: customer
-                            ? formatDiscountAdminCustomerName(
-                                customer.displayName,
-                                locale
-                              )
+                            ? formatDiscountAdminCustomerName(customer, locale)
                             : customerId,
                         },
                         { locale }
@@ -387,7 +375,7 @@ export function CustomerAdministrationDetailPage({
   readonly reservationActivity: AdministrationCustomerReservationActivity;
 }) {
   const customerName = formatDiscountAdminCustomerName(
-    profile.customer.displayName,
+    profile.customer,
     locale
   );
   const currentGroup = profile.discountGroups.find(

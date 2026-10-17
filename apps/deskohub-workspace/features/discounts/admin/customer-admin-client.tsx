@@ -206,10 +206,7 @@ export function CustomerSearch({
                   >
                     <div>
                       <p className="font-semibold">
-                        {formatDiscountAdminCustomerName(
-                          customer.displayName,
-                          locale
-                        )}
+                        {formatDiscountAdminCustomerName(customer, locale)}
                       </p>
                       <p className="mt-1 text-sm text-navy-blue/65">
                         {[customer.email, customer.phone]

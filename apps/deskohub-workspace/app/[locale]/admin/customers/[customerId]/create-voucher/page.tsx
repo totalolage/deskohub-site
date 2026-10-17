@@ -29,10 +29,7 @@ async function CustomerVoucherCreationContent({
   const { customer } = await loadDiscountAdminCustomerVoucherCreationPageData(
     requireDotyposCustomerRouteId(customerId)
   );
-  const customerName = formatDiscountAdminCustomerName(
-    customer.displayName,
-    locale
-  );
+  const customerName = formatDiscountAdminCustomerName(customer, locale);
 
   return (
     <>

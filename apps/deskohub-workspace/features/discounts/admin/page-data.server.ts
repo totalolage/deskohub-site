@@ -274,10 +274,10 @@ export const loadDiscountAdminCustomerBreadcrumbLabel = async (
   await authorizeAdministratorPage();
   return Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
-    const label = yield* administration.loadCustomerBreadcrumbLabel({
+    const customer = yield* administration.loadCustomerBreadcrumbLabel({
       customerId,
     });
-    return formatDiscountAdminCustomerName(label, locale);
+    return formatDiscountAdminCustomerName(customer, locale);
   }).pipe(
     Effect.provide(DiscountAdministration.Live),
     Effect.catch((cause) =>

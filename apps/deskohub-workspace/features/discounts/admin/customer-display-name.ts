@@ -7,10 +7,16 @@ import type { Locale } from "@/features/i18n";
  */
 export const unnamedCustomerDisplayName = "Unnamed customer";
 
+export type DiscountAdminCustomerName = {
+  readonly displayName: string;
+  readonly hasName: boolean;
+};
+
+/** Names a customer in the operator's language when Dotypos holds no name or contact detail for them. */
 export const formatDiscountAdminCustomerName = (
-  displayName: string,
+  customer: DiscountAdminCustomerName,
   locale: Locale
 ) =>
-  displayName === unnamedCustomerDisplayName
-    ? m.discountsUnnamedCustomer({}, { locale })
-    : displayName;
+  customer.hasName
+    ? customer.displayName
+    : m.discountsUnnamedCustomer({}, { locale });

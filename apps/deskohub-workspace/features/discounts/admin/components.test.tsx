@@ -426,6 +426,7 @@ describe("discount administration pages", () => {
       customer: {
         id: "dotypos-customer",
         displayName: "Test Customer",
+        hasName: true,
         email: testEmailAddressForTest,
         phone: "+420 123 456 789",
         discountGroupId: null,
@@ -790,6 +791,7 @@ describe("discount administration pages", () => {
             customer: {
               id: "dotypos-customer",
               displayName: "Test Customer",
+              hasName: true,
               email: testEmailAddressForTest,
               phone: null,
               discountGroupId: null,
@@ -864,6 +866,71 @@ describe("discount administration pages", () => {
     expect(dialog.textContent).toContain(
       `dostupný ${formatCount(1001, locale)} zákazníkům`
     );
+  });
+
+  test("names an unnamed customer and the profile sections in Czech", async () => {
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { CustomerAdministrationDetailPage } = await import(
+      "./customer-admin-components"
+    );
+    const { unnamedCustomerDisplayName } = await import(
+      "./customer-display-name"
+    );
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <CustomerAdministrationDetailPage
+          activity={{
+            reservations: [],
+            reservationHistoryTruncated: false,
+            transactions: [],
+            transactionHistoryTruncated: false,
+            stats: {
+              reservationCount: 0,
+              favoriteProduct: null,
+              favoriteReservationProduct: null,
+              revenue: [],
+              discountSavings: [],
+            },
+            marketingConsent: null,
+          }}
+          locale="cs-CZ"
+          profile={{
+            customer: {
+              id: "dotypos-customer",
+              displayName: unnamedCustomerDisplayName,
+              hasName: false,
+              email: null,
+              phone: null,
+              discountGroupId: null,
+            },
+            discountGroups: [],
+            codes: [],
+            claims: [],
+            vouchers: [],
+            voucherClaims: [],
+          }}
+          reservationActivity={emptyReservationActivity}
+        />
+      </RouteLocaleProvider>
+    );
+
+    expect(
+      view.getByRole("heading", { level: 1, name: "Zákazník bez jména" })
+    ).toBeTruthy();
+    for (const name of ["Statistiky", "Souhlasy"]) {
+      expect(view.getByRole("heading", { level: 2, name })).toBeTruthy();
+    }
+    expect(view.getByText("Tento zákazník nemá žádné platby.")).toBeTruthy();
+    for (const english of [
+      unnamedCustomerDisplayName,
+      "Stats",
+      "Consents",
+      "This customer has no payments.",
+    ]) {
+      expect(view.container.textContent).not.toContain(english);
+    }
   });
 
   test("creates a customer discount code without mixing in vouchers", async () => {

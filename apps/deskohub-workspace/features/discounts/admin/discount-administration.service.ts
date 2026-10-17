@@ -83,7 +83,10 @@ import type {
   UpdateDiscountCodeAdminInput,
   UpdateVoucherAdminInput,
 } from "./contracts";
-import { unnamedCustomerDisplayName } from "./customer-display-name";
+import {
+  type DiscountAdminCustomerName,
+  unnamedCustomerDisplayName,
+} from "./customer-display-name";
 
 export type AdminDiscount = {
   readonly id: StoredDiscountId;
@@ -131,7 +134,10 @@ export type AdminVoucher = {
 
 type AdminDotyposCustomer = {
   readonly id: DotyposCustomerId;
+  /** Never empty: the API and `dhw` show "Unnamed customer" when `hasName` is false. */
   readonly displayName: string;
+  /** Whether Dotypos holds a name or contact detail, so the Admin UI can name an unnamed customer in the operator's language. */
+  readonly hasName: boolean;
   readonly email: string | null;
   readonly phone: string | null;
   readonly discountGroupId: DotyposDiscountGroupId | null;
@@ -407,7 +413,7 @@ export interface IDiscountAdministration {
   readonly loadCustomerBreadcrumbLabel: (input: {
     readonly customerId: DotyposCustomerId;
   }) => Effect.Effect<
-    string,
+    DiscountAdminCustomerName,
     | ExternalAPIError
     | NetworkError
     | ValidationError
@@ -1295,7 +1301,10 @@ export class DiscountAdministration extends Context.Service<
         "DiscountAdministration.loadCustomerBreadcrumbLabel"
       )((input: { readonly customerId: DotyposCustomerId }) =>
         loadActiveCustomer(input.customerId).pipe(
-          Effect.map((customer) => toAdminDotyposCustomer(customer).displayName)
+          Effect.map((customer) => {
+            const { displayName, hasName } = toAdminDotyposCustomer(customer);
+            return { displayName, hasName };
+          })
         )
       );
 
@@ -1891,22 +1900,23 @@ export const voucherDenominationCanChange = (input: {
   (input.current.currency === input.updated.currency &&
     input.current.exponent === input.updated.exponent);
 
-const toAdminDotyposCustomer = (
+export const toAdminDotyposCustomer = (
   customer: DotyposCustomer
 ): AdminDotyposCustomer => {
   const personName = [customer.firstName, customer.lastName]
     .filter(Boolean)
     .join(" ")
     .trim();
+  const name =
+    customer.companyName?.trim() ||
+    personName ||
+    customer.email?.trim() ||
+    customer.phone?.trim();
 
   return {
     id: Schema.decodeUnknownSync(DotyposCustomerIdSchema)(customer.id),
-    displayName:
-      customer.companyName?.trim() ||
-      personName ||
-      customer.email?.trim() ||
-      customer.phone?.trim() ||
-      unnamedCustomerDisplayName,
+    displayName: name || unnamedCustomerDisplayName,
+    hasName: Boolean(name),
     email: customer.email?.trim() || null,
     phone: customer.phone?.trim() || null,
     discountGroupId: Option.getOrNull(

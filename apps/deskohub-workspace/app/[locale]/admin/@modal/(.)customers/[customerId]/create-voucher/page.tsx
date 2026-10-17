@@ -32,10 +32,7 @@ async function CustomerVoucherCreationModalContent({
   return (
     <CustomerVoucherCreationDialog
       customer={{
-        displayName: formatDiscountAdminCustomerName(
-          customer.displayName,
-          locale
-        ),
+        displayName: formatDiscountAdminCustomerName(customer, locale),
         id: customer.id,
       }}
     />

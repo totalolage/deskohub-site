@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import type { Customer as DotyposCustomer } from "@deskohub/dotypos";
+import { AdministrationCustomerSearchResult } from "@deskohub/workspace-admin-api";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Cause } from "effect";
+import { Cause, Schema } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import {
   findDiscountAdminConflict,
   getAdminDiscountCodeUsage,
+  toAdminDotyposCustomer,
   voucherDenominationCanChange,
 } from "./discount-administration.service";
 
@@ -121,5 +124,34 @@ describe("discount administration conflicts", () => {
         )
       )
     ).toBe(undefined);
+  });
+});
+
+describe("discount administration customers", () => {
+  const unnamed = { id: "dotypos-customer" } as DotyposCustomer;
+
+  test("signals a customer without a name or contact detail", () => {
+    expect(toAdminDotyposCustomer(unnamed)).toMatchObject({
+      displayName: "Unnamed customer",
+      hasName: false,
+    });
+    expect(
+      toAdminDotyposCustomer({ ...unnamed, phone: " +420 123 456 789 " })
+    ).toMatchObject({ displayName: "+420 123 456 789", hasName: true });
+  });
+
+  test("keeps the administration API customer shape unchanged", () => {
+    const encoded = Schema.encodeSync(AdministrationCustomerSearchResult)({
+      kind: "matched",
+      customers: [toAdminDotyposCustomer(unnamed)],
+    });
+
+    expect(encoded.customers[0]).toEqual({
+      id: "dotypos-customer",
+      displayName: "Unnamed customer",
+      email: null,
+      phone: null,
+      discountGroupId: null,
+    });
   });
 });

@@ -33,10 +33,7 @@ async function CustomerDiscountCodeCreationModalContent({
   return (
     <CustomerDiscountCodeCreationDialog
       customerId={customer.id}
-      customerName={formatDiscountAdminCustomerName(
-        customer.displayName,
-        locale
-      )}
+      customerName={formatDiscountAdminCustomerName(customer, locale)}
       discounts={discounts}
     />
   );
