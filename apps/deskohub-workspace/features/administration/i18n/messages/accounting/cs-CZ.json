@@ -164,6 +164,8 @@
   "accountingInvoiceFormCreating": "Vytvářím a odesílám…",
   "accountingInvoiceFormCreateError": "Fakturu se nepodařilo vytvořit.",
   "accountingInvoiceCreateFailed": "Fakturu se nepodařilo vytvořit. Zkontrolujte údaje odběratele a faktury a zkuste to znovu.",
+  "accountingActionTimedOut": "Server neodpověděl včas. Zkuste to znovu.",
+  "accountingActionFailedUnexpectedly": "Na serveru se něco pokazilo. Zkuste to znovu.",
   "accountingInvoiceCreateInProgress": "Tato faktura se už vytváří. Za chvíli zkuste stejný požadavek odeslat znovu.",
   "accountingInvoiceCurrencyNotPayable": "Pro měnu faktury není nastaven žádný účet pro příjem plateb.",
   "accountingInvoiceIdReused": "Toto ID faktury už bylo použito s jinými údaji.",

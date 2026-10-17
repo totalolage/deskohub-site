@@ -161,6 +161,8 @@
   "accountingInvoiceFormCreating": "Creating and sending…",
   "accountingInvoiceFormCreateError": "The invoice could not be created.",
   "accountingInvoiceCreateFailed": "The invoice could not be created. Check the customer and invoice details, then try again.",
+  "accountingActionTimedOut": "The server took too long to respond. Try again.",
+  "accountingActionFailedUnexpectedly": "Something went wrong on the server. Try again.",
   "accountingInvoiceCreateInProgress": "This invoice is already being created. Try the same request again shortly.",
   "accountingInvoiceCurrencyNotPayable": "No receiving account is configured for the invoice currency.",
   "accountingInvoiceIdReused": "This invoice ID was already used with different details.",

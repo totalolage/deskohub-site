@@ -166,6 +166,8 @@
   "discountsSaving": "Saving…",
   "discountsDeleteFailed": "The item could not be deleted.",
   "discountsDeleteFailedRetry": "The item could not be deleted. Try again.",
+  "discountsActionTimedOut": "The server took too long to respond. Try again.",
+  "discountsActionFailedUnexpectedly": "Something went wrong on the server. Try again.",
   "discountsDeleting": "Deleting…",
   "discountsDelete": "Delete",
   "discountsCustomerLabelsLegend": "Customer labels",

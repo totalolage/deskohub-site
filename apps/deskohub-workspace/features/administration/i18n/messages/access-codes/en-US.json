@@ -66,5 +66,7 @@
   "accessCodesFailureReconciled": "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Submit again to create the access code.",
   "accessCodesCreateFailed": "The access code could not be created. Try again.",
   "accessCodesServerUnreachable": "The server could not be reached. This attempt is kept, so you can safely try again.",
+  "accessCodesActionTimedOut": "The server took too long to respond. Try again.",
+  "accessCodesActionFailedUnexpectedly": "Something went wrong on the server. Try again.",
   "accessCodesAuthenticationRequired": "Administrator authentication is required."
 }

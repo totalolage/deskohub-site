@@ -18,6 +18,7 @@ import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { getInvoiceAdminActionFailureMessage } from "./action-failure-message";
 import { retryAdministrationInvoice } from "./actions";
 import type {
   InvoiceAdministrationListItem,
@@ -208,8 +209,10 @@ function InvoiceRowActions({
       },
       onError: ({ error: actionError }) =>
         setError(
-          actionError.serverError ??
-            m.accountingInvoiceRetryDeliveryError({}, { locale })
+          getInvoiceAdminActionFailureMessage(actionError.serverError, {
+            fallback: m.accountingInvoiceRetryDeliveryError({}, { locale }),
+            locale,
+          })
         ),
       onTransportError: () =>
         setError(m.accountingInvoiceRetryDeliveryError({}, { locale })),

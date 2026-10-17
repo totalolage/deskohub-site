@@ -30,6 +30,7 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { AccessCodeCopyButton, AccessCodeDigits } from "./access-code-digits";
+import { getAccessCodeAdminActionFailureMessage } from "./action-failure-message";
 import { createStandaloneAccessCode } from "./actions";
 import {
   type CreateStandaloneAccessCodeFormInput,
@@ -163,7 +164,10 @@ export function CreateStandaloneAccessCodeForm() {
       onError: ({ error }) => {
         cleanupConfirmedRef.current = null;
         setNotice(
-          error.serverError ?? m.accessCodesCreateFailed({}, { locale })
+          getAccessCodeAdminActionFailureMessage(error.serverError, {
+            fallback: m.accessCodesCreateFailed({}, { locale }),
+            locale,
+          })
         );
       },
       onTransportError: () => {

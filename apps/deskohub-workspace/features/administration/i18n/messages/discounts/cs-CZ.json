@@ -170,6 +170,8 @@
   "discountsSaving": "Ukládání…",
   "discountsDeleteFailed": "Položku se nepodařilo smazat.",
   "discountsDeleteFailedRetry": "Položku se nepodařilo smazat. Zkuste to znovu.",
+  "discountsActionTimedOut": "Server neodpověděl včas. Zkuste to znovu.",
+  "discountsActionFailedUnexpectedly": "Na serveru se něco pokazilo. Zkuste to znovu.",
   "discountsDeleting": "Mazání…",
   "discountsDelete": "Smazat",
   "discountsCustomerLabelsLegend": "Názvy pro zákazníky",

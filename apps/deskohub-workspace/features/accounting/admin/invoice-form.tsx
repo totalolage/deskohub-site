@@ -38,6 +38,7 @@ import { Label } from "@/shared/components/ui/label";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { getInvoiceAdminActionFailureMessage } from "./action-failure-message";
 import {
   createAdministrationInvoice,
   previewAdministrationInvoice,
@@ -268,8 +269,10 @@ export function InvoiceCreationForm({
       },
       onError: ({ error: actionError }) =>
         setSearchError(
-          actionError.serverError ??
-            m.accountingInvoiceFormSearchError({}, { locale })
+          getInvoiceAdminActionFailureMessage(actionError.serverError, {
+            fallback: m.accountingInvoiceFormSearchError({}, { locale }),
+            locale,
+          })
         ),
       onTransportError: () =>
         setSearchError(m.accountingInvoiceFormSearchError({}, { locale })),
@@ -292,8 +295,10 @@ export function InvoiceCreationForm({
       },
       onError: ({ error: actionError }) =>
         setCreateError(
-          actionError.serverError ??
-            m.accountingInvoiceFormCreateError({}, { locale })
+          getInvoiceAdminActionFailureMessage(actionError.serverError, {
+            fallback: m.accountingInvoiceFormCreateError({}, { locale }),
+            locale,
+          })
         ),
       onTransportError: () =>
         setCreateError(m.accountingInvoiceFormCreateError({}, { locale })),
@@ -310,8 +315,10 @@ export function InvoiceCreationForm({
       },
       onError: ({ error: actionError }) =>
         setPreviewError(
-          actionError.serverError ??
-            m.accountingInvoiceFormPreviewError({}, { locale })
+          getInvoiceAdminActionFailureMessage(actionError.serverError, {
+            fallback: m.accountingInvoiceFormPreviewError({}, { locale }),
+            locale,
+          })
         ),
       onTransportError: () =>
         setPreviewError(m.accountingInvoiceFormPreviewError({}, { locale })),

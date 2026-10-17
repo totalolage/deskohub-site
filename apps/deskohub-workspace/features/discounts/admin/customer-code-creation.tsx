@@ -24,6 +24,7 @@ import {
 } from "@/shared/components/ui/form";
 import { defaultWorkspaceCurrencyCode } from "@/shared/money/currencies";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { getDiscountAdminActionFailureMessage } from "./action-failure-message";
 import { mutateDiscountAdmin } from "./actions";
 import {
   DiscountCodeConfigurationFields,
@@ -107,8 +108,10 @@ export function DiscountCodeCreationForm({
     },
     onError: ({ error: actionError }) =>
       setError(
-        actionError.serverError ??
-          m.discountsCodeCreateFailedCheckForm({}, { locale })
+        getDiscountAdminActionFailureMessage(actionError.serverError, {
+          fallback: m.discountsCodeCreateFailedCheckForm({}, { locale }),
+          locale,
+        })
       ),
     onTransportError: () =>
       setError(m.discountsCodeCreateFailedRetry({}, { locale })),

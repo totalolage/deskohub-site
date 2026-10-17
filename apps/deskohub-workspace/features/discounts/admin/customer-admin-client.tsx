@@ -44,6 +44,7 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { getDiscountAdminActionFailureMessage } from "./action-failure-message";
 import { mutateDiscountAdmin, searchDiscountAdminCustomers } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
 import { formatDiscountAdminCustomerName } from "./customer-display-name";
@@ -104,8 +105,10 @@ export function CustomerSearch({
       onError: ({ error: actionError }) => {
         setResult(null);
         setError(
-          actionError.serverError ??
-            m.discountsCustomerSearchFailed({}, { locale })
+          getDiscountAdminActionFailureMessage(actionError.serverError, {
+            fallback: m.discountsCustomerSearchFailed({}, { locale }),
+            locale,
+          })
         );
       },
       onTransportError: () => {
@@ -403,7 +406,10 @@ export function AdminMutationButton({
     onSuccess: () => router.refresh(),
     onError: ({ error: actionError }) =>
       setError(
-        actionError.serverError ?? m.discountsSaveFailed({}, { locale })
+        getDiscountAdminActionFailureMessage(actionError.serverError, {
+          fallback: m.discountsSaveFailed({}, { locale }),
+          locale,
+        })
       ),
     onTransportError: () =>
       setError(m.discountsSaveFailedRetry({}, { locale })),
@@ -529,7 +535,10 @@ export function CustomerPromotionCodeAction({
     },
     onError: ({ error: actionError }) =>
       setError(
-        actionError.serverError ?? m.discountsSaveFailed({}, { locale })
+        getDiscountAdminActionFailureMessage(actionError.serverError, {
+          fallback: m.discountsSaveFailed({}, { locale }),
+          locale,
+        })
       ),
     onTransportError: () =>
       setError(m.discountsSaveFailedRetry({}, { locale })),
@@ -721,7 +730,10 @@ function AdminMutationForm<Input extends FieldValues, Values = Input>({
     onError: ({ error }) =>
       setFeedback({
         kind: "error",
-        message: error.serverError ?? m.discountsSaveFailed({}, { locale }),
+        message: getDiscountAdminActionFailureMessage(error.serverError, {
+          fallback: m.discountsSaveFailed({}, { locale }),
+          locale,
+        }),
       }),
     onTransportError: () =>
       setFeedback({

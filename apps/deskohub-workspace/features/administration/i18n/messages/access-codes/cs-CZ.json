@@ -68,5 +68,7 @@
   "accessCodesFailureReconciled": "Vaše potvrzení kontroly zámku bylo zaznamenáno u dřívějšího nejasného pokusu, který žádný přístupový kód nevytvořil. Odešlete formulář znovu a přístupový kód se vytvoří.",
   "accessCodesCreateFailed": "Přístupový kód se nepodařilo vytvořit. Zkuste to znovu.",
   "accessCodesServerUnreachable": "Server se nepodařilo kontaktovat. Tento pokus zůstává zachovaný, takže to můžete bezpečně zkusit znovu.",
+  "accessCodesActionTimedOut": "Server neodpověděl včas. Zkuste to znovu.",
+  "accessCodesActionFailedUnexpectedly": "Na serveru se něco pokazilo. Zkuste to znovu.",
   "accessCodesAuthenticationRequired": "Je vyžadováno přihlášení administrátora."
 }

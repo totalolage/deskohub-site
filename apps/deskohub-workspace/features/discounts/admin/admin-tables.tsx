@@ -61,6 +61,7 @@ import {
 } from "@/shared/utils";
 import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { getDiscountAdminActionFailureMessage } from "./action-failure-message";
 import { mutateDiscountAdmin } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
 import type { AdminCalendarSale } from "./discount-administration.service";
@@ -981,8 +982,10 @@ function MutationForm<Input extends FieldValues, Values = Input>({
     onError: ({ error }) => {
       setFeedback({
         kind: "error",
-        message:
-          error.serverError ?? m.discountsSaveFailedCheckForm({}, { locale }),
+        message: getDiscountAdminActionFailureMessage(error.serverError, {
+          fallback: m.discountsSaveFailedCheckForm({}, { locale }),
+          locale,
+        }),
       });
     },
     onTransportError: () => {
@@ -1059,7 +1062,10 @@ function DeleteButton({
     },
     onError: ({ error: actionError }) => {
       setError(
-        actionError.serverError ?? m.discountsDeleteFailed({}, { locale })
+        getDiscountAdminActionFailureMessage(actionError.serverError, {
+          fallback: m.discountsDeleteFailed({}, { locale }),
+          locale,
+        })
       );
     },
     onTransportError: () => {

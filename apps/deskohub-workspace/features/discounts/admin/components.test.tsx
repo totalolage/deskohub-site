@@ -1368,6 +1368,38 @@ describe("discount administration pages", () => {
     expect(view.queryByRole("status")).toBeNull();
   });
 
+  test("shows a timed-out save in Czech on a cs-CZ route", async () => {
+    const captured = captureWorkspaceActions(/^createDiscount$/);
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { CreateDiscountForm } = await import("./admin-tables");
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <CreateDiscountForm />
+      </RouteLocaleProvider>
+    );
+    const { options } = captured("createDiscount");
+
+    act(() =>
+      options.onError({
+        error: { serverError: "Request timed out. Please try again." },
+      })
+    );
+    expect(view.getByRole("alert").textContent).toBe(
+      "Server neodpověděl včas. Zkuste to znovu."
+    );
+
+    act(() =>
+      options.onError({
+        error: { serverError: "Propagační kód s touto hodnotou už existuje." },
+      })
+    );
+    expect(view.getByRole("alert").textContent).toBe(
+      "Propagační kód s touto hodnotou už existuje."
+    );
+  });
+
   test("targets single cowork tiers and blocks mixing them with all cowork tiers", async () => {
     const execute = mock();
     workspaceUseAction.mockReturnValue({
