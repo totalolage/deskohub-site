@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "next build --turbo",
+    "build": "NODE_OPTIONS=--max-old-space-size=4096 next build --turbo",
     "vercel-build": "turbo build",
     "dev": "bun --parallel dev:next dev:i18n dev:i18n:administration",
     "dev:next": "next dev --turbo",

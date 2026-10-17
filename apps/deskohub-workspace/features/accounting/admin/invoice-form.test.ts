@@ -13,6 +13,8 @@ import { AdministrationInvoiceCreateInput } from "@deskohub/workspace-admin-api"
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { Schema } from "effect";
 import { createElement } from "react";
+import type { Locale } from "@/features/i18n";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   workspaceRouterPush,
   workspaceUseAction,
@@ -40,7 +42,7 @@ mock.module("next/navigation", () => ({
 let getInvoiceDraftId: typeof import("./invoice-form").getInvoiceDraftId;
 let getInvoiceReviewTotal: typeof import("./invoice-form").getInvoiceReviewTotal;
 let InvoiceCreationForm: typeof import("./invoice-form").InvoiceCreationForm;
-let invoiceFormSchema: typeof import("./invoice-form").invoiceFormSchema;
+let createInvoiceFormSchema: typeof import("./invoice-form").createInvoiceFormSchema;
 let isInvoicePriceInput: typeof import("./invoice-form").isInvoicePriceInput;
 let readInvoiceForm: typeof import("./invoice-form").readInvoiceForm;
 
@@ -50,7 +52,7 @@ beforeAll(async () => {
     getInvoiceDraftId,
     getInvoiceReviewTotal,
     InvoiceCreationForm,
-    invoiceFormSchema,
+    createInvoiceFormSchema,
     isInvoicePriceInput,
     readInvoiceForm,
   } = await import("./invoice-form"));
@@ -98,8 +100,13 @@ const formValues = ({
   ...overrides,
 });
 
-const validateFormSchema = (values: InvoiceFormOutput) =>
-  Schema.toStandardSchemaV1(invoiceFormSchema)["~standard"].validate(values);
+const validateFormSchema = (
+  values: InvoiceFormOutput,
+  locale: Locale = "en-US"
+) =>
+  Schema.toStandardSchemaV1(createInvoiceFormSchema(locale))[
+    "~standard"
+  ].validate(values);
 
 const expectRejectedAtPath = async (
   values: InvoiceFormOutput,
@@ -209,6 +216,7 @@ test("reads the visible payment date as paid on when already paid", () => {
 const renderInvoiceCreationForm = ({
   currencies = [{ code: "CZK", exponent: 2, name: "Czech koruna" }],
   defaultCurrency = "CZK",
+  locale = "en-US",
 }: {
   readonly currencies?: {
     readonly code: string;
@@ -216,15 +224,20 @@ const renderInvoiceCreationForm = ({
     readonly name: string;
   }[];
   readonly defaultCurrency?: string;
+  readonly locale?: Locale;
 } = {}) =>
   render(
-    createElement(InvoiceCreationForm, {
-      currencies,
-      defaultCurrency,
-      defaultDueDate: "2026-09-01",
-      defaultServiceDate: "2026-08-18",
-      suggestedVariableSymbol: "2026000001",
-    })
+    createElement(
+      RouteLocaleProvider,
+      { locale },
+      createElement(InvoiceCreationForm, {
+        currencies,
+        defaultCurrency,
+        defaultDueDate: "2026-09-01",
+        defaultServiceDate: "2026-08-18",
+        suggestedVariableSymbol: "2026000001",
+      })
+    )
   );
 
 type InvoiceFormView = ReturnType<typeof renderInvoiceCreationForm>;
@@ -382,6 +395,47 @@ test("shows validation feedback and skips the preview for an invalid invoice", a
   ).toBeGreaterThan(0);
   expect(view.getByText("Enter a valid line price.")).toBeTruthy();
   expect(preview).not.toHaveBeenCalled();
+});
+
+test("keeps a typed decimal comma as the decimal point", () => {
+  mockPreviewAction();
+  const view = renderInvoiceCreationForm({ locale: "cs-CZ" });
+  const price = view.getByLabelText("Cena") as HTMLInputElement;
+  for (const typed of ["1", "12", "125", "1250", "1250,"]) {
+    fireEvent.input(price, { target: { value: typed } });
+  }
+  expect(price.value).toBe("1250.");
+
+  fireEvent.input(price, { target: { value: "99,9" } });
+  expect(price.value).toBe("99.9");
+});
+
+test("shows Czech copy and validation feedback on a Czech route", async () => {
+  const preview = mockPreviewAction();
+  const view = renderInvoiceCreationForm({ locale: "cs-CZ" });
+  fireEvent.click(view.getByRole("radio", { name: "Nový" }));
+  fireEvent.change(view.getByLabelText("Cena"), { target: { value: "1." } });
+
+  submitInvoiceForm(view);
+  expect(
+    (await view.findAllByText("Toto pole je povinné.")).length
+  ).toBeGreaterThan(0);
+  expect(view.getByText("Zadejte platnou cenu položky.")).toBeTruthy();
+  expect(view.getByLabelText("E-mail pro fakturu")).toBeTruthy();
+  expect(
+    view.getByRole("button", { name: "Zkontrolovat fakturu" })
+  ).toBeTruthy();
+  expect(preview).not.toHaveBeenCalled();
+});
+
+test("pluralizes the Czech length limit", async () => {
+  const result = await validateFormSchema(
+    formValues({ customer: { phone: "1".repeat(21) } }),
+    "cs-CZ"
+  );
+  expect("issues" in result && result.issues?.[0]?.message).toBe(
+    "Použijte nejvýše 20 znaků."
+  );
 });
 
 test("reuses the draft id for an unchanged retry and rotates it after a change", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatCurrencyAmount } from "./currency";
+import { formatCurrencyAmount, formatCurrencyName } from "./currency";
 
 describe("formatCurrencyAmount", () => {
   test("renders whole amounts without minor units", () => {
@@ -38,5 +38,16 @@ describe("formatCurrencyAmount", () => {
         fractionDigits: 2,
       })
     ).toBe("307,50 Kč");
+  });
+});
+
+describe("formatCurrencyName", () => {
+  test("names the currency in the reader's language", () => {
+    expect(formatCurrencyName({ currency: "CZK", locale: "cs-CZ" })).toBe(
+      "česká koruna"
+    );
+    expect(formatCurrencyName({ currency: "EUR", locale: "en-US" })).toBe(
+      "Euro"
+    );
   });
 });

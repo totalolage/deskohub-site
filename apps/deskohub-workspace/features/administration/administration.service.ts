@@ -88,6 +88,7 @@ import type { WorkspaceReservationKind } from "@/features/reservation/reservatio
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
+import { unnamedCustomerDisplayName } from "./customer-name";
 import {
   getAdministrationExternalOrderPageIds,
   getAdministrationPagination,
@@ -586,7 +587,7 @@ const toCustomer = (
   return {
     id:
       Option.getOrUndefined(decodeDotyposCustomerId(customer.id)) ?? fallbackId,
-    displayName: name || "Unnamed customer",
+    displayName: name || unnamedCustomerDisplayName,
     hasName: Boolean(name),
     email: customer.email?.trim() || null,
     phone: customer.phone?.trim() || null,

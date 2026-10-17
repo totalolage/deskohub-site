@@ -11,9 +11,20 @@ import {
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Match, Option, Result, Schema } from "effect";
-import { isWholeHour, localDateTimeToInstant } from "@/shared/utils/temporal";
+import { formatAdministrationDateTime } from "@/features/administration/formatters";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
+import { formatDuration } from "@/shared/utils/format-duration";
+import {
+  isWholeHour,
+  localDateTimeToInstant,
+  localDateTimeToTemporalInstantString,
+} from "@/shared/utils/temporal";
 import type { StandaloneAccessCodeCreationOutcome } from "../standalone-access-code";
 
+// The action contract's own validation copy: the form validates the same
+// window first with localized copy, and the client never renders action
+// validation errors.
 const standaloneAccessCodeWindowDurationIssue = `The end must be ${ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS} to ${ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS} hours after the start.`;
 
 const nanosecondsPerHour = 3_600_000_000_000n;
@@ -235,39 +246,59 @@ const standaloneAccessCodeFormWholeHourDateTime = (
     )
   );
 
-export const createStandaloneAccessCodeFormSchema = Schema.Struct({
-  name: Schema.Trim.check(
-    Schema.isNonEmpty({
-      message: "Enter a name for this access code.",
-    }),
-    Schema.isMaxLength(60, { message: "Use at most 60 characters." })
-  ),
-  startsAt: standaloneAccessCodeFormWholeHourDateTime(
-    "Choose a start time.",
-    "Choose a valid start time on the whole hour."
-  ),
-  endsAt: standaloneAccessCodeFormWholeHourDateTime(
-    "Choose an end time.",
-    "Choose a valid end time on the whole hour."
-  ),
-}).check(
-  Schema.makeFilter<{
-    readonly startsAt: string;
-    readonly endsAt: string;
-  }>(
-    ({ startsAt, endsAt }) =>
-      isStandaloneAccessCodeWindowValid({ startsAt, endsAt }) || {
-        path: ["endsAt"],
-        issue: standaloneAccessCodeWindowDurationIssue,
-      }
-  )
-);
+const standaloneAccessCodeNameMaximumLength = 60;
+
+export const createStandaloneAccessCodeFormSchema = (locale: Locale) =>
+  Schema.Struct({
+    name: Schema.Trim.check(
+      Schema.isNonEmpty({
+        message: m.accessCodesNameRequired({}, { locale }),
+      }),
+      Schema.isMaxLength(standaloneAccessCodeNameMaximumLength, {
+        message: m.accessCodesNameTooLong(
+          { maximum: standaloneAccessCodeNameMaximumLength },
+          { locale }
+        ),
+      })
+    ),
+    startsAt: standaloneAccessCodeFormWholeHourDateTime(
+      m.accessCodesStartRequired({}, { locale }),
+      m.accessCodesStartInvalid({}, { locale })
+    ),
+    endsAt: standaloneAccessCodeFormWholeHourDateTime(
+      m.accessCodesEndRequired({}, { locale }),
+      m.accessCodesEndInvalid({}, { locale })
+    ),
+  }).check(
+    Schema.makeFilter<{
+      readonly startsAt: string;
+      readonly endsAt: string;
+    }>(
+      ({ startsAt, endsAt }) =>
+        isStandaloneAccessCodeWindowValid({ startsAt, endsAt }) || {
+          path: ["endsAt"],
+          issue: m.accessCodesWindowDurationInvalid(
+            {
+              minimum:
+                ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS,
+              maximum:
+                ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS,
+            },
+            { locale }
+          ),
+        }
+    )
+  );
+
+type StandaloneAccessCodeFormSchema = ReturnType<
+  typeof createStandaloneAccessCodeFormSchema
+>;
 
 export type CreateStandaloneAccessCodeFormInput =
-  typeof createStandaloneAccessCodeFormSchema.Encoded;
+  StandaloneAccessCodeFormSchema["Encoded"];
 
 export type CreateStandaloneAccessCodeFormValues =
-  typeof createStandaloneAccessCodeFormSchema.Type;
+  StandaloneAccessCodeFormSchema["Type"];
 
 export const createStandaloneAccessCodeFormDefaults = {
   name: "",
@@ -275,34 +306,42 @@ export const createStandaloneAccessCodeFormDefaults = {
   endsAt: "",
 } satisfies CreateStandaloneAccessCodeFormInput;
 
-export const formatStandaloneAccessCodeLocalDateTime = (value: string) =>
-  Temporal.PlainDateTime.from(value).toLocaleString("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+/** Formats a whole-hour site-local date-time of an access window. */
+export const formatStandaloneAccessCodeLocalDateTime = (
+  value: string,
+  locale: Locale
+) =>
+  formatAdministrationDateTime(
+    localDateTimeToTemporalInstantString({
+      dateTime: value,
+      timeZone: WORKSPACE_SITE_TIME_ZONE,
+    }),
+    locale
+  );
 
-export const formatStandaloneAccessCodeDuration = (hours: number) =>
-  `${hours} ${hours === 1 ? "hour" : "hours"}`;
+export const formatStandaloneAccessCodeDuration = (
+  hours: number,
+  locale: Locale
+) => formatDuration([{ value: hours, unit: "hour" }], locale);
 
-export const standaloneAccessCodeCleanupConfirmationLabel =
-  "I removed the named access code at the lock, or verified that it is absent.";
-
-export const standaloneAccessCodeFailureNotices = {
-  rejected:
-    "The provider rejected this access code. Adjust the details and try again.",
-  "in-progress":
-    "This access code is already being created. Wait a moment and try again.",
-  unavailable:
-    "Access-code creation is temporarily unavailable. Try again in a few minutes.",
-  reconciled:
-    "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Submit again to create the access code.",
+const standaloneAccessCodeFailureNotices = {
+  rejected: m.accessCodesFailureRejected,
+  "in-progress": m.accessCodesFailureInProgress,
+  unavailable: m.accessCodesFailureUnavailable,
+  reconciled: m.accessCodesFailureReconciled,
 } satisfies Record<
   Exclude<
     StandaloneAccessCodeCreationOutcome,
     "ambiguous" | "cleanup-required"
   >,
-  string
+  typeof m.accessCodesFailureRejected
 >;
+
+/** The operator notice for a creation failure that needs no lock cleanup. */
+export const standaloneAccessCodeFailureNotice = (
+  outcome: keyof typeof standaloneAccessCodeFailureNotices,
+  locale: Locale
+) => standaloneAccessCodeFailureNotices[outcome]({}, { locale });
 
 export const isSameStandaloneAccessCodeWindow = (
   left: StandaloneAccessCodeWindowValues,

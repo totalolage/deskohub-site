@@ -15,6 +15,15 @@ The administration serves `en-US` and `cs-CZ` under the locale segment: `app/[lo
 - Revalidate an administration page with `revalidateLocalizedPath(path)` (`features/i18n/server/revalidate-localized-path.ts`). A mutation doesn't know which locale's copy is cached, so it revalidates both.
 - Keep a URL unprefixed when it leaves the app, such as the `dhw auth` approval URL or a link in the administration API contract. The proxy opens it in the operator's language.
 - Administration pages and layouts stay synchronous (`no-blocking-administration-routes`). A synchronous page that only redirects may redirect to the unprefixed path and let the proxy place it.
+- A page frame with copy (the sr-only `<h1>`, toolbar labels, Suspense fallback labels) can't read the locale in the synchronous default export. Render a feature-level async screen component named for the screen, such as `DiscountCodesAdministrationScreen`, whose only top-level await is `getRequestLocale()`. That reads `next/root-params`, which the prerender knows, so the frame stays in the instant shell. The screen renders the frame and the Suspense boundaries and passes `locale` to the async data children. Don't await anything else before the frame. Component tests that render such a screen mock `next/root-params`, as `app/[locale]/admin/reservations/page.test.tsx` does.
+
+## Actions and errors
+
+- A Workspace action's context already carries `locale` from the locale middleware, so build action copy with it. In an `Effect.fn` action, type the generator's second parameter as `WorkspaceActionContext<typeof schema>` so the pipe step `(effect, _input, { locale })` type-checks.
+- The administration API and `dhw` forward application error messages, so those stay English. Give the tagged error a structured field (a `reason` union, the resource kind) and map it to administration copy in a module beside the action, such as `features/discounts/admin/mutation-error-message.ts`. A `"use server"` file can export only async functions. Never forward `error.message` to the Admin UI.
+- The same applies to display fallbacks that the API also returns, such as "Unnamed customer": the service keeps the English text in `displayName` and adds a structured signal beside it (`hasName`), which the contract doesn't declare. Services share the shape and the English text from `features/administration/customer-name.ts` (`AdministrationCustomerName`, `unnamedCustomerDisplayName`). The screen renders the area's catalog fallback when the signal says so, through one helper per area (`getAdministrationCustomerName`, `formatDiscountAdminCustomerName`, `getInvoiceCustomerName`). Don't compare the English text.
+- A form schema with copy becomes a `(locale) => Schema` factory. Name a tracked action for what it does (`setCustomerDiscountGroup`), never after its translated button label.
+- Format date-times on the server and pass the text into client tables (see the hydration note in `deskohub-react-ui`).
 
 ## Messages
 

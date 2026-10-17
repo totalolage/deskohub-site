@@ -3,11 +3,16 @@ import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import type { Schema } from "effect";
 import type { FieldValues } from "react-hook-form";
 import {
+  createDiscountCodeCreationFormSchema,
+  createDiscountDefinitionFormSchema,
   type DiscountCodeCreationFormValues,
   type DiscountDefinitionFormValues,
-  discountCodeCreationFormSchema,
-  discountDefinitionFormSchema,
 } from "./form-schemas";
+
+const discountDefinitionFormSchema =
+  createDiscountDefinitionFormSchema("en-US");
+const discountCodeCreationFormSchema =
+  createDiscountCodeCreationFormSchema("en-US");
 
 // Resolves through the same resolver the administration forms use, so each
 // failing field is one that would render its message beside that input.
@@ -119,6 +124,25 @@ describe("discount definition form schema", () => {
     );
     expect(errors.products?.message).toBe(
       "Choose either all cowork tiers or specific cowork tiers, not both."
+    );
+  });
+
+  test("explains validation failures in the operator's locale", async () => {
+    const { errors } = await effectSchemaResolver(
+      createDiscountDefinitionFormSchema("cs-CZ")
+    )(
+      discountDefinition({
+        labelCs: " ",
+        percentage: "120",
+        products: ["cowork", "cowork:open-space"],
+      }),
+      undefined,
+      { fields: {}, shouldUseNativeValidation: false }
+    );
+    expect(errors.labelCs?.message).toBe("Zadejte český název.");
+    expect(errors.percentage?.message).toBe("Zadejte procento od 0,01 do 100.");
+    expect(errors.products?.message).toBe(
+      "Zvolte buď všechny úrovně coworku, nebo konkrétní úrovně, ne obojí."
     );
   });
 });

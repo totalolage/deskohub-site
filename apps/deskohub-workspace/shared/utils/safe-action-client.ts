@@ -1,9 +1,7 @@
 import { Data } from "effect";
-import {
-  createSafeActionClient,
-  DEFAULT_SERVER_ERROR_MESSAGE,
-} from "next-safe-action";
+import { createSafeActionClient } from "next-safe-action";
 import { localeMiddleware } from "./action-middleware/locale";
+import { actionRuntimeFailureMessages } from "./action-runtime-failure";
 
 export type SafeActionFailure =
   | Error
@@ -21,14 +19,14 @@ export class PublicSafeActionError extends Data.TaggedError(
 export const actionClient = createSafeActionClient({
   handleServerError(error) {
     if (error.name === "ZodError") {
-      return "Validation error occurred. Please check your input.";
+      return actionRuntimeFailureMessages.invalidInput;
     }
 
     if (error instanceof PublicSafeActionError) {
       return error.message;
     }
 
-    return DEFAULT_SERVER_ERROR_MESSAGE;
+    return actionRuntimeFailureMessages.unexpected;
   },
   defaultValidationErrorsShape: "flattened",
 }).use(localeMiddleware);

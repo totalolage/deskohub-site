@@ -52,6 +52,12 @@ const nextConfig = {
   experimental: {
     // Next's TS CLI integration needs bin tsc, which the official TS6 wrapper (tsc6-only) must not provide; API-worker type checking still runs.
     useTypeScriptCli: false,
+    // With the build cache on, Turbopack keeps about 5 GB resident while it
+    // persists the cache during type checking and prerendering, so a cold build
+    // exceeds Vercel's 8 GB build machine. The cache also pushes Vercel's build
+    // cache past its 1.5 GB limit. The type-check worker also needs more than
+    // Node's ~2 GB default heap on an 8 GB machine, so the build script raises it.
+    turbopackFileSystemCacheForBuild: false,
     // Customer avatar uploads carry up to 2 MiB of raw image bytes plus the
     // Server Action / multipart envelope, so the 1 MiB default body limit is
     // too small; oversized images are rejected by the avatar policy itself.

@@ -894,6 +894,7 @@ describe("Workspace Admin API", () => {
         }).pipe(
           Effect.andThen(
             new DiscountAdminConflictError({
+              reason: "discount-referenced",
               message: "This discount is still referenced.",
             })
           )

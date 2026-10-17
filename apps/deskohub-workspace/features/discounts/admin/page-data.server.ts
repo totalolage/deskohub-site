@@ -4,9 +4,11 @@ import { Effect } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
+import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import type { DiscountCodeId, VoucherId } from "../persistence-contracts";
+import { formatDiscountAdminCustomerName } from "./customer-display-name";
 import { DiscountAdministration } from "./discount-administration.service";
 
 export type DiscountAdminSearchParams = Promise<{
@@ -266,12 +268,16 @@ export const loadOptionalDiscountAdminCustomerPageData = async (
 };
 
 export const loadDiscountAdminCustomerBreadcrumbLabel = async (
-  customerId: DotyposCustomerId
+  customerId: DotyposCustomerId,
+  locale: Locale
 ) => {
   await authorizeAdministratorPage();
   return Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
-    return yield* administration.loadCustomerBreadcrumbLabel({ customerId });
+    const customer = yield* administration.loadCustomerBreadcrumbLabel({
+      customerId,
+    });
+    return formatDiscountAdminCustomerName(customer, locale);
   }).pipe(
     Effect.provide(DiscountAdministration.Live),
     Effect.catch((cause) =>

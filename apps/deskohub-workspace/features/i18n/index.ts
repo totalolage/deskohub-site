@@ -6,7 +6,6 @@ export {
   isLocale,
   type Locale,
   locales,
-  setLocale,
 } from "./paraglide/runtime.js";
 export {
   defaultLocale,
