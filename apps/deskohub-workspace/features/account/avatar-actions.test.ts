@@ -5,7 +5,9 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 import { CustomerAccountAccessError } from "./customer-account";
 
-const revalidatePath = mock((_path: string) => undefined);
+const revalidatePath = mock(
+  (_path: string, _type?: "layout" | "page") => undefined
+);
 mock.module("next/cache", () => ({ revalidatePath }));
 
 const requestHeaders = new Headers({ referer: "https://deskohub.test/en-US" });
@@ -220,7 +222,7 @@ describe("customer avatar actions", () => {
     expect(uploadCalls).toHaveLength(1);
     expect(uploadAccountIds).toEqual(["@test/account-id"]);
     expect(uploadCalls[0]!.bytes.byteLength).toBe(pngBytes().byteLength);
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
+    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account", "layout");
   });
 
   test("reports a typed rejection from the service without an action error", async () => {
@@ -349,7 +351,7 @@ describe("customer avatar actions", () => {
 
     expect(result).toEqual({ data: { status: "removed" } });
     expect(removeCalls).toEqual(["@test/account-id"]);
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
+    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account", "layout");
   });
 
   test("reports an uncertain removal as retryable", async () => {

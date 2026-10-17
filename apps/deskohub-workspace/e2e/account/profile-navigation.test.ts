@@ -133,13 +133,10 @@ const makeProfileNavigationFakePage = (
   };
 
   // Like the account layout, a section switch records its section in the
-  // account URL, and the default section keeps the canonical one.
+  // account pathname.
   const switchSection = (section: ProfileNavigationSection) => {
     state.section = section;
-    state.url =
-      section === "reservations"
-        ? accountUrl
-        : `${accountUrl}?section=${section}`;
+    state.url = `${accountUrl}/${section}`;
   };
 
   const requestDialog = (kind: "history-back" | "home") => {
@@ -171,7 +168,7 @@ const makeProfileNavigationFakePage = (
       _apiName: "Locator",
       elementHandle: async () => ({
         dispose: async () => {},
-        sectionButton: name,
+        sectionLink: name,
       }),
       _expect: async (
         expression: string,
@@ -277,7 +274,7 @@ const makeProfileNavigationFakePage = (
     options: { readonly name?: string } = {}
   ) => {
     if (role === "banner") return makeLocator("banner");
-    if (role === "button") {
+    if (role === "link") {
       const section = Object.entries(accountSectionLabels).find(
         ([, label]) => options.name === label
       )?.[0];
@@ -333,12 +330,12 @@ const makeProfileNavigationFakePage = (
       if (
         typeof argument === "object" &&
         argument !== null &&
-        "sectionButton" in argument
+        "sectionLink" in argument
       ) {
         if (
           documentReloaded &&
           failurePhase === "profile-handler-wait" &&
-          (argument as { readonly sectionButton: string }).sectionButton ===
+          (argument as { readonly sectionLink: string }).sectionLink ===
             "section:profile"
         ) {
           throw new errors.TimeoutError(privateFailureDetails);
@@ -438,12 +435,12 @@ test("names the section selection stage and failure kind without the private cau
   );
   expect(failure).toMatchObject({
     message:
-      "Profile navigation verification failed at section selection stage button-handler-wait (timeout)",
+      "Profile navigation verification failed at section selection stage link-handler-wait (timeout)",
   });
 });
 
 const closedProfileNavigationFailureMessage =
-  /^Profile navigation verification failed (at section selection stage (button-handler-wait|panel-hydration-wait|native-button-click|selected-landmark-wait) )?\((timeout|strict-mode-violation|error)\)$/;
+  /^Profile navigation verification failed (at section selection stage (link-handler-wait|panel-hydration-wait|native-link-click|selected-landmark-wait) )?\((timeout|strict-mode-violation|error)\)$/;
 
 const expectProfileNavigationFailure = (
   failure: unknown,

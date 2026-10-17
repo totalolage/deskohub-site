@@ -7,6 +7,8 @@ import type {
   CustomerReservationHistory,
   CustomerReservationSummary,
 } from "@/features/account/contracts";
+import { getAccountSectionPath } from "@/features/account/routes";
+import type { AccountSection } from "@/features/account/sections";
 import { getWorkspaceMeetingRoomProductTitle } from "@/features/checkout/product-catalog.i18n";
 import { m } from "@/features/i18n";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
@@ -68,6 +70,8 @@ const renderReservationsScreen = () =>
         activeSection: "reservations",
         labels: copy.shell,
         onSectionChange: () => undefined,
+        sectionHref: (section: AccountSection) =>
+          getAccountSectionPath(locale, section),
         signOut: null,
         title: m.accountTitle({}, { locale }),
       },
