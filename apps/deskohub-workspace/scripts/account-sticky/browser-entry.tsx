@@ -1,10 +1,9 @@
 import { type ReactNode, useLayoutEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
-import {
-  type AccountSection,
-  AccountShell,
-} from "@/features/account/components/shell/account-shell";
+import { AccountShell } from "@/features/account/components/shell/account-shell";
+import { getAccountSectionPath } from "@/features/account/routes";
+import type { AccountSection } from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
 import "../../app/globals.css";
 
@@ -228,6 +227,7 @@ function Fixture() {
           labels={copy.shell}
           onSectionChange={setActiveSection}
           reservationCount={2}
+          sectionHref={(section) => getAccountSectionPath(locale, section)}
           signOut={
             <button type="button">{m.accountSignOut({}, { locale })}</button>
           }

@@ -1,6 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { Browser, Page } from "@playwright/test";
 import { Effect } from "effect";
+import { getAccountSectionPath } from "@/features/account/routes";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { m } from "@/features/i18n";
 import { formatReferralInvitationDiscount } from "@/features/referrals/client";
@@ -459,7 +460,7 @@ const referrerScreen: ReferralCaseExecutor = (context) =>
         config,
         context.run,
         context.session,
-        `${config.baseUrl}/cs-CZ/account?section=referrals`,
+        `${config.baseUrl}${getAccountSectionPath("cs-CZ", "referrals")}`,
         { timeoutMs: config.timeouts.browserNavigation }
       ),
       id: "opens the Referrals screen in Czech",
@@ -528,7 +529,8 @@ const referrerScreen: ReferralCaseExecutor = (context) =>
       config.timeouts.browserNavigation + config.timeouts.browserAction * 2,
       async (page) => {
         await page.goto(
-          new URL("/en-US/account?section=referrals", config.baseUrl).href,
+          new URL(getAccountSectionPath("en-US", "referrals"), config.baseUrl)
+            .href,
           { timeout: config.timeouts.browserNavigation }
         );
         // Two invitees compound to 9.75%, which the screen rounds up to 10%.
@@ -623,7 +625,8 @@ const referrerScreen: ReferralCaseExecutor = (context) =>
       config.timeouts.browserNavigation * 3 + config.timeouts.browserAction,
       async (page) => {
         await page.goto(
-          new URL("/cs-CZ/account?section=referrals", config.baseUrl).href,
+          new URL(getAccountSectionPath("cs-CZ", "referrals"), config.baseUrl)
+            .href,
           { timeout: config.timeouts.browserNavigation }
         );
         await waitForReferralStats({

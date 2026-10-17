@@ -3,6 +3,8 @@ import { type Browser, chromium } from "@playwright/test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
+import { getAccountSectionPath } from "@/features/account/routes";
+import type { AccountSection } from "@/features/account/sections";
 import { m } from "@/features/i18n";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
@@ -37,6 +39,8 @@ const renderSignInHandoffPage = () =>
         activeSection: "reservations",
         labels: getAccountScreenCopy(locale).shell,
         onSectionChange: () => undefined,
+        sectionHref: (section: AccountSection) =>
+          getAccountSectionPath(locale, section),
         signOut: null,
         title: m.accountTitle({}, { locale }),
       },

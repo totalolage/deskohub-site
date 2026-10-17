@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
+import { getAccountSectionPath } from "@/features/account/routes";
 import { m } from "@/features/i18n";
 import {
   formatReferralDiscount,
@@ -49,6 +50,7 @@ const renderReferrals = (input: {
         sections: accountSectionLabels,
       }}
       onSectionChange={() => {}}
+      sectionHref={(section) => getAccountSectionPath(locale, section)}
       referralBadge={
         input.discount === "0"
           ? undefined

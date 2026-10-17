@@ -431,9 +431,9 @@ describe("account review screenshot capture", () => {
       url: `${baseUrl}/en-US/account`,
     },
     {
-      name: "linked legal with a private section query",
+      name: "linked legal with an extra query parameter",
       target: "linked-legal-desktop",
-      url: `${baseUrl}/en-US/account/legal?section=profile`,
+      url: `${baseUrl}/en-US/account/legal?view=private`,
     },
     {
       name: "the preference redirect capture at the unredirected en-US page",
@@ -448,27 +448,27 @@ describe("account review screenshot capture", () => {
     {
       name: "linked account with an extra query parameter",
       target: "linked-profile-desktop",
-      url: `${baseUrl}/en-US/account?section=profile&view=private`,
+      url: `${baseUrl}/en-US/account/profile?view=private`,
     },
     {
       name: "linked account with a credential query",
       target: "linked-profile-desktop",
-      url: `${baseUrl}/en-US/account?section=profile&token=synthetic-secret-token`,
+      url: `${baseUrl}/en-US/account/profile?token=synthetic-secret-token`,
     },
     {
-      name: "linked account with a duplicate section query",
+      name: "linked account with a duplicate query parameter",
       target: "linked-profile-desktop",
-      url: `${baseUrl}/en-US/account?section=profile&section=profile`,
+      url: `${baseUrl}/en-US/account/profile?view=private&view=private`,
     },
     {
-      name: "linked account with an unknown section query",
+      name: "linked account with an unknown section path",
       target: "linked-profile-desktop",
-      url: `${baseUrl}/en-US/account?section=unknown`,
+      url: `${baseUrl}/en-US/account/unknown`,
     },
     {
       name: "the referrals section with a share-link code",
       target: "linked-referrals-desktop",
-      url: `${baseUrl}/en-US/account?section=referrals&ref=RFL12345`,
+      url: `${baseUrl}/en-US/account/referrals?ref=RFL12345`,
     },
     {
       name: "a callback failure query with a non-canonical attempt parameter",
@@ -592,9 +592,9 @@ describe("account review screenshot capture", () => {
 
   test.each([
     [
-      "a private linked section query",
+      "a private linked profile path",
       "linked-profile-desktop",
-      "/en-US/account?section=billing",
+      "/en-US/account/profile",
     ],
     [
       "a bare callback loading page",
@@ -628,7 +628,7 @@ describe("account review screenshot capture", () => {
   });
 
   test("masks the referral code and share link in referral captures", async () => {
-    const fakePage = makeFakePage(`${baseUrl}/en-US/account?section=referrals`);
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account/referrals`);
 
     await captureAccountReview(
       fakePage.page,
@@ -718,7 +718,7 @@ describe("account review screenshot capture", () => {
   });
 
   test("restores the previous viewport when screenshot capture fails", async () => {
-    const fakePage = makeFakePage(`${baseUrl}/en-US/account`, {
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`, {
       failScreenshot: true,
     });
 
@@ -751,7 +751,7 @@ describe("account review screenshot capture", () => {
         const preparationStarted = new Promise<void>((resolve) => {
           resolvePreparationStarted = resolve;
         });
-        const fakePage = makeFakePage(`${baseUrl}/en-US/account`, {
+        const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`, {
           onFontsReady: () => {
             if (phase !== "fonts") return;
             resolvePreparationStarted();
@@ -800,7 +800,7 @@ describe("account review screenshot capture", () => {
     const onUnhandledRejection = (reason: unknown) => {
       unhandledRejections.push(reason);
     };
-    const fakePage = makeFakePage(`${baseUrl}/en-US/account`, {
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`, {
       onScreenshot: () => screenshotReady,
     });
     const controller = new AbortController();
@@ -838,7 +838,7 @@ describe("account review screenshot capture", () => {
 
     await withControlledDateNow(clock, async () => {
       await withControlledTimers(clock, async (advanceTo) => {
-        const fakePage = makeFakePage(`${baseUrl}/en-US/account`, {
+        const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`, {
           onScreenshot: () => screenshotReady,
         });
         const capture = captureAccountReview(
@@ -1215,13 +1215,13 @@ const runLanguageCaseMoments = async (
   const captureUnlessSkipped = async (stage: LanguagePreferenceReviewStage) => {
     if (stage !== options.skip) await capture(stage);
   };
-  fakePage.setUrl(`${baseUrl}/cs-CZ/account?section=profile`);
+  fakePage.setUrl(`${baseUrl}/cs-CZ/account/profile`);
   await captureUnlessSkipped("czech-profile");
   fakePage.setUrl(`${baseUrl}/cs-CZ/faq`);
   await captureUnlessSkipped("preference-redirect");
   fakePage.setUrl(`${baseUrl}/en-US/account`);
   await captureUnlessSkipped("switcher-saved");
-  fakePage.setUrl(`${baseUrl}/en-US/account?section=profile`);
+  fakePage.setUrl(`${baseUrl}/en-US/account/profile`);
 };
 
 const languageReviewFileNames = [
@@ -1252,7 +1252,7 @@ describe("language preference review wrapper", () => {
   });
 
   test("captures every mid-case moment, then the mobile language view", async () => {
-    const fakePage = makeFakePage(`${baseUrl}/en-US/account?section=profile`);
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`);
 
     // The fake page has no route API: the wrapper holds no request, since a
     // language choice saves and navigates without a separate feedback state.
@@ -1265,7 +1265,7 @@ describe("language preference review wrapper", () => {
   });
 
   test("fails the review when the case skips a language moment", async () => {
-    const fakePage = makeFakePage(`${baseUrl}/en-US/account?section=profile`);
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account/profile`);
 
     await expect(
       withLanguagePreferenceReview(fakePage.page, review, (capture) =>
@@ -1324,7 +1324,7 @@ describe("language preference review wrapper", () => {
 
     await expect(
       withLanguagePreferenceReview(fakePage.page, review, async (capture) => {
-        fakePage.setUrl(`${baseUrl}/cs-CZ/account?section=profile`);
+        fakePage.setUrl(`${baseUrl}/cs-CZ/account/profile`);
         await capture("czech-profile");
         throw caseFailure;
       })

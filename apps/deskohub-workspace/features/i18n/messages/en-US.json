@@ -887,6 +887,7 @@
   "accountCallbackFailedBody": "It may have expired or already been opened. Request a new link to continue.",
   "accountCallbackFailedAction": "Request a new link",
   "accountMetadataTitle": "My account | Deskohub Workspace",
+  "accountSectionMetadataTitle": "{section} | My account | Deskohub Workspace",
   "accountMetadataDescription": "Manage your customer profile and view current and past Workspace reservations.",
   "accountTitle": "My Workspace",
   "accountSignOut": "Sign out",
