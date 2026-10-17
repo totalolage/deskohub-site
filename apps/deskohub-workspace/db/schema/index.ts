@@ -10,6 +10,7 @@ export {
   cliSessions,
 } from "./cli-authentication";
 export { customerAccountLinks } from "./customer-account-links";
+export { customerAccounts } from "./customer-accounts";
 export { customerMarketingConsents } from "./customer-marketing-consents";
 export { customerMarketingManagementTokens } from "./customer-marketing-management-tokens";
 export {

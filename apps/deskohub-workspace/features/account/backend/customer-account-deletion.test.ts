@@ -42,6 +42,10 @@ const makeDependencies = (
         never
       >;
     },
+    tombstone: () => {
+      calls.push("tombstone");
+      return Effect.void;
+    },
     withAccountLock: (_key, effect) => {
       calls.push("lock-acquire");
       return Effect.void.pipe(
@@ -55,7 +59,7 @@ const makeDependencies = (
 };
 
 describe("Customer account deletion", () => {
-  test("marks, finds the link, and expires the provider profile under the lock", async () => {
+  test("marks, expires the provider profile, and leaves the tombstone last under the lock", async () => {
     const { dependencies, calls } = makeDependencies();
 
     await Effect.runPromise(
@@ -68,6 +72,7 @@ describe("Customer account deletion", () => {
       "find-link",
       "expire",
       "destroy-avatar",
+      "tombstone",
       "lock-release",
     ]);
   });
@@ -91,6 +96,21 @@ describe("Customer account deletion", () => {
       "expire",
       "lock-release",
     ]);
+  });
+
+  test("leaves no tombstone while the avatar cleanup can still be retried", async () => {
+    const { dependencies, calls } = makeDependencies({
+      avatarOutcome: Effect.fail(
+        new NetworkError({ message: "connection reset" })
+      ),
+    });
+
+    const outcome = await Effect.runPromise(
+      expireLinkedDotyposProfile(dependencies)(accountId).pipe(Effect.result)
+    );
+
+    expect(outcome._tag).toBe("Failure");
+    expect(calls).not.toContain("tombstone");
   });
 
   test("tolerates a definitively missing provider profile", async () => {
@@ -125,6 +145,7 @@ describe("Customer account deletion", () => {
       "marker",
       "find-link",
       "destroy-avatar",
+      "tombstone",
       "lock-release",
     ]);
   });
