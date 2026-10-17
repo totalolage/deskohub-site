@@ -102,6 +102,7 @@
   "accountingInvoiceFormSearchEmpty": "Hledanému výrazu neodpovídá žádný zákazník.",
   "accountingInvoiceFormSearchError": "Hledání zákazníků se nezdařilo.",
   "accountingInvoiceFormCustomerNoEmail": "Bez e-mailu",
+  "accountingUnnamedCustomer": "Zákazník bez jména",
   "accountingInvoiceFormSelectCustomer": "Vybrat",
   "accountingInvoiceFormChangeCustomer": "Změnit",
   "accountingInvoiceFormCustomerType": "Typ odběratele",

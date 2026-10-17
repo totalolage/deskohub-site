@@ -39,6 +39,7 @@ import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { getInvoiceAdminActionFailureMessage } from "./action-failure-message";
+import { getInvoiceCustomerName } from "./invoice-display";
 import {
   createAdministrationInvoice,
   previewAdministrationInvoice,
@@ -512,7 +513,7 @@ export function InvoiceCreationForm({
                         >
                           <div>
                             <p className="font-semibold">
-                              {result.displayName}
+                              {getInvoiceCustomerName(result, locale)}
                             </p>
                             <p className="text-sm text-navy-blue/65">
                               {result.email ||
@@ -553,7 +554,7 @@ export function InvoiceCreationForm({
                 {customer && (
                   <div className="flex items-center justify-between gap-3 rounded-xl bg-aquamarine-green/10 px-4 py-3">
                     <span className="font-semibold">
-                      {customer.displayName}
+                      {getInvoiceCustomerName(customer, locale)}
                     </span>
                     <Button
                       onClick={() => applyCustomer(null)}

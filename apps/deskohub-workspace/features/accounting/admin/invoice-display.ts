@@ -3,6 +3,7 @@ import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import type {
+  InvoiceAdministrationCustomer,
   InvoiceAdministrationCustomerErrorReason,
   InvoiceAdministrationListItem,
 } from "./invoice-administration.service";
@@ -45,3 +46,12 @@ export const getInvoiceCustomerErrorMessage = (
     "customer-id-missing": m.accountingInvoiceCustomerIdMissing,
     "invoice-id-reused": m.accountingInvoiceIdReused,
   })[reason]({}, { locale });
+
+/** Names a customer in the operator's language when Dotypos holds no name or email for them. */
+export const getInvoiceCustomerName = (
+  customer: Pick<InvoiceAdministrationCustomer, "displayName" | "hasName">,
+  locale: Locale
+) =>
+  customer.hasName
+    ? customer.displayName
+    : m.accountingUnnamedCustomer({}, { locale });

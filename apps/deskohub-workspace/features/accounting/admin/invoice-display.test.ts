@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   formatInvoiceTotal,
   getInvoiceCustomerErrorMessage,
+  getInvoiceCustomerName,
   getInvoiceSourceLabel,
 } from "./invoice-display";
 
@@ -28,4 +29,16 @@ test("explains a rejected customer in the route locale", () => {
   expect(getInvoiceCustomerErrorMessage("customer-deleted", "en-US")).toBe(
     "The selected customer has been deleted."
   );
+});
+
+test("names an unnamed customer in the route locale", () => {
+  const unnamed = { displayName: "Unnamed customer", hasName: false };
+  expect(getInvoiceCustomerName(unnamed, "cs-CZ")).toBe("Zákazník bez jména");
+  expect(getInvoiceCustomerName(unnamed, "en-US")).toBe("Unnamed customer");
+  expect(
+    getInvoiceCustomerName(
+      { displayName: "Ada Lovelace", hasName: true },
+      "cs-CZ"
+    )
+  ).toBe("Ada Lovelace");
 });

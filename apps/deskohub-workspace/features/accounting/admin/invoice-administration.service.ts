@@ -139,7 +139,10 @@ export type InvoiceAdministrationDetail = InvoiceAdministrationListItem & {
 
 export type InvoiceAdministrationCustomer = {
   readonly id: string;
+  /** Never empty: "Unnamed customer" when `hasName` is false. */
   readonly displayName: string;
+  /** Whether Dotypos holds a name or email, so the Admin UI can name an unnamed customer in the operator's language. */
+  readonly hasName: boolean;
   readonly email: string | null;
   readonly details: AdministrationInvoiceCustomerDetailsType;
 };
@@ -592,13 +595,12 @@ const toCustomer = (
         firstName: customer.firstName?.trim() ?? "",
         lastName: customer.lastName?.trim() ?? "",
       };
+  const name =
+    customer.companyName?.trim() || personName || customer.email?.trim();
   return {
     id: customer.id,
-    displayName:
-      customer.companyName?.trim() ||
-      personName ||
-      customer.email?.trim() ||
-      "Unnamed customer",
+    displayName: name || "Unnamed customer",
+    hasName: Boolean(name),
     email: customer.email?.trim() || null,
     details,
   };
