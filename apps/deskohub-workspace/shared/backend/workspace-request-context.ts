@@ -1,5 +1,9 @@
 import { Context, Effect } from "effect";
 import {
+  type AgentTraffic,
+  unclassifiedTraffic,
+} from "@/shared/agent-traffic/agent-traffic";
+import {
   CurrentPostHogRequestContext,
   getPostHogRequestContextFromRequestHeadersWithDiagnostics,
   logUnexpectedConsentCookieReasons,
@@ -11,7 +15,19 @@ export const CurrentWorkspaceRequestHeaders = Context.Reference(
   { defaultValue: (): Headers | undefined => undefined }
 );
 
-export const withWorkspaceRequestContext = (headers: Headers) =>
+/**
+ * The agent category of the request being served. Work outside a request,
+ * such as a scheduled task, counts as unclassified.
+ */
+export const CurrentAgentTraffic = Context.Reference(
+  "@deskohub-workspace/CurrentAgentTraffic",
+  { defaultValue: (): AgentTraffic => unclassifiedTraffic }
+);
+
+export const withWorkspaceRequestContext = (
+  headers: Headers,
+  agentTraffic: AgentTraffic
+) =>
   function provideWorkspaceRequestContext<A, E, R>(
     effect: Effect.Effect<A, E, R>
   ) {
@@ -27,7 +43,8 @@ export const withWorkspaceRequestContext = (headers: Headers) =>
             getPostHogLogAnnotationsFromCookieValues(context)
           ),
           Effect.provideService(CurrentPostHogRequestContext, context),
-          Effect.provideService(CurrentWorkspaceRequestHeaders, headers)
+          Effect.provideService(CurrentWorkspaceRequestHeaders, headers),
+          Effect.provideService(CurrentAgentTraffic, agentTraffic)
         )
       )
     );

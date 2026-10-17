@@ -11,6 +11,7 @@ import type {
   ValidationErrors,
 } from "next-safe-action";
 import type { Locale } from "@/features/i18n";
+import { readForwardedAgentTraffic } from "../agent-traffic/agent-traffic";
 import { actionRuntimeFailureMessages } from "../utils/action-runtime-failure";
 import { formatError } from "../utils/error-formatting";
 import {
@@ -167,7 +168,12 @@ const prepareWorkspaceAction = <
 
   const invocation = readActionHeaders.pipe(
     Effect.flatMap((requestHeaders) =>
-      logged.pipe(withWorkspaceRequestContext(requestHeaders))
+      logged.pipe(
+        withWorkspaceRequestContext(
+          requestHeaders,
+          readForwardedAgentTraffic(requestHeaders)
+        )
+      )
     ),
     Effect.provideService(References.MinimumLogLevel, "All"),
     withActionDeadline(options.deadline ?? workspaceActionDeadline)

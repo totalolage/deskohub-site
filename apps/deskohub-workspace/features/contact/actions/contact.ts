@@ -63,7 +63,10 @@ const getContactFieldErrors = (issue: Schema.SchemaError["issue"]) => {
 export const processContactSubmission = Effect.fn("submitContactForm")(
   function* ({ locale, submittedValues }: SubmitContactFormInput) {
     const botProtection = yield* BotProtectionService;
-    yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
+    yield* botProtection.verifyHuman({
+      verificationFailurePolicy: "deny",
+      callSite: "contact.submit",
+    });
 
     yield* Effect.annotateLogsScoped({ submittedValues, locale });
     yield* Effect.logInfo("Workspace contact form action received");

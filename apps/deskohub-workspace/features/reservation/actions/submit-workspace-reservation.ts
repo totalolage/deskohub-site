@@ -45,7 +45,10 @@ export const submitWorkspaceReservation = Effect.fn(
     const { locale } = input;
     yield* Effect.annotateLogsScoped({ locale });
     const botProtection = yield* BotProtectionService;
-    yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
+    yield* botProtection.verifyHuman({
+      verificationFailurePolicy: "allow",
+      callSite: "reservation.submit",
+    });
     const service = yield* CheckoutService;
     const cookieWriter = yield* ReservationAccessCookieWriter;
     const checkout = yield* service.createHostedPaymentCheckout(

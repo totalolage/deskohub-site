@@ -38,12 +38,17 @@ import {
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
 import { defaultLocale, type Locale, locales } from "@/features/i18n";
+import {
+  classifyAgentTraffic,
+  unclassifiedTraffic,
+} from "@/shared/agent-traffic/agent-traffic";
 import type {
   BotDetectedError,
   BotVerificationError,
   VerifyHumanInput,
 } from "@/shared/backend/bot-protection/bot-protection.service";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
 import {
   lookupMagicLinkDeliveryLocale,
   type MagicLinkLocaleLookup,
@@ -298,7 +303,10 @@ type AuthRequestGuard = {
  */
 const verifySignInHuman = (config: WorkspaceAuthConfig) =>
   Effect.suspend(() =>
-    config.verifyHuman({ verificationFailurePolicy: "allow" })
+    config.verifyHuman({
+      verificationFailurePolicy: "allow",
+      callSite: "account.sign-in",
+    })
   ).pipe(Effect.mapError(() => makeBotDetectedError()));
 
 /**
@@ -802,7 +810,15 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     hooks: {
       before: createAuthMiddleware((ctx) =>
         runWorkspaceEffect("account.auth.guard", { boundary: "route" })(
-          guardAuthRequest({ config, request: ctx })
+          guardAuthRequest({ config, request: ctx }).pipe(
+            // Auth routes bypass the proxy, so they classify their own headers.
+            Effect.provideService(
+              CurrentAgentTraffic,
+              ctx.headers
+                ? classifyAgentTraffic(ctx.headers)
+                : unclassifiedTraffic
+            )
+          )
         )
       ),
       after: createAuthMiddleware(

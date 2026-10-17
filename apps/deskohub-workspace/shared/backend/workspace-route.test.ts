@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Data, Effect } from "effect";
+import { CurrentAgentTraffic } from "./workspace-request-context";
 import { defineWorkspaceRoute, WorkspaceRouteFailure } from "./workspace-route";
 
 class TestLayerError extends Data.TaggedError("TestLayerError")<{
@@ -7,6 +8,42 @@ class TestLayerError extends Data.TaggedError("TestLayerError")<{
 }> {}
 
 describe("Workspace routes", () => {
+  test("puts the request's own agent category in the request context", async () => {
+    const GET = defineWorkspaceRoute(
+      {
+        operation: "test.agent-traffic",
+        cancellation: "interrupt-on-disconnect",
+      },
+      () => Effect.map(CurrentAgentTraffic, (traffic) => Response.json(traffic))
+    );
+
+    const agent = await GET(
+      new Request("https://deskohub.test/api/mcp", {
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +https://www.anthropic.com)",
+        },
+      })
+    );
+    // Routes bypass the proxy, so a client-sent category is never trusted.
+    const spoofed = await GET(
+      new Request("https://deskohub.test/api/mcp", {
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 (Macintosh) Chrome/141.0.0.0 Safari/537.36",
+          "x-deskohub-agent-category": "ai_user_agent",
+          "x-deskohub-agent-name": "chatgpt",
+        },
+      })
+    );
+
+    await expect(agent.json()).resolves.toEqual({
+      category: "ai_user_agent",
+      name: "claude",
+    });
+    await expect(spoofed.json()).resolves.toEqual({ category: "unclassified" });
+  });
+
   test("recovers typed failures without exposing their cause", async () => {
     const cause = new TestLayerError({ message: "private setup" });
     const GET = defineWorkspaceRoute(

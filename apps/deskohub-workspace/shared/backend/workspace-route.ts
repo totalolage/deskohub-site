@@ -1,5 +1,6 @@
 import { Data, Effect } from "effect";
 import { NextResponse } from "next/server";
+import { classifyAgentTraffic } from "@/shared/agent-traffic/agent-traffic";
 import {
   runWorkspaceEffect,
   scheduleWorkspaceTelemetryFlush,
@@ -47,7 +48,11 @@ export const defineWorkspaceRoute =
     const request = args[0];
     const invocation = Effect.suspend(() => handler(...args)).pipe(
       Effect.catch(recoverWorkspaceRouteFailure),
-      withWorkspaceRequestContext(request.headers)
+      // Routes bypass the proxy, so they classify their own headers.
+      withWorkspaceRequestContext(
+        request.headers,
+        classifyAgentTraffic(request.headers)
+      )
     );
     const effect = Effect.andThen(
       scheduleWorkspaceTelemetryFlush(),

@@ -16,6 +16,7 @@ Every Workspace Effect runs through one runner or boundary. Server runners live 
 
 - Put only process-wide, finalizer-free capabilities in a runtime Layer. Keep per-request state (log annotations, request context, headers, abort signals) inside the run.
 - Never dispose a runtime; serverless processes end without a shutdown hook. Flush telemetry with `scheduleWorkspaceTelemetryFlush` at request boundaries and `Effect.ensuring` in tasks, as `defineWorkspaceTask` does.
+- Run work the response shouldn't wait for, such as analytics capture, with `runWorkspaceEffectAfterResponse(operation, effect)`. It schedules through Next's `after()` and logs, never raises, a scheduling failure.
 
 ## Fail-open runs
 

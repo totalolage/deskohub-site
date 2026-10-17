@@ -3,9 +3,15 @@ import "server-only";
 import { checkBotId } from "botid/server";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { isWorkspaceBotIdEnforcedAtRuntime } from "./bot-protection.runtime";
+import {
+  type BotProtectionCallSite,
+  recordBotProtectionRejection,
+} from "./bot-protection-rejection";
 
 export interface VerifyHumanInput {
   readonly verificationFailurePolicy: "allow" | "deny";
+  /** Where the request was screened, so rejections count per call site. */
+  readonly callSite: BotProtectionCallSite;
 }
 
 interface IBotProtectionService {
@@ -53,6 +59,11 @@ const verifyHuman = Effect.fn("BotProtectionService.verifyHuman")(
           Match.when("deny", () => Effect.fail(error)),
           Match.exhaustive
         )
+      ),
+      Effect.tap((verification) =>
+        verification?.isBot
+          ? recordBotProtectionRejection(input.callSite, verification)
+          : Effect.void
       ),
       Effect.filterOrFail(
         (verification) => !verification?.isBot,

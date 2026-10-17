@@ -143,6 +143,29 @@ non-production traffic apart:
   then. Every reconcile without consent or with an unsafe telemetry host
   discards them. They don't survive a page load.
 
+## Agent traffic
+
+- `shared/agent-traffic/agent-traffic.ts` classifies a request into a fixed
+  `agent_category` and an allow-listed `agent_name` from `User-Agent`,
+  `Signature-Agent`, and BotID's verified-bot name and category. Unknown names
+  become `other`. Never record those raw values or an IP.
+- The proxy classifies every request it hands on and forwards non-unclassified
+  results as `x-deskohub-agent-category` and `x-deskohub-agent-name`,
+  replacing client values. Server Actions read that through request context
+  (`CurrentAgentTraffic`); route handlers and the Better Auth guard bypass the
+  proxy and classify their own headers. Never trust the forwarded headers
+  outside proxied requests.
+- `agent page request` (proxy, document navigations that reach a render) and
+  `bot protection rejection` (BotID) events go out after the response,
+  regardless of consent, from `shared/backend/agent-traffic/agent-traffic-events.ts`
+  with a random per-event distinct ID and `$process_person_profile: false`.
+  They carry only the agent fields, route template, locale, call site, and
+  `verified_bot`. The privacy policy discloses this; a new property needs a
+  matching policy change.
+- Checkout lifecycle events carry the agent fields of the request that
+  emitted them. Work outside a request, such as a task, is `unclassified`; a
+  webhook carries the webhook client's category.
+
 ## Flag-request gotcha
 
 The SDK's `/flags` request bypasses `before_send` and merges persisted

@@ -29,7 +29,11 @@ mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [] }),
   headers: async () => {
     actionHeaderReads += 1;
-    return new Headers({ referer: "https://deskohub.test/en-US" });
+    return new Headers({
+      referer: "https://deskohub.test/en-US",
+      "x-deskohub-agent-category": "ai_user_agent",
+      "x-deskohub-agent-name": "chatgpt",
+    });
   },
 }));
 
@@ -123,6 +127,25 @@ describe("Workspace actions", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  test("reads the agent category the proxy forwarded into the request context", async () => {
+    const { CurrentAgentTraffic } = await import("./workspace-request-context");
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.agent-traffic",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () =>
+        Effect.gen(function* () {
+          return yield* CurrentAgentTraffic;
+        })
+    );
+
+    await expect(action("input")).resolves.toMatchObject({
+      data: { category: "ai_user_agent", name: "chatgpt" },
+    });
   });
 
   test("schedules a telemetry flush for validation failures", async () => {

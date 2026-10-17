@@ -1,5 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { Effect, Logger } from "effect";
+import { unclassifiedTraffic } from "@/shared/agent-traffic/agent-traffic";
 import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
 
 const ambientHeaders = mock(() => {
@@ -45,12 +46,14 @@ test("authority reads use each request's captured headers after async work", asy
       [
         read.pipe(
           withWorkspaceRequestContext(
-            new Headers({ "x-test-request": "first" })
+            new Headers({ "x-test-request": "first" }),
+            unclassifiedTraffic
           )
         ),
         read.pipe(
           withWorkspaceRequestContext(
-            new Headers({ "x-test-request": "second" })
+            new Headers({ "x-test-request": "second" }),
+            unclassifiedTraffic
           )
         ),
       ],

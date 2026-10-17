@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Effect } from "effect";
+import { readForwardedAgentTraffic } from "@/shared/agent-traffic/agent-traffic";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
 import { currentAdministratorAccess } from "../backend/current-administrator";
@@ -17,6 +18,6 @@ export const readAdministrationRequestAccess = (headers: Headers) =>
   currentAdministratorAccess.pipe(
     Effect.map((access) => access.kind),
     Effect.provide(administratorAccessLayer),
-    withWorkspaceRequestContext(headers),
+    withWorkspaceRequestContext(headers, readForwardedAgentTraffic(headers)),
     runWorkspaceEffect("administrator.request-access", { boundary: "route" })
   );
