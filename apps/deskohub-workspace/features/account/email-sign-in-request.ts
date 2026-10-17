@@ -36,18 +36,13 @@ export type EmailSignInRequest = typeof emailSignInRequestSchema.Type;
 export const hasSignInCode = (request: EmailSignInRequest) =>
   request.signInCode !== false;
 
-// The tab's current request: kept in memory, so a tab without storage still
-// works, and mirrored to sessionStorage for a reload or another page.
-// `undefined` until it is first read from storage.
-let currentRaw: string | null | undefined;
-let currentRequest: EmailSignInRequest | null = null;
+// The request this document set: it outlives a forgotten stored copy and
+// covers a tab without storage. Without one, the stored request counts, such
+// as one a reload or another page left.
+let currentRaw: string | null = null;
+let decodedRaw: string | null = null;
+let decodedRequest: EmailSignInRequest | null = null;
 const listeners = new Set<() => void>();
-
-const setCurrentRaw = (raw: string | null) => {
-  currentRaw = raw;
-  currentRequest =
-    raw === null ? null : Option.getOrNull(decodeEmailSignInRequest(raw));
-};
 
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
@@ -57,10 +52,13 @@ const subscribe = (listener: () => void) => {
 };
 
 const getSnapshot = () => {
-  if (currentRaw === undefined) {
-    setCurrentRaw(readSessionStorageItem(storageKey));
+  const raw = currentRaw ?? readSessionStorageItem(storageKey);
+  if (raw !== decodedRaw) {
+    decodedRaw = raw;
+    decodedRequest =
+      raw === null ? null : Option.getOrNull(decodeEmailSignInRequest(raw));
   }
-  return currentRequest;
+  return decodedRequest;
 };
 
 // Absent during server rendering and hydration.
@@ -93,7 +91,7 @@ export const rememberEmailSignInRequest = (
   request: EmailSignInRequest | null
 ) => {
   const raw = request === null ? null : JSON.stringify(request);
-  setCurrentRaw(raw);
+  currentRaw = raw;
   writeSessionStorageItem(storageKey, raw);
   for (const listener of listeners) listener();
 };

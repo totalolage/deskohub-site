@@ -190,7 +190,9 @@ const importCallbackModel = async () => {
   return React.createElement(
     Suspense,
     { fallback: null },
-    React.createElement(CustomerAuthCallbackPage)
+    React.createElement(CustomerAuthCallbackPage, {
+      searchParams: Promise.resolve({}),
+    })
   );
 };
 

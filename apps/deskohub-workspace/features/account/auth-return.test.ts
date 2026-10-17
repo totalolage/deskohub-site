@@ -707,6 +707,13 @@ describe("account auth return lifecycle", () => {
       sessionStorage.clear();
     });
 
+    afterEach(async () => {
+      const { rememberEmailSignInRequest } = await import(
+        "./email-sign-in-request"
+      );
+      rememberEmailSignInRequest(null);
+    });
+
     test("carries the return path in the link's callback", async () => {
       const lifecycle = authReturn.createAuthReturnLifecycle({
         locale: "en-US",
