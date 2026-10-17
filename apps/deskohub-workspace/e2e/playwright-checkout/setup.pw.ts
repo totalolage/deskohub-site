@@ -20,13 +20,12 @@ import {
   type Runner,
 } from "../runtime";
 import { WorkspaceE2ECaseService } from "../services/cases";
-import {
-  type E2ERunContext,
-  E2ETelemetryService,
-  makeE2ERunContext,
-} from "../services/telemetry";
+import { E2ETelemetryService } from "../services/telemetry";
 import { workspaceE2ECaseIds } from "./case-catalog";
-import { writeWorkspaceE2ERunContext } from "./run-context";
+import {
+  resolveWorkspaceE2ERunContext,
+  writeWorkspaceE2ERunContext,
+} from "./run-context";
 import { writeWorkspaceE2ERunPlan } from "./run-plan";
 import { withWorkspaceE2ERuntime } from "./runtime-fixtures";
 
@@ -37,7 +36,7 @@ test("prepare the workspace checkout run", async () => {
   const environment = makeWorkspaceE2EEnvironment();
   const config = getConfig(environment);
   const datasourceConfig = getDatasourceConfig(environment);
-  const runContext = readRunContext(environment);
+  const runContext = resolveWorkspaceE2ERunContext(environment);
   assertSafeDatabaseUrl(
     datasourceConfig.databaseUrl,
     "DATABASE_URL",
@@ -150,20 +149,3 @@ test("prepare the workspace checkout run", async () => {
   expect(actualCaseIds).toEqual([...expectedCaseIds].toSorted());
   await writeWorkspaceE2ERunPlan({ preparation, runContext, version: 2 });
 });
-
-const readRunContext = (
-  environment: ReturnType<typeof makeWorkspaceE2EEnvironment>
-): E2ERunContext => {
-  const serialized = environment.WORKSPACE_E2E_RUN_CONTEXT;
-  if (!serialized) return makeE2ERunContext(environment);
-  const value: unknown = JSON.parse(serialized);
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("runId" in value) ||
-    !("allocation" in value)
-  ) {
-    throw new Error("Invalid workspace E2E run context");
-  }
-  return value as E2ERunContext;
-};

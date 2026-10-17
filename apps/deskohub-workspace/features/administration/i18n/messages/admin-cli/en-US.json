@@ -14,7 +14,7 @@
   "adminCliAuthenticateApproveOnlyOwnRequest": "Approve it only if you initiated the request in your terminal.",
   "adminCliAuthenticateApprovedDescription": "Return to your terminal. The CLI will complete the exchange automatically.",
   "adminCliAuthenticateApprovedTitle": "Authentication approved",
-  "adminCliAuthenticateApprovingAs": "Approving as <username/>.",
+  "adminCliAuthenticateApprovingAs": "Approving as <email/>.",
   "adminCliAuthenticateBuildLabel": "CLI build",
   "adminCliAuthenticateClientLabel": "Client",
   "adminCliAuthenticateDescription": "Confirm that this command-line client may access the Workspace administration API.",
@@ -46,7 +46,7 @@
   "adminCliRevokeSubmitting": "Revoking…",
   "adminCliRevokeTitle": "Revoke CLI session?",
   "adminCliRevokeTrigger": "Revoke",
-  "adminCliSessionsApprovedBy": "Sessions approved by <username/>",
+  "adminCliSessionsApprovedBy": "Sessions approved by <email/>",
   "adminCliSessionsCount": [
     {
       "declarations": [

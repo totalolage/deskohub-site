@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { IgloohomeService } from "@deskohub/igloohome";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
-  AdministrationActorUsername,
+  AdministrationActorEmail,
   AdministrationInstant,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
@@ -27,9 +27,11 @@ import {
   CliResourceNotFound,
   CliServiceUnavailable,
   CliSessionId,
+  CliSessionUnauthorized,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
   CurrentCliSession,
+  toAdministrationActorName,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
@@ -42,6 +44,7 @@ import {
   StandaloneAccessCodeCreationError,
 } from "@/features/access-codes";
 import { StandaloneAccessCodeAttemptLogRepository } from "@/features/access-codes/backend/standalone-access-code-attempt-log.repository";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   InvoiceAdministrationInProgressError,
   InvoiceAdministrationService,
@@ -52,6 +55,7 @@ import {
   ReservationAccessAdministrationError,
 } from "@/features/administration/reservation-access-administration.service";
 import { ReservationAdministrationService } from "@/features/administration/reservation-administration.service";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import {
   DiscountAdminConflictError,
   DiscountAdministration,
@@ -70,10 +74,22 @@ import {
   handleWorkspaceAdminApiRequest,
 } from "./workspace-admin-api.server";
 
-const UnusedCliAuthentication = Layer.succeed(
-  CliAuthentication,
-  {} as CliAuthentication["Service"]
-);
+const cliAdministrator: AdministratorAccountActor = {
+  accountId: customerAccountIdSchema.make("cli-administrator-account"),
+  email: testEmailAddress("cli-administrator"),
+};
+// Every session in these tests acts as `cliAdministrator`.
+const SessionAdministratorAuthentication = Layer.succeed(CliAuthentication, {
+  ...({} as CliAuthentication["Service"]),
+  sessionAdministrator: () => Effect.succeed(cliAdministrator),
+});
+const UnresolvableSessionAuthentication = Layer.succeed(CliAuthentication, {
+  ...({} as CliAuthentication["Service"]),
+  sessionAdministrator: () =>
+    Effect.fail(
+      new CliSessionUnauthorized({ message: "No approving administrator." })
+    ),
+});
 const UnusedAdministrationService = Layer.succeed(
   AdministrationService,
   {} as AdministrationService["Service"]
@@ -114,6 +130,7 @@ const UnusedStandaloneAccessCodeAdministration = Layer.succeed(
 const session = {
   id: "01980000-0000-7000-8000-000000000000",
   approvedBy: null,
+  approvedByEmail: null,
   clientName: "test client",
   cliVersion: "1.0.0",
   buildTarget: "development",
@@ -121,6 +138,13 @@ const session = {
   lastUsedAt: "2026-08-10T10:00:00.000Z",
   expiresAt: null,
 } as const;
+const cliAdministratorEmail = AdministrationActorEmail.make(
+  cliAdministrator.email
+);
+const cliAdministratorApprover = {
+  approvedBy: toAdministrationActorName(cliAdministratorEmail),
+  approvedByEmail: cliAdministratorEmail,
+};
 const AuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
   bearer: (httpEffect) =>
     Effect.provideService(httpEffect, CurrentCliSession, session),
@@ -129,7 +153,7 @@ const ActorAuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
   bearer: (httpEffect) =>
     Effect.provideService(httpEffect, CurrentCliSession, {
       ...session,
-      approvedBy: AdministrationActorUsername.make("admin"),
+      ...cliAdministratorApprover,
     }),
 });
 
@@ -183,7 +207,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(backfill),
       Effect.provide(UnusedDiscountAdministration),
-      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(SessionAdministratorAuthentication),
       Effect.provide(Layer.succeed(AdministrationService, {} as never)),
       Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(NodeHttpServer.layerHttpServices),
@@ -230,7 +254,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(UnusedReservationProductDetailsBackfill),
       Effect.provide(UnusedDiscountAdministration),
-      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(SessionAdministratorAuthentication),
       Effect.provide(failingAdministration),
       Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(NodeHttpServer.layerHttpServices),
@@ -314,7 +338,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(UnusedDiscountAdministration),
       Effect.provide(UnusedStandaloneAccessCodeAdministration),
-      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(SessionAdministratorAuthentication),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -324,8 +348,14 @@ describe("Workspace Admin API", () => {
     expect(result.pending.requestId).toBe(payload.invoiceId);
     expect(result.created.invoiceId).toBe(payload.invoiceId);
     expect(creations).toEqual([
-      { input: payload, provenance: { source: "dhw-cli", actor: "admin" } },
-      { input: payload, provenance: { source: "dhw-cli", actor: "admin" } },
+      {
+        input: payload,
+        provenance: { source: "dhw-cli", administrator: cliAdministrator },
+      },
+      {
+        input: payload,
+        provenance: { source: "dhw-cli", administrator: cliAdministrator },
+      },
     ]);
   });
 
@@ -566,7 +596,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(UnusedReservationProductDetailsBackfill),
       Effect.provide(UnusedDiscountAdministration),
-      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(SessionAdministratorAuthentication),
       Effect.provide(
         Layer.succeed(
           AdministrationService,
@@ -609,12 +639,13 @@ describe("Workspace Admin API", () => {
       });
     const authentication = Layer.succeed(CliAuthentication, {
       ...({} as CliAuthentication["Service"]),
+      sessionAdministrator: () => Effect.succeed(cliAdministrator),
       listSessions: (owner) =>
         record("listSessions", owner).pipe(
           Effect.as([
             {
               ...session,
-              approvedBy: owner,
+              ...cliAdministratorApprover,
               revokedAt: null,
               status: "active" as const,
             },
@@ -692,7 +723,7 @@ describe("Workspace Admin API", () => {
     );
 
     expect(result.sessions).toEqual([
-      { ...session, approvedBy: "admin", revokedAt: null },
+      { ...session, ...cliAdministratorApprover, revokedAt: null },
     ]);
     expect(result.renamed).toEqual({ changed: true });
     expect(result.revoked).toEqual({ changed: true });
@@ -701,11 +732,11 @@ describe("Workspace Admin API", () => {
     expect(result.foreignRevoke).toEqual({ changed: false });
     expect(result.unknownRevoke).toEqual({ changed: false });
     expect(calls).toEqual([
-      ["listSessions", "admin"],
+      ["listSessions", cliAdministrator.accountId],
       [
         "renameSession",
         {
-          owner: "admin",
+          owner: cliAdministrator.accountId,
           sessionId: ownedSessionId,
           clientName: "Alice laptop",
         },
@@ -713,25 +744,42 @@ describe("Workspace Admin API", () => {
       [
         "renameSession",
         {
-          owner: "admin",
+          owner: cliAdministrator.accountId,
           sessionId: foreignSessionId,
           clientName: "Stolen label",
         },
       ],
       [
         "renameSession",
-        { owner: "admin", sessionId: unknownSessionId, clientName: "Nobody" },
+        {
+          owner: cliAdministrator.accountId,
+          sessionId: unknownSessionId,
+          clientName: "Nobody",
+        },
       ],
-      ["revokeSession", { owner: "admin", sessionId: ownedSessionId }],
-      ["revokeSession", { owner: "admin", sessionId: foreignSessionId }],
-      ["revokeSession", { owner: "admin", sessionId: unknownSessionId }],
+      [
+        "revokeSession",
+        { owner: cliAdministrator.accountId, sessionId: ownedSessionId },
+      ],
+      [
+        "revokeSession",
+        { owner: cliAdministrator.accountId, sessionId: foreignSessionId },
+      ],
+      [
+        "revokeSession",
+        { owner: cliAdministrator.accountId, sessionId: unknownSessionId },
+      ],
     ]);
   });
 
-  test("denies session control to ownerless legacy sessions without touching the service", async () => {
+  test("fails session control closed without touching the service when the session's administrator can't be resolved", async () => {
     let serviceCalls = 0;
     const authentication = Layer.succeed(CliAuthentication, {
       ...({} as CliAuthentication["Service"]),
+      sessionAdministrator: () =>
+        Effect.fail(
+          new CliSessionUnauthorized({ message: "No approving administrator." })
+        ),
       listSessions: () =>
         Effect.sync(() => {
           serviceCalls += 1;
@@ -756,16 +804,18 @@ describe("Workspace Admin API", () => {
       const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
         "administration",
       ]);
-      const sessions = yield* client.administration.listSessions({});
+      const sessions = yield* client.administration
+        .listSessions({})
+        .pipe(Effect.flip);
       const renamed = yield* client.administration
         .renameSession({
           params: { sessionId },
           payload: { clientName: "Legacy" },
         })
         .pipe(Effect.flip);
-      const revoked = yield* client.administration.revokeSession({
-        params: { sessionId },
-      });
+      const revoked = yield* client.administration
+        .revokeSession({ params: { sessionId } })
+        .pipe(Effect.flip);
       return { renamed, revoked, sessions };
     }).pipe(
       Effect.provide(AdminCliAdministrationApiHandlers),
@@ -789,9 +839,9 @@ describe("Workspace Admin API", () => {
       Effect.runPromise
     );
 
-    expect(result.sessions).toEqual([]);
-    expect(result.renamed).toBeInstanceOf(CliResourceNotFound);
-    expect(result.revoked).toEqual({ changed: false });
+    expect(result.sessions).toBeInstanceOf(CliServiceUnavailable);
+    expect(result.renamed).toBeInstanceOf(CliServiceUnavailable);
+    expect(result.revoked).toBeInstanceOf(CliServiceUnavailable);
     expect(serviceCalls).toBe(0);
   });
 
@@ -878,7 +928,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(UnusedReservationProductDetailsBackfill),
       Effect.provide(discounts),
-      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(SessionAdministratorAuthentication),
       Effect.provide(
         Layer.succeed(
           AdministrationService,
@@ -962,7 +1012,8 @@ describe("standalone access-code CLI endpoint", () => {
     bearer: Layer.Layer<CliBearerAuthentication>,
     standalone: Layer.Layer<StandaloneAccessCodeAdministration>,
     idempotency: Layer.Layer<CliMutationIdempotency>,
-    operation: Effect.Effect<A, E, R>
+    operation: Effect.Effect<A, E, R>,
+    authentication: Layer.Layer<CliAuthentication> = SessionAdministratorAuthentication
   ) =>
     operation.pipe(
       Effect.provide(AdminCliAdministrationApiHandlers),
@@ -973,7 +1024,7 @@ describe("standalone access-code CLI endpoint", () => {
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(UnusedReservationProductDetailsBackfill),
       Effect.provide(UnusedDiscountAdministration),
-      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(authentication),
       Effect.provide(
         Layer.succeed(
           AdministrationService,
@@ -1065,7 +1116,7 @@ describe("standalone access-code CLI endpoint", () => {
     expect(creations[0]).toMatchObject({
       attemptId,
       source: "dhw-cli",
-      actor: "admin",
+      actor: cliAdministrator,
     });
   });
 
@@ -1120,7 +1171,7 @@ describe("standalone access-code CLI endpoint", () => {
     expect(logRecords.join("\n")).not.toContain("7654321");
   });
 
-  test("rejects a legacy CLI session before claiming the mutation ledger", async () => {
+  test("fails closed before claiming the mutation ledger when the session's administrator can't be resolved", async () => {
     let claims = 0;
     const idempotency = Layer.succeed(CliMutationIdempotency, {
       applyOnce: () => Effect.die("Unused CLI mutation ledger"),
@@ -1138,11 +1189,11 @@ describe("standalone access-code CLI endpoint", () => {
       AuthorizedCliRequest,
       UnusedStandaloneAccessCodeAdministration,
       idempotency,
-      createAccessCodeError
+      createAccessCodeError,
+      UnresolvableSessionAuthentication
     ).pipe(Effect.runPromise);
 
-    expect(error).toBeInstanceOf(CliMutationRejected);
-    expect(error.message).toContain("dhw auth");
+    expect(error).toBeInstanceOf(CliServiceUnavailable);
     expect(claims).toBe(0);
   });
 

@@ -11,14 +11,15 @@
 ## Authentication and sessions
 
 1. `dhw auth` creates a five-minute authentication request and prints an unprefixed `/admin/cli/authenticate` URL, which the proxy redirects into the operator's locale.
-2. An administrator approves it behind `/admin` Basic authentication and picks the session lifetime.
+2. An administrator signed in with their account approves it in the administration and picks the session lifetime.
 3. The CLI exchanges a single-use grant bound to its local verifier and stores the opaque bearer in macOS Keychain or the Linux Secret Service.
 
 Rules:
 
 - The server persists only SHA-256 digests of bearers.
-- The server records the approving Basic-auth username as `approvedBy`. Use it for provenance such as invoice and access-code actors, and never accept an actor from CLI input.
-- A session stops working when it's revoked, when it expires, or when its approver is no longer in the Basic-auth registry. Session lookup filters expired and revoked rows in the same query, so both fail with `CliSessionUnauthorized`, and `dhw` deletes the stored credential.
+- Approval records the approving administrator's account actor on the request, and exchange copies it to the session (`approved_by_account_*`). The API returns the email snapshot as `approvedByEmail` and, for released `dhw` binaries that cap `approvedBy` at 80 characters and read null as a legacy session, a shortened copy as `approvedBy` (`toAdministrationActorName`). Keep `approvedBy` within that contract; the `CLI session contract` test in `packages/workspace-admin-api` decodes with the dhw-v1.17.0 schema. Handlers take the provenance actor for invoices and access codes from `CliAuthentication.sessionAdministrator`, never from CLI input.
+- A session stops working when it's revoked, when it expires, when its approving account loses the administrator grant or awaits deletion, or when it has no approving account (an unlinked pre-account session). Bearer authentication reads the grant on every request, so a revocation applies on the next one. Every failure is `CliSessionUnauthorized`, and `dhw` deletes the stored credential. Exchange also fails when the approver lost the grant.
+- Session list, rename, and revoke are scoped to the approving account.
 - Expiry is computed at approval in `Europe/Prague` calendar units. `NULL` means the session never expires.
 - The session label (default `dhw on <machine-name>`, or `--name`) is descriptive only. The session ID is its identity.
 - The public authentication-start endpoint fails closed without a Vercel Firewall rate limit with the ID `cli-authentication-start` (10 requests per IP per minute, then 429). The Workspace Vercel project must define it.
@@ -62,12 +63,12 @@ Don't run it in production while a deployment that predates the optional snapsho
 
 ## Administrator role grants and legacy actor backfill
 
-Administrators are moving from Basic-auth usernames to customer accounts. Basic authentication still gates `/admin`, and the new records are written but not yet read for authorization.
+Administrators sign in with their customer accounts; the `administrator` grant authorizes the administration, the API, and CLI sessions. Records written before the switch carry a legacy Basic-auth username instead of an account actor.
 
 - `account_role_grants` stores one row per account and role (only `administrator`): `account_id` (cascades with `auth.user`), `granted_by_account_id` (null for bootstrap grants; set to null when the granter is deleted), and `granted_at`. `AccountRoleGrants` (`features/administrators/backend/account-role-grants.service.ts`) grants, revokes, and checks. `has` reads the database on every call, so a revocation applies on the next check; never cache it.
-- An account actor is the account id plus a snapshot of its login email. CLI sessions (`approved_by_account_*`) and standalone access-code events (`actor_account_*`) carry it in nullable columns beside the legacy username. Issued invoices are immutable (`invoices_immutable` trigger), so a manual invoice's account actor lives in `manual_invoice_actors`. The id is set to null when the account is deleted, and the email snapshot stays. A record counts as linked once it has an email snapshot.
+- An account actor is the account id plus a snapshot of its login email. CLI authentication requests and sessions (`approved_by_account_*`) and standalone access-code events (`actor_account_*`) carry it beside the legacy username column, which is null on new rows; a CHECK constraint requires one of them. New manual invoices store the email snapshot as the document's provenance actor and write their `manual_invoice_actors` row in the issuing transaction. Issued invoices are immutable (`invoices_immutable` trigger), so a manual invoice's account actor lives in `manual_invoice_actors`. The id is set to null when the account is deleted, and the email snapshot stays. A record counts as linked once it has an email snapshot.
 - `dhw administrators backfill-legacy --legacy-username <name> --email <email>` calls `POST /administrators/legacy-backfill`, served by `LegacyAdministratorBackfill` (`features/administrators/backend/legacy-administrator-backfill.service.ts`). In one transaction, under an advisory lock per username, it grants the role to the active account (verified email, no pending deletion) that signs in with the email, and links that username's unlinked CLI sessions, events, and manual invoices to the account. Manual invoices store their legacy actor only in the encrypted document, so it decrypts every manual invoice; one undecryptable invoice fails the run.
-- It reports per table how many records it `linked`, were `alreadyLinked` to this account, or were `linkedToOtherAccount` (left unchanged), and whether the role was `granted` or `already_granted`. A rerun links only records written since the last run, so rerun it after the gate stops writing usernames. No account for the email fails with `CliResourceNotFound`, so the person must sign in once first.
+- It reports per table how many records it `linked`, were `alreadyLinked` to this account, or were `linkedToOtherAccount` (left unchanged), and whether the role was `granted` or `already_granted`. Since the account gate, nothing writes usernames anymore, so a final rerun after deploy links any records written before it. No account for the email fails with `CliResourceNotFound`, so the person must sign in once first.
 - `--dry-run` reports the same result without writing and needs no confirmation. A real run needs `--yes` with `--json` or without a TTY.
 - The username-to-email mapping is runtime input. Emails are PII: never commit the mapping, and keep it out of logs and issues.
 

@@ -2,8 +2,10 @@ import { instant } from "@next/playwright";
 import { expect, test } from "@playwright/test";
 import { m } from "@/features/administration/i18n";
 import { m as customerMessages } from "@/features/i18n";
-import { workspaceTestAdminCredentials } from "@/shared/testing/workspace-test-environment";
-import { resolveInstantNavigationAdminCredentials } from "../admin-basic-auth";
+import {
+  instantNavigationAdministratorSkipReason,
+  signInInstantNavigationAdministrator,
+} from "./administrator-session";
 import {
   enablePreviewAccess,
   requireBaseUrl,
@@ -11,27 +13,16 @@ import {
 } from "./navigation-test-helpers";
 import { preparePublicLegalBrowser } from "./public-account-legal-assertions";
 
-const remoteBaseUrl = process.env.WORKSPACE_E2E_BASE_URL;
-// Fail closed at collection time when a remote preview is targeted without the
-// runner-owned admin Basic auth pair; local runs keep the synthetic pair.
-const adminCredentials = resolveInstantNavigationAdminCredentials({
-  adminBasicAuthPair: process.env.WORKSPACE_E2E_ADMIN_BASIC_AUTH,
-  localCredentials: workspaceTestAdminCredentials,
-  remoteBaseUrl: remoteBaseUrl !== undefined,
-});
+test.skip(
+  instantNavigationAdministratorSkipReason !== undefined,
+  instantNavigationAdministratorSkipReason
+);
 
-test.use({
-  httpCredentials: {
-    ...adminCredentials,
-    ...(remoteBaseUrl === undefined
-      ? {}
-      : { origin: new URL(remoteBaseUrl).origin }),
-    send: "always",
-  },
-});
-
+// Every test signs in as the administrator the setup project seeded, with its
+// own short-lived session.
 test.beforeEach(async ({ baseURL, context }) => {
   await enablePreviewAccess(context, baseURL);
+  await signInInstantNavigationAdministrator(context, baseURL);
 });
 
 test("serves the administration shell and granular loading regions", async ({

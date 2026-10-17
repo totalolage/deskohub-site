@@ -11,15 +11,13 @@ import { formatWorkspaceE2EFailure, workspaceE2ETimeoutError } from "./errors";
 import { type E2EOutcome, toE2EResult } from "./services/telemetry";
 
 describe("sanitized browser failure reporting", () => {
-  test("discards raw causes that can carry credentials, cookies, bypass, or the PIN", async () => {
-    const credentialPair = "e2e-admin:s3cret-panther-value";
-    const encodedCredential = Buffer.from(credentialPair).toString("base64");
+  test("discards raw causes that can carry the session cookie, bypass, or the PIN", async () => {
+    const sessionCookie = "seeded-session-token.signed-session-value";
     const bypassSecret = "raw-vercel-bypass-secret";
     const fixturePin = "1111111";
     const leakedCause = new Error(
-      `request failed with headers {"authorization":"Basic ${encodedCredential}",` +
-        `"cookie":"_vercel_protection_bypass=${bypassSecret}",` +
-        `"x-vercel-protection-bypass":"${bypassSecret}"} body pin=${fixturePin} pair=${credentialPair}`
+      `request failed with headers {"cookie":"__Secure-better-auth.session_token=${sessionCookie}; _vercel_protection_bypass=${bypassSecret}",` +
+        `"x-vercel-protection-bypass":"${bypassSecret}"} body pin=${fixturePin}`
     );
 
     const failure = await Effect.runPromise(
@@ -32,12 +30,7 @@ describe("sanitized browser failure reporting", () => {
 
     expect(failure.operation).toBe("probe the protected admin page");
     expect(failure.cause).toBeUndefined();
-    for (const secret of [
-      credentialPair,
-      encodedCredential,
-      bypassSecret,
-      fixturePin,
-    ]) {
+    for (const secret of [sessionCookie, bypassSecret, fixturePin]) {
       expect(failure.message).not.toContain(secret);
       expect(formatWorkspaceE2EFailure(failure)).not.toContain(secret);
       expect(JSON.stringify(failure)).not.toContain(secret);

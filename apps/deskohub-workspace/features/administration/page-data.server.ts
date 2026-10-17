@@ -3,9 +3,9 @@ import "server-only";
 import { Effect, Option, Predicate } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import type { Locale } from "@/features/i18n";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
-import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { parsePlainDate } from "@/shared/utils/temporal";
 import {

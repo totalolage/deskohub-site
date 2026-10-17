@@ -83,6 +83,16 @@
   Its helpers pass Next's generated `/[locale]/...` route patterns to
   `getLocalizedPagePath` or, for `[section]`, `getLocalizedDynamicPagePath`, so
   typecheck proves the pages exist (the app doesn't enable `typedRoutes`).
+- Sign-in continues to `?returnTo=` (`signInReturnParam`) instead of the
+  account when it is a same-origin path; `getAccountSignInPath(locale,
+  returnTo)` adds it. The sign-in page passes it into the magic-link callback
+  URL, and every exit (link tab, original-tab hand-off, sign-in code, failed-link
+  retry) goes through `getSignInDestination`. Validate it with
+  `parseSameOriginPath` wherever it is read, because anyone can craft the URL,
+  and navigate to its normalized result rather than the raw value (dot
+  segments can turn `/x/..//evil.example` into `//evil.example`). Cover each
+  new reader with `unsafeReturnTargets`
+  (`shared/testing/unsafe-return-targets.test-utils.ts`).
 - Retired `/account?section=<section>` links still work: the proxy redirects
   them (307) to the section's path, keeping other query parameters, or to
   `/account` for an unknown section. Never produce a `?section=` URL.
