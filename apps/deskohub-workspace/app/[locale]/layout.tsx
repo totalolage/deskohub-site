@@ -2,8 +2,9 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { isLocale, locales } from "@/features/i18n";
+import { isLocale, locales, m } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
+import { workspaceSiteOrigin } from "@/shared/utils";
 import "../globals.css";
 
 const sculpin = localFont({
@@ -23,17 +24,25 @@ const sculpin = localFont({
   variable: "--font-sculpin",
 });
 
-export const metadata: Metadata = {
-  title: "Deskohub Workspace",
-  description: "Workspace shell application for Deskohub products.",
-  icons: {
-    icon: {
-      url: "/favicon.png",
-      type: "image/png",
-      sizes: "512x512",
+export async function generateMetadata({
+  params,
+}: Pick<LocaleLayoutProps, "params">): Promise<Metadata> {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
+
+  return {
+    metadataBase: new URL(workspaceSiteOrigin),
+    title: m.workspaceMetadataTitle({}, { locale }),
+    description: m.workspaceMetadataDescription({}, { locale }),
+    icons: {
+      icon: {
+        url: "/favicon.png",
+        type: "image/png",
+        sizes: "512x512",
+      },
     },
-  },
-};
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",

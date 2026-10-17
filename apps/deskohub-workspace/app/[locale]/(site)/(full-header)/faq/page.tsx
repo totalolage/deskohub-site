@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
 import { FaqPage } from "@/features/faq";
 import { loadFaqOccupancyStats } from "@/features/faq/backend/faq-occupancy.server";
-import { locales, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import {
-  getWorkspaceLocalizedCanonicalUrl,
-  workspaceSiteConstants,
-} from "@/shared/utils";
+import { getWorkspaceAlternates, workspaceSiteConstants } from "@/shared/utils";
 
 const pathname = "/faq";
 
@@ -16,24 +13,16 @@ export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) => {
     const title = m.faqMetadataTitle({}, { locale });
     const description = m.faqMetadataDescription({}, { locale });
-    const url = getWorkspaceLocalizedCanonicalUrl(locale, pathname);
+    const alternates = getWorkspaceAlternates(locale, pathname);
 
     return {
       title,
       description,
-      alternates: {
-        canonical: url,
-        languages: Object.fromEntries(
-          locales.map((itemLocale) => [
-            itemLocale,
-            getWorkspaceLocalizedCanonicalUrl(itemLocale, pathname),
-          ])
-        ),
-      },
+      alternates,
       openGraph: {
         title,
         description,
-        url,
+        url: alternates.canonical,
         siteName: workspaceSiteConstants.brand.name,
         locale,
         type: "website",

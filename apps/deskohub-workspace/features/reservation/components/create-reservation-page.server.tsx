@@ -16,7 +16,7 @@ import {
   discountCodeQueryParam,
   normalizeSubmittedPromotionCode,
 } from "@/features/discounts";
-import { type Locale, locales } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { loadReservationExistingCustomer } from "@/features/reservation/backend/reservation-existing-customer.server";
 import type { ReservationExistingCustomer } from "@/features/reservation/reservation-existing-customer";
@@ -24,7 +24,7 @@ import type { ReservationOrderData } from "@/features/reservation/reservation-or
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   getSearchParam,
-  getWorkspaceLocalizedCanonicalUrl,
+  getWorkspaceAlternates,
   type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";
@@ -121,30 +121,16 @@ export function createReservationPage<
       if (definition.isEnabled && !(await definition.isEnabled())) notFound();
 
       const { description, title } = definition.metadata(locale);
-      const url = getWorkspaceLocalizedCanonicalUrl(
-        locale,
-        definition.pathname
-      );
+      const alternates = getWorkspaceAlternates(locale, definition.pathname);
 
       return {
         title,
         description,
-        alternates: {
-          canonical: url,
-          languages: Object.fromEntries(
-            locales.map((itemLocale) => [
-              itemLocale,
-              getWorkspaceLocalizedCanonicalUrl(
-                itemLocale,
-                definition.pathname
-              ),
-            ])
-          ),
-        },
+        alternates,
         openGraph: {
           title,
           description,
-          url,
+          url: alternates.canonical,
           siteName: workspaceSiteConstants.brand.name,
           locale,
           type: "website",

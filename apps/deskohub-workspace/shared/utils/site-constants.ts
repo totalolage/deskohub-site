@@ -1,4 +1,5 @@
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
+import { type Locale, locales } from "@/features/i18n";
 import type { WorkspaceCurrencyCode } from "@/shared/money/currencies";
 
 export interface WorkspacePaymentAccount {
@@ -60,6 +61,8 @@ export const workspaceSiteConstants = {
   },
 } as const;
 
+export const workspaceSiteOrigin = `https://${workspaceSiteConstants.brand.domain}`;
+
 type WorkspaceCanonicalSearchParams = ConstructorParameters<
   typeof URLSearchParams
 >[0];
@@ -77,10 +80,7 @@ export function getWorkspaceCanonicalUrl(
     pathname instanceof URL
       ? `${pathname.pathname}${pathname.search}${pathname.hash}`
       : normalizePathname(pathname);
-  const url = new URL(
-    canonicalPathname,
-    `https://${workspaceSiteConstants.brand.domain}`
-  );
+  const url = new URL(canonicalPathname, workspaceSiteOrigin);
 
   if (searchParams) {
     for (const [key, value] of new URLSearchParams(searchParams)) {
@@ -91,12 +91,32 @@ export function getWorkspaceCanonicalUrl(
   return url.toString();
 }
 
-export function getWorkspaceLocalizedCanonicalUrl(
-  locale: string,
+function getWorkspaceLocalizedCanonicalUrl(
+  locale: Locale,
   pathname = "/"
 ): string {
   const localizedPathname = normalizePathname(pathname);
   const suffix = localizedPathname === "/" ? "" : localizedPathname;
 
   return getWorkspaceCanonicalUrl(`/${locale}${suffix}`);
+}
+
+/**
+ * Canonical and hreflang alternates for a page served under every locale
+ * prefix. `x-default` is the unprefixed URL, which the proxy redirects to the
+ * visitor's resolved locale.
+ */
+export function getWorkspaceAlternates(locale: Locale, pathname = "/") {
+  return {
+    canonical: getWorkspaceLocalizedCanonicalUrl(locale, pathname),
+    languages: {
+      ...Object.fromEntries(
+        locales.map((alternateLocale) => [
+          alternateLocale,
+          getWorkspaceLocalizedCanonicalUrl(alternateLocale, pathname),
+        ])
+      ),
+      "x-default": getWorkspaceCanonicalUrl(pathname),
+    },
+  };
 }

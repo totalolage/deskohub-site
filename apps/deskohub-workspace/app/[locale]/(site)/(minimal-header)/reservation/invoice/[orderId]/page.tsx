@@ -9,7 +9,7 @@ import {
 } from "@/features/accounting/backend/reservation-invoice.service";
 import { PostOrderInvoicePage } from "@/features/accounting/components/post-order-invoice-page";
 import { CheckoutFlowPageSkeleton } from "@/features/checkout/components/checkout-flow-page-skeleton";
-import { type Locale, locales, m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
@@ -20,7 +20,7 @@ import { reservationInvoicePath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   getSearchParamsDecoder,
-  getWorkspaceLocalizedCanonicalUrl,
+  getWorkspaceAlternates,
   type SearchParamsRecord,
 } from "@/shared/utils";
 
@@ -52,21 +52,10 @@ export async function generateMetadata({
   return runWithRequestLocale((locale) => ({
     title: m.postOrderInvoiceMetadataTitle({}, { locale }),
     description: m.postOrderInvoiceMetadataDescription({}, { locale }),
-    alternates: {
-      canonical: getWorkspaceLocalizedCanonicalUrl(
-        locale,
-        `${reservationInvoicePath}/${orderId}`
-      ),
-      languages: Object.fromEntries(
-        locales.map((itemLocale) => [
-          itemLocale,
-          getWorkspaceLocalizedCanonicalUrl(
-            itemLocale,
-            `${reservationInvoicePath}/${orderId}`
-          ),
-        ])
-      ),
-    },
+    alternates: getWorkspaceAlternates(
+      locale,
+      `${reservationInvoicePath}/${orderId}`
+    ),
     robots: { index: false, follow: false },
     referrer: "no-referrer",
   }));

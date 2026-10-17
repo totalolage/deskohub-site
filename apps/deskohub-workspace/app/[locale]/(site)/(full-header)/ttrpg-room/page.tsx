@@ -5,16 +5,13 @@ import { type ReactNode, Suspense } from "react";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
-import { type Locale, locales, m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getMeetingRoomReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import {
-  getWorkspaceLocalizedCanonicalUrl,
-  workspaceSiteConstants,
-} from "@/shared/utils";
+import { getWorkspaceAlternates, workspaceSiteConstants } from "@/shared/utils";
 
 const pathname = "/ttrpg-room";
 
@@ -37,24 +34,16 @@ export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) => {
     const title = m.ttrpgRoomMetadataTitle({}, { locale });
     const description = m.ttrpgRoomMetadataDescription({}, { locale });
-    const url = getWorkspaceLocalizedCanonicalUrl(locale, pathname);
+    const alternates = getWorkspaceAlternates(locale, pathname);
 
     return {
       title,
       description,
-      alternates: {
-        canonical: url,
-        languages: Object.fromEntries(
-          locales.map((itemLocale) => [
-            itemLocale,
-            getWorkspaceLocalizedCanonicalUrl(itemLocale, pathname),
-          ])
-        ),
-      },
+      alternates,
       openGraph: {
         title,
         description,
-        url,
+        url: alternates.canonical,
         siteName: workspaceSiteConstants.brand.name,
         locale,
         type: "website",

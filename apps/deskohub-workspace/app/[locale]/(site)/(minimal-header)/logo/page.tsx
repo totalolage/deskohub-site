@@ -1,8 +1,20 @@
+import type { Metadata } from "next";
 import { m } from "@/features/i18n";
-import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import {
+  getRequestLocale,
+  runWithRequestLocale,
+} from "@/features/i18n/server/request-locale";
 import { HorizontalLogo, Logo } from "@/shared/components/logo";
+import { getWorkspaceAlternates } from "@/shared/utils";
 
 export const instant = false;
+
+export async function generateMetadata(): Promise<Metadata> {
+  return runWithRequestLocale((locale) => ({
+    title: m.logoVariantsTitle({}, { locale }),
+    alternates: getWorkspaceAlternates(locale, "/logo"),
+  }));
+}
 
 const SIZE = 64;
 

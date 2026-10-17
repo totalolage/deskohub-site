@@ -7,9 +7,10 @@ export {
   type SupportedSearchParams,
 } from "./search-params";
 export {
+  getWorkspaceAlternates,
   getWorkspaceCanonicalUrl,
-  getWorkspaceLocalizedCanonicalUrl,
   workspaceSiteConstants,
+  workspaceSiteOrigin,
 } from "./site-constants";
 export {
   currentInstant,

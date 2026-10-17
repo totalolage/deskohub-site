@@ -2,12 +2,12 @@ import { Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CheckoutStatusRoute } from "@/features/checkout/components/checkout-status-route";
-import { locales, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import {
-  getWorkspaceLocalizedCanonicalUrl,
+  getWorkspaceAlternates,
   type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";
@@ -36,7 +36,7 @@ export async function generateMetadata({
   return runWithRequestLocale((locale) => {
     const title = m.checkoutStatusMetadataTitle({}, { locale });
     const description = m.checkoutStatusMetadataDescription({}, { locale });
-    const url = getWorkspaceLocalizedCanonicalUrl(
+    const alternates = getWorkspaceAlternates(
       locale,
       `${reservationStatusPath}/${orderId}`
     );
@@ -44,22 +44,11 @@ export async function generateMetadata({
     return {
       title,
       description,
-      alternates: {
-        canonical: url,
-        languages: Object.fromEntries(
-          locales.map((itemLocale) => [
-            itemLocale,
-            getWorkspaceLocalizedCanonicalUrl(
-              itemLocale,
-              `${reservationStatusPath}/${orderId}`
-            ),
-          ])
-        ),
-      },
+      alternates,
       openGraph: {
         title,
         description,
-        url,
+        url: alternates.canonical,
         siteName: workspaceSiteConstants.brand.name,
         locale,
         type: "website",
