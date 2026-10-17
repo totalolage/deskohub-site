@@ -26,6 +26,11 @@ The target is always the immutable `.vercel.app` deployment origin for the exact
 ## Run E2E
 
 - **Manual dispatch.** Run the workflow with `sha` (40 characters), `url` (immutable HTTPS deployment URL), and `ref` (internal PR head branch). The same PR guards apply, and the job fails before it allocates or mutates shared state unless GitHub deployment metadata records that URL as a successful Workspace deployment for that SHA. Set `cleanup_stale_e2e_reservations` only for an intentional stale-reservation cleanup (see [suite orchestration](suite-orchestration.md#dotypos-capacity-and-stale-reservations)).
+- If Vercel finishes a preview before an open internal PR exists for its SHA, the `repository_dispatch` E2E run skips with `No eligible open internal PR matches the exact deployment SHA`. Once the PR exists, restart it with the manual dispatch from `main`, using the exact SHA, immutable preview URL, and branch:
+
+  ```bash
+  gh workflow run workspace-e2e.yml --ref main -f sha=<head> -f url=<immutable preview URL> -f ref=<branch>
+  ```
 - **Local run against a preview.** From the repository root, run `bun turbo test:e2e --filter=deskohub-workspace` with the variables in [runner variables](#runner-variables). The task depends on `i18n:compile` and `@deskohub/igloohome#generate`.
 - **Instant navigation only.** `bun run test:instant-navigation` from `apps/deskohub-workspace`. Without `WORKSPACE_E2E_BASE_URL`, the Playwright configs start `turbo dev` and target `http://localhost:3000`.
 
