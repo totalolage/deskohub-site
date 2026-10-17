@@ -41,6 +41,7 @@ import type {
   CampaignTemplateKey,
 } from "../../body/campaign-content";
 import type { CampaignId } from "../../campaign-identifiers";
+import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import type { AudienceOption } from "../audiences/audience-page-data.server";
 import { CampaignBodyEditor } from "../editor/campaign-body-editor";
 import { campaignLocaleName } from "../sending/campaign-locale-names";
@@ -152,8 +153,13 @@ export function CampaignComposer({
     readonly error: { readonly serverError?: string };
   }) =>
     setSaveError(
-      error.serverError ??
-        m.emailCampaignsComposerSaveCheckFields({}, { locale: routeLocale })
+      getEmailCampaignAdminActionFailureMessage(error.serverError, {
+        fallback: m.emailCampaignsComposerSaveCheckFields(
+          {},
+          { locale: routeLocale }
+        ),
+        locale: routeLocale,
+      })
     );
   const create = useWorkspaceAction(createCampaign, {
     actionName: "createCampaign",
