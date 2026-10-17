@@ -4,7 +4,7 @@
 
 ## Authentication and sessions
 
-An operator starts authentication in the CLI and approves the short-lived request through the existing protected administration experience. Successful approval creates a named administration session for that device.
+An operator starts authentication in the CLI and approves the short-lived request in the administration while signed in to an account that holds the administrator role. Successful approval creates a named administration session for that device. The session acts as the approving account: it records that account on the invoices and access codes it creates, and it stops working as soon as the account loses the administrator role.
 
 Sessions may be listed, renamed, and revoked. A session label helps an operator recognize a device but does not change its identity or access. Revoked access is removed from the device when the service reports it.
 
@@ -34,7 +34,7 @@ Operators may:
 - create, update, archive, unarchive, or delete saved campaign audiences;
 - send a campaign's test emails, then send the campaign with the confirmation code from the latest test email, and retry the recipients it didn't reach, optionally including those whose delivery is unconfirmed and who may already have the email;
 - fill the booked product of older meeting-room and office reservations from their Dotypos booking, first as a dry run;
-- grant an account the administrator role and link a legacy Basic-auth administrator's records to it, first as a dry run; and
+- grant an account the administrator role and link the records a pre-account administrator username wrote to it, first as a dry run; and
 - rename or revoke administration sessions.
 
 Creating a code may create its discount benefit atomically. Fixed-money values use the currency's minor units. An omitted schedule or global-use limit means unrestricted along that dimension.

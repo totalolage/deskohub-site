@@ -3,11 +3,13 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
-  AdministrationActorUsername,
+  AdministrationActorEmail,
   type AdministrationLegacyAdministratorBackfillResultType,
+  AdministrationLegacyUsername,
   CliBearerAuthentication,
   CliSessionUnauthorized,
   CurrentCliSession,
+  toAdministrationActorName,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
@@ -20,9 +22,13 @@ import {
 } from "@/features/administrators/backend/legacy-administrator-backfill.service";
 import { AdminCliAdministratorsApiHandlers } from "./administrators-api.server";
 
+const cliAdministratorEmail = AdministrationActorEmail.make(
+  testEmailAddress("cli-admin")
+);
 const session = {
   id: "01980000-0000-7000-8000-000000000000",
-  approvedBy: AdministrationActorUsername.make("admin"),
+  approvedBy: toAdministrationActorName(cliAdministratorEmail),
+  approvedByEmail: cliAdministratorEmail,
   clientName: "test client",
   cliVersion: "1.0.0",
   buildTarget: "development",
@@ -43,7 +49,7 @@ const UnauthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
 });
 
 const input = {
-  legacyUsername: AdministrationActorUsername.make("admin"),
+  legacyUsername: AdministrationLegacyUsername.make("admin"),
   email: testEmailAddress("legacy-administrator"),
   dryRun: true,
 };

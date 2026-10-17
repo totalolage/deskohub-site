@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
 import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { NextRequest } from "next/server";
@@ -9,8 +9,32 @@ import { createReservationAccessToken } from "@/features/reservation/backend/res
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationAccessTokenQueryParam } from "@/features/reservation/reservation-access-token";
 import { runCommand } from "@/scripts/shared/command";
-import { workspaceTestAdministrators } from "@/shared/testing/workspace-test-environment";
-import { config, proxy } from "./proxy";
+
+let administrationAccessResult:
+  | "administrator"
+  | "signed-out"
+  | "not-administrator" = "administrator";
+let administrationAccessFailure: unknown;
+const administrationRequestHeaders: Headers[] = [];
+const readAdministrationRequestAccess = async (headers: Headers) => {
+  administrationRequestHeaders.push(headers);
+  if (administrationAccessFailure !== undefined) {
+    throw administrationAccessFailure;
+  }
+  return administrationAccessResult;
+};
+
+mock.module(
+  "./features/administrators/server/administration-request-access.server",
+  () => ({ readAdministrationRequestAccess })
+);
+const { config, proxy } = await import("./proxy");
+
+beforeEach(() => {
+  administrationAccessResult = "administrator";
+  administrationAccessFailure = undefined;
+  administrationRequestHeaders.length = 0;
+});
 
 // A signed-in request reads the saved language preference, whose logs share
 // stdout with the inspection result.
@@ -158,20 +182,6 @@ test("retains Development and Production payment origins", async () => {
   }
 });
 
-const toAuthorization = (username: string, password: string) =>
-  `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-
-const [primaryAdministrator, secondaryAdministrator] =
-  workspaceTestAdministrators;
-const primaryAdminAuthorization = toAuthorization(
-  primaryAdministrator.username,
-  primaryAdministrator.password
-);
-const secondaryAdminAuthorization = toAuthorization(
-  secondaryAdministrator.username,
-  secondaryAdministrator.password
-);
-
 const unprefixedAdministrationPaths = [
   "/admin",
   "/admin/",
@@ -197,6 +207,18 @@ const administrationPaths = [
     `/cs-CZ${pathname}`,
   ]),
 ];
+
+const sessionCookie = "better-auth.session_token=synthetic-session";
+
+const expectPrivateAdministrationResponse = (response: Response) => {
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  const vary = response.headers
+    .get("vary")
+    ?.split(",")
+    .map((value) => value.trim().toLowerCase());
+  expect(vary).toContain("cookie");
+  expect(vary).not.toContain("authorization");
+};
 
 describe("administration route boundary", () => {
   test("matches every administration route including dotted identifiers", () => {
@@ -224,61 +246,225 @@ describe("administration route boundary", () => {
         new NextRequest(`https://workspace.example${pathname}`)
       );
 
-      expect(response.status).not.toBe(401);
+      expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe(
         `https://workspace.example/en-US${pathname}`
       );
     }
   });
 
-  test("challenges every concrete administration route", async () => {
+  test("redirects every concrete administration route without a session cookie", async () => {
     for (const pathname of administrationPaths) {
       const response = await proxy(
         new NextRequest(`https://workspace.example${pathname}`)
       );
 
-      expect(response.status).toBe(401);
-      expect(response.headers.get("www-authenticate")).toContain(
-        "Basic realm="
+      expect(response.status).toBe(307);
+      expect(new URL(response.headers.get("location")!).pathname).toMatch(
+        /^\/(?:en-US|cs-CZ)\/auth\/sign-in$/
       );
+      expectPrivateAdministrationResponse(response);
     }
+    expect(administrationRequestHeaders).toHaveLength(0);
   });
 
-  test("challenges every spelling of an administration URL", async () => {
+  test("recognizes encoded, odd, and malformed administration path spellings", async () => {
     for (const pathname of [
       "/xx-XX/admin",
       "/cs-cz/admin/reservations",
       "/%61dmin/reservations",
       "/cs-CZ/%61dmin",
       "/en-US/admin%2Freservations",
+      "/en-US/admin/%",
     ]) {
       const response = await proxy(
         new NextRequest(`https://workspace.example${pathname}`)
       );
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(307);
+      expect(new URL(response.headers.get("location")!).pathname).toMatch(
+        /^\/(?:en-US|cs-CZ)\/auth\/sign-in$/
+      );
+      expectPrivateAdministrationResponse(response);
     }
   });
 
-  test("challenges navigation request variants consistently", async () => {
-    const requests = [
-      new NextRequest("https://workspace.example/admin/reservations", {
-        method: "HEAD",
-      }),
-      new NextRequest("https://workspace.example/admin/reservations", {
-        headers: { rsc: "1" },
-      }),
-      new NextRequest("https://workspace.example/admin/reservations", {
-        headers: {
-          "next-router-prefetch": "1",
-          purpose: "prefetch",
-        },
-      }),
-    ];
+  test("redirects a cookie-less localized invoice request to sign-in with its return path", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/admin/invoices?page=2")
+    );
 
-    for (const request of requests) {
-      expect((await proxy(request)).status).toBe(401);
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/en-US/auth/sign-in?returnTo=%2Fen-US%2Fadmin%2Finvoices%3Fpage%3D2"
+    );
+    expectPrivateAdministrationResponse(response);
+  });
+
+  test("uses Accept-Language for cookie-less unprefixed administration sign-in", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/admin", {
+        headers: { "accept-language": "cs" },
+      })
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/cs-CZ/auth/sign-in?returnTo=%2Fadmin"
+    );
+    expectPrivateAdministrationResponse(response);
+  });
+
+  test("redirects cookie-less HEAD requests to the same sign-in continuation", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/admin/invoices?page=2", {
+        method: "HEAD",
+      })
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/en-US/auth/sign-in?returnTo=%2Fen-US%2Fadmin%2Finvoices%3Fpage%3D2"
+    );
+    expectPrivateAdministrationResponse(response);
+    expect(administrationRequestHeaders).toHaveLength(0);
+  });
+
+  test("passes an administration Server Action through without a session cookie", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/admin/discounts", {
+        method: "POST",
+        headers: { "next-action": "action-id" },
+      })
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("location")).toBeNull();
+    expectPrivateAdministrationResponse(response);
+    expect(administrationRequestHeaders).toHaveLength(0);
+  });
+
+  test("passes a session-cookie administration page through with its request path", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/admin/invoices?page=2", {
+        headers: { cookie: sessionCookie },
+      })
+    );
+
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(
+      response.headers.get(
+        "x-middleware-request-x-deskohub-administration-path"
+      )
+    ).toBe("/en-US/admin/invoices?page=2");
+    expectPrivateAdministrationResponse(response);
+    expect(administrationRequestHeaders).toHaveLength(1);
+    expect(administrationRequestHeaders[0]?.get("cookie")).toBe(sessionCookie);
+  });
+
+  test("rewrites non-administrators for GET, HEAD, RSC, and unprefixed page requests", async () => {
+    administrationAccessResult = "not-administrator";
+    const responses: Response[] = [];
+    for (const request of [
+      new NextRequest(
+        "https://workspace.example/cs-CZ/admin/bookings?tab=recent",
+        { headers: { cookie: sessionCookie } }
+      ),
+      new NextRequest("https://workspace.example/cs-CZ/admin/bookings", {
+        method: "HEAD",
+        headers: { cookie: sessionCookie },
+      }),
+      new NextRequest("https://workspace.example/cs-CZ/admin/bookings", {
+        headers: { cookie: sessionCookie, rsc: "1" },
+      }),
+      new NextRequest("https://workspace.example/admin", {
+        headers: { cookie: sessionCookie, "accept-language": "cs" },
+      }),
+    ]) {
+      responses.push(await proxy(request));
     }
+
+    expect(
+      responses.map((response) => response.headers.get("x-middleware-rewrite"))
+    ).toEqual([
+      "https://workspace.example/cs-CZ/administration-not-found",
+      "https://workspace.example/cs-CZ/administration-not-found",
+      "https://workspace.example/cs-CZ/administration-not-found",
+      "https://workspace.example/cs-CZ/administration-not-found",
+    ]);
+    for (const response of responses) {
+      expect(response.status).toBe(200);
+      expect(response.headers.get("location")).toBeNull();
+      expectPrivateAdministrationResponse(response);
+    }
+    expect(administrationRequestHeaders).toHaveLength(4);
+    expect(administrationRequestHeaders[2]?.get("rsc")).toBe("1");
+  });
+
+  test("redirects a stale session cookie to sign-in with its return path", async () => {
+    administrationAccessResult = "signed-out";
+    const response = await proxy(
+      new NextRequest(
+        "https://workspace.example/cs-CZ/admin/bookings?tab=recent",
+        { headers: { cookie: sessionCookie } }
+      )
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/cs-CZ/auth/sign-in?returnTo=%2Fcs-CZ%2Fadmin%2Fbookings%3Ftab%3Drecent"
+    );
+    expectPrivateAdministrationResponse(response);
+    expect(administrationRequestHeaders).toHaveLength(1);
+    expect(administrationRequestHeaders[0]?.get("cookie")).toBe(sessionCookie);
+  });
+
+  test("returns a private unavailable response when the administrator reader rejects", async () => {
+    administrationAccessFailure = new Error("synthetic reader failure");
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/admin/bookings", {
+        headers: { cookie: sessionCookie },
+      })
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.text()).toBe("");
+    expect(response.headers.get("location")).toBeNull();
+    expectPrivateAdministrationResponse(response);
+    expect(administrationRequestHeaders).toHaveLength(1);
+  });
+
+  test("passes administration Server Actions with a session cookie without reading access", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/admin/discounts", {
+        method: "POST",
+        headers: { cookie: sessionCookie, "next-action": "action-id" },
+      })
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("location")).toBeNull();
+    expectPrivateAdministrationResponse(response);
+    expect(administrationRequestHeaders).toHaveLength(0);
+  });
+
+  test("overwrites a client-sent administration request path header", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/admin/discounts", {
+        headers: {
+          cookie: sessionCookie,
+          "x-deskohub-administration-path": "/client-supplied",
+        },
+      })
+    );
+
+    expect(
+      response.headers.get(
+        "x-middleware-request-x-deskohub-administration-path"
+      )
+    ).toBe("/en-US/admin/discounts");
+    expectPrivateAdministrationResponse(response);
   });
 });
 
@@ -552,38 +738,7 @@ test("does not treat a GET with a spoofed action header as a Server Action", asy
   );
 });
 
-test("challenges unauthenticated administration requests", async () => {
-  const response = await proxy(
-    new NextRequest("https://workspace.example/admin/discounts")
-  );
-
-  expect(response.status).toBe(401);
-  expect(response.headers.get("www-authenticate")).toContain("Basic realm=");
-  expect(response.headers.get("cache-control")).toBe("private, no-store");
-  expect(response.headers.get("vary")).toBe("Authorization");
-});
-
-test("passes authenticated localized administration requests", async () => {
-  for (const authorization of [
-    primaryAdminAuthorization,
-    secondaryAdminAuthorization,
-  ]) {
-    for (const locale of ["en-US", "cs-CZ"]) {
-      const response = await proxy(
-        new NextRequest(`https://workspace.example/${locale}/admin/discounts`, {
-          headers: { authorization },
-        })
-      );
-
-      expect(response.headers.get("x-middleware-next")).toBe("1");
-      expect(response.headers.get("cache-control")).toBe("private, no-store");
-      expect(response.headers.get("vary")).toBe("Authorization");
-      expect(response.cookies.get(localeCookieName)?.value).toBe(locale);
-    }
-  }
-});
-
-test("redirects authenticated unprefixed administration URLs to the resolved locale", async () => {
+test("redirects session-cookie unprefixed administration URLs to the resolved locale with query", async () => {
   const cases = [
     {
       url: "https://workspace.example/admin/cli/authenticate?code=SYNTHETIC-CODE",
@@ -605,57 +760,22 @@ test("redirects authenticated unprefixed administration URLs to the resolved loc
   ];
 
   for (const { url, headers, location } of cases) {
+    const requestHeaders = new Headers(headers);
+    requestHeaders.set(
+      "cookie",
+      [sessionCookie, requestHeaders.get("cookie")]
+        .filter((value): value is string => value !== null)
+        .join("; ")
+    );
     const response = await proxy(
       new NextRequest(url, {
-        headers: { ...headers, authorization: primaryAdminAuthorization },
+        headers: requestHeaders,
       })
     );
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(location);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("vary")).toBe("Accept-Language, Authorization");
-  }
-});
-
-test("fails closed for wrong, crossed, and unknown administrator credentials", async () => {
-  for (const authorization of [
-    toAuthorization("admin", "operator-test-password"),
-    toAuthorization("operator", "test-password"),
-    toAuthorization("admin", "definitely-not-the-password"),
-    toAuthorization("unknown", "test-password"),
-  ]) {
-    const response = await proxy(
-      new NextRequest("https://workspace.example/admin/discounts", {
-        headers: { authorization },
-      })
-    );
-
-    expect(response.status).toBe(401);
-  }
-});
-
-test("checks administration Server Action posts before the general pass-through", async () => {
-  for (const pathname of ["/admin/discounts", "/cs-CZ/admin/discounts"]) {
-    const unauthorized = await proxy(
-      new NextRequest(`https://workspace.example${pathname}`, {
-        method: "POST",
-        headers: { "next-action": "action-id" },
-      })
-    );
-    const authorized = await proxy(
-      new NextRequest(`https://workspace.example${pathname}`, {
-        method: "POST",
-        headers: {
-          authorization: primaryAdminAuthorization,
-          "next-action": "action-id",
-        },
-      })
-    );
-
-    expect(unauthorized.status).toBe(401);
-    expect(authorized.headers.get("x-middleware-next")).toBe("1");
-    expect(authorized.headers.get("cache-control")).toBe("private, no-store");
+    expectPrivateAdministrationResponse(response);
   }
 });
 

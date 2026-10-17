@@ -2,9 +2,9 @@ import "server-only";
 
 import { Effect } from "effect";
 import { m } from "@/features/administration/i18n";
+import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CampaignEmailConfig } from "../../backend/campaign-email.config";
 import { campaignBodyFormatVersion } from "../../body/campaign-body-document";

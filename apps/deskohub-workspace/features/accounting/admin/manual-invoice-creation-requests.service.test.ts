@@ -53,7 +53,10 @@ describe("manual invoice creation request claims", () => {
       },
       lines: [{ description: " Room hire ", price: "1200.0" }],
     });
-    const provenance = { source: "admin-ui", actor: "admin" } as const;
+    const provenance = {
+      source: "admin-ui",
+      actor: testEmailAddress("invoice-administrator"),
+    } as const;
     const json = getManualInvoiceCreationRequestJson(input, provenance);
     const equivalentJson = getManualInvoiceCreationRequestJson(
       equivalent,
@@ -73,7 +76,10 @@ describe("manual invoice creation request claims", () => {
 
   test("binds contact, customer choice, invoice facts, lines, and provenance", () => {
     const input = decodeInput(request);
-    const provenance = { source: "admin-ui", actor: "admin" } as const;
+    const provenance = {
+      source: "admin-ui",
+      actor: testEmailAddress("invoice-administrator"),
+    } as const;
     const original = getManualInvoiceCreationRequestDigest(
       getManualInvoiceCreationRequestJson(input, provenance),
       "claim key"
@@ -114,7 +120,7 @@ describe("manual invoice creation request claims", () => {
       getManualInvoiceCreationRequestDigest(
         getManualInvoiceCreationRequestJson(input, {
           source: "dhw-cli",
-          actor: "another-admin",
+          actor: testEmailAddress("another-invoice-administrator"),
         }),
         "claim key"
       )

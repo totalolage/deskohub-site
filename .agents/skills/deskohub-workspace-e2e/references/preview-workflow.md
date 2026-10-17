@@ -32,7 +32,7 @@ The target is always the immutable `.vercel.app` deployment origin for the exact
   gh workflow run workspace-e2e.yml --ref main -f sha=<head> -f url=<immutable preview URL> -f ref=<branch>
   ```
 - **Local run against a preview.** From the repository root, run `bun turbo test:e2e --filter=deskohub-workspace` with the variables in [runner variables](#runner-variables). The task depends on `i18n:compile` and `@deskohub/igloohome#generate`.
-- **Instant navigation only.** `bun run test:instant-navigation` from `apps/deskohub-workspace`. Without `WORKSPACE_E2E_BASE_URL`, the Playwright configs start `turbo dev` and target `http://localhost:3000`.
+- **Instant navigation only.** `bun run test:instant-navigation` from `apps/deskohub-workspace`. Without `WORKSPACE_E2E_BASE_URL`, the Playwright configs start `turbo dev` and target `http://localhost:3000`, and the administration navigation skips because its seeded administrator needs a preview and its E2E database.
 
 Bun loads dotenv files before the entry module runs. Email-provider secrets that exist only in Vercel are intentionally unavailable to local E2E.
 
@@ -49,7 +49,6 @@ Inspect settings and deployment metadata without printing values.
 - `EMAIL_CAMPAIGN_ADMIN_INBOX` set to an `@deskohub.test` address, so campaign test sends and their confirmation codes stay on Console and in the server logs. `EMAIL_CAMPAIGN_FROM` and `EMAIL_CAMPAIGN_REPLY_TO` are optional in Preview.
 - `POSTHOG_FEATURE_FLAG_OVERRIDES={"calendar_sales":true,"customer_discounts":true,"discount_codes":true,"meeting_room_page":true,"office_page":true,"referrals":true}`. The referral lane needs `referrals:true`, even when the production rollout is off. The account lane skips the passkey cases unless `login_passkeys` is on, and the sign-in code case unless `login_email_code` is on; turn them on for a PR with a branch-scoped override. A branch-scoped override replaces the whole map, so include every flag. Set it before the preview is built; Vercel accepts a branch scope only after the branch is pushed.
 - `GOOGLE_CALENDAR_SALES_ID` for the dedicated E2E sales calendar (see [fixtures](fixtures.md#calendar-sale-event)).
-- `ADMIN_BASIC_AUTH_CREDENTIALS` (see [fixtures](fixtures.md#admin-basic-auth)).
 - `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.
 
 Never put production Nexi, Dotypos, or database credentials in Preview. Never add callback-origin or BotID test overrides.
@@ -63,7 +62,7 @@ Never put production Nexi, Dotypos, or database credentials in Preview. Never ad
 | `WORKSPACE_E2E_VERCEL_PROJECT` | Variable | Project for log retrieval. |
 | `WORKSPACE_E2E_COORDINATOR_DATABASE_URL` | Secret | Allocator role; used only by the trusted allocation action. |
 | `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL` | Secret | Connect-only role for the replay permit. |
-| `WORKSPACE_E2E_ADMIN_BASIC_AUTH` | Secret | `username:password` for admin pages. |
+| `WORKSPACE_E2E_BETTER_AUTH_SECRETS` | Secret | Copy of the Preview-only `BETTER_AUTH_SECRETS` that signs seeded referral and administrator sessions ([seeded sessions](referral-lane.md#seeded-sessions)). |
 | `WORKSPACE_E2E_DOTYPOS_*` | Secrets | E2E Dotypos cloud; mapped to `DOTYPOS_*` per step. |
 | `VERCEL_AUTOMATION_BYPASS_SECRET`, `NEON_API_KEY`, `TURBO_TOKEN` | Secrets | Protection bypass, branch lookup, remote cache. |
 
@@ -90,7 +89,7 @@ Runtime traffic uses the pooled URL; migrations, assertions, and the allowlist u
 
 The preview is Ready before CI migrates it. Keep the Workspace build database-independent, and make schema changes compatible with that order. Don't add migrations to the Vercel build.
 
-Production-derived preview branches may hold only the inherited Better Auth login email, pending-verification email, short-lived rate-limit IP keys, passkey rows (including customer-written labels), and the administrator login-email snapshots in administrator provenance records. Everything else, including every fixture and all Dotypos profile and reservation data, is synthetic. Don't add a branch scrubber or an alternate parent branch.
+Production-derived preview branches may hold only the inherited Better Auth login email, pending-verification email, short-lived rate-limit IP keys, passkey rows (including customer-written labels), administrator role grants, and the administrator login-email snapshots in administrator provenance records. Everything else, including every fixture and all Dotypos profile and reservation data, is synthetic. Don't add a branch scrubber or an alternate parent branch.
 
 Put database integration assertions inside the normal E2E runner and use its scoped `E2EDatabase` service. Don't add a dedicated script, Turbo task, file-naming convention, environment switch, or per-case database allowlist for them. Repository-level proofs that need no deployed app, such as invoice issuance, numbering, and immutability, belong in the owning repository's colocated `*.postgres.test.ts` instead: they need an exclusive database, and the shared preview branch can give them one only by serializing them after every paid case. E2E code may reuse application repositories only through their injectable service contracts; importing a contract must not initialize the app database pool, load the app keyring, or validate unrelated app variables.
 

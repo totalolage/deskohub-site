@@ -21,7 +21,8 @@
 Sign referral-case identities in by seeding a session, never by sending a magic link (`e2e/account/seeded-session.ts`):
 
 - Insert a short-lived `auth.session` row into the exact preview database and set the matching signed `__Secure-better-auth.session_token` cookie (HTTP-only, Secure, Lax, preview origin) in the case's own context with the runner's `cookie set --stdin`. The value travels on command input, and the token and signed value are registered with the redactor.
-- Sign with Better Auth's `makeSignature` and the first entry of `WORKSPACE_E2E_BETTER_AUTH_SECRETS`, a copy of the Preview-only `BETTER_AUTH_SECRETS` held only in the protected `workspace-checkout-e2e` environment. Never copy the Production value; rotate the copy with Preview. Referral cases fail closed without it.
+- Sign with Better Auth's `makeSignature` and the first entry of `WORKSPACE_E2E_BETTER_AUTH_SECRETS`, a copy of the Preview-only `BETTER_AUTH_SECRETS` held only in the protected `workspace-checkout-e2e` environment. Never copy the Production value; rotate the copy with Preview. Referral and administrator cases fail closed without it.
+- Admin cases reuse the same session seeding for Playwright contexts (`signInWorkspaceE2ESyntheticBrowserContext`); see [administrator sessions](fixtures.md#administrator-sessions).
 - The deployment authenticates the cookie through its normal session lookup; there is no server hook or bypass route. `seeded-session.test.ts` proves acceptance against Better Auth with the shared `authOptions`.
 
 ## Account identity journals

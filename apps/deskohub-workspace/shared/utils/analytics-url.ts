@@ -7,6 +7,8 @@ const SENSITIVE_QUERY_PARAMS = new Set([
   "paystate",
   "paystateref",
   "reservationid",
+  // A sign-in return target can name an admin page and its search.
+  "returnto",
   "secret",
   "state",
   "statustoken",

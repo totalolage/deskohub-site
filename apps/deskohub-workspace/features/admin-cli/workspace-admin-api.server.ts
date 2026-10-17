@@ -141,6 +141,13 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
     const standaloneAccessCodes = yield* StandaloneAccessCodeAdministration;
     const mutationIdempotency = yield* CliMutationIdempotency;
     const productDetailsBackfill = yield* ReservationProductDetailsBackfill;
+    // The administrator account the authenticated session acts as.
+    const sessionAdministrator = CurrentCliSession.pipe(
+      Effect.flatMap((session) =>
+        authentication.sessionAdministrator(session.id)
+      ),
+      mapServiceFailure
+    );
     return handlers
       .handle("getOverview", () =>
         administration.loadOverviewSource().pipe(
@@ -416,17 +423,11 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       .handle(
         "createInvoice",
         Effect.fn(function* ({ payload }) {
-          const session = yield* CurrentCliSession;
-          if (session.approvedBy === null) {
-            return yield* new CliMutationRejected({
-              message:
-                "This legacy CLI session cannot issue invoices. Run dhw auth again.",
-            });
-          }
+          const administrator = yield* sessionAdministrator;
           return yield* invoices
             .create(payload, {
               source: "dhw-cli",
-              actor: session.approvedBy,
+              administrator,
             })
             .pipe(mapAdministrationApiFailure(mapInvoiceMutationFailure));
         })
@@ -435,12 +436,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
         "createStandaloneAccessCode",
         Effect.fn(function* ({ payload }) {
           const session = yield* CurrentCliSession;
-          if (session.approvedBy === null) {
-            return yield* new CliMutationRejected({
-              message:
-                "This legacy CLI session cannot create standalone access codes. Run dhw auth again.",
-            });
-          }
+          const administrator = yield* sessionAdministrator;
           const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
             payload.attemptId
           );
@@ -459,7 +455,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           const executeCreation = standaloneAccessCodes
             .create({
               attemptId: payload.attemptId,
-              actor: session.approvedBy,
+              actor: administrator,
               source: "dhw-cli",
               request: payload.input,
               providerCredentialRemovedAttemptId:
@@ -569,10 +565,9 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       .handle(
         "listSessions",
         Effect.fn(function* () {
-          const session = yield* CurrentCliSession;
-          if (session.approvedBy === null) return [];
+          const administrator = yield* sessionAdministrator;
           return yield* authentication
-            .listSessions(session.approvedBy)
+            .listSessions(administrator.accountId)
             .pipe(mapServiceFailure);
         })
       )
@@ -639,15 +634,10 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       .handle(
         "renameSession",
         Effect.fn(function* ({ params, payload }) {
-          const session = yield* CurrentCliSession;
-          if (session.approvedBy === null) {
-            return yield* new CliResourceNotFound({
-              message: "The CLI session was not found.",
-            });
-          }
+          const administrator = yield* sessionAdministrator;
           const changed = yield* authentication
             .renameSession({
-              owner: session.approvedBy,
+              owner: administrator.accountId,
               sessionId: params.sessionId,
               clientName: payload.clientName,
             })
@@ -663,11 +653,10 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       .handle(
         "revokeSession",
         Effect.fn(function* ({ params }) {
-          const session = yield* CurrentCliSession;
-          if (session.approvedBy === null) return { changed: false };
+          const administrator = yield* sessionAdministrator;
           const changed = yield* authentication
             .revoke({
-              owner: session.approvedBy,
+              owner: administrator.accountId,
               sessionId: params.sessionId,
             })
             .pipe(mapServiceFailure);

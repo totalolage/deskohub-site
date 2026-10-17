@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { Predicate } from "effect";
 import { workspaceClientEnvSchema } from "./client-env.schema";
 import { createWorkspaceEnv } from "./env";
@@ -218,9 +217,6 @@ describe("workspace environment schemas", () => {
   });
 
   test("reports invalid secrets without echoing configured values", () => {
-    const administratorDigest = createHash("sha256")
-      .update("hushhush:quiet-synthetic-password")
-      .digest("hex");
     const cases: readonly {
       readonly overrides: Partial<
         Record<keyof WorkspaceRuntimeEnv, string | undefined>
@@ -228,21 +224,6 @@ describe("workspace environment schemas", () => {
       readonly expected: string;
       readonly neverEcho?: readonly string[];
     }[] = [
-      {
-        overrides: { ADMIN_BASIC_AUTH_CREDENTIALS: undefined },
-        expected: "Invalid administrator credential registry configuration.",
-      },
-      {
-        overrides: { ADMIN_BASIC_AUTH_CREDENTIALS: "" },
-        expected: "Invalid administrator credential registry configuration.",
-      },
-      {
-        overrides: {
-          ADMIN_BASIC_AUTH_CREDENTIALS: `hushhush:${administratorDigest}\nnonsense`,
-        },
-        expected: "Invalid administrator credential registry configuration.",
-        neverEcho: ["hushhush", administratorDigest, "nonsense"],
-      },
       {
         overrides: {
           BETTER_AUTH_SECRETS: "leaked-malformed-secret-token",

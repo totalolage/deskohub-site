@@ -4,7 +4,6 @@ import {
   IgloohomeService,
 } from "@deskohub/igloohome";
 import {
-  type AdministrationActorUsername,
   AdministrationInstant,
   AdministrationProviderCredentialId,
   type AdministrationStandaloneAccessCodeAttemptId,
@@ -15,6 +14,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Context, Data, Effect, Layer, Match, Result, Schema } from "effect";
 import { env } from "@/env";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { WorkspaceIgloohomeLayer } from "@/shared/backend/config/igloohome.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
@@ -49,7 +49,7 @@ export class StandaloneAccessCodeCreationError extends Data.TaggedError(
 interface IStandaloneAccessCodeAdministration {
   readonly create: (input: {
     readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
-    readonly actor: AdministrationActorUsername;
+    readonly actor: AdministratorAccountActor;
     readonly source: StandaloneAccessCodeSource;
     readonly request: AdministrationStandaloneAccessCodeCreateInput;
     readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;

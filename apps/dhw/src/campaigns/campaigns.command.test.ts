@@ -30,6 +30,7 @@ const session = {
     "01980000-0000-7000-8000-000000000000"
   ),
   approvedBy: null,
+  approvedByEmail: null,
   clientName: "test client",
   cliVersion: "1.3.0",
   buildTarget: "development" as const,

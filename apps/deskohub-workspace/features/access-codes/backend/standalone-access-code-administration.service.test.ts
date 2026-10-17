@@ -8,14 +8,16 @@ import {
   IgloohomeRequestError,
   IgloohomeService,
 } from "@deskohub/igloohome";
+import { testEmailAddress } from "@deskohub/test-email";
 import {
-  AdministrationActorUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeCreateInput,
   AdministrationStandaloneAccessCodeName,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Result, Schema } from "effect";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { StandaloneAccessCodeAdministration } from "./standalone-access-code-administration.service";
 import {
   StandaloneAccessCodeAttemptLogRepository,
@@ -34,7 +36,10 @@ const priorCleanupTarget = {
   attemptId: priorAttemptId,
   name: AdministrationStandaloneAccessCodeName.make("Prior Booth"),
 };
-const actor = AdministrationActorUsername.make("Fixture Operator");
+const actor: AdministratorAccountActor = {
+  accountId: customerAccountIdSchema.make(crypto.randomUUID()),
+  email: testEmailAddress("fixture-operator"),
+};
 const source = "dhw-cli";
 const request = decodeRequest({
   name: "Booth A",

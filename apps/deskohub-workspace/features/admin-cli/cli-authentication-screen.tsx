@@ -1,4 +1,3 @@
-import type { AdministrationActorUsernameType } from "@deskohub/workspace-admin-api";
 import Interpolate from "@doist/react-interpolate";
 import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { Suspense } from "react";
@@ -67,7 +66,7 @@ export async function CliAuthenticationRequest({
     );
   }
 
-  const { request, username } = approval;
+  const { request, administratorEmail } = approval;
 
   return (
     <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
@@ -87,7 +86,7 @@ export async function CliAuthenticationRequest({
           failed={params.result === "error"}
           locale={locale}
           request={request}
-          username={username}
+          administratorEmail={administratorEmail}
         />
       </div>
     </div>
@@ -99,7 +98,7 @@ function AuthenticationRequestState({
   failed,
   locale,
   request,
-  username,
+  administratorEmail,
 }: {
   readonly code?: string;
   readonly failed: boolean;
@@ -109,7 +108,7 @@ function AuthenticationRequestState({
       Awaited<ReturnType<typeof loadCliAuthenticationApproval>>
     >["request"]
   >;
-  readonly username: AdministrationActorUsernameType;
+  readonly administratorEmail: string;
 }) {
   if (request.state === "pending") {
     return (
@@ -129,7 +128,7 @@ function AuthenticationRequestState({
             {m.adminCliAuthenticateApproveOnlyOwnRequest({}, { locale })}{" "}
             <Interpolate
               string={m.adminCliAuthenticateApprovingAs({}, { locale })}
-              mapping={{ username: <strong>{username}</strong> }}
+              mapping={{ email: <strong>{administratorEmail}</strong> }}
             />
           </p>
         </AdministrationAlert>

@@ -7,7 +7,7 @@ let authorizationChecks = 0;
 let requestLocale: Locale = "en-US";
 
 mock.module(
-  "@/shared/administrator/administrator-authorization.server",
+  "@/features/administrators/server/administrator-authorization.server",
   () => ({
     authorizeAdministratorPage: () => {
       authorizationChecks += 1;

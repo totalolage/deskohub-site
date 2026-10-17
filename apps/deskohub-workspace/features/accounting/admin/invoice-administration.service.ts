@@ -43,9 +43,11 @@ import {
   invoiceIdSchema,
   invoiceVariableSymbolSchema,
   isInvoiceCurrencyPayable,
+  type ManualInvoiceIssuer,
   type ManualInvoiceProvenance,
   normalizeManualInvoiceInput,
   normalizeManualInvoiceLines,
+  toManualInvoiceProvenance,
 } from "@/features/accounting/manual-invoice";
 import { unnamedCustomerDisplayName } from "@/features/administration/customer-name";
 import { getAdministrationPagination } from "@/features/administration/listing";
@@ -192,8 +194,9 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
 
   const prepare = Effect.fn("InvoiceAdministrationService.prepare")(function* (
     input: AdministrationInvoiceCreateInputType,
-    provenance: ManualInvoiceProvenance
+    issuer: ManualInvoiceIssuer
   ) {
+    const provenance = toManualInvoiceProvenance(issuer);
     const currency = findWorkspaceCurrencyDefinition(input.currency);
     if (!currency || !isInvoiceCurrencyPayable(currency.code)) {
       return yield* new InvoiceAdministrationCustomerError({
@@ -209,6 +212,7 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     const invoiceId = invoiceIdSchema.make(input.invoiceId);
     return {
       invoiceId,
+      provenance,
       forCustomer: (dotyposCustomerId: DotyposCustomerId) => ({
         invoiceId,
         dotyposCustomerId,
@@ -300,9 +304,9 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
 
   const preview = Effect.fn("InvoiceAdministrationService.preview")(function* (
     input: AdministrationInvoiceCreateInputType,
-    provenance: ManualInvoiceProvenance
+    issuer: ManualInvoiceIssuer
   ) {
-    const prepared = yield* prepare(input, provenance);
+    const prepared = yield* prepare(input, issuer);
     const normalized = yield* normalizeManualInvoiceInput(
       prepared.forCustomer(DotyposCustomerIdSchema.make("preview"))
     );
@@ -317,12 +321,15 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
 
   const create = Effect.fn("InvoiceAdministrationService.create")(function* (
     input: AdministrationInvoiceCreateInputType,
-    provenance: ManualInvoiceProvenance
+    issuer: ManualInvoiceIssuer
   ) {
-    const prepared = yield* prepare(input, provenance);
-    const { invoiceId } = prepared;
+    const prepared = yield* prepare(input, issuer);
+    const { invoiceId, provenance } = prepared;
     const issueForCustomer = (dotyposCustomerId: DotyposCustomerId) =>
-      invoices.issueManual(prepared.forCustomer(dotyposCustomerId));
+      invoices.issueManual({
+        ...prepared.forCustomer(dotyposCustomerId),
+        issuedBy: issuer.administrator,
+      });
     const issuance = yield* creationRequests.withLock(
       invoiceId,
       Effect.gen(function* () {

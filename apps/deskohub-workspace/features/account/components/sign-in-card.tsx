@@ -32,6 +32,8 @@ import { maskEmailAddress } from "@/shared/utils";
 
 type SignInCardProps = {
   readonly locale: Locale;
+  /** Where to continue after sign-in; validated before use. */
+  readonly returnTo?: string;
   /**
    * Offers passkey sign-in: the button below the form and passkey autofill
    * on the email field. Off while `login_passkeys` is off.
@@ -65,6 +67,7 @@ type SignInFormValues = SignInFormSchema["Type"];
 
 export function SignInCard({
   locale,
+  returnTo,
   passkeysEnabled = false,
 }: SignInCardProps) {
   const [requested, setRequested] = useState(false);
@@ -82,8 +85,8 @@ export function SignInCard({
       element.focus();
     };
   const authReturn = useMemo(
-    () => createAuthReturnLifecycle({ locale }),
-    [locale]
+    () => createAuthReturnLifecycle({ locale, returnTo }),
+    [locale, returnTo]
   );
   const signInFormSchema = createSignInFormSchema(locale);
   const form = useForm<SignInFormInput, unknown, SignInFormValues>({
@@ -291,7 +294,11 @@ export function SignInCard({
           {failure && signInEmailFailureMessage(failure, locale)}
         </div>
         {passkeysEnabled && (
-          <PasskeySignInOption locale={locale} ready={clientReady} />
+          <PasskeySignInOption
+            locale={locale}
+            ready={clientReady}
+            returnTo={returnTo}
+          />
         )}
       </CardContent>
     </Card>

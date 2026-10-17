@@ -4,9 +4,9 @@ import { Effect, Option } from "effect";
 import { notFound } from "next/navigation";
 import type { CampaignAudienceRow } from "@/db/schema";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
+import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   type AudienceFilter,
