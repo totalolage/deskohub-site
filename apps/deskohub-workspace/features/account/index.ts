@@ -5,6 +5,12 @@ export { CustomerAccountReservationOwnership } from "./backend/customer-account-
 export { CustomerAccountResolver } from "./backend/customer-account-resolver.service";
 export { CustomerEmailLocaleService } from "./backend/customer-email-locale.service";
 export {
+  isCustomerOwnAuthor,
+  type ReservationAuthor,
+  ReservationAuthorDirectory,
+  ReservationAuthorReadError,
+} from "./backend/reservation-author-directory.service";
+export {
   CustomerAccountAccessError,
   type LinkedCustomerAccount,
 } from "./customer-account";

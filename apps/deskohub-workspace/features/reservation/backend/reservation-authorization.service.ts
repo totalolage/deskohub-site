@@ -77,8 +77,9 @@ export class ReservationAuthorizationService extends Context.Service<
         if (Result.isFailure(reservation) || !reservation.success) return false;
 
         return (
+          reservation.success.authorAccountId === account.success.accountId ||
           account.success.dotyposCustomerId ===
-          (reservation.success.dotyposCustomerId as DotyposCustomerId)
+            (reservation.success.dotyposCustomerId as DotyposCustomerId)
         );
       });
 

@@ -71,8 +71,15 @@ const insertAuthUser = async (
 const insertReservation = async (
   postgres: WorkspacePostgresTestDatabase,
   fixture: Fixture,
-  customerId: DotyposCustomerId = fixture.customerId
+  customerId: DotyposCustomerId = fixture.customerId,
+  options: { readonly authoredByAccount?: boolean } = {}
 ) => {
+  if (options.authoredByAccount) {
+    await postgres.pool.query(
+      `insert into customer_accounts (id) values ($1) on conflict do nothing`,
+      [fixture.accountId]
+    );
+  }
   await Effect.runPromise(
     postgres.db.insert(workspaceReservations).values({
       id: fixture.reservationId,
@@ -80,6 +87,9 @@ const insertReservation = async (
         `attempt-${crypto.randomUUID()}`
       ),
       dotyposCustomerId: customerId,
+      authorAccountId: options.authoredByAccount
+        ? customerAccountIdSchema.make(fixture.accountId)
+        : null,
       dotyposReservationId: DotyposReservationIdSchema.make(
         fixture.dotyposReservationId
       ),
@@ -105,6 +115,9 @@ const cleanupFixture = async (
     [fixture.reservationId]
   );
   await postgres.pool.query(`delete from auth."user" where id = $1`, [
+    fixture.accountId,
+  ]);
+  await postgres.pool.query(`delete from customer_accounts where id = $1`, [
     fixture.accountId,
   ]);
 
@@ -171,6 +184,7 @@ const runStatusLoad = async (options: {
   readonly postgres: WorkspacePostgresTestDatabase;
   readonly fixture: Fixture;
   readonly reservationCustomerId?: DotyposCustomerId;
+  readonly authoredByAccount?: boolean;
   readonly deletionRequestedAt?: Date;
   readonly removeAuthUser?: boolean;
   readonly expectedAuthorized: boolean;
@@ -179,6 +193,7 @@ const runStatusLoad = async (options: {
     fixture,
     postgres,
     reservationCustomerId,
+    authoredByAccount,
     deletionRequestedAt,
     removeAuthUser,
     expectedAuthorized,
@@ -208,7 +223,9 @@ const runStatusLoad = async (options: {
 
   await insertAuthUser(postgres, fixture);
   if (reservationCustomerId !== undefined) {
-    await insertReservation(postgres, fixture, reservationCustomerId);
+    await insertReservation(postgres, fixture, reservationCustomerId, {
+      authoredByAccount,
+    });
   }
   if (deletionRequestedAt) {
     await postgres.pool.query(
@@ -277,6 +294,41 @@ describe.skipIf(!testDatabase)(
           reservationCustomerId: DotyposCustomerIdSchema.make(
             `foreign-customer-${crypto.randomUUID()}`
           ),
+          expectedAuthorized: false,
+        });
+      } finally {
+        await cleanupFixture(postgres, fixture);
+      }
+    });
+
+    test("allows the author's session to another customer's reservation", async () => {
+      const fixture = makeFixture();
+      try {
+        await runStatusLoad({
+          fixture,
+          postgres,
+          reservationCustomerId: DotyposCustomerIdSchema.make(
+            `booked-for-customer-${crypto.randomUUID()}`
+          ),
+          authoredByAccount: true,
+          expectedAuthorized: true,
+        });
+      } finally {
+        await cleanupFixture(postgres, fixture);
+      }
+    });
+
+    test("denies an author whose auth activity has a deletion marker", async () => {
+      const fixture = makeFixture();
+      try {
+        await runStatusLoad({
+          fixture,
+          postgres,
+          reservationCustomerId: DotyposCustomerIdSchema.make(
+            `booked-for-customer-${crypto.randomUUID()}`
+          ),
+          authoredByAccount: true,
+          deletionRequestedAt: new Date("2026-09-07T10:00:00.000Z"),
           expectedAuthorized: false,
         });
       } finally {

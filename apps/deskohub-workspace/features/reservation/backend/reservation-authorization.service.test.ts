@@ -26,16 +26,21 @@ const orderId = workspaceReservationIdSchema.make("reservation-1");
 const otherOrderId = workspaceReservationIdSchema.make("reservation-2");
 const accountCustomerId = "customer-owner";
 
+type AuthorizedReservation = Pick<
+  WorkspaceReservation,
+  "dotyposCustomerId" | "authorAccountId"
+>;
+
 const makeReservation = (
-  dotyposCustomerId = accountCustomerId
-): Pick<WorkspaceReservation, "dotyposCustomerId"> => ({
-  dotyposCustomerId,
-});
+  dotyposCustomerId = accountCustomerId,
+  authorAccountId: string | null = null
+): AuthorizedReservation =>
+  ({ dotyposCustomerId, authorAccountId }) as AuthorizedReservation;
 
 const runAuthorization = async (options: {
   readonly input?: Partial<ReservationAuthorizationInput>;
   readonly owner?: "matches" | "different" | "unavailable";
-  readonly reservation?: Pick<WorkspaceReservation, "dotyposCustomerId"> | null;
+  readonly reservation?: AuthorizedReservation | null;
 }) => {
   const findById = mock(() =>
     Effect.succeed(
@@ -175,6 +180,22 @@ describe("ReservationAuthorizationService", () => {
     ["wrong customer", { owner: "different" as const }, false],
     ["missing reservation", { reservation: null }, false],
     ["matching owner", { owner: "matches" as const }, true],
+    [
+      "the author booking for another customer",
+      {
+        owner: "different" as const,
+        reservation: makeReservation("booked-for-customer", "account-id"),
+      },
+      true,
+    ],
+    [
+      "another account's authored reservation",
+      {
+        owner: "different" as const,
+        reservation: makeReservation("booked-for-customer", "other-account"),
+      },
+      false,
+    ],
   ] as const)(
     "checks exact local reservation ownership for %s",
     async (_label, options, expected) => {
