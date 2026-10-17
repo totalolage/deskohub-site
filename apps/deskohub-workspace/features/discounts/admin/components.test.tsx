@@ -876,7 +876,7 @@ describe("discount administration pages", () => {
       "./customer-admin-components"
     );
     const { unnamedCustomerDisplayName } = await import(
-      "./customer-display-name"
+      "@/features/administration/customer-name"
     );
     const view = render(
       <RouteLocaleProvider locale="cs-CZ">

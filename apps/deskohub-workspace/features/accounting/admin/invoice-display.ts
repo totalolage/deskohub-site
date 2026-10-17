@@ -1,9 +1,9 @@
 import { formatCurrencyAmount } from "@deskohub/i18n/currency";
+import type { AdministrationCustomerName } from "@/features/administration/customer-name";
 import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import type {
-  InvoiceAdministrationCustomer,
   InvoiceAdministrationCustomerErrorReason,
   InvoiceAdministrationListItem,
 } from "./invoice-administration.service";
@@ -49,7 +49,7 @@ export const getInvoiceCustomerErrorMessage = (
 
 /** Names a customer in the operator's language when Dotypos holds no name or email for them. */
 export const getInvoiceCustomerName = (
-  customer: Pick<InvoiceAdministrationCustomer, "displayName" | "hasName">,
+  customer: AdministrationCustomerName,
   locale: Locale
 ) =>
   customer.hasName

@@ -47,6 +47,7 @@ import {
   normalizeManualInvoiceInput,
   normalizeManualInvoiceLines,
 } from "@/features/accounting/manual-invoice";
+import { unnamedCustomerDisplayName } from "@/features/administration/customer-name";
 import { getAdministrationPagination } from "@/features/administration/listing";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import {
@@ -599,7 +600,7 @@ const toCustomer = (
     customer.companyName?.trim() || personName || customer.email?.trim();
   return {
     id: customer.id,
-    displayName: name || "Unnamed customer",
+    displayName: name || unnamedCustomerDisplayName,
     hasName: Boolean(name),
     email: customer.email?.trim() || null,
     details,

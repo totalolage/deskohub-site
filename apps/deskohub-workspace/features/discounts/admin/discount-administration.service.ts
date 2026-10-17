@@ -48,6 +48,10 @@ import {
   findViolatedConstraint,
   isDatabaseQueryError,
 } from "@/db/sql-constraint";
+import {
+  type AdministrationCustomerName,
+  unnamedCustomerDisplayName,
+} from "@/features/administration/customer-name";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
@@ -83,10 +87,6 @@ import type {
   UpdateDiscountCodeAdminInput,
   UpdateVoucherAdminInput,
 } from "./contracts";
-import {
-  type DiscountAdminCustomerName,
-  unnamedCustomerDisplayName,
-} from "./customer-display-name";
 
 export type AdminDiscount = {
   readonly id: StoredDiscountId;
@@ -413,7 +413,7 @@ export interface IDiscountAdministration {
   readonly loadCustomerBreadcrumbLabel: (input: {
     readonly customerId: DotyposCustomerId;
   }) => Effect.Effect<
-    DiscountAdminCustomerName,
+    AdministrationCustomerName,
     | ExternalAPIError
     | NetworkError
     | ValidationError
