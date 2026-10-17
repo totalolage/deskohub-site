@@ -13,6 +13,7 @@ import {
   reservationCancellationStandardSchema,
   reservationLookupStandardSchema,
 } from "./contracts";
+import { m } from "./i18n";
 import {
   ReservationAccessAdministration,
   ReservationAccessAdministrationError,
@@ -21,6 +22,10 @@ import {
   ReservationAdministrationError,
   ReservationAdministrationService,
 } from "./reservation-administration.service";
+import {
+  getReservationAccessErrorMessage,
+  getReservationCancellationErrorMessage,
+} from "./reservation-error-messages";
 
 const findReservation = Effect.fn("AdministrationService.findReservation")(
   function* (input: ReservationLookupInput) {
@@ -37,14 +42,17 @@ const getAdministrationReservationAction = defineWorkspaceAction(
     schema: reservationLookupStandardSchema,
     logInput: false,
   },
-  (input) =>
+  (input, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(findReservation(input)),
       Effect.provide(AdministrationService.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
-            message: "The reservation lookup is temporarily unavailable.",
+            message: m.administrationReservationLookupUnavailable(
+              {},
+              { locale }
+            ),
             cause: cause instanceof Error ? cause : undefined,
           })
       )
@@ -62,7 +70,7 @@ const cancelAdministrationReservationAction = defineWorkspaceAction(
     operation: "administration.cancel-reservation",
     schema: reservationCancellationStandardSchema,
   },
-  (input: ReservationCancellationInput) =>
+  (input: ReservationCancellationInput, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
@@ -82,8 +90,8 @@ const cancelAdministrationReservationAction = defineWorkspaceAction(
           new PublicSafeActionError({
             message:
               cause instanceof ReservationAdministrationError
-                ? cause.message
-                : "The reservation could not be cancelled.",
+                ? getReservationCancellationErrorMessage(cause.reason, locale)
+                : m.administrationReservationCancellationFailed({}, { locale }),
             cause,
           })
       )
@@ -115,7 +123,7 @@ const mutateReservationAccessAction = defineWorkspaceAction(
     operation: "administration.mutate-reservation-access",
     schema: reservationAccessMutationSchema,
   },
-  (input) =>
+  (input, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
@@ -126,10 +134,7 @@ const mutateReservationAccessAction = defineWorkspaceAction(
               `/admin/reservations/${input.reservationId}`
             )
           );
-          return {
-            grantState: grant.state,
-            notice: "Reservation access recovery completed.",
-          };
+          return { grantState: grant.state };
         })
       ),
       Effect.provide(ReservationAccessAdministration.Live),
@@ -138,8 +143,11 @@ const mutateReservationAccessAction = defineWorkspaceAction(
           new PublicSafeActionError({
             message:
               cause instanceof ReservationAccessAdministrationError
-                ? cause.message
-                : "Reservation access recovery could not be completed.",
+                ? getReservationAccessErrorMessage(cause.reason, locale)
+                : m.administrationReservationAccessRecoveryFailed(
+                    {},
+                    { locale }
+                  ),
             cause,
           })
       )

@@ -1,6 +1,11 @@
 import * as fsPromises from "node:fs/promises";
 import { resolve } from "node:path";
 import type * as Playwright from "@playwright/test";
+import {
+  getAccountPath,
+  getAccountSectionPath,
+} from "@/features/account/routes";
+import type { AccountSection } from "@/features/account/sections";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { workspaceDir } from "../runtime";
@@ -80,15 +85,21 @@ type ReservationStatusReviewMetadata = Omit<
   "path"
 >;
 
+const enAccountPath = getAccountPath("en-US");
+const enAccountSectionPath = (section: AccountSection) =>
+  getAccountSectionPath("en-US", section);
+const csAccountSectionPath = (section: AccountSection) =>
+  getAccountSectionPath("cs-CZ", section);
+
 const accountReviewTargetMetadata = {
   "completion-mobile375x900": {
     filename: "completion-mobile375x900.png",
-    path: "/en-US/account",
+    path: enAccountPath,
     viewport: { height: 900, width: 375 },
   },
   "account-loading-desktop": {
     filename: "account-loading-desktop.png",
-    path: "/en-US/account",
+    path: enAccountPath,
     viewport: { height: 1000, width: 1440 },
   },
   "callback-loading-desktop": {
@@ -98,77 +109,77 @@ const accountReviewTargetMetadata = {
   },
   "sign-in-handoff-desktop": {
     filename: "sign-in-handoff-desktop.png",
-    path: ["/en-US/account", "/en-US/auth/sign-in"],
+    path: [enAccountPath, "/en-US/auth/sign-in"],
     viewport: { height: 1000, width: 1440 },
   },
   "linked-reservations-desktop": {
     filename: "linked-reservations-desktop.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("reservations"),
     viewport: { height: 1000, width: 1440 },
   },
   "linked-reservations-mobile": {
     filename: "linked-reservations-mobile.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("reservations"),
     viewport: { height: 900, width: 375 },
   },
   "linked-referrals-desktop": {
     filename: "linked-referrals-desktop.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("referrals"),
     viewport: { height: 1000, width: 1440 },
   },
   "linked-referrals-mobile": {
     filename: "linked-referrals-mobile.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("referrals"),
     viewport: { height: 900, width: 375 },
   },
   "linked-referrals-cs-desktop": {
     filename: "linked-referrals-cs-desktop.png",
-    path: "/cs-CZ/account",
+    path: csAccountSectionPath("referrals"),
     viewport: { height: 1000, width: 1440 },
   },
   "linked-referrals-cs-mobile": {
     filename: "linked-referrals-cs-mobile.png",
-    path: "/cs-CZ/account",
+    path: csAccountSectionPath("referrals"),
     viewport: { height: 900, width: 375 },
   },
   "referral-overview-positive-desktop": {
     filename: "referral-overview-positive-desktop.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("referrals"),
     viewport: { height: 1000, width: 1440 },
   },
   "referral-overview-positive-mobile": {
     filename: "referral-overview-positive-mobile.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("referrals"),
     viewport: { height: 900, width: 375 },
   },
   "referral-overview-positive-cs-desktop": {
     filename: "referral-overview-positive-cs-desktop.png",
-    path: "/cs-CZ/account",
+    path: csAccountSectionPath("referrals"),
     viewport: { height: 1000, width: 1440 },
   },
   "referral-overview-positive-cs-mobile": {
     filename: "referral-overview-positive-cs-mobile.png",
-    path: "/cs-CZ/account",
+    path: csAccountSectionPath("referrals"),
     viewport: { height: 900, width: 375 },
   },
   "linked-profile-desktop": {
     filename: "linked-profile-desktop.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("profile"),
     viewport: { height: 1000, width: 1440 },
   },
   "linked-profile-language-desktop": {
     filename: "linked-profile-language-desktop.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("profile"),
     viewport: { height: 1000, width: 1440 },
   },
   "linked-profile-language-desktop-cs": {
     filename: "linked-profile-language-desktop-cs.png",
-    path: "/cs-CZ/account",
+    path: csAccountSectionPath("profile"),
     viewport: { height: 1000, width: 1440 },
   },
   "linked-profile-language-mobile": {
     filename: "linked-profile-language-mobile.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("profile"),
     viewport: { height: 900, width: 375 },
   },
   "locale-preference-redirect-desktop": {
@@ -178,22 +189,22 @@ const accountReviewTargetMetadata = {
   },
   "locale-switcher-saved-desktop": {
     filename: "locale-switcher-saved-desktop.png",
-    path: "/en-US/account",
+    path: enAccountPath,
     viewport: { height: 1000, width: 1440 },
   },
   "linked-billing-desktop": {
     filename: "linked-billing-desktop.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("billing"),
     viewport: { height: 1000, width: 1440 },
   },
   "linked-billing-mobile": {
     filename: "linked-billing-mobile.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("billing"),
     viewport: { height: 900, width: 375 },
   },
   "linked-legal-desktop": {
     filename: "linked-legal-desktop.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 1000, width: 1440 },
   },
   "reservation-customer-account-desktop": {
@@ -208,82 +219,82 @@ const accountReviewTargetMetadata = {
   },
   "account-marketing-withdrawn-desktop": {
     filename: "account-marketing-withdrawn-desktop.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 1000, width: 1440 },
   },
   "account-marketing-active-mobile": {
     filename: "account-marketing-active-mobile.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 900, width: 375 },
   },
   "marketing-link-pending-desktop": {
     filename: "marketing-link-pending-desktop.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 1000, width: 1440 },
   },
   "marketing-link-pending-mobile": {
     filename: "marketing-link-pending-mobile.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 900, width: 375 },
   },
   "marketing-link-active-desktop": {
     filename: "marketing-link-active-desktop.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 1000, width: 1440 },
   },
   "marketing-link-active-mobile": {
     filename: "marketing-link-active-mobile.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 900, width: 375 },
   },
   "marketing-link-withdrawn-desktop": {
     filename: "marketing-link-withdrawn-desktop.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 1000, width: 1440 },
   },
   "marketing-link-withdrawn-mobile": {
     filename: "marketing-link-withdrawn-mobile.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 900, width: 375 },
   },
   "marketing-link-invalid-desktop": {
     filename: "marketing-link-invalid-desktop.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 1000, width: 1440 },
   },
   "marketing-link-invalid-mobile": {
     filename: "marketing-link-invalid-mobile.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 900, width: 375 },
   },
   "public-legal-desktop": {
     filename: "public-legal-desktop.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 1000, width: 1440 },
   },
   "public-legal-mobile": {
     filename: "public-legal-mobile.png",
-    path: "/en-US/account/legal",
+    path: enAccountSectionPath("legal"),
     viewport: { height: 900, width: 375 },
   },
   "linked-security-desktop": {
     filename: "linked-security-desktop.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("security"),
     viewport: { height: 1000, width: 1440 },
   },
   "linked-danger-desktop": {
     filename: "linked-danger-desktop.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("danger"),
     viewport: { height: 1000, width: 1440 },
   },
   "linked-danger-mobile": {
     filename: "linked-danger-mobile.png",
-    path: "/en-US/account",
+    path: enAccountSectionPath("danger"),
     viewport: { height: 900, width: 375 },
   },
   "support-desktop": {
     filename: "support-desktop.png",
-    path: "/en-US/account",
+    path: enAccountPath,
     viewport: { height: 1000, width: 1440 },
   },
   "sign-in-accepted-desktop": {
@@ -342,14 +353,6 @@ const accountReviewCaptureFailure = () =>
 const callbackLoadingName = "Loading sign-in…";
 const callbackLoadingSelector =
   '[data-slot="auth-callback-loading"][role="status"][aria-busy="true"]';
-const privateLinkedAccountSections = [
-  "reservations",
-  "referrals",
-  "profile",
-  "security",
-  "billing",
-  "danger",
-] as const;
 const referralReviewTargets = new Set<ReviewTarget>([
   "linked-referrals-desktop",
   "linked-referrals-mobile",
@@ -360,34 +363,6 @@ const referralReviewTargets = new Set<ReviewTarget>([
   "referral-overview-positive-cs-desktop",
   "referral-overview-positive-cs-mobile",
 ]);
-
-const isPrivateLinkedAccountTarget = (target: ReviewTarget): boolean =>
-  target === "linked-reservations-desktop" ||
-  target === "linked-reservations-mobile" ||
-  target === "linked-referrals-desktop" ||
-  target === "linked-referrals-mobile" ||
-  target === "linked-referrals-cs-desktop" ||
-  target === "linked-referrals-cs-mobile" ||
-  target === "referral-overview-positive-desktop" ||
-  target === "referral-overview-positive-mobile" ||
-  target === "referral-overview-positive-cs-desktop" ||
-  target === "referral-overview-positive-cs-mobile" ||
-  target === "linked-profile-desktop" ||
-  target === "linked-profile-language-desktop" ||
-  target === "linked-profile-language-desktop-cs" ||
-  target === "linked-profile-language-mobile" ||
-  target === "locale-switcher-saved-desktop" ||
-  target === "linked-security-desktop" ||
-  target === "linked-billing-desktop" ||
-  target === "linked-billing-mobile" ||
-  target === "linked-danger-desktop" ||
-  target === "linked-danger-mobile";
-
-const isAllowedPrivateLinkedAccountQuery = (search: string): boolean =>
-  search === "" ||
-  privateLinkedAccountSections.some(
-    (section) => search === `?section=${section}`
-  );
 
 type AccountReviewCaptureOptions = {
   readonly deadline?: number;
@@ -470,9 +445,7 @@ const validateAccountReviewPage = (
   }
 
   const queryIsAllowed =
-    (isPrivateLinkedAccountTarget(target) &&
-      isAllowedPrivateLinkedAccountQuery(pageUrl.search)) ||
-    (!isPrivateLinkedAccountTarget(target) && pageUrl.search === "") ||
+    pageUrl.search === "" ||
     // The callback-loading capture reuses the shared callback URL grammar so a
     // canonical attempt parameter stays allowed; all other callback queries
     // keep failing closed.

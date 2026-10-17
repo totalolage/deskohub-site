@@ -68,7 +68,7 @@ AdministrationService.Live = Layer.succeed(AdministrationService, {
   countReservationsNeedingRefund: unused,
   listReservations: unused,
   loadReservation: unused,
-  loadReservationBreadcrumbLabel: unused,
+  loadReservationProduct: unused,
   findReservationId: unused,
   listBookings: unused,
   loadBooking: unused,

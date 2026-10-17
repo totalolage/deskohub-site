@@ -37,9 +37,21 @@ test("serves the administration shell and granular loading regions", async ({
       await expect(
         page.getByRole("navigation", { name: "Administration" }).first()
       ).toBeVisible();
-      await expect(page.getByLabel("Loading reservation count")).toBeVisible();
-      await expect(page.getByLabel("Loading table filters")).toBeVisible();
-      await expect(page.getByLabel("Loading reservations")).toBeVisible();
+      await expect(
+        page.getByLabel(
+          m.administrationReservationListCountLoading({}, { locale: "en-US" })
+        )
+      ).toBeVisible();
+      await expect(
+        page.getByLabel(
+          m.administrationLoadingTableFilters({}, { locale: "en-US" })
+        )
+      ).toBeVisible();
+      await expect(
+        page.getByLabel(
+          m.administrationReservationListLoading({}, { locale: "en-US" })
+        )
+      ).toBeVisible();
 
       await expect(
         page.locator('[data-slot="skeleton"]').first()
@@ -54,10 +66,21 @@ test("hydrates the customer activity section", async ({ page }, testInfo) => {
   await page.goto("/en-US/admin");
 
   const customerActivity = page.getByRole("region", {
-    name: "Customer activity",
+    name: m.administrationOverviewCustomerActivityTitle(
+      {},
+      { locale: "en-US" }
+    ),
   });
-  await expect(customerActivity.getByText("Unique customers")).toBeVisible();
-  await expect(customerActivity.getByText("New customers")).toBeVisible();
+  await expect(
+    customerActivity.getByText(
+      m.administrationOverviewUniqueCustomersLabel({}, { locale: "en-US" })
+    )
+  ).toBeVisible();
+  await expect(
+    customerActivity.getByText(
+      m.administrationOverviewNewCustomersLabel({}, { locale: "en-US" })
+    )
+  ).toBeVisible();
 
   if (reviewScreenshots) {
     const screenshotPath =
@@ -68,6 +91,24 @@ test("hydrates the customer activity section", async ({ page }, testInfo) => {
       path: screenshotPath,
     });
   }
+  await page.close();
+});
+
+test("hydrates the customer activity section in Czech", async ({ page }) => {
+  await page.goto("/cs-CZ/admin");
+
+  const customerActivity = page.getByRole("region", {
+    name: m.administrationOverviewCustomerActivityTitle(
+      {},
+      { locale: "cs-CZ" }
+    ),
+  });
+  await expect(
+    customerActivity.getByText(
+      m.administrationOverviewUniqueCustomersLabel({}, { locale: "cs-CZ" })
+    )
+  ).toBeVisible();
+
   await page.close();
 });
 

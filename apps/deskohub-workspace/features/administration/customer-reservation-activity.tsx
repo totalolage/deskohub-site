@@ -1,56 +1,55 @@
 import type { CSSProperties } from "react";
-import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceMeetingRoomProductTitle,
+  getWorkspaceOfficeProductTitle,
+  getWorkspaceProductTierTitle,
+} from "@/features/checkout/product-catalog.i18n";
 import type { Locale } from "@/features/i18n";
-import { reservationProductFamilies } from "@/features/reservation/reservation-product-descriptor";
 import { cn } from "@/shared/utils";
+import { formatWeekday } from "@/shared/utils/date-time-format";
 import type {
   AdministrationCustomerReservationActivity,
   AdministrationCustomerReservationActivityCategory,
 } from "./administration.service";
 import { formatAdministrationPlainDate } from "./formatters";
+import { m } from "./i18n";
 
-const {
-  cowork: {
-    properties: [coworkTier],
-  },
-} = reservationProductFamilies;
-
-/** Admin copy is English, so names come from the en-US catalog. */
-const coworkTierName = (tier: WorkspaceCoworkProductTier) =>
-  coworkTier.values.find(({ id }) => id === tier)?.name("en-US") ?? tier;
-
+/** Product names are customer-facing content, so they come from its catalog. */
 const reservationActivityCategoryStyles = {
   "cowork-open-space": {
     className: "bg-aquamarine-green/25",
-    label: coworkTierName("open-space"),
+    label: (locale) => getWorkspaceProductTierTitle("open-space", locale),
   },
   "cowork-reserved-desk": {
     className: "bg-aquamarine-green/70",
-    label: coworkTierName("reserved-desk"),
+    label: (locale) => getWorkspaceProductTierTitle("reserved-desk", locale),
   },
   "cowork-basic": {
     className: "bg-aquamarine-green/25",
-    label: coworkTierName("basic"),
+    label: (locale) => getWorkspaceProductTierTitle("basic", locale),
   },
   "cowork-plus": {
     className: "bg-aquamarine-green/70",
-    label: coworkTierName("plus"),
+    label: (locale) => getWorkspaceProductTierTitle("plus", locale),
   },
   "cowork-profi": {
     className: "bg-[#10b981]",
-    label: coworkTierName("profi"),
+    label: (locale) => getWorkspaceProductTierTitle("profi", locale),
   },
   "meeting-room": {
     className: "bg-[#60a5fa]",
-    label: reservationProductFamilies["meeting-room"].label,
+    label: getWorkspaceMeetingRoomProductTitle,
   },
   office: {
     className: "bg-[#fb923c]",
-    label: reservationProductFamilies.office.label,
+    label: getWorkspaceOfficeProductTitle,
   },
 } satisfies Record<
   AdministrationCustomerReservationActivityCategory,
-  { readonly className: string; readonly label: string }
+  {
+    readonly className: string;
+    readonly label: (locale: Locale) => string;
+  }
 >;
 
 export function CustomerReservationActivity({
@@ -66,12 +65,14 @@ export function CustomerReservationActivity({
     <section className="mb-7" aria-labelledby="reservation-activity-heading">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-xl" id="reservation-activity-heading">
-          Reservation activity
+          {m.administrationCustomerActivityTitle({}, { locale })}
         </h2>
         {total !== undefined && (
           <p className="text-sm text-navy-blue/65">
-            {total} {total === 1 ? "reservation" : "reservations"} in the past
-            365 days
+            {m.administrationCustomerActivityYearTotal(
+              { count: total },
+              { locale }
+            )}
           </p>
         )}
       </div>
@@ -84,7 +85,7 @@ export function CustomerReservationActivity({
           />
         ) : (
           <p className="py-7 text-center text-sm text-navy-blue/65">
-            Reservation activity is temporarily unavailable.
+            {m.administrationCustomerActivityUnavailable({}, { locale })}
           </p>
         )}
       </div>
@@ -128,7 +129,7 @@ function ReservationActivityGrid({
     if (date.day === 1) {
       monthLabels.set(
         Math.floor((leadingDays + index) / 7),
-        date.toLocaleString("en-GB", { month: "short" })
+        date.toLocaleString(locale, { month: "short" })
       );
     }
   }
@@ -136,7 +137,10 @@ function ReservationActivityGrid({
   return (
     <>
       <section
-        aria-label="Reservation activity for the past 365 days"
+        aria-label={m.administrationCustomerActivityCalendarLabel(
+          {},
+          { locale }
+        )}
         className="overflow-x-auto rounded-lg"
       >
         <div className="min-w-[50rem]">
@@ -159,11 +163,11 @@ function ReservationActivityGrid({
               className="grid grid-rows-7 gap-1 text-xs leading-none text-navy-blue/55"
             >
               <span />
-              <span>Mon</span>
+              <span>{formatWeekday({ isoDay: 1, locale })}</span>
               <span />
-              <span>Wed</span>
+              <span>{formatWeekday({ isoDay: 3, locale })}</span>
               <span />
-              <span>Fri</span>
+              <span>{formatWeekday({ isoDay: 5, locale })}</span>
               <span />
             </div>
             <div
@@ -212,7 +216,10 @@ function ReservationActivityGrid({
       <div className="mt-3 flex flex-wrap items-center justify-end gap-x-3 gap-y-2 text-xs text-navy-blue/55">
         {Object.values(reservationActivityCategoryStyles).map(
           ({ className, label }) => (
-            <span className="inline-flex items-center gap-1.5" key={label}>
+            <span
+              className="inline-flex items-center gap-1.5"
+              key={label(locale)}
+            >
               <span
                 aria-hidden="true"
                 className={cn(
@@ -220,7 +227,7 @@ function ReservationActivityGrid({
                   className
                 )}
               />
-              {label}
+              {label(locale)}
             </span>
           )
         )}
@@ -233,7 +240,15 @@ const formatReservationActivityLabel = (
   date: string,
   count: number,
   locale: Locale
-) =>
-  count === 0
-    ? `No reservations on ${formatAdministrationPlainDate(date, locale)}`
-    : `${count} ${count === 1 ? "reservation" : "reservations"} on ${formatAdministrationPlainDate(date, locale)}`;
+) => {
+  const formattedDate = formatAdministrationPlainDate(date, locale);
+  return count === 0
+    ? m.administrationCustomerActivityDayEmpty(
+        { date: formattedDate },
+        { locale }
+      )
+    : m.administrationCustomerActivityDay(
+        { count, date: formattedDate },
+        { locale }
+      );
+};

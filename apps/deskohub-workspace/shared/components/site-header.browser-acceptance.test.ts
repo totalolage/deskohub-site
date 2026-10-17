@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type Browser, chromium, type Page } from "@playwright/test";
 import { type Locale, locales, m } from "@/features/i18n";
+import { browserModuleStubPlugin } from "@/shared/testing/browser-module-stubs.test-utils";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
 
@@ -34,7 +35,7 @@ const desktopHeaders = [
 const harnessOrigin = "http://site-header.test";
 
 // The harness runs outside a Next.js app, so the router-bound modules render
-// plain elements; static image imports keep their real dimensions.
+// plain elements.
 const nextModuleStubs: Readonly<Record<string, string>> = {
   "next/image": `
     import { createElement } from "react";
@@ -54,20 +55,10 @@ const nextModuleStubs: Readonly<Record<string, string>> = {
   `,
 };
 
-const nextModuleStubPlugin: Bun.BunPlugin = {
-  name: "site-header-next-stubs",
+// Static image imports keep their real dimensions.
+const svgImagePlugin: Bun.BunPlugin = {
+  name: "site-header-svg-images",
   setup(build) {
-    build.onResolve({ filter: /^next\/(image|link|navigation)$/ }, (args) => ({
-      namespace: "site-header-next-stub",
-      path: args.path,
-    }));
-    build.onLoad(
-      { filter: /.*/, namespace: "site-header-next-stub" },
-      (args) => ({
-        contents: nextModuleStubs[args.path] ?? "",
-        loader: "js",
-      })
-    );
     build.onLoad({ filter: /\.svg$/ }, async (args) => {
       const svg = await readFile(args.path, "utf8");
       const viewBox = /viewBox="[\d.]+ [\d.]+ ([\d.]+) ([\d.]+)"/.exec(svg);
@@ -99,7 +90,7 @@ beforeAll(async () => {
     minify: true,
     naming: "site-header-harness.js",
     outdir: buildDirectory,
-    plugins: [nextModuleStubPlugin],
+    plugins: [browserModuleStubPlugin(nextModuleStubs), svgImagePlugin],
     target: "browser",
   });
   if (!build.success) {

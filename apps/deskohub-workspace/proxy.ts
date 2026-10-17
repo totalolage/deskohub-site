@@ -10,7 +10,10 @@ import {
   type NextRequest,
   NextResponse,
 } from "next/server";
-import { getAccountSignInPath } from "@/features/account/routes";
+import {
+  findLegacyAccountSectionRedirect,
+  getAccountSignInPath,
+} from "@/features/account/routes";
 import { administrationRequestPathHeader } from "@/features/administrators/administration-request-path";
 import { resolveWorkspaceLocale } from "@/features/i18n/locale-resolution";
 import { localeCookieName, locales } from "@/features/i18n/routing";
@@ -22,6 +25,7 @@ import { env } from "./env";
 import { appendVercelPreviewProtectionBypass } from "./features/checkout/backend/checkout/vercel-preview-protection-bypass";
 import { reservationAccessTokenQueryParam } from "./features/reservation/reservation-access-token";
 import { resolveWorkspaceRuntimeCallbackOrigin } from "./shared/backend/config/workspace-url.config";
+import { withRequestPathname } from "./shared/backend/utils/request-pathname";
 import { markPrivateResponse } from "./shared/utils/private-response";
 
 const decodePathname = (pathname: string) => {
@@ -63,8 +67,30 @@ const hasReservationCapabilityToExchange = (request: NextRequest) =>
   isReservationCapabilityExchangePath(request.nextUrl.pathname) &&
   request.nextUrl.searchParams.has(reservationAccessTokenQueryParam);
 
+const isAccountPath = (pathname: string) => /\/account(\/|$)/.test(pathname);
+
 const isPrivateAccountPath = (pathname: string) =>
-  /\/account(\/|$)/.test(pathname) || /\/auth(\/|$)/.test(pathname);
+  isAccountPath(pathname) || /\/auth(\/|$)/.test(pathname);
+
+/**
+ * Hands a request on to its render. An account render receives its pathname,
+ * which the account sections' layout checks before it renders the account
+ * page; other renders receive the request's own headers when the proxy changed
+ * them.
+ */
+const continueRequest = (
+  request: NextRequest,
+  { headersChanged }: { readonly headersChanged: boolean }
+) => {
+  if (isAccountPath(request.nextUrl.pathname)) {
+    return NextResponse.next({
+      request: { headers: withRequestPathname(request) },
+    });
+  }
+  return headersChanged
+    ? NextResponse.next({ request: { headers: request.headers } })
+    : NextResponse.next();
+};
 
 /**
  * A real top-level page load. Speculative and router requests never take the
@@ -170,14 +196,25 @@ async function localizedPageResponse(
   );
 
   if (localeFromUrl === resolvedLocale) {
+    const sectionRedirect = findLegacyAccountSectionRedirect(
+      resolvedLocale,
+      new URL(request.url)
+    );
+    if (sectionRedirect) {
+      const response = markPrivateResponse(
+        NextResponse.redirect(sectionRedirect)
+      );
+      setLocaleCookie(response, localeCookieName, resolvedLocale);
+      return response;
+    }
+
     const sharedReferralCode = findSharedReferralCodeOfNavigation(request);
     if (sharedReferralCode) {
       request.cookies.set(referralCodeCookieName, sharedReferralCode);
     }
-    const response =
-      sharedReferralCode || forwardRequestHeaders
-        ? NextResponse.next({ request: { headers: request.headers } })
-        : NextResponse.next();
+    const response = continueRequest(request, {
+      headersChanged: Boolean(sharedReferralCode) || forwardRequestHeaders,
+    });
     if (
       isPrivateReservationPath(request.nextUrl.pathname) ||
       isPrivateAccountPath(request.nextUrl.pathname)
@@ -188,12 +225,18 @@ async function localizedPageResponse(
     return response;
   }
 
-  const redirectUrl = request.nextUrl.clone();
-  redirectUrl.pathname = getLocalizedRedirectPathname(
+  const localizedUrl = request.nextUrl.clone();
+  localizedUrl.pathname = getLocalizedRedirectPathname(
     request.nextUrl.pathname,
     resolvedLocale,
     locales
   );
+  // A retired account section link goes straight to its section's path.
+  const redirectUrl =
+    findLegacyAccountSectionRedirect(
+      resolvedLocale,
+      new URL(localizedUrl.href)
+    ) ?? localizedUrl;
 
   const response = NextResponse.redirect(redirectUrl);
   response.headers.set("Vary", "Accept-Language");
@@ -279,7 +322,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (request.method === "POST" && request.headers.has("next-action")) {
-    return NextResponse.next();
+    return continueRequest(request, { headersChanged: false });
   }
 
   if (
@@ -304,10 +347,15 @@ export async function proxy(request: NextRequest) {
   return localizedPageResponse(request);
 }
 
+// Every account route, dotted segments included, passes through the proxy: the
+// account sections' layout trusts the request pathname only because the proxy
+// replaces any value a client sent.
 export const config: MiddlewareConfig = {
   matcher: [
     "/admin/:path*",
     "/:locale/admin/:path*",
+    "/account/:path*",
+    "/:locale((?!api)[^/]+)/account/:path*",
     "/((?!api|_next/static|_next/image|favicon.ico|favicon.svg|.*\\..*).*)",
   ],
 };

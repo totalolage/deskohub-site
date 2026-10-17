@@ -1,12 +1,10 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { useAccountLayout } from "@/features/account/components/account-layout-shell";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
-import { LegalScreen } from "@/features/account/components/legal/legal-screen";
 import { SignInSecuritySection } from "@/features/account/components/passkeys/sign-in-security-section";
 import { useAccountPasskeys } from "@/features/account/components/passkeys/use-account-passkeys";
 import { ProfileCompletionReferralNotice } from "@/features/account/components/profile-completion-referral-notice";
@@ -17,7 +15,6 @@ import type {
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
 import type { AccountPasskeySettings } from "@/features/account/passkeys";
-import { getAccountPath } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import {
   formatReferralDiscount,
@@ -58,17 +55,12 @@ export function LinkedAccount({
   reservations,
   signupReferral,
 }: LinkedAccountProps) {
-  const pathname = usePathname();
   const {
     activeSection,
     changeSection,
     setReferralBadge,
     setReservationCount,
   } = useAccountLayout();
-  const normalizedPathname =
-    pathname === null ? null : pathname.replace(/\/+$/, "") || "/";
-  const isPrivateAccountPathname =
-    normalizedPathname === getAccountPath(locale);
   const profileSection = activeSection === "billing" ? "billing" : "profile";
   const copy = getAccountScreenCopy(locale);
   const accountPasskeys = useAccountPasskeys(passkeys);
@@ -139,10 +131,6 @@ export function LinkedAccount({
           hidden={activeSection !== "security"}
           locale={locale}
         />
-      )}
-
-      {activeSection === "legal" && isPrivateAccountPathname && (
-        <LegalScreen locale={locale} />
       )}
 
       <div hidden={activeSection !== "danger"}>

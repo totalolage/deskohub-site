@@ -22,6 +22,7 @@ import {
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
 import { getAdministrationReservationListDateRange } from "./reservation-date-range";
+import { getAdministrationReservationProductTitle } from "./reservation-product";
 import {
   getDotyposCustomerRouteId,
   requireDotyposCustomerRouteId,
@@ -189,15 +190,14 @@ export const loadAdministrationReservation = cache(async (id: string) => {
 });
 
 export const loadAdministrationReservationBreadcrumbLabel = cache(
-  async (id: string) => {
+  async (id: string, locale: Locale) => {
     await authorizeAdministratorPage();
     const reservationId = requireWorkspaceReservationRouteId(id);
-    return Effect.gen(function* () {
+    const product = await Effect.gen(function* () {
       const administration = yield* AdministrationService;
-      return yield* administration.loadReservationBreadcrumbLabel(
-        reservationId
-      );
+      return yield* administration.loadReservationProduct(reservationId);
     }).pipe(runAdministration("administration.reservation-breadcrumb"));
+    return product && getAdministrationReservationProductTitle(product, locale);
   }
 );
 

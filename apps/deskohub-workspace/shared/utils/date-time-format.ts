@@ -81,3 +81,18 @@ export const formatPlainDateRange = ({
     plainDateToDate(start),
     plainDateToDate(end)
   );
+
+/** The locale's short name for an ISO weekday, 1 (Monday) to 7 (Sunday). */
+export const formatWeekday = ({
+  isoDay,
+  locale,
+}: {
+  readonly isoDay: number;
+  readonly locale: Intl.LocalesArgument;
+}) =>
+  new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" }).format(
+    // 2024-01-01 is a Monday, so `isoDay` 1–7 picks Monday–Sunday.
+    plainDateToDate(
+      Temporal.PlainDate.from({ year: 2024, month: 1, day: isoDay })
+    )
+  );

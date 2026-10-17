@@ -347,6 +347,14 @@ describe.skipIf(!testDatabase)(
       expect(activity.stats.revenue).toEqual([
         { value: 65_000, exponent: 2, currency: "CZK" },
       ]);
+      // The Admin UI names products from these codes in the operator's language.
+      expect(activity.stats.favoriteReservationProduct).toEqual({
+        kind: "cowork",
+        tier: "open-space",
+      });
+      expect(
+        activity.transactions.map(({ reservation }) => reservation.product)
+      ).toEqual(payments.map(() => ({ kind: "cowork", tier: "open-space" })));
     });
 
     describe("refund attention", () => {

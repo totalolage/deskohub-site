@@ -3,10 +3,11 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { Effect } from "effect";
 import { createElement, useState } from "react";
 import {
-  type AccountSection,
   AccountShell,
   type AccountShellProps,
 } from "@/features/account/components/shell/account-shell";
+import { getAccountSectionPath } from "@/features/account/routes";
+import type { AccountSection } from "@/features/account/sections";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -28,6 +29,8 @@ const sections = [
   "legal",
   "danger",
 ] as const satisfies readonly AccountSection[];
+
+const accountSectionDataAttribute = "data-account-section";
 
 const shellLabels = {
   mobileSection: "Account section",
@@ -113,6 +116,7 @@ function AccountShellHarness({
         labels,
         onSectionChange: setActiveSection,
         reservationCount,
+        sectionHref: (section) => getAccountSectionPath("en-US", section),
         signOut: createElement("button", { type: "button" }, "Sign out"),
         title: "Workspace account",
       },
@@ -212,9 +216,13 @@ const makeFakePage = (
         "exact" in roleOptions
           ? (roleOptions as { readonly exact?: unknown }).exact !== false
           : true;
-      const candidates = Array.from(
-        document.querySelectorAll<HTMLElement>("button")
-      );
+      const candidates: HTMLElement[] = [];
+      if (role === "link") {
+        candidates.push(...document.querySelectorAll<HTMLElement>("a"));
+      }
+      if (role === "button") {
+        candidates.push(...document.querySelectorAll<HTMLElement>("button"));
+      }
       const match = candidates.find((element) => {
         if (!elementIsVisible(element, width)) return false;
         const accessibleName =
@@ -326,16 +334,19 @@ test("selects every section through rendered desktop AccountShell controls", asy
     expect(landmark).toBeTruthy();
     expect(landmark?.closest("[hidden]")).toBeNull();
 
-    const button = Array.from(
+    const link = Array.from(
       document.querySelectorAll(
-        'nav[aria-label="Account navigation"] button:not([data-account-section])'
+        'nav[aria-label="Account navigation"] a:not([data-account-section])'
       )
     ).find(
       (candidate) =>
         candidate.textContent?.replaceAll(/\s+/g, " ").trim() ===
         accountSectionLabels[section]
     );
-    expect(button?.getAttribute("aria-current")).toBe("page");
+    expect(link?.getAttribute("aria-current")).toBe("page");
+    expect(link?.getAttribute("href")).toBe(
+      getAccountSectionPath("en-US", section)
+    );
   }
 });
 
@@ -383,7 +394,7 @@ test("does not accept a misleading Reservations label prefix", async () => {
   );
 });
 
-test("selects every section through visible mobile section buttons", async () => {
+test("selects every section through visible mobile section links", async () => {
   const page = makeFakePage(375);
   render(createElement(AccountShellHarness));
 
@@ -393,12 +404,15 @@ test("selects every section through visible mobile section buttons", async () =>
     const mobileNavigation = document.querySelector(
       "[data-account-mobile-navigation]"
     );
-    const button = mobileNavigation?.querySelector<HTMLButtonElement>(
-      `[data-account-section="${section}"]`
+    const link = mobileNavigation?.querySelector<HTMLAnchorElement>(
+      `[${accountSectionDataAttribute}="${section}"]`
     );
-    expect(button?.getAttribute("aria-current")).toBe("page");
+    expect(link?.getAttribute("aria-current")).toBe("page");
+    expect(link?.getAttribute("href")).toBe(
+      getAccountSectionPath("en-US", section)
+    );
     expect(
-      mobileNavigation?.querySelectorAll('button[aria-current="page"]')
+      mobileNavigation?.querySelectorAll('a[aria-current="page"]')
     ).toHaveLength(1);
     expect(
       document
@@ -418,13 +432,13 @@ test("resolves the responsive section variant when viewport size is unavailable"
     for (const section of sections) {
       await selectAccountSection(page, section);
 
-      const activeButtons = document.querySelectorAll(
+      const activeLinks = document.querySelectorAll(
         mode === "mobile"
-          ? '[data-account-mobile-navigation] button[aria-current="page"]'
-          : 'nav[aria-label="Account navigation"] button:not([data-account-section])[aria-current="page"]'
+          ? '[data-account-mobile-navigation] a[aria-current="page"]'
+          : 'nav[aria-label="Account navigation"] a:not([data-account-section])[aria-current="page"]'
       );
-      expect(activeButtons).toHaveLength(1);
-      expect(activeButtons[0]?.textContent?.trim()).toBe(
+      expect(activeLinks).toHaveLength(1);
+      expect(activeLinks[0]?.textContent?.trim()).toBe(
         accountSectionLabels[section]
       );
       expect(
@@ -436,22 +450,22 @@ test("resolves the responsive section variant when viewport size is unavailable"
   }
 });
 
-test("waits for the rendered section button handler before clicking it", async () => {
+test("waits for the rendered section link handler before clicking it", async () => {
   const calls: string[] = [];
-  let buttonHandlerAttached = false;
-  let restoreButtonHandler = () => {};
+  let linkHandlerAttached = false;
+  let restoreLinkHandler = () => {};
   const page = makeFakePage(1440, {
     onClick: () => {
       calls.push("click");
-      if (!buttonHandlerAttached) {
-        throw new Error("account section button handler was not attached");
+      if (!linkHandlerAttached) {
+        throw new Error("account section link handler was not attached");
       }
     },
     onWait: async (argument) => {
       if (argument instanceof Element) {
-        calls.push("wait:button-handler");
+        calls.push("wait:link-handler");
         await Promise.resolve();
-        restoreButtonHandler();
+        restoreLinkHandler();
         return;
       }
       if (typeof argument === "string") {
@@ -463,35 +477,33 @@ test("waits for the rendered section button handler before clicking it", async (
   });
   render(createElement(AccountShellHarness));
 
-  const billingButton = Array.from(
-    document.querySelectorAll<HTMLButtonElement>("button")
-  ).find((button) =>
-    button.textContent
+  const billingLink = Array.from(
+    document.querySelectorAll<HTMLAnchorElement>("a")
+  ).find((link) =>
+    link.textContent
       ?.replaceAll(/\s+/g, " ")
       .trim()
       .includes("Billing & Invoices")
   );
-  if (billingButton === undefined)
-    throw new Error("rendered Billing button was not found");
-  const reactPropsKey = Object.keys(billingButton).find((key) =>
+  if (billingLink === undefined)
+    throw new Error("rendered Billing link was not found");
+  const reactPropsKey = Object.keys(billingLink).find((key) =>
     key.startsWith("__reactProps$")
   );
   if (reactPropsKey === undefined)
-    throw new Error("rendered Billing button has no React props");
+    throw new Error("rendered Billing link has no React props");
   const reactPropsDescriptor = Object.getOwnPropertyDescriptor(
-    billingButton,
+    billingLink,
     reactPropsKey
   );
   if (reactPropsDescriptor === undefined)
-    throw new Error(
-      "rendered Billing button React props descriptor is missing"
-    );
+    throw new Error("rendered Billing link React props descriptor is missing");
 
-  if (!Reflect.deleteProperty(billingButton, reactPropsKey))
-    throw new Error("could not defer the rendered Billing button handler");
-  restoreButtonHandler = () => {
-    Object.defineProperty(billingButton, reactPropsKey, reactPropsDescriptor);
-    buttonHandlerAttached = true;
+  if (!Reflect.deleteProperty(billingLink, reactPropsKey))
+    throw new Error("could not defer the rendered Billing link handler");
+  restoreLinkHandler = () => {
+    Object.defineProperty(billingLink, reactPropsKey, reactPropsDescriptor);
+    linkHandlerAttached = true;
   };
 
   await selectAccountSection(page, "billing", (stage) =>
@@ -499,23 +511,23 @@ test("waits for the rendered section button handler before clicking it", async (
   );
 
   expect(calls).toEqual([
-    "stage:button-handler-wait",
-    "wait:button-handler",
+    "stage:link-handler-wait",
+    "wait:link-handler",
     "stage:panel-hydration-wait",
     "wait:panel-hydration:[data-screen='profile-screen']",
-    "stage:native-button-click",
+    "stage:native-link-click",
     "click",
     "stage:selected-landmark-wait",
     "wait:section-ready",
   ]);
-  expect(billingButton.getAttribute("aria-current")).toBe("page");
+  expect(billingLink.getAttribute("aria-current")).toBe("page");
 });
 
 test.each([
   { desktop: true, navigation: "desktop" },
   { desktop: false, navigation: "mobile" },
 ] as const)(
-  "clicks the $navigation section button after panel hydration in the Runner adapter",
+  "clicks the $navigation section link after panel hydration in the Runner adapter",
   async ({ desktop, navigation }) => {
     const { clicked, commands, run } = makeDomRunner(desktop);
     render(createElement(AccountShellHarness));
@@ -525,13 +537,13 @@ test.each([
     );
 
     expect(commands).toEqual(["eval", "wait", "click", "wait"]);
-    const [button] = clicked;
+    const [link] = clicked;
     expect(
-      button?.closest("[data-account-mobile-navigation]") === null
+      link?.closest("[data-account-mobile-navigation]") === null
         ? "desktop"
         : "mobile"
     ).toBe(navigation);
-    expect(button?.getAttribute("aria-current")).toBe("page");
+    expect(link?.getAttribute("aria-current")).toBe("page");
     expect(
       document
         .querySelector(accountSectionLandmarks.billing)
@@ -557,5 +569,5 @@ test("does not click a section before its streamed panel is hydrated", async () 
   await expect(
     selectAccountSection(page, "profile", (stage) => calls.push(stage))
   ).rejects.toThrow("fake account section did not settle");
-  expect(calls).toEqual(["button-handler-wait", "panel-hydration-wait"]);
+  expect(calls).toEqual(["link-handler-wait", "panel-hydration-wait"]);
 });

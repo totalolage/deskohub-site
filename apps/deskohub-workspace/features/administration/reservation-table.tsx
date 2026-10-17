@@ -10,6 +10,7 @@ import type {
   AdministrationReservationSort,
   AdministrationReservationSummary,
 } from "./administration.service";
+import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -19,18 +20,26 @@ import {
   formatAdministrationDateTime,
   formatAdministrationReservationDate,
 } from "./formatters";
+import { m } from "./i18n";
 import { NexiOrderLink } from "./nexi-order-link";
 import { PaymentAmount, PaymentStatusText } from "./payment-status";
-import type { AdministrationReservationStatus } from "./reservation-status";
+import {
+  getAdministrationReservationStatusLabel,
+  getAdministrationReservationStatusNoteLabel,
+} from "./reservation-presentation";
+import { getAdministrationReservationProductTitle } from "./reservation-product";
+import type { AdministrationStatusGroup } from "./reservation-status";
 import {
   type AdministrationTableSorting,
   getAdministrationTableSortHref,
 } from "./table-sort";
 
 function ReservationStatusBadge({
-  status,
+  group,
+  label,
 }: {
-  readonly status: AdministrationReservationStatus;
+  readonly group: AdministrationStatusGroup;
+  readonly label: string;
 }) {
   return (
     <StatusBadge
@@ -40,10 +49,10 @@ function ReservationStatusBadge({
           cancelled: "neutral",
           complete: "positive",
           in_progress: "progress",
-        }[status.group] as "attention" | "neutral" | "positive" | "progress"
+        }[group] as "attention" | "neutral" | "positive" | "progress"
       }
     >
-      {status.label}
+      {label}
     </StatusBadge>
   );
 }
@@ -54,7 +63,7 @@ export type ReservationTableSorting =
   };
 
 export function ReservationTable({
-  emptyMessage = "No reservations match this view.",
+  emptyMessage,
   reservations,
   showCustomer = true,
   sorting,
@@ -75,33 +84,47 @@ export function ReservationTable({
         cell: ({ row }) => (
           <ReservationDate locale={locale} reservation={row.original} />
         ),
-        header: "Date",
+        header: m.administrationReservationTableDate({}, { locale }),
         id: "date",
       },
       {
-        accessorFn: (reservation) => reservation.status.label,
-        cell: ({ row }) => <ReservationStatus reservation={row.original} />,
-        header: "Status",
+        accessorFn: (reservation) =>
+          getAdministrationReservationStatusLabel(
+            reservation.status.code,
+            locale
+          ),
+        cell: ({ row }) => (
+          <ReservationStatus locale={locale} reservation={row.original} />
+        ),
+        header: m.administrationReservationTableStatus({}, { locale }),
         id: "status",
       },
       ...(showCustomer
         ? [
             {
               accessorFn: (reservation) =>
-                reservation.customer?.displayName ?? "",
+                reservation.customer
+                  ? getAdministrationCustomerName(reservation.customer, locale)
+                  : "",
               cell: ({ row }) => (
-                <ReservationCustomer reservation={row.original} />
+                <ReservationCustomer
+                  locale={locale}
+                  reservation={row.original}
+                />
               ),
               enableSorting: false,
-              header: "Customer",
+              header: m.administrationReservationTableCustomer({}, { locale }),
               id: "customer",
             } satisfies AdministrationDataTableColumn<AdministrationReservationSummary>,
           ]
         : []),
       {
-        accessorKey: "typeLabel",
-        cell: ({ row }) => <ReservationReference reservation={row.original} />,
-        header: "Reservation",
+        accessorFn: (reservation) =>
+          getAdministrationReservationProductTitle(reservation.product, locale),
+        cell: ({ row }) => (
+          <ReservationReference locale={locale} reservation={row.original} />
+        ),
+        header: m.administrationReservationTableReservation({}, { locale }),
         id: "reservation",
       },
       {
@@ -111,7 +134,7 @@ export function ReservationTable({
             {formatAdministrationDateTime(row.original.createdAt, locale)}
           </span>
         ),
-        header: "Created",
+        header: m.administrationReservationTableCreated({}, { locale }),
         id: "created",
       },
       {
@@ -120,7 +143,7 @@ export function ReservationTable({
           <ReservationPayment locale={locale} reservation={row.original} />
         ),
         enableSorting: false,
-        header: "Payment",
+        header: m.administrationReservationTablePayment({}, { locale }),
         id: "payment",
       },
     ],
@@ -128,12 +151,18 @@ export function ReservationTable({
   );
 
   if (reservations.length === 0) {
-    return <EmptyState message={emptyMessage} />;
+    return (
+      <EmptyState
+        message={
+          emptyMessage ?? m.administrationReservationTableEmpty({}, { locale })
+        }
+      />
+    );
   }
 
   return (
     <AdministrationDataTable
-      ariaLabel="Reservations"
+      ariaLabel={m.administrationReservationTableLabel({}, { locale })}
       columns={columns}
       data={reservations}
       getRowId={(reservation) => reservation.id}
@@ -160,23 +189,40 @@ export function ReservationTable({
                         className="underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
                         href={`/admin/reservations/${reservation.id}`}
                       >
-                        {showCustomer
-                          ? (reservation.customer?.displayName ??
-                            reservation.typeLabel)
-                          : reservation.typeLabel}
+                        {(showCustomer &&
+                          reservation.customer &&
+                          getAdministrationCustomerName(
+                            reservation.customer,
+                            locale
+                          )) ||
+                          getAdministrationReservationProductTitle(
+                            reservation.product,
+                            locale
+                          )}
                       </Link>
                     </p>
                     <p className="mt-1 text-sm text-navy-blue/65">
                       {formatAdministrationReservationDate(
                         reservation,
                         locale
-                      ) ?? "Booking details unavailable"}
+                      ) ??
+                        m.administrationReservationBookingDetailsUnavailable(
+                          {},
+                          { locale }
+                        )}
                     </p>
                   </div>
-                  <ReservationStatus reservation={reservation} alignRight />
+                  <ReservationStatus
+                    alignRight
+                    locale={locale}
+                    reservation={reservation}
+                  />
                 </div>
                 <p className="mt-3 text-xs text-navy-blue/65">
-                  {reservation.typeLabel}
+                  {getAdministrationReservationProductTitle(
+                    reservation.product,
+                    locale
+                  )}
                   {reservation.latestPayment && (
                     <>
                       {" "}
@@ -226,30 +272,45 @@ function ReservationDate({
         href={`/admin/reservations/${reservation.id}`}
       >
         {formatAdministrationReservationDate(reservation, locale) ??
-          "Date unavailable"}
+          m.administrationReservationDateUnavailable({}, { locale })}
       </Link>
-      <p className="mt-1 text-xs text-navy-blue/65">{reservation.typeLabel}</p>
+      <p className="mt-1 text-xs text-navy-blue/65">
+        {getAdministrationReservationProductTitle(reservation.product, locale)}
+      </p>
     </>
   );
 }
 
 function ReservationStatus({
   alignRight = false,
+  locale,
   reservation,
 }: {
   readonly alignRight?: boolean;
+  readonly locale: Locale;
   readonly reservation: AdministrationReservationSummary;
 }) {
+  const statusLabel = getAdministrationReservationStatusLabel(
+    reservation.status.code,
+    locale
+  );
   return (
     <div className={alignRight ? "space-y-1.5 text-right" : "space-y-1.5"}>
-      {reservation.statusNote ? (
+      {reservation.statusNoteCode ? (
         <ReservationStatusBadge
-          status={{ group: "attention", label: reservation.statusNote }}
+          group="attention"
+          label={getAdministrationReservationStatusNoteLabel(
+            reservation.statusNoteCode,
+            locale
+          )}
         />
       ) : (
-        <ReservationStatusBadge status={reservation.status} />
+        <ReservationStatusBadge
+          group={reservation.status.group}
+          label={statusLabel}
+        />
       )}
-      {reservation.statusNote && (
+      {reservation.statusNoteCode && (
         <p
           className={
             alignRight
@@ -257,7 +318,10 @@ function ReservationStatus({
               : "text-xs text-navy-blue/65"
           }
         >
-          Deskohub: {reservation.status.label}
+          {m.administrationReservationDeskohubStatus(
+            { status: statusLabel },
+            { locale }
+          )}
         </p>
       )}
     </div>
@@ -265,13 +329,17 @@ function ReservationStatus({
 }
 
 function ReservationCustomer({
+  locale,
   reservation,
 }: {
+  readonly locale: Locale;
   readonly reservation: AdministrationReservationSummary;
 }) {
   if (!reservation.customer) {
     return (
-      <span className="text-sm text-navy-blue/65">Details unavailable</span>
+      <span className="text-sm text-navy-blue/65">
+        {m.administrationReservationCustomerDetailsUnavailable({}, { locale })}
+      </span>
     );
   }
   return (
@@ -280,25 +348,29 @@ function ReservationCustomer({
         className="relative z-10 font-medium hover:underline"
         href={`/admin/customers/${reservation.customerId}`}
       >
-        {reservation.customer.displayName}
+        {getAdministrationCustomerName(reservation.customer, locale)}
       </Link>
       <p className="mt-1 text-xs text-navy-blue/65">
         {reservation.customer.email ??
           reservation.customer.phone ??
-          "No contact details"}
+          m.administrationReservationNoContactDetails({}, { locale })}
       </p>
     </>
   );
 }
 
 function ReservationReference({
+  locale,
   reservation,
 }: {
+  readonly locale: Locale;
   readonly reservation: AdministrationReservationSummary;
 }) {
   return (
     <>
-      <p className="font-medium">{reservation.typeLabel}</p>
+      <p className="font-medium">
+        {getAdministrationReservationProductTitle(reservation.product, locale)}
+      </p>
       <p className="mt-1 font-mono text-xs text-navy-blue/65">
         {reservation.id.slice(0, 12)}…
       </p>
@@ -347,7 +419,10 @@ function PaymentLink({
 }) {
   return (
     <NexiOrderLink
-      accessibleLabel={`Payment ${providerOrderId}`}
+      accessibleLabel={m.administrationReservationPaymentLinkLabel(
+        { orderId: providerOrderId },
+        { locale }
+      )}
       className={className}
       locale={locale}
       orderId={providerOrderId}
