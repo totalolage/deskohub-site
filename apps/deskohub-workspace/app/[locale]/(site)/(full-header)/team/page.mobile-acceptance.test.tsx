@@ -31,6 +31,10 @@ mock.module("@/features/i18n/server/request-locale", () => ({
 mock.module("@/features/account/server/customer-session.server", () => ({
   isCustomerSignedIn: async () => false,
 }));
+mock.module(
+  "@/features/administrators/server/current-account-administrator.server",
+  () => ({ isCurrentAccountAdministrator: async () => false })
+);
 mock.module("@/features/account/actions", () => ({
   updateLocalePreference: async () => undefined,
 }));
