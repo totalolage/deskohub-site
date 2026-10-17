@@ -17,11 +17,13 @@ import {
   createStandaloneAccessCodeInputSchema,
   decodeCreateStandaloneAccessCodeResult,
   encodeCreateStandaloneAccessCodeResult,
+  formatStandaloneAccessCodeDuration,
   isStandaloneAccessCodeLocalDateTime,
   isStandaloneAccessCodeWindowValid,
   shiftStandaloneAccessCodeLocalEnd,
   standaloneAccessCodeEarliestLocalEnd,
   standaloneAccessCodeElapsedHours,
+  standaloneAccessCodeFailureNotice,
   toStandaloneAccessCodeCreationFailure,
 } from "./create-access-code";
 
@@ -268,11 +270,13 @@ describe("standalone access-code failure mapping", () => {
 });
 
 describe("standalone access-code form schema", () => {
-  const formStandardSchema = Schema.toStandardSchemaV1(
-    createStandaloneAccessCodeFormSchema
-  );
-  const validateForm = async (values: CreateStandaloneAccessCodeFormInput) => {
-    const result = await formStandardSchema["~standard"].validate(values);
+  const validateForm = async (
+    values: CreateStandaloneAccessCodeFormInput,
+    locale: "en-US" | "cs-CZ" = "en-US"
+  ) => {
+    const result = await Schema.toStandardSchemaV1(
+      createStandaloneAccessCodeFormSchema(locale)
+    )["~standard"].validate(values);
     return result.issues
       ? Object.groupBy(
           result.issues.map((issue) => ({
@@ -315,6 +319,28 @@ describe("standalone access-code form schema", () => {
     });
   });
 
+  test("reports field errors in the route locale", async () => {
+    const missing = await validateForm(
+      createStandaloneAccessCodeFormDefaults,
+      "cs-CZ"
+    );
+    expect(missing.name?.map(({ message }) => message)).toEqual([
+      "Zadejte název tohoto přístupového kódu.",
+    ]);
+
+    const outOfWindow = await validateForm(
+      {
+        name: validWindow.name,
+        startsAt: "2026-09-10T12:00",
+        endsAt: "2026-09-10T10:00",
+      },
+      "cs-CZ"
+    );
+    expect(outOfWindow.endsAt?.map(({ message }) => message)).toEqual([
+      "Konec musí být 1 až 672 hodin po začátku.",
+    ]);
+  });
+
   test("keeps window errors off fields that are individually invalid", async () => {
     const issues = await validateForm({
       name: validWindow.name,
@@ -326,5 +352,24 @@ describe("standalone access-code form schema", () => {
     expect(issues.startsAt?.map(({ message }) => message)).toEqual([
       "Choose a valid start time on the whole hour.",
     ]);
+  });
+});
+
+describe("standalone access-code copy", () => {
+  test("formats the window duration with the locale's plural forms", () => {
+    expect(formatStandaloneAccessCodeDuration(1, "en-US")).toBe("1 hour");
+    expect(formatStandaloneAccessCodeDuration(24, "en-US")).toBe("24 hours");
+    expect(formatStandaloneAccessCodeDuration(1, "cs-CZ")).toBe("1 hodina");
+    expect(formatStandaloneAccessCodeDuration(2, "cs-CZ")).toBe("2 hodiny");
+    expect(formatStandaloneAccessCodeDuration(24, "cs-CZ")).toBe("24 hodin");
+  });
+
+  test("localizes the notice of each failure without lock cleanup", () => {
+    expect(standaloneAccessCodeFailureNotice("in-progress", "en-US")).toBe(
+      "This access code is already being created. Wait a moment and try again."
+    );
+    expect(standaloneAccessCodeFailureNotice("unavailable", "cs-CZ")).toBe(
+      "Vytváření přístupových kódů je dočasně nedostupné. Zkuste to znovu za několik minut."
+    );
   });
 });

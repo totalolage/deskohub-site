@@ -18,16 +18,14 @@ import {
   render,
   waitFor,
 } from "@testing-library/react";
-import { setLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
+import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import {
-  shiftStandaloneAccessCodeLocalEnd,
-  standaloneAccessCodeCleanupConfirmationLabel,
-} from "./create-access-code";
+import { shiftStandaloneAccessCodeLocalEnd } from "./create-access-code";
 
 const writeText = mock(() => Promise.resolve());
 const execute = mock();
@@ -126,6 +124,9 @@ const cleanupRequiredFailure = (cleanupTarget: {
   outcome: { outcome: "cleanup-required" as const, cleanupTarget },
 });
 
+const standaloneAccessCodeCleanupConfirmationLabel =
+  "I removed the named access code at the lock, or verified that it is absent.";
+
 const cleanupTargetNotice = (name: string) =>
   "Before creating another code for this window, check the lock in the " +
   `Igloohome app over Bluetooth and remove “${name}” if it is there.`;
@@ -156,11 +157,16 @@ const submitCleanupConfirmation = async (view: ReturnType<typeof render>) => {
   });
 };
 
-const renderForm = async () => {
+// The root layout provides the locale of the current route.
+const renderForm = async (locale: Locale = "en-US") => {
   const { CreateStandaloneAccessCodeForm } = await import(
     "./create-access-code-form"
   );
-  return render(<CreateStandaloneAccessCodeForm />);
+  return render(
+    <RouteLocaleProvider locale={locale}>
+      <CreateStandaloneAccessCodeForm />
+    </RouteLocaleProvider>
+  );
 };
 
 describe("CreateStandaloneAccessCodeForm", () => {
@@ -468,35 +474,133 @@ describe("CreateStandaloneAccessCodeForm", () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
-  test("rejects an unchecked cleanup confirmation with a localized field error", async () => {
-    await setLocale("cs-CZ", { reload: false });
-    try {
-      withActionOptions();
-      const view = await renderForm();
-      fillForm(view);
-      await submitForm(view);
+  test("renders the form, duration, notices and cleanup in Czech on a cs-CZ route", async () => {
+    withActionOptions();
+    const view = await renderForm("cs-CZ");
+    fireEvent.input(view.getByLabelText("Název"), {
+      target: { value: "Booth A" },
+    });
+    fireEvent.input(view.getByLabelText("Začátek"), {
+      target: { value: "2026-09-10T10:00" },
+    });
+    fireEvent.input(view.getByLabelText("Konec"), {
+      target: { value: "2026-09-10T12:00" },
+    });
+    expect(
+      view.getByText("Časové okno přístupu (Europe/Prague)")
+    ).toBeDefined();
+    await waitFor(() =>
+      expect(view.getByText("Trvání: 2 hodiny")).toBeDefined()
+    );
 
-      act(() => {
-        actionOptions?.onSuccess({
-          data: ambiguousFailure({
-            attemptId: priorAttemptId,
-            name: "Booth A",
-          }),
-        });
+    const form = view.getByRole("form", {
+      name: "Vytvoření přístupového kódu",
+    });
+    expect(
+      view.getByRole("button", { name: "Vytvořit přístupový kód" })
+    ).toBeDefined();
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+    act(() => {
+      actionOptions?.onSuccess({
+        data: { status: "failed", outcome: { outcome: "rejected" } },
       });
+    });
+    expect(
+      view.getByText(
+        "Poskytovatel tento přístupový kód odmítl. Upravte údaje a zkuste to znovu."
+      )
+    ).toBeDefined();
 
-      expect(
-        view
-          .getByRole("button", { name: "Create another access code" })
-          .hasAttribute("disabled")
-      ).toBe(true);
-      await submitCleanupConfirmation(view);
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+    act(() => {
+      actionOptions?.onSuccess({
+        data: ambiguousFailure({ attemptId: priorAttemptId, name: "Booth A" }),
+      });
+    });
+    expect(
+      view.getByText(
+        "Než pro toto časové okno vytvoříte další kód, zkontrolujte zámek v aplikaci Igloohome přes Bluetooth, a pokud na něm je „Booth A“, odstraňte ho."
+      )
+    ).toBeDefined();
+    expect(
+      view
+        .getByRole("button", { name: "Vytvořit další přístupový kód" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+    await act(async () => {
+      fireEvent.submit(
+        view.getByRole("form", { name: "Potvrzení kontroly zámku" })
+      );
+    });
 
-      expect(view.getByText("Toto pole je povinné.")).toBeDefined();
-      expect(execute).toHaveBeenCalledTimes(1);
-    } finally {
-      await setLocale("en-US", { reload: false });
-    }
+    expect(
+      view.getByText("Před pokračováním potvrďte kontrolu zámku.")
+    ).toBeDefined();
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  test("shows a timed-out attempt in Czech on a cs-CZ route", async () => {
+    withActionOptions();
+    const view = await renderForm("cs-CZ");
+
+    act(() => {
+      actionOptions?.onError({
+        error: { serverError: "Request timed out. Please try again." },
+      });
+    });
+
+    expect(
+      view.getByText("Server neodpověděl včas. Zkuste to znovu.")
+    ).toBeDefined();
+    expect(view.queryByText("Request timed out. Please try again.")).toBeNull();
+  });
+
+  test("shows the one-time pin result in Czech on a cs-CZ route", async () => {
+    withActionOptions();
+    const view = await renderForm("cs-CZ");
+
+    act(() => {
+      actionOptions?.onSuccess({
+        data: { status: "succeeded", outcome: createdOutcome },
+      });
+    });
+
+    expect(view.getByText("Platí od")).toBeDefined();
+    expect(view.getByText("10. 9. 2026 10:00")).toBeDefined();
+    expect(view.getByText("2 hodiny")).toBeDefined();
+    expect(view.getByRole("button", { name: "Zkopírovat kód" })).toBeDefined();
+  });
+
+  test("rejects an unchecked cleanup confirmation with a field error", async () => {
+    withActionOptions();
+    const view = await renderForm();
+    fillForm(view);
+    await submitForm(view);
+
+    act(() => {
+      actionOptions?.onSuccess({
+        data: ambiguousFailure({
+          attemptId: priorAttemptId,
+          name: "Booth A",
+        }),
+      });
+    });
+
+    expect(
+      view
+        .getByRole("button", { name: "Create another access code" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+    await submitCleanupConfirmation(view);
+
+    expect(
+      view.getByText("Confirm the lock check before you continue.")
+    ).toBeDefined();
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 
   test("requires explicit confirmation before recreating an ambiguous window", async () => {

@@ -31,8 +31,8 @@ async function VoucherAdminDetail({
   readonly params: Promise<{ readonly voucherId: string }>;
   readonly searchParams: DiscountAdminSearchParams;
 }) {
-  const { voucherId } = await params;
   const locale = await getRequestLocale();
+  const { voucherId } = await params;
   const decodedVoucherId = Option.getOrElse(
     Schema.decodeUnknownOption(voucherIdSchema)(voucherId),
     () => notFound()

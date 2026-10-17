@@ -10,6 +10,8 @@ import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import type { InvoiceAdministrationCustomer } from "@/features/accounting/admin/invoice-administration.service";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { AdministrationAlert } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
@@ -34,40 +36,18 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
+import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { getInvoiceAdminActionFailureMessage } from "./action-failure-message";
 import {
   createAdministrationInvoice,
   previewAdministrationInvoice,
   searchAdministrationInvoiceCustomers,
 } from "./actions";
+import { getInvoiceCustomerName } from "./invoice-display";
 
 const selectClassName =
   "flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20";
-
-const customerSourceOptions = [
-  { label: "Existing", value: "existing" },
-  { label: "New", value: "new" },
-] as const;
-
-const requiredMessage = "This field is required.";
-
-const maxLengthMessage = (maximumLength: number) =>
-  `Use at most ${maximumLength} characters.`;
-
-const invoiceFormRequiredText = (maximumLength: number) =>
-  Schema.Trim.check(
-    Schema.isNonEmpty({ message: requiredMessage }),
-    Schema.isMaxLength(maximumLength, {
-      message: maxLengthMessage(maximumLength),
-    })
-  );
-
-const invoiceFormOptionalText = (maximumLength: number) =>
-  Schema.Trim.check(
-    Schema.isMaxLength(maximumLength, {
-      message: maxLengthMessage(maximumLength),
-    })
-  );
 
 const isCalendarDate = (value: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -77,110 +57,121 @@ const isCalendarDate = (value: string) => {
   );
 };
 
-const calendarDateMessage = "Enter a valid calendar date.";
-
-const invoiceFormCalendarDate = Schema.Trim.check(
-  Schema.isNonEmpty({ message: requiredMessage }),
-  Schema.makeFilter(isCalendarDate, { message: calendarDateMessage })
-);
-
-const invoiceFormEmail = Schema.Trim.check(
-  Schema.isNonEmpty({ message: requiredMessage }),
-  Schema.isMaxLength(255, { message: maxLengthMessage(255) }),
-  Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, {
-    message: "Enter a valid invoice email.",
-  })
-);
-
-const invoiceFormPrice = Schema.Trim.check(
-  Schema.isNonEmpty({ message: requiredMessage }),
-  Schema.isPattern(/^[+-]?\d+(?:\.\d+)?$/, {
-    message: "Enter a valid line price.",
-  })
-);
-
-const invoiceFormLine = Schema.Struct({
-  id: Schema.String,
-  description: invoiceFormRequiredText(1000),
-  price: invoiceFormPrice,
-});
-
-const invoiceFormAddress = {
-  line1: invoiceFormRequiredText(180),
-  line2: invoiceFormOptionalText(180),
-  city: invoiceFormRequiredText(255),
-  postalCode: invoiceFormRequiredText(20),
-  country: Schema.Trim.check(
-    Schema.isPattern(/^[A-Za-z]{2}$/, { message: requiredMessage })
-  ),
+export const createInvoiceFormSchema = (locale: Locale) => {
+  const requiredMessage = m.accountingInvoiceFormRequired({}, { locale });
+  const calendarDateMessage = m.accountingInvoiceFormCalendarDateInvalid(
+    {},
+    { locale }
+  );
+  const maxLength = (maximumLength: number) =>
+    Schema.isMaxLength(maximumLength, {
+      message: m.accountingInvoiceFormMaxLength({ maximumLength }, { locale }),
+    });
+  const requiredText = (maximumLength: number) =>
+    Schema.Trim.check(
+      Schema.isNonEmpty({ message: requiredMessage }),
+      maxLength(maximumLength)
+    );
+  const optionalText = (maximumLength: number) =>
+    Schema.Trim.check(maxLength(maximumLength));
+  const email = Schema.Trim.check(
+    Schema.isNonEmpty({ message: requiredMessage }),
+    maxLength(255),
+    Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, {
+      message: m.accountingInvoiceFormEmailInvalid({}, { locale }),
+    })
+  );
+  const address = {
+    line1: requiredText(180),
+    line2: optionalText(180),
+    city: requiredText(255),
+    postalCode: requiredText(20),
+    country: Schema.Trim.check(
+      Schema.isPattern(/^[A-Za-z]{2}$/, { message: requiredMessage })
+    ),
+  };
+  const values = Schema.Struct({
+    customer: Schema.Union([
+      Schema.Struct({
+        customerType: Schema.Literal("person"),
+        email,
+        firstName: requiredText(100),
+        lastName: requiredText(100),
+        // Business-only values: a type switch retains them in form state, but
+        // a person payload never sends them, so they stay unconstrained here.
+        companyName: Schema.String,
+        companyId: Schema.String,
+        vatId: Schema.String,
+        phone: optionalText(20),
+        ...address,
+      }),
+      Schema.Struct({
+        customerType: Schema.Literal("business"),
+        email,
+        firstName: optionalText(100),
+        lastName: optionalText(100),
+        companyName: requiredText(180),
+        companyId: requiredText(255),
+        vatId: optionalText(255),
+        phone: optionalText(20),
+        ...address,
+      }),
+    ]),
+    locale: Schema.Literals(["cs-CZ", "en-US"]),
+    serviceDate: Schema.Trim.check(
+      Schema.isNonEmpty({ message: requiredMessage }),
+      Schema.makeFilter(isCalendarDate, { message: calendarDateMessage })
+    ),
+    paid: Schema.Boolean,
+    paidOn: Schema.Trim,
+    dueDate: Schema.Trim,
+    currency: Schema.String.check(
+      Schema.isPattern(/^[A-Z]{3}$/, { message: requiredMessage })
+    ),
+    variableSymbol: Schema.String.check(
+      Schema.makeFilter<string>(
+        (value) => value.trim() === "" || /^\d{1,10}$/.test(value.trim()),
+        {
+          message: m.accountingInvoiceFormVariableSymbolInvalid({}, { locale }),
+        }
+      )
+    ),
+    lines: Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        description: requiredText(1000),
+        price: Schema.Trim.check(
+          Schema.isNonEmpty({ message: requiredMessage }),
+          Schema.isPattern(/^[+-]?\d+(?:\.\d+)?$/, {
+            message: m.accountingInvoiceFormPriceInvalid({}, { locale }),
+          })
+        ),
+      })
+    ).check(
+      Schema.isMinLength(1, {
+        message: m.accountingInvoiceFormLinesRequired({}, { locale }),
+      })
+    ),
+  });
+  return values.check(
+    // Only the payment date chosen by the "Already paid" toggle is visible,
+    // so only that field carries a validation rule.
+    Schema.makeFilter<typeof values.Type>((value) => {
+      const paymentDate = (value.paid ? value.paidOn : value.dueDate).trim();
+      if (paymentDate !== "" && isCalendarDate(paymentDate)) return true;
+      return {
+        path: [value.paid ? "paidOn" : "dueDate"],
+        issue: paymentDate === "" ? requiredMessage : calendarDateMessage,
+      };
+    })
+  );
 };
 
-const invoiceFormCustomer = Schema.Union([
-  Schema.Struct({
-    customerType: Schema.Literal("person"),
-    email: invoiceFormEmail,
-    firstName: invoiceFormRequiredText(100),
-    lastName: invoiceFormRequiredText(100),
-    // Business-only values: a type switch retains them in form state, but a
-    // person payload never sends them, so they stay unconstrained here.
-    companyName: Schema.String,
-    companyId: Schema.String,
-    vatId: Schema.String,
-    phone: invoiceFormOptionalText(20),
-    ...invoiceFormAddress,
-  }),
-  Schema.Struct({
-    customerType: Schema.Literal("business"),
-    email: invoiceFormEmail,
-    firstName: invoiceFormOptionalText(100),
-    lastName: invoiceFormOptionalText(100),
-    companyName: invoiceFormRequiredText(180),
-    companyId: invoiceFormRequiredText(255),
-    vatId: invoiceFormOptionalText(255),
-    phone: invoiceFormOptionalText(20),
-    ...invoiceFormAddress,
-  }),
-]);
+type InvoiceFormSchema = ReturnType<typeof createInvoiceFormSchema>;
 
-const invoiceFormValues = Schema.Struct({
-  customer: invoiceFormCustomer,
-  locale: Schema.Literals(["cs-CZ", "en-US"]),
-  serviceDate: invoiceFormCalendarDate,
-  paid: Schema.Boolean,
-  paidOn: Schema.Trim,
-  dueDate: Schema.Trim,
-  currency: Schema.String.check(
-    Schema.isPattern(/^[A-Z]{3}$/, { message: requiredMessage })
-  ),
-  variableSymbol: Schema.String.check(
-    Schema.makeFilter<string>(
-      (value) => value.trim() === "" || /^\d{1,10}$/.test(value.trim()),
-      { message: "Use at most 10 digits." }
-    )
-  ),
-  lines: Schema.Array(invoiceFormLine).check(
-    Schema.isMinLength(1, { message: "Add at least one line." })
-  ),
-});
+export type InvoiceFormInput = InvoiceFormSchema["Encoded"];
 
-export const invoiceFormSchema = invoiceFormValues.check(
-  // Only the payment date chosen by the "Already paid" toggle is visible,
-  // so only that field carries a validation rule.
-  Schema.makeFilter<InvoiceFormValues>((value) => {
-    const paymentDate = (value.paid ? value.paidOn : value.dueDate).trim();
-    if (paymentDate !== "" && isCalendarDate(paymentDate)) return true;
-    return {
-      path: [value.paid ? "paidOn" : "dueDate"],
-      issue: paymentDate === "" ? requiredMessage : calendarDateMessage,
-    };
-  })
-);
-
-type InvoiceFormValues = typeof invoiceFormValues.Type;
-
-export type InvoiceFormInput = typeof invoiceFormSchema.Encoded;
-
-export type InvoiceFormOutput = typeof invoiceFormSchema.Type;
+export type InvoiceFormOutput = InvoiceFormSchema["Type"];
 
 export function InvoiceCreationForm({
   currencies,
@@ -253,7 +244,7 @@ export function InvoiceCreationForm({
     },
     mode: "onBlur",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(invoiceFormSchema),
+    resolver: effectSchemaResolver(createInvoiceFormSchema(locale)),
   });
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -278,8 +269,14 @@ export function InvoiceCreationForm({
         setHasSearched(true);
       },
       onError: ({ error: actionError }) =>
-        setSearchError(actionError.serverError ?? "Customer search failed."),
-      onTransportError: () => setSearchError("Customer search failed."),
+        setSearchError(
+          getInvoiceAdminActionFailureMessage(actionError.serverError, {
+            fallback: m.accountingInvoiceFormSearchError({}, { locale }),
+            locale,
+          })
+        ),
+      onTransportError: () =>
+        setSearchError(m.accountingInvoiceFormSearchError({}, { locale })),
     }
   );
   const { execute: create, isExecuting: isCreating } = useWorkspaceAction(
@@ -299,10 +296,13 @@ export function InvoiceCreationForm({
       },
       onError: ({ error: actionError }) =>
         setCreateError(
-          actionError.serverError ?? "The invoice could not be created."
+          getInvoiceAdminActionFailureMessage(actionError.serverError, {
+            fallback: m.accountingInvoiceFormCreateError({}, { locale }),
+            locale,
+          })
         ),
       onTransportError: () =>
-        setCreateError("The invoice could not be created."),
+        setCreateError(m.accountingInvoiceFormCreateError({}, { locale })),
     }
   );
   const { execute: preview, isExecuting: isPreviewing } = useWorkspaceAction(
@@ -316,11 +316,13 @@ export function InvoiceCreationForm({
       },
       onError: ({ error: actionError }) =>
         setPreviewError(
-          actionError.serverError ??
-            "The invoice preview could not be generated."
+          getInvoiceAdminActionFailureMessage(actionError.serverError, {
+            fallback: m.accountingInvoiceFormPreviewError({}, { locale }),
+            locale,
+          })
         ),
       onTransportError: () =>
-        setPreviewError("The invoice preview could not be generated."),
+        setPreviewError(m.accountingInvoiceFormPreviewError({}, { locale })),
     }
   );
 
@@ -416,20 +418,36 @@ export function InvoiceCreationForm({
           <section className="rounded-2xl border border-navy-blue/10 bg-white p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-xl">Customer</h2>
+                <h2 className="text-xl">
+                  {m.accountingInvoiceFormCustomerHeading({}, { locale })}
+                </h2>
                 <p className="mt-1 text-sm text-navy-blue/65">
-                  Select a Dotypos customer or enter a new one. Confirmed
-                  details are saved to Dotypos.
+                  {m.accountingInvoiceFormCustomerIntro({}, { locale })}
                 </p>
               </div>
               <SegmentedControl
-                label="Customer source"
+                label={m.accountingInvoiceFormCustomerSource({}, { locale })}
                 name="customerSource"
                 onValueChange={(mode) => {
                   setCustomerMode(mode);
                   if (mode === "new") applyCustomer(null);
                 }}
-                options={customerSourceOptions}
+                options={[
+                  {
+                    label: m.accountingInvoiceFormCustomerSourceExisting(
+                      {},
+                      { locale }
+                    ),
+                    value: "existing",
+                  },
+                  {
+                    label: m.accountingInvoiceFormCustomerSourceNew(
+                      {},
+                      { locale }
+                    ),
+                    value: "new",
+                  },
+                ]}
                 value={customerMode}
               />
             </div>
@@ -438,7 +456,9 @@ export function InvoiceCreationForm({
               <div className="mt-5 space-y-3">
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                   <div className="grid gap-1.5">
-                    <Label htmlFor={searchId}>Name or email</Label>
+                    <Label htmlFor={searchId}>
+                      {m.accountingInvoiceFormSearchLabel({}, { locale })}
+                    </Label>
                     <Input
                       autoComplete="off"
                       id={searchId}
@@ -454,7 +474,10 @@ export function InvoiceCreationForm({
                         event.preventDefault();
                         runSearch();
                       }}
-                      placeholder="Search Dotypos customers"
+                      placeholder={m.accountingInvoiceFormSearchPlaceholder(
+                        {},
+                        { locale }
+                      )}
                       type="search"
                       value={query}
                     />
@@ -465,7 +488,9 @@ export function InvoiceCreationForm({
                     type="button"
                   >
                     <Search aria-hidden className="size-4" />
-                    {isSearching ? "Searching…" : "Search"}
+                    {isSearching
+                      ? m.accountingInvoiceFormSearching({}, { locale })
+                      : m.accountingInvoiceFormSearch({}, { locale })}
                   </Button>
                 </div>
                 <div aria-live="polite">
@@ -476,7 +501,7 @@ export function InvoiceCreationForm({
                   )}
                   {hasSearched && searchResults.length === 0 && (
                     <p className="rounded-xl border border-navy-blue/10 px-4 py-6 text-center text-sm text-navy-blue/65">
-                      No customer matched.
+                      {m.accountingInvoiceFormSearchEmpty({}, { locale })}
                     </p>
                   )}
                   {searchResults.length > 0 && (
@@ -488,10 +513,14 @@ export function InvoiceCreationForm({
                         >
                           <div>
                             <p className="font-semibold">
-                              {result.displayName}
+                              {getInvoiceCustomerName(result, locale)}
                             </p>
                             <p className="text-sm text-navy-blue/65">
-                              {result.email || "No email"}
+                              {result.email ||
+                                m.accountingInvoiceFormCustomerNoEmail(
+                                  {},
+                                  { locale }
+                                )}
                             </p>
                           </div>
                           <Button
@@ -504,7 +533,10 @@ export function InvoiceCreationForm({
                             type="button"
                             variant="secondary"
                           >
-                            Select
+                            {m.accountingInvoiceFormSelectCustomer(
+                              {},
+                              { locale }
+                            )}
                           </Button>
                         </li>
                       ))}
@@ -522,7 +554,7 @@ export function InvoiceCreationForm({
                 {customer && (
                   <div className="flex items-center justify-between gap-3 rounded-xl bg-aquamarine-green/10 px-4 py-3">
                     <span className="font-semibold">
-                      {customer.displayName}
+                      {getInvoiceCustomerName(customer, locale)}
                     </span>
                     <Button
                       onClick={() => applyCustomer(null)}
@@ -530,7 +562,7 @@ export function InvoiceCreationForm({
                       type="button"
                       variant="ghost"
                     >
-                      Change
+                      {m.accountingInvoiceFormChangeCustomer({}, { locale })}
                     </Button>
                   </div>
                 )}
@@ -540,7 +572,9 @@ export function InvoiceCreationForm({
                     name="customer.customerType"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Customer type</FormLabel>
+                        <FormLabel>
+                          {m.accountingInvoiceFormCustomerType({}, { locale })}
+                        </FormLabel>
                         <FormControl>
                           <select
                             className={selectClassName}
@@ -551,8 +585,18 @@ export function InvoiceCreationForm({
                             }
                             value={field.value}
                           >
-                            <option value="person">Individual</option>
-                            <option value="business">Business</option>
+                            <option value="person">
+                              {m.accountingInvoiceFormCustomerTypePerson(
+                                {},
+                                { locale }
+                              )}
+                            </option>
+                            <option value="business">
+                              {m.accountingInvoiceFormCustomerTypeBusiness(
+                                {},
+                                { locale }
+                              )}
+                            </option>
                           </select>
                         </FormControl>
                         <FormMessage />
@@ -564,7 +608,9 @@ export function InvoiceCreationForm({
                     name="customer.email"
                     render={({ field: { onChange, ...field }, fieldState }) => (
                       <FormItem>
-                        <FormLabel>Invoice email</FormLabel>
+                        <FormLabel>
+                          {m.accountingInvoiceFormEmail({}, { locale })}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -585,8 +631,11 @@ export function InvoiceCreationForm({
                       <FormItem>
                         <FormLabel>
                           {customerType === "business"
-                            ? "Contact first name (optional)"
-                            : "First name"}
+                            ? m.accountingInvoiceFormContactFirstName(
+                                {},
+                                { locale }
+                              )
+                            : m.accountingInvoiceFormFirstName({}, { locale })}
                         </FormLabel>
                         <FormControl>
                           <Input
@@ -607,8 +656,11 @@ export function InvoiceCreationForm({
                       <FormItem>
                         <FormLabel>
                           {customerType === "business"
-                            ? "Contact last name (optional)"
-                            : "Last name"}
+                            ? m.accountingInvoiceFormContactLastName(
+                                {},
+                                { locale }
+                              )
+                            : m.accountingInvoiceFormLastName({}, { locale })}
                         </FormLabel>
                         <FormControl>
                           <Input
@@ -632,7 +684,12 @@ export function InvoiceCreationForm({
                           fieldState,
                         }) => (
                           <FormItem>
-                            <FormLabel>Company name</FormLabel>
+                            <FormLabel>
+                              {m.accountingInvoiceFormCompanyName(
+                                {},
+                                { locale }
+                              )}
+                            </FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
@@ -653,7 +710,9 @@ export function InvoiceCreationForm({
                           fieldState,
                         }) => (
                           <FormItem>
-                            <FormLabel>Company ID</FormLabel>
+                            <FormLabel>
+                              {m.accountingInvoiceFormCompanyId({}, { locale })}
+                            </FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
@@ -674,7 +733,9 @@ export function InvoiceCreationForm({
                           fieldState,
                         }) => (
                           <FormItem>
-                            <FormLabel>VAT ID (optional)</FormLabel>
+                            <FormLabel>
+                              {m.accountingInvoiceFormVatId({}, { locale })}
+                            </FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
@@ -693,7 +754,9 @@ export function InvoiceCreationForm({
                     name="customer.phone"
                     render={({ field: { onChange, ...field }, fieldState }) => (
                       <FormItem>
-                        <FormLabel>Phone (optional)</FormLabel>
+                        <FormLabel>
+                          {m.accountingInvoiceFormPhone({}, { locale })}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -711,7 +774,9 @@ export function InvoiceCreationForm({
                     name="customer.line1"
                     render={({ field: { onChange, ...field }, fieldState }) => (
                       <FormItem>
-                        <FormLabel>Address</FormLabel>
+                        <FormLabel>
+                          {m.accountingInvoiceFormAddressLine1({}, { locale })}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -729,7 +794,9 @@ export function InvoiceCreationForm({
                     name="customer.line2"
                     render={({ field: { onChange, ...field }, fieldState }) => (
                       <FormItem>
-                        <FormLabel>Address line 2 (optional)</FormLabel>
+                        <FormLabel>
+                          {m.accountingInvoiceFormAddressLine2({}, { locale })}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -746,7 +813,9 @@ export function InvoiceCreationForm({
                     name="customer.city"
                     render={({ field: { onChange, ...field }, fieldState }) => (
                       <FormItem>
-                        <FormLabel>City</FormLabel>
+                        <FormLabel>
+                          {m.accountingInvoiceFormCity({}, { locale })}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -764,7 +833,9 @@ export function InvoiceCreationForm({
                     name="customer.postalCode"
                     render={({ field: { onChange, ...field }, fieldState }) => (
                       <FormItem>
-                        <FormLabel>Postal code</FormLabel>
+                        <FormLabel>
+                          {m.accountingInvoiceFormPostalCode({}, { locale })}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -782,7 +853,9 @@ export function InvoiceCreationForm({
                     name="customer.country"
                     render={({ field: { onChange, ...field }, fieldState }) => (
                       <FormItem>
-                        <FormLabel>Country code</FormLabel>
+                        <FormLabel>
+                          {m.accountingInvoiceFormCountryCode({}, { locale })}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -803,7 +876,9 @@ export function InvoiceCreationForm({
           </section>
 
           <section className="rounded-2xl border border-navy-blue/10 bg-white p-5 sm:p-6">
-            <h2 className="text-xl">Invoice</h2>
+            <h2 className="text-xl">
+              {m.accountingInvoiceFormInvoiceHeading({}, { locale })}
+            </h2>
             <FormField
               control={form.control}
               name="paid"
@@ -821,7 +896,7 @@ export function InvoiceCreationForm({
                         />
                       </FormControl>
                       <span className="text-sm font-semibold">
-                        Already paid
+                        {m.accountingInvoiceFormAlreadyPaid({}, { locale })}
                       </span>
                     </ChoiceCard>
                   </FormLabel>
@@ -835,7 +910,9 @@ export function InvoiceCreationForm({
                 name="serviceDate"
                 render={({ field: { onChange, ...field }, fieldState }) => (
                   <FormItem>
-                    <FormLabel>Service date</FormLabel>
+                    <FormLabel>
+                      {m.accountingInvoiceFormServiceDate({}, { locale })}
+                    </FormLabel>
                     <FormControl>
                       <Input
                         {...field}
@@ -856,7 +933,9 @@ export function InvoiceCreationForm({
                   name="paidOn"
                   render={({ field: { onChange, ...field }, fieldState }) => (
                     <FormItem>
-                      <FormLabel>Paid on</FormLabel>
+                      <FormLabel>
+                        {m.accountingInvoiceFormPaidOn({}, { locale })}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           {...field}
@@ -877,7 +956,9 @@ export function InvoiceCreationForm({
                   name="dueDate"
                   render={({ field: { onChange, ...field }, fieldState }) => (
                     <FormItem>
-                      <FormLabel>Due date</FormLabel>
+                      <FormLabel>
+                        {m.accountingInvoiceFormDueDate({}, { locale })}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           {...field}
@@ -897,7 +978,9 @@ export function InvoiceCreationForm({
                 name="locale"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Language</FormLabel>
+                    <FormLabel>
+                      {m.accountingInvoiceFormLanguage({}, { locale })}
+                    </FormLabel>
                     <FormControl>
                       <select
                         className={selectClassName}
@@ -908,8 +991,15 @@ export function InvoiceCreationForm({
                         }
                         value={field.value}
                       >
-                        <option value="cs-CZ">Czech</option>
-                        <option value="en-US">English</option>
+                        <option value="cs-CZ">
+                          {m.accountingInvoiceFormLanguageCzech({}, { locale })}
+                        </option>
+                        <option value="en-US">
+                          {m.accountingInvoiceFormLanguageEnglish(
+                            {},
+                            { locale }
+                          )}
+                        </option>
                       </select>
                     </FormControl>
                     <FormMessage />
@@ -921,7 +1011,9 @@ export function InvoiceCreationForm({
                 name="currency"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Currency</FormLabel>
+                    <FormLabel>
+                      {m.accountingInvoiceFormCurrency({}, { locale })}
+                    </FormLabel>
                     <FormControl>
                       <select
                         className={selectClassName}
@@ -947,7 +1039,9 @@ export function InvoiceCreationForm({
                   fieldState,
                 }) => (
                   <FormItem>
-                    <FormLabel>Variable symbol</FormLabel>
+                    <FormLabel>
+                      {m.accountingInvoiceFormVariableSymbol({}, { locale })}
+                    </FormLabel>
                     <FormControl>
                       <Input
                         {...field}
@@ -982,10 +1076,14 @@ export function InvoiceCreationForm({
           <section className="rounded-2xl border border-navy-blue/10 bg-white p-5 sm:p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl">Line items</h2>
+                <h2 className="text-xl">
+                  {m.accountingInvoiceFormLinesHeading({}, { locale })}
+                </h2>
                 <p className="mt-1 text-sm text-navy-blue/65">
-                  Enter signed prices with up to {currencyExponent} decimal
-                  places.
+                  {m.accountingInvoiceFormLinesHint(
+                    { decimalPlaces: currencyExponent },
+                    { locale }
+                  )}
                 </p>
               </div>
               <Button
@@ -1000,7 +1098,8 @@ export function InvoiceCreationForm({
                 type="button"
                 variant="secondary"
               >
-                <Plus aria-hidden className="size-4" /> Add line
+                <Plus aria-hidden className="size-4" />{" "}
+                {m.accountingInvoiceFormAddLine({}, { locale })}
               </Button>
             </div>
             <div className="mt-5 space-y-3">
@@ -1014,7 +1113,12 @@ export function InvoiceCreationForm({
                     name={`lines.${index}.description`}
                     render={({ field: { onChange, ...field }, fieldState }) => (
                       <FormItem>
-                        <FormLabel>Description {index + 1}</FormLabel>
+                        <FormLabel>
+                          {m.accountingInvoiceFormLineDescription(
+                            { lineNumber: formatCount(index + 1, locale) },
+                            { locale }
+                          )}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -1032,7 +1136,9 @@ export function InvoiceCreationForm({
                     name={`lines.${index}.price`}
                     render={({ field: { onChange, ...field }, fieldState }) => (
                       <FormItem>
-                        <FormLabel>Price</FormLabel>
+                        <FormLabel>
+                          {m.accountingInvoiceFormLinePrice({}, { locale })}
+                        </FormLabel>
                         <FormControl>
                           <InvoicePriceInput
                             exponent={currencyExponent}
@@ -1048,7 +1154,10 @@ export function InvoiceCreationForm({
                     )}
                   />
                   <Button
-                    aria-label={`Remove line ${index + 1}`}
+                    aria-label={m.accountingInvoiceFormRemoveLine(
+                      { lineNumber: formatCount(index + 1, locale) },
+                      { locale }
+                    )}
                     disabled={fields.length === 1}
                     onClick={() => remove(index)}
                     size="icon"
@@ -1069,7 +1178,7 @@ export function InvoiceCreationForm({
               }
               type="submit"
             >
-              Review invoice
+              {m.accountingInvoiceFormReview({}, { locale })}
             </Button>
           </div>
         </form>
@@ -1086,17 +1195,19 @@ export function InvoiceCreationForm({
         }}
         open={Boolean(review)}
       >
-        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-5xl flex-col overflow-hidden">
+        <DialogContent
+          className="flex max-h-[calc(100dvh-2rem)] max-w-5xl flex-col overflow-hidden"
+          locale={locale}
+        >
           <DialogHeader>
             <div className="mb-2 flex size-11 items-center justify-center rounded-full bg-red-100 text-red-800">
               <CircleAlert aria-hidden className="size-6" />
             </div>
-            <DialogTitle>This action creates and sends the invoice</DialogTitle>
+            <DialogTitle>
+              {m.accountingInvoiceFormConfirmTitle({}, { locale })}
+            </DialogTitle>
             <DialogDescription className="text-base leading-6">
-              The invoice is immutable after creation. Clicking the final button
-              immediately emails it to the customer and Deskohub’s internal
-              recipient. The final invoice number, issue time, and automatically
-              suggested variable symbol are assigned after confirmation.
+              {m.accountingInvoiceFormConfirmDescription({}, { locale })}
             </DialogDescription>
           </DialogHeader>
           {review && (
@@ -1106,7 +1217,7 @@ export function InvoiceCreationForm({
                   aria-live="polite"
                   className="grid min-h-96 place-items-center text-sm text-navy-blue/65"
                 >
-                  Generating PDF preview…
+                  {m.accountingInvoiceFormPreviewGenerating({}, { locale })}
                 </div>
               )}
               {previewUrl && (
@@ -1114,7 +1225,7 @@ export function InvoiceCreationForm({
                   <iframe
                     className="h-[60dvh] min-h-96 w-full bg-white"
                     src={previewUrl}
-                    title="Invoice PDF preview"
+                    title={m.accountingInvoiceFormPreviewTitle({}, { locale })}
                   />
                   <div className="border-t border-navy-blue/10 p-3 text-right text-sm">
                     <a
@@ -1123,7 +1234,7 @@ export function InvoiceCreationForm({
                       rel="noreferrer"
                       target="_blank"
                     >
-                      Open PDF preview
+                      {m.accountingInvoiceFormPreviewOpen({}, { locale })}
                     </a>
                   </div>
                 </>
@@ -1132,7 +1243,7 @@ export function InvoiceCreationForm({
           )}
           {review && reviewTotal === null && (
             <AdministrationAlert role="alert" status="error">
-              Correct the invalid line price before creating the invoice.
+              {m.accountingInvoiceFormInvalidTotal({}, { locale })}
             </AdministrationAlert>
           )}
           {createError && (
@@ -1148,7 +1259,7 @@ export function InvoiceCreationForm({
           <DialogFooter>
             <DialogClose asChild>
               <Button disabled={isCreating} type="button" variant="secondary">
-                Go back
+                {m.accountingInvoiceFormGoBack({}, { locale })}
               </Button>
             </DialogClose>
             <Button
@@ -1168,7 +1279,9 @@ export function InvoiceCreationForm({
               tone="danger"
               type="button"
             >
-              {isCreating ? "Creating and sending…" : "Create and send invoice"}
+              {isCreating
+                ? m.accountingInvoiceFormCreating({}, { locale })
+                : m.accountingInvoiceFormCreate({}, { locale })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1197,6 +1310,10 @@ export const isInvoicePriceInput = (value: string, exponent: number) =>
   new RegExp(
     exponent === 0 ? "^[+-]?\\d*$" : `^[+-]?\\d*(?:\\.\\d{0,${exponent}})?$`
   ).test(value);
+
+/** Czech operators type a decimal comma; the price keeps the canonical dot. */
+export const normalizeInvoicePriceInput = (value: string) =>
+  value.replace(",", ".");
 
 const invoicePricePattern = (exponent: number) =>
   exponent === 0 ? "[+-]?\\d+" : `[+-]?\\d+(?:\\.\\d{1,${exponent}})?`;
@@ -1227,7 +1344,9 @@ function InvoicePriceInput({
     const input = inputRef.current;
     if (!input) return;
     const handleNativeChange = (event: Event) => {
-      const price = (event.currentTarget as HTMLInputElement).value;
+      const price = normalizeInvoicePriceInput(
+        (event.currentTarget as HTMLInputElement).value
+      );
       if (!isInvoicePriceInput(price, exponent)) {
         // Rejected input never reaches form state, so restore the DOM to the
         // accepted value instead of letting it drift.
@@ -1245,14 +1364,14 @@ function InvoicePriceInput({
       inputMode="decimal"
       onBlur={onBlur}
       onChange={(event) => {
-        const price = event.target.value;
+        const price = normalizeInvoicePriceInput(event.target.value);
         if (!isInvoicePriceInput(price, exponent)) return;
         onChange(price);
       }}
       onInput={(event) => {
         // Mirrors the other form fields: real typing dispatches input
         // events, which React's synthetic onChange does not always surface.
-        const price = event.currentTarget.value;
+        const price = normalizeInvoicePriceInput(event.currentTarget.value);
         if (!isInvoicePriceInput(price, exponent)) return;
         if (price !== value) onChange(price);
       }}

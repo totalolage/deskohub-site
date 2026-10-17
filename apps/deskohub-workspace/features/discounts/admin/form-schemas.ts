@@ -1,56 +1,72 @@
 import { Schema } from "effect";
+import { m } from "@/features/administration/i18n";
 import {
   findWorkspaceProductTargetsIssue,
   type WorkspaceProductTargetKey,
 } from "@/features/discounts/product-target";
+import type { Locale } from "@/features/i18n";
 import {
   discountProductTargetKeys,
   toDiscountProductTargets,
 } from "./product-target-options";
 
-const minorUnitsField = Schema.String.check(
-  Schema.isNonEmpty({ message: "Enter a value in minor units." }),
-  Schema.makeFilter(
-    (value) => Number.isSafeInteger(Number(value)) && Number(value) >= 1,
-    { message: "Enter a whole number of minor units of at least 1." }
-  )
-);
+const minorUnitsField = (locale: Locale) =>
+  Schema.String.check(
+    Schema.isNonEmpty({
+      message: m.discountsValidationMinorUnitsRequired({}, { locale }),
+    }),
+    Schema.makeFilter(
+      (value) => Number.isSafeInteger(Number(value)) && Number(value) >= 1,
+      { message: m.discountsValidationMinorUnitsWhole({}, { locale }) }
+    )
+  );
 
-const optionalCountField = Schema.String.check(
-  Schema.makeFilter(
-    (value) =>
-      value === "" ||
-      (Number.isSafeInteger(Number(value)) && Number(value) >= 1),
-    { message: "Enter a whole number of uses." }
-  )
-);
+const optionalCountField = (locale: Locale) =>
+  Schema.String.check(
+    Schema.makeFilter(
+      (value) =>
+        value === "" ||
+        (Number.isSafeInteger(Number(value)) && Number(value) >= 1),
+      { message: m.discountsValidationUsesWhole({}, { locale }) }
+    )
+  );
 
-const optionalLocalDateTimeField = Schema.String.check(
-  Schema.makeFilter(
-    (value) =>
-      value === "" || /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value),
-    { message: "Choose a valid date and time." }
-  )
-);
+const optionalLocalDateTimeField = (locale: Locale) =>
+  Schema.String.check(
+    Schema.makeFilter(
+      (value) =>
+        value === "" || /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value),
+      { message: m.discountsValidationDateTime({}, { locale }) }
+    )
+  );
 
-const codeField = Schema.String.check(
-  Schema.isNonEmpty({ message: "Enter a discount code." }),
-  Schema.makeFilter(
-    (value) => {
-      const normalized = value.trim();
-      return normalized.length >= 3 && normalized.length <= 64;
-    },
-    { message: "Use 3 to 64 characters for the code." }
-  )
-);
+const codeField = (locale: Locale) =>
+  Schema.String.check(
+    Schema.isNonEmpty({
+      message: m.discountsValidationCodeRequired({}, { locale }),
+    }),
+    Schema.makeFilter(
+      (value) => {
+        const normalized = value.trim();
+        return normalized.length >= 3 && normalized.length <= 64;
+      },
+      { message: m.discountsValidationCodeLength({}, { locale }) }
+    )
+  );
 
-const currencyField = Schema.String.check(
-  Schema.isNonEmpty({ message: "Choose a currency." })
-);
+const currencyField = (locale: Locale) =>
+  Schema.String.check(
+    Schema.isNonEmpty({
+      message: m.discountsValidationCurrencyRequired({}, { locale }),
+    })
+  );
 
-const discountIdField = Schema.String.check(
-  Schema.isNonEmpty({ message: "Choose a discount." })
-);
+const discountIdField = (locale: Locale) =>
+  Schema.String.check(
+    Schema.isNonEmpty({
+      message: m.discountsValidationDiscountRequired({}, { locale }),
+    })
+  );
 
 type DiscountDefinitionCheckValues = {
   readonly adjustmentKind: "percentage" | "fixed";
@@ -67,6 +83,7 @@ type DiscountDefinitionCheckValues = {
 // "new discount" branch applies) produce issues. Every check is its own
 // filter so all failing fields report their message at once.
 const definitionFilters = <Values extends DiscountDefinitionCheckValues>(
+  locale: Locale,
   applies: (values: Values) => boolean
 ) =>
   [
@@ -75,7 +92,7 @@ const definitionFilters = <Values extends DiscountDefinitionCheckValues>(
         !applies(values) ||
         values.labelEn.trim().length > 0 || {
           path: ["labelEn"],
-          issue: "Enter an English label.",
+          issue: m.discountsValidationEnglishLabelRequired({}, { locale }),
         }
     ),
     Schema.makeFilter<Values>(
@@ -83,7 +100,7 @@ const definitionFilters = <Values extends DiscountDefinitionCheckValues>(
         !applies(values) ||
         values.labelCs.trim().length > 0 || {
           path: ["labelCs"],
-          issue: "Enter a Czech label.",
+          issue: m.discountsValidationCzechLabelRequired({}, { locale }),
         }
     ),
     Schema.makeFilter<Values>(
@@ -92,7 +109,7 @@ const definitionFilters = <Values extends DiscountDefinitionCheckValues>(
         values.adjustmentKind !== "percentage" ||
         values.percentage.length > 0 || {
           path: ["percentage"],
-          issue: "Enter a percentage.",
+          issue: m.discountsValidationPercentageRequired({}, { locale }),
         }
     ),
     Schema.makeFilter<Values>((values) => {
@@ -102,7 +119,7 @@ const definitionFilters = <Values extends DiscountDefinitionCheckValues>(
       return (
         (Number.isFinite(parsed) && parsed >= 0.01 && parsed <= 100) || {
           path: ["percentage"],
-          issue: "Enter a percentage between 0.01 and 100.",
+          issue: m.discountsValidationPercentageRange({}, { locale }),
         }
       );
     }),
@@ -112,7 +129,7 @@ const definitionFilters = <Values extends DiscountDefinitionCheckValues>(
         values.adjustmentKind !== "fixed" ||
         values.fixedAmountValue.length > 0 || {
           path: ["fixedAmountValue"],
-          issue: "Enter a value in minor units.",
+          issue: m.discountsValidationMinorUnitsRequired({}, { locale }),
         }
     ),
     Schema.makeFilter<Values>((values) => {
@@ -121,7 +138,7 @@ const definitionFilters = <Values extends DiscountDefinitionCheckValues>(
       return (
         (Number.isSafeInteger(parsed) && parsed >= 1) || {
           path: ["fixedAmountValue"],
-          issue: "Enter a whole number of minor units of at least 1.",
+          issue: m.discountsValidationMinorUnitsWhole({}, { locale }),
         }
       );
     }),
@@ -131,7 +148,7 @@ const definitionFilters = <Values extends DiscountDefinitionCheckValues>(
         values.adjustmentKind !== "fixed" ||
         values.fixedAmountCurrency.length > 0 || {
           path: ["fixedAmountCurrency"],
-          issue: "Choose a currency.",
+          issue: m.discountsValidationCurrencyRequired({}, { locale }),
         }
     ),
     Schema.makeFilter<Values>(
@@ -141,8 +158,7 @@ const definitionFilters = <Values extends DiscountDefinitionCheckValues>(
           toDiscountProductTargets(values.products)
         ) === undefined || {
           path: ["products"],
-          issue:
-            "Choose either all cowork tiers or specific cowork tiers, not both.",
+          issue: m.discountsValidationProductTargets({}, { locale }),
         }
     ),
   ] as const;
@@ -162,86 +178,99 @@ const permissiveDiscountDefinitionFields = {
   products: Schema.Array(Schema.Literals(discountProductTargetKeys)),
 };
 
-const discountCodeConfigurationFields = {
-  code: codeField,
+const discountCodeConfigurationFields = (locale: Locale) => ({
+  code: codeField(locale),
   enabled: Schema.Boolean,
-  validFrom: optionalLocalDateTimeField,
-  validUntil: optionalLocalDateTimeField,
-  maxUses: optionalCountField,
-  maxUsesPerCustomer: optionalCountField,
-};
-
-const voucherCreditFields = {
-  voucherValue: minorUnitsField,
-  voucherCurrency: currencyField,
-};
-
-export const discountDefinitionFormSchema = Schema.Struct(
-  permissiveDiscountDefinitionFields
-).check(...definitionFilters<DiscountDefinitionCheckValues>(() => true));
-
-const discountCodeConfigurationFormSchema = Schema.Struct(
-  discountCodeConfigurationFields
-);
-
-export const discountCodeFormSchema = Schema.Struct({
-  discountId: discountIdField,
-  ...discountCodeConfigurationFields,
+  validFrom: optionalLocalDateTimeField(locale),
+  validUntil: optionalLocalDateTimeField(locale),
+  maxUses: optionalCountField(locale),
+  maxUsesPerCustomer: optionalCountField(locale),
 });
 
-export const voucherFormSchema = Schema.Struct({
-  ...voucherCreditFields,
-  code: discountCodeConfigurationFields.code,
-  enabled: discountCodeConfigurationFields.enabled,
-  validFrom: discountCodeConfigurationFields.validFrom,
-  validUntil: discountCodeConfigurationFields.validUntil,
-});
+export const createDiscountDefinitionFormSchema = (locale: Locale) =>
+  Schema.Struct(permissiveDiscountDefinitionFields).check(
+    ...definitionFilters<DiscountDefinitionCheckValues>(locale, () => true)
+  );
+
+const createDiscountCodeConfigurationFormSchema = (locale: Locale) =>
+  Schema.Struct(discountCodeConfigurationFields(locale));
+
+export const createDiscountCodeFormSchema = (locale: Locale) =>
+  Schema.Struct({
+    discountId: discountIdField(locale),
+    ...discountCodeConfigurationFields(locale),
+  });
+
+export const createVoucherFormSchema = (locale: Locale) => {
+  const { code, enabled, validFrom, validUntil } =
+    discountCodeConfigurationFields(locale);
+  return Schema.Struct({
+    voucherValue: minorUnitsField(locale),
+    voucherCurrency: currencyField(locale),
+    code,
+    enabled,
+    validFrom,
+    validUntil,
+  });
+};
 
 type DiscountCodeCreationFormCheckInput = DiscountDefinitionCheckValues & {
   readonly discountKind: "existing" | "new";
   readonly discountId: string;
 };
 
-export const discountCodeCreationFormSchema = Schema.Struct({
-  discountKind: Schema.Union([
-    Schema.Literal("existing"),
-    Schema.Literal("new"),
-  ]),
-  discountId: Schema.String,
-  ...permissiveDiscountDefinitionFields,
-  ...discountCodeConfigurationFields,
-}).check(
-  Schema.makeFilter<DiscountCodeCreationFormCheckInput>(
-    (values) =>
-      values.discountKind !== "existing" ||
-      values.discountId.trim().length > 0 || {
-        path: ["discountId"],
-        issue: "Choose a discount.",
-      }
-  ),
-  // Definition, label, and adjustment checks only apply while creating a
-  // new discount; the existing-discount branch pairs the code with an
-  // already valid discount.
-  ...definitionFilters<DiscountCodeCreationFormCheckInput>(
-    (values) => values.discountKind === "new"
-  )
-);
+export const createDiscountCodeCreationFormSchema = (locale: Locale) =>
+  Schema.Struct({
+    discountKind: Schema.Union([
+      Schema.Literal("existing"),
+      Schema.Literal("new"),
+    ]),
+    discountId: Schema.String,
+    ...permissiveDiscountDefinitionFields,
+    ...discountCodeConfigurationFields(locale),
+  }).check(
+    Schema.makeFilter<DiscountCodeCreationFormCheckInput>(
+      (values) =>
+        values.discountKind !== "existing" ||
+        values.discountId.trim().length > 0 || {
+          path: ["discountId"],
+          issue: m.discountsValidationDiscountRequired({}, { locale }),
+        }
+    ),
+    // Definition, label, and adjustment checks only apply while creating a
+    // new discount; the existing-discount branch pairs the code with an
+    // already valid discount.
+    ...definitionFilters<DiscountCodeCreationFormCheckInput>(
+      locale,
+      (values) => values.discountKind === "new"
+    )
+  );
 
-export const customerCodeAudienceFormSchema = Schema.Struct({
-  customerId: Schema.String.check(
-    Schema.isNonEmpty({ message: "Enter a Dotypos customer ID." })
-  ),
-});
+export const createCustomerCodeAudienceFormSchema = (locale: Locale) =>
+  Schema.Struct({
+    customerId: Schema.String.check(
+      Schema.isNonEmpty({
+        message: m.discountsValidationCustomerIdRequired({}, { locale }),
+      })
+    ),
+  });
 
 export const customerDiscountGroupFormSchema = Schema.Struct({
   discountGroupId: Schema.String,
 });
 
-export type DiscountDefinitionFormValues =
-  typeof discountDefinitionFormSchema.Type;
-export type DiscountCodeConfigurationFormValues =
-  typeof discountCodeConfigurationFormSchema.Type;
-export type DiscountCodeFormValues = typeof discountCodeFormSchema.Type;
-export type VoucherFormValues = typeof voucherFormSchema.Type;
-export type DiscountCodeCreationFormValues =
-  typeof discountCodeCreationFormSchema.Type;
+export type DiscountDefinitionFormValues = ReturnType<
+  typeof createDiscountDefinitionFormSchema
+>["Type"];
+export type DiscountCodeConfigurationFormValues = ReturnType<
+  typeof createDiscountCodeConfigurationFormSchema
+>["Type"];
+export type DiscountCodeFormValues = ReturnType<
+  typeof createDiscountCodeFormSchema
+>["Type"];
+export type VoucherFormValues = ReturnType<
+  typeof createVoucherFormSchema
+>["Type"];
+export type DiscountCodeCreationFormValues = ReturnType<
+  typeof createDiscountCodeCreationFormSchema
+>["Type"];
