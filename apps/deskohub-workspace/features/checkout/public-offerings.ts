@@ -1,6 +1,8 @@
+import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import {
   getCoworkTierCoffeeAddon,
   getCoworkTierWorkstationAddon,
+  getWorkspaceMeetingRoomPriceForDuration,
   getWorkspaceOfficeAccessPrice,
   getWorkspaceOfficeSeatPrice,
   getWorkspaceProductByTier,
@@ -8,7 +10,6 @@ import {
   type WorkspaceCoworkCurrentTier,
   type WorkspaceProductMonitorOption,
   workspaceCoworkCurrentTiers,
-  workspaceMeetingRoomCatalog,
   workspaceProductMonitorOptions,
   workspaceProductWorkstationAddonPrice,
 } from "@/features/checkout/product-catalog";
@@ -22,9 +23,13 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
+import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
+import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import type { MeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { officeReservationMaximumDurationHours } from "@/features/reservation/office-reservation";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 
 /** An optional or included extra of a cowork offer. */
 type PublicOfferingAddOn = {
@@ -47,11 +52,8 @@ type PublicOfferingCopy = {
   readonly usage: string;
 };
 
-/**
- * One bookable product at its regular catalog price. Calendar sales can lower
- * the price on a date; the advertised price for a selection is authoritative.
- */
-export type PublicOffering = PublicOfferingCopy &
+/** One bookable product at its regular catalog price. */
+export type PublicCatalogOffering = PublicOfferingCopy &
   (
     | {
         readonly kind: "cowork";
@@ -80,32 +82,84 @@ export type PublicOffering = PublicOfferingCopy &
       }
   );
 
+/** A catalog offering with the request that prices its smallest booking. */
+export type PublicOfferingListing = {
+  readonly offering: PublicCatalogOffering;
+  /**
+   * One day of the cowork tier without paid add-ons, one booking of the
+   * meeting-room duration, or one office day with one seat, all starting on
+   * the listing date.
+   */
+  readonly advertisedPriceRequest: AdvertisedPriceRequest;
+};
+
+/** The anonymous price a reservation page advertises for a smallest booking. */
+type PublicOfferingAdvertisedPrice = {
+  /** Includes any public sale running now. */
+  readonly price: WorkspaceMoney;
+  /** The sale discount included in `price`; zero without one. */
+  readonly discount: WorkspaceMoney;
+};
+
+/** One bookable product at its regular and its advertised price. */
+export type PublicOffering = PublicCatalogOffering & {
+  readonly advertisedPrice: PublicOfferingAdvertisedPrice;
+};
+
 /** The office offer, when office reservations are open. */
 export type PublicOfficeOffer = {
   readonly maximumSeats?: number;
 };
 
 /** Every product customers can book anonymously, in catalog order. */
-export const getPublicOfferings = ({
+export const getPublicOfferingListings = ({
+  date,
   locale,
   office,
 }: {
+  /** The Prague date the advertised prices are for. */
+  readonly date: Temporal.PlainDate;
   readonly locale: Locale;
   readonly office?: PublicOfficeOffer;
-}): ReadonlyArray<PublicOffering> => [
-  ...workspaceCoworkCurrentTiers.map((tier) => getCoworkOffering(tier, locale)),
-  ...workspaceMeetingRoomCatalog.map(
-    ({ duration, price }): PublicOffering => ({
-      kind: "meeting-room",
-      duration,
-      durationLabel: getWorkspaceMeetingRoomDurationLabel(duration, locale),
-      name: getWorkspaceMeetingRoomProductTitle(locale),
-      description: m.reservationTierMeetingRoomDescription({}, { locale }),
-      usage: m.publicOfferingMeetingRoomUsage({}, { locale }),
-      price,
+}): ReadonlyArray<PublicOfferingListing> => [
+  ...workspaceCoworkCurrentTiers.map(
+    (tier): PublicOfferingListing => ({
+      offering: getCoworkOffering(tier, locale),
+      advertisedPriceRequest: {
+        locale,
+        reservation: getCoworkAdvertisedPriceReservation({
+          entryTier: tier,
+          coffee: getCoworkTierCoffeeAddon(tier) === "included",
+          date: date.toString(),
+        }),
+      },
     })
   ),
-  ...(office ? [getOfficeOffering(office, locale)] : []),
+  ...getMeetingRoomDurationAdvertisedPriceRequests({
+    locale,
+    startDateTime: date.toPlainDateTime().toString({ smallestUnit: "minute" }),
+  }).map(
+    (advertisedPriceRequest): PublicOfferingListing => ({
+      offering: getMeetingRoomOffering(
+        advertisedPriceRequest.reservation.details.duration,
+        locale
+      ),
+      advertisedPriceRequest,
+    })
+  ),
+  ...(office
+    ? [
+        {
+          offering: getOfficeOffering(office, locale),
+          advertisedPriceRequest: getOfficeAdvertisedPriceRequest({
+            locale,
+            startsOn: plainDateStringSchema.make(date.toString()),
+            endsOn: plainDateStringSchema.make(date.toString()),
+            seats: 1,
+          }),
+        },
+      ]
+    : []),
 ];
 
 /** The opening hours sentence shown with the offerings. */
@@ -118,7 +172,7 @@ export const getPublicOpeningHours = (locale: Locale) =>
 const getCoworkOffering = (
   tier: WorkspaceCoworkCurrentTier,
   locale: Locale
-): PublicOffering => {
+): PublicCatalogOffering => {
   const coffeeAddon = getCoworkTierCoffeeAddon(tier);
 
   return {
@@ -164,10 +218,23 @@ const getCoworkOffering = (
   };
 };
 
+const getMeetingRoomOffering = (
+  duration: MeetingRoomReservationDuration,
+  locale: Locale
+): PublicCatalogOffering => ({
+  kind: "meeting-room",
+  duration,
+  durationLabel: getWorkspaceMeetingRoomDurationLabel(duration, locale),
+  name: getWorkspaceMeetingRoomProductTitle(locale),
+  description: m.reservationTierMeetingRoomDescription({}, { locale }),
+  usage: m.publicOfferingMeetingRoomUsage({}, { locale }),
+  price: getWorkspaceMeetingRoomPriceForDuration(duration),
+});
+
 const getOfficeOffering = (
   { maximumSeats }: PublicOfficeOffer,
   locale: Locale
-): PublicOffering => ({
+): PublicCatalogOffering => ({
   kind: "office",
   name: getWorkspaceOfficeProductTitle(locale),
   description: m.publicOfferingOfficeDescription({}, { locale }),
