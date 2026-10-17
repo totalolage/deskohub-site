@@ -3,10 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Browser, chromium, type Page } from "@playwright/test";
+import type { AccountSection } from "@/features/account/sections";
 import { m } from "@/features/i18n";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
-import type { AccountSection } from "./account-shell";
 
 const locale = "en-US" as const;
 const navigationLabel = m.accountNavigationLabel({}, { locale });
@@ -83,11 +83,11 @@ const readShellLayout = (page: Page) =>
     const contentRect = content.getBoundingClientRect();
 
     return {
-      activeButtonLabels: Array.from(
-        navigation.querySelectorAll('button[aria-current="page"]')
+      activeItemLabels: Array.from(
+        navigation.querySelectorAll('a[aria-current="page"]')
       )
         .filter(isRendered)
-        .map((button) => button.textContent?.trim() ?? ""),
+        .map((link) => link.textContent?.trim() ?? ""),
       contentLeft: contentRect.left,
       contentTop: contentRect.top,
       contentWidth: contentRect.width,
@@ -105,7 +105,7 @@ const readShellLayout = (page: Page) =>
 const selectSection = async (page: Page, section: AccountSection) => {
   await page
     .getByRole("navigation", { name: navigationLabel })
-    .getByRole("button", { name: sectionLabels[section] })
+    .getByRole("link", { name: sectionLabels[section] })
     .filter({ visible: true })
     .click();
 };
@@ -123,10 +123,8 @@ test.skipIf(!chromiumAvailable)(
         expect(layout.navigationWidth).toBeGreaterThan(0);
         expect(layout.contentWidth).toBeGreaterThan(0);
         expect(layout.navigationRight).toBeLessThanOrEqual(layout.contentLeft);
-        expect(layout.activeButtonLabels).toHaveLength(1);
-        expect(layout.activeButtonLabels[0]).toStartWith(
-          sectionLabels[section]
-        );
+        expect(layout.activeItemLabels).toHaveLength(1);
+        expect(layout.activeItemLabels[0]).toStartWith(sectionLabels[section]);
       }
     } finally {
       await page.close();
@@ -146,7 +144,7 @@ test.skipIf(!chromiumAvailable)(
         expect(layout.horizontalOverflow).toBeLessThanOrEqual(1);
         expect(layout.contentWidth).toBeGreaterThan(0);
         expect(layout.navigationBottom).toBeLessThanOrEqual(layout.contentTop);
-        expect(layout.activeButtonLabels).toEqual([sectionLabels[section]]);
+        expect(layout.activeItemLabels).toEqual([sectionLabels[section]]);
       }
     } finally {
       await page.close();

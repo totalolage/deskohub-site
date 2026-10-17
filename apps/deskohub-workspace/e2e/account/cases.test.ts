@@ -2,6 +2,7 @@ import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { Effect, Exit, Layer, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { getAccountSectionPath } from "@/features/account/routes";
 import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -74,6 +75,7 @@ const czechLanguageLabel = "Preferovaný jazyk";
 const englishFaqTitle = "Frequently Asked Questions";
 const czechFaqTitle = "Často kladené otázky";
 const deleteTriggerSelector = "#delete-account-trigger";
+const accountSectionDataAttribute = "data-account-section";
 const deleteReauthSendSelector = "#delete-account-reauth-send";
 const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
 const deleteConfirmSelector = "#delete-account-confirm";
@@ -1098,6 +1100,16 @@ class FakeBrowser {
     return locale === "cs-CZ" ? czechLanguageLabel : englishLanguageLabel;
   }
 
+  private selectAccountSection(section: "billing" | "danger" | "profile") {
+    this.selectedSection = section;
+    const url = new URL(this.currentUrl);
+    const locale = fakeLocalePath.exec(url.pathname)?.[1];
+    if (locale === "cs-CZ" || locale === "en-US") {
+      url.pathname = getAccountSectionPath(locale, section);
+      this.currentUrl = url.toString();
+    }
+  }
+
   open(url: string) {
     const parsed = new URL(url);
     this.external.recordBrowserAction({
@@ -1169,20 +1181,26 @@ class FakeBrowser {
       }
       return;
     }
-    if (locale !== undefined && suffix === "/account") {
+    if (
+      locale !== undefined &&
+      (suffix === "/account" || suffix === "/account/profile")
+    ) {
       const result = this.external.openAccount();
       const destination = this.withLocale(
         `${this.external.config.baseUrl}${result.destination}`,
         locale
       );
-      // Redirects and the account page carry no code; completion prefills
-      // the remembered one.
+      // A profile route stays deep-linked when the account page opens;
+      // completion and sign-in destinations still use their own paths.
       const profile =
-        parsed.searchParams.get("section") === "profile" &&
+        suffix === "/account/profile" &&
         !result.destination.endsWith("/auth/sign-in");
-      this.currentUrl = profile
-        ? `${destination}${parsed.search}`
-        : destination;
+      const accountDestination = new URL(destination);
+      if (profile) {
+        accountDestination.pathname = getAccountSectionPath(locale, "profile");
+      }
+      accountDestination.search = profile ? parsed.search : "";
+      this.currentUrl = accountDestination.toString();
       // Rendered page text applies the label's CSS uppercase, as
       // `innerText` does; only its `textContent` keeps the message casing.
       const text = this.localizedText(result.text, locale);
@@ -1290,7 +1308,9 @@ class FakeBrowser {
       selector !== signOutSelector ||
       handler !== "onClick" ||
       !this.signedIn() ||
-      !new URL(this.currentUrl).pathname.endsWith("/account")
+      !new URL(this.currentUrl).pathname.startsWith(
+        `/${this.pageLocale()}/account`
+      )
     ) {
       throw new Error("the sign-out handler is not on a signed-in account");
     }
@@ -1446,9 +1466,9 @@ class FakeBrowser {
     }
     if (
       selector.includes("Danger zone") ||
-      selector.includes('data-account-section="danger"')
+      selector.includes(`${accountSectionDataAttribute}="danger"`)
     ) {
-      this.selectedSection = "danger";
+      this.selectAccountSection("danger");
       return;
     }
     if (selector === profileSubmitSelector) {
@@ -1467,14 +1487,14 @@ class FakeBrowser {
       return;
     }
     if (selector.includes("Billing & Invoices")) {
-      this.selectedSection = "billing";
+      this.selectAccountSection("billing");
       return;
     }
     if (selector.includes("Profile & Identity")) {
       if (this.pageLocale() !== "en-US") {
         throw new Error("the English account navigation was clicked in Czech");
       }
-      this.selectedSection = "profile";
+      this.selectAccountSection("profile");
       this.pageText = `${this.pageText} ${englishLanguageLabel.toLocaleUpperCase()}`;
       this.languageControlLabel = englishLanguageLabel;
       return;
@@ -2836,7 +2856,7 @@ test("makes the saved language preference the site locale and switches it back f
   expect(opened).toContain("/en-US/faq");
   expect(opened).toContain("/cs-CZ/account");
   // Later serial cases start from the English account, signed in.
-  expect(requireBrowser().url()).toBe(`${baseUrl}/en-US/account`);
+  expect(requireBrowser().url()).toBe(`${baseUrl}/en-US/account/profile`);
   expect(external.currentAuthUserId).toBe("auth-original");
   // Without a review hook nothing is captured.
   expect(external.languageReviews).toEqual([]);

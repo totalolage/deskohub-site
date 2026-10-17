@@ -262,8 +262,8 @@ export type CustomerAccountDeletionResult =
 
 const revalidateDeletionAuthority = (locale: Locale) =>
   Effect.sync(() => {
-    revalidatePath(getAccountPath(locale));
-    revalidatePath(`/${locale}/account/deleted`);
+    // The account layout covers every section's path and the deleted page.
+    revalidatePath(getAccountPath(locale), "layout");
   });
 
 /**

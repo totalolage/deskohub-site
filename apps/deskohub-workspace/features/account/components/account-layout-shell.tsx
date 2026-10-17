@@ -1,22 +1,34 @@
 "use client";
 
 import Interpolate from "@doist/react-interpolate";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   type ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import {
   type AccountNavigationBadge,
-  type AccountSection,
   AccountShell,
 } from "@/features/account/components/shell/account-shell";
 import { SignOutButton } from "@/features/account/components/sign-out-button";
+import { getAccountPageTitle } from "@/features/account/page-title";
+import {
+  findAccountSectionOfPathname,
+  getAccountSectionPath,
+  isAccountPathname,
+} from "@/features/account/routes";
+import {
+  type AccountSection,
+  defaultAccountSection,
+  flagGatedAccountSections,
+  isAccountSectionReleased,
+} from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
 import { GuardedLink } from "@/shared/components/guarded-link";
 import { useConfirmDiscardChanges } from "@/shared/components/unsaved-changes-guard";
@@ -52,42 +64,6 @@ const anonymousDisabledSections = [
   "billing",
   "danger",
 ] as const;
-
-type AccountSectionRelease = {
-  readonly passkeysEnabled: boolean;
-  readonly referralsEnabled: boolean;
-};
-
-/** Whether a flag-gated section is released; other sections always are. */
-const isSectionReleased = (
-  section: AccountSection,
-  { passkeysEnabled, referralsEnabled }: AccountSectionRelease
-) => {
-  if (section === "referrals") return referralsEnabled;
-  if (section === "security") return passkeysEnabled;
-  return true;
-};
-
-const flagGatedSections = ["referrals", "security"] as const;
-
-function sectionFromQuery(
-  value: string | null,
-  release: AccountSectionRelease
-): AccountSection | undefined {
-  switch (value) {
-    case "referrals":
-    case "security":
-      return isSectionReleased(value, release) ? value : undefined;
-    case "reservations":
-    case "profile":
-    case "billing":
-    case "legal":
-    case "danger":
-      return value;
-    default:
-      return undefined;
-  }
-}
 
 function AccountHelp({ locale }: { readonly locale: Locale }) {
   return (
@@ -126,20 +102,21 @@ export function AccountLayoutShell({
 }: AccountLayoutShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const confirmDiscardChanges = useConfirmDiscardChanges();
-  const normalizedPathname =
-    pathname === null ? null : pathname.replace(/\/+$/, "") || "/";
-  const requestedSection = searchParams.get("section");
-  const isLegalPathname =
-    normalizedPathname?.endsWith("/account/legal") ?? false;
-  const isDeletedPathname =
-    normalizedPathname?.endsWith("/account/deleted") ?? false;
-  let routeSection =
-    sectionFromQuery(requestedSection, { passkeysEnabled, referralsEnabled }) ??
-    "reservations";
-  if (isLegalPathname) routeSection = "legal";
-  const routeKey = `${normalizedPathname ?? ""}|${requestedSection ?? ""}`;
+  const routeKey = pathname ?? "";
+  const isDeletedPathname = /\/account\/deleted\/*$/.test(routeKey);
+  const pathnameSection = findAccountSectionOfPathname(locale, routeKey);
+  // The page is not found at a withheld section's path; the shell still
+  // never opens one.
+  const routeSection =
+    pathnameSection !== undefined &&
+    isAccountSectionReleased(pathnameSection, {
+      passkeysEnabled,
+      referralsEnabled,
+    })
+      ? pathnameSection
+      : defaultAccountSection;
+  const isLegalPathname = routeSection === "legal";
   const [localNavigation, setLocalNavigation] = useState(() => ({
     activeSection: routeSection,
     routeKey,
@@ -157,35 +134,60 @@ export function AccountLayoutShell({
     localNavigation.routeKey === routeKey
       ? localNavigation.activeSection
       : routeSection;
+  // The page metadata keeps titling the section the page was loaded at, also
+  // after an in-place switch and when Back restores a switched path, so the
+  // title follows the path's section as a reload of it would.
+  const pageTitle =
+    pathnameSection === undefined ||
+    pathnameSection === "legal" ||
+    pathnameSection !== routeSection
+      ? undefined
+      : getAccountPageTitle(
+          locale,
+          isAccountPathname(locale, routeKey) ? undefined : pathnameSection
+        );
+  useEffect(() => {
+    if (pageTitle !== undefined) document.title = pageTitle;
+  }, [pageTitle]);
 
   const changeSection = useCallback(
     (section: AccountSection) => {
+      const sectionPath = getAccountSectionPath(locale, section);
       if (section === "legal") {
         if (isLegalPathname || !confirmDiscardChanges()) return;
-        router.push(`/${locale}/account/legal`);
+        router.push(sectionPath);
         return;
       }
 
       if (!signedIn) return;
-      if (!isSectionReleased(section, { passkeysEnabled, referralsEnabled })) {
+      if (
+        !isAccountSectionReleased(section, {
+          passkeysEnabled,
+          referralsEnabled,
+        })
+      ) {
         return;
       }
       if (isLegalPathname) {
         if (!confirmDiscardChanges()) return;
-        router.push(`/${locale}/account?section=${section}`);
+        router.push(sectionPath);
         return;
       }
+      if (section === activeSection) return;
 
       setLocalNavigation({ activeSection: section, routeKey });
-      // The URL carries the section without a server round trip, so a reload
-      // or a locale switch's document navigation reopens it. The default
-      // section keeps the canonical account URL.
+      // Every section of the account page is already rendered, so the switch
+      // only moves the URL to the section's path, without a server round
+      // trip; a reload, a shared link, or a locale switch's document
+      // navigation reopens it. Replacing the entry keeps Back from stepping
+      // through sections, which the unsaved-changes guard would question
+      // although a switch keeps every draft.
       const url = new URL(window.location.href);
-      if (section === "reservations") url.searchParams.delete("section");
-      else url.searchParams.set("section", section);
+      url.pathname = sectionPath;
       window.history.replaceState(null, "", url);
     },
     [
+      activeSection,
       confirmDiscardChanges,
       isLegalPathname,
       locale,
@@ -223,12 +225,16 @@ export function AccountLayoutShell({
     <AccountShell
       activeSection={activeSection}
       disabledSections={signedIn ? undefined : anonymousDisabledSections}
-      hiddenSections={flagGatedSections.filter(
+      hiddenSections={flagGatedAccountSections.filter(
         (section) =>
-          !isSectionReleased(section, { passkeysEnabled, referralsEnabled })
+          !isAccountSectionReleased(section, {
+            passkeysEnabled,
+            referralsEnabled,
+          })
       )}
       labels={copy.shell}
       onSectionChange={changeSection}
+      sectionHref={(section) => getAccountSectionPath(locale, section)}
       referralBadge={referralsEnabled ? referralBadge : undefined}
       reservationCount={reservationCount}
       signOut={signedIn ? <SignOutButton locale={locale} /> : null}

@@ -1,6 +1,7 @@
 "use client";
 
 import { LogOut } from "lucide-react";
+import { getAccountSectionPath } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -41,6 +42,7 @@ export function AccountLoading({ locale }: { readonly locale: Locale }) {
       hiddenSections={hiddenAccountSections}
       labels={getAccountScreenCopy(locale).shell}
       onSectionChange={noopSectionChange}
+      sectionHref={(section) => getAccountSectionPath(locale, section)}
       signOut={<AccountSignOutLoading locale={locale} />}
       title={m.accountTitle({}, { locale })}
     >

@@ -12,7 +12,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import React from "react";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import type { CustomerProfileInput } from "@/features/account/contracts";
-import { m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import {
   workspaceRouterPush,
   workspaceRouterRefresh,
@@ -230,11 +230,14 @@ const reservations = (
 
 function withAccountLayout(
   children: React.ReactNode,
-  { passkeysEnabled = false }: { readonly passkeysEnabled?: boolean } = {}
+  {
+    locale = "en-US",
+    passkeysEnabled = false,
+  }: { readonly locale?: Locale; readonly passkeysEnabled?: boolean } = {}
 ) {
   return (
     <AccountLayoutShell
-      locale="en-US"
+      locale={locale}
       passkeysEnabled={passkeysEnabled}
       referralsEnabled
       signedIn
@@ -318,12 +321,12 @@ describe("LinkedAccount", () => {
     const desktopSectionNavigation = getDesktopSectionNavigation(view);
 
     expect(
-      sectionNavigation.getByRole("button", {
+      sectionNavigation.getByRole("link", {
         name: sectionLabels.reservations,
       })
     ).toBeTruthy();
     expect(
-      desktopSectionNavigation.getByRole("button", {
+      desktopSectionNavigation.getByRole("link", {
         name: sectionLabels.reservations,
       }).textContent
     ).toContain("1");
@@ -354,10 +357,10 @@ describe("LinkedAccount", () => {
     ]);
 
     fireEvent.click(
-      sectionNavigation.getByRole("button", { name: sectionLabels.profile })
+      sectionNavigation.getByRole("link", { name: sectionLabels.profile })
     );
     fireEvent.click(
-      sectionNavigation.getByRole("button", { name: sectionLabels.billing })
+      sectionNavigation.getByRole("link", { name: sectionLabels.billing })
     );
     expect(
       view.container.querySelector("[data-screen='profile-screen']")
@@ -371,7 +374,7 @@ describe("LinkedAccount", () => {
     ).toHaveLength(1);
 
     fireEvent.click(
-      sectionNavigation.getByRole("button", {
+      sectionNavigation.getByRole("link", {
         name: sectionLabels.reservations,
       })
     );
@@ -380,11 +383,11 @@ describe("LinkedAccount", () => {
         ?.hidden
     ).toBe(true);
     fireEvent.click(
-      sectionNavigation.getByRole("button", { name: sectionLabels.legal })
+      sectionNavigation.getByRole("link", { name: sectionLabels.legal })
     );
     expect(workspaceRouterPush).toHaveBeenCalledWith("/en-US/account/legal");
     fireEvent.click(
-      sectionNavigation.getByRole("button", { name: sectionLabels.danger })
+      sectionNavigation.getByRole("link", { name: sectionLabels.danger })
     );
     expect(
       view.getByText(m.accountDeletionButton({}, { locale }))
@@ -421,7 +424,7 @@ describe("LinkedAccount", () => {
       );
     const referralBadge = () =>
       getDesktopSectionNavigation(view)
-        .getByRole("button", {
+        .getByRole("link", {
           name: new RegExp(`^${m.accountSectionReferrals({}, { locale })}`),
         })
         .querySelector("span.ml-auto");
@@ -438,7 +441,7 @@ describe("LinkedAccount", () => {
     expect(referralBadge()).toBeNull();
   });
 
-  test("mounts legal only for the active section, including the legacy query", async () => {
+  test("leaves legal to its own page in every section", async () => {
     const { LinkedAccount } = await import("./linked-account");
 
     for (const section of [
@@ -446,10 +449,9 @@ describe("LinkedAccount", () => {
       "profile",
       "billing",
       "danger",
+      "legal",
     ] as const) {
-      workspaceUseSearchParams.mockReturnValue(
-        new URLSearchParams(`section=${section}`)
-      );
+      workspacePathname = `/en-US/account/${section}`;
       const view = render(
         withAccountLayout(
           <LinkedAccount
@@ -467,30 +469,11 @@ describe("LinkedAccount", () => {
       expect(legalScreenMountCount).toBe(0);
       view.unmount();
     }
-
-    workspaceUseSearchParams.mockReturnValue(
-      new URLSearchParams("section=legal")
-    );
-    render(
-      withAccountLayout(
-        <LinkedAccount
-          referralsEnabled
-          avatarPresentation={hiddenAvatarPresentation}
-          email={adaAddress}
-          reservationCount={history.groups.current.length}
-          reservations={reservations}
-          locale="en-US"
-          profile={profile}
-        />
-      )
-    );
-
-    expect(legalScreenMountCount).toBe(1);
   });
 
   test.each([
-    ["en-US", "/en-US/account", "/en-US/account/legal/"],
-    ["cs-CZ", "/cs-CZ/account/", "/cs-CZ/account/legal"],
+    ["en-US", "/en-US/account/profile", "/en-US/account/legal/"],
+    ["cs-CZ", "/cs-CZ/account/profile/", "/cs-CZ/account/legal"],
   ] as const)(
     "does not retain private legal content when public legal replaces it for %s",
     async (locale, privatePathname, publicLegalPathname) => {
@@ -498,9 +481,6 @@ describe("LinkedAccount", () => {
       const { PublicAccountLegal } = await import("./public-account-legal");
 
       workspacePathname = privatePathname;
-      workspaceUseSearchParams.mockReturnValue(
-        new URLSearchParams("section=profile")
-      );
       const privateAccount = (
         <div data-testid="cached-private-account">
           <LinkedAccount
@@ -520,12 +500,12 @@ describe("LinkedAccount", () => {
           <>
             <React.Activity mode="visible">{privateAccount}</React.Activity>
             <div data-testid="public-account-legal-peer" />
-          </>
+          </>,
+          { locale }
         )
       );
 
       workspacePathname = publicLegalPathname;
-      workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
       view.rerender(
         withAccountLayout(
           <>
@@ -533,7 +513,8 @@ describe("LinkedAccount", () => {
             <div data-testid="public-account-legal-peer">
               <PublicAccountLegal locale={locale} />
             </div>
-          </>
+          </>,
+          { locale }
         )
       );
 
@@ -591,7 +572,7 @@ describe("LinkedAccount", () => {
       const sectionNavigation = getDesktopSectionNavigation(view);
 
       fireEvent.click(
-        sectionNavigation.getByRole("button", {
+        sectionNavigation.getByRole("link", {
           name: sectionLabels.profile,
         })
       );
@@ -608,7 +589,7 @@ describe("LinkedAccount", () => {
       ) as HTMLInputElement;
 
       fireEvent.click(
-        sectionNavigation.getByRole("button", { name: sectionLabels.legal })
+        sectionNavigation.getByRole("link", { name: sectionLabels.legal })
       );
 
       expect(confirmDiscardChanges).toHaveBeenCalledTimes(1);
@@ -616,14 +597,14 @@ describe("LinkedAccount", () => {
       expect(firstName.value).toBe("Grace");
       expect(
         sectionNavigation
-          .getByRole("button", { name: sectionLabels.profile })
+          .getByRole("link", { name: sectionLabels.profile })
           .getAttribute("aria-current")
       ).toBe("page");
       expect(updateCustomerProfile).not.toHaveBeenCalled();
 
       confirmDiscardChanges.mockImplementation(() => true);
       fireEvent.click(
-        sectionNavigation.getByRole("button", { name: sectionLabels.legal })
+        sectionNavigation.getByRole("link", { name: sectionLabels.legal })
       );
 
       expect(confirmDiscardChanges).toHaveBeenCalledTimes(2);
@@ -634,13 +615,12 @@ describe("LinkedAccount", () => {
     }
   });
 
-  test("reconciles query section changes without resetting the profile form", async () => {
+  test("reconciles section path changes without resetting the profile form", async () => {
     const { UnsavedChangesProvider } = await import(
       "@/shared/components/unsaved-changes-guard"
     );
     const { LinkedAccount } = await import("./linked-account");
-    let query = new URLSearchParams("section=profile");
-    workspaceUseSearchParams.mockImplementation(() => query);
+    workspacePathname = "/en-US/account/profile";
 
     const renderAccount = () => (
       <UnsavedChangesProvider>
@@ -668,35 +648,35 @@ describe("LinkedAccount", () => {
     });
     expect(firstName.value).toBe("Grace");
 
-    query = new URLSearchParams("section=billing");
+    workspacePathname = "/en-US/account/billing";
     await act(async () => {
       view.rerender(renderAccount());
     });
     expect(
       sectionNavigation
-        .getByRole("button", { name: sectionLabels.billing })
+        .getByRole("link", { name: sectionLabels.billing })
         .getAttribute("aria-current")
     ).toBe("page");
     expect(firstName.value).toBe("Grace");
 
-    query = new URLSearchParams("section=legal");
+    workspacePathname = "/en-US/account/legal";
     await act(async () => {
       view.rerender(renderAccount());
     });
     expect(
       sectionNavigation
-        .getByRole("button", { name: sectionLabels.legal })
+        .getByRole("link", { name: sectionLabels.legal })
         .getAttribute("aria-current")
     ).toBe("page");
     expect(firstName.value).toBe("Grace");
 
-    query = new URLSearchParams("section=profile");
+    workspacePathname = "/en-US/account/profile";
     await act(async () => {
       view.rerender(renderAccount());
     });
     expect(
       sectionNavigation
-        .getByRole("button", { name: sectionLabels.profile })
+        .getByRole("link", { name: sectionLabels.profile })
         .getAttribute("aria-current")
     ).toBe("page");
     expect(firstName.value).toBe("Grace");
@@ -704,9 +684,7 @@ describe("LinkedAccount", () => {
   });
 
   test("shows no referral screen, badge, or completion notice while the program is withheld", async () => {
-    workspaceUseSearchParams.mockReturnValue(
-      new URLSearchParams("section=referrals")
-    );
+    workspacePathname = "/en-US/account/referrals";
     const { LinkedAccount } = await import("./linked-account");
     const { parseReferralCode } = await import("@/features/referrals/client");
     const code = parseReferralCode("RFL12345");
@@ -744,13 +722,13 @@ describe("LinkedAccount", () => {
       })
     ).toBeNull();
     expect(
-      getDesktopSectionNavigation(view).queryByRole("button", {
+      getDesktopSectionNavigation(view).queryByRole("link", {
         name: new RegExp(`^${m.accountSectionReferrals({}, { locale })}`),
       })
     ).toBeNull();
     expect(
       getDesktopSectionNavigation(view)
-        .getByRole("button", { name: sectionLabels.reservations })
+        .getByRole("link", { name: sectionLabels.reservations })
         .getAttribute("aria-current")
     ).toBe("page");
   });
@@ -785,7 +763,7 @@ describe("LinkedAccount", () => {
       );
 
       fireEvent.click(
-        sectionNavigation.getByRole("button", { name: sectionLabels.profile })
+        sectionNavigation.getByRole("link", { name: sectionLabels.profile })
       );
       await act(async () => {
         fireEvent.input(
@@ -796,7 +774,7 @@ describe("LinkedAccount", () => {
         );
       });
       fireEvent.click(
-        sectionNavigation.getByRole("button", {
+        sectionNavigation.getByRole("link", {
           name: sectionLabels.reservations,
         })
       );
@@ -858,7 +836,7 @@ describe("LinkedAccount", () => {
 
     fireEvent.click(
       within(view.getByRole("group", { name: sectionLabels.group })).getByRole(
-        "button",
+        "link",
         { name: sectionLabels.security }
       )
     );
@@ -902,7 +880,7 @@ describe("LinkedAccount", () => {
     );
 
     expect(
-      view.queryByRole("button", { name: sectionLabels.security })
+      view.queryByRole("link", { name: sectionLabels.security })
     ).toBeNull();
     expect(
       view.queryByText(m.accountSecurityPasskeysTitle({}, { locale }))

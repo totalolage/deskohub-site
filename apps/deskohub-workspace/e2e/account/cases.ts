@@ -5,6 +5,7 @@ import {
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { getAccountSectionPath } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import { localeCookieName } from "@/features/i18n/routing";
 import { maskEmailAddress } from "@/shared/utils";
@@ -1872,10 +1873,10 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         const languageTriggerSelector = '[data-slot="select-trigger"]';
         const languageOptionCsSelector = '[role="option"]:has-text("Čeština")';
-        const czechProfileUrl = localized(
-          `${accountSuffix}?section=profile`,
-          "cs-CZ"
-        );
+        const czechProfileUrl = new URL(
+          getAccountSectionPath("cs-CZ", "profile"),
+          config.baseUrl
+        ).toString();
         const czechLanguageLabel = m.accountProfileScreenLanguageLabel(
           {},
           { locale: "cs-CZ" }
@@ -1949,7 +1950,7 @@ export const makeWorkspaceE2EAccountCases = ({
           });
 
         /**
-         * Opens the Czech profile by its section query. The account
+         * Opens the Czech profile by its section path. The account
          * navigation labels are English-only fixtures, so the profile is
          * ready once its hydrated panel is visible and renders the Czech
          * language label.

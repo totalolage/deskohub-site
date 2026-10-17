@@ -1,6 +1,6 @@
 import { normalizePhoneNumber } from "@deskohub/dotypos";
 import { expect, type Page } from "@playwright/test";
-import type { AccountSection } from "@/features/account/components/shell/account-shell";
+import type { AccountSection } from "@/features/account/sections";
 import {
   type WorkspaceE2EProfileNavigationDiagnosticCode,
   workspaceE2EError,
@@ -29,11 +29,10 @@ const persistedProfileSelectionDiagnostics: Readonly<
     WorkspaceE2EProfileNavigationDiagnosticCode
   >
 > = {
-  "button-handler-wait":
-    "account_profile_persisted_profile_handler_wait_failed",
+  "link-handler-wait": "account_profile_persisted_profile_handler_wait_failed",
   "panel-hydration-wait":
     "account_profile_persisted_profile_panel_hydration_wait_failed",
-  "native-button-click": "account_profile_persisted_profile_click_failed",
+  "native-link-click": "account_profile_persisted_profile_click_failed",
   "selected-landmark-wait":
     "account_profile_persisted_profile_landmark_wait_failed",
 };
@@ -84,9 +83,9 @@ export async function verifyProfileNavigation(
   try {
     const homeUrl = new URL(homePath, baseUrl).toString();
     const accountUrl = new URL(accountPath, baseUrl).toString();
-    // A section switch records its section in the account URL.
+    // A section switch records its section in the account pathname.
     const accountSectionUrl = (section: AccountSection) =>
-      `${accountUrl}?section=${section}`;
+      `${accountUrl}/${section}`;
     const profileForm = page.locator(profileFormSelector);
     const firstName = page.locator(profileFirstNameSelector);
     const header = page.getByRole("banner");

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import type { AccountSection } from "@/features/account/components/shell/account-shell";
+import type { AccountSection } from "@/features/account/sections";
 import {
   isWorkspaceE2EDiagnosticCode,
   WorkspaceE2EError,
@@ -17,9 +17,9 @@ import type { AccountReviewDestination } from "./review-screenshots";
 const desktopViewport = { height: 1000, width: 1440 } as const;
 const mobileViewport = { height: 900, width: 375 } as const;
 const accountSections = [
+  "profile",
   "reservations",
   "referrals",
-  "profile",
   "security",
   "billing",
   "legal",

@@ -5,10 +5,11 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { createElement, useState } from "react";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import {
-  type AccountSection,
   AccountShell,
   type AccountShellProps,
 } from "@/features/account/components/shell/account-shell";
+import { getAccountSectionPath } from "@/features/account/routes";
+import type { AccountSection } from "@/features/account/sections";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -43,9 +44,9 @@ const { ProfileScreen } = await import(
 );
 
 const sections = [
+  "profile",
   "reservations",
   "referrals",
-  "profile",
   "security",
   "billing",
   "legal",
@@ -143,6 +144,7 @@ function AccountShellHarness({
         hiddenSections,
         labels: shellLabels,
         onSectionChange: selectSection,
+        sectionHref: (section) => getAccountSectionPath("en-US", section),
         signOut: createElement("button", { type: "button" }, "Sign out"),
         title: "Workspace account",
       },
@@ -229,11 +231,11 @@ const makeFakePage = (options: FakePageOptions = {}): Page => {
   });
 
   const getByRole = (
-    role: "button",
+    role: "link",
     roleOptions: { readonly exact?: boolean; readonly name?: string } = {}
   ) => {
     const candidates = Array.from(
-      document.querySelectorAll<HTMLElement>("button")
+      document.querySelectorAll<HTMLAnchorElement>("a")
     );
     const name = roleOptions.name ?? "";
     const exact = roleOptions.exact !== false;
@@ -525,7 +527,7 @@ test("preserves the phase diagnostic when final viewport reset also fails", asyn
   if (!(failure instanceof WorkspaceE2EError))
     throw new Error("expected a Workspace E2E error");
   expect(failure.message).toContain("at capture");
-  expect(failure.message).toContain("for reservations");
+  expect(failure.message).toContain("for profile");
   expect(failure.message).toContain("at viewport 1440x1000");
   expect(failure.message).not.toContain(captureFailureMarker);
   expect(failure.message).not.toContain(restoreFailureMarker);
