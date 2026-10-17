@@ -15,8 +15,8 @@ import {
 import { m } from "./i18n";
 import { CustomerActivity, ReservationActivity } from "./overview-activity";
 
-const makeCustomer = (id: string, displayName: string) => ({
-  customer: { id, displayName, email: null, phone: null },
+const makeCustomer = (id: string, displayName: string, hasName = true) => ({
+  customer: { id, displayName, hasName, email: null, phone: null },
   customerId: id,
 });
 
@@ -41,7 +41,7 @@ const overview = {
   newCustomers: {
     customers: [
       makeCustomer("customer-riley", "Riley Chen"),
-      makeCustomer("customer-casey", "Casey Smith"),
+      makeCustomer("customer-unnamed", "Unnamed customer", false),
       makeCustomer("customer-drew", "Drew Jones"),
     ],
     unavailable: false,
@@ -84,6 +84,8 @@ describe("CustomerActivity", () => {
     expect(view.getByText("Noví zákazníci")).toBeDefined();
     expect(view.getByText("… a 5 dalších")).toBeDefined();
     expect(view.getByText("Drew Jones")).toBeDefined();
+    expect(view.getByText("Zákazník bez jména")).toBeDefined();
+    expect(view.queryByText("Unnamed customer")).toBeNull();
   });
 
   test("selects the Czech remainder form for two to four customers", () => {
@@ -111,6 +113,45 @@ describe("ReservationActivity", () => {
     expect(
       view.getByRole("link", { name: "Posledních 7 dní" }).getAttribute("href")
     ).toBe("/cs-CZ/admin/reservations?from=2026-08-05&to=2026-08-11");
+  });
+
+  test("groups the digits of large reservation counts for the locale", async () => {
+    const largeOverview = {
+      ...overview,
+      today: { completed: 1001, unavailable: false, value: 1234 },
+    };
+    for (const [locale, completion, completed, total] of [
+      [
+        "cs-CZ",
+        "Dokončeno: 1\u00a0001 z 1\u00a0234 rezervací",
+        "1\u00a0001",
+        "/ 1\u00a0234",
+      ],
+      [
+        "en-US",
+        "1,001 completed out of 1,234 total reservations",
+        "1,001",
+        "/ 1,234",
+      ],
+    ] as const) {
+      const view = render(
+        <RouteLocaleProvider locale={locale}>
+          {
+            await ReservationActivity({
+              locale,
+              overview: Promise.resolve(largeOverview),
+            })
+          }
+        </RouteLocaleProvider>
+      );
+
+      for (const text of [completion, completed, total]) {
+        expect(
+          view.getAllByText((_, element) => element?.textContent === text)
+        ).toHaveLength(1);
+      }
+      view.unmount();
+    }
   });
 
   test("keeps the singular total in English", () => {

@@ -192,8 +192,28 @@ describe("payment timeline", () => {
         "cs-CZ"
       )
     ).toEqual({
-      title: "Incremental Authorization: Pending",
+      title: "Incremental Authorization: Čeká na zpracování",
       description: "Nexi hlásí tuto operaci z kanálu Back Office.",
+    });
+  });
+
+  test("names known Nexi codes in the route locale", () => {
+    const event = {
+      source: "payment",
+      kind: "operationReported",
+      outcome: "other",
+      operationType: "CAPTURE",
+      operationResult: "DENIED_BY_RISK",
+      channel: "BACKOFFICE",
+    } as const;
+
+    expect(getAdministrationPaymentTimelineCopy(event, "cs-CZ")).toEqual({
+      title: "Stržení platby: Odmítnuto kontrolou rizik",
+      description: "Nexi hlásí tuto operaci z kanálu Back office Nexi.",
+    });
+    expect(getAdministrationPaymentTimelineCopy(event, "en-US")).toEqual({
+      title: "Capture: Denied by risk check",
+      description: "Nexi reported this Back office operation.",
     });
   });
 });

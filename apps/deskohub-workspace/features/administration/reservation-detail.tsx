@@ -15,6 +15,7 @@ import {
   ReservationReferences,
   ReservationTimeline,
 } from "./components";
+import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   AdministrationDetailSection,
   AdministrationFact,
@@ -203,7 +204,7 @@ async function ReservationDetailContent({
                   className="font-semibold underline decoration-navy-blue/20 underline-offset-4"
                   href={`/admin/customers/${reservation.customerId}`}
                 >
-                  {reservation.customer.displayName}
+                  {getAdministrationCustomerName(reservation.customer, locale)}
                 </Link>
               ) : (
                 <p className="font-medium">

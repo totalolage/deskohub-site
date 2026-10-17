@@ -91,10 +91,16 @@ const getProviderStatusTone = (value: string): StatusTone => {
   return "neutral";
 };
 
-export function ProviderStatusBadge({ value }: { readonly value: string }) {
+export function ProviderStatusBadge({
+  locale,
+  value,
+}: {
+  readonly locale: Locale;
+  readonly value: string;
+}) {
   return (
     <StatusBadge tone={getProviderStatusTone(value)}>
-      {getProviderValueLabel(value)}
+      {getProviderValueLabel(value, locale)}
     </StatusBadge>
   );
 }
@@ -267,7 +273,10 @@ export function ReservationOrderList({
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-semibold">
                             {operation.operationType
-                              ? getProviderValueLabel(operation.operationType)
+                              ? getProviderValueLabel(
+                                  operation.operationType,
+                                  locale
+                                )
                               : m.administrationPaymentOperationFallback(
                                   {},
                                   { locale }
@@ -275,6 +284,7 @@ export function ReservationOrderList({
                           </p>
                           {operation.operationResult && (
                             <ProviderStatusBadge
+                              locale={locale}
                               value={operation.operationResult}
                             />
                           )}
@@ -285,7 +295,11 @@ export function ReservationOrderList({
                             locale
                           )}
                           {operation.channel && (
-                            <> · {getProviderValueLabel(operation.channel)}</>
+                            <>
+                              {" "}
+                              ·{" "}
+                              {getProviderValueLabel(operation.channel, locale)}
+                            </>
                           )}
                         </p>
                         {operation.operationId && (

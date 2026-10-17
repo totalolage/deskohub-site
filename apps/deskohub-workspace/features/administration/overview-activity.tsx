@@ -1,6 +1,8 @@
 import type { Locale } from "@/features/i18n";
+import { formatCount } from "@/shared/utils/number";
 import { AdministrationLink as Link } from "./admin-link";
 import type { AdministrationOverviewMetric } from "./administration.service";
+import { getAdministrationCustomerName } from "./customer-presentation";
 import { m } from "./i18n";
 import type {
   loadAdministrationOverview,
@@ -118,7 +120,7 @@ function CustomerActivityMetric({
             <span aria-hidden="true">—</span>
           </>
         ) : (
-          metric.value
+          formatCount(metric.value, locale)
         )}
       </dd>
       <dd className="mt-3 text-xs leading-5 text-navy-blue/58">
@@ -140,11 +142,12 @@ function CustomerActivityMetric({
                     className="block break-words font-semibold transition-colors hover:text-aquamarine-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-blue/40"
                     href={`/admin/customers/${customerId}`}
                   >
-                    {customer?.displayName ??
-                      m.administrationCustomerDetailsUnavailable(
-                        {},
-                        { locale }
-                      )}
+                    {customer
+                      ? getAdministrationCustomerName(customer, locale)
+                      : m.administrationCustomerDetailsUnavailable(
+                          {},
+                          { locale }
+                        )}
                   </Link>
                 </li>
               ))}
@@ -207,10 +210,10 @@ function OverviewMetric({
               )}
             </span>
             <span aria-hidden="true" className="text-aquamarine-ink">
-              {metric.completed}
+              {formatCount(metric.completed, locale)}
             </span>
             <span aria-hidden="true" className="text-lg text-navy-blue/58">
-              / {metric.value}
+              / {formatCount(metric.value, locale)}
             </span>
           </>
         )}

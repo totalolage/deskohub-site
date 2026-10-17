@@ -13,6 +13,7 @@ import {
   getAdministrationBookingGuestCount,
   getAdministrationBookingStatusLabel,
 } from "./booking-presentation";
+import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -70,14 +71,17 @@ const getColumns = (
     id: "booking",
   },
   {
-    accessorFn: (booking) => booking.customer?.displayName ?? "",
+    accessorFn: (booking) =>
+      booking.customer
+        ? getAdministrationCustomerName(booking.customer, locale)
+        : "",
     cell: ({ row }) =>
       row.original.customer && row.original.customerId ? (
         <Link
           className="relative z-10 font-medium hover:underline"
           href={`/admin/customers/${row.original.customerId}`}
         >
-          {row.original.customer.displayName}
+          {getAdministrationCustomerName(row.original.customer, locale)}
         </Link>
       ) : (
         <span className="text-sm text-navy-blue/65">
@@ -190,11 +194,15 @@ export function BookingTable({
                       {formatAdministrationDateTime(booking.startsAt, locale)}
                     </p>
                     <p className="mt-1 text-sm text-navy-blue/65">
-                      {booking.customer?.displayName ??
-                        m.administrationBookingCustomerUnavailable(
-                          {},
-                          { locale }
-                        )}
+                      {booking.customer
+                        ? getAdministrationCustomerName(
+                            booking.customer,
+                            locale
+                          )
+                        : m.administrationBookingCustomerUnavailable(
+                            {},
+                            { locale }
+                          )}
                     </p>
                   </div>
                   <BookingStatusBadge booking={booking} locale={locale} />

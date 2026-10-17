@@ -120,7 +120,10 @@ export async function OrderAdministrationDetail({
                 label={m.administrationOrderFactLastOperation({}, { locale })}
                 value={
                   order.provider?.lastOperationType
-                    ? getProviderValueLabel(order.provider.lastOperationType)
+                    ? getProviderValueLabel(
+                        order.provider.lastOperationType,
+                        locale
+                      )
                     : m.administrationOrderNotReported({}, { locale })
                 }
               />

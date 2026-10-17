@@ -229,7 +229,7 @@ export function OperationsAdministrationFilterForm({
           </option>
           {nexiOperationChannels.map((channel) => (
             <option key={channel} value={channel}>
-              {getProviderValueLabel(channel)}
+              {getProviderValueLabel(channel, locale)}
             </option>
           ))}
         </AdministrationFilterSelect>
@@ -249,7 +249,7 @@ export function OperationsAdministrationFilterForm({
           </option>
           {nexiOperationTypes.map((operationType) => (
             <option key={operationType} value={operationType}>
-              {getProviderValueLabel(operationType)}
+              {getProviderValueLabel(operationType, locale)}
             </option>
           ))}
         </AdministrationFilterSelect>

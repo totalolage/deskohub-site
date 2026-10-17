@@ -368,7 +368,7 @@ describe("administration filter forms", () => {
     expect(origin.selectedOptions[0]?.textContent).toBe("Vše");
     expect(
       Array.from(origin.options).map(({ textContent }) => textContent)
-    ).toContain("Backoffice");
+    ).toContain("Back office Nexi");
     expect(
       view.getByRole("button", { name: "Zobrazit operace" })
     ).toBeDefined();

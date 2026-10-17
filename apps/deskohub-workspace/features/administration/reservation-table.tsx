@@ -10,6 +10,7 @@ import type {
   AdministrationReservationSort,
   AdministrationReservationSummary,
 } from "./administration.service";
+import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
@@ -102,7 +103,9 @@ export function ReservationTable({
         ? [
             {
               accessorFn: (reservation) =>
-                reservation.customer?.displayName ?? "",
+                reservation.customer
+                  ? getAdministrationCustomerName(reservation.customer, locale)
+                  : "",
               cell: ({ row }) => (
                 <ReservationCustomer
                   locale={locale}
@@ -186,7 +189,12 @@ export function ReservationTable({
                         className="underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
                         href={`/admin/reservations/${reservation.id}`}
                       >
-                        {(showCustomer && reservation.customer?.displayName) ||
+                        {(showCustomer &&
+                          reservation.customer &&
+                          getAdministrationCustomerName(
+                            reservation.customer,
+                            locale
+                          )) ||
                           getAdministrationReservationProductTitle(
                             reservation.product,
                             locale
@@ -340,7 +348,7 @@ function ReservationCustomer({
         className="relative z-10 font-medium hover:underline"
         href={`/admin/customers/${reservation.customerId}`}
       >
-        {reservation.customer.displayName}
+        {getAdministrationCustomerName(reservation.customer, locale)}
       </Link>
       <p className="mt-1 text-xs text-navy-blue/65">
         {reservation.customer.email ??

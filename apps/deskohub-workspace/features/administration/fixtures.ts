@@ -51,18 +51,21 @@ const fixtureCustomers = {
   "customer-alex": {
     id: fixtureCustomerId("customer-alex"),
     displayName: "Alex Morgan",
+    hasName: true,
     email: alexMorganEmail,
     phone: "+420 700 000 101",
   },
   "customer-jordan": {
     id: fixtureCustomerId("customer-jordan"),
     displayName: "Jordan Lee",
+    hasName: true,
     email: jordanLeeEmail,
     phone: "+420 700 000 202",
   },
   "customer-sam": {
     id: fixtureCustomerId("customer-sam"),
     displayName: "Sam Taylor",
+    hasName: true,
     email: samTaylorEmail,
     phone: null,
   },

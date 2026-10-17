@@ -541,6 +541,66 @@ describe("AdministrationService", () => {
     expect(itemCalls).toEqual([customerId]);
   });
 
+  test("keeps an English customer name for the API and flags an unnamed customer", async () => {
+    const lastActivityAt = Temporal.Instant.from("2026-08-14T12:00:00Z");
+    const rows = [
+      [{ value: 2 }],
+      [
+        { customerId: "named-customer", reservationCount: 1, lastActivityAt },
+        { customerId: "unnamed-customer", reservationCount: 1, lastActivityAt },
+      ],
+    ] as const;
+    let selectCall = 0;
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listCustomers({});
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({
+                  db: {
+                    select: () => makeQuery(rows[selectCall++] ?? []),
+                  } as never,
+                })
+              ),
+              DotyposServiceMock({
+                getCustomers: () =>
+                  Effect.succeed([
+                    { companyName: " Acme Studio ", id: "named-customer" },
+                    { companyName: " ", id: "unnamed-customer" },
+                  ]),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    const customerNamed = (customerId: string) =>
+      result.items.find((item) => item.customerId === customerId)?.customer;
+    expect(customerNamed("named-customer")).toMatchObject({
+      displayName: "Acme Studio",
+      hasName: true,
+    });
+    expect(customerNamed("unnamed-customer")).toMatchObject({
+      displayName: "Unnamed customer",
+      hasName: false,
+    });
+  });
+
   test("rethrows Next prerender interruptions instead of returning unavailable details", async () => {
     const customerId = "dotypos-customer";
     const rows = [
@@ -860,6 +920,7 @@ describe("AdministrationService", () => {
         {
           customer: {
             displayName: "new-a",
+            hasName: true,
             email: null,
             id: "customer-new-a",
             phone: null,
@@ -869,6 +930,7 @@ describe("AdministrationService", () => {
         {
           customer: {
             displayName: "boundary-end",
+            hasName: true,
             email: null,
             id: "customer-boundary-end",
             phone: null,
@@ -878,6 +940,7 @@ describe("AdministrationService", () => {
         {
           customer: {
             displayName: "boundary-start",
+            hasName: true,
             email: null,
             id: "customer-boundary-start",
             phone: null,
@@ -896,6 +959,7 @@ describe("AdministrationService", () => {
         {
           customer: {
             displayName: "new-a",
+            hasName: true,
             email: null,
             id: "customer-new-a",
             phone: null,
@@ -905,6 +969,7 @@ describe("AdministrationService", () => {
         {
           customer: {
             displayName: "boundary-start",
+            hasName: true,
             email: null,
             id: "customer-boundary-start",
             phone: null,
