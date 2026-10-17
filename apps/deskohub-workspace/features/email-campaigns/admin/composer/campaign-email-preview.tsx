@@ -9,6 +9,7 @@ import type {
   CampaignPurpose,
   CampaignTemplateKey,
 } from "../../body/campaign-content";
+import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import { CampaignInboxPreview } from "../email-preview/campaign-inbox-preview";
 import { previewCampaignEmail } from "./actions";
 import {
@@ -77,8 +78,13 @@ export function CampaignEmailPreview({
     },
     onError: ({ error }) =>
       setError(
-        error.serverError ??
-          m.emailCampaignsEmailPreviewRenderFailed({}, { locale: routeLocale })
+        getEmailCampaignAdminActionFailureMessage(error.serverError, {
+          fallback: m.emailCampaignsEmailPreviewRenderFailed(
+            {},
+            { locale: routeLocale }
+          ),
+          locale: routeLocale,
+        })
       ),
   });
   // The hook returns a new `execute` on every render, including the renders
