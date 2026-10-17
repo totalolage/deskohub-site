@@ -108,6 +108,7 @@ const makeDeletion = (options: {
       findLink: () => Effect.succeed(null),
       expireCustomer: () => Effect.void,
       destroyAvatar: () => Effect.void,
+      tombstone: () => Effect.void,
       withAccountLock: options.lock.withAccountLock,
     })(accountId)
   );
@@ -140,7 +141,10 @@ describe("optional account activity guard", () => {
       yield* Deferred.await(releaseSection);
       return "created" as const;
     });
-    const guarded = guardOptionalAccountStateCreation(backend, stateCreation);
+    const guarded = guardOptionalAccountStateCreation(
+      backend,
+      () => stateCreation
+    );
 
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
@@ -187,7 +191,10 @@ describe("optional account activity guard", () => {
       events.push("state-creation");
       return "created" as const;
     });
-    const guarded = guardOptionalAccountStateCreation(backend, stateCreation);
+    const guarded = guardOptionalAccountStateCreation(
+      backend,
+      () => stateCreation
+    );
 
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
@@ -240,7 +247,7 @@ describe("optional account activity guard", () => {
     });
 
     const outcome = await Effect.runPromise(
-      guardOptionalAccountStateCreation(backend, stateCreation)
+      guardOptionalAccountStateCreation(backend, () => stateCreation)
     );
 
     expect(outcome).toBe("created");
@@ -265,7 +272,7 @@ describe("optional account activity guard", () => {
     });
 
     const outcome = await Effect.runPromise(
-      guardOptionalAccountStateCreation(backend, stateCreation)
+      guardOptionalAccountStateCreation(backend, () => stateCreation)
     );
 
     expect(outcome).toBe("created");
@@ -288,7 +295,9 @@ describe("optional account activity guard", () => {
 
     const error = await Effect.runPromise(
       Effect.flip(
-        guardOptionalAccountStateCreation(backend, Effect.succeed("created"))
+        guardOptionalAccountStateCreation(backend, () =>
+          Effect.succeed("created")
+        )
       )
     );
 
@@ -322,7 +331,9 @@ describe("optional account activity guard", () => {
 
     const error = await Effect.runPromise(
       Effect.flip(
-        guardOptionalAccountStateCreation(backend, Effect.succeed("created"))
+        guardOptionalAccountStateCreation(backend, () =>
+          Effect.succeed("created")
+        )
       )
     );
 
@@ -331,6 +342,45 @@ describe("optional account activity guard", () => {
       reason: "unavailable",
       cause: { code: "account-link.lock" },
     });
+  });
+
+  test("hands state creation the signed-in account it verified under the lock", async () => {
+    const events: string[] = [];
+    const backend = makeBackend({ events, activityState: activeState });
+
+    const author = await Effect.runPromise(
+      guardOptionalAccountStateCreation(backend, (signedInAccountId) =>
+        Effect.sync(() => {
+          events.push("state-creation");
+          return signedInAccountId;
+        })
+      )
+    );
+
+    expect(author).toBe(accountId);
+    expect(events).toEqual([
+      "account-session",
+      "account-lock-acquired",
+      "account-activity",
+      "state-creation",
+      "account-lock-released",
+    ]);
+  });
+
+  test("hands state creation no account for an anonymous session", async () => {
+    const backend: GuardBackend = {
+      currentUser: Effect.succeed(null),
+      findActivityState: () => Effect.die("activity must not be read"),
+      withAccountLock: () => Effect.die("lock must not be acquired"),
+    };
+
+    const author = await Effect.runPromise(
+      guardOptionalAccountStateCreation(backend, (signedInAccountId) =>
+        Effect.succeed(signedInAccountId)
+      )
+    );
+
+    expect(author).toBeNull();
   });
 
   test("returns a SqlError raised by state creation itself as the same instance", async () => {
@@ -347,7 +397,9 @@ describe("optional account activity guard", () => {
       Effect.fail(stateCreationFailure);
 
     const error = await Effect.runPromise(
-      Effect.flip(guardOptionalAccountStateCreation(backend, stateCreation))
+      Effect.flip(
+        guardOptionalAccountStateCreation(backend, () => stateCreation)
+      )
     );
 
     expect(error).toBe(stateCreationFailure);
