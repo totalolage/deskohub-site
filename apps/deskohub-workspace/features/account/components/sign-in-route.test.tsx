@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ReactElement } from "react";
+import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
 
 const events: string[] = [];
 const arePasskeysEnabled = mock(() => Promise.resolve(false));
@@ -19,7 +20,7 @@ const render = async (query: Record<string, string | string[] | undefined>) =>
   })) as ReactElement<{
     readonly locale: string;
     readonly passkeysEnabled: boolean;
-    readonly returnPath?: string;
+    readonly returnTo?: string;
   }>;
 
 describe("sign-in route card", () => {
@@ -50,31 +51,22 @@ describe("sign-in route card", () => {
       expect((await render({})).props).toEqual({
         locale: "en-US",
         passkeysEnabled,
-        returnPath: undefined,
+        returnTo: undefined,
       });
     }
   );
 
-  test("passes a valid return path on with its query", async () => {
-    const returnPath = "/en-US/reservation?date=2026-10-20&contact=a.b";
+  test("passes only a same-origin return target on, with its query", async () => {
+    const returnTo = "/en-US/reservation?date=2026-10-20&contact=a.b";
 
-    expect((await render({ returnTo: returnPath })).props.returnPath).toBe(
-      returnPath
-    );
+    expect((await render({ returnTo })).props.returnTo).toBe(returnTo);
     expect(
-      (await render({ returnTo: [returnPath, "/en-US/account"] })).props
-        .returnPath
-    ).toBe(returnPath);
-  });
-
-  test.each([
-    "https://evil.example/en-US/account",
-    "//evil.example/en-US/account",
-    "/en-US/auth/verify",
-  ])(
-    "drops the return path %s, so the sign-in returns to the account",
-    async (returnTo) => {
-      expect((await render({ returnTo })).props.returnPath).toBeUndefined();
+      (await render({ returnTo: [returnTo, "/en-US/account"] })).props.returnTo
+    ).toBe(returnTo);
+    for (const unsafe of unsafeReturnTargets) {
+      expect(
+        (await render({ returnTo: unsafe })).props.returnTo
+      ).toBeUndefined();
     }
-  );
+  });
 });

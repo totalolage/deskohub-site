@@ -1,4 +1,4 @@
-import { withAuthReturnPath } from "@/features/account/auth-return-path";
+import { Option } from "effect";
 import {
   type AccountSection,
   defaultAccountSection,
@@ -9,19 +9,96 @@ import {
   getLocalizedPagePath,
   type Locale,
 } from "@/features/i18n";
+import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
+
+/**
+ * The sign-in search parameter naming where to continue after signing in.
+ * Readers must validate it with `parseSameOriginPath`.
+ */
+export const signInReturnParam = "returnTo";
+
+/** The magic-link search parameter correlating the callback tab with the tab that sent it. */
+export const signInAttemptParam = "attempt";
+
+/**
+ * The magic-link callback's return target. Better Auth decodes a magic link's
+ * `callbackURL` once more before it redirects, which would split a query
+ * nested in a plain path, so the callback carries it base64url-encoded.
+ */
+export const signInCallbackReturnParam = "return";
+
+// Same-origin paths are ASCII, which `btoa` and `atob` take as they are.
+const encodeCallbackReturn = Option.liftThrowable((path: string) =>
+  btoa(path).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
+);
+
+/**
+ * The callback's encoding of a return target, as `getAuthCallbackPath` writes
+ * it. It encodes any value as is, so validate the target first.
+ */
+export const encodeAuthCallbackReturn = (path: string): string | undefined =>
+  Option.getOrUndefined(encodeCallbackReturn(path));
+const decodeCallbackReturn = Option.liftThrowable((value: string) =>
+  atob(value.replaceAll("-", "+").replaceAll("_", "/"))
+);
+
+/**
+ * The same-origin return target a magic-link callback carries, validated
+ * again because anyone can craft the URL; `undefined` for anything else.
+ */
+export const readAuthCallbackReturnTo = (
+  value: string | null | undefined
+): string | undefined =>
+  value === null || value === undefined || !/^[\w-]+$/.test(value)
+    ? undefined
+    : parseSameOriginPath(Option.getOrUndefined(decodeCallbackReturn(value)));
 
 export const getAccountPath = (locale: Locale) =>
   getLocalizedPagePath(locale, "/[locale]/account");
 
 /**
- * The sign-in page. A validated `returnPath` (see `parseAuthReturnPath`)
- * makes the sign-in land there instead of the account.
+ * Where a finished sign-in continues: `returnTo` when it is a same-origin
+ * path, otherwise the account.
  */
-export const getAccountSignInPath = (locale: Locale, returnPath?: string) =>
-  withAuthReturnPath(
-    getLocalizedPagePath(locale, "/[locale]/auth/sign-in"),
-    returnPath
-  );
+export const getSignInDestination = (
+  locale: Locale,
+  returnTo: string | null | undefined
+) => parseSameOriginPath(returnTo) ?? getAccountPath(locale);
+
+/**
+ * The sign-in page, continuing to `returnTo` after sign-in when it is a
+ * same-origin path. Any other value is left out.
+ */
+export const getAccountSignInPath = (locale: Locale, returnTo?: string) => {
+  const path = getLocalizedPagePath(locale, "/[locale]/auth/sign-in");
+  const returnPath = parseSameOriginPath(returnTo);
+  return returnPath === undefined
+    ? path
+    : `${path}?${new URLSearchParams({ [signInReturnParam]: returnPath })}`;
+};
+
+/**
+ * The magic-link callback, carrying the hand-off attempt and a same-origin
+ * `returnTo` when given. Any other `returnTo` is left out.
+ */
+export const getAuthCallbackPath = (
+  locale: Locale,
+  {
+    attemptId,
+    returnTo,
+  }: { readonly attemptId?: string; readonly returnTo?: string } = {}
+) => {
+  const path = `/${locale}/auth/callback`;
+  const query = new URLSearchParams();
+  if (attemptId !== undefined) query.set(signInAttemptParam, attemptId);
+  const returnPath = parseSameOriginPath(returnTo);
+  const encodedReturn =
+    returnPath === undefined ? undefined : encodeAuthCallbackReturn(returnPath);
+  if (encodedReturn !== undefined) {
+    query.set(signInCallbackReturnParam, encodedReturn);
+  }
+  return query.size === 0 ? path : `${path}?${query}`;
+};
 
 /**
  * The page that waits for the sign-in email this tab requested last: the

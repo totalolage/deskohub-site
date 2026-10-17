@@ -68,6 +68,10 @@ const allowedColumns = new Map([
     "administrator login-email snapshot",
   ],
   [
+    "public.cli_authentication_requests.approved_by_account_email",
+    "administrator login-email snapshot",
+  ],
+  [
     "public.manual_invoice_actors.actor_account_email",
     "administrator login-email snapshot",
   ],

@@ -83,6 +83,16 @@
   Its helpers pass Next's generated `/[locale]/...` route patterns to
   `getLocalizedPagePath` or, for `[section]`, `getLocalizedDynamicPagePath`, so
   typecheck proves the pages exist (the app doesn't enable `typedRoutes`).
+- Sign-in continues to `?returnTo=` (`signInReturnParam`) instead of the
+  account when it is a same-origin path; `getAccountSignInPath(locale,
+  returnTo)` adds it. The sign-in page passes it into the magic-link callback
+  URL, and every exit (link tab, original-tab hand-off, sign-in code, failed-link
+  retry) goes through `getSignInDestination`. Validate it with
+  `parseSameOriginPath` wherever it is read, because anyone can craft the URL,
+  and navigate to its normalized result rather than the raw value (dot
+  segments can turn `/x/..//evil.example` into `//evil.example`). Cover each
+  new reader with `unsafeReturnTargets`
+  (`shared/testing/unsafe-return-targets.test-utils.ts`).
 - Retired `/account?section=<section>` links still work: the proxy redirects
   them (307) to the section's path, keeping other query parameters, or to
   `/account` for an unknown section. Never produce a `?section=` URL.
@@ -102,25 +112,21 @@
   renders the full page. `@modal/default.tsx` renders nothing everywhere
   else; don't add a catch-all slot page (see the account slot above). A modal
   closes with `router.back()`.
-- A sign-in returns to a validated same-origin path instead of `/account`.
-  Validate every untrusted return path with `parseAuthReturnPath`
-  (`features/account/auth-return-path.ts`): a page on one of the site's
-  locales, outside `/auth`, query kept, other origins and protocol-relative
-  forms rejected. The sign-in page takes it as `?returnTo=`
-  (`getAccountSignInPath(locale, returnPath)`); the lifecycle carries it to
-  the link's callback base64url-encoded, because Better Auth decodes a magic
-  link's `callbackURL` a second time and would split a nested query. The
-  callback, the link hand-off, code sign-in, and passkey sign-in all land
-  there.
+- The magic-link callback carries the return target base64url-encoded as
+  `return` (`getAuthCallbackPath`, read back with `readAuthCallbackReturnTo`),
+  not as a plain `returnTo`: Better Auth decodes a magic link's `callbackURL`
+  a second time before it redirects, which would split a query nested in the
+  target. Checkout return targets carry queries.
 - A page that sends the sign-in email itself, such as a checkout form, calls
-  `startEmailSignIn` and moves to `getAuthVerifyPath`. The tab's pending
+  `startEmailSignIn({ locale, email, returnTo })` and moves to
+  `getAuthVerifyPath`. The tab's pending
   request (`email-sign-in-request.ts`) is one external store shared by the
   sign-in card and the verify page and mirrored to sessionStorage; never put
   the email in the URL. The request records whether the email carries a code
   (`login_email_code`), so the verify page shows the code entry or the
   link-only instructions.
 - State that must survive the round trip through the email, such as checkout
-  contact details, rides in the return path's query as a token from
+  contact details, rides in the return target's query as a token from
   `makeAuthReturnState(purpose, schema)`
   (`features/account/backend/auth-return-state.ts`): sealed with the shared
   sealed-state helper, purpose-bound, and usable for 30 minutes.

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import {
-  authCallbackReturnParam,
-  readAuthCallbackReturnPath,
-} from "@/features/account/auth-return-path";
 import { noteEmailSignInForPasskeyPrompt } from "@/features/account/passkey-prompt";
-import { getAccountPath } from "@/features/account/routes";
+import {
+  getSignInDestination,
+  readAuthCallbackReturnTo,
+  signInAttemptParam,
+  signInCallbackReturnParam,
+} from "@/features/account/routes";
 import { recordSignInCompletion } from "@/features/account/sign-in-analytics";
 import { forgetEmailSignInRequest } from "@/features/account/email-sign-in-request";
 import type { Locale } from "@/features/i18n";
@@ -18,19 +19,19 @@ export function AuthCallbackRedirect({ locale }: { readonly locale: Locale }) {
     let active = true;
     let attemptId = "";
     let hasError = false;
-    let returnPath: string | undefined;
+    let returnTo: string | undefined;
     try {
       const searchParams = new URLSearchParams(window.location.search);
-      attemptId = searchParams.get("attempt") ?? "";
+      attemptId = searchParams.get(signInAttemptParam) ?? "";
       hasError = searchParams.has("error");
-      returnPath = readAuthCallbackReturnPath(
-        searchParams.get(authCallbackReturnParam)
+      returnTo = readAuthCallbackReturnTo(
+        searchParams.get(signInCallbackReturnParam)
       );
     } catch {
       // A missing query is handled by the shared handoff validator.
     }
-    // The sign-in's validated return path, else the account.
-    const destination = returnPath ?? getAccountPath(locale);
+    // Anyone can craft this URL, so the return target is validated again.
+    const destination = getSignInDestination(locale, returnTo);
     const leaveForDestination = () => {
       if (!active) return;
       try {

@@ -14,7 +14,7 @@
   "adminCliAuthenticateApproveOnlyOwnRequest": "Schvalte ji pouze tehdy, pokud jste žádost zahájili ve svém terminálu.",
   "adminCliAuthenticateApprovedDescription": "Vraťte se do terminálu. CLI výměnu dokončí automaticky.",
   "adminCliAuthenticateApprovedTitle": "Přihlášení je schválené",
-  "adminCliAuthenticateApprovingAs": "Schvalujete jako <username/>.",
+  "adminCliAuthenticateApprovingAs": "Schvalujete jako <email/>.",
   "adminCliAuthenticateBuildLabel": "Sestavení CLI",
   "adminCliAuthenticateClientLabel": "Klient",
   "adminCliAuthenticateDescription": "Potvrďte, že tento klient příkazové řádky smí přistupovat k API administrace Workspace.",
@@ -46,7 +46,7 @@
   "adminCliRevokeSubmitting": "Odvolávání…",
   "adminCliRevokeTitle": "Odvolat relaci CLI?",
   "adminCliRevokeTrigger": "Odvolat",
-  "adminCliSessionsApprovedBy": "Relace schválené účtem <username/>",
+  "adminCliSessionsApprovedBy": "Relace schválené účtem <email/>",
   "adminCliSessionsCount": [
     {
       "declarations": [

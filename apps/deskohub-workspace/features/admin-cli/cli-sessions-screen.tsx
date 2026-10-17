@@ -47,7 +47,7 @@ async function CliSessionsContent({
   readonly locale: Locale;
   readonly searchParams: CliSessionsSearchParams;
 }) {
-  const [{ sessions, username }, params] = await Promise.all([
+  const [{ sessions, administratorEmail }, params] = await Promise.all([
     loadCliSessions(),
     searchParams,
   ]);
@@ -69,7 +69,9 @@ async function CliSessionsContent({
               <Interpolate
                 string={m.adminCliSessionsApprovedBy({}, { locale })}
                 mapping={{
-                  username: <span className="font-medium">{username}</span>,
+                  email: (
+                    <span className="font-medium">{administratorEmail}</span>
+                  ),
                 }}
               />
             </p>

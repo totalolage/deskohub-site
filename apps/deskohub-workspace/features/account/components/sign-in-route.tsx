@@ -1,20 +1,18 @@
 import { connection } from "next/server";
-import {
-  authReturnPathParam,
-  parseAuthReturnPath,
-} from "@/features/account/auth-return-path";
 import { SignInCard } from "@/features/account/components/sign-in-card";
+import { signInReturnParam } from "@/features/account/routes";
 import { arePasskeysEnabled } from "@/features/account/server/account-feature-flag.server";
 import type { Locale } from "@/features/i18n";
+import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 import {
   getSearchParam,
   type SearchParamsRecord,
 } from "@/shared/utils/search-params";
 
 /**
- * The sign-in card of the sign-in page and its modal. A valid `returnTo`
- * query makes the sign-in land there; an invalid one is ignored, so the
- * sign-in returns to the account.
+ * The sign-in card of the sign-in page and its modal. A same-origin
+ * `returnTo` query makes the sign-in continue there; anything else is
+ * ignored, so the sign-in returns to the account.
  */
 export async function SignInRouteCard({
   locale,
@@ -30,15 +28,15 @@ export async function SignInRouteCard({
     arePasskeysEnabled(),
     searchParams,
   ]);
-  const returnPath = parseAuthReturnPath(
-    getSearchParam(query, authReturnPathParam)
+  const returnTo = parseSameOriginPath(
+    getSearchParam(query, signInReturnParam)
   );
 
   return (
     <SignInCard
       locale={locale}
       passkeysEnabled={passkeysEnabled}
-      returnPath={returnPath}
+      returnTo={returnTo}
     />
   );
 }

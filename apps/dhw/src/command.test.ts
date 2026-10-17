@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
-  AdministrationActorUsername,
+  AdministrationActorEmail,
   AdministrationDiscountCodeId,
+  AdministrationLegacyUsername,
   AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeAttemptIdType,
   type AdministrationStandaloneAccessCodeCreateInputType,
@@ -21,6 +22,7 @@ import {
   type CliSessionType,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
+  toAdministrationActorName,
 } from "@deskohub/workspace-admin-api";
 import { BunServices } from "@effect/platform-bun";
 import { Console, Effect, Exit, Layer, Option, Redacted, Schema } from "effect";
@@ -58,12 +60,20 @@ const cleanupTarget = {
 const session = {
   id: sessionId,
   approvedBy: null,
+  approvedByEmail: null,
   clientName: "test client",
   cliVersion: "1.3.0",
   buildTarget: "development" as const,
   createdAt: "2026-08-10T10:00:00.000Z",
   lastUsedAt: "2026-08-10T10:00:00.000Z",
   expiresAt: null,
+};
+const accountApproverEmail = AdministrationActorEmail.make(
+  testEmailAddress("admin")
+);
+const accountApprover = {
+  approvedBy: toAdministrationActorName(accountApproverEmail),
+  approvedByEmail: accountApproverEmail,
 };
 const createdAccessCodeOutcome = Schema.decodeUnknownSync(
   AdministrationStandaloneAccessCodeCreationOutcome
@@ -111,7 +121,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createInvoice: (_accessToken, input) =>
         Effect.sync(() => {
@@ -322,7 +332,7 @@ describe("dhw mutation commands", () => {
   });
 
   test("dry-runs a legacy administrator backfill and prints its JSON result", async () => {
-    const legacyUsername = AdministrationActorUsername.make("legacy-admin");
+    const legacyUsername = AdministrationLegacyUsername.make("legacy-admin");
     const email = testEmailAddress("legacy-admin");
     const requests: unknown[] = [];
     const result = {
@@ -370,7 +380,7 @@ describe("dhw mutation commands", () => {
   });
 
   test("requires confirmation for a real legacy administrator backfill", async () => {
-    const legacyUsername = AdministrationActorUsername.make("legacy-admin");
+    const legacyUsername = AdministrationLegacyUsername.make("legacy-admin");
     const email = testEmailAddress("legacy-admin");
     const requests: unknown[] = [];
     const { layer } = makeCommandLayer({
@@ -535,7 +545,7 @@ describe("dhw mutation commands", () => {
     const { accessCodeCreations, layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
     });
 
@@ -574,7 +584,7 @@ describe("dhw mutation commands", () => {
     const { accessCodeCreations, layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
     });
 
@@ -616,7 +626,7 @@ describe("dhw mutation commands", () => {
     const { accessCodeCreations, layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: () =>
         Effect.succeed(createdAccessCodeOutcome),
@@ -662,7 +672,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -698,7 +708,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -745,7 +755,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -793,7 +803,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -826,7 +836,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -862,7 +872,7 @@ describe("dhw mutation commands", () => {
     const { accessCodeCreations, layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       stateDirectory: blockedPath,
     });
@@ -897,7 +907,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         attemptIds.push(attemptId);
@@ -936,7 +946,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (
         _accessToken,
@@ -989,7 +999,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (_accessToken, attemptId) => {
         calls.push({ attemptId });
@@ -1034,7 +1044,7 @@ describe("dhw mutation commands", () => {
     const { layer } = makeCommandLayer({
       authenticatedSession: {
         ...session,
-        approvedBy: AdministrationActorUsername.make("admin"),
+        ...accountApprover,
       },
       createStandaloneAccessCode: (
         _accessToken,

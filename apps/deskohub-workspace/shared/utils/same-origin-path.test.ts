@@ -1,43 +1,46 @@
 import { describe, expect, test } from "bun:test";
+import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
 import { parseSameOriginPath } from "./same-origin-path";
 
-describe("same-origin path", () => {
-  test.each([
-    ["/en-US/account", "/en-US/account"],
-    [
-      "/en-US/reservation?date=2026-10-20&seat=a",
-      "/en-US/reservation?date=2026-10-20&seat=a",
-    ],
-    [
-      "/en-US/reservation?state=a.b-c_d#details",
-      "/en-US/reservation?state=a.b-c_d",
-    ],
-    ["/en-US/a/../account", "/en-US/account"],
-    [
-      "/en-US/reservation?next=%2F%2Fevil.example",
-      "/en-US/reservation?next=%2F%2Fevil.example",
-    ],
-  ])("keeps %s as %s", (candidate, path) => {
-    expect(parseSameOriginPath(candidate)).toBe(path);
+const siteOrigin = "https://workspace.deskohub.test";
+
+describe("parseSameOriginPath", () => {
+  test("keeps a same-origin path and query and drops the fragment", () => {
+    expect(parseSameOriginPath("/cs-CZ/admin/invoices?page=2#top")).toBe(
+      "/cs-CZ/admin/invoices?page=2"
+    );
+    expect(parseSameOriginPath("/admin")).toBe("/admin");
+  });
+
+  test("resolves dot segments that stay on the site", () => {
+    expect(parseSameOriginPath("/cs-CZ/x/../admin")).toBe("/cs-CZ/admin");
+    expect(parseSameOriginPath("/cs-CZ/x/%2e%2e/admin")).toBe("/cs-CZ/admin");
   });
 
   test.each([
-    null,
-    undefined,
-    "",
-    "en-US/account",
-    "https://evil.example/en-US/account",
-    "javascript:alert(1)",
-    "//evil.example/en-US",
-    "///evil.example",
-    "/\\evil.example",
-    "\\\\evil.example",
     "/%2F%2Fevil.example",
-    "/en-US%2f..%2f..%2fadmin",
-    "/en-US%5caccount",
-    "/en-US/\taccount",
-    "/en-US/\naccount",
-  ])("rejects %p", (candidate) => {
-    expect(parseSameOriginPath(candidate)).toBeUndefined();
+    "/%2f/evil.example",
+    "/x/..%2F/evil.example",
+    "/%5Cevil.example",
+    "/admin?next=//evil.example",
+  ])("keeps encoded separators in %p on the site", (value) => {
+    const path = parseSameOriginPath(value);
+
+    expect(path).toBeDefined();
+    expect(new URL(path!, siteOrigin).origin).toBe(siteOrigin);
+  });
+
+  test.each([
+    ...unsafeReturnTargets,
+    undefined,
+    null,
+    "",
+    "admin",
+    "/admin\\..\\x",
+    "/\tadmin",
+    "/admin\n",
+    `/${"a".repeat(2048)}`,
+  ])("rejects %p", (value) => {
+    expect(parseSameOriginPath(value)).toBeUndefined();
   });
 });

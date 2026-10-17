@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef } from "react";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
-import { parseAuthReturnPath } from "@/features/account/auth-return-path";
 import { AuthCard } from "@/features/account/components/auth-card";
 import { SignInEmailSentStep } from "@/features/account/components/sign-in-email-sent-step";
 import {
@@ -16,6 +15,7 @@ import { getAccountSignInPath } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 
 type SignInVerifyCardProps = {
   readonly locale: Locale;
@@ -39,11 +39,11 @@ export function SignInVerifyCard({
   const router = useRouter();
   const [request, setRequest, restored] = useEmailSignInRequest();
   // Storage belongs to this origin, but its return path is checked again.
-  const returnPath = parseAuthReturnPath(request?.returnPath);
+  const returnTo = parseSameOriginPath(request?.returnTo);
   const attemptId = request?.attemptId;
   const authReturn = useMemo(
-    () => createAuthReturnLifecycle({ locale, returnPath }),
-    [locale, returnPath]
+    () => createAuthReturnLifecycle({ locale, returnTo }),
+    [locale, returnTo]
   );
 
   // "Use a different email" drops the request once this card is gone, so the
@@ -113,7 +113,7 @@ export function SignInVerifyCard({
           discardWhenGone.current = true;
           forgetEmailSignInRequest();
           if (presentation === "modal") router.back();
-          else router.replace(returnPath ?? getAccountSignInPath(locale));
+          else router.replace(returnTo ?? getAccountSignInPath(locale));
         }}
       />
     </AuthCard>

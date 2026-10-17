@@ -31,14 +31,12 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
+import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 
 type SignInCardProps = {
   readonly locale: Locale;
-  /**
-   * Where the sign-in lands instead of the account, validated with
-   * `parseAuthReturnPath`.
-   */
-  readonly returnPath?: string;
+  /** Where to continue after sign-in; validated before use. */
+  readonly returnTo?: string;
   /**
    * Offers passkey sign-in: the button below the form and passkey autofill
    * on the email field. Off while `login_passkeys` is off.
@@ -72,8 +70,8 @@ type SignInFormValues = SignInFormSchema["Type"];
 
 export function SignInCard({
   locale,
+  returnTo,
   passkeysEnabled = false,
-  returnPath,
 }: SignInCardProps) {
   const [failure, setFailure] = useState<SignInEmailFailure | null>(null);
   const [request, setRequest] = useEmailSignInRequest();
@@ -89,8 +87,8 @@ export function SignInCard({
       element.focus();
     };
   const authReturn = useMemo(
-    () => createAuthReturnLifecycle({ locale, returnPath }),
-    [locale, returnPath]
+    () => createAuthReturnLifecycle({ locale, returnTo }),
+    [locale, returnTo]
   );
   const signInFormSchema = createSignInFormSchema(locale);
   const form = useForm<SignInFormInput, unknown, SignInFormValues>({
@@ -115,7 +113,7 @@ export function SignInCard({
       requestedAt: Date.now(),
       signInCode: result.signInCode,
       attemptId: result.attemptId,
-      returnPath,
+      returnTo: parseSameOriginPath(returnTo),
     });
   };
 
@@ -226,7 +224,7 @@ export function SignInCard({
         <PasskeySignInOption
           locale={locale}
           ready={clientReady}
-          returnPath={returnPath}
+          returnTo={returnTo}
         />
       )}
     </AuthCard>

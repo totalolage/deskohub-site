@@ -15,7 +15,7 @@ import {
 
 const storageKey = "deskohub:account-sign-in-code";
 const email = testEmailAddress("sign-in-request");
-const returnPath = "/en-US/reservation?date=2026-10-20";
+const returnTo = "/en-US/reservation?date=2026-10-20";
 
 let store: typeof import("./email-sign-in-request");
 
@@ -61,19 +61,19 @@ describe("email sign-in request of this tab", () => {
         requestedAt: Date.now(),
         signInCode: false,
         attemptId: "550e8400-e29b-41d4-a716-446655440000",
-        returnPath,
+        returnTo,
       });
     });
 
     for (const { result } of [first, second]) {
       const [request] = result.current;
-      expect(request?.returnPath).toBe(returnPath);
+      expect(request?.returnTo).toBe(returnTo);
       expect(request && store.hasSignInCode(request)).toBe(false);
     }
     expect(JSON.parse(sessionStorage.getItem(storageKey) ?? "")).toMatchObject({
       email,
       signInCode: false,
-      returnPath,
+      returnTo,
     });
   });
 

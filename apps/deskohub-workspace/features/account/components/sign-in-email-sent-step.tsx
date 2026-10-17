@@ -109,7 +109,7 @@ export function SignInEmailSentStep({
         locale={locale}
         requestedAt={request.requestedAt}
         verifiedMessage={
-          request.returnPath === undefined
+          request.returnTo === undefined
             ? m.accountSignInCodeVerified({}, { locale })
             : m.accountSignInCodeVerifiedReturning({}, { locale })
         }

@@ -9,9 +9,9 @@ import { Button } from "@/shared/components/ui/button";
 
 type PasskeySignInOptionProps = {
   readonly locale: Locale;
+  /** Where to continue after sign-in; validated before use. */
+  readonly returnTo?: string;
   readonly ready: boolean;
-  /** Where a passkey sign-in lands instead of the account. */
-  readonly returnPath?: string;
 };
 
 /**
@@ -20,8 +20,8 @@ type PasskeySignInOptionProps = {
  */
 export function PasskeySignInOption({
   locale,
+  returnTo,
   ready,
-  returnPath,
 }: PasskeySignInOptionProps) {
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -34,18 +34,18 @@ export function PasskeySignInOption({
     let active = true;
     void supportsPasskeyAutofill().then((supported) => {
       if (supported && active) {
-        void signInWithPasskey({ locale, autoFill: true, returnPath });
+        void signInWithPasskey({ locale, returnTo, autoFill: true });
       }
     });
     return () => {
       active = false;
     };
-  }, [locale, pending, returnPath]);
+  }, [locale, returnTo, pending]);
 
   const signIn = async () => {
     setFailed(false);
     setPending(true);
-    const result = await signInWithPasskey({ locale, returnPath });
+    const result = await signInWithPasskey({ locale, returnTo });
     if (result === "signed-in") return;
     setPending(false);
     setFailed(result === "failed");

@@ -1,8 +1,8 @@
 import { EMAIL_TEST_DOMAIN } from "@deskohub/test-email";
 import { type Effect, type Layer, Match } from "effect";
 import { m } from "@/features/administration/i18n";
+import type { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import type { Locale } from "@/features/i18n";
-import type { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import type {
   CampaignService,
   ICampaignService,

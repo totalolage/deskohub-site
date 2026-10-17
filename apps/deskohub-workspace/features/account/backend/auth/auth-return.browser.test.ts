@@ -21,10 +21,10 @@ import {
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { magicLink } from "better-auth/plugins";
 import {
-  authCallbackReturnParam,
-  encodeAuthCallbackReturnPath,
-  readAuthCallbackReturnPath,
-} from "../../auth-return-path";
+  encodeAuthCallbackReturn,
+  readAuthCallbackReturnTo,
+  signInCallbackReturnParam,
+} from "../../routes";
 
 const authReturnFirstAddress = testEmailAddress("auth-return-first");
 const authReturnNoAckAddress = testEmailAddress("auth-return-no-ack");
@@ -101,7 +101,7 @@ type FixtureApi = {
   readonly start: (options: {
     readonly email: string;
     readonly requireFreshSession?: boolean;
-    readonly returnPath?: string;
+    readonly returnTo?: string;
   }) => Promise<boolean>;
 };
 
@@ -398,11 +398,11 @@ const fixture = {
   setCallbackURL(url) {
     state.callbackURL = url;
   },
-  async start({ email, requireFreshSession = false, returnPath }) {
+  async start({ email, requireFreshSession = false, returnTo }) {
     const lifecycle = createAuthReturnLifecycle({
       locale: "en-US",
       requireFreshSession,
-      returnPath,
+      returnTo,
     });
     state.lifecycle = lifecycle;
     const result = await lifecycle.sendSignInEmail(email);
@@ -508,23 +508,23 @@ const startMagicLink = async (
   email: string,
   options: {
     readonly requireFreshSession?: boolean;
-    readonly returnPath?: string;
+    readonly returnTo?: string;
   } = {}
 ) => {
   const linkIndex = server.links.length;
   const accepted = await page.evaluate(
-    async ({ email: currentEmail, requireFreshSession, returnPath }) => {
+    async ({ email: currentEmail, requireFreshSession, returnTo }) => {
       const fixture = window.__deskohubAuthReturnFixture;
       return fixture.start({
         email: currentEmail,
         requireFreshSession,
-        returnPath,
+        returnTo,
       });
     },
     {
       email,
       requireFreshSession: options.requireFreshSession,
-      returnPath: options.returnPath,
+      returnTo: options.returnTo,
     }
   );
   expect(accepted).toBe(true);
@@ -680,34 +680,34 @@ describe("account auth return browser regression", () => {
   });
 
   test("lands the initiator and the link tab on the sign-in's return path", async () => {
-    const returnPath = "/en-US/reservation?date=2026-10-20&contact=a.b-c.d_e.f";
+    const returnTo = "/en-US/reservation?date=2026-10-20&contact=a.b-c.d_e.f";
     await runScenario("normal", async ({ context, server }) => {
       const initiator = await openInitiator(context, server);
       const link = await startMagicLink(
         initiator,
         server,
         fixtureEmail.verified,
-        { returnPath }
+        { returnTo }
       );
       const callback = await context.newPage();
 
       await Promise.all([
         callback.goto(link.url, { waitUntil: "domcontentloaded" }),
-        initiator.waitForURL(`${server.origin}${returnPath}`, {
+        initiator.waitForURL(`${server.origin}${returnTo}`, {
           timeout: 7000,
         }),
       ]);
-      await callback.waitForURL(`${server.origin}${returnPath}`, {
+      await callback.waitForURL(`${server.origin}${returnTo}`, {
         timeout: 7000,
       });
 
       expect(
-        readAuthCallbackReturnPath(
+        readAuthCallbackReturnTo(
           new URL(callbackURLFromLink(link), server.origin).searchParams.get(
-            authCallbackReturnParam
+            signInCallbackReturnParam
           )
         )
-      ).toBe(returnPath);
+      ).toBe(returnTo);
       expect(server.observations.verificationResponsesWithSessionCookie).toBe(
         1
       );
@@ -721,7 +721,7 @@ describe("account auth return browser regression", () => {
         initiator,
         server,
         fixtureEmail.verified,
-        { returnPath: "/en-US/reservation" }
+        { returnTo: "/en-US/reservation" }
       );
       await initiator.evaluate(() => {
         window.__deskohubAuthReturnFixture.cancel();
@@ -732,8 +732,8 @@ describe("account auth return browser regression", () => {
         "http://deskohub-auth-return.test"
       );
       callbackURL.searchParams.set(
-        authCallbackReturnParam,
-        encodeAuthCallbackReturnPath("//evil.example/en-US/account") ?? ""
+        signInCallbackReturnParam,
+        encodeAuthCallbackReturn("//evil.example/en-US/account") ?? ""
       );
       linkURL.searchParams.set(
         "callbackURL",

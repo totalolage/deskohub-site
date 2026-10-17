@@ -10,7 +10,11 @@ import {
   type NextRequest,
   NextResponse,
 } from "next/server";
-import { findLegacyAccountSectionRedirect } from "@/features/account/routes";
+import {
+  findLegacyAccountSectionRedirect,
+  getAccountSignInPath,
+} from "@/features/account/routes";
+import { administrationRequestPathHeader } from "@/features/administrators/administration-request-path";
 import { resolveWorkspaceLocale } from "@/features/i18n/locale-resolution";
 import { localeCookieName, locales } from "@/features/i18n/routing";
 import {
@@ -20,7 +24,6 @@ import {
 import { env } from "./env";
 import { appendVercelPreviewProtectionBypass } from "./features/checkout/backend/checkout/vercel-preview-protection-bypass";
 import { reservationAccessTokenQueryParam } from "./features/reservation/reservation-access-token";
-import { isAdministratorAuthorizationValid } from "./shared/administrator/administrator-basic-auth";
 import { resolveWorkspaceRuntimeCallbackOrigin } from "./shared/backend/config/workspace-url.config";
 import { withRequestPathname } from "./shared/backend/utils/request-pathname";
 import { markPrivateResponse } from "./shared/utils/private-response";
@@ -36,7 +39,7 @@ const decodePathname = (pathname: string) => {
 // The administration lives under the locale segment, and its unprefixed URLs
 // redirect there. Any first or second segment naming it counts, whatever the
 // prefix and however it is encoded, so no spelling of an administration URL
-// skips Basic auth.
+// skips the sign-in redirect or the private cache headers.
 const isAdministrationPath = (pathname: string) => {
   const [first, second] = decodePathname(pathname).split("/").slice(1, 3);
   return first === "admin" || second === "admin";
@@ -44,7 +47,7 @@ const isAdministrationPath = (pathname: string) => {
 
 const markAdministrationResponse = <T extends Response>(response: T) => {
   response.headers.set("Cache-Control", "private, no-store");
-  response.headers.append("Vary", "Authorization");
+  response.headers.append("Vary", "Cookie");
   return response;
 };
 
@@ -163,7 +166,12 @@ const pageLocalePreference = async (request: NextRequest) => {
 };
 
 // Places a page request on the URL the Workspace locale chain resolves.
-async function localizedPageResponse(request: NextRequest) {
+// `forwardRequestHeaders` passes headers the proxy set on the request on to
+// the page.
+async function localizedPageResponse(
+  request: NextRequest,
+  { forwardRequestHeaders = false } = {}
+) {
   const localeFromUrl = getLocaleFromRequestPathname(request, locales);
 
   // A reservation capability is bound to the locale it was issued in, so it is
@@ -205,7 +213,7 @@ async function localizedPageResponse(request: NextRequest) {
       request.cookies.set(referralCodeCookieName, sharedReferralCode);
     }
     const response = continueRequest(request, {
-      headersChanged: Boolean(sharedReferralCode),
+      headersChanged: Boolean(sharedReferralCode) || forwardRequestHeaders,
     });
     if (
       isPrivateReservationPath(request.nextUrl.pathname) ||
@@ -242,30 +250,75 @@ async function localizedPageResponse(request: NextRequest) {
   return response;
 }
 
+const requestLocale = (request: NextRequest) =>
+  resolveWorkspaceLocale(
+    {
+      pathname: request.nextUrl.pathname,
+      cookies: request.cookies,
+      headers: request.headers,
+    },
+    undefined
+  );
+
+// Sends a signed-out page load to sign-in, coming back afterwards.
+const administrationSignInRedirect = (request: NextRequest) =>
+  NextResponse.redirect(
+    new URL(
+      getAccountSignInPath(
+        requestLocale(request),
+        `${request.nextUrl.pathname}${request.nextUrl.search}`
+      ),
+      request.nextUrl
+    )
+  );
+
+// Serves the ordinary customer 404 page: the catch-all route answers any
+// unknown path with it, so the administration isn't advertised.
+const ordinaryNotFound = (request: NextRequest) =>
+  NextResponse.rewrite(
+    new URL(
+      `/${requestLocale(request)}/administration-not-found`,
+      request.nextUrl
+    )
+  );
+
+// Who a page load acts as. Pages stream behind a static shell, so their own
+// guards can't change the status or hide the shell once it is sent; the
+// proxy reads the session and the grant first. Without a session cookie
+// (Better Auth's optimistic check) there is nothing to read.
+const administrationPageAccess = async (request: NextRequest) => {
+  if (!getSessionCookie(request)) return "signed-out" as const;
+  const { readAdministrationRequestAccess } = await import(
+    "./features/administrators/server/administration-request-access.server"
+  );
+  return readAdministrationRequestAccess(request.headers);
+};
+
+async function administrationResponse(request: NextRequest) {
+  // A Server Action reaches its guard, which fails closed without a redirect.
+  if (request.method === "POST" && request.headers.has("next-action")) {
+    return NextResponse.next();
+  }
+  if (request.method === "GET" || request.method === "HEAD") {
+    const access = await administrationPageAccess(request).catch(
+      () => "unavailable" as const
+    );
+    if (access === "signed-out") return administrationSignInRedirect(request);
+    if (access === "not-administrator") return ordinaryNotFound(request);
+    if (access === "unavailable") {
+      return new NextResponse(null, { status: 503 });
+    }
+  }
+  request.headers.set(
+    administrationRequestPathHeader,
+    `${request.nextUrl.pathname}${request.nextUrl.search}`
+  );
+  return localizedPageResponse(request, { forwardRequestHeaders: true });
+}
+
 export async function proxy(request: NextRequest) {
   if (isAdministrationPath(request.nextUrl.pathname)) {
-    if (
-      !isAdministratorAuthorizationValid(
-        request.headers.get("authorization"),
-        env.ADMIN_BASIC_AUTH_CREDENTIALS
-      )
-    ) {
-      return new NextResponse(null, {
-        status: 401,
-        headers: {
-          "Cache-Control": "private, no-store",
-          Vary: "Authorization",
-          "WWW-Authenticate":
-            'Basic realm="Deskohub administration", charset="UTF-8"',
-        },
-      });
-    }
-
-    return markAdministrationResponse(
-      request.method === "POST" && request.headers.has("next-action")
-        ? NextResponse.next()
-        : await localizedPageResponse(request)
-    );
+    return markAdministrationResponse(await administrationResponse(request));
   }
 
   if (request.method === "POST" && request.headers.has("next-action")) {

@@ -2,12 +2,12 @@
 
 import { Option, Predicate, Schema } from "effect";
 import {
-  authCallbackReturnParam,
-  encodeAuthCallbackReturnPath,
-} from "@/features/account/auth-return-path";
-import { getAccountPath } from "@/features/account/routes";
+  getAuthCallbackPath,
+  getSignInDestination,
+} from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import { listenForReturn } from "@/shared/browser/return-window";
+import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 import { authClient } from "./auth.client";
 import { noteEmailSignInForPasskeyPrompt } from "./passkey-prompt";
 import {
@@ -50,11 +50,10 @@ type AuthReturnLifecycleOptions = {
   readonly locale: Locale;
   readonly requireFreshSession?: boolean;
   /**
-   * Where the sign-in lands instead of the account, already validated with
-   * `parseAuthReturnPath`. Every continuation, the link's callback included,
-   * goes there.
+   * Where to continue after sign-in instead of the account. Anything but a
+   * same-origin path is ignored.
    */
-  readonly returnPath?: string;
+  readonly returnTo?: string;
 };
 
 export type SignInEmailFailure =
@@ -108,9 +107,8 @@ export type AuthReturnLifecycle = {
   /** Hard-navigates through the sign-in callback after a verified code. */
   readonly continueWithVerifiedCode: () => boolean;
   /**
-   * Continues to the return path, or the account, when this browser already
-   * holds a usable session, such as after the link was opened in another
-   * tab.
+   * Continues to the sign-in destination when this browser already holds a
+   * usable session, such as after the link was opened in another tab.
    */
   readonly continueIfSignedIn: () => Promise<boolean>;
 };
@@ -258,22 +256,11 @@ const readUsableSession = async (requireFreshSession: boolean) => {
 export const createAuthReturnLifecycle = ({
   locale,
   requireFreshSession = false,
-  returnPath,
+  returnTo,
 }: AuthReturnLifecycleOptions): AuthReturnLifecycle => {
-  const destination = returnPath ?? getAccountPath(locale);
-  const callbackURLFor = (attemptId: string | undefined) => {
-    const query = new URLSearchParams();
-    if (attemptId !== undefined) query.set("attempt", attemptId);
-    const encodedReturnPath =
-      returnPath === undefined
-        ? undefined
-        : encodeAuthCallbackReturnPath(returnPath);
-    if (encodedReturnPath !== undefined) {
-      query.set(authCallbackReturnParam, encodedReturnPath);
-    }
-    const search = query.toString();
-    return `/${locale}/auth/callback${search && `?${search}`}`;
-  };
+  const destination = getSignInDestination(locale, returnTo);
+  const callbackURLFor = (attemptId: string | undefined) =>
+    getAuthCallbackPath(locale, { attemptId, returnTo });
   let currentCleanup: () => void = noop;
   let requestEpoch = 0;
   // The callback URL of the latest sign-in email, reused by code sign-in.
@@ -459,20 +446,20 @@ export const createAuthReturnLifecycle = ({
 /**
  * Sends the sign-in email for a page that continues on the verify page
  * (`getAuthVerifyPath`), such as a checkout form: the sign-in lands on the
- * validated `returnPath`, and the request is stored for this tab so the
+ * same-origin `returnTo`, and the request is stored for this tab so the
  * verify page takes over the link's hand-off and the code entry. Navigate
  * there once the result is `sent`.
  */
 export const startEmailSignIn = async ({
   locale,
   email,
-  returnPath,
+  returnTo,
 }: {
   readonly locale: Locale;
   readonly email: string;
-  readonly returnPath?: string;
+  readonly returnTo?: string;
 }): Promise<SignInEmailResult> => {
-  const lifecycle = createAuthReturnLifecycle({ locale, returnPath });
+  const lifecycle = createAuthReturnLifecycle({ locale, returnTo });
   const result = await lifecycle.sendSignInEmail(email);
   // The verify page listens for the hand-off from here on.
   lifecycle.cancel();
@@ -482,7 +469,7 @@ export const startEmailSignIn = async ({
       requestedAt: Date.now(),
       signInCode: result.signInCode,
       attemptId: result.attemptId,
-      returnPath,
+      returnTo: parseSameOriginPath(returnTo),
     });
   }
   return result;

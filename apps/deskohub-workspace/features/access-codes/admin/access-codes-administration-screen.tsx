@@ -5,8 +5,8 @@ import {
 } from "@/features/administration/components";
 import { m } from "@/features/administration/i18n";
 import { AdministrationPanelLoading } from "@/features/administration/loading";
+import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
 import { CreateStandaloneAccessCodeForm } from "./create-access-code-form";
 
 /**

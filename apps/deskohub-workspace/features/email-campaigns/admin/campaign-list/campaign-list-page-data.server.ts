@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Effect, Layer } from "effect";
-import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
+import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CampaignService } from "../../backend/campaign.service";
 import { CampaignAudienceService } from "../../backend/campaign-audience.service";

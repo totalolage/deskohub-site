@@ -24,7 +24,7 @@ const emailSignInRequestSchema = Schema.Struct({
   /** Correlates this tab with the link's callback tab. */
   attemptId: Schema.optional(Schema.String),
   /** The validated path the sign-in lands on instead of the account. */
-  returnPath: Schema.optional(Schema.String),
+  returnTo: Schema.optional(Schema.String),
 });
 const decodeEmailSignInRequest = Schema.decodeUnknownOption(
   Schema.fromJsonString(emailSignInRequestSchema)

@@ -687,6 +687,27 @@ describe("account components", () => {
     expect(localStorage.getItem("deskohub:passkey-held:account-1")).toBe("1");
   });
 
+  test("sign-in card continues a passkey sign-in to its return target", async () => {
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = render(
+      <SignInCard
+        locale={locale}
+        passkeysEnabled
+        returnTo="/en-US/admin/invoices?page=2"
+      />
+    );
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountSignInPasskey({}, { locale }),
+        })
+      );
+    });
+
+    expect(navigations).toEqual(["/en-US/admin/invoices?page=2"]);
+  });
+
   test("sign-in card reports a failed passkey sign-in but not a cancelled one", async () => {
     const { SignInCard } = await import("./sign-in-card");
     const view = render(<SignInCard locale={locale} passkeysEnabled />);

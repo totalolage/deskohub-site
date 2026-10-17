@@ -8,8 +8,8 @@ description: Workspace E2E, Playwright, protected preview, exact-SHA run, checko
 The code is the source of truth for automated runs. Start from these files in `apps/deskohub-workspace/`:
 
 - `scripts/workspace-e2e.ts`: the entry point (`test:e2e`). It launches the checkout and instant-navigation Playwright configs concurrently.
-- `playwright.e2e.config.ts`: the checkout and account project graph. Cases live in `e2e/playwright-checkout/`, `e2e/account/`, `e2e/access-codes/`, `e2e/email-campaigns/`, and `e2e/cases/`.
-- `playwright.instant-navigation.config.ts`: read-only navigation tests in `e2e/instant-navigation/`.
+- `playwright.e2e.config.ts`: the checkout and account project graph. Cases live in `e2e/playwright-checkout/`, `e2e/account/`, `e2e/access-codes/`, `e2e/email-campaigns/`, `e2e/administrators/`, and `e2e/cases/`.
+- `playwright.instant-navigation.config.ts`: navigation tests in `e2e/instant-navigation/`; only the administration navigation seeds data (one synthetic administrator).
 - `e2e/e2e-env.ts`: the only `process.env` boundary for the runner.
 - `e2e/timeouts.ts`: every E2E timeout, poll interval, and watchdog.
 - `.github/workflows/workspace-e2e.yml`: the CI workflow.
