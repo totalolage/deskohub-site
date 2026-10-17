@@ -895,6 +895,7 @@
   "accountCallbackFailedBody": "Jeho platnost mohla vypršet nebo už byl použit. Pro pokračování si vyžádejte nový odkaz.",
   "accountCallbackFailedAction": "Vyžádat nový odkaz",
   "accountMetadataTitle": "Můj účet | Deskohub Workspace",
+  "accountSectionMetadataTitle": "{section} | Můj účet | Deskohub Workspace",
   "accountMetadataDescription": "Spravujte svůj zákaznický profil a prohlížejte aktuální i minulé rezervace ve Workspace.",
   "accountTitle": "Můj Workspace",
   "accountSignOut": "Odhlásit se",

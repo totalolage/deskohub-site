@@ -142,7 +142,7 @@ describe("ProfileScreen", () => {
     updateLocalePreference.mockImplementation(() =>
       Promise.resolve({ data: { status: "saved" } })
     );
-    window.location.href = "http://localhost/en-US/account?section=profile";
+    window.location.href = "http://localhost/en-US/account/profile?ref=menu";
   });
 
   test("saves the chosen language, then moves the document to it", async () => {
@@ -153,7 +153,7 @@ describe("ProfileScreen", () => {
     await chooseLanguage(view, "Čeština");
 
     expect(updateLocalePreference).toHaveBeenCalledWith({ locale: "cs-CZ" });
-    expect(window.location.pathname).toBe("/en-US/account");
+    expect(window.location.pathname).toBe("/en-US/account/profile");
     // The control shows the choice and stays locked while the switch runs.
     expect(languageTrigger(view).textContent).toContain("Čeština");
     expect((languageTrigger(view) as HTMLButtonElement).disabled).toBe(true);
@@ -164,9 +164,9 @@ describe("ProfileScreen", () => {
     });
 
     await waitFor(() =>
-      expect(window.location.pathname).toBe("/cs-CZ/account")
+      expect(window.location.pathname).toBe("/cs-CZ/account/profile")
     );
-    expect(window.location.search).toBe("?section=profile");
+    expect(window.location.search).toBe("?ref=menu");
     expect(updateLocalePreference).toHaveBeenCalledTimes(1);
   });
 

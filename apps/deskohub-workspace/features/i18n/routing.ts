@@ -41,6 +41,46 @@ export const getLocalizedPagePath = (
   route: StaticLocalizedPageRoute
 ): string => `/${locale}${route.slice(localeRouteSegment.length)}`;
 
+type DynamicLocalizedPageRoute = Exclude<
+  Extract<AppRoutes, `${typeof localeRouteSegment}/${string}[${string}`>,
+  `${string}[...${string}` | `${string}[[...${string}`
+>;
+
+type PageRouteParamName<Route extends string> =
+  Route extends `${string}[${infer Name}]${infer Rest}`
+    ? Name | PageRouteParamName<Rest>
+    : never;
+
+type LocalizedPageRouteParams<Route extends DynamicLocalizedPageRoute> =
+  Readonly<
+    Record<
+      PageRouteParamName<
+        Route extends `${typeof localeRouteSegment}${infer Path}` ? Path : never
+      >,
+      string
+    >
+  >;
+
+/**
+ * Builds a localized path to a dynamic page Next generated from the app
+ * directory, filling each `[param]` segment with its encoded value, so
+ * typecheck proves the page exists and every parameter is given.
+ */
+export const getLocalizedDynamicPagePath = <
+  Route extends DynamicLocalizedPageRoute,
+>(
+  locale: Locale,
+  route: Route,
+  params: LocalizedPageRouteParams<Route>
+): string => {
+  const values: Readonly<Record<string, string>> = params;
+  return `/${locale}${route
+    .slice(localeRouteSegment.length)
+    .replace(/\[([^\]]+)\]/g, (_, name: string) =>
+      encodeURIComponent(values[name] ?? "")
+    )}`;
+};
+
 export const withLocalePrefixAndSearch = (
   pathname: string,
   locale: Locale,

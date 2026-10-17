@@ -39,19 +39,53 @@
 - `app/api/auth/[...all]/route.ts` forwards GET and POST to `auth.handler` and
   forces `Cache-Control: private, no-store`.
 - Render account and auth pages dynamically.
+- Each account section has its own path, `/account/<section>`, with the slugs
+  of `features/account/sections.ts`. The bare `/account` shows the default
+  section (Reservations) without a redirect, because sign-in returns and the
+  header land there. The `account/(sections)` route group serves the bare path
+  and `[section]`: its layout renders the account page, every section, through
+  `AccountSections`, and its pages render only their metadata and, for
+  `[section]`, `AccountSectionPathCheck`, under which an unknown slug or a
+  section withheld by its release flag is not found. Legal & Privacy is the
+  separate public `/account/legal` page.
+- The layout renders beside the page, not under it, so the page's not-found
+  cannot stop it: a signed-out account page redirects to sign-in, and that
+  redirect would win. `AccountSections` therefore runs the same section check
+  first, on the requested path, before it loads the account. A layout gets no
+  child params, so the proxy hands every `/account` render, Server Action
+  posts included, its pathname (`withRequestPathname`), which
+  `getRequestPathname` reads; a render without one is not found. The page's
+  own check still covers client navigations, which skip the shared layout.
+- Keep the account page in that layout, never in a page. The navigation
+  switches sections with `history.replaceState`, which leaves Next's router
+  tree on the path the page loaded at; a Server Action that revalidates, or
+  `router.refresh()`, then renders the switched path's route, and Next
+  remounts whatever differs between the two routes' trees. Only the pages
+  differ, so open dialogs and drafts survive; the legal continuity fixture
+  covers this from `/account` and from a section's path. Don't serve section paths
+  through a proxy rewrite either: the account shell is server-rendered with
+  the rewritten pathname and hydrates with a mismatch.
 - The account layout's `@modal` slot owns only the intercepted
   `(..)reservation/{status,access}/[orderId]` modals. `@modal/page.tsx` renders
-  nothing at `/account`, and `@modal/default.tsx` renders nothing on hard
-  navigation to other account routes. Don't add a catch-all slot page. If a
-  modal ever links to another account route, add an explicit null slot page for
-  that route.
+  nothing at `/account`, `@modal/[section]/page.tsx` nothing at a section's
+  path (and at `/account/legal` and `/account/deleted`), and
+  `@modal/default.tsx` nothing wherever no slot page matches.
+  Keep the `[section]` slot page: without it the slot falls back to its
+  default at section paths, and a revalidating Server Action after an
+  in-place switch from `/account` returns a slot tree the router cannot patch
+  onto the bare path's, so it reloads the page and closes open dialogs.
+  Don't add a catch-all slot page. If a modal ever links to another account
+  route, add an explicit null slot page for that route.
 - Every route into `/account/legal` and `/account/deleted` starts with the
   modal closed. The dialog makes the background inert, closing it goes back to
   `/account`, and deletion leaves through a document navigation.
-- Build account and sign-in URLs with `features/account/routes.ts`. Its helpers
-  pass Next's generated `/[locale]/...` route patterns to
-  `getLocalizedPagePath`, so typecheck proves the pages exist (the app doesn't
-  enable `typedRoutes`).
+- Build account, section, and sign-in URLs with `features/account/routes.ts`.
+  Its helpers pass Next's generated `/[locale]/...` route patterns to
+  `getLocalizedPagePath` or, for `[section]`, `getLocalizedDynamicPagePath`, so
+  typecheck proves the pages exist (the app doesn't enable `typedRoutes`).
+- Retired `/account?section=<section>` links still work: the proxy redirects
+  them (307) to the section's path, keeping other query parameters, or to
+  `/account` for an unknown section. Never produce a `?section=` URL.
 - The header account button links to sign-in for anonymous visitors and to
   `/account` for signed-in customers. Its href is an uncached
   `isCustomerSignedIn` promise that the header resolves with `use()` inside
@@ -61,13 +95,26 @@
   session. The `/account` client redirect stays only for direct or stale
   navigations.
 - Use one magic-link form for sign-in and implicit sign-up.
-- A section switch records the section in `?section=` with
-  `history.replaceState`, so a reload or a locale switch reopens it without a
-  server round trip.
-- Pass a section withheld by a release flag (Referrals behind `referrals`) to
-  `AccountShell` as `hiddenSections`: it leaves both navigations, and its
-  `?section=` falls back like an unknown section. The static loading skeleton
-  renders before any flag is known, so it never shows a flagged section.
+- Section navigation items are links to the section paths, marked with
+  `aria-current="page"`; disabled items stay buttons. A plain click on the
+  signed-in account page switches the already rendered section in place and
+  moves the URL with `history.replaceState`, so a reload, a shared link, or a
+  locale switch reopens it without a server round trip. Replace, not push:
+  the unsaved-changes guard questions every Back traversal, although a section
+  switch keeps all drafts. Moving to or from `/account/legal` is a router
+  navigation behind the guard. Modified clicks stay the browser's.
+- The page metadata keeps the title of the section the page loaded at, even
+  after an in-place switch or a Back to a switched path. `AccountLayoutShell`
+  sets `document.title` from the path's section with `getAccountPageTitle`
+  (`features/account/page-title.ts`), the same helper the metadata uses, so
+  the title always matches what a reload would show. The bare `/account` keeps
+  the generic account title. After a switch the path always names a section,
+  Reservations included.
+- Pass a section withheld by a release flag (Referrals behind `referrals`,
+  Sign-in & security behind `login_passkeys`) to `AccountShell` as
+  `hiddenSections`: it leaves both navigations, and its path is not found. The
+  static loading skeleton renders before any flag is known, so it never shows a
+  flagged section.
 
 ## Profile
 
