@@ -515,8 +515,7 @@ for (const locale of locales) {
     for (const variant of headerVariants) {
       // Only the full header shrinks its logo further beside the navigation,
       // and only below 2xl.
-      const zoom =
-        variant === "full" && viewport.width < 1536 ? "0.7" : "0.8";
+      const zoom = variant === "full" && viewport.width < 1536 ? "0.7" : "0.8";
       test.skipIf(!chromiumAvailable)(
         `zooms the ${variant} header logo to ${zoom} at ${viewport.width}px (${locale})`,
         async () => {
