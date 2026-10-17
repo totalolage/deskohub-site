@@ -22,27 +22,27 @@ import { CheckoutPricingService } from "./checkout-pricing.service";
 export const loadPublicOfferings = Effect.fn("publicOfferings.load")(
   (locale: Locale) =>
     Effect.Do.pipe(
-    Effect.bind("advertisedOn", () =>
-      currentInstant.pipe(Effect.map(getCurrentWorkspaceDate))
-    ),
-    Effect.bind("office", () => loadOpenPublicOfficeOffer),
-    Effect.let("listings", ({ advertisedOn, office }) =>
-      getPublicOfferingListings({
-        date: advertisedOn,
-        locale,
-        ...Option.match(office, {
-          onNone: () => ({}),
-          onSome: (offer) => ({ office: offer }),
-        }),
-      })
-    ),
-    Effect.bind("offerings", ({ listings }) =>
-      Effect.forEach(listings, advertisePublicOffering, {
-        concurrency: "inherit",
-      })
-    ),
-    Effect.map(({ advertisedOn, offerings }) => ({ advertisedOn, offerings }))
-  )
+      Effect.bind("advertisedOn", () =>
+        currentInstant.pipe(Effect.map(getCurrentWorkspaceDate))
+      ),
+      Effect.bind("office", () => loadOpenPublicOfficeOffer),
+      Effect.let("listings", ({ advertisedOn, office }) =>
+        getPublicOfferingListings({
+          date: advertisedOn,
+          locale,
+          ...Option.match(office, {
+            onNone: () => ({}),
+            onSome: (offer) => ({ office: offer }),
+          }),
+        })
+      ),
+      Effect.bind("offerings", ({ listings }) =>
+        Effect.forEach(listings, advertisePublicOffering, {
+          concurrency: "inherit",
+        })
+      ),
+      Effect.map(({ advertisedOn, offerings }) => ({ advertisedOn, offerings }))
+    )
 );
 
 const loadOpenPublicOfficeOffer = OfficeReservationFeatureFlagService.use(

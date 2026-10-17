@@ -29,6 +29,7 @@ import type { MeetingRoomReservationDuration } from "@/features/reservation/meet
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { officeReservationMaximumDurationHours } from "@/features/reservation/office-reservation";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 
 /** An optional or included extra of a cowork offer. */
 type PublicOfferingAddOn = {
@@ -152,8 +153,8 @@ export const getPublicOfferingListings = ({
           offering: getOfficeOffering(office, locale),
           advertisedPriceRequest: getOfficeAdvertisedPriceRequest({
             locale,
-            startsOn: date.toString(),
-            endsOn: date.toString(),
+            startsOn: plainDateStringSchema.make(date.toString()),
+            endsOn: plainDateStringSchema.make(date.toString()),
             seats: 1,
           }),
         },
