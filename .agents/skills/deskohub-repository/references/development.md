@@ -26,6 +26,13 @@ bun turbo build --filter=<package-name>
 - Keep cached and validation tasks off uncached tasks that fetch live remote data and rewrite tracked files.
 - Workspace `build` must keep the `NEXT_PUBLIC_VERCEL_*` variables in its hash. Skew Protection needs them, so a cache miss between deployments is expected. Only `i18n:compile`, whose inputs are just messages and Inlang settings, excludes them.
 
+## Workspace builds
+
+- Vercel Workspace builds use the standard 4-core, 8 GB machine. Vercel drops build caches over 1.5 GB; a cold build without cache previously ran out of memory during Next's `Running TypeScript` step.
+- Keep these two settings together: `experimental.turbopackFileSystemCacheForBuild: false` in `apps/deskohub-workspace/next.config.mjs` disables Turbopack's build filesystem cache, which is on by default in Next 16.4 and held about 5 GB in the main process during type-checking; `NODE_OPTIONS=--max-old-space-size=4096` in the Workspace `build` script raises the heap limit for Next's TypeScript worker, which uses about 2.6 GB on a cold build versus Node's roughly 2.2 GB default.
+- This combination passed a cold Vercel build in about 3m46s with a 623 MB build cache. The `build` script's `NODE_OPTIONS` assignment replaces any `NODE_OPTIONS` set in Vercel, so add extra flags in the script. The heap limit does not cap total RSS.
+- Don't re-enable Turbopack's build cache or remove the heap flag without re-measuring a cold build on the 8 GB machine.
+
 ## Toolchain
 
 - Bun is pinned to 1.4.2 in `packageManager`, `@types/bun`, and every workflow's `bun-version`. Change them together and never go below 1.4.0. Bun 1.3 writes a self-referential `@typescript/old` record into `bun.lock`, and `bun install --force` keeps a bad record, so regenerate the lock only with Bun 1.4 or later.
