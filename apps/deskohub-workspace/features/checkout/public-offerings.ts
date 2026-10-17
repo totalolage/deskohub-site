@@ -2,9 +2,9 @@ import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-pric
 import {
   getCoworkTierCoffeeAddon,
   getCoworkTierWorkstationAddon,
+  getWorkspaceMeetingRoomPriceForDuration,
   getWorkspaceOfficeAccessPrice,
   getWorkspaceOfficeSeatPrice,
-  getWorkspaceMeetingRoomPriceForDuration,
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
   type WorkspaceCoworkCurrentTier,
