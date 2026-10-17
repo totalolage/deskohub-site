@@ -79,9 +79,10 @@ const loadWithPageParity = (layer: ReturnType<typeof saleLayer>) =>
   Effect.all({
     listing: loadPublicOfferings(locale),
     pagePrices: Effect.forEach(reservationPageRequests(), (request) =>
-      CheckoutPricingService.use((pricing) =>
-        pricing.quoteAdvertisement(request)
-      ).pipe(Effect.map(({ quote }) => quote.payment.expectedPrice))
+      CheckoutPricingService.pipe(
+        Effect.flatMap((pricing) => pricing.quoteAdvertisement(request)),
+        Effect.map(({ quote }) => quote.payment.expectedPrice)
+      )
     ),
   }).pipe(Effect.provide(layer), Effect.runPromise);
 

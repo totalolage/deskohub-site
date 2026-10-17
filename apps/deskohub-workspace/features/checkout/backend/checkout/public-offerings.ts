@@ -45,10 +45,6 @@ export const loadPublicOfferings = Effect.fn("publicOfferings.load")(
     )
 );
 
-const loadOpenPublicOfficeOffer = OfficeReservationFeatureFlagService.use(
-  (officeFlag) => loadPublicOfficeOffer.pipe(Effect.when(officeFlag.isEnabled))
-);
-
 /** A capacity read failure only omits the seat maximum. */
 const loadPublicOfficeOffer = loadAdvisoryOfficeSeatCapacity.pipe(
   Effect.map((maximumSeats): PublicOfficeOffer => ({ maximumSeats })),
@@ -61,13 +57,20 @@ const loadPublicOfficeOffer = loadAdvisoryOfficeSeatCapacity.pipe(
   Effect.orElseSucceed((): PublicOfficeOffer => ({}))
 );
 
+const loadOpenPublicOfficeOffer = OfficeReservationFeatureFlagService.pipe(
+  Effect.flatMap((officeFlag) =>
+    loadPublicOfficeOffer.pipe(Effect.when(officeFlag.isEnabled))
+  )
+);
+
 const advertisePublicOffering = ({
   offering,
   advertisedPriceRequest,
 }: PublicOfferingListing) =>
-  CheckoutPricingService.use((pricing) =>
-    pricing.quoteAdvertisement(advertisedPriceRequest)
-  ).pipe(
+  CheckoutPricingService.pipe(
+    Effect.flatMap((pricing) =>
+      pricing.quoteAdvertisement(advertisedPriceRequest)
+    ),
     Effect.map(
       ({ quote: { payment } }): PublicOffering => ({
         ...offering,
