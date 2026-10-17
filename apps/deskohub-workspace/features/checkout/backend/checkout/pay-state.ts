@@ -6,15 +6,15 @@ import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-o
 import { payStateTokenQueryParam } from "@/features/checkout/pay-state-token-query";
 import type { AppliedDiscount } from "@/features/discounts";
 import {
-  type CheckoutStateCryptoOptions,
-  type CheckoutStateKey,
-  CheckoutStateTokenError,
-  createCheckoutStateClaims,
-  decodeCheckoutState,
-  openCheckoutState,
-  parseCheckoutStateKey,
-  sealCheckoutState,
-} from "./checkout-state-token";
+  createSealedStateClaims,
+  decodeSealedState,
+  openSealedState,
+  parseSealedStateKey,
+  type SealedStateCryptoOptions,
+  type SealedStateKey,
+  SealedStateTokenError,
+  sealState,
+} from "@/shared/backend/sealed-state";
 import {
   type BuildSignedCoworkPayStateInput,
   buildSignedCoworkPayState,
@@ -63,7 +63,7 @@ const preserveSignedPayStateMetadataInvariant = (
   state: typeof signedPayStateSchema.Type
 ): SignedPayState => state as SignedPayState;
 
-export type PayStateKey = CheckoutStateKey;
+export type PayStateKey = SealedStateKey;
 
 export type SealPayStateForUrlResult = {
   readonly type: "sealedPayState";
@@ -126,16 +126,16 @@ export const getSignedPayStateBookedAt = (
 ) => Temporal.Instant.from(state.bookedAt);
 
 export class PayStateTokenError extends Data.TaggedError("PayStateTokenError")<{
-  readonly code: CheckoutStateTokenError["code"];
+  readonly code: SealedStateTokenError["code"];
   readonly message: string;
   readonly cause?: unknown;
 }> {}
 
 const toPayStateTokenError = (cause: unknown) =>
-  cause instanceof CheckoutStateTokenError
+  cause instanceof SealedStateTokenError
     ? new PayStateTokenError({
         code: cause.code,
-        message: cause.message.replaceAll("checkout state", "Pay state"),
+        message: cause.message.replaceAll("sealed state", "Pay state"),
         cause,
       })
     : new PayStateTokenError({
@@ -146,16 +146,16 @@ const toPayStateTokenError = (cause: unknown) =>
 
 export const parsePayStateKey = Effect.fn("payState.parseKey")(
   (kid: string, base64UrlKey: string) =>
-    parseCheckoutStateKey(kid, base64UrlKey).pipe(
+    parseSealedStateKey(kid, base64UrlKey).pipe(
       Effect.mapError(toPayStateTokenError)
     )
 );
 
 export const buildSignedPayState = Effect.fn("payState.build")(function* (
   input: BuildSignedPayStateInput,
-  options: CheckoutStateCryptoOptions = {}
+  options: SealedStateCryptoOptions = {}
 ) {
-  const claims = yield* createCheckoutStateClaims(
+  const claims = yield* createSealedStateClaims(
     input.ttlMilliseconds ?? payStateDefaultTtlMilliseconds,
     options
   ).pipe(Effect.mapError(toPayStateTokenError));
@@ -188,20 +188,20 @@ export const buildSignedPayState = Effect.fn("payState.build")(function* (
 
 export const sealPayState = Effect.fn("payState.seal")(function* (
   state: SignedPayState,
-  options: CheckoutStateCryptoOptions = {}
+  options: SealedStateCryptoOptions = {}
 ) {
   const encodedState = yield* Schema.encodeUnknownEffect(signedPayStateSchema, {
     onExcessProperty: "error",
   })(state).pipe(Effect.mapError(toPayStateTokenError));
 
-  return yield* sealCheckoutState(encodedState, state.kid, options).pipe(
+  return yield* sealState(encodedState, state.kid, options).pipe(
     Effect.mapError(toPayStateTokenError)
   );
 });
 
 export const openPayState = Effect.fn("payState.open")(
-  (token: string, options: CheckoutStateCryptoOptions = {}) =>
-    openCheckoutState(token, signedPayStateSchema, options).pipe(
+  (token: string, options: SealedStateCryptoOptions = {}) =>
+    openSealedState(token, signedPayStateSchema, options).pipe(
       Effect.map(preserveSignedPayStateMetadataInvariant),
       Effect.mapError(toPayStateTokenError)
     )
@@ -225,8 +225,8 @@ export const payStateContinuesOn = (
     state.reservation.kind === page.reservationKind);
 
 export const getPayStateRestartKind = Effect.fn("payState.getRestartKind")(
-  (token: string, options: CheckoutStateCryptoOptions = {}) =>
-    decodeCheckoutState(token, signedPayStateSchema, options).pipe(
+  (token: string, options: SealedStateCryptoOptions = {}) =>
+    decodeSealedState(token, signedPayStateSchema, options).pipe(
       Effect.map((state) => state.reservation.kind),
       Effect.mapError(toPayStateTokenError)
     )
@@ -234,7 +234,7 @@ export const getPayStateRestartKind = Effect.fn("payState.getRestartKind")(
 
 export const sealPayStateForUrl = Effect.fn("payState.sealForUrl")(function* (
   state: SignedPayState,
-  options: CheckoutStateCryptoOptions = {}
+  options: SealedStateCryptoOptions = {}
 ) {
   const token = yield* sealPayState(state, options);
 

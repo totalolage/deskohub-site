@@ -106,7 +106,7 @@ Lookup keys survive `CHECKOUT_PAY_STATE_KEYS` rotation. Each configured key deri
 
 ### Rotating `CHECKOUT_PAY_STATE_KEYS`
 
-The value is an ordered `kid:base64url-32-byte-key` list. The first entry is active: it seals new Pay-state tokens and derives new lookup keys. Every entry opens its tokens and is accepted for lookups.
+The value is an ordered `kid:base64url-32-byte-key` list. The first entry is active: it seals new Pay-state tokens and derives new lookup keys. Every entry opens its tokens and is accepted for lookups. The shared sealed-state helper (`shared/backend/sealed-state.ts`) uses the same ring for every sealed state, including purpose-bound auth return state, whose tokens live 30 minutes; wait out the longest token lifetime before retiring a key.
 
 Before any change to the value, including the one-step replace below, confirm with a read-only query that no `held` row or row with `pending` payment stores an unprefixed (ring-keyed) `checkout_session_key` or `checkout_attempt_key`. Any edit to the string stops those digests matching, which breaks lookup and late-payment recovery and lets a resubmission create a duplicate hold. The same check gates removing the ring-keyed derivation from lookups.
 

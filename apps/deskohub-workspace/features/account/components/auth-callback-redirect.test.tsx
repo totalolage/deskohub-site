@@ -30,6 +30,9 @@ mock.module("@/features/account/sign-in-analytics", () => ({
 }));
 
 const { AuthCallbackRedirect } = await import("./auth-callback-redirect");
+const { encodeAuthCallbackReturn, signInCallbackReturnParam } = await import(
+  "@/features/account/routes"
+);
 
 let originalReplace: typeof window.location.replace;
 let originalClose: typeof window.close;
@@ -39,7 +42,12 @@ let originalSearch: PropertyDescriptor | undefined;
 const setAttempt = (attemptId?: string, error?: string, returnTo?: string) => {
   const search = new URLSearchParams();
   if (attemptId !== undefined) search.set("attempt", attemptId);
-  if (returnTo !== undefined) search.set("returnTo", returnTo);
+  if (returnTo !== undefined) {
+    search.set(
+      signInCallbackReturnParam,
+      encodeAuthCallbackReturn(returnTo) ?? returnTo
+    );
+  }
   if (error !== undefined) search.set("error", error);
   const query = search.toString();
   Object.defineProperty(window.location, "search", {

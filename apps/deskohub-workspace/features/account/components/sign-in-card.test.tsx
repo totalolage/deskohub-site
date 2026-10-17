@@ -24,6 +24,9 @@ const { act, cleanup, fireEvent, render } = await import(
   "@testing-library/react"
 );
 const { renderToStaticMarkup } = await import("react-dom/server");
+const { rememberEmailSignInRequest } = await import(
+  "@/features/account/email-sign-in-request"
+);
 
 const locale = "en-US";
 
@@ -105,6 +108,7 @@ describe("account components", () => {
 
   afterEach(() => {
     cleanup();
+    rememberEmailSignInRequest(null);
     sessionStorage.clear();
     window.location.replace = originalReplace;
     signInMagicLink.mockClear();
@@ -355,7 +359,10 @@ describe("account components", () => {
     expect(
       view.queryByText(m.accountSignInCodeTitle({}, { locale }))
     ).toBeNull();
-    expect(sessionStorage.getItem(codeRequestStorageKey)).toBeNull();
+    // Kept link-only, so a reload or the verify page can continue it.
+    expect(
+      JSON.parse(sessionStorage.getItem(codeRequestStorageKey) ?? "{}")
+    ).toMatchObject({ signInCode: false });
   });
 
   test("sign-in card asks for the code when the email carries one", async () => {
@@ -587,7 +594,10 @@ describe("account components", () => {
     expect(document.activeElement).toBe(
       view.getByText(m.accountSignInAcceptedTitle({}, { locale }))
     );
-    expect(sessionStorage.getItem(codeRequestStorageKey)).toBeNull();
+    // Kept link-only, so a reload or the verify page can continue it.
+    expect(
+      JSON.parse(sessionStorage.getItem(codeRequestStorageKey) ?? "{}")
+    ).toMatchObject({ signInCode: false });
   });
 
   test("sign-in card does not reopen a cancelled code step after resend resolves", async () => {

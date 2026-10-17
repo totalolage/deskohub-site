@@ -7,14 +7,18 @@ import {
 } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import { listenForReturn } from "@/shared/browser/return-window";
+import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 import { authClient } from "./auth.client";
+import {
+  forgetEmailSignInRequest,
+  rememberEmailSignInRequest,
+} from "./email-sign-in-request";
 import { noteEmailSignInForPasskeyPrompt } from "./passkey-prompt";
 import {
   captureSignInCodeRejection,
   recordSignInCompletion,
   type SignInCodeRejectionReason,
 } from "./sign-in-analytics";
-import { forgetSignInCodeRequest } from "./sign-in-code-request";
 
 const RETURN_LISTENER_TTL_MS = 10 * 60 * 1000;
 const FRESH_SESSION_WINDOW_MS = 10 * 60 * 1000;
@@ -64,6 +68,11 @@ export type SignInEmailResult =
       readonly status: "sent";
       /** True when the email also carries a sign-in code. */
       readonly signInCode: boolean;
+      /**
+       * Correlates this tab with the link's callback tab; keep it with the
+       * request so another page can resume the hand-off.
+       */
+      readonly attemptId?: string;
     }
   | { readonly status: "failed"; readonly reason: SignInEmailFailure }
   /** A later send or a cancel replaced this request before it settled. */
@@ -80,6 +89,13 @@ export type AuthReturnLifecycle = {
   /** Stops the link hand-off and forgets the pending request. */
   readonly cancel: () => void;
   readonly sendSignInEmail: (email: string) => Promise<SignInEmailResult>;
+  /**
+   * Takes over a sign-in email sent from another page of this tab: waits for
+   * its link's hand-off and verifies its code against the same callback.
+   */
+  readonly resumeSignInEmail: (request: {
+    readonly attemptId?: string;
+  }) => void;
   /**
    * Signs this tab in with a typed code. A verified code stops the link
    * hand-off, so a late link tab can't trigger a second navigation.
@@ -243,11 +259,12 @@ export const createAuthReturnLifecycle = ({
   returnTo,
 }: AuthReturnLifecycleOptions): AuthReturnLifecycle => {
   const destination = getSignInDestination(locale, returnTo);
-  const callbackPath = getAuthCallbackPath(locale, { returnTo });
+  const callbackURLFor = (attemptId: string | undefined) =>
+    getAuthCallbackPath(locale, { attemptId, returnTo });
   let currentCleanup: () => void = noop;
   let requestEpoch = 0;
   // The callback URL of the latest sign-in email, reused by code sign-in.
-  let currentCallbackURL = callbackPath;
+  let currentCallbackURL = callbackURLFor(undefined);
   let verifiedCallbackURL: string | undefined;
   // Every continuation (link hand-off, typed code, session check) leaves the
   // page at most once.
@@ -258,7 +275,7 @@ export const createAuthReturnLifecycle = ({
     leaving = Option.getOrElse(requestNavigation(path), () => false);
     if (!leaving) return false;
     // A signed-in tab must not show this code step again after a sign-out.
-    forgetSignInCodeRequest();
+    forgetEmailSignInRequest();
     if (focus) focusWindow();
     return true;
   };
@@ -274,41 +291,64 @@ export const createAuthReturnLifecycle = ({
     dispose();
   };
 
+  // Waits for the link's callback tab to hand off; reports whether the
+  // listener started.
+  const listenForLinkReturn = (attemptId: string, requestId: number) => {
+    const cleanup = Option.getOrUndefined(
+      listenForReturnSafely({
+        attemptId,
+        onReturn: async (signal) => {
+          if (signal.aborted || requestEpoch !== requestId) return false;
+          const signedIn = await readUsableSession(requireFreshSession);
+          if (signal.aborted || requestEpoch !== requestId || !signedIn) {
+            return false;
+          }
+          // The link tab hands off and closes, so this tab records it.
+          if (!requireFreshSession) {
+            recordSignInCompletion("link");
+            noteEmailSignInForPasskeyPrompt();
+          }
+          return leaveFor(destination, { focus: true });
+        },
+        ttlMs: RETURN_LISTENER_TTL_MS,
+      })
+    );
+    if (!cleanup) return false;
+    currentCleanup = cleanup;
+    return true;
+  };
+
+  const resumeSignInEmail = ({
+    attemptId,
+  }: {
+    readonly attemptId?: string;
+  }) => {
+    const requestId = requestEpoch + 1;
+    requestEpoch = requestId;
+    dispose();
+    const listening =
+      attemptId !== undefined &&
+      hasReturnWindowSupport() &&
+      listenForLinkReturn(attemptId, requestId);
+    currentCallbackURL = callbackURLFor(listening ? attemptId : undefined);
+  };
+
   const sendSignInEmail = async (email: string): Promise<SignInEmailResult> => {
     const requestId = requestEpoch + 1;
     requestEpoch = requestId;
     dispose();
 
-    let callbackURL = callbackPath;
-
+    let attemptId: string | undefined;
     if (hasReturnWindowSupport()) {
-      const attemptId = createAttemptId();
-      if (attemptId !== undefined) {
-        const cleanup = Option.getOrUndefined(
-          listenForReturnSafely({
-            attemptId,
-            onReturn: async (signal) => {
-              if (signal.aborted || requestEpoch !== requestId) return false;
-              const signedIn = await readUsableSession(requireFreshSession);
-              if (signal.aborted || requestEpoch !== requestId || !signedIn) {
-                return false;
-              }
-              // The link tab hands off and closes, so this tab records it.
-              if (!requireFreshSession) {
-                recordSignInCompletion("link");
-                noteEmailSignInForPasskeyPrompt();
-              }
-              return leaveFor(destination, { focus: true });
-            },
-            ttlMs: RETURN_LISTENER_TTL_MS,
-          })
-        );
-        if (cleanup) {
-          currentCleanup = cleanup;
-          callbackURL = getAuthCallbackPath(locale, { attemptId, returnTo });
-        }
+      const candidate = createAttemptId();
+      if (
+        candidate !== undefined &&
+        listenForLinkReturn(candidate, requestId)
+      ) {
+        attemptId = candidate;
       }
     }
+    const callbackURL = callbackURLFor(attemptId);
     currentCallbackURL = callbackURL;
 
     let response: Option.Option<typeof signInEmailResponseSchema.Type>;
@@ -328,6 +368,7 @@ export const createAuthReturnLifecycle = ({
       return {
         status: "sent",
         signInCode: response.value.data?.signInCode === true,
+        ...(attemptId !== undefined && { attemptId }),
       };
     }
     dispose();
@@ -394,9 +435,42 @@ export const createAuthReturnLifecycle = ({
 
   return {
     cancel,
+    resumeSignInEmail,
     continueIfSignedIn,
     continueWithVerifiedCode,
     sendSignInEmail,
     verifySignInCode,
   };
+};
+
+/**
+ * Sends the sign-in email for a page that continues on the verify page
+ * (`getAuthVerifyPath`), such as a checkout form: the sign-in lands on the
+ * same-origin `returnTo`, and the request is stored for this tab so the
+ * verify page takes over the link's hand-off and the code entry. Navigate
+ * there once the result is `sent`.
+ */
+export const startEmailSignIn = async ({
+  locale,
+  email,
+  returnTo,
+}: {
+  readonly locale: Locale;
+  readonly email: string;
+  readonly returnTo?: string;
+}): Promise<SignInEmailResult> => {
+  const lifecycle = createAuthReturnLifecycle({ locale, returnTo });
+  const result = await lifecycle.sendSignInEmail(email);
+  // The verify page listens for the hand-off from here on.
+  lifecycle.cancel();
+  if (result.status === "sent") {
+    rememberEmailSignInRequest({
+      email,
+      requestedAt: Date.now(),
+      signInCode: result.signInCode,
+      attemptId: result.attemptId,
+      returnTo: parseSameOriginPath(returnTo),
+    });
+  }
+  return result;
 };

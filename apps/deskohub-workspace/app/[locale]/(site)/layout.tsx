@@ -12,8 +12,11 @@ import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guar
 // Customer-only providers live here so the admin suite under [locale]/admin stays outside them.
 export default async function SiteLayout({
   children,
+  modal,
 }: {
   readonly children: ReactNode;
+  /** The sign-in and verify modals a client navigation opens over a page. */
+  readonly modal: ReactNode;
 }) {
   const locale = await getRequestLocale();
   const gtmId = env.NEXT_PUBLIC_GTM_ID;
@@ -30,7 +33,10 @@ export default async function SiteLayout({
             posthogEnvironment={env.VERCEL_ENV}
           />
         </Suspense>
-        <UnsavedChangesProvider>{children}</UnsavedChangesProvider>
+        <UnsavedChangesProvider>
+          {children}
+          {modal}
+        </UnsavedChangesProvider>
       </PostHogProvider>
     </>
   );
