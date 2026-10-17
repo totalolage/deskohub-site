@@ -19,6 +19,22 @@ const queryOfficeSeatsSchema = Schema.toStandardSchemaV1(
   Schema.FiniteFromString.pipe(Schema.decodeTo(officeSeatsSchema))
 );
 
+/**
+ * The query of a link that opens the office form on a selection, which
+ * `getOfficeReservationDefaultValuesFromSearchParams` reads back. The form
+ * always starts on the current date.
+ */
+export const getOfficeReservationSearchParams = (selection: {
+  readonly dayCount?: number;
+  readonly seats?: number;
+}) =>
+  new URLSearchParams({
+    ...(selection.dayCount !== undefined && {
+      dayCount: String(selection.dayCount),
+    }),
+    ...(selection.seats !== undefined && { seats: String(selection.seats) }),
+  });
+
 export const getOfficeReservationDefaultValuesFromSearchParams = (
   searchParams: SupportedSearchParams,
   options: {

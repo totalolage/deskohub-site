@@ -18,6 +18,10 @@ export const workspaceE2ETimeouts = {
   authDelivery: 2 * MINUTE,
   browserAction: 30 * SECOND,
   browserNavigation: 60 * SECOND,
+  // One MCP exchange, with room for a cold advisory snapshot to fill from
+  // Dotypos (one full Dotypos request timeout).
+  customerMcpRequest: 60 * SECOND,
+  customerMcpCase: 4 * MINUTE,
   // One reload of an advertised-pricing page, and the overall wait for the
   // advertisedPricingSources cache (60-second revalidation) to converge.
   calendarSaleAdvertisement: 2 * MINUTE,

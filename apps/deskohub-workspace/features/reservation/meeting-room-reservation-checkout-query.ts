@@ -8,6 +8,7 @@ import {
 import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,
+  type MeetingRoomReservationDurationKey,
   meetingRoomReservationDurationKeySchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
@@ -27,6 +28,21 @@ const queryMeetingRoomStartDateTimeSchema = Schema.toStandardSchemaV1(
 const queryMeetingRoomDurationKeySchema = Schema.toStandardSchemaV1(
   meetingRoomReservationDurationKeySchema
 );
+
+/**
+ * The query of a link that opens the meeting-room form on a selection, which
+ * `getMeetingRoomReservationDefaultValuesFromSearchParams` reads back.
+ */
+export const getMeetingRoomReservationSearchParams = (selection: {
+  readonly duration: MeetingRoomReservationDurationKey;
+  readonly startDateTime?: string;
+}) =>
+  new URLSearchParams({
+    duration: selection.duration,
+    ...(selection.startDateTime !== undefined && {
+      startDateTime: selection.startDateTime,
+    }),
+  });
 
 export const getMeetingRoomReservationDefaultValuesFromSearchParams = (
   searchParams: SupportedSearchParams,

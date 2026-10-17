@@ -30,6 +30,12 @@ export const workspaceSiteConstants = {
     },
     timeZone: WORKSPACE_SITE_TIME_ZONE,
   },
+  openingHours: {
+    /** The space is open around the clock, every day. */
+    alwaysOpen: true,
+    /** Open Space desks are usable from midnight until this local time, exclusive. */
+    openSpaceUsableUntil: "17:00",
+  },
   reservation: {
     defaultStartTime: "10:00",
   },
