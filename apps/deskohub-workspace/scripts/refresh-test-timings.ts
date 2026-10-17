@@ -95,10 +95,14 @@ export const predictShardDurations = (
   return totals;
 };
 
+/** Whether the sharded `test` script runs the file; it ignores `*.build.test.ts`. */
+export const isShardedTestFile = (file: string): boolean =>
+  !file.split("/").includes("node_modules") && !file.endsWith(".build.test.ts");
+
 const discoverTestFiles = async (): Promise<ReadonlyArray<string>> => {
   const files: string[] = [];
   for await (const file of new Bun.Glob(testFilePattern).scan(workspaceRoot)) {
-    if (!file.split("/").includes("node_modules")) files.push(file);
+    if (isShardedTestFile(file)) files.push(file);
   }
   return files;
 };
