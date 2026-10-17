@@ -40,7 +40,11 @@ export const makeAgentToolMcpHandler = <R, E>({
   createMcpHandler(
     ({ requestInfo }) => {
       const server = new McpServer(
-        { name: "dh-workspace", version: agentToolServerVersion },
+        {
+          name: "dh-workspace",
+          title: workspaceSiteConstants.brand.name,
+          version: agentToolServerVersion,
+        },
         { instructions: agentToolServerInstructions }
       );
       for (const tool of tools) {
