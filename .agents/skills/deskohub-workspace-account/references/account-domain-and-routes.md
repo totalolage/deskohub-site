@@ -48,6 +48,14 @@
   `[section]`, `AccountSectionPathCheck`, under which an unknown slug or a
   section withheld by its release flag is not found. Legal & Privacy is the
   separate public `/account/legal` page.
+- The layout renders beside the page, not under it, so the page's not-found
+  cannot stop it: a signed-out account page redirects to sign-in, and that
+  redirect would win. `AccountSections` therefore runs the same section check
+  first, on the requested path, before it loads the account. A layout gets no
+  child params, so the proxy hands every `/account` render, Server Action
+  posts included, its pathname (`withRequestPathname`), which
+  `getRequestPathname` reads; a render without one is not found. The page's
+  own check still covers client navigations, which skip the shared layout.
 - Keep the account page in that layout, never in a page. The navigation
   switches sections with `history.replaceState`, which leaves Next's router
   tree on the path the page loaded at; a Server Action that revalidates, or

@@ -328,24 +328,34 @@ export function FixtureHydration({ children }: { readonly children: ReactNode })
 }
 `;
 
-const privatePage = `
+// The real sections' layout and pages render the account page through these
+// stand-ins: synthetic private content for the fixture's signed-in requests,
+// and the real redirect to sign-in for signed-out ones.
+const fixtureAccountPageData = `
 import { headers } from "next/headers";
-import { connection } from "next/server";
-import { Suspense } from "react";
-import { AccountContentLoading } from "@/features/account/components/account-loading";
-import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 
-export default function SyntheticPrivateAccountPage() {
-  return runWithRequestLocale((locale) => (
-    <Suspense fallback={<AccountContentLoading locale={locale} />}>
-      <SyntheticPrivateContent />
-    </Suspense>
-  ));
+export async function loadCustomerAccountPage() {
+  const requestHeaders = await headers();
+  return requestHeaders.get("${accountFixtureAuthHeader}") === "private"
+    ? { kind: "fixture" as const }
+    : { kind: "unauthenticated" as const };
 }
+`;
 
-async function SyntheticPrivateContent() {
-  await connection();
-  await headers();
+const fixtureAccountPage = `
+import { AccountSignInRedirect } from "@/features/account/components/account-sign-in-redirect";
+import type { Locale } from "@/features/i18n";
+
+export function AccountPage({
+  locale,
+  state,
+}: {
+  readonly locale: Locale;
+  readonly state: { readonly kind: "fixture" | "unauthenticated" };
+}) {
+  if (state.kind === "unauthenticated") {
+    return <AccountSignInRedirect locale={locale} />;
+  }
 
   return (
     <section data-testid="synthetic-private-content" aria-labelledby="synthetic-private-title">
@@ -354,6 +364,21 @@ async function SyntheticPrivateContent() {
     </section>
   );
 }
+`;
+
+// Hands account renders their pathname, as the Workspace proxy does, for the
+// sections' layout's section check.
+const fixtureProxy = `
+import { type NextRequest, NextResponse } from "next/server";
+import { withRequestPathname } from "@/shared/backend/utils/request-pathname";
+
+export function proxy(request: NextRequest) {
+  return NextResponse.next({
+    request: { headers: withRequestPathname(request) },
+  });
+}
+
+export const config = { matcher: ["/:locale/account", "/:locale/account/:path*"] };
 `;
 
 const nullModalPage = `
@@ -388,8 +413,6 @@ const writeFixture = async (
     "app/[locale]/(site)/(full-header)/account/@modal/default.tsx":
       nullModalPage,
     "app/[locale]/(site)/(full-header)/account/@modal/page.tsx": nullModalPage,
-    "app/[locale]/(site)/(full-header)/account/(sections)/page.tsx": privatePage,
-    "app/[locale]/(site)/(full-header)/account/(sections)/[section]/page.tsx": privatePage,
     "app/[locale]/account-legal-fixture-ready/route.ts":
       fixtureReadinessRoute(readinessMarker),
     ...(realCookieConsent
@@ -400,6 +423,8 @@ const writeFixture = async (
       : {}),
     "app/[locale]/layout.tsx": localeLayout(realCookieConsent),
     "fixture/account-feature-flag.server.ts": fixtureAccountFeatureFlag,
+    "fixture/account-page.tsx": fixtureAccountPage,
+    "fixture/account-page-data.server.ts": fixtureAccountPageData,
     "fixture/customer-authentication.service.ts": fixtureAuthentication,
     ...(realCookieConsent
       ? {}
@@ -417,6 +442,7 @@ const writeFixture = async (
     "fixture/workspace-effect.ts": fixtureWorkspaceEffect,
     "instrumentation.ts": "export function register() {}",
     "next.config.mjs": nextConfig,
+    "proxy.ts": fixtureProxy,
     "package.json": packageJson,
   };
 
@@ -440,6 +466,12 @@ const writeFixture = async (
       paths: {
         "@/features/account/server/account-feature-flag.server": [
           "./fixture/account-feature-flag.server.ts",
+        ],
+        "@/features/account/components/account-page": [
+          "./fixture/account-page.tsx",
+        ],
+        "@/features/account/page-data.server": [
+          "./fixture/account-page-data.server.ts",
         ],
         "@/features/account/backend/customer-authentication.service": [
           "./fixture/customer-authentication.service.ts",
@@ -472,6 +504,9 @@ const writeFixture = async (
 
   for (const relativePath of [
     "app/[locale]/(site)/(full-header)/account/layout.tsx",
+    "app/[locale]/(site)/(full-header)/account/(sections)/layout.tsx",
+    "app/[locale]/(site)/(full-header)/account/(sections)/page.tsx",
+    "app/[locale]/(site)/(full-header)/account/(sections)/[section]/page.tsx",
     "app/[locale]/(site)/(full-header)/account/loading.tsx",
     "app/[locale]/(site)/(full-header)/account/legal/page.tsx",
     "app/[locale]/(site)/(full-header)/layout.tsx",

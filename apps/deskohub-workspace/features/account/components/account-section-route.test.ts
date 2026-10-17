@@ -8,6 +8,9 @@ const notFound = mock(() => {
 const arePasskeysEnabled = mock(() => Promise.resolve(true));
 const areReferralsEnabled = mock(() => Promise.resolve(true));
 const connection = mock(() => Promise.resolve());
+const getRequestPathname = mock(() =>
+  Promise.resolve<string | undefined>("/en-US/account")
+);
 const loadCustomerAccountPage = mock(() =>
   Promise.resolve({ kind: "unavailable" as const })
 );
@@ -21,6 +24,9 @@ mock.module("@/features/account/server/account-feature-flag.server", () => ({
 }));
 mock.module("@/features/referrals/referral-feature-flag.server", () => ({
   areReferralsEnabled,
+}));
+mock.module("@/shared/backend/utils/request-pathname", () => ({
+  getRequestPathname,
 }));
 mock.module("@/features/account/page-data.server", () => ({
   loadCustomerAccountPage,
@@ -36,7 +42,9 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
     shell: { sections: { billing: "synthetic-billing" } },
   }),
 }));
+const i18n = await import("@/features/i18n");
 mock.module("@/features/i18n", () => ({
+  ...i18n,
   m: {
     accountMetadataDescription: () => "synthetic-description",
     accountSectionMetadataTitle: ({ section }: { readonly section: string }) =>
@@ -93,6 +101,11 @@ describe("customer account route boundary", () => {
     connection.mockImplementation(async () => {
       events.push("connection");
     });
+    getRequestPathname.mockReset();
+    getRequestPathname.mockImplementation(async () => {
+      events.push("pathname");
+      return "/en-US/account";
+    });
     loadCustomerAccountPage.mockClear();
     loadCustomerAccountPage.mockImplementation(async () => {
       events.push("load");
@@ -111,13 +124,71 @@ describe("customer account route boundary", () => {
 
     const output = await content();
 
-    expect(events).toEqual(["connection", "load"]);
+    expect(events).toEqual([
+      "connection",
+      "pathname",
+      "passkeys",
+      "referrals",
+      "load",
+    ]);
     expect(loadCustomerAccountPage).toHaveBeenCalledWith();
     expect(output).toMatchObject({
       type: AccountPage,
       props: { locale: "en-US", state: { kind: "unavailable" } },
     });
   });
+
+  test.each([
+    "/en-US/account/",
+    "/en-US/account/security",
+    "/en-US/account/referrals",
+    "/en-US/account/danger",
+  ])("loads the account page at %s", async (pathname) => {
+    getRequestPathname.mockImplementation(async () => pathname);
+
+    expect(await renderSections().content()).toMatchObject({
+      type: AccountPage,
+    });
+  });
+
+  // A signed-out visitor's account page redirects to sign-in, so the check
+  // must settle before the account loads.
+  test.each([
+    ["an unknown section", "/en-US/account/unknown"],
+    ["a section in another case", "/en-US/account/Profile"],
+    ["a nested path", "/en-US/account/profile/extra"],
+    ["another locale's account", "/cs-CZ/account/profile"],
+    ["a request the proxy did not hand on", undefined],
+  ])(
+    "returns not found for %s without loading the account",
+    async (_, pathname) => {
+      getRequestPathname.mockImplementation(async () => pathname);
+
+      await expect(renderSections().content()).rejects.toThrow(
+        "NEXT_NOT_FOUND"
+      );
+      expect(loadCustomerAccountPage).not.toHaveBeenCalled();
+      expect(AccountPage).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    ["referrals", areReferralsEnabled],
+    ["security", arePasskeysEnabled],
+  ] as const)(
+    "returns not found for the withheld %s section without loading the account",
+    async (section, flag) => {
+      getRequestPathname.mockImplementation(
+        async () => `/en-US/account/${section}`
+      );
+      flag.mockImplementation(async () => false);
+
+      await expect(renderSections().content()).rejects.toThrow(
+        "NEXT_NOT_FOUND"
+      );
+      expect(loadCustomerAccountPage).not.toHaveBeenCalled();
+    }
+  );
 
   test("leaves a released section's path to the sections' account page", async () => {
     const { content, route } = renderPathCheck("security");

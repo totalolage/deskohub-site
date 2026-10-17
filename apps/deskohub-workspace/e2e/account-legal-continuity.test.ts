@@ -11,6 +11,7 @@ import {
   registerAccountLegalFixture,
   type Viewport,
 } from "./account-legal-fixture";
+import { isNotFoundPage } from "./not-found-page";
 import { waitForReactClickHandler } from "./react-handlers";
 
 const siteHeaderSelector = "body > header";
@@ -834,6 +835,92 @@ const assertAnonymousLegalRoute = async (
   }
 };
 
+const isSignInPathname = (url: string) =>
+  /\/auth\/sign-in\/?$/.test(new URL(url).pathname);
+
+/** Opens an account path, recording every request on the way to sign-in. */
+const openAccountPath = async (
+  fixture: AccountLegalFixture,
+  path: string,
+  { signedIn }: { readonly signedIn: boolean }
+) => {
+  const context = await openFixtureContext(fixture, {
+    viewport: { height: 900, width: 1440 },
+    ...(signedIn
+      ? { extraHTTPHeaders: { [accountFixtureAuthHeader]: "private" } }
+      : {}),
+  });
+  const page = await context.newPage();
+  const signInRequests: string[] = [];
+  page.on("request", (request) => {
+    if (isSignInPathname(request.url())) signInRequests.push(request.url());
+  });
+  const url = `${fixture.serverUrl}${path}`;
+  const response = await page.goto(url, { waitUntil: "load" });
+  return { context, page, response, signInRequests, url };
+};
+
+// The sections' layout renders the account page beside the path's own page,
+// so a signed-out account page's redirect to sign-in must never start for a
+// path the page finds missing. The fixture withholds Referrals and Sign-in &
+// security.
+const assertSectionPathNotFound = async (
+  fixture: AccountLegalFixture,
+  path: string,
+  { signedIn }: { readonly signedIn: boolean }
+) => {
+  const { context, page, response, signInRequests, url } =
+    await openAccountPath(fixture, path, { signedIn });
+
+  try {
+    const body = (await response?.text()) ?? "";
+    expect(isNotFoundPage(body)).toBe(true);
+    // Neither the account page nor its redirect to sign-in renders at all.
+    expect(body).not.toContain("synthetic-private-content");
+    expect(body).not.toContain("sign-in-loading");
+    await page.waitForFunction(
+      () => document.documentElement.dataset.fixtureHydrated === "true"
+    );
+    // A signed-out account page starts its redirect once it hydrates, which
+    // the dev server can take seconds to reach.
+    await expect(
+      page.waitForURL(isSignInPathname, { timeout: signInRedirectWindow })
+    ).rejects.toThrow();
+    expect(page.url()).toBe(url);
+    expect(signInRequests).toEqual([]);
+    expect(
+      await page.locator('[data-testid="synthetic-private-content"]').count()
+    ).toBe(0);
+    expect(await page.locator('[data-slot="sign-in-loading"]').count()).toBe(0);
+  } finally {
+    await closeFixtureContext(fixture, context);
+  }
+};
+
+const assertAnonymousSectionPathSignsIn = async (
+  fixture: AccountLegalFixture,
+  path: string
+) => {
+  const { context, page } = await openAccountPath(fixture, path, {
+    signedIn: false,
+  });
+
+  try {
+    await page.waitForURL(isSignInPathname);
+    expect(new URL(page.url()).pathname).toBe("/en-US/auth/sign-in");
+  } finally {
+    await closeFixtureContext(fixture, context);
+  }
+};
+
+const signInRedirectWindow = 5_000;
+
+const missingSectionPaths = [
+  "/en-US/account/unknown",
+  "/en-US/account/security",
+  "/en-US/account/referrals",
+] as const;
+
 describe("account legal continuity browser fixture", () => {
   const requireFixture = registerAccountLegalFixture();
 
@@ -857,6 +944,24 @@ describe("account legal continuity browser fixture", () => {
         );
       });
     }
+  }
+
+  for (const path of missingSectionPaths) {
+    for (const signedIn of [false, true]) {
+      test(`shows ${signedIn ? "a signed-in" : "an anonymous"} visitor not found at ${path}`, {
+        timeout: accountFixtureCaseTimeout,
+      }, async () => {
+        await assertSectionPathNotFound(requireFixture(), path, { signedIn });
+      });
+    }
+  }
+
+  for (const path of ["/en-US/account", "/en-US/account/profile"]) {
+    test(`sends an anonymous visitor at ${path} to sign-in`, {
+      timeout: accountFixtureCaseTimeout,
+    }, async () => {
+      await assertAnonymousSectionPathSignsIn(requireFixture(), path);
+    });
   }
 
   test("keeps anonymous cs-CZ legal route usable", {

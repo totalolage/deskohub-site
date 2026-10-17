@@ -659,6 +659,55 @@ test("checks administration Server Action posts before the general pass-through"
   }
 });
 
+describe("account render pathname hand-off", () => {
+  const renderedPathname = (response: Response) =>
+    response.headers.get("x-middleware-request-x-deskohub-request-pathname");
+
+  test("hands account renders their pathname, replacing a client's value", async () => {
+    for (const path of [
+      "/en-US/account",
+      "/en-US/account/unknown",
+      "/cs-CZ/account/security",
+    ]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${path}`, {
+          headers: { "x-deskohub-request-pathname": "/en-US/account" },
+        })
+      );
+
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(renderedPathname(response)).toBe(path);
+    }
+  });
+
+  test("hands an account Server Action's render its pathname", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/account/danger", {
+        method: "POST",
+        headers: { "next-action": "action-id" },
+      })
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(renderedPathname(response)).toBe("/en-US/account/danger");
+    expect(response.cookies.get(localeCookieName)).toBeUndefined();
+  });
+
+  test("leaves other renders' request headers alone", async () => {
+    for (const request of [
+      new NextRequest("https://workspace.example/en-US/reservation/cowork"),
+      new NextRequest("https://workspace.example/en-US/checkout/pay", {
+        method: "POST",
+        headers: { "next-action": "action-id" },
+      }),
+    ]) {
+      const response = await proxy(request);
+
+      expect(response.headers.get("x-middleware-override-headers")).toBeNull();
+    }
+  });
+});
+
 describe("shared referral code hand-off", () => {
   const storedCookieOf = (response: Response) =>
     response.headers
@@ -700,7 +749,10 @@ describe("shared referral code hand-off", () => {
     );
 
     expect(storedCookieOf(response)).toBeUndefined();
-    expect(renderedCookies(response)).toBeNull();
+    // The account render receives the request's own cookies, unchanged.
+    expect(renderedCookies(response)).toBe(
+      `${referralCodeCookieName}=RFLFIRST1`
+    );
   });
 
   test("ignores a value that cannot be a referral code", async () => {

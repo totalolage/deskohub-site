@@ -22,6 +22,7 @@ import { appendVercelPreviewProtectionBypass } from "./features/checkout/backend
 import { reservationAccessTokenQueryParam } from "./features/reservation/reservation-access-token";
 import { isAdministratorAuthorizationValid } from "./shared/administrator/administrator-basic-auth";
 import { resolveWorkspaceRuntimeCallbackOrigin } from "./shared/backend/config/workspace-url.config";
+import { withRequestPathname } from "./shared/backend/utils/request-pathname";
 import { markPrivateResponse } from "./shared/utils/private-response";
 
 const decodePathname = (pathname: string) => {
@@ -63,8 +64,30 @@ const hasReservationCapabilityToExchange = (request: NextRequest) =>
   isReservationCapabilityExchangePath(request.nextUrl.pathname) &&
   request.nextUrl.searchParams.has(reservationAccessTokenQueryParam);
 
+const isAccountPath = (pathname: string) => /\/account(\/|$)/.test(pathname);
+
 const isPrivateAccountPath = (pathname: string) =>
-  /\/account(\/|$)/.test(pathname) || /\/auth(\/|$)/.test(pathname);
+  isAccountPath(pathname) || /\/auth(\/|$)/.test(pathname);
+
+/**
+ * Hands a request on to its render. An account render receives its pathname,
+ * which the account sections' layout checks before it renders the account
+ * page; other renders receive the request's own headers when the proxy changed
+ * them.
+ */
+const continueRequest = (
+  request: NextRequest,
+  { headersChanged }: { readonly headersChanged: boolean }
+) => {
+  if (isAccountPath(request.nextUrl.pathname)) {
+    return NextResponse.next({
+      request: { headers: withRequestPathname(request) },
+    });
+  }
+  return headersChanged
+    ? NextResponse.next({ request: { headers: request.headers } })
+    : NextResponse.next();
+};
 
 /**
  * A real top-level page load. Speculative and router requests never take the
@@ -181,9 +204,9 @@ async function localizedPageResponse(request: NextRequest) {
     if (sharedReferralCode) {
       request.cookies.set(referralCodeCookieName, sharedReferralCode);
     }
-    const response = sharedReferralCode
-      ? NextResponse.next({ request: { headers: request.headers } })
-      : NextResponse.next();
+    const response = continueRequest(request, {
+      headersChanged: Boolean(sharedReferralCode),
+    });
     if (
       isPrivateReservationPath(request.nextUrl.pathname) ||
       isPrivateAccountPath(request.nextUrl.pathname)
@@ -246,7 +269,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (request.method === "POST" && request.headers.has("next-action")) {
-    return NextResponse.next();
+    return continueRequest(request, { headersChanged: false });
   }
 
   if (
