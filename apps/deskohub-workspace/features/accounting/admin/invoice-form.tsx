@@ -39,12 +39,12 @@ import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { formatCount } from "@/shared/utils/number";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { getInvoiceAdminActionFailureMessage } from "./action-failure-message";
-import { getInvoiceCustomerName } from "./invoice-display";
 import {
   createAdministrationInvoice,
   previewAdministrationInvoice,
   searchAdministrationInvoiceCustomers,
 } from "./actions";
+import { getInvoiceCustomerName } from "./invoice-display";
 
 const selectClassName =
   "flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20";
