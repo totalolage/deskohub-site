@@ -325,6 +325,7 @@ const runReusableReservationScenario = async (input: {
   readonly findCurrentByCheckoutSessionKey?: ReturnType<typeof mock>;
   readonly findStoredCheckoutSessionKey?: ReturnType<typeof mock>;
   readonly createDraft?: ReturnType<typeof mock>;
+  readonly assignAuthor?: ReturnType<typeof mock>;
   readonly claimHoldCreation?: ReturnType<typeof mock>;
   readonly findById?: ReturnType<typeof mock>;
   readonly claimSupersessionCancellation?: ReturnType<typeof mock>;
@@ -383,6 +384,11 @@ const runReusableReservationScenario = async (input: {
   const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
+  const assignAuthor =
+    input.assignAuthor ??
+    mock((author: { readonly authorAccountId: string }) =>
+      Effect.succeed(author.authorAccountId)
+    );
   const claimHoldCreation =
     input.claimHoldCreation ?? mock(() => Effect.succeed(true));
   const findById = input.findById ?? mock(() => Effect.succeed(null));
@@ -473,6 +479,7 @@ const runReusableReservationScenario = async (input: {
       findStoredCheckoutSessionKey:
         input.findStoredCheckoutSessionKey ?? mock(() => Effect.succeed(null)),
       createDraft,
+      assignAuthor,
       claimHoldCreation,
       findById,
       releaseHoldCreation: mock(() => Effect.void),
@@ -523,6 +530,7 @@ const runReusableReservationScenario = async (input: {
     error: result._tag === "Failure" ? (result.failure as unknown) : undefined,
     guardEvents: accountAuthority.events,
     enqueueCleanup,
+    assignAuthor,
     updateReservationDetails,
     grantInitialMarketingConsent,
     grantMarketingConsent,
@@ -1488,6 +1496,57 @@ describe("prepareWorkspacePayState", () => {
         });
       }
     );
+
+    test.each([
+      ["a draft", makeReusableReservation({ reservationState: "draft" })],
+      ["a held retry", makeReusableReservation()],
+    ] as const)(
+      "makes the signed-in account the author of %s started before sign-in",
+      async (_label, startedAsGuest) => {
+        const scenario = await runReusableReservationScenario({
+          findByAttemptKeys: mock(() => Effect.succeed(startedAsGuest)),
+          accountAuthority: { session: {}, activityState: "active" },
+          accountContact: accountContact(),
+        });
+
+        expect(scenario.result?.status).toBe("ready");
+        expect(scenario.assignAuthor).toHaveBeenCalledWith({
+          id: startedAsGuest.id,
+          authorAccountId: "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
+        });
+      }
+    );
+
+    test("refuses to resume a draft another account authored", async () => {
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(makeReusableReservation({ reservationState: "draft" }))
+        ),
+        assignAuthor: mock(() =>
+          Effect.succeed("0d9c6a2e-7f41-4b8a-a6e3-2c5d9b1f4e70")
+        ),
+        claimHoldCreation: mock(() => Effect.die("no hold may be claimed")),
+        accountAuthority: { session: {}, activityState: "active" },
+        accountContact: accountContact(),
+      });
+
+      expect(scenario.error).toMatchObject({
+        _tag: "PublicSafeActionError",
+        cause: { _tag: "CheckoutAttemptUnavailableError" },
+      });
+    });
+
+    test("leaves a guest's resumed draft without an author", async () => {
+      const scenario = await runReusableReservationScenario({
+        findByAttemptKeys: mock(() =>
+          Effect.succeed(makeReusableReservation({ reservationState: "draft" }))
+        ),
+        accountAuthority: { session: null },
+      });
+
+      expect(scenario.result?.status).toBe("ready");
+      expect(scenario.assignAuthor).not.toHaveBeenCalled();
+    });
 
     test("prices the reservation with the account contact instead of the submitted one", async () => {
       const scenario = await runReusableReservationScenario({

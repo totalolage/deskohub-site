@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-account
-description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, profile, avatar, account deletion, reservation history, saved language preference, signed-in locale, auth retention or PII, PostHog identity.
+description: Workspace customer account, Better Auth, magic link, sign-in, session, auth persistence, customer account link, durable customer account, customer_accounts, deleted-account tombstone, reservation author storage, profile, avatar, account deletion, reservation history, saved language preference, signed-in locale, auth retention or PII, PostHog identity.
 ---
 
 # Workspace customer accounts
@@ -19,8 +19,8 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
   phone, and personal or business billing) and live reservation facts.
 - Workspace stores only the one-to-one opaque link in
   `public.customer_account_links` and the durable customer account in
-  `public.customer_accounts` (id and deletion instant; see the
-  `deskohub-workspace-domain` skill's reservation parties reference). Never
+  `public.customer_accounts` (id and deletion instant; see
+  [durable customer account](references/account-domain-and-routes.md#durable-customer-account)). Never
   copy profile or auth data anywhere else. The one exception is an administrator account actor: records an
   administrator writes keep the account's login-email snapshot as provenance
   (see the `deskohub-workspace-administration` skill's `dhw` reference).
@@ -57,7 +57,8 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
 Read the reference that matches your change before editing:
 
 - [Account domain and routes](references/account-domain-and-routes.md):
-  customer resolution, link claims, the public error contract, account pages
+  customer resolution, link claims, the durable customer account and
+  reservation authors, the public error contract, account pages
   and modals, header sign-in state, profile edits, and deletion.
 - [Better Auth configuration](references/better-auth-configuration.md):
   persistence, adapter and pool, schema generation, session, magic-link and

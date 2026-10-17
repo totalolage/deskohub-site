@@ -1,34 +1,27 @@
 # Reservation parties
 
+The account skill's [account domain and routes](../../deskohub-workspace-account/references/account-domain-and-routes.md#durable-customer-account)
+reference covers how these parties are stored.
+
 ## Glossary
 
-- **Reservation customer**: the Dotypos customer the reservation is for,
-  stored as `workspace_reservations.dotypos_customer_id`. Dotypos owns the
-  customer's profile. A customer who is "someone else" has no account.
-- **Customer account**: the durable Workspace record of a signed-in
-  customer, `public.customer_accounts`. Its id is the Better Auth user id that
-  created it (`CustomerAccountId`), but it has no foreign key to `auth.user`,
-  so it outlives the identity. It holds no personal data. While the identity
-  exists, `customer_account_links` links the account to its own Dotypos
-  customer.
-- **Reservation author**: the customer account that made the reservation,
-  stored as `workspace_reservations.author_account_id`. The author and the
-  customer differ when an account books for someone else.
-- **Deleted-account tombstone**: a customer account whose `deleted_at` is set.
-  Account deletion leaves it so reservations keep their author after Better
-  Auth removes the identity and its link.
+- **Reservation customer**: the customer the reservation is for. Dotypos owns
+  the customer's profile. The customer can be the author's own customer, a
+  different registered customer, or someone without an account.
+- **Customer account**: the durable Workspace record of a customer who signs
+  in. It outlives the sign-in identity and holds no personal data.
+- **Reservation author**: the customer account that made the reservation. The
+  author and the customer differ when an account books for someone else.
+- **Deleted-account tombstone**: a customer account that was deleted. It stays
+  so the reservations it authored keep their author.
 
 ## Invariants
 
-- Every reservation a signed-in account creates records that account as its
-  author. `OptionalAccountActivityGuard` hands the state-creating section the
-  account it verified under the account lock; the reservation repository
-  writes it and creates the account's record in the same transaction
-  (`ensureCustomerAccount`).
-- `author_account_id` references `customer_accounts` with `ON DELETE
-  RESTRICT`. Never delete a customer account row; deletion tombstones it.
-- `author_account_id` is null only for guest checkouts and for reservations
-  made before authors were recorded, until the legacy backfill fills them and
-  the column becomes NOT NULL.
-- A customer account row appears when the account first authors a record, or
-  as a tombstone when an account that never authored one is deleted.
+- Every reservation a signed-in account makes records that account as its
+  author.
+- A reservation started before the customer signed in takes the signed-in
+  account as its author when that account resumes or pays it.
+- A reservation's author never changes once recorded. Another account can pay
+  the reservation without becoming its author, but can't resume its draft.
+- Account deletion turns the customer account into a tombstone; it never
+  removes it.

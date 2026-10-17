@@ -12,6 +12,7 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
 } from "../customer-account";
+import { CustomerAccountRepository } from "./customer-account.repository";
 import { expireLinkedDotyposProfile } from "./customer-account-deletion";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 
@@ -45,7 +46,10 @@ const readDeletedAt = async (account: CustomerAccountId) => {
 };
 
 const makeRepositoryLayer = () =>
-  CustomerAccountLinkRepository.Default.pipe(
+  Layer.mergeAll(
+    CustomerAccountLinkRepository.Default,
+    CustomerAccountRepository.Default
+  ).pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(
@@ -72,6 +76,7 @@ describe.skipIf(!testDatabase)(
       await Effect.runPromise(
         Effect.gen(function* () {
           const links = yield* CustomerAccountLinkRepository;
+          const accounts = yield* CustomerAccountRepository;
           const requestDeletion = expireLinkedDotyposProfile({
             markDeletionRequested: links.markDeletionRequested,
             findLink: links.find,
@@ -83,7 +88,7 @@ describe.skipIf(!testDatabase)(
               order.push(`destroy-avatar:${destroyAccountId}`);
               return Effect.void;
             },
-            tombstone: links.tombstone,
+            tombstone: accounts.tombstone,
             withAccountLock: links.withAccountLock,
           });
           return yield* requestDeletion(account);
@@ -113,13 +118,14 @@ describe.skipIf(!testDatabase)(
       const outcome = await Effect.runPromise(
         Effect.gen(function* () {
           const links = yield* CustomerAccountLinkRepository;
+          const accounts = yield* CustomerAccountRepository;
           const requestDeletion = expireLinkedDotyposProfile({
             markDeletionRequested: links.markDeletionRequested,
             findLink: links.find,
             expireCustomer: () => Effect.void,
             destroyAvatar: () =>
               Effect.fail({ _tag: "CustomerAvatarProviderError" }),
-            tombstone: links.tombstone,
+            tombstone: accounts.tombstone,
             withAccountLock: links.withAccountLock,
           });
           return yield* Effect.result(requestDeletion(account));
@@ -169,12 +175,13 @@ describe.skipIf(!testDatabase)(
         await Effect.runPromise(
           Effect.gen(function* () {
             const links = yield* CustomerAccountLinkRepository;
+            const accounts = yield* CustomerAccountRepository;
             return yield* expireLinkedDotyposProfile({
               markDeletionRequested: links.markDeletionRequested,
               findLink: links.find,
               expireCustomer: () => Effect.void,
               destroyAvatar: () => Effect.void,
-              tombstone: links.tombstone,
+              tombstone: accounts.tombstone,
               withAccountLock: links.withAccountLock,
             })(account);
           }).pipe(Effect.provide(layer))
@@ -223,8 +230,11 @@ describe.skipIf(!testDatabase)(
       const tombstoneAt = (deletedAt: string) =>
         Effect.runPromise(
           Effect.gen(function* () {
-            const links = yield* CustomerAccountLinkRepository;
-            yield* links.tombstone(account, Temporal.Instant.from(deletedAt));
+            const accounts = yield* CustomerAccountRepository;
+            yield* accounts.tombstone(
+              account,
+              Temporal.Instant.from(deletedAt)
+            );
           }).pipe(Effect.provide(layer))
         );
 

@@ -144,6 +144,38 @@ describe.skipIf(!testDatabase)("Reservation authors on Postgres", () => {
     expect(await readAuthor(draft.id)).toBeNull();
   });
 
+  const assignAuthor = (
+    id: WorkspaceReservationId,
+    authorAccountId: CustomerAccountId
+  ) =>
+    run(
+      Effect.gen(function* () {
+        const reservations = yield* WorkspaceReservationRepository;
+        return yield* reservations.assignAuthor({ id, authorAccountId });
+      })
+    );
+
+  test("makes the signed-in account the author of a guest draft", async () => {
+    const author = newAccountId();
+    const draft = await createDraft(draftInput(null));
+
+    expect(await assignAuthor(draft.id, author)).toBe(author);
+
+    expect(await readAuthor(draft.id)).toBe(author);
+    expect(await readAccount(author)).toMatchObject({ deletedAt: null });
+  });
+
+  test("never replaces an established author", async () => {
+    const author = newAccountId();
+    const otherAccount = newAccountId();
+    const draft = await createDraft(draftInput(author));
+
+    expect(await assignAuthor(draft.id, otherAccount)).toBe(author);
+
+    expect(await readAuthor(draft.id)).toBe(author);
+    expect(await readAccount(otherAccount)).toBeUndefined();
+  });
+
   test("records the author on a superseding replacement", async () => {
     const firstAuthor = newAccountId();
     const replacementAuthor = newAccountId();

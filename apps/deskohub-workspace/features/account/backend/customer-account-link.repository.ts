@@ -15,7 +15,6 @@ import {
   type ReferralSignupIntent,
 } from "@/features/referrals/signup-intent.repository";
 import type { CustomerAccountId } from "../customer-account";
-import { tombstoneCustomerAccount } from "./customer-account.repository";
 
 /**
  * `created` is true only for the claim that inserted the link; a claim that
@@ -65,14 +64,6 @@ interface ICustomerAccountLinkRepository {
   readonly markDeletionRequested: (
     accountId: CustomerAccountId,
     requestedAt: Date
-  ) => Effect.Effect<void, CustomerAccountLinkError>;
-  /**
-   * Marks the durable account deleted so the records it authored outlive the
-   * identity that Better Auth removes next.
-   */
-  readonly tombstone: (
-    accountId: CustomerAccountId,
-    deletedAt: Temporal.Instant
   ) => Effect.Effect<void, CustomerAccountLinkError>;
   readonly withAccountLock: <A, E, R>(
     accountId: CustomerAccountId,
@@ -182,11 +173,6 @@ export class CustomerAccountLinkRepository extends Context.Service<
           .pipe(Effect.asVoid)
       );
 
-      const tombstone = Effect.fn("CustomerAccountLinkRepository.tombstone")(
-        (accountId: CustomerAccountId, deletedAt: Temporal.Instant) =>
-          tombstoneCustomerAccount(db, accountId, deletedAt)
-      );
-
       const withAccountLock: ICustomerAccountLinkRepository["withAccountLock"] =
         (accountId, effect) =>
           advisoryLock.withLock(customerAccountLockKey(accountId), effect);
@@ -196,7 +182,6 @@ export class CustomerAccountLinkRepository extends Context.Service<
         find,
         findActivityState,
         markDeletionRequested,
-        tombstone,
         withAccountLock,
       } satisfies ICustomerAccountLinkRepository;
     })

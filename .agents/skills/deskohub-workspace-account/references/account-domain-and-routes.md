@@ -26,6 +26,33 @@
 - Never create a Dotypos customer from auth data alone; it needs the profile
   completion input.
 
+## Durable customer account
+
+The domain skill's [reservation parties](../../deskohub-workspace-domain/references/reservation-parties.md)
+glossary defines the customer account, reservation author, and tombstone.
+
+- `public.customer_accounts` stores the account's id, which is the Better Auth
+  user id (`CustomerAccountId`), its creation instant, and `deleted_at`. It has
+  no foreign key to `auth.user`, so it outlives the identity, and it holds no
+  personal data. While the identity exists, `customer_account_links` links the
+  account to its own Dotypos customer.
+- The row appears lazily: `ensureCustomerAccount` creates it in the
+  transaction that first writes a record naming the account, and deletion
+  creates it as a tombstone when the account never authored anything. Eager
+  creation, an `auth.user` foreign key, and folding in
+  `customer_account_links` come with the contract migration (#682).
+- `workspace_reservations.author_account_id` references it with `ON DELETE
+  RESTRICT`. Never delete a customer account row; deletion tombstones it
+  through `CustomerAccountRepository.tombstone`.
+- `OptionalAccountActivityGuard.guardStateCreation` hands the state-creating
+  section the account it verified under the account lock, or null for an
+  anonymous session. The section records it as the author of new drafts and
+  calls `WorkspaceReservationRepository.assignAuthor` for a reused draft or a
+  Pay-page payment, which fills only a null author.
+- `author_account_id` is null only for guest checkouts and for reservations
+  made before authors were recorded, until the legacy backfill fills them and
+  the column becomes NOT NULL.
+
 ## Error contract
 
 - `CustomerAccountAccessError.reason` is closed: `not-configured`,

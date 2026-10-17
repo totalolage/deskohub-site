@@ -12,6 +12,7 @@ import { Data, Duration, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
 import { makeOptionalAccountActivityGuard } from "@/features/account/backend/customer-account-activity.test-utils";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
@@ -623,8 +624,13 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
             Effect.as(reservationRecord)
           )
     );
+  const assignAuthor = mock(
+    (input: { readonly authorAccountId: CustomerAccountId }) =>
+      Effect.succeed(input.authorAccountId)
+  );
   const reservations = {
     findById: mock(() => Effect.succeed(reservationRecord)),
+    assignAuthor,
     updateReservationDetails,
   };
   const updateReservation = mock(
@@ -729,6 +735,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     findAttempt,
     attachHostedPaymentPage,
     markTerminalForReservation,
+    assignAuthor,
     updateReservationDetails,
     updateReservation,
     createHostedPaymentPage,
@@ -2526,7 +2533,23 @@ describe("CheckoutService", () => {
     expect(result).toMatchObject({ status: "redirect" });
     expect(harness.updateReservationDetails).toHaveBeenCalledTimes(1);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
+    expect(harness.assignAuthor).not.toHaveBeenCalled();
     expect(harness.guardEvents).toEqual([]);
+  });
+
+  test("records the signed-in account as the author of a reservation started before sign-in", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-started-as-guest",
+      accountAuthority: { session: {}, activityState: "active" },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({ status: "redirect" });
+    expect(harness.assignAuthor).toHaveBeenCalledWith({
+      id: "reservation-started-as-guest",
+      authorAccountId: "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
+    });
   });
 
   test("holds the account advisory lock across hosted checkout state creation", async () => {
