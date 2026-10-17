@@ -53,9 +53,7 @@ Keep these settings unless a reviewed decision changes them:
   canonical customer-facing host, the exact Vercel project, deployment, and
   branch hosts, and `localhost:3000` in development. Wildcards fail closed.
   Don't trust arbitrary request hosts or add a fallback host.
-- Email and password sign-in is disabled. The magic-link paths and
-  `/sign-in/email-otp` return 503 while the accounts feature flag is off or
-  unreadable.
+- Email and password sign-in is disabled.
 - Sign-in codes (`login_email_code`): the stock `emailOTP` plugin stores a
   hashed six-digit code that lives as long as the link (600 s) and burns after
   five wrong attempts. `/sign-in/magic-link` stays the only send path: its
@@ -120,7 +118,8 @@ Keep these settings unless a reviewed decision changes them:
 - `auth.account` stays empty: the magic-link flow creates no account rows, and
   passwords, OAuth, and social providers stay disabled.
 - What remains in Neon is the login email, the email inside each pending
-  verification row, and raw `IP|path` rate-limit keys. Sign-in code, claim, current-claim,
+  verification row, raw `IP|path` rate-limit keys, and `auth.passkey` rows
+  (credential ID, public key, AAGUID, and the customer-written label). Sign-in code, claim, current-claim,
   binding, and per-email send rows store only hashed identifiers and values. Better Auth has no
   native option to hash or encrypt these, so don't build a custom adapter or
   HMAC rate-limit storage to remove them.

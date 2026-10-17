@@ -16,16 +16,6 @@ export const accountAvatarsEnabled = AccountFeatureFlagService.pipe(
   )
 );
 
-/** Memoized per request: the header, account layout, and page all ask. */
-export const areAccountsEnabled = cache(
-  async (): Promise<boolean> =>
-    AccountFeatureFlagService.pipe(
-      Effect.flatMap((featureFlag) => featureFlag.isEnabled),
-      Effect.provide(AccountFeatureFlagService.Live),
-      runWorkspaceEffect("account.accounts-enabled")
-    )
-);
-
 /** Read once per sign-in email by the send request's auth guard. */
 export const isSignInCodeEnabled = async (): Promise<boolean> =>
   AccountFeatureFlagService.pipe(
@@ -33,6 +23,20 @@ export const isSignInCodeEnabled = async (): Promise<boolean> =>
     Effect.provide(AccountFeatureFlagService.Live),
     runWorkspaceEffect("account.sign-in-code-enabled")
   );
+
+/**
+ * `login_passkeys`, memoized per render: account pages read it to show
+ * passkey surfaces, and the auth guard reads it once per registration
+ * request.
+ */
+export const arePasskeysEnabled = cache(
+  async (): Promise<boolean> =>
+    AccountFeatureFlagService.pipe(
+      Effect.flatMap((featureFlag) => featureFlag.isPasskeyEnabled),
+      Effect.provide(AccountFeatureFlagService.Live),
+      runWorkspaceEffect("account.passkeys-enabled")
+    )
+);
 
 export async function areAccountAvatarsEnabled(): Promise<boolean> {
   return accountAvatarsEnabled.pipe(

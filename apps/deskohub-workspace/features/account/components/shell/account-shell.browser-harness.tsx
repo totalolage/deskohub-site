@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
+import type { AccountSection } from "@/features/account/sections";
 import { m } from "@/features/i18n";
 import { AccountSectionPanel } from "./account-section-panel";
-import { type AccountSection, AccountShell } from "./account-shell";
+import { AccountShell } from "./account-shell";
 
 const locale = "en-US" as const;
 const sections = [
@@ -17,6 +18,7 @@ const sectionLabels = {
   reservations: m.accountSectionReservations({}, { locale }),
   referrals: m.accountSectionReferrals({}, { locale }),
   profile: m.accountSectionProfile({}, { locale }),
+  security: m.accountSectionSecurity({}, { locale }),
   billing: m.accountSectionBilling({}, { locale }),
   legal: m.accountSectionLegal({}, { locale }),
   danger: m.accountSectionDanger({}, { locale }),
@@ -36,6 +38,7 @@ function AccountShellHarness() {
       }}
       onSectionChange={setActiveSection}
       reservationCount={3}
+      sectionHref={(section) => `/${locale}/account/${section}`}
       sidebarFooter={<p>Synthetic help card</p>}
       signOut={
         <button type="button">{m.accountSignOut({}, { locale })}</button>

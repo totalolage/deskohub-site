@@ -80,9 +80,6 @@ mock.module("next/navigation", () => ({
     throw new Error("unexpected notFound in auth callback RSC fixture");
   },
 }));
-mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountsEnabled: () => Promise.resolve(true),
-}));
 mock.module("next/link", () => ({
   default: ({
     children,
@@ -187,7 +184,7 @@ const FixtureShell = ({ children }: { readonly children: React.ReactNode }) =>
 
 const importCallbackModel = async () => {
   const { default: CustomerAuthCallbackPage } = await import(
-    "@/app/[locale]/(minimal-header)/auth/callback/page"
+    "@/app/[locale]/(site)/(minimal-header)/auth/callback/page"
   );
 
   return React.createElement(

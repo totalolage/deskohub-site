@@ -6,6 +6,7 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import { describeCountCondition } from "./admin/audience-filter-summary";
+import type { AudienceCountWording } from "./admin/audiences/audience-attribute-wording";
 import { newConditionFrom } from "./admin/audiences/audience-filter-editing";
 import {
   extendedCatalogue,
@@ -27,6 +28,23 @@ afterAll(unregisterWorkspaceComponentTestEnv);
 
 const { filter: extendedFilter } = makeAudienceFilterSchemas(extendedCatalogue);
 const condition = newConditionFrom(giftCardCount);
+
+/** The Admin UI words an added attribute brings with its entry. */
+const giftCardCountWording: AudienceCountWording = {
+  kind: "count",
+  label: "Gift cards bought",
+  lead: [{ text: "gift cards bought" }],
+  choices: {},
+  period: "Gift cards",
+  count: "Gift card count",
+  summary: {
+    noun: (_params, count) => (count === 1 ? "gift card" : "gift cards"),
+    period: (_params, period) => period,
+    none: ({ none, period }) => `bought no ${none}${period}`,
+    any: ({ none, period }) => `bought any ${none}${period}`,
+    amount: (amount, period) => `bought ${amount}${period}`,
+  },
+};
 
 describe("a count attribute added as one catalogue entry and its resolver", () => {
   test("defaults to its entry's condition, which the wire schema decodes", () => {
@@ -57,16 +75,16 @@ describe("a count attribute added as one catalogue entry and its resolver", () =
     ).toBe(true);
   });
 
-  test("reads in the summary from its entry's wording", () => {
-    expect(describeCountCondition(giftCardCount, condition)).toBe(
-      "bought at least 2 gift cards in the last 30 days"
-    );
+  test("reads in the summary from its wording", () => {
     expect(
-      describeCountCondition(giftCardCount, {
-        ...condition,
-        operator: "eq",
-        value: 0,
-      })
+      describeCountCondition(condition, giftCardCountWording, "en-US")
+    ).toBe("bought at least 2 gift cards in the last 30 days");
+    expect(
+      describeCountCondition(
+        { ...condition, operator: "eq", value: 0 },
+        giftCardCountWording,
+        "en-US"
+      )
     ).toBe("bought no gift cards in the last 30 days");
   });
 
@@ -82,10 +100,11 @@ describe("a count attribute added as one catalogue entry and its resolver", () =
     expect([...counts.values()]).toEqual([3]);
   });
 
-  test("edits with the shared count controls, worded by its entry", () => {
+  test("edits with the shared count controls, worded by its wording", () => {
     const view = render(
       <CountConditionControls
         entry={giftCardCount}
+        wording={giftCardCountWording}
         value={condition}
         onChange={() => undefined}
         errorAt={() => undefined}

@@ -169,7 +169,7 @@ const fakeAdminBrowser = (persistAfterMs: number) => {
       method: () => "POST",
       // The server is still running the action when the context closes.
       response: () => untilClosed<null>(() => undefined),
-      url: () => `${origin}/admin/email-audiences/new`,
+      url: () => `${origin}/en-US/admin/email-audiences/new`,
     };
     for (const deliver of [...waits]) deliver(request);
     return true;

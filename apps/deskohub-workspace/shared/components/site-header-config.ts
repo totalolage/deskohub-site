@@ -3,11 +3,11 @@ import {
   getAccountPath,
   getAccountSignInPath,
 } from "@/features/account/routes";
-import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import { isCustomerSignedIn } from "@/features/account/server/customer-session.server";
 import type { LocalePreferenceSaving } from "@/features/account/switch-locale";
 import { isCurrentAccountAdministrator } from "@/features/administrators/server/current-account-administrator.server";
 import { type Locale, m } from "@/features/i18n";
+import { getLanguageLabels } from "@/features/i18n/language-labels";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
 import {
@@ -58,13 +58,6 @@ type DisabledSiteHeaderMenuItems = Partial<
   Record<SiteHeaderMenuItemId, boolean>
 >;
 
-export const getSiteHeaderLanguageLabels = (
-  locale: Locale
-): Record<Locale, string> => ({
-  "cs-CZ": m.languageCzech({}, { locale }),
-  "en-US": m.languageEnglish({}, { locale }),
-});
-
 export const getSiteHeaderAccessibilityLabels = (locale: Locale) => ({
   closeNavigationMenuLabel: m.closeNavigationMenuLabel({}, { locale }),
   languageSwitcherLabel: m.languageSwitcherLabel({}, { locale }),
@@ -74,15 +67,12 @@ export const getSiteHeaderAccessibilityLabels = (locale: Locale) => ({
 });
 
 export async function getSiteHeaderConfig(locale: Locale) {
-  const [accountsEnabled, meetingRoomPageEnabled, officePageEnabled] =
-    await Promise.all([
-      areAccountsEnabled(),
-      isMeetingRoomPageEnabled(),
-      isOfficePageEnabled(),
-    ]);
+  const [meetingRoomPageEnabled, officePageEnabled] = await Promise.all([
+    isMeetingRoomPageEnabled(),
+    isOfficePageEnabled(),
+  ]);
 
   return createSiteHeaderConfig(locale, {
-    accountsEnabled,
     disabledMenuItems: {
       meetingRoom: !meetingRoomPageEnabled,
       office: !officePageEnabled,
@@ -93,10 +83,8 @@ export async function getSiteHeaderConfig(locale: Locale) {
 const createSiteHeaderConfig = (
   locale: Locale,
   {
-    accountsEnabled,
     disabledMenuItems,
   }: {
-    readonly accountsEnabled: boolean;
     readonly disabledMenuItems: DisabledSiteHeaderMenuItems;
   }
 ) => {
@@ -142,12 +130,10 @@ const createSiteHeaderConfig = (
 
   return {
     ...getSiteHeaderAccessibilityLabels(locale),
-    ...(accountsEnabled && {
-      account: createSiteHeaderAccountEntry(locale),
-      administrator: createSiteHeaderAdministratorEntry(locale),
-      localePreference: createLocalePreferenceSaving(),
-    }),
-    languageLabels: getSiteHeaderLanguageLabels(locale),
+    account: createSiteHeaderAccountEntry(locale),
+    administrator: createSiteHeaderAdministratorEntry(locale),
+    localePreference: createLocalePreferenceSaving(),
+    languageLabels: getLanguageLabels(locale),
     links: links.filter(({ id }) => disabledMenuItems[id] !== true),
     contactLabel: m.reservationNavCta({}, { locale }),
     contactHref: getCoworkReservationPath(locale),
@@ -182,13 +168,9 @@ const createSiteHeaderAdministratorEntry = (
 
 // Not awaited, like the account entry: the switcher learns after the shell
 // whether a switch must save the signed-in customer's preference.
-const createLocalePreferenceSaving = (): LocalePreferenceSaving => ({
+export const createLocalePreferenceSaving = (): LocalePreferenceSaving => ({
   signedIn: isCustomerSignedIn().catch(() => false),
   save: updateLocalePreference,
 });
-
-/** The switcher's preference saving for headers without an account entry. */
-export const getSiteHeaderLocalePreference = async () =>
-  (await areAccountsEnabled()) ? createLocalePreferenceSaving() : undefined;
 
 export { siteHeaderSectionIds };

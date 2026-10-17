@@ -4,6 +4,7 @@ import {
   formatInstantDate,
   formatPlainDate,
   formatPlainDateRange,
+  formatWeekday,
 } from "./date-time-format";
 
 describe("date-time formatting", () => {
@@ -36,5 +37,12 @@ describe("date-time formatting", () => {
         locale: "en-US",
       })
     ).toBe("Jun 20 – 21, 2099");
+  });
+
+  test("names ISO weekdays from Monday to Sunday in the locale", () => {
+    expect(formatWeekday({ isoDay: 1, locale: "en-US" })).toBe("Mon");
+    expect(formatWeekday({ isoDay: 7, locale: "en-US" })).toBe("Sun");
+    expect(formatWeekday({ isoDay: 1, locale: "cs-CZ" })).toBe("po");
+    expect(formatWeekday({ isoDay: 3, locale: "cs-CZ" })).toBe("st");
   });
 });

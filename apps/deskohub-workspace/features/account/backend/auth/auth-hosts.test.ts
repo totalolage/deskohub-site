@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { resolveBetterAuthAllowedHosts } from "./auth-hosts";
+import {
+  type BetterAuthHostEnvironment,
+  resolveBetterAuthAllowedHosts,
+  resolvePasskeyRelyingParty,
+} from "./auth-hosts";
 
 describe("Better Auth allowed hosts resolution", () => {
   const invalidMessage = (
@@ -130,6 +134,86 @@ describe("Better Auth allowed hosts resolution", () => {
         projectProductionUrl: undefined,
         deploymentUrl: "deskohub-workspace-abc?23.vercel.app",
         branchUrl: undefined,
+      })
+    ).toBe("Wildcard hosts are not allowed for Better Auth.");
+  });
+});
+
+describe("passkey relying party resolution", () => {
+  const vercelHosts = {
+    customerFacingHost: "workspace.deskohub.cz",
+    projectProductionUrl: "deskohub-workspace.vercel.app",
+    deploymentUrl: "deskohub-workspace-abc123.vercel.app",
+    branchUrl: "deskohub-git-feature-git-team.vercel.app",
+  } as const;
+
+  const relyingParty = (environment: BetterAuthHostEnvironment) => {
+    const result = resolvePasskeyRelyingParty(environment);
+    return result.kind === "valid" ? result.relyingParty : result.message;
+  };
+
+  test("binds production to the canonical customer-facing host", () => {
+    expect(relyingParty({ vercelEnv: "production", ...vercelHosts })).toEqual({
+      rpID: "workspace.deskohub.cz",
+      origins: ["https://workspace.deskohub.cz"],
+    });
+  });
+
+  test("normalizes the canonical host before deriving the RP ID", () => {
+    expect(
+      relyingParty({
+        vercelEnv: "production",
+        ...vercelHosts,
+        customerFacingHost: "https://Workspace.Deskohub.cz/",
+      })
+    ).toEqual({
+      rpID: "workspace.deskohub.cz",
+      origins: ["https://workspace.deskohub.cz"],
+    });
+  });
+
+  test("binds a preview to its immutable deployment host, not the branch alias", () => {
+    expect(relyingParty({ vercelEnv: "preview", ...vercelHosts })).toEqual({
+      rpID: "deskohub-workspace-abc123.vercel.app",
+      origins: ["https://deskohub-workspace-abc123.vercel.app"],
+    });
+  });
+
+  test("fails closed on a preview without a deployment host", () => {
+    expect(
+      relyingParty({
+        vercelEnv: "preview",
+        ...vercelHosts,
+        deploymentUrl: undefined,
+      })
+    ).toBe("The preview deployment host is not configured for passkeys.");
+  });
+
+  test("uses localhost over HTTP on the allowed local ports in development", () => {
+    expect(
+      relyingParty({
+        vercelEnv: "development",
+        customerFacingHost: "workspace.deskohub.cz",
+        projectProductionUrl: undefined,
+        deploymentUrl: undefined,
+        branchUrl: undefined,
+      })
+    ).toEqual({ rpID: "localhost", origins: ["http://localhost:3000"] });
+  });
+
+  test("fails closed with the allowed-hosts errors", () => {
+    expect(
+      relyingParty({
+        vercelEnv: "production",
+        ...vercelHosts,
+        customerFacingHost: undefined,
+      })
+    ).toBe("The canonical production host is not configured for Better Auth.");
+    expect(
+      relyingParty({
+        vercelEnv: "preview",
+        ...vercelHosts,
+        deploymentUrl: "*.vercel.app",
       })
     ).toBe("Wildcard hosts are not allowed for Better Auth.");
   });

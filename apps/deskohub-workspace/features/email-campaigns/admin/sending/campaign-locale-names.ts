@@ -1,10 +1,19 @@
+import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 
-/** Admin-facing language names for campaign content and recipient locales. */
-export const campaignLocaleNames = {
-  "cs-CZ": "Czech",
-  "en-US": "English",
-} as const satisfies Record<Locale, string>;
+const campaignLocaleNameMessages = {
+  "cs-CZ": m.emailCampaignsLocaleNameCzech,
+  "en-US": m.emailCampaignsLocaleNameEnglish,
+} as const satisfies Record<Locale, typeof m.emailCampaignsLocaleNameCzech>;
 
-export const describeCampaignLocales = (locales: readonly Locale[]) =>
-  locales.map((locale) => campaignLocaleNames[locale]).join(", ");
+/** The admin-facing name of a campaign content or recipient language. */
+export const campaignLocaleName = (contentLocale: Locale, locale: Locale) =>
+  campaignLocaleNameMessages[contentLocale]({}, { locale });
+
+export const describeCampaignLocales = (
+  contentLocales: readonly Locale[],
+  locale: Locale
+) =>
+  contentLocales
+    .map((contentLocale) => campaignLocaleName(contentLocale, locale))
+    .join(", ");

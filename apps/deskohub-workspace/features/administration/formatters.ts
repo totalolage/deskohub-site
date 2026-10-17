@@ -1,70 +1,61 @@
-import {
-  temporalInstantToDate,
-  temporalPlainDateToDate,
-  workspaceSiteConstants,
-} from "@/shared/utils";
+import { formatCurrencyAmount } from "@deskohub/i18n/currency";
+import type { Locale } from "@/features/i18n";
+import { temporalInstantToDate, workspaceSiteConstants } from "@/shared/utils";
+import { formatPlainDate } from "@/shared/utils/date-time-format";
 import type {
   AdministrationMoney,
   AdministrationPaymentAttempt,
   AdministrationReservationSummary,
 } from "./administration.service";
+import { m } from "./i18n";
+import { getAdministrationPaymentStateLabel } from "./payment-presentation";
 
-const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: workspaceSiteConstants.location.timeZone,
-});
+// Operators work on Prague time, so every locale shows the 24-hour clock. A
+// day period could also differ between server and browser: depending on its
+// ICU version, Node separates "PM" with a narrow no-break space that Chromium
+// writes as a plain space, which fails hydration in the client tables.
+export const formatAdministrationDateTime = (value: string, locale: Locale) =>
+  new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    hourCycle: "h23",
+    timeZone: workspaceSiteConstants.location.timeZone,
+  }).format(temporalInstantToDate(Temporal.Instant.from(value)));
 
-const dateFormatter = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeZone: workspaceSiteConstants.location.timeZone,
-});
-
-export const formatAdministrationDateTime = (value: string) =>
-  dateTimeFormatter.format(temporalInstantToDate(Temporal.Instant.from(value)));
-
-export const formatAdministrationPlainDate = (value: string) =>
-  dateFormatter.format(
-    temporalPlainDateToDate({
-      date: Temporal.PlainDate.from(value),
-      plainTime: Temporal.PlainTime.from("12:00"),
-      timeZone: workspaceSiteConstants.location.timeZone,
-    })
-  );
+export const formatAdministrationPlainDate = (value: string, locale: Locale) =>
+  formatPlainDate({ date: Temporal.PlainDate.from(value), locale });
 
 export const formatAdministrationReservationDate = (
   reservation: Pick<
     AdministrationReservationSummary,
     "date" | "startsAt" | "type"
-  >
+  >,
+  locale: Locale
 ) => {
   if (reservation.type === "cowork" && reservation.date) {
-    return formatAdministrationPlainDate(reservation.date);
+    return formatAdministrationPlainDate(reservation.date, locale);
   }
   if (reservation.startsAt) {
-    return formatAdministrationDateTime(reservation.startsAt);
+    return formatAdministrationDateTime(reservation.startsAt, locale);
   }
   return reservation.date
-    ? formatAdministrationPlainDate(reservation.date)
+    ? formatAdministrationPlainDate(reservation.date, locale)
     : null;
 };
 
-export const formatAdministrationMoney = ({
-  currency,
-  exponent,
-  value,
-}: {
-  readonly currency: string;
-  readonly exponent: number;
-  readonly value: number;
-}) =>
-  new Intl.NumberFormat("en-GB", {
+export const formatAdministrationMoney = (
+  { currency, exponent, value }: AdministrationMoney,
+  locale: Locale
+) =>
+  formatCurrencyAmount({
+    amount: value / 10 ** exponent,
     currency,
-    style: "currency",
-  }).format(value / 10 ** exponent);
+    locale,
+    fractionDigits: exponent,
+  });
 
 export type AdministrationPaymentStatus = {
-  /** "Paid", "Refunded", or "Partially refunded" with the refunded amount. */
+  /** "Paid", "Refunded", or "Partially refunded" with the refunded amount, in the locale. */
   readonly label: string;
   /** When the payment reached this status: the refund time once refunded. */
   readonly at: string;
@@ -83,17 +74,19 @@ export const getAdministrationPaymentStatus = (
   attempt: Pick<
     AdministrationPaymentAttempt,
     | "amount"
+    | "failureCode"
     | "refundState"
     | "refundedAmount"
     | "refundedAt"
-    | "stateLabel"
+    | "state"
     | "updatedAt"
-  >
+  >,
+  locale: Locale
 ): AdministrationPaymentStatus => {
   const { refundedAmount, refundedAt } = attempt;
   if (attempt.refundState !== "refunded" || !refundedAmount || !refundedAt) {
     return {
-      label: attempt.stateLabel,
+      label: getAdministrationPaymentStateLabel(attempt, locale),
       at: attempt.updatedAt,
       refunded: false,
       retainedAmount: null,
@@ -103,8 +96,11 @@ export const getAdministrationPaymentStatus = (
   const partial = refundedAmount.value < attempt.amount.value;
   return {
     label: partial
-      ? `Partially refunded ${formatAdministrationMoney(refundedAmount)}`
-      : "Refunded",
+      ? m.administrationPaymentStatusPartiallyRefunded(
+          { amount: formatAdministrationMoney(refundedAmount, locale) },
+          { locale }
+        )
+      : m.administrationPaymentStatusRefunded({}, { locale }),
     at: refundedAt,
     refunded: true,
     retainedAmount: partial

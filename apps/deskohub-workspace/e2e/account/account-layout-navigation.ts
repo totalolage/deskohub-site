@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import type { AccountSection } from "@/features/account/components/shell/account-shell";
+import type { AccountSection } from "@/features/account/sections";
 import {
   isWorkspaceE2EDiagnosticCode,
   WorkspaceE2EError,
@@ -8,6 +8,8 @@ import {
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   accountSectionLandmarks,
+  flagGatedAccountSections,
+  isAccountSectionOffered,
   selectAccountSection,
 } from "./account-sections";
 import type { AccountReviewDestination } from "./review-screenshots";
@@ -15,9 +17,10 @@ import type { AccountReviewDestination } from "./review-screenshots";
 const desktopViewport = { height: 1000, width: 1440 } as const;
 const mobileViewport = { height: 900, width: 375 } as const;
 const accountSections = [
+  "profile",
   "reservations",
   "referrals",
-  "profile",
+  "security",
   "billing",
   "legal",
   "danger",
@@ -154,6 +157,11 @@ export async function verifyAccountLayoutNavigation(
     const desktopSections: readonly AccountSection[] =
       capture === undefined ? [desktopSentinelSection] : accountSections;
     for (const section of desktopSections) {
+      if (
+        flagGatedAccountSections.includes(section) &&
+        !(await isAccountSectionOffered(page, section))
+      )
+        continue;
       await switchAccountSection(page, section, desktopViewport);
       if (capture !== undefined) {
         await runAccountLayoutNavigationPhase(

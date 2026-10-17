@@ -7,7 +7,6 @@ import { revalidatePath } from "next/cache";
 import {
   accountActionError,
   requireAccountAvatarsEnabled,
-  requireAccountsEnabled,
   requireVerifiedSession,
 } from "@/features/account/account-action-guards";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
@@ -74,7 +73,7 @@ const avatarRemoveInputSchema: StandardSchemaV1<unknown, undefined> = {
 };
 
 const revalidateAccount = (locale: Locale) =>
-  Effect.sync(() => revalidatePath(getAccountPath(locale)));
+  Effect.sync(() => revalidatePath(getAccountPath(locale), "layout"));
 
 const unavailableError = (locale: Locale) =>
   new PublicSafeActionError({
@@ -104,7 +103,6 @@ const mapAvatarActionError =
  */
 const uploadAvatarMutation = Effect.fn(
   function* (file: File, locale: Locale) {
-    yield* requireAccountsEnabled(locale);
     yield* requireVerifiedSession;
     yield* requireAccountAvatarsEnabled(locale);
 
@@ -159,7 +157,6 @@ const uploadAvatarMutation = Effect.fn(
 
 const removeAvatarMutation = Effect.fn(
   function* (_input: undefined, locale: Locale) {
-    yield* requireAccountsEnabled(locale);
     yield* requireVerifiedSession;
     yield* requireAccountAvatarsEnabled(locale);
 

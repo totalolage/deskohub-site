@@ -172,7 +172,7 @@ const secondaryAdminAuthorization = toAuthorization(
   secondaryAdministrator.password
 );
 
-const administrationPaths = [
+const unprefixedAdministrationPaths = [
   "/admin",
   "/admin/",
   "/admin/bookings",
@@ -187,7 +187,16 @@ const administrationPaths = [
   "/admin/codes",
   "/admin/codes/code-id",
   "/admin/sales",
+  "/admin/invoices/invoice-id/pdf",
 ] as const;
+
+const administrationPaths = [
+  ...unprefixedAdministrationPaths,
+  ...unprefixedAdministrationPaths.flatMap((pathname) => [
+    `/en-US${pathname}`,
+    `/cs-CZ${pathname}`,
+  ]),
+];
 
 describe("administration route boundary", () => {
   test("matches every administration route including dotted identifiers", () => {
@@ -197,6 +206,8 @@ describe("administration route boundary", () => {
       "/admin/reservations/reservation.with.dots",
       "/admin/reservations/reservation%2Ewith%2Edots",
       "/admin/customers/customer.with.dots/create-code",
+      "/cs-CZ/admin/reservations/reservation.with.dots",
+      "/en-US/admin/invoices/invoice.with.dots/pdf",
     ]) {
       expect(
         unstable_doesMiddlewareMatch({
@@ -230,6 +241,22 @@ describe("administration route boundary", () => {
       expect(response.headers.get("www-authenticate")).toContain(
         "Basic realm="
       );
+    }
+  });
+
+  test("challenges every spelling of an administration URL", async () => {
+    for (const pathname of [
+      "/xx-XX/admin",
+      "/cs-cz/admin/reservations",
+      "/%61dmin/reservations",
+      "/cs-CZ/%61dmin",
+      "/en-US/admin%2Freservations",
+    ]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${pathname}`)
+      );
+
+      expect(response.status).toBe(401);
     }
   });
 
@@ -298,6 +325,62 @@ test.each([
     );
   }
 );
+
+describe("legacy account section links", () => {
+  test("redirects a localized ?section= link to the section's path, keeping other parameters", async () => {
+    const response = await proxy(
+      new NextRequest(
+        "https://workspace.example/cs-CZ/account?section=security&utm_source=email"
+      )
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/cs-CZ/account/security?utm_source=email"
+    );
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.cookies.get(localeCookieName)?.value).toBe("cs-CZ");
+  });
+
+  test("redirects an unknown section to the account itself", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/en-US/account?section=unknown")
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/en-US/account"
+    );
+  });
+
+  test("redirects an unprefixed ?section= link straight to the localized section path", async () => {
+    const response = await proxy(
+      new NextRequest(
+        "https://workspace.example/account?section=billing&ref=RFL12345",
+        { headers: { "accept-language": "cs-CZ,cs;q=0.9" } }
+      )
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://workspace.example/cs-CZ/account/billing?ref=RFL12345"
+    );
+  });
+
+  test("serves section paths and other account pages without a redirect", async () => {
+    for (const path of [
+      "/en-US/account",
+      "/en-US/account/profile",
+      "/en-US/account/legal?section=profile",
+    ]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${path}`)
+      );
+
+      expect(response.headers.get("location")).toBeNull();
+    }
+  });
+});
 
 test("prevents private reservation responses from being cached", async () => {
   for (const path of [
@@ -480,20 +563,58 @@ test("challenges unauthenticated administration requests", async () => {
   expect(response.headers.get("vary")).toBe("Authorization");
 });
 
-test("passes authenticated administration requests without localization", async () => {
+test("passes authenticated localized administration requests", async () => {
   for (const authorization of [
     primaryAdminAuthorization,
     secondaryAdminAuthorization,
   ]) {
+    for (const locale of ["en-US", "cs-CZ"]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example/${locale}/admin/discounts`, {
+          headers: { authorization },
+        })
+      );
+
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("vary")).toBe("Authorization");
+      expect(response.cookies.get(localeCookieName)?.value).toBe(locale);
+    }
+  }
+});
+
+test("redirects authenticated unprefixed administration URLs to the resolved locale", async () => {
+  const cases = [
+    {
+      url: "https://workspace.example/admin/cli/authenticate?code=SYNTHETIC-CODE",
+      headers: {},
+      location:
+        "https://workspace.example/en-US/admin/cli/authenticate?code=SYNTHETIC-CODE",
+    },
+    {
+      url: "https://workspace.example/admin",
+      headers: { "accept-language": "cs-CZ,cs;q=0.9" },
+      location: "https://workspace.example/cs-CZ/admin",
+    },
+    {
+      url: "https://workspace.example/admin/reservations?status=paid",
+      headers: { cookie: `${localeCookieName}=cs-CZ` },
+      location:
+        "https://workspace.example/cs-CZ/admin/reservations?status=paid",
+    },
+  ];
+
+  for (const { url, headers, location } of cases) {
     const response = await proxy(
-      new NextRequest("https://workspace.example/admin/discounts", {
-        headers: { authorization },
+      new NextRequest(url, {
+        headers: { ...headers, authorization: primaryAdminAuthorization },
       })
     );
 
-    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(location);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("vary")).toBe("Authorization");
+    expect(response.headers.get("vary")).toBe("Accept-Language, Authorization");
   }
 });
 
@@ -515,24 +636,115 @@ test("fails closed for wrong, crossed, and unknown administrator credentials", a
 });
 
 test("checks administration Server Action posts before the general pass-through", async () => {
-  const unauthorized = await proxy(
-    new NextRequest("https://workspace.example/admin/discounts", {
-      method: "POST",
-      headers: { "next-action": "action-id" },
-    })
-  );
-  const authorized = await proxy(
-    new NextRequest("https://workspace.example/admin/discounts", {
-      method: "POST",
-      headers: {
-        authorization: primaryAdminAuthorization,
-        "next-action": "action-id",
-      },
-    })
-  );
+  for (const pathname of ["/admin/discounts", "/cs-CZ/admin/discounts"]) {
+    const unauthorized = await proxy(
+      new NextRequest(`https://workspace.example${pathname}`, {
+        method: "POST",
+        headers: { "next-action": "action-id" },
+      })
+    );
+    const authorized = await proxy(
+      new NextRequest(`https://workspace.example${pathname}`, {
+        method: "POST",
+        headers: {
+          authorization: primaryAdminAuthorization,
+          "next-action": "action-id",
+        },
+      })
+    );
 
-  expect(unauthorized.status).toBe(401);
-  expect(authorized.headers.get("x-middleware-next")).toBe("1");
+    expect(unauthorized.status).toBe(401);
+    expect(authorized.headers.get("x-middleware-next")).toBe("1");
+    expect(authorized.headers.get("cache-control")).toBe("private, no-store");
+  }
+});
+
+describe("account render pathname hand-off", () => {
+  const renderedPathname = (response: Response) =>
+    response.headers.get("x-middleware-request-x-deskohub-request-pathname");
+
+  const matchesProxy = (pathname: string) =>
+    unstable_doesMiddlewareMatch({
+      config,
+      url: `https://workspace.example${pathname}`,
+    });
+
+  test("matches every account route including dotted segments", () => {
+    for (const pathname of [
+      "/account",
+      "/account/security",
+      "/account/unknown.foo",
+      "/en-US/account",
+      "/en-US/account/unknown.foo",
+      "/en-US/account/x.png",
+      "/cs-CZ/account/security.",
+      "/en-US/account/legal/terms.pdf",
+    ]) {
+      expect(matchesProxy(pathname)).toBe(true);
+    }
+  });
+
+  test("keeps API routes and static files out of the proxy", () => {
+    for (const pathname of [
+      "/api/account/customer-link",
+      "/api/account/customer.link",
+      "/_next/static/chunks/account.js",
+      "/favicon.ico",
+      "/workspace-location-map.jpeg",
+    ]) {
+      expect(matchesProxy(pathname)).toBe(false);
+    }
+  });
+
+  test("hands account renders their pathname, replacing a client's value", async () => {
+    for (const path of [
+      "/en-US/account",
+      "/en-US/account/unknown",
+      "/en-US/account/unknown.foo",
+      "/cs-CZ/account/security",
+    ]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${path}`, {
+          headers: { "x-deskohub-request-pathname": "/en-US/account" },
+        })
+      );
+
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(renderedPathname(response)).toBe(path);
+    }
+  });
+
+  test("hands an account Server Action's render its pathname", async () => {
+    for (const path of ["/en-US/account/danger", "/en-US/account/danger.x"]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${path}`, {
+          method: "POST",
+          headers: {
+            "next-action": "action-id",
+            "x-deskohub-request-pathname": "/en-US/account",
+          },
+        })
+      );
+
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(renderedPathname(response)).toBe(path);
+      expect(response.cookies.get(localeCookieName)).toBeUndefined();
+    }
+  });
+
+  test("leaves other renders' request headers alone", async () => {
+    for (const request of [
+      new NextRequest("https://workspace.example/en-US/reservation/cowork"),
+      new NextRequest("https://workspace.example/en-US/checkout/pay", {
+        method: "POST",
+        headers: { "next-action": "action-id" },
+      }),
+    ]) {
+      const response = await proxy(request);
+
+      expect(response.headers.get("x-middleware-override-headers")).toBeNull();
+    }
+  });
 });
 
 describe("shared referral code hand-off", () => {
@@ -576,7 +788,10 @@ describe("shared referral code hand-off", () => {
     );
 
     expect(storedCookieOf(response)).toBeUndefined();
-    expect(renderedCookies(response)).toBeNull();
+    // The account render receives the request's own cookies, unchanged.
+    expect(renderedCookies(response)).toBe(
+      `${referralCodeCookieName}=RFLFIRST1`
+    );
   });
 
   test("ignores a value that cannot be a referral code", async () => {

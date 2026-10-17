@@ -2,6 +2,7 @@ import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { Effect, Exit, Layer, Option } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { getAccountSectionPath } from "@/features/account/routes";
 import { referralCodeCookieName } from "@/features/referrals/referral-code-cookie";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -23,6 +24,7 @@ import {
   workspaceE2EReferralOwnerRecipientLabel,
 } from "./config";
 import type { WorkspaceE2EAccountJournal } from "./journal";
+import type { WorkspaceE2EAccountPasskeys } from "./passkeys";
 import {
   type MagicLinkOperation,
   type MagicLinkRateBudget,
@@ -73,6 +75,7 @@ const czechLanguageLabel = "Preferovaný jazyk";
 const englishFaqTitle = "Frequently Asked Questions";
 const czechFaqTitle = "Často kladené otázky";
 const deleteTriggerSelector = "#delete-account-trigger";
+const accountSectionDataAttribute = "data-account-section";
 const deleteReauthSendSelector = "#delete-account-reauth-send";
 const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
 const deleteConfirmSelector = "#delete-account-confirm";
@@ -279,6 +282,17 @@ class FakeAccountExternalState {
   deletionDialog = false;
   deletionConfirmationChecked = false;
   reauthenticationDialog = false;
+  /**
+   * The preview's `login_passkeys` flag: the sign-in form offers passkeys,
+   * and a passkey-capable browser gets the post-sign-in prompt.
+   */
+  passkeys = false;
+  readonly passkeyActions: string[] = [];
+  readonly passkeysByUserId = new Map<string, number>();
+  passkeyName: string | undefined;
+  /** How many links were consumed when the authenticator was added. */
+  private authenticatorAddedAfterLinks: number | undefined;
+  private authenticatorCredentials = 0;
   private messageSequence = 0;
   private duplicateProfileSequence = 0;
   private deletedIdentity = false;
@@ -292,6 +306,113 @@ class FakeAccountExternalState {
 
   recordBrowserAction(action: FakeBrowserAction) {
     this.browserActions.push(action);
+  }
+
+  private requirePasskeyUser(): FakeUser {
+    if (this.authenticatorAddedAfterLinks === undefined) {
+      throw new Error("the passkey journey ran without an authenticator");
+    }
+    const userId = this.currentAuthUserId;
+    if (!userId) throw new Error("the passkey journey has no signed-in user");
+    return this.requireUser(userId);
+  }
+
+  passkeyCount(userId: string): number {
+    return this.passkeysByUserId.get(userId) ?? 0;
+  }
+
+  addAuthenticator() {
+    if (!this.passkeys) throw new Error("passkeys are off on this preview");
+    this.passkeyActions.push("add-authenticator");
+    this.authenticatorAddedAfterLinks ??= this.consumedLinks.size;
+  }
+
+  removeAuthenticator() {
+    this.passkeyActions.push("remove-authenticator");
+    this.authenticatorAddedAfterLinks = undefined;
+  }
+
+  readAuthenticatorCredentials() {
+    if (this.authenticatorAddedAfterLinks === undefined) {
+      throw new Error("no virtual authenticator is installed");
+    }
+    return Array.from({ length: this.authenticatorCredentials }, () => ({
+      isResidentCredential: true,
+      rpId: new URL(this.config.baseUrl).hostname,
+    }));
+  }
+
+  /** The prompt opens only for an email sign-in that found the authenticator. */
+  createPasskeyFromPrompt() {
+    const user = this.requirePasskeyUser();
+    if (
+      this.authenticatorAddedAfterLinks === undefined ||
+      this.consumedLinks.size <= this.authenticatorAddedAfterLinks ||
+      !this.linksByUserId.has(user.id)
+    ) {
+      throw new Error("no post-sign-in passkey prompt is shown");
+    }
+    this.passkeyActions.push("create-from-prompt");
+    this.passkeysByUserId.set(user.id, this.passkeyCount(user.id) + 1);
+    this.authenticatorCredentials = 1;
+  }
+
+  signInWithPasskey(): FakeUser {
+    if (this.authenticatorCredentials === 0 || this.currentAuthUserId) {
+      throw new Error(
+        "passkey sign-in needs a credential and a signed-out tab"
+      );
+    }
+    const user = this.usersByEmail.get(this.mainRecipient);
+    if (!user || this.passkeyCount(user.id) === 0) {
+      throw new Error("the account holds no passkey to sign in with");
+    }
+    this.passkeyActions.push("sign-in");
+    this.currentAuthUserId = user.id;
+    user.session = true;
+    user.createdAt = new Date(user.createdAt.getTime() + 1_000);
+    return user;
+  }
+
+  renamePasskey(name: string) {
+    const user = this.requirePasskeyUser();
+    if (this.passkeyCount(user.id) !== 1) {
+      throw new Error("rename expected the account's only passkey");
+    }
+    this.passkeyActions.push("rename");
+    this.passkeyName = name;
+  }
+
+  deletePasskey(name: string) {
+    const user = this.requirePasskeyUser();
+    if (this.passkeyCount(user.id) !== 1 || this.passkeyName !== name) {
+      throw new Error("delete expected the renamed last passkey");
+    }
+    this.passkeyActions.push("delete");
+    this.passkeysByUserId.set(user.id, 0);
+    this.passkeyName = undefined;
+  }
+
+  createPasskeyFromSettings() {
+    const user = this.requirePasskeyUser();
+    if (this.staleSession) {
+      throw new Error(
+        "settings creation asked a stale session to reauthenticate"
+      );
+    }
+    this.passkeyActions.push("create-from-settings");
+    this.passkeysByUserId.set(user.id, this.passkeyCount(user.id) + 1);
+    this.authenticatorCredentials = 1;
+  }
+
+  confirmDeletionWithPasskey() {
+    const user = this.requirePasskeyUser();
+    if (!this.staleSession || this.passkeyCount(user.id) === 0) {
+      throw new Error("passkey reauthentication needs a stale passkey account");
+    }
+    this.passkeyActions.push("confirm-deletion");
+    this.staleSession = false;
+    user.createdAt = new Date(fixedNowMs);
   }
 
   recordJournal(update: {
@@ -979,6 +1100,16 @@ class FakeBrowser {
     return locale === "cs-CZ" ? czechLanguageLabel : englishLanguageLabel;
   }
 
+  private selectAccountSection(section: "billing" | "danger" | "profile") {
+    this.selectedSection = section;
+    const url = new URL(this.currentUrl);
+    const locale = fakeLocalePath.exec(url.pathname)?.[1];
+    if (locale === "cs-CZ" || locale === "en-US") {
+      url.pathname = getAccountSectionPath(locale, section);
+      this.currentUrl = url.toString();
+    }
+  }
+
   open(url: string) {
     const parsed = new URL(url);
     this.external.recordBrowserAction({
@@ -1050,20 +1181,26 @@ class FakeBrowser {
       }
       return;
     }
-    if (locale !== undefined && suffix === "/account") {
+    if (
+      locale !== undefined &&
+      (suffix === "/account" || suffix === "/account/profile")
+    ) {
       const result = this.external.openAccount();
       const destination = this.withLocale(
         `${this.external.config.baseUrl}${result.destination}`,
         locale
       );
-      // Redirects and the account page carry no code; completion prefills
-      // the remembered one.
+      // A profile route stays deep-linked when the account page opens;
+      // completion and sign-in destinations still use their own paths.
       const profile =
-        parsed.searchParams.get("section") === "profile" &&
+        suffix === "/account/profile" &&
         !result.destination.endsWith("/auth/sign-in");
-      this.currentUrl = profile
-        ? `${destination}${parsed.search}`
-        : destination;
+      const accountDestination = new URL(destination);
+      if (profile) {
+        accountDestination.pathname = getAccountSectionPath(locale, "profile");
+      }
+      accountDestination.search = profile ? parsed.search : "";
+      this.currentUrl = accountDestination.toString();
       // Rendered page text applies the label's CSS uppercase, as
       // `innerText` does; only its `textContent` keeps the message casing.
       const text = this.localizedText(result.text, locale);
@@ -1107,6 +1244,10 @@ class FakeBrowser {
     }
     if (parsed.pathname === "/api/auth/magic-link/verify") {
       const result = this.external.consumeLink(url);
+      // A completed link sign-in forgets the tab's stored code request.
+      if (result.text !== callbackFailedTitle) {
+        this.storedCodeRecipient = undefined;
+      }
       // The callback lands through the proxy like any page request.
       const landing = `${this.external.config.baseUrl}${result.destination}`;
       const landingLocale = this.resolveLocale("en-US");
@@ -1167,7 +1308,9 @@ class FakeBrowser {
       selector !== signOutSelector ||
       handler !== "onClick" ||
       !this.signedIn() ||
-      !new URL(this.currentUrl).pathname.endsWith("/account")
+      !new URL(this.currentUrl).pathname.startsWith(
+        `/${this.pageLocale()}/account`
+      )
     ) {
       throw new Error("the sign-out handler is not on a signed-in account");
     }
@@ -1323,9 +1466,9 @@ class FakeBrowser {
     }
     if (
       selector.includes("Danger zone") ||
-      selector.includes('data-account-section="danger"')
+      selector.includes(`${accountSectionDataAttribute}="danger"`)
     ) {
-      this.selectedSection = "danger";
+      this.selectAccountSection("danger");
       return;
     }
     if (selector === profileSubmitSelector) {
@@ -1344,14 +1487,14 @@ class FakeBrowser {
       return;
     }
     if (selector.includes("Billing & Invoices")) {
-      this.selectedSection = "billing";
+      this.selectAccountSection("billing");
       return;
     }
     if (selector.includes("Profile & Identity")) {
       if (this.pageLocale() !== "en-US") {
         throw new Error("the English account navigation was clicked in Czech");
       }
-      this.selectedSection = "profile";
+      this.selectAccountSection("profile");
       this.pageText = `${this.pageText} ${englishLanguageLabel.toLocaleUpperCase()}`;
       this.languageControlLabel = englishLanguageLabel;
       return;
@@ -1771,10 +1914,14 @@ mock.module("../browser", () => ({
 mock.module("./auth-rows", () => ({
   assertNoAuthRows: (userId: string) =>
     Effect.sync(() => requireExternal().assertNoAuthRows(userId)),
+  countAccountPasskeys: (userId: string) =>
+    Effect.sync(() => requireExternal().passkeyCount(userId)),
   findAuthUserIdByEmail: (email: string) =>
     Effect.sync(() => requireExternal().findAuthUserId(email)),
   findLinkedDotyposCustomerId: (userId: string) =>
     Effect.sync(() => requireExternal().findLinkedCustomerId(userId)),
+  readNewestSessionCreatedAt: (userId: string) =>
+    Effect.sync(() => requireExternal().usersById.get(userId)?.createdAt),
   removeSyntheticAccountLink: (accountId: string, customerId: string) =>
     Effect.sync(() =>
       requireExternal().removeAccountLink(accountId, customerId)
@@ -1846,7 +1993,9 @@ const makeConfig = (): WorkspaceE2EAccountConfig => ({
   vercelToken: "synthetic-vercel-log-token",
 });
 
-const makeScenario = (options: { readonly signInCodes?: boolean } = {}) => {
+const makeScenario = (
+  options: { readonly passkeys?: boolean; readonly signInCodes?: boolean } = {}
+) => {
   const config = makeConfig();
   const mainRecipient = makeWorkspaceE2EAccountRecipient(
     config,
@@ -1867,6 +2016,7 @@ const makeScenario = (options: { readonly signInCodes?: boolean } = {}) => {
     referralOwnerRecipient
   );
   external.signInCodes = options.signInCodes ?? false;
+  external.passkeys = options.passkeys ?? false;
   const browser = new FakeBrowser(external);
   activeExternal = external;
   activeBrowser = browser;
@@ -1928,6 +2078,30 @@ const makeScenario = (options: { readonly signInCodes?: boolean } = {}) => {
       }),
   };
   const datasourceConfig = {} as DatasourceConfig;
+  const passkeys: WorkspaceE2EAccountPasskeys = {
+    confirmDeletionWithPasskey: Effect.sync(() =>
+      external.confirmDeletionWithPasskey()
+    ),
+    createFromPrompt: Effect.sync(() => external.createPasskeyFromPrompt()),
+    createFromSettings: Effect.sync(() => external.createPasskeyFromSettings()),
+    deleteOnly: (name) => Effect.sync(() => external.deletePasskey(name)),
+    installAuthenticator: Effect.sync(() => external.addAuthenticator()),
+    readAuthenticatorCredentials: Effect.sync(() =>
+      external.readAuthenticatorCredentials()
+    ),
+    readSignInOffer: Effect.sync(() =>
+      external.passkeys ? ("offered" as const) : ("absent" as const)
+    ),
+    removeAuthenticator: Effect.sync(() => external.removeAuthenticator()),
+    renameOnly: (name) => Effect.sync(() => external.renamePasskey(name)),
+    signIn: Effect.sync(() => {
+      if (!browser.url().includes("/auth/sign-in")) {
+        throw new Error("the passkey button was used off the sign-in page");
+      }
+      external.signInWithPasskey();
+      browser.open(`${config.baseUrl}/en-US/account`);
+    }),
+  };
 
   return {
     browser,
@@ -1937,6 +2111,7 @@ const makeScenario = (options: { readonly signInCodes?: boolean } = {}) => {
     journalRef,
     lifecycleHandoff,
     operations,
+    passkeys,
     previewLogs,
     rateBudget,
     retries,
@@ -2032,6 +2207,7 @@ const buildCase = async (
     config: scenario.config,
     datasourceConfig: scenario.datasourceConfig,
     lifecycleHandoff: scenario.lifecycleHandoff,
+    passkeys: scenario.passkeys,
     previewLogs: scenario.previewLogs,
     rateBudget: scenario.rateBudget,
     run: scenario.run,
@@ -2091,10 +2267,17 @@ test("executes every account lane case within the magic-link ledger", async () =
   const { operationsByCase, skippedCaseIds } = await runLane(scenario, stepIds);
 
   expect(stepIds.length).toBeGreaterThan(0);
-  // Without sign-in codes the form shows the inbox notice, and the lane
-  // skips the code case before it touches anything.
+  // Without sign-in codes the form shows the inbox notice, and without
+  // passkeys it offers no passkey sign-in, so the lane skips the code and
+  // passkey cases before they touch anything.
   expect(scenario.lifecycleHandoff.signInConfirmation).toBe("inbox");
-  expect(skippedCaseIds).toEqual(["account-sign-in-code"]);
+  expect(scenario.lifecycleHandoff.passkeySignIn).toBe("absent");
+  expect(skippedCaseIds).toEqual([
+    "account-sign-in-code",
+    "account-passkey-sign-in",
+    "account-passkey-management",
+  ]);
+  expect(scenario.external.passkeyActions).toEqual([]);
   expect(scenario.lifecycleHandoff.firstAcceptedRequestedAt).toEqual(fixedNow);
   expect(scenario.lifecycleHandoff.referralInvitation).toEqual({
     code: syntheticReferralCode,
@@ -2320,7 +2503,10 @@ test("signs in with an emailed code and keeps every link journey when sign-in co
   const { operationsByCase, skippedCaseIds } = await runLane(scenario, stepIds);
 
   expect(scenario.lifecycleHandoff.signInConfirmation).toBe("code");
-  expect(skippedCaseIds).toEqual([]);
+  expect(skippedCaseIds).toEqual([
+    "account-passkey-sign-in",
+    "account-passkey-management",
+  ]);
   // The code sign-in reuses the second unknown email, so the magic-link
   // ledger is unchanged.
   expect(scenario.retries).toEqual([]);
@@ -2392,6 +2578,53 @@ test("signs in with an emailed code and keeps every link journey when sign-in co
   expect(scenario.external.referralAttributions).toEqual(
     new Map([["customer-retained", referralOwnerCustomerId]])
   );
+});
+
+test("creates, signs in with, manages, and reauthenticates with a passkey when passkeys are on", async () => {
+  setSystemTime(fixedNow);
+  const scenario = makeScenario({ passkeys: true, signInCodes: true });
+  const stepIds: string[] = [];
+  const { operationsByCase, skippedCaseIds } = await runLane(scenario, stepIds);
+
+  expect(scenario.lifecycleHandoff.passkeySignIn).toBe("offered");
+  expect(skippedCaseIds).toEqual([]);
+  // Every passkey journey reuses the reactivation sign-in, so the
+  // magic-link ledger is unchanged.
+  expect(scenario.retries).toEqual([]);
+  expect(operationsByCase).toEqual(workspaceE2EAccountMagicLinkLedger);
+  // The authenticator is present before the reactivation link lands, so the
+  // prompt creates the first passkey; the passkey cases then sign in with it,
+  // rename and delete it, create another from settings, confirm the
+  // stale-session deletion with it, and remove the authenticator.
+  expect(scenario.external.passkeyActions).toEqual([
+    "add-authenticator",
+    "create-from-prompt",
+    "sign-in",
+    "rename",
+    "delete",
+    "create-from-settings",
+    "confirm-deletion",
+    "remove-authenticator",
+  ]);
+  expect(
+    stepIds.indexOf(
+      "adds the virtual passkey authenticator before the reactivation sign-in"
+    )
+  ).toBeLessThan(
+    stepIds.indexOf(
+      "reactivates the retained profile under a new Better Auth identity"
+    )
+  );
+  expect(stepIds).toContain("creates a passkey from the post-sign-in prompt");
+  // The account survives the passkey confirmation and keeps one passkey.
+  expect(scenario.external.passkeysByUserId).toEqual(
+    new Map([["auth-reactivated", 1]])
+  );
+  expect(
+    scenario.external.events.filter(({ type }) => type === "deletion")
+  ).toHaveLength(1);
+  // The locale case still ran on the passkey session afterwards.
+  expect(scenario.external.languageSaves).toEqual(["cs-CZ", "en-US"]);
 });
 
 test("fails closed before retrieving a code when the sign-in form showed no code step", async () => {
@@ -2623,7 +2856,7 @@ test("makes the saved language preference the site locale and switches it back f
   expect(opened).toContain("/en-US/faq");
   expect(opened).toContain("/cs-CZ/account");
   // Later serial cases start from the English account, signed in.
-  expect(requireBrowser().url()).toBe(`${baseUrl}/en-US/account`);
+  expect(requireBrowser().url()).toBe(`${baseUrl}/en-US/account/profile`);
   expect(external.currentAuthUserId).toBe("auth-original");
   // Without a review hook nothing is captured.
   expect(external.languageReviews).toEqual([]);

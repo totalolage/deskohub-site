@@ -1,0 +1,897 @@
+{
+  "emailCampaignsAudienceAccountCreatedEver": "mají účet ve Workspace",
+  "emailCampaignsAudienceAccountCreatedInPeriod": "si založili účet ve Workspace {period}",
+  "emailCampaignsAudienceAccountCreatedLabel": "Založení účtu",
+  "emailCampaignsAudienceAccountCreatedNever": "nemají účet ve Workspace",
+  "emailCampaignsAudienceAccountCreatedNoValue": "neproběhlo",
+  "emailCampaignsAudienceAccountCreatedNotInPeriod": "mají účet ve Workspace, který nevznikl {period}",
+  "emailCampaignsAudienceArchive": "Archivovat",
+  "emailCampaignsAudienceArchiveConfirm": "Archivovat okruh příjemců",
+  "emailCampaignsAudienceArchiveDescription": "Nové kampaně ho už nebudou moci vybrat. Koncepty kampaní, které ho už používají, si ho ponechají, a odeslaných kampaní se to nedotkne.",
+  "emailCampaignsAudienceArchiveFailed": "Okruh příjemců se nepodařilo archivovat.",
+  "emailCampaignsAudienceArchiveFailedRetry": "Okruh příjemců se nepodařilo archivovat. Zkuste to znovu.",
+  "emailCampaignsAudienceArchiveTitle": "Archivovat tento okruh příjemců?",
+  "emailCampaignsAudienceArchiving": "Archivace…",
+  "emailCampaignsAudienceCampaignEmailCountAmount": "obdrželi {amount}{period}",
+  "emailCampaignsAudienceCampaignEmailCountAny": "obdrželi alespoň jeden {single}{period}",
+  "emailCampaignsAudienceCampaignEmailCountCountLabel": "Počet e-mailů z kampaní",
+  "emailCampaignsAudienceCampaignEmailCountLabel": "Přijaté e-maily z kampaní",
+  "emailCampaignsAudienceCampaignEmailCountLeadText": "e-mailů z kampaní, které zákazník obdržel",
+  "emailCampaignsAudienceCampaignEmailCountNone": "neobdrželi žádný {single}{period}",
+  "emailCampaignsAudienceCampaignEmailCountNounAny": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "e-mail z kampaně",
+        "countPlural=few": "e-maily z kampaní",
+        "countPlural=other": "e-mailů z kampaní"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "marketingový e-mail z kampaně",
+        "countPlural=few": "marketingové e-maily z kampaní",
+        "countPlural=other": "marketingových e-mailů z kampaní"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounOperational": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "provozní e-mail z kampaně",
+        "countPlural=few": "provozní e-maily z kampaní",
+        "countPlural=other": "provozních e-mailů z kampaní"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountPeriodLabel": "Přijaté e-maily",
+  "emailCampaignsAudienceCampaignEmailCountPurposeAny": "libovolných",
+  "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Účel kampaně",
+  "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "marketingových",
+  "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "provozních",
+  "emailCampaignsAudienceConditionAttributeLabel": "Vlastnost zákazníka",
+  "emailCampaignsAudienceConditionRemove": "Odebrat podmínku",
+  "emailCampaignsAudienceCountAlwaysMatchesError": "„≥ 0“ vyhovuje vždy. Pro alespoň jeden použijte „≥ 1“, nebo podmínku odeberte.",
+  "emailCampaignsAudienceCountComparisonLabel": "{subject}: porovnání",
+  "emailCampaignsAudienceCountIs": "je",
+  "emailCampaignsAudienceCountNeverMatchesError": "„< 0“ nevyhovuje nikdy. Pro žádné použijte „= 0“.",
+  "emailCampaignsAudienceCountNumberOf": "Počet",
+  "emailCampaignsAudienceCountOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "rovná se",
+        "operator=ne": "není",
+        "operator=lt": "méně než",
+        "operator=lte": "nejvýše",
+        "operator=gt": "více než",
+        "operator=*": "alespoň"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCountWholeNumberError": "Zadejte celé číslo, 0 nebo větší.",
+  "emailCampaignsAudienceDateConditionLabel": "{subject}: podmínka",
+  "emailCampaignsAudienceDateIn": "je",
+  "emailCampaignsAudienceDateNotIn": "není",
+  "emailCampaignsAudienceDelete": "Smazat",
+  "emailCampaignsAudienceDeleteConfirm": "Smazat okruh příjemců",
+  "emailCampaignsAudienceDeleteDescription": "Tuto akci nelze vrátit. Odeslané kampaně si ponechají vlastní kopii filtrů. Okruh příjemců, který používají koncepty kampaní, lze jen archivovat.",
+  "emailCampaignsAudienceDeleteFailed": "Okruh příjemců se nepodařilo smazat.",
+  "emailCampaignsAudienceDeleteFailedRetry": "Okruh příjemců se nepodařilo smazat. Zkuste to znovu.",
+  "emailCampaignsAudienceDeleteTitle": "Smazat tento okruh příjemců?",
+  "emailCampaignsAudienceDeleting": "Mazání…",
+  "emailCampaignsAudienceDiscountGroupChoose": "Vybrat skupiny",
+  "emailCampaignsAudienceDiscountGroupEmptyError": "Vyberte alespoň jednu slevovou skupinu.",
+  "emailCampaignsAudienceDiscountGroupIdAdd": "Přidat ID slevové skupiny",
+  "emailCampaignsAudienceDiscountGroupIdPlaceholder": "ID skupiny v Dotyposu",
+  "emailCampaignsAudienceDiscountGroupIdRemove": "Odebrat ID slevové skupiny {value}",
+  "emailCampaignsAudienceDiscountGroupLabel": "Slevová skupina",
+  "emailCampaignsAudienceDiscountGroupRemove": "Odebrat slevovou skupinu {value}",
+  "emailCampaignsAudienceDiscountGroupSummaryAnyOf": "jsou ve slevové skupině {values}",
+  "emailCampaignsAudienceDiscountGroupSummaryNoneOf": "nejsou ve slevové skupině {values}",
+  "emailCampaignsAudienceDiscountGroupUnknown": "Neznámá slevová skupina {id}",
+  "emailCampaignsAudienceDiscountGroupUnnamed": "Skupina {id}",
+  "emailCampaignsAudienceDotyposTagsAdd": "Přidat štítek",
+  "emailCampaignsAudienceDotyposTagsEmptyError": "Přidejte alespoň jeden štítek.",
+  "emailCampaignsAudienceDotyposTagsLabel": "Štítky v Dotyposu",
+  "emailCampaignsAudienceDotyposTagsLead": "Štítky",
+  "emailCampaignsAudienceDotyposTagsPlaceholder": "Přidat štítek",
+  "emailCampaignsAudienceDotyposTagsRemove": "Odebrat štítek {value}",
+  "emailCampaignsAudienceDotyposTagsSummaryAllOf": "mají štítky {values}",
+  "emailCampaignsAudienceDotyposTagsSummaryAnyOf": "mají štítek {values}",
+  "emailCampaignsAudienceDotyposTagsSummaryNoneOf": "nemají štítek {values}",
+  "emailCampaignsAudienceEditorArchivedNotice": "Tento okruh příjemců je archivovaný. Nové kampaně ho nemohou vybrat.",
+  "emailCampaignsAudienceEditorCancel": "Zrušit",
+  "emailCampaignsAudienceEditorCreate": "Vytvořit okruh příjemců",
+  "emailCampaignsAudienceEditorDescription": "Vyberte, koho kampaň zasáhne. Podmínky se vyhodnocují až při odeslání kampaně, takže koncepty vždy používají nejnovější verzi.",
+  "emailCampaignsAudienceEditorEyebrow": "Okruh příjemců e-mailů",
+  "emailCampaignsAudienceEditorNewTitle": "Nový okruh příjemců",
+  "emailCampaignsAudienceEditorReachDescription": "Podmínkám mohou vyhovět jen zákazníci, které Workspace už zná z rezervací, účtů nebo marketingového souhlasu. Marketingové kampaně navíc vynechají každého, kdo nemá platný souhlas.",
+  "emailCampaignsAudienceEditorReachHeading": "Koho zasáhne",
+  "emailCampaignsAudienceEditorSave": "Uložit okruh příjemců",
+  "emailCampaignsAudienceEditorSaveFailed": "Okruh příjemců se nepodařilo uložit. Zkontrolujte formulář a zkuste to znovu.",
+  "emailCampaignsAudienceEditorSaved": "Okruh příjemců byl uložen.",
+  "emailCampaignsAudienceEditorSaving": "Ukládání…",
+  "emailCampaignsAudienceEditorSingleLocaleCzech": "Všichni příjemci mluví česky, takže kampaně pro tento okruh potřebují jen český obsah.",
+  "emailCampaignsAudienceEditorSingleLocaleEnglish": "Všichni příjemci mluví anglicky, takže kampaně pro tento okruh potřebují jen anglický obsah.",
+  "emailCampaignsAudienceEditorSummary": "{summary}.",
+  "emailCampaignsAudienceEditorSummaryHeading": "Srozumitelně řečeno",
+  "emailCampaignsAudienceEditorTitleLabel": "Název",
+  "emailCampaignsAudienceEditorTitlePlaceholder": "např. Čeští zákazníci, kteří přišli letos",
+  "emailCampaignsAudienceGroupAddCondition": "Přidat podmínku",
+  "emailCampaignsAudienceGroupAddGroup": "Přidat skupinu",
+  "emailCampaignsAudienceGroupCombineLabel": "Jak se podmínky kombinují",
+  "emailCampaignsAudienceGroupEmptyAll": "Zatím tu nejsou žádné podmínky, takže vyhovuje každý známý zákazník.",
+  "emailCampaignsAudienceGroupEmptyAny": "Zatím tu nejsou žádné podmínky, takže nevyhovuje nikdo.",
+  "emailCampaignsAudienceGroupJoinAnd": "a",
+  "emailCampaignsAudienceGroupJoinOr": "nebo",
+  "emailCampaignsAudienceGroupMatchAll": "Splnit všechny",
+  "emailCampaignsAudienceGroupMatchAny": "Splnit kteroukoli",
+  "emailCampaignsAudienceGroupOfFollowing": "z následujících",
+  "emailCampaignsAudienceGroupOfThisGroup": "z této skupiny",
+  "emailCampaignsAudienceGroupRemove": "Odebrat skupinu",
+  "emailCampaignsAudienceHasAccountFalse": "Nemá",
+  "emailCampaignsAudienceHasAccountLabel": "Účet ve Workspace",
+  "emailCampaignsAudienceHasAccountObject": "účet ve Workspace",
+  "emailCampaignsAudienceHasAccountSummaryFalse": "nemají účet ve Workspace",
+  "emailCampaignsAudienceHasAccountSummaryTrue": "mají účet ve Workspace",
+  "emailCampaignsAudienceHasAccountTrue": "Má",
+  "emailCampaignsAudienceInUse": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Tento okruh příjemců používá koncept kampaně, takže ho lze jen archivovat. Než okruh smažete, přesuňte koncept na jiný okruh příjemců.",
+        "countPlural=few": "Tento okruh příjemců používají {formattedCount} koncepty kampaní, takže ho lze jen archivovat. Než okruh smažete, přesuňte koncepty na jiný okruh příjemců.",
+        "countPlural=other": "Tento okruh příjemců používá {formattedCount} konceptů kampaní, takže ho lze jen archivovat. Než okruh smažete, přesuňte koncepty na jiný okruh příjemců."
+      }
+    }
+  ],
+  "emailCampaignsAudienceLastVisitEver": "nás navštívili{product}",
+  "emailCampaignsAudienceLastVisitInPeriod": "nás naposledy navštívili{product} {period}",
+  "emailCampaignsAudienceLastVisitLabel": "Poslední návštěva",
+  "emailCampaignsAudienceLastVisitNever": "nás nikdy nenavštívili{product}",
+  "emailCampaignsAudienceLastVisitNoValue": "neproběhla",
+  "emailCampaignsAudienceLastVisitNotInPeriod": "nás navštívili{product}, ale naposledy ne {period}",
+  "emailCampaignsAudienceListColumnAudience": "Okruh příjemců",
+  "emailCampaignsAudienceListColumnReach": "Koho zasáhne",
+  "emailCampaignsAudienceListColumnStatus": "Stav",
+  "emailCampaignsAudienceListColumnUpdated": "Upraveno",
+  "emailCampaignsAudienceListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} okruh příjemců",
+        "countPlural=few": "{formattedCount} okruhy příjemců",
+        "countPlural=other": "{formattedCount} okruhů příjemců"
+      }
+    }
+  ],
+  "emailCampaignsAudienceListCountLoading": "Načítání počtu okruhů příjemců",
+  "emailCampaignsAudienceListEmpty": "Zatím tu nejsou žádné okruhy příjemců. Vytvořte okruh a vyberte, koho kampaň zasáhne.",
+  "emailCampaignsAudienceListLoading": "Načítání okruhů příjemců",
+  "emailCampaignsAudienceListNew": "Nový okruh příjemců",
+  "emailCampaignsAudienceListTitle": "Okruhy příjemců e-mailů",
+  "emailCampaignsAudienceListToolbarLabel": "Ovládání tabulky okruhů příjemců",
+  "emailCampaignsAudienceListUpdated": "Upraveno {date}",
+  "emailCampaignsAudienceLocaleEmptyError": "Vyberte alespoň jeden jazyk.",
+  "emailCampaignsAudienceLocaleLabel": "Jazyk",
+  "emailCampaignsAudienceLocaleNameCzech": "česky",
+  "emailCampaignsAudienceLocaleNameEnglish": "anglicky",
+  "emailCampaignsAudienceLocaleOptionCzech": "Čeština (cs-CZ)",
+  "emailCampaignsAudienceLocaleOptionEnglish": "Angličtina (en-US)",
+  "emailCampaignsAudienceLocaleSummaryAnyOf": "mluví {values}",
+  "emailCampaignsAudienceLocaleSummaryNoneOf": "nemluví {values}",
+  "emailCampaignsAudienceNotFound": "Tento okruh příjemců už neexistuje.",
+  "emailCampaignsAudiencePeriodCountError": "Zadejte celé číslo 1 nebo větší.",
+  "emailCampaignsAudiencePeriodCountLabel": "{subject}: délka období",
+  "emailCampaignsAudiencePeriodDateError": "Zadejte platné datum.",
+  "emailCampaignsAudiencePeriodDateLabel": "{subject}: datum",
+  "emailCampaignsAudiencePeriodEndLabel": "{subject}: datum konce",
+  "emailCampaignsAudiencePeriodKind": [
+    {
+      "declarations": ["input kind"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=AnyTime": "kdykoli",
+        "kind=Last": "za posledních",
+        "kind=Range": "od … do …",
+        "kind=Since": "od",
+        "kind=Onward": "od … dál",
+        "kind=*": "do"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodLabel": "{subject}: období",
+  "emailCampaignsAudiencePeriodLast": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "za poslední",
+        "countPlural=few": "za poslední",
+        "countPlural=other": "za posledních"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodOnward": "dál",
+  "emailCampaignsAudiencePeriodOrderError": "Datum začátku nesmí být pozdější než datum konce.",
+  "emailCampaignsAudiencePeriodStartLabel": "{subject}: datum začátku",
+  "emailCampaignsAudiencePeriodTo": "do",
+  "emailCampaignsAudiencePeriodUnitDay": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "den",
+        "countPlural=few": "dny",
+        "countPlural=other": "dní"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitLabel": "{subject}: jednotka období",
+  "emailCampaignsAudiencePeriodUnitMonth": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "měsíc",
+        "countPlural=few": "měsíce",
+        "countPlural=other": "měsíců"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitWeek": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "týden",
+        "countPlural=few": "týdny",
+        "countPlural=other": "týdnů"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitYear": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "rok",
+        "countPlural=few": "roky",
+        "countPlural=other": "let"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductAddCondition": "Přidat podmínku produktu",
+  "emailCampaignsAudienceProductAny": "jakýkoli produkt",
+  "emailCampaignsAudienceProductChoose": "Vybrat",
+  "emailCampaignsAudienceProductChooseValueError": "Vyberte alespoň jednu hodnotu.",
+  "emailCampaignsAudienceProductFamilyCowork": "Cowork",
+  "emailCampaignsAudienceProductFamilyMeetingRoom": "Zasedací místnost",
+  "emailCampaignsAudienceProductFamilyOffice": "Kancelář",
+  "emailCampaignsAudienceProductLabel": "Produkt",
+  "emailCampaignsAudienceProductPropertyCoffee": "Káva",
+  "emailCampaignsAudienceProductPropertyDays": "Počet dní",
+  "emailCampaignsAudienceProductPropertyMonitor": "Monitorový setup",
+  "emailCampaignsAudienceProductPropertyOffer": "Délka",
+  "emailCampaignsAudienceProductPropertySeats": "Počet míst",
+  "emailCampaignsAudienceProductPropertyTier": "Tarif",
+  "emailCampaignsAudienceProductRemoveCondition": "Odebrat podmínku: {property}",
+  "emailCampaignsAudienceProductRemoveValue": "Odebrat {value} ({property})",
+  "emailCampaignsAudienceProductRetired": "(už se neprodává)",
+  "emailCampaignsAudienceProductSelectLabel": "Produkt rezervace",
+  "emailCampaignsAudienceProductUnitDays": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "den",
+        "countPlural=few": "dny",
+        "countPlural=other": "dní"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductUnitSeats": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "místo",
+        "countPlural=few": "místa",
+        "countPlural=other": "míst"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductWith": "s",
+  "emailCampaignsAudienceProductWithout": "bez",
+  "emailCampaignsAudienceReservationCountAmount": "mají {amount}{period}",
+  "emailCampaignsAudienceReservationCountAny": "mají alespoň jednu {single}{period}",
+  "emailCampaignsAudienceReservationCountBookingPeriod": "s potvrzením {period}",
+  "emailCampaignsAudienceReservationCountDateBasisBooking": "data potvrzení",
+  "emailCampaignsAudienceReservationCountDateBasisLabel": "Rozhodné datum",
+  "emailCampaignsAudienceReservationCountDateBasisVisit": "data návštěvy",
+  "emailCampaignsAudienceReservationCountLabel": "Počet rezervací",
+  "emailCampaignsAudienceReservationCountLeadText": "rezervací podle",
+  "emailCampaignsAudienceReservationCountNone": "nemají žádnou {single}{period}",
+  "emailCampaignsAudienceReservationCountNounBooked": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "potvrzenou rezervaci{product}",
+        "countPlural=few": "potvrzené rezervace{product}",
+        "countPlural=other": "potvrzených rezervací{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounCancelled": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "zrušenou rezervaci{product}",
+        "countPlural=few": "zrušené rezervace{product}",
+        "countPlural=other": "zrušených rezervací{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounComplete": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "dokončenou rezervaci{product}",
+        "countPlural=few": "dokončené rezervace{product}",
+        "countPlural=other": "dokončených rezervací{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounInProgress": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "probíhající rezervaci{product}",
+        "countPlural=few": "probíhající rezervace{product}",
+        "countPlural=other": "probíhajících rezervací{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounNeedsRefund": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "rezervaci{product} k vrácení peněz",
+        "countPlural=few": "rezervace{product} k vrácení peněz",
+        "countPlural=other": "rezervací{product} k vrácení peněz"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountPeriodLabel": "Rezervace",
+  "emailCampaignsAudienceReservationCountStatusBooked": "potvrzených",
+  "emailCampaignsAudienceReservationCountStatusCancelled": "zrušených",
+  "emailCampaignsAudienceReservationCountStatusComplete": "dokončených",
+  "emailCampaignsAudienceReservationCountStatusInProgress": "probíhajících",
+  "emailCampaignsAudienceReservationCountStatusLabel": "Stav rezervace",
+  "emailCampaignsAudienceReservationCountStatusNeedsRefund": "čekajících na vrácení peněz",
+  "emailCampaignsAudienceReservationCountVisitPeriod": "s návštěvou {period}",
+  "emailCampaignsAudienceSaveFailedCheckFilters": "Okruh příjemců se nepodařilo uložit. Zkontrolujte filtry a zkuste to znovu.",
+  "emailCampaignsAudienceSaveFailedRetry": "Okruh příjemců se nepodařilo uložit. Zkuste to znovu.",
+  "emailCampaignsAudienceSectionAccount": "Účet",
+  "emailCampaignsAudienceSectionEmails": "E-maily",
+  "emailCampaignsAudienceSectionProfile": "Profil",
+  "emailCampaignsAudienceSectionReservations": "Rezervace",
+  "emailCampaignsAudienceSetMatchLabel": "{subject}: shoda",
+  "emailCampaignsAudienceSetOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=allOf": "všechny z",
+        "operator=noneOf": "žádný z",
+        "operator=*": "alespoň jeden z"
+      }
+    }
+  ],
+  "emailCampaignsAudienceStatusActive": "Aktivní",
+  "emailCampaignsAudienceStatusArchived": "Archivovaný",
+  "emailCampaignsAudienceSummaryAmount": [
+    {
+      "declarations": [
+        "input operator",
+        "input count",
+        "local formattedCount = count: number",
+        "input noun",
+        "input none"
+      ],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "přesně {formattedCount} {noun}",
+        "operator=ne": "jiný počet {none} než {formattedCount}",
+        "operator=lt": "méně než {formattedCount} {noun}",
+        "operator=lte": "nejvýše {formattedCount} {noun}",
+        "operator=gt": "více než {formattedCount} {noun}",
+        "operator=*": "alespoň {formattedCount} {noun}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryAmountPending": "… {none}",
+  "emailCampaignsAudienceSummaryAnd": "{left} a {right}",
+  "emailCampaignsAudienceSummaryCustomersWho": "Zákazníci, kteří {predicate}",
+  "emailCampaignsAudienceSummaryEveryone": "Každý zákazník, kterého Workspace zná",
+  "emailCampaignsAudienceSummaryGap": "…",
+  "emailCampaignsAudienceSummaryGroup": "({filter})",
+  "emailCampaignsAudienceSummaryMatchAnything": "vyhovují čemukoli",
+  "emailCampaignsAudienceSummaryMatchNothing": "nevyhovují ničemu",
+  "emailCampaignsAudienceSummaryNobody": "Nikdo",
+  "emailCampaignsAudienceSummaryOr": "{left} nebo {right}",
+  "emailCampaignsAudienceSummaryPeriodAnyTime": "kdykoli",
+  "emailCampaignsAudienceSummaryPeriodLastDay": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "za poslední den",
+        "countPlural=few": "za poslední {formattedCount} dny",
+        "countPlural=other": "za posledních {formattedCount} dní"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastMonth": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "za poslední měsíc",
+        "countPlural=few": "za poslední {formattedCount} měsíce",
+        "countPlural=other": "za posledních {formattedCount} měsíců"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastWeek": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "za poslední týden",
+        "countPlural=few": "za poslední {formattedCount} týdny",
+        "countPlural=other": "za posledních {formattedCount} týdnů"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastYear": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "za poslední rok",
+        "countPlural=few": "za poslední {formattedCount} roky",
+        "countPlural=other": "za posledních {formattedCount} let"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodOnward": "od {date} dál",
+  "emailCampaignsAudienceSummaryPeriodRange": "od {from} do {to}",
+  "emailCampaignsAudienceSummaryPeriodSince": "od {date} do současnosti",
+  "emailCampaignsAudienceSummaryPeriodUntil": "do {date}",
+  "emailCampaignsAudienceSummaryProduct": "({family})",
+  "emailCampaignsAudienceSummaryProductAnyOf": "{property} {values}",
+  "emailCampaignsAudienceSummaryProductDisabled": "{property}: ne",
+  "emailCampaignsAudienceSummaryProductEnabled": "{property}: ano",
+  "emailCampaignsAudienceSummaryProductNoneOf": "{property} kromě {values}",
+  "emailCampaignsAudienceSummaryProductWith": "({family}, {details})",
+  "emailCampaignsAudienceSummaryQuoted": "„{value}“",
+  "emailCampaignsAudienceTitleRequired": "Zadejte název okruhu příjemců.",
+  "emailCampaignsAudienceTitleTooLong": "Použijte nejvýše {max} znaků.",
+  "emailCampaignsAudienceUnarchive": "Obnovit z archivu",
+  "emailCampaignsAudienceUnarchiveFailed": "Okruh příjemců se nepodařilo obnovit z archivu.",
+  "emailCampaignsAudienceUnarchiveFailedRetry": "Okruh příjemců se nepodařilo obnovit z archivu. Zkuste to znovu.",
+  "emailCampaignsAudienceUnarchiving": "Obnovování…",
+  "emailCampaignsBadgePurposeMarketing": "Marketingová",
+  "emailCampaignsBadgePurposeOperational": "Provozní",
+  "emailCampaignsBadgeRecipientStatusBounced": "Vráceno",
+  "emailCampaignsBadgeRecipientStatusComplained": "Nahlášeno jako spam",
+  "emailCampaignsBadgeRecipientStatusDelivered": "Doručeno",
+  "emailCampaignsBadgeRecipientStatusFailed": "Selhalo",
+  "emailCampaignsBadgeRecipientStatusPending": "Čeká",
+  "emailCampaignsBadgeRecipientStatusSent": "Odesláno",
+  "emailCampaignsBadgeRecipientStatusSkipped": "Přeskočeno",
+  "emailCampaignsBadgeRecipientStatusUnconfirmed": "Nepotvrzeno",
+  "emailCampaignsBadgeStatusDraft": "Koncept",
+  "emailCampaignsBadgeStatusFailed": "Selhala",
+  "emailCampaignsBadgeStatusSending": "Odesílá se",
+  "emailCampaignsBadgeStatusSent": "Odeslána",
+  "emailCampaignsBodyButtonHrefInvalid": "Tlačítko musí odkazovat na adresu https: nebo mailto:.",
+  "emailCampaignsBodyButtonLabelLineBreaks": "Text tlačítka smí zalamovat řádky jen znakem nového řádku (LF).",
+  "emailCampaignsBodyButtonLabelMissing": "Tlačítko musí mít text.",
+  "emailCampaignsBodyImageSourceInvalid": "Obrázek musí pocházet z účtu Deskohub v Cloudinary.",
+  "emailCampaignsBodyLinkHrefInvalid": "Odkaz musí používat adresu https: nebo mailto:.",
+  "emailCampaignsBodyMissing": "Napište text e-mailu.",
+  "emailCampaignsBodyNotDocument": "Text e-mailu musí být uzel typu „doc“.",
+  "emailCampaignsBodyStructureInvalid": "Text e-mailu obsahuje prvky, které e-maily kampaní nepodporují.",
+  "emailCampaignsComposerAllChangesSaved": "Všechny změny jsou uložené",
+  "emailCampaignsComposerAudienceHint": "Před odesláním vyberte, kdo kampaň dostane.",
+  "emailCampaignsComposerAudienceLabel": "Okruh příjemců",
+  "emailCampaignsComposerAudienceNone": "Zatím bez okruhu příjemců",
+  "emailCampaignsComposerAudiencesEmpty": "Zatím nemáte žádný okruh příjemců. Vytvořte ho v sekci Okruhy příjemců.",
+  "emailCampaignsComposerBodyEditorLabel": "Text e-mailu, {language}",
+  "emailCampaignsComposerBodyLabel": "Text e-mailu",
+  "emailCampaignsComposerCampaignSection": "Kampaň",
+  "emailCampaignsComposerContentLanguageLabel": "Jazyk obsahu",
+  "emailCampaignsComposerContentSection": "Obsah",
+  "emailCampaignsComposerCreateDraft": "Vytvořit koncept",
+  "emailCampaignsComposerDraftDescription": "Koncept. Uložte změny a pak odešlete testovací e-mail, ve kterém najdete potvrzovací kód pro skutečné odeslání.",
+  "emailCampaignsComposerEyebrow": "E-mailová kampaň",
+  "emailCampaignsComposerFallbackLocaleHint": "Čeština je povinná: dostanou ji příjemci, pro jejichž jazyk obsah chybí.",
+  "emailCampaignsComposerHiddenContentCzech": "Český obsah je pro tento okruh příjemců skrytý a neuloží se.",
+  "emailCampaignsComposerHiddenContentEnglish": "Anglický obsah je pro tento okruh příjemců skrytý a neuloží se.",
+  "emailCampaignsComposerLocaleIssues": "{count} k opravě",
+  "emailCampaignsComposerLocaleOptional": "Volitelné",
+  "emailCampaignsComposerLocaleReady": "Připraveno",
+  "emailCampaignsComposerLocaleRequired": "Povinné",
+  "emailCampaignsComposerNewDescription": "Napište kampaň a vytvořte koncept, který pak můžete odeslat na zkoušku.",
+  "emailCampaignsComposerNewTitle": "Nová kampaň",
+  "emailCampaignsComposerOperationalReasonHint": "Proč zákazník tento e-mail dostává. Pokud pole necháte prázdné, použije se standardní text.",
+  "emailCampaignsComposerOperationalReasonLabel": "Důvod v patičce",
+  "emailCampaignsComposerPreheaderHint": "Většina e-mailových schránek ho zobrazuje za předmětem.",
+  "emailCampaignsComposerPreheaderLabel": "Text náhledu",
+  "emailCampaignsComposerPurposeLabel": "Účel",
+  "emailCampaignsComposerPurposeMarketing": "Marketingová",
+  "emailCampaignsComposerPurposeMarketingDescription": "Jen zákazníci se souhlasem s marketingem. Každý e-mail obsahuje odkaz na odhlášení.",
+  "emailCampaignsComposerPurposeOperational": "Provozní",
+  "emailCampaignsComposerPurposeOperationalDescription": "Provozní oznámení pro všechny odpovídající zákazníky. Patička uvádí, proč e-mail dostávají.",
+  "emailCampaignsComposerSaveAudienceArchived": "Vybraný okruh příjemců je archivovaný. Vyberte jiný.",
+  "emailCampaignsComposerSaveAudienceNotFound": "Vybraný okruh příjemců už neexistuje.",
+  "emailCampaignsComposerSaveCheckFields": "Kampaň se nepodařilo uložit. Zkontrolujte vyplněné údaje.",
+  "emailCampaignsComposerSaveContentInvalid": "Obsah obsahuje chyby. Opravte uvedené problémy a pak kampaň uložte.",
+  "emailCampaignsComposerSaveDraft": "Uložit koncept",
+  "emailCampaignsComposerSaveFailed": "Kampaň se nepodařilo uložit. Zkuste to znovu.",
+  "emailCampaignsComposerSaveReadOnly": "Tato kampaň už není koncept a nelze ji upravovat.",
+  "emailCampaignsComposerSaving": "Ukládání…",
+  "emailCampaignsComposerSingleLocaleAudienceCzech": "Okruh příjemců zahrnuje jen česky mluvící zákazníky.",
+  "emailCampaignsComposerSingleLocaleAudienceEnglish": "Okruh příjemců zahrnuje jen anglicky mluvící zákazníky.",
+  "emailCampaignsComposerSubjectLabel": "Předmět",
+  "emailCampaignsComposerSubjectMissing": "Doplňte předmět.",
+  "emailCampaignsComposerTemplateLabel": "Šablona",
+  "emailCampaignsComposerTemplatePreview": "Náhled šablony",
+  "emailCampaignsComposerTemplatePreviewFrameTitle": "Šablona {template} s ukázkovým obsahem",
+  "emailCampaignsComposerTemplateWorkspaceDescription": "E-mailové rozvržení Workspace: tmavomodrá hlavička, bílá karta s obsahem a patička s adresou.",
+  "emailCampaignsComposerTitleHint": "Název vidí jen administrátoři.",
+  "emailCampaignsComposerTitleLabel": "Název",
+  "emailCampaignsComposerTitlePlaceholder": "Jarní otevírací doba",
+  "emailCampaignsComposerTitleRequired": "Zadejte název kampaně.",
+  "emailCampaignsComposerUnsavedChanges": "Neuložené změny",
+  "emailCampaignsComposerUntitledTitle": "Kampaň bez názvu",
+  "emailCampaignsCtaCancel": "Zrušit",
+  "emailCampaignsCtaDescription": "Výrazné tlačítko, které odkazuje na stránku nebo e-mailovou adresu.",
+  "emailCampaignsCtaEdit": "Upravit tlačítko",
+  "emailCampaignsCtaHrefLabel": "Odkaz",
+  "emailCampaignsCtaHrefMissing": "Chybí odkaz",
+  "emailCampaignsCtaInsert": "Vložit tlačítko",
+  "emailCampaignsCtaLabelLabel": "Text tlačítka",
+  "emailCampaignsCtaLabelMissing": "Chybí text tlačítka",
+  "emailCampaignsCtaLabelPlaceholder": "Rezervovat stůl",
+  "emailCampaignsCtaLabelRequired": "Zadejte text tlačítka.",
+  "emailCampaignsCtaRemove": "Odebrat tlačítko",
+  "emailCampaignsCtaUpdate": "Uložit tlačítko",
+  "emailCampaignsDraftDelete": "Smazat koncept",
+  "emailCampaignsDraftDeleteDescription": "Tuto akci nelze vrátit. Koncept, jeho obsah i neuložené změny budou odstraněny. Odeslané kampaně smazat nelze.",
+  "emailCampaignsDraftDeleteFailed": "Kampaň se nepodařilo smazat. Zkuste to znovu.",
+  "emailCampaignsDraftDeleteReadOnly": "Tato kampaň už není koncept a nelze ji smazat.",
+  "emailCampaignsDraftDeleteTitle": "Smazat tento koncept?",
+  "emailCampaignsDraftDeleting": "Mazání…",
+  "emailCampaignsDraftNotFound": "Tato kampaň už neexistuje.",
+  "emailCampaignsEditorBold": "Tučně",
+  "emailCampaignsEditorBulletList": "Odrážkový seznam",
+  "emailCampaignsEditorDivider": "Oddělovač",
+  "emailCampaignsEditorHeading1": "Nadpis 1",
+  "emailCampaignsEditorHeading2": "Nadpis 2",
+  "emailCampaignsEditorHeading3": "Nadpis 3",
+  "emailCampaignsEditorItalic": "Kurzíva",
+  "emailCampaignsEditorNumberedList": "Číslovaný seznam",
+  "emailCampaignsEditorParagraph": "Odstavec",
+  "emailCampaignsEditorPlaceholder": "Napište e-mail. Nadpisy, odkazy, obrázky a tlačítka přidáte z panelu nástrojů.",
+  "emailCampaignsEditorRedo": "Znovu",
+  "emailCampaignsEditorTextStyle": "Styl textu",
+  "emailCampaignsEditorToolbar": "Formátování",
+  "emailCampaignsEditorUndo": "Zpět",
+  "emailCampaignsEmailPreviewFrameTitle": "Náhled e-mailu, {language}",
+  "emailCampaignsEmailPreviewHeading": "Náhled",
+  "emailCampaignsEmailPreviewLabel": "Náhled e-mailu",
+  "emailCampaignsEmailPreviewLanguage": "Jazyk náhledu",
+  "emailCampaignsEmailPreviewMissingContentCzech": "E-mail uvidíte, až doplníte český obsah.",
+  "emailCampaignsEmailPreviewMissingContentEnglish": "E-mail uvidíte, až doplníte anglický obsah.",
+  "emailCampaignsEmailPreviewNoPreheader": "Bez textu náhledu",
+  "emailCampaignsEmailPreviewNoSubject": "Bez předmětu",
+  "emailCampaignsEmailPreviewRenderFailed": "Náhled se nepodařilo vykreslit.",
+  "emailCampaignsEmailPreviewRendering": "Vykreslování náhledu…",
+  "emailCampaignsEmailPreviewUpdating": "Aktualizace…",
+  "emailCampaignsImageUploadFailed": "Obrázek se nepodařilo nahrát. Zkuste to znovu.",
+  "emailCampaignsImageUploadInsert": "Vložit obrázek",
+  "emailCampaignsImageUploadMissing": "Vyberte obrázek, který chcete nahrát.",
+  "emailCampaignsImageUploadTooLarge": "Obrázek může mít nejvýše {maxMegabytes} MB.",
+  "emailCampaignsImageUploadUnsupportedType": "Nahrajte obrázek ve formátu PNG, JPEG, GIF nebo WebP.",
+  "emailCampaignsImageUploading": "Nahrávání obrázku…",
+  "emailCampaignsLinkAdd": "Přidat odkaz",
+  "emailCampaignsLinkHrefHint": "Zadejte adresu začínající https:// nebo e-mailovou adresu.",
+  "emailCampaignsLinkHrefLabel": "Adresa odkazu",
+  "emailCampaignsLinkRemove": "Odebrat odkaz",
+  "emailCampaignsLinkToggle": "Odkaz",
+  "emailCampaignsLinkUpdate": "Upravit odkaz",
+  "emailCampaignsListAudienceColumn": "Okruh příjemců",
+  "emailCampaignsListCampaignColumn": "Kampaň",
+  "emailCampaignsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} kampaň",
+        "countPlural=few": "{formattedCount} kampaně",
+        "countPlural=other": "{formattedCount} kampaní"
+      }
+    }
+  ],
+  "emailCampaignsListCountLoading": "Načítání počtu kampaní",
+  "emailCampaignsListEmpty": "Zatím tu nejsou žádné kampaně. Vytvořte první a napište svůj první e-mail.",
+  "emailCampaignsListLoading": "Načítání kampaní",
+  "emailCampaignsListNewCampaign": "Nová kampaň",
+  "emailCampaignsListNoAudience": "Bez okruhu příjemců",
+  "emailCampaignsListPurposeColumn": "Účel",
+  "emailCampaignsListStatusColumn": "Stav",
+  "emailCampaignsListTableControls": "Ovládání tabulky kampaní",
+  "emailCampaignsListTitle": "E-mailové kampaně",
+  "emailCampaignsListUpdatedAt": "Upraveno {updatedAt}",
+  "emailCampaignsListUpdatedColumn": "Upraveno",
+  "emailCampaignsLocaleNameCzech": "Čeština",
+  "emailCampaignsLocaleNameEnglish": "Angličtina",
+  "emailCampaignsRecipientPreviewAsOfNow": "Okruh příjemců je určen k tomuto okamžiku. Při odeslání se určí znovu a výsledný seznam se zafixuje.",
+  "emailCampaignsRecipientPreviewAudienceDescription": "{audience}: {filter}.",
+  "emailCampaignsRecipientPreviewBackToCampaign": "Zpět na kampaň",
+  "emailCampaignsRecipientPreviewCustomerColumn": "Zákazník",
+  "emailCampaignsRecipientPreviewCustomerInline": "Zákazník {customer}",
+  "emailCampaignsRecipientPreviewEmailColumn": "E-mail",
+  "emailCampaignsRecipientPreviewExcluded": "Vyřazeno",
+  "emailCampaignsRecipientPreviewExcludedCustomers": "Vyřazení zákazníci",
+  "emailCampaignsRecipientPreviewExcludedEmpty": "Žádný odpovídající zákazník nebyl vyřazen.",
+  "emailCampaignsRecipientPreviewExclusionDeletedCustomer": "Smazán v systému Dotypos",
+  "emailCampaignsRecipientPreviewExclusionInvalidEmail": "Neplatný e-mail v systému Dotypos",
+  "emailCampaignsRecipientPreviewExclusionMissingEmail": "Bez e-mailu v systému Dotypos",
+  "emailCampaignsRecipientPreviewExclusionMissingFromDotypos": "Nenalezen v systému Dotypos",
+  "emailCampaignsRecipientPreviewLanguageColumn": "Jazyk",
+  "emailCampaignsRecipientPreviewNoAudience": "Tato kampaň zatím nemá okruh příjemců. Vyberte ho v editoru kampaně a pak si prohlédněte její příjemce.",
+  "emailCampaignsRecipientPreviewReasonColumn": "Důvod",
+  "emailCampaignsRecipientPreviewReceivesColumn": "Dostane e-mail",
+  "emailCampaignsRecipientPreviewReceivesInline": "Dostane ho: {customer}",
+  "emailCampaignsRecipientPreviewRecipients": "Příjemci",
+  "emailCampaignsRecipientPreviewRecipientsEmpty": "Okruh příjemců teď nezahrnuje žádné zákazníky.",
+  "emailCampaignsRecipientPreviewSharedEmails": "Sdílené e-maily",
+  "emailCampaignsRecipientPreviewSharedEmailsEmpty": "Žádní dva zákazníci nemají stejnou e-mailovou adresu.",
+  "emailCampaignsRecipientPreviewSharedEmailsNote": "Zákazníci se stejnou e-mailovou adresou dostanou jen jeden e-mail. Obdrží ho ten, kdo rezervoval naposledy.",
+  "emailCampaignsRecipientPreviewSharedEmailsTitle": "Sdílené e-mailové adresy",
+  "emailCampaignsRecipientPreviewSkippedColumn": "Přeskočeni",
+  "emailCampaignsRecipientPreviewSkippedInline": "Přeskočeni:",
+  "emailCampaignsRecipientPreviewSummary": "Souhrn",
+  "emailCampaignsRecipientPreviewTitle": "Náhled příjemců",
+  "emailCampaignsRecipientPreviewTryAgain": "Zkusit znovu",
+  "emailCampaignsRecipientPreviewUnavailable": "Příjemce se nepodařilo určit, protože Dotypos není dostupný. Nic se nezměnilo.",
+  "emailCampaignsSendConfirmCancel": "Zrušit",
+  "emailCampaignsSendConfirmCodeInvalid": "Zadejte osmiznakový kód z posledního testovacího e-mailu.",
+  "emailCampaignsSendConfirmCodeLabel": "Potvrzovací kód",
+  "emailCampaignsSendConfirmDescription": "Zadejte potvrzovací kód z posledního testovacího e-mailu. Kód platí 24 hodin a jen pro obsah, který tento test ukázal. Novější testovací e-mail nebo změna obsahu ho nahradí.",
+  "emailCampaignsSendConfirmFailed": "Kampaň se nepodařilo odeslat. Zkuste to znovu.",
+  "emailCampaignsSendConfirmIrreversible": "Odeslání zafixuje seznam příjemců a nelze ho vrátit zpět.",
+  "emailCampaignsSendConfirmSubmit": "Odeslat kampaň",
+  "emailCampaignsSendConfirmSubmitting": "Odesílání…",
+  "emailCampaignsSendConfirmTitle": "Odeslat tuto kampaň",
+  "emailCampaignsSendConfirmUnsavedChanges": "Nejprve uložte změny a pošlete nový test. Kampaň odešle jen uložený obsah.",
+  "emailCampaignsSendPreviewRecipients": "Náhled příjemců",
+  "emailCampaignsSendingFailureAudienceMissing": "Před odesláním vyberte pro tuto kampaň okruh příjemců.",
+  "emailCampaignsSendingFailureAudienceNotFound": "Okruh příjemců této kampaně už neexistuje. Vyberte jiný okruh příjemců; nic nebylo odesláno a kód stále platí.",
+  "emailCampaignsSendingFailureCampaignNotFound": "Tato kampaň už neexistuje.",
+  "emailCampaignsSendingFailureCampaignReadOnly": "Tato kampaň už není koncept. Chcete-li odeslat novou kopii, kampaň duplikujte.",
+  "emailCampaignsSendingFailureCodeContentChanged": "Kampaň se po tomto testovacím e-mailu změnila. Pošlete nový testovací e-mail a použijte jeho kód.",
+  "emailCampaignsSendingFailureCodeExpired": "Platnost tohoto kódu vypršela. Pro nový kód pošlete nový testovací e-mail.",
+  "emailCampaignsSendingFailureCodeSuperseded": "Tento kód nahradil novější testovací e-mail. Použijte kód z posledního testovacího e-mailu.",
+  "emailCampaignsSendingFailureCodeTooManyAttempts": "Bylo zadáno příliš mnoho chybných kódů, proto tento kód už nefunguje. Pro nový kód pošlete nový testovací e-mail.",
+  "emailCampaignsSendingFailureCodeUnknown": "Tento kód neodpovídá poslednímu testovacímu e-mailu. Zkontrolujte, zda v něm není překlep, a zkuste to znovu.",
+  "emailCampaignsSendingFailureConfigError": "Odesílání kampaní není v tomto nasazení správně nastavené. Požádejte vývojáře, aby zkontroloval proměnné prostředí.",
+  "emailCampaignsSendingFailureContentMissing": "Nejprve doplňte předmět a text alespoň v jednom jazyce.",
+  "emailCampaignsSendingFailureDatabaseUnavailable": "Příjemce se nepodařilo určit, protože databáze není dostupná. Nic nebylo odesláno a kód stále platí; zkuste to za chvíli znovu.",
+  "emailCampaignsSendingFailureDeliveryQueueFailed": "Doručení se nepodařilo zařadit do fronty, proto je kampaň označená jako Selhala. Za chvíli ji znovu odešlete nedoručeným příjemcům.",
+  "emailCampaignsSendingFailureDotyposUnavailable": "Příjemce se nepodařilo určit, protože Dotypos není dostupný. Nic nebylo odesláno a kód stále platí; zkuste to za chvíli znovu.",
+  "emailCampaignsSendingFailureEmailDeliveryFailed": "Poskytovatel e-mailů testovací e-mail nepřijal. Zkuste to za chvíli znovu.",
+  "emailCampaignsSendingFailureEmailNotConfigured": "E-maily kampaní nejsou v tomto nasazení nastavené. Požádejte vývojáře, aby nastavil {variables}.",
+  "emailCampaignsSendingFailureFallbackContentMissing": "Zákazníci bez obsahu ve svém jazyce dostanou českou verzi, proto doplňte český obsah, nebo omezte okruh příjemců na jeden z jazyků, které kampaň má. Nic nebylo odesláno.",
+  "emailCampaignsSendingFailureNoRecipients": "Okruh příjemců teď nemá žádné dosažitelné příjemce, proto nebylo nic odesláno.",
+  "emailCampaignsSendingFailureNotRetryable": "Znovu odeslat nedoručeným příjemcům lze jen u kampaně, která selhala.",
+  "emailCampaignsSendingFailureOutsideTestDomain": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Mimo produkci lze e-maily kampaní posílat jen na adresy @{domain} a {formattedCount} adresa mezi ně nepatří. Nic nebylo odesláno.",
+        "countPlural=few": "Mimo produkci lze e-maily kampaní posílat jen na adresy @{domain} a {formattedCount} adresy mezi ně nepatří. Nic nebylo odesláno.",
+        "countPlural=other": "Mimo produkci lze e-maily kampaní posílat jen na adresy @{domain} a {formattedCount} adres mezi ně nepatří. Nic nebylo odesláno."
+      }
+    }
+  ],
+  "emailCampaignsSendingFailureSigningKeyInvalid": "Potvrzovací kódy nelze vydat, protože podpisový klíč je špatně nastavený. Požádejte vývojáře, aby zkontroloval BETTER_AUTH_SECRETS.",
+  "emailCampaignsSendingFailureSiteUrlNotConfigured": "Testovací e-mail se nepodařilo sestavit, protože není nastavená adresa webu. Požádejte vývojáře, aby zkontroloval nastavení URL nasazení.",
+  "emailCampaignsSendingFailureTestRecipientInvalid": "{email} není platná e-mailová adresa.",
+  "emailCampaignsSendingFailureUnauthorized": "Vaše přihlášení do administrace už neplatí. Načtěte stránku znovu a přihlaste se.",
+  "emailCampaignsSendingFailureUnexpected": "Něco se pokazilo. Zkuste to za chvíli znovu.",
+  "emailCampaignsSentAudience": "Okruh příjemců",
+  "emailCampaignsSentAudienceDeleted": "Smazaný okruh příjemců",
+  "emailCampaignsSentAudienceFilter": "Filtr",
+  "emailCampaignsSentAudienceFilterCountedBack": "{filter}, počítáno zpětně od okamžiku odeslání ({sentAt}).",
+  "emailCampaignsSentAudienceFilterSummary": "{filter}.",
+  "emailCampaignsSentAudienceTitle": "Okruh příjemců v okamžiku odeslání",
+  "emailCampaignsSentCampaignTitle": "Kampaň",
+  "emailCampaignsSentCompletedAt": "Dokončeno",
+  "emailCampaignsSentCompletedAtPending": "Zatím ne",
+  "emailCampaignsSentContentTitle": "Obsah",
+  "emailCampaignsSentDeliveryRecipientCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} příjemce",
+        "countPlural=few": "{formattedCount} příjemci",
+        "countPlural=other": "{formattedCount} příjemců"
+      }
+    }
+  ],
+  "emailCampaignsSentDeliveryTitle": "Doručení",
+  "emailCampaignsSentDeliveryUnconfirmedNote": "Nepotvrzení příjemci už e-mail možná mají: poskytovatel jejich dávku nikdy nepotvrdil. Opětovné odeslání nedoručeným je přeskočí, pokud nezvolíte, že se má poslat i jim.",
+  "emailCampaignsSentDuplicate": "Duplikovat",
+  "emailCampaignsSentDuplicateFailed": "Kampaň se nepodařilo duplikovat.",
+  "emailCampaignsSentDuplicating": "Duplikování…",
+  "emailCampaignsSentEmailNoPreview": "Náhled není k dispozici.",
+  "emailCampaignsSentEmailRenderFailed": "E-mail se nepodařilo vykreslit.",
+  "emailCampaignsSentEyebrow": "E-mailová kampaň",
+  "emailCampaignsSentFailedNotice": "U některých příjemců doručení selhalo. Opětovné odeslání nedoručeným pošle e-mail jen příjemcům, kteří ho nedostali.",
+  "emailCampaignsSentIncludeUnconfirmed": "Poslat znovu i nepotvrzeným příjemcům (mohou ho dostat dvakrát)",
+  "emailCampaignsSentNoSendRecorded": "U této kampaně nebylo zaznamenáno žádné odeslání.",
+  "emailCampaignsSentPurpose": "Účel",
+  "emailCampaignsSentRecipientsCustomerColumn": "Zákazník",
+  "emailCampaignsSentRecipientsEmpty": "Toto odeslání nezafixovalo žádné příjemce.",
+  "emailCampaignsSentRecipientsLanguageColumn": "Jazyk",
+  "emailCampaignsSentRecipientsLanguageSince": "{language} · od {statusUpdatedAt}",
+  "emailCampaignsSentRecipientsSkipReasonColumn": "Důvod přeskočení",
+  "emailCampaignsSentRecipientsSkipped": "Přeskočeno: {reason}",
+  "emailCampaignsSentRecipientsStatusColumn": "Stav",
+  "emailCampaignsSentRecipientsStatusSinceColumn": "Stav od",
+  "emailCampaignsSentRecipientsTableLabel": "Příjemci kampaně",
+  "emailCampaignsSentRecipientsTitle": "Příjemci",
+  "emailCampaignsSentRetry": "Znovu odeslat nedoručeným",
+  "emailCampaignsSentRetryFailed": "Nedoručeným příjemcům se nepodařilo odeslat e-mail znovu.",
+  "emailCampaignsSentRetryStarted": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Znovu odesíláme e-mail {formattedCount} příjemci, kterému se ho nepodařilo doručit.",
+        "countPlural=few": "Znovu odesíláme e-mail {formattedCount} příjemcům, kterým se ho nepodařilo doručit.",
+        "countPlural=other": "Znovu odesíláme e-mail {formattedCount} příjemcům, kterým se ho nepodařilo doručit."
+      }
+    }
+  ],
+  "emailCampaignsSentRetrying": "Odesílání znovu…",
+  "emailCampaignsSentSendingNotice": "Doručování probíhá. Stavy příjemců se aktualizují podle toho, co hlásí poskytovatel e-mailů.",
+  "emailCampaignsSentSentAt": "Odesláno",
+  "emailCampaignsSentSentAtNotRecorded": "Nezaznamenáno",
+  "emailCampaignsSentSkipReasonConsentWithdrawn": "Odvolaný marketingový souhlas",
+  "emailCampaignsSentSkipReasonDeletedCustomer": "Zákazník smazán",
+  "emailCampaignsSentSkipReasonInvalidEmail": "Neplatná e-mailová adresa",
+  "emailCampaignsSentSkipReasonMissingEmail": "Chybí e-mailová adresa",
+  "emailCampaignsSentSkipReasonMissingFromDotypos": "Už není v systému Dotypos",
+  "emailCampaignsSentSkipReasonOutsideTestDomain": "Mimo testovací e-mailovou doménu",
+  "emailCampaignsSentStatus": "Stav",
+  "emailCampaignsTestSendAdd": "Přidat",
+  "emailCampaignsTestSendAddRecipientLabel": "Přidat příjemce testu",
+  "emailCampaignsTestSendAdminInboxAlways": "Schránka administrace dostává testovací e-maily vždy.",
+  "emailCampaignsTestSendAdminInboxNote": "(schránka administrace, vždy zahrnuta)",
+  "emailCampaignsTestSendCancel": "Zrušit",
+  "emailCampaignsTestSendCodeExpires": "Platnost potvrzovacího kódu vyprší {expiresAt}.",
+  "emailCampaignsTestSendContentMissing": "Před odesláním testu doplňte předmět a text alespoň v jednom jazyce.",
+  "emailCampaignsTestSendDescription": "Testovací e-maily obsahují potvrzovací kód, který zadáte při odeslání kampaně. Nový testovací e-mail předchozí kód nahradí.",
+  "emailCampaignsTestSendDone": "Hotovo",
+  "emailCampaignsTestSendFailed": "Testovací e-mail se nepodařilo odeslat. Zkontrolujte adresy a zkuste to znovu.",
+  "emailCampaignsTestSendPerLanguage": "Každá adresa dostane jeden e-mail [TEST] v každém jazyce: {languages}.",
+  "emailCampaignsTestSendRecipientDuplicate": "Tato adresa už je zahrnutá.",
+  "emailCampaignsTestSendRecipientInvalid": "Zadejte platnou e-mailovou adresu.",
+  "emailCampaignsTestSendRecipientRequired": "Zadejte e-mailovou adresu.",
+  "emailCampaignsTestSendRecipients": "Příjemci",
+  "emailCampaignsTestSendRecipientsLabel": "Příjemci testu",
+  "emailCampaignsTestSendRemoveRecipient": "Odebrat {email}",
+  "emailCampaignsTestSendSent": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Odeslán {formattedCount} testovací e-mail ({languages}).",
+        "countPlural=few": "Odeslány {formattedCount} testovací e-maily ({languages}).",
+        "countPlural=other": "Odesláno {formattedCount} testovacích e-mailů ({languages})."
+      }
+    }
+  ],
+  "emailCampaignsTestSendSubmit": "Poslat test",
+  "emailCampaignsTestSendSubmitting": "Odesílání…",
+  "emailCampaignsTestSendTitle": "Poslat testovací e-mail",
+  "emailCampaignsTestSendUnsavedChanges": "Nejprve uložte změny. Test použije uloženou kampaň, takže jeho kód by vaše neuložené úpravy nepotvrdil."
+}

@@ -21,14 +21,14 @@ const flashThenLeave = `<!doctype html><title>old</title><button id="switch">swi
     const heading = document.createElement("h1");
     heading.textContent = ${JSON.stringify(errorTitle)};
     setTimeout(() => document.body.append(heading), 50);
-    setTimeout(() => location.assign("/cs-CZ/account?section=profile"), 300);
+    setTimeout(() => location.assign("/cs-CZ/account/profile"), 300);
   });
 </script>`;
 
 const leave = `<!doctype html><title>old</title><button id="switch">switch</button>
 <script>
   document.getElementById("switch").addEventListener("click", () => {
-    setTimeout(() => location.assign("/cs-CZ/account?section=profile"), 300);
+    setTimeout(() => location.assign("/cs-CZ/account/profile"), 300);
   });
 </script>`;
 
@@ -67,6 +67,7 @@ const pages: Record<string, string> = {
   "/en-US/account": flashThenLeave,
   "/en-US/account/clean": leave,
   "/cs-CZ/account": "<!doctype html><title>new</title><p>profile</p>",
+  "/cs-CZ/account/profile": "<!doctype html><title>new</title><p>profile</p>",
   "/cs-CZ/account/broken": `<!doctype html><title>new</title><h1>${errorTitle}</h1>`,
 };
 
@@ -118,7 +119,7 @@ const readRecord = (page: Page) =>
 
 const switchAndLand = async (page: Page) => {
   await page.click("#switch");
-  await page.waitForURL((url) => url.pathname === "/cs-CZ/account");
+  await page.waitForURL((url) => url.pathname === "/cs-CZ/account/profile");
 };
 
 test.skipIf(!chromiumAvailable)(

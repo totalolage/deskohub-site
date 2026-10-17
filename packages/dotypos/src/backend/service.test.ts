@@ -5,6 +5,7 @@ import {
   Fiber,
   Layer,
   Logger,
+  Option,
   Predicate,
   References,
   Schema,
@@ -22,6 +23,7 @@ import type {
   Reservation,
   Table,
 } from "../generated/effect.gen";
+import { DotyposTimestampSchema } from "../timestamp";
 import {
   DotyposCategorySchema,
   DotyposCustomerIdSchema,
@@ -33,7 +35,7 @@ import {
   DotyposTableSchema,
 } from "../types";
 import { DotyposAccessToken, DotyposGeneratedClient } from "./api";
-import { DotyposService } from "./service";
+import { CustomerVersionSelection, DotyposService } from "./service";
 
 const adaAddress = testEmailAddress("ada");
 const mixedCaseAdaAddress = testEmailAddress("Ada");
@@ -1524,6 +1526,196 @@ describe("DotyposService customer lookup", () => {
           getUrl(call as FetchCall).includes("/customers")
       )
     ).toBe(false);
+  });
+});
+
+describe("DotyposService customer changes", () => {
+  const changedSince = DotyposTimestampSchema.make(BigInt("1759320000123456"));
+  const createdFrom = DotyposTimestampSchema.make(BigInt("1759310000000001"));
+
+  const customerListRequests = (fetchMock: { mock: { calls: unknown[][] } }) =>
+    fetchMock.mock.calls
+      .map((call) => new URL(getUrl(call as FetchCall)))
+      .filter((url) => url.pathname === "/clouds/cloud-id/customers");
+
+  test.each([
+    {
+      selection: CustomerVersionSelection.Dated(),
+      filter: "deleted|in|0,1;versionDate|eq|notnull",
+      sort: "versionDate",
+    },
+    {
+      selection: CustomerVersionSelection.ChangedFrom({
+        versionDate: changedSince,
+      }),
+      filter: "deleted|in|0,1;versionDate|gteq|2025-10-01T12:00:00.123456Z",
+      sort: "versionDate",
+    },
+    {
+      selection: CustomerVersionSelection.ChangedAfter({
+        versionDate: changedSince,
+      }),
+      filter: "deleted|in|0,1;versionDate|gt|2025-10-01T12:00:00.123456Z",
+      sort: "versionDate",
+    },
+    {
+      selection: CustomerVersionSelection.ChangedAt({
+        versionDate: changedSince,
+        createdFrom: Option.none(),
+      }),
+      filter: "deleted|in|0,1;versionDate|eq|2025-10-01T12:00:00.123456Z",
+      sort: "created",
+    },
+    {
+      selection: CustomerVersionSelection.ChangedAt({
+        versionDate: changedSince,
+        createdFrom: Option.some(createdFrom),
+      }),
+      filter:
+        "deleted|in|0,1;versionDate|eq|2025-10-01T12:00:00.123456Z;created|gteq|2025-10-01T09:13:20.000001Z",
+      sort: "created",
+    },
+    {
+      selection: CustomerVersionSelection.Undated({
+        createdFrom: Option.none(),
+      }),
+      filter: "deleted|in|0,1;versionDate|eq|null",
+      sort: "created",
+    },
+    {
+      selection: CustomerVersionSelection.Undated({
+        createdFrom: Option.some(createdFrom),
+      }),
+      filter:
+        "deleted|in|0,1;versionDate|eq|null;created|gteq|2025-10-01T09:13:20.000001Z",
+      sort: "created",
+    },
+  ])(
+    "reads the first $selection._tag page with a single request and microsecond filters",
+    async ({ selection, filter, sort }) => {
+      const customers = [
+        customer({ id: "customer-1" }),
+        customer({ id: "customer-2", deleted: true }),
+      ];
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        return Response.json({
+          data: customers,
+          nextPage: "2",
+          totalItemsCount: "302",
+        });
+      });
+
+      const changes = await runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.listCustomerChanges({ selection });
+        }),
+        fetchMock
+      );
+
+      const requests = customerListRequests(fetchMock);
+      expect(requests).toHaveLength(1);
+      expect(Object.fromEntries(requests[0]?.searchParams ?? [])).toEqual({
+        filter,
+        sort,
+        limit: "100",
+        page: "1",
+      });
+      expect(changes).toEqual({ customers, hasMore: true });
+    }
+  );
+
+  test("keeps an explicitly null version date, as an absent one", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return Response.json({
+        data: [
+          customer({ id: "null-version", versionDate: null }),
+          customer({ id: "absent-version" }),
+        ],
+        nextPage: null,
+      });
+    });
+
+    const changes = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listCustomerChanges({
+          selection: CustomerVersionSelection.Undated({
+            createdFrom: Option.none(),
+          }),
+        });
+      }),
+      fetchMock
+    );
+
+    expect(changes.hasMore).toBe(false);
+    expect(changes.customers.map(({ versionDate }) => versionDate)).toEqual([
+      null,
+      undefined,
+    ]);
+  });
+
+  test("treats a page Dotypos answers with 404 as the end of the list", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return Response.json(
+        { error: "not_found", error_description: "Not found", code: 404 },
+        { status: 404 }
+      );
+    });
+
+    const changes = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listCustomerChanges({
+          selection: CustomerVersionSelection.ChangedAt({
+            versionDate: changedSince,
+            createdFrom: Option.none(),
+          }),
+        });
+      }),
+      fetchMock
+    );
+
+    expect(changes).toEqual({ customers: [], hasMore: false });
+  });
+
+  test("leaves a rejected or rate-limited read to the caller instead of retrying it", async () => {
+    for (const status of [400, 429]) {
+      const fetchMock = mockDotyposFetch((request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/signin/token") return tokenResponse();
+        return Response.json(
+          { error: "rejected", error_description: "Rejected", code: status },
+          { status }
+        );
+      });
+
+      const result = await runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos
+            .listCustomerChanges({
+              selection: CustomerVersionSelection.ChangedFrom({
+                versionDate: changedSince,
+              }),
+            })
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "ExternalAPIError", statusCode: status },
+      });
+      expect(customerListRequests(fetchMock)).toHaveLength(1);
+    }
   });
 });
 

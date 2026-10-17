@@ -179,7 +179,7 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
           workspaceE2ETimeouts.browserNavigation,
           sanitizedBrowserOperation("open the access-code admin page", () =>
             input.page
-              .goto(`${input.origin}/admin/access-codes`, {
+              .goto(`${input.origin}/en-US/admin/access-codes`, {
                 timeout: workspaceE2ETimeouts.browserNavigation,
               })
               .then(() => undefined)

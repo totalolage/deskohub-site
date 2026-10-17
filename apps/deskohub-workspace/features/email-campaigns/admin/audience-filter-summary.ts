@@ -1,11 +1,6 @@
 import type {
-  AudienceBooleanAttributeDefinition,
-  AudienceBooleanCondition,
-  AudienceChoiceOption,
-  AudienceCountAttributeDefinition,
   AudienceCountCondition,
   AudienceCountOperatorType,
-  AudienceDateAttributeDefinition,
   AudienceDateCondition,
   AudienceSetAttributeDefinition,
   AudienceSetCondition,
@@ -14,16 +9,26 @@ import type {
   ReservationProductPropertyCondition,
 } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
-import {
-  reservationProductFamilies,
-  reservationProductProperty,
-} from "@/features/reservation/reservation-product-descriptor";
+import { m } from "@/features/administration/i18n";
+import type { Locale } from "@/features/i18n";
+import { reservationProductProperty } from "@/features/reservation/reservation-product-descriptor";
 import {
   type AudienceFilter,
   audienceConditionsOf,
   viewAudienceCondition,
 } from "../audience-filter";
 import type { DatePeriod } from "../date-period";
+import {
+  type AudienceCountWording,
+  type AudienceDateWording,
+  type AudienceSetWording,
+  audienceAttributeWording,
+} from "./audiences/audience-attribute-wording";
+import {
+  reservationProductFamilyLabel,
+  reservationProductPropertyLabel,
+  reservationProductPropertyUnit,
+} from "./audiences/reservation-product-wording";
 import { describeDatePeriod } from "./date-period-phrases";
 
 /** A looked-up value an audience can filter by, such as a discount group. */
@@ -42,185 +47,186 @@ export type AudienceValueLookups = {
     | undefined;
 };
 
-type Noun = { readonly one: string; readonly other: string };
+type ListType = "conjunction" | "disjunction";
+
+/** Chosen values joined for a sentence; nothing chosen yet reads as a gap. */
+const joined = (
+  values: readonly string[],
+  type: ListType,
+  locale: Locale
+): string =>
+  values.length === 0
+    ? m.emailCampaignsAudienceSummaryGap({}, { locale })
+    : new Intl.ListFormat(locale, { type }).format(values);
+
+const quoted = (value: string, locale: Locale) =>
+  m.emailCampaignsAudienceSummaryQuoted({ value }, { locale });
+
+/**
+ * A literal count: "at least 3 emails", "fewer than 2 emails", "at most 0
+ * emails", …. `noun` inflects the counted noun for a count.
+ */
+const describeAmount = (
+  operator: AudienceCountOperatorType,
+  value: number,
+  noun: (count: number) => string,
+  locale: Locale
+): string =>
+  // A half-typed number reads as a gap until the operator finishes it.
+  Number.isInteger(value)
+    ? m.emailCampaignsAudienceSummaryAmount(
+        { operator, count: value, noun: noun(value), none: noun(0) },
+        { locale }
+      )
+    : m.emailCampaignsAudienceSummaryAmountPending(
+        { none: noun(0) },
+        { locale }
+      );
 
 /** Comparisons that read naturally: "no emails", "any emails". */
-const naturalCounts: Readonly<Record<string, "no" | "any">> = {
-  "eq 0": "no",
-  "lt 1": "no",
+const naturalCounts: Readonly<Record<string, "none" | "any">> = {
+  "eq 0": "none",
+  "lt 1": "none",
   "gt 0": "any",
   "gte 1": "any",
 };
 
-const comparisonWords: Readonly<Record<AudienceCountOperatorType, string>> = {
-  eq: "exactly",
-  ne: "other than",
-  lt: "fewer than",
-  lte: "at most",
-  gt: "more than",
-  gte: "at least",
-};
-
-/**
- * The count as it reads in a sentence: "no emails" for "= 0" and "< 1", "any
- * emails" for "> 0" and "≥ 1", otherwise literally: "at least 3 emails",
- * "fewer than 2 emails", "at most 0 emails", ….
- */
-export const describeCount = (
-  operator: AudienceCountOperatorType,
-  value: number,
-  noun: Noun
+/** One property condition of a product filter ("tier Reserved Desk"). */
+const describeProductProperty = (
+  family: ReservationProductFilterType["family"],
+  condition: ReservationProductPropertyCondition,
+  locale: Locale
 ): string => {
-  // A half-typed number reads as a gap until the operator finishes it.
-  if (!Number.isInteger(value)) return `… ${noun.other}`;
-  const natural = naturalCounts[`${operator} ${value}`];
-  if (natural) return `${natural} ${noun.other}`;
-  return `${comparisonWords[operator]} ${value} ${value === 1 ? noun.one : noun.other}`;
-};
-
-/** A product filter around "reservation": names before it, conditions after. */
-const productPhrases = (
-  product: ReservationProductFilterType | undefined
-): { readonly before: string; readonly after: string } => {
-  if (!product) return { before: "", after: "" };
-  const family = reservationProductFamilies[product.family].label.toLowerCase();
-  const names = (property: string, values: readonly string[]) => {
-    const descriptor = reservationProductProperty(product.family, property);
+  const options = { locale };
+  const property = reservationProductPropertyLabel(
+    family,
+    condition.property,
+    locale
+  ).toLocaleLowerCase(locale);
+  const names = (values: readonly string[], type: ListType) => {
+    const descriptor = reservationProductProperty(family, condition.property);
     return joined(
       values.map(
         (id) =>
           (descriptor?.kind === "enum" &&
-            descriptor.values
-              .find((value) => value.id === id)
-              ?.name("en-US")) ||
+            descriptor.values.find((value) => value.id === id)?.name(locale)) ||
           id
       ),
-      " or "
+      type,
+      locale
     );
   };
-  const label = (property: string) =>
-    (
-      reservationProductProperty(product.family, property)?.label ?? property
-    ).toLowerCase();
-  // The first "any of" names the product, as in "Reserved Desk cowork".
-  const leading = product.properties.find(
-    (
-      condition
-    ): condition is Extract<
-      ReservationProductPropertyCondition,
-      { readonly operator: "anyOf" | "noneOf" }
-    > => condition.operator === "anyOf"
-  );
-  const clauses = product.properties
-    .filter((condition) => condition !== leading)
-    .map((condition) =>
-      Match.value(condition).pipe(
-        Match.when(
-          { operator: "anyOf" },
-          ({ property, value }) =>
-            `${label(property)} ${names(property, value)}`
-        ),
-        Match.when(
-          { operator: "noneOf" },
-          ({ property, value }) =>
-            `${label(property)} other than ${names(property, value)}`
-        ),
-        Match.when({ operator: "is" }, ({ property, value }) =>
-          value ? label(property) : `no ${label(property)}`
-        ),
-        Match.when(
-          { operator: Match.is("eq", "ne", "lt", "lte", "gt", "gte") },
-          ({ property, operator, value }) => {
-            const descriptor = reservationProductProperty(
-              product.family,
-              property
-            );
-            return describeCount(
-              operator,
-              value,
-              descriptor?.kind === "number"
-                ? descriptor.unit
-                : { one: label(property), other: label(property) }
-            );
-          }
-        ),
-        Match.exhaustive
+  return Match.value(condition).pipe(
+    Match.when({ operator: "anyOf" }, ({ value }) =>
+      m.emailCampaignsAudienceSummaryProductAnyOf(
+        { property, values: names(value, "disjunction") },
+        options
       )
-    );
-  return {
-    before: `${leading ? `${names(leading.property, leading.value)} ` : ""}${family} `,
-    after: clauses.length === 0 ? "" : ` with ${clauses.join(" and ")}`,
-  };
+    ),
+    Match.when({ operator: "noneOf" }, ({ value }) =>
+      m.emailCampaignsAudienceSummaryProductNoneOf(
+        { property, values: names(value, "conjunction") },
+        options
+      )
+    ),
+    Match.when({ operator: "is" }, ({ value }) =>
+      value
+        ? m.emailCampaignsAudienceSummaryProductEnabled({ property }, options)
+        : m.emailCampaignsAudienceSummaryProductDisabled({ property }, options)
+    ),
+    Match.when(
+      { operator: Match.is("eq", "ne", "lt", "lte", "gt", "gte") },
+      ({ operator, value }) =>
+        describeAmount(
+          operator,
+          value,
+          (count) =>
+            reservationProductPropertyUnit(
+              family,
+              condition.property,
+              count,
+              locale
+            ),
+          locale
+        )
+    ),
+    Match.exhaustive
+  );
 };
 
-const withArticle = (phrase: string) =>
-  `${/^[aeiou]/i.test(phrase) ? "an" : "a"} ${phrase}`;
-
-/** The period after a verb, or nothing for any time. */
-const periodSuffix = (verb: string, period: DatePeriod) =>
-  period._tag === "AnyTime" ? "" : ` ${verb}${describeDatePeriod(period)}`;
-
-/** Chosen values joined for a sentence; nothing chosen yet reads as a gap. */
-const joined = (values: readonly string[], joiner: string) =>
-  values.length === 0 ? "…" : values.join(joiner);
+/**
+ * A product filter after the reservation it narrows, with a leading space:
+ * " for cowork with tier Reserved Desk and coffee", or nothing.
+ */
+const describeProduct = (
+  product: ReservationProductFilterType | undefined,
+  locale: Locale
+): string => {
+  if (!product) return "";
+  const family = reservationProductFamilyLabel(
+    product.family,
+    locale
+  ).toLocaleLowerCase(locale);
+  const details = product.properties.map((condition) =>
+    describeProductProperty(product.family, condition, locale)
+  );
+  const phrase =
+    details.length === 0
+      ? m.emailCampaignsAudienceSummaryProduct({ family }, { locale })
+      : m.emailCampaignsAudienceSummaryProductWith(
+          { family, details: joined(details, "conjunction", locale) },
+          { locale }
+        );
+  return ` ${phrase}`;
+};
 
 /**
- * "have no booked Reserved Desk cowork reservations visiting in the last 30
- * days": the verb, the count, and the noun with each chosen parameter's and
- * the product's words around it, then the period.
+ * "have no booked reservations for cowork visiting in the last 30 days": the
+ * attribute's wording around the count, the counted noun with its product,
+ * and the period.
  */
 export const describeCountCondition = (
-  entry: AudienceCountAttributeDefinition,
-  { params, operator, value }: AudienceCountCondition
+  { params, operator, value }: AudienceCountCondition,
+  wording: AudienceCountWording,
+  locale: Locale
 ): string => {
-  const chosen = Object.entries(entry.params).flatMap(
-    ([key, param]): readonly AudienceChoiceOption[] => {
-      if (param.part !== "choice") return [];
-      const option =
-        Object.entries(param.options).find(
-          ([value]) => value === params[key]
-        )?.[1] ?? param.absent;
-      return option ? [option] : [];
-    }
+  const product = describeProduct(params.product, locale);
+  const noun = (count: number) => wording.summary.noun(params, count, product);
+  const period =
+    params.period._tag === "AnyTime"
+      ? ""
+      : ` ${wording.summary.period(params, describeDatePeriod(params.period, locale))}`;
+  const natural = naturalCounts[`${operator} ${value}`];
+  if (natural) {
+    return wording.summary[natural]({ single: noun(1), none: noun(0), period });
+  }
+  return wording.summary.amount(
+    describeAmount(operator, value, noun, locale),
+    period
   );
-  const product = productPhrases(params.product);
-  const before = `${chosen.map(({ nounBefore = "" }) => nounBefore).join("")}${product.before}`;
-  const after = `${chosen.map(({ nounAfter = "" }) => nounAfter).join("")}${product.after}`;
-  const periodVerb = chosen.map(({ periodVerb = "" }) => periodVerb).join("");
-  return `${entry.summary.verb} ${describeCount(operator, value, {
-    one: `${before}${entry.summary.noun.one}${after}`,
-    other: `${before}${entry.summary.noun.other}${after}`,
-  })}${periodSuffix(periodVerb, params.period)}`;
 };
 
 /**
  * "last visited in the last 30 days", "have visited, with the last visit not
- * …", "have never visited": the entry's wording, with a reservation product
- * after its verb.
+ * …", "have never visited": the attribute's wording, with a reservation
+ * product after its verb.
  */
 const describeDateCondition = (
-  { summary }: AudienceDateAttributeDefinition,
-  condition: AudienceDateCondition
+  condition: AudienceDateCondition,
+  { summary }: AudienceDateWording,
+  locale: Locale
 ): string => {
-  const product = condition.params && productPhrases(condition.params.product);
-  const reservation = product
-    ? ` for ${withArticle(`${product.before}reservation${product.after}`)}`
-    : "";
+  const product = describeProduct(condition.params?.product, locale);
   return Match.value(condition).pipe(
     Match.when({ operator: "in" }, ({ value }) =>
       value._tag === "AnyTime"
-        ? `${summary.withValue}${reservation}`
-        : `${summary.inPeriod}${reservation} ${describeDatePeriod(value)}`
+        ? summary.ever(product)
+        : summary.inPeriod(product, describeDatePeriod(value, locale))
     ),
-    Match.when(
-      { operator: "notIn" },
-      ({ value }) =>
-        `${summary.withValue}${reservation}${summary.notInPeriod} ${describeDatePeriod(value)}`
+    Match.when({ operator: "notIn" }, ({ value }) =>
+      summary.notInPeriod(product, describeDatePeriod(value, locale))
     ),
-    Match.when(
-      { operator: "none" },
-      () => `${summary.withoutValue}${reservation}`
-    ),
+    Match.when({ operator: "none" }, () => summary.never(product)),
     Match.exhaustive
   );
 };
@@ -230,62 +236,91 @@ const describeDateCondition = (
  * discount group “Staff”": the operator's wording and the values by name.
  */
 const describeSetCondition = (
-  { values, summary }: AudienceSetAttributeDefinition,
+  { values }: AudienceSetAttributeDefinition,
   { operator, value }: AudienceSetCondition,
-  lookups: AudienceValueLookups
+  wording: AudienceSetWording,
+  lookups: AudienceValueLookups,
+  locale: Locale
 ): string => {
   const names = value.map((chosen) =>
     Match.value(values).pipe(
       Match.tagsExhaustive({
-        Options: ({ options }) => options[chosen]?.name ?? chosen,
-        FreeText: () => `“${chosen}”`,
+        Options: () =>
+          (wording.values._tag === "Options" &&
+            wording.values.options[chosen]?.name) ||
+          chosen,
+        FreeText: () => quoted(chosen, locale),
         Lookup: ({ lookup }) => {
           const option = lookups[lookup]?.find(({ id }) => id === chosen);
-          return option ? `“${option.name}”` : chosen;
+          return option ? quoted(option.name, locale) : chosen;
         },
       })
     )
   );
-  return `${summary[operator] ?? operator} ${joined(names, operator === "allOf" ? " and " : " or ")}`;
+  const list = joined(
+    names,
+    operator === "allOf" ? "conjunction" : "disjunction",
+    locale
+  );
+  return wording.summary[operator]?.(list) ?? list;
 };
-
-const describeBooleanCondition = (
-  { summary }: AudienceBooleanAttributeDefinition,
-  { value }: AudienceBooleanCondition
-): string => (value ? summary.true : summary.false);
 
 /** What a customer must satisfy, as a plural predicate ("speak Czech and …"). */
 const describeCondition = (
   condition: Parameters<typeof viewAudienceCondition>[0],
-  lookups: AudienceValueLookups
-): string =>
-  Match.value(viewAudienceCondition(condition)).pipe(
+  lookups: AudienceValueLookups,
+  locale: Locale
+): string => {
+  const wording = audienceAttributeWording(condition.attribute, locale);
+  return Match.value(viewAudienceCondition(condition)).pipe(
     Match.discriminatorsExhaustive("kind")({
-      count: ({ entry, condition: count }) =>
-        describeCountCondition(entry, count),
-      date: ({ entry, condition: date }) => describeDateCondition(entry, date),
+      count: ({ condition: count }) =>
+        wording?.kind === "count"
+          ? describeCountCondition(count, wording, locale)
+          : condition.attribute,
+      date: ({ condition: date }) =>
+        wording?.kind === "date"
+          ? describeDateCondition(date, wording, locale)
+          : condition.attribute,
       set: ({ entry, condition: set }) =>
-        describeSetCondition(entry, set, lookups),
-      boolean: ({ entry, condition: boolean }) =>
-        describeBooleanCondition(entry, boolean),
+        wording?.kind === "set"
+          ? describeSetCondition(entry, set, wording, lookups, locale)
+          : condition.attribute,
+      boolean: ({ condition: boolean }) =>
+        wording?.kind === "boolean"
+          ? wording.summary[boolean.value ? "true" : "false"]
+          : condition.attribute,
     })
   );
+};
 
 const describeFilter = (
   filter: AudienceFilter,
-  lookups: AudienceValueLookups
+  lookups: AudienceValueLookups,
+  locale: Locale
 ): string => {
-  if (filter._tag !== "Group") return describeCondition(filter, lookups);
+  const options = { locale };
+  if (filter._tag !== "Group")
+    return describeCondition(filter, lookups, locale);
   if (filter.filters.length === 0) {
-    return filter.operator === "and" ? "match anything" : "match nothing";
+    return filter.operator === "and"
+      ? m.emailCampaignsAudienceSummaryMatchAnything({}, options)
+      : m.emailCampaignsAudienceSummaryMatchNothing({}, options);
   }
+  const join =
+    filter.operator === "and"
+      ? m.emailCampaignsAudienceSummaryAnd
+      : m.emailCampaignsAudienceSummaryOr;
   return filter.filters
     .map((child) =>
       child._tag === "Group" && child.filters.length > 1
-        ? `(${describeFilter(child, lookups)})`
-        : describeFilter(child, lookups)
+        ? m.emailCampaignsAudienceSummaryGroup(
+            { filter: describeFilter(child, lookups, locale) },
+            options
+          )
+        : describeFilter(child, lookups, locale)
     )
-    .join(filter.operator === "and" ? " and " : " or ");
+    .reduce((left, right) => join({ left, right }, options));
 };
 
 const endsAtEvaluation = (period: DatePeriod) =>
@@ -310,18 +345,23 @@ export const hasPeriodEndingAtEvaluation = (filter: AudienceFilter): boolean =>
   );
 
 /**
- * One sentence of plain English for an audience filter tree. Looked-up
+ * One plain sentence in `locale` for an audience filter tree. Looked-up
  * values, such as discount groups, show by name when `lookups` lists them,
  * otherwise by ID.
  */
 export const describeAudienceFilter = (
   filter: AudienceFilter,
+  locale: Locale,
   lookups: AudienceValueLookups = {}
 ): string => {
+  const options = { locale };
   if (filter._tag === "Group" && filter.filters.length === 0) {
     return filter.operator === "and"
-      ? "Every customer Workspace knows"
-      : "Nobody";
+      ? m.emailCampaignsAudienceSummaryEveryone({}, options)
+      : m.emailCampaignsAudienceSummaryNobody({}, options);
   }
-  return `Customers who ${describeFilter(filter, lookups)}`;
+  return m.emailCampaignsAudienceSummaryCustomersWho(
+    { predicate: describeFilter(filter, lookups, locale) },
+    options
+  );
 };

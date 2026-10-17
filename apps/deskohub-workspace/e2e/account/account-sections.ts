@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { Effect } from "effect";
-import type { AccountSection } from "@/features/account/components/shell/account-shell";
+import type { AccountSection } from "@/features/account/sections";
 import {
   clickBrowserElement,
   evalBrowserScript,
@@ -13,12 +13,14 @@ import { workspaceE2ETimeouts } from "../timeouts";
 
 const accountNavigationLabel = "Account navigation";
 const desktopBreakpoint = 768;
+const accountSectionDataAttribute = "data-account-section";
 const accountMobileNavigationSelector = `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] [data-account-mobile-navigation]`;
 
 export const accountSectionLabels = {
   reservations: "Reservations",
   referrals: "Referrals",
   profile: "Profile & Identity",
+  security: "Sign-in & security",
   billing: "Billing & Invoices",
   legal: "Legal & Privacy",
   danger: "Danger zone",
@@ -33,12 +35,14 @@ export const accountSectionLandmarks = {
   reservations: "#account-reservations-past-title",
   referrals: "[data-screen='referrals-screen']",
   profile: "[data-screen='profile-screen']",
+  security: "#account-security-passkeys-title",
   billing: "#account-profile-billing-kind",
   legal: "main a[href$='/privacy-policy']",
   danger: "#delete-account-trigger",
 } as const satisfies Readonly<Record<AccountSection, string>>;
 
 type AccountSectionWaitInput = {
+  readonly accountSectionDataAttribute: string;
   readonly desktop: boolean | null;
   readonly landmark: string;
   readonly label: string;
@@ -53,12 +57,13 @@ export type AccountSectionPage = Pick<
 >;
 
 export type AccountSectionSelectionStage =
-  | "button-handler-wait"
+  | "link-handler-wait"
   | "panel-hydration-wait"
-  | "native-button-click"
+  | "native-link-click"
   | "selected-landmark-wait";
 
 const accountSectionIsReady = ({
+  accountSectionDataAttribute,
   desktop,
   landmark,
   label,
@@ -91,30 +96,30 @@ const accountSectionIsReady = ({
       : desktop;
 
   if (responsiveDesktop) {
-    const selectedButton = Array.from(
-      document.querySelectorAll<HTMLButtonElement>(
-        `nav[aria-label=${JSON.stringify(navigationLabel)}] button[aria-current="page"]`
+    const selectedLink = Array.from(
+      document.querySelectorAll<HTMLAnchorElement>(
+        `nav[aria-label=${JSON.stringify(navigationLabel)}] a[aria-current="page"]`
       )
-    ).find((button) => {
-      if (!isVisible(button)) return false;
+    ).find((link) => {
+      if (!isVisible(link)) return false;
       const primaryLabel =
-        button
+        link
           .querySelector("span")
           ?.textContent?.replaceAll(/\s+/g, " ")
           .trim() ?? "";
       return primaryLabel === label;
     });
-    return selectedButton !== undefined && isVisible(selectedButton);
+    return selectedLink !== undefined && isVisible(selectedLink);
   }
 
-  const selectedButtons = Array.from(
-    document.querySelectorAll<HTMLButtonElement>(
-      `${mobileNavigationSelector} button[data-account-section=${JSON.stringify(section)}][aria-current="page"]`
+  const selectedLinks = Array.from(
+    document.querySelectorAll<HTMLAnchorElement>(
+      `${mobileNavigationSelector} a[${accountSectionDataAttribute}=${JSON.stringify(section)}][aria-current="page"]`
     )
   ).filter(isVisible);
   return (
-    selectedButtons.length === 1 &&
-    selectedButtons[0]?.textContent?.replaceAll(/\s+/g, " ").trim() === label
+    selectedLinks.length === 1 &&
+    selectedLinks[0]?.textContent?.replaceAll(/\s+/g, " ").trim() === label
   );
 };
 
@@ -134,6 +139,7 @@ const makeAccountSectionWaitInput = (
 ): AccountSectionWaitInput => {
   const navigationLabel = copy?.navigationLabel ?? accountNavigationLabel;
   return {
+    accountSectionDataAttribute,
     desktop,
     landmark: accountSectionLandmarks[section],
     label: copy?.label ?? accountSectionLabels[section],
@@ -175,15 +181,16 @@ const accountSectionHydrationAnchors: Readonly<
   reservations: accountSectionLandmarks.reservations,
   referrals: accountSectionLandmarks.referrals,
   profile: accountSectionLandmarks.profile,
+  security: accountSectionLandmarks.security,
   billing: accountSectionLandmarks.profile,
   danger: accountSectionLandmarks.danger,
 };
 
-const accountSectionButtonSelector = (section: AccountSection) =>
-  `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] button:not([data-account-section]):has-text(${JSON.stringify(accountSectionLabels[section])})`;
+const accountSectionLinkSelector = (section: AccountSection) =>
+  `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] a:not([data-account-section]):has-text(${JSON.stringify(accountSectionLabels[section])})`;
 
-const accountMobileSectionButtonSelector = (section: AccountSection) =>
-  `${accountMobileNavigationSelector} button[data-account-section=${JSON.stringify(section)}]`;
+const accountMobileSectionLinkSelector = (section: AccountSection) =>
+  `${accountMobileNavigationSelector} a[${accountSectionDataAttribute}=${JSON.stringify(section)}]`;
 
 const readDesktopMode = (
   run: Runner,
@@ -207,6 +214,33 @@ const readDesktopMode = (
     )
   );
 
+/**
+ * Sections the account navigation shows only while their feature flag is on:
+ * "Sign-in & security" follows `login_passkeys`.
+ */
+export const flagGatedAccountSections: readonly AccountSection[] = ["security"];
+
+/**
+ * Whether the hydrated desktop account navigation offers the section. A
+ * caller that walks every section skips a flag-gated one that is hidden.
+ */
+export const isAccountSectionOffered = (
+  page: Pick<Page, "evaluate">,
+  section: AccountSection
+): Promise<boolean> =>
+  page.evaluate(
+    ({ label, navigationLabel }) =>
+      Array.from(
+        document.querySelectorAll(
+          `nav[aria-label=${JSON.stringify(navigationLabel)}] a:not([data-account-section])`
+        )
+      ).some((link) => link.textContent?.includes(label) === true),
+    {
+      label: accountSectionLabels[section],
+      navigationLabel: accountNavigationLabel,
+    }
+  );
+
 export const selectAccountSection = async (
   page: AccountSectionPage,
   section: AccountSection,
@@ -214,13 +248,13 @@ export const selectAccountSection = async (
 ): Promise<void> => {
   const timeout = workspaceE2ETimeouts.browserAction;
   const label = accountSectionLabels[section];
-  const sectionButton = page.getByRole("button", {
+  const sectionLink = page.getByRole("link", {
     exact: false,
     name: label,
   });
 
-  onStage?.("button-handler-wait");
-  await waitForReactClickHandler(page, sectionButton);
+  onStage?.("link-handler-wait");
+  await waitForReactClickHandler(page, sectionLink);
 
   const hydrationAnchor = accountSectionHydrationAnchors[section];
   if (hydrationAnchor !== undefined) {
@@ -230,8 +264,8 @@ export const selectAccountSection = async (
     });
   }
 
-  onStage?.("native-button-click");
-  await sectionButton.click({ timeout });
+  onStage?.("native-link-click");
+  await sectionLink.click({ timeout });
 
   onStage?.("selected-landmark-wait");
   await waitForSelectedAccountSection(page, section);
@@ -279,14 +313,14 @@ export const selectAccountSectionInRunner = (
       yield* clickBrowserElement(
         run,
         session,
-        accountSectionButtonSelector(section),
+        accountSectionLinkSelector(section),
         { timeoutMs: workspaceE2ETimeouts.browserAction }
       );
     } else {
       yield* clickBrowserElement(
         run,
         session,
-        accountMobileSectionButtonSelector(section),
+        accountMobileSectionLinkSelector(section),
         {
           timeoutMs: workspaceE2ETimeouts.browserAction,
         }

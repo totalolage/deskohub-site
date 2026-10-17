@@ -1,4 +1,8 @@
 import type { Page, Route } from "@playwright/test";
+import {
+  getAccountPath,
+  getAccountSectionPath,
+} from "@/features/account/routes";
 import { type Locale, locales, m } from "@/features/i18n";
 import {
   type WorkspaceE2EAccountLocaleSwitchDiagnosticCode,
@@ -13,8 +17,8 @@ import {
   waitForSelectedAccountSection,
 } from "./account-sections";
 
-const accountSuffix = "/account";
-const profileSearch = "?section=profile";
+const accountProfilePath = (locale: Locale) =>
+  getAccountSectionPath(locale, "profile");
 const languageTriggerSelector = `${accountSectionLandmarks.profile} [data-slot="select-trigger"]`;
 const languageOptionLabels = {
   "cs-CZ": "Čeština",
@@ -85,8 +89,8 @@ const holdLocaleSwitchResponses = async (
   to: Locale
 ): Promise<() => Promise<void>> => {
   const matches = (url: URL) =>
-    url.pathname === `/${from}${accountSuffix}` ||
-    url.pathname === `/${to}${accountSuffix}`;
+    url.pathname === accountProfilePath(from) ||
+    url.pathname === accountProfilePath(to);
   const hold = async (route: Route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
@@ -94,7 +98,7 @@ const holdLocaleSwitchResponses = async (
       request.method() === "POST" &&
       (await request.headerValue("next-action")) !== null;
     const isNewDocument =
-      request.isNavigationRequest() && pathname === `/${to}${accountSuffix}`;
+      request.isNavigationRequest() && pathname === accountProfilePath(to);
     if (isSave || isNewDocument) {
       await new Promise((resolve) =>
         setTimeout(resolve, workspaceE2ETimeouts.localeSwitchHeldResponse)
@@ -210,9 +214,7 @@ const verifyLocaleSwitch = async (
     let landingFailure: unknown;
     try {
       await page.waitForURL(
-        (url) =>
-          url.pathname === `/${to}${accountSuffix}` &&
-          url.search === profileSearch,
+        (url) => url.pathname === accountProfilePath(to) && url.search === "",
         { timeout: workspaceE2ETimeouts.browserNavigation }
       );
       await waitForSelectedAccountSection(page, "profile", profileCopy(to));
@@ -272,7 +274,7 @@ export async function verifyAccountLocaleSwitchTransition(
   // Every document the tab loads arms its own watch while the key is set.
   await page.addInitScript(watchLocaleSwitchErrorPage, errorPageWatch);
   try {
-    await page.goto(new URL(`/en-US${accountSuffix}`, baseUrl).toString(), {
+    await page.goto(new URL(getAccountPath("en-US"), baseUrl).toString(), {
       timeout: workspaceE2ETimeouts.browserNavigation,
     });
     await selectAccountSection(page, "profile");

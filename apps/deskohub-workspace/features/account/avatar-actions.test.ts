@@ -5,7 +5,9 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 import { CustomerAccountAccessError } from "./customer-account";
 
-const revalidatePath = mock((_path: string) => undefined);
+const revalidatePath = mock(
+  (_path: string, _type?: "layout" | "page") => undefined
+);
 mock.module("next/cache", () => ({ revalidatePath }));
 
 const requestHeaders = new Headers({ referer: "https://deskohub.test/en-US" });
@@ -26,10 +28,8 @@ mock.module("botid/server", () => ({
   checkBotId: () => Promise.resolve({ isBot: false }),
 }));
 
-const areAccountsEnabled = mock(() => Promise.resolve(true));
 const areAccountAvatarsEnabled = mock(() => Promise.resolve(true));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountsEnabled,
   areAccountAvatarsEnabled,
 }));
 
@@ -190,8 +190,6 @@ describe("customer avatar actions", () => {
     };
     removeOutcome = { status: "removed" };
     revalidatePath.mockClear();
-    areAccountsEnabled.mockReset();
-    areAccountsEnabled.mockResolvedValue(true);
     areAccountAvatarsEnabled.mockReset();
     areAccountAvatarsEnabled.mockResolvedValue(true);
     currentUser = Effect.succeed(activeSession);
@@ -224,7 +222,7 @@ describe("customer avatar actions", () => {
     expect(uploadCalls).toHaveLength(1);
     expect(uploadAccountIds).toEqual(["@test/account-id"]);
     expect(uploadCalls[0]!.bytes.byteLength).toBe(pngBytes().byteLength);
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
+    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account", "layout");
   });
 
   test("reports a typed rejection from the service without an action error", async () => {
@@ -292,21 +290,6 @@ describe("customer avatar actions", () => {
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
-  test("blocks avatar mutations when accounts are disabled", async () => {
-    areAccountsEnabled.mockResolvedValue(false);
-    const { uploadCustomerAvatar, removeCustomerAvatar } =
-      await importActions();
-
-    const uploadResult = await uploadCustomerAvatar(uploadForm());
-    const removeResult = await removeCustomerAvatar();
-
-    expect(uploadResult.serverError).toBeTruthy();
-    expect(removeResult.serverError).toBeTruthy();
-    expect(areAccountAvatarsEnabled).not.toHaveBeenCalled();
-    expect(uploadCalls).toHaveLength(0);
-    expect(removeCalls).toHaveLength(0);
-  });
-
   test("rejects direct upload and removal before resolution or media work when avatars are disabled", async () => {
     areAccountAvatarsEnabled.mockResolvedValue(false);
     const form = uploadForm();
@@ -327,7 +310,6 @@ describe("customer avatar actions", () => {
       "We cannot reach your account right now. Reservations can still be made without an account.";
     expect(uploadResult.serverError).toBe(unavailableMessage);
     expect(removeResult.serverError).toBe(unavailableMessage);
-    expect(areAccountsEnabled).toHaveBeenCalledTimes(2);
     expect(areAccountAvatarsEnabled).toHaveBeenCalledTimes(2);
     expect(resolverCalls).toBe(0);
     expect(arrayBuffer).not.toHaveBeenCalled();
@@ -369,7 +351,7 @@ describe("customer avatar actions", () => {
 
     expect(result).toEqual({ data: { status: "removed" } });
     expect(removeCalls).toEqual(["@test/account-id"]);
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
+    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account", "layout");
   });
 
   test("reports an uncertain removal as retryable", async () => {

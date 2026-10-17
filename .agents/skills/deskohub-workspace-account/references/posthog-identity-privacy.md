@@ -111,6 +111,9 @@ non-production traffic apart:
 - Person properties never include email, name, phone, billing, reservation
   IDs, or raw auth data. The signed-in account's `dotypos_customer_id` is the
   only customer identifier allowed. Don't alias a browser to a reservation.
+  Customer contact data reaches PostHog only as rows of the Dotypos customer
+  warehouse table (see below), joined to persons at query time, never as
+  person or event properties.
 - Guest checkouts create or reuse a Dotypos customer found by the entered
   email, so a guest browser isn't linked to it: anyone can type another
   customer's email, and linking would need a person profile for an
@@ -121,8 +124,9 @@ non-production traffic apart:
   Consented request events use the browser's `distinct_id` and `$session_id`.
   Webhooks can't join a browser without an approved persisted consent link.
 - Sign-in analytics live in `features/account/sign-in-analytics.ts`:
-  `sign-in completed` with `method: "link" | "code"` and `sign-in code
-  rejected` with `reason`. PostHog drops events until the new account identity
+  `sign-in completed` with `method: "link" | "code" | "passkey"`, `sign-in
+  code rejected` with `reason`, `passkey added` with `source: "prompt" |
+  "settings"`, `passkey removed`, and `passkey prompt dismissed`. PostHog drops events until the new account identity
   settles on the next page, so a finished sign-in is recorded in the tab's
   sessionStorage (only with analytics consent) and captured from the PostHog
   ready handler once the identity is authenticated. Never add the email or
@@ -157,12 +161,33 @@ hostname matches the app hostname (on any port), or the ingest URL is
 relative, same-origin, non-HTTP(S), or has userinfo. Keep the public UI
 working instead of throwing, and never fall back to a same-host proxy.
 
+## Dotypos customer warehouse source
+
+PostHog's Custom REST source pulls an allowlisted set of Dotypos customer
+fields, including contact data, from a production-only Workspace route into a
+`custom.dotypos_customers` warehouse table. Analysts join it to persons on
+`properties.dotypos_customer_id`. The legal basis is legitimate interest, so
+it covers every Dotypos customer regardless of cookie consent; the privacy
+policy (`features/legal/content.tsx`, both locales) discloses the fields and
+the right to object. Deleted customers stay as rows with `deleted: true`, and
+PostHog's settings govern retention, as for other analytics data.
+Staff can record an objection with the Dotypos `no-analytics` tag, which
+blanks the row and marks it deleted on the next sync.
+
+- The response schema is the field allowlist. Adding a field needs the user's
+  approval and a matching privacy-policy change.
+- Customer data passes through request memory only: never store, cache, or log
+  it in Workspace, Neon, or a bucket.
+- Contract, access, and PostHog setup live in the `deskohub-dotypos` skill's
+  [PostHog customer source](../../deskohub-dotypos/references/posthog-customer-source.md)
+  reference.
+
 ## Not part of this integration
 
-- No auth or user database connector, warehouse sync, connector credentials,
-  or bulk export. A default Postgres sync would export auth PII and secrets. A
-  future export needs an approved purpose, property list, retention rule, and
-  root policy first.
+- No auth or user database connector, other warehouse sync, or bulk export. A
+  default Postgres sync would export auth PII and secrets. Any further export
+  needs an approved purpose, property list, retention rule, and root policy
+  first.
 - Don't enable `ensure_experience_continuity`, change `person_profiles` from
   `identified_only`, or add device bucketing without a root decision.
   Changing the distinct ID can move a percentage-rollout bucket, so keep

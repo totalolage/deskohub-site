@@ -57,9 +57,10 @@ import {
 } from "./email-campaign-case";
 
 const emailCampaignPreviewCaseId = "email-campaign-recipient-preview";
-const savedAudiencePath = /^\/admin\/email-audiences\/(?!new$)[^/]+$/;
-const savedCampaignPath = /^\/admin\/email-campaigns\/(?!new$)[^/]+$/;
-const recipientPreviewPath = /^\/admin\/email-campaigns\/[^/]+\/recipients$/;
+const savedAudiencePath = /^\/en-US\/admin\/email-audiences\/(?!new$)[^/]+$/;
+const savedCampaignPath = /^\/en-US\/admin\/email-campaigns\/(?!new$)[^/]+$/;
+const recipientPreviewPath =
+  /^\/en-US\/admin\/email-campaigns\/[^/]+\/recipients$/;
 
 test("previews the tagged synthetic customer as a draft marketing campaign recipient", async ({
   baseURL,
@@ -268,7 +269,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           workspaceE2ETimeouts.browserNavigation,
           "open the new audience admin page",
           () =>
-            page.goto(`${input.origin}/admin/email-audiences/new`, {
+            page.goto(`${input.origin}/en-US/admin/email-audiences/new`, {
               timeout: workspaceE2ETimeouts.browserNavigation,
             })
         );
@@ -374,7 +375,7 @@ const runEmailCampaignPreviewCase = Effect.fn("runEmailCampaignPreviewCase")(
           workspaceE2ETimeouts.browserNavigation,
           "open the new campaign admin page",
           () =>
-            page.goto(`${input.origin}/admin/email-campaigns/new`, {
+            page.goto(`${input.origin}/en-US/admin/email-campaigns/new`, {
               timeout: workspaceE2ETimeouts.browserNavigation,
             })
         );

@@ -15,19 +15,6 @@ type LogRecord = {
   >;
 };
 
-const readAccountFlag = (
-  isEnabled: (
-    key: PostHogFeatureFlagKey
-  ) => Effect.Effect<boolean, PostHogFeatureFlagEvaluationError>
-) =>
-  Effect.gen(function* () {
-    const featureFlag = yield* AccountFeatureFlagService;
-    return yield* featureFlag.isEnabled;
-  }).pipe(
-    Effect.provide(AccountFeatureFlagService.Default),
-    Effect.provide(WorkspaceFeatureFlagServiceMock({ isEnabled }))
-  );
-
 const captureLogger = (records: LogRecord[]) =>
   Logger.make((options) => {
     records.push({
@@ -38,32 +25,6 @@ const captureLogger = (records: LogRecord[]) =>
   });
 
 describe("AccountFeatureFlagService", () => {
-  test("fails closed and logs a fixed warning when provider evaluation fails", async () => {
-    const isEnabled = mock(() =>
-      Effect.fail(
-        new PostHogFeatureFlagEvaluationError({
-          message: "Account feature flag evaluation failed.",
-          cause: new Error("private provider detail"),
-        })
-      )
-    );
-    const logRecords: LogRecord[] = [];
-
-    const enabled = await readAccountFlag(isEnabled).pipe(
-      Effect.provide(Logger.layer([captureLogger(logRecords)])),
-      Effect.runPromise
-    );
-
-    expect(enabled).toBe(false);
-    expect(isEnabled).toHaveBeenCalledWith("accounts");
-    expect(logRecords).toContainEqual({
-      level: "Warn",
-      message: "Account feature flag evaluation unavailable",
-      annotations: expect.anything(),
-    });
-    expect(JSON.stringify(logRecords)).not.toContain("private provider detail");
-  });
-
   const readSignInCodeFlag = (
     isEnabled: (
       key: PostHogFeatureFlagKey
@@ -106,6 +67,53 @@ describe("AccountFeatureFlagService", () => {
     expect(logRecords).toContainEqual({
       level: "Warn",
       message: "Sign-in code feature flag evaluation unavailable",
+      annotations: expect.anything(),
+    });
+    expect(JSON.stringify(logRecords)).not.toContain("private provider detail");
+  });
+
+  const readPasskeyFlag = (
+    isEnabled: (
+      key: PostHogFeatureFlagKey
+    ) => Effect.Effect<boolean, PostHogFeatureFlagEvaluationError>
+  ) =>
+    Effect.flatMap(
+      AccountFeatureFlagService,
+      (featureFlag) => featureFlag.isPasskeyEnabled
+    ).pipe(
+      Effect.provide(AccountFeatureFlagService.Default),
+      Effect.provide(WorkspaceFeatureFlagServiceMock({ isEnabled }))
+    );
+
+  test("reads login_passkeys and enables passkeys only for true", async () => {
+    const isEnabled = mock(() => Effect.succeed(true));
+
+    expect(await Effect.runPromise(readPasskeyFlag(isEnabled))).toBe(true);
+    expect(isEnabled).toHaveBeenCalledWith("login_passkeys");
+    expect(
+      await Effect.runPromise(readPasskeyFlag(() => Effect.succeed(false)))
+    ).toBe(false);
+  });
+
+  test("fails passkeys closed with a fixed warning when evaluation fails", async () => {
+    const logRecords: LogRecord[] = [];
+
+    const enabled = await readPasskeyFlag(() =>
+      Effect.fail(
+        new PostHogFeatureFlagEvaluationError({
+          message: "Passkey flag evaluation failed.",
+          cause: new Error("private provider detail"),
+        })
+      )
+    ).pipe(
+      Effect.provide(Logger.layer([captureLogger(logRecords)])),
+      Effect.runPromise
+    );
+
+    expect(enabled).toBe(false);
+    expect(logRecords).toContainEqual({
+      level: "Warn",
+      message: "Passkey feature flag evaluation unavailable",
       annotations: expect.anything(),
     });
     expect(JSON.stringify(logRecords)).not.toContain("private provider detail");

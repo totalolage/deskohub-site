@@ -21,6 +21,8 @@ const languageLabels = {
 };
 const languageSwitcherLabel = m.languageSwitcherLabel({}, { locale });
 const administrator = mountPoint.dataset.administrator === "true";
+const signedIn = mountPoint.dataset.session === "signed-in";
+const signInHref = `/${locale}/auth/sign-in`;
 
 // The full header mirrors the production menu so it is measured at its widest.
 createRoot(mountPoint).render(
@@ -33,9 +35,9 @@ createRoot(mountPoint).render(
   ) : (
     <SiteHeader
       account={{
-        href: Promise.resolve(`/${locale}/account`),
+        href: Promise.resolve(signedIn ? `/${locale}/account` : signInHref),
         label: m.accountNavLabel({}, { locale }),
-        signInHref: `/${locale}/auth/sign-in`,
+        signInHref,
       }}
       administrator={{
         visible: Promise.resolve(administrator),
@@ -50,6 +52,10 @@ createRoot(mountPoint).render(
       currentLocale={locale}
       languageLabels={languageLabels}
       languageSwitcherLabel={languageSwitcherLabel}
+      localePreference={{
+        save: async () => undefined,
+        signedIn: Promise.resolve(signedIn),
+      }}
       links={[
         {
           id: "locationMap",

@@ -2,9 +2,13 @@ import "server-only";
 
 import { Effect, Layer, Result } from "effect";
 import { cache } from "react";
+import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { acceptAutoLinkedReferral } from "@/features/account/backend/auto-linked-referral";
 import { resolveCurrentCustomerAccount } from "@/features/account/backend/customer-account-resolver.service";
-import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
+import {
+  type CustomerAccountSession,
+  CustomerAuthentication,
+} from "@/features/account/backend/customer-authentication.service";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
 import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
@@ -16,8 +20,15 @@ import type {
   CustomerReservationHistory,
   ProfileCompletionReferralOutcome,
 } from "@/features/account/contracts";
-import type { LinkedCustomerAccount } from "@/features/account/customer-account";
-import { areAccountAvatarsEnabled } from "@/features/account/server/account-feature-flag.server";
+import type {
+  CustomerAccountId,
+  LinkedCustomerAccount,
+} from "@/features/account/customer-account";
+import type { AccountPasskeySettings } from "@/features/account/passkeys";
+import {
+  areAccountAvatarsEnabled,
+  arePasskeysEnabled,
+} from "@/features/account/server/account-feature-flag.server";
 import { ReferralService } from "@/features/referrals";
 import {
   getReferralShareUrl,
@@ -32,6 +43,15 @@ import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/works
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 /**
+ * Sign-in methods need only the session, so every signed-in state carries
+ * them, whether or not the Dotypos profile is available.
+ */
+type SignInMethods = {
+  /** The account's passkeys; absent while `login_passkeys` is off. */
+  readonly passkeys?: AccountPasskeySettings;
+};
+
+/**
  * The closed set of account page states. Every state is derived from the
  * authoritative Better Auth session and the Dotypos link, never from the
  * proxy or cookies.
@@ -39,38 +59,43 @@ import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 export type CustomerAccountPageState =
   | { readonly kind: "unavailable" }
   | { readonly kind: "unauthenticated" }
-  | { readonly kind: "authenticated-unavailable"; readonly email: string }
-  | {
-      readonly kind: "completion-required";
-      readonly email: string;
-      /** Whether the referral program is released and offers a code field. */
-      readonly referralsEnabled: boolean;
-      /** Invitation code to prefill, present only when currently usable. */
-      readonly referralCode?: ReferralCode;
-    }
-  | {
-      readonly kind: "linked";
-      readonly email: string;
-      readonly profile: CustomerProfile;
-      readonly avatar: CustomerAvatarPresentation;
-      readonly history: CustomerReservationHistory;
-      /** Whether the referral program is released and has a section. */
-      readonly referralsEnabled: boolean;
-      readonly referrals?: ReferralAccountOverview;
-      /**
-       * Outcome of retrying the code a profile completion could not record
-       * yet, present only on the visit that ran the retry. A definitive
-       * outcome removes the stored code, so it appears exactly once.
-       */
-      readonly signupReferral?: ProfileCompletionReferralOutcome;
-      /**
-       * Present when this browser remembers a referral code that the
-       * customer's settled referral has made moot, so the page forgets it.
-       */
-      readonly rememberedReferralCodeUsed?: true;
-    }
-  | { readonly kind: "support-required"; readonly email: string }
-  | { readonly kind: "deletion-pending"; readonly email: string };
+  | SignedInAccountPageState;
+
+type SignedInAccountPageState = SignInMethods &
+  (
+    | { readonly kind: "authenticated-unavailable"; readonly email: string }
+    | {
+        readonly kind: "completion-required";
+        readonly email: string;
+        /** Whether the referral program is released and offers a code field. */
+        readonly referralsEnabled: boolean;
+        /** Invitation code to prefill, present only when currently usable. */
+        readonly referralCode?: ReferralCode;
+      }
+    | {
+        readonly kind: "linked";
+        readonly email: string;
+        readonly profile: CustomerProfile;
+        readonly avatar: CustomerAvatarPresentation;
+        readonly history: CustomerReservationHistory;
+        /** Whether the referral program is released and has a section. */
+        readonly referralsEnabled: boolean;
+        readonly referrals?: ReferralAccountOverview;
+        /**
+         * Outcome of retrying the code a profile completion could not record
+         * yet, present only on the visit that ran the retry. A definitive
+         * outcome removes the stored code, so it appears exactly once.
+         */
+        readonly signupReferral?: ProfileCompletionReferralOutcome;
+        /**
+         * Present when this browser remembers a referral code that the
+         * customer's settled referral has made moot, so the page forgets it.
+         */
+        readonly rememberedReferralCodeUsed?: true;
+      }
+    | { readonly kind: "support-required"; readonly email: string }
+    | { readonly kind: "deletion-pending"; readonly email: string }
+  );
 
 const unavailable = (): CustomerAccountPageState => ({ kind: "unavailable" });
 
@@ -90,6 +115,30 @@ const withOperation = (operation: string) =>
 const referralsReleased = ReferralFeatureFlagService.pipe(
   Effect.flatMap((featureFlag) => featureFlag.isEnabled)
 );
+
+/**
+ * The Sign-in & security section's passkeys while `login_passkeys` is on. An
+ * unreadable flag counts as off; an unreadable list keeps the section with
+ * an unavailable notice.
+ */
+const loadPasskeySettings = Effect.fn(function* (accountId: CustomerAccountId) {
+  const passkeysEnabled = yield* Effect.tryPromise(() =>
+    arePasskeysEnabled()
+  ).pipe(Effect.orElseSucceed(() => false));
+  if (!passkeysEnabled) return undefined;
+  const passkeys = yield* Effect.flatMap(
+    CustomerPasskeys,
+    (service) => service.list
+  ).pipe(
+    Effect.provide(CustomerPasskeys.Default),
+    Effect.tapError(() =>
+      logDegradedAccountSection("account.passkeys.unavailable")
+    ),
+    Effect.orElseSucceed(() => null),
+    withOperation("account.passkeys")
+  );
+  return { accountId, passkeys } satisfies AccountPasskeySettings;
+});
 
 const loadLinkedAccount = Effect.fn(function* (
   user: { readonly email: string },
@@ -252,26 +301,7 @@ const findAvailableReferralCode = (code: ReferralCode) =>
  * remembered code is used up. While the referral program is withheld, none of
  * this runs: no prefill, acceptance, retry, or settlement check.
  */
-const loadAccountPageState = Effect.gen(function* () {
-  const session = yield* Effect.flatMap(
-    CustomerAuthentication,
-    (authentication) => authentication.currentUser
-  ).pipe(
-    Effect.provide(CustomerAuthentication.Default),
-    Effect.tapError((error) =>
-      Effect.logError("Account authentication failed", { error })
-    ),
-    Effect.result,
-    withOperation("account.profile")
-  );
-  if (Result.isFailure(session)) return unavailable();
-
-  const user = session.success;
-  if (!user) return { kind: "unauthenticated" } as const;
-  if (user.deletionRequested) {
-    return { kind: "deletion-pending", email: user.email } as const;
-  }
-
+const loadSignedInAccount = Effect.fn(function* (user: CustomerAccountSession) {
   const referralsEnabled = yield* referralsReleased;
   const rememberedReferralCode = referralsEnabled
     ? yield* readRememberedReferralCode.pipe(
@@ -333,6 +363,34 @@ const loadAccountPageState = Effect.gen(function* () {
     return { kind: "support-required", email: user.email } as const;
   }
   return { kind: "authenticated-unavailable", email: user.email } as const;
+});
+
+/**
+ * Every signed-in state, including one without a usable profile, also
+ * carries its sign-in methods.
+ */
+const loadAccountPageState = Effect.gen(function* () {
+  const session = yield* Effect.flatMap(
+    CustomerAuthentication,
+    (authentication) => authentication.currentUser
+  ).pipe(
+    Effect.provide(CustomerAuthentication.Default),
+    Effect.tapError((error) =>
+      Effect.logError("Account authentication failed", { error })
+    ),
+    Effect.result,
+    withOperation("account.profile")
+  );
+  if (Result.isFailure(session)) return unavailable();
+
+  const user = session.success;
+  if (!user) return { kind: "unauthenticated" } as const;
+  const state = user.deletionRequested
+    ? ({ kind: "deletion-pending", email: user.email } as const)
+    : yield* loadSignedInAccount(user);
+  if (state.kind === "unauthenticated") return state;
+  const passkeys = yield* loadPasskeySettings(user.accountId);
+  return passkeys ? { ...state, passkeys } : state;
 });
 
 /**

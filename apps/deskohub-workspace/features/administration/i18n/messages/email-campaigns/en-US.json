@@ -1,0 +1,870 @@
+{
+  "emailCampaignsAudienceAccountCreatedEver": "have a Workspace account",
+  "emailCampaignsAudienceAccountCreatedInPeriod": "created a Workspace account {period}",
+  "emailCampaignsAudienceAccountCreatedLabel": "Account created",
+  "emailCampaignsAudienceAccountCreatedNever": "have no Workspace account",
+  "emailCampaignsAudienceAccountCreatedNoValue": "no account",
+  "emailCampaignsAudienceAccountCreatedNotInPeriod": "have a Workspace account not created {period}",
+  "emailCampaignsAudienceArchive": "Archive",
+  "emailCampaignsAudienceArchiveConfirm": "Archive audience",
+  "emailCampaignsAudienceArchiveDescription": "New campaigns can no longer select it. Draft campaigns that already use it keep it, and sent campaigns are not affected.",
+  "emailCampaignsAudienceArchiveFailed": "The audience could not be archived.",
+  "emailCampaignsAudienceArchiveFailedRetry": "The audience could not be archived. Try again.",
+  "emailCampaignsAudienceArchiveTitle": "Archive this audience?",
+  "emailCampaignsAudienceArchiving": "Archiving…",
+  "emailCampaignsAudienceCampaignEmailCountAmount": "received {amount}{period}",
+  "emailCampaignsAudienceCampaignEmailCountAny": "received any {none}{period}",
+  "emailCampaignsAudienceCampaignEmailCountCountLabel": "Campaign email count",
+  "emailCampaignsAudienceCampaignEmailCountLabel": "Campaign emails received",
+  "emailCampaignsAudienceCampaignEmailCountLeadText": "campaign emails received",
+  "emailCampaignsAudienceCampaignEmailCountNone": "received no {none}{period}",
+  "emailCampaignsAudienceCampaignEmailCountNounAny": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "campaign email",
+        "countPlural=other": "campaign emails"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounMarketing": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "marketing campaign email",
+        "countPlural=other": "marketing campaign emails"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountNounOperational": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "operational campaign email",
+        "countPlural=other": "operational campaign emails"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCampaignEmailCountPeriodLabel": "Emails received",
+  "emailCampaignsAudienceCampaignEmailCountPurposeAny": "any",
+  "emailCampaignsAudienceCampaignEmailCountPurposeLabel": "Campaign purpose",
+  "emailCampaignsAudienceCampaignEmailCountPurposeMarketing": "marketing",
+  "emailCampaignsAudienceCampaignEmailCountPurposeOperational": "operational",
+  "emailCampaignsAudienceConditionAttributeLabel": "Customer attribute",
+  "emailCampaignsAudienceConditionRemove": "Remove condition",
+  "emailCampaignsAudienceCountAlwaysMatchesError": "“≥ 0” always matches. Use “≥ 1” for any, or remove the condition.",
+  "emailCampaignsAudienceCountComparisonLabel": "{subject} comparison",
+  "emailCampaignsAudienceCountIs": "is",
+  "emailCampaignsAudienceCountNeverMatchesError": "“< 0” never matches. Use “= 0” for none.",
+  "emailCampaignsAudienceCountNumberOf": "Number of",
+  "emailCampaignsAudienceCountOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "equals",
+        "operator=ne": "is not",
+        "operator=lt": "less than",
+        "operator=lte": "at most",
+        "operator=gt": "more than",
+        "operator=*": "at least"
+      }
+    }
+  ],
+  "emailCampaignsAudienceCountWholeNumberError": "Enter a whole number, 0 or more.",
+  "emailCampaignsAudienceDateConditionLabel": "{subject} condition",
+  "emailCampaignsAudienceDateIn": "is",
+  "emailCampaignsAudienceDateNotIn": "is not",
+  "emailCampaignsAudienceDelete": "Delete",
+  "emailCampaignsAudienceDeleteConfirm": "Delete audience",
+  "emailCampaignsAudienceDeleteDescription": "This can't be undone. Sent campaigns keep their own copy of the filters. An audience that draft campaigns use can only be archived.",
+  "emailCampaignsAudienceDeleteFailed": "The audience could not be deleted.",
+  "emailCampaignsAudienceDeleteFailedRetry": "The audience could not be deleted. Try again.",
+  "emailCampaignsAudienceDeleteTitle": "Delete this audience?",
+  "emailCampaignsAudienceDeleting": "Deleting…",
+  "emailCampaignsAudienceDiscountGroupChoose": "Choose groups",
+  "emailCampaignsAudienceDiscountGroupEmptyError": "Choose at least one discount group.",
+  "emailCampaignsAudienceDiscountGroupIdAdd": "Add discount group ID",
+  "emailCampaignsAudienceDiscountGroupIdPlaceholder": "Dotypos group ID",
+  "emailCampaignsAudienceDiscountGroupIdRemove": "Remove discount group ID {value}",
+  "emailCampaignsAudienceDiscountGroupLabel": "Discount group",
+  "emailCampaignsAudienceDiscountGroupRemove": "Remove discount group {value}",
+  "emailCampaignsAudienceDiscountGroupSummaryAnyOf": "are in discount group {values}",
+  "emailCampaignsAudienceDiscountGroupSummaryNoneOf": "aren’t in discount group {values}",
+  "emailCampaignsAudienceDiscountGroupUnknown": "Unknown discount group {id}",
+  "emailCampaignsAudienceDiscountGroupUnnamed": "Group {id}",
+  "emailCampaignsAudienceDotyposTagsAdd": "Add tag",
+  "emailCampaignsAudienceDotyposTagsEmptyError": "Add at least one tag.",
+  "emailCampaignsAudienceDotyposTagsLabel": "Dotypos tags",
+  "emailCampaignsAudienceDotyposTagsLead": "Tags",
+  "emailCampaignsAudienceDotyposTagsPlaceholder": "Add a tag",
+  "emailCampaignsAudienceDotyposTagsRemove": "Remove tag {value}",
+  "emailCampaignsAudienceDotyposTagsSummaryAllOf": "are tagged {values}",
+  "emailCampaignsAudienceDotyposTagsSummaryAnyOf": "are tagged {values}",
+  "emailCampaignsAudienceDotyposTagsSummaryNoneOf": "aren’t tagged {values}",
+  "emailCampaignsAudienceEditorArchivedNotice": "This audience is archived. New campaigns can’t select it.",
+  "emailCampaignsAudienceEditorCancel": "Cancel",
+  "emailCampaignsAudienceEditorCreate": "Create audience",
+  "emailCampaignsAudienceEditorDescription": "Choose who a campaign reaches. Conditions are checked when a campaign is sent, so draft campaigns always follow the latest version.",
+  "emailCampaignsAudienceEditorEyebrow": "Email audience",
+  "emailCampaignsAudienceEditorNewTitle": "New audience",
+  "emailCampaignsAudienceEditorReachDescription": "Only customers Workspace already knows from reservations, accounts, or marketing consent can match. Marketing campaigns also skip anyone without active consent.",
+  "emailCampaignsAudienceEditorReachHeading": "Who it reaches",
+  "emailCampaignsAudienceEditorSave": "Save audience",
+  "emailCampaignsAudienceEditorSaveFailed": "The audience could not be saved. Check the form and try again.",
+  "emailCampaignsAudienceEditorSaved": "Audience saved.",
+  "emailCampaignsAudienceEditorSaving": "Saving…",
+  "emailCampaignsAudienceEditorSingleLocaleCzech": "Every recipient speaks Czech, so campaigns for this audience need Czech content only.",
+  "emailCampaignsAudienceEditorSingleLocaleEnglish": "Every recipient speaks English, so campaigns for this audience need English content only.",
+  "emailCampaignsAudienceEditorSummary": "{summary}.",
+  "emailCampaignsAudienceEditorSummaryHeading": "In plain English",
+  "emailCampaignsAudienceEditorTitleLabel": "Title",
+  "emailCampaignsAudienceEditorTitlePlaceholder": "e.g. Czech customers who visited this year",
+  "emailCampaignsAudienceGroupAddCondition": "Add condition",
+  "emailCampaignsAudienceGroupAddGroup": "Add group",
+  "emailCampaignsAudienceGroupCombineLabel": "How conditions combine",
+  "emailCampaignsAudienceGroupEmptyAll": "No conditions yet, so this matches every known customer.",
+  "emailCampaignsAudienceGroupEmptyAny": "No conditions yet, so this matches nobody.",
+  "emailCampaignsAudienceGroupJoinAnd": "and",
+  "emailCampaignsAudienceGroupJoinOr": "or",
+  "emailCampaignsAudienceGroupMatchAll": "Match all",
+  "emailCampaignsAudienceGroupMatchAny": "Match any",
+  "emailCampaignsAudienceGroupOfFollowing": "of the following",
+  "emailCampaignsAudienceGroupOfThisGroup": "of this group",
+  "emailCampaignsAudienceGroupRemove": "Remove group",
+  "emailCampaignsAudienceHasAccountFalse": "Hasn’t",
+  "emailCampaignsAudienceHasAccountLabel": "Workspace account",
+  "emailCampaignsAudienceHasAccountObject": "a Workspace account",
+  "emailCampaignsAudienceHasAccountSummaryFalse": "have no Workspace account",
+  "emailCampaignsAudienceHasAccountSummaryTrue": "have a Workspace account",
+  "emailCampaignsAudienceHasAccountTrue": "Has",
+  "emailCampaignsAudienceInUse": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "A draft campaign uses this audience, so it can only be archived. Move those drafts to another audience before deleting it.",
+        "countPlural=other": "{formattedCount} draft campaigns use this audience, so it can only be archived. Move those drafts to another audience before deleting it."
+      }
+    }
+  ],
+  "emailCampaignsAudienceLastVisitEver": "have visited{product}",
+  "emailCampaignsAudienceLastVisitInPeriod": "last visited{product} {period}",
+  "emailCampaignsAudienceLastVisitLabel": "Last visit",
+  "emailCampaignsAudienceLastVisitNever": "have never visited{product}",
+  "emailCampaignsAudienceLastVisitNoValue": "never visited",
+  "emailCampaignsAudienceLastVisitNotInPeriod": "have visited{product}, with the last visit not {period}",
+  "emailCampaignsAudienceListColumnAudience": "Audience",
+  "emailCampaignsAudienceListColumnReach": "Who it reaches",
+  "emailCampaignsAudienceListColumnStatus": "Status",
+  "emailCampaignsAudienceListColumnUpdated": "Updated",
+  "emailCampaignsAudienceListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} audience",
+        "countPlural=other": "{formattedCount} audiences"
+      }
+    }
+  ],
+  "emailCampaignsAudienceListCountLoading": "Loading audience count",
+  "emailCampaignsAudienceListEmpty": "No audiences yet. Create one to choose who a campaign reaches.",
+  "emailCampaignsAudienceListLoading": "Loading audiences",
+  "emailCampaignsAudienceListNew": "New audience",
+  "emailCampaignsAudienceListTitle": "Email audiences",
+  "emailCampaignsAudienceListToolbarLabel": "Audience table controls",
+  "emailCampaignsAudienceListUpdated": "Updated {date}",
+  "emailCampaignsAudienceLocaleEmptyError": "Choose at least one locale.",
+  "emailCampaignsAudienceLocaleLabel": "Locale",
+  "emailCampaignsAudienceLocaleNameCzech": "Czech",
+  "emailCampaignsAudienceLocaleNameEnglish": "English",
+  "emailCampaignsAudienceLocaleOptionCzech": "Czech (cs-CZ)",
+  "emailCampaignsAudienceLocaleOptionEnglish": "English (en-US)",
+  "emailCampaignsAudienceLocaleSummaryAnyOf": "speak {values}",
+  "emailCampaignsAudienceLocaleSummaryNoneOf": "don’t speak {values}",
+  "emailCampaignsAudienceNotFound": "This audience no longer exists.",
+  "emailCampaignsAudiencePeriodCountError": "Enter a whole number of 1 or more.",
+  "emailCampaignsAudiencePeriodCountLabel": "{subject} number of {units}",
+  "emailCampaignsAudiencePeriodDateError": "Enter a valid date.",
+  "emailCampaignsAudiencePeriodDateLabel": "{subject} date",
+  "emailCampaignsAudiencePeriodEndLabel": "{subject} end date",
+  "emailCampaignsAudiencePeriodKind": [
+    {
+      "declarations": ["input kind"],
+      "selectors": ["kind"],
+      "match": {
+        "kind=AnyTime": "any time",
+        "kind=Last": "in the last",
+        "kind=Range": "from … to …",
+        "kind=Since": "since",
+        "kind=Onward": "from … onward",
+        "kind=*": "until"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodLabel": "{subject} period",
+  "emailCampaignsAudiencePeriodLast": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "in the last",
+        "countPlural=other": "in the last"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodOnward": "onward",
+  "emailCampaignsAudiencePeriodOrderError": "The start date must be on or before the end date.",
+  "emailCampaignsAudiencePeriodStartLabel": "{subject} start date",
+  "emailCampaignsAudiencePeriodTo": "to",
+  "emailCampaignsAudiencePeriodUnitDay": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "day",
+        "countPlural=other": "days"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitLabel": "{subject} period unit",
+  "emailCampaignsAudiencePeriodUnitMonth": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "month",
+        "countPlural=other": "months"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitWeek": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "week",
+        "countPlural=other": "weeks"
+      }
+    }
+  ],
+  "emailCampaignsAudiencePeriodUnitYear": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "year",
+        "countPlural=other": "years"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductAddCondition": "Add product condition",
+  "emailCampaignsAudienceProductAny": "any product",
+  "emailCampaignsAudienceProductChoose": "Choose",
+  "emailCampaignsAudienceProductChooseValueError": "Choose at least one value.",
+  "emailCampaignsAudienceProductFamilyCowork": "Cowork",
+  "emailCampaignsAudienceProductFamilyMeetingRoom": "Meeting room",
+  "emailCampaignsAudienceProductFamilyOffice": "Office",
+  "emailCampaignsAudienceProductLabel": "Product",
+  "emailCampaignsAudienceProductPropertyCoffee": "Coffee",
+  "emailCampaignsAudienceProductPropertyDays": "Days",
+  "emailCampaignsAudienceProductPropertyMonitor": "Monitor setup",
+  "emailCampaignsAudienceProductPropertyOffer": "Duration",
+  "emailCampaignsAudienceProductPropertySeats": "Seats",
+  "emailCampaignsAudienceProductPropertyTier": "Tier",
+  "emailCampaignsAudienceProductRemoveCondition": "Remove {property} condition",
+  "emailCampaignsAudienceProductRemoveValue": "Remove {property} {value}",
+  "emailCampaignsAudienceProductRetired": "(retired)",
+  "emailCampaignsAudienceProductSelectLabel": "Reservation product",
+  "emailCampaignsAudienceProductUnitDays": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "day",
+        "countPlural=other": "days"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductUnitSeats": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "seat",
+        "countPlural=other": "seats"
+      }
+    }
+  ],
+  "emailCampaignsAudienceProductWith": "with",
+  "emailCampaignsAudienceProductWithout": "without",
+  "emailCampaignsAudienceReservationCountAmount": "have {amount}{period}",
+  "emailCampaignsAudienceReservationCountAny": "have any {none}{period}",
+  "emailCampaignsAudienceReservationCountBookingPeriod": "confirmed {period}",
+  "emailCampaignsAudienceReservationCountDateBasisBooking": "booking date",
+  "emailCampaignsAudienceReservationCountDateBasisLabel": "Date basis",
+  "emailCampaignsAudienceReservationCountDateBasisVisit": "visit date",
+  "emailCampaignsAudienceReservationCountLabel": "Reservation count",
+  "emailCampaignsAudienceReservationCountLeadText": "reservations by",
+  "emailCampaignsAudienceReservationCountNone": "have no {none}{period}",
+  "emailCampaignsAudienceReservationCountNounBooked": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "booked reservation{product}",
+        "countPlural=other": "booked reservations{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounCancelled": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "cancelled reservation{product}",
+        "countPlural=other": "cancelled reservations{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounComplete": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "complete reservation{product}",
+        "countPlural=other": "complete reservations{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounInProgress": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "reservation in progress{product}",
+        "countPlural=other": "reservations in progress{product}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountNounNeedsRefund": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "input product"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "reservation{product} needing a refund",
+        "countPlural=other": "reservations{product} needing a refund"
+      }
+    }
+  ],
+  "emailCampaignsAudienceReservationCountPeriodLabel": "Reservations",
+  "emailCampaignsAudienceReservationCountStatusBooked": "booked",
+  "emailCampaignsAudienceReservationCountStatusCancelled": "cancelled",
+  "emailCampaignsAudienceReservationCountStatusComplete": "complete",
+  "emailCampaignsAudienceReservationCountStatusInProgress": "in progress",
+  "emailCampaignsAudienceReservationCountStatusLabel": "Reservation status",
+  "emailCampaignsAudienceReservationCountStatusNeedsRefund": "needs refund",
+  "emailCampaignsAudienceReservationCountVisitPeriod": "visiting {period}",
+  "emailCampaignsAudienceSaveFailedCheckFilters": "The audience could not be saved. Check the filters and try again.",
+  "emailCampaignsAudienceSaveFailedRetry": "The audience could not be saved. Try again.",
+  "emailCampaignsAudienceSectionAccount": "Account",
+  "emailCampaignsAudienceSectionEmails": "Emails",
+  "emailCampaignsAudienceSectionProfile": "Profile",
+  "emailCampaignsAudienceSectionReservations": "Reservations",
+  "emailCampaignsAudienceSetMatchLabel": "{subject} match",
+  "emailCampaignsAudienceSetOperator": [
+    {
+      "declarations": ["input operator"],
+      "selectors": ["operator"],
+      "match": {
+        "operator=allOf": "includes all of",
+        "operator=noneOf": "is none of",
+        "operator=*": "is any of"
+      }
+    }
+  ],
+  "emailCampaignsAudienceStatusActive": "Active",
+  "emailCampaignsAudienceStatusArchived": "Archived",
+  "emailCampaignsAudienceSummaryAmount": [
+    {
+      "declarations": [
+        "input operator",
+        "input count",
+        "local formattedCount = count: number",
+        "input noun"
+      ],
+      "selectors": ["operator"],
+      "match": {
+        "operator=eq": "exactly {formattedCount} {noun}",
+        "operator=ne": "other than {formattedCount} {noun}",
+        "operator=lt": "fewer than {formattedCount} {noun}",
+        "operator=lte": "at most {formattedCount} {noun}",
+        "operator=gt": "more than {formattedCount} {noun}",
+        "operator=*": "at least {formattedCount} {noun}"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryAmountPending": "… {none}",
+  "emailCampaignsAudienceSummaryAnd": "{left} and {right}",
+  "emailCampaignsAudienceSummaryCustomersWho": "Customers who {predicate}",
+  "emailCampaignsAudienceSummaryEveryone": "Every customer Workspace knows",
+  "emailCampaignsAudienceSummaryGap": "…",
+  "emailCampaignsAudienceSummaryGroup": "({filter})",
+  "emailCampaignsAudienceSummaryMatchAnything": "match anything",
+  "emailCampaignsAudienceSummaryMatchNothing": "match nothing",
+  "emailCampaignsAudienceSummaryNobody": "Nobody",
+  "emailCampaignsAudienceSummaryOr": "{left} or {right}",
+  "emailCampaignsAudienceSummaryPeriodAnyTime": "at any time",
+  "emailCampaignsAudienceSummaryPeriodLastDay": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "in the last day",
+        "countPlural=other": "in the last {formattedCount} days"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastMonth": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "in the last month",
+        "countPlural=other": "in the last {formattedCount} months"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastWeek": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "in the last week",
+        "countPlural=other": "in the last {formattedCount} weeks"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodLastYear": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "in the last year",
+        "countPlural=other": "in the last {formattedCount} years"
+      }
+    }
+  ],
+  "emailCampaignsAudienceSummaryPeriodOnward": "from {date} onward",
+  "emailCampaignsAudienceSummaryPeriodRange": "from {from} to {to}",
+  "emailCampaignsAudienceSummaryPeriodSince": "since {date}",
+  "emailCampaignsAudienceSummaryPeriodUntil": "until {date}",
+  "emailCampaignsAudienceSummaryProduct": "for {family}",
+  "emailCampaignsAudienceSummaryProductAnyOf": "{property} {values}",
+  "emailCampaignsAudienceSummaryProductDisabled": "no {property}",
+  "emailCampaignsAudienceSummaryProductEnabled": "{property}",
+  "emailCampaignsAudienceSummaryProductNoneOf": "{property} other than {values}",
+  "emailCampaignsAudienceSummaryProductWith": "for {family} with {details}",
+  "emailCampaignsAudienceSummaryQuoted": "“{value}”",
+  "emailCampaignsAudienceTitleRequired": "Enter a title for this audience.",
+  "emailCampaignsAudienceTitleTooLong": "Use at most {max} characters.",
+  "emailCampaignsAudienceUnarchive": "Unarchive",
+  "emailCampaignsAudienceUnarchiveFailed": "The audience could not be unarchived.",
+  "emailCampaignsAudienceUnarchiveFailedRetry": "The audience could not be unarchived. Try again.",
+  "emailCampaignsAudienceUnarchiving": "Unarchiving…",
+  "emailCampaignsBadgePurposeMarketing": "Marketing",
+  "emailCampaignsBadgePurposeOperational": "Operational",
+  "emailCampaignsBadgeRecipientStatusBounced": "Bounced",
+  "emailCampaignsBadgeRecipientStatusComplained": "Complained",
+  "emailCampaignsBadgeRecipientStatusDelivered": "Delivered",
+  "emailCampaignsBadgeRecipientStatusFailed": "Failed",
+  "emailCampaignsBadgeRecipientStatusPending": "Pending",
+  "emailCampaignsBadgeRecipientStatusSent": "Sent",
+  "emailCampaignsBadgeRecipientStatusSkipped": "Skipped",
+  "emailCampaignsBadgeRecipientStatusUnconfirmed": "Unconfirmed",
+  "emailCampaignsBadgeStatusDraft": "Draft",
+  "emailCampaignsBadgeStatusFailed": "Failed",
+  "emailCampaignsBadgeStatusSending": "Sending",
+  "emailCampaignsBadgeStatusSent": "Sent",
+  "emailCampaignsBodyButtonHrefInvalid": "A button needs an https: or mailto: URL.",
+  "emailCampaignsBodyButtonLabelLineBreaks": "A button label must break lines with line feeds only.",
+  "emailCampaignsBodyButtonLabelMissing": "A button needs a label.",
+  "emailCampaignsBodyImageSourceInvalid": "An image must come from the Deskohub Cloudinary account.",
+  "emailCampaignsBodyLinkHrefInvalid": "A link must use an https: or mailto: URL.",
+  "emailCampaignsBodyMissing": "Write the email body.",
+  "emailCampaignsBodyNotDocument": "A body must be a \"doc\" node.",
+  "emailCampaignsBodyStructureInvalid": "The body contains content that campaign emails don't support.",
+  "emailCampaignsComposerAllChangesSaved": "All changes saved",
+  "emailCampaignsComposerAudienceHint": "Choose who receives the campaign before sending it.",
+  "emailCampaignsComposerAudienceLabel": "Audience",
+  "emailCampaignsComposerAudienceNone": "No audience yet",
+  "emailCampaignsComposerAudiencesEmpty": "No audiences yet. Create one under Audiences.",
+  "emailCampaignsComposerBodyEditorLabel": "Body, {language}",
+  "emailCampaignsComposerBodyLabel": "Body",
+  "emailCampaignsComposerCampaignSection": "Campaign",
+  "emailCampaignsComposerContentLanguageLabel": "Content language",
+  "emailCampaignsComposerContentSection": "Content",
+  "emailCampaignsComposerCreateDraft": "Create draft",
+  "emailCampaignsComposerDraftDescription": "Draft. Save your changes, then send a test to get the confirmation code for the real send.",
+  "emailCampaignsComposerEyebrow": "Email campaign",
+  "emailCampaignsComposerFallbackLocaleHint": "Czech is required: recipients without content in their language get it.",
+  "emailCampaignsComposerHiddenContentCzech": "Czech content is hidden for this audience and won't be saved.",
+  "emailCampaignsComposerHiddenContentEnglish": "English content is hidden for this audience and won't be saved.",
+  "emailCampaignsComposerLocaleIssues": "{count} to fix",
+  "emailCampaignsComposerLocaleOptional": "Optional",
+  "emailCampaignsComposerLocaleReady": "Ready",
+  "emailCampaignsComposerLocaleRequired": "Required",
+  "emailCampaignsComposerNewDescription": "Write the campaign, then create the draft to test-send it.",
+  "emailCampaignsComposerNewTitle": "New campaign",
+  "emailCampaignsComposerOperationalReasonHint": "Why the customer gets this email. Leave it empty to use the standard line.",
+  "emailCampaignsComposerOperationalReasonLabel": "Footer reason",
+  "emailCampaignsComposerPreheaderHint": "Most inboxes show it after the subject.",
+  "emailCampaignsComposerPreheaderLabel": "Preview text",
+  "emailCampaignsComposerPurposeLabel": "Purpose",
+  "emailCampaignsComposerPurposeMarketing": "Marketing",
+  "emailCampaignsComposerPurposeMarketingDescription": "Only customers with marketing consent. Every email links to unsubscribe.",
+  "emailCampaignsComposerPurposeOperational": "Operational",
+  "emailCampaignsComposerPurposeOperationalDescription": "Service announcements for every matching customer. The footer says why they get it.",
+  "emailCampaignsComposerSaveAudienceArchived": "The selected audience is archived. Choose another audience.",
+  "emailCampaignsComposerSaveAudienceNotFound": "The selected audience no longer exists.",
+  "emailCampaignsComposerSaveCheckFields": "The campaign could not be saved. Check the fields.",
+  "emailCampaignsComposerSaveContentInvalid": "The content has problems. Fix the listed issues, then save.",
+  "emailCampaignsComposerSaveDraft": "Save draft",
+  "emailCampaignsComposerSaveFailed": "The campaign could not be saved. Try again.",
+  "emailCampaignsComposerSaveReadOnly": "This campaign has left Draft and can no longer be edited.",
+  "emailCampaignsComposerSaving": "Saving…",
+  "emailCampaignsComposerSingleLocaleAudienceCzech": "The audience only includes Czech speakers.",
+  "emailCampaignsComposerSingleLocaleAudienceEnglish": "The audience only includes English speakers.",
+  "emailCampaignsComposerSubjectLabel": "Subject",
+  "emailCampaignsComposerSubjectMissing": "Add a subject.",
+  "emailCampaignsComposerTemplateLabel": "Template",
+  "emailCampaignsComposerTemplatePreview": "Preview template",
+  "emailCampaignsComposerTemplatePreviewFrameTitle": "{template} template with sample content",
+  "emailCampaignsComposerTemplateWorkspaceDescription": "The Workspace email layout: navy header, white content card, and address footer.",
+  "emailCampaignsComposerTitleHint": "Only admins see the title.",
+  "emailCampaignsComposerTitleLabel": "Title",
+  "emailCampaignsComposerTitlePlaceholder": "Spring opening hours",
+  "emailCampaignsComposerTitleRequired": "Give the campaign a title.",
+  "emailCampaignsComposerUnsavedChanges": "Unsaved changes",
+  "emailCampaignsComposerUntitledTitle": "Untitled campaign",
+  "emailCampaignsCtaCancel": "Cancel",
+  "emailCampaignsCtaDescription": "A prominent button that links to a page or an email address.",
+  "emailCampaignsCtaEdit": "Edit button",
+  "emailCampaignsCtaHrefLabel": "Link",
+  "emailCampaignsCtaHrefMissing": "Link missing",
+  "emailCampaignsCtaInsert": "Insert button",
+  "emailCampaignsCtaLabelLabel": "Button text",
+  "emailCampaignsCtaLabelMissing": "Button text missing",
+  "emailCampaignsCtaLabelPlaceholder": "Book a desk",
+  "emailCampaignsCtaLabelRequired": "Enter the button text.",
+  "emailCampaignsCtaRemove": "Remove button",
+  "emailCampaignsCtaUpdate": "Update button",
+  "emailCampaignsDraftDelete": "Delete draft",
+  "emailCampaignsDraftDeleteDescription": "This can't be undone. The draft, its content, and any unsaved changes are removed. Sent campaigns can't be deleted.",
+  "emailCampaignsDraftDeleteFailed": "The campaign could not be deleted. Try again.",
+  "emailCampaignsDraftDeleteReadOnly": "This campaign has left Draft and can no longer be deleted.",
+  "emailCampaignsDraftDeleteTitle": "Delete this draft?",
+  "emailCampaignsDraftDeleting": "Deleting…",
+  "emailCampaignsDraftNotFound": "This campaign no longer exists.",
+  "emailCampaignsEditorBold": "Bold",
+  "emailCampaignsEditorBulletList": "Bulleted list",
+  "emailCampaignsEditorDivider": "Divider",
+  "emailCampaignsEditorHeading1": "Heading 1",
+  "emailCampaignsEditorHeading2": "Heading 2",
+  "emailCampaignsEditorHeading3": "Heading 3",
+  "emailCampaignsEditorItalic": "Italic",
+  "emailCampaignsEditorNumberedList": "Numbered list",
+  "emailCampaignsEditorParagraph": "Paragraph",
+  "emailCampaignsEditorPlaceholder": "Write the email. Use the toolbar for headings, links, images, and buttons.",
+  "emailCampaignsEditorRedo": "Redo",
+  "emailCampaignsEditorTextStyle": "Text style",
+  "emailCampaignsEditorToolbar": "Formatting",
+  "emailCampaignsEditorUndo": "Undo",
+  "emailCampaignsEmailPreviewFrameTitle": "Email preview, {language}",
+  "emailCampaignsEmailPreviewHeading": "Preview",
+  "emailCampaignsEmailPreviewLabel": "Email preview",
+  "emailCampaignsEmailPreviewLanguage": "Preview language",
+  "emailCampaignsEmailPreviewMissingContentCzech": "Add Czech content to see the email.",
+  "emailCampaignsEmailPreviewMissingContentEnglish": "Add English content to see the email.",
+  "emailCampaignsEmailPreviewNoPreheader": "No preview text",
+  "emailCampaignsEmailPreviewNoSubject": "No subject",
+  "emailCampaignsEmailPreviewRenderFailed": "The preview could not be rendered.",
+  "emailCampaignsEmailPreviewRendering": "Rendering the preview…",
+  "emailCampaignsEmailPreviewUpdating": "Updating…",
+  "emailCampaignsImageUploadFailed": "The image could not be uploaded. Try again.",
+  "emailCampaignsImageUploadInsert": "Insert image",
+  "emailCampaignsImageUploadMissing": "Choose an image to upload.",
+  "emailCampaignsImageUploadTooLarge": "The image must be {maxMegabytes} MB or smaller.",
+  "emailCampaignsImageUploadUnsupportedType": "Upload a PNG, JPEG, GIF, or WebP image.",
+  "emailCampaignsImageUploading": "Uploading image…",
+  "emailCampaignsLinkAdd": "Add link",
+  "emailCampaignsLinkHrefHint": "Use an https:// address or an email address.",
+  "emailCampaignsLinkHrefLabel": "Link address",
+  "emailCampaignsLinkRemove": "Remove link",
+  "emailCampaignsLinkToggle": "Link",
+  "emailCampaignsLinkUpdate": "Update link",
+  "emailCampaignsListAudienceColumn": "Audience",
+  "emailCampaignsListCampaignColumn": "Campaign",
+  "emailCampaignsListCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} campaign",
+        "countPlural=other": "{formattedCount} campaigns"
+      }
+    }
+  ],
+  "emailCampaignsListCountLoading": "Loading the campaign count",
+  "emailCampaignsListEmpty": "No campaigns yet. Create one to compose your first email.",
+  "emailCampaignsListLoading": "Loading campaigns",
+  "emailCampaignsListNewCampaign": "New campaign",
+  "emailCampaignsListNoAudience": "No audience",
+  "emailCampaignsListPurposeColumn": "Purpose",
+  "emailCampaignsListStatusColumn": "Status",
+  "emailCampaignsListTableControls": "Campaign table controls",
+  "emailCampaignsListTitle": "Email campaigns",
+  "emailCampaignsListUpdatedAt": "Updated {updatedAt}",
+  "emailCampaignsListUpdatedColumn": "Updated",
+  "emailCampaignsLocaleNameCzech": "Czech",
+  "emailCampaignsLocaleNameEnglish": "English",
+  "emailCampaignsRecipientPreviewAsOfNow": "This resolves the audience as of now. Sending resolves it again and freezes that list.",
+  "emailCampaignsRecipientPreviewAudienceDescription": "{audience}: {filter}.",
+  "emailCampaignsRecipientPreviewBackToCampaign": "Back to campaign",
+  "emailCampaignsRecipientPreviewCustomerColumn": "Customer",
+  "emailCampaignsRecipientPreviewCustomerInline": "Customer {customer}",
+  "emailCampaignsRecipientPreviewEmailColumn": "Email",
+  "emailCampaignsRecipientPreviewExcluded": "Excluded",
+  "emailCampaignsRecipientPreviewExcludedCustomers": "Excluded customers",
+  "emailCampaignsRecipientPreviewExcludedEmpty": "No matching customer was excluded.",
+  "emailCampaignsRecipientPreviewExclusionDeletedCustomer": "Deleted in Dotypos",
+  "emailCampaignsRecipientPreviewExclusionInvalidEmail": "Invalid email in Dotypos",
+  "emailCampaignsRecipientPreviewExclusionMissingEmail": "No email in Dotypos",
+  "emailCampaignsRecipientPreviewExclusionMissingFromDotypos": "Not found in Dotypos",
+  "emailCampaignsRecipientPreviewLanguageColumn": "Language",
+  "emailCampaignsRecipientPreviewNoAudience": "This campaign has no audience yet. Choose one in the composer to preview its recipients.",
+  "emailCampaignsRecipientPreviewReasonColumn": "Reason",
+  "emailCampaignsRecipientPreviewReceivesColumn": "Receives the email",
+  "emailCampaignsRecipientPreviewReceivesInline": "Receives it: {customer}",
+  "emailCampaignsRecipientPreviewRecipients": "Recipients",
+  "emailCampaignsRecipientPreviewRecipientsEmpty": "The audience reaches no customers right now.",
+  "emailCampaignsRecipientPreviewSharedEmails": "Shared emails",
+  "emailCampaignsRecipientPreviewSharedEmailsEmpty": "No two customers share an email address.",
+  "emailCampaignsRecipientPreviewSharedEmailsNote": "Customers sharing an email get one email, sent to the customer who reserved most recently.",
+  "emailCampaignsRecipientPreviewSharedEmailsTitle": "Shared email addresses",
+  "emailCampaignsRecipientPreviewSkippedColumn": "Skipped",
+  "emailCampaignsRecipientPreviewSkippedInline": "Skipped:",
+  "emailCampaignsRecipientPreviewSummary": "Summary",
+  "emailCampaignsRecipientPreviewTitle": "Recipient preview",
+  "emailCampaignsRecipientPreviewTryAgain": "Try again",
+  "emailCampaignsRecipientPreviewUnavailable": "Recipients couldn't be resolved because Dotypos is unavailable. Nothing was changed.",
+  "emailCampaignsSendConfirmCancel": "Cancel",
+  "emailCampaignsSendConfirmCodeInvalid": "Enter the 8-character code from the latest test email.",
+  "emailCampaignsSendConfirmCodeLabel": "Confirmation code",
+  "emailCampaignsSendConfirmDescription": "Type the confirmation code from the latest test email. The code works for 24 hours and only for the content that test showed. A newer test send or a content change replaces it.",
+  "emailCampaignsSendConfirmFailed": "The campaign could not be sent. Try again.",
+  "emailCampaignsSendConfirmIrreversible": "Sending freezes the recipient list and can't be undone.",
+  "emailCampaignsSendConfirmSubmit": "Send campaign",
+  "emailCampaignsSendConfirmSubmitting": "Sending…",
+  "emailCampaignsSendConfirmTitle": "Send this campaign",
+  "emailCampaignsSendConfirmUnsavedChanges": "Save your changes and send a new test first. The campaign sends only saved content.",
+  "emailCampaignsSendPreviewRecipients": "Preview recipients",
+  "emailCampaignsSendingFailureAudienceMissing": "Choose an audience for this campaign before sending it.",
+  "emailCampaignsSendingFailureAudienceNotFound": "This campaign's audience no longer exists. Choose another audience; nothing was sent and the code still works.",
+  "emailCampaignsSendingFailureCampaignNotFound": "This campaign no longer exists.",
+  "emailCampaignsSendingFailureCampaignReadOnly": "This campaign already left Draft. Duplicate it to send a new copy.",
+  "emailCampaignsSendingFailureCodeContentChanged": "The campaign changed after that test email. Send a new test email and use its code.",
+  "emailCampaignsSendingFailureCodeExpired": "That code expired. Send a new test email to get a fresh code.",
+  "emailCampaignsSendingFailureCodeSuperseded": "A newer test email replaced that code. Use the code from the latest test email.",
+  "emailCampaignsSendingFailureCodeTooManyAttempts": "Too many wrong codes, so that code no longer works. Send a new test email to get a fresh code.",
+  "emailCampaignsSendingFailureCodeUnknown": "That code doesn't match the latest test email. Check it for typos and try again.",
+  "emailCampaignsSendingFailureConfigError": "Campaign sending isn't configured correctly for this deployment. Ask a developer to check its environment variables.",
+  "emailCampaignsSendingFailureContentMissing": "Add a subject and body in at least one language first.",
+  "emailCampaignsSendingFailureDatabaseUnavailable": "Recipients couldn't be resolved because the database is unavailable. Nothing was sent and the code still works; try again in a moment.",
+  "emailCampaignsSendingFailureDeliveryQueueFailed": "Delivery couldn't be queued, so the campaign is marked Failed. Retry undelivered recipients in a moment.",
+  "emailCampaignsSendingFailureDotyposUnavailable": "Recipients couldn't be resolved because Dotypos is unavailable. Nothing was sent and the code still works; try again in a moment.",
+  "emailCampaignsSendingFailureEmailDeliveryFailed": "The email provider didn't accept the test email. Try again in a moment.",
+  "emailCampaignsSendingFailureEmailNotConfigured": "Campaign email isn't configured for this deployment. Ask a developer to set {variables}.",
+  "emailCampaignsSendingFailureFallbackContentMissing": "Customers without content in their language get the Czech version, so add Czech content, or restrict the audience to one language this campaign has. Nothing was sent.",
+  "emailCampaignsSendingFailureNoRecipients": "The audience has no reachable recipients right now, so nothing was sent.",
+  "emailCampaignsSendingFailureNotRetryable": "Only a failed campaign can retry undelivered recipients.",
+  "emailCampaignsSendingFailureOutsideTestDomain": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Outside production, campaign email can only go to @{domain} addresses, and {formattedCount} address is outside it. Nothing was sent.",
+        "countPlural=other": "Outside production, campaign email can only go to @{domain} addresses, and {formattedCount} addresses are outside it. Nothing was sent."
+      }
+    }
+  ],
+  "emailCampaignsSendingFailureSigningKeyInvalid": "Confirmation codes can't be issued because the signing secret is misconfigured. Ask a developer to check BETTER_AUTH_SECRETS.",
+  "emailCampaignsSendingFailureSiteUrlNotConfigured": "The test email couldn't be built because the site URL isn't configured. Ask a developer to check the deployment's URL settings.",
+  "emailCampaignsSendingFailureTestRecipientInvalid": "{email} isn't a valid email address.",
+  "emailCampaignsSendingFailureUnauthorized": "Your admin sign-in is no longer valid. Reload the page and sign in again.",
+  "emailCampaignsSendingFailureUnexpected": "Something went wrong. Try again in a moment.",
+  "emailCampaignsSentAudience": "Audience",
+  "emailCampaignsSentAudienceDeleted": "Deleted audience",
+  "emailCampaignsSentAudienceFilter": "Filter",
+  "emailCampaignsSentAudienceFilterCountedBack": "{filter}, counted back from the send time ({sentAt}).",
+  "emailCampaignsSentAudienceFilterSummary": "{filter}.",
+  "emailCampaignsSentAudienceTitle": "Audience at send time",
+  "emailCampaignsSentCampaignTitle": "Campaign",
+  "emailCampaignsSentCompletedAt": "Completed",
+  "emailCampaignsSentCompletedAtPending": "Not yet",
+  "emailCampaignsSentContentTitle": "Content",
+  "emailCampaignsSentDeliveryRecipientCount": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{formattedCount} recipient",
+        "countPlural=other": "{formattedCount} recipients"
+      }
+    }
+  ],
+  "emailCampaignsSentDeliveryTitle": "Delivery",
+  "emailCampaignsSentDeliveryUnconfirmedNote": "Unconfirmed recipients may already have the email: the provider never confirmed their batch. Retry undelivered skips them unless you also choose to resend to them.",
+  "emailCampaignsSentDuplicate": "Duplicate",
+  "emailCampaignsSentDuplicateFailed": "The campaign could not be duplicated.",
+  "emailCampaignsSentDuplicating": "Duplicating…",
+  "emailCampaignsSentEmailNoPreview": "No preview available.",
+  "emailCampaignsSentEmailRenderFailed": "The email could not be rendered.",
+  "emailCampaignsSentEyebrow": "Email campaign",
+  "emailCampaignsSentFailedNotice": "Delivery failed for some recipients. Retry undelivered sends only to recipients who didn't get the email.",
+  "emailCampaignsSentIncludeUnconfirmed": "Also resend to unconfirmed recipients (they may receive it twice)",
+  "emailCampaignsSentNoSendRecorded": "No send was recorded for this campaign.",
+  "emailCampaignsSentPurpose": "Purpose",
+  "emailCampaignsSentRecipientsCustomerColumn": "Customer",
+  "emailCampaignsSentRecipientsEmpty": "This send froze no recipients.",
+  "emailCampaignsSentRecipientsLanguageColumn": "Language",
+  "emailCampaignsSentRecipientsLanguageSince": "{language} · since {statusUpdatedAt}",
+  "emailCampaignsSentRecipientsSkipReasonColumn": "Skip reason",
+  "emailCampaignsSentRecipientsSkipped": "Skipped: {reason}",
+  "emailCampaignsSentRecipientsStatusColumn": "Status",
+  "emailCampaignsSentRecipientsStatusSinceColumn": "Status since",
+  "emailCampaignsSentRecipientsTableLabel": "Campaign recipients",
+  "emailCampaignsSentRecipientsTitle": "Recipients",
+  "emailCampaignsSentRetry": "Retry undelivered",
+  "emailCampaignsSentRetryFailed": "Undelivered recipients could not be retried.",
+  "emailCampaignsSentRetryStarted": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Retrying {formattedCount} undelivered recipient.",
+        "countPlural=other": "Retrying {formattedCount} undelivered recipients."
+      }
+    }
+  ],
+  "emailCampaignsSentRetrying": "Retrying…",
+  "emailCampaignsSentSendingNotice": "Delivery is in progress. Recipient statuses update as the email provider reports them.",
+  "emailCampaignsSentSentAt": "Sent",
+  "emailCampaignsSentSentAtNotRecorded": "Not recorded",
+  "emailCampaignsSentSkipReasonConsentWithdrawn": "Marketing consent withdrawn",
+  "emailCampaignsSentSkipReasonDeletedCustomer": "Customer deleted",
+  "emailCampaignsSentSkipReasonInvalidEmail": "Invalid email address",
+  "emailCampaignsSentSkipReasonMissingEmail": "No email address",
+  "emailCampaignsSentSkipReasonMissingFromDotypos": "No longer in Dotypos",
+  "emailCampaignsSentSkipReasonOutsideTestDomain": "Outside the test email domain",
+  "emailCampaignsSentStatus": "Status",
+  "emailCampaignsTestSendAdd": "Add",
+  "emailCampaignsTestSendAddRecipientLabel": "Add a test recipient",
+  "emailCampaignsTestSendAdminInboxAlways": "The admin inbox always receives test emails.",
+  "emailCampaignsTestSendAdminInboxNote": "(admin inbox, always included)",
+  "emailCampaignsTestSendCancel": "Cancel",
+  "emailCampaignsTestSendCodeExpires": "The confirmation code expires {expiresAt}.",
+  "emailCampaignsTestSendContentMissing": "Add a subject and body in at least one language before sending a test.",
+  "emailCampaignsTestSendDescription": "Test emails carry the confirmation code you type to send the campaign. A new test send replaces the previous code.",
+  "emailCampaignsTestSendDone": "Done",
+  "emailCampaignsTestSendFailed": "The test email could not be sent. Check the addresses and try again.",
+  "emailCampaignsTestSendPerLanguage": "Each address gets one [TEST] email per language: {languages}.",
+  "emailCampaignsTestSendRecipientDuplicate": "That address is already included.",
+  "emailCampaignsTestSendRecipientInvalid": "Enter a valid email address.",
+  "emailCampaignsTestSendRecipientRequired": "Enter an email address.",
+  "emailCampaignsTestSendRecipients": "Recipients",
+  "emailCampaignsTestSendRecipientsLabel": "Test recipients",
+  "emailCampaignsTestSendRemoveRecipient": "Remove {email}",
+  "emailCampaignsTestSendSent": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local formattedCount = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Sent {formattedCount} test email ({languages}).",
+        "countPlural=other": "Sent {formattedCount} test emails ({languages})."
+      }
+    }
+  ],
+  "emailCampaignsTestSendSubmit": "Send test",
+  "emailCampaignsTestSendSubmitting": "Sending…",
+  "emailCampaignsTestSendTitle": "Send a test email",
+  "emailCampaignsTestSendUnsavedChanges": "Save your changes first. A test send uses the saved campaign, so its code wouldn't confirm your unsaved edits."
+}

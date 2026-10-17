@@ -11,7 +11,9 @@ import { CustomerAccountAccessError } from "./customer-account";
 const customerEmail = testEmailAddress("ada");
 const sneakyEmail = testEmailAddress("sneaky");
 
-const revalidatePath = mock((_path: string) => undefined);
+const revalidatePath = mock(
+  (_path: string, _type?: "layout" | "page") => undefined
+);
 mock.module("next/cache", () => ({ revalidatePath }));
 
 const requestHeaders = new Headers({ referer: "https://deskohub.test/en-US" });
@@ -39,10 +41,8 @@ mock.module("botid/server", () => ({
   checkBotId: () => Promise.resolve({ isBot: false }),
 }));
 
-const areAccountsEnabled = mock(() => Promise.resolve(true));
 const areAccountAvatarsEnabled = mock(() => Promise.resolve(true));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
-  areAccountsEnabled,
   areAccountAvatarsEnabled,
 }));
 
@@ -397,8 +397,6 @@ describe("account actions", () => {
     rememberedReferralCode = undefined;
     forgetRememberedReferralCode.mockClear();
     revalidatePath.mockClear();
-    areAccountsEnabled.mockReset();
-    areAccountsEnabled.mockResolvedValue(true);
     referralsEnabled = true;
     areReferralsEnabled.mockReset();
     areReferralsEnabled.mockImplementation(() =>
@@ -815,32 +813,6 @@ describe("account actions", () => {
     expect(storedIntent?.acknowledged).toBe(false);
   });
 
-  test("returns the existing unavailable failure without reading account data when accounts are disabled", async () => {
-    areAccountsEnabled.mockResolvedValue(false);
-    const { completeCustomerProfile } = await importActions();
-
-    const result = await completeCustomerProfile({ firstName: "Ada" });
-
-    expect(result.serverError).toBe(
-      "We cannot reach your account right now. Reservations can still be made without an account."
-    );
-    expect(profileCalls).toHaveLength(0);
-    expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
-  });
-
-  test("applies the unavailable failure to profile updates when accounts are disabled", async () => {
-    areAccountsEnabled.mockResolvedValue(false);
-    const { updateCustomerProfile } = await importActions();
-
-    const result = await updateCustomerProfile({ firstName: "Ada" });
-
-    expect(result.serverError).toBe(
-      "We cannot reach your account right now. Reservations can still be made without an account."
-    );
-    expect(profileCalls).toHaveLength(0);
-    expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
-  });
-
   test("saves the locale preference for the verified account", async () => {
     const { updateLocalePreference } = await importActions();
 
@@ -884,8 +856,7 @@ describe("account actions", () => {
     expect(cookieWrites).toEqual([]);
   });
 
-  test("deletes through the Better Auth endpoint and revalidates account and deleted paths", async () => {
-    areAccountsEnabled.mockResolvedValue(false);
+  test("deletes through the Better Auth endpoint and revalidates every account path", async () => {
     const seen: { body: object; headers: Headers }[] = [];
     deleteUser = async (args) => {
       seen.push(args);
@@ -898,8 +869,7 @@ describe("account actions", () => {
     expect(result).toEqual({ data: { status: "deleted" } });
     expect(seen).toHaveLength(1);
     expect(String(seen[0]!.headers.get("referer"))).toContain("deskohub.test");
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account/deleted");
+    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account", "layout");
   });
 
   test("asks for reauthentication when the delete endpoint reports a stale session", async () => {
@@ -964,8 +934,7 @@ describe("account actions", () => {
     const result = await deleteCustomerAccount({ confirmed: true });
 
     expect(result).toEqual({ data: { status: "failed" } });
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account/deleted");
+    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account", "layout");
   });
 });
 
@@ -973,8 +942,6 @@ describe("account ARES business lookup action", () => {
   beforeEach(() => {
     profileCalls.length = 0;
     revalidatePath.mockClear();
-    areAccountsEnabled.mockReset();
-    areAccountsEnabled.mockResolvedValue(true);
     currentUser = Effect.succeed(activeSession);
     resolve = Effect.succeed({
       accountId: "@test/account-id",
@@ -1090,18 +1057,5 @@ describe("account ARES business lookup action", () => {
     );
     expect(lookupCalls).toHaveLength(0);
     expect(profileCalls).toHaveLength(0);
-  });
-
-  test("never looks up a company when accounts are disabled", async () => {
-    areAccountsEnabled.mockResolvedValue(false);
-    const { lookupAresBusiness } = await importActions();
-
-    const result = await lookupAresBusiness({ ico: "27082440" });
-
-    expect(result.serverError).toBe(
-      "We cannot reach your account right now. Reservations can still be made without an account."
-    );
-    expect(lookupCalls).toHaveLength(0);
-    expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
   });
 });

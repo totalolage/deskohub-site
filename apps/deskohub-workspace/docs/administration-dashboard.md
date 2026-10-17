@@ -4,6 +4,8 @@
 
 Workspace administration helps authorized operators find reservations and customers, understand a reservation's current condition and history, manage discounts and sales, and control issued administration sessions.
 
+Administration is available in English and Czech. Operators switch language the same way customers do, and a signed-in customer account remembers the choice. Administration links without a language open in the operator's language.
+
 The primary navigation includes Overview, Reservations, Customers, Invoices, Codes, Access codes, Vouchers, Sales, and CLI sessions. Codes manages discount codes; Access codes creates standalone door access codes. Payment and booking records appear in the reservation that owns them instead of competing as separate primary workflows.
 
 ## Invoice administration

@@ -5,10 +5,11 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { createElement, useState } from "react";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import {
-  type AccountSection,
   AccountShell,
   type AccountShellProps,
 } from "@/features/account/components/shell/account-shell";
+import { getAccountSectionPath } from "@/features/account/routes";
+import type { AccountSection } from "@/features/account/sections";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -43,9 +44,10 @@ const { ProfileScreen } = await import(
 );
 
 const sections = [
+  "profile",
   "reservations",
   "referrals",
-  "profile",
+  "security",
   "billing",
   "legal",
   "danger",
@@ -83,6 +85,12 @@ const sectionPanel = (section: AccountSection) => {
         firstName: "E2E",
         lastName: null,
       });
+    case "security":
+      return createElement(
+        "h2",
+        { id: "account-security-passkeys-title" },
+        "Passkeys"
+      );
     case "billing":
       return createElement(
         "section",
@@ -111,7 +119,11 @@ const sectionPanel = (section: AccountSection) => {
 
 let selectedSections: AccountSection[] = [];
 
-function AccountShellHarness() {
+function AccountShellHarness({
+  hiddenSections = [],
+}: {
+  readonly hiddenSections?: readonly AccountSection[];
+} = {}) {
   const [activeSection, setActiveSection] =
     useState<AccountSection>("reservations");
   const selectSection = (section: AccountSection) => {
@@ -129,8 +141,10 @@ function AccountShellHarness() {
         // AccountShell receives the rendered panels as variadic children below.
         // biome-ignore lint/correctness/noChildrenProp: AccountShellProps requires children in this createElement call.
         children: null,
+        hiddenSections,
         labels: shellLabels,
         onSectionChange: selectSection,
+        sectionHref: (section) => getAccountSectionPath("en-US", section),
         signOut: createElement("button", { type: "button" }, "Sign out"),
         title: "Workspace account",
       },
@@ -217,11 +231,11 @@ const makeFakePage = (options: FakePageOptions = {}): Page => {
   });
 
   const getByRole = (
-    role: "button",
+    role: "link",
     roleOptions: { readonly exact?: boolean; readonly name?: string } = {}
   ) => {
     const candidates = Array.from(
-      document.querySelectorAll<HTMLElement>("button")
+      document.querySelectorAll<HTMLAnchorElement>("a")
     );
     const name = roleOptions.name ?? "";
     const exact = roleOptions.exact !== false;
@@ -333,6 +347,23 @@ test("visits and captures every desktop section in review runs", async () => {
   expect(capturedSections).toEqual(sections);
   expect(selectedSections).toEqual([...sections, "reservations"]);
   expect(reservationsPanelIsVisible()).toBe(true);
+});
+
+test("skips a flag-hidden section in review runs", async () => {
+  let capturedSections: readonly AccountSection[] = [];
+  render(createElement(AccountShellHarness, { hiddenSections: ["security"] }));
+
+  await verifyAccountLayoutNavigation(
+    makeFakePage(),
+    async (section) => {
+      capturedSections = [...capturedSections, section];
+    },
+    { screenshots: true }
+  );
+
+  const offered = sections.filter((section) => section !== "security");
+  expect(capturedSections).toEqual(offered);
+  expect(selectedSections).toEqual([...offered, "reservations"]);
 });
 
 const accountLayoutFailureMarker = `https://private.example.test/account?email=${testEmailAddress("secret")}&token=secret-token`;
@@ -496,7 +527,7 @@ test("preserves the phase diagnostic when final viewport reset also fails", asyn
   if (!(failure instanceof WorkspaceE2EError))
     throw new Error("expected a Workspace E2E error");
   expect(failure.message).toContain("at capture");
-  expect(failure.message).toContain("for reservations");
+  expect(failure.message).toContain("for profile");
   expect(failure.message).toContain("at viewport 1440x1000");
   expect(failure.message).not.toContain(captureFailureMarker);
   expect(failure.message).not.toContain(restoreFailureMarker);

@@ -1,5 +1,7 @@
 export { dotyposApiTimeoutDefaultMilliseconds } from "./api-timeout";
 export type {
+  CustomerChanges,
+  CustomerChangesOptions,
   CustomerLookupField,
   DotyposCustomerBillingDetails,
   DotyposCustomerDetails,
@@ -8,7 +10,11 @@ export type {
   DotyposCustomerLookupData,
   FindCustomerOptions,
 } from "./backend/service";
-export { DotyposService, FindCustomerResult } from "./backend/service";
+export {
+  CustomerVersionSelection,
+  DotyposService,
+  FindCustomerResult,
+} from "./backend/service";
 export type { DotyposRuntimeConfigObj } from "./config";
 export {
   DotyposRuntimeConfig,
@@ -22,6 +28,13 @@ export {
   NetworkError,
   ValidationError,
 } from "./errors";
+export type { DotyposTimestamp } from "./timestamp";
+export {
+  DotyposTimestampFromString,
+  DotyposTimestampSchema,
+  dotyposTimestampFromDateTime,
+  formatDotyposTimestamp,
+} from "./timestamp";
 export type {
   CreateDotyposReservationInput,
   DotyposBranchId,

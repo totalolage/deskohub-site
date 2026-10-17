@@ -2,8 +2,11 @@
 
 import { CliSessionId } from "@deskohub/workspace-admin-api";
 import { Effect, Predicate, Schema } from "effect";
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import { m } from "@/features/administration/i18n";
+import { resolveActionLocale } from "@/features/i18n/server/action-locale";
+import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
 import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -41,7 +44,12 @@ export async function approveCliAuthentication(formData: FormData) {
     code: codeForRedirect,
     result: approved ? "approved" : "error",
   });
-  redirect(`/admin/cli/authenticate?${search}`);
+  redirect(
+    localizeAdministrationHref(
+      `/admin/cli/authenticate?${search}`,
+      await resolveActionLocale()
+    )
+  );
 }
 
 const decodeCliSessionLifetime = (formData: FormData) =>
@@ -66,11 +74,16 @@ export async function revokeCliSession(formData: FormData) {
     runWorkspaceEffect("cli-authentication.revoke", { boundary: "action" })
   );
 
-  revalidatePath("/admin/cli/sessions");
+  revalidateLocalizedPath("/admin/cli/sessions");
   const search = new URLSearchParams({
     result: revoked ? "revoked" : "unchanged",
   });
-  redirect(`/admin/cli/sessions?${search}`);
+  redirect(
+    localizeAdministrationHref(
+      `/admin/cli/sessions?${search}`,
+      await resolveActionLocale()
+    )
+  );
 }
 
 const renameCliSessionAction = defineWorkspaceAction(
@@ -79,7 +92,7 @@ const renameCliSessionAction = defineWorkspaceAction(
     schema: renameCliSessionStandardSchema,
   },
   Effect.fn(
-    function* (input) {
+    function* (input, { locale }) {
       const owner = yield* requireAdministratorAuthorization;
       const authentication = yield* CliAuthentication;
       const renamed = yield* authentication.renameSession({
@@ -89,20 +102,20 @@ const renameCliSessionAction = defineWorkspaceAction(
       });
       if (!renamed) {
         return yield* new PublicSafeActionError({
-          message: "That CLI session no longer exists.",
+          message: m.adminCliRenameSessionMissing({}, { locale }),
         });
       }
-      yield* Effect.sync(() => revalidatePath("/admin/cli/sessions"));
-      return { notice: "CLI session label updated." };
+      yield* Effect.sync(() => revalidateLocalizedPath("/admin/cli/sessions"));
+      return { notice: m.adminCliRenameSaved({}, { locale }) };
     },
-    (effect) =>
+    (effect, _input, { locale }) =>
       effect.pipe(
         Effect.provide(CliAuthentication.Live),
         Effect.mapError((cause) =>
           cause instanceof PublicSafeActionError
             ? cause
             : new PublicSafeActionError({
-                message: "The CLI session label could not be updated.",
+                message: m.adminCliRenameFailed({}, { locale }),
                 cause,
               })
         )

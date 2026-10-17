@@ -3,9 +3,11 @@
 import { effectSchemaResolver } from "@deskohub/effect-schema-resolver";
 import { Send } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
+import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Dialog,
@@ -29,7 +31,10 @@ import { Input } from "@/shared/components/ui/input";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type { CampaignId } from "../../campaign-identifiers";
 import { sendCampaign } from "./actions";
-import { confirmationCodeFieldSchema } from "./contracts";
+import {
+  type ConfirmationCodeFieldSchema,
+  createConfirmationCodeFieldSchema,
+} from "./contracts";
 
 const emptyCodeField = { code: "" };
 
@@ -41,17 +46,22 @@ export function CampaignConfirmSendDialog({
   readonly unsavedChanges: boolean;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
+  const codeFieldSchema = useMemo(
+    () => createConfirmationCodeFieldSchema(locale),
+    [locale]
+  );
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const form = useForm<
-    typeof confirmationCodeFieldSchema.Encoded,
+    ConfirmationCodeFieldSchema["Encoded"],
     unknown,
-    typeof confirmationCodeFieldSchema.Type
+    ConfirmationCodeFieldSchema["Type"]
   >({
     defaultValues: emptyCodeField,
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(confirmationCodeFieldSchema),
+    resolver: effectSchemaResolver(codeFieldSchema),
   });
   const { execute, isExecuting } = useWorkspaceAction(sendCampaign, {
     actionName: "sendCampaign",
@@ -62,7 +72,8 @@ export function CampaignConfirmSendDialog({
     },
     onError: ({ error: actionError }) =>
       setError(
-        actionError.serverError ?? "The campaign could not be sent. Try again."
+        actionError.serverError ??
+          m.emailCampaignsSendConfirmFailed({}, { locale })
       ),
   });
 
@@ -78,22 +89,21 @@ export function CampaignConfirmSendDialog({
       <DialogTrigger asChild>
         <Button size="sm" type="button">
           <Send aria-hidden className="size-4" />
-          Send campaign
+          {m.emailCampaignsSendConfirmSubmit({}, { locale })}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg" locale={locale}>
         <DialogHeader>
-          <DialogTitle>Send this campaign</DialogTitle>
+          <DialogTitle>
+            {m.emailCampaignsSendConfirmTitle({}, { locale })}
+          </DialogTitle>
           <DialogDescription>
-            Type the confirmation code from the latest test email. The code
-            works for 24 hours and only for the content that test showed. A
-            newer test send or a content change replaces it.
+            {m.emailCampaignsSendConfirmDescription({}, { locale })}
           </DialogDescription>
         </DialogHeader>
         {unsavedChanges && (
           <AdministrationAlert className="mt-5" status="warning">
-            Save your changes and send a new test first. The campaign sends only
-            saved content.
+            {m.emailCampaignsSendConfirmUnsavedChanges({}, { locale })}
           </AdministrationAlert>
         )}
         <Form {...form}>
@@ -112,7 +122,9 @@ export function CampaignConfirmSendDialog({
               name="code"
               render={({ field: { onChange, ...field }, fieldState }) => (
                 <FormItem>
-                  <FormLabel>Confirmation code</FormLabel>
+                  <FormLabel>
+                    {m.emailCampaignsSendConfirmCodeLabel({}, { locale })}
+                  </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
@@ -139,7 +151,7 @@ export function CampaignConfirmSendDialog({
               )}
             </div>
             <p className="mt-4 text-sm text-navy-blue/70">
-              Sending freezes the recipient list and can't be undone.
+              {m.emailCampaignsSendConfirmIrreversible({}, { locale })}
             </p>
             <DialogFooter>
               <DialogClose asChild>
@@ -148,11 +160,13 @@ export function CampaignConfirmSendDialog({
                   type="button"
                   variant="secondary"
                 >
-                  Cancel
+                  {m.emailCampaignsSendConfirmCancel({}, { locale })}
                 </Button>
               </DialogClose>
               <Button disabled={unsavedChanges || isExecuting} type="submit">
-                {isExecuting ? "Sending…" : "Send campaign"}
+                {isExecuting
+                  ? m.emailCampaignsSendConfirmSubmitting({}, { locale })
+                  : m.emailCampaignsSendConfirmSubmit({}, { locale })}
               </Button>
             </DialogFooter>
           </form>

@@ -1,8 +1,9 @@
 import { testEmailAddress } from "@deskohub/test-email";
 import "@/shared/testing/workspace-test-env";
 
-import { expect, mock } from "bun:test";
+import { mock } from "bun:test";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
+import type { Passkey } from "@better-auth/passkey";
 import type {
   Account,
   RateLimit,
@@ -17,13 +18,7 @@ import * as SqlError from "effect/unstable/sql/SqlError";
 import { makeAuthDatabase } from "@/db/auth-database-client";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
-import {
-  authAccount,
-  authRateLimit,
-  authSession,
-  authUser,
-  authVerification,
-} from "@/db/schema/auth";
+import { drizzleAuthTables } from "@/db/schema/auth";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { captureAccountLocalePreference } from "../customer-locale-preference";
 import type {
@@ -68,13 +63,7 @@ export type TestAuth = ReturnType<typeof makeTestAuth>;
 export const buildDatabaseAdapter = () =>
   drizzleAdapter(makeAuthDatabase(testDatabase!.pool), {
     provider: "pg",
-    schema: {
-      user: authUser,
-      session: authSession,
-      account: authAccount,
-      verification: authVerification,
-      rateLimit: authRateLimit,
-    },
+    schema: drizzleAuthTables,
     schemaName: "auth",
   });
 
@@ -82,8 +71,8 @@ export type TestAuthOptions = {
   readonly database?: WorkspaceAuthConfig["database"];
   readonly secrets?: { readonly version: number; readonly value: string }[];
   readonly sentLinks?: CapturedMagicLink[];
-  readonly areAccountsEnabled?: WorkspaceAuthConfig["areAccountsEnabled"];
   readonly isSignInCodeEnabled?: WorkspaceAuthConfig["isSignInCodeEnabled"];
+  readonly arePasskeysEnabled?: WorkspaceAuthConfig["arePasskeysEnabled"];
   readonly verifyHuman?: WorkspaceAuthConfig["verifyHuman"];
   readonly beforeDeleteUser?: WorkspaceAuthConfig["beforeDeleteUser"];
   readonly captureAccountLocalePreference?: WorkspaceAuthConfig["captureAccountLocalePreference"];
@@ -150,9 +139,10 @@ export const makeTestAuth = (options: TestAuthOptions = {}) => {
     database: options.database ?? buildDatabaseAdapter(),
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
+    passkeyRelyingParty: { rpID: HOST, origins: [`https://${HOST}`] },
     httpsOnly: true,
-    areAccountsEnabled: options.areAccountsEnabled ?? (async () => true),
     isSignInCodeEnabled: options.isSignInCodeEnabled ?? (async () => false),
+    arePasskeysEnabled: options.arePasskeysEnabled ?? (async () => true),
     verifyHuman: options.verifyHuman ?? (() => Effect.void),
     withSignInEmailLock,
     sendMagicLink,
@@ -167,6 +157,7 @@ type MemoryAuthStore = {
   readonly account: Account[];
   readonly verification: Verification[];
   readonly rateLimit: RateLimit[];
+  readonly passkey: Passkey[];
 };
 
 export const makeMemoryTestAuth = (
@@ -178,6 +169,7 @@ export const makeMemoryTestAuth = (
     account: [],
     verification: [],
     rateLimit: [],
+    passkey: [],
   };
   const auth = makeTestAuth({
     ...options,
@@ -269,10 +261,3 @@ export const verifyMagicLink = (
   callHandler(auth, verifyLinkPath(link), {
     headers: { "x-vercel-forwarded-for": ip },
   });
-
-export const expectAccountsUnavailable = async (response: Response) => {
-  expect(response.status).toBe(503);
-  expect(await response.text()).toBe(
-    JSON.stringify({ message: "Service Unavailable" })
-  );
-};

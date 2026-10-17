@@ -20,6 +20,3 @@ export const normalizeCampaignLinkHref = (input: string) => {
     ? href
     : undefined;
 };
-
-export const campaignLinkHrefHint =
-  "Use an https:// address or an email address.";

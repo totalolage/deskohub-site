@@ -5,6 +5,7 @@ import {
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { customerAccountIdSchema } from "@/features/account/customer-account";
+import { getAccountSectionPath } from "@/features/account/routes";
 import { type Locale, m } from "@/features/i18n";
 import { localeCookieName } from "@/features/i18n/routing";
 import { maskEmailAddress } from "@/shared/utils";
@@ -49,8 +50,10 @@ import {
 } from "./account-sections";
 import {
   assertNoAuthRows,
+  countAccountPasskeys,
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
+  readNewestSessionCreatedAt,
   removeSyntheticAccountLink,
   setAccountLocalePreference,
   setDeletionRequestedAt,
@@ -71,6 +74,7 @@ import {
   expireSyntheticCustomerProfile,
   readSyntheticCustomerProfile,
 } from "./fixtures";
+import type { WorkspaceE2EAccountPasskeys } from "./passkeys";
 import { workspaceE2EAccountProfileFixture } from "./profile-fixture";
 import type { MagicLinkRateBudget } from "./rate-budget";
 import {
@@ -153,6 +157,7 @@ const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
 const deleteConfirmSelector = "#delete-account-confirm";
 
 const billingCompanyFixture = "E2E Draft Company";
+const passkeyNameFixture = "Workspace E2E passkey";
 
 const browserTimeout = workspaceE2ETimeouts.browserAction;
 const uiTransition = workspaceE2ETimeouts.uiTransition;
@@ -195,6 +200,12 @@ export type WorkspaceE2EAccountCaseInputs = {
    * could never carry the completed lifecycle between the account cases.
    */
   readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff;
+  /**
+   * The worker-scoped passkey journeys, whose virtual authenticator must
+   * outlive one case: the reactivation case adds it before its sign-in, and
+   * the passkey cases after it use and remove it.
+   */
+  readonly passkeys: WorkspaceE2EAccountPasskeys;
   readonly previewLogs: WorkspaceE2EPreviewLogs;
   readonly rateBudget: MagicLinkRateBudget;
   readonly run: Runner;
@@ -212,6 +223,7 @@ export const makeWorkspaceE2EAccountCases = ({
   config,
   datasourceConfig,
   lifecycleHandoff,
+  passkeys,
   previewLogs,
   rateBudget,
   run,
@@ -257,6 +269,8 @@ export const makeWorkspaceE2EAccountCases = ({
     );
 
   const previewOrigin = new URL(config.baseUrl).origin;
+  /** Passkeys bind to the preview's own host as their relying party. */
+  const previewRpId = new URL(config.baseUrl).hostname;
   const waitPathname = (
     description: string,
     matches: (pathname: string) => boolean
@@ -526,6 +540,19 @@ export const makeWorkspaceE2EAccountCases = ({
         }),
     });
 
+  const passkeysOffered = () => lifecycleHandoff.passkeySignIn === "offered";
+
+  const requirePasskeyCount = (
+    userId: string,
+    expected: number,
+    message: string
+  ) =>
+    countAccountPasskeys(userId).pipe(
+      Effect.flatMap((count) =>
+        Effect.sync(() => assert(count === expected, message))
+      )
+    );
+
   const readProviderProfile = (customerId: string) =>
     readSyntheticCustomerProfile(
       datasourceConfig,
@@ -623,6 +650,15 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "requires the share-link sign-in handoff",
             requireReferralInvitation()
+          )
+        );
+        lifecycleHandoff.passkeySignIn = yield* runStep(
+          step(
+            "records whether the sign-in form offers passkeys",
+            Effect.gen(function* () {
+              yield* waitShareLinkSignIn(invitation.code);
+              return yield* passkeys.readSignInOffer;
+            })
           )
         );
         yield* runStep(
@@ -1601,6 +1637,18 @@ export const makeWorkspaceE2EAccountCases = ({
             authDeliveryTimeout
           )
         );
+        // With passkeys on, the authenticator is present when the sign-in
+        // lands, so the account page offers its post-sign-in prompt the way it
+        // does on a passkey-capable browser.
+        if (passkeysOffered()) {
+          yield* runStep(
+            step(
+              "adds the virtual passkey authenticator before the reactivation sign-in",
+              passkeys.installAuthenticator,
+              browserTimeout
+            )
+          );
+        }
         yield* rateBudget.run(
           "verify",
           runStep(
@@ -1634,6 +1682,30 @@ export const makeWorkspaceE2EAccountCases = ({
             )
           )
         );
+        if (passkeysOffered()) {
+          yield* runStep(
+            step(
+              "creates a passkey from the post-sign-in prompt",
+              Effect.gen(function* () {
+                yield* passkeys.createFromPrompt;
+                const credentials =
+                  yield* passkeys.readAuthenticatorCredentials;
+                assert(
+                  credentials.length === 1 &&
+                    credentials[0]?.isResidentCredential === true &&
+                    credentials[0].rpId === previewRpId,
+                  "the prompt passkey is not one discoverable credential for the preview host"
+                );
+                yield* requirePasskeyCount(
+                  yield* requireAuthUserId(recipient),
+                  1,
+                  "the prompt passkey was not saved to the reactivated account"
+                );
+              }),
+              providerTransition
+            )
+          );
+        }
         yield* runStep(
           step(
             "keeps the retained reservation history across reactivation",
@@ -1655,14 +1727,156 @@ export const makeWorkspaceE2EAccountCases = ({
         );
       })
     ),
+    makeCase("account-passkey-sign-in", ({ runStep }) =>
+      Effect.gen(function* () {
+        const userId = yield* runStep(
+          step(
+            "requires the reactivated account's prompt passkey",
+            Effect.gen(function* () {
+              assert(
+                passkeysOffered(),
+                "the sign-in form did not offer passkeys"
+              );
+              const userId = yield* requireAuthUserId(recipient);
+              yield* requirePasskeyCount(
+                userId,
+                1,
+                "the reactivated account holds no prompt passkey"
+              );
+              return userId;
+            }),
+            datasourceTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "signs out before the passkey sign-in",
+            signOutAndRequireAnonymous(),
+            navigationTimeout
+          )
+        );
+        const sessionBeforeSignIn = yield* runStep(
+          step(
+            "reads the account's newest session before the passkey sign-in",
+            readNewestSessionCreatedAt(userId),
+            datasourceTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "signs the same account in with the passkey button",
+            Effect.gen(function* () {
+              yield* passkeys.signIn;
+              yield* waitDefaultReservations(
+                "linked account reservations after the passkey sign-in"
+              );
+              const newest = yield* readNewestSessionCreatedAt(userId);
+              assert(
+                newest !== undefined &&
+                  (sessionBeforeSignIn === undefined ||
+                    newest.getTime() > sessionBeforeSignIn.getTime()),
+                "the passkey sign-in opened no new session for the account"
+              );
+            }),
+            providerTransition
+          )
+        );
+      })
+    ),
+    makeCase("account-passkey-management", ({ runStep }) =>
+      Effect.gen(function* () {
+        const userId = yield* runStep(
+          step(
+            "reads the passkey account identity",
+            requireAuthUserId(recipient),
+            datasourceTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "renames the passkey in Sign-in & security",
+            Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* passkeys.renameOnly(passkeyNameFixture);
+            }),
+            providerTransition
+          )
+        );
+        yield* runStep(
+          step(
+            "deletes the last passkey behind its email sign-in note",
+            Effect.gen(function* () {
+              yield* passkeys.deleteOnly(passkeyNameFixture);
+              yield* requirePasskeyCount(
+                userId,
+                0,
+                "the deleted passkey is still saved"
+              );
+            }),
+            providerTransition
+          )
+        );
+        yield* runStep(
+          step(
+            "creates a passkey from Sign-in & security on the fresh session",
+            Effect.gen(function* () {
+              yield* passkeys.createFromSettings;
+              yield* requirePasskeyCount(
+                userId,
+                1,
+                "the settings passkey was not saved to the account"
+              );
+            }),
+            providerTransition
+          )
+        );
+        const staleSessionCreatedAt = new Date(Date.now() - staleSessionAgeMs);
+        yield* runStep(
+          step(
+            "confirms the account deletion with the passkey behind the stale-session gate",
+            Effect.gen(function* () {
+              yield* setSessionCreatedAt(userId, staleSessionCreatedAt);
+              yield* openPage(localized(accountSuffix));
+              yield* passkeys.confirmDeletionWithPasskey;
+            }),
+            providerTransition
+          )
+        );
+        yield* runStep(
+          step(
+            "keeps the same active account on a fresh passkey session",
+            Effect.gen(function* () {
+              const newest = yield* readNewestSessionCreatedAt(userId);
+              assert(
+                newest !== undefined &&
+                  newest.getTime() > staleSessionCreatedAt.getTime(),
+                "the passkey confirmation opened no fresh session for the account"
+              );
+              yield* openPage(localized(accountSuffix));
+              yield* waitDefaultReservations(
+                "active linked account after the passkey confirmation"
+              );
+            }),
+            accountPageLoadTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "removes the virtual passkey authenticator",
+            passkeys.removeAuthenticator,
+            browserTimeout
+          )
+        );
+      })
+    ),
     makeCase("account-locale-preference", ({ runStep }) =>
       Effect.gen(function* () {
         const languageTriggerSelector = '[data-slot="select-trigger"]';
         const languageOptionCsSelector = '[role="option"]:has-text("Čeština")';
-        const czechProfileUrl = localized(
-          `${accountSuffix}?section=profile`,
-          "cs-CZ"
-        );
+        const czechProfileUrl = new URL(
+          getAccountSectionPath("cs-CZ", "profile"),
+          config.baseUrl
+        ).toString();
         const czechLanguageLabel = m.accountProfileScreenLanguageLabel(
           {},
           { locale: "cs-CZ" }
@@ -1736,7 +1950,7 @@ export const makeWorkspaceE2EAccountCases = ({
           });
 
         /**
-         * Opens the Czech profile by its section query. The account
+         * Opens the Czech profile by its section path. The account
          * navigation labels are English-only fixtures, so the profile is
          * ready once its hydrated panel is visible and renders the Czech
          * language label.

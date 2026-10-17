@@ -10,6 +10,7 @@ import {
   type NextRequest,
   NextResponse,
 } from "next/server";
+import { findLegacyAccountSectionRedirect } from "@/features/account/routes";
 import { resolveWorkspaceLocale } from "@/features/i18n/locale-resolution";
 import { localeCookieName, locales } from "@/features/i18n/routing";
 import {
@@ -21,10 +22,31 @@ import { appendVercelPreviewProtectionBypass } from "./features/checkout/backend
 import { reservationAccessTokenQueryParam } from "./features/reservation/reservation-access-token";
 import { isAdministratorAuthorizationValid } from "./shared/administrator/administrator-basic-auth";
 import { resolveWorkspaceRuntimeCallbackOrigin } from "./shared/backend/config/workspace-url.config";
+import { withRequestPathname } from "./shared/backend/utils/request-pathname";
 import { markPrivateResponse } from "./shared/utils/private-response";
 
-const isAdministrationPath = (pathname: string) =>
-  pathname === "/admin" || pathname.startsWith("/admin/");
+const decodePathname = (pathname: string) => {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return pathname;
+  }
+};
+
+// The administration lives under the locale segment, and its unprefixed URLs
+// redirect there. Any first or second segment naming it counts, whatever the
+// prefix and however it is encoded, so no spelling of an administration URL
+// skips Basic auth.
+const isAdministrationPath = (pathname: string) => {
+  const [first, second] = decodePathname(pathname).split("/").slice(1, 3);
+  return first === "admin" || second === "admin";
+};
+
+const markAdministrationResponse = <T extends Response>(response: T) => {
+  response.headers.set("Cache-Control", "private, no-store");
+  response.headers.append("Vary", "Authorization");
+  return response;
+};
 
 const isPrivateReservationPath = (pathname: string) =>
   pathname.includes("/reservation/status/") ||
@@ -42,8 +64,30 @@ const hasReservationCapabilityToExchange = (request: NextRequest) =>
   isReservationCapabilityExchangePath(request.nextUrl.pathname) &&
   request.nextUrl.searchParams.has(reservationAccessTokenQueryParam);
 
+const isAccountPath = (pathname: string) => /\/account(\/|$)/.test(pathname);
+
 const isPrivateAccountPath = (pathname: string) =>
-  /\/account(\/|$)/.test(pathname) || /\/auth(\/|$)/.test(pathname);
+  isAccountPath(pathname) || /\/auth(\/|$)/.test(pathname);
+
+/**
+ * Hands a request on to its render. An account render receives its pathname,
+ * which the account sections' layout checks before it renders the account
+ * page; other renders receive the request's own headers when the proxy changed
+ * them.
+ */
+const continueRequest = (
+  request: NextRequest,
+  { headersChanged }: { readonly headersChanged: boolean }
+) => {
+  if (isAccountPath(request.nextUrl.pathname)) {
+    return NextResponse.next({
+      request: { headers: withRequestPathname(request) },
+    });
+  }
+  return headersChanged
+    ? NextResponse.next({ request: { headers: request.headers } })
+    : NextResponse.next();
+};
 
 /**
  * A real top-level page load. Speculative and router requests never take the
@@ -118,54 +162,8 @@ const pageLocalePreference = async (request: NextRequest) => {
   }
 };
 
-export async function proxy(request: NextRequest) {
-  if (isAdministrationPath(request.nextUrl.pathname)) {
-    if (
-      !isAdministratorAuthorizationValid(
-        request.headers.get("authorization"),
-        env.ADMIN_BASIC_AUTH_CREDENTIALS
-      )
-    ) {
-      return new NextResponse(null, {
-        status: 401,
-        headers: {
-          "Cache-Control": "private, no-store",
-          Vary: "Authorization",
-          "WWW-Authenticate":
-            'Basic realm="Deskohub administration", charset="UTF-8"',
-        },
-      });
-    }
-
-    const response = NextResponse.next();
-    response.headers.set("Cache-Control", "private, no-store");
-    response.headers.set("Vary", "Authorization");
-    return response;
-  }
-
-  if (request.method === "POST" && request.headers.has("next-action")) {
-    return NextResponse.next();
-  }
-
-  if (
-    env.VERCEL_ENV === "preview" &&
-    (request.method === "GET" || request.method === "HEAD")
-  ) {
-    const callbackOrigin = Result.getOrThrow(
-      resolveWorkspaceRuntimeCallbackOrigin()
-    );
-    if (request.nextUrl.origin !== callbackOrigin.origin) {
-      const redirectUrl = new URL(
-        `${request.nextUrl.pathname}${request.nextUrl.search}`,
-        callbackOrigin
-      );
-      appendVercelPreviewProtectionBypass(redirectUrl, {
-        setBypassCookie: true,
-      });
-      return markPrivateResponse(NextResponse.redirect(redirectUrl));
-    }
-  }
-
+// Places a page request on the URL the Workspace locale chain resolves.
+async function localizedPageResponse(request: NextRequest) {
   const localeFromUrl = getLocaleFromRequestPathname(request, locales);
 
   // A reservation capability is bound to the locale it was issued in, so it is
@@ -190,13 +188,25 @@ export async function proxy(request: NextRequest) {
   );
 
   if (localeFromUrl === resolvedLocale) {
+    const sectionRedirect = findLegacyAccountSectionRedirect(
+      resolvedLocale,
+      new URL(request.url)
+    );
+    if (sectionRedirect) {
+      const response = markPrivateResponse(
+        NextResponse.redirect(sectionRedirect)
+      );
+      setLocaleCookie(response, localeCookieName, resolvedLocale);
+      return response;
+    }
+
     const sharedReferralCode = findSharedReferralCodeOfNavigation(request);
     if (sharedReferralCode) {
       request.cookies.set(referralCodeCookieName, sharedReferralCode);
     }
-    const response = sharedReferralCode
-      ? NextResponse.next({ request: { headers: request.headers } })
-      : NextResponse.next();
+    const response = continueRequest(request, {
+      headersChanged: Boolean(sharedReferralCode),
+    });
     if (
       isPrivateReservationPath(request.nextUrl.pathname) ||
       isPrivateAccountPath(request.nextUrl.pathname)
@@ -207,12 +217,18 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  const redirectUrl = request.nextUrl.clone();
-  redirectUrl.pathname = getLocalizedRedirectPathname(
+  const localizedUrl = request.nextUrl.clone();
+  localizedUrl.pathname = getLocalizedRedirectPathname(
     request.nextUrl.pathname,
     resolvedLocale,
     locales
   );
+  // A retired account section link goes straight to its section's path.
+  const redirectUrl =
+    findLegacyAccountSectionRedirect(
+      resolvedLocale,
+      new URL(localizedUrl.href)
+    ) ?? localizedUrl;
 
   const response = NextResponse.redirect(redirectUrl);
   response.headers.set("Vary", "Accept-Language");
@@ -226,9 +242,67 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+export async function proxy(request: NextRequest) {
+  if (isAdministrationPath(request.nextUrl.pathname)) {
+    if (
+      !isAdministratorAuthorizationValid(
+        request.headers.get("authorization"),
+        env.ADMIN_BASIC_AUTH_CREDENTIALS
+      )
+    ) {
+      return new NextResponse(null, {
+        status: 401,
+        headers: {
+          "Cache-Control": "private, no-store",
+          Vary: "Authorization",
+          "WWW-Authenticate":
+            'Basic realm="Deskohub administration", charset="UTF-8"',
+        },
+      });
+    }
+
+    return markAdministrationResponse(
+      request.method === "POST" && request.headers.has("next-action")
+        ? NextResponse.next()
+        : await localizedPageResponse(request)
+    );
+  }
+
+  if (request.method === "POST" && request.headers.has("next-action")) {
+    return continueRequest(request, { headersChanged: false });
+  }
+
+  if (
+    env.VERCEL_ENV === "preview" &&
+    (request.method === "GET" || request.method === "HEAD")
+  ) {
+    const callbackOrigin = Result.getOrThrow(
+      resolveWorkspaceRuntimeCallbackOrigin()
+    );
+    if (request.nextUrl.origin !== callbackOrigin.origin) {
+      const redirectUrl = new URL(
+        `${request.nextUrl.pathname}${request.nextUrl.search}`,
+        callbackOrigin
+      );
+      appendVercelPreviewProtectionBypass(redirectUrl, {
+        setBypassCookie: true,
+      });
+      return markPrivateResponse(NextResponse.redirect(redirectUrl));
+    }
+  }
+
+  return localizedPageResponse(request);
+}
+
+// Every account route, dotted segments included, passes through the proxy: the
+// account sections' layout trusts the request pathname only because the proxy
+// replaces any value a client sent.
 export const config: MiddlewareConfig = {
   matcher: [
     "/admin/:path*",
+    "/:locale/admin/:path*",
+    "/account/:path*",
+    "/:locale((?!api)[^/]+)/account/:path*",
     "/((?!api|_next/static|_next/image|favicon.ico|favicon.svg|.*\\..*).*)",
   ],
 };

@@ -14,6 +14,7 @@ what the privacy copy promises. Privacy copy lives in
 | Dotypos | Profile and reservation history | Account deletion sets the profile's expiry; retained records stay |
 | Resend | Sent message, recipient, delivery metadata | Provider retention only; Workspace keeps no copy |
 | Cloudinary | Avatar asset | Destroyed before identity removal |
+| PostHog warehouse | Allowlisted Dotypos customer fields in `custom.dotypos_customers` | PostHog retention settings; a Dotypos deletion arrives as `deleted: true`, not erasure |
 
 ## Rules
 
@@ -36,8 +37,9 @@ what the privacy copy promises. Privacy copy lives in
     goes through Resend's contact process.
 - Don't mirror Resend message bodies or delivery events into Workspace.
 - Neon preview branches copy production data at the branch point, and later
-  production deletions don't reach existing branches. The allowed contents and
-  the no-sanitizer rule are in the root `AGENTS.md`. Rely on the
+  production deletions don't reach existing branches. The allowed contents,
+  including `auth.passkey` rows and their customer-written labels, and the
+  no-sanitizer rule are in the root `AGENTS.md`. Rely on the
   integration's preview-branch cleanup; don't add a scrub job, PII-free
   parent, branch reset job, or masking branch. Never query, log, display, or
   email inherited real identities during E2E.

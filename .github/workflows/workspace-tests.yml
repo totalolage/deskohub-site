@@ -177,11 +177,44 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # Administration copy must never reach the client chunks customer routes
+  # load. A compile-only production build writes every route's client chunks
+  # without prerendering, so it needs no deployment environment.
+  validate-administration-messages:
+    if: github.event.action != 'converted_to_draft'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build Workspace client chunks
+        env:
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+        run: >-
+          bun turbo run build
+          --filter=./apps/deskohub-workspace
+          -- --experimental-build-mode=compile
+
+      - name: Check administration messages in the build output
+        working-directory: apps/deskohub-workspace
+        run: bun run test:build-output
+
   test-functional:
     needs:
       - validate-workspace
       - validate-workspace-migrations
       - test-functional-shards
+      - validate-administration-messages
     if: always() && github.event.action != 'converted_to_draft'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -192,10 +225,12 @@ jobs:
           VALIDATION_RESULT: ${{ needs.validate-workspace.result }}
           MIGRATION_COUNT_RESULT: ${{ needs.validate-workspace-migrations.result }}
           FUNCTIONAL_SHARDS_RESULT: ${{ needs.test-functional-shards.result }}
+          ADMINISTRATION_MESSAGES_RESULT: ${{ needs.validate-administration-messages.result }}
         run: |
           if [[ "$VALIDATION_RESULT" != success || \
                 "$MIGRATION_COUNT_RESULT" != success || \
-                "$FUNCTIONAL_SHARDS_RESULT" != success ]]; then
+                "$FUNCTIONAL_SHARDS_RESULT" != success || \
+                "$ADMINISTRATION_MESSAGES_RESULT" != success ]]; then
             echo "Workspace CI dependency failed, was cancelled, or was skipped." >&2
             exit 1
           fi

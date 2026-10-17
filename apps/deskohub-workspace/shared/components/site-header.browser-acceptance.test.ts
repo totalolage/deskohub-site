@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type Browser, chromium, type Page } from "@playwright/test";
 import { type Locale, locales, m } from "@/features/i18n";
+import { browserModuleStubPlugin } from "@/shared/testing/browser-module-stubs.test-utils";
 import { playwrightChromiumAvailable } from "@/shared/testing/playwright-browser";
 import { compileWorkspaceAppStyles } from "@/shared/testing/workspace-app-styles.test-utils";
 
@@ -14,11 +15,47 @@ const narrowDesktopViewport = { height: 800, width: 1280 } as const;
 const shortMobileViewport = { height: 600, width: 375 } as const;
 // The narrowest supported phone up to the largest common one.
 const phoneWidths = [320, 390, 430] as const;
+// Small laptops, the `xl` breakpoint where the full header adds its desktop
+// navigation and language switcher, and a common desktop.
+const desktopWidths = [1024, 1280, 1440] as const;
 const headerVariants = ["full", "minimal"] as const;
 type HeaderVariant = (typeof headerVariants)[number];
+type AccountSession = "signed-in" | "signed-out";
+const desktopHeaders = [
+  {
+    name: "full header signed out",
+    variant: "full",
+    session: "signed-out",
+    administrator: false,
+  },
+  {
+    name: "full header on the signed-in account page",
+    variant: "full",
+    session: "signed-in",
+    administrator: false,
+  },
+  {
+    name: "full header for an administrator on the account page",
+    variant: "full",
+    session: "signed-in",
+    administrator: true,
+  },
+  {
+    name: "minimal header",
+    variant: "minimal",
+    session: "signed-out",
+    administrator: false,
+  },
+] as const satisfies readonly {
+  readonly administrator: boolean;
+  readonly name: string;
+  readonly session: AccountSession;
+  readonly variant: HeaderVariant;
+}[];
+const harnessOrigin = "http://site-header.test";
 
 // The harness runs outside a Next.js app, so the router-bound modules render
-// plain elements; static image imports keep their real dimensions.
+// plain elements.
 const nextModuleStubs: Readonly<Record<string, string>> = {
   "next/image": `
     import { createElement } from "react";
@@ -38,20 +75,10 @@ const nextModuleStubs: Readonly<Record<string, string>> = {
   `,
 };
 
-const nextModuleStubPlugin: Bun.BunPlugin = {
-  name: "site-header-next-stubs",
+// Static image imports keep their real dimensions.
+const svgImagePlugin: Bun.BunPlugin = {
+  name: "site-header-svg-images",
   setup(build) {
-    build.onResolve({ filter: /^next\/(image|link|navigation)$/ }, (args) => ({
-      namespace: "site-header-next-stub",
-      path: args.path,
-    }));
-    build.onLoad(
-      { filter: /.*/, namespace: "site-header-next-stub" },
-      (args) => ({
-        contents: nextModuleStubs[args.path] ?? "",
-        loader: "js",
-      })
-    );
     build.onLoad({ filter: /\.svg$/ }, async (args) => {
       const svg = await readFile(args.path, "utf8");
       const viewBox = /viewBox="[\d.]+ [\d.]+ ([\d.]+) ([\d.]+)"/.exec(svg);
@@ -83,7 +110,7 @@ beforeAll(async () => {
     minify: true,
     naming: "site-header-harness.js",
     outdir: buildDirectory,
-    plugins: [nextModuleStubPlugin],
+    plugins: [browserModuleStubPlugin(nextModuleStubs), svgImagePlugin],
     target: "browser",
   });
   if (!build.success) {
@@ -99,7 +126,11 @@ beforeAll(async () => {
 :root { --font-sculpin: "Sculpin"; }
 ${await compileWorkspaceAppStyles()}`;
 
-  browser = await chromium.launch({ headless: true });
+  // Desktop cases need classic scrollbars, which headless Chromium hides.
+  browser = await chromium.launch({
+    headless: true,
+    ignoreDefaultArgs: ["--hide-scrollbars"],
+  });
 });
 
 afterAll(async () => {
@@ -108,18 +139,45 @@ afterAll(async () => {
     await rm(buildDirectory, { force: true, recursive: true });
 });
 
+type SiteHeaderPageOptions = {
+  // A signed-in administrator also gets the admin entry and ribbon.
+  readonly administrator?: boolean;
+  // A long desktop page reserves a classic scrollbar, so the header is
+  // narrower than the media queries' viewport width.
+  readonly scrollbar?: boolean;
+  // A signed-in customer is shown on their account page, where the header
+  // marks the account link as the current page.
+  readonly session?: AccountSession;
+  readonly variant?: HeaderVariant;
+};
+
 const openSiteHeader = async (
   locale: Locale,
   viewport: { readonly height: number; readonly width: number },
-  variant: HeaderVariant = "full",
-  { administrator = false }: { readonly administrator?: boolean } = {}
+  {
+    administrator = false,
+    scrollbar = false,
+    session = "signed-out",
+    variant = "full",
+  }: SiteHeaderPageOptions = {}
 ) => {
   if (!browser) throw new Error("The SiteHeader browser has not launched.");
   const page = await browser.newPage({ reducedMotion: "reduce", viewport });
-  await page.setContent(
-    `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="site-header-test-root" data-locale="${locale}" data-variant="${variant}" data-administrator="${administrator}"></div></body></html>`
+  // The header reads the current page from the URL, so the harness is served
+  // at the page it stands in for.
+  await page.route(`${harnessOrigin}/**`, (route) =>
+    route.fulfill({
+      body: `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="site-header-test-root" data-locale="${locale}" data-administrator="${administrator}" data-session="${session}" data-variant="${variant}"></div></body></html>`,
+      contentType: "text/html",
+    })
+  );
+  await page.goto(
+    `${harnessOrigin}/${locale}${session === "signed-in" ? "/account" : ""}`
   );
   await page.addStyleTag({ content: appStyles });
+  if (scrollbar) {
+    await page.addStyleTag({ content: "html { overflow-y: scroll; }" });
+  }
   await page.addScriptTag({ path: browserBundlePath });
   await page.getByRole("banner").waitFor();
   if (administrator) {
@@ -135,33 +193,61 @@ const openSiteHeader = async (
 };
 
 // The header is fixed, so its overflow would not widen the document; every
-// rendered header element has to fit inside the viewport instead.
+// rendered header element has to fit inside the viewport, which excludes a
+// classic scrollbar, instead. A squeezed desktop row pushes its controls into
+// its padding before they leave the viewport, so desktop checks keep them
+// inside the padding too.
 const readHorizontalOverflow = (page: Page) =>
   page.evaluate(() => {
     const viewportWidth = document.documentElement.clientWidth;
     const header = document.querySelector("header");
-    if (!header) throw new Error("The site header is missing.");
-    const overflowingElements = [header, ...header.querySelectorAll("*")]
-      .filter((element) =>
-        element.checkVisibility({ visibilityProperty: true })
-      )
-      .filter((element) => {
-        const rect = element.getBoundingClientRect();
-        return (
-          rect.width > 0 && (rect.left < -1 || rect.right > viewportWidth + 1)
-        );
-      })
-      .map((element) => element.outerHTML.slice(0, 120));
+    const row = header?.firstElementChild;
+    if (!(header && row)) throw new Error("The site header is missing.");
+    const rowStyle = getComputedStyle(row);
+    const rowRect = row.getBoundingClientRect();
+    const rowContentLeft =
+      rowRect.left + Number.parseFloat(rowStyle.paddingLeft);
+    const rowContentRight =
+      rowRect.right - Number.parseFloat(rowStyle.paddingRight);
+    const overflowingElements = (
+      elements: Iterable<Element>,
+      left: number,
+      right: number
+    ) =>
+      Array.from(elements)
+        .filter((element) =>
+          element.checkVisibility({ visibilityProperty: true })
+        )
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.width > 0 && (rect.left < left - 1 || rect.right > right + 1)
+          );
+        })
+        .map((element) => element.outerHTML.slice(0, 120));
     return {
       documentOverflow:
         document.documentElement.scrollWidth - window.innerWidth,
-      overflowingElements,
+      outsideRowPadding: overflowingElements(
+        row.querySelectorAll("*"),
+        rowContentLeft,
+        rowContentRight
+      ),
+      outsideViewport: overflowingElements(
+        [header, ...header.querySelectorAll("*")],
+        0,
+        viewportWidth
+      ),
     };
   });
 
-const expectNoHorizontalOverflow = async (page: Page) => {
+const expectNoHorizontalOverflow = async (
+  page: Page,
+  { insideRowPadding = false } = {}
+) => {
   const overflow = await readHorizontalOverflow(page);
-  expect(overflow.overflowingElements).toEqual([]);
+  expect(overflow.outsideViewport).toEqual([]);
+  if (insideRowPadding) expect(overflow.outsideRowPadding).toEqual([]);
   expect(overflow.documentOverflow).toBeLessThanOrEqual(1);
 };
 
@@ -181,7 +267,7 @@ const readWrappedNavigationLabels = (page: Page, navigationLabel: string) =>
       .map((link) => link.textContent);
   }, navigationLabel);
 
-// The horizontal logo's resolved styling and its box against the home link's.
+// The horizontal logo's resolved zoom and its box against the home link's.
 const readHorizontalLogoLayout = (page: Page) =>
   page.evaluate(() => {
     const link = document.querySelector(
@@ -191,20 +277,14 @@ const readHorizontalLogoLayout = (page: Page) =>
     if (!(link && logo instanceof HTMLElement)) {
       throw new Error("The horizontal site header logo is missing.");
     }
-    const style = getComputedStyle(logo);
     const linkBox = link.getBoundingClientRect();
     const logoBox = logo.getBoundingClientRect();
     return {
-      // Computed sizes ignore the scale and keep subpixel precision.
-      layoutHeight: Number.parseFloat(style.height),
-      layoutWidth: Number.parseFloat(style.width),
       linkLeft: linkBox.left,
       linkWidth: linkBox.width,
       logoLeft: logoBox.left,
       logoWidth: logoBox.width,
-      marginRight: style.marginRight,
-      scale: style.scale,
-      transformOrigin: style.transformOrigin.split(" ").map(Number.parseFloat),
+      zoom: getComputedStyle(logo).zoom,
     };
   });
 
@@ -229,10 +309,51 @@ for (const locale of locales) {
           const page = await openSiteHeader(
             locale,
             { height: 844, width },
-            variant
+            { variant }
           );
           try {
             await expectNoHorizontalOverflow(page);
+          } finally {
+            await page.close();
+          }
+        }
+      );
+    }
+  }
+
+  for (const { administrator, name, session, variant } of desktopHeaders) {
+    for (const width of desktopWidths) {
+      test.skipIf(!chromiumAvailable)(
+        `fits the ${name} on a ${width}px desktop with a scrollbar (${locale})`,
+        async () => {
+          const page = await openSiteHeader(
+            locale,
+            { height: 900, width },
+            { administrator, scrollbar: true, session, variant }
+          );
+          try {
+            if (session === "signed-in") {
+              // The mobile menu's copy has a visible label instead.
+              const currentPageLink = page.locator(
+                'header a[aria-current="page"][aria-label]'
+              );
+              await currentPageLink.waitFor();
+              expect(await currentPageLink.getAttribute("aria-label")).toBe(
+                m.accountNavLabel({}, { locale })
+              );
+            }
+            if (administrator) {
+              expect(
+                await page
+                  .getByRole("link", {
+                    exact: true,
+                    name: m.siteHeaderAdminLabel({}, { locale }),
+                  })
+                  .first()
+                  .isVisible()
+              ).toBe(true);
+            }
+            await expectNoHorizontalOverflow(page, { insideRowPadding: true });
           } finally {
             await page.close();
           }
@@ -246,7 +367,7 @@ for (const locale of locales) {
     async () => {
       const page = await openSiteHeader(locale, desktopViewport);
       try {
-        await expectNoHorizontalOverflow(page);
+        await expectNoHorizontalOverflow(page, { insideRowPadding: true });
         expect(
           await page
             .getByRole("navigation", {
@@ -358,7 +479,7 @@ for (const locale of locales) {
       test.skipIf(!chromiumAvailable)(
         `keeps every desktop label on one line for ${state} at ${viewport.width}px (${locale})`,
         async () => {
-          const page = await openSiteHeader(locale, viewport, "full", {
+          const page = await openSiteHeader(locale, viewport, {
             administrator,
           });
           try {
@@ -391,35 +512,33 @@ for (const locale of locales) {
   }
 
   for (const viewport of [narrowDesktopViewport, desktopViewport]) {
-    test.skipIf(!chromiumAvailable)(
-      `keeps the minimal header logo at its default scale at ${viewport.width}px (${locale})`,
-      async () => {
-        const page = await openSiteHeader(locale, viewport, "minimal");
-        try {
-          const layout = await readHorizontalLogoLayout(page);
-          // Only the full header compacts its logo beside the navigation.
-          expect(layout.scale).toBe("0.8");
-          expect(layout.marginRight).toBe("0px");
-          const [originX, originY] = layout.transformOrigin;
-          expect(originX).toBeCloseTo(layout.layoutWidth / 2, 1);
-          expect(originY).toBeCloseTo(layout.layoutHeight / 2, 1);
-          expect(layout.linkWidth).toBeCloseTo(layout.layoutWidth, 1);
-          expect(layout.logoWidth).toBeCloseTo(layout.layoutWidth * 0.8, 1);
-          expect(layout.logoLeft - layout.linkLeft).toBeCloseTo(
-            layout.layoutWidth * 0.1,
-            1
-          );
-        } finally {
-          await page.close();
+    for (const variant of headerVariants) {
+      // Only the full header shrinks its logo further beside the navigation,
+      // and only below 2xl.
+      const zoom =
+        variant === "full" && viewport.width < 1536 ? "0.7" : "0.8";
+      test.skipIf(!chromiumAvailable)(
+        `zooms the ${variant} header logo to ${zoom} at ${viewport.width}px (${locale})`,
+        async () => {
+          const page = await openSiteHeader(locale, viewport, { variant });
+          try {
+            const layout = await readHorizontalLogoLayout(page);
+            expect(layout.zoom).toBe(zoom);
+            // The zoomed logo reserves no width beyond what it draws.
+            expect(layout.logoWidth).toBeCloseTo(layout.linkWidth, 1);
+            expect(layout.logoLeft).toBeCloseTo(layout.linkLeft, 1);
+          } finally {
+            await page.close();
+          }
         }
-      }
-    );
+      );
+    }
   }
 
   test.skipIf(!chromiumAvailable)(
     `fits the admin button and ribbon on one desktop line at 1440px (${locale})`,
     async () => {
-      const page = await openSiteHeader(locale, desktopViewport, "full", {
+      const page = await openSiteHeader(locale, desktopViewport, {
         administrator: true,
       });
       try {
@@ -458,7 +577,7 @@ for (const locale of locales) {
   test.skipIf(!chromiumAvailable)(
     `scrolls the administrator's mobile menu to the language switcher (${locale})`,
     async () => {
-      const page = await openSiteHeader(locale, shortMobileViewport, "full", {
+      const page = await openSiteHeader(locale, shortMobileViewport, {
         administrator: true,
       });
       try {

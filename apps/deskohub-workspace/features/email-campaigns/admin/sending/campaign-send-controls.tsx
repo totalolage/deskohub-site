@@ -1,8 +1,10 @@
 "use client";
 
 import { Users } from "lucide-react";
-import Link from "next/link";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import type { CampaignId } from "../../campaign-identifiers";
 import { CampaignConfirmSendDialog } from "./campaign-confirm-send-dialog";
@@ -28,12 +30,13 @@ export function CampaignSendControls({
   contentLocales,
   unsavedChanges,
 }: CampaignSendControlsProps) {
+  const locale = useRouteLocale();
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Button asChild size="sm" variant="ghost">
         <Link href={`/admin/email-campaigns/${campaignId}/recipients`}>
           <Users aria-hidden className="size-4" />
-          Preview recipients
+          {m.emailCampaignsSendPreviewRecipients({}, { locale })}
         </Link>
       </Button>
       <CampaignTestSendDialog

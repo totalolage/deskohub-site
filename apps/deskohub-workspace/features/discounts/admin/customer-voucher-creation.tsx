@@ -1,6 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import { useRouteLocale } from "@/features/i18n/route-locale";
 import {
   Dialog,
   DialogContent,
@@ -24,13 +26,20 @@ export function CustomerVoucherCreationForm({
   readonly customer: VoucherCustomer;
 }) {
   const router = useRouter();
+  const locale = useRouteLocale();
 
   return (
     <CreateVoucherForm
       customer={customer}
       onCreated={() => {
         if (completion === "back") router.back();
-        else router.replace(`/admin/customers/${customer.id}`);
+        else
+          router.replace(
+            localizeAdministrationHref(
+              `/admin/customers/${customer.id}`,
+              locale
+            )
+          );
       }}
     />
   );

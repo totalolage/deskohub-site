@@ -17,8 +17,8 @@ const updateLocalePreference = mock(async () => ({}));
 mock.module("@/features/account/switch-locale", () => ({ switchLocale }));
 mock.module("@/features/account/actions", () => ({ updateLocalePreference }));
 mock.module("next/navigation", () => ({
-  usePathname: () => "/en-US/account",
-  useSearchParams: () => new URLSearchParams("section=profile"),
+  usePathname: () => "/en-US/account/profile",
+  useSearchParams: () => new URLSearchParams("ref=menu"),
 }));
 
 beforeAll(() => {

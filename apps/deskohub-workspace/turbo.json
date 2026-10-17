@@ -53,6 +53,7 @@
       ]
     },
     "i18n:compile": {
+      "dependsOn": ["i18n:compile:administration"],
       "env": ["!NEXT_PUBLIC_VERCEL_*"],
       "inputs": [
         "features/i18n/messages/*.json",
@@ -60,6 +61,14 @@
         "project.inlang/project_id"
       ],
       "outputs": ["features/i18n/paraglide/**"]
+    },
+    "i18n:compile:administration": {
+      "env": ["!NEXT_PUBLIC_VERCEL_*"],
+      "inputs": [
+        "features/administration/i18n/messages/**/*.json",
+        "features/administration/i18n/project.inlang/settings.json"
+      ],
+      "outputs": ["features/administration/i18n/paraglide/**"]
     },
     "feature-flags:sync": {
       "cache": false,

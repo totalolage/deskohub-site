@@ -3,6 +3,7 @@ import "server-only";
 import { Effect, Option, Predicate } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import type { Locale } from "@/features/i18n";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -21,6 +22,7 @@ import {
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
 import { getAdministrationReservationListDateRange } from "./reservation-date-range";
+import { getAdministrationReservationProductTitle } from "./reservation-product";
 import {
   getDotyposCustomerRouteId,
   requireDotyposCustomerRouteId,
@@ -188,15 +190,14 @@ export const loadAdministrationReservation = cache(async (id: string) => {
 });
 
 export const loadAdministrationReservationBreadcrumbLabel = cache(
-  async (id: string) => {
+  async (id: string, locale: Locale) => {
     await authorizeAdministratorPage();
     const reservationId = requireWorkspaceReservationRouteId(id);
-    return Effect.gen(function* () {
+    const product = await Effect.gen(function* () {
       const administration = yield* AdministrationService;
-      return yield* administration.loadReservationBreadcrumbLabel(
-        reservationId
-      );
+      return yield* administration.loadReservationProduct(reservationId);
     }).pipe(runAdministration("administration.reservation-breadcrumb"));
+    return product && getAdministrationReservationProductTitle(product, locale);
   }
 );
 
@@ -244,7 +245,7 @@ export const loadAdministrationBooking = cache(async (id: string) => {
 });
 
 export const loadAdministrationBookingBreadcrumbLabel = cache(
-  async (id: string) => {
+  async (id: string, locale: Locale) => {
     await authorizeAdministratorPage();
     const bookingId = requireDotyposReservationRouteId(id);
     const breadcrumb = await Effect.gen(function* () {
@@ -253,7 +254,7 @@ export const loadAdministrationBookingBreadcrumbLabel = cache(
     }).pipe(runAdministration("administration.booking-breadcrumb"));
     return breadcrumb
       ? (breadcrumb.tableName ??
-          formatAdministrationDateTime(breadcrumb.startsAt))
+          formatAdministrationDateTime(breadcrumb.startsAt, locale))
       : undefined;
   }
 );

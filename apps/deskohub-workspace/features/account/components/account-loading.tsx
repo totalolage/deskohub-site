@@ -1,6 +1,7 @@
 "use client";
 
 import { LogOut } from "lucide-react";
+import { getAccountSectionPath } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -16,9 +17,9 @@ const disabledAccountSections = [
   "danger",
 ] as const;
 
-// The static shell renders before the referral flag is known, so the
-// skeleton never shows the referral section of an unreleased program.
-const hiddenAccountSections = ["referrals"] as const;
+// The static shell renders before the referral and passkey flags are known,
+// so the skeleton never shows the sections of unreleased features.
+const hiddenAccountSections = ["referrals", "security"] as const;
 
 const noopSectionChange: AccountShellProps["onSectionChange"] = () => undefined;
 
@@ -41,6 +42,7 @@ export function AccountLoading({ locale }: { readonly locale: Locale }) {
       hiddenSections={hiddenAccountSections}
       labels={getAccountScreenCopy(locale).shell}
       onSectionChange={noopSectionChange}
+      sectionHref={(section) => getAccountSectionPath(locale, section)}
       signOut={<AccountSignOutLoading locale={locale} />}
       title={m.accountTitle({}, { locale })}
     >
