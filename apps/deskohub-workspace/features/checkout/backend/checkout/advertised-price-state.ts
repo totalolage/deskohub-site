@@ -30,10 +30,10 @@ import {
   officeAdvertisedPriceReservationSchema,
 } from "@/features/reservation/office-reservation";
 import {
-  type SealedStateCryptoOptions,
-  type SealedStateTokenError,
   createSealedStateClaims,
   openSealedState,
+  type SealedStateCryptoOptions,
+  type SealedStateTokenError,
   sealState,
 } from "@/shared/backend/sealed-state";
 import {

@@ -60,10 +60,12 @@ const sentWithoutCode: AuthResponse = {
   data: { status: true, signInCode: false },
   error: null,
 };
-const magicLink = mock((): Promise<AuthResponse> => {
-  events.push("send");
-  return Promise.resolve(sentWithoutCode);
-});
+const magicLink = mock(
+  (_body?: { readonly callbackURL: string }): Promise<AuthResponse> => {
+    events.push("send");
+    return Promise.resolve(sentWithoutCode);
+  }
+);
 const emailOtp = mock(
   (_body: {
     readonly email: string;
@@ -801,8 +803,7 @@ describe("account auth return lifecycle", () => {
         )
       );
     const sentCallbackURL = () =>
-      (magicLink.mock.calls.at(-1) as unknown as [{ callbackURL: string }])[0]
-        .callbackURL;
+      magicLink.mock.calls.at(-1)?.[0]?.callbackURL ?? "";
 
     beforeEach(() => {
       sessionStorage.clear();

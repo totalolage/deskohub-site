@@ -6,13 +6,13 @@ import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-o
 import { payStateTokenQueryParam } from "@/features/checkout/pay-state-token-query";
 import type { AppliedDiscount } from "@/features/discounts";
 import {
-  type SealedStateCryptoOptions,
-  type SealedStateKey,
-  SealedStateTokenError,
   createSealedStateClaims,
   decodeSealedState,
   openSealedState,
   parseSealedStateKey,
+  type SealedStateCryptoOptions,
+  type SealedStateKey,
+  SealedStateTokenError,
   sealState,
 } from "@/shared/backend/sealed-state";
 import {

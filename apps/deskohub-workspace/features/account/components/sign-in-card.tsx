@@ -11,8 +11,8 @@ import {
   createAuthReturnLifecycle,
   type SignInEmailFailure,
 } from "@/features/account/auth-return";
-import { PasskeySignInOption } from "@/features/account/components/passkeys/passkey-sign-in-option";
 import { AuthCard } from "@/features/account/components/auth-card";
+import { PasskeySignInOption } from "@/features/account/components/passkeys/passkey-sign-in-option";
 import { signInEmailFailureMessage } from "@/features/account/components/sign-in-email-failure-message";
 import { SignInEmailSentStep } from "@/features/account/components/sign-in-email-sent-step";
 import {

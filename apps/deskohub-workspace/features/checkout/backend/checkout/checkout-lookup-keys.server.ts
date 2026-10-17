@@ -13,9 +13,9 @@ import { getMeetingRoomReservationDetails } from "@/features/reservation/meeting
 import { getOfficeReservationDetails } from "@/features/reservation/office-reservation";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import {
+  parseSealedStateKeys,
   type SealedStateKey,
   SealedStateTokenError,
-  parseSealedStateKeys,
 } from "@/shared/backend/sealed-state";
 
 /**

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { forgetEmailSignInRequest } from "@/features/account/email-sign-in-request";
 import { noteEmailSignInForPasskeyPrompt } from "@/features/account/passkey-prompt";
 import {
   getSignInDestination,
@@ -9,7 +10,6 @@ import {
   signInCallbackReturnParam,
 } from "@/features/account/routes";
 import { recordSignInCompletion } from "@/features/account/sign-in-analytics";
-import { forgetEmailSignInRequest } from "@/features/account/email-sign-in-request";
 import type { Locale } from "@/features/i18n";
 import { handOffReturn } from "@/shared/browser/return-window";
 import { AuthCallbackLoading } from "./auth-callback-loading";

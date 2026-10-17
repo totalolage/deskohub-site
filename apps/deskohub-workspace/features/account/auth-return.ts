@@ -9,16 +9,16 @@ import type { Locale } from "@/features/i18n";
 import { listenForReturn } from "@/shared/browser/return-window";
 import { parseSameOriginPath } from "@/shared/utils/same-origin-path";
 import { authClient } from "./auth.client";
+import {
+  forgetEmailSignInRequest,
+  rememberEmailSignInRequest,
+} from "./email-sign-in-request";
 import { noteEmailSignInForPasskeyPrompt } from "./passkey-prompt";
 import {
   captureSignInCodeRejection,
   recordSignInCompletion,
   type SignInCodeRejectionReason,
 } from "./sign-in-analytics";
-import {
-  forgetEmailSignInRequest,
-  rememberEmailSignInRequest,
-} from "./email-sign-in-request";
 
 const RETURN_LISTENER_TTL_MS = 10 * 60 * 1000;
 const FRESH_SESSION_WINDOW_MS = 10 * 60 * 1000;

@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Result, Schema } from "effect";
 import {
-  type SealedStateKey,
   makeSealedState,
   openSealedState,
   parseSealedStateKey,
+  type SealedStateKey,
   sealedStateClaimsSchema,
   sealState,
 } from "./sealed-state";
