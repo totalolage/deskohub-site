@@ -14,17 +14,26 @@ import type {
   AdministrationReservationSummary,
   AdministrationTimelineItem,
 } from "./administration.service";
+import { getAdministrationCustomerName } from "./customer-presentation";
 import {
   formatAdministrationDateTime,
   formatAdministrationReservationDate,
 } from "./formatters";
 import { m } from "./i18n";
 import { NexiOrderLink } from "./nexi-order-link";
+import { getAdministrationPaymentProviderLabel } from "./payment-presentation";
 import {
   PaymentAmount,
   PaymentRefundRequiredLabel,
   PaymentStatusLabel,
 } from "./payment-status";
+import { getAdministrationPaymentTimelineCopy } from "./payment-timeline";
+import {
+  getAdministrationReservationStatusLabel,
+  getAdministrationReservationStatusNoteLabel,
+} from "./reservation-presentation";
+import { getAdministrationReservationProductTitle } from "./reservation-product";
+import { getAdministrationReservationTimelineCopy } from "./reservation-timeline";
 
 export { BookingStatusBadge, BookingTable } from "./booking-table";
 export { CustomerReservationActivity } from "./customer-reservation-activity";
@@ -63,11 +72,14 @@ export {
 } from "./table-toolbar";
 
 export const getBookingTableLabel = (
-  booking: Pick<AdministrationBookingSummary, "tableId" | "tableName"> | null
+  booking: Pick<AdministrationBookingSummary, "tableId" | "tableName"> | null,
+  locale: Locale
 ) => {
-  if (!booking) return "Unavailable";
+  if (!booking) return m.administrationBookingTableUnavailable({}, { locale });
   if (booking.tableName) return booking.tableName;
-  return booking.tableId ? "Details unavailable" : "Not assigned";
+  return booking.tableId
+    ? m.administrationBookingTableDetailsUnavailable({}, { locale })
+    : m.administrationBookingTableNotAssigned({}, { locale });
 };
 
 export function PaymentAttemptList({
@@ -85,7 +97,9 @@ export function PaymentAttemptList({
           key={attempt.id}
         >
           <div>
-            <p className="font-semibold">{attempt.providerLabel}</p>
+            <p className="font-semibold">
+              {getAdministrationPaymentProviderLabel(attempt.provider, locale)}
+            </p>
             <p className="mt-1 text-sm text-navy-blue/65">
               {formatAdministrationDateTime(attempt.createdAt, locale)}
             </p>
@@ -96,7 +110,9 @@ export function PaymentAttemptList({
                   locale={locale}
                   orderId={attempt.providerOrderId}
                 >
-                  <span>Nexi order</span>
+                  <span>
+                    {m.administrationPaymentNexiOrder({}, { locale })}
+                  </span>
                   <span className="break-all font-mono text-xs">
                     {attempt.providerOrderId}
                   </span>
@@ -127,51 +143,74 @@ export function ReservationTimeline({
   readonly locale: Locale;
 }) {
   return (
-    <ol className="relative space-y-0" aria-label="Reservation history">
+    <ol
+      className="relative space-y-0"
+      aria-label={m.administrationReservationTimelineLabel({}, { locale })}
+    >
       {items.map((item, index) => (
-        <li
-          className="relative grid grid-cols-[1.25rem_minmax(0,1fr)] gap-4 pb-7 last:pb-0"
+        <ReservationTimelineEntry
+          index={index}
+          item={item}
           key={item.id}
-        >
-          {index < items.length - 1 && (
-            <span className="absolute left-[0.59rem] top-5 h-[calc(100%-0.25rem)] w-px bg-navy-blue/12" />
-          )}
-          <span
-            className={cn(
-              "relative z-10 mt-1 size-5 rounded-full border-4 border-white",
-              item.tone === "positive" && "bg-aquamarine-ink",
-              item.tone === "warning" && "bg-burned-orange",
-              item.tone === "neutral" && "bg-navy-blue/35"
-            )}
-          />
-          <div>
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="font-semibold">
-                {item.href ? (
-                  <Link
-                    className="underline underline-offset-4"
-                    href={item.href}
-                  >
-                    {item.title}
-                  </Link>
-                ) : (
-                  item.title
-                )}
-              </h3>
-              <time
-                className="text-xs text-navy-blue/65"
-                dateTime={item.occurredAt}
-              >
-                {formatAdministrationDateTime(item.occurredAt, locale)}
-              </time>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-navy-blue/65">
-              {item.description}
-            </p>
-          </div>
-        </li>
+          lastIndex={items.length - 1}
+          locale={locale}
+        />
       ))}
     </ol>
+  );
+}
+
+function ReservationTimelineEntry({
+  index,
+  item,
+  lastIndex,
+  locale,
+}: {
+  readonly index: number;
+  readonly item: AdministrationTimelineItem;
+  readonly lastIndex: number;
+  readonly locale: Locale;
+}) {
+  const { description, title } =
+    item.event.source === "payment"
+      ? getAdministrationPaymentTimelineCopy(item.event, locale)
+      : getAdministrationReservationTimelineCopy(item.event, locale);
+  return (
+    <li className="relative grid grid-cols-[1.25rem_minmax(0,1fr)] gap-4 pb-7 last:pb-0">
+      {index < lastIndex && (
+        <span className="absolute left-[0.59rem] top-5 h-[calc(100%-0.25rem)] w-px bg-navy-blue/12" />
+      )}
+      <span
+        className={cn(
+          "relative z-10 mt-1 size-5 rounded-full border-4 border-white",
+          item.tone === "positive" && "bg-aquamarine-ink",
+          item.tone === "warning" && "bg-burned-orange",
+          item.tone === "neutral" && "bg-navy-blue/35"
+        )}
+      />
+      <div>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="font-semibold">
+            {item.href ? (
+              <Link className="underline underline-offset-4" href={item.href}>
+                {title}
+              </Link>
+            ) : (
+              title
+            )}
+          </h3>
+          <time
+            className="text-xs text-navy-blue/65"
+            dateTime={item.occurredAt}
+          >
+            {formatAdministrationDateTime(item.occurredAt, locale)}
+          </time>
+        </div>
+        <p className="mt-1 text-sm leading-5 text-navy-blue/65">
+          {description}
+        </p>
+      </div>
+    </li>
   );
 }
 
@@ -190,29 +229,51 @@ export function RelatedReservationLink({
       <span className="min-w-0">
         <span className="block text-sm font-semibold">
           {formatAdministrationReservationDate(reservation, locale) ??
-            reservation.typeLabel}
+            getAdministrationReservationProductTitle(
+              reservation.product,
+              locale
+            )}
         </span>
         <span className="mt-2 block text-sm font-medium">
-          {reservation.customer?.displayName ?? "Customer unavailable"}
+          {reservation.customer
+            ? getAdministrationCustomerName(reservation.customer, locale)
+            : m.administrationReservationCustomerUnavailable({}, { locale })}
         </span>
         {reservation.customer && (
           <span className="mt-0.5 block break-all text-xs text-navy-blue/65">
-            {reservation.customer.email ?? "No email address"}
+            {reservation.customer.email ??
+              m.administrationReservationNoEmailAddress({}, { locale })}
           </span>
         )}
         <span
           className={cn(
             "mt-2 block text-xs",
-            reservation.statusNote
+            reservation.statusNoteCode
               ? "font-medium text-burned-orange-ink"
               : "text-navy-blue/65"
           )}
         >
-          {reservation.statusNote ?? reservation.status.label}
+          {reservation.statusNoteCode
+            ? getAdministrationReservationStatusNoteLabel(
+                reservation.statusNoteCode,
+                locale
+              )
+            : getAdministrationReservationStatusLabel(
+                reservation.status.code,
+                locale
+              )}
         </span>
-        {reservation.statusNote && (
+        {reservation.statusNoteCode && (
           <span className="mt-1 block text-xs text-navy-blue/65">
-            Deskohub: {reservation.status.label}
+            {m.administrationReservationDeskohubStatus(
+              {
+                status: getAdministrationReservationStatusLabel(
+                  reservation.status.code,
+                  locale
+                ),
+              },
+              { locale }
+            )}
           </span>
         )}
       </span>
@@ -225,8 +286,10 @@ export function RelatedReservationLink({
 }
 
 export function ReservationReferences({
+  locale,
   references,
 }: {
+  readonly locale: Locale;
   readonly references: {
     readonly workspaceReservationId: WorkspaceReservationId;
     readonly dotyposReservationId: DotyposReservationId | null;
@@ -236,18 +299,21 @@ export function ReservationReferences({
   return (
     <dl className="grid gap-4 border-t border-navy-blue/10 px-5 py-4 text-sm">
       <Reference
-        label="Reservation record"
+        label={m.administrationReservationReferenceRecord({}, { locale })}
         value={references.workspaceReservationId}
       />
       {references.dotyposReservationId && (
         <Reference
-          label="Dotypos booking"
+          label={m.administrationReservationReferenceDotyposBooking(
+            {},
+            { locale }
+          )}
           value={references.dotyposReservationId}
         />
       )}
       <Reference
         href={`/admin/customers/${references.customerId}`}
-        label="Customer"
+        label={m.administrationReservationReferenceCustomer({}, { locale })}
         value={references.customerId}
       />
     </dl>

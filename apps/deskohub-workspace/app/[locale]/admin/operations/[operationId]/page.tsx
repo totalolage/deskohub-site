@@ -7,6 +7,7 @@ import {
   AdministrationPage,
   AdministrationPageHeader,
 } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
 import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationOperation } from "@/features/administration/page-data.server";
 import {
@@ -15,6 +16,7 @@ import {
   ProviderStatusBadge,
 } from "@/features/administration/payment-components";
 import { getProviderValueLabel } from "@/features/administration/payment-presentation";
+import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function OperationAdministrationDetailPage({
@@ -22,26 +24,38 @@ export default function OperationAdministrationDetailPage({
 }: {
   readonly params: Promise<{ readonly operationId: string }>;
 }) {
+  return <OperationAdministrationDetailScreen params={params} />;
+}
+
+async function OperationAdministrationDetailScreen({
+  params,
+}: {
+  readonly params: Promise<{ readonly operationId: string }>;
+}) {
+  const locale = await getRequestLocale();
   return (
     <AdministrationPage>
       <Suspense
         fallback={
-          <AdministrationDetailLoading label="Loading operation details" />
+          <AdministrationDetailLoading
+            label={m.administrationOperationDetailLoading({}, { locale })}
+          />
         }
       >
-        <OperationAdministrationDetail params={params} />
+        <OperationAdministrationDetail locale={locale} params={params} />
       </Suspense>
     </AdministrationPage>
   );
 }
 
 export async function OperationAdministrationDetail({
+  locale,
   params,
 }: {
+  readonly locale: Locale;
   readonly params: Promise<{ readonly operationId: string }>;
 }) {
   const { operationId } = await params;
-  const locale = await getRequestLocale();
   const detail = await loadAdministrationOperation(operationId);
   const operation = detail.operation;
   return (
@@ -49,66 +63,75 @@ export async function OperationAdministrationDetail({
       <AdministrationPageHeader
         actions={
           operation?.operationResult ? (
-            <ProviderStatusBadge value={operation.operationResult} />
+            <ProviderStatusBadge
+              locale={locale}
+              value={operation.operationResult}
+            />
           ) : undefined
         }
-        description="Sanitized live operation facts from Nexi and their linked Deskohub entities."
-        eyebrow="Nexi operation"
+        description={m.administrationOperationDetailDescription({}, { locale })}
+        eyebrow={m.administrationOperationDetailEyebrow({}, { locale })}
         title={operationId}
       />
       {detail.providerStatus === "not_found" && (
         <AdministrationAlert className="mb-5" status="error">
-          Nexi did not find this operation.
+          {m.administrationOperationDetailNotFound({}, { locale })}
         </AdministrationAlert>
       )}
       {detail.providerStatus === "unavailable" && (
         <AdministrationAlert className="mb-5" status="warning">
-          Nexi operation details are temporarily unavailable.
+          {m.administrationOperationDetailUnavailable({}, { locale })}
         </AdministrationAlert>
       )}
       {operation && (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
-            <h2 className="text-xl">Operation details</h2>
+            <h2 className="text-xl">
+              {m.administrationOperationDetailTitle({}, { locale })}
+            </h2>
             <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
               <AdministrationFact
-                label="Type"
+                label={m.administrationOperationFactType({}, { locale })}
                 value={
                   operation.operationType
-                    ? getProviderValueLabel(operation.operationType)
-                    : "Not reported"
+                    ? getProviderValueLabel(operation.operationType, locale)
+                    : m.administrationOperationNotReported({}, { locale })
                 }
               />
               <AdministrationFact
-                label="Result"
+                label={m.administrationOperationFactResult({}, { locale })}
                 value={
                   operation.operationResult
-                    ? getProviderValueLabel(operation.operationResult)
-                    : "Not reported"
+                    ? getProviderValueLabel(operation.operationResult, locale)
+                    : m.administrationOperationNotReported({}, { locale })
                 }
               />
               <AdministrationFact
-                label="Origin"
+                label={m.administrationOperationFactOrigin({}, { locale })}
                 value={
                   operation.channel
-                    ? getProviderValueLabel(operation.channel)
-                    : "Not reported"
+                    ? getProviderValueLabel(operation.channel, locale)
+                    : m.administrationOperationNotReported({}, { locale })
                 }
               />
               <AdministrationFact
-                label="Occurred"
+                label={m.administrationOperationFactOccurred({}, { locale })}
                 value={formatProviderDateTime(operation.operationTime, locale)}
               />
               <AdministrationFact
-                label="Amount"
+                label={m.administrationOperationFactAmount({}, { locale })}
                 value={formatProviderMoney(
                   operation.amount,
-                  operation.currency
+                  operation.currency,
+                  locale
                 )}
               />
               <AdministrationFact
-                label="Reverses operation"
-                value={operation.cancelledOperationId ?? "Not applicable"}
+                label={m.administrationOperationFactReverses({}, { locale })}
+                value={
+                  operation.cancelledOperationId ??
+                  m.administrationOperationNotApplicable({}, { locale })
+                }
               />
             </dl>
           </section>
@@ -119,8 +142,11 @@ export async function OperationAdministrationDetail({
                   ? `/admin/orders/${encodeURIComponent(operation.orderId)}`
                   : undefined
               }
-              label={operation.orderId ?? "Not reported"}
-              title="Order"
+              label={
+                operation.orderId ??
+                m.administrationOperationNotReported({}, { locale })
+              }
+              title={m.administrationOperationRelatedOrder({}, { locale })}
             />
             <RelatedEntity
               href={
@@ -128,8 +154,14 @@ export async function OperationAdministrationDetail({
                   ? `/admin/reservations/${detail.linkedReservationId}`
                   : undefined
               }
-              label={detail.linkedReservationId ?? "Not linked"}
-              title="Reservation"
+              label={
+                detail.linkedReservationId ??
+                m.administrationOperationReservationNotLinked({}, { locale })
+              }
+              title={m.administrationOperationRelatedReservation(
+                {},
+                { locale }
+              )}
             />
           </aside>
         </div>

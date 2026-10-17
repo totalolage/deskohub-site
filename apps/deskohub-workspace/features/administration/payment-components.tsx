@@ -11,53 +11,63 @@ import {
 import { EmptyState } from "./empty-state";
 import {
   formatAdministrationDateTime,
+  formatAdministrationMoney,
   getAdministrationPaymentStatus,
 } from "./formatters";
+import { m } from "./i18n";
 import { NexiOrderLink } from "./nexi-order-link";
 import { AdministrationAlert } from "./notice";
 import type { AdministrationOrder } from "./payment-administration.service";
-import { getProviderValueLabel } from "./payment-presentation";
+import {
+  getAdministrationPaymentAttemptStateLabel,
+  getProviderValueLabel,
+} from "./payment-presentation";
 import { PaymentAmount, PaymentStatusLabel } from "./payment-status";
 
+/** A Nexi amount, which Nexi reports in minor units as a string. */
 export const formatProviderMoney = (
   amount: string | undefined,
-  currency: string | undefined
+  currency: string | undefined,
+  locale: Locale
 ) => {
-  if (!amount || !currency) return "Not reported";
+  if (!amount || !currency) {
+    return m.administrationPaymentNotReported({}, { locale });
+  }
   const value = Number(amount);
   return Number.isSafeInteger(value)
-    ? new Intl.NumberFormat("en-GB", { currency, style: "currency" }).format(
-        value / 100
-      )
+    ? formatAdministrationMoney({ currency, exponent: 2, value }, locale)
     : `${amount} ${currency}`;
 };
 
-export const formatOrderMoney = (order: AdministrationOrder) => {
+export const formatOrderMoney = (
+  order: AdministrationOrder,
+  locale: Locale
+) => {
   if (order.provider) {
-    return formatProviderMoney(order.provider.amount, order.provider.currency);
+    return formatProviderMoney(
+      order.provider.amount,
+      order.provider.currency,
+      locale
+    );
   }
-  if (order.link) {
-    return new Intl.NumberFormat("en-GB", {
-      currency: order.link.amount.currency,
-      style: "currency",
-    }).format(order.link.amount.value / 10 ** order.link.amount.exponent);
-  }
-  return "Not reported";
+  if (order.link) return formatAdministrationMoney(order.link.amount, locale);
+  return m.administrationPaymentNotReported({}, { locale });
 };
 
 export const formatProviderDateTime = (
   value: string | undefined,
   locale: Locale
 ) => {
-  if (!value) return "Not reported";
+  if (!value) return m.administrationPaymentNotReported({}, { locale });
   try {
     return formatAdministrationDateTime(value, locale);
   } catch {
-    return "Invalid provider timestamp";
+    return m.administrationPaymentInvalidProviderTime({}, { locale });
   }
 };
 
-export function ProviderStatusBadge({ value }: { readonly value: string }) {
+/** The badge tone for a Nexi status, or a local attempt state that shares its codes. */
+const getProviderStatusTone = (value: string): StatusTone => {
   const normalized = value.toUpperCase();
   const positive = [
     "AUTHORIZED",
@@ -76,10 +86,23 @@ export function ProviderStatusBadge({ value }: { readonly value: string }) {
     "THREEDS_FAILED",
     "VOIDED",
   ].includes(normalized);
-  let tone: StatusTone = "neutral";
-  if (positive) tone = "positive";
-  else if (warning) tone = "attention";
-  return <StatusBadge tone={tone}>{getProviderValueLabel(value)}</StatusBadge>;
+  if (positive) return "positive";
+  if (warning) return "attention";
+  return "neutral";
+};
+
+export function ProviderStatusBadge({
+  locale,
+  value,
+}: {
+  readonly locale: Locale;
+  readonly value: string;
+}) {
+  return (
+    <StatusBadge tone={getProviderStatusTone(value)}>
+      {getProviderValueLabel(value, locale)}
+    </StatusBadge>
+  );
 }
 
 /**
@@ -91,7 +114,9 @@ export const getPaymentAttemptStatusLabel = (
   locale: Locale
 ) => {
   const status = getAdministrationPaymentStatus(link, locale);
-  return status.refunded ? status.label : getProviderValueLabel(link.state);
+  return status.refunded
+    ? status.label
+    : getAdministrationPaymentAttemptStateLabel(link.state, locale);
 };
 
 export function PaymentAttemptStatusBadge({
@@ -101,11 +126,11 @@ export function PaymentAttemptStatusBadge({
   readonly link: NonNullable<AdministrationOrder["link"]>;
   readonly locale: Locale;
 }) {
-  if (!getAdministrationPaymentStatus(link, locale).refunded) {
-    return <ProviderStatusBadge value={link.state} />;
-  }
+  const refunded = getAdministrationPaymentStatus(link, locale).refunded;
   return (
-    <StatusBadge tone="attention">
+    <StatusBadge
+      tone={refunded ? "attention" : getProviderStatusTone(link.state)}
+    >
       {getPaymentAttemptStatusLabel(link, locale)}
     </StatusBadge>
   );
@@ -120,7 +145,9 @@ export function ReservationOrderList({
 }) {
   if (orders.length === 0) {
     return (
-      <EmptyState message="No Nexi order is linked to this reservation." />
+      <EmptyState
+        message={m.administrationPaymentReservationOrdersEmpty({}, { locale })}
+      />
     );
   }
   return (
@@ -158,7 +185,7 @@ export function ReservationOrderList({
             <div className="flex flex-col gap-4 border-b border-navy-blue/10 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.1em] text-navy-blue/65">
-                  Nexi order
+                  {m.administrationPaymentNexiOrder({}, { locale })}
                 </p>
                 <NexiOrderLink
                   className="mt-1 inline-flex max-w-full items-baseline gap-1.5 break-all font-mono text-sm font-semibold text-burned-orange-ink underline decoration-burned-orange/30 underline-offset-4"
@@ -171,14 +198,14 @@ export function ReservationOrderList({
                   {order.link ? (
                     <PaymentAmount locale={locale} payment={order.link} />
                   ) : (
-                    formatOrderMoney(order)
+                    formatOrderMoney(order, locale)
                   )}
                 </p>
                 <p className="mt-1 text-xs text-navy-blue/60">
                   {order.link ? (
                     <PaymentStatusLabel locale={locale} payment={order.link} />
                   ) : (
-                    "No local payment attempt"
+                    m.administrationPaymentNoLocalAttempt({}, { locale })
                   )}
                 </p>
               </div>
@@ -186,43 +213,48 @@ export function ReservationOrderList({
 
             {order.providerStatus === "not_found" && (
               <AdministrationAlert className="m-4 sm:m-5" status="warning">
-                Nexi did not return this locally linked order. The order ID and
-                local payment facts remain available above.
+                {m.administrationPaymentOrderNotFound({}, { locale })}
               </AdministrationAlert>
             )}
             {order.providerStatus === "unavailable" && (
               <AdministrationAlert className="m-4 sm:m-5" status="warning">
-                Live order operations are temporarily unavailable from Nexi.
+                {m.administrationPaymentOrderUnavailable({}, { locale })}
               </AdministrationAlert>
             )}
             {providerHasPaymentActivity && (
               <AdministrationAlert className="m-4 sm:m-5" status="warning">
-                Nexi reports payment activity. Automatic cleanup will keep this
-                reservation held for payment review.
+                {m.administrationPaymentOrderActivityHeld({}, { locale })}
               </AdministrationAlert>
             )}
             {abandonmentState === "deferred" && pendingProviderOrder && (
               <p className="m-4 rounded-xl bg-navy-blue/5 px-4 py-3 text-sm text-navy-blue/70 sm:m-5">
-                The local payment window is open until{" "}
-                {formatAdministrationDateTime(
-                  getProviderOrderAbandonmentCutoff(
-                    pendingProviderOrder.providerOrderCreatedAt
-                  ).toString(),
-                  locale
+                {m.administrationPaymentOrderWindowOpen(
+                  {
+                    time: formatAdministrationDateTime(
+                      getProviderOrderAbandonmentCutoff(
+                        pendingProviderOrder.providerOrderCreatedAt
+                      ).toString(),
+                      locale
+                    ),
+                  },
+                  { locale }
                 )}
-                . If Nexi remains empty, automatic cleanup can release the hold.
               </p>
             )}
             {abandonmentState === "abandoned" && (
               <AdministrationAlert className="m-4 sm:m-5" status="warning">
-                Nexi is still empty after the local payment window. Automatic
-                cleanup should release this reservation hold.
+                {m.administrationPaymentOrderWindowElapsed({}, { locale })}
               </AdministrationAlert>
             )}
 
             {order.provider?.operations &&
             order.provider.operations.length > 0 ? (
-              <ol aria-label={`Operations for order ${order.orderId}`}>
+              <ol
+                aria-label={m.administrationPaymentOrderOperationsLabel(
+                  { orderId: order.orderId },
+                  { locale }
+                )}
+              >
                 {order.provider.operations.map((operation, index) => (
                   <li
                     className="scroll-mt-24 border-b border-navy-blue/10 px-4 py-4 last:border-b-0 sm:px-5"
@@ -241,11 +273,18 @@ export function ReservationOrderList({
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-semibold">
                             {operation.operationType
-                              ? getProviderValueLabel(operation.operationType)
-                              : "Payment operation"}
+                              ? getProviderValueLabel(
+                                  operation.operationType,
+                                  locale
+                                )
+                              : m.administrationPaymentOperationFallback(
+                                  {},
+                                  { locale }
+                                )}
                           </p>
                           {operation.operationResult && (
                             <ProviderStatusBadge
+                              locale={locale}
                               value={operation.operationResult}
                             />
                           )}
@@ -256,7 +295,11 @@ export function ReservationOrderList({
                             locale
                           )}
                           {operation.channel && (
-                            <> · {getProviderValueLabel(operation.channel)}</>
+                            <>
+                              {" "}
+                              ·{" "}
+                              {getProviderValueLabel(operation.channel, locale)}
+                            </>
                           )}
                         </p>
                         {operation.operationId && (
@@ -268,7 +311,8 @@ export function ReservationOrderList({
                       <p className="font-medium sm:text-right">
                         {formatProviderMoney(
                           operation.amount,
-                          operation.currency
+                          operation.currency,
+                          locale
                         )}
                       </p>
                     </div>
@@ -278,7 +322,7 @@ export function ReservationOrderList({
             ) : (
               order.providerStatus === "available" && (
                 <p className="px-4 py-5 text-sm text-navy-blue/60 sm:px-5">
-                  Nexi did not report any operations for this order.
+                  {m.administrationPaymentOrderNoOperations({}, { locale })}
                 </p>
               )
             )}

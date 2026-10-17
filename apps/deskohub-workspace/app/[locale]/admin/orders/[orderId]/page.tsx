@@ -7,6 +7,7 @@ import {
   AdministrationPageHeader,
   NexiOrderLink,
 } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
 import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationOrder } from "@/features/administration/page-data.server";
 import {
@@ -17,6 +18,7 @@ import {
 } from "@/features/administration/payment-components";
 import { getProviderValueLabel } from "@/features/administration/payment-presentation";
 import { OperationTable } from "@/features/administration/payment-tables";
+import type { Locale } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function OrderAdministrationDetailPage({
@@ -24,24 +26,38 @@ export default function OrderAdministrationDetailPage({
 }: {
   readonly params: Promise<{ readonly orderId: string }>;
 }) {
+  return <OrderAdministrationDetailScreen params={params} />;
+}
+
+async function OrderAdministrationDetailScreen({
+  params,
+}: {
+  readonly params: Promise<{ readonly orderId: string }>;
+}) {
+  const locale = await getRequestLocale();
   return (
     <AdministrationPage>
       <Suspense
-        fallback={<AdministrationDetailLoading label="Loading order details" />}
+        fallback={
+          <AdministrationDetailLoading
+            label={m.administrationOrderDetailLoading({}, { locale })}
+          />
+        }
       >
-        <OrderAdministrationDetail params={params} />
+        <OrderAdministrationDetail locale={locale} params={params} />
       </Suspense>
     </AdministrationPage>
   );
 }
 
 export async function OrderAdministrationDetail({
+  locale,
   params,
 }: {
+  readonly locale: Locale;
   readonly params: Promise<{ readonly orderId: string }>;
 }) {
   const { orderId } = await params;
-  const locale = await getRequestLocale();
   const order = await loadAdministrationOrder(orderId);
   const operations = (order.provider?.operations ?? []).map((operation) => ({
     ...operation,
@@ -56,58 +72,63 @@ export async function OrderAdministrationDetail({
             locale={locale}
             orderId={order.orderId}
           >
-            Open in XPay
+            {m.administrationOrderOpenInXPay({}, { locale })}
           </NexiOrderLink>
         }
-        description="Provider facts, local reconciliation, and every operation returned for this order."
-        eyebrow="Nexi order"
+        description={m.administrationOrderDetailDescription({}, { locale })}
+        eyebrow={m.administrationOrderDetailEyebrow({}, { locale })}
         title={order.orderId}
       />
       {order.providerStatus === "not_found" && (
         <AdministrationAlert className="mb-5" status="error">
-          Nexi did not find this locally referenced order. Use the XPay link to
-          confirm the merchant account and identifier.
+          {m.administrationOrderDetailNotFound({}, { locale })}
         </AdministrationAlert>
       )}
       {order.providerStatus === "unavailable" && (
         <AdministrationAlert className="mb-5" status="warning">
-          Nexi details are temporarily unavailable. Local relationship data is
-          still shown below.
+          {m.administrationOrderDetailUnavailable({}, { locale })}
         </AdministrationAlert>
       )}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-6">
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
-            <h2 className="text-xl">Order details</h2>
+            <h2 className="text-xl">
+              {m.administrationOrderDetailTitle({}, { locale })}
+            </h2>
             <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
               <AdministrationFact
-                label="Amount"
-                value={formatOrderMoney(order)}
+                label={m.administrationOrderFactAmount({}, { locale })}
+                value={formatOrderMoney(order, locale)}
               />
               <AdministrationFact
-                label="Authorized"
+                label={m.administrationOrderFactAuthorized({}, { locale })}
                 value={formatProviderMoney(
                   order.provider?.authorizedAmount,
-                  order.provider?.currency
+                  order.provider?.currency,
+                  locale
                 )}
               />
               <AdministrationFact
-                label="Captured"
+                label={m.administrationOrderFactCaptured({}, { locale })}
                 value={formatProviderMoney(
                   order.provider?.capturedAmount,
-                  order.provider?.currency
+                  order.provider?.currency,
+                  locale
                 )}
               />
               <AdministrationFact
-                label="Last operation"
+                label={m.administrationOrderFactLastOperation({}, { locale })}
                 value={
                   order.provider?.lastOperationType
-                    ? getProviderValueLabel(order.provider.lastOperationType)
-                    : "Not reported"
+                    ? getProviderValueLabel(
+                        order.provider.lastOperationType,
+                        locale
+                      )
+                    : m.administrationOrderNotReported({}, { locale })
                 }
               />
               <AdministrationFact
-                label="Last provider activity"
+                label={m.administrationOrderFactLastActivity({}, { locale })}
                 value={formatProviderDateTime(
                   order.provider?.lastOperationTime,
                   locale
@@ -116,8 +137,8 @@ export async function OrderAdministrationDetail({
               <AdministrationFact
                 label={
                   order.link?.providerOrderCreatedAtEstimated
-                    ? "Nexi order created (estimated)"
-                    : "Nexi order created"
+                    ? m.administrationOrderFactCreatedEstimated({}, { locale })
+                    : m.administrationOrderFactCreated({}, { locale })
                 }
                 value={
                   order.link?.providerOrderCreatedAt
@@ -125,16 +146,18 @@ export async function OrderAdministrationDetail({
                         order.link.providerOrderCreatedAt,
                         locale
                       )
-                    : "Not recorded"
+                    : m.administrationOrderNotRecorded({}, { locale })
                 }
               />
             </dl>
           </section>
           <section>
             <div className="mb-4">
-              <h2 className="text-xl">Operations</h2>
+              <h2 className="text-xl">
+                {m.administrationOrderOperationsTitle({}, { locale })}
+              </h2>
               <p className="mt-1 text-sm text-navy-blue/65">
-                Live, sanitized operation facts returned by Nexi.
+                {m.administrationOrderOperationsDescription({}, { locale })}
               </p>
             </div>
             <OperationTable operations={operations} />
@@ -143,26 +166,30 @@ export async function OrderAdministrationDetail({
         <aside className="space-y-5 xl:sticky xl:top-24 xl:h-fit">
           <section className="rounded-xl border border-navy-blue/10 bg-white p-3">
             <h2 className="px-3 pb-2 pt-1 text-xs font-semibold uppercase tracking-[0.12em] text-navy-blue/65">
-              Reservation
+              {m.administrationOrderRelatedReservation({}, { locale })}
             </h2>
             {order.link ? (
               <AdministrationRecordLink
                 href={`/admin/reservations/${order.link.reservationId}`}
               >
-                <span className="block font-semibold">View reservation</span>
+                <span className="block font-semibold">
+                  {m.administrationOrderViewReservation({}, { locale })}
+                </span>
                 <span className="mt-1 block font-mono text-xs text-navy-blue/65">
                   {order.link.reservationId}
                 </span>
               </AdministrationRecordLink>
             ) : (
               <p className="px-3 py-3 text-sm text-navy-blue/65">
-                No local payment attempt is linked to this order.
+                {m.administrationOrderNoLinkedAttempt({}, { locale })}
               </p>
             )}
           </section>
           {order.link && (
             <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
-              <h2 className="text-sm font-semibold">Local attempt</h2>
+              <h2 className="text-sm font-semibold">
+                {m.administrationOrderLocalAttempt({}, { locale })}
+              </h2>
               <div className="mt-3">
                 <PaymentAttemptStatusBadge link={order.link} locale={locale} />
               </div>

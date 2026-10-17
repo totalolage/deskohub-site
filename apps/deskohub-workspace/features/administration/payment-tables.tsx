@@ -1,13 +1,16 @@
 "use client";
 
 import { useMemo } from "react";
+import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { AdministrationLink as Link } from "./admin-link";
 import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
 } from "./data-table";
 import { EmptyState } from "./empty-state";
+import { m } from "./i18n";
 import type {
   AdministrationOperation,
   AdministrationOrder,
@@ -22,11 +25,17 @@ import {
 } from "./payment-components";
 import { getProviderValueLabel } from "./payment-presentation";
 
-const getReconciliationLabel = (order: AdministrationOrder) => {
-  if (order.providerStatus === "available") return "Provider only";
-  if (order.providerStatus === "not_found") return "Not found";
-  if (order.providerStatus === "not_returned") return "Not returned";
-  return "Provider unavailable";
+const getReconciliationLabel = (order: AdministrationOrder, locale: Locale) => {
+  switch (order.providerStatus) {
+    case "available":
+      return m.administrationOrderReconciliationProviderOnly({}, { locale });
+    case "not_found":
+      return m.administrationOrderReconciliationNotFound({}, { locale });
+    case "not_returned":
+      return m.administrationOrderReconciliationNotReturned({}, { locale });
+    case "unavailable":
+      return m.administrationOrderReconciliationUnavailable({}, { locale });
+  }
 };
 
 export function OrderTable({
@@ -39,7 +48,7 @@ export function OrderTable({
     () => [
       {
         accessorKey: "orderId",
-        header: "Order",
+        header: m.administrationOrderColumnOrder({}, { locale }),
         cell: ({ row }) => (
           <>
             <Link
@@ -70,46 +79,53 @@ export function OrderTable({
             ? Number(order.provider.amount)
             : order.link?.amount.value,
         id: "amount",
-        header: "Amount",
-        cell: ({ row }) => formatOrderMoney(row.original),
+        header: m.administrationOrderColumnAmount({}, { locale }),
+        cell: ({ row }) => formatOrderMoney(row.original, locale),
         meta: { cellClassName: "font-medium" },
       },
       {
         accessorFn: (order) => order.provider?.lastOperationType,
         id: "lastOperation",
-        header: "Last operation",
+        header: m.administrationOrderColumnLastOperation({}, { locale }),
         cell: ({ row }) =>
           row.original.provider?.lastOperationType ? (
             <span className="font-medium">
-              {getProviderValueLabel(row.original.provider.lastOperationType)}
+              {getProviderValueLabel(
+                row.original.provider.lastOperationType,
+                locale
+              )}
             </span>
           ) : (
-            <span className="text-sm text-navy-blue/65">None reported</span>
+            <span className="text-sm text-navy-blue/65">
+              {m.administrationOrderNoOperationReported({}, { locale })}
+            </span>
           ),
       },
       {
         accessorFn: (order) => order.link?.reservationId,
         id: "reservation",
-        header: "Reservation",
+        header: m.administrationOrderColumnReservation({}, { locale }),
         cell: ({ row }) =>
           row.original.link ? (
             <Link
               className="font-medium hover:underline"
               href={`/admin/reservations/${row.original.link.reservationId}`}
             >
-              View reservation
+              {m.administrationOrderViewReservation({}, { locale })}
             </Link>
           ) : (
-            <span className="text-sm text-navy-blue/65">Not linked</span>
+            <span className="text-sm text-navy-blue/65">
+              {m.administrationOrderReservationNotLinked({}, { locale })}
+            </span>
           ),
       },
       {
         accessorFn: (order) =>
           order.provider && order.link
             ? getPaymentAttemptStatusLabel(order.link, locale)
-            : getReconciliationLabel(order),
+            : getReconciliationLabel(order, locale),
         id: "reconciliation",
-        header: "Reconciliation",
+        header: m.administrationOrderColumnReconciliation({}, { locale }),
         cell: ({ getValue, row }) =>
           row.original.provider && row.original.link ? (
             <PaymentAttemptStatusBadge
@@ -117,7 +133,7 @@ export function OrderTable({
               locale={locale}
             />
           ) : (
-            <ProviderStatusBadge value={getValue<string>()} />
+            <StatusBadge tone="neutral">{getValue<string>()}</StatusBadge>
           ),
       },
     ],
@@ -125,12 +141,14 @@ export function OrderTable({
   );
 
   if (orders.length === 0) {
-    return <EmptyState message="No Nexi orders match this period." />;
+    return (
+      <EmptyState message={m.administrationOrderTableEmpty({}, { locale })} />
+    );
   }
 
   return (
     <AdministrationDataTable
-      ariaLabel="Nexi orders"
+      ariaLabel={m.administrationOrderTableLabel({}, { locale })}
       columns={columns}
       data={orders}
       getRowId={(order) => order.orderId}
@@ -152,7 +170,7 @@ export function OperationTable({
       {
         accessorFn: (operation) => operation.operationId,
         id: "operation",
-        header: "Operation",
+        header: m.administrationOperationColumnOperation({}, { locale }),
         cell: ({ row }) => (
           <>
             {row.original.operationId ? (
@@ -163,7 +181,9 @@ export function OperationTable({
                 {row.original.operationId}
               </Link>
             ) : (
-              <span className="text-sm text-navy-blue/65">Not reported</span>
+              <span className="text-sm text-navy-blue/65">
+                {m.administrationOperationNotReported({}, { locale })}
+              </span>
             )}
             {row.original.operationTime && (
               <p className="mt-1 text-xs text-navy-blue/65">
@@ -175,7 +195,7 @@ export function OperationTable({
       },
       {
         accessorKey: "orderId",
-        header: "Order",
+        header: m.administrationOperationColumnOrder({}, { locale }),
         cell: ({ row }) =>
           row.original.orderId ? (
             <Link
@@ -185,58 +205,71 @@ export function OperationTable({
               {row.original.orderId}
             </Link>
           ) : (
-            <span className="text-sm text-navy-blue/65">Not reported</span>
+            <span className="text-sm text-navy-blue/65">
+              {m.administrationOperationNotReported({}, { locale })}
+            </span>
           ),
       },
       {
         accessorKey: "operationType",
-        header: "Type",
+        header: m.administrationOperationColumnType({}, { locale }),
         cell: ({ row }) =>
           row.original.operationType
-            ? getProviderValueLabel(row.original.operationType)
-            : "Not reported",
+            ? getProviderValueLabel(row.original.operationType, locale)
+            : m.administrationOperationNotReported({}, { locale }),
         meta: { cellClassName: "font-medium" },
       },
       {
         accessorKey: "operationResult",
-        header: "Result",
+        header: m.administrationOperationColumnResult({}, { locale }),
         cell: ({ row }) =>
           row.original.operationResult ? (
-            <ProviderStatusBadge value={row.original.operationResult} />
+            <ProviderStatusBadge
+              locale={locale}
+              value={row.original.operationResult}
+            />
           ) : (
-            <span className="text-sm text-navy-blue/65">Not reported</span>
+            <span className="text-sm text-navy-blue/65">
+              {m.administrationOperationNotReported({}, { locale })}
+            </span>
           ),
       },
       {
         accessorKey: "channel",
-        header: "Origin",
+        header: m.administrationOperationColumnOrigin({}, { locale }),
         cell: ({ row }) =>
           row.original.channel
-            ? getProviderValueLabel(row.original.channel)
-            : "Not reported",
+            ? getProviderValueLabel(row.original.channel, locale)
+            : m.administrationOperationNotReported({}, { locale }),
       },
       {
         accessorFn: (operation) =>
           operation.amount ? Number(operation.amount) : undefined,
         id: "amount",
-        header: "Amount",
+        header: m.administrationOperationColumnAmount({}, { locale }),
         cell: ({ row }) =>
-          formatProviderMoney(row.original.amount, row.original.currency),
+          formatProviderMoney(
+            row.original.amount,
+            row.original.currency,
+            locale
+          ),
         meta: { cellClassName: "font-medium" },
       },
       {
         accessorKey: "linkedReservationId",
-        header: "Reservation",
+        header: m.administrationOperationColumnReservation({}, { locale }),
         cell: ({ row }) =>
           row.original.linkedReservationId ? (
             <Link
               className="font-medium hover:underline"
               href={`/admin/reservations/${row.original.linkedReservationId}`}
             >
-              View reservation
+              {m.administrationOperationViewReservation({}, { locale })}
             </Link>
           ) : (
-            <span className="text-sm text-navy-blue/65">Not linked</span>
+            <span className="text-sm text-navy-blue/65">
+              {m.administrationOperationReservationNotLinked({}, { locale })}
+            </span>
           ),
       },
     ],
@@ -244,12 +277,16 @@ export function OperationTable({
   );
 
   if (operations.length === 0) {
-    return <EmptyState message="No Nexi operations match these filters." />;
+    return (
+      <EmptyState
+        message={m.administrationOperationTableEmpty({}, { locale })}
+      />
+    );
   }
 
   return (
     <AdministrationDataTable
-      ariaLabel="Nexi operations"
+      ariaLabel={m.administrationOperationTableLabel({}, { locale })}
       columns={columns}
       data={operations}
       getRowId={(operation, index) =>
