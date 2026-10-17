@@ -74,7 +74,10 @@ describe("processContactSubmission", () => {
     await expect(Effect.runPromise(result.effect)).resolves.toMatchObject({
       status: "success",
     });
-    expect(verify).toHaveBeenCalledWith({ verificationFailurePolicy: "deny" });
+    expect(verify).toHaveBeenCalledWith({
+      verificationFailurePolicy: "deny",
+      callSite: "contact.submit",
+    });
     expect(order).toEqual(["bot", "submit"]);
     expect(submit).toHaveBeenCalledWith(
       { ...data, name: "Ada Lovelace" },

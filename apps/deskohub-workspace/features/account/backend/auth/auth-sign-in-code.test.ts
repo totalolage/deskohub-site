@@ -373,8 +373,8 @@ describe("sign-in code gate", () => {
     expect(await errorCode(blockedSignIn)).toBe("BOT_DETECTED");
 
     expect(checks).toEqual([
-      { verificationFailurePolicy: "allow" },
-      { verificationFailurePolicy: "allow" },
+      { verificationFailurePolicy: "allow", callSite: "account.sign-in" },
+      { verificationFailurePolicy: "allow", callSite: "account.sign-in" },
     ]);
   });
 });
