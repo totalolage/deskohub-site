@@ -1,5 +1,4 @@
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
-import { type Locale, locales } from "@/features/i18n";
 import type { WorkspaceCurrencyCode } from "@/shared/money/currencies";
 
 export interface WorkspacePaymentAccount {
@@ -89,34 +88,4 @@ export function getWorkspaceCanonicalUrl(
   }
 
   return url.toString();
-}
-
-function getWorkspaceLocalizedCanonicalUrl(
-  locale: Locale,
-  pathname = "/"
-): string {
-  const localizedPathname = normalizePathname(pathname);
-  const suffix = localizedPathname === "/" ? "" : localizedPathname;
-
-  return getWorkspaceCanonicalUrl(`/${locale}${suffix}`);
-}
-
-/**
- * Canonical and hreflang alternates for a page served under every locale
- * prefix. `x-default` is the unprefixed URL, which the proxy redirects to the
- * visitor's resolved locale.
- */
-export function getWorkspaceAlternates(locale: Locale, pathname = "/") {
-  return {
-    canonical: getWorkspaceLocalizedCanonicalUrl(locale, pathname),
-    languages: {
-      ...Object.fromEntries(
-        locales.map((alternateLocale) => [
-          alternateLocale,
-          getWorkspaceLocalizedCanonicalUrl(alternateLocale, pathname),
-        ])
-      ),
-      "x-default": getWorkspaceCanonicalUrl(pathname),
-    },
-  };
 }

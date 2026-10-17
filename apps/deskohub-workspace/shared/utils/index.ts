@@ -7,7 +7,6 @@ export {
   type SupportedSearchParams,
 } from "./search-params";
 export {
-  getWorkspaceAlternates,
   getWorkspaceCanonicalUrl,
   workspaceSiteConstants,
   workspaceSiteOrigin,

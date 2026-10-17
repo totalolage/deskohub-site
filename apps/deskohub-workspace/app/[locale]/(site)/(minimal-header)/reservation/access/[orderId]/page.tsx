@@ -1,12 +1,12 @@
 import { Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { m } from "@/features/i18n";
+import { getWorkspaceAlternates, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { ReservationAccessRoute } from "@/features/reservation/components/reservation-access-route";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationAccessPath } from "@/features/reservation/routes";
-import { getWorkspaceAlternates, workspaceSiteConstants } from "@/shared/utils";
+import { workspaceSiteConstants } from "@/shared/utils";
 
 export const maxDuration = 30;
 export const instant = true;

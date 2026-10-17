@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
-import { m } from "@/features/i18n";
+import { getWorkspaceAlternates, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 import { MeetingRoomPage } from "@/features/meeting-room/components/meeting-room-page";
-import { getWorkspaceAlternates, workspaceSiteConstants } from "@/shared/utils";
+import { workspaceSiteConstants } from "@/shared/utils";
 
 const pathname = "/meeting-room";
 

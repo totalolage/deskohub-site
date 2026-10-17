@@ -5,13 +5,13 @@ import { type ReactNode, Suspense } from "react";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { getCloudinaryImages } from "@/features/gallery/backend/get-cloudinary-images.server";
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
-import { type Locale, m } from "@/features/i18n";
+import { getWorkspaceAlternates, type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getMeetingRoomReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { getWorkspaceAlternates, workspaceSiteConstants } from "@/shared/utils";
+import { workspaceSiteConstants } from "@/shared/utils";
 
 const pathname = "/ttrpg-room";
 

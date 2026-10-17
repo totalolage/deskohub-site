@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getWorkspaceAlternates } from "./site-constants";
+import { getWorkspaceAlternates } from "./alternates";
 
 describe("getWorkspaceAlternates", () => {
   test("points the canonical at the page in its own locale", () => {

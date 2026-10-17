@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import type { Locale } from "@/features/i18n";
+import { getWorkspaceAlternates, type Locale } from "@/features/i18n";
 import {
   getLegalDocument,
   type LegalDocumentKey,
 } from "@/features/legal/content";
-import { getWorkspaceAlternates, workspaceSiteConstants } from "@/shared/utils";
+import { workspaceSiteConstants } from "@/shared/utils";
 
 export function createLegalMetadata(
   locale: Locale,

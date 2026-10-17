@@ -24,7 +24,7 @@ import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-pag
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page-skeleton";
 import { parseDiscountCodeRejection } from "@/features/checkout/discount-code-rejection";
 import { getDiscountCodeEntryEnabled } from "@/features/discounts/discount-code-entry.server";
-import { type Locale, m } from "@/features/i18n";
+import { getWorkspaceAlternates, type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import {
   getEarlyPerformanceRequestRequiredAt,
@@ -46,7 +46,6 @@ import {
 } from "@/shared/components/ui/card";
 import {
   getSearchParam,
-  getWorkspaceAlternates,
   type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";

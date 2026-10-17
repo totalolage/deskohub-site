@@ -2,12 +2,11 @@ import { Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CheckoutStatusRoute } from "@/features/checkout/components/checkout-status-route";
-import { m } from "@/features/i18n";
+import { getWorkspaceAlternates, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import {
-  getWorkspaceAlternates,
   type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";

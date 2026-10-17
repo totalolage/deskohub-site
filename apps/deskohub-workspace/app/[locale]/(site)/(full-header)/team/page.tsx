@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { m } from "@/features/i18n";
+import { getWorkspaceAlternates, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { TeamPage } from "@/features/team";
-import { getWorkspaceAlternates, workspaceSiteConstants } from "@/shared/utils";
+import { workspaceSiteConstants } from "@/shared/utils";
 
 const pathname = "/team";
 

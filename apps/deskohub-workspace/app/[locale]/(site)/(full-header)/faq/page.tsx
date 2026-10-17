@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { FaqPage } from "@/features/faq";
 import { loadFaqOccupancyStats } from "@/features/faq/backend/faq-occupancy.server";
-import { m } from "@/features/i18n";
+import { getWorkspaceAlternates, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { getWorkspaceAlternates, workspaceSiteConstants } from "@/shared/utils";
+import { workspaceSiteConstants } from "@/shared/utils";
 
 const pathname = "/faq";
 

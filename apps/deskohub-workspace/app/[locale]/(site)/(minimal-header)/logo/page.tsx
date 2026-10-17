@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import { m } from "@/features/i18n";
+import { getWorkspaceAlternates, m } from "@/features/i18n";
 import {
   getRequestLocale,
   runWithRequestLocale,
 } from "@/features/i18n/server/request-locale";
 import { HorizontalLogo, Logo } from "@/shared/components/logo";
-import { getWorkspaceAlternates } from "@/shared/utils";
 
 export const instant = false;
 
