@@ -8,12 +8,14 @@ import { isCoworkOpenSpaceDayCutoffReached } from "@/features/reservation/cowork
 import { meetingRoomStartDateTimeSchema } from "@/features/reservation/meeting-room-reservation";
 import {
   getMeetingRoomReservationDuration,
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDuration,
   type MeetingRoomReservationDurationKey,
   meetingRoomReservationDurationKeySchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
-  getEarliestMeetingRoomStartDateTime,
   getMeetingRoomReservationInterval,
+  isUpcomingMeetingRoomStart,
 } from "@/features/reservation/meeting-room-reservation-time";
 import {
   getOfficeReservationMaximumDayCount,
@@ -22,6 +24,7 @@ import {
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import { getWorkspaceAvailabilityRange } from "@/features/reservation/workspace-availability";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   getPlainDatesBetween,
   isPlainDateString,
@@ -56,13 +59,13 @@ export const reservationSelectionFields = {
   start_time: Schema.optionalKey(
     Schema.String.annotate({
       description:
-        "Meeting room only: Prague start time in HH:mm on the hour, such as 09:00. Not used for the whole-day booking.",
+        "Meeting room only: Prague start time in HH:mm on the hour, such as 09:00, not earlier than now. Not used for the whole-day booking.",
     }).check(Schema.isPattern(/^\d{2}:\d{2}$/))
   ),
   duration: Schema.optionalKey(
     meetingRoomReservationDurationKeySchema.annotate({
       description:
-        "Meeting room only: hour:1 (one hour), hour:4 (four hours), or day:1 (the whole Prague calendar day).",
+        "Meeting room only: hour:1 (one hour), hour:4 (four hours), or day:1 (a whole Prague calendar day that has not started yet).",
     })
   ),
   seats: Schema.optionalKey(
@@ -84,7 +87,7 @@ export const ensureOfficeOpen = OfficeReservationFeatureFlagService.pipe(
 
 /** The dates of a cowork request, inside the advisory calendar range. */
 export const resolveCoworkDates = Effect.fn("agentTools.resolveCoworkDates")(
-  function* ({
+  ({
     date,
     endDate = date,
     today,
@@ -92,25 +95,33 @@ export const resolveCoworkDates = Effect.fn("agentTools.resolveCoworkDates")(
     readonly date: string;
     readonly endDate?: string;
     readonly today: Temporal.PlainDate;
-  }) {
-    yield* ensureDateOrder({ date, endDate });
-    const range = getWorkspaceAvailabilityRange(today.toString());
-    yield* ensureWithin({ dates: [date, endDate], ...range });
-    const dates = getPlainDatesBetween(
-      Temporal.PlainDate.from(date),
-      Temporal.PlainDate.from(endDate)
-    );
-    if (dates.length > coworkMaximumDayCount) {
-      return yield* AgentToolError.dateOutOfRange({
-        earliest: date,
-        latest: Temporal.PlainDate.from(date)
-          .add({ days: coworkMaximumDayCount - 1 })
-          .toString(),
-      });
-    }
-
-    return dates.map((day) => day.toString());
-  }
+  }) =>
+    Effect.Do.pipe(
+      Effect.tap(() => ensureDateOrder({ date, endDate })),
+      Effect.tap(() =>
+        ensureWithin({
+          dates: [date, endDate],
+          ...getWorkspaceAvailabilityRange(today.toString()),
+        })
+      ),
+      Effect.let("dates", () =>
+        getPlainDatesBetween(
+          Temporal.PlainDate.from(date),
+          Temporal.PlainDate.from(endDate)
+        )
+      ),
+      Effect.filterOrFail(
+        ({ dates }) => dates.length <= coworkMaximumDayCount,
+        () =>
+          AgentToolError.dateOutOfRange({
+            earliest: date,
+            latest: Temporal.PlainDate.from(date)
+              .add({ days: coworkMaximumDayCount - 1 })
+              .toString(),
+          })
+      ),
+      Effect.map(({ dates }) => dates.map((day) => day.toString()))
+    )
 );
 
 /** Whether a cowork offer can still start on a date, given the time of day. */
@@ -129,57 +140,44 @@ export const getRequestedCoworkTiers = (
 /** A meeting-room selection resolved to its duration and Prague interval. */
 export const resolveMeetingRoomSelection = Effect.fn(
   "agentTools.resolveMeetingRoomSelection"
-)(function* ({
-  date,
-  startTime,
-  duration: durationKey,
-  now,
-}: {
-  readonly date: string;
-  readonly startTime?: string;
-  readonly duration?: MeetingRoomReservationDurationKey;
-  readonly now: Temporal.Instant;
-}) {
-  if (!durationKey) return yield* AgentToolError.invalidInput("duration");
-  const duration = getMeetingRoomReservationDuration(durationKey);
-  if (duration.unit === "hour" && !startTime) {
-    return yield* AgentToolError.invalidInput("start_time");
-  }
-
-  const startDateTime = yield* Schema.decodeEffect(
-    meetingRoomStartDateTimeSchema
-  )(`${date}T${startTime ?? "00:00"}`).pipe(
-    Effect.mapError(() => AgentToolError.invalidInput("start_time"))
-  );
-  const interval = getMeetingRoomReservationInterval(startDateTime, duration);
-  if (!interval) return yield* AgentToolError.invalidInput("start_time");
-
-  // A booking stays open while its end is ahead, so the earliest start can
-  // lie before now; the form applies the same bound.
-  const earliestStart = Temporal.PlainDateTime.from(
-    getEarliestMeetingRoomStartDateTime(duration, now)
-  );
-  const range = getWorkspaceAvailabilityRange(
-    getCurrentWorkspaceDate(now).toString()
-  );
-  const startsBeforeEarliest =
-    Temporal.PlainDateTime.compare(
-      Temporal.PlainDateTime.from(startDateTime),
-      earliestStart
-    ) < 0;
-  if (startsBeforeEarliest || date > range.to) {
-    return yield* AgentToolError.dateOutOfRange({
-      earliest: earliestStart.toPlainDate().toString(),
-      latest: range.to,
-    });
-  }
-
-  return { durationKey, duration, startDateTime, interval };
-});
+)(
+  (input: {
+    readonly date: string;
+    readonly startTime?: string;
+    readonly duration?: MeetingRoomReservationDurationKey;
+    readonly now: Temporal.Instant;
+  }) =>
+    Effect.Do.pipe(
+      Effect.bind("durationKey", () =>
+        requireArgument(input.duration, "duration")
+      ),
+      Effect.let("duration", ({ durationKey }) =>
+        getMeetingRoomReservationDuration(durationKey)
+      ),
+      Effect.bind("startDateTime", ({ duration }) =>
+        decodeMeetingRoomStart({ ...input, duration })
+      ),
+      Effect.bind("interval", ({ startDateTime, duration }) =>
+        requireArgument(
+          getMeetingRoomReservationInterval(startDateTime, duration),
+          "start_time"
+        )
+      ),
+      Effect.tap(({ startDateTime, duration }) =>
+        ensureMeetingRoomStartUpcoming({ ...input, startDateTime, duration })
+      ),
+      Effect.map(({ durationKey, duration, startDateTime, interval }) => ({
+        durationKey,
+        duration,
+        startDateTime,
+        interval,
+      }))
+    )
+);
 
 /** An office date range inside the booking horizon and the duration limit. */
 export const resolveOfficeRange = Effect.fn("agentTools.resolveOfficeRange")(
-  function* ({
+  ({
     date,
     endDate = date,
     today,
@@ -187,34 +185,119 @@ export const resolveOfficeRange = Effect.fn("agentTools.resolveOfficeRange")(
     readonly date: PlainDate;
     readonly endDate?: PlainDate;
     readonly today: Temporal.PlainDate;
-  }) {
-    yield* ensureDateOrder({ date, endDate });
-    const maximumEndsOn = getOfficeReservationMaximumEndsOn(today);
-    yield* ensureWithin({
-      dates: [date],
-      from: today.toString(),
-      to: maximumEndsOn.toString(),
-    });
-    const maximumDayCount = getOfficeReservationMaximumDayCount({
-      startsOn: date,
-      maximumEndsOn,
-      unavailableDates: [],
-    });
-    const latest = Temporal.PlainDate.from(date)
-      .add({ days: maximumDayCount - 1 })
-      .toString();
-    yield* ensureWithin({ dates: [endDate], from: date, to: latest });
-
-    return {
-      startsOn: date,
-      endsOn: endDate,
-      dates: getPlainDatesBetween(
-        Temporal.PlainDate.from(date),
-        Temporal.PlainDate.from(endDate)
-      ).map((day) => day.toString()),
-    };
-  }
+  }) =>
+    Effect.Do.pipe(
+      Effect.tap(() => ensureDateOrder({ date, endDate })),
+      Effect.let("maximumEndsOn", () =>
+        getOfficeReservationMaximumEndsOn(today)
+      ),
+      Effect.tap(({ maximumEndsOn }) =>
+        ensureWithin({
+          dates: [date],
+          from: today.toString(),
+          to: maximumEndsOn.toString(),
+        })
+      ),
+      Effect.let("latest", ({ maximumEndsOn }) =>
+        Temporal.PlainDate.from(date)
+          .add({
+            days:
+              getOfficeReservationMaximumDayCount({
+                startsOn: date,
+                maximumEndsOn,
+                unavailableDates: [],
+              }) - 1,
+          })
+          .toString()
+      ),
+      Effect.tap(({ latest }) =>
+        ensureWithin({ dates: [endDate], from: date, to: latest })
+      ),
+      Effect.map(() => ({
+        startsOn: date,
+        endsOn: endDate,
+        dates: getPlainDatesBetween(
+          Temporal.PlainDate.from(date),
+          Temporal.PlainDate.from(endDate)
+        ).map((day) => day.toString()),
+      }))
+    )
 );
+
+const requireArgument = <A>(value: A, field: string) =>
+  Effect.fromNullishOr(value).pipe(
+    Effect.mapError(() => AgentToolError.invalidInput(field))
+  );
+
+/** The selected start; an hourly booking needs a start time. */
+const decodeMeetingRoomStart = ({
+  date,
+  startTime,
+  duration,
+}: {
+  readonly date: string;
+  readonly startTime?: string;
+  readonly duration: MeetingRoomReservationDuration;
+}) =>
+  Effect.succeed(startTime).pipe(
+    Effect.filterOrFail(
+      (time) => time !== undefined || duration.unit !== "hour",
+      () => AgentToolError.invalidInput("start_time")
+    ),
+    Effect.flatMap((time) =>
+      Schema.decodeEffect(meetingRoomStartDateTimeSchema)(
+        `${date}T${time ?? "00:00"}`
+      )
+    ),
+    Effect.mapError(() => AgentToolError.invalidInput("start_time"))
+  );
+
+/**
+ * A reservation link keeps only a start that has not begun yet, so the tool
+ * accepts the same starts and its link opens the form on the selection.
+ */
+const ensureMeetingRoomStartUpcoming = ({
+  date,
+  startDateTime,
+  duration,
+  now,
+}: {
+  readonly date: string;
+  readonly startDateTime: string;
+  readonly duration: MeetingRoomReservationDuration;
+  readonly now: Temporal.Instant;
+}) =>
+  Effect.succeed(
+    getWorkspaceAvailabilityRange(getCurrentWorkspaceDate(now).toString())
+  ).pipe(
+    Effect.filterOrFail(
+      (range) =>
+        isUpcomingMeetingRoomStart({ startDateTime, duration, now }) &&
+        date <= range.to,
+      (range) =>
+        AgentToolError.dateOutOfRange({
+          earliest: getFirstUpcomingMeetingRoomDate(duration, now),
+          latest: range.to,
+        })
+    ),
+    Effect.asVoid
+  );
+
+/** The Prague date of the first start that has not begun yet. */
+const getFirstUpcomingMeetingRoomDate = (
+  duration: MeetingRoomReservationDuration,
+  now: Temporal.Instant
+) =>
+  now
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .round({
+      smallestUnit: isMeetingRoomWholeDayReservationDuration(duration)
+        ? "day"
+        : "hour",
+      roundingMode: "ceil",
+    })
+    .toPlainDate()
+    .toString();
 
 const ensureDateOrder = ({
   date,
