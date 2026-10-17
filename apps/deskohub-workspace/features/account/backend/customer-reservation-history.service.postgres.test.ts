@@ -3,13 +3,16 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import {
+  type DotyposCustomer,
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
+  DotyposCustomerSchema,
   type DotyposReservation,
   type DotyposReservationId,
   DotyposReservationIdSchema,
   DotyposReservationSchema,
   DotyposService,
+  ExternalAPIError,
 } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -21,9 +24,16 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import { customerAccountIdSchema } from "../customer-account";
+import {
+  type CustomerAccountId,
+  customerAccountIdSchema,
+} from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { CustomerReservationHistoryService } from "./customer-reservation-history.service";
+import {
+  ReservationAuthorDirectory,
+  ReservationAuthorReadError,
+} from "./reservation-author-directory.service";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -46,6 +56,22 @@ const makeDotyposReservation = (
     ...overrides,
   });
 
+const makeDotyposCustomer = (
+  id: DotyposCustomerId,
+  firstName: string,
+  lastName: string
+): DotyposCustomer =>
+  Schema.decodeUnknownSync(DotyposCustomerSchema)({
+    id,
+    _cloudId: "cloud",
+    firstName,
+    lastName,
+    points: "0",
+    flags: "0",
+    display: true,
+    deleted: false,
+  });
+
 const insertAuthUser = async (id: string, email: string) => {
   await testDatabase!.pool.query(
     `insert into auth."user" (id, name, email) values ($1, '', $2)`,
@@ -53,10 +79,30 @@ const insertAuthUser = async (id: string, email: string) => {
   );
 };
 
+const insertCustomerAccount = async (input: {
+  readonly id: CustomerAccountId;
+  readonly deleted?: boolean;
+  readonly dotyposCustomerId?: DotyposCustomerId;
+}) => {
+  await testDatabase!.pool.query(
+    `insert into customer_accounts (id, deleted_at) values ($1, $2)`,
+    [input.id, input.deleted ? new Date() : null]
+  );
+  if (input.deleted) return;
+  await insertAuthUser(input.id, testEmailAddress(`h-${input.id}`));
+  if (input.dotyposCustomerId) {
+    await testDatabase!.pool.query(
+      `insert into customer_account_links (customer_account_id, dotypos_customer_id) values ($1, $2)`,
+      [input.id, input.dotyposCustomerId]
+    );
+  }
+};
+
 const insertWorkspaceReservation = async (input: {
   readonly id: WorkspaceReservationId;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly dotyposReservationId: DotyposReservationId;
+  readonly authorAccountId?: CustomerAccountId;
 }) => {
   await Effect.runPromise(
     testDatabase!.db.insert(workspaceReservations).values({
@@ -66,6 +112,7 @@ const insertWorkspaceReservation = async (input: {
       ),
       dotyposCustomerId: input.dotyposCustomerId,
       dotyposReservationId: input.dotyposReservationId,
+      authorAccountId: input.authorAccountId ?? null,
       reservationState: "confirmed",
       paymentState: "not_started",
       fulfillmentState: "not_started",
@@ -79,17 +126,79 @@ const insertWorkspaceReservation = async (input: {
   );
 };
 
-const makeHistoryLayer = (reservations: readonly DotyposReservation[]) =>
+const testDatabaseLayer = () =>
+  Layer.succeed(
+    WorkspaceDatabase,
+    WorkspaceDatabase.of({ db: testDatabase!.db })
+  );
+
+/**
+ * Stands in for Dotypos: a reservation without a customer belongs to every
+ * customer query, and lists come back newest start first, as Dotypos sorts
+ * them. Reads fail with the supplied failure, when there is one.
+ */
+const makeHistoryLayer = (
+  reservations: readonly DotyposReservation[],
+  options: {
+    readonly customers?: readonly DotyposCustomer[];
+    readonly customerReads?: DotyposCustomerId[][];
+    readonly failNames?: boolean;
+    readonly failAuthors?: boolean;
+  } = {}
+) =>
   CustomerReservationHistoryService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.succeed(
-          WorkspaceDatabase,
-          WorkspaceDatabase.of({ db: testDatabase!.db })
-        ),
+        testDatabaseLayer(),
         Layer.mock(DotyposService, {
-          listReservations: () => Effect.succeed([...reservations]),
+          listReservations: (filter = {}) =>
+            Effect.succeed(
+              reservations
+                .filter(
+                  (reservation) =>
+                    (!filter.customerId ||
+                      !reservation._customerId ||
+                      reservation._customerId === filter.customerId) &&
+                    (!filter.ids ||
+                      (reservation.id !== undefined &&
+                        filter.ids.includes(reservation.id)))
+                )
+                .toSorted((a, b) =>
+                  (b.startDate ?? "").localeCompare(a.startDate ?? "")
+                )
+            ),
+          getCustomers: ({ ids }) => {
+            options.customerReads?.push([...ids]);
+            return options.failNames
+              ? Effect.fail(
+                  new ExternalAPIError({
+                    service: "dotypos",
+                    operation: "getCustomers",
+                    statusCode: 503,
+                  })
+                )
+              : Effect.succeed(
+                  (options.customers ?? []).filter(
+                    (customer) => customer.id && ids.includes(customer.id)
+                  )
+                );
+          },
         } as Partial<DotyposService["Service"]>),
+        options.failAuthors
+          ? Layer.succeed(
+              ReservationAuthorDirectory,
+              ReservationAuthorDirectory.of({
+                describe: () =>
+                  Effect.fail(
+                    new ReservationAuthorReadError({
+                      code: "reservation-author.read",
+                    })
+                  ),
+              })
+            )
+          : ReservationAuthorDirectory.Default.pipe(
+              Layer.provide(testDatabaseLayer())
+            ),
         CustomerAccountLinkRepository.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
@@ -230,17 +339,213 @@ describe.skipIf(!testDatabase)(
       if (history.kind !== "available") throw new Error("History unavailable");
 
       const summaries = history.groups.past;
-      expect(summaries).toHaveLength(4);
-      expect(summaries[0]).toMatchObject({
-        id: matchedWorkspaceReservationId,
+      expect(summaries.map((summary) => summary.id)).toEqual([
+        foreignDotyposReservationId,
+        "2000-01-03T10:00:00.000Z:1",
+        providerOnlyDotyposReservationId,
+        matchedWorkspaceReservationId,
+      ]);
+      expect(summaries[3]).toMatchObject({
         workspaceReservationId: matchedWorkspaceReservationId,
       });
-      expect(summaries[1].id).toBe(providerOnlyDotyposReservationId);
-      expect("workspaceReservationId" in summaries[1]).toBe(false);
-      expect(summaries[2].id).toBe("2000-01-03T10:00:00.000Z:2");
-      expect("workspaceReservationId" in summaries[2]).toBe(false);
-      expect(summaries[3].id).toBe(foreignDotyposReservationId);
-      expect("workspaceReservationId" in summaries[3]).toBe(false);
+      for (const summary of summaries.slice(0, 3)) {
+        expect("workspaceReservationId" in summary).toBe(false);
+      }
+      expect(summaries.some((summary) => "party" in summary)).toBe(false);
+    });
+
+    const seedParties = async () => {
+      const account = customerAccountIdSchema.make(uniqueId());
+      const otherAuthor = customerAccountIdSchema.make(uniqueId());
+      const deletedAuthor = customerAccountIdSchema.make(uniqueId());
+      const unrelatedAccount = customerAccountIdSchema.make(uniqueId());
+      const customerId = DotyposCustomerIdSchema.make(uniqueDotyposId());
+      const otherAuthorCustomerId = DotyposCustomerIdSchema.make(
+        uniqueDotyposId()
+      );
+      const bookedForCustomerId = DotyposCustomerIdSchema.make(
+        uniqueDotyposId()
+      );
+      const unrelatedCustomerId = DotyposCustomerIdSchema.make(
+        uniqueDotyposId()
+      );
+      await insertCustomerAccount({
+        id: account,
+        dotyposCustomerId: customerId,
+      });
+      await insertCustomerAccount({
+        id: otherAuthor,
+        dotyposCustomerId: otherAuthorCustomerId,
+      });
+      await insertCustomerAccount({ id: deletedAuthor, deleted: true });
+      await insertCustomerAccount({
+        id: unrelatedAccount,
+        dotyposCustomerId: unrelatedCustomerId,
+      });
+
+      const seeded = [
+        { key: "own", customer: customerId, author: account },
+        { key: "authorless", customer: customerId, author: undefined },
+        { key: "booked-for", customer: bookedForCustomerId, author: account },
+        { key: "booked-by", customer: customerId, author: otherAuthor },
+        { key: "deleted-author", customer: customerId, author: deletedAuthor },
+        {
+          key: "unrelated",
+          customer: unrelatedCustomerId,
+          author: unrelatedAccount,
+        },
+      ] as const;
+      const ids = new Map<
+        (typeof seeded)[number]["key"],
+        {
+          readonly workspace: WorkspaceReservationId;
+          readonly dotypos: DotyposReservationId;
+        }
+      >();
+      const reservations: DotyposReservation[] = [];
+      for (const [index, entry] of seeded.entries()) {
+        const workspace = workspaceReservationIdSchema.make(
+          `workspace-${uniqueId()}`
+        );
+        const dotypos = DotyposReservationIdSchema.make(
+          `dotypos-${uniqueId()}`
+        );
+        ids.set(entry.key, { workspace, dotypos });
+        await insertWorkspaceReservation({
+          id: workspace,
+          dotyposCustomerId: entry.customer,
+          dotyposReservationId: dotypos,
+          ...(entry.author && { authorAccountId: entry.author }),
+        });
+        reservations.push(
+          makeDotyposReservation({
+            id: dotypos,
+            _customerId: entry.customer,
+            startDate: `2000-02-0${index + 1}T10:00:00.000Z`,
+            endDate: `2000-02-0${index + 1}T11:00:00.000Z`,
+          })
+        );
+      }
+      return {
+        account: { accountId: account, dotyposCustomerId: customerId },
+        ids: (key: (typeof seeded)[number]["key"]) => ids.get(key)!,
+        reservations,
+        customers: [
+          makeDotyposCustomer(bookedForCustomerId, "Karla", "Ukázková"),
+          makeDotyposCustomer(otherAuthorCustomerId, "Petr", "Testovací"),
+          makeDotyposCustomer(unrelatedCustomerId, "Nikdo", "Cizí"),
+        ],
+        bookedForCustomerId,
+        otherAuthorCustomerId,
+      };
+    };
+
+    const loadPast = async (
+      account: {
+        accountId: CustomerAccountId;
+        dotyposCustomerId: DotyposCustomerId;
+      },
+      layer: ReturnType<typeof makeHistoryLayer>
+    ) => {
+      const history = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* CustomerReservationHistoryService;
+          return yield* service.load(account);
+        }).pipe(Effect.provide(layer))
+      );
+      if (history.kind !== "available") throw new Error("History unavailable");
+      return history.groups.past;
+    };
+
+    test("labels reservations booked for another customer or by another account", async () => {
+      const seeded = await seedParties();
+      const customerReads: DotyposCustomerId[][] = [];
+      const past = await loadPast(
+        seeded.account,
+        makeHistoryLayer(seeded.reservations, {
+          customers: seeded.customers,
+          customerReads,
+        })
+      );
+
+      expect(
+        past.map(({ id, workspaceReservationId, party }) => ({
+          id,
+          workspaceReservationId,
+          party,
+        }))
+      ).toEqual([
+        {
+          id: seeded.ids("deleted-author").workspace,
+          workspaceReservationId: seeded.ids("deleted-author").workspace,
+          party: { kind: "booked-by-deleted-account" },
+        },
+        {
+          id: seeded.ids("booked-by").workspace,
+          workspaceReservationId: seeded.ids("booked-by").workspace,
+          party: { kind: "booked-by", authorName: "Petr Testovací" },
+        },
+        {
+          id: seeded.ids("booked-for").workspace,
+          workspaceReservationId: seeded.ids("booked-for").workspace,
+          party: { kind: "booked-for", customerName: "Karla Ukázková" },
+        },
+        {
+          id: seeded.ids("authorless").workspace,
+          workspaceReservationId: seeded.ids("authorless").workspace,
+          party: undefined,
+        },
+        {
+          id: seeded.ids("own").workspace,
+          workspaceReservationId: seeded.ids("own").workspace,
+          party: undefined,
+        },
+      ]);
+      expect(
+        past.some(({ id }) => id === seeded.ids("unrelated").workspace)
+      ).toBe(false);
+      expect(customerReads.map((ids) => ids.toSorted())).toEqual([
+        [seeded.bookedForCustomerId, seeded.otherAuthorCustomerId].toSorted(),
+      ]);
+    });
+
+    test("keeps the history and neutral labels when party lookups fail", async () => {
+      const seeded = await seedParties();
+      const past = await loadPast(
+        seeded.account,
+        makeHistoryLayer(seeded.reservations, {
+          customers: seeded.customers,
+          failNames: true,
+          failAuthors: true,
+        })
+      );
+
+      expect(past.map(({ party }) => party)).toEqual([
+        { kind: "booked-by", authorName: null },
+        { kind: "booked-by", authorName: null },
+        { kind: "booked-for", customerName: null },
+        undefined,
+        undefined,
+      ]);
+    });
+
+    test("names a deleted author neutrally even when customer names fail", async () => {
+      const seeded = await seedParties();
+      const past = await loadPast(
+        seeded.account,
+        makeHistoryLayer(seeded.reservations, {
+          customers: seeded.customers,
+          failNames: true,
+        })
+      );
+
+      expect(past.map(({ party }) => party)).toEqual([
+        { kind: "booked-by-deleted-account" },
+        { kind: "booked-by", authorName: null },
+        { kind: "booked-for", customerName: null },
+        undefined,
+        undefined,
+      ]);
     });
   }
 );
