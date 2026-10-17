@@ -1,13 +1,13 @@
 import { expect, mock, test } from "bun:test";
 import type { ReactElement } from "react";
 
-const AccountSectionRoute = mock(() => null);
+const AccountSectionPathCheck = mock(() => null);
 const getAccountSectionMetadata = mock((locale: string, section: string) => ({
   title: `${locale}:${section}`,
 }));
 
 mock.module("@/features/account/components/account-section-route", () => ({
-  AccountSectionRoute,
+  AccountSectionPathCheck,
   getAccountSectionMetadata,
 }));
 mock.module("@/features/i18n/server/request-locale", () => ({
@@ -19,16 +19,12 @@ const { default: CustomerAccountSectionPage, generateMetadata } = await import(
   "./page"
 );
 
-test("renders the account page for the section in the path", async () => {
+test("checks the section in the path", async () => {
   const route = CustomerAccountSectionPage({
     params: Promise.resolve({ section: "security" }),
-  }) as ReactElement<{
-    readonly locale: string;
-    readonly section: Promise<string>;
-  }>;
+  }) as ReactElement<{ readonly section: Promise<string> }>;
 
-  expect(route.type).toBe(AccountSectionRoute);
-  expect(route.props.locale).toBe("cs-CZ");
+  expect(route.type).toBe(AccountSectionPathCheck);
   expect(await route.props.section).toBe("security");
 });
 

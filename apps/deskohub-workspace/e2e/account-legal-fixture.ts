@@ -388,8 +388,8 @@ const writeFixture = async (
     "app/[locale]/(site)/(full-header)/account/@modal/default.tsx":
       nullModalPage,
     "app/[locale]/(site)/(full-header)/account/@modal/page.tsx": nullModalPage,
-    "app/[locale]/(site)/(full-header)/account/page.tsx": privatePage,
-    "app/[locale]/(site)/(full-header)/account/[section]/page.tsx": privatePage,
+    "app/[locale]/(site)/(full-header)/account/(sections)/page.tsx": privatePage,
+    "app/[locale]/(site)/(full-header)/account/(sections)/[section]/page.tsx": privatePage,
     "app/[locale]/account-legal-fixture-ready/route.ts":
       fixtureReadinessRoute(readinessMarker),
     ...(realCookieConsent

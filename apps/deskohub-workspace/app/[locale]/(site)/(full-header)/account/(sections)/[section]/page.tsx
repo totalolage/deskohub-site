@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import {
-  AccountSectionRoute,
+  AccountSectionPathCheck,
   getAccountSectionMetadata,
 } from "@/features/account/components/account-section-route";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
@@ -21,10 +21,7 @@ export async function generateMetadata({
 export default function CustomerAccountSectionPage({
   params,
 }: AccountSectionPageProps) {
-  return runWithRequestLocale((locale) => (
-    <AccountSectionRoute
-      locale={locale}
-      section={params.then(({ section }) => section)}
-    />
-  ));
+  return (
+    <AccountSectionPathCheck section={params.then(({ section }) => section)} />
+  );
 }

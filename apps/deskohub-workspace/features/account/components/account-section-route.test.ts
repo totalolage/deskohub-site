@@ -44,28 +44,32 @@ mock.module("@/features/i18n", () => ({
   },
 }));
 
-const { AccountSectionRoute, getAccountSectionMetadata } = await import(
-  "./account-section-route"
-);
+const { AccountSectionPathCheck, AccountSections, getAccountSectionMetadata } =
+  await import("./account-section-route");
 
-type RouteContent = ReactElement<{
-  readonly locale: "en-US";
-  readonly section?: Promise<string>;
+type SuspendedContent<Props> = ReactElement<{
+  readonly children: ReactElement<Props>;
+  readonly fallback: ReactElement<{ readonly locale?: "en-US" }> | null;
 }>;
 
-const renderContent = (section?: string) => {
-  const route = AccountSectionRoute({
-    locale: "en-US",
-    section: section === undefined ? undefined : Promise.resolve(section),
-  }) as ReactElement<{
-    readonly children: RouteContent;
-    readonly fallback: ReactElement<{ readonly locale: "en-US" }>;
+const renderSuspended = <Props>(boundary: SuspendedContent<Props>) => {
+  const content = boundary.props.children;
+  const Content = content.type as (props: Props) => Promise<unknown>;
+  return () => Content(content.props);
+};
+
+const renderSections = () => {
+  const route = AccountSections({ locale: "en-US" }) as SuspendedContent<{
+    readonly locale: "en-US";
   }>;
-  const content = route.props.children;
-  const Content = content.type as (
-    props: RouteContent["props"]
-  ) => Promise<unknown>;
-  return { content: () => Content(content.props), route };
+  return { content: renderSuspended(route), route };
+};
+
+const renderPathCheck = (section: string) => {
+  const route = AccountSectionPathCheck({
+    section: Promise.resolve(section),
+  }) as SuspendedContent<{ readonly section: Promise<string> }>;
+  return { content: renderSuspended(route), route };
 };
 
 describe("customer account route boundary", () => {
@@ -98,11 +102,11 @@ describe("customer account route boundary", () => {
   });
 
   test("loads private account data after connection", async () => {
-    const { content, route } = renderContent();
+    const { content, route } = renderSections();
 
     expect(route.type).toBe(Suspense);
-    expect(route.props.fallback.type).toBe(AccountContentLoading);
-    expect(route.props.fallback.props.locale).toBe("en-US");
+    expect(route.props.fallback?.type).toBe(AccountContentLoading);
+    expect(route.props.fallback?.props.locale).toBe("en-US");
     expect(events).toEqual([]);
 
     const output = await content();
@@ -115,14 +119,14 @@ describe("customer account route boundary", () => {
     });
   });
 
-  test("renders the same account page for a released section's path", async () => {
-    const output = await renderContent("security").content();
+  test("leaves a released section's path to the sections' account page", async () => {
+    const { content, route } = renderPathCheck("security");
 
-    expect(events).toEqual(["connection", "passkeys", "referrals", "load"]);
-    expect(output).toMatchObject({
-      type: AccountPage,
-      props: { locale: "en-US", state: { kind: "unavailable" } },
-    });
+    expect(route.type).toBe(Suspense);
+    expect(route.props.fallback).toBeNull();
+    expect(await content()).toBeNull();
+    expect(events).toEqual(["connection", "passkeys", "referrals"]);
+    expect(loadCustomerAccountPage).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -131,16 +135,12 @@ describe("customer account route boundary", () => {
     "deleted",
     // Legal & Privacy is its own page; this route never renders it.
     "legal",
-  ])(
-    "returns not found for the %s segment before loading account data",
-    async (section) => {
-      await expect(renderContent(section).content()).rejects.toThrow(
-        "NEXT_NOT_FOUND"
-      );
-      expect(events).toEqual(["connection"]);
-      expect(loadCustomerAccountPage).not.toHaveBeenCalled();
-    }
-  );
+  ])("returns not found for the %s segment", async (section) => {
+    await expect(renderPathCheck(section).content()).rejects.toThrow(
+      "NEXT_NOT_FOUND"
+    );
+    expect(events).toEqual(["connection"]);
+  });
 
   test.each([
     ["referrals", areReferralsEnabled, "referrals"],
@@ -153,10 +153,9 @@ describe("customer account route boundary", () => {
         return false;
       });
 
-      await expect(renderContent(section).content()).rejects.toThrow(
+      await expect(renderPathCheck(section).content()).rejects.toThrow(
         "NEXT_NOT_FOUND"
       );
-      expect(loadCustomerAccountPage).not.toHaveBeenCalled();
     }
   );
 

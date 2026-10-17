@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { AccountSectionRoute } from "@/features/account/components/account-section-route";
 import { getAccountPageTitle } from "@/features/account/page-title";
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
@@ -12,8 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
   }));
 }
 
-export default async function CustomerAccountPageRoute() {
-  return runWithRequestLocale((locale) => (
-    <AccountSectionRoute locale={locale} />
-  ));
+/** The sections' layout renders the account page; see `AccountSections`. */
+export default function CustomerAccountPageRoute() {
+  return null;
 }

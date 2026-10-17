@@ -1,11 +1,5 @@
 import { expect, mock, test } from "bun:test";
-import type { ReactElement } from "react";
 
-const AccountSectionRoute = mock(() => null);
-
-mock.module("@/features/account/components/account-section-route", () => ({
-  AccountSectionRoute,
-}));
 mock.module("@/features/i18n", () => ({
   m: {
     accountMetadataTitle: () => "synthetic-title",
@@ -29,12 +23,6 @@ test("titles the bare account page after the account", async () => {
   });
 });
 
-test("renders the default section's account page without a section", async () => {
-  const route = (await CustomerAccountPageRoute()) as ReactElement<{
-    readonly locale: string;
-    readonly section?: Promise<string>;
-  }>;
-
-  expect(route.type).toBe(AccountSectionRoute);
-  expect(route.props).toEqual({ locale: "en-US" });
+test("leaves the account page to the sections' layout", () => {
+  expect(CustomerAccountPageRoute()).toBeNull();
 });

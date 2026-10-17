@@ -28,51 +28,64 @@ export function getAccountSectionMetadata(
 }
 
 /**
- * The account page. Every section renders the same page, which the account
- * layout's navigation switches between in place; `section` is the requested
- * path segment, absent on the bare account path. An unknown or unreleased
- * section is not found.
+ * The account page: every section, which the account layout's navigation
+ * switches between in place by replacing the URL. The sections' route-group
+ * layout renders it for the bare account path and every section's path, so a
+ * Server Action or refresh after an in-place switch keeps it mounted, with its
+ * open dialogs and drafts: it re-renders the switched path's route, and only
+ * the section paths' own pages differ.
  */
-export function AccountSectionRoute({
-  locale,
-  section,
-}: {
-  readonly locale: Locale;
-  readonly section?: Promise<string>;
-}) {
+export function AccountSections({ locale }: { readonly locale: Locale }) {
   return (
     <Suspense fallback={<AccountContentLoading locale={locale} />}>
-      <AccountSectionContent locale={locale} section={section} />
+      <AccountSectionsContent locale={locale} />
     </Suspense>
   );
 }
 
-async function AccountSectionContent({
-  locale,
-  section,
-}: {
-  readonly locale: Locale;
-  readonly section?: Promise<string>;
-}) {
+async function AccountSectionsContent({ locale }: { readonly locale: Locale }) {
   await connection();
-  if (section !== undefined) {
-    const requestedSection = await section;
-    if (!isAccountPageSection(requestedSection)) notFound();
-    const [passkeysEnabled, referralsEnabled] = await Promise.all([
-      arePasskeysEnabled(),
-      areReferralsEnabled(),
-    ]);
-    if (
-      !isAccountSectionReleased(requestedSection, {
-        passkeysEnabled,
-        referralsEnabled,
-      })
-    ) {
-      notFound();
-    }
-  }
-
   const state = await loadCustomerAccountPage();
 
   return <AccountPage locale={locale} state={state} />;
+}
+
+/**
+ * A section path's own page, which renders nothing besides the sections'
+ * layout: an unknown or unreleased section is not found.
+ */
+export function AccountSectionPathCheck({
+  section,
+}: {
+  readonly section: Promise<string>;
+}) {
+  return (
+    <Suspense fallback={null}>
+      <AccountSectionPathCheckContent section={section} />
+    </Suspense>
+  );
+}
+
+async function AccountSectionPathCheckContent({
+  section,
+}: {
+  readonly section: Promise<string>;
+}) {
+  await connection();
+  const requestedSection = await section;
+  if (!isAccountPageSection(requestedSection)) notFound();
+  const [passkeysEnabled, referralsEnabled] = await Promise.all([
+    arePasskeysEnabled(),
+    areReferralsEnabled(),
+  ]);
+  if (
+    !isAccountSectionReleased(requestedSection, {
+      passkeysEnabled,
+      referralsEnabled,
+    })
+  ) {
+    notFound();
+  }
+
+  return null;
 }

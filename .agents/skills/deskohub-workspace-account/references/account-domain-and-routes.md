@@ -42,10 +42,20 @@
 - Each account section has its own path, `/account/<section>`, with the slugs
   of `features/account/sections.ts`. The bare `/account` shows the default
   section (Reservations) without a redirect, because sign-in returns and the
-  header land there. `account/[section]/page.tsx` and `account/page.tsx` render
-  the same page through `AccountSectionRoute`; an unknown slug or a section
-  withheld by its release flag is not found. Legal & Privacy is the separate
-  public `/account/legal` page.
+  header land there. The `account/(sections)` route group serves the bare path
+  and `[section]`: its layout renders the account page, every section, through
+  `AccountSections`, and its pages render only their metadata and, for
+  `[section]`, `AccountSectionPathCheck`, under which an unknown slug or a
+  section withheld by its release flag is not found. Legal & Privacy is the
+  separate public `/account/legal` page.
+- Keep the account page in that layout, never in a page. The navigation
+  switches sections with `history.replaceState`, which leaves Next's router
+  tree on the path the page loaded at; a Server Action that revalidates, or
+  `router.refresh()`, then renders the switched path's route, and Next
+  remounts whatever differs between the two routes' trees. Only the pages
+  differ, so open dialogs and drafts survive. Don't serve section paths
+  through a proxy rewrite either: the account shell is server-rendered with
+  the rewritten pathname and hydrates with a mismatch.
 - The account layout's `@modal` slot owns only the intercepted
   `(..)reservation/{status,access}/[orderId]` modals. `@modal/page.tsx` renders
   nothing at `/account`, and `@modal/default.tsx` renders nothing on hard
