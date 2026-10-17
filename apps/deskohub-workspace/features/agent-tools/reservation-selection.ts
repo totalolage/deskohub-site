@@ -8,13 +8,14 @@ import { isCoworkOpenSpaceDayCutoffReached } from "@/features/reservation/cowork
 import { meetingRoomStartDateTimeSchema } from "@/features/reservation/meeting-room-reservation";
 import {
   getMeetingRoomReservationDuration,
+  isMeetingRoomWholeDayReservationDuration,
   type MeetingRoomReservationDuration,
   type MeetingRoomReservationDurationKey,
   meetingRoomReservationDurationKeySchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
-  getEarliestMeetingRoomStartDateTime,
   getMeetingRoomReservationInterval,
+  isUpcomingMeetingRoomStart,
 } from "@/features/reservation/meeting-room-reservation-time";
 import {
   getOfficeReservationMaximumDayCount,
@@ -23,6 +24,7 @@ import {
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import { getWorkspaceAvailabilityRange } from "@/features/reservation/workspace-availability";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   getPlainDatesBetween,
   isPlainDateString,
@@ -57,13 +59,13 @@ export const reservationSelectionFields = {
   start_time: Schema.optionalKey(
     Schema.String.annotate({
       description:
-        "Meeting room only: Prague start time in HH:mm on the hour, such as 09:00. Not used for the whole-day booking.",
+        "Meeting room only: Prague start time in HH:mm on the hour, such as 09:00, not earlier than now. Not used for the whole-day booking.",
     }).check(Schema.isPattern(/^\d{2}:\d{2}$/))
   ),
   duration: Schema.optionalKey(
     meetingRoomReservationDurationKeySchema.annotate({
       description:
-        "Meeting room only: hour:1 (one hour), hour:4 (four hours), or day:1 (the whole Prague calendar day).",
+        "Meeting room only: hour:1 (one hour), hour:4 (four hours), or day:1 (a whole Prague calendar day that has not started yet).",
     })
   ),
   seats: Schema.optionalKey(
@@ -162,7 +164,7 @@ export const resolveMeetingRoomSelection = Effect.fn(
         )
       ),
       Effect.tap(({ startDateTime, duration }) =>
-        ensureMeetingRoomStartOpen({ ...input, startDateTime, duration })
+        ensureMeetingRoomStartUpcoming({ ...input, startDateTime, duration })
       ),
       Effect.map(({ durationKey, duration, startDateTime, interval }) => ({
         durationKey,
@@ -251,10 +253,10 @@ const decodeMeetingRoomStart = ({
   );
 
 /**
- * A booking stays open while its end is ahead, so the earliest start can lie
- * before now; the form's picker and its links apply the same bound.
+ * A reservation link keeps only a start that has not begun yet, so the tool
+ * accepts the same starts and its link opens the form on the selection.
  */
-const ensureMeetingRoomStartOpen = ({
+const ensureMeetingRoomStartUpcoming = ({
   date,
   startDateTime,
   duration,
@@ -265,27 +267,37 @@ const ensureMeetingRoomStartOpen = ({
   readonly duration: MeetingRoomReservationDuration;
   readonly now: Temporal.Instant;
 }) =>
-  Effect.Do.pipe(
-    Effect.let("earliestStart", () =>
-      Temporal.PlainDateTime.from(
-        getEarliestMeetingRoomStartDateTime(duration, now)
-      )
-    ),
-    Effect.let("range", () =>
-      getWorkspaceAvailabilityRange(getCurrentWorkspaceDate(now).toString())
-    ),
+  Effect.succeed(
+    getWorkspaceAvailabilityRange(getCurrentWorkspaceDate(now).toString())
+  ).pipe(
     Effect.filterOrFail(
-      ({ earliestStart, range }) =>
-        Temporal.PlainDateTime.compare(startDateTime, earliestStart) >= 0 &&
+      (range) =>
+        isUpcomingMeetingRoomStart({ startDateTime, duration, now }) &&
         date <= range.to,
-      ({ earliestStart, range }) =>
+      (range) =>
         AgentToolError.dateOutOfRange({
-          earliest: earliestStart.toPlainDate().toString(),
+          earliest: getFirstUpcomingMeetingRoomDate(duration, now),
           latest: range.to,
         })
     ),
     Effect.asVoid
   );
+
+/** The Prague date of the first start that has not begun yet. */
+const getFirstUpcomingMeetingRoomDate = (
+  duration: MeetingRoomReservationDuration,
+  now: Temporal.Instant
+) =>
+  now
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .round({
+      smallestUnit: isMeetingRoomWholeDayReservationDuration(duration)
+        ? "day"
+        : "hour",
+      roundingMode: "ceil",
+    })
+    .toPlainDate()
+    .toString();
 
 const ensureDateOrder = ({
   date,

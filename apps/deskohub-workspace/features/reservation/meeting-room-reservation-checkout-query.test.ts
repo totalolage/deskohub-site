@@ -68,9 +68,7 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
     });
   });
 
-  // The form's picker offers every start whose interval is still open, so a
-  // link keeps a start that already began and falls back once it has ended.
-  test("keeps a start that already began while its interval is open", () => {
+  test("falls back for a start that already began, keeping valid siblings", () => {
     const now = workspaceInstant("2099-07-30T10:30");
 
     expect(
@@ -96,26 +94,6 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
     expect(
       getMeetingRoomReservationDefaultValuesFromSearchParams(
         { duration: "hour:4", startDateTime: "2099-07-30T10:00" },
-        now
-      )
-    ).toMatchObject({
-      startDateTime: "2099-07-30T10:00",
-      duration: "hour:4",
-    });
-
-    expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
-        { duration: "hour:1", startDateTime: "2099-07-30T09:00" },
-        now
-      )
-    ).toMatchObject({
-      startDateTime: "2099-07-30T10:00",
-      duration: "hour:1",
-    });
-
-    expect(
-      getMeetingRoomReservationDefaultValuesFromSearchParams(
-        { duration: "hour:4", startDateTime: "2099-07-30T06:00" },
         now
       )
     ).toMatchObject({

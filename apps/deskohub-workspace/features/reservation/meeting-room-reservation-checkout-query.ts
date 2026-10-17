@@ -13,7 +13,7 @@ import {
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getEarliestMeetingRoomStartDateTime,
-  getMeetingRoomReservationInterval,
+  isUpcomingMeetingRoomStart,
 } from "@/features/reservation/meeting-room-reservation-time";
 import {
   decodeReservationCheckoutCustomer,
@@ -63,18 +63,14 @@ export const getMeetingRoomReservationDefaultValuesFromSearchParams = (
     queryMeetingRoomStartDateTimeSchema,
     getTrimmedSearchParam(searchParams, "startDateTime")
   );
-  // A link keeps any start the form's picker offers: the interval may have
-  // begun while its end is still ahead, the bound submission applies too.
-  const earliestStartDateTime = getEarliestMeetingRoomStartDateTime(
-    duration,
-    now
-  );
+  // Fresh query decoding rejects any start at or before now, even when the
+  // interval end is still in the future; submission keeps its own end-based
+  // rule inside the reservation schema.
   const startDateTimeOrEarliest =
     startDateTime !== undefined &&
-    getMeetingRoomReservationInterval(startDateTime, duration) !== null &&
-    Temporal.PlainDateTime.compare(startDateTime, earliestStartDateTime) >= 0
+    isUpcomingMeetingRoomStart({ startDateTime, duration, now })
       ? startDateTime
-      : earliestStartDateTime;
+      : getEarliestMeetingRoomStartDateTime(duration, now);
 
   return {
     ...meetingRoomReservationDefaultValues,
