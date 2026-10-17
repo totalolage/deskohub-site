@@ -1,6 +1,5 @@
 import { m } from "@/features/administration/i18n";
-import type { Locale } from "@/features/i18n";
-import { getActionFailureMessage } from "@/shared/utils/action-runtime-failure";
+import { createActionFailureMessage } from "@/shared/utils/action-runtime-failure";
 
 /**
  * The operator-facing message for a failed CLI session administration action.
@@ -8,12 +7,7 @@ import { getActionFailureMessage } from "@/shared/utils/action-runtime-failure";
  * reports in English gets administration copy, and anything else gets
  * `fallback`.
  */
-export const getAdminCliActionFailureMessage = (
-  serverError: string | undefined,
-  { fallback, locale }: { readonly fallback: string; readonly locale: Locale }
-) =>
-  getActionFailureMessage(serverError, {
-    fallback,
-    timeout: m.adminCliActionTimedOut({}, { locale }),
-    unexpected: m.adminCliActionFailedUnexpectedly({}, { locale }),
-  });
+export const getAdminCliActionFailureMessage = createActionFailureMessage({
+  timeout: m.adminCliActionTimedOut,
+  unexpected: m.adminCliActionFailedUnexpectedly,
+});
