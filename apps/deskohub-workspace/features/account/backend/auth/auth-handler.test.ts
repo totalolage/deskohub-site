@@ -11,6 +11,7 @@ import {
   withPostgresAdvisoryLock,
 } from "@/db/postgres-advisory-lock";
 import type { CustomerAccountId } from "../../customer-account";
+import { CustomerAccountRepository } from "../customer-account.repository";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
 import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
 import { waitForAccountAdvisoryLockWait } from "../customer-account-lock.test-utils";
@@ -86,7 +87,10 @@ const makeTestDeletionLayers = (
   CustomerAccountDeletionService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        CustomerAccountLinkRepository.Default.pipe(
+        Layer.mergeAll(
+          CustomerAccountLinkRepository.Default,
+          CustomerAccountRepository.Default
+        ).pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(

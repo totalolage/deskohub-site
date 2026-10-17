@@ -26,7 +26,7 @@
   session settings, and `advanced.database.joins`. When you add a user field
   there, update `db/schema/auth.ts` and `db/schema/auth.test.ts` in the same
   change.
-- Generate the auth tables and `customer_account_links` with Drizzle tooling
+- Generate the auth tables, `customer_account_links`, and `customer_accounts` with Drizzle tooling
   from the checked-in schema; never hand-edit snapshots. Better Auth's own
   `migrate` command doesn't apply to this setup. Follow the migration process
   in the `deskohub-workspace-operations` skill.
