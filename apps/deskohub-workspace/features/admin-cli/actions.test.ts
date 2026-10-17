@@ -1,8 +1,15 @@
 import "@/shared/testing/workspace-test-env";
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
-  AdministrationActorUsername,
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
+import {
   CliSessionId,
   digestCliAuthenticationSecret,
   makeCliAuthenticationSecret,
@@ -12,20 +19,34 @@ import { eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import { cliAuthenticationRequests, cliSessions } from "@/db/schema";
 import { cliAuthenticationRequestIdSchema } from "@/features/admin-cli/cli-identifiers";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
-  workspaceTestAdminCredentials,
-  workspaceTestAdministrators,
-} from "@/shared/testing/workspace-test-environment";
+  deleteTestAccounts,
+  insertTestAdministrator,
+} from "@/shared/testing/workspace-test-accounts.test-utils";
 
-let requestHeaders = new Headers();
+let actingAdministrator: AdministratorAccountActor | null = null;
 
+mock.module(
+  "@/features/administrators/server/administrator-authorization.server",
+  () => ({
+    requireAdministratorAuthorization: Effect.suspend(() =>
+      actingAdministrator === null
+        ? Effect.fail(new Error("Administrator authentication is required."))
+        : Effect.succeed(actingAdministrator)
+    ),
+    authorizeAdministratorPage: async () => {
+      throw new Error("Server Actions use requireAdministratorAuthorization.");
+    },
+  })
+);
 mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined }),
-  headers: async () => requestHeaders,
+  headers: async () => new Headers(),
 }));
 mock.module("next/cache", () => ({
   revalidatePath: () => {},
@@ -34,17 +55,8 @@ mock.module("next/cache", () => ({
 
 const postgresDatabase = await connectWorkspacePostgresTestDatabase();
 
-const toAuthorization = (username: string, password: string) =>
-  `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-
-const actAs = (username: string) => {
-  const credential = workspaceTestAdministrators.find(
-    (candidate) => candidate.username === username
-  );
-  if (!credential) throw new Error(`No test credential for ${username}`);
-  requestHeaders = new Headers({
-    authorization: toAuthorization(credential.username, credential.password),
-  });
+const actAs = (administrator: AdministratorAccountActor | null) => {
+  actingAdministrator = administrator;
 };
 
 const randomSecret = () =>
@@ -71,11 +83,20 @@ const invokeRedirect = async (invoke: () => Promise<unknown>) => {
 };
 
 describe.skipIf(!postgresDatabase)(
-  "admin CLI actions authorize ownership from Basic authentication",
+  "admin CLI actions act as the signed-in administrator account",
   () => {
     const postgres = postgresDatabase as WorkspacePostgresTestDatabase;
     const fixtureSessionIds: CliSessionId[] = [];
     const fixtureRequestIds: CliAuthenticationRequestId[] = [];
+    let admin: AdministratorAccountActor;
+    let operator: AdministratorAccountActor;
+
+    beforeAll(async () => {
+      admin = await insertTestAdministrator(postgres, "cli-action-admin");
+      operator = await insertTestAdministrator(postgres, "cli-action-operator");
+    });
+
+    afterAll(() => deleteTestAccounts(postgres, [admin, operator]));
 
     afterEach(async () => {
       const requestIds = [...fixtureRequestIds];
@@ -98,16 +119,17 @@ describe.skipIf(!postgresDatabase)(
       }
     });
 
-    const insertSessionFixture = async (username: string) => {
+    const insertSessionFixture = async (owner: AdministratorAccountActor) => {
       const id = CliSessionId.make(crypto.randomUUID());
       await Effect.runPromise(
         postgres.db.insert(cliSessions).values({
           id,
-          approvedBy: AdministrationActorUsername.make(username),
+          approvedByAccountId: owner.accountId,
+          approvedByAccountEmail: owner.email,
           tokenHash: await Effect.runPromise(
             digestSecret(await Effect.runPromise(randomSecret()))
           ),
-          clientName: `${username} CLI`,
+          clientName: "Fixture CLI",
           cliVersion: "1.0.0",
           buildTarget: "development",
           createdAt: Temporal.Instant.from("2026-08-10T10:00:00.000Z"),
@@ -127,12 +149,10 @@ describe.skipIf(!postgresDatabase)(
 
     test("revokes only the acting administrator's own session", async () => {
       const { revokeCliSession } = await import("@/features/admin-cli/actions");
-      const adminSessionId = await insertSessionFixture(
-        workspaceTestAdminCredentials.username
-      );
-      const operatorSessionId = await insertSessionFixture("operator");
+      const adminSessionId = await insertSessionFixture(admin);
+      const operatorSessionId = await insertSessionFixture(operator);
 
-      actAs(workspaceTestAdminCredentials.username);
+      actAs(admin);
       const foreignError = await invokeRedirect(() =>
         revokeCliSession(toFormData({ sessionId: operatorSessionId }))
       );
@@ -152,19 +172,17 @@ describe.skipIf(!postgresDatabase)(
 
     test("renames only the acting administrator's own session", async () => {
       const { renameCliSession } = await import("@/features/admin-cli/actions");
-      const adminSessionId = await insertSessionFixture(
-        workspaceTestAdminCredentials.username
-      );
-      const operatorSessionId = await insertSessionFixture("operator");
+      const adminSessionId = await insertSessionFixture(admin);
+      const operatorSessionId = await insertSessionFixture(operator);
 
-      actAs(workspaceTestAdminCredentials.username);
+      actAs(admin);
       const foreign = await renameCliSession({
         sessionId: operatorSessionId,
         clientName: "Stolen label",
       });
       expect(foreign).toHaveProperty("serverError");
       expect((await loadSessionRow(operatorSessionId))?.clientName).toBe(
-        "operator CLI"
+        "Fixture CLI"
       );
 
       const own = await renameCliSession({
@@ -214,7 +232,7 @@ describe.skipIf(!postgresDatabase)(
       );
       const { code, requestId } = await insertPendingRequestFixture();
 
-      actAs("operator");
+      actAs(operator);
       const approvedNoEarlierThan = Temporal.Instant.fromEpochMilliseconds(
         Date.now()
       );
@@ -226,7 +244,9 @@ describe.skipIf(!postgresDatabase)(
       expect(error.digest).toContain("result=approved");
 
       const row = await loadRequestRow(requestId);
-      expect(row?.approvedBy).toBe("operator");
+      expect(row?.approvedBy).toBeNull();
+      expect(row?.approvedByAccountId).toBe(operator.accountId);
+      expect(row?.approvedByAccountEmail).toBe(operator.email);
       expect(row?.approvedAt).not.toBeNull();
       expect(
         row?.approvedAt &&
@@ -249,7 +269,7 @@ describe.skipIf(!postgresDatabase)(
       );
       const { code, requestId } = await insertPendingRequestFixture();
 
-      actAs("operator");
+      actAs(operator);
       const error = await invokeRedirect(() =>
         approveCliAuthentication(toFormData({ code, neverExpire: "on" }))
       );
@@ -266,7 +286,7 @@ describe.skipIf(!postgresDatabase)(
       );
       const { code, requestId } = await insertPendingRequestFixture();
 
-      actAs("operator");
+      actAs(operator);
       const invalidLifetimes: ReadonlyArray<Record<string, string>> = [
         {},
         { lifetimeAmount: "0", lifetimeUnit: "days" },
@@ -281,6 +301,26 @@ describe.skipIf(!postgresDatabase)(
         expect(error.digest).toContain("result=error");
       }
 
+      expect((await loadRequestRow(requestId))?.approvedAt).toBeNull();
+    });
+
+    test("changes nothing for a visitor who isn't an administrator", async () => {
+      const { approveCliAuthentication, revokeCliSession } = await import(
+        "@/features/admin-cli/actions"
+      );
+      const sessionId = await insertSessionFixture(admin);
+      const { code, requestId } = await insertPendingRequestFixture();
+
+      actAs(null);
+      const revoke = await invokeRedirect(() =>
+        revokeCliSession(toFormData({ sessionId }))
+      );
+      expect(revoke.digest).toContain("result=unchanged");
+      expect((await loadSessionRow(sessionId))?.revokedAt).toBeNull();
+      const approve = await invokeRedirect(() =>
+        approveCliAuthentication(toFormData({ code, neverExpire: "on" }))
+      );
+      expect(approve.digest).toContain("result=error");
       expect((await loadRequestRow(requestId))?.approvedAt).toBeNull();
     });
   }

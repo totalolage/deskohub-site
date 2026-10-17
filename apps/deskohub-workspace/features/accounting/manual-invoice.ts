@@ -1,5 +1,6 @@
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import { BigDecimal, Data, Effect, Schema } from "effect";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { locales } from "@/features/i18n";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import {
@@ -36,9 +37,27 @@ export type InvoiceVariableSymbol = typeof invoiceVariableSymbolSchema.Type;
 
 export const manualInvoiceProvenanceSchema = Schema.Struct({
   source: Schema.Literals(["admin-ui", "dhw-cli"]),
+  /**
+   * The issuing administrator's login email. Invoices issued before
+   * administrator accounts hold a Basic-auth username instead.
+   */
   actor: Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(255)),
 });
 export type ManualInvoiceProvenance = typeof manualInvoiceProvenanceSchema.Type;
+
+/** The administrator account issuing a manual invoice, and through what. */
+export type ManualInvoiceIssuer = {
+  readonly source: ManualInvoiceProvenance["source"];
+  readonly administrator: AdministratorAccountActor;
+};
+
+export const toManualInvoiceProvenance = ({
+  source,
+  administrator,
+}: ManualInvoiceIssuer): ManualInvoiceProvenance => ({
+  source,
+  actor: administrator.email,
+});
 
 const manualInvoiceLineInputSchema = Schema.Struct({
   description: Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(1000)),

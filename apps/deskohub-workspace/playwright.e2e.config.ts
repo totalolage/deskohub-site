@@ -7,6 +7,7 @@ import {
 } from "./e2e/playwright-defaults";
 import {
   workspaceE2EAccessCodePlaywrightTimeout,
+  workspaceE2EAdministratorAccessPlaywrightTimeout,
   workspaceE2EEmailCampaignPlaywrightTimeout,
   workspaceE2EPlaywrightCheckoutTimeout,
 } from "./e2e/timeouts";
@@ -45,6 +46,16 @@ export default defineConfig({
     {
       name: "checkout-cleanup",
       testMatch: "cleanup.pw.ts",
+    },
+    {
+      // Short seeded-session admin access cases, queued after the case pools
+      // like the other admin cases, so they take a worker that frees up
+      // instead of a slot of the first case batch.
+      dependencies: ["checkout-setup"],
+      name: "administrator-access",
+      testDir: "./e2e/administrators",
+      testMatch: "**/*.pw.ts",
+      timeout: workspaceE2EAdministratorAccessPlaywrightTimeout,
     },
     {
       // Queued after the case pools like the access-code case, so it takes a

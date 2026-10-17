@@ -7,6 +7,7 @@ import {
   invoiceEmailDeliveries,
   invoiceNumberCounters,
   invoices,
+  manualInvoiceActors,
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
@@ -36,6 +37,7 @@ import {
   type NormalizedManualInvoiceInput,
   normalizeManualInvoiceInput,
 } from "@/features/accounting/manual-invoice";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
@@ -126,6 +128,10 @@ export type InvoiceRepositoryError =
   | ManualInvoiceValidationError
   | SqlError;
 
+type ManualInvoiceIssueInput = ManualInvoiceInput & {
+  readonly issuedBy: AdministratorAccountActor;
+};
+
 export interface IInvoiceRepository {
   readonly findById: (
     invoiceId: string
@@ -146,8 +152,12 @@ export interface IInvoiceRepository {
       readonly source: "reservation-request" | "post-order-link";
     };
   }) => Effect.Effect<ReservationInvoiceIssuance, InvoiceRepositoryError>;
+  /**
+   * Issues a manual invoice and records the administrator account that
+   * issued it in the same transaction. A retry returns the issued invoice.
+   */
   readonly issueManual: (
-    input: ManualInvoiceInput
+    input: ManualInvoiceIssueInput
   ) => Effect.Effect<ManualInvoiceIssuance, InvoiceRepositoryError>;
   readonly list: () => Effect.Effect<
     readonly InvoiceListItem[],
@@ -538,8 +548,9 @@ export class InvoiceRepository extends Context.Service<
       });
 
       const issueManual = Effect.fn("InvoiceRepository.issueManual")(function* (
-        rawInput: ManualInvoiceInput
+        issueInput: ManualInvoiceIssueInput
       ) {
+        const { issuedBy, ...rawInput } = issueInput;
         const input = yield* Schema.decodeUnknownEffect(
           manualInvoiceInputSchema,
           { onExcessProperty: "error" }
@@ -664,6 +675,11 @@ export class InvoiceRepository extends Context.Service<
                     })
                 )
               );
+            yield* tx.insert(manualInvoiceActors).values({
+              invoiceId: normalized.invoiceId,
+              actorAccountId: issuedBy.accountId,
+              actorAccountEmail: issuedBy.email,
+            });
             return { changed: true } as const;
           })
         );

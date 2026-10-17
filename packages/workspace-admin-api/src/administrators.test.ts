@@ -7,7 +7,7 @@ import {
   AdministrationLegacyAdministratorBackfillResult,
   type AdministrationLegacyAdministratorBackfillResult as BackfillResult,
 } from "./administrators";
-import { AdministrationActorUsername } from "./workspace-admin-api";
+import { AdministrationLegacyUsername } from "./workspace-admin-api";
 
 const email = testEmailAddress("legacy-administrator");
 
@@ -28,7 +28,7 @@ describe("administrators contract", () => {
     expect(
       decode({ legacyUsername: " admin ", email: ` ${email} `, dryRun: true })
     ).toEqual({
-      legacyUsername: AdministrationActorUsername.make("admin"),
+      legacyUsername: AdministrationLegacyUsername.make("admin"),
       email,
       dryRun: true,
     });

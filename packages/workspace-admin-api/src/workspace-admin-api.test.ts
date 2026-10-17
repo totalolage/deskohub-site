@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import {
   AdminCliAdministrationApi,
+  AdministrationActorEmail,
   AdministrationCustomerProfile,
   AdministrationCustomerQuery,
   AdministrationCustomerReservationsQuery,
@@ -31,7 +32,12 @@ import {
   AdministrationStandaloneAccessCodeResult,
   AdministrationVoucher,
   AdministrationWorkspaceSiteLocalWholeHourDateTime,
+  CliBuildTarget,
+  CliClientName,
+  CliSession,
+  CliSessionId,
   isStandaloneAccessCodeWindowWithinContractDuration,
+  toAdministrationActorName,
 } from "./workspace-admin-api";
 
 const syntheticAddress = testEmailAddress("synthetic");
@@ -785,5 +791,79 @@ describe("administration contract", () => {
         page: 0,
       })
     ).toThrow();
+  });
+});
+
+describe("CLI session contract", () => {
+  // `CliSession` as released dhw-v1.17.0 binaries decode it; they read a null
+  // approver as a legacy session that can't issue invoices or access codes.
+  const ReleasedCliSession = Schema.Struct({
+    id: CliSessionId,
+    approvedBy: Schema.NullOr(
+      Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(80))
+    ).pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(null))),
+    clientName: CliClientName,
+    cliVersion: Schema.String,
+    buildTarget: CliBuildTarget,
+    createdAt: Schema.String,
+    lastUsedAt: Schema.String,
+    expiresAt: Schema.NullOr(Schema.String).pipe(
+      Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+    ),
+  });
+  const shortEmail = AdministrationActorEmail.make(syntheticAddress);
+  const longEmail = AdministrationActorEmail.make(
+    testEmailAddress("a".repeat(120))
+  );
+  const sessionFor = (email: AdministrationActorEmail) =>
+    Schema.encodeSync(CliSession)({
+      id: CliSessionId.make("123e4567-e89b-42d3-a456-426614174000"),
+      approvedBy: toAdministrationActorName(email),
+      approvedByEmail: email,
+      clientName: "synthetic compatibility client",
+      cliVersion: "1.17.0",
+      buildTarget: "linux-x64-baseline",
+      createdAt: "2026-10-16T00:00:00.000Z",
+      lastUsedAt: "2026-10-16T00:00:00.000Z",
+      expiresAt: null,
+    });
+
+  test.each([shortEmail, longEmail])(
+    "keeps a session approved by %s readable by released dhw",
+    (email) => {
+      const released = Schema.decodeUnknownSync(ReleasedCliSession)(
+        sessionFor(email)
+      );
+
+      expect(released.approvedBy).not.toBeNull();
+      expect(released.approvedBy!.length).toBeLessThanOrEqual(80);
+    }
+  );
+
+  test("gives current dhw the full approver email", () => {
+    expect(
+      Schema.decodeUnknownSync(CliSession)(sessionFor(longEmail))
+    ).toMatchObject({
+      approvedBy: `${longEmail.slice(0, 79)}…`,
+      approvedByEmail: longEmail,
+    });
+  });
+
+  test("reads a session from a server without the approver email", () => {
+    const { approvedByEmail: _, ...released } = sessionFor(shortEmail);
+
+    expect(Schema.decodeUnknownSync(CliSession)(released)).toMatchObject({
+      approvedBy: shortEmail,
+      approvedByEmail: null,
+    });
+  });
+
+  test("shortens an approver email without splitting a character", () => {
+    const email = AdministrationActorEmail.make(
+      testEmailAddress(`${"a".repeat(78)}😀`)
+    );
+
+    expect<string>(toAdministrationActorName(email)).toBe(`${"a".repeat(78)}…`);
+    expect<string>(toAdministrationActorName(shortEmail)).toBe(shortEmail);
   });
 });

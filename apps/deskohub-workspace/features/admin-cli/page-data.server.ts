@@ -1,12 +1,11 @@
 import "server-only";
 
 import {
-  type AdministrationActorUsernameType,
   CliAuthenticationCode,
   type CliAuthenticationCodeType,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Option, Schema } from "effect";
-import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
+import { authorizeAdministratorPage } from "@/features/administrators/server/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import type {
   CliApprovalRequest,
@@ -17,24 +16,26 @@ import { CliAuthentication } from "./cli-authentication.service";
 type CliAuthenticationCodeInput = FormDataEntryValue | null | undefined;
 
 export type CliApprovalPageData = {
-  readonly username: AdministrationActorUsernameType;
+  /** The signed-in administrator's login email. */
+  readonly administratorEmail: string;
   readonly request: CliApprovalRequest | null;
 };
 
 export type CliSessionsPageData = {
-  readonly username: AdministrationActorUsernameType;
+  /** The signed-in administrator's login email. */
+  readonly administratorEmail: string;
   readonly sessions: ReadonlyArray<CliSessionAdministrationItem>;
 };
 
 export const loadCliAuthenticationApproval = async (
   code: CliAuthenticationCodeInput
 ): Promise<CliApprovalPageData | null> => {
-  const username = await authorizeAdministratorPage();
+  const administrator = await authorizeAdministratorPage();
   const decoded = Schema.decodeUnknownOption(CliAuthenticationCode)(code);
   if (Option.isNone(decoded)) return null;
 
   return {
-    username,
+    administratorEmail: administrator.email,
     request: await CliAuthentication.pipe(
       Effect.flatMap((authentication) =>
         authentication.inspectApproval(decoded.value)
@@ -48,11 +49,13 @@ export const loadCliAuthenticationApproval = async (
 };
 
 export const loadCliSessions = async (): Promise<CliSessionsPageData> => {
-  const username = await authorizeAdministratorPage();
+  const administrator = await authorizeAdministratorPage();
   return {
-    username,
+    administratorEmail: administrator.email,
     sessions: await CliAuthentication.pipe(
-      Effect.flatMap((authentication) => authentication.listSessions(username)),
+      Effect.flatMap((authentication) =>
+        authentication.listSessions(administrator.accountId)
+      ),
       Effect.provide(CliAuthentication.Live),
       runWorkspaceEffect("cli-authentication.list-sessions", {
         boundary: "page",

@@ -2,9 +2,9 @@
 
 import { Effect } from "effect";
 import { formatAdministrationDateTime } from "@/features/administration/formatters";
+import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import type { Locale } from "@/features/i18n";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { CampaignService } from "../../backend/campaign.service";

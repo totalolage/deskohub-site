@@ -15,9 +15,11 @@ import {
   invoiceEmailDeliveries,
   invoiceNumberCounters,
   invoices,
+  manualInvoiceActors,
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   accountingSnapshotKeyIdSchema,
   companyRegistrationIdSchema,
@@ -46,6 +48,10 @@ import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
+import {
+  deleteTestAccounts,
+  insertTestAccount,
+} from "@/shared/testing/workspace-test-accounts.test-utils";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import {
@@ -339,6 +345,9 @@ const deleteFixtureInvoices = () =>
           .delete(invoiceEmailDeliveries)
           .where(inArray(invoiceEmailDeliveries.invoiceId, fixtureInvoices));
         yield* tx
+          .delete(manualInvoiceActors)
+          .where(inArray(manualInvoiceActors.invoiceId, fixtureInvoices));
+        yield* tx
           .delete(invoices)
           .where(like(invoices.dotyposCustomerId, `${fixtureCustomerPrefix}%`));
         yield* tx.execute(
@@ -352,9 +361,11 @@ describe.skipIf(!testDatabase)(
   "InvoiceRepository on disposable Postgres",
   () => {
     const postgres = testDatabase as WorkspacePostgresTestDatabase;
+    const testAccounts: Awaited<ReturnType<typeof insertTestAccount>>[] = [];
 
     afterAll(async () => {
       await deleteFixtureInvoices();
+      await deleteTestAccounts(postgres, testAccounts);
       const remaining = await postgres.pool.query(
         "select 1 from invoices where dotypos_customer_id like $1 limit 1",
         [`${fixtureCustomerPrefix}%`]
@@ -516,6 +527,11 @@ describe.skipIf(!testDatabase)(
     });
 
     test("issues one manual invoice for concurrent requests with the same id", async () => {
+      const issuer = await insertTestAccount(
+        postgres,
+        "invoice-repository-issuer"
+      );
+      testAccounts.push(issuer);
       const input = Schema.decodeUnknownSync(manualInvoiceInputSchema)({
         invoiceId: randomUUID(),
         dotyposCustomerId: `${fixtureCustomerPrefix}${randomUUID()}`,
@@ -526,13 +542,15 @@ describe.skipIf(!testDatabase)(
         payment: { status: "paid", date: "2099-01-01" },
         currency: "CZK",
         lines: [{ description: "Synthetic line", price: "100.00" }],
-        provenance: { source: "admin-ui", actor: "synthetic-admin" },
+        provenance: { source: "admin-ui", actor: issuer.email },
       });
       const before = await readCounters();
 
       const results = await Promise.all(
         Array.from({ length: 10 }, () =>
-          runRepository((repository) => repository.issueManual(input))
+          runRepository((repository) =>
+            repository.issueManual({ ...input, issuedBy: issuer })
+          )
         )
       );
 
@@ -543,12 +561,73 @@ describe.skipIf(!testDatabase)(
         new Set(results.map(({ invoice }) => invoice.invoiceNumber)).size
       ).toBe(1);
       expect(results.filter(({ changed }) => changed)).toHaveLength(1);
+      expect(results[0]!.invoice.document).toMatchObject({
+        provenance: { source: "admin-ui", actor: issuer.email },
+      });
+      const expectedActor = [
+        {
+          invoiceId: input.invoiceId,
+          actorAccountId: issuer.accountId,
+          actorAccountEmail: issuer.email,
+        },
+      ];
+      const readActors = () =>
+        Effect.runPromise(
+          postgres.db
+            .select()
+            .from(manualInvoiceActors)
+            .where(eq(manualInvoiceActors.invoiceId, input.invoiceId))
+        );
+      expect(await readActors()).toEqual(expectedActor);
+
+      const retry = await runRepository((repository) =>
+        repository.issueManual({ ...input, issuedBy: issuer })
+      );
+      expect(retry.changed).toBe(false);
+      expect(await readActors()).toEqual(expectedActor);
+
       const numberingYear = getInvoiceNumberingYear(
         results[0]!.invoice.issuedAt
       );
       expect((await readCounters()).get(numberingYear)).toBe(
         (before.get(numberingYear) ?? 0) + 1
       );
+    });
+
+    test("rolls back a manual invoice when its issuer account is missing", async () => {
+      const invoiceId = randomUUID();
+      const issuedBy = {
+        accountId: customerAccountIdSchema.make(randomUUID()),
+        email: testEmailAddress("missing-invoice-issuer-account"),
+      };
+      const input = Schema.decodeUnknownSync(manualInvoiceInputSchema)({
+        invoiceId,
+        dotyposCustomerId: `${fixtureCustomerPrefix}${randomUUID()}`,
+        buyer: personalInvoiceBuyer,
+        deliveryEmail: testEmailAddress("missing-invoice-issuer"),
+        locale: "en-US",
+        serviceDate: "2099-01-01",
+        payment: { status: "paid", date: "2099-01-01" },
+        currency: "CZK",
+        lines: [{ description: "Synthetic line", price: "100.00" }],
+        provenance: { source: "admin-ui", actor: issuedBy.email },
+      });
+
+      const error = await runRepository((repository) =>
+        Effect.flip(repository.issueManual({ ...input, issuedBy }))
+      );
+
+      expect(error).toBeDefined();
+      const invoiceRows = await postgres.pool.query(
+        "select id from invoices where id = $1",
+        [invoiceId]
+      );
+      const actorRows = await postgres.pool.query(
+        "select invoice_id from manual_invoice_actors where invoice_id = $1",
+        [invoiceId]
+      );
+      expect(invoiceRows.rows).toEqual([]);
+      expect(actorRows.rows).toEqual([]);
     });
 
     test("rolls the number back when the invoice insert fails", async () => {

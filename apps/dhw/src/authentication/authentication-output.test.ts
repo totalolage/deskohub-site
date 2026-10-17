@@ -16,6 +16,7 @@ test("keeps auth --json stdout to one final JSON document", async () => {
       "01980000-0000-7000-8000-000000000000"
     ),
     approvedBy: null,
+    approvedByEmail: null,
     clientName: "dhw on test-machine",
     cliVersion: "1.0.0+development",
     buildTarget: "development",

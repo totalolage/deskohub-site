@@ -7,8 +7,8 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Match, Schema } from "effect";
 import { m } from "@/features/administration/i18n";
+import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import {
   defineWorkspaceAction,
   type WorkspaceActionContext,
@@ -36,11 +36,11 @@ const createInvoiceAction = defineWorkspaceAction(
   },
   Effect.fn(
     function* (input, _context: InvoiceCreateActionContext) {
-      const actor = yield* requireAdministratorAuthorization;
+      const administrator = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const result = yield* administration.create(input, {
         source: "admin-ui",
-        actor,
+        administrator,
       });
       yield* Effect.sync(() => {
         revalidateLocalizedPath("/admin/invoices");
@@ -82,11 +82,11 @@ const previewInvoiceAction = defineWorkspaceAction(
   },
   Effect.fn(
     function* (input, _context: InvoiceCreateActionContext) {
-      const actor = yield* requireAdministratorAuthorization;
+      const administrator = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const pdf = yield* administration.preview(input, {
         source: "admin-ui",
-        actor,
+        administrator,
       });
       return {
         dataUrl: `data:application/pdf;base64,${Buffer.from(pdf).toString("base64")}`,

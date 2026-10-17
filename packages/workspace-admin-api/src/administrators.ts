@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
 import {
-  AdministrationActorUsername,
+  AdministrationLegacyUsername,
   CliBearerAuthentication,
   CliResourceNotFound,
   CliServiceUnavailable,
@@ -20,7 +20,7 @@ export type AdministrationAccountEmail = typeof AdministrationAccountEmail.Type;
 
 export const AdministrationLegacyAdministratorBackfillInput = Schema.Struct({
   /** The Basic-auth username whose records move to the account. */
-  legacyUsername: AdministrationActorUsername,
+  legacyUsername: AdministrationLegacyUsername,
   email: AdministrationAccountEmail,
   /** Report what would change without writing. */
   dryRun: Schema.Boolean,

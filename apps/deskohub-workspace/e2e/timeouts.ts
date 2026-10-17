@@ -13,6 +13,7 @@ export const workspaceE2ETimeouts = {
   // waiting before a rate-limited semantic operation starts
   // (see account/rate-budget.ts).
   accountCase: 18 * MINUTE,
+  administratorAccessCase: 2 * MINUTE,
   artifactCapture: 60 * SECOND,
   authDelivery: 2 * MINUTE,
   browserAction: 30 * SECOND,
@@ -96,6 +97,12 @@ export const workspaceE2EEmailCampaignCleanupTimeout =
 export const workspaceE2EEmailCampaignPlaywrightTimeout =
   workspaceE2ETimeouts.emailCampaignCase +
   workspaceE2EEmailCampaignCleanupTimeout;
+
+// An administrator access case closes its own browser context in a bounded
+// finalizer; suite cleanup deletes its seeded accounts.
+export const workspaceE2EAdministratorAccessPlaywrightTimeout =
+  workspaceE2ETimeouts.administratorAccessCase +
+  workspaceE2ETimeouts.browserAction;
 
 export type WorkspaceE2ETimeouts = Readonly<
   Record<keyof typeof workspaceE2ETimeouts, number>

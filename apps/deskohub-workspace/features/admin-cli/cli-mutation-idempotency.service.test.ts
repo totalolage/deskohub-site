@@ -2,8 +2,8 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
-  AdministrationActorUsername,
   AdministrationCampaignAudience,
+  AdministrationLegacyUsername,
   CliMutationRequestId,
   type CliMutationRequestIdType,
   CliSessionId,
@@ -33,7 +33,7 @@ describe.skipIf(!testDatabase)("CLI mutations on disposable Postgres", () => {
         Effect.flatMap((tokenHash) =>
           testDatabase.db.insert(cliSessions).values({
             id: sessionId,
-            approvedBy: AdministrationActorUsername.make("operator"),
+            approvedBy: AdministrationLegacyUsername.make("operator"),
             tokenHash,
             clientName: "ledger crash test client",
             cliVersion: "1.0.0",

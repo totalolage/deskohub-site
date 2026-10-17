@@ -2,8 +2,8 @@
 
 import { Effect } from "effect";
 import { m } from "@/features/administration/i18n";
+import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import type { Locale } from "@/features/i18n";
-import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import {
   PublicSafeActionError,

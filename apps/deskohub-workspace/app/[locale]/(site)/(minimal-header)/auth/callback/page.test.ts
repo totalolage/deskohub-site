@@ -52,7 +52,9 @@ describe("customer auth callback route boundary", () => {
   test("keeps request reads inside the callback suspense boundary", async () => {
     const { default: CustomerAuthCallbackPage } = await import("./page");
 
-    const output = await CustomerAuthCallbackPage();
+    const output = await CustomerAuthCallbackPage({
+      searchParams: Promise.resolve({}),
+    });
 
     expect(output.type).toBe(Suspense);
     expect(connection).not.toHaveBeenCalled();
