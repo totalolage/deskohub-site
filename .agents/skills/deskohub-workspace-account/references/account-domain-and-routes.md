@@ -135,9 +135,13 @@ Better Auth's public delete endpoint is the only identity-deletion path:
    1. persists the `deletionRequestedAt` marker in its own transaction;
    2. expires the linked Dotypos profile with a fresh ETag, retrying once on
       a conflict; a missing or deleted profile counts as done;
-   3. destroys the avatar (see [avatar media storage](avatar-media-storage.md)).
+   3. destroys the avatar (see [avatar media storage](avatar-media-storage.md));
+   4. tombstones the durable customer account (`deleted_at`), last, so
+      reservations it authored keep their author. A retry keeps the first
+      deletion instant.
 3. Any retryable provider failure throws before Better Auth removes the
-   identity rows, so deletion stays retryable. The link row goes by cascade.
+   identity rows, so deletion stays retryable. The link row goes by cascade;
+   the customer account row stays.
 
 The marker blocks profile, reservation, checkout, and resolver activity but
 still allows reauthentication, logout, and delete retry. Resolution, profile

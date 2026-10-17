@@ -1456,6 +1456,39 @@ describe("prepareWorkspacePayState", () => {
       });
     });
 
+    test.each([
+      [
+        "an account booking",
+        {
+          customer: "account",
+          accountAuthority: { session: {}, activityState: "active" },
+        },
+        "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
+      ],
+      [
+        "a signed-in contact booking",
+        { accountAuthority: { session: {}, activityState: "active" } },
+        "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
+      ],
+      ["an anonymous guest", { accountAuthority: { session: null } }, null],
+    ] as const)(
+      "records the signed-in account as the author of %s",
+      async (_label, booking, expectedAuthor) => {
+        const scenario = await runReusableReservationScenario({
+          findByAttemptKeys: mock(() => Effect.succeed(null)),
+          createDraft: createFreshDraft(),
+          accountContact: accountContact(),
+          ...booking,
+        });
+
+        expect(scenario.result?.status).toBe("ready");
+        expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+        expect(scenario.createDraft.mock.calls[0]?.[0]).toMatchObject({
+          authorAccountId: expectedAuthor,
+        });
+      }
+    );
+
     test("prices the reservation with the account contact instead of the submitted one", async () => {
       const scenario = await runReusableReservationScenario({
         findByAttemptKeys: mock(() => Effect.succeed(null)),

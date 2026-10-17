@@ -18,8 +18,10 @@ Paths are relative to `apps/deskohub-workspace` unless they start with
 - Dotypos owns the customer profile (required first name, optional last name,
   phone, and personal or business billing) and live reservation facts.
 - Workspace stores only the one-to-one opaque link in
-  `public.customer_account_links`. Never copy profile or auth data anywhere
-  else. The one exception is an administrator account actor: records an
+  `public.customer_account_links` and the durable customer account in
+  `public.customer_accounts` (id and deletion instant; see the
+  `deskohub-workspace-domain` skill's reservation parties reference). Never
+  copy profile or auth data anywhere else. The one exception is an administrator account actor: records an
   administrator writes keep the account's login-email snapshot as provenance
   (see the `deskohub-workspace-administration` skill's `dhw` reference).
 - Domain code sees only `CustomerAccountId` and `DotyposCustomerId` through the

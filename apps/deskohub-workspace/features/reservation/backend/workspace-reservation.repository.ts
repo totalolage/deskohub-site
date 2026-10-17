@@ -30,6 +30,8 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import { ensureCustomerAccount } from "@/features/account/backend/customer-account.repository";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import { releaseCodeClaim } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import type {
   CheckoutAttemptKey,
@@ -93,6 +95,8 @@ export interface CreateWorkspaceReservationInput {
   readonly checkoutSessionKey: CheckoutSessionKey;
   readonly checkoutAttemptKey: CheckoutAttemptKey;
   readonly dotyposCustomerId: DotyposCustomerId;
+  /** The signed-in account making the reservation; null for a guest. */
+  readonly authorAccountId: CustomerAccountId | null;
   readonly reservationPurpose: ReservationPurpose;
   readonly reservationDetails: StoredWorkspaceReservationDetails;
   readonly locale: string;
@@ -501,6 +505,9 @@ export class WorkspaceReservationRepository extends Context.Service<
                   return yield* decodeWorkspaceReservation(currentSessionRow);
                 }
 
+                if (input.authorAccountId) {
+                  yield* ensureCustomerAccount(tx, input.authorAccountId);
+                }
                 const [inserted] = yield* tx
                   .insert(workspaceReservations)
                   .values({
@@ -509,6 +516,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                     checkoutAttemptKey: input.checkoutAttemptKey,
                     correlationId: postgresUuidV7,
                     dotyposCustomerId: input.dotyposCustomerId,
+                    authorAccountId: input.authorAccountId,
                     reservationPurpose: input.reservationPurpose,
                     reservationState: "draft",
                     paymentState: "not_started",
@@ -1047,6 +1055,12 @@ export class WorkspaceReservationRepository extends Context.Service<
                 });
               }
 
+              if (input.replacement.authorAccountId) {
+                yield* ensureCustomerAccount(
+                  tx,
+                  input.replacement.authorAccountId
+                );
+              }
               const [replacement] = yield* tx
                 .insert(workspaceReservations)
                 .values({
@@ -1055,6 +1069,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                   checkoutAttemptKey: input.replacement.checkoutAttemptKey,
                   correlationId: postgresUuidV7,
                   dotyposCustomerId: input.replacement.dotyposCustomerId,
+                  authorAccountId: input.replacement.authorAccountId,
                   reservationPurpose: input.replacement.reservationPurpose,
                   reservationState: "draft",
                   paymentState: "not_started",

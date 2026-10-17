@@ -925,7 +925,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     // between the check and the created state. Anonymous sessions run
     // unchanged; a session-authority failure fails closed.
     const result = yield* accountActivity.guardStateCreation(
-      Effect.gen(function* () {
+      Effect.fn(function* (accountId) {
         yield* Match.value(input.reservation).pipe(
           Match.discriminatorsExhaustive("kind")({
             cowork: () => Effect.void,
@@ -1042,6 +1042,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           reservation,
           draft: {
             dotyposCustomerId,
+            authorAccountId: accountId,
             reservationPurpose: billing.purpose,
             reservationDetails:
               getStoredWorkspaceReservationDetails(reservation),

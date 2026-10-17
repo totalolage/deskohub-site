@@ -39,6 +39,10 @@ export type CustomerAccountDeletionDependencies = {
     void,
     CustomerAvatarProviderError | CustomerAvatarUnavailableError
   >;
+  readonly tombstone: (
+    accountId: CustomerAccountId,
+    deletedAt: Temporal.Instant
+  ) => Effect.Effect<void, CustomerAccountLinkError>;
   readonly withAccountLock: <A, E, R>(
     accountId: CustomerAccountId,
     effect: Effect.Effect<A, E, R>
@@ -82,6 +86,11 @@ export const expireLinkedDotyposProfile = (
             // provider outcome fails retryably so deletion stays retryable,
             // and a missing asset is idempotent success.
             yield* dependencies.destroyAvatar(accountId);
+
+            // The tombstone goes last, once nothing retryable remains, and
+            // before Better Auth removes the identity rows, so reservations
+            // the account authored keep their author.
+            yield* dependencies.tombstone(accountId, Temporal.Now.instant());
           })
         )
         .pipe(
@@ -116,6 +125,7 @@ export class CustomerAccountDeletionService extends Context.Service<
         findLink: links.find,
         expireCustomer: dotypos.expireCustomer,
         destroyAvatar: avatars.destroy,
+        tombstone: links.tombstone,
         withAccountLock: links.withAccountLock,
       });
 

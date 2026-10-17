@@ -10,6 +10,7 @@ what the privacy copy promises. Privacy copy lives in
 | --- | --- | --- |
 | Neon `auth` schema | Login email, hashed verification token with the email in its value, sessions without IP or user agent, `IP\|path` rate-limit keys | Better Auth deletes identity rows on account deletion; the daily `auth-cleanup` cron removes expired sessions, verifications, and stale rate-limit rows |
 | Neon `public.customer_account_links` | Two opaque IDs | Cascades with the auth user |
+| Neon `public.customer_accounts` | Account ID, deletion instant | Kept as a deleted-account tombstone so reservations keep their author |
 | Neon administrator records (`account_role_grants`, account actors on CLI sessions, standalone access-code events, and `manual_invoice_actors`) | Account ID, role, and the administrator's login-email snapshot as provenance | Grants cascade with the auth user; actor account IDs are set to null and the email snapshot stays with the audit record |
 | Dotypos | Profile and reservation history | Account deletion sets the profile's expiry; retained records stay |
 | Resend | Sent message, recipient, delivery metadata | Provider retention only; Workspace keeps no copy |
