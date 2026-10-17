@@ -30,12 +30,12 @@ import {
   officeAdvertisedPriceReservationSchema,
 } from "@/features/reservation/office-reservation";
 import {
-  type CheckoutStateCryptoOptions,
-  type CheckoutStateTokenError,
-  createCheckoutStateClaims,
-  openCheckoutState,
-  sealCheckoutState,
-} from "./checkout-state-token";
+  type SealedStateCryptoOptions,
+  type SealedStateTokenError,
+  createSealedStateClaims,
+  openSealedState,
+  sealState,
+} from "@/shared/backend/sealed-state";
 import {
   getSubmittedCodeMetadata,
   type PayStateSubmittedCodeMetadata,
@@ -146,16 +146,16 @@ type AdvertisedPriceStateInput = (
 class AdvertisedPriceStateTokenError extends Data.TaggedError(
   "AdvertisedPriceStateTokenError"
 )<{
-  readonly code: CheckoutStateTokenError["code"];
+  readonly code: SealedStateTokenError["code"];
   readonly message: string;
   readonly cause?: unknown;
 }> {
   static fromStateFailure = (
-    cause: CheckoutStateTokenError | Schema.SchemaError
+    cause: SealedStateTokenError | Schema.SchemaError
   ) =>
     Match.value(cause).pipe(
       Match.tag(
-        "CheckoutStateTokenError",
+        "SealedStateTokenError",
         (failure) =>
           new AdvertisedPriceStateTokenError({
             code: failure.code,
@@ -188,9 +188,9 @@ export const buildAdvertisedPriceState = Effect.fn(
   "advertisedPriceState.build"
 )(function* (
   input: AdvertisedPriceStateInput,
-  options: CheckoutStateCryptoOptions = {}
+  options: SealedStateCryptoOptions = {}
 ) {
-  const claims = yield* createCheckoutStateClaims(
+  const claims = yield* createSealedStateClaims(
     input.ttlMilliseconds ?? advertisedPriceStateDefaultTtlMilliseconds,
     options
   );
@@ -213,21 +213,21 @@ export const buildAdvertisedPriceState = Effect.fn(
 export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
   function* (
     state: AdvertisedPriceState,
-    options: CheckoutStateCryptoOptions = {}
+    options: SealedStateCryptoOptions = {}
   ) {
     const encodedState = yield* Schema.encodeUnknownEffect(
       advertisedPriceStateSchema,
       { onExcessProperty: "error" }
     )(state);
 
-    return yield* sealCheckoutState(encodedState, state.kid, options);
+    return yield* sealState(encodedState, state.kid, options);
   },
   Effect.mapError(AdvertisedPriceStateTokenError.fromStateFailure)
 );
 
 export const openAdvertisedPriceState = Effect.fn("advertisedPriceState.open")(
-  (token: string, options: CheckoutStateCryptoOptions = {}) =>
-    openCheckoutState(token, advertisedPriceStateSchema, options).pipe(
+  (token: string, options: SealedStateCryptoOptions = {}) =>
+    openSealedState(token, advertisedPriceStateSchema, options).pipe(
       Effect.mapError(AdvertisedPriceStateTokenError.fromStateFailure)
     )
 );

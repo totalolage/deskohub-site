@@ -15,7 +15,7 @@ import {
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { deriveCheckoutSessionKeys } from "./checkout-lookup-keys.server";
-import type { CheckoutStateTokenError } from "./checkout-state-token";
+import type { SealedStateTokenError } from "@/shared/backend/sealed-state";
 
 export class PayableReservationUnavailableError extends Data.TaggedError(
   "PayableReservationUnavailableError"
@@ -38,7 +38,7 @@ interface IPayableReservationService {
   }) => Effect.Effect<
     WorkspaceReservation,
     | PayableReservationUnavailableError
-    | CheckoutStateTokenError
+    | SealedStateTokenError
     | EffectDrizzleQueryError
     | WorkspaceReservationDetailsMalformedError
     | ExternalAPIError

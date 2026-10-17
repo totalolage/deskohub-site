@@ -33,7 +33,7 @@ test.beforeEach(async ({ baseURL, context }) => {
 });
 
 test.describe("client navigation", () => {
-  test("links the anonymous header account button straight to sign-in", async ({
+  test("opens sign-in over the page from the anonymous header account button", async ({
     page,
   }) => {
     await page.goto(homePath);
@@ -52,6 +52,7 @@ test.describe("client navigation", () => {
     await accountLink.click();
 
     await expectAnonymousSignIn(page);
+    await expect(page.getByRole("dialog")).toBeVisible();
     await expect(
       page.getByRole("status", { name: accountStatusName })
     ).toHaveCount(0);
@@ -67,6 +68,8 @@ test.describe("client navigation", () => {
 
     await navigateToAccount(page, baseURL, { verifySignInHandoff: true });
     await expectAnonymousSignIn(page);
+    // The redirect loads the sign-in page itself, not the modal.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
 
     await page
       .getByRole("banner")
@@ -166,12 +169,9 @@ async function withSignInHandoffEvidence(
     route,
     request
   ) => {
-    const headers = request.headers();
+    // The account redirect is a document navigation to the sign-in page.
     const isSignInHandoffRequest =
-      request.method() === "GET" &&
-      headers.rsc === "1" &&
-      headers["next-router-prefetch"] !== "1" &&
-      headers.purpose !== "prefetch";
+      request.method() === "GET" && request.isNavigationRequest();
     if (handoffClaimed || !isSignInHandoffRequest) {
       return route.continue();
     }

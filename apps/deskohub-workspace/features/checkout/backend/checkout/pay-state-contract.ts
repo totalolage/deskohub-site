@@ -20,10 +20,10 @@ import {
   instantStringSchema,
   unixTimestampSecondsSchema,
 } from "@/shared/utils/temporal";
-import { checkoutStateKeyIdSchema } from "./checkout-state-token";
+import { sealedStateKeyIdSchema } from "@/shared/backend/sealed-state";
 
 export const signedPayStateEnvelopeSchema = Schema.Struct({
-  kid: checkoutStateKeyIdSchema,
+  kid: sealedStateKeyIdSchema,
   iat: unixTimestampSecondsSchema,
   exp: unixTimestampSecondsSchema,
   locale: Schema.Literals(locales),

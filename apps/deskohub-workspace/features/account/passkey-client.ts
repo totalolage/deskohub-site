@@ -13,7 +13,7 @@ import type {
   PasskeySignInResult,
 } from "./passkeys";
 import { recordSignInCompletion } from "./sign-in-analytics";
-import { forgetSignInCodeRequest } from "./sign-in-code-request";
+import { forgetEmailSignInRequest } from "./email-sign-in-request";
 
 /*
  * Maps Better Auth passkey responses onto the screens' outcome unions. The
@@ -112,15 +112,17 @@ const toPasskeyChangeResult = (
 
 /**
  * Signs in with a passkey, from the button or, with `autoFill`, from the
- * email field's autofill, and continues to the account. Anything but a
- * sign-in leaves the page as it is.
+ * email field's autofill, and continues to the validated `returnPath`, else
+ * the account. Anything but a sign-in leaves the page as it is.
  */
 export const signInWithPasskey = async ({
   locale,
   autoFill = false,
+  returnPath,
 }: {
   readonly locale: Locale;
   readonly autoFill?: boolean;
+  readonly returnPath?: string;
 }): Promise<PasskeySignInResult> => {
   const response = await settle(
     authClient.signIn.passkey({ autoFill }).then(decodeSignInResponse)
@@ -131,9 +133,9 @@ export const signInWithPasskey = async ({
   if (accountId !== undefined) rememberPasskeyOnThisBrowser(accountId);
   recordSignInCompletion("passkey");
   // A signed-in tab must not show a pending code step after a sign-out.
-  forgetSignInCodeRequest();
+  forgetEmailSignInRequest();
   try {
-    window.location.replace(getAccountPath(locale));
+    window.location.replace(returnPath ?? getAccountPath(locale));
   } catch {
     // The document is already leaving or the browser blocked navigation.
   }

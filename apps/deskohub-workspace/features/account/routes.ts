@@ -1,3 +1,4 @@
+import { withAuthReturnPath } from "@/features/account/auth-return-path";
 import {
   type AccountSection,
   defaultAccountSection,
@@ -12,8 +13,22 @@ import {
 export const getAccountPath = (locale: Locale) =>
   getLocalizedPagePath(locale, "/[locale]/account");
 
-export const getAccountSignInPath = (locale: Locale) =>
-  getLocalizedPagePath(locale, "/[locale]/auth/sign-in");
+/**
+ * The sign-in page. A validated `returnPath` (see `parseAuthReturnPath`)
+ * makes the sign-in land there instead of the account.
+ */
+export const getAccountSignInPath = (locale: Locale, returnPath?: string) =>
+  withAuthReturnPath(
+    getLocalizedPagePath(locale, "/[locale]/auth/sign-in"),
+    returnPath
+  );
+
+/**
+ * The page that waits for the sign-in email this tab requested last: the
+ * inbox instructions and, while sign-in codes are on, the code entry.
+ */
+export const getAuthVerifyPath = (locale: Locale) =>
+  getLocalizedPagePath(locale, "/[locale]/auth/verify");
 
 export const getAccountSectionPath = (
   locale: Locale,

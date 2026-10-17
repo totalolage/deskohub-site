@@ -12,11 +12,11 @@ import {
 } from "@/features/reservation/backend/reservation-supersession";
 import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import type { CheckoutStateTokenError } from "./checkout-state-token";
+import type { SealedStateTokenError } from "@/shared/backend/sealed-state";
 import { PayableReservationService } from "./payable-reservation.service";
 
 type ReservationSupersessionError =
-  | CheckoutStateTokenError
+  | SealedStateTokenError
   | EffectDrizzleQueryError
   | WorkspaceReservationDetailsMalformedError
   | ExternalAPIError
