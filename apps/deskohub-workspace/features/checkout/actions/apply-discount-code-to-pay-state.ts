@@ -67,7 +67,10 @@ export const applyDiscountCodeToPayState = Effect.fn(
     const pricing = yield* CheckoutPricingService;
     const payableReservations = yield* PayableReservationService;
 
-    yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
+    yield* botProtection.verifyHuman({
+      verificationFailurePolicy: "deny",
+      callSite: "checkout.apply-discount-code",
+    });
 
     const state = yield* openPayState(input.payStateToken);
     if (state.locale !== input.locale) {

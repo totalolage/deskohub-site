@@ -611,7 +611,7 @@ const legalDocuments = {
     "privacy-policy": {
       title: "Privacy Policy",
       lead: "This page explains how Desktechub s.r.o. handles personal data on the Deskohub Workspace website, including customer accounts, contact forms, and reservations.",
-      updatedAt: "16 October 2026",
+      updatedAt: "17 October 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -667,6 +667,20 @@ const legalDocuments = {
               limited technical data such as IP address, User-Agent, origin or
               host information where available, and short-lived rate-limit or
               anti-spam signals connected with a submission.
+            </>,
+            <>
+              To understand how search engines, AI assistants, and other
+              automated clients use the website, our server sorts requests into
+              broad traffic categories, such as AI assistant or search engine
+              crawler, based on the User-Agent and similar request headers. We
+              send our analytics provider only the category, the operator of a
+              recognized automated client (for example ChatGPT), the page and
+              website language requested, and, for a request blocked as
+              automated, which form or sign-in step blocked it. We do not send
+              the IP address, the User-Agent or other header values, cookies, or
+              any identifier of a person, and this measurement does not depend
+              on analytics consent. Our server-side reservation and payment
+              measurement events also carry the category.
             </>,
             <>
               If you consent to analytics cookies or similar technologies, we
@@ -767,6 +781,11 @@ const legalDocuments = {
               your consent. Analytics and campaign measurement processing is
               based on consent, which you can withdraw or change at any time via
               cookie settings.
+            </>,
+            <>
+              Measuring automated traffic by category is based on our legitimate
+              interest in operating the website and improving it for search
+              engines and AI assistants. It uses no data that identifies you.
             </>,
             <>
               Sending customer data from our booking system to our analytics
@@ -1077,7 +1096,7 @@ const legalDocuments = {
     "privacy-policy": {
       title: "Zásady ochrany osobních údajů",
       lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji zaslanými přes veřejný web Deskohub Workspace, včetně kontaktního a rezervačního formuláře.",
-      updatedAt: "16. října 2026",
+      updatedAt: "17. října 2026",
       sections: [
         {
           heading: "1. Správce",
@@ -1128,6 +1147,21 @@ const legalDocuments = {
               informace o originu nebo hostu, pokud jsou dostupné, a krátkodobé
               signály pro rate limiting nebo ochranu proti spamu související s
               odesláním formuláře.
+            </>,
+            <>
+              Abychom porozuměli tomu, jak web používají vyhledávače, AI
+              asistenti a další automatizovaní klienti, náš server řadí
+              požadavky do obecných kategorií provozu, například AI asistent
+              nebo robot vyhledávače, podle hlavičky User-Agent a obdobných
+              hlaviček požadavku. Poskytovateli analytických služeb předáváme
+              pouze tuto kategorii, provozovatele rozpoznaného automatizovaného
+              klienta (například ChatGPT), požadovanou stránku a jazyk webu a u
+              požadavku zablokovaného jako automatizovaný také to, který
+              formulář nebo krok přihlášení jej zablokoval. Nepředáváme IP
+              adresu, User-Agent ani jiné hodnoty hlaviček, cookies ani žádný
+              identifikátor osoby a toto měření nezávisí na souhlasu s
+              analytikou. Kategorii nesou také naše serverové události měření
+              rezervací a plateb.
             </>,
             <>
               Pokud udělíte souhlas s analytickými cookies nebo obdobnými
@@ -1227,6 +1261,12 @@ const legalDocuments = {
               Nepovinné cookies zpracováváme pouze na základě vašeho souhlasu.
               Analytické a kampanové měření je založené na souhlasu, který
               můžete kdykoli odvolat nebo změnit v nastavení cookies.
+            </>,
+            <>
+              Měření automatizovaného provozu podle kategorií vychází z našeho
+              oprávněného zájmu na provozu webu a jeho zlepšování pro
+              vyhledávače a AI asistenty. Nepoužívá žádné údaje, které by vás
+              identifikovaly.
             </>,
             <>
               Předávání zákaznických údajů z našeho rezervačního systému

@@ -1214,6 +1214,7 @@ describe("prepareWorkspacePayState", () => {
     ]);
     expect(verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
+      callSite: "reservation.prepare-pay-state",
     });
     expect(grantInitialMarketingConsent).not.toHaveBeenCalled();
 
@@ -1245,6 +1246,7 @@ describe("prepareWorkspacePayState", () => {
     expect(result.enqueueCleanup).not.toHaveBeenCalled();
     expect(result.verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
+      callSite: "reservation.prepare-pay-state",
     });
     expect(result.updateReservationDetails).toHaveBeenCalledWith({
       id: existingReservation.id,
@@ -2725,6 +2727,7 @@ describe("prepareWorkspacePayState", () => {
     });
     expect(verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
+      callSite: "reservation.prepare-pay-state",
     });
   });
 });

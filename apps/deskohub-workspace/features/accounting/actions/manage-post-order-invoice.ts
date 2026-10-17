@@ -17,7 +17,10 @@ const managePostOrderInvoiceAction = defineWorkspaceAction(
   Effect.fn(
     function* (input) {
       const botProtection = yield* BotProtectionService;
-      yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
+      yield* botProtection.verifyHuman({
+        verificationFailurePolicy: "deny",
+        callSite: "accounting.manage-post-order-invoice",
+      });
       const service = yield* ReservationInvoiceService;
       const access = {
         orderId: input.orderId,

@@ -324,6 +324,7 @@ describe("applyDiscountCodeToPayState", () => {
 
     expect(scenario.verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "deny",
+      callSite: "checkout.apply-discount-code",
     });
     expect(scenario.applyDiscountCode).toHaveBeenCalledWith(
       expect.objectContaining({

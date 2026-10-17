@@ -67,6 +67,7 @@ export const GET = defineWorkspaceRoute(
   {
     operation: "paymentRefundReconciliationCron",
     cancellation: "continue-after-disconnect",
+    caller: "service",
   },
   (request) => {
     if (!isAuthorizedCronRequest(request)) {

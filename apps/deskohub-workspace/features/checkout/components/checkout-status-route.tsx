@@ -1,5 +1,5 @@
 import { Effect, Layer, Option, Schema } from "effect";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -81,6 +81,7 @@ async function CheckoutStatusContent({
   return runWithRequestLocale(async (locale) => {
     await connection();
     const cookieStore = await cookies();
+    const requestHeaders = await headers();
     const accessCookie = readReservationAccessCookie(cookieStore, orderId);
     const rawSearchParams = await searchParams;
     const decodedSearchParams = Option.getOrElse(
@@ -95,6 +96,7 @@ async function CheckoutStatusContent({
         accessCookie,
         locale,
         orderId,
+        requestHeaders,
         returnOutcome,
       });
     }).pipe(

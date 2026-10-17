@@ -28,6 +28,7 @@ export const GET = defineWorkspaceRoute(
   {
     operation: "workspaceAvailability",
     cancellation: "interrupt-on-disconnect",
+    caller: "client",
   },
   (request) =>
     loadWorkspaceAvailabilityRequest(request).pipe(

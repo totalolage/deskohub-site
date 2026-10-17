@@ -897,7 +897,10 @@ const ensureContactEmailAcceptsMail = Effect.fn(
 export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
   function* (input: PreparePayStateInput) {
     const botProtection = yield* BotProtectionService;
-    yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
+    yield* botProtection.verifyHuman({
+      verificationFailurePolicy: "allow",
+      callSite: "reservation.prepare-pay-state",
+    });
 
     const accountActivity = yield* OptionalAccountActivityGuard;
     const rememberedReferralCode = yield* readRememberedReferralCode.pipe(
