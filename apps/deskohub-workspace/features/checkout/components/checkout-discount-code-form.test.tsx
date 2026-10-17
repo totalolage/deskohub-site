@@ -347,6 +347,28 @@ describe("CheckoutDiscountCodeForm", () => {
     });
   });
 
+  test.each(["en-US", "cs-CZ"] as const)(
+    "renders the automated-request rejection in %s",
+    async (locale) => {
+      const { CheckoutDiscountCodeForm } = await import(
+        "./checkout-discount-code-form"
+      );
+      const view = render(
+        <CheckoutDiscountCodeForm
+          defaultCode="SAVE20"
+          enabled
+          rejection="automated-request"
+          locale={locale}
+          payStateToken="signed-state"
+        />
+      );
+
+      expect(view.getByRole("alert").textContent).toBe(
+        m.automatedRequestRejected({}, { locale })
+      );
+    }
+  );
+
   test.each([
     ["referral-already-attributed", m.checkoutReferralCodeAlreadyAttributed],
     ["referral-ineligible", m.checkoutReferralCodeIneligible],
