@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { getLocalizedPagePath } from "@/features/i18n/routing";
+import {
+  getLocalizedDynamicPagePath,
+  getLocalizedPagePath,
+} from "@/features/i18n/routing";
 import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
 
 const events: string[] = [];
@@ -28,7 +31,11 @@ mock.module("@/features/account/server/account-feature-flag.server", () => ({
 mock.module("@/features/account/components/sign-in-card", () => ({
   SignInCard,
 }));
-mock.module("@/features/i18n", () => ({ getLocalizedPagePath, m: {} }));
+mock.module("@/features/i18n", () => ({
+  getLocalizedDynamicPagePath,
+  getLocalizedPagePath,
+  m: {},
+}));
 mock.module("@/features/i18n/server/request-locale", () => ({
   runWithRequestLocale: (callback: (locale: "en-US") => unknown) =>
     callback("en-US"),
