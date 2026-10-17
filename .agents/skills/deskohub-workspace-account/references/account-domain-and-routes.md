@@ -46,9 +46,11 @@ glossary defines the customer account, reservation author, and tombstone.
   through `CustomerAccountRepository.tombstone`.
 - `OptionalAccountActivityGuard.guardStateCreation` hands the state-creating
   section the account it verified under the account lock, or null for an
-  anonymous session. The section records it as the author of new drafts and
-  calls `WorkspaceReservationRepository.assignAuthor` for a reused draft or a
-  Pay-page payment, which fills only a null author.
+  anonymous session. The submission section records it as the author of new
+  drafts and calls `WorkspaceReservationRepository.assignAuthor` when a
+  signed-in submission reuses an authorless draft. Payment does not set an
+  author. An authorless legacy reservation stays authorless until the #682
+  backfill.
 - `author_account_id` is null only for guest checkouts and for reservations
   made before authors were recorded, until the legacy backfill fills them and
   the column becomes NOT NULL.

@@ -453,6 +453,7 @@ const makeReservation = <Overrides extends object>(
   overrides?: Overrides
 ) => ({
   id: orderId,
+  authorAccountId: null as CustomerAccountId | null,
   checkoutSessionKey: "session-key",
   checkoutAttemptKey: "attempt-key",
   correlationId: "correlation-id",
@@ -626,7 +627,10 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     );
   const assignAuthor = mock(
     (input: { readonly authorAccountId: CustomerAccountId }) =>
-      Effect.succeed(input.authorAccountId)
+      Effect.sync(() => {
+        reservationRecord.authorAccountId ??= input.authorAccountId;
+        return input.authorAccountId;
+      })
   );
   const reservations = {
     findById: mock(() => Effect.succeed(reservationRecord)),
@@ -743,6 +747,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     capture,
     recordLegalEvidence,
     requireCurrent,
+    reservationRecord,
   };
 };
 
@@ -2537,19 +2542,24 @@ describe("CheckoutService", () => {
     expect(harness.guardEvents).toEqual([]);
   });
 
-  test("records the signed-in account as the author of a reservation started before sign-in", async () => {
+  test("does not make a payer the author of a reservation they did not create", async () => {
     const harness = await createCheckoutHarness({
-      orderId: "reservation-started-as-guest",
+      orderId: "reservation-paid-by-another-account",
       accountAuthority: { session: {}, activityState: "active" },
     });
 
+    expect(harness.reservationRecord.authorAccountId).toBeNull();
+
     const result = await Effect.runPromise(harness.effect);
 
-    expect(result).toMatchObject({ status: "redirect" });
-    expect(harness.assignAuthor).toHaveBeenCalledWith({
-      id: "reservation-started-as-guest",
-      authorAccountId: "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01",
+    expect(result).toMatchObject({
+      status: "redirect",
+      redirectUrl: "https://payments.example/hosted",
     });
+    expect(harness.createPendingNexiAttempt).toHaveBeenCalledTimes(1);
+    expect(harness.createHostedPaymentPage).toHaveBeenCalledTimes(1);
+    expect(harness.reservationRecord.authorAccountId).toBeNull();
+    expect(harness.assignAuthor).not.toHaveBeenCalled();
   });
 
   test("holds the account advisory lock across hosted checkout state creation", async () => {

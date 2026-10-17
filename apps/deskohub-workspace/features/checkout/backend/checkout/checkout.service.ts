@@ -1100,17 +1100,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             // paths above stay reachable without the lock.
             return yield* accountActivity
               .guardStateCreation(
-                Effect.fn(function* (accountId) {
-                  // A signed-in account paying a reservation started before
-                  // sign-in becomes its author. Paying never replaces an
-                  // established author: a Pay link can be paid by someone
-                  // other than the account that made the reservation.
-                  if (accountId) {
-                    yield* reservations.assignAuthor({
-                      id: reservation.id,
-                      authorAccountId: accountId,
-                    });
-                  }
+                Effect.fn(function* () {
                   yield* reservations.updateReservationDetails({
                     id: reservation.id,
                     reservationDetails:

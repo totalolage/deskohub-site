@@ -17,11 +17,13 @@ reference covers how these parties are stored.
 
 ## Invariants
 
-- Every reservation a signed-in account makes records that account as its
-  author.
-- A reservation started before the customer signed in takes the signed-in
-  account as its author when that account resumes or pays it.
-- A reservation's author never changes once recorded. Another account can pay
-  the reservation without becoming its author, but can't resume its draft.
+- The submission that creates a reservation records the signed-in account as
+  its author.
+- A signed-in submission that resumes an authorless draft records that account
+  as its author. Payment does not establish authorship; an authorless legacy
+  reservation stays authorless until the #682 backfill.
+- A reservation's author never changes once recorded. Any account can pay a
+  reservation without becoming its author, but another account can't resume
+  its draft.
 - Account deletion turns the customer account into a tombstone; it never
   removes it.
