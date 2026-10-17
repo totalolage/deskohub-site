@@ -663,10 +663,44 @@ describe("account render pathname hand-off", () => {
   const renderedPathname = (response: Response) =>
     response.headers.get("x-middleware-request-x-deskohub-request-pathname");
 
+  const matchesProxy = (pathname: string) =>
+    unstable_doesMiddlewareMatch({
+      config,
+      url: `https://workspace.example${pathname}`,
+    });
+
+  test("matches every account route including dotted segments", () => {
+    for (const pathname of [
+      "/account",
+      "/account/security",
+      "/account/unknown.foo",
+      "/en-US/account",
+      "/en-US/account/unknown.foo",
+      "/en-US/account/x.png",
+      "/cs-CZ/account/security.",
+      "/en-US/account/legal/terms.pdf",
+    ]) {
+      expect(matchesProxy(pathname)).toBe(true);
+    }
+  });
+
+  test("keeps API routes and static files out of the proxy", () => {
+    for (const pathname of [
+      "/api/account/customer-link",
+      "/api/account/customer.link",
+      "/_next/static/chunks/account.js",
+      "/favicon.ico",
+      "/workspace-location-map.jpeg",
+    ]) {
+      expect(matchesProxy(pathname)).toBe(false);
+    }
+  });
+
   test("hands account renders their pathname, replacing a client's value", async () => {
     for (const path of [
       "/en-US/account",
       "/en-US/account/unknown",
+      "/en-US/account/unknown.foo",
       "/cs-CZ/account/security",
     ]) {
       const response = await proxy(
@@ -681,16 +715,21 @@ describe("account render pathname hand-off", () => {
   });
 
   test("hands an account Server Action's render its pathname", async () => {
-    const response = await proxy(
-      new NextRequest("https://workspace.example/en-US/account/danger", {
-        method: "POST",
-        headers: { "next-action": "action-id" },
-      })
-    );
+    for (const path of ["/en-US/account/danger", "/en-US/account/danger.x"]) {
+      const response = await proxy(
+        new NextRequest(`https://workspace.example${path}`, {
+          method: "POST",
+          headers: {
+            "next-action": "action-id",
+            "x-deskohub-request-pathname": "/en-US/account",
+          },
+        })
+      );
 
-    expect(response.headers.get("x-middleware-next")).toBe("1");
-    expect(renderedPathname(response)).toBe("/en-US/account/danger");
-    expect(response.cookies.get(localeCookieName)).toBeUndefined();
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(renderedPathname(response)).toBe(path);
+      expect(response.cookies.get(localeCookieName)).toBeUndefined();
+    }
   });
 
   test("leaves other renders' request headers alone", async () => {

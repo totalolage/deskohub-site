@@ -294,10 +294,15 @@ export async function proxy(request: NextRequest) {
   return localizedPageResponse(request);
 }
 
+// Every account route, dotted segments included, passes through the proxy: the
+// account sections' layout trusts the request pathname only because the proxy
+// replaces any value a client sent.
 export const config: MiddlewareConfig = {
   matcher: [
     "/admin/:path*",
     "/:locale/admin/:path*",
+    "/account/:path*",
+    "/:locale((?!api)[^/]+)/account/:path*",
     "/((?!api|_next/static|_next/image|favicon.ico|favicon.svg|.*\\..*).*)",
   ],
 };
