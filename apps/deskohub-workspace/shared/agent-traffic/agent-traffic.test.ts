@@ -102,7 +102,7 @@ describe("classifyAgentTraffic", () => {
     });
   });
 
-  test("treats any Signature-Agent as a user-triggered agent", () => {
+  test("upgrades a signed request without a known crawler token to a user-triggered agent", () => {
     expect(
       classify(chromeOnMac, { "signature-agent": '"https://chatgpt.com"' })
     ).toEqual({ category: "ai_user_agent", name: "chatgpt" });
@@ -116,15 +116,73 @@ describe("classifyAgentTraffic", () => {
         "signature-agent": '"https://claude.ai"',
       })
     ).toEqual({ category: "ai_user_agent", name: "claude" });
+    expect(
+      classify("Mozilla/5.0 (compatible; AhrefsBot/7.0)", {
+        "signature-agent": '"https://perplexity.ai"',
+      })
+    ).toEqual({ category: "ai_user_agent", name: "perplexity" });
   });
 
-  test("keeps a crawler's own category when it also signs its requests", () => {
+  test("keeps a known crawler's own category when it also signs its requests", () => {
     expect(
       classify(
         "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.3; +https://openai.com/searchbot",
         { "signature-agent": '"https://chatgpt.com"' }
       )
     ).toEqual({ category: "ai_search_crawler", name: "chatgpt" });
+  });
+
+  test.each<[string, string, AgentTraffic["name"]]>([
+    ["the operator host", '"https://chatgpt.com"', "chatgpt"],
+    [
+      "a subdomain of the operator host",
+      '"https://agents.openai.com"',
+      "chatgpt",
+    ],
+    [
+      "an uppercase operator host with a path",
+      '"https://Claude.AI/agent"',
+      "claude",
+    ],
+  ])("names a Signature-Agent from %s", (_, signatureAgent, name) => {
+    expect(
+      classify(chromeOnMac, { "signature-agent": signatureAgent })
+    ).toEqual({ category: "ai_user_agent", name });
+  });
+
+  test.each<[string, string]>([
+    ["a lookalike host", '"https://not-openai.com"'],
+    [
+      "a host that extends an operator host",
+      '"https://chatgpt.com.example.test"',
+    ],
+    [
+      "an operator host in the path",
+      '"https://agents.example.test/path/openai.com"',
+    ],
+    [
+      "an operator host in the query",
+      '"https://agents.example.test/?openai.com"',
+    ],
+    [
+      "an operator host as userinfo",
+      '"https://openai.com@agents.example.test"',
+    ],
+    ["an unquoted URL", "https://chatgpt.com"],
+    ["a dictionary member", 'sig1="https://chatgpt.com"'],
+    ["a non-HTTPS URL", '"http://chatgpt.com"'],
+    ["an unparseable URL", '"chatgpt.com"'],
+    ["an escaped string", '"https://chatgpt.com\\"'],
+  ])("names a Signature-Agent from %s other", (_, signatureAgent) => {
+    expect(
+      classify(chromeOnMac, { "signature-agent": signatureAgent })
+    ).toEqual({ category: "ai_user_agent", name: "other" });
+  });
+
+  test("ignores an empty Signature-Agent", () => {
+    expect(classify(chromeOnMac, { "signature-agent": "" })).toEqual({
+      category: "unclassified",
+    });
   });
 
   test("ignores a client-sent forwarded category", () => {

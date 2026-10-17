@@ -158,9 +158,32 @@ const signatureAgentOperators: readonly {
   { host: "google.com", name: "google" },
 ];
 
+// The operator host a Signature-Agent names. The header is a Structured Field
+// string holding a quoted HTTPS URL, such as `"https://chatgpt.com"`; any other
+// form, including a dictionary member, has no host we trust.
+const signatureAgentHost = (signatureAgent: string): string | undefined => {
+  const quotedUrl = /^"([^"\\]*)"$/.exec(signatureAgent.trim())?.[1];
+  const url = quotedUrl === undefined ? null : URL.parse(quotedUrl);
+  return url?.protocol === "https:" ? url.hostname : undefined;
+};
+
+// The allow-listed operator whose host is, or is a subdomain of, `host`.
+const signatureAgentOperator = (host: string | undefined): AgentName =>
+  (host === undefined
+    ? undefined
+    : signatureAgentOperators.find(
+        (operator) =>
+          host === operator.host || host.endsWith(`.${operator.host}`)
+      )?.name) ?? "other";
+
 /**
  * Classifies a request from its `User-Agent` and `Signature-Agent` headers.
  * String checks only, so the proxy can run it on every page request.
+ *
+ * A known crawler token wins over Signature-Agent: a signed OAI-SearchBot is
+ * still a search crawler. Signature-Agent upgrades every other request,
+ * including automation and generic bots, to `ai_user_agent`; an operator
+ * outside the allow-list is named `other`.
  */
 export const classifyAgentTraffic = (headers: Headers): AgentTraffic => {
   const userAgent = headers.get("user-agent")?.toLowerCase() ?? "";
@@ -169,14 +192,12 @@ export const classifyAgentTraffic = (headers: Headers): AgentTraffic => {
     return { category: knownAgent.category, name: knownAgent.name };
   }
 
-  const signatureAgent = headers.get("signature-agent")?.toLowerCase();
+  // An empty Signature-Agent names no signer, so it doesn't count.
+  const signatureAgent = headers.get("signature-agent");
   if (signatureAgent) {
     return {
       category: "ai_user_agent",
-      name:
-        signatureAgentOperators.find(({ host }) =>
-          signatureAgent.includes(host)
-        )?.name ?? "other",
+      name: signatureAgentOperator(signatureAgentHost(signatureAgent)),
     };
   }
 

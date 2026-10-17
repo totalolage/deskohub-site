@@ -166,7 +166,10 @@ non-production traffic apart:
   is `unknown`, so a requested path value never reaches PostHog. The privacy
   policy discloses this; a new property needs a matching policy change.
 - Checkout lifecycle events carry the agent fields of the request that
-  emitted them. Work that serves no customer request is `unclassified`
+  emitted them. Actions and `client` routes provide request context
+  themselves; a page whose run can emit one, such as the checkout status
+  page that finalizes payments, passes its own `headers()` to
+  `withWorkspaceRequestContext`. Work that serves no customer request is `unclassified`
   without a name: tasks, and `service` routes (webhooks, crons, warehouse
   pulls). Attribute those events to the customer's traffic in PostHog through
   the reservation's shared distinct ID; never persist a category on the
