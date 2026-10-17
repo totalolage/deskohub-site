@@ -1,5 +1,8 @@
 import { Effect, Match, Schema } from "effect";
-import { workspaceCoworkCurrentTiers } from "@/features/checkout/product-catalog";
+import {
+  type WorkspaceCoworkCurrentTier,
+  workspaceCoworkCurrentTiers,
+} from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-reservation-capacity";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
@@ -15,6 +18,7 @@ import {
   getOfficeAvailabilityQuery,
   isCoworkOfferAvailable,
   isMeetingRoomAvailable,
+  type WorkspaceAvailability,
   type WorkspaceAvailabilityQuery,
 } from "@/features/reservation/workspace-availability";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -107,31 +111,36 @@ export const checkAvailabilityTool = defineAgentTool({
   unavailableCode: "availability_unavailable",
   input: inputSchema,
   output: outputSchema,
-  run: Effect.fn("agentTools.checkAvailability")(function* (input) {
-    const locale = getAgentToolLocale(input);
-    const now = yield* currentInstant;
-    const { reservationSearchParams, ...result } = yield* Match.value(
-      input.family
-    ).pipe(
-      Match.when("cowork", () => checkCowork({ input, now })),
-      Match.when("meeting-room", () => checkMeetingRoom({ input, now })),
-      Match.when("office", () => checkOffice({ input, now })),
-      Match.exhaustive
-    );
-    const reservationUrl = yield* getShareableReservationUrl(
-      input.family,
-      reservationSearchParams
-    ).pipe(
-      Effect.mapError(AgentToolError.unavailable("availability_unavailable"))
-    );
-
-    return {
-      ...result,
-      checked_at: now.toString(),
-      note: m.agentToolAvailabilityAdvisoryNote({}, { locale }),
-      reservation_url: reservationUrl,
-    };
-  }),
+  run: Effect.fn("agentTools.checkAvailability")((input) =>
+    Effect.succeed({ input }).pipe(
+      Effect.let("locale", ({ input }) => getAgentToolLocale(input)),
+      Effect.bind("now", () => currentInstant),
+      Effect.bind("availability", checkSelectionAvailability),
+      Effect.bind("reservationUrl", ({ input, availability }) =>
+        getShareableReservationUrl(
+          input.family,
+          availability.reservationSearchParams
+        ).pipe(
+          Effect.mapError(
+            AgentToolError.unavailable("availability_unavailable")
+          )
+        )
+      ),
+      Effect.map(
+        ({
+          locale,
+          now,
+          availability: { reservationSearchParams: _, ...result },
+          reservationUrl,
+        }): CheckAvailabilityResult => ({
+          ...result,
+          checked_at: now.toString(),
+          note: m.agentToolAvailabilityAdvisoryNote({}, { locale }),
+          reservation_url: reservationUrl,
+        })
+      )
+    )
+  ),
 });
 
 const loadAvailability = (query: WorkspaceAvailabilityQuery) =>
@@ -140,23 +149,67 @@ const loadAvailability = (query: WorkspaceAvailabilityQuery) =>
     Effect.mapError(AgentToolError.unavailable("availability_unavailable"))
   );
 
-const checkCowork = Effect.fn("agentTools.checkCoworkAvailability")(function* ({
-  input,
-  now,
-}: {
+type AvailabilitySelection = {
   readonly input: CheckAvailabilityInput;
   readonly now: Temporal.Instant;
-}) {
-  const today = getCurrentWorkspaceDate(now);
-  const dates = yield* resolveCoworkDates({
-    date: input.date,
-    endDate: input.end_date,
-    today,
-  });
-  const tiers = getRequestedCoworkTiers(input.tier);
-  // The page's calendar-range query per tier, so the tool shares its
-  // cached snapshots instead of filling one per requested range.
-  const tierAvailability = yield* Effect.all(
+};
+
+const checkSelectionAvailability = (selection: AvailabilitySelection) =>
+  Match.value(selection.input.family).pipe(
+    Match.when("cowork", () => checkCowork(selection)),
+    Match.when("meeting-room", () => checkMeetingRoom(selection)),
+    Match.when("office", () => checkOffice(selection)),
+    Match.exhaustive
+  );
+
+const checkCowork = Effect.fn("agentTools.checkCoworkAvailability")(
+  (selection: AvailabilitySelection) =>
+    Effect.succeed(selection).pipe(
+      Effect.let("today", ({ now }) => getCurrentWorkspaceDate(now)),
+      Effect.bind("dates", ({ input, today }) =>
+        resolveCoworkDates({
+          date: input.date,
+          endDate: input.end_date,
+          today,
+        })
+      ),
+      Effect.bind("tierAvailability", ({ input, today }) =>
+        loadCoworkTierAvailability({
+          tiers: getRequestedCoworkTiers(input.tier),
+          today,
+        })
+      ),
+      Effect.let("days", toCoworkDays),
+      Effect.map(
+        ({ input, days }) =>
+          ({
+            family: "cowork" as const,
+            available: days.every((day) => day.available),
+            days,
+            reservationSearchParams: getCoworkReservationSearchParams({
+              entryTier: input.tier ?? "open-space",
+              date: input.date,
+            }),
+          }) satisfies AvailabilityResult
+      )
+    )
+);
+
+type CoworkTierAvailability = {
+  readonly entryTier: WorkspaceCoworkCurrentTier;
+  readonly availability: WorkspaceAvailability;
+};
+
+// The page's calendar-range query per tier, so the tool shares its
+// cached snapshots instead of filling one per requested range.
+const loadCoworkTierAvailability = ({
+  tiers,
+  today,
+}: {
+  readonly tiers: ReadonlyArray<WorkspaceCoworkCurrentTier>;
+  readonly today: Temporal.PlainDate;
+}) =>
+  Effect.all(
     tiers.flatMap((entryTier) => {
       const { range } = getCoworkAvailabilityQueries({
         entryTier,
@@ -165,14 +218,29 @@ const checkCowork = Effect.fn("agentTools.checkCoworkAvailability")(function* ({
       return range
         ? [
             loadAvailability(range).pipe(
-              Effect.map((availability) => ({ entryTier, availability }))
+              Effect.map(
+                (availability): CoworkTierAvailability => ({
+                  entryTier,
+                  availability,
+                })
+              )
             ),
           ]
         : [];
     }),
     { concurrency: "inherit" }
   );
-  const days = dates.map((date) => {
+
+const toCoworkDays = ({
+  dates,
+  tierAvailability,
+  now,
+}: {
+  readonly dates: ReadonlyArray<string>;
+  readonly tierAvailability: ReadonlyArray<CoworkTierAvailability>;
+  readonly now: Temporal.Instant;
+}) =>
+  dates.map((date) => {
     const offers = tierAvailability.map(({ entryTier, availability }) => ({
       tier: entryTier,
       available:
@@ -189,100 +257,100 @@ const checkCowork = Effect.fn("agentTools.checkCoworkAvailability")(function* ({
     };
   });
 
-  return {
-    family: "cowork" as const,
-    available: days.every((day) => day.available),
-    days,
-    reservationSearchParams: getCoworkReservationSearchParams({
-      entryTier: input.tier ?? "open-space",
-      date: input.date,
-    }),
-  } satisfies AvailabilityResult;
-});
-
 const checkMeetingRoom = Effect.fn("agentTools.checkMeetingRoomAvailability")(
-  function* ({
-    input,
-    now,
-  }: {
-    readonly input: CheckAvailabilityInput;
-    readonly now: Temporal.Instant;
-  }) {
-    const selection = yield* resolveMeetingRoomSelection({
-      date: input.date,
-      startTime: input.start_time,
-      duration: input.duration,
-      now,
-    });
-    const availability = yield* loadAvailability(
-      getMeetingRoomAvailabilityQuery(selection.interval)
-    );
-    const available = isMeetingRoomAvailable(availability);
-    const { timeZone } = workspaceSiteConstants.location;
+  (selection: AvailabilitySelection) =>
+    Effect.succeed(selection).pipe(
+      Effect.bind("meetingRoom", ({ input, now }) =>
+        resolveMeetingRoomSelection({
+          date: input.date,
+          startTime: input.start_time,
+          duration: input.duration,
+          now,
+        })
+      ),
+      Effect.bind("availability", ({ meetingRoom }) =>
+        loadAvailability(getMeetingRoomAvailabilityQuery(meetingRoom.interval))
+      ),
+      Effect.let("available", ({ availability }) =>
+        isMeetingRoomAvailable(availability)
+      ),
+      Effect.map(({ input, meetingRoom, available }) => {
+        const { timeZone } = workspaceSiteConstants.location;
 
-    return {
-      family: "meeting-room" as const,
-      available,
-      days: [{ date: input.date, available }],
-      meeting_room: {
-        duration: selection.durationKey,
-        starts_at: temporalInstantToLocalDateTimeString({
-          instant: Temporal.Instant.from(selection.interval.startsAt),
-          timeZone,
-        }),
-        ends_at: temporalInstantToLocalDateTimeString({
-          instant: Temporal.Instant.from(selection.interval.endsAt),
-          timeZone,
-        }),
-      },
-      reservationSearchParams: getMeetingRoomReservationSearchParams({
-        duration: selection.durationKey,
-        startDateTime: selection.startDateTime,
-      }),
-    } satisfies AvailabilityResult;
-  }
+        return {
+          family: "meeting-room" as const,
+          available,
+          days: [{ date: input.date, available }],
+          meeting_room: {
+            duration: meetingRoom.durationKey,
+            starts_at: temporalInstantToLocalDateTimeString({
+              instant: Temporal.Instant.from(meetingRoom.interval.startsAt),
+              timeZone,
+            }),
+            ends_at: temporalInstantToLocalDateTimeString({
+              instant: Temporal.Instant.from(meetingRoom.interval.endsAt),
+              timeZone,
+            }),
+          },
+          reservationSearchParams: getMeetingRoomReservationSearchParams({
+            duration: meetingRoom.durationKey,
+            startDateTime: meetingRoom.startDateTime,
+          }),
+        } satisfies AvailabilityResult;
+      })
+    )
 );
 
-const checkOffice = Effect.fn("agentTools.checkOfficeAvailability")(function* ({
-  input,
-  now,
-}: {
-  readonly input: CheckAvailabilityInput;
-  readonly now: Temporal.Instant;
-}) {
-  yield* ensureOfficeOpen;
-  const today = getCurrentWorkspaceDate(now);
-  const range = yield* resolveOfficeRange({
-    date: input.date,
-    endDate: input.end_date,
-    today,
-  });
-  const seats = input.seats ?? 1;
-  // The page's booking-horizon query, so the tool shares its snapshot.
-  const [availability, maximumSeats] = yield* Effect.all(
-    [
-      loadAvailability(getOfficeAvailabilityQuery(today.toString())),
-      loadAdvisoryOfficeSeatCapacity.pipe(
+const checkOffice = Effect.fn("agentTools.checkOfficeAvailability")(
+  (selection: AvailabilitySelection) =>
+    Effect.succeed(selection).pipe(
+      Effect.tap(() => ensureOfficeOpen),
+      Effect.let("today", ({ now }) => getCurrentWorkspaceDate(now)),
+      Effect.bind("range", ({ input, today }) =>
+        resolveOfficeRange({
+          date: input.date,
+          endDate: input.end_date,
+          today,
+        })
+      ),
+      Effect.let("seats", ({ input }) => input.seats ?? 1),
+      Effect.bind("office", ({ today }) => loadOfficeAvailability(today)),
+      Effect.let("days", ({ range, office }) =>
+        range.dates.map((date) => ({
+          date,
+          available: !office.availability.unavailableDates.includes(date),
+        }))
+      ),
+      Effect.map(
+        ({ today, range, seats, office, days }) =>
+          ({
+            family: "office" as const,
+            available:
+              seats <= office.maximumSeats &&
+              days.every((day) => day.available),
+            days,
+            office: { seats, max_seats: office.maximumSeats },
+            reservationSearchParams: getOfficeReservationSearchParams({
+              seats,
+              ...(range.startsOn === today.toString() && {
+                dayCount: range.dates.length,
+              }),
+            }),
+          }) satisfies AvailabilityResult
+      )
+    )
+);
+
+// The page's booking-horizon query, so the tool shares its snapshot.
+const loadOfficeAvailability = (today: Temporal.PlainDate) =>
+  Effect.all(
+    {
+      availability: loadAvailability(
+        getOfficeAvailabilityQuery(today.toString())
+      ),
+      maximumSeats: loadAdvisoryOfficeSeatCapacity.pipe(
         Effect.mapError(AgentToolError.unavailable("availability_unavailable"))
       ),
-    ],
+    },
     { concurrency: "inherit" }
   );
-  const days = range.dates.map((date) => ({
-    date,
-    available: !availability.unavailableDates.includes(date),
-  }));
-
-  return {
-    family: "office" as const,
-    available: seats <= maximumSeats && days.every((day) => day.available),
-    days,
-    office: { seats, max_seats: maximumSeats },
-    reservationSearchParams: getOfficeReservationSearchParams({
-      seats,
-      ...(range.startsOn === today.toString() && {
-        dayCount: range.dates.length,
-      }),
-    }),
-  } satisfies AvailabilityResult;
-});

@@ -2,8 +2,10 @@ import { Effect, Match, Schema } from "effect";
 import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import { buildAdvertisedPrice } from "@/features/checkout/backend/checkout/advertised-price.server";
 import {
+  type CoworkCoffeeAddonAvailability,
   getCoworkTierCoffeeAddon,
   getCoworkTierWorkstationAddon,
+  type WorkspaceCoworkCurrentTier,
   workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
@@ -15,7 +17,10 @@ import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowo
 import { getCoworkReservationSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import { getMeetingRoomReservationSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
-import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getMeetingRoomReservationDurationKey,
+  type MeetingRoomReservationDurationKey,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { getOfficeReservationSearchParams } from "@/features/reservation/office-reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -93,44 +98,15 @@ export const getQuoteTool = defineAgentTool({
   unavailableCode: "quote_unavailable",
   input: inputSchema,
   output: outputSchema,
-  run: Effect.fn("agentTools.getQuote")(function* (input) {
-    const locale = getAgentToolLocale(input);
-    const now = yield* currentInstant;
-    const selection = yield* Match.value(input.family).pipe(
-      Match.when("cowork", () => getCoworkSelection({ input, locale, now })),
-      Match.when("meeting-room", () =>
-        getMeetingRoomSelection({ input, locale, now })
-      ),
-      Match.when("office", () => getOfficeSelection({ input, locale, now })),
-      Match.exhaustive
-    );
-    const [advertised, reservationUrl] = yield* Effect.all(
-      [
-        buildAdvertisedPrice(selection.request),
-        getShareableReservationUrl(
-          input.family,
-          selection.reservationSearchParams
-        ),
-      ],
-      { concurrency: "inherit" }
-    ).pipe(Effect.mapError(AgentToolError.unavailable("quote_unavailable")));
-    const { expectedPrice, undiscountedPrice } = advertised.quote.payment;
-
-    return {
-      family: input.family,
-      total: toAgentToolMoney(expectedPrice),
-      regular_price: toAgentToolMoney(undiscountedPrice),
-      discount: toAgentToolMoney(
-        workspaceMoneyWithValue(
-          undiscountedPrice.value - expectedPrice.value,
-          expectedPrice
-        )
-      ),
-      quoted_at: now.toString(),
-      note: m.agentToolQuoteNote({}, { locale }),
-      reservation_url: reservationUrl,
-    };
-  }),
+  run: Effect.fn("agentTools.getQuote")((input) =>
+    Effect.succeed({ input }).pipe(
+      Effect.let("locale", ({ input }) => getAgentToolLocale(input)),
+      Effect.bind("now", () => currentInstant),
+      Effect.bind("selection", getQuoteSelection),
+      Effect.bind("pricing", priceQuoteSelection),
+      Effect.map(toQuoteResult)
+    )
+  ),
 });
 
 type SelectionInput = {
@@ -139,105 +115,255 @@ type SelectionInput = {
   readonly now: Temporal.Instant;
 };
 
+const getQuoteSelection = (selectionInput: SelectionInput) =>
+  Match.value(selectionInput.input.family).pipe(
+    Match.when("cowork", () => getCoworkSelection(selectionInput)),
+    Match.when("meeting-room", () => getMeetingRoomSelection(selectionInput)),
+    Match.when("office", () => getOfficeSelection(selectionInput)),
+    Match.exhaustive
+  );
+
+const priceQuoteSelection = ({
+  input,
+  selection,
+}: {
+  readonly input: GetQuoteInput;
+  readonly selection: QuoteSelection;
+}) =>
+  Effect.all(
+    {
+      advertised: buildAdvertisedPrice(selection.request),
+      reservationUrl: getShareableReservationUrl(
+        input.family,
+        selection.reservationSearchParams
+      ),
+    },
+    { concurrency: "inherit" }
+  ).pipe(Effect.mapError(AgentToolError.unavailable("quote_unavailable")));
+
+const toQuoteResult = ({
+  input,
+  locale,
+  now,
+  pricing: { advertised, reservationUrl },
+}: SelectionInput & {
+  readonly pricing: Effect.Success<ReturnType<typeof priceQuoteSelection>>;
+}): GetQuoteResult => {
+  const { expectedPrice, undiscountedPrice } = advertised.quote.payment;
+
+  return {
+    family: input.family,
+    total: toAgentToolMoney(expectedPrice),
+    regular_price: toAgentToolMoney(undiscountedPrice),
+    discount: toAgentToolMoney(
+      workspaceMoneyWithValue(
+        undiscountedPrice.value - expectedPrice.value,
+        expectedPrice
+      )
+    ),
+    quoted_at: now.toString(),
+    note: m.agentToolQuoteNote({}, { locale }),
+    reservation_url: reservationUrl,
+  };
+};
+
 const getCoworkSelection = Effect.fn("agentTools.getCoworkQuoteSelection")(
-  function* ({ input, locale, now }: SelectionInput) {
-    const entryTier = input.tier;
-    if (!entryTier) return yield* AgentToolError.invalidInput("tier");
-    const today = getCurrentWorkspaceDate(now);
-    yield* resolveCoworkDates({ date: input.date, today });
-    if (!isCoworkOfferOpen({ entryTier, date: input.date, now })) {
-      return yield* AgentToolError.dateOutOfRange({
+  (selectionInput: SelectionInput) =>
+    Effect.succeed(selectionInput).pipe(
+      Effect.bind("entryTier", ({ input }) => requireCoworkTier(input)),
+      Effect.let("today", ({ now }) => getCurrentWorkspaceDate(now)),
+      Effect.tap(({ input, today }) =>
+        resolveCoworkDates({ date: input.date, today })
+      ),
+      Effect.tap(ensureCoworkOfferOpen),
+      Effect.let("coffeeAddon", ({ entryTier }) =>
+        getCoworkTierCoffeeAddon(entryTier)
+      ),
+      Effect.tap(ensureCoworkAddonsOffered),
+      Effect.let("offer", toCoworkOffer),
+      Effect.map(
+        ({ locale, offer }) =>
+          ({
+            request: {
+              locale,
+              reservation: getCoworkAdvertisedPriceReservation(offer),
+            },
+            reservationSearchParams: getCoworkReservationSearchParams(offer),
+          }) satisfies QuoteSelection
+      )
+    )
+);
+
+const requireCoworkTier = ({ tier }: GetQuoteInput) =>
+  Effect.succeed(tier).pipe(
+    Effect.filterOrFail(
+      (entryTier) => entryTier !== undefined,
+      () => AgentToolError.invalidInput("tier")
+    )
+  );
+
+const ensureCoworkOfferOpen = ({
+  input,
+  entryTier,
+  now,
+  today,
+}: {
+  readonly input: GetQuoteInput;
+  readonly entryTier: WorkspaceCoworkCurrentTier;
+  readonly now: Temporal.Instant;
+  readonly today: Temporal.PlainDate;
+}) =>
+  Effect.succeed({ entryTier, date: input.date, now }).pipe(
+    Effect.filterOrFail(isCoworkOfferOpen, () =>
+      AgentToolError.dateOutOfRange({
         earliest: today.add({ days: 1 }).toString(),
         latest: getWorkspaceAvailabilityRange(today.toString()).to,
-      });
-    }
-    const coffeeAddon = getCoworkTierCoffeeAddon(entryTier);
-    if (input.coffee !== undefined && coffeeAddon !== "optional") {
-      return yield* AgentToolError.invalidInput("coffee");
-    }
-    if (
-      input.monitor_option !== undefined &&
-      getCoworkTierWorkstationAddon(entryTier) === "unavailable"
-    ) {
-      return yield* AgentToolError.invalidInput("monitor_option");
-    }
-    const offer = {
-      entryTier,
-      date: input.date,
-      coffee: coffeeAddon === "included" || (input.coffee ?? false),
-      ...(input.monitor_option !== undefined && {
-        monitorOption: input.monitor_option,
-      }),
-    };
+      })
+    ),
+    Effect.asVoid
+  );
 
-    return {
-      request: {
-        locale,
-        reservation: getCoworkAdvertisedPriceReservation(offer),
-      },
-      reservationSearchParams: getCoworkReservationSearchParams(offer),
-    } satisfies QuoteSelection;
-  }
-);
+const ensureCoworkAddonsOffered = ({
+  input,
+  entryTier,
+  coffeeAddon,
+}: {
+  readonly input: GetQuoteInput;
+  readonly entryTier: WorkspaceCoworkCurrentTier;
+  readonly coffeeAddon: CoworkCoffeeAddonAvailability;
+}) =>
+  Effect.succeed(input).pipe(
+    Effect.filterOrFail(
+      ({ coffee }) => coffee === undefined || coffeeAddon === "optional",
+      () => AgentToolError.invalidInput("coffee")
+    ),
+    Effect.filterOrFail(
+      ({ monitor_option }) =>
+        monitor_option === undefined ||
+        getCoworkTierWorkstationAddon(entryTier) !== "unavailable",
+      () => AgentToolError.invalidInput("monitor_option")
+    ),
+    Effect.asVoid
+  );
+
+const toCoworkOffer = ({
+  input,
+  entryTier,
+  coffeeAddon,
+}: {
+  readonly input: GetQuoteInput;
+  readonly entryTier: WorkspaceCoworkCurrentTier;
+  readonly coffeeAddon: CoworkCoffeeAddonAvailability;
+}) => ({
+  entryTier,
+  date: input.date,
+  coffee: coffeeAddon === "included" || (input.coffee ?? false),
+  ...(input.monitor_option !== undefined && {
+    monitorOption: input.monitor_option,
+  }),
+});
 
 const getMeetingRoomSelection = Effect.fn(
   "agentTools.getMeetingRoomQuoteSelection"
-)(function* ({ input, locale, now }: SelectionInput) {
-  const selection = yield* resolveMeetingRoomSelection({
-    date: input.date,
-    startTime: input.start_time,
-    duration: input.duration,
-    now,
-  });
-  const request = getMeetingRoomDurationAdvertisedPriceRequests({
-    locale,
-    startDateTime: selection.startDateTime,
-  }).find(
-    ({ reservation }) =>
-      getMeetingRoomReservationDurationKey(reservation.details.duration) ===
-      selection.durationKey
-  );
-  if (!request) return yield* AgentToolError.invalidInput("start_time");
+)((selectionInput: SelectionInput) =>
+  Effect.succeed(selectionInput).pipe(
+    Effect.bind("meetingRoom", ({ input, now }) =>
+      resolveMeetingRoomSelection({
+        date: input.date,
+        startTime: input.start_time,
+        duration: input.duration,
+        now,
+      })
+    ),
+    Effect.bind("request", ({ locale, meetingRoom }) =>
+      findMeetingRoomPriceRequest({
+        locale,
+        startDateTime: meetingRoom.startDateTime,
+        durationKey: meetingRoom.durationKey,
+      })
+    ),
+    Effect.map(
+      ({ request, meetingRoom }) =>
+        ({
+          request,
+          reservationSearchParams: getMeetingRoomReservationSearchParams({
+            duration: meetingRoom.durationKey,
+            startDateTime: meetingRoom.startDateTime,
+          }),
+        }) satisfies QuoteSelection
+    )
+  )
+);
 
-  return {
-    request,
-    reservationSearchParams: getMeetingRoomReservationSearchParams({
-      duration: selection.durationKey,
-      startDateTime: selection.startDateTime,
-    }),
-  } satisfies QuoteSelection;
-});
+const findMeetingRoomPriceRequest = ({
+  locale,
+  startDateTime,
+  durationKey,
+}: {
+  readonly locale: Locale;
+  readonly startDateTime: string;
+  readonly durationKey: MeetingRoomReservationDurationKey;
+}) =>
+  Effect.succeed(
+    getMeetingRoomDurationAdvertisedPriceRequests({
+      locale,
+      startDateTime,
+    }).find(
+      ({ reservation }) =>
+        getMeetingRoomReservationDurationKey(reservation.details.duration) ===
+        durationKey
+    )
+  ).pipe(
+    Effect.filterOrFail(
+      (request) => request !== undefined,
+      () => AgentToolError.invalidInput("start_time")
+    )
+  );
 
 const getOfficeSelection = Effect.fn("agentTools.getOfficeQuoteSelection")(
-  function* ({ input, locale, now }: SelectionInput) {
-    yield* ensureOfficeOpen;
-    const today = getCurrentWorkspaceDate(now);
-    const range = yield* resolveOfficeRange({
-      date: input.date,
-      endDate: input.end_date,
-      today,
-    });
-    const seats = input.seats ?? 1;
-    const maximumSeats = yield* loadAdvisoryOfficeSeatCapacity.pipe(
-      Effect.mapError(AgentToolError.unavailable("quote_unavailable"))
-    );
-    if (seats > maximumSeats) {
-      return yield* AgentToolError.invalidInput("seats");
-    }
-
-    return {
-      request: getOfficeAdvertisedPriceRequest({
-        startsOn: range.startsOn,
-        endsOn: range.endsOn,
-        seats,
-        locale,
-      }),
-      reservationSearchParams: getOfficeReservationSearchParams({
-        seats,
-        ...(range.startsOn === today.toString() && {
-          dayCount: range.dates.length,
-        }),
-      }),
-    } satisfies QuoteSelection;
-  }
+  (selectionInput: SelectionInput) =>
+    Effect.succeed(selectionInput).pipe(
+      Effect.tap(() => ensureOfficeOpen),
+      Effect.let("today", ({ now }) => getCurrentWorkspaceDate(now)),
+      Effect.bind("range", ({ input, today }) =>
+        resolveOfficeRange({
+          date: input.date,
+          endDate: input.end_date,
+          today,
+        })
+      ),
+      Effect.let("seats", ({ input }) => input.seats ?? 1),
+      Effect.tap(ensureOfficeSeatsWithinCapacity),
+      Effect.map(
+        ({ locale, today, range, seats }) =>
+          ({
+            request: getOfficeAdvertisedPriceRequest({
+              startsOn: range.startsOn,
+              endsOn: range.endsOn,
+              seats,
+              locale,
+            }),
+            reservationSearchParams: getOfficeReservationSearchParams({
+              seats,
+              ...(range.startsOn === today.toString() && {
+                dayCount: range.dates.length,
+              }),
+            }),
+          }) satisfies QuoteSelection
+      )
+    )
 );
+
+const ensureOfficeSeatsWithinCapacity = ({
+  seats,
+}: {
+  readonly seats: number;
+}) =>
+  loadAdvisoryOfficeSeatCapacity.pipe(
+    Effect.mapError(AgentToolError.unavailable("quote_unavailable")),
+    Effect.filterOrFail(
+      (maximumSeats) => seats <= maximumSeats,
+      () => AgentToolError.invalidInput("seats")
+    ),
+    Effect.asVoid
+  );
