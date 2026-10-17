@@ -2,11 +2,12 @@ import { Effect, Layer } from "effect";
 import {
   AgentToolAdmission,
   type AgentToolExposure,
+  answerAgentToolMcpRequest,
   CustomerAgentToolsLive,
   customerAgentTools,
-  makeAgentToolMcpHandler,
   selectAgentTools,
 } from "@/features/agent-tools";
+import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
@@ -18,22 +19,32 @@ const customerToolExposure: AgentToolExposure = {
   transactional: false,
 };
 
-const customerMcpHandler = makeAgentToolMcpHandler({
-  tools: selectAgentTools(customerAgentTools, customerToolExposure),
-  layer: Layer.merge(CustomerAgentToolsLive, AgentToolAdmission.Default),
-});
+const customerTools = selectAgentTools(
+  customerAgentTools,
+  customerToolExposure
+);
 
 /**
  * The customer MCP server: stateless Streamable HTTP. POST carries every
  * request; GET and DELETE, which only sessions use, are answered with 405.
+ * Browsers may call it only from the deployment's own origin.
  */
 const handleMcpRequest = defineWorkspaceRoute(
   { operation: "agentToolsMcp", cancellation: "interrupt-on-disconnect" },
   (request: Request) =>
-    Effect.tryPromise({
-      try: () => customerMcpHandler.fetch(request),
-      catch: WorkspaceRouteFailure.internal("The MCP request failed."),
-    })
+    getWorkspaceRuntimeCallbackOrigin.pipe(
+      Effect.flatMap((origin) =>
+        answerAgentToolMcpRequest({
+          tools: customerTools,
+          request,
+          allowedOriginHostnames: [origin.hostname],
+        })
+      ),
+      Effect.provide(
+        Layer.merge(CustomerAgentToolsLive, AgentToolAdmission.Default)
+      ),
+      Effect.mapError(WorkspaceRouteFailure.internal("The MCP request failed."))
+    )
 );
 
 export {

@@ -7,6 +7,7 @@ import { defaultLocale, type Locale, locales } from "@/features/i18n";
 import {
   AgentToolError,
   type AgentToolUnavailableCode,
+  agentToolErrorResultSchema,
 } from "./agent-tool-error";
 
 /**
@@ -44,6 +45,10 @@ export interface AgentTool<R> {
   /** The code an unexpected failure is reported with. */
   readonly unavailableCode: AgentToolUnavailableCode;
   readonly input: StandardJSONSchemaV1;
+  /**
+   * Every structured result the tool answers with: its success result, or
+   * the error result of a failed call.
+   */
   readonly output: AgentToolSchema<AgentToolResult>;
   /** Validates the arguments, parsed from the request JSON, and runs the tool. */
   readonly call: (
@@ -132,7 +137,9 @@ export const defineAgentTool = <
     unavailableCode: definition.unavailableCode,
     input: Schema.toStandardJSONSchemaV1(definition.input),
     output: Schema.toStandardJSONSchemaV1(
-      Schema.toStandardSchemaV1(definition.output)
+      Schema.toStandardSchemaV1(
+        Schema.Union([definition.output, agentToolErrorResultSchema])
+      )
     ),
     call: (args) =>
       decodeInput(args).pipe(

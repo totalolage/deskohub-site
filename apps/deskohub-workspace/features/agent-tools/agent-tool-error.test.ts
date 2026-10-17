@@ -1,6 +1,12 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
-import { AgentToolError, getAgentToolErrorMessage } from "./agent-tool-error";
+import { Schema } from "effect";
+import {
+  AgentToolError,
+  agentToolErrorResultSchema,
+  getAgentToolErrorMessage,
+  toAgentToolErrorResult,
+} from "./agent-tool-error";
 
 const errors = [
   AgentToolError.invalidInput(),
@@ -45,5 +51,21 @@ describe("getAgentToolErrorMessage", () => {
       "Cenu teď nejde spočítat. Zkus to za chvíli znovu nebo se podívej na web.",
       "Nabídku teď nejde načíst. Zkus to za chvíli znovu.",
     ]);
+  });
+});
+
+describe("toAgentToolErrorResult", () => {
+  test("matches the published error result schema for every code", () => {
+    const isErrorResult = Schema.is(agentToolErrorResultSchema);
+
+    for (const error of errors) {
+      const result = toAgentToolErrorResult(error.details, "cs-CZ");
+
+      expect(isErrorResult(result)).toBe(true);
+      expect(result.error).toMatchObject(error.details);
+      expect(result.error.message).toBe(
+        getAgentToolErrorMessage(error.details, "cs-CZ")
+      );
+    }
   });
 });

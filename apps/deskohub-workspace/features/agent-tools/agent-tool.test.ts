@@ -104,6 +104,22 @@ describe("defineAgentTool", () => {
       value: { seats: 1 },
     });
   });
+
+  test("publishes the error result in its output schema", () => {
+    const errorResult = {
+      error: { code: "rate_limited", message: "Too many requests." },
+    };
+
+    expect(tool!.output["~standard"].validate(errorResult)).toEqual({
+      value: errorResult,
+    });
+    expect(
+      tool!.output["~standard"].validate({ error: { code: "rate_limited" } })
+    ).toMatchObject({ issues: expect.any(Array) });
+    expect(
+      tool!.output["~standard"].jsonSchema.output({ target: "draft-2020-12" })
+    ).toMatchObject({ anyOf: [{ type: "object" }, { type: "object" }] });
+  });
 });
 
 describe("getRequestedAgentToolLocale", () => {

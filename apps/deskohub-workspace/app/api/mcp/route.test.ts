@@ -31,6 +31,9 @@ mock.module("@/features/agent-tools/customer-agent-tools", () => ({
 }));
 
 const { Client } = await import("@modelcontextprotocol/client");
+const { AjvJsonSchemaValidator } = await import(
+  "@modelcontextprotocol/client/validators/ajv"
+);
 const { StreamableHTTPClientTransport } = await import(
   "@modelcontextprotocol/client"
 );
@@ -44,9 +47,13 @@ const legacyProtocolVersion = "2025-11-25";
 
 let requestId = 0;
 
-/** One JSON-RPC exchange over the 2025-era stateless Streamable HTTP leg. */
-const rpc = async <Result>(method: string, params: Schema.JsonObject = {}) => {
-  const response = await route.POST(
+/** A JSON-RPC request over the 2025-era stateless Streamable HTTP leg. */
+const postRpc = (
+  method: string,
+  params: Schema.JsonObject = {},
+  headers: Record<string, string> = {}
+) =>
+  route.POST(
     new Request(endpoint, {
       method: "POST",
       headers: {
@@ -54,6 +61,7 @@ const rpc = async <Result>(method: string, params: Schema.JsonObject = {}) => {
         accept: "application/json, text/event-stream",
         "mcp-protocol-version": legacyProtocolVersion,
         "x-real-ip": "203.0.113.7",
+        ...headers,
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
@@ -63,6 +71,10 @@ const rpc = async <Result>(method: string, params: Schema.JsonObject = {}) => {
       }),
     })
   );
+
+/** One JSON-RPC exchange over the 2025-era stateless Streamable HTTP leg. */
+const rpc = async <Result>(method: string, params: Schema.JsonObject = {}) => {
+  const response = await postRpc(method, params);
 
   expect(response.status).toBe(200);
   return (await readJsonRpc(response)) as {
@@ -86,6 +98,41 @@ const readJsonRpc = async (response: Response) => {
 
 const callTool = (name: string, args: Schema.JsonObject) =>
   rpc<CallToolResult>("tools/call", { name, arguments: args });
+
+/** An SDK client on the 2026 per-request leg, sending these extra headers. */
+const connectClient = async (headers: Record<string, string> = {}) => {
+  const client = new Client({ name: "route-test", version: "1.0.0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(endpoint), {
+      fetch: (input: string | URL | Request, init?: RequestInit) => {
+        const request = new Request(input, init);
+        for (const [name, value] of Object.entries(headers)) {
+          request.headers.set(name, value);
+        }
+        return route.POST(request);
+      },
+    })
+  );
+  return client;
+};
+
+const jsonSchemaValidator = new AjvJsonSchemaValidator();
+
+/** Validates a tool result's structured content against its published schema. */
+const validateStructuredContent = async (
+  name: string,
+  result: CallToolResult | undefined
+) => {
+  const { result: list } = await rpc<ListToolsResult>("tools/list");
+  const outputSchema = list?.tools.find(
+    (tool) => tool.name === name
+  )?.outputSchema;
+
+  expect(outputSchema).toBeDefined();
+  return jsonSchemaValidator.getValidator(outputSchema!)(
+    result?.structuredContent
+  );
+};
 
 describe("customer MCP route", () => {
   beforeEach(() => {
@@ -176,6 +223,15 @@ describe("customer MCP route", () => {
     ]);
     expect(checkRateLimit).toHaveBeenCalledTimes(3);
     expect(services.dotyposRequests).toEqual([]);
+    for (const [name, response] of [
+      ["list_offerings", offerings],
+      ["check_availability", availability],
+      ["get_quote", priced],
+    ] as const) {
+      expect(
+        await validateStructuredContent(name, response.result)
+      ).toMatchObject({ valid: true });
+    }
   });
 
   test("answers an invalid call with a typed error in the requested locale", async () => {
@@ -196,6 +252,34 @@ describe("customer MCP route", () => {
       },
       content: [{ text: "Hodnota date chybí nebo je neplatná." }],
     });
+    expect(await validateStructuredContent("get_quote", result)).toMatchObject({
+      valid: true,
+    });
+  });
+
+  test("publishes error results in every tool's output schema", async () => {
+    const outOfRange = await callTool("check_availability", {
+      family: "cowork",
+      date: "2000-01-01",
+    });
+    rateLimit = { rateLimited: true };
+    const limited = await callTool("list_offerings", {});
+
+    expect(outOfRange.result?.structuredContent).toMatchObject({
+      error: { code: "date_out_of_range" },
+    });
+    expect(
+      await validateStructuredContent("check_availability", outOfRange.result)
+    ).toMatchObject({ valid: true });
+    expect(
+      await validateStructuredContent("list_offerings", limited.result)
+    ).toMatchObject({ valid: true });
+    expect(
+      await validateStructuredContent("list_offerings", {
+        content: [],
+        structuredContent: { error: { code: "rate_limited" } },
+      })
+    ).toMatchObject({ valid: false });
   });
 
   test("answers an unknown tool with a protocol error", async () => {
@@ -237,13 +321,7 @@ describe("customer MCP route", () => {
   });
 
   test("serves the SDK client end to end", async () => {
-    const client = new Client({ name: "route-test", version: "1.0.0" });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(endpoint), {
-        fetch: (input: string | URL | Request, init?: RequestInit) =>
-          route.POST(new Request(input, init)),
-      })
-    );
+    const client = await connectClient();
 
     const { tools } = await client.listTools();
     const result = await client.callTool({
@@ -260,6 +338,49 @@ describe("customer MCP route", () => {
     expect(tools.map(({ name }) => name)).toContain("get_quote");
     expect(result.structuredContent).toMatchObject({
       total: { amount: 350, currency: "CZK" },
+    });
+  });
+
+  describe("Origin", () => {
+    const listTools = { protocolVersion: legacyProtocolVersion };
+
+    test("serves 2025-era requests without an Origin or from the deployment", async () => {
+      const withoutOrigin = await postRpc("tools/list", listTools);
+      const sameOrigin = await postRpc("tools/list", listTools, {
+        origin: "http://deskohub.test",
+      });
+
+      expect(withoutOrigin.status).toBe(200);
+      expect(sameOrigin.status).toBe(200);
+    });
+
+    test("rejects 2025-era requests from another origin with 403", async () => {
+      const foreign = await postRpc("tools/list", listTools, {
+        origin: "https://evil.example",
+      });
+      const opaque = await postRpc("tools/list", listTools, {
+        origin: "null",
+      });
+
+      expect(foreign.status).toBe(403);
+      expect(opaque.status).toBe(403);
+      expect(checkRateLimit).not.toHaveBeenCalled();
+    });
+
+    test("serves the 2026 leg from the deployment's origin", async () => {
+      const client = await connectClient({ origin: "http://deskohub.test" });
+
+      const { tools } = await client.listTools();
+      await client.close();
+
+      expect(tools.map(({ name }) => name)).toContain("list_offerings");
+    });
+
+    test("rejects the 2026 leg from another origin with 403", async () => {
+      const connecting = connectClient({ origin: "https://evil.example" });
+
+      expect(connecting).rejects.toThrow();
+      await connecting.catch(() => undefined);
     });
   });
 });

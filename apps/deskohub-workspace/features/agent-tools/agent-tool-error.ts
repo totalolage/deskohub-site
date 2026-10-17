@@ -1,4 +1,4 @@
-import { Data, Match } from "effect";
+import { Data, Match, Schema } from "effect";
 import { type Locale, m } from "@/features/i18n";
 
 /** The failures an agent tool reports, as stable codes agents can branch on. */
@@ -29,6 +29,50 @@ type AgentToolErrorDetails =
         "invalid_input" | "date_out_of_range"
       >;
     };
+
+const agentToolErrorMessageField = Schema.String.annotate({
+  description: "What went wrong, in the requested locale, for the customer.",
+});
+
+/**
+ * The structured result of a failed call: the error code agents branch on,
+ * its details, and the localized message.
+ */
+export const agentToolErrorResultSchema = Schema.Struct({
+  error: Schema.Union([
+    Schema.Struct({
+      code: Schema.Literal("invalid_input"),
+      field: Schema.optionalKey(
+        Schema.String.annotate({
+          description: "The dotted path of the first invalid argument.",
+        })
+      ),
+      message: agentToolErrorMessageField,
+    }),
+    Schema.Struct({
+      code: Schema.Literal("date_out_of_range"),
+      earliest: Schema.String.annotate({
+        description: "The first bookable date, YYYY-MM-DD.",
+      }),
+      latest: Schema.String.annotate({
+        description: "The last bookable date, YYYY-MM-DD.",
+      }),
+      message: agentToolErrorMessageField,
+    }),
+    Schema.Struct({
+      code: Schema.Literals([
+        "unsupported_family",
+        "availability_unavailable",
+        "quote_unavailable",
+        "offerings_unavailable",
+        "rate_limited",
+      ]),
+      message: agentToolErrorMessageField,
+    }),
+  ]),
+});
+
+export type AgentToolErrorResult = typeof agentToolErrorResultSchema.Type;
 
 export class AgentToolError extends Data.TaggedError("AgentToolError")<{
   readonly details: AgentToolErrorDetails;
@@ -83,3 +127,11 @@ export const getAgentToolErrorMessage = (
       rate_limited: () => m.agentToolErrorRateLimited({}, { locale }),
     })
   );
+
+/** The structured result a failed call answers with, in the caller's locale. */
+export const toAgentToolErrorResult = (
+  details: AgentToolErrorDetails,
+  locale: Locale
+): AgentToolErrorResult => ({
+  error: { ...details, message: getAgentToolErrorMessage(details, locale) },
+});

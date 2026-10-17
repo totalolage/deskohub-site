@@ -2,16 +2,15 @@ import {
   type CallToolResult,
   createMcpHandler,
   McpServer,
+  originValidationResponse,
   type StandardSchemaWithJSON,
 } from "@modelcontextprotocol/server";
 import type { StandardJSONSchemaV1 } from "@standard-schema/spec";
-import { Effect, type Layer, Schema } from "effect";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
+import { Effect, FiberSet, Option, Schema } from "effect";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { type AgentTool, getRequestedAgentToolLocale } from "./agent-tool";
 import { AgentToolAdmission } from "./agent-tool-admission.service";
-import { AgentToolError, getAgentToolErrorMessage } from "./agent-tool-error";
+import { AgentToolError, toAgentToolErrorResult } from "./agent-tool-error";
 
 /** The version of the tool contract agents see; bump it on breaking changes. */
 const agentToolServerVersion = "1.0.0";
@@ -26,61 +25,122 @@ const agentToolServerInstructions = [
 ].join(" ");
 
 /**
- * The MCP server for a set of agent tools: stateless Streamable HTTP, one
- * server per request, answering with JSON. Each tool call runs as its own
- * Workspace Effect with `layer` and the admission check.
+ * Answers one MCP request with a set of agent tools: stateless Streamable
+ * HTTP with a fresh server per request. Tools emit no progress messages, so
+ * the SDK answers 2026-era calls with JSON. A request whose
+ * `Origin` names another site is rejected with 403; clients that send no
+ * `Origin`, such as hosted agent connectors, are served.
+ *
+ * Tool calls run as fibers of the returned Effect, so they share its
+ * services, request context, and trace, and are interrupted with it.
  */
-export const makeAgentToolMcpHandler = <R, E>({
+export const answerAgentToolMcpRequest = <R>({
   tools,
-  layer,
+  request,
+  allowedOriginHostnames,
 }: {
   readonly tools: ReadonlyArray<AgentTool<R>>;
-  readonly layer: Layer.Layer<R | AgentToolAdmission, E>;
+  readonly request: Request;
+  /** Hostnames a browser `Origin` may name, such as the deployment's own. */
+  readonly allowedOriginHostnames: ReadonlyArray<string>;
 }) =>
-  createMcpHandler(
-    ({ requestInfo }) => {
-      const server = new McpServer(
-        {
-          name: "dh-workspace",
-          title: workspaceSiteConstants.brand.name,
-          version: agentToolServerVersion,
-        },
-        { instructions: agentToolServerInstructions }
-      );
-      for (const tool of tools) {
-        server.registerTool(
-          tool.name,
-          {
-            title: tool.title,
-            description: tool.description,
-            inputSchema: acceptArguments(tool.input),
-            outputSchema: tool.output,
-            annotations: {
-              title: tool.title,
-              readOnlyHint: tool.readOnly,
-              destructiveHint: false,
-              idempotentHint: tool.readOnly,
-              openWorldHint: false,
-            },
-          },
-          (args, context) =>
-            callAgentTool({
-              tool,
-              args,
-              headers: requestInfo?.headers ?? new Headers(),
-              layer,
-            }).pipe(
-              runWorkspaceEffect(`agentTools.${tool.name}`, {
-                boundary: "route",
-                signal: context.mcpReq.signal,
-              })
-            )
-        );
-      }
-      return server;
-    },
-    { responseMode: "json" }
+  Option.fromNullishOr(
+    originValidationResponse(request, [...allowedOriginHostnames])
+  ).pipe(
+    Option.match({
+      onSome: (rejection) =>
+        Effect.logWarning(
+          "Agent tool MCP request from another origin was rejected"
+        ).pipe(Effect.as(rejection)),
+      onNone: () => serveAgentToolMcpRequest({ tools, request }),
+    })
   );
+
+const serveAgentToolMcpRequest = <R>({
+  tools,
+  request,
+}: {
+  readonly tools: ReadonlyArray<AgentTool<R>>;
+  readonly request: Request;
+}) =>
+  Effect.Do.pipe(
+    Effect.bind("runInRequest", () =>
+      FiberSet.makeRuntimePromise<R | AgentToolAdmission>()
+    ),
+    Effect.bind("handler", ({ runInRequest }) =>
+      Effect.acquireRelease(
+        Effect.sync(() =>
+          createMcpHandler(
+            () =>
+              makeAgentToolMcpServer({
+                tools,
+                headers: request.headers,
+                runInRequest,
+              }),
+            {
+              onerror: (cause) =>
+                void runInRequest(
+                  Effect.logError("Agent tool MCP request failed", { cause })
+                ),
+            }
+          )
+        ),
+        (handler) => Effect.promise(() => handler.close())
+      )
+    ),
+    Effect.flatMap(({ handler }) =>
+      Effect.tryPromise(() => handler.fetch(request))
+    ),
+    Effect.scoped
+  );
+
+/** Runs an Effect as a fiber of the request that serves the MCP exchange. */
+type RequestRunner<R> = <A>(
+  effect: Effect.Effect<A, never, R>,
+  options?: Effect.RunOptions
+) => Promise<A>;
+
+const makeAgentToolMcpServer = <R>({
+  tools,
+  headers,
+  runInRequest,
+}: {
+  readonly tools: ReadonlyArray<AgentTool<R>>;
+  readonly headers: Headers;
+  readonly runInRequest: RequestRunner<R | AgentToolAdmission>;
+}) => {
+  const server = new McpServer(
+    {
+      name: "dh-workspace",
+      title: workspaceSiteConstants.brand.name,
+      version: agentToolServerVersion,
+    },
+    { instructions: agentToolServerInstructions }
+  );
+  for (const tool of tools) {
+    server.registerTool(
+      tool.name,
+      {
+        title: tool.title,
+        description: tool.description,
+        inputSchema: acceptArguments(tool.input),
+        outputSchema: tool.output,
+        annotations: {
+          title: tool.title,
+          readOnlyHint: tool.readOnly,
+          destructiveHint: false,
+          idempotentHint: tool.readOnly,
+          openWorldHint: false,
+        },
+      },
+      (args, context) =>
+        runInRequest(callAgentTool({ tool, args, headers }), {
+          signal: context.mcpReq.signal,
+        })
+    );
+  }
+  return server;
+};
 
 const jsonArguments = Schema.toStandardSchemaV1(Schema.Json);
 
@@ -100,17 +160,15 @@ const acceptArguments = (
   },
 });
 
-const callAgentTool = <R, E>({
+const callAgentTool = <R>({
   tool,
   args,
   headers,
-  layer,
 }: {
   readonly tool: AgentTool<R>;
   readonly args: Schema.Json;
   readonly headers: Headers;
-  readonly layer: Layer.Layer<R | AgentToolAdmission, E>;
-}): Effect.Effect<CallToolResult> =>
+}): Effect.Effect<CallToolResult, never, R | AgentToolAdmission> =>
   AgentToolAdmission.pipe(
     Effect.flatMap((admission) => admission.isCallAllowed(headers)),
     Effect.filterOrFail(
@@ -118,12 +176,6 @@ const callAgentTool = <R, E>({
       () => AgentToolError.rateLimited()
     ),
     Effect.flatMap(() => tool.call(args)),
-    Effect.provide(layer),
-    Effect.mapError((error) =>
-      error instanceof AgentToolError
-        ? error
-        : AgentToolError.unavailable(tool.unavailableCode)(error)
-    ),
     Effect.map(
       (result): CallToolResult => ({
         content: [{ type: "text", text: JSON.stringify(result) }],
@@ -135,7 +187,8 @@ const callAgentTool = <R, E>({
         Effect.as(toToolErrorResult(error, getRequestedAgentToolLocale(args)))
       )
     ),
-    withWorkspaceRequestContext(headers)
+    Effect.annotateLogs({ agentTool: tool.name }),
+    Effect.withSpan(`agentTools.${tool.name}`)
   );
 
 const reportAgentToolError = (error: AgentToolError) =>
@@ -150,11 +203,11 @@ const toToolErrorResult = (
   error: AgentToolError,
   locale: ReturnType<typeof getRequestedAgentToolLocale>
 ): CallToolResult => {
-  const message = getAgentToolErrorMessage(error.details, locale);
+  const result = toAgentToolErrorResult(error.details, locale);
 
   return {
     isError: true,
-    content: [{ type: "text", text: message }],
-    structuredContent: { error: { ...error.details, message } },
+    content: [{ type: "text", text: result.error.message }],
+    structuredContent: result,
   };
 };
