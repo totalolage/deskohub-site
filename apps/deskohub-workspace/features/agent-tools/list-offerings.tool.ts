@@ -8,7 +8,7 @@ import {
   getPublicOpeningHours,
   type PublicOffering,
 } from "@/features/checkout/public-offerings";
-import { m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
 import { getCoworkReservationSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
 import { getMeetingRoomReservationSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
@@ -34,8 +34,18 @@ const offeringSchema = Schema.Struct({
   name: Schema.String,
   description: Schema.String,
   usage: Schema.String,
-  price: agentToolMoneySchema,
+  price: agentToolMoneySchema.annotate({
+    description: "Regular price per price_unit.",
+  }),
   price_unit: Schema.Literals(["day", "booking"]),
+  advertised_price: agentToolMoneySchema.annotate({
+    description:
+      "Price the reservation page advertises for a booking on advertised_on, including any public sale: one cowork day without paid add-ons, one meeting-room booking of the duration, or one office day with one seat.",
+  }),
+  discount: agentToolMoneySchema.annotate({
+    description:
+      "Public sale discount included in advertised_price; zero without one.",
+  }),
   seat_price: Schema.optionalKey(agentToolMoneySchema),
   max_seats: Schema.optionalKey(Schema.Int),
   max_duration_hours: Schema.optionalKey(Schema.Int),
@@ -68,6 +78,9 @@ const outputSchema = Schema.Struct({
     opening_hours: Schema.String,
     booking: Schema.String,
   }),
+  advertised_on: Schema.String.annotate({
+    description: "Prague date (YYYY-MM-DD) the advertised prices are for.",
+  }),
   offerings: Schema.Array(offeringSchema),
 });
 
@@ -77,33 +90,44 @@ export const listOfferingsTool = defineAgentTool({
   name: "list_offerings",
   title: "List DH Workspace offerings",
   description:
-    "Lists every product DH Workspace in Prague offers, with regular prices in CZK, add-ons, usage limits, opening hours, and the reservation page for each. Use get_quote for the exact price of a selection, which can include a sale.",
+    "Lists every product DH Workspace in Prague offers, with its regular price and the price advertised today including any public sale, in CZK, plus add-ons, usage limits, opening hours, and the reservation page for each. Use get_quote for the exact price of another date or selection.",
   access: "public",
   readOnly: true,
   unavailableCode: "offerings_unavailable",
   input: Schema.Struct({ locale: agentToolLocaleField }),
   output: outputSchema,
   run: Effect.fn("agentTools.listOfferings")(
-    function* (input) {
-      const locale = getAgentToolLocale(input);
-      const offerings = yield* loadPublicOfferings(locale);
-      const { address } = workspaceSiteConstants.location;
-
-      return {
-        business: {
-          name: workspaceSiteConstants.brand.name,
-          address: `${address.street}, ${address.postalCode} ${address.city}`,
-          opening_hours: getPublicOpeningHours(locale),
-          booking: m.agentToolBookingHandoff({}, { locale }),
-        },
-        offerings: yield* Effect.all(offerings.map(toAgentOffering), {
-          concurrency: "inherit",
-        }),
-      };
-    },
+    (input) =>
+      Effect.Do.pipe(
+        Effect.let("locale", () => getAgentToolLocale(input)),
+        Effect.bind("listing", ({ locale }) => loadPublicOfferings(locale)),
+        Effect.bind("offerings", ({ listing }) =>
+          Effect.forEach(listing.offerings, toAgentOffering, {
+            concurrency: "inherit",
+          })
+        ),
+        Effect.map(
+          ({ locale, listing, offerings }): ListOfferingsResult => ({
+            business: getBusiness(locale),
+            advertised_on: listing.advertisedOn.toString(),
+            offerings,
+          })
+        )
+      ),
     Effect.mapError(AgentToolError.unavailable("offerings_unavailable"))
   ),
 });
+
+const getBusiness = (locale: Locale): ListOfferingsResult["business"] => {
+  const { address } = workspaceSiteConstants.location;
+
+  return {
+    name: workspaceSiteConstants.brand.name,
+    address: `${address.street}, ${address.postalCode} ${address.city}`,
+    opening_hours: getPublicOpeningHours(locale),
+    booking: m.agentToolBookingHandoff({}, { locale }),
+  };
+};
 
 const toAgentOffering = (offering: PublicOffering) =>
   Match.value(offering).pipe(
@@ -120,6 +144,7 @@ const toAgentOffering = (offering: PublicOffering) =>
               ...getOfferingCopy(cowork),
               price: toAgentToolMoney(cowork.price),
               price_unit: "day",
+              ...getAdvertisedPrice(cowork),
               add_ons: cowork.addOns.map((addOn) => ({
                 id: addOn.id,
                 name: addOn.name,
@@ -149,6 +174,7 @@ const toAgentOffering = (offering: PublicOffering) =>
               ...getOfferingCopy(meetingRoom),
               price: toAgentToolMoney(meetingRoom.price),
               price_unit: "booking",
+              ...getAdvertisedPrice(meetingRoom),
               add_ons: [],
               reservation_url: reservationUrl,
             })
@@ -163,6 +189,7 @@ const toAgentOffering = (offering: PublicOffering) =>
               ...getOfferingCopy(office),
               price: toAgentToolMoney(office.price),
               price_unit: "day",
+              ...getAdvertisedPrice(office),
               seat_price: toAgentToolMoney(office.seatPrice),
               ...(office.maximumSeats !== undefined && {
                 max_seats: office.maximumSeats,
@@ -184,4 +211,11 @@ const getOfferingCopy = ({
   name,
   description,
   usage,
+});
+
+const getAdvertisedPrice = ({
+  advertisedPrice,
+}: Pick<PublicOffering, "advertisedPrice">) => ({
+  advertised_price: toAgentToolMoney(advertisedPrice.price),
+  discount: toAgentToolMoney(advertisedPrice.discount),
 });
