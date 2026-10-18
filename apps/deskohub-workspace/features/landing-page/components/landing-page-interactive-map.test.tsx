@@ -44,6 +44,7 @@ class FakeMap {
   };
   disposed = false;
   disposedOperationCount = 0;
+  readonly layers: FakeLayer[] = [];
   offCallCount = 0;
   removeCallCount = 0;
   private readonly listeners = new globalThis.Map<string, Set<MapListener>>();
@@ -55,8 +56,9 @@ class FakeMap {
     mapInstances.push(this);
   }
 
-  addLayer(_layer: FakeLayer) {
+  addLayer(layer: FakeLayer) {
     this.assertLive();
+    this.layers.push(layer);
     return this;
   }
 
@@ -225,6 +227,27 @@ afterAll(async () => {
 });
 
 describe("LandingPageInteractiveMap", () => {
+  test("requests OpenStreetMap tiles with an origin referrer despite the site-wide no-referrer policy", async () => {
+    const { LandingPageInteractiveMap } = await import(
+      "./landing-page-interactive-map"
+    );
+    window.matchMedia = (() => makeMediaQuery()) as typeof window.matchMedia;
+
+    render(<LandingPageInteractiveMap />);
+
+    const tileLayers = mapInstances[0]?.layers.filter(
+      (layer) => layer instanceof FakeTileLayer
+    );
+    expect(tileLayers).toHaveLength(1);
+    expect(tileLayers?.[0]?.url).toBe(
+      "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    );
+    expect(tileLayers?.[0]?.options).toMatchObject({
+      attribution: expect.stringContaining("OpenStreetMap"),
+      referrerPolicy: "strict-origin",
+    });
+  });
+
   test("recreates a live map when Activity reconnects the same DOM node", async () => {
     const { LandingPageInteractiveMap } = await import(
       "./landing-page-interactive-map"
