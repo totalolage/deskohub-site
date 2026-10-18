@@ -78,6 +78,7 @@ describe("processContactSubmission", () => {
     expect(verify).toHaveBeenCalledWith({
       verificationFailurePolicy: "deny",
       verifiedBots: { allow: customerAgentNames },
+      callSite: "contact.submit",
     });
     expect(order).toEqual(["bot", "submit"]);
     expect(submit).toHaveBeenCalledWith(

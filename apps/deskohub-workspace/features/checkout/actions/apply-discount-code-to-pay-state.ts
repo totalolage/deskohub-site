@@ -75,6 +75,7 @@ export const applyDiscountCodeToPayState = Effect.fn(
     yield* botProtection.verifyHuman({
       verificationFailurePolicy: "deny",
       verifiedBots: { allow: customerAgentNames },
+      callSite: "checkout.apply-discount-code",
     });
 
     const state = yield* openPayState(input.payStateToken);
