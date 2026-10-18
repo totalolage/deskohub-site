@@ -45,7 +45,11 @@ export class WorkspaceReservationDetailsError extends Data.TaggedError(
 
 export type WorkspaceReservationDetails = Pick<
   WorkspaceReservation,
-  "id" | "dotyposCustomerId" | "reservationDetails" | "locale"
+  | "id"
+  | "dotyposCustomerId"
+  | "authorAccountId"
+  | "reservationDetails"
+  | "locale"
 > & {
   readonly dotyposReservationId: DotyposReservationId;
   readonly customer: Customer;
@@ -188,6 +192,7 @@ export class WorkspaceReservationService extends Context.Service<
           return {
             id: reservation.id,
             dotyposCustomerId: reservation.dotyposCustomerId,
+            authorAccountId: reservation.authorAccountId,
             dotyposReservationId,
             reservationDetails: reservation.reservationDetails,
             locale: reservation.locale,

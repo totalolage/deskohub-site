@@ -6,6 +6,7 @@ export {
   ResendWebhookService,
 } from "./resend-webhook.service";
 export {
+  createReservationAuthorEmailPreviewHtml,
   createWorkspaceReservationCustomerEmailPreviewHtml,
   createWorkspaceReservationNotificationEmailPreviewHtml,
 } from "./workspace-reservation-email.service";
