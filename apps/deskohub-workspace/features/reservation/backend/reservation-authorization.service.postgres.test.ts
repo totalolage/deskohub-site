@@ -226,6 +226,7 @@ const runStatusLoad = async (options: {
   const result = await Effect.runPromise(
     loadCheckoutStatusPage(statusService, authorization, {
       ...authorizationInput,
+      requestHeaders: new Headers(),
       returnOutcome: "success",
     })
   );
