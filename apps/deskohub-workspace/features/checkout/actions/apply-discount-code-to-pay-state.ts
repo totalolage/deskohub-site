@@ -19,6 +19,7 @@ import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { getCalendarActionDeadline } from "@/shared/backend/calendar-action-deadline";
 import type { DeploymentEnvironment } from "@/shared/backend/config/deployment-request-timeout";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import type { ApplyDiscountCodeInput } from "./apply-discount-code-input";
 
 /**
@@ -49,7 +50,9 @@ export type ApplyDiscountCodeResult =
        * instead of falling back to the previous token.
        */
       readonly freshPayUrl?: string;
-    };
+    }
+  /** BotID rejected the request as automated; the code was not checked. */
+  | { readonly status: "automated_request" };
 
 const referralRejections = {
   already_attributed: "referral-already-attributed",
@@ -67,7 +70,12 @@ export const applyDiscountCodeToPayState = Effect.fn(
     const pricing = yield* CheckoutPricingService;
     const payableReservations = yield* PayableReservationService;
 
-    yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
+    // Discount code: part of the customer's own purchase, so verified customer
+    // agents may enter one; unverified bots get the automated-request status.
+    yield* botProtection.verifyHuman({
+      verificationFailurePolicy: "deny",
+      verifiedBots: { allow: customerAgentNames },
+    });
 
     const state = yield* openPayState(input.payStateToken);
     if (state.locale !== input.locale) {
@@ -238,6 +246,8 @@ export const applyDiscountCodeToPayState = Effect.fn(
   (effect) =>
     effect.pipe(
       Effect.catchTags({
+        BotDetectedError: () =>
+          Effect.succeed({ status: "automated_request" as const }),
         // The displayed discounts could not be affirmed, so the code is not
         // applied and the existing summary stays payable for a retry.
         DiscountAffirmationUnavailableError: () =>

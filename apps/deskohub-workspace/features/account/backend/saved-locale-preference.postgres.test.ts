@@ -53,6 +53,7 @@ describe.skipIf(!testDatabase)(
         sendMagicLink: (data) => {
           sentMagicLinks.push(data.url);
         },
+        verifyHuman: () => Effect.void,
         beforeDeleteUser: () => Effect.void,
         captureAccountLocalePreference: () => Effect.void,
       });

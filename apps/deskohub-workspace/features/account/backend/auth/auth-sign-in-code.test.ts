@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { memoryAdapter } from "better-auth/adapters/memory";
 import { Effect } from "effect";
 import {
   BotDetectedError,
   type VerifyHumanInput,
 } from "@/shared/backend/bot-protection/bot-protection.service";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import {
   buildDatabaseAdapter,
   type CapturedMagicLink,
@@ -21,7 +21,7 @@ import {
   userIdForEmail,
   verifyMagicLink,
 } from "./auth-handler.test-utils";
-import { digestVerificationKey } from "./auth-options";
+import { digestVerificationKey, signInEmailLimit } from "./auth-options";
 import { renderMagicLinkEmail } from "./magic-link-email";
 
 /** Every field these tests send, including the ones the guard rejects. */
@@ -76,6 +76,11 @@ const signInWithCode = (
 ) => postJson(auth, "/sign-in/email-otp", { email, otp, callbackURL });
 
 const wrongCode = (code: string) => (code === "000000" ? "111111" : "000000");
+
+const expectedSignInBotCheck: VerifyHumanInput = {
+  verificationFailurePolicy: "allow",
+  verifiedBots: { allow: customerAgentNames },
+};
 
 const errorCode = async (response: Response) =>
   ((await response.json()) as { readonly code?: string }).code;
@@ -253,7 +258,7 @@ describe("sign-in code gate", () => {
     expect(sentLinks).toHaveLength(1);
     expect(sentLinks[0]!.code).toBeUndefined();
     expect(store.verification).toHaveLength(1);
-    expect(botChecks).toBe(0);
+    expect(botChecks).toBe(1);
   });
 
   test("fails closed to link-only when the flag cannot be read", async () => {
@@ -340,41 +345,58 @@ describe("sign-in code gate", () => {
     expect(store.user[0]!.name).toBe("");
   });
 
-  test("BotID-checks code sign-in always and sign-in emails only while codes are on", async () => {
+  test("BotID-checks magic-link sends regardless of the flag and code sign-in", async () => {
     const checks: VerifyHumanInput[] = [];
     const bot = (input: VerifyHumanInput) =>
       Effect.suspend(() => {
         checks.push(input);
         return Effect.fail(
-          new BotDetectedError({ message: "Automated request detected" })
+          new BotDetectedError({
+            message: "Automated request detected",
+            reason: "unverified_bot",
+          })
         );
       });
-    const sentLinks: CapturedMagicLink[] = [];
-    const off = makeMemoryTestAuth({ sentLinks, verifyHuman: bot });
-    const on = makeTestAuth({
-      database: memoryAdapter(off.store),
-      sentLinks,
+    const offSentLinks: CapturedMagicLink[] = [];
+    const onSentLinks: CapturedMagicLink[] = [];
+    const off = makeMemoryTestAuth({
+      sentLinks: offSentLinks,
+      verifyHuman: bot,
+    });
+    const on = makeMemoryTestAuth({
+      sentLinks: onSentLinks,
       verifyHuman: bot,
       isSignInCodeEnabled: async () => true,
     });
-    const email = uniqueEmail("code-bot");
 
-    const linkOnly = await sendSignInEmail(off.auth, email);
-    expect(linkOnly.status).toBe(200);
-    expect(checks).toHaveLength(0);
+    const blockedLinkOnly = await sendSignInEmail(
+      off.auth,
+      uniqueEmail("code-bot-off")
+    );
+    expect(blockedLinkOnly.status).toBe(403);
+    expect(await errorCode(blockedLinkOnly)).toBe("BOT_DETECTED");
+    expect(offSentLinks).toHaveLength(0);
 
-    const blockedSend = await sendSignInEmail(on, email);
+    const blockedSend = await sendSignInEmail(
+      on.auth,
+      uniqueEmail("code-bot-on")
+    );
     expect(blockedSend.status).toBe(403);
     expect(await errorCode(blockedSend)).toBe("BOT_DETECTED");
-    expect(sentLinks).toHaveLength(1);
+    expect(onSentLinks).toHaveLength(0);
 
-    const blockedSignIn = await signInWithCode(off.auth, email, "123456");
+    const blockedSignIn = await signInWithCode(
+      off.auth,
+      uniqueEmail("code-bot-sign-in"),
+      "123456"
+    );
     expect(blockedSignIn.status).toBe(403);
     expect(await errorCode(blockedSignIn)).toBe("BOT_DETECTED");
 
     expect(checks).toEqual([
-      { verificationFailurePolicy: "allow" },
-      { verificationFailurePolicy: "allow" },
+      expectedSignInBotCheck,
+      expectedSignInBotCheck,
+      expectedSignInBotCheck,
     ]);
   });
 });
@@ -773,19 +795,33 @@ describe.skipIf(!testDatabase)(
       expect(await userIdForEmail(email.toLowerCase())).toBeUndefined();
     });
 
-    test("caps sign-in emails per address per rolling hour while codes are on", async () => {
+    test("caps sign-in emails per address only while codes are on", async () => {
       const sentLinks: CapturedMagicLink[] = [];
-      const auth = makeCodeAuth(sentLinks);
-      const email = uniqueEmail("code-cap");
+      const checks: VerifyHumanInput[] = [];
+      const auth = makeTestAuth({
+        sentLinks,
+        isSignInCodeEnabled: async () => true,
+        verifyHuman: (input) =>
+          Effect.sync(() => {
+            checks.push(input);
+          }),
+      });
+      const email = uniqueEmail("code-cap-on");
 
-      for (let send = 0; send < 5; send += 1) {
+      for (let send = 0; send < signInEmailLimit.max; send += 1) {
         const accepted = await sendSignInEmail(auth, email);
         expect(accepted.status).toBe(200);
       }
       const capped = await sendSignInEmail(auth, email.toUpperCase());
       expect(capped.status).toBe(429);
       expect(await errorCode(capped)).toBe("SIGN_IN_EMAIL_LIMIT_REACHED");
-      expect(sentLinks).toHaveLength(5);
+      expect(sentLinks).toHaveLength(signInEmailLimit.max);
+      expect(checks).toEqual(
+        Array.from(
+          { length: signInEmailLimit.max + 1 },
+          () => expectedSignInBotCheck
+        )
+      );
 
       // Rejected sends don't extend the window; aged-out sends free it.
       await testDatabase!.pool.query(
@@ -794,11 +830,33 @@ describe.skipIf(!testDatabase)(
         [`sign-in-email-${await digestVerificationKey(email.toLowerCase())}`]
       );
       expect((await sendSignInEmail(auth, email)).status).toBe(200);
+      expect(checks).toHaveLength(signInEmailLimit.max + 2);
 
-      const linkOnly = makeTestAuth({ sentLinks });
-      for (let send = 0; send < 6; send += 1) {
-        expect((await sendSignInEmail(linkOnly, email)).status).toBe(200);
+      const linkOnlySentLinks: CapturedMagicLink[] = [];
+      const linkOnlyChecks: VerifyHumanInput[] = [];
+      const linkOnly = makeTestAuth({
+        sentLinks: linkOnlySentLinks,
+        isSignInCodeEnabled: async () => false,
+        verifyHuman: (input) =>
+          Effect.sync(() => {
+            linkOnlyChecks.push(input);
+          }),
+      });
+      // Counted, these sends would push the same address past its cap.
+      for (let send = 0; send <= signInEmailLimit.max; send += 1) {
+        const response = await sendSignInEmail(linkOnly, email);
+        expect(response.status).toBe(200);
+        expect(await errorCode(response)).not.toBe(
+          "SIGN_IN_EMAIL_LIMIT_REACHED"
+        );
       }
+      expect(linkOnlySentLinks).toHaveLength(signInEmailLimit.max + 1);
+      expect(linkOnlyChecks).toEqual(
+        Array.from(
+          { length: signInEmailLimit.max + 1 },
+          () => expectedSignInBotCheck
+        )
+      );
     });
 
     test("a code sign-in satisfies the fresh session that deletion requires", async () => {
