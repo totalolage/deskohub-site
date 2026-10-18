@@ -49,6 +49,7 @@ const getLegalEvidenceEventRecord = (
   acceptedAt: Temporal.Instant.from(parsed.evidence.acceptedAt),
   locale: parsed.evidence.locale,
   source: parsed.evidence.source,
+  acknowledgements: parsed.evidence.acknowledgements ?? {},
 });
 
 export class LegalEvidenceEventRepository extends Context.Service<

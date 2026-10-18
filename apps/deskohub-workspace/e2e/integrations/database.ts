@@ -43,6 +43,7 @@ import type {
   PaymentAttemptId,
   StoredWebhookEventId,
 } from "@/features/checkout/checkout-identifiers";
+import type { LegalEvidenceAcknowledgements } from "@/features/checkout/legal-evidence";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type { VoucherId } from "@/features/discounts/persistence-contracts";
@@ -1811,6 +1812,7 @@ const assertLegalEvidence = (
       db
         .select({
           accepted: legalEvidenceEvents.accepted,
+          acknowledgements: legalEvidenceEvents.acknowledgements,
           document_key: legalEvidenceEvents.documentKey,
           hash_algorithm: legalEvidenceEvents.hashAlgorithm,
           locale: legalEvidenceEvents.locale,
@@ -1828,6 +1830,7 @@ const assertLegalEvidence = (
 export const assertLegalEvidenceRows = (
   rows: readonly {
     readonly accepted: boolean;
+    readonly acknowledgements: LegalEvidenceAcknowledgements | null;
     readonly document_key: string;
     readonly hash_algorithm: string;
     readonly locale: string;
@@ -1842,6 +1845,10 @@ export const assertLegalEvidenceRows = (
 
   for (const row of rows) {
     assert(row.accepted, `legal evidence ${row.document_key} was not accepted`);
+    assert(
+      row.acknowledgements !== null,
+      `legal evidence ${row.document_key} acknowledgements were not recorded`
+    );
     assert(
       row.hash_algorithm === "sha256",
       "legal evidence hash algorithm mismatch"
