@@ -9,6 +9,7 @@ import {
   type ExternalAPIError,
   getCustomerDisplayName,
   type NetworkError,
+  readInIdFilterBatches,
   type ValidationError,
 } from "@deskohub/dotypos";
 import type {
@@ -39,14 +40,7 @@ import {
   sum,
 } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import {
-  Context,
-  Effect,
-  Array as EffectArray,
-  Layer,
-  Option,
-  Schema,
-} from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import { unstable_rethrow } from "next/navigation";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -144,7 +138,6 @@ import type { AdministrationReservationTimelineEvent } from "./reservation-timel
 const reservationPageSize = 24;
 const bookingPageSize = 24;
 const customerPageSize = 24;
-const providerIdBatchSize = 50;
 const customerReservationPageSize = 10;
 const customerActivityReservationLimit = 24;
 const customerActivityTransactionLimit = 50;
@@ -1390,32 +1383,30 @@ export class AdministrationService extends Context.Service<
 
       const loadCustomers = Effect.fn("AdministrationService.loadCustomers")(
         function* (ids: readonly DotyposCustomerId[]) {
-          const uniqueIds = [...new Set(ids)];
           yield* Effect.annotateCurrentSpan({
-            uniqueCustomerCount: uniqueIds.length,
+            uniqueCustomerCount: new Set(ids).size,
           });
-          const batches = yield* Effect.all(
-            EffectArray.chunksOf(uniqueIds, providerIdBatchSize).map(
-              (batchIds) =>
-                dotypos.getCustomers({ ids: batchIds }).pipe(
-                  Effect.map((customers) => ({
-                    customers,
-                    ids: batchIds,
-                  })),
-                  Effect.catch((cause) => {
-                    unstable_rethrow(cause);
-                    return Effect.logWarning(
-                      "Batch customer details unavailable",
-                      { cause }
-                    ).pipe(
-                      Effect.as({
-                        customers: [] as const,
-                        ids: batchIds,
-                      })
-                    );
-                  })
-                )
-            ),
+          const batches = yield* readInIdFilterBatches(
+            ids,
+            (batchIds) =>
+              dotypos.getCustomers({ ids: batchIds }).pipe(
+                Effect.map((customers) => ({
+                  customers,
+                  ids: batchIds,
+                })),
+                Effect.catch((cause) => {
+                  unstable_rethrow(cause);
+                  return Effect.logWarning(
+                    "Batch customer details unavailable",
+                    { cause }
+                  ).pipe(
+                    Effect.as({
+                      customers: [] as const,
+                      ids: batchIds,
+                    })
+                  );
+                })
+              ),
             { concurrency: 3 }
           );
           const customersById = indexCustomersById(

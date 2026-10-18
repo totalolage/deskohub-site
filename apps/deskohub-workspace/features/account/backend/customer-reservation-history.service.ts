@@ -6,11 +6,12 @@ import {
   type ExternalAPIError,
   getCustomerDisplayName,
   type NetworkError,
+  readInIdFilterBatches,
   type ValidationError,
 } from "@deskohub/dotypos";
 import { desc, eq, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Array as EffectArray, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceReservations } from "@/db/schema";
@@ -35,9 +36,6 @@ import {
   type ReservationAuthor,
   ReservationAuthorDirectory,
 } from "./reservation-author-directory.service";
-
-/** How many ids one Dotypos `id|in|` filter carries, keeping its URL short. */
-const providerIdBatchSize = 50;
 
 type CustomerReservationHistoryError =
   | EffectDrizzleQueryError
@@ -177,6 +175,76 @@ const toReservationSummary = (
   status: getReservationStatus(reservation, row),
 });
 
+/** The provider reservations and authors the account history describes. */
+type ReservationSources = {
+  readonly own: readonly DotyposReservation[];
+  readonly bookedForOthers: readonly DotyposReservation[];
+  readonly authors: ReadonlyMap<CustomerAccountId, ReservationAuthor>;
+};
+
+type HistoryEntry = {
+  readonly reservation: DotyposReservation;
+  readonly row: ReservationRow | undefined;
+  readonly relation: PartyRelation | undefined;
+};
+
+const isBookedForOtherCustomer = (
+  account: LinkedCustomerAccount,
+  row: ReservationRow
+) => row.dotyposCustomerId !== account.dotyposCustomerId;
+
+/**
+ * Pairs every provider reservation, newest start first, with its local row
+ * and the row's other party.
+ */
+const relateReservations = ({
+  account,
+  rows,
+  sources,
+}: {
+  readonly account: LinkedCustomerAccount;
+  readonly rows: readonly ReservationRow[];
+  readonly sources: ReservationSources;
+}): readonly HistoryEntry[] => {
+  const rowsByReservationId = new Map(
+    rows.flatMap((row) =>
+      row.dotyposReservationId ? [[row.dotyposReservationId, row] as const] : []
+    )
+  );
+  return mergeByStartDescending(sources.own, sources.bookedForOthers).map(
+    (reservation) => {
+      const row = reservation.id
+        ? rowsByReservationId.get(reservation.id)
+        : undefined;
+      return {
+        reservation,
+        row,
+        relation: row && getPartyRelation(account, row, sources.authors),
+      };
+    }
+  );
+};
+
+const toReservationHistory = ({
+  entries,
+  names,
+}: {
+  readonly entries: readonly HistoryEntry[];
+  readonly names: ReadonlyMap<DotyposCustomerId, string>;
+}): CustomerReservationHistory => ({
+  kind: "available",
+  groups: groupCustomerReservations(
+    entries.map(({ reservation, row, relation }, index) =>
+      toReservationSummary(
+        reservation,
+        row,
+        relation && toReservationParty(relation, names),
+        index
+      )
+    )
+  ),
+});
+
 interface ICustomerReservationHistoryService {
   readonly load: (
     account: LinkedCustomerAccount
@@ -203,6 +271,46 @@ export class CustomerReservationHistoryService extends Context.Service<
           Effect.annotateLogs({ code })
         );
 
+      /**
+       * The account's own customer's reservations, and the ones the account
+       * booked for other customers.
+       */
+      const selectReservationRows = ({
+        account,
+      }: {
+        readonly account: LinkedCustomerAccount;
+      }) =>
+        db
+          .select({
+            id: workspaceReservations.id,
+            dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+            authorAccountId: workspaceReservations.authorAccountId,
+            dotyposReservationId: workspaceReservations.dotyposReservationId,
+            reservationDetails: workspaceReservations.reservationDetails,
+            reservationState: workspaceReservations.reservationState,
+            fulfillmentState: workspaceReservations.fulfillmentState,
+          })
+          .from(workspaceReservations)
+          .where(
+            or(
+              eq(
+                workspaceReservations.dotyposCustomerId,
+                account.dotyposCustomerId
+              ),
+              eq(workspaceReservations.authorAccountId, account.accountId)
+            )
+          )
+          .orderBy(desc(workspaceReservations.createdAt));
+
+      const listBookedForOthers = (rows: readonly ReservationRow[]) =>
+        readInIdFilterBatches(
+          rows.flatMap((row) =>
+            row.dotyposReservationId ? [row.dotyposReservationId] : []
+          ),
+          (ids) =>
+            dotypos.listReservations({ ids, order: "startDateDescending" })
+        ).pipe(Effect.map((batches) => batches.flat()));
+
       // Names only label a reservation, so a failed read leaves the party
       // unnamed instead of failing the history.
       const describeAuthors = (rows: readonly ReservationRow[]) =>
@@ -221,12 +329,41 @@ export class CustomerReservationHistoryService extends Context.Service<
             )
           );
 
-      const readCustomerNames = (ids: readonly DotyposCustomerId[]) =>
+      const readReservationSources = ({
+        account,
+        rows,
+      }: {
+        readonly account: LinkedCustomerAccount;
+        readonly rows: readonly ReservationRow[];
+      }): Effect.Effect<ReservationSources, CustomerReservationHistoryError> =>
         Effect.all(
-          EffectArray.chunksOf([...new Set(ids)], providerIdBatchSize).map(
-            (batchIds) => dotypos.getCustomers({ ids: batchIds })
-          ),
+          {
+            own: dotypos.listReservations({
+              customerId: account.dotyposCustomerId,
+              order: "startDateDescending",
+            }),
+            bookedForOthers: listBookedForOthers(
+              rows.filter((row) => isBookedForOtherCustomer(account, row))
+            ),
+            authors: describeAuthors(
+              rows.filter(
+                (row) =>
+                  !isBookedForOtherCustomer(account, row) &&
+                  row.authorAccountId !== account.accountId
+              )
+            ),
+          },
           { concurrency: "inherit" }
+        );
+
+      const readPartyNames = ({
+        entries,
+      }: {
+        readonly entries: readonly HistoryEntry[];
+      }) =>
+        readInIdFilterBatches(
+          entries.flatMap(({ relation }) => getNamedCustomerId(relation) ?? []),
+          (ids) => dotypos.getCustomers({ ids })
         ).pipe(
           Effect.map(
             (batches) =>
@@ -245,107 +382,16 @@ export class CustomerReservationHistoryService extends Context.Service<
           Effect.orElseSucceed(() => new Map<DotyposCustomerId, string>())
         );
 
-      const listBookedForOthers = (rows: readonly ReservationRow[]) =>
-        Effect.all(
-          EffectArray.chunksOf(
-            rows.flatMap((row) =>
-              row.dotyposReservationId ? [row.dotyposReservationId] : []
-            ),
-            providerIdBatchSize
-          ).map((ids) =>
-            dotypos.listReservations({ ids, order: "startDateDescending" })
-          ),
-          { concurrency: "inherit" }
-        ).pipe(Effect.map((batches) => batches.flat()));
-
-      const load = Effect.fn("CustomerReservationHistoryService.load")(
-        function* (account: LinkedCustomerAccount) {
-          yield* requireAccountActivity(links, account.accountId);
-
-          // The account's own customer's reservations, and the ones the
-          // account booked for other customers.
-          const rows = yield* db
-            .select({
-              id: workspaceReservations.id,
-              dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-              authorAccountId: workspaceReservations.authorAccountId,
-              dotyposReservationId: workspaceReservations.dotyposReservationId,
-              reservationDetails: workspaceReservations.reservationDetails,
-              reservationState: workspaceReservations.reservationState,
-              fulfillmentState: workspaceReservations.fulfillmentState,
-            })
-            .from(workspaceReservations)
-            .where(
-              or(
-                eq(
-                  workspaceReservations.dotyposCustomerId,
-                  account.dotyposCustomerId
-                ),
-                eq(workspaceReservations.authorAccountId, account.accountId)
-              )
-            )
-            .orderBy(desc(workspaceReservations.createdAt));
-          const [ownReservations, bookedForOthers, authors] = yield* Effect.all(
-            [
-              dotypos.listReservations({
-                customerId: account.dotyposCustomerId,
-                order: "startDateDescending",
-              }),
-              listBookedForOthers(
-                rows.filter(
-                  (row) => row.dotyposCustomerId !== account.dotyposCustomerId
-                )
-              ),
-              describeAuthors(
-                rows.filter(
-                  (row) =>
-                    row.dotyposCustomerId === account.dotyposCustomerId &&
-                    row.authorAccountId !== account.accountId
-                )
-              ),
-            ],
-            { concurrency: "inherit" }
-          );
-          const rowsByReservationId = new Map(
-            rows.flatMap((row) =>
-              row.dotyposReservationId
-                ? [[row.dotyposReservationId, row] as const]
-                : []
-            )
-          );
-          const entries = mergeByStartDescending(
-            ownReservations,
-            bookedForOthers
-          ).map((reservation) => {
-            const row = reservation.id
-              ? rowsByReservationId.get(reservation.id)
-              : undefined;
-            return {
-              reservation,
-              row,
-              relation: row && getPartyRelation(account, row, authors),
-            };
-          });
-          const names = yield* readCustomerNames(
-            entries.flatMap(
-              ({ relation }) => getNamedCustomerId(relation) ?? []
-            )
-          );
-          const summaries = entries.map(
-            ({ reservation, row, relation }, index) =>
-              toReservationSummary(
-                reservation,
-                row,
-                relation && toReservationParty(relation, names),
-                index
-              )
-          );
-          return {
-            kind: "available",
-            groups: groupCustomerReservations(summaries),
-          } as const;
-        }
-      );
+      const load = (account: LinkedCustomerAccount) =>
+        Effect.succeed({ account }).pipe(
+          Effect.tap(() => requireAccountActivity(links, account.accountId)),
+          Effect.bind("rows", selectReservationRows),
+          Effect.bind("sources", readReservationSources),
+          Effect.let("entries", relateReservations),
+          Effect.bind("names", readPartyNames),
+          Effect.map(toReservationHistory),
+          Effect.withSpan("CustomerReservationHistoryService.load")
+        );
 
       return { load } satisfies ICustomerReservationHistoryService;
     })

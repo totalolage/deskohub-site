@@ -30,7 +30,11 @@ const accessError = (
     ? new CustomerAccountAccessError({ reason, linkReason })
     : new CustomerAccountAccessError({ reason });
 
-const requireVerifiedIdentity = (
+/**
+ * The signed-in session's identity, or a failure when no one is signed in or
+ * the account awaits deletion.
+ */
+export const requireVerifiedIdentity = (
   user: CustomerAccountSession | null
 ): Effect.Effect<CustomerAccountSession, CustomerAccountAccessError> => {
   if (!user) return Effect.fail(accessError("unauthenticated"));

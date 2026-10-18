@@ -40,6 +40,7 @@ const agentPageRoutes = {
   "/[locale]/email-preview/contact-business": true,
   "/[locale]/email-preview/contact-confirmation": true,
   "/[locale]/email-preview/customer-reservation": true,
+  "/[locale]/email-preview/reservation-author": true,
   "/[locale]/email-preview/reservation-notification": true,
   "/[locale]/faq": true,
   "/[locale]/gallery": true,

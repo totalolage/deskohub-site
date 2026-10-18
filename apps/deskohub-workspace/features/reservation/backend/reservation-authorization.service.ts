@@ -11,11 +11,35 @@ import {
 import { openReservationAccessToken } from "./reservation-access-token";
 import { WorkspaceReservationRepository } from "./workspace-reservation.repository";
 
+/** What a visitor may see of a reservation. */
+type ReservationPermission = "view-status" | "view-access-code";
+
+/**
+ * Who may see what. The customer's emailed capability links, the access
+ * cookie, and the account linked to the reservation's customer see
+ * everything. The author's session sees the status only, so the door access
+ * code stays with the customer the reservation was booked for.
+ */
+const reservationAccessPolicy = {
+  capability: ["view-status", "view-access-code"],
+  customer: ["view-status", "view-access-code"],
+  author: ["view-status"],
+} as const satisfies Record<string, readonly ReservationPermission[]>;
+
+const grants = (
+  grant: keyof typeof reservationAccessPolicy,
+  permission: ReservationPermission
+) =>
+  (reservationAccessPolicy[grant] as readonly ReservationPermission[]).includes(
+    permission
+  );
+
 export type ReservationAuthorizationInput = {
   readonly accessCookie?: string;
   readonly accessToken?: ReservationAccessToken;
   readonly locale: Locale;
   readonly orderId: WorkspaceReservationId;
+  readonly permission: ReservationPermission;
 };
 
 export interface IReservationAuthorizationService {
@@ -66,18 +90,34 @@ export class ReservationAuthorizationService extends Context.Service<
       const isAuthorized = Effect.fn(
         "ReservationAuthorizationService.isAuthorized"
       )(function* (input: ReservationAuthorizationInput) {
-        if (yield* capabilityIsValid(input)) return true;
+        if (
+          grants("capability", input.permission) &&
+          (yield* capabilityIsValid(input))
+        ) {
+          return true;
+        }
 
-        const account = yield* ownership.resolve.pipe(Effect.result);
-        if (Result.isFailure(account)) return false;
+        // Both account grants need an active signed-in account; only the
+        // customer grant also needs the account's linked Dotypos customer.
+        const accountId = yield* ownership.activeAccountId.pipe(Effect.result);
+        if (Result.isFailure(accountId)) return false;
 
         const reservation = yield* reservations
           .findById(input.orderId)
           .pipe(Effect.result);
         if (Result.isFailure(reservation) || !reservation.success) return false;
 
+        if (
+          grants("author", input.permission) &&
+          reservation.success.authorAccountId === accountId.success
+        ) {
+          return true;
+        }
+        if (!grants("customer", input.permission)) return false;
+
+        const account = yield* ownership.resolve.pipe(Effect.result);
         return (
-          reservation.success.authorAccountId === account.success.accountId ||
+          Result.isSuccess(account) &&
           account.success.dotyposCustomerId ===
             (reservation.success.dotyposCustomerId as DotyposCustomerId)
         );

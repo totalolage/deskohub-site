@@ -81,4 +81,8 @@ export {
   DotyposTableSchema,
 } from "./types";
 export { getCustomerDisplayName } from "./utils/customer-name";
+export {
+  dotyposIdFilterBatchSize,
+  readInIdFilterBatches,
+} from "./utils/id-filter-batches";
 export { normalizePhoneNumber } from "./utils/phone-formatting";

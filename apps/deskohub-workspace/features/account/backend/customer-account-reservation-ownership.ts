@@ -1,13 +1,30 @@
 import { Context, Effect, Layer } from "effect";
 import type {
   CustomerAccountAccessError,
+  CustomerAccountId,
   LinkedCustomerAccount,
 } from "../customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { CustomerAccountResolver } from "./customer-account-resolver.service";
+import {
+  CustomerAccountResolver,
+  requireVerifiedIdentity,
+} from "./customer-account-resolver.service";
+import { CustomerAuthentication } from "./customer-authentication.service";
 
 interface ICustomerAccountReservationOwnership {
+  /**
+   * The signed-in account, verified active, without requiring a linked
+   * Dotypos customer. It identifies the account that authored a reservation.
+   */
+  readonly activeAccountId: Effect.Effect<
+    CustomerAccountId,
+    CustomerAccountAccessError
+  >;
+  /**
+   * The signed-in account with its linked Dotypos customer, verified active.
+   * It identifies the customer a reservation was booked for.
+   */
   readonly resolve: Effect.Effect<
     LinkedCustomerAccount,
     CustomerAccountAccessError
@@ -21,8 +38,15 @@ export class CustomerAccountReservationOwnership extends Context.Service<
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
+      const authentication = yield* CustomerAuthentication;
       const resolver = yield* CustomerAccountResolver;
       const links = yield* CustomerAccountLinkRepository;
+
+      const activeAccountId = authentication.currentUser.pipe(
+        Effect.flatMap(requireVerifiedIdentity),
+        Effect.map((identity) => identity.accountId),
+        Effect.tap((accountId) => requireAccountActivity(links, accountId))
+      );
 
       const resolve = Effect.gen(function* () {
         const account = yield* resolver.resolve;
@@ -30,13 +54,17 @@ export class CustomerAccountReservationOwnership extends Context.Service<
         return account;
       });
 
-      return { resolve } satisfies ICustomerAccountReservationOwnership;
+      return {
+        activeAccountId,
+        resolve,
+      } satisfies ICustomerAccountReservationOwnership;
     })
   );
 
   static Live = this.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
+        CustomerAuthentication.Default,
         CustomerAccountResolver.Live,
         CustomerAccountLinkRepository.Live
       )
