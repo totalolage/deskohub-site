@@ -55,6 +55,7 @@ export const POST = defineWorkspaceRoute(
   {
     operation: "nexiWebhook",
     cancellation: "continue-after-disconnect",
+    caller: "service",
   },
   (request) =>
     processWebhookRequest(request).pipe(

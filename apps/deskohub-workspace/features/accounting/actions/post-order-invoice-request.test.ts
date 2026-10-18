@@ -40,6 +40,7 @@ test("verifies the request with the customer-agent allow list before resending",
   expect(verifyHuman).toHaveBeenCalledWith({
     verificationFailurePolicy: "deny",
     verifiedBots: { allow: customerAgentNames },
+    callSite: "accounting.manage-post-order-invoice",
   });
   expect(resendPostOrderInvoice).toHaveBeenCalledTimes(1);
 });

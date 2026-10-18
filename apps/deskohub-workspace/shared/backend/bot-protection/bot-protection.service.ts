@@ -3,6 +3,10 @@ import "server-only";
 import { checkBotId } from "botid/server";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { isWorkspaceBotIdEnforcedAtRuntime } from "./bot-protection.runtime";
+import {
+  type BotProtectionCallSite,
+  recordBotProtectionRejection,
+} from "./bot-protection-rejection";
 
 /**
  * Which Vercel-verified bots a call site lets through, by `verifiedBotName`.
@@ -13,6 +17,8 @@ export type VerifiedBotPolicy = { readonly allow: readonly string[] } | "deny";
 export interface VerifyHumanInput {
   readonly verificationFailurePolicy: "allow" | "deny";
   readonly verifiedBots: VerifiedBotPolicy;
+  /** Where the request was screened, so rejections count per call site. */
+  readonly callSite: BotProtectionCallSite;
 }
 
 interface IBotProtectionService {
@@ -125,7 +131,13 @@ const verifyHuman = Effect.fn("BotProtectionService.verifyHuman")(
         screenVerification({
           verification,
           verifiedBots: input.verifiedBots,
-        })
+        }).pipe(
+          Effect.tapError(() =>
+            verification === null
+              ? Effect.void
+              : recordBotProtectionRejection(input.callSite, verification)
+          )
+        )
       ),
       Effect.when(Effect.sync(isWorkspaceBotIdEnforcedAtRuntime)),
       Effect.asVoid

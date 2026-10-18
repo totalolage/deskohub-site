@@ -26,6 +26,7 @@ export const POST = defineWorkspaceRoute(
   {
     operation: "emailCampaignUnsubscribe",
     cancellation: "continue-after-disconnect",
+    caller: "client",
   },
   (request) =>
     CampaignUnsubscribeService.pipe(
@@ -60,6 +61,7 @@ export const GET = defineWorkspaceRoute(
   {
     operation: "emailCampaignPreferences",
     cancellation: "interrupt-on-disconnect",
+    caller: "client",
   },
   (request) =>
     CampaignUnsubscribeService.pipe(

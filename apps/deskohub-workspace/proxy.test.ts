@@ -9,6 +9,7 @@ import { createReservationAccessToken } from "@/features/reservation/backend/res
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationAccessTokenQueryParam } from "@/features/reservation/reservation-access-token";
 import { runCommand } from "@/scripts/shared/command";
+import type { AgentPageRequest } from "@/shared/backend/agent-traffic/agent-page-request";
 
 let administrationAccessResult:
   | "administrator"
@@ -28,12 +29,19 @@ mock.module(
   "./features/administrators/server/administration-request-access.server",
   () => ({ readAdministrationRequestAccess })
 );
+const scheduledAgentPageRequests: AgentPageRequest[] = [];
+mock.module("./shared/backend/agent-traffic/agent-page-request", () => ({
+  scheduleAgentPageRequest: (pageRequest: AgentPageRequest) => {
+    scheduledAgentPageRequests.push(pageRequest);
+  },
+}));
 const { config, proxy } = await import("./proxy");
 
 beforeEach(() => {
   administrationAccessResult = "administrator";
   administrationAccessFailure = undefined;
   administrationRequestHeaders.length = 0;
+  scheduledAgentPageRequests.length = 0;
 });
 
 // A signed-in request reads the saved language preference, whose logs share
@@ -981,5 +989,93 @@ describe("shared referral code hand-off", () => {
       `${referralCodeCookieName}=RFL12345`
     );
     expect(storedCookieOf(response)).toBeUndefined();
+  });
+});
+
+describe("agent traffic", () => {
+  const chatGptUser =
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot";
+  const chromeOnMac =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
+
+  test("records an agent page load once", async () => {
+    const response = await proxy(
+      new NextRequest(
+        "https://workspace.example/en-US/reservation/status/019edbcf-5026-7ecc-821b-eda46998eaaa?statusToken=synthetic",
+        { headers: { "user-agent": chatGptUser, "sec-fetch-dest": "document" } }
+      )
+    );
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(scheduledAgentPageRequests).toEqual([
+      {
+        traffic: { category: "ai_user_agent", name: "chatgpt" },
+        locale: "en-US",
+        pathname:
+          "/en-US/reservation/status/019edbcf-5026-7ecc-821b-eda46998eaaa",
+      },
+    ]);
+  });
+
+  test("records nothing for a human page load", async () => {
+    await proxy(
+      new NextRequest("https://workspace.example/en-US/reservation/cowork", {
+        headers: { "user-agent": chromeOnMac, "sec-fetch-dest": "document" },
+      })
+    );
+
+    expect(scheduledAgentPageRequests).toEqual([]);
+  });
+
+  test("ignores a client-sent category on a human page load", async () => {
+    await proxy(
+      new NextRequest("https://workspace.example/en-US/reservation/cowork", {
+        headers: {
+          "user-agent": chromeOnMac,
+          "sec-fetch-dest": "document",
+          "x-deskohub-agent-category": "ai_user_agent",
+          "x-deskohub-agent-name": "claude",
+        },
+      })
+    );
+
+    expect(scheduledAgentPageRequests).toEqual([]);
+  });
+
+  test("records no page load for an agent's Server Action", async () => {
+    await proxy(
+      new NextRequest("https://workspace.example/en-US/checkout/pay", {
+        method: "POST",
+        headers: { "next-action": "action-id", "user-agent": chatGptUser },
+      })
+    );
+
+    expect(scheduledAgentPageRequests).toEqual([]);
+  });
+
+  test.each([
+    ["a router request", { rsc: "1" }],
+    ["a router prefetch", { "next-router-prefetch": "1" }],
+    ["a speculative prefetch", { "sec-purpose": "prefetch" }],
+    ["a subresource load", { "sec-fetch-dest": "image" }],
+  ])("records nothing for %s", async (_, headers) => {
+    await proxy(
+      new NextRequest("https://workspace.example/en-US/reservation/cowork", {
+        headers: { "user-agent": chatGptUser, ...headers },
+      })
+    );
+
+    expect(scheduledAgentPageRequests).toEqual([]);
+  });
+
+  test("records nothing for a redirect to the localized page", async () => {
+    const response = await proxy(
+      new NextRequest("https://workspace.example/reservation/cowork", {
+        headers: { "user-agent": chatGptUser, "accept-language": "en-US" },
+      })
+    );
+
+    expect(response.status).toBe(307);
+    expect(scheduledAgentPageRequests).toEqual([]);
   });
 });
