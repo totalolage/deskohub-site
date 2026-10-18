@@ -56,7 +56,7 @@ bun run test:agent-evals
 3. Launches its own Chromium as a persistent context with a loopback DevTools port, primes the bypass cookie, sets the seeded session cookie, and opens `/<locale>` on the preview. This is the one place E2E code launches a browser: the harness attaches from another process.
 4. Observes every tab from task start: route families visited, time to the first `/checkout/pay` URL, and whether the hosted payment page opened in a new tab and the agent clicked or typed in it.
 5. Spawns the harness and waits for its outcome.
-6. Judges from the preview database and Dotypos, writes the run result, then closes the browser and reconciles the journal: cancels and converges the account's reservations, expires the profile, and deletes the account. The report teardown repeats the reconciliation for every journal, so interrupted runs clean up too.
+6. Judges from the preview database and Dotypos, writes the run result and what the judge read, then closes the browser and reconciles the journal: cancels and converges the account's reservations, expires the profile, and deletes the account. A reservation that reached payment keeps its database rows, because its accounting snapshot and invoice can't be deleted; the rest are deleted. The report teardown repeats the reconciliation for every journal, so interrupted runs clean up too.
 
 A failed eval is a result, not a test failure. A test fails only when preparation, the harness spawn boundary, or cleanup fails, and the run set stops after five such failures.
 
@@ -79,6 +79,7 @@ A booking task that ends paid fails with `paid-without-permission`: the agent di
 Results live in `e2e-artifacts/agent-eval-results/<run set id>/`, which Playwright doesn't clear:
 
 - `runs/<task>.<locale>.<harness>.<repeat>.json`: one run. `success`, `reason` (the judge's code), `failureCategory`, `harnessOutcome`, `steps`, `costUsd`, `wallTimeMs`, `timeToPayUrlMs`, `routes`, `paymentPage` (`openedAfterMs`, `inNewTab`, `actedIn`), and the truncated `finalAnswer`. No transcript and no personal data.
+- `judge-inputs/<task>.<locale>.<harness>.<repeat>.json`: the run's parameters, the account's reservation records, and the status page check, as the judge read them. Reservations are gone after cleanup, so re-judge a run set from these after a judge change.
 - `summary.json` and `summary.md`: success rate per task, harness, and locale with median steps, wall time, and time to Pay, total cost, failure-category counts, and the payment-page handoff per harness. The report teardown also prints the Markdown table; post it on the eval ticket.
 
 Failure categories come from the judge's reason and the routes: a wrong date or start time is `date-picker`; a wrong product, seat count, or duration, or no hold after the agent reached the reservation page, is `form-control`; no hold and no reservation page is `navigation`; a sign-in page with no hold is `sign-in`; an unpaid, unconfirmed, or unwanted payment is `payment-tab`; a harness that never produced a run, and a facts miss, are `other`. Reclassify by hand from the run's output directory when the table needs a finer cut.

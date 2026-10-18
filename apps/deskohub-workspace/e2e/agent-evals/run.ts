@@ -40,6 +40,7 @@ import {
 import { observeAgentEvalBrowser } from "./observations";
 import { selectAgentEvalTaskParameters } from "./parameters";
 import {
+  readAgentEvalPaymentLedgerReservationIds,
   readAgentEvalReservationIds,
   readAgentEvalReservations,
 } from "./records";
@@ -47,6 +48,7 @@ import type { AgentEvalRunResult } from "./results";
 import {
   type AgentEvalRunSet,
   agentEvalJournalDirectory,
+  writeAgentEvalJudgeInput,
   writeAgentEvalRunResult,
 } from "./run-set";
 import { type AgentEvalTaskId, makeAgentEvalPrompt } from "./tasks";
@@ -126,7 +128,24 @@ export const reconcileAgentEvalRun = Effect.fn("reconcileAgentEvalRun")(
       runId,
       [owner]
     );
-    yield* reconcileWorkspaceE2EAccountJournals(datasourceConfig, prepared);
+    // The journal's reservation ids are the rows reconciliation deletes; its
+    // candidates are the ones it cancels in Dotypos. A reservation that
+    // reached payment is cancelled but keeps its payment ledger rows.
+    const retained = yield* readAgentEvalPaymentLedgerReservationIds(
+      prepared.flatMap((entry) => entry.journal.dotyposReservationIds)
+    );
+    yield* reconcileWorkspaceE2EAccountJournals(
+      datasourceConfig,
+      prepared.map((entry) => ({
+        ...entry,
+        journal: {
+          ...entry.journal,
+          dotyposReservationIds: entry.journal.dotyposReservationIds.filter(
+            (id) => !retained.includes(id)
+          ),
+        },
+      }))
+    );
   }
 );
 
@@ -300,6 +319,7 @@ export const runAgentEvalCase = async ({
     await recorder.record({ dotyposReservationIds: reservationIds });
 
     let judgement: AgentEvalJudgement;
+    let judgeInput: unknown = { parameters };
     if (parameters.taskId === "facts") {
       judgement = judgeAgentEvalFacts(harnessRun.response?.finalAnswer ?? "");
     } else {
@@ -311,6 +331,12 @@ export const runAgentEvalCase = async ({
           ? await checkStatusPage(context, observations.statusPageUrl)
           : undefined;
       judgement = judgeAgentEvalReservation(parameters, records, statusPage);
+      // Provider order ids identify a payment; no judge reads them.
+      judgeInput = {
+        parameters,
+        records: records.map(({ orderIds: _orderIds, ...record }) => record),
+        statusPage: statusPage ?? null,
+      };
     }
 
     const result: AgentEvalRunResult = {
@@ -343,6 +369,7 @@ export const runAgentEvalCase = async ({
       wallTimeMs,
     };
     await writeAgentEvalRunResult(result);
+    await writeAgentEvalJudgeInput(result, judgeInput);
     return result;
   } finally {
     try {

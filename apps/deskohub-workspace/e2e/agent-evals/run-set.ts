@@ -72,6 +72,26 @@ export const writeAgentEvalRunResult = async (result: AgentEvalRunResult) => {
   );
 };
 
+/**
+ * What the judge read for one run (its parameters, the account's reservation
+ * records, and the status page check), kept beside the run result so the run
+ * can be judged again after the judges change. Reservations are deleted or
+ * cancelled at cleanup, so this is the only copy.
+ */
+export const writeAgentEvalJudgeInput = async (
+  result: AgentEvalRunResult,
+  judgeInput: unknown
+) => {
+  await writeJsonAtomically(
+    resolve(
+      agentEvalRunSetDirectory(result.runSetId),
+      "judge-inputs",
+      runResultFileName(result)
+    ),
+    judgeInput
+  );
+};
+
 const readDirectoryEntries = async (directory: string) => {
   try {
     return await readdir(directory);

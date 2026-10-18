@@ -80,6 +80,39 @@ export const readAgentEvalReservationIds = Effect.fn(
   ];
 });
 
+/**
+ * The reservations among `dotyposReservationIds` that reached payment. Their
+ * payment attempts carry accounting snapshots and invoices the database
+ * refuses to delete, so cleanup cancels them in Dotypos but keeps their rows.
+ */
+export const readAgentEvalPaymentLedgerReservationIds = Effect.fn(
+  "readAgentEvalPaymentLedgerReservationIds"
+)(function* (dotyposReservationIds: readonly string[]) {
+  if (dotyposReservationIds.length === 0) return [];
+  const { db } = yield* E2EDatabase;
+  const rows = yield* runDatabaseOperation(
+    "read agent eval payment ledger reservation ids",
+    db
+      .selectDistinct({
+        dotyposReservationId: workspaceReservations.dotyposReservationId,
+      })
+      .from(workspaceReservations)
+      .innerJoin(
+        paymentAttempts,
+        eq(paymentAttempts.workspaceReservationId, workspaceReservations.id)
+      )
+      .where(
+        inArray(
+          workspaceReservations.dotyposReservationId,
+          dotyposReservationIds as DotyposReservationId[]
+        )
+      )
+  );
+  return rows.flatMap((row) =>
+    row.dotyposReservationId ? [row.dotyposReservationId as string] : []
+  );
+});
+
 const readProviderReservation = Effect.fn("readProviderReservation")(
   function* (_datasourceConfig: DatasourceConfig, reservationId: string) {
     const dotypos = yield* DotyposService;
