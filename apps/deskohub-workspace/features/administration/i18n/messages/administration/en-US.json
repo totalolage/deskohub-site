@@ -656,5 +656,7 @@
   "administrationReservationTimelineWorkflowCreatedDescription": "Deskohub created the local reservation workflow.",
   "administrationReservationTimelineWorkflowCreatedTitle": "Checkout workflow created",
   "administrationReservationUnavailable": "Unavailable",
-  "administrationTableActions": "Actions"
+  "administrationTableActions": "Actions",
+  "administrationActionTimedOut": "The server took too long to respond. Try again.",
+  "administrationActionFailedUnexpectedly": "Something went wrong on the server. Try again."
 }
