@@ -528,13 +528,28 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
     }
   }
   if (desiredMonitorOption !== null) {
-    let monitorInput;
-    await waitUntil(() => {
-      monitorInput = [...document.querySelectorAll('input[type="radio"]')]
-        .find((candidate) =>
+    const findMonitorInput = () =>
+      [...document.querySelectorAll('input[type="radio"]')].find(
+        (candidate) =>
           candidate instanceof HTMLInputElement &&
           candidate.value === desiredMonitorOption
-        );
+      );
+    // Monitor options render only once the workstation add-on is on; a date
+    // that requires the workstation turns it on by itself.
+    if (!findMonitorInput()) {
+      const workstationSwitch = document.querySelector(
+        '[data-cowork-optional-addon-toggle="workstation"] [role="switch"]'
+      );
+      if (!(workstationSwitch instanceof HTMLElement)) {
+        throw new Error('workstation add-on switch not found');
+      }
+      if (workstationSwitch.getAttribute('aria-checked') !== 'true') {
+        workstationSwitch.click();
+      }
+    }
+    let monitorInput;
+    await waitUntil(() => {
+      monitorInput = findMonitorInput();
       return monitorInput instanceof HTMLInputElement && !monitorInput.disabled;
     }, desiredMonitorOption + ' monitor option was not available');
     const price = document.querySelector(
