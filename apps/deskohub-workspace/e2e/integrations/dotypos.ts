@@ -21,6 +21,7 @@ import {
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,
 } from "@/features/checkout/backend/reservation/workspace-table-selection";
+import { getOfficeReservationSeatCapacity } from "@/features/office/backend/office-reservation-capacity";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -571,6 +572,23 @@ export const loadDotyposCapacityInventory = (
     Effect.provide(getDotyposLayer(config)),
     Effect.mapError((cause) =>
       toWorkspaceE2EError("load aggregate Dotypos capacity inventory", cause)
+    )
+  );
+
+/**
+ * The office seat capacity the reservation page offers: the seats of the one
+ * assignable office table, read the way the page's capacity loader reads them.
+ */
+export const loadDotyposOfficeSeatCapacity = (
+  config: DatasourceConfig
+): Effect.Effect<number, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    return yield* getOfficeReservationSeatCapacity(yield* dotypos.getTables());
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("load Dotypos office seat capacity", cause)
     )
   );
 

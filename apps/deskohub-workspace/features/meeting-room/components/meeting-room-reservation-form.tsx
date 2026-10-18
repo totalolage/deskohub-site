@@ -34,6 +34,7 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
+import { useReservationSelectionUrl } from "@/features/reservation/components/use-reservation-selection-url";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import {
   getMeetingRoomReservationDefaultValues,
@@ -44,6 +45,7 @@ import {
   meetingRoomReservationSchema,
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
+import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,
@@ -116,6 +118,12 @@ export function MeetingRoomReservationForm({
     control: form.control,
     name: ["startDateTime", "duration"],
   });
+  useReservationSelectionUrl(
+    getMeetingRoomReservationSelectionSearchParams({
+      startDateTime: selectedStartDateTime,
+      duration: selectedDurationKey,
+    })
+  );
   const selectedDuration =
     getMeetingRoomReservationDuration(selectedDurationKey);
   const isWholeDaySelected =
