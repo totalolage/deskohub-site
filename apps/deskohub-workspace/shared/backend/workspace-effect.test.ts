@@ -1,5 +1,5 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
-import { Effect } from "effect";
+import { Deferred, Effect } from "effect";
 import { redirect } from "next/navigation";
 import { CENSORED_LOG_VALUE } from "@/shared/utils/log-classification";
 
@@ -54,37 +54,68 @@ describe("Workspace Effect execution", () => {
 });
 
 describe("runWorkspaceEffect", () => {
-  test("keeps the function alive until an unawaited run settles", async () => {
+  /**
+   * Starts `effect` behind a gate under a Vercel request context and
+   * returns the run with the promise it handed to `waitUntil`.
+   */
+  const startGatedRun = async <A, E>(effect: Effect.Effect<A, E, never>) => {
+    const gate = Deferred.makeUnsafe<void>();
+    const { promise: started, resolve } = Promise.withResolvers<void>();
+    const registered: Promise<unknown>[] = [];
     const vercelRequestContext = Symbol.for("@vercel/request-context");
     const previousContext = Reflect.get(globalThis, vercelRequestContext);
-    const registered: Promise<unknown>[] = [];
     Reflect.set(globalThis, vercelRequestContext, {
       get: () => ({
         waitUntil: (promise: Promise<unknown>) => registered.push(promise),
       }),
     });
+
+    try {
+      const run = Effect.sync(resolve).pipe(
+        Effect.andThen(Deferred.await(gate)),
+        Effect.andThen(effect),
+        runWorkspaceEffect("test.background")
+      );
+      await started;
+      return {
+        run,
+        registered,
+        release: () => Deferred.doneUnsafe(gate, Effect.void),
+      };
+    } finally {
+      Reflect.set(globalThis, vercelRequestContext, previousContext);
+    }
+  };
+
+  test("keeps the function alive until a successful run settles", async () => {
+    const { run, registered, release } = await startGatedRun(
+      Effect.succeed("loaded")
+    );
+
+    expect(registered).toHaveLength(1);
+    expect(Bun.peek.status(registered[0])).toBe("pending");
+
+    release();
+    await expect(run).resolves.toBe("loaded");
+    await expect(registered[0]).resolves.toBeUndefined();
+  });
+
+  test("keeps the function alive until a failing run settles, leaving the failure to the caller", async () => {
     const error = spyOn(console, "error").mockImplementation(() => undefined);
 
     try {
-      const succeeded = Effect.succeed("loaded").pipe(
-        runWorkspaceEffect("test.background-success")
-      );
-      const failed = Effect.fail("unavailable").pipe(
-        runWorkspaceEffect("test.background-failure")
+      const { run, registered, release } = await startGatedRun(
+        Effect.fail("unavailable")
       );
 
-      expect(registered).toHaveLength(2);
-      await expect(succeeded).resolves.toBe("loaded");
-      await expect(failed.then(String, () => "rejected")).resolves.toBe(
-        "rejected"
-      );
-      await expect(Promise.all(registered)).resolves.toEqual([
-        undefined,
-        undefined,
-      ]);
+      expect(registered).toHaveLength(1);
+      expect(Bun.peek.status(registered[0])).toBe("pending");
+
+      release();
+      await expect(run).rejects.toBe("unavailable");
+      await expect(registered[0]).resolves.toBeUndefined();
     } finally {
       error.mockRestore();
-      Reflect.set(globalThis, vercelRequestContext, previousContext);
     }
   });
 });
