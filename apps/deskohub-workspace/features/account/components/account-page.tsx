@@ -7,6 +7,7 @@ import { LinkedAccount } from "@/features/account/components/linked-account";
 import { ProfileForm } from "@/features/account/components/profile-form";
 import { ReservationHistory } from "@/features/account/components/reservation-history";
 import { SessionRefresh } from "@/features/account/components/session-refresh";
+import type { CustomerReservationHistory } from "@/features/account/contracts";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
 import { type Locale, m } from "@/features/i18n";
 import type { ReferralCode } from "@/features/referrals/client";
@@ -39,11 +40,7 @@ export function AccountPage({
           profile={state.profile}
           referrals={state.referrals}
           referralsEnabled={state.referralsEnabled}
-          reservationCount={
-            state.history.kind === "available"
-              ? state.history.groups.current.length
-              : undefined
-          }
+          reservationCount={countCurrentReservations(state.history)}
           reservations={
             <ReservationHistory
               copy={getAccountScreenCopy(locale).reservations}
@@ -64,6 +61,10 @@ export function AccountPage({
     </>
   );
 }
+
+/** The current reservations the navigation counts; unknown while unavailable. */
+const countCurrentReservations = (history: CustomerReservationHistory) =>
+  history.kind === "available" ? history.groups.current.length : undefined;
 
 function renderState(
   locale: Locale,
@@ -91,6 +92,18 @@ function renderState(
           email={state.email}
           locale={locale}
           passkeys={state.passkeys}
+          reservationCount={
+            state.history && countCurrentReservations(state.history)
+          }
+          reservations={
+            state.history && (
+              <ReservationHistory
+                copy={getAccountScreenCopy(locale).reservations}
+                history={state.history}
+                locale={locale}
+              />
+            )
+          }
         >
           <CompletionCard
             email={state.email}

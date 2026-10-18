@@ -27,7 +27,6 @@ import { groupCustomerReservations } from "../contracts";
 import type {
   CustomerAccountAccessError,
   CustomerAccountId,
-  LinkedCustomerAccount,
 } from "../customer-account";
 import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
@@ -43,6 +42,16 @@ type CustomerReservationHistoryError =
   | ExternalAPIError
   | NetworkError
   | ValidationError;
+
+/**
+ * The account whose history loads. The history always holds the reservations
+ * the account authored, and the ones of its linked customer once it has one,
+ * so an account that booked before completing its profile still sees them.
+ */
+export type ReservationHistoryAccount = {
+  readonly accountId: CustomerAccountId;
+  readonly dotyposCustomerId?: DotyposCustomerId;
+};
 
 type ReservationRow = {
   readonly id: (typeof workspaceReservations.$inferSelect)["id"];
@@ -113,7 +122,8 @@ const mergeByStartDescending = (
 
 /**
  * What the account history knows about a row's other party. A row for another
- * customer was booked by this account (only those rows are selected), and a
+ * customer, as is every row of an account without a linked customer, was
+ * booked by this account (only those rows are selected), and a
  * row for the account's own customer with a different author was booked by
  * that author. A missing author description means the directory read failed.
  */
@@ -122,7 +132,7 @@ type PartyRelation =
   | { readonly kind: "booked-by"; readonly author: ReservationAuthor | null };
 
 const getPartyRelation = (
-  account: LinkedCustomerAccount,
+  account: ReservationHistoryAccount,
   row: ReservationRow,
   authors: ReadonlyMap<CustomerAccountId, ReservationAuthor>
 ): PartyRelation | undefined => {
@@ -189,7 +199,7 @@ type HistoryEntry = {
 };
 
 const isBookedForOtherCustomer = (
-  account: LinkedCustomerAccount,
+  account: ReservationHistoryAccount,
   row: ReservationRow
 ) => row.dotyposCustomerId !== account.dotyposCustomerId;
 
@@ -202,7 +212,7 @@ const relateReservations = ({
   rows,
   sources,
 }: {
-  readonly account: LinkedCustomerAccount;
+  readonly account: ReservationHistoryAccount;
   readonly rows: readonly ReservationRow[];
   readonly sources: ReservationSources;
 }): readonly HistoryEntry[] => {
@@ -247,7 +257,7 @@ const toReservationHistory = ({
 
 interface ICustomerReservationHistoryService {
   readonly load: (
-    account: LinkedCustomerAccount
+    account: ReservationHistoryAccount
   ) => Effect.Effect<
     CustomerReservationHistory,
     CustomerAccountAccessError | CustomerReservationHistoryError
@@ -272,13 +282,13 @@ export class CustomerReservationHistoryService extends Context.Service<
         );
 
       /**
-       * The account's own customer's reservations, and the ones the account
-       * booked for other customers.
+       * The account's own customer's reservations, when it has one, and the
+       * ones the account booked for other customers.
        */
       const selectReservationRows = ({
         account,
       }: {
-        readonly account: LinkedCustomerAccount;
+        readonly account: ReservationHistoryAccount;
       }) =>
         db
           .select({
@@ -293,10 +303,12 @@ export class CustomerReservationHistoryService extends Context.Service<
           .from(workspaceReservations)
           .where(
             or(
-              eq(
-                workspaceReservations.dotyposCustomerId,
-                account.dotyposCustomerId
-              ),
+              account.dotyposCustomerId === undefined
+                ? undefined
+                : eq(
+                    workspaceReservations.dotyposCustomerId,
+                    account.dotyposCustomerId
+                  ),
               eq(workspaceReservations.authorAccountId, account.accountId)
             )
           )
@@ -333,15 +345,18 @@ export class CustomerReservationHistoryService extends Context.Service<
         account,
         rows,
       }: {
-        readonly account: LinkedCustomerAccount;
+        readonly account: ReservationHistoryAccount;
         readonly rows: readonly ReservationRow[];
       }): Effect.Effect<ReservationSources, CustomerReservationHistoryError> =>
         Effect.all(
           {
-            own: dotypos.listReservations({
-              customerId: account.dotyposCustomerId,
-              order: "startDateDescending",
-            }),
+            own:
+              account.dotyposCustomerId === undefined
+                ? Effect.succeed([])
+                : dotypos.listReservations({
+                    customerId: account.dotyposCustomerId,
+                    order: "startDateDescending",
+                  }),
             bookedForOthers: listBookedForOthers(
               rows.filter((row) => isBookedForOtherCustomer(account, row))
             ),
@@ -382,7 +397,7 @@ export class CustomerReservationHistoryService extends Context.Service<
           Effect.orElseSucceed(() => new Map<DotyposCustomerId, string>())
         );
 
-      const load = (account: LinkedCustomerAccount) =>
+      const load = (account: ReservationHistoryAccount) =>
         Effect.succeed({ account }).pipe(
           Effect.tap(() => requireAccountActivity(links, account.accountId)),
           Effect.bind("rows", selectReservationRows),

@@ -299,6 +299,45 @@ describe("AccountPage states", () => {
     ).toBeTruthy();
   });
 
+  test("shows the reservation an account booked for someone else beside profile completion", async () => {
+    const view = await renderState({
+      kind: "completion-required",
+      referralsEnabled: true,
+      email: adaAddress,
+      history: {
+        kind: "available",
+        groups: {
+          current: [
+            {
+              id: "workspace-reservation-1",
+              workspaceReservationId: "workspace-reservation-1",
+              party: { kind: "booked-for", customerName: "Karla Ukázková" },
+              product: { kind: "meeting-room" },
+              startsAt: "2999-01-01T10:00:00.000Z",
+              endsAt: "2999-01-01T11:00:00.000Z",
+              seats: 4,
+              status: "confirmed",
+            },
+          ],
+          past: [],
+          unavailable: [],
+        },
+      },
+    });
+
+    expect(
+      view.getByText(
+        m.accountReservationBookedFor({ name: "Karla Ukázková" }, en)
+      )
+    ).toBeTruthy();
+    expect(
+      view.getByRole("heading", {
+        level: 2,
+        name: m.accountCompletionTitle({}, en),
+      })
+    ).toBeTruthy();
+  });
+
   test("renders the linked account with profile, reservations, sign out, and deletion", async () => {
     const view = await renderState(linkedState);
     const sectionNavigation = within(

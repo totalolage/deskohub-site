@@ -12,7 +12,10 @@ import {
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
 import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
-import { CustomerReservationHistoryService } from "@/features/account/backend/customer-reservation-history.service";
+import {
+  CustomerReservationHistoryService,
+  type ReservationHistoryAccount,
+} from "@/features/account/backend/customer-reservation-history.service";
 import { isRememberedReferralCodeUsed } from "@/features/account/backend/remembered-referral-code";
 import { recordSignupReferral } from "@/features/account/backend/signup-referral";
 import type {
@@ -71,6 +74,11 @@ type SignedInAccountPageState = SignInMethods &
         readonly referralsEnabled: boolean;
         /** Invitation code to prefill, present only when currently usable. */
         readonly referralCode?: ReferralCode;
+        /**
+         * The reservations the account booked before completing its profile,
+         * present only when it has any or they can't be read.
+         */
+        readonly history?: CustomerReservationHistory;
       }
     | {
         readonly kind: "linked";
@@ -192,19 +200,7 @@ const loadLinkedAccount = Effect.fn(function* (
       withOperation("account.remembered-referral")
     ));
 
-  const history = yield* Effect.flatMap(
-    CustomerReservationHistoryService,
-    (service) => service.load(account)
-  ).pipe(
-    Effect.provide(CustomerReservationHistoryService.Live),
-    Effect.tapError(() =>
-      logDegradedAccountSection("account.reservation-history.unavailable")
-    ),
-    Effect.orElseSucceed(
-      () => ({ kind: "unavailable", reason: "provider-unavailable" }) as const
-    ),
-    withOperation("account.reservation-history")
-  );
+  const history = yield* loadReservationHistory(account);
 
   // An unavailable avatar capability evaluation fails closed to hidden.
   const avatarsEnabled = yield* Effect.tryPromise(() =>
@@ -246,6 +242,32 @@ const loadLinkedAccount = Effect.fn(function* (
     }),
   } satisfies CustomerAccountPageState;
 });
+
+/**
+ * The account's reservation history. An unavailable history degrades to the
+ * section's unavailable notice.
+ */
+const loadReservationHistory = (account: ReservationHistoryAccount) =>
+  Effect.flatMap(CustomerReservationHistoryService, (service) =>
+    service.load(account)
+  ).pipe(
+    Effect.provide(CustomerReservationHistoryService.Live),
+    Effect.tapError(() =>
+      logDegradedAccountSection("account.reservation-history.unavailable")
+    ),
+    Effect.orElseSucceed(
+      (): CustomerReservationHistory => ({
+        kind: "unavailable",
+        reason: "provider-unavailable",
+      })
+    ),
+    withOperation("account.reservation-history")
+  );
+
+/** Whether a history has a reservation to show, or might have one. */
+const mayHaveReservations = (history: CustomerReservationHistory) =>
+  history.kind === "unavailable" ||
+  Object.values(history.groups).some((group) => group.length > 0);
 
 /**
  * The customer's referral summary and share link. An unavailable summary
@@ -349,11 +371,17 @@ const loadSignedInAccount = Effect.fn(function* (user: CustomerAccountSession) {
       rememberedReferralCode === undefined
         ? undefined
         : yield* findAvailableReferralCode(rememberedReferralCode);
+    // An account may book for someone else before it completes its own
+    // profile; the history then holds only what it authored.
+    const history = yield* loadReservationHistory({
+      accountId: user.accountId,
+    });
     return {
       kind: "completion-required",
       email: user.email,
       referralsEnabled,
       ...(availableReferralCode && { referralCode: availableReferralCode }),
+      ...(mayHaveReservations(history) && { history }),
     } satisfies CustomerAccountPageState;
   }
   if (

@@ -29,7 +29,10 @@ import {
   customerAccountIdSchema,
 } from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
-import { CustomerReservationHistoryService } from "./customer-reservation-history.service";
+import {
+  CustomerReservationHistoryService,
+  type ReservationHistoryAccount,
+} from "./customer-reservation-history.service";
 import {
   ReservationAuthorDirectory,
   ReservationAuthorReadError,
@@ -441,10 +444,7 @@ describe.skipIf(!testDatabase)(
     };
 
     const loadPast = async (
-      account: {
-        accountId: CustomerAccountId;
-        dotyposCustomerId: DotyposCustomerId;
-      },
+      account: ReservationHistoryAccount,
       layer: ReturnType<typeof makeHistoryLayer>
     ) => {
       const history = await Effect.runPromise(
@@ -545,6 +545,63 @@ describe.skipIf(!testDatabase)(
         { kind: "booked-for", customerName: null },
         undefined,
         undefined,
+      ]);
+    });
+
+    test("loads only the authored reservations of an account without a linked customer", async () => {
+      const account = customerAccountIdSchema.make(uniqueId());
+      const otherAuthor = customerAccountIdSchema.make(uniqueId());
+      const bookedForCustomerId = DotyposCustomerIdSchema.make(
+        uniqueDotyposId()
+      );
+      await insertCustomerAccount({ id: account });
+      await insertCustomerAccount({ id: otherAuthor });
+
+      const seeded = [
+        { key: "booked-for", author: account },
+        { key: "other-author", author: otherAuthor },
+        { key: "authorless", author: undefined },
+      ] as const;
+      const reservations: DotyposReservation[] = [];
+      const workspaceIds = new Map<string, WorkspaceReservationId>();
+      for (const [index, entry] of seeded.entries()) {
+        const workspace = workspaceReservationIdSchema.make(
+          `workspace-${uniqueId()}`
+        );
+        const dotypos = DotyposReservationIdSchema.make(
+          `dotypos-${uniqueId()}`
+        );
+        workspaceIds.set(entry.key, workspace);
+        await insertWorkspaceReservation({
+          id: workspace,
+          dotyposCustomerId: bookedForCustomerId,
+          dotyposReservationId: dotypos,
+          ...(entry.author && { authorAccountId: entry.author }),
+        });
+        reservations.push(
+          makeDotyposReservation({
+            id: dotypos,
+            _customerId: bookedForCustomerId,
+            startDate: `2000-03-0${index + 1}T10:00:00.000Z`,
+            endDate: `2000-03-0${index + 1}T11:00:00.000Z`,
+          })
+        );
+      }
+
+      const past = await loadPast(
+        { accountId: account },
+        makeHistoryLayer(reservations, {
+          customers: [
+            makeDotyposCustomer(bookedForCustomerId, "Karla", "Ukázková"),
+          ],
+        })
+      );
+
+      expect(past.map(({ id, party }) => ({ id, party }))).toEqual([
+        {
+          id: workspaceIds.get("booked-for"),
+          party: { kind: "booked-for", customerName: "Karla Ukázková" },
+        },
       ]);
     });
   }
