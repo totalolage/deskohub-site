@@ -167,7 +167,7 @@ glossary defines the customer account, reservation author, and tombstone.
   to `maxSameOriginPathLength` (8 KiB), so the magic link that carries one
   base64url-encoded stays under Vercel's 14 KB URL limit. An auth return
   token is at most `maxAuthReturnStateLength` (6 KiB) and fails to seal with
-  `too-large` beyond it, leaving 2 KiB for the page and its other
+  `SealedStateTooLargeError` beyond it, leaving 2 KiB for the page and its other
   parameters. A new sealed schema must fit its largest accepted value;
   extend the boundary test in `auth-return-state.test.ts` with it.
 - Section navigation items are links to the section paths, marked with

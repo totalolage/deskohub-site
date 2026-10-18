@@ -5,6 +5,7 @@ import {
   openSealedState,
   parseSealedStateKey,
   type SealedStateKey,
+  SealedStateTooLargeError,
   sealedStateClaimsSchema,
   sealState,
 } from "./sealed-state";
@@ -202,14 +203,18 @@ describe("purpose-bound sealed state", () => {
   });
 
   test("fails to seal a value longer than its token allows", () => {
-    expect(
-      failureCode(
+    const sealed = runSync(
+      Effect.result(
         contactState.seal(
           { name: incompressibleName, phone: contact.phone },
           { keys: [activeKey], now: at(0) }
         )
       )
-    ).toBe("too-large");
+    );
+
+    expect(Result.isFailure(sealed) && sealed.failure).toBeInstanceOf(
+      SealedStateTooLargeError
+    );
   });
 
   test("never opens a token longer than its kind of state allows", () => {

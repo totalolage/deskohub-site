@@ -80,13 +80,23 @@ export class SealedStateTokenError extends Data.TaggedError(
     | "invalid-secret"
     | "invalid-token"
     | "unknown-kid"
-    | "expired"
-    /** The sealed token is longer than its kind of state allows. */
-    | "too-large";
+    | "expired";
   readonly message: string;
   readonly cause?: unknown;
 }> {
   static readonly _tag = sealedStateTokenErrorTag;
+}
+
+const sealedStateTooLargeErrorTag = "SealedStateTooLargeError";
+
+/** The sealed token would be longer than its kind of state allows. */
+export class SealedStateTooLargeError extends Data.TaggedError(
+  sealedStateTooLargeErrorTag
+)<{
+  readonly maxTokenLength: number;
+  readonly tokenLength: number;
+}> {
+  static readonly _tag = sealedStateTooLargeErrorTag;
 }
 
 const textEncoder = new TextEncoder();
@@ -430,7 +440,7 @@ export const openSealedState = Effect.fn("sealedState.open")(function* <
  * value with `schema`, compresses it, and stamps it to expire after
  * `ttlMilliseconds`; `open` accepts only an unexpired token sealed for the
  * same purpose. A token longer than `maxTokenLength` fails to seal with
- * `too-large` and doesn't open.
+ * `SealedStateTooLargeError` and doesn't open.
  */
 export const makeSealedState = <A, I>({
   purpose,
@@ -465,9 +475,9 @@ export const makeSealedState = <A, I>({
       compressed: true,
     });
     if (token.length > maxTokenLength) {
-      return yield* new SealedStateTokenError({
-        code: "too-large",
-        message: "Sealed state is longer than its token allows.",
+      return yield* new SealedStateTooLargeError({
+        maxTokenLength,
+        tokenLength: token.length,
       });
     }
     return token;

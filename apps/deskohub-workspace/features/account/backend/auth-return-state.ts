@@ -19,7 +19,7 @@ export const maxAuthReturnStateLength = 6 * 1024;
  * short-lived token for a query parameter of the return path, and `open`
  * reads it back on the page the sign-in lands on. Each `purpose` opens only
  * its own tokens. State whose token would exceed `maxAuthReturnStateLength`
- * fails to seal with `too-large`.
+ * fails to seal with `SealedStateTooLargeError`.
  */
 export const makeAuthReturnState = <A, I>(
   purpose: string,
