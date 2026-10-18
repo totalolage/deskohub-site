@@ -109,7 +109,7 @@ export const createCustomerEmailRecoveryIdempotencyKey = (
 // The author confirmation is sent once per reservation; fulfillment retries
 // and customer delivery recovery reuse this key, so the provider collapses
 // them into the first send.
-export const createAuthorConfirmationIdempotencyKey = (
+const createAuthorConfirmationIdempotencyKey = (
   reservationId: WorkspaceReservationId
 ) => `${authorConfirmationCategory}-${reservationId}`;
 

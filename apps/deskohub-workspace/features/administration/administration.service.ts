@@ -399,7 +399,7 @@ export type AdministrationTimelineItem = {
  * author shows nothing but the fact. An unavailable author could not be read,
  * so the screen doesn't imply the customer booked it themselves.
  */
-export type AdministrationReservationAuthor =
+type AdministrationReservationAuthor =
   | (AdministrationCustomerName & {
       readonly kind: "account";
       /** The author's own linked Dotypos customer, which names them. */
