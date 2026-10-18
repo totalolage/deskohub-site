@@ -55,7 +55,9 @@ const contextFetch =
     });
     const body = new Uint8Array(await response.body());
     const headers = new Headers(
-      response.headersArray().map(({ name, value }) => [name, value])
+      response
+        .headersArray()
+        .map(({ name, value }): [string, string] => [name, value])
     );
     const status = response.status();
     const statusText = response.statusText();
