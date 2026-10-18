@@ -12,6 +12,7 @@ import {
   ListFilter,
   Mail,
   Menu,
+  ShieldCheck,
   SquareTerminal,
   Ticket,
   Users,
@@ -38,7 +39,6 @@ import {
   SheetTrigger,
 } from "@/shared/components/ui/sheet";
 import { AdministrationLink as Link } from "./admin-link";
-import { useCredentialFreeDocumentUrl } from "./credential-free-url";
 import { m } from "./i18n";
 import { AdministrationBreadcrumbLoading } from "./loading";
 
@@ -87,6 +87,11 @@ const navigation = [
         href: "/admin/cli/sessions",
         icon: SquareTerminal,
         label: m.shellNavigationCliSessions,
+      },
+      {
+        href: "/admin/administrators",
+        icon: ShieldCheck,
+        label: m.administratorsNavigation,
       },
     ],
   },
@@ -188,6 +193,7 @@ function NavigationLink({
 const breadcrumbNames: Readonly<Record<string, ShellMessage>> = {
   admin: m.shellBreadcrumbOverview,
   "access-codes": m.shellBreadcrumbAccessCodes,
+  administrators: m.administratorsBreadcrumb,
   bookings: m.shellBreadcrumbBookings,
   cli: m.shellBreadcrumbCli,
   codes: m.shellBreadcrumbCodes,
@@ -301,7 +307,6 @@ export function AdminShell({
   readonly children: ReactNode;
   readonly localeSwitcher: ReactNode;
 }) {
-  useCredentialFreeDocumentUrl();
   const locale = useRouteLocale();
 
   return (

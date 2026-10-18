@@ -1,6 +1,5 @@
 import type { IgloohomeDeviceId } from "@deskohub/igloohome";
 import type {
-  AdministrationActorUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeCleanupTarget,
@@ -18,6 +17,8 @@ import type { relations } from "@/db/relations";
 import type { StandaloneAccessCodeAttemptEventRow } from "@/db/schema";
 import { standaloneAccessCodeAttemptEvents as events } from "@/db/schema";
 import { quotedSqlList } from "@/db/schema/sql-list";
+import type { CustomerAccountId } from "@/features/account/customer-account";
+import type { AdministratorAccountActor } from "@/features/administrators/account-role";
 import type {
   StandaloneAccessCodeFailureCode,
   StandaloneAccessCodeProviderVariance,
@@ -31,7 +32,7 @@ import {
 
 export interface StandaloneAccessCodeAttempt {
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
-  readonly actor: AdministrationActorUsername;
+  readonly actor: AdministratorAccountActor;
   readonly source: StandaloneAccessCodeSource;
   readonly name: AdministrationStandaloneAccessCodeName;
   readonly deviceId: IgloohomeDeviceId;
@@ -40,6 +41,23 @@ export interface StandaloneAccessCodeAttempt {
   readonly startsAt: Temporal.Instant;
   readonly endsAt: Temporal.Instant;
 }
+
+/**
+ * Who an attempt event records. Events written before administrator
+ * accounts carry only the Basic-auth username.
+ */
+type AttemptEventActor = Pick<
+  StandaloneAccessCodeAttemptEventRow,
+  "actor" | "actorAccountId" | "actorAccountEmail"
+>;
+
+const toAttemptEventActor = (
+  actor: AdministratorAccountActor
+): AttemptEventActor => ({
+  actor: null,
+  actorAccountId: actor.accountId,
+  actorAccountEmail: actor.email,
+});
 
 export interface StandaloneAccessCodeCreatedAttemptTerminal {
   readonly name: AdministrationStandaloneAccessCodeName;
@@ -179,7 +197,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
 
       const matchesAttempt = (
         event: {
-          readonly actor: AdministrationActorUsername;
+          readonly actorAccountId: CustomerAccountId | null;
           readonly source: StandaloneAccessCodeSource;
           readonly name: AdministrationStandaloneAccessCodeName;
           readonly deviceId: IgloohomeDeviceId;
@@ -188,7 +206,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         },
         attempt: StandaloneAccessCodeAttempt
       ) =>
-        event.actor === attempt.actor &&
+        event.actorAccountId === attempt.actor.accountId &&
         event.source === attempt.source &&
         event.name === attempt.name &&
         event.deviceId === attempt.deviceId &&
@@ -208,7 +226,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           .values({
             attemptId: input.attempt.attemptId,
             eventKind: "started",
-            actor: input.attempt.actor,
+            ...toAttemptEventActor(input.attempt.actor),
             source: input.attempt.source,
             name: input.attempt.name,
             deviceId: input.attempt.deviceId,
@@ -231,7 +249,8 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
       const insertTerminalEvent = (
         tx: Transaction,
         input: {
-          readonly attempt: StandaloneAccessCodeAttempt;
+          readonly attempt: Omit<StandaloneAccessCodeAttempt, "actor">;
+          readonly actor: AttemptEventActor;
           readonly variance: StandaloneAccessCodeProviderVariance;
           readonly eventKind: StandaloneAccessCodeTerminalEventKind;
           readonly occurredAt: Temporal.Instant;
@@ -245,7 +264,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           .values({
             attemptId: input.attempt.attemptId,
             eventKind: input.eventKind,
-            actor: input.attempt.actor,
+            ...input.actor,
             source: input.attempt.source,
             name: input.attempt.name,
             deviceId: input.attempt.deviceId,
@@ -414,7 +433,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           .values({
             attemptId: input.prior.attemptId,
             eventKind: "reconciled",
-            actor: input.attempt.actor,
+            ...toAttemptEventActor(input.attempt.actor),
             source: input.attempt.source,
             name: input.prior.name,
             deviceId: input.prior.deviceId,
@@ -492,6 +511,11 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
       ) {
         yield* insertTerminalEvent(tx, {
           attempt: input.prior,
+          actor: {
+            actor: input.prior.actor,
+            actorAccountId: input.prior.actorAccountId,
+            actorAccountEmail: input.prior.actorAccountEmail,
+          },
           variance: input.prior.variance,
           eventKind: "ambiguous",
           occurredAt: input.occurredAt,
@@ -681,6 +705,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
                   Effect.gen(function* () {
                     const written = yield* insertTerminalEvent(tx, {
                       attempt: input.attempt,
+                      actor: toAttemptEventActor(input.attempt.actor),
                       variance: input.variance,
                       eventKind: input.eventKind,
                       occurredAt: input.occurredAt,

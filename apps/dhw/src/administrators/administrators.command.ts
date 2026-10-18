@@ -1,7 +1,7 @@
 import {
   AdministrationAccountEmail,
-  AdministrationActorUsername,
   type AdministrationLegacyActorRecordCountsType,
+  AdministrationLegacyUsername,
 } from "@deskohub/workspace-admin-api";
 import { Console, Effect } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
@@ -23,7 +23,7 @@ const administratorsBackfillLegacyCommand = Command.make(
   "backfill-legacy",
   {
     legacyUsername: Flag.string("legacy-username").pipe(
-      Flag.withSchema(AdministrationActorUsername),
+      Flag.withSchema(AdministrationLegacyUsername),
       Flag.withDescription("Legacy Basic-auth administrator username")
     ),
     email: Flag.string("email").pipe(

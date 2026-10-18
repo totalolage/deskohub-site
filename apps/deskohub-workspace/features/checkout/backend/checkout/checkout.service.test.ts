@@ -12,6 +12,7 @@ import { Data, Duration, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
 import { makeOptionalAccountActivityGuard } from "@/features/account/backend/customer-account-activity.test-utils";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
@@ -452,6 +453,7 @@ const makeReservation = <Overrides extends object>(
   overrides?: Overrides
 ) => ({
   id: orderId,
+  authorAccountId: null as CustomerAccountId | null,
   checkoutSessionKey: "session-key",
   checkoutAttemptKey: "attempt-key",
   correlationId: "correlation-id",
@@ -623,8 +625,16 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
             Effect.as(reservationRecord)
           )
     );
+  const assignAuthor = mock(
+    (input: { readonly authorAccountId: CustomerAccountId }) =>
+      Effect.sync(() => {
+        reservationRecord.authorAccountId ??= input.authorAccountId;
+        return input.authorAccountId;
+      })
+  );
   const reservations = {
     findById: mock(() => Effect.succeed(reservationRecord)),
+    assignAuthor,
     updateReservationDetails,
   };
   const updateReservation = mock(
@@ -729,6 +739,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     findAttempt,
     attachHostedPaymentPage,
     markTerminalForReservation,
+    assignAuthor,
     updateReservationDetails,
     updateReservation,
     createHostedPaymentPage,
@@ -736,6 +747,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     capture,
     recordLegalEvidence,
     requireCurrent,
+    reservationRecord,
   };
 };
 
@@ -2526,7 +2538,28 @@ describe("CheckoutService", () => {
     expect(result).toMatchObject({ status: "redirect" });
     expect(harness.updateReservationDetails).toHaveBeenCalledTimes(1);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
+    expect(harness.assignAuthor).not.toHaveBeenCalled();
     expect(harness.guardEvents).toEqual([]);
+  });
+
+  test("does not make a payer the author of a reservation they did not create", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-paid-by-another-account",
+      accountAuthority: { session: {}, activityState: "active" },
+    });
+
+    expect(harness.reservationRecord.authorAccountId).toBeNull();
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({
+      status: "redirect",
+      redirectUrl: "https://payments.example/hosted",
+    });
+    expect(harness.createPendingNexiAttempt).toHaveBeenCalledTimes(1);
+    expect(harness.createHostedPaymentPage).toHaveBeenCalledTimes(1);
+    expect(harness.reservationRecord.authorAccountId).toBeNull();
+    expect(harness.assignAuthor).not.toHaveBeenCalled();
   });
 
   test("holds the account advisory lock across hosted checkout state creation", async () => {

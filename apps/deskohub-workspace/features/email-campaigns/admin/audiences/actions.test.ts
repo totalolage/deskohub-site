@@ -32,7 +32,7 @@ const authorization = Effect.suspend(() => {
   return authorizationResult;
 });
 mock.module(
-  "@/shared/administrator/administrator-authorization.server",
+  "@/features/administrators/server/administrator-authorization.server",
   () => ({ requireAdministratorAuthorization: authorization })
 );
 

@@ -248,8 +248,8 @@ describe("no source-as-string contract tests", () => {
         `const ${envVar} = await Bun.file(new URL("../.env.example", import.meta.url)).text();`,
         `const ${configVar} = parseEnv(${envVar});`,
         'test("checks the parsed configuration", () => {',
-        `  expect(${configVar}.assignments.get("ADMIN_BASIC_AUTH_CREDENTIALS")).toBeDefined();`,
-        `  expect(${configVar}.documentation.join("\\n")).toContain("sha256");`,
+        `  expect(${configVar}.assignments.get("DATABASE_URL")).toBeDefined();`,
+        `  expect(${configVar}.documentation.join("\\n")).toContain("sslmode");`,
         "});",
       ].join("\n"),
     };

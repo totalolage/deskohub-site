@@ -9,5 +9,6 @@ export const signInEmailFailureMessage = (
   ({
     "address-limit": () => m.accountSignInEmailLimitReached({}, { locale }),
     "rate-limited": () => m.accountSignInRateLimited({}, { locale }),
+    automated: () => m.accountSignInAutomatedRequest({}, { locale }),
     failed: () => m.accountSignInRequestFailed({}, { locale }),
   })[reason]();

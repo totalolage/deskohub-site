@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
+import { m } from "@/features/administration/i18n";
 import { AdministrationAlert } from "@/features/administration/notice";
 import { storedDiscountIdSchema } from "@/features/discounts/persistence-contracts";
 import { useRouteLocale } from "@/features/i18n/route-locale";
@@ -23,6 +24,7 @@ import {
 } from "@/shared/components/ui/form";
 import { defaultWorkspaceCurrencyCode } from "@/shared/money/currencies";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { getDiscountAdminActionFailureMessage } from "./action-failure-message";
 import { mutateDiscountAdmin } from "./actions";
 import {
   DiscountCodeConfigurationFields,
@@ -30,14 +32,13 @@ import {
 } from "./admin-tables";
 import type { CreateCustomerDiscountCodeAdminInput } from "./contracts";
 import type { AdminDiscount } from "./discount-administration.service";
-import { getDiscountAdminValidationMessage } from "./form-feedback";
 import {
   toCreateDiscountInput,
   toDiscountCodeConfigurationInput,
 } from "./form-input";
 import {
+  createDiscountCodeCreationFormSchema,
   type DiscountCodeCreationFormValues,
-  discountCodeCreationFormSchema,
 } from "./form-schemas";
 
 const decodeStoredDiscountId = Schema.decodeUnknownSync(storedDiscountIdSchema);
@@ -87,7 +88,9 @@ export function DiscountCodeCreationForm({
     defaultValues: discountCodeCreationFormDefaults(discounts),
     mode: "onSubmit",
     reValidateMode: "onChange",
-    resolver: effectSchemaResolver(discountCodeCreationFormSchema),
+    resolver: effectSchemaResolver(
+      createDiscountCodeCreationFormSchema(locale)
+    ),
   });
   const discountKind =
     useWatch({ control: form.control, name: "discountKind" }) ?? "existing";
@@ -105,12 +108,13 @@ export function DiscountCodeCreationForm({
     },
     onError: ({ error: actionError }) =>
       setError(
-        actionError.serverError ??
-          getDiscountAdminValidationMessage(actionError.validationErrors) ??
-          "The discount code could not be created. Check the form and try again."
+        getDiscountAdminActionFailureMessage(actionError.serverError, {
+          fallback: m.discountsCodeCreateFailedCheckForm({}, { locale }),
+          locale,
+        })
       ),
     onTransportError: () =>
-      setError("The discount code could not be created. Try again."),
+      setError(m.discountsCodeCreateFailedRetry({}, { locale })),
   });
 
   if (success) {
@@ -129,7 +133,7 @@ export function DiscountCodeCreationForm({
           type="button"
           variant="secondary"
         >
-          Create another code
+          {m.discountsCodeCreateAnother({}, { locale })}
         </Button>
       </output>
     );
@@ -167,25 +171,27 @@ export function DiscountCodeCreationForm({
   return (
     <Form {...form}>
       <form
-        aria-label="Create discount code"
+        aria-label={m.discountsCodeCreateSubmit({}, { locale })}
         noValidate
         onSubmit={form.handleSubmit(submit)}
       >
         {customerName && (
           <div className="rounded-xl bg-aquamarine-green/12 px-4 py-3 text-sm text-aquamarine-ink">
-            The new code will only be available to {customerName}.
+            {m.discountsCodeCustomerRestriction({ customerName }, { locale })}
           </div>
         )}
 
         <fieldset className={customerName ? "mt-6" : undefined}>
-          <legend className="text-sm font-semibold">Discount</legend>
+          <legend className="text-sm font-semibold">
+            {m.discountsDiscountLabel({}, { locale })}
+          </legend>
           <p className="mt-1 text-sm text-navy-blue/65">
-            Choose what the code should apply.
+            {m.discountsCodeDiscountChoiceDescription({}, { locale })}
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <ChoiceCard tone="plain">
               <input
-                aria-label="Use an existing discount"
+                aria-label={m.discountsCodeDiscountExisting({}, { locale })}
                 className="mt-1 size-4 accent-[var(--brand-burned-orange)]"
                 disabled={discounts.length === 0}
                 type="radio"
@@ -194,16 +200,16 @@ export function DiscountCodeCreationForm({
               />
               <span className="text-sm">
                 <span className="block font-semibold">
-                  Use an existing discount
+                  {m.discountsCodeDiscountExisting({}, { locale })}
                 </span>
                 <span className="mt-1 block text-xs leading-5 text-navy-blue/65">
-                  Pair the code with a discount that is already configured.
+                  {m.discountsCodeDiscountExistingDescription({}, { locale })}
                 </span>
               </span>
             </ChoiceCard>
             <ChoiceCard tone="plain">
               <input
-                aria-label="Create a new discount"
+                aria-label={m.discountsCodeDiscountNew({}, { locale })}
                 className="mt-1 size-4 accent-[var(--brand-burned-orange)]"
                 type="radio"
                 value="new"
@@ -211,10 +217,10 @@ export function DiscountCodeCreationForm({
               />
               <span className="text-sm">
                 <span className="block font-semibold">
-                  Create a new discount
+                  {m.discountsCodeDiscountNew({}, { locale })}
                 </span>
                 <span className="mt-1 block text-xs leading-5 text-navy-blue/65">
-                  Define the adjustment and eligible products here.
+                  {m.discountsCodeDiscountNewDescription({}, { locale })}
                 </span>
               </span>
             </ChoiceCard>
@@ -228,7 +234,9 @@ export function DiscountCodeCreationForm({
               name="discountId"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>Discount</FormLabel>
+                  <FormLabel>
+                    {m.discountsDiscountLabel({}, { locale })}
+                  </FormLabel>
                   <FormControl>
                     <select
                       {...field}
@@ -237,7 +245,7 @@ export function DiscountCodeCreationForm({
                     >
                       {discounts.map((discount) => (
                         <option key={discount.id} value={discount.id}>
-                          {discount.labels["en-US"]}
+                          {discount.labels[locale]}
                         </option>
                       ))}
                     </select>
@@ -252,9 +260,11 @@ export function DiscountCodeCreationForm({
 
         <div className="my-7 border-t border-navy-blue/10" />
         <div>
-          <h2 className="text-lg">Code details</h2>
+          <h2 className="text-lg">
+            {m.discountsCodeDetailsTitle({}, { locale })}
+          </h2>
           <p className="mb-4 mt-1 text-sm text-navy-blue/65">
-            Set the code and its availability window.
+            {m.discountsCodeDetailsDescription({}, { locale })}
           </p>
           <DiscountCodeConfigurationFields />
         </div>
@@ -272,12 +282,14 @@ export function DiscountCodeCreationForm({
         <div className="mt-6 flex flex-wrap justify-end gap-3 border-t border-navy-blue/10 pt-5">
           {customerId && (
             <Button onClick={close} type="button" variant="secondary">
-              Cancel
+              {m.discountsCancel({}, { locale })}
             </Button>
           )}
           <Button disabled={isExecuting} type="submit">
             <Plus aria-hidden className="size-4" />
-            {isExecuting ? "Creating…" : "Create discount code"}
+            {isExecuting
+              ? m.discountsCreating({}, { locale })
+              : m.discountsCodeCreateSubmit({}, { locale })}
           </Button>
         </div>
       </form>

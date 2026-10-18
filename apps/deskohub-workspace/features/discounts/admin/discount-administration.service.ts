@@ -48,6 +48,10 @@ import {
   findViolatedConstraint,
   isDatabaseQueryError,
 } from "@/db/sql-constraint";
+import {
+  type AdministrationCustomerName,
+  unnamedCustomerDisplayName,
+} from "@/features/administration/customer-name";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
@@ -71,6 +75,7 @@ import {
   type VoucherClaimId,
   type VoucherId,
 } from "../persistence-contracts";
+import { untitledCalendarEventTitle } from "./calendar-sale-title";
 import type {
   CreateCustomerDiscountCodeAdminInput,
   CreateCustomerVoucherAdminInput,
@@ -129,7 +134,10 @@ export type AdminVoucher = {
 
 type AdminDotyposCustomer = {
   readonly id: DotyposCustomerId;
+  /** Never empty: the API and `dhw` show "Unnamed customer" when `hasName` is false. */
   readonly displayName: string;
+  /** Whether Dotypos holds a name or contact detail, so the Admin UI can name an unnamed customer in the operator's language. */
+  readonly hasName: boolean;
   readonly email: string | null;
   readonly phone: string | null;
   readonly discountGroupId: DotyposDiscountGroupId | null;
@@ -158,7 +166,9 @@ export type AdminDiscountCodeClaim = {
 
 export type AdminDiscountCodeDetail = {
   readonly code: AdminDiscountCode;
+  /** The English label the administration API returns. */
   readonly discountLabel: string;
+  readonly discountLabels: DiscountLabels;
   readonly customers: readonly {
     readonly customerId: DotyposCustomerId;
     readonly customer: AdminDotyposCustomer | null;
@@ -182,7 +192,9 @@ export type AdminVoucherDetail = {
 
 type AdminCustomerCode = AdminDiscountCode & {
   readonly discountAdjustment: DiscountAdjustment;
+  /** The English label the administration API returns. */
   readonly discountLabel: string;
+  readonly discountLabels: DiscountLabels;
   readonly eligible: boolean;
 };
 
@@ -401,7 +413,7 @@ export interface IDiscountAdministration {
   readonly loadCustomerBreadcrumbLabel: (input: {
     readonly customerId: DotyposCustomerId;
   }) => Effect.Effect<
-    string,
+    AdministrationCustomerName,
     | ExternalAPIError
     | NetworkError
     | ValidationError
@@ -984,6 +996,7 @@ export class DiscountAdministration extends Context.Service<
               Effect.map(({ customers, row }) => ({
                 code: toAdminDiscountCode(row),
                 discountLabel: row.discount.labels["en-US"],
+                discountLabels: row.discount.labels,
                 customers,
                 claims: row.redemptions
                   .map(toAdminDiscountCodeClaim)
@@ -1077,6 +1090,7 @@ export class DiscountAdministration extends Context.Service<
               const usedValue = usage?.value ?? 0;
               if (usedValue > input.credit.value) {
                 return yield* new DiscountAdminConflictError({
+                  reason: "voucher-credit-below-usage",
                   message:
                     "Voucher credit cannot be lower than its reserved and redeemed value.",
                 });
@@ -1092,6 +1106,7 @@ export class DiscountAdministration extends Context.Service<
                 })
               ) {
                 return yield* new DiscountAdminConflictError({
+                  reason: "voucher-currency-locked",
                   message:
                     "Voucher currency cannot change after it has claim history.",
                 });
@@ -1238,6 +1253,7 @@ export class DiscountAdministration extends Context.Service<
                 ...toAdminDiscountCode(row),
                 discountAdjustment: toDiscountAdjustment(row.discount),
                 discountLabel: row.discount.labels["en-US"],
+                discountLabels: row.discount.labels,
                 eligible: row.promotion.customers.some(
                   ({ dotyposCustomerId }) =>
                     dotyposCustomerId === input.customerId
@@ -1285,7 +1301,10 @@ export class DiscountAdministration extends Context.Service<
         "DiscountAdministration.loadCustomerBreadcrumbLabel"
       )((input: { readonly customerId: DotyposCustomerId }) =>
         loadActiveCustomer(input.customerId).pipe(
-          Effect.map((customer) => toAdminDotyposCustomer(customer).displayName)
+          Effect.map((customer) => {
+            const { displayName, hasName } = toAdminDotyposCustomer(customer);
+            return { displayName, hasName };
+          })
         )
       );
 
@@ -1396,6 +1415,7 @@ export class DiscountAdministration extends Context.Service<
               }
               if (audience.length === 1) {
                 return yield* new DiscountAdminAudienceError({
+                  promotionKind: "discount-code",
                   message:
                     "Removing the final customer would make this code unrestricted. Use Make unrestricted instead.",
                 });
@@ -1522,6 +1542,7 @@ export class DiscountAdministration extends Context.Service<
               }
               if (audience.length === 1) {
                 return yield* new DiscountAdminAudienceError({
+                  promotionKind: "voucher",
                   message:
                     "Removing the final customer would make this voucher unrestricted. Use Make unrestricted instead.",
                 });
@@ -1664,45 +1685,75 @@ type DiscountAdminMissingResource =
       readonly id: DotyposCustomerId;
     };
 
-class DiscountAdminNotFoundError extends Data.TaggedError(
+export class DiscountAdminNotFoundError extends Data.TaggedError(
   "DiscountAdminNotFoundError"
 )<{
   readonly resource: DiscountAdminMissingResource;
   readonly message: string;
 }> {}
 
-class DiscountAdminAudienceError extends Data.TaggedError(
+export class DiscountAdminAudienceError extends Data.TaggedError(
   "DiscountAdminAudienceError"
 )<{
+  /** The promotion whose final audience customer the removal targeted. */
+  readonly promotionKind: "discount-code" | "voucher";
   readonly message: string;
 }> {}
+
+export type DiscountAdminConflictReason =
+  | "promotion-code-taken"
+  | "discount-referenced"
+  | "discount-code-claimed"
+  | "voucher-claimed"
+  | "voucher-credit-below-usage"
+  | "voucher-currency-locked";
 
 export class DiscountAdminConflictError extends Data.TaggedError(
   "DiscountAdminConflictError"
 )<{
+  readonly reason: DiscountAdminConflictReason;
   readonly message: string;
 }> {}
 
-const discountAdminConstraintMessages = new Map([
+const discountAdminConstraintConflicts = new Map<
+  string,
+  Pick<DiscountAdminConflictError, "message" | "reason">
+>([
   [
     "promotion_codes_code_unique_idx",
-    "A promotion code with this value already exists.",
+    {
+      reason: "promotion-code-taken",
+      message: "A promotion code with this value already exists.",
+    },
   ],
   [
     "discount_codes_discount_id_discounts_id_fk",
-    "This discount is still referenced by a discount code and cannot be deleted.",
+    {
+      reason: "discount-referenced",
+      message:
+        "This discount is still referenced by a discount code and cannot be deleted.",
+    },
   ],
   [
     "discount_code_redemptions_code_id_discount_codes_id_fk",
-    "This discount code has claims and cannot be deleted.",
+    {
+      reason: "discount-code-claimed",
+      message: "This discount code has claims and cannot be deleted.",
+    },
   ],
   [
     "discount_code_redemptions_code_kind_fk",
-    "This discount code has claims and cannot be deleted.",
+    {
+      reason: "discount-code-claimed",
+      message: "This discount code has claims and cannot be deleted.",
+    },
   ],
   [
     "voucher_redemptions_voucher_id_vouchers_id_fkey",
-    "This voucher has claims and cannot be deleted.",
+    {
+      reason: "voucher-claimed",
+      message: "This voucher has claims and cannot be deleted.",
+    },
   ],
 ]);
 
@@ -1720,9 +1771,9 @@ export const findDiscountAdminConflict = (
 ): DiscountAdminConflictError | undefined =>
   findViolatedConstraint(cause).pipe(
     Option.flatMapNullishOr((constraint) =>
-      discountAdminConstraintMessages.get(constraint)
+      discountAdminConstraintConflicts.get(constraint)
     ),
-    Option.map((message) => new DiscountAdminConflictError({ message })),
+    Option.map((conflict) => new DiscountAdminConflictError(conflict)),
     Option.getOrUndefined
   );
 
@@ -1849,22 +1900,23 @@ export const voucherDenominationCanChange = (input: {
   (input.current.currency === input.updated.currency &&
     input.current.exponent === input.updated.exponent);
 
-const toAdminDotyposCustomer = (
+export const toAdminDotyposCustomer = (
   customer: DotyposCustomer
 ): AdminDotyposCustomer => {
   const personName = [customer.firstName, customer.lastName]
     .filter(Boolean)
     .join(" ")
     .trim();
+  const name =
+    customer.companyName?.trim() ||
+    personName ||
+    customer.email?.trim() ||
+    customer.phone?.trim();
 
   return {
     id: Schema.decodeUnknownSync(DotyposCustomerIdSchema)(customer.id),
-    displayName:
-      customer.companyName?.trim() ||
-      personName ||
-      customer.email?.trim() ||
-      customer.phone?.trim() ||
-      "Unnamed customer",
+    displayName: name || unnamedCustomerDisplayName,
+    hasName: Boolean(name),
     email: customer.email?.trim() || null,
     phone: customer.phone?.trim() || null,
     discountGroupId: Option.getOrNull(
@@ -2137,7 +2189,7 @@ const toAdminCalendarSale = (input: {
 
   return {
     eventReference: input.event.id ?? input.event.iCalUID ?? undefined,
-    title: input.event.summary?.trim() || "Untitled event",
+    title: input.event.summary?.trim() || untitledCalendarEventTitle,
     description,
     start:
       input.event.start?.date ?? input.event.start?.dateTime ?? "Unknown start",

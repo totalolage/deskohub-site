@@ -9,6 +9,7 @@ import {
   test,
 } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
 
 type PasskeyResponse = {
   readonly data?: unknown;
@@ -134,6 +135,40 @@ describe("passkey client", () => {
     expect(forgetSignInCodeRequest).toHaveBeenCalledTimes(1);
     expect(replace).toHaveBeenCalledWith("/cs-CZ/account");
   });
+
+  test("continues to a same-origin return target after a passkey sign-in", async () => {
+    const signedIn = {
+      data: { session: { userId: "account-1" }, user: { id: "account-1" } },
+      error: null,
+    };
+    signInPasskey.mockResolvedValueOnce(signedIn);
+
+    await expect(
+      passkeyClient.signInWithPasskey({
+        locale: "cs-CZ",
+        returnTo: "/cs-CZ/admin/invoices?page=2",
+      })
+    ).resolves.toBe("signed-in");
+
+    expect(replace.mock.calls).toEqual([["/cs-CZ/admin/invoices?page=2"]]);
+  });
+
+  test.each(unsafeReturnTargets)(
+    "ignores %p and opens the account after a passkey sign-in",
+    async (unsafeReturnTo) => {
+      signInPasskey.mockResolvedValueOnce({
+        data: { session: { userId: "account-1" }, user: { id: "account-1" } },
+        error: null,
+      });
+
+      await passkeyClient.signInWithPasskey({
+        locale: "cs-CZ",
+        returnTo: unsafeReturnTo,
+      });
+
+      expect(replace.mock.calls).toEqual([["/cs-CZ/account"]]);
+    }
+  );
 
   test("passes autofill through and stays on the page when it is cancelled", async () => {
     signInPasskey.mockResolvedValueOnce(failure("AUTH_CANCELLED"));

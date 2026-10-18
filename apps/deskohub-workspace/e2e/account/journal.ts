@@ -2,15 +2,18 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { workspaceDir } from "../runtime";
 
-// Referral-lane owners are checkout case IDs, so these journals keep their own
-// directory: sharing the checkout case journals' `<case id>.json` names let
-// each kind overwrite the other.
-const journalRoot = resolve(
-  workspaceDir,
-  "e2e-artifacts",
-  "checkout",
-  "account-journals"
-);
+/**
+ * The account identity journal directory of one Playwright suite's artifact
+ * root. Referral-lane owners are checkout case IDs, so these journals keep
+ * their own directory: sharing the checkout case journals' `<case id>.json`
+ * names let each kind overwrite the other. Suites that run concurrently keep
+ * separate roots, because Playwright clears each config's output directory.
+ */
+export const workspaceE2EAccountJournalDirectory = (
+  suite: "checkout" | "instant-navigation"
+) => resolve(workspaceDir, "e2e-artifacts", suite, "account-journals");
+
+const checkoutJournalDirectory = workspaceE2EAccountJournalDirectory("checkout");
 const formatVersion = 1;
 export const workspaceE2EAccountLaneId = "account-lane";
 
@@ -22,11 +25,14 @@ export type WorkspaceE2EAccountJournalOwnerId = string;
 
 const ownerIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-const journalPath = (ownerId: WorkspaceE2EAccountJournalOwnerId) => {
+const journalPath = (
+  ownerId: WorkspaceE2EAccountJournalOwnerId,
+  directory: string
+) => {
   if (!ownerIdPattern.test(ownerId)) {
     throw new Error("Invalid workspace E2E account journal owner");
   }
-  return resolve(journalRoot, `${ownerId}.json`);
+  return resolve(directory, `${ownerId}.json`);
 };
 
 /**
@@ -62,10 +68,11 @@ export const emptyWorkspaceE2EAccountJournal = (
 });
 
 export const writeWorkspaceE2EAccountJournal = async (
-  journal: WorkspaceE2EAccountJournal
+  journal: WorkspaceE2EAccountJournal,
+  directory: string = checkoutJournalDirectory
 ) => {
-  await mkdir(journalRoot, { recursive: true });
-  const path = journalPath(journal.laneId);
+  await mkdir(directory, { recursive: true });
+  const path = journalPath(journal.laneId, directory);
   const temporaryPath = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await writeFile(temporaryPath, `${JSON.stringify(journal, null, 2)}\n`, {
     encoding: "utf8",
@@ -85,7 +92,8 @@ type WorkspaceE2EAccountJournalIds = Pick<
  * for suite cleanup.
  */
 export const makeWorkspaceE2EAccountJournalRecorder = (
-  ownerId: WorkspaceE2EAccountJournalOwnerId
+  ownerId: WorkspaceE2EAccountJournalOwnerId,
+  directory: string = checkoutJournalDirectory
 ) => {
   let journal = emptyWorkspaceE2EAccountJournal(ownerId);
   const merge = (
@@ -109,17 +117,18 @@ export const makeWorkspaceE2EAccountJournalRecorder = (
           update.dotyposReservationIds
         ),
       };
-      await writeWorkspaceE2EAccountJournal(journal);
+      await writeWorkspaceE2EAccountJournal(journal, directory);
     },
   };
 };
 
 export const readWorkspaceE2EAccountJournal = async (
-  ownerId: WorkspaceE2EAccountJournalOwnerId = workspaceE2EAccountLaneId
+  ownerId: WorkspaceE2EAccountJournalOwnerId = workspaceE2EAccountLaneId,
+  directory: string = checkoutJournalDirectory
 ): Promise<WorkspaceE2EAccountJournal | undefined> => {
   try {
     return parseWorkspaceE2EAccountJournal(
-      await readFile(journalPath(ownerId), "utf8"),
+      await readFile(journalPath(ownerId, directory), "utf8"),
       ownerId
     );
   } catch (cause) {

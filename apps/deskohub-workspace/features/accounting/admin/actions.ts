@@ -6,29 +6,41 @@ import {
   AdministrationInvoiceId,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Match, Schema } from "effect";
+import { m } from "@/features/administration/i18n";
+import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
-import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import {
+  defineWorkspaceAction,
+  type WorkspaceActionContext,
+} from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { InvoiceAdministrationService } from "./invoice-administration.service";
+import { getInvoiceCustomerErrorMessage } from "./invoice-display";
 
 const strict = { errors: "all", onExcessProperty: "error" } as const;
+
+const invoiceCreateInputSchema = Schema.toStandardSchemaV1(
+  AdministrationInvoiceCreateInput,
+  { parseOptions: strict }
+);
+
+type InvoiceCreateActionContext = WorkspaceActionContext<
+  typeof invoiceCreateInputSchema
+>;
 
 const createInvoiceAction = defineWorkspaceAction(
   {
     operation: "invoice-administration.create",
-    schema: Schema.toStandardSchemaV1(AdministrationInvoiceCreateInput, {
-      parseOptions: strict,
-    }),
+    schema: invoiceCreateInputSchema,
     logInput: false,
   },
   Effect.fn(
-    function* (input) {
-      const actor = yield* requireAdministratorAuthorization;
+    function* (input, _context: InvoiceCreateActionContext) {
+      const administrator = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const result = yield* administration.create(input, {
         source: "admin-ui",
-        actor,
+        administrator,
       });
       yield* Effect.sync(() => {
         revalidateLocalizedPath("/admin/invoices");
@@ -36,21 +48,23 @@ const createInvoiceAction = defineWorkspaceAction(
       });
       return result;
     },
-    (effect) =>
+    (effect, _input, { locale }) =>
       effect.pipe(
         Effect.provide(InvoiceAdministrationService.Live),
         Effect.mapError(
           (cause) =>
             new PublicSafeActionError({
+              // The service messages stay English: the administration API
+              // forwards them to `dhw`.
               message: Match.value(cause).pipe(
-                Match.tag(
-                  "InvoiceAdministrationCustomerError",
-                  "InvoiceAdministrationInProgressError",
-                  ({ message }) => message
+                Match.tag("InvoiceAdministrationCustomerError", ({ reason }) =>
+                  getInvoiceCustomerErrorMessage(reason, locale)
                 ),
-                Match.orElse(
-                  () =>
-                    "The invoice could not be created. Check the customer and invoice details, then try again."
+                Match.tag("InvoiceAdministrationInProgressError", () =>
+                  m.accountingInvoiceCreateInProgress({}, { locale })
+                ),
+                Match.orElse(() =>
+                  m.accountingInvoiceCreateFailed({}, { locale })
                 )
               ),
               cause,
@@ -63,30 +77,28 @@ const createInvoiceAction = defineWorkspaceAction(
 const previewInvoiceAction = defineWorkspaceAction(
   {
     operation: "invoice-administration.preview",
-    schema: Schema.toStandardSchemaV1(AdministrationInvoiceCreateInput, {
-      parseOptions: strict,
-    }),
+    schema: invoiceCreateInputSchema,
     logInput: false,
   },
   Effect.fn(
-    function* (input) {
-      const actor = yield* requireAdministratorAuthorization;
+    function* (input, _context: InvoiceCreateActionContext) {
+      const administrator = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const pdf = yield* administration.preview(input, {
         source: "admin-ui",
-        actor,
+        administrator,
       });
       return {
         dataUrl: `data:application/pdf;base64,${Buffer.from(pdf).toString("base64")}`,
       };
     },
-    (effect) =>
+    (effect, _input, { locale }) =>
       effect.pipe(
         Effect.provide(InvoiceAdministrationService.Live),
         Effect.mapError(
           (cause) =>
             new PublicSafeActionError({
-              message: "The invoice preview could not be generated.",
+              message: m.accountingInvoiceFormPreviewError({}, { locale }),
               cause,
             })
         )
@@ -102,7 +114,7 @@ const searchCustomersAction = defineWorkspaceAction(
     }),
     logInput: false,
   },
-  (input) =>
+  (input, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
@@ -114,7 +126,10 @@ const searchCustomersAction = defineWorkspaceAction(
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
-            message: "Customer search is temporarily unavailable.",
+            message: m.accountingInvoiceCustomerSearchUnavailable(
+              {},
+              { locale }
+            ),
             cause,
           })
       )
@@ -129,7 +144,7 @@ const retryInvoiceAction = defineWorkspaceAction(
       { parseOptions: strict }
     ),
   },
-  (input) =>
+  (input, { locale }) =>
     requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
@@ -146,7 +161,7 @@ const retryInvoiceAction = defineWorkspaceAction(
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
-            message: "Invoice delivery could not be retried.",
+            message: m.accountingInvoiceRetryDeliveryError({}, { locale }),
             cause,
           })
       )

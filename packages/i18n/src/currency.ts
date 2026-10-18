@@ -28,3 +28,20 @@ export function formatCurrencyAmount({
     }),
   }).format(amount);
 }
+
+/**
+ * Names a currency in the reader's language, such as "česká koruna" for CZK in
+ * Czech. Falls back to the ISO code when the runtime has no display name.
+ */
+export function formatCurrencyName({
+  currency,
+  locale,
+}: {
+  readonly currency: string;
+  readonly locale: string;
+}): string {
+  return (
+    new Intl.DisplayNames([locale], { type: "currency" }).of(currency) ??
+    currency
+  );
+}

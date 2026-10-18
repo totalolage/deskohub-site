@@ -10,6 +10,7 @@ import {
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
 import type { AuthReturnLifecycle } from "./auth-return";
 
 const customerEmail = testEmailAddress("ada");
@@ -210,6 +211,103 @@ describe("account auth return lifecycle", () => {
     });
     lifecycle.cancel();
     expect(events).toContain("cleanup");
+  });
+
+  describe("with a return target", () => {
+    const returnTo = "/cs-CZ/admin/invoices?page=2";
+    const encodedReturnTo = "%2Fcs-CZ%2Fadmin%2Finvoices%3Fpage%3D2";
+    const signedIn = () =>
+      setSession({
+        session: { createdAt: new Date() },
+        user: { emailVerified: true },
+      });
+
+    test("carries it through the link callback and the hand-off", async () => {
+      signedIn();
+      const lifecycle = authReturn.createAuthReturnLifecycle({
+        locale: "en-US",
+        returnTo,
+      });
+      await lifecycle.sendSignInEmail(customerEmail);
+
+      expect(magicLink).toHaveBeenCalledWith({
+        email: customerEmail,
+        callbackURL: `/en-US/auth/callback?attempt=${VALID_ATTEMPT_ID}&returnTo=${encodedReturnTo}`,
+        metadata: { locale: "en-US" },
+      });
+      expect(await listener?.onReturn(new AbortController().signal)).toBe(true);
+      expect(events.slice(-2)).toEqual([`replace:${returnTo}`, "focus"]);
+    });
+
+    test("carries it without browser coordination", async () => {
+      removeReturnApis();
+      const lifecycle = authReturn.createAuthReturnLifecycle({
+        locale: "cs-CZ",
+        returnTo: "/admin",
+      });
+
+      await lifecycle.sendSignInEmail(customerEmail);
+
+      expect(magicLink).toHaveBeenCalledWith({
+        email: customerEmail,
+        callbackURL: "/cs-CZ/auth/callback?returnTo=%2Fadmin",
+        metadata: { locale: "cs-CZ" },
+      });
+    });
+
+    test("continues through the callback carrying it after a verified code", async () => {
+      const lifecycle = authReturn.createAuthReturnLifecycle({
+        locale: "en-US",
+        returnTo,
+      });
+      await lifecycle.sendSignInEmail(customerEmail);
+      await lifecycle.verifySignInCode(customerEmail, "482913");
+
+      const callbackURL = `/en-US/auth/callback?attempt=${VALID_ATTEMPT_ID}&returnTo=${encodedReturnTo}`;
+      expect(emailOtp).toHaveBeenCalledWith({
+        email: customerEmail,
+        otp: "482913",
+        callbackURL,
+      });
+      expect(lifecycle.continueWithVerifiedCode()).toBe(true);
+      expect(events.filter((event) => event.startsWith("replace:"))).toEqual([
+        `replace:${callbackURL}`,
+      ]);
+    });
+
+    test("continues to it when this browser is already signed in", async () => {
+      const lifecycle = authReturn.createAuthReturnLifecycle({
+        locale: "en-US",
+        returnTo,
+      });
+      await lifecycle.sendSignInEmail(customerEmail);
+      signedIn();
+
+      expect(await lifecycle.continueIfSignedIn()).toBe(true);
+      expect(events).toContain(`replace:${returnTo}`);
+    });
+
+    test.each(unsafeReturnTargets)(
+      "ignores %p and continues to the account",
+      async (unsafeReturnTo) => {
+        signedIn();
+        const lifecycle = authReturn.createAuthReturnLifecycle({
+          locale: "en-US",
+          returnTo: unsafeReturnTo,
+        });
+        await lifecycle.sendSignInEmail(customerEmail);
+
+        expect(magicLink).toHaveBeenCalledWith({
+          email: customerEmail,
+          callbackURL: `/en-US/auth/callback?attempt=${VALID_ATTEMPT_ID}`,
+          metadata: { locale: "en-US" },
+        });
+        expect(await listener?.onReturn(new AbortController().signal)).toBe(
+          true
+        );
+        expect(events.slice(-2)).toEqual(["replace:/en-US/account", "focus"]);
+      }
+    );
   });
 
   test("disposes the listener on rejected, thrown, cancelled, and resent emails", async () => {
@@ -419,7 +517,8 @@ describe("account auth return lifecycle", () => {
   test.each([
     [{ status: 429, code: "SIGN_IN_EMAIL_LIMIT_REACHED" }, "address-limit"],
     [{ status: 429 }, "rate-limited"],
-    [{ status: 403, code: "BOT_DETECTED" }, "failed"],
+    [{ status: 403, code: "BOT_DETECTED" }, "automated"],
+    [{ status: 429, code: "BOT_DETECTED" }, "automated"],
     [{ status: 503 }, "failed"],
     [{ status: 400, code: "INVALID_EMAIL" }, "failed"],
   ] as const)(
@@ -501,8 +600,28 @@ describe("account auth return lifecycle", () => {
     }
   );
 
+  test("maps a BotID code rejection without capturing it as a code error", async () => {
+    const lifecycle = authReturn.createAuthReturnLifecycle({
+      locale: "en-US",
+    });
+    await lifecycle.sendSignInEmail(customerEmail);
+    emailOtp.mockImplementationOnce(() =>
+      Promise.resolve({
+        data: null,
+        error: { status: 403, code: "BOT_DETECTED" },
+      })
+    );
+
+    expect(await lifecycle.verifySignInCode(customerEmail, "000000")).toBe(
+      "automated"
+    );
+    expect(captureSignInCodeRejection).not.toHaveBeenCalled();
+    expect(listenerCleanups[0]).not.toHaveBeenCalled();
+    lifecycle.cancel();
+  });
+
   test.each([
-    { status: 403, code: "BOT_DETECTED" },
+    { status: 403, code: "UNKNOWN_ERROR" },
     { status: 429 },
     { status: 503 },
   ])("reports an unclassified code failure %o generically", async (error) => {

@@ -10,100 +10,101 @@ import {
   AdministrationDataTable,
   type AdministrationDataTableColumn,
   type AdministrationDataTableSorting,
-  formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { m } from "@/features/administration/i18n";
 import { getAdministrationTableSortHref } from "@/features/administration/table-sort";
+import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { getInvoiceAdminActionFailureMessage } from "./action-failure-message";
 import { retryAdministrationInvoice } from "./actions";
 import type {
   InvoiceAdministrationListItem,
   InvoiceAdministrationListQuery,
 } from "./invoice-administration.service";
 import { InvoicePaymentStatusBadge } from "./invoice-detail";
+import { getInvoiceSourceLabel } from "./invoice-display";
 
-const columns: readonly AdministrationDataTableColumn<InvoiceAdministrationListItem>[] =
-  [
-    {
-      accessorKey: "invoiceNumber",
-      header: "Invoice",
-      cell: ({ row }) => (
-        <Link
-          className="font-semibold underline underline-offset-4"
-          href={`/admin/invoices/${row.original.id}`}
-        >
-          {row.original.invoiceNumber}
-        </Link>
-      ),
-    },
-    {
-      id: "customer",
-      accessorFn: (invoice) => invoice.customerName,
-      header: "Customer",
-    },
-    {
-      accessorKey: "issuedAt",
-      header: "Issued",
-      cell: ({ row }) =>
-        new Intl.DateTimeFormat("en-GB", {
-          dateStyle: "medium",
-          timeStyle: "short",
-        }).format(new Date(row.original.issuedAt)),
-    },
-    {
-      accessorKey: "total",
-      header: "Total",
-      cell: ({ row }) => `${row.original.total} ${row.original.currency}`,
-      meta: { cellClassName: "font-mono tabular-nums" },
-    },
-    {
-      accessorKey: "paymentStatus",
-      header: "Payment",
-      cell: ({ row }) => (
-        <InvoicePaymentStatusBadge status={row.original.paymentStatus} />
-      ),
-    },
-    {
-      accessorKey: "source",
-      header: "Provenance",
-      cell: ({ row }) => (
-        <div>
-          <p>
-            {
-              {
-                "reservation-request": "Reservation request",
-                "post-order-link": "Post-order link",
-                "admin-ui": "Admin UI",
-                "dhw-cli": "dhw CLI",
-                legacy: "Legacy / unknown",
-              }[row.original.source]
-            }
-          </p>
-          {row.original.actor && (
-            <p className="text-xs text-navy-blue/55">{row.original.actor}</p>
-          )}
-        </div>
-      ),
-    },
-    {
-      id: "delivery",
-      header: "Delivery",
-      accessorFn: (invoice) => invoice.needsAttention,
-      cell: ({ row }) => <InvoiceDeliveryBadge invoice={row.original} />,
-    },
-  ];
+/**
+ * A list item with its issue time and total already formatted on the server:
+ * the client's ICU spaces date-times and amounts differently from Node's.
+ */
+export type InvoiceAdministrationTableRow = InvoiceAdministrationListItem & {
+  readonly issuedAtLabel: string;
+  readonly totalLabel: string;
+};
+
+const getInvoiceColumns = (
+  locale: Locale
+): readonly AdministrationDataTableColumn<InvoiceAdministrationTableRow>[] => [
+  {
+    accessorKey: "invoiceNumber",
+    header: m.accountingInvoiceColumnInvoice({}, { locale }),
+    cell: ({ row }) => (
+      <Link
+        className="font-semibold underline underline-offset-4"
+        href={`/admin/invoices/${row.original.id}`}
+      >
+        {row.original.invoiceNumber}
+      </Link>
+    ),
+  },
+  {
+    id: "customer",
+    accessorFn: (invoice) => invoice.customerName,
+    header: m.accountingInvoiceColumnCustomer({}, { locale }),
+  },
+  {
+    accessorKey: "issuedAt",
+    header: m.accountingInvoiceColumnIssued({}, { locale }),
+    cell: ({ row }) => row.original.issuedAtLabel,
+  },
+  {
+    accessorKey: "total",
+    header: m.accountingInvoiceColumnTotal({}, { locale }),
+    cell: ({ row }) => row.original.totalLabel,
+    meta: { cellClassName: "font-mono tabular-nums" },
+  },
+  {
+    accessorKey: "paymentStatus",
+    header: m.accountingInvoiceColumnPayment({}, { locale }),
+    cell: ({ row }) => (
+      <InvoicePaymentStatusBadge status={row.original.paymentStatus} />
+    ),
+  },
+  {
+    accessorKey: "source",
+    header: m.accountingInvoiceColumnProvenance({}, { locale }),
+    cell: ({ row }) => (
+      <div>
+        <p>{getInvoiceSourceLabel(row.original.source, locale)}</p>
+        {row.original.actor && (
+          <p className="text-xs text-navy-blue/55">{row.original.actor}</p>
+        )}
+      </div>
+    ),
+  },
+  {
+    id: "delivery",
+    header: m.accountingInvoiceColumnDelivery({}, { locale }),
+    accessorFn: (invoice) => invoice.needsAttention,
+    cell: ({ row }) => <InvoiceDeliveryBadge invoice={row.original} />,
+  },
+];
 
 function InvoiceDeliveryBadge({
   invoice,
 }: {
   readonly invoice: InvoiceAdministrationListItem;
 }) {
+  const locale = useRouteLocale();
   if (invoice.needsAttention) {
     return (
       <StatusBadge tone="attention">
-        <CircleAlert aria-hidden className="size-3.5" /> Needs resend
+        <CircleAlert aria-hidden className="size-3.5" />{" "}
+        {m.accountingInvoiceDeliveryNeedsResend({}, { locale })}
       </StatusBadge>
     );
   }
@@ -111,16 +112,24 @@ function InvoiceDeliveryBadge({
     invoice.delivery.customer === "accepted" &&
     invoice.delivery.internal === "accepted"
   ) {
-    return <StatusBadge tone="positive">Sent</StatusBadge>;
+    return (
+      <StatusBadge tone="positive">
+        {m.accountingInvoiceDeliverySent({}, { locale })}
+      </StatusBadge>
+    );
   }
-  return <StatusBadge tone="neutral">Sending</StatusBadge>;
+  return (
+    <StatusBadge tone="neutral">
+      {m.accountingInvoiceDeliverySending({}, { locale })}
+    </StatusBadge>
+  );
 }
 
 export function InvoiceAdministrationTable({
   items,
   query,
 }: {
-  readonly items: readonly InvoiceAdministrationListItem[];
+  readonly items: readonly InvoiceAdministrationTableRow[];
   readonly query: InvoiceAdministrationListQuery;
 }) {
   const locale = useRouteLocale();
@@ -129,8 +138,8 @@ export function InvoiceAdministrationTable({
     : [];
   return (
     <AdministrationDataTable
-      ariaLabel="Invoices"
-      columns={columns}
+      ariaLabel={m.accountingInvoiceTableLabel({}, { locale })}
+      columns={getInvoiceColumns(locale)}
       data={items}
       getRowId={(item) => item.id}
       getSortHref={(field, direction) =>
@@ -160,10 +169,13 @@ export function InvoiceAdministrationTable({
                 <InvoicePaymentStatusBadge status={invoice.paymentStatus} />
               </div>
               <p className="mt-3 font-mono text-sm font-semibold tabular-nums">
-                {invoice.total} {invoice.currency}
+                {invoice.totalLabel}
               </p>
               <p className="mt-1 text-xs text-navy-blue/60">
-                Issued {formatAdministrationDateTime(invoice.issuedAt, locale)}
+                {m.accountingInvoiceIssuedOn(
+                  { issuedAt: invoice.issuedAtLabel },
+                  { locale }
+                )}
               </p>
               <div className="mt-3 flex items-start justify-between gap-3">
                 <InvoiceDeliveryBadge invoice={invoice} />
@@ -197,10 +209,13 @@ function InvoiceRowActions({
       },
       onError: ({ error: actionError }) =>
         setError(
-          actionError.serverError ?? "Invoice delivery could not be retried."
+          getInvoiceAdminActionFailureMessage(actionError.serverError, {
+            fallback: m.accountingInvoiceRetryDeliveryError({}, { locale }),
+            locale,
+          })
         ),
       onTransportError: () =>
-        setError("Invoice delivery could not be retried."),
+        setError(m.accountingInvoiceRetryDeliveryError({}, { locale })),
     }
   );
   return (
@@ -208,7 +223,10 @@ function InvoiceRowActions({
       <div className="flex justify-end gap-1">
         <Button
           asChild
-          aria-label={`Download ${invoice.invoiceNumber}`}
+          aria-label={m.accountingInvoiceDownloadLabel(
+            { invoiceNumber: invoice.invoiceNumber },
+            { locale }
+          )}
           size="icon"
           variant="ghost"
         >
@@ -224,7 +242,10 @@ function InvoiceRowActions({
         </Button>
         {invoice.needsAttention && (
           <Button
-            aria-label={`Retry delivery for ${invoice.invoiceNumber}`}
+            aria-label={m.accountingInvoiceRetryDeliveryLabel(
+              { invoiceNumber: invoice.invoiceNumber },
+              { locale }
+            )}
             disabled={isExecuting}
             onClick={() => {
               setError(null);

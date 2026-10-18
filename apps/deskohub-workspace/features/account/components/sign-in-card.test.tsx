@@ -85,9 +85,14 @@ const codeInput = (view: ReturnType<typeof render>) =>
     m.accountSignInCodeLabel({}, { locale })
   ) as HTMLInputElement;
 
-const submitEmail = async (view: ReturnType<typeof render>) => {
+const submitEmail = async (
+  view: ReturnType<typeof render>,
+  requestLocale: "en-US" | "cs-CZ" = locale
+) => {
   fireEvent.change(
-    view.getByLabelText(m.accountSignInEmailLabel({}, { locale })),
+    view.getByLabelText(
+      m.accountSignInEmailLabel({}, { locale: requestLocale })
+    ),
     { target: { value: adaAddress } }
   );
   await act(async () => {
@@ -433,10 +438,6 @@ describe("account components", () => {
       () => m.accountSignInEmailLimitReached({}, { locale }),
     ],
     [{ status: 429 }, () => m.accountSignInRateLimited({}, { locale })],
-    [
-      { status: 403, code: "BOT_DETECTED" },
-      () => m.accountSignInRequestFailed({}, { locale }),
-    ],
     [{ status: 503 }, () => m.accountSignInRequestFailed({}, { locale })],
   ] as const)(
     "sign-in card explains a rejected email %o",
@@ -448,6 +449,25 @@ describe("account components", () => {
       await submitEmail(view);
 
       expect(view.getByText(message())).toBeTruthy();
+    }
+  );
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "sign-in card explains an automated request in %s",
+    async (requestLocale) => {
+      signInMagicLink.mockImplementationOnce(() =>
+        Promise.resolve({ error: { status: 403, code: "BOT_DETECTED" } })
+      );
+      const { SignInCard } = await import("./sign-in-card");
+
+      const view = render(<SignInCard locale={requestLocale} />);
+      await submitEmail(view, requestLocale);
+
+      expect(
+        view.getByText(
+          m.accountSignInAutomatedRequest({}, { locale: requestLocale })
+        )
+      ).toBeTruthy();
     }
   );
 
@@ -675,6 +695,27 @@ describe("account components", () => {
     expect(signInPasskey).toHaveBeenCalledWith({ autoFill: false });
     expect(navigations).toEqual(["/en-US/account"]);
     expect(localStorage.getItem("deskohub:passkey-held:account-1")).toBe("1");
+  });
+
+  test("sign-in card continues a passkey sign-in to its return target", async () => {
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = render(
+      <SignInCard
+        locale={locale}
+        passkeysEnabled
+        returnTo="/en-US/admin/invoices?page=2"
+      />
+    );
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountSignInPasskey({}, { locale }),
+        })
+      );
+    });
+
+    expect(navigations).toEqual(["/en-US/admin/invoices?page=2"]);
   });
 
   test("sign-in card reports a failed passkey sign-in but not a cancelled one", async () => {

@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import type { DatabaseClient } from "@/db/database-client";
 import { standaloneAccessCodeAttemptEvents } from "@/db/schema";
-import { makeWorkspaceE2EAdminCredential } from "../admin-basic-auth";
+import { resolveWorkspaceE2ESessionSigningSecret } from "../account/seeded-session";
 import {
   type ActionResponseOutcome,
   awaitActionQuiescence,
@@ -20,6 +20,11 @@ import {
   runFinalizedCase,
   sanitizedBrowserOperation,
 } from "../admin-case";
+import {
+  makeWorkspaceE2EAdministrationIdentities,
+  type WorkspaceE2EAdministrationAccount,
+  type WorkspaceE2EAdministrationIdentities,
+} from "../administrators/identities";
 import {
   toWorkspaceE2EError,
   type WorkspaceE2EError,
@@ -67,9 +72,11 @@ test("creates a standalone access code through the admin form and replays the sa
   runContext,
   runEffect,
 }) => {
-  const credential = makeWorkspaceE2EAdminCredential(
-    environment.WORKSPACE_E2E_ADMIN_BASIC_AUTH
-  );
+  const identities = makeWorkspaceE2EAdministrationIdentities<"acc-admin">({
+    ownerId: accessCodeCreationCaseId,
+    runId: runContext.runId,
+    secret: resolveWorkspaceE2ESessionSigningSecret(environment),
+  });
   addRedaction(environment.VERCEL_AUTOMATION_BYPASS_SECRET);
   const plan = planAccessCodeCreationAttempt({
     name: makeSyntheticAccessCodeName(),
@@ -78,14 +85,13 @@ test("creates a standalone access code through the admin form and replays the sa
     baseURL,
     browser,
     caseName: "access code creation",
-    credential,
   });
   try {
     await runEffect(
       runAccessCodeCreationCase({
-        actorUsername: credential.username,
         bypassSecret: environment.VERCEL_AUTOMATION_BYPASS_SECRET,
         context,
+        identities,
         origin,
         page,
         plan,
@@ -102,9 +108,9 @@ test("creates a standalone access code through the admin form and replays the sa
 
 const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
   function* (input: {
-    readonly actorUsername: string;
     readonly bypassSecret: string | undefined;
     readonly context: BrowserContext;
+    readonly identities: WorkspaceE2EAdministrationIdentities<"acc-admin">;
     readonly origin: string;
     readonly page: Page;
     readonly plan: AccessCodeCreationPlan;
@@ -120,6 +126,7 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
     // before the POST is awaited, so an interrupted replay still gates cleanup.
     let replayBarrier: Promise<ActionResponseOutcome> | undefined;
     let capturedAction: CapturedActionRequest | undefined;
+    let administrator: WorkspaceE2EAdministrationAccount | undefined;
     let terminalStepId: string | undefined;
 
     const step = (
@@ -173,6 +180,16 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
             context: input.context,
             origin: input.origin,
           })
+        );
+        yield* step(
+          "sign-in-seeded-administrator",
+          workspaceE2ETimeouts.datasource,
+          Effect.gen(function* () {
+            administrator = yield* input.identities.seed("acc-admin", [
+              "administrator",
+            ]);
+            yield* input.identities.signIn(administrator, input);
+          }).pipe(Effect.provideService(E2EDatabase, E2EDatabase.of({ db })))
         );
         yield* step(
           "open-admin-form",
@@ -457,7 +474,16 @@ const runAccessCodeCreationCase = Effect.fn("runAccessCodeCreationCase")(
             equal(created.variance, started.variance);
             equal(started.providerCredentialId, null);
             ok(events.every((row) => row.source === "admin-ui"));
-            ok(events.every((row) => row.actor === input.actorUsername));
+            const actor = administrator;
+            ok(
+              actor !== undefined &&
+                events.every(
+                  (row) =>
+                    row.actorAccountId === actor.accountId &&
+                    row.actorAccountEmail === actor.email
+                ),
+              "every attempt event must name the seeded administrator account"
+            );
             ok(events.every((row) => row.name === input.plan.name));
           })
         );

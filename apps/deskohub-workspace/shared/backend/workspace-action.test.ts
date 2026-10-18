@@ -1,6 +1,7 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
-import { Effect, Schema } from "effect";
+import { Duration, Effect, Schema } from "effect";
+import { getActionRuntimeFailure } from "../utils/action-runtime-failure";
 
 let actionHeaderReads = 0;
 let scheduledTelemetryFlushes = 0;
@@ -181,6 +182,30 @@ describe("Workspace actions", () => {
     await expect(action("input")).resolves.toEqual({
       serverError: "Something went wrong while executing the operation.",
     });
+    expect(
+      getActionRuntimeFailure(
+        "Something went wrong while executing the operation."
+      )
+    ).toBe("unexpected");
+  });
+
+  test("reports an action that outlives its deadline as a timeout", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const action = defineWorkspaceAction(
+      {
+        deadline: Duration.millis(10),
+        operation: "test.timeout",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () => Effect.never
+    );
+
+    await expect(action("input")).resolves.toEqual({
+      serverError: "Request timed out. Please try again.",
+    });
+    expect(
+      getActionRuntimeFailure("Request timed out. Please try again.")
+    ).toBe("timeout");
   });
 
   test("supports stateful form actions explicitly", async () => {

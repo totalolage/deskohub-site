@@ -12,6 +12,7 @@ import {
   AdministrationInvoiceId,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Schema, Semaphore } from "effect";
+import { customerAccountIdSchema } from "@/features/account/customer-account";
 import {
   makeCoworkInvoiceDocument,
   makeTestManualInvoiceDocument,
@@ -56,6 +57,14 @@ const input = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)({
   currency: "CZK",
   lines: [{ description: "Space rental", price: "1000" }],
 });
+
+const issuer = {
+  source: "admin-ui",
+  administrator: {
+    accountId: customerAccountIdSchema.make(crypto.randomUUID()),
+    email: testEmailAddress("invoice-administrator"),
+  },
+} as const;
 
 describe("InvoiceAdministrationService", () => {
   test("projects reservation and customer references", async () => {
@@ -121,6 +130,36 @@ describe("InvoiceAdministrationService", () => {
     expect(result[1].serviceDate).toBe("2026-08-11");
   });
 
+  test("signals a searched customer without a name or email", async () => {
+    const email = testEmailAddress("unnamed-search");
+    const layer = InvoiceAdministrationService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DotyposService, {
+            searchCustomers: () =>
+              Effect.succeed([
+                { id: "dotypos-customer-unnamed" },
+                { id: "dotypos-customer-email", email: ` ${email} ` },
+              ] as never),
+          }),
+          Layer.mock(InvoiceRepository, {}),
+          Layer.mock(InvoiceEmailDeliveryService, {}),
+          Layer.mock(ManualInvoiceCreationRequests, {})
+        )
+      )
+    );
+
+    const customers = await Effect.gen(function* () {
+      const service = yield* InvoiceAdministrationService;
+      return yield* service.searchCustomers("synthetic");
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(customers).toMatchObject([
+      { displayName: "Unnamed customer", hasName: false },
+      { displayName: email, hasName: true },
+    ]);
+  });
+
   test("renders a PDF preview without touching providers or persistence", async () => {
     const providerMutation = mock(() => Effect.die("provider mutation"));
     const repositoryMutation = mock(() => Effect.die("repository mutation"));
@@ -141,10 +180,7 @@ describe("InvoiceAdministrationService", () => {
 
     const pdf = await Effect.gen(function* () {
       const service = yield* InvoiceAdministrationService;
-      return yield* service.preview(input, {
-        source: "admin-ui",
-        actor: "admin",
-      });
+      return yield* service.preview(input, issuer);
     }).pipe(Effect.provide(layer), Effect.runPromise);
 
     expect(Buffer.from(pdf).subarray(0, 5).toString()).toBe("%PDF-");
@@ -251,6 +287,15 @@ describe("InvoiceAdministrationService", () => {
     expect(results).toHaveLength(2);
     expect(createCustomer).toHaveBeenCalledTimes(1);
     expect(issueManual).toHaveBeenCalledTimes(2);
+    expect(issueManual).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provenance: {
+          source: "admin-ui",
+          actor: issuer.administrator.email,
+        },
+        issuedBy: issuer.administrator,
+      })
+    );
   });
 
   test("serializes new customer resolution by email across invoice ids", async () => {
@@ -379,7 +424,7 @@ describe("InvoiceAdministrationService", () => {
 const create = (
   service: InvoiceAdministrationService["Service"],
   invoice: AdministrationInvoiceCreateInputType
-) => service.create(invoice, { source: "admin-ui", actor: "admin" });
+) => service.create(invoice, issuer);
 
 const item = (
   id: string,

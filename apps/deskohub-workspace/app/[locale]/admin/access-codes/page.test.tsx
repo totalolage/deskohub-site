@@ -1,52 +1,25 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { isValidElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 
-let administratorAuthorization: Promise<void> = Promise.resolve();
-let authorizationChecks = 0;
+let screenRenders = 0;
 
 mock.module(
-  "@/shared/administrator/administrator-authorization.server",
+  "@/features/access-codes/admin/access-codes-administration-screen",
   () => ({
-    authorizeAdministratorPage: () => {
-      authorizationChecks += 1;
-      return administratorAuthorization;
+    AccessCodesAdministrationScreen: () => {
+      screenRenders += 1;
+      return null;
     },
   })
 );
 
-mock.module("@/features/access-codes/admin/create-access-code-form", () => ({
-  CreateStandaloneAccessCodeForm: () => <form aria-label="Access code" />,
-}));
-
 describe("access codes admin route", () => {
-  beforeEach(() => {
-    administratorAuthorization = Promise.resolve();
-    authorizationChecks = 0;
-  });
-
-  test("streams the page shell before authorizing the administrator", async () => {
+  test("renders the access-code screen without blocking the route", async () => {
     const { default: AccessCodesAdminPage } = await import("./page");
 
-    expect(isValidElement(AccessCodesAdminPage())).toBe(true);
-    expect(authorizationChecks).toBe(0);
-  });
+    const page = AccessCodesAdminPage();
 
-  test("renders no access-code form when administrator authorization fails", async () => {
-    const authorizationFailure = new Error("administrator required");
-    administratorAuthorization = Promise.reject(authorizationFailure);
-    const { AuthorizedAccessCodeCard } = await import("./page");
-
-    await expect(AuthorizedAccessCodeCard()).rejects.toBe(authorizationFailure);
-    expect(authorizationChecks).toBe(1);
-  });
-
-  test("renders the access-code form for an authorized administrator", async () => {
-    const { AuthorizedAccessCodeCard } = await import("./page");
-
-    const markup = renderToStaticMarkup(await AuthorizedAccessCodeCard());
-
-    expect(authorizationChecks).toBe(1);
-    expect(markup).toContain('<form aria-label="Access code">');
+    expect(isValidElement(page)).toBe(true);
+    expect(screenRenders).toBe(0);
   });
 });

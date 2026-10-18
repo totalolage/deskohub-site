@@ -44,6 +44,7 @@ import type {
   VerifyHumanInput,
 } from "@/shared/backend/bot-protection/bot-protection.service";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import {
   lookupMagicLinkDeliveryLocale,
   type MagicLinkLocaleLookup,
@@ -292,13 +293,18 @@ type AuthRequestGuard = {
 };
 
 /**
- * BotID screens both sign-in code paths. A verification outage lets the
- * request through; the per-email limit, the per-IP rate limits, and the
- * code's attempt budget still apply.
+ * BotID screens every sign-in email and code sign-in. A verification outage
+ * lets the request through; the per-IP rate limits still apply, and so do the
+ * per-email limit and the attempt budget while sign-in codes are on. Verified
+ * customer agents may sign in because a session still needs the link or code
+ * from the customer's inbox.
  */
 const verifySignInHuman = (config: WorkspaceAuthConfig) =>
   Effect.suspend(() =>
-    config.verifyHuman({ verificationFailurePolicy: "allow" })
+    config.verifyHuman({
+      verificationFailurePolicy: "allow",
+      verifiedBots: { allow: customerAgentNames },
+    })
   ).pipe(Effect.mapError(() => makeBotDetectedError()));
 
 /**
@@ -372,40 +378,40 @@ const readSignInCodeFlag = ({ config }: AuthRequestGuard) =>
 const signInEmailBodySchema = Schema.Struct({ email: Schema.String });
 
 /**
- * BotID and the per-email limit screen sign-in emails that carry a code.
- * Better Auth rejects a missing or malformed email after the hook.
+ * The per-email limit counts sign-in emails that carry a code. Better Auth
+ * rejects a missing or malformed email after the hook.
  */
-const screenSignInEmail = ({ config, request }: AuthRequestGuard) =>
-  verifySignInHuman(config).pipe(
-    Effect.andThen(
-      Option.match(
-        Schema.decodeUnknownOption(signInEmailBodySchema)(request.body),
-        {
-          onNone: () => Effect.void,
-          onSome: ({ email }) =>
-            reserveSignInEmail({
-              verifications: request.context.adapter,
-              email,
-            }).pipe(
-              Effect.filterOrFail(Boolean, makeSignInEmailLimitError),
-              Effect.asVoid
-            ),
-        }
-      )
-    )
+const reserveSignInCodeEmail = ({ request }: AuthRequestGuard) =>
+  Option.match(
+    Schema.decodeUnknownOption(signInEmailBodySchema)(request.body),
+    {
+      onNone: () => Effect.void,
+      onSome: ({ email }) =>
+        reserveSignInEmail({
+          verifications: request.context.adapter,
+          email,
+        }).pipe(
+          Effect.filterOrFail(Boolean, makeSignInEmailLimitError),
+          Effect.asVoid
+        ),
+    }
   );
 
 /**
  * Evaluates `login_email_code` once for a sign-in email (fail closed) and
  * records the decision in the request metadata, replacing any client value,
- * so the email and the response follow one evaluation. While it is on, the
- * send is BotID-checked and counted against the per-email limit.
+ * so the email and the response follow one evaluation. Every send is
+ * BotID-checked, matching the client's `protect` entry for this path; while
+ * the flag is on, the send also counts against the per-email limit.
  */
 const decideSignInCode = (guard: AuthRequestGuard) =>
   Effect.succeed(guard).pipe(
+    Effect.tap(() => verifySignInHuman(guard.config)),
     Effect.bind("signInCode", readSignInCodeFlag),
     Effect.tap(({ signInCode }) =>
-      screenSignInEmail(guard).pipe(Effect.when(Effect.succeed(signInCode)))
+      reserveSignInCodeEmail(guard).pipe(
+        Effect.when(Effect.succeed(signInCode))
+      )
     ),
     Effect.map(({ signInCode }) => ({
       context: { body: { metadata: { signInCode } } },

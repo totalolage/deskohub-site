@@ -4,11 +4,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { EmailServiceTag } from "@deskohub/email";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
-  AdministrationActorUsername,
   AdministrationCampaignAudienceId,
   AdministrationCampaignId,
   AdministrationCampaignSendId,
   AdministrationDotyposCustomerId,
+  AdministrationLegacyUsername,
   CliBearerAuthentication,
   CliInputInvalid,
   CliMutationRejected,
@@ -967,7 +967,7 @@ describe.skipIf(!testDatabase)(
       );
       yield* testDatabase.db.insert(cliSessions).values({
         id: sessionId,
-        approvedBy: AdministrationActorUsername.make("operator"),
+        approvedBy: AdministrationLegacyUsername.make("operator"),
         tokenHash,
         clientName: "ledger test client",
         cliVersion: "1.0.0",

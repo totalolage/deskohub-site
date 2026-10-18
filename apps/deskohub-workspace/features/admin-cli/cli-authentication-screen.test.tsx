@@ -7,6 +7,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { cleanup, render } from "@testing-library/react";
 import {
   registerWorkspaceComponentTestEnv,
@@ -41,10 +42,12 @@ const pendingRequest: CliApprovalRequestFixture = {
   state: "pending",
 };
 
+const operatorEmail = testEmailAddress("cli-approval-operator");
+
 let approval: {
-  readonly username: string;
+  readonly administratorEmail: string;
   readonly request: CliApprovalRequestFixture | null;
-} | null = { username: "operator", request: pendingRequest };
+} | null = { administratorEmail: operatorEmail, request: pendingRequest };
 
 mock.module("@/features/admin-cli/page-data.server", () => ({
   loadCliAuthenticationApproval: () => Promise.resolve(approval),
@@ -54,7 +57,7 @@ describe("CliAuthenticationRequest", () => {
   beforeAll(() => registerWorkspaceComponentTestEnv());
   afterEach(() => {
     cleanup();
-    approval = { username: "operator", request: pendingRequest };
+    approval = { administratorEmail: operatorEmail, request: pendingRequest };
   });
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
@@ -70,9 +73,9 @@ describe("CliAuthenticationRequest", () => {
     );
 
     expect(view.getByText(/Approving as/).textContent).toContain(
-      "Approving as operator."
+      `Approving as ${operatorEmail}.`
     );
-    expect(view.getByText("operator").tagName).toBe("STRONG");
+    expect(view.getByText(operatorEmail).tagName).toBe("STRONG");
     expect(view.getByText("Office Mac")).toBeTruthy();
     expect(view.getByRole("button", { name: "Approve this CLI" })).toBeTruthy();
   });
@@ -96,9 +99,9 @@ describe("CliAuthenticationRequest", () => {
     );
 
     expect(view.getByText(/Schvalujete jako/).textContent).toContain(
-      "Schvalujete jako operator."
+      `Schvalujete jako ${operatorEmail}.`
     );
-    expect(view.getByText("operator").tagName).toBe("STRONG");
+    expect(view.getByText(operatorEmail).tagName).toBe("STRONG");
     expect(view.getByText("Klient")).toBeTruthy();
     expect(
       view.getByRole("button", { name: "Schválit toto CLI" })
@@ -107,7 +110,7 @@ describe("CliAuthenticationRequest", () => {
 
   test("does not imply approval once the request reaches a terminal state", async () => {
     approval = {
-      username: "operator",
+      administratorEmail: operatorEmail,
       request: { ...pendingRequest, state: "granted" },
     };
     const { CliAuthenticationRequest } = await import(
@@ -121,7 +124,7 @@ describe("CliAuthenticationRequest", () => {
     );
 
     expect(view.queryByText(/Approving as/)).toBeNull();
-    expect(view.queryByText(/operator/)).toBeNull();
+    expect(view.queryByText(operatorEmail)).toBeNull();
     expect(view.getByText("CLI authenticated")).toBeTruthy();
   });
 });

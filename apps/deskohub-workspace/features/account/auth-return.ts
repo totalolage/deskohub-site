@@ -1,7 +1,10 @@
 "use client";
 
 import { Option, Predicate, Schema } from "effect";
-import { getAccountPath } from "@/features/account/routes";
+import {
+  getAuthCallbackPath,
+  getSignInDestination,
+} from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import { listenForReturn } from "@/shared/browser/return-window";
 import { authClient } from "./auth.client";
@@ -42,6 +45,11 @@ type SessionCreatedAt = typeof sessionCreatedAtSchema.Type;
 type AuthReturnLifecycleOptions = {
   readonly locale: Locale;
   readonly requireFreshSession?: boolean;
+  /**
+   * Where to continue after sign-in instead of the account. Anything but a
+   * same-origin path is ignored.
+   */
+  readonly returnTo?: string;
 };
 
 export type SignInEmailFailure =
@@ -49,6 +57,8 @@ export type SignInEmailFailure =
   | "address-limit"
   /** The browser sent too many auth requests; try again shortly. */
   | "rate-limited"
+  /** BotID judged the request automated; continue in your own browser. */
+  | "automated"
   | "failed";
 
 export type SignInEmailResult =
@@ -66,6 +76,8 @@ export type SignInCodeVerification =
   | "wrong"
   | "expired"
   | "too-many-attempts"
+  /** BotID judged the request automated; continue in your own browser. */
+  | "automated"
   | "failed";
 
 export type AuthReturnLifecycle = {
@@ -83,8 +95,8 @@ export type AuthReturnLifecycle = {
   /** Hard-navigates through the sign-in callback after a verified code. */
   readonly continueWithVerifiedCode: () => boolean;
   /**
-   * Continues to the account when this browser already holds a usable
-   * session, such as after the link was opened in another tab.
+   * Continues to the sign-in destination when this browser already holds a
+   * usable session, such as after the link was opened in another tab.
    */
   readonly continueIfSignedIn: () => Promise<boolean>;
 };
@@ -117,6 +129,7 @@ const toSignInEmailFailure = ({
   status,
   code,
 }: AuthError): SignInEmailFailure => {
+  if (code === "BOT_DETECTED") return "automated";
   if (status !== 429) return "failed";
   return code === "SIGN_IN_EMAIL_LIMIT_REACHED"
     ? "address-limit"
@@ -232,8 +245,10 @@ const readUsableSession = async (requireFreshSession: boolean) => {
 export const createAuthReturnLifecycle = ({
   locale,
   requireFreshSession = false,
+  returnTo,
 }: AuthReturnLifecycleOptions): AuthReturnLifecycle => {
-  const callbackPath = `/${locale}/auth/callback`;
+  const destination = getSignInDestination(locale, returnTo);
+  const callbackPath = getAuthCallbackPath(locale, { returnTo });
   let currentCleanup: () => void = noop;
   let requestEpoch = 0;
   // The callback URL of the latest sign-in email, reused by code sign-in.
@@ -288,14 +303,14 @@ export const createAuthReturnLifecycle = ({
                 recordSignInCompletion("link");
                 noteEmailSignInForPasskeyPrompt();
               }
-              return leaveFor(getAccountPath(locale), { focus: true });
+              return leaveFor(destination, { focus: true });
             },
             ttlMs: RETURN_LISTENER_TTL_MS,
           })
         );
         if (cleanup) {
           currentCleanup = cleanup;
-          callbackURL = `${callbackPath}?attempt=${encodeURIComponent(attemptId)}`;
+          callbackURL = getAuthCallbackPath(locale, { attemptId, returnTo });
         }
       }
     }
@@ -347,6 +362,7 @@ export const createAuthReturnLifecycle = ({
     if (Option.isNone(response)) return "failed";
     const { error } = response.value;
     if (error !== null) {
+      if (error.code === "BOT_DETECTED") return "automated";
       const rejection =
         error.code !== undefined &&
         Object.hasOwn(signInCodeRejections, error.code)
@@ -379,7 +395,7 @@ export const createAuthReturnLifecycle = ({
     if (requestEpoch !== requestId || !signedIn) return false;
     // The tab that opened the link records its own completion.
     cancel();
-    return leaveFor(getAccountPath(locale), { focus: false });
+    return leaveFor(destination, { focus: false });
   };
 
   return {

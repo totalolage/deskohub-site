@@ -171,7 +171,10 @@ const dashboard: DiscountAdminDashboard = {
         association: {
           kind: "associated",
           discountId: "019c91dd-c560-7e55-b9d8-c95065efd51d",
-          discountLabel: "Summer discount",
+          discountLabels: {
+            "en-US": "Summer discount",
+            "cs-CZ": "Summer discount",
+          },
         },
       },
     ],
@@ -232,7 +235,10 @@ describe("discount administration pages", () => {
             }
           }}
         >
-          <CodesAdministrationCollection dashboard={sortableDashboard} />
+          <CodesAdministrationCollection
+            locale="en-US"
+            dashboard={sortableDashboard}
+          />
         </Profiler>
       </StrictMode>
     );
@@ -256,6 +262,162 @@ describe("discount administration pages", () => {
     });
   });
 
+  test("renders the code list in the operator's locale", async () => {
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <CodesAdministrationCollection dashboard={dashboard} locale="cs-CZ" />
+      </RouteLocaleProvider>
+    );
+    const table = view.getByRole("table", { name: "Slevové kódy" });
+
+    expect(view.getByRole("heading", { name: "Kódy" })).toBeDefined();
+    expect(within(table).getByRole("button", { name: /^Kód/ })).toBeDefined();
+    expect(within(table).getByText("Aktivní")).toBeDefined();
+    expect(within(table).getByText("2 zákazníci")).toBeDefined();
+    expect(within(table).getByText("Všechny úrovně coworku")).toBeDefined();
+    expect(
+      within(table).getByRole("button", { name: "Smazat SUMMER10" })
+    ).toBeDefined();
+  });
+
+  test("formats code counts and cowork tier targets in the operator's locale", async () => {
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { CodesAdministrationCollection } = await import("./components");
+    const [discount] = dashboard.discounts;
+    const [code] = dashboard.codes;
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <CodesAdministrationCollection
+          dashboard={{
+            ...dashboard,
+            discounts: [
+              {
+                ...discount,
+                products: [{ kind: "cowork", tier: "reserved-desk" }],
+              },
+            ],
+            codes: [
+              {
+                ...code,
+                reservedUses: 1250,
+                redeemedUses: 2400,
+                remainingUses: 6350,
+                maxUsesPerCustomer: null,
+              },
+            ],
+          }}
+          locale="cs-CZ"
+        />
+      </RouteLocaleProvider>
+    );
+    const table = within(view.getByRole("table", { name: "Slevové kódy" }));
+
+    expect(table.getByText("Pouze Vyhrazené místo")).toBeDefined();
+    expect(table.getByText(/^1\s250$/)).toBeDefined();
+    expect(table.getByText(/^2\s400$/)).toBeDefined();
+    expect(table.getByText(/^6\s350$/)).toBeDefined();
+    expect(table.getByText("Neomezeně")).toBeDefined();
+  });
+
+  test("renders customer payments and claim releases in the operator's locale", async () => {
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { ClaimHistoryTable, CustomerTransactionHistoryTable } = await import(
+      "./customer-admin-tables"
+    );
+    const paidReservation = loadFixtureReservations({
+      customerId: "customer-alex",
+    }).items.find(({ latestPayment }) => latestPayment?.state === "paid");
+    const attempt = paidReservation?.latestPayment;
+    if (!paidReservation || !attempt) {
+      throw new Error("The fixtures have no paid reservation");
+    }
+    const reservation = {
+      ...paidReservation,
+      product: { kind: "cowork", tier: "reserved-desk" },
+    } as const;
+    const claim = {
+      kind: "discount-code",
+      appliedAmount: { value: 7500, exponent: 2, currency: "CZK" },
+      promotion: { id: dashboard.codes[0].id, code: "SUMMER10" },
+      dotyposCustomerId: "dotypos-customer",
+      redeemedAt: null,
+      releasedAt: "2026-08-02T08:00:00Z",
+      reservedAt: "2026-08-01T08:00:00Z",
+      reservedAtLabel: "1. 8. 2026 10:00",
+      completedAtLabel: "2. 8. 2026 10:00",
+      state: "released",
+      workspaceReservationId: paidReservation.id,
+    } as const;
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <CustomerTransactionHistoryTable
+          transactions={[
+            { attempt, reservation, updatedAtLabel: "1. 8. 2026 10:00" },
+            {
+              attempt: {
+                ...attempt,
+                id: `${attempt.id}-refunded`,
+                refundState: "refunded",
+                refundedAmount: {
+                  ...attempt.amount,
+                  value: attempt.amount.value / 2,
+                },
+                refundedAt: "2026-08-03T08:00:00Z",
+              },
+              reservation,
+              updatedAtLabel: "3. 8. 2026 10:00",
+            },
+          ]}
+        />
+        <ClaimHistoryTable
+          ariaLabel="Historie uplatnění"
+          claims={[
+            {
+              ...claim,
+              id: "claim-abandoned",
+              releaseReason: "payment_abandoned_after_provider_cutoff",
+            },
+            {
+              ...claim,
+              id: "claim-unknown",
+              releaseReason: "synthetic_terminal",
+            },
+          ]}
+          subject="promotion-code"
+        />
+      </RouteLocaleProvider>
+    );
+    const transactions = within(
+      view.getByRole("table", { name: "Historie transakcí zákazníka" })
+    );
+    const [paidRow, refundedRow] = transactions.getAllByRole("row").slice(1);
+
+    expect(within(paidRow!).getByText("Zaplaceno")).toBeDefined();
+    expect(within(refundedRow!).getByText(/^Částečně vráceno /)).toBeDefined();
+    expect(refundedRow?.textContent).toContain("před vrácením peněz");
+    expect(refundedRow?.textContent).toContain("po vrácení peněz");
+    expect(transactions.getAllByText("Vyhrazené místo")).toHaveLength(2);
+
+    const claims = within(
+      view.getByRole("table", { name: "Historie uplatnění" })
+    );
+    expect(
+      claims.getByText("Platba nebyla dokončena ve lhůtě pro zaplacení")
+    ).toBeDefined();
+    expect(claims.getByText("Uvolněno z jiného důvodu")).toBeDefined();
+    expect(
+      claims.queryByText(/payment_abandoned|synthetic_terminal/)
+    ).toBeNull();
+  });
+
   test("shows only explicit and unrestricted customer codes with guarded icon actions", async () => {
     const { CustomerAdministrationDetailPage } = await import(
       "./customer-admin-components"
@@ -264,6 +426,7 @@ describe("discount administration pages", () => {
       customer: {
         id: "dotypos-customer",
         displayName: "Test Customer",
+        hasName: true,
         email: testEmailAddressForTest,
         phone: "+420 123 456 789",
         discountGroupId: null,
@@ -278,7 +441,10 @@ describe("discount administration pages", () => {
             kind: "percentage",
             basisPoints: 1000,
           },
-          discountLabel: "Only me discount",
+          discountLabels: {
+            "en-US": "Only me discount",
+            "cs-CZ": "Only me discount",
+          },
           eligible: true,
         },
         {
@@ -290,7 +456,10 @@ describe("discount administration pages", () => {
             kind: "fixed",
             amount: { value: 7500, exponent: 2, currency: "CZK" },
           },
-          discountLabel: "Open discount",
+          discountLabels: {
+            "en-US": "Open discount",
+            "cs-CZ": "Open discount",
+          },
           eligible: false,
         },
         {
@@ -302,7 +471,10 @@ describe("discount administration pages", () => {
             kind: "percentage",
             basisPoints: 500,
           },
-          discountLabel: "Disabled discount",
+          discountLabels: {
+            "en-US": "Disabled discount",
+            "cs-CZ": "Disabled discount",
+          },
           eligible: true,
           enabled: false,
         },
@@ -315,7 +487,10 @@ describe("discount administration pages", () => {
             kind: "percentage",
             basisPoints: 1000,
           },
-          discountLabel: "Restricted discount",
+          discountLabels: {
+            "en-US": "Restricted discount",
+            "cs-CZ": "Restricted discount",
+          },
           eligible: false,
         },
       ],
@@ -357,13 +532,17 @@ describe("discount administration pages", () => {
           transactions: [
             {
               attempt: paidReservation.latestPayment,
-              reservation: paidReservation,
+              reservation: {
+                ...paidReservation,
+                product: { kind: "cowork", tier: "basic" },
+              },
             },
           ],
           transactionHistoryTruncated: true,
           stats: {
             reservationCount: reservations.length,
             favoriteProduct: "Cowork Basic",
+            favoriteReservationProduct: { kind: "cowork", tier: "basic" },
             revenue: [paidReservation.latestPayment.amount],
             discountSavings: [{ value: 7500, exponent: 2, currency: "CZK" }],
           },
@@ -514,6 +693,9 @@ describe("discount administration pages", () => {
         view.getByRole("heading", { name: "Consents" })
       )
     ).toBe(true);
+    // The favourite product and the transaction come from the customer
+    // catalog's product names, not the API's English labels.
+    expect(view.getAllByText("Basic Day Pass").length).toBeGreaterThan(0);
     expect(view.getByText("Granted")).toBeDefined();
     expect(view.queryByText("Declined")).toBeNull();
     expect(view.queryByText("Privacy policy")).toBeNull();
@@ -572,6 +754,183 @@ describe("discount administration pages", () => {
     expect(
       view.getByRole("button", { name: "Keep available to all" })
     ).toBeDefined();
+  });
+
+  test("formats customer counts in the operator's locale", async () => {
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { CustomerAdministrationDetailPage } = await import(
+      "./customer-admin-components"
+    );
+    const { CustomerPromotionCodeAction } = await import(
+      "./customer-admin-client"
+    );
+    const { m } = await import("@/features/administration/i18n");
+    const { formatCount } = await import("@/shared/utils/number");
+    const locale = "cs-CZ";
+    const view = render(
+      <RouteLocaleProvider locale={locale}>
+        <CustomerAdministrationDetailPage
+          activity={{
+            reservations: [],
+            reservationHistoryTruncated: false,
+            transactions: [],
+            transactionHistoryTruncated: false,
+            stats: {
+              reservationCount: 1250,
+              favoriteProduct: null,
+              favoriteReservationProduct: null,
+              revenue: [],
+              discountSavings: [],
+            },
+            marketingConsent: null,
+          }}
+          locale={locale}
+          profile={{
+            customer: {
+              id: "dotypos-customer",
+              displayName: "Test Customer",
+              hasName: true,
+              email: testEmailAddressForTest,
+              phone: null,
+              discountGroupId: null,
+            },
+            discountGroups: [],
+            codes: [
+              {
+                ...dashboard.codes[0],
+                audienceSize: 1250,
+                discountAdjustment: { kind: "percentage", basisPoints: 1000 },
+                discountLabels: {
+                  "en-US": "Summer discount",
+                  "cs-CZ": "Letní sleva",
+                },
+                eligible: true,
+              },
+            ],
+            claims: [],
+            vouchers: [],
+            voucherClaims: [],
+          }}
+          reservationActivity={emptyReservationActivity}
+        />
+      </RouteLocaleProvider>
+    );
+
+    const reservationStat = view.getByText(
+      m.discountsCustomerStatReservations({}, { locale }),
+      { selector: "dt" }
+    ).nextElementSibling;
+    expect(reservationStat?.textContent).toBe(formatCount(1250, locale));
+    const [, codeRow] = within(
+      view.getByRole("table", { name: "Kódy a poukazy zákazníka" })
+    ).getAllByRole("row");
+    expect(codeRow?.textContent).toContain(
+      `${formatCount(1250, locale)} vybraných zákazníků`
+    );
+    cleanup();
+
+    const action = render(
+      <RouteLocaleProvider locale={locale}>
+        <CustomerPromotionCodeAction
+          audienceSize={1000}
+          code="SUMMER10"
+          customerId="dotypos-customer"
+          customerName="Test Customer"
+          eligible={false}
+          promotion={{ kind: "discount-code", id: dashboard.codes[0].id }}
+        />
+      </RouteLocaleProvider>
+    );
+    fireEvent.click(
+      action.getByRole("button", {
+        name: "Přidat zákazníka Test Customer ke kódu SUMMER10",
+      })
+    );
+    const dialog = await action.findByRole("dialog");
+    expect(dialog.textContent).toContain(
+      m.discountsCodeAddCustomerDialogDescription(
+        {
+          code: "SUMMER10",
+          customerName: "Test Customer",
+          count: 1000,
+          total: 1001,
+        },
+        { locale }
+      )
+    );
+    expect(dialog.textContent).toContain(
+      `omezen na ${formatCount(1000, locale)} dalších zákazníků`
+    );
+    expect(dialog.textContent).toContain(
+      `dostupný ${formatCount(1001, locale)} zákazníkům`
+    );
+  });
+
+  test("names an unnamed customer and the profile sections in Czech", async () => {
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { CustomerAdministrationDetailPage } = await import(
+      "./customer-admin-components"
+    );
+    const { unnamedCustomerDisplayName } = await import(
+      "@/features/administration/customer-name"
+    );
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <CustomerAdministrationDetailPage
+          activity={{
+            reservations: [],
+            reservationHistoryTruncated: false,
+            transactions: [],
+            transactionHistoryTruncated: false,
+            stats: {
+              reservationCount: 0,
+              favoriteProduct: null,
+              favoriteReservationProduct: null,
+              revenue: [],
+              discountSavings: [],
+            },
+            marketingConsent: null,
+          }}
+          locale="cs-CZ"
+          profile={{
+            customer: {
+              id: "dotypos-customer",
+              displayName: unnamedCustomerDisplayName,
+              hasName: false,
+              email: null,
+              phone: null,
+              discountGroupId: null,
+            },
+            discountGroups: [],
+            codes: [],
+            claims: [],
+            vouchers: [],
+            voucherClaims: [],
+          }}
+          reservationActivity={emptyReservationActivity}
+        />
+      </RouteLocaleProvider>
+    );
+
+    expect(
+      view.getByRole("heading", { level: 1, name: "Zákazník bez jména" })
+    ).toBeTruthy();
+    for (const name of ["Statistiky", "Souhlasy"]) {
+      expect(view.getByRole("heading", { level: 2, name })).toBeTruthy();
+    }
+    expect(view.getByText("Tento zákazník nemá žádné platby.")).toBeTruthy();
+    for (const english of [
+      unnamedCustomerDisplayName,
+      "Stats",
+      "Consents",
+      "This customer has no payments.",
+    ]) {
+      expect(view.container.textContent).not.toContain(english);
+    }
   });
 
   test("creates a customer discount code without mixing in vouchers", async () => {
@@ -789,7 +1148,7 @@ describe("discount administration pages", () => {
     const captured = captureWorkspaceActions(/^updateDiscount\./);
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
-      <CodesAdministrationCollection dashboard={dashboard} />
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
     );
     fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
 
@@ -860,7 +1219,7 @@ describe("discount administration pages", () => {
     const captured = captureWorkspaceActions(/^updateDiscount\./);
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
-      <CodesAdministrationCollection dashboard={dashboard} />
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
     );
     fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
 
@@ -913,7 +1272,7 @@ describe("discount administration pages", () => {
     const captured = captureWorkspaceActions(/^updateDiscount\./);
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
-      <CodesAdministrationCollection dashboard={dashboard} />
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
     );
     fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
 
@@ -968,7 +1327,7 @@ describe("discount administration pages", () => {
     );
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
-      <CodesAdministrationCollection dashboard={dashboard} />
+      <CodesAdministrationCollection locale="en-US" dashboard={dashboard} />
     );
     fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
 
@@ -1076,6 +1435,38 @@ describe("discount administration pages", () => {
     expect(view.queryByRole("status")).toBeNull();
   });
 
+  test("shows a timed-out save in Czech on a cs-CZ route", async () => {
+    const captured = captureWorkspaceActions(/^createDiscount$/);
+    const { RouteLocaleProvider } = await import(
+      "@/features/i18n/route-locale"
+    );
+    const { CreateDiscountForm } = await import("./admin-tables");
+    const view = render(
+      <RouteLocaleProvider locale="cs-CZ">
+        <CreateDiscountForm />
+      </RouteLocaleProvider>
+    );
+    const { options } = captured("createDiscount");
+
+    act(() =>
+      options.onError({
+        error: { serverError: "Request timed out. Please try again." },
+      })
+    );
+    expect(view.getByRole("alert").textContent).toBe(
+      "Server neodpověděl včas. Zkuste to znovu."
+    );
+
+    act(() =>
+      options.onError({
+        error: { serverError: "Propagační kód s touto hodnotou už existuje." },
+      })
+    );
+    expect(view.getByRole("alert").textContent).toBe(
+      "Propagační kód s touto hodnotou už existuje."
+    );
+  });
+
   test("targets single cowork tiers and blocks mixing them with all cowork tiers", async () => {
     const execute = mock();
     workspaceUseAction.mockReturnValue({
@@ -1144,6 +1535,7 @@ describe("discount administration pages", () => {
     const { CodesAdministrationCollection } = await import("./components");
     const view = render(
       <CodesAdministrationCollection
+        locale="en-US"
         dashboard={{
           ...dashboard,
           discounts: [
@@ -1199,7 +1591,7 @@ describe("discount administration pages", () => {
   });
 
   test("sets and clears a customer discount group", async () => {
-    const captured = captureWorkspaceActions(/^Save group$/);
+    const captured = captureWorkspaceActions(/^setCustomerDiscountGroup$/);
     const { CustomerDiscountGroupForm } = await import(
       "./customer-admin-client"
     );
@@ -1217,7 +1609,7 @@ describe("discount administration pages", () => {
 
     fireEvent.change(select, { target: { value: "group-1" } });
     fireEvent.submit(form);
-    const { execute } = captured("Save group");
+    const { execute } = captured("setCustomerDiscountGroup");
     await waitFor(() =>
       expect(execute).toHaveBeenCalledWith({
         kind: "set-customer-discount-group",

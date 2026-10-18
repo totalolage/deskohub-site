@@ -448,21 +448,13 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
     ],
   },
   {
-    name: "administration Basic Auth imports", diagnostic: "Administration pages authorize only through authorizeAdministratorPage",
-    module: `${admin}/access-codes/page.tsx`,
-    cases: [
-      ["rejects Basic Auth in the access codes page", 'import { verifyAdministratorBasicAuth } from "@/shared/administrator/administrator-basic-auth";\nexport { verifyAdministratorBasicAuth };\n', true],
-      ["permits the shared authorization gate", 'import { verifyAdministratorBasicAuth } from "@/shared/administrator/administrator-basic-auth";\nexport { verifyAdministratorBasicAuth };\n', false, "apps/deskohub-workspace/shared/administrator/administrator-authorization.server.ts"],
-    ],
-  },
-  {
     name: "administration request boundary", diagnostic: "establish the request boundary only through authorizeAdministratorPage",
     module: "apps/deskohub-workspace/features/administration/page-data.server.ts",
     cases: [
       ["rejects connection in administration page data", 'import { connection } from "next/server";\nexport { connection };\n', true],
       ["rejects connection in the administration layout", 'import { connection } from "next/server";\nexport { connection };\n', true, `${admin}/layout.tsx`],
       ["permits other next/server imports", 'import { after } from "next/server";\nexport { after };\n', false],
-      ["permits the shared authorization gate", 'import { connection } from "next/server";\nexport { connection };\n', false, "apps/deskohub-workspace/shared/administrator/administrator-authorization.server.ts"],
+      ["permits the shared authorization gate", 'import { connection } from "next/server";\nexport { connection };\n', false, "apps/deskohub-workspace/features/administrators/server/administrator-authorization.server.ts"],
     ],
   },
   {
@@ -486,7 +478,7 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["rejects Dotypos", 'import { DotyposService } from "@deskohub/dotypos";\nexport { DotyposService };\n', true],
       ["rejects the Dotypos config", 'import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";\nexport { WorkspaceDotyposLayer };\n', true],
       ["rejects invoice email delivery", 'import { InvoiceEmailDeliveryRepository } from "@/features/accounting/backend/invoice-email-delivery.repository";\nexport { InvoiceEmailDeliveryRepository };\n', true],
-      ["rejects snapshots in the authorization gate", 'import { readSnapshot } from "@/features/accounting/backend/accounting-snapshot-sql";\nexport { readSnapshot };\n', true, "apps/deskohub-workspace/shared/administrator/administrator-authorization.server.ts"],
+      ["rejects snapshots in the authorization gate", 'import { readSnapshot } from "@/features/accounting/backend/accounting-snapshot-sql";\nexport { readSnapshot };\n', true, "apps/deskohub-workspace/features/administrators/server/administrator-authorization.server.ts"],
       ["rejects detail loaders in the breadcrumb surface", 'import { loadAdministrationBooking } from "@/features/administration/page-data.server";\nexport { loadAdministrationBooking };\n', true, breadcrumbs],
       ["rejects accounting page data in the breadcrumb surface", 'import { loadInvoiceLabel } from "@/features/accounting/admin/page-data.server";\nexport { loadInvoiceLabel };\n', true, breadcrumbs],
       ["permits the breadcrumb service", 'import { InvoiceBreadcrumbService } from "./invoice-breadcrumb.service";\nexport { InvoiceBreadcrumbService };\n', false],

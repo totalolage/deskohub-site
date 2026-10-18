@@ -5,9 +5,9 @@ import { Effect, Predicate, Schema } from "effect";
 import { redirect } from "next/navigation";
 import { localizeAdministrationHref } from "@/features/administration/administration-href";
 import { m } from "@/features/administration/i18n";
+import { requireAdministratorAuthorization } from "@/features/administrators/server/administrator-authorization.server";
 import { resolveActionLocale } from "@/features/i18n/server/action-locale";
 import { revalidateLocalizedPath } from "@/features/i18n/server/revalidate-localized-path";
-import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -62,12 +62,15 @@ const decodeCliSessionLifetime = (formData: FormData) =>
 
 export async function revokeCliSession(formData: FormData) {
   const revoked = await Effect.gen(function* () {
-    const owner = yield* requireAdministratorAuthorization;
+    const administrator = yield* requireAdministratorAuthorization;
     const sessionId = yield* Schema.decodeUnknownEffect(CliSessionId)(
       formData.get("sessionId")
     );
     const authentication = yield* CliAuthentication;
-    return yield* authentication.revoke({ owner, sessionId });
+    return yield* authentication.revoke({
+      owner: administrator.accountId,
+      sessionId,
+    });
   }).pipe(
     Effect.catch(() => Effect.succeed(false)),
     Effect.provide(CliAuthentication.Live),
@@ -93,10 +96,10 @@ const renameCliSessionAction = defineWorkspaceAction(
   },
   Effect.fn(
     function* (input, { locale }) {
-      const owner = yield* requireAdministratorAuthorization;
+      const administrator = yield* requireAdministratorAuthorization;
       const authentication = yield* CliAuthentication;
       const renamed = yield* authentication.renameSession({
-        owner,
+        owner: administrator.accountId,
         sessionId: input.sessionId,
         clientName: input.clientName,
       });

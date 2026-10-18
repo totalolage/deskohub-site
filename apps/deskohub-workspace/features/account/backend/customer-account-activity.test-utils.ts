@@ -6,6 +6,7 @@ import {
   customerAccountIdSchema,
 } from "../customer-account";
 import {
+  type GuardedStateCreation,
   guardOptionalAccountStateCreation,
   OptionalAccountActivityGuard,
 } from "./customer-account-activity";
@@ -103,8 +104,9 @@ export const makeOptionalAccountActivityGuard = (
       ),
   };
 
-  const guardStateCreation = <A, E, R>(stateCreation: Effect.Effect<A, E, R>) =>
-    guardOptionalAccountStateCreation(guardDependencies, stateCreation);
+  const guardStateCreation = <A, E, R>(
+    stateCreation: GuardedStateCreation<A, E, R>
+  ) => guardOptionalAccountStateCreation(guardDependencies, stateCreation);
 
   return {
     events,

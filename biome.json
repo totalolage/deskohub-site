@@ -170,7 +170,6 @@
                 "paths": {
                   "@/shared/components/ui/table": "Compose administration tables through AdministrationDataTable.",
                   "@/shared/components/ui/badge": "Use the shared administration table toolbar and count badge.",
-                  "@/shared/administrator/administrator-basic-auth": "Administration pages authorize only through authorizeAdministratorPage; Basic Auth credentials stay inside the shared gate and the proxy.",
                   "next/server": {
                     "importNames": ["connection"],
                     "message": "Administration pages establish the request boundary only through authorizeAdministratorPage."

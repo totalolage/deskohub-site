@@ -13,6 +13,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { CustomerAccountId } from "@/features/account/customer-account";
 import type {
   CheckoutAttemptKey,
   CheckoutSessionKey,
@@ -32,6 +33,7 @@ import inlangSettings from "../../project.inlang/settings.json" with {
 };
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
+import { customerAccounts } from "./customer-accounts";
 import { quotedSqlList } from "./sql-list";
 
 export const reservationStates = [
@@ -98,6 +100,13 @@ export const workspaceReservations = pgTable(
     dotyposCustomerId: text("dotypos_customer_id")
       .notNull()
       .$type<DotyposCustomerId>(),
+    /**
+     * The customer account that made the reservation. Null only for guest
+     * checkouts and legacy rows until the author backfill.
+     */
+    authorAccountId: text("author_account_id")
+      .references(() => customerAccounts.id, { onDelete: "restrict" })
+      .$type<CustomerAccountId>(),
     reservationPurpose: text("reservation_purpose").$type<ReservationPurpose>(),
     dotyposReservationId: text(
       "dotypos_reservation_id"
@@ -193,6 +202,7 @@ export const workspaceReservations = pgTable(
     uniqueIndex("workspace_reservations_active_session_unique_idx")
       .on(t.checkoutSessionKey)
       .where(sql`${t.reservationState} <> 'cancelled'`),
+    index("workspace_reservations_author_account_idx").on(t.authorAccountId),
     index("workspace_reservations_checkout_session_idx").on(
       t.checkoutSessionKey,
       t.createdAt

@@ -2,6 +2,7 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import type { CustomerAccountId } from "../customer-account";
+import { CustomerAccountRepository } from "./customer-account.repository";
 import {
   type CustomerAccountLinkError,
   CustomerAccountLinkRepository,
@@ -39,6 +40,10 @@ export type CustomerAccountDeletionDependencies = {
     void,
     CustomerAvatarProviderError | CustomerAvatarUnavailableError
   >;
+  readonly tombstone: (
+    accountId: CustomerAccountId,
+    deletedAt: Temporal.Instant
+  ) => Effect.Effect<void, CustomerAccountLinkError>;
   readonly withAccountLock: <A, E, R>(
     accountId: CustomerAccountId,
     effect: Effect.Effect<A, E, R>
@@ -82,6 +87,11 @@ export const expireLinkedDotyposProfile = (
             // provider outcome fails retryably so deletion stays retryable,
             // and a missing asset is idempotent success.
             yield* dependencies.destroyAvatar(accountId);
+
+            // The tombstone goes last, once nothing retryable remains, and
+            // before Better Auth removes the identity rows, so reservations
+            // the account authored keep their author.
+            yield* dependencies.tombstone(accountId, Temporal.Now.instant());
           })
         )
         .pipe(
@@ -108,6 +118,7 @@ export class CustomerAccountDeletionService extends Context.Service<
     this,
     Effect.gen(function* () {
       const links = yield* CustomerAccountLinkRepository;
+      const accounts = yield* CustomerAccountRepository;
       const dotypos = yield* CustomerDotyposAdapter;
       const avatars = yield* CustomerAvatarService;
 
@@ -116,6 +127,7 @@ export class CustomerAccountDeletionService extends Context.Service<
         findLink: links.find,
         expireCustomer: dotypos.expireCustomer,
         destroyAvatar: avatars.destroy,
+        tombstone: accounts.tombstone,
         withAccountLock: links.withAccountLock,
       });
 
@@ -127,6 +139,7 @@ export class CustomerAccountDeletionService extends Context.Service<
     Layer.provide(
       Layer.mergeAll(
         CustomerAccountLinkRepository.Live,
+        CustomerAccountRepository.Live,
         CustomerDotyposAdapter.Live,
         CustomerAvatarService.Live
       )

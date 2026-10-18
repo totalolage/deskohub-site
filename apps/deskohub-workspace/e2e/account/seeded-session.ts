@@ -1,9 +1,13 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import type { BrowserContext } from "@playwright/test";
 import { makeSignature } from "better-auth/crypto";
 import { Effect } from "effect";
+import { accountRoleGrants } from "@/db/schema/account-role-grants";
 import { authSession, authUser } from "@/db/schema/auth";
 import { customerAccountLinks } from "@/db/schema/customer-account-links";
 import { parseBetterAuthSecrets } from "@/features/account/backend/auth/auth-secrets";
+import type { CustomerAccountId } from "@/features/account/customer-account";
+import type { AccountRole } from "@/features/administrators/account-role";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { setBrowserCookie } from "../browser";
 import type { WorkspaceE2EEnvironment } from "../e2e-env";
@@ -48,7 +52,7 @@ export const resolveWorkspaceE2ESessionSigningSecret = (
   const parsed = parseBetterAuthSecrets(raw);
   if (parsed.kind === "invalid") {
     throw workspaceE2EError(
-      "WORKSPACE_E2E_BETTER_AUTH_SECRETS must hold the Preview deployment's versioned BETTER_AUTH_SECRETS value. Provision it as a secret of the protected workspace-checkout-e2e GitHub Actions environment, copied from the deskohub-workspace Vercel project's Preview-only BETTER_AUTH_SECRETS (never the Production value), before running the referral lane. Referral coverage fails closed instead of skipping",
+      "WORKSPACE_E2E_BETTER_AUTH_SECRETS must hold the Preview deployment's versioned BETTER_AUTH_SECRETS value. Provision it as a secret of the protected workspace-checkout-e2e GitHub Actions environment, copied from the deskohub-workspace Vercel project's Preview-only BETTER_AUTH_SECRETS (never the Production value), before running seeded-session cases (referral and administrator coverage). They fail closed instead of skipping",
       { operation: "configure workspace e2e session seeding" }
     );
   }
@@ -75,17 +79,24 @@ export type WorkspaceE2ESyntheticAccount = {
   /** The completed profile's customer; absent while profile completion is still required. */
   readonly linkedCustomerId?: DotyposCustomerId;
   readonly name: string;
+  /**
+   * Account roles granted with the user, such as `administrator`. Deleting
+   * the journaled user cascades the grants away.
+   */
+  readonly roles?: readonly AccountRole[];
 };
 
 /**
- * Inserts one verified synthetic Better Auth user, and its customer link when
- * the profile counts as completed. The caller journals the account id first.
+ * Inserts one verified synthetic Better Auth user, its customer link when the
+ * profile counts as completed, and its role grants. The caller journals the
+ * account id first.
  */
 export const seedWorkspaceE2ESyntheticAccount = (
   account: WorkspaceE2ESyntheticAccount
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
+    const accountId = account.accountId as CustomerAccountId;
     yield* runDatabaseOperation(
       "seed synthetic account",
       db.transaction(
@@ -94,14 +105,19 @@ export const seedWorkspaceE2ESyntheticAccount = (
             deletionRequestedAt: null,
             email: sensitiveDatabaseParameter(account.email),
             emailVerified: true,
-            id: account.accountId,
+            id: accountId,
             name: account.name,
           });
           if (account.linkedCustomerId) {
             yield* tx.insert(customerAccountLinks).values({
-              customerAccountId: account.accountId,
+              customerAccountId: accountId,
               dotyposCustomerId: account.linkedCustomerId,
             });
+          }
+          if (account.roles && account.roles.length > 0) {
+            yield* tx
+              .insert(accountRoleGrants)
+              .values(account.roles.map((role) => ({ accountId, role })));
           }
         })
       )
@@ -109,25 +125,18 @@ export const seedWorkspaceE2ESyntheticAccount = (
   });
 
 /**
- * Signs a browser session in as one journaled synthetic account without a
- * magic link: it inserts a short-lived Better Auth session row into the exact
- * preview database and sets the matching signed cookie for the preview origin
- * in that session's own browser context. Nothing changes in the deployment;
- * the app authenticates the cookie through its normal session lookup.
+ * Inserts a short-lived Better Auth session row for one journaled synthetic
+ * account into the exact preview database and returns the matching signed
+ * session cookie value. Nothing changes in the deployment; the app
+ * authenticates the cookie through its normal session lookup.
  */
-export const signInWorkspaceE2ESyntheticAccount = ({
+const issueWorkspaceE2ESyntheticSession = ({
   accountId,
-  baseUrl,
-  run,
   secret,
-  session,
 }: {
   readonly accountId: string;
-  readonly baseUrl: string;
-  readonly run: Runner;
   readonly secret: WorkspaceE2ESessionSigningSecret;
-  readonly session: string;
-}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+}): Effect.Effect<string, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const token = generateSessionToken();
     addRedaction(token, true);
@@ -157,9 +166,76 @@ export const signInWorkspaceE2ESyntheticAccount = ({
       try: () => signWorkspaceE2ESessionToken(token, secret),
     });
     addRedaction(value, true);
+    return value;
+  });
+
+/**
+ * Signs a runner browser session in as one journaled synthetic account
+ * without a magic link, setting the seeded session's cookie for the preview
+ * origin in that session's own browser context.
+ */
+export const signInWorkspaceE2ESyntheticAccount = ({
+  accountId,
+  baseUrl,
+  run,
+  secret,
+  session,
+}: {
+  readonly accountId: string;
+  readonly baseUrl: string;
+  readonly run: Runner;
+  readonly secret: WorkspaceE2ESessionSigningSecret;
+  readonly session: string;
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const value = yield* issueWorkspaceE2ESyntheticSession({
+      accountId,
+      secret,
+    });
     yield* setBrowserCookie(run, session, {
       name: workspaceE2ESessionCookieName,
       url: baseUrl,
       value,
+    });
+  });
+
+/**
+ * Signs a Playwright browser context in as one journaled synthetic account:
+ * the seeded session's HTTP-only, Secure, Lax cookie is added for the preview
+ * origin only.
+ */
+export const signInWorkspaceE2ESyntheticBrowserContext = ({
+  accountId,
+  context,
+  origin,
+  secret,
+}: {
+  readonly accountId: string;
+  readonly context: Pick<BrowserContext, "addCookies">;
+  readonly origin: string;
+  readonly secret: WorkspaceE2ESessionSigningSecret;
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const value = yield* issueWorkspaceE2ESyntheticSession({
+      accountId,
+      secret,
+    });
+    yield* Effect.tryPromise({
+      // Playwright causes can echo the cookie, so the cause is discarded.
+      catch: () =>
+        workspaceE2EError("set synthetic account session cookie failed", {
+          operation: "set synthetic account session cookie",
+        }),
+      try: () =>
+        context.addCookies([
+          {
+            httpOnly: true,
+            name: workspaceE2ESessionCookieName,
+            sameSite: "Lax",
+            secure: true,
+            url: origin,
+            value,
+          },
+        ]),
     });
   });

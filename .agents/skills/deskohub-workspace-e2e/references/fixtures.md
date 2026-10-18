@@ -7,7 +7,7 @@
 - [Account lane](#account-lane)
 - [Discount fixtures](#discount-fixtures)
 - [Calendar sale event](#calendar-sale-event)
-- [Admin Basic auth](#admin-basic-auth)
+- [Administrator sessions](#administrator-sessions)
 - [Access-code idempotency](#access-code-idempotency)
 - [Email campaign recipient preview](#email-campaign-recipient-preview)
 
@@ -76,9 +76,14 @@ Keep malformed input, provider failures, clock boundaries, cache expiry, and cla
 - A family-wide target mutation would leak that stale state into every concurrent case of the family. Keep reserved desk out of every other case's checkout, or give a new mutation its own tier.
 - Bring every checkout that needs the advertised sale to that state before the single eligibility removal. Never wait for a restored row to show through the cache, which costs a full revalidation cycle. Keep the reload-until-advertised poll only as a safety net for a stale entry, such as one a retry of this case meets.
 
-## Admin Basic auth
+## Administrator sessions
 
-`WORKSPACE_E2E_ADMIN_BASIC_AUTH` (`username:password`, GitHub secret) pairs with the Preview-only Vercel `ADMIN_BASIC_AUTH_CREDENTIALS` registry, whose lines are `username:<sha256(username:password)>`. `e2e/e2e-env.ts` decodes it and `e2e/admin-basic-auth.ts` validates the pair, registers the pair and password for redaction, and fails closed with provisioning guidance when it's absent. Authenticate the browser context with `httpCredentials` and `send: "always"`, scoped to the preview origin. Never weaken Basic auth or BotID or add an app bypass.
+Admin pages accept only a verified Better Auth session whose account holds an `account_role_grants` `administrator` row. A signed-out page load redirects (307) to `/<locale>/auth/sign-in?returnTo=<path and query>`; a signed-in account without the grant gets the ordinary 404.
+
+- Admin cases sign in as a seeded synthetic administrator, never by magic link: `makeWorkspaceE2EAdministrationIdentities` (`e2e/administrators/identities.ts`) journals the account under the case's owner, then `seedWorkspaceE2ESyntheticAccount` inserts the verified user and its `roles` grants in one transaction, and `signIn` issues a short-lived session and adds the signed cookie to the case's Playwright context (`signInWorkspaceE2ESyntheticBrowserContext`, preview origin only). The signing secret is the same `WORKSPACE_E2E_BETTER_AUTH_SECRETS` the [seeded sessions](referral-lane.md#seeded-sessions) use, so admin cases fail closed without it.
+- Each case owns a closed set of recipient labels in `workspaceE2EAdministrationRecipientLabels`; `checkout-cleanup` reconciles those journals with the others. Deleting the user cascades its sessions and grant. Seed the administrator only after the bypass is primed, right before the first admin page.
+- Grant nothing to an account a case didn't seed, and never copy a real administrator into a preview. Production-derived preview branches may hold inherited grants; E2E never reads or relies on them.
+- `create-access-code` asserts every attempt event names the seeded account (`actor_account_id`, `actor_account_email`).
 
 ## Access-code idempotency
 

@@ -32,7 +32,7 @@ mock.module("next/headers", () => ({
 const sendServiceModule = await import("../../backend/campaign-send.service");
 const campaignServiceModule = await import("../../backend/campaign.service");
 const realAuthorizationModule = await import(
-  "@/shared/administrator/administrator-authorization.server"
+  "@/features/administrators/server/administrator-authorization.server"
 );
 const realUnauthorizedError = await Effect.runPromise(
   Effect.flip(realAuthorizationModule.requireAdministratorAuthorization)
@@ -47,7 +47,7 @@ const authorization = Effect.suspend(() => {
 });
 
 mock.module(
-  "@/shared/administrator/administrator-authorization.server",
+  "@/features/administrators/server/administrator-authorization.server",
   () => ({ requireAdministratorAuthorization: authorization })
 );
 

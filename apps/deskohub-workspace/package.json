@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "next build --turbo",
+    "build": "NODE_OPTIONS=--max-old-space-size=4096 next build --turbo",
     "vercel-build": "turbo build",
     "dev": "bun --parallel dev:next dev:i18n dev:i18n:administration",
     "dev:next": "next dev --turbo",
@@ -14,7 +14,6 @@
     "i18n:compile": "bun x @inlang/paraglide-js compile --project ./project.inlang --outdir ./features/i18n/paraglide",
     "i18n:compile:administration": "bun x @inlang/paraglide-js compile --project ./features/administration/i18n/project.inlang --outdir ./features/administration/i18n/paraglide",
     "feature-flags:sync": "bun scripts/sync-posthog-feature-flags.ts",
-    "administrator-credentials:generate": "bash scripts/generate-administrator-credentials.sh",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",

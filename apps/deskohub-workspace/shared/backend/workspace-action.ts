@@ -11,6 +11,7 @@ import type {
   ValidationErrors,
 } from "next-safe-action";
 import type { Locale } from "@/features/i18n";
+import { actionRuntimeFailureMessages } from "../utils/action-runtime-failure";
 import { formatError } from "../utils/error-formatting";
 import {
   actionClient,
@@ -73,7 +74,7 @@ export const withActionDeadline =
         orElse: () =>
           Effect.fail(
             new PublicSafeActionError({
-              message: "Request timed out. Please try again.",
+              message: actionRuntimeFailureMessages.timeout,
             })
           ),
       })

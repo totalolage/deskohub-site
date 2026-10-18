@@ -30,7 +30,8 @@ export async function AdministrationBreadcrumb({
 
   if (segments[0] === "customers" && segments[1]) {
     entityLabel = await loadDiscountAdminCustomerBreadcrumbLabel(
-      requireDotyposCustomerRouteId(segments[1])
+      requireDotyposCustomerRouteId(segments[1]),
+      locale
     );
   } else if (segments[0] === "reservations" && segments[1]) {
     entityLabel =
@@ -48,7 +49,10 @@ export async function AdministrationBreadcrumb({
     segments[1] &&
     segments[1] !== "new"
   ) {
-    entityLabel = await loadInvoiceAdministrationBreadcrumbLabel(segments[1]);
+    entityLabel = await loadInvoiceAdministrationBreadcrumbLabel(
+      segments[1],
+      locale
+    );
   } else if (segments[0] && segments[1] === "new") {
     entityLabel = newEntityLabels.get(segments[0])?.({}, { locale });
   } else if (segments[0] === "email-campaigns" && segments[1]) {

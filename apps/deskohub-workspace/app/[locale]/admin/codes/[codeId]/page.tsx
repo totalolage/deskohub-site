@@ -8,6 +8,7 @@ import {
   loadDiscountAdminCodePageData,
 } from "@/features/discounts/admin/page-data.server";
 import { discountCodeIdSchema } from "@/features/discounts/persistence-contracts";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 
 export default function DiscountCodeAdminDetailPage({
   params,
@@ -30,6 +31,7 @@ export async function DiscountCodeAdminDetail({
   readonly params: Promise<{ readonly codeId: string }>;
   readonly searchParams: DiscountAdminSearchParams;
 }) {
+  const locale = await getRequestLocale();
   const { codeId } = await params;
   const decodedCodeId = Option.getOrElse(
     Schema.decodeUnknownOption(discountCodeIdSchema)(codeId),
@@ -40,5 +42,11 @@ export async function DiscountCodeAdminDetail({
     searchParams
   );
 
-  return <CodeAdministrationDetailPage detail={detail} notice={notice} />;
+  return (
+    <CodeAdministrationDetailPage
+      detail={detail}
+      locale={locale}
+      notice={notice}
+    />
+  );
 }
