@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
+import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
+import {
+  type WorkspaceProductFamily,
+  type WorkspaceProductTarget,
+  workspaceProductFamilies,
+} from "@/features/discounts/product-target";
 import { type Locale, m } from "@/features/i18n";
 import { getLandingPageSaleBannerLabel } from "./landing-page-sale-banner-content";
 
@@ -13,8 +18,19 @@ const officeProduct = {
   kind: "office",
 } as const satisfies WorkspaceProductTarget;
 
+const bookableWithoutOffice = workspaceProductFamilies.filter(
+  (family) => family !== "office"
+);
+
 const formatLabel = (
   products: readonly WorkspaceProductTarget[],
+  {
+    bookableProducts = workspaceProductFamilies,
+    locale = "en-US",
+  }: {
+    readonly bookableProducts?: readonly WorkspaceProductFamily[];
+    readonly locale?: Locale;
+  } = {},
   adjustment:
     | { readonly kind: "percentage"; readonly basisPoints: number }
     | {
@@ -32,7 +48,8 @@ const formatLabel = (
       adjustment,
       products,
     },
-    "en-US"
+    locale,
+    bookableProducts
   );
 
 const bannerTemplate = (
@@ -40,17 +57,82 @@ const bannerTemplate = (
   locale: Locale = "en-US"
 ) => message({ title: "{title}", adjustment: "{adjustment}" }, { locale });
 
-const summerFocusLabel = (template: string) => ({
+const summerFocusLabel = (template: string, locale: Locale = "en-US") => ({
   template,
   title: "Summer focus",
-  adjustment: "20%",
+  adjustment: formatDiscountAdjustment(
+    { kind: "percentage", basisPoints: 2000 },
+    locale
+  ),
 });
+
+const locales = ["en-US", "cs-CZ"] as const satisfies readonly Locale[];
 
 describe("getLandingPageSaleBannerLabel", () => {
   test("describes a sale on every product without clarification", () => {
     expect(
       formatLabel([coworkProduct, meetingRoomProduct, officeProduct])
     ).toEqual(summerFocusLabel(bannerTemplate(m.landingSaleBannerAllProducts)));
+  });
+
+  test.each(locales)(
+    "describes a sale on every bookable product as all products in %s while offices are switched off",
+    (locale) => {
+      expect(
+        formatLabel([coworkProduct, meetingRoomProduct], {
+          bookableProducts: bookableWithoutOffice,
+          locale,
+        })
+      ).toEqual(
+        summerFocusLabel(
+          bannerTemplate(m.landingSaleBannerAllProducts, locale),
+          locale
+        )
+      );
+    }
+  );
+
+  test.each(locales)(
+    "describes a sale on every product as all products in %s while offices are bookable",
+    (locale) => {
+      expect(
+        formatLabel([coworkProduct, meetingRoomProduct, officeProduct], {
+          locale,
+        })
+      ).toEqual(
+        summerFocusLabel(
+          bannerTemplate(m.landingSaleBannerAllProducts, locale),
+          locale
+        )
+      );
+    }
+  );
+
+  test.each(locales)(
+    "uses the selected-products wording in %s when a bookable office is left out",
+    (locale) => {
+      expect(
+        formatLabel([coworkProduct, meetingRoomProduct], { locale })
+      ).toEqual(
+        summerFocusLabel(
+          bannerTemplate(m.landingSaleBannerSelectedProducts, locale),
+          locale
+        )
+      );
+    }
+  );
+
+  test("uses the selected-products wording for one cowork tier while offices are switched off", () => {
+    expect(
+      formatLabel(
+        [{ kind: "cowork", tier: "open-space" }, meetingRoomProduct],
+        {
+          bookableProducts: bookableWithoutOffice,
+        }
+      )
+    ).toEqual(
+      summerFocusLabel(bannerTemplate(m.landingSaleBannerSelectedProducts))
+    );
   });
 
   test("describes a sale on every cowork product", () => {
