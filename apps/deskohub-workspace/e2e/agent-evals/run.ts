@@ -11,6 +11,7 @@ import {
   readWorkspaceE2EAccountJournal,
   writeWorkspaceE2EAccountJournal,
 } from "../account/journal";
+import { workspaceE2EAccountProfileFixture } from "../account/profile-fixture";
 import {
   prepareWorkspaceE2EAccountJournalReconciliations,
   reconcileWorkspaceE2EAccountJournals,
@@ -213,12 +214,14 @@ export const runAgentEvalCase = async ({
     );
 
     // Journal every identity before it exists, or right after the provider
-    // assigns its id, so cleanup can always find it.
+    // assigns its id, so cleanup can always find it. The profile is a
+    // returning customer's: checkout asks for nothing the prompt can't give.
     await recorder.record({ authUserIds: [accountId] });
     const customerId = await runtime.runPromise(
       createSyntheticCustomerProfile(datasourceConfig, {
         email,
-        firstName: "Agent",
+        firstName: workspaceE2EAccountProfileFixture.firstName,
+        phone: workspaceE2EAccountProfileFixture.phone,
       })
     );
     await recorder.record({ dotyposCustomerIds: [customerId] });

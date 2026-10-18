@@ -21,7 +21,7 @@ Real browser agents (an accessibility-tree agent, a hybrid DOM and screenshot ag
 
 ## Run a run set
 
-From `apps/deskohub-workspace`, with the preview variables of [runner variables](preview-workflow.md#runner-variables) exported for the target preview (base URL, both database URLs and the allowlist, `NEXI_API_ORIGIN`, the E2E Dotypos `DOTYPOS_*`, `WORKSPACE_E2E_BETTER_AUTH_SECRETS`, and the bypass from `.env.development.local`, never printed):
+From `apps/deskohub-workspace`, export the preview variables of [runner variables](preview-workflow.md#runner-variables) for the target preview: base URL, both database URLs and the allowlist, `NEXI_API_ORIGIN`, the E2E Dotypos `DOTYPOS_*`, `WORKSPACE_E2E_BETTER_AUTH_SECRETS` (the copy of that preview's `BETTER_AUTH_SECRETS`), and `VERCEL_AUTOMATION_BYPASS_SECRET`, never printed. Bun loads dotenv files only into its own process, not into Playwright's Node processes, so export them from a private, single-quoted env file (`set -a; . <file>; set +a`); values with `&` break unquoted sourcing.
 
 ```bash
 WORKSPACE_AGENT_EVAL_HARNESSES=<harness list> \
