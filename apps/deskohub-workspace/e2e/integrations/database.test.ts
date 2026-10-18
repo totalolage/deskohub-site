@@ -81,6 +81,7 @@ test("accepts a refund-required late-payment recovery", async () => {
 test("accepts reservation terms evidence from payment submission", () => {
   const row = (document_key: string, source: string, accepted = true) => ({
     accepted,
+    acknowledgements: {},
     document_key,
     hash_algorithm: "sha256",
     locale: "en-US",
@@ -96,6 +97,26 @@ test("accepts reservation terms evidence from payment submission", () => {
       "en-US"
     )
   ).not.toThrow();
+});
+
+test("rejects reservation terms evidence without recorded acknowledgements", () => {
+  expect(() =>
+    assertLegalEvidenceRows(
+      [
+        {
+          accepted: true,
+          acknowledgements: null,
+          document_key: "termsAndConditions",
+          hash_algorithm: "sha256",
+          locale: "en-US",
+          source: "payment_submit",
+        },
+      ],
+      "en-US"
+    )
+  ).toThrow(
+    "legal evidence termsAndConditions acknowledgements were not recorded"
+  );
 });
 
 test("connects the E2E database to the unpooled preview datasource URL", async () => {
