@@ -34,7 +34,7 @@ export const testPathIgnorePatterns = (
 ): ReadonlyArray<string> =>
   Array.from(
     testCommand.matchAll(
-      /--path-ignore-patterns[= ](?:'([^']*)'|"([^"]*)"|(\S+))/g
+      /--path-ignore-patterns(?:=|\s+)(?:'([^']*)'|"([^"]*)"|(\S+))/g
     ),
     ([, singleQuoted, doubleQuoted, bare]) =>
       singleQuoted ?? doubleQuoted ?? bare ?? ""

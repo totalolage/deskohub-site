@@ -30,6 +30,14 @@ test("reads every quoting of --path-ignore-patterns", () => {
   ).toEqual(["**/*.build.test.ts", "a b/**", "c/**"]);
 });
 
+test("reads --path-ignore-patterns followed by repeated spaces", () => {
+  expect(
+    testPathIgnorePatterns(
+      "bun test --path-ignore-patterns   **/*.build.test.ts"
+    )
+  ).toEqual(["**/*.build.test.ts"]);
+});
+
 describe("mergeTestTimings", () => {
   test("combines shard recordings sorted by path with whole milliseconds", () => {
     expect(
