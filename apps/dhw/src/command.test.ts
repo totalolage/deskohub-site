@@ -274,6 +274,7 @@ describe("dhw mutation commands", () => {
         email: testEmailAddress("ada-author"),
       },
       { kind: "deleted" as const },
+      { kind: "unavailable" as const },
       null,
     ]) {
       const { layer } = makeCommandLayer({
@@ -288,6 +289,7 @@ describe("dhw mutation commands", () => {
     expect(output.filter((line) => line.startsWith("Booked by"))).toEqual([
       `Booked by: Ada Author <${testEmailAddress("ada-author")}>`,
       "Booked by: deleted account",
+      "Booked by: unavailable",
     ]);
   });
 
