@@ -17,7 +17,7 @@
  */
 
 import { spawn as spawnNodeProcess } from "node:child_process";
-import { Readable } from "node:stream";
+import type { Readable } from "node:stream";
 
 export interface CommandOptions {
   readonly cwd?: string;
@@ -114,8 +114,12 @@ const spawnWithNode = async (
   const child = spawnNodeProcess(executable, args, {
     cwd: request.cwd,
     detached: request.detached,
-    env: request.env,
-    stdio: [request.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+    // Next's global types require NODE_ENV on ProcessEnv. As with Bun.spawn,
+    // the child gets exactly the caller's environment.
+    env: request.env as NodeJS.ProcessEnv | undefined,
+    // stdin is always a pipe, ended at once when there is no input, so the
+    // spawn overload types every stream as present.
+    stdio: ["pipe", "pipe", "pipe"],
   });
   const exited = new Promise<{
     readonly exitCode: number | null;
@@ -132,10 +136,23 @@ const spawnWithNode = async (
   });
   // A command may exit without reading its stdin; the broken pipe is not
   // the caller's failure, and the exit code reports the command's own.
-  child.stdin?.on("error", () => undefined);
-  child.stdin?.end(request.stdin);
-  const toWeb = (stream: Readable) =>
-    Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+  child.stdin.on("error", () => undefined);
+  child.stdin.end(request.stdin);
+  // `Readable.toWeb` returns Node's own stream type, which TypeScript
+  // doesn't relate to the global one Bun's spawn returns.
+  const toWeb = (stream: Readable): ReadableStream<Uint8Array> => {
+    const chunks: AsyncIterator<Uint8Array> = stream[Symbol.asyncIterator]();
+    return new ReadableStream<Uint8Array>({
+      cancel: async () => {
+        await chunks.return?.();
+      },
+      pull: async (controller) => {
+        const { done, value } = await chunks.next();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      },
+    });
+  };
   return {
     exited,
     kill: (signal) => child.kill(signal),
