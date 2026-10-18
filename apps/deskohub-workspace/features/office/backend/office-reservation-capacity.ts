@@ -4,7 +4,7 @@ import {
   getWorkspaceTableCandidates,
   getWorkspaceTableSeatCapacity,
   workspaceOfficeReservationTableTag,
-} from "@/features/checkout/backend/reservation";
+} from "@/features/checkout/backend/reservation/workspace-table-selection";
 
 export const getOfficeReservationSeatCapacity = Effect.fn(function* (
   tables: readonly DotyposTable[]

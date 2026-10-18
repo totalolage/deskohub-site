@@ -8,6 +8,7 @@ import {
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import { workspaceProductFamilies } from "@/features/discounts/product-target";
 import { type Locale, m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -26,6 +27,7 @@ const coworkSaleBannerContent = ({
   adjustment?: DiscountAdjustment;
 } = {}) =>
   getLandingPageSaleBannerContent({
+    bookableProducts: workspaceProductFamilies,
     locale,
     reservationKind: "cowork",
     sale: { title, adjustment, products: [{ kind: "cowork" }] },

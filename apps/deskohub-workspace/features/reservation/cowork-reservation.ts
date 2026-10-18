@@ -45,7 +45,9 @@ const decodeLocalDateTime = Schema.decodeUnknownSync(localDateTimeSchema);
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 const decodeInstant = Schema.decodeSync(instantStringSchema);
 
-const openSpaceExclusiveEndHour = 17;
+const openSpaceExclusiveEndHour = Temporal.PlainTime.from(
+  workspaceSiteConstants.openingHours.openSpaceUsableUntil
+).hour;
 
 /**
  * Shared tier-aware cowork interval constructor used by availability,

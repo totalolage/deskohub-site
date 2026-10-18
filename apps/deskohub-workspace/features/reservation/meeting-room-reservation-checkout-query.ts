@@ -1,9 +1,11 @@
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Schema } from "effect";
 import {
+  getMeetingRoomReservationDefaultValues,
   type MeetingRoomReservationInput,
   meetingRoomReservationDefaultValues,
   meetingRoomStartDateTimeSchema,
+  type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
 import {
   getMeetingRoomReservationDuration,
@@ -17,8 +19,11 @@ import {
 import {
   decodeReservationCheckoutCustomer,
   getTrimmedSearchParam,
+  hasReservationSelectionSearchParams,
+  type ReservationSelectionSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
 import type { CustomerLastReservationForKind } from "@/features/reservation/reservation-existing-customer";
+import { hasReservationIntervalEnded } from "@/features/reservation/reservation-interval";
 import type { SupportedSearchParams } from "@/shared/utils";
 
 const queryMeetingRoomStartDateTimeSchema = Schema.toStandardSchemaV1(
@@ -51,13 +56,12 @@ export const getMeetingRoomReservationDefaultValuesFromSearchParams = (
     startDateTime === undefined
       ? null
       : getMeetingRoomReservationInterval(startDateTime, duration);
-  // Fresh query decoding rejects any start at or before now, even when the
-  // interval end is still in the future; submission keeps its own end-based
-  // rule inside the reservation schema.
+  // A linked start stays while its interval has not ended, the same rule the
+  // picker minimum and the reservation schema apply.
   const startDateTimeOrEarliest =
     startDateTime !== undefined &&
     startInterval !== null &&
-    Temporal.Instant.compare(startInterval.startsAt, now) >= 0
+    !hasReservationIntervalEnded(startInterval, now)
       ? startDateTime
       : getEarliestMeetingRoomStartDateTime(duration, now);
 
@@ -68,4 +72,38 @@ export const getMeetingRoomReservationDefaultValuesFromSearchParams = (
     startDateTime: startDateTimeOrEarliest,
     marketingConsent: false,
   };
+};
+
+/** The meeting-room selection as the link parameters the parser above reads. */
+export const getMeetingRoomReservationSelectionSearchParams = (
+  selection: Pick<MeetingRoomReservationInput, "startDateTime" | "duration">
+): ReservationSelectionSearchParams => ({
+  startDateTime: selection.startDateTime || undefined,
+  duration: selection.duration,
+});
+
+/**
+ * The form values for a signed meeting-room restoration, with the selection
+ * the customer edited into the URL after returning from Pay. A restoration
+ * whose interval has ended restores nothing.
+ */
+export const getMeetingRoomRestoredReservationValues = (
+  reservation: NormalizedMeetingRoomReservationOrder,
+  searchParams: SupportedSearchParams,
+  now = Temporal.Now.instant()
+): MeetingRoomReservationInput | undefined => {
+  const restoredValues = getMeetingRoomReservationDefaultValues(reservation);
+  if (
+    !restoredValues ||
+    !hasReservationSelectionSearchParams(searchParams, [
+      "startDateTime",
+      "duration",
+    ])
+  ) {
+    return restoredValues;
+  }
+
+  const { startDateTime, duration } =
+    getMeetingRoomReservationDefaultValuesFromSearchParams(searchParams, now);
+  return { ...restoredValues, startDateTime, duration };
 };

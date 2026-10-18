@@ -5,18 +5,20 @@ import { preloadPageAdvertisedPrices } from "@/features/reservation/backend/adve
 import { isRememberedMeetingRoomReservationAvailable } from "@/features/reservation/backend/reservation-existing-customer.server";
 import { preloadPageAvailability } from "@/features/reservation/backend/workspace-availability-loader";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
+import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
+import type { NormalizedMeetingRoomReservationOrder } from "@/features/reservation/meeting-room-reservation";
 import {
-  getMeetingRoomReservationDefaultValues,
-  type NormalizedMeetingRoomReservationOrder,
-} from "@/features/reservation/meeting-room-reservation";
-import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
+  getMeetingRoomReservationDefaultValuesFromSearchParams,
+  getMeetingRoomRestoredReservationValues,
+} from "@/features/reservation/meeting-room-reservation-checkout-query";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
 import {
   type CustomerLastReservationForKind,
   getReservationExistingCustomerForm,
   type ReservationExistingCustomer,
 } from "@/features/reservation/reservation-existing-customer";
+import { getMeetingRoomPageOfferings } from "@/features/reservation/reservation-page-offerings";
 import { meetingRoomReservationPath } from "@/features/reservation/routes";
 import { getMeetingRoomSelectionAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -80,7 +82,7 @@ export async function renderMeetingRoomReservationContent({
   readonly submittedCode?: CanonicalPromotionCode;
 }) {
   const restoredInitialValues = initialReservation
-    ? getMeetingRoomReservationDefaultValues(initialReservation)
+    ? getMeetingRoomRestoredReservationValues(initialReservation, searchParams)
     : undefined;
   // The presence of a signed reservation decides the restored path even when
   // it has ended: the fallback must not consume public query values.
@@ -123,18 +125,30 @@ export async function renderMeetingRoomReservationContent({
   ]);
 
   return (
-    <MeetingRoomReservationForm
-      checkoutSessionId={checkoutSessionId}
-      existingCustomer={existingCustomerForm}
-      initialAdvertisedPrices={initialAdvertisedPrices}
-      initialAvailability={initialAvailability}
-      initialReservation={
-        restoredInitialValues ? initialReservation : undefined
-      }
-      initialValues={initialValues}
-      locale={locale}
-      replacementToken={replacementToken}
-      submittedCode={submittedCode}
-    />
+    <>
+      <ReservationOfferingsStructuredData
+        locale={locale}
+        offerings={getMeetingRoomPageOfferings({
+          advertisedPrices: initialAdvertisedPrices,
+          locale,
+          startDateTime: initialValues.startDateTime,
+          submittedCode,
+        })}
+        pathname={meetingRoomReservationPath}
+      />
+      <MeetingRoomReservationForm
+        checkoutSessionId={checkoutSessionId}
+        existingCustomer={existingCustomerForm}
+        initialAdvertisedPrices={initialAdvertisedPrices}
+        initialAvailability={initialAvailability}
+        initialReservation={
+          restoredInitialValues ? initialReservation : undefined
+        }
+        initialValues={initialValues}
+        locale={locale}
+        replacementToken={replacementToken}
+        submittedCode={submittedCode}
+      />
+    </>
   );
 }

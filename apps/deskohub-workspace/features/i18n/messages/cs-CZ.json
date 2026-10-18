@@ -174,7 +174,7 @@
   "landingNavMeetingRoom": "Zasedačka",
   "landingNavGallery": "Fotky",
   "landingNavEvents": "Eventy",
-  "landingNavWhereToFindUs": "Poloha",
+  "landingNavWhereToFindUs": "Kde jsme",
   "landingNavOurTeam": "Tým",
   "landingNavPricing": "Ceník",
   "landingNavPrivateOffice": "Soukromá kancelář",
@@ -1072,5 +1072,11 @@
   "accountReauthPasskeyPending": "Čekáme na přístupový klíč…",
   "accountReauthPasskeyWrongAccount": "Tento klíč patří k jinému účtu. Použijte klíč tohoto účtu, nebo potvrďte e-mailem.",
   "accountReauthPasskeyFailed": "Potvrzení přístupovým klíčem se nepovedlo. Zkuste to znovu, nebo potvrďte e-mailem.",
-  "accountDeletionReauthPasskeyBody": "Vaše přihlášení je pro smazání účtu příliš staré. Potvrďte, že jste to vy, přístupovým klíčem nebo novým přihlašovacím e-mailem, a poté smazání potvrďte znovu."
+  "accountDeletionReauthPasskeyBody": "Vaše přihlášení je pro smazání účtu příliš staré. Potvrďte, že jste to vy, přístupovým klíčem nebo novým přihlašovacím e-mailem, a poté smazání potvrďte znovu.",
+  "publicOfferingOpenSpaceUsage": "K dispozici od půlnoci do {until} v den rezervace.",
+  "publicOfferingReservedDeskUsage": "Rezervováno na celý kalendářní den s nonstop přístupem na kód.",
+  "publicOfferingMeetingRoomUsage": "Hodinové rezervace začínají ve zvolenou celou hodinu. Celodenní rezervace trvá od půlnoci do půlnoci.",
+  "publicOfferingOfficeDescription": "Soukromá kancelář jen pro tebe na celé dny, s tolika místy, kolik potřebuješ.",
+  "publicOfferingOfficeUsage": "Rezervuj celé dny se začátkem nejvýše měsíc dopředu. Jedna rezervace může trvat nejvýše {hours} hodin, obvykle 28 dní.",
+  "publicOfferingOfficeSeatPrice": "Každé rezervované místo, za den"
 }
