@@ -206,6 +206,35 @@ describe("get_quote", () => {
         }
       )
     ).toMatchObject({ startsOn: today, dayCount: 2, seats: 2 });
+    expect(office.note).toBe(m.agentToolQuoteNote({}, { locale: "en-US" }));
+  });
+
+  test("links a later office booking on today with the quoted days and says to pick its start date", async () => {
+    const today = workspaceDateFromToday(0);
+
+    for (const locale of ["en-US", "cs-CZ"] as const) {
+      const office = await quote({
+        family: "office",
+        date: workspaceDateFromToday(3),
+        end_date: workspaceDateFromToday(4),
+        seats: 2,
+        locale,
+      });
+
+      expect(
+        getOfficeReservationDefaultValuesFromSearchParams(
+          new URL(office.reservation_url).searchParams,
+          {
+            lastReservation: { kind: "office", dayCount: 5, seats: 4 },
+            seatCapacity: 6,
+            startsOn: today,
+          }
+        )
+      ).toMatchObject({ startsOn: today, dayCount: 2, seats: 2 });
+      expect(office.note).toBe(
+        `${m.agentToolQuoteNote({}, { locale })} ${m.agentToolOfficeQuoteStartsToday({}, { locale })}`
+      );
+    }
   });
 
   test("quotes today's whole meeting-room day in the afternoon and links the same selection", async () => {
@@ -287,7 +316,8 @@ describe("get_quote", () => {
 
     expect(result).toMatchObject({
       total: { amount: 2320 },
-      reservation_url: "http://deskohub.test/reservation/office?seats=2",
+      reservation_url:
+        "http://deskohub.test/reservation/office?dayCount=2&seats=2",
     });
     expect(result.total.amount).toBe(
       await advertisedTotal(

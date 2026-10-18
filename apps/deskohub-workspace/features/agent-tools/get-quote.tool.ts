@@ -86,13 +86,15 @@ export type GetQuoteResult = typeof outputSchema.Type;
 type QuoteSelection = {
   readonly request: AdvertisedPriceRequest;
   readonly reservationSearchParams: URLSearchParams;
+  /** What the customer still has to choose on the page the link opens. */
+  readonly linkNote?: string;
 };
 
 export const getQuoteTool = defineAgentTool({
   name: "get_quote",
   title: "Quote a DH Workspace booking",
   description:
-    "Prices a complete selection anonymously: a cowork tier and date, a meeting-room start time and duration, or office dates and seats. The total includes any public sale running at the moment of the quote, and the reservation link opens the booking page prefilled. The price is confirmed on the website before payment; it does not check availability.",
+    "Prices a complete selection anonymously: a cowork tier and date, a meeting-room start time and duration, or office dates and seats. The total includes any public sale running at the moment of the quote, and the reservation link opens the booking page prefilled. An office link always opens on today's date, so for an office booking starting later the customer picks the quoted start date on the page and checks the number of days. The price is confirmed on the website before payment; it does not check availability.",
   access: "public",
   readOnly: true,
   unavailableCode: "quote_unavailable",
@@ -145,8 +147,10 @@ const toQuoteResult = ({
   input,
   locale,
   now,
+  selection,
   pricing: { advertised, reservationUrl },
 }: SelectionInput & {
+  readonly selection: QuoteSelection;
   readonly pricing: Effect.Success<ReturnType<typeof priceQuoteSelection>>;
 }): GetQuoteResult => {
   const { expectedPrice, undiscountedPrice } = advertised.quote.payment;
@@ -159,7 +163,9 @@ const toQuoteResult = ({
       getReservationQuoteDiscount(advertised.quote.payment)
     ),
     quoted_at: now.toString(),
-    note: m.agentToolQuoteNote({}, { locale }),
+    note: [m.agentToolQuoteNote({}, { locale }), selection.linkNote]
+      .filter((sentence) => sentence !== undefined)
+      .join(" "),
     reservation_url: reservationUrl,
   };
 };
@@ -340,6 +346,11 @@ const findMeetingRoomPriceRequest = ({
     )
   );
 
+/**
+ * The office form always opens on today's date, so the link carries the quoted
+ * days and seats, and a quote starting later tells the customer to pick its
+ * start date on the page.
+ */
 const getOfficeSelection = Effect.fn("agentTools.getOfficeQuoteSelection")(
   (selectionInput: SelectionInput) =>
     Effect.succeed(selectionInput).pipe(
@@ -364,10 +375,11 @@ const getOfficeSelection = Effect.fn("agentTools.getOfficeQuoteSelection")(
               locale,
             }),
             reservationSearchParams: getOfficeReservationSearchParams({
+              dayCount: range.dates.length,
               seats,
-              ...(range.startsOn === today.toString() && {
-                dayCount: range.dates.length,
-              }),
+            }),
+            ...(range.startsOn !== today.toString() && {
+              linkNote: m.agentToolOfficeQuoteStartsToday({}, { locale }),
             }),
           }) satisfies QuoteSelection
       )

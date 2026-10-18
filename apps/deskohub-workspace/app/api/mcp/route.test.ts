@@ -249,6 +249,23 @@ describe("customer MCP route", () => {
     }
   });
 
+  test("publishes a later office quote's start-date guidance in the output schema", async () => {
+    const { result } = await callTool("get_quote", {
+      family: "office",
+      date: workspaceDateFromToday(3),
+      end_date: workspaceDateFromToday(4),
+      seats: 2,
+      locale: "cs-CZ",
+    });
+
+    expect(result?.structuredContent?.note).toContain(
+      "Odkaz na rezervaci otevře stránku s dnešním datem."
+    );
+    expect(await validateStructuredContent("get_quote", result)).toMatchObject({
+      valid: true,
+    });
+  });
+
   test("answers an invalid call with a typed error in the requested locale", async () => {
     const { result } = await callTool("get_quote", {
       family: "cowork",

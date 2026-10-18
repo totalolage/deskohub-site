@@ -1075,6 +1075,7 @@
   "agentToolErrorServiceUnavailable": "The tools are temporarily unavailable. Try again later or use the website.",
   "agentToolAvailabilityAdvisoryNote": "Availability is an estimate from recent data. It is confirmed when the booking is made on the website.",
   "agentToolQuoteNote": "This is the current price for the selection. It is confirmed on the website before payment, where the booking is made and paid.",
+  "agentToolOfficeQuoteStartsToday": "The reservation link opens the booking page on today's date. On the page, choose the start date this price is for and check that the number of days and seats match.",
   "agentToolBookingHandoff": "Bookings are made and paid on the website. Open the reservation link to choose the details and pay.",
   "publicOfferingOpeningHours": "The space is open 24/7. Open Space desks are usable until {until}.",
   "publicOfferingOpenSpaceUsage": "Usable from midnight until {until} on the reserved day.",

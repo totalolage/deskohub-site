@@ -1084,6 +1084,7 @@
   "agentToolErrorServiceUnavailable": "Nástroje jsou dočasně nedostupné. Zkus to později nebo použij web.",
   "agentToolAvailabilityAdvisoryNote": "Dostupnost je odhad z nedávných dat. Potvrdí se až při rezervaci na webu.",
   "agentToolQuoteNote": "Toto je aktuální cena za výběr. Před platbou se potvrdí na webu, kde se rezervace dokončí a zaplatí.",
+  "agentToolOfficeQuoteStartsToday": "Odkaz na rezervaci otevře stránku s dnešním datem. Na stránce vyber datum začátku, pro které byla cena spočítána, a zkontroluj, že počet dní a míst odpovídá.",
   "agentToolBookingHandoff": "Rezervace se vytváří a platí na webu. Otevři odkaz na rezervaci, vyber podrobnosti a zaplať.",
   "publicOfferingOpeningHours": "Prostor je otevřený nonstop. Místa v Open Space lze využívat do {until}.",
   "publicOfferingOpenSpaceUsage": "K dispozici od půlnoci do {until} v den rezervace.",
