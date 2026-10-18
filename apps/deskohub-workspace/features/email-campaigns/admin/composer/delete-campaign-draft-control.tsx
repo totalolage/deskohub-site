@@ -10,6 +10,7 @@ import { useRouteLocale } from "@/features/i18n/route-locale";
 import { Button } from "@/shared/components/ui/button";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type { CampaignId } from "../../campaign-identifiers";
+import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import { deleteCampaign } from "./actions";
 
 export function DeleteCampaignDraftControl({
@@ -29,7 +30,10 @@ export function DeleteCampaignDraftControl({
     },
     onError: ({ error }) =>
       setError(
-        error.serverError ?? m.emailCampaignsDraftDeleteFailed({}, { locale })
+        getEmailCampaignAdminActionFailureMessage(error.serverError, {
+          fallback: m.emailCampaignsDraftDeleteFailed({}, { locale }),
+          locale,
+        })
       ),
     onTransportError: () =>
       setError(m.emailCampaignsDraftDeleteFailed({}, { locale })),

@@ -34,6 +34,7 @@ import {
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { getAdminCliActionFailureMessage } from "./action-failure-message";
 import { renameCliSession } from "./actions";
 import { renameCliSessionSchema } from "./contracts";
 
@@ -101,7 +102,10 @@ export function RenameCliSession({
     },
     onError: ({ error: actionError }) =>
       setError(
-        actionError.serverError ?? m.adminCliRenameFailed({}, { locale })
+        getAdminCliActionFailureMessage(actionError.serverError, {
+          fallback: m.adminCliRenameFailed({}, { locale }),
+          locale,
+        })
       ),
     onTransportError: () => setError(m.adminCliRenameFailed({}, { locale })),
   });

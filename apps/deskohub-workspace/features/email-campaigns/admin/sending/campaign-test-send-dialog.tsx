@@ -31,6 +31,7 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type { CampaignId } from "../../campaign-identifiers";
+import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import { sendCampaignTest } from "./actions";
 import { describeCampaignLocales } from "./campaign-locale-names";
 import {
@@ -84,8 +85,10 @@ export function CampaignTestSendDialog({
     },
     onError: ({ error: actionError }) =>
       setError(
-        actionError.serverError ??
-          m.emailCampaignsTestSendFailed({}, { locale })
+        getEmailCampaignAdminActionFailureMessage(actionError.serverError, {
+          fallback: m.emailCampaignsTestSendFailed({}, { locale }),
+          locale,
+        })
       ),
   });
 

@@ -42,6 +42,7 @@ import {
 } from "@/shared/components/ui/tooltip";
 import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import { uploadCampaignImage } from "./actions";
 import { normalizeCampaignLinkHref } from "./campaign-link-href";
 import { CtaButtonDialog, type CtaButtonValues } from "./cta-button-dialog";
@@ -460,9 +461,12 @@ function ImageUploadControl({
     },
     onError: ({ error }) =>
       setError(
-        error.serverError ??
-          error.validationErrors?.formErrors?.[0] ??
-          m.emailCampaignsImageUploadFailed({}, { locale })
+        getEmailCampaignAdminActionFailureMessage(error.serverError, {
+          fallback:
+            error.validationErrors?.formErrors?.[0] ??
+            m.emailCampaignsImageUploadFailed({}, { locale }),
+          locale,
+        })
       ),
   });
 
