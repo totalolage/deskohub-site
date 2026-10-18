@@ -7,7 +7,10 @@ import {
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { type Context, Effect, Layer, Logger, References } from "effect";
+import { TestClock } from "effect/testing";
 import "@/shared/polyfills/temporal";
+import type { MeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 import {
   AdvisoryAvailabilityInventory,
   makeProviderInventory,
@@ -119,6 +122,9 @@ const runWithInventory = async <A>(
     readonly onReservationInterval?: (
       interval: DotyposReservationInterval
     ) => void;
+    readonly onProviderRead?: (
+      read: "tables" | "reservations" | "limitations"
+    ) => void;
   } = {}
 ) => {
   const availability = await import("./workspace-availability.service");
@@ -142,10 +148,16 @@ const runWithInventory = async <A>(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(DotyposService, {
+              // The provider inventory builds this effect once and runs it
+              // per read, so the read is counted when it runs.
               getTables: mock(() =>
-                Effect.succeed([...(input.tables ?? defaultTables)])
+                Effect.sync(() => {
+                  input.onProviderRead?.("tables");
+                  return [...(input.tables ?? defaultTables)];
+                })
               ),
               listActiveReservationsOverlapping: mock((interval) => {
+                input.onProviderRead?.("reservations");
                 input.onReservationInterval?.(interval);
                 // The real Dotypos API only returns reservations overlapping
                 // the requested interval; mirror that so a wrongly narrowed
@@ -162,9 +174,10 @@ const runWithInventory = async <A>(
               }),
             }),
             Layer.succeed(GoogleCalendarWorkspaceLimitationsService, {
-              listLimitations: mock(() =>
-                Effect.succeed([...(input.limitations ?? [])])
-              ),
+              listLimitations: mock(() => {
+                input.onProviderRead?.("limitations");
+                return Effect.succeed([...(input.limitations ?? [])]);
+              }),
             }),
             Layer.succeed(WorkspaceReservationRepository, {
               selectExpiredHoldDotyposReservationIds: mock(() => {
@@ -1509,5 +1522,316 @@ describe("WorkspaceAvailabilityService cowork offer intervals", () => {
     });
 
     expect(availability.unavailableDates).toContain(testDate);
+  });
+});
+
+describe("WorkspaceAvailabilityService meeting-room start times", () => {
+  const meetingRoomTables = [
+    makeTable({ id: "room-1", tags: ["reservation:meeting-room"] }),
+  ];
+  const longBefore = "2026-01-01T00:00:00Z";
+
+  const getMeetingRoomStartTimes = (
+    input: Parameters<typeof runWithInventory>[1] & {
+      readonly date?: string;
+      readonly duration: MeetingRoomReservationDurationKey;
+      readonly now?: string;
+      readonly excludedDotyposReservationId?: string;
+    }
+  ) =>
+    runWithInventory(
+      Effect.gen(function* () {
+        const availability = yield* Effect.promise(
+          () => import("./workspace-availability.service")
+        );
+        const service = yield* availability.WorkspaceAvailabilityService;
+        yield* TestClock.setTime(
+          Temporal.Instant.from(input.now ?? longBefore).epochMilliseconds
+        );
+        return yield* service.getMeetingRoomStartTimes({
+          query: {
+            kind: "meeting-room",
+            mode: "start-times",
+            date: plainDateStringSchema.make(input.date ?? testDate),
+            duration: input.duration,
+          },
+          ...(input.excludedDotyposReservationId && {
+            occupancyExclusion: {
+              dotyposReservationId: input.excludedDotyposReservationId,
+            } as never,
+          }),
+        });
+      }).pipe(Effect.provide(TestClock.layer())),
+      { tables: meetingRoomTables, ...input }
+    );
+
+  const startHours = (result: {
+    readonly startTimes: ReadonlyArray<{ readonly startDateTime: string }>;
+  }) => result.startTimes.map(({ startDateTime }) => startDateTime.slice(11));
+
+  const allHoursExcept = (...excluded: readonly string[]) =>
+    Array.from(
+      { length: 24 },
+      (_, hour) => `${String(hour).padStart(2, "0")}:00`
+    ).filter((hour) => !excluded.includes(hour));
+
+  // 10:00-12:00 in Prague.
+  const lateMorningReservation = makeReservation({
+    tableId: "room-1",
+    status: "CONFIRMED",
+    startDate: "2099-06-10T08:00:00Z",
+    endDate: "2099-06-10T10:00:00Z",
+  });
+
+  test("returns each free start with the interval it books", async () => {
+    const result = await getMeetingRoomStartTimes({ duration: "hour:1" });
+
+    expect(result.date).toBe(testDate);
+    expect(result.duration).toBe("hour:1");
+    expect(startHours(result)).toEqual(allHoursExcept());
+    expect(result.startTimes[0]).toEqual({
+      startDateTime: "2099-06-10T00:00",
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-09T23:00:00Z",
+    });
+  });
+
+  test("leaves out starts whose interval overlaps a reservation", async () => {
+    const oneHour = await getMeetingRoomStartTimes({
+      duration: "hour:1",
+      reservations: [lateMorningReservation],
+    });
+    const fourHours = await getMeetingRoomStartTimes({
+      duration: "hour:4",
+      reservations: [lateMorningReservation],
+    });
+
+    // Back-to-back bookings stay free: the interval end is exclusive.
+    expect(startHours(oneHour)).toEqual(allHoursExcept("10:00", "11:00"));
+    expect(startHours(fourHours)).toEqual(
+      allHoursExcept("07:00", "08:00", "09:00", "10:00", "11:00")
+    );
+  });
+
+  test("ignores reservations that no longer hold the room", async () => {
+    const result = await getMeetingRoomStartTimes({
+      duration: "hour:1",
+      reservations: [
+        makeReservation({
+          id: "expired-hold",
+          tableId: "room-1",
+          status: "NEW",
+          startDate: "2099-06-10T08:00:00Z",
+          endDate: "2099-06-10T10:00:00Z",
+        }),
+      ],
+      expiredHoldDotyposReservationIds: ["expired-hold"],
+    });
+
+    expect(startHours(result)).toEqual(allHoursExcept());
+  });
+
+  test("keeps the replaced hold's own start free", async () => {
+    const result = await getMeetingRoomStartTimes({
+      duration: "hour:1",
+      reservations: [
+        makeReservation({
+          id: "replaced-hold",
+          tableId: "room-1",
+          status: "NEW",
+          startDate: "2099-06-10T08:00:00Z",
+          endDate: "2099-06-10T09:00:00Z",
+        }),
+      ],
+      excludedDotyposReservationId: "replaced-hold",
+    });
+
+    expect(startHours(result)).toContain("10:00");
+  });
+
+  test("blocks late starts that run into a reservation after midnight", async () => {
+    const result = await getMeetingRoomStartTimes({
+      duration: "hour:4",
+      // 01:00-02:00 in Prague on the next day.
+      reservations: [
+        makeReservation({
+          tableId: "room-1",
+          status: "CONFIRMED",
+          startDate: "2099-06-10T23:00:00Z",
+          endDate: "2099-06-11T00:00:00Z",
+        }),
+      ],
+    });
+
+    expect(startHours(result)).toEqual(allHoursExcept("22:00", "23:00"));
+  });
+
+  test("offers no start on a fully occupied Calendar day", async () => {
+    const limitations = [
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: testDate,
+        sourceEventId: "calendar-full",
+      }),
+    ];
+
+    for (const duration of ["hour:1", "hour:4", "day:1"] as const) {
+      const result = await getMeetingRoomStartTimes({ duration, limitations });
+      expect(result.startTimes).toEqual([]);
+    }
+  });
+
+  test("blocks starts that run into a fully occupied next day", async () => {
+    const result = await getMeetingRoomStartTimes({
+      duration: "hour:4",
+      limitations: [
+        WorkspaceCalendarLimitation.FullyOccupied({
+          date: nextTestDate,
+          sourceEventId: "calendar-full",
+        }),
+      ],
+    });
+
+    expect(startHours(result)).toEqual(
+      allHoursExcept("21:00", "22:00", "23:00")
+    );
+  });
+
+  test("keeps partially occupied Calendar days bookable, as the single check does", async () => {
+    const result = await getMeetingRoomStartTimes({
+      duration: "hour:1",
+      limitations: [
+        WorkspaceCalendarLimitation.PartiallyOccupied({
+          date: testDate,
+          startsAt: "14:00",
+          endsAt: "17:00",
+          sourceEventId: "calendar-partial",
+        }),
+      ],
+    });
+
+    expect(startHours(result)).toEqual(allHoursExcept());
+  });
+
+  test("offers the whole day once, only while the room is free all day", async () => {
+    const free = await getMeetingRoomStartTimes({ duration: "day:1" });
+    const booked = await getMeetingRoomStartTimes({
+      duration: "day:1",
+      reservations: [lateMorningReservation],
+    });
+
+    expect(free.startTimes).toEqual([
+      {
+        startDateTime: "2099-06-10T00:00",
+        startsAt: "2099-06-09T22:00:00Z",
+        endsAt: "2099-06-10T22:00:00Z",
+      },
+    ]);
+    expect(booked.startTimes).toEqual([]);
+  });
+
+  test("starts from the earliest start the form accepts", async () => {
+    // 10:37 in Prague.
+    const now = "2099-06-10T08:37:00Z";
+    const oneHour = await getMeetingRoomStartTimes({
+      duration: "hour:1",
+      now,
+    });
+    const fourHours = await getMeetingRoomStartTimes({
+      duration: "hour:4",
+      now,
+    });
+
+    expect(startHours(oneHour)[0]).toBe("10:00");
+    expect(startHours(fourHours)[0]).toBe("07:00");
+  });
+
+  test("reads no inventory for a day with no start left", async () => {
+    const reads: string[] = [];
+    const result = await getMeetingRoomStartTimes({
+      date: "2099-06-09",
+      duration: "hour:1",
+      now: "2099-06-10T08:37:00Z",
+      onProviderRead: (read) => reads.push(read),
+    });
+
+    expect(result.startTimes).toEqual([]);
+    expect(reads).toEqual([]);
+  });
+
+  test("reads one inventory snapshot covering every candidate interval", async () => {
+    for (const [duration, rangeEnd] of [
+      ["hour:1", "2099-06-10T22:00:00.000Z"],
+      ["hour:4", "2099-06-11T22:00:00.000Z"],
+      ["day:1", "2099-06-10T22:00:00.000Z"],
+    ] as const) {
+      const reads: string[] = [];
+      const intervals: DotyposReservationInterval[] = [];
+      await getMeetingRoomStartTimes({
+        duration,
+        onProviderRead: (read) => reads.push(read),
+        onReservationInterval: (interval) => intervals.push(interval),
+      });
+
+      expect(reads.toSorted()).toEqual([
+        "limitations",
+        "reservations",
+        "tables",
+      ]);
+      expect(
+        intervals.map(({ startDate, endDate }) => [
+          startDate.toISOString(),
+          endDate.toISOString(),
+        ])
+      ).toEqual([["2099-06-09T22:00:00.000Z", rangeEnd]]);
+    }
+  });
+
+  test("keeps Prague day boundaries across the autumn daylight-saving change", async () => {
+    const autumnChange = "2027-10-31";
+    // 23:30-23:59 in Prague, the 25th hour of the day.
+    const lateReservation = makeReservation({
+      tableId: "room-1",
+      status: "CONFIRMED",
+      startDate: "2027-10-31T22:30:00Z",
+      endDate: "2027-10-31T22:59:00Z",
+    });
+    const oneHour = await getMeetingRoomStartTimes({
+      date: autumnChange,
+      duration: "hour:1",
+      reservations: [lateReservation],
+    });
+    const wholeDay = await getMeetingRoomStartTimes({
+      date: autumnChange,
+      duration: "day:1",
+      reservations: [lateReservation],
+    });
+    const freeWholeDay = await getMeetingRoomStartTimes({
+      date: autumnChange,
+      duration: "day:1",
+    });
+
+    expect(startHours(oneHour)).toEqual(allHoursExcept("02:00", "23:00"));
+    expect(wholeDay.startTimes).toEqual([]);
+    expect(freeWholeDay.startTimes).toEqual([
+      {
+        startDateTime: "2027-10-31T00:00",
+        startsAt: "2027-10-30T22:00:00Z",
+        endsAt: "2027-10-31T23:00:00Z",
+      },
+    ]);
+  });
+
+  test("skips the missing hour of the spring daylight-saving change", async () => {
+    const result = await getMeetingRoomStartTimes({
+      date: "2027-03-28",
+      duration: "hour:4",
+    });
+
+    expect(startHours(result)).toEqual(allHoursExcept("02:00"));
+    expect(result.startTimes.at(-1)).toEqual({
+      startDateTime: "2027-03-28T23:00",
+      startsAt: "2027-03-28T21:00:00Z",
+      endsAt: "2027-03-29T01:00:00Z",
+    });
   });
 });

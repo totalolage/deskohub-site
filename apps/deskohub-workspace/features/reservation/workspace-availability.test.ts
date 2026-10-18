@@ -1,15 +1,20 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
+import { Option } from "effect";
 import { getCurrentWorkspaceDate } from "./reservation-date";
 import {
   getCoworkAvailabilityQueries,
   getMeetingRoomAvailabilityQuery,
   getMeetingRoomSelectionAvailabilityQuery,
+  getMeetingRoomStartTimesQuery,
   getOfficeAvailabilityQuery,
   getWorkspaceAvailabilityRange,
   isCoworkOfferAvailable,
   isMeetingRoomAvailable,
+  isMeetingRoomStartTimesRequest,
+  parseMeetingRoomStartTimesQuery,
+  parseMeetingRoomStartTimesResponse,
   parseWorkspaceAvailabilityQuery,
 } from "./workspace-availability";
 
@@ -283,5 +288,91 @@ describe("getOfficeAvailabilityQuery", () => {
       from: "2099-07-31",
       to: "2099-08-31",
     });
+  });
+});
+
+describe("meeting-room start times", () => {
+  const startTimesParams = {
+    kind: "meeting-room",
+    mode: "start-times",
+    date: "2099-06-10",
+    duration: "hour:4",
+  };
+
+  test("recognizes the start-times mode", () => {
+    expect(
+      isMeetingRoomStartTimesRequest(new URLSearchParams(startTimesParams))
+    ).toBe(true);
+    expect(
+      isMeetingRoomStartTimesRequest(
+        new URLSearchParams({ kind: "meeting-room", from: "2099-06-10" })
+      )
+    ).toBe(false);
+  });
+
+  test("parses the date and duration", () => {
+    expect(
+      Option.getOrUndefined(
+        parseMeetingRoomStartTimesQuery(new URLSearchParams(startTimesParams))
+      )
+    ).toEqual({
+      kind: "meeting-room",
+      mode: "start-times",
+      date: "2099-06-10",
+      duration: "hour:4",
+    });
+  });
+
+  test.each([
+    { date: undefined },
+    { date: "2099-02-30" },
+    { date: "10.06.2099" },
+    { duration: undefined },
+    { duration: "hour:2" },
+    { kind: "cowork" },
+  ])("rejects a missing or invalid parameter: %o", (override) => {
+    const params = new URLSearchParams(startTimesParams);
+    for (const [key, value] of Object.entries(override)) {
+      if (value === undefined) params.delete(key);
+      else params.set(key, value);
+    }
+
+    expect(Option.isNone(parseMeetingRoomStartTimesQuery(params))).toBe(true);
+  });
+
+  test("queries the date of the selected start", () => {
+    expect(
+      getMeetingRoomStartTimesQuery({
+        duration: "hour:1",
+        startDateTime: "2099-06-10T15:00",
+      })
+    ).toEqual({
+      kind: "meeting-room",
+      mode: "start-times",
+      date: "2099-06-10",
+      duration: "hour:1",
+    });
+    expect(
+      getMeetingRoomStartTimesQuery({ duration: "hour:1", startDateTime: "" })
+    ).toBeUndefined();
+  });
+
+  test("parses the start-times response", () => {
+    const response = {
+      date: "2099-06-10",
+      duration: "hour:1",
+      startTimes: [
+        {
+          startDateTime: "2099-06-10T09:00",
+          startsAt: "2099-06-10T07:00:00Z",
+          endsAt: "2099-06-10T08:00:00Z",
+        },
+      ],
+    };
+
+    expect(parseMeetingRoomStartTimesResponse(response)).toEqual(response);
+    expect(() =>
+      parseMeetingRoomStartTimesResponse({ ...response, duration: "hour:2" })
+    ).toThrow();
   });
 });

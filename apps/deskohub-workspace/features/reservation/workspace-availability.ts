@@ -19,6 +19,7 @@ import type { WorkspaceMeetingRoomProductTarget } from "@/features/reservation/m
 import {
   getMeetingRoomReservationDuration,
   type MeetingRoomReservationDurationKey,
+  meetingRoomReservationDurationKeySchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getMeetingRoomLastServiceDate,
@@ -42,7 +43,12 @@ import {
   officeReservationKind,
   workspaceReservationKindSchema,
 } from "@/features/reservation/reservation-kind";
-import { isPlainDateString } from "@/shared/utils/temporal";
+import {
+  instantStringSchema,
+  isPlainDateString,
+  localDateTimeSchema,
+  plainDateStringSchema,
+} from "@/shared/utils/temporal";
 
 const workspaceAvailabilityQueryBaseFields = {
   from: Schema.String,
@@ -74,12 +80,27 @@ const officeWorkspaceAvailabilityQuerySchema = Schema.Struct({
   seats: Schema.optional(officeSeatsSchema),
 });
 
+/**
+ * The availability query mode that lists every free meeting-room start on one
+ * date instead of checking one interval across a date range.
+ */
+export const meetingRoomStartTimesMode = "start-times";
+
+const meetingRoomStartTimesQuerySchema = Schema.Struct({
+  kind: Schema.Literal(meetingRoomReservationKind),
+  mode: Schema.Literal(meetingRoomStartTimesMode),
+  date: plainDateStringSchema,
+  duration: meetingRoomReservationDurationKeySchema,
+});
+
 type CoworkWorkspaceAvailabilityQuery =
   typeof coworkWorkspaceAvailabilityQuerySchema.Type;
 export type MeetingRoomWorkspaceAvailabilityQuery =
   typeof meetingRoomWorkspaceAvailabilityQuerySchema.Type;
 export type OfficeWorkspaceAvailabilityQuery =
   typeof officeWorkspaceAvailabilityQuerySchema.Type;
+export type MeetingRoomStartTimesQuery =
+  typeof meetingRoomStartTimesQuerySchema.Type;
 
 // Internal availability computations also serve historical recovery paths,
 // so the selection query keeps every cowork tier decodable even though the
@@ -102,6 +123,8 @@ export type WorkspaceAvailabilityUnavailableTarget =
 export const workspaceAvailabilityKeys = {
   availability: (query: WorkspaceAvailabilityQuery) =>
     ["workspace-availability", query] as const,
+  meetingRoomStartTimes: (query: MeetingRoomStartTimesQuery) =>
+    ["workspace-availability", "meeting-room-start-times", query] as const,
 };
 
 const workspaceAvailabilityNoticeSchema = Schema.Struct({
@@ -127,6 +150,23 @@ const workspaceAvailabilityResponseSchema = Schema.Struct({
   ),
   notices: Schema.Array(workspaceAvailabilityNoticeSchema),
 });
+
+const meetingRoomStartTimesResponseSchema = Schema.Struct({
+  date: plainDateStringSchema,
+  duration: meetingRoomReservationDurationKeySchema,
+  /** Free starts in chronological order, each with the interval it books. */
+  startTimes: Schema.Array(
+    Schema.Struct({
+      startDateTime: localDateTimeSchema,
+      startsAt: instantStringSchema,
+      endsAt: instantStringSchema,
+    })
+  ),
+});
+
+/** Every free meeting-room start on one Prague date for one duration. */
+export type MeetingRoomStartTimes =
+  typeof meetingRoomStartTimesResponseSchema.Type;
 
 export type WorkspaceAvailabilityNotice =
   typeof workspaceAvailabilityNoticeSchema.Type;
@@ -279,6 +319,33 @@ export const getMeetingRoomSelectionAvailabilityQuery = ({
   return interval ? getMeetingRoomAvailabilityQuery(interval) : undefined;
 };
 
+const decodeLocalDateTime = Schema.decodeUnknownOption(localDateTimeSchema);
+
+/**
+ * The start-times query for the date of a selected meeting-room start, or none
+ * before a date is selected.
+ */
+export const getMeetingRoomStartTimesQuery = ({
+  duration,
+  startDateTime,
+}: {
+  readonly duration: MeetingRoomReservationDurationKey;
+  readonly startDateTime: string;
+}): MeetingRoomStartTimesQuery | undefined =>
+  decodeLocalDateTime(startDateTime).pipe(
+    Option.map(
+      (selectedStart): MeetingRoomStartTimesQuery => ({
+        kind: meetingRoomReservationKind,
+        mode: meetingRoomStartTimesMode,
+        date: plainDateStringSchema.make(
+          Temporal.PlainDateTime.from(selectedStart).toPlainDate().toString()
+        ),
+        duration,
+      })
+    ),
+    Option.getOrUndefined
+  );
+
 /**
  * Whether the meeting room is free for the interval its availability was
  * queried for.
@@ -304,6 +371,42 @@ export const parseWorkspaceAvailabilityResponse = <T>(
     value,
     "Invalid workspace availability response"
   );
+
+const meetingRoomStartTimesStandardSchema = Schema.toStandardSchemaV1(
+  meetingRoomStartTimesResponseSchema
+);
+
+export const parseMeetingRoomStartTimesResponse = <T>(
+  value: T
+): MeetingRoomStartTimes =>
+  parseStandardSchema(
+    meetingRoomStartTimesStandardSchema,
+    value,
+    "Invalid meeting-room start times response"
+  );
+
+/** Whether an availability request asks for meeting-room start times. */
+export const isMeetingRoomStartTimesRequest = (searchParams: URLSearchParams) =>
+  searchParams.get("mode")?.trim() === meetingRoomStartTimesMode;
+
+const decodeMeetingRoomStartTimesQuery = Schema.decodeUnknownOption(
+  meetingRoomStartTimesQuerySchema
+);
+
+/**
+ * The start-times query a request names, or none when its kind, date, or
+ * duration is missing or invalid. Unlike date-range availability it has no
+ * defaults, so an invalid parameter never lists another day's start times.
+ */
+export const parseMeetingRoomStartTimesQuery = (
+  searchParams: URLSearchParams
+) =>
+  decodeMeetingRoomStartTimesQuery({
+    kind: searchParams.get("kind")?.trim(),
+    mode: searchParams.get("mode")?.trim(),
+    date: searchParams.get("date")?.trim(),
+    duration: searchParams.get("duration")?.trim(),
+  });
 
 const isCanonicalPlainDate = Schema.is(
   Schema.String.check(isPlainDateString())

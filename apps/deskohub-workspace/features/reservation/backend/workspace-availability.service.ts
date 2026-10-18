@@ -8,6 +8,11 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { excludeDotyposReservationsById } from "@/features/checkout/backend/reservation";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
+import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getMeetingRoomDayStartTimes,
+  getMeetingRoomLastServiceDate,
+} from "@/features/reservation/meeting-room-reservation-time";
 import {
   coworkReservationKind,
   meetingRoomReservationKind,
@@ -15,6 +20,7 @@ import {
 } from "@/features/reservation/reservation-kind";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { currentInstant } from "@/shared/utils/temporal";
 import {
   getReservationDate,
   normalizeReservationInterval,
@@ -22,11 +28,14 @@ import {
   type ReservationIntervalError,
   type ReservationIntervalInput,
 } from "../reservation-interval";
-import type {
-  WorkspaceAvailability,
-  WorkspaceAvailabilityNotice,
-  WorkspaceAvailabilityQuery,
-  WorkspaceAvailabilityUnavailableTarget,
+import {
+  isMeetingRoomAvailable,
+  type MeetingRoomStartTimes,
+  type MeetingRoomStartTimesQuery,
+  type WorkspaceAvailability,
+  type WorkspaceAvailabilityNotice,
+  type WorkspaceAvailabilityQuery,
+  type WorkspaceAvailabilityUnavailableTarget,
 } from "../workspace-availability";
 import { evaluateAvailability } from "./availability-evaluation";
 import {
@@ -79,6 +88,14 @@ export interface IWorkspaceAvailabilityService {
   readonly getAvailability: (
     input: WorkspaceAvailabilityRequest
   ) => Effect.Effect<WorkspaceAvailability, AvailabilityInventoryError>;
+  /**
+   * Advisory free meeting-room starts on one date, evaluated by the
+   * single-interval rules against one load of the same shared snapshot, so
+   * listing a day costs no more provider reads than checking one interval.
+   */
+  readonly getMeetingRoomStartTimes: (
+    input: MeetingRoomStartTimesRequest
+  ) => Effect.Effect<MeetingRoomStartTimes, AvailabilityInventoryError>;
   /** Fails unless the reservation is available in live provider data. */
   readonly ensureAvailable: (
     query: WorkspaceAvailabilityEnsureQuery
@@ -94,6 +111,11 @@ export type WorkspaceAvailabilityOccupancyExclusion = {
 
 type WorkspaceAvailabilityRequest = {
   readonly query: WorkspaceAvailabilityQuery;
+  readonly occupancyExclusion?: WorkspaceAvailabilityOccupancyExclusion;
+};
+
+type MeetingRoomStartTimesRequest = {
+  readonly query: MeetingRoomStartTimesQuery;
   readonly occupancyExclusion?: WorkspaceAvailabilityOccupancyExclusion;
 };
 
@@ -334,8 +356,92 @@ const implementation = Effect.gen(function* () {
     (effect) => effect.pipe(Effect.scoped)
   );
 
+  const getMeetingRoomStartTimes = Effect.fn(
+    "workspaceAvailability.getMeetingRoomStartTimes"
+  )(
+    function* ({ query, occupancyExclusion }: MeetingRoomStartTimesRequest) {
+      yield* Effect.annotateLogsScoped({ query });
+      yield* Effect.logInfo("Meeting-room start times computation started");
+
+      const candidates = getMeetingRoomDayStartTimes({
+        date: query.date,
+        duration: getMeetingRoomReservationDuration(query.duration),
+        now: yield* currentInstant,
+      });
+      const lastCandidate = candidates.at(-1);
+      if (!lastCandidate) {
+        yield* Effect.logInfo("Meeting-room start times have no candidates");
+        return { date: query.date, duration: query.duration, startTimes: [] };
+      }
+
+      // One range covers every candidate interval, so the day loads the same
+      // shared inventory a single-interval check on it would.
+      const rangeQuery = {
+        kind: meetingRoomReservationKind,
+        from: query.date,
+        to: getMeetingRoomLastServiceDate(lastCandidate.interval),
+      } satisfies WorkspaceAvailabilityQuery;
+      const dates = yield* getDateRange(rangeQuery.from, rangeQuery.to);
+      const { tables, reservations, limitations } = yield* loadInventory(
+        advisoryInventory,
+        {
+          query: rangeQuery,
+          occupancyExclusion,
+          reservationInterval: getDateRangeReservationInterval(dates),
+        }
+      );
+      const fullyOccupiedDates = getFullyOccupiedCalendarDates(limitations);
+      // Each candidate is evaluated exactly as a single-interval query for it
+      // would be, over the dates its own interval touches.
+      const startTimes = yield* Effect.filter(candidates, ({ interval }) => {
+        const lastServiceDate = getMeetingRoomLastServiceDate(interval);
+        return Effect.fromResult(
+          evaluateAvailability({
+            query: {
+              kind: meetingRoomReservationKind,
+              from: query.date,
+              to: lastServiceDate,
+              ...interval,
+            },
+            dates: dates
+              .map(plainDateToString)
+              .filter((date) => date <= lastServiceDate),
+            reservation: interval,
+            selectedDate: query.date,
+            tables,
+            reservations,
+            fullyOccupiedDates,
+          })
+        ).pipe(Effect.map(isMeetingRoomAvailable));
+      });
+
+      const result = {
+        date: query.date,
+        duration: query.duration,
+        startTimes: startTimes.map(({ startDateTime, interval }) => ({
+          startDateTime,
+          ...interval,
+        })),
+      } satisfies MeetingRoomStartTimes;
+      yield* Effect.annotateLogsScoped({ result });
+      yield* Effect.logInfo("Meeting-room start times computed");
+
+      return result;
+    },
+    (effect) =>
+      effect.pipe(
+        Effect.scoped,
+        Effect.tapError((cause) =>
+          Effect.logError("Meeting-room start times computation failed", {
+            cause,
+          })
+        )
+      )
+  );
+
   return {
     getAvailability: (input) => computeAvailability(advisoryInventory, input),
+    getMeetingRoomStartTimes,
     ensureAvailable,
   } satisfies IWorkspaceAvailabilityService;
 });

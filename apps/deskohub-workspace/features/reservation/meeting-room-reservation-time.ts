@@ -148,3 +148,43 @@ export const findMeetingRoomReservationDuration = (interval: {
     );
   });
 };
+
+/** A start the meeting-room form accepts, with the interval it books. */
+export type MeetingRoomStartTime = {
+  readonly startDateTime: LocalDateTime;
+  readonly interval: ReservationInterval;
+};
+
+/**
+ * Every start the meeting-room form accepts on a Prague date for a duration:
+ * each whole hour from the earliest start, or the date's midnight for a whole
+ * day. Wall times that daylight saving skips or repeats book no interval, so
+ * they are left out.
+ */
+export const getMeetingRoomDayStartTimes = ({
+  date,
+  duration,
+  now,
+}: {
+  readonly date: PlainDate;
+  readonly duration: MeetingRoomReservationDuration;
+  readonly now: Temporal.Instant;
+}): ReadonlyArray<MeetingRoomStartTime> => {
+  const earliestStart = Temporal.PlainDateTime.from(
+    getEarliestMeetingRoomStartDateTime(duration, now)
+  );
+  const midnight = Temporal.PlainDate.from(date).toPlainDateTime();
+  const candidates = isMeetingRoomWholeDayReservationDuration(duration)
+    ? [midnight]
+    : Array.from({ length: 24 }, (_, hour) => midnight.with({ hour }));
+
+  return candidates.flatMap((candidate) => {
+    if (Temporal.PlainDateTime.compare(candidate, earliestStart) < 0) return [];
+
+    const startDateTime = localDateTimeSchema.make(
+      candidate.toString({ smallestUnit: "minute" })
+    );
+    const interval = getMeetingRoomReservationInterval(startDateTime, duration);
+    return interval ? [{ startDateTime, interval }] : [];
+  });
+};

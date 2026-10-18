@@ -414,6 +414,10 @@
   "reservationMeetingRoomTimeLabel": "Meeting room start time",
   "reservationMeetingRoomDurationLabel": "Duration",
   "reservationMeetingRoomUnavailable": "The meeting room is not available for this time. Try another start time or duration.",
+  "reservationMeetingRoomStartTimesLabel": "Free start times",
+  "reservationMeetingRoomStartTimesLoading": "Loading free start times for this day.",
+  "reservationMeetingRoomStartTimesEmpty": "No free start times on this day for this duration. Try another date or a shorter duration.",
+  "reservationMeetingRoomStartTimesError": "Free start times could not be loaded. You can still enter a start time above.",
   "reservationOfficeProductTitle": "Private office",
   "reservationOfficeBasePriceLabel": [
     {
