@@ -53,11 +53,11 @@ glossary defines the customer account, reservation author, and tombstone.
   backfill.
 - `CustomerReservationHistoryService` lists the rows of the account's own
   customer and the rows it authored for other customers (fetched from Dotypos
-  by reservation id, 50 ids per request). Each summary's `party` labels the
+  by reservation id through `readInIdFilterBatches`). Each summary's `party` labels the
   other side: `booked-for` for an authored row of another customer,
   `booked-by` or `booked-by-deleted-account` when `isCustomerOwnAuthor` says
   a different account booked the account's own customer. Names come from
-  `getCustomerDisplayName` over one batched `getCustomers` read. Author and
+  `getCustomerDisplayName` over `getCustomers` reads batched the same way. Author and
   name reads are degradable: a failure logs a fixed code and leaves the party
   unnamed (null), never failing the history.
 - `author_account_id` is null only for guest checkouts and for reservations
