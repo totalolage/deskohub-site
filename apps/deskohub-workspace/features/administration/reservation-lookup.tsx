@@ -20,6 +20,7 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { getAdministrationActionFailureMessage } from "./action-failure-message";
 import { getAdministrationReservation } from "./actions";
 import { localizeAdministrationHref } from "./administration-href";
 import type { ReservationLookupInput } from "./contracts";
@@ -83,8 +84,10 @@ export function ReservationLookup({
       },
       onError: ({ error: actionError }) =>
         setError(
-          actionError.serverError ??
-            m.administrationReservationLookupFailed({}, { locale })
+          getAdministrationActionFailureMessage(actionError.serverError, {
+            fallback: m.administrationReservationLookupFailed({}, { locale }),
+            locale,
+          })
         ),
       onTransportError: () =>
         setError(m.administrationReservationLookupFailed({}, { locale })),

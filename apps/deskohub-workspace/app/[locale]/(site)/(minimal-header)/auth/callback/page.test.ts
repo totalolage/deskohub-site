@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import {
   getLocalizedDynamicPagePath,
   getLocalizedPagePath,
+  locales,
 } from "@/features/i18n/routing";
 
 const connection = mock(() => Promise.resolve());
@@ -25,6 +26,7 @@ mock.module("@/features/i18n", () => ({
   getLocalizedDynamicPagePath,
   getLocalizedPagePath,
   isLocale: (value: string) => value === "en-US",
+  locales,
   m: {},
 }));
 mock.module("@/features/i18n/server/request-locale", () => ({

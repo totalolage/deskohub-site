@@ -893,5 +893,7 @@
   "emailCampaignsTestSendSubmit": "Poslat test",
   "emailCampaignsTestSendSubmitting": "Odesílání…",
   "emailCampaignsTestSendTitle": "Poslat testovací e-mail",
-  "emailCampaignsTestSendUnsavedChanges": "Nejprve uložte změny. Test použije uloženou kampaň, takže jeho kód by vaše neuložené úpravy nepotvrdil."
+  "emailCampaignsTestSendUnsavedChanges": "Nejprve uložte změny. Test použije uloženou kampaň, takže jeho kód by vaše neuložené úpravy nepotvrdil.",
+  "emailCampaignsActionTimedOut": "Server neodpověděl včas. Zkuste to znovu.",
+  "emailCampaignsActionFailedUnexpectedly": "Na serveru se něco pokazilo. Zkuste to znovu."
 }
