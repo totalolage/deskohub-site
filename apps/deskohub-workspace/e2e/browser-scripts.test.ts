@@ -405,9 +405,8 @@ test("turns the workstation on before choosing a monitor", async () => {
     </div>
   `;
 
-    const workstationSwitch = document.querySelector<HTMLElement>(
-      '[role="switch"]'
-    )!;
+    const workstationSwitch =
+      document.querySelector<HTMLElement>('[role="switch"]')!;
     workstationSwitch.addEventListener("click", () => {
       workstationSwitch.setAttribute("aria-checked", "true");
       document.body.insertAdjacentHTML(
