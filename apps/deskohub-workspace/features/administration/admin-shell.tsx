@@ -354,7 +354,11 @@ export function AdminShell({
                   <Menu aria-hidden className="size-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent className="px-4 py-5" locale={locale} side="left">
+              <SheetContent
+                className="overflow-y-auto px-4 py-5"
+                locale={locale}
+                side="left"
+              >
                 <SheetHeader className="sr-only">
                   <SheetTitle>
                     {m.shellMobileNavigationTitle({}, { locale })}
