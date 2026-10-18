@@ -479,7 +479,13 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                   })
               )
             );
-            const author = yield* describeReservationAuthor(claimed);
+            // The author confirmation goes out with the first customer
+            // delivery only; a recovery delivery after a bounce re-sends the
+            // customer's email alone, so the author never gets a duplicate
+            // once the provider's idempotency window has passed.
+            const author = claimed.activeCustomerEmailDeliveryId
+              ? null
+              : yield* describeReservationAuthor(claimed);
             const customerEmailDeliveryId = yield* reservationEmails
               .sendPaidReservationEmails({
                 reservation: reservationForDelivery,

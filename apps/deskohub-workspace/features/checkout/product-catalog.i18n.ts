@@ -1,3 +1,4 @@
+import { Match } from "effect";
 import {
   type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
@@ -9,6 +10,7 @@ import {
   isMeetingRoomWholeDayReservationDuration,
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
+import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 
 type WorkspaceProductMessage = (
   inputs: Record<string, never>,
@@ -124,6 +126,20 @@ export const getWorkspaceMeetingRoomProductTitle = (locale: Locale) =>
 
 export const getWorkspaceOfficeProductTitle = (locale: Locale) =>
   getWorkspaceProductMessage(m.reservationOfficeProductTitle, locale);
+
+/** The catalog name of the product a stored reservation booked. */
+export const getReservationProductTitle = (
+  details: StoredWorkspaceReservationDetails,
+  locale: Locale
+) =>
+  Match.value(details).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: ({ entryTier }) =>
+        getWorkspaceProductTierTitle(entryTier, locale),
+      "meeting-room": () => getWorkspaceMeetingRoomProductTitle(locale),
+      office: () => getWorkspaceOfficeProductTitle(locale),
+    })
+  );
 
 export const getWorkspaceProductMonitorTitle = (
   option: WorkspaceProductMonitorOption,

@@ -25,7 +25,7 @@ import {
   type ReservationAuthor,
 } from "@/features/account";
 import {
-  getWorkspaceMeetingRoomProductTitle,
+  getReservationProductTitle,
   getWorkspaceOfficeProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
@@ -195,19 +195,6 @@ const createCustomerAccessHeading = (
   m.checkoutEmailCustomerAccessHeading(
     { date: formatCustomerAccessHeadingDate(reservation, locale) },
     { locale }
-  );
-
-const getReservationProductTitle = (
-  reservation: WorkspaceReservationDetails,
-  locale: Locale
-) =>
-  Match.value(reservation.reservationDetails).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      cowork: ({ entryTier }) =>
-        getWorkspaceProductTierTitle(entryTier, locale),
-      "meeting-room": () => getWorkspaceMeetingRoomProductTitle(locale),
-      office: () => getWorkspaceOfficeProductTitle(locale),
-    })
   );
 
 /** The customer as the author's confirmation names them. */
@@ -499,7 +486,10 @@ const createReservationAuthorEmail = (input: {
       heading={m.checkoutEmailAuthorHeading(
         {
           customer: getAuthorConfirmationCustomerName(reservation, locale),
-          product: getReservationProductTitle(reservation, locale),
+          product: getReservationProductTitle(
+            reservation.reservationDetails,
+            locale
+          ),
         },
         { locale }
       )}

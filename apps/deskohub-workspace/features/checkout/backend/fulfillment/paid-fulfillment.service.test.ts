@@ -199,7 +199,7 @@ describe("WorkspacePaidFulfillmentService", () => {
     });
   });
 
-  test("hands the reservation's author to the paid emails and still fulfills when the author can't be read", async () => {
+  test("hands the reservation's author to the first paid emails only and still fulfills when the author can't be read", async () => {
     const author = {
       kind: "active",
       accountId: "author-account-id",
@@ -210,13 +210,17 @@ describe("WorkspacePaidFulfillmentService", () => {
     const fulfill = async (
       describe: () => ReturnType<
         (typeof ReservationAuthorDirectory)["Service"]["describe"]
-      >
+      >,
+      priorCustomerEmailDeliveryId: string | null = null
     ) => {
       const order = {
         id: "reservation-id",
         activePaymentAttemptId: "payment-attempt-id",
         paymentState: "paid",
-        fulfillmentState: "not_started",
+        fulfillmentState: priorCustomerEmailDeliveryId
+          ? "failed"
+          : "not_started",
+        activeCustomerEmailDeliveryId: priorCustomerEmailDeliveryId,
       };
       const claimed = {
         ...order,
@@ -245,6 +249,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         )
       );
       const markFulfilled = mock(() => Effect.void);
+      const describeAuthors = mock(describe);
 
       await Effect.gen(function* () {
         const service = yield* WorkspacePaidFulfillmentService;
@@ -255,7 +260,7 @@ describe("WorkspacePaidFulfillmentService", () => {
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(ReservationAuthorDirectory, {
-                  describe: mock(describe),
+                  describe: describeAuthors,
                 }),
                 Layer.mock(WorkspaceReservationRepository, {
                   findById: mock(() => Effect.succeed(order as never)),
@@ -301,7 +306,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         Effect.runPromise
       );
 
-      return { sendPaidReservationEmails, markFulfilled };
+      return { sendPaidReservationEmails, markFulfilled, describeAuthors };
     };
 
     const described = await fulfill(() =>
@@ -321,6 +326,15 @@ describe("WorkspacePaidFulfillmentService", () => {
       expect.objectContaining({ author: null })
     );
     expect(unreadable.markFulfilled).toHaveBeenCalled();
+
+    const recovery = await fulfill(
+      () => Effect.succeed(new Map([[author.accountId, author]]) as never),
+      "bounced-customer-email-delivery"
+    );
+    expect(recovery.describeAuthors).not.toHaveBeenCalled();
+    expect(recovery.sendPaidReservationEmails).toHaveBeenCalledWith(
+      expect.objectContaining({ author: null })
+    );
   });
 
   test("confirms held paid orders, sends emails, and completes non-production fulfillment", async () => {
