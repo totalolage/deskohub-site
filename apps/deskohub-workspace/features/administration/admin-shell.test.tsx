@@ -58,6 +58,119 @@ const renderShell = async (pathname: string) => {
   );
 };
 
+// Each navigation section as its heading and its links' labels and hrefs.
+const navigationSections = (navigation: HTMLElement) =>
+  within(navigation)
+    .getAllByRole("list")
+    .map((list) => [
+      document.getElementById(list.getAttribute("aria-labelledby") ?? "")
+        ?.textContent,
+      within(list)
+        .getAllByRole("link")
+        .map((link) => [link.textContent, link.getAttribute("href")]),
+    ]);
+
+test("groups the navigation into sections in both locales", async () => {
+  const czech = await renderShell("/cs-CZ/admin/cli/sessions");
+  const czechSections = [
+    [
+      "Provoz",
+      [
+        ["Přehled", "/cs-CZ/admin"],
+        ["Rezervace", "/cs-CZ/admin/reservations"],
+        ["Zákazníci", "/cs-CZ/admin/customers"],
+      ],
+    ],
+    [
+      "Slevy",
+      [
+        ["Kódy", "/cs-CZ/admin/codes"],
+        ["Poukazy", "/cs-CZ/admin/vouchers"],
+        ["Akce", "/cs-CZ/admin/sales"],
+      ],
+    ],
+    [
+      "E-mail",
+      [
+        ["Kampaně", "/cs-CZ/admin/email-campaigns"],
+        ["Okruhy příjemců", "/cs-CZ/admin/email-audiences"],
+      ],
+    ],
+    [
+      "Administrace",
+      [
+        ["Faktury", "/cs-CZ/admin/invoices"],
+        ["Přístupové kódy", "/cs-CZ/admin/access-codes"],
+        ["Administrátoři", "/cs-CZ/admin/administrators"],
+        ["Relace CLI", "/cs-CZ/admin/cli/sessions"],
+      ],
+    ],
+  ];
+  const desktop = czech.getByRole("navigation", { name: "Administrace" });
+
+  expect(navigationSections(desktop)).toEqual(czechSections);
+  expect(
+    within(desktop)
+      .getByRole("list", { name: "Administrace" })
+      .querySelector('[aria-current="page"]')?.textContent
+  ).toBe("Relace CLI");
+
+  fireEvent.click(czech.getByRole("button", { name: "Otevřít navigaci" }));
+  const sheet = await czech.findByRole("dialog");
+
+  expect(
+    navigationSections(
+      within(sheet).getByRole("navigation", { name: "Administrace" })
+    )
+  ).toEqual(czechSections);
+  cleanup();
+
+  const english = await renderShell("/en-US/admin/sales");
+  const englishNavigation = english.getByRole("navigation", {
+    name: "Administration",
+  });
+
+  expect(navigationSections(englishNavigation)).toEqual([
+    [
+      "Operations",
+      [
+        ["Overview", "/en-US/admin"],
+        ["Reservations", "/en-US/admin/reservations"],
+        ["Customers", "/en-US/admin/customers"],
+      ],
+    ],
+    [
+      "Discounts",
+      [
+        ["Codes", "/en-US/admin/codes"],
+        ["Vouchers", "/en-US/admin/vouchers"],
+        ["Sales", "/en-US/admin/sales"],
+      ],
+    ],
+    [
+      "Email",
+      [
+        ["Campaigns", "/en-US/admin/email-campaigns"],
+        ["Audiences", "/en-US/admin/email-audiences"],
+      ],
+    ],
+    [
+      "Administration",
+      [
+        ["Invoices", "/en-US/admin/invoices"],
+        ["Access codes", "/en-US/admin/access-codes"],
+        ["Administrators", "/en-US/admin/administrators"],
+        ["CLI sessions", "/en-US/admin/cli/sessions"],
+      ],
+    ],
+  ]);
+  expect(
+    within(englishNavigation)
+      .getByRole("list", { name: "Discounts" })
+      .querySelector('[aria-current="page"]')?.textContent
+  ).toBe("Sales");
+});
+
 test("renders the shell in the route locale with localized navigation", async () => {
   const view = await renderShell("/cs-CZ/admin/reservations/reservation-id");
   const navigation = view.getByRole("navigation", { name: "Administrace" });
