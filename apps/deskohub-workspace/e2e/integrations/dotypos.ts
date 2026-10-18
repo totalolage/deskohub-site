@@ -606,7 +606,7 @@ const dotyposDateCovers = (
 const parseDotyposTimestamp = (value: string) =>
   /^\d+$/.test(value) ? Number(value) : new Date(value).getTime();
 
-const parseDotyposInstant = (value: string) => {
+export const parseDotyposInstant = (value: string) => {
   const epochMilliseconds = parseDotyposTimestamp(value);
   assert(Number.isSafeInteger(epochMilliseconds), "invalid Dotypos timestamp");
   return Temporal.Instant.fromEpochMilliseconds(epochMilliseconds);
