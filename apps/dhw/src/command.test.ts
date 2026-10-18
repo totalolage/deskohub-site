@@ -4,6 +4,7 @@ import {
   AdministrationActorEmail,
   AdministrationDiscountCodeId,
   AdministrationLegacyUsername,
+  type AdministrationReservationDetailType,
   AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeAttemptIdType,
   type AdministrationStandaloneAccessCodeCreateInputType,
@@ -236,6 +237,57 @@ describe("dhw mutation commands", () => {
           sendCancellationEmail: true,
         },
       },
+    ]);
+  });
+
+  test("shows who booked a reservation for someone else", async () => {
+    const output: string[] = [];
+    const capturedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        output.push(args.join(" "));
+      },
+    } satisfies Console.Console);
+    const detail = (author: AdministrationReservationDetailType["author"]) =>
+      ({
+        author,
+        accessGrant: null,
+        discounts: [],
+        orders: [],
+        paymentAttempts: [],
+        reservation: {
+          id: reservationId,
+          customerId: "booked-for-customer",
+          customer: null,
+          date: "2026-08-10",
+          startsAt: null,
+          typeLabel: "Cowork",
+          status: { label: "Held" },
+        },
+      }) as unknown as AdministrationReservationDetailType;
+
+    for (const author of [
+      {
+        kind: "account" as const,
+        customerId: null,
+        displayName: "Ada Author",
+        email: testEmailAddress("ada-author"),
+      },
+      { kind: "deleted" as const },
+      null,
+    ]) {
+      const { layer } = makeCommandLayer({
+        getReservation: () => Effect.succeed(detail(author)),
+      });
+      await runCommand(
+        ["reservations", "get", reservationId],
+        Layer.mergeAll(layer, capturedOutput)
+      ).pipe(Effect.runPromise);
+    }
+
+    expect(output.filter((line) => line.startsWith("Booked by"))).toEqual([
+      `Booked by: Ada Author <${testEmailAddress("ada-author")}>`,
+      "Booked by: deleted account",
     ]);
   });
 
@@ -1231,6 +1283,10 @@ const makeCommandLayer = ({
   clear = Effect.succeed(true),
   createInvoice = () => Effect.die("not used"),
   createStandaloneAccessCode = () => Effect.die("not used"),
+  getReservation = () =>
+    Effect.succeed({
+      accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
+    } as never),
   authenticatedSession = session,
   revokeSession = () => Effect.succeed({ changed: false }),
   stateDirectory = `/tmp/dhw-command-test-${crypto.randomUUID()}`,
@@ -1241,6 +1297,7 @@ const makeCommandLayer = ({
   readonly clear?: AuthenticationService["Service"]["clear"];
   readonly createInvoice?: WorkspaceAdminApiClient["Service"]["createInvoice"];
   readonly createStandaloneAccessCode?: WorkspaceAdminApiClient["Service"]["createStandaloneAccessCode"];
+  readonly getReservation?: WorkspaceAdminApiClient["Service"]["getReservation"];
   readonly authenticatedSession?: CliSessionType;
   readonly revokeSession?: WorkspaceAdminApiClient["Service"]["revokeSession"];
   readonly stateDirectory?: string;
@@ -1279,10 +1336,7 @@ const makeCommandLayer = ({
           providerCredentialRemovedAttemptId
         );
       }),
-    getReservation: () =>
-      Effect.succeed({
-        accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
-      } as never),
+    getReservation,
     mutateDiscounts: (_accessToken, _requestId, mutation) =>
       Effect.sync(() => {
         mutations.push(mutation);

@@ -64,6 +64,11 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import {
+  isCustomerOwnAuthor,
+  ReservationAuthorDirectory,
+} from "@/features/account";
+import type { CustomerAccountId } from "@/features/account/customer-account";
+import {
   checkoutAttemptKeySchema,
   checkoutSessionKeySchema,
   type PaymentAttemptId,
@@ -89,7 +94,10 @@ import type { WorkspaceReservationKind } from "@/features/reservation/reservatio
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
-import { unnamedCustomerDisplayName } from "./customer-name";
+import {
+  type AdministrationCustomerName,
+  unnamedCustomerDisplayName,
+} from "./customer-name";
 import {
   getAdministrationExternalOrderPageIds,
   getAdministrationPagination,
@@ -386,7 +394,25 @@ export type AdministrationTimelineItem = {
   readonly href?: string;
 };
 
+/**
+ * The customer account that made a reservation for someone else. A deleted
+ * author shows nothing but the fact. An unavailable author could not be read,
+ * so the screen doesn't imply the customer booked it themselves.
+ */
+export type AdministrationReservationAuthor =
+  | (AdministrationCustomerName & {
+      readonly kind: "account";
+      /** The author's own linked Dotypos customer, which names them. */
+      readonly customerId: DotyposCustomerId | null;
+      /** The author's login email. */
+      readonly email: string;
+    })
+  | { readonly kind: "deleted" }
+  | { readonly kind: "unavailable" };
+
 export type AdministrationReservationDetail = {
+  /** Absent when the reservation is authorless or the customer booked it. */
+  readonly author: AdministrationReservationAuthor | null;
   readonly canCancel: boolean;
   readonly requiresProviderCredentialRemoval: boolean;
   readonly reservation: AdministrationReservationSummary;
@@ -1322,6 +1348,7 @@ export class AdministrationService extends Context.Service<
       const dotypos = yield* DotyposService;
       const reservationHistory = yield* PostHogReservationHistory;
       const paymentAdministration = yield* PaymentAdministrationService;
+      const reservationAuthors = yield* ReservationAuthorDirectory;
 
       const loadLiveReservation = Effect.fn(
         "AdministrationService.loadLiveReservation"
@@ -1414,6 +1441,46 @@ export class AdministrationService extends Context.Service<
           }
           return customersById;
         }
+      );
+
+      const loadAuthor = Effect.fn("AdministrationService.loadAuthor")(
+        function* (
+          accountId: CustomerAccountId,
+          customerId: DotyposCustomerId
+        ) {
+          const author = (yield* reservationAuthors.describe([accountId])).get(
+            accountId
+          );
+          if (!author) return { kind: "unavailable" } as const;
+          if (isCustomerOwnAuthor(author, customerId)) return null;
+          if (author.kind === "deleted") return { kind: "deleted" } as const;
+          const customer = author.dotyposCustomerId
+            ? (yield* loadCustomers([author.dotyposCustomerId])).get(
+                author.dotyposCustomerId
+              )
+            : undefined;
+          const name =
+            customer && author.dotyposCustomerId
+              ? toCustomer(customer, author.dotyposCustomerId)
+              : { displayName: unnamedCustomerDisplayName, hasName: false };
+          return {
+            kind: "account",
+            customerId: author.dotyposCustomerId,
+            displayName: name.displayName,
+            hasName: name.hasName,
+            email: author.email,
+          } as const;
+        },
+        (effect, accountId) =>
+          effect.pipe(
+            Effect.catch((cause) => {
+              unstable_rethrow(cause);
+              return Effect.logWarning("Reservation author unavailable", {
+                cause,
+                accountId,
+              }).pipe(Effect.as({ kind: "unavailable" } as const));
+            })
+          )
       );
 
       const loadLiveReservations = Effect.fn(
@@ -1778,17 +1845,22 @@ export class AdministrationService extends Context.Service<
       const loadReservation = Effect.fn(
         "AdministrationService.loadReservation"
       )(function* (id: WorkspaceReservationId) {
-        const [row] = yield* db
-          .select(safeReservationSelection)
+        const [reservationRow] = yield* db
+          .select({
+            ...safeReservationSelection,
+            authorAccountId: workspaceReservations.authorAccountId,
+          })
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, id))
           .limit(1);
-        if (!row) return null;
+        if (!reservationRow) return null;
+        const { authorAccountId, ...row } = reservationRow;
 
         const {
           accessRows,
           applicationRows,
           attemptRows,
+          author,
           history,
           latePaymentRows,
           recoveryRows,
@@ -1840,6 +1912,9 @@ export class AdministrationService extends Context.Service<
               .from(paymentAttempts)
               .where(eq(paymentAttempts.workspaceReservationId, row.id))
               .orderBy(paymentAttempts.createdAt),
+            author: authorAccountId
+              ? loadAuthor(authorAccountId, row.dotyposCustomerId)
+              : Effect.succeed(null),
             history: reservationHistory.load(row.id),
             latePaymentRows: db
               .select(latePaymentSelection)
@@ -1873,7 +1948,7 @@ export class AdministrationService extends Context.Service<
               .orderBy(desc(workspaceReservations.updatedAt))
               .limit(4),
           },
-          { concurrency: 8 }
+          { concurrency: 9 }
         );
 
         let sameDateRows: readonly SafeReservationRow[] = [];
@@ -1930,6 +2005,7 @@ export class AdministrationService extends Context.Service<
         const accessGrant = accessRows[0] ?? null;
 
         return {
+          author,
           reservation: toReservationSummary({
             latestPayment: attempts.at(-1) ?? null,
             latePayment,
@@ -3010,7 +3086,8 @@ export class AdministrationService extends Context.Service<
         WorkspaceDatabase.Default,
         WorkspaceDotyposLayer,
         PaymentAdministrationService.Live,
-        PostHogReservationHistory.Live
+        PostHogReservationHistory.Live,
+        ReservationAuthorDirectory.Live
       )
     )
   );
