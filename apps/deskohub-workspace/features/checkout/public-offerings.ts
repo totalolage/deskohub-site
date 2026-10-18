@@ -1,4 +1,5 @@
 import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
+import { workspaceMeetingRoomCatalog } from "@/features/checkout/meeting-room-product-catalog";
 import {
   getCoworkTierCoffeeAddon,
   getCoworkTierWorkstationAddon,
@@ -112,6 +113,24 @@ export type PublicOfficeOffer = {
 };
 
 /** Every product customers can book anonymously, in catalog order. */
+export const getPublicCatalogOfferings = ({
+  locale,
+  office,
+}: {
+  readonly locale: Locale;
+  readonly office?: PublicOfficeOffer;
+}): ReadonlyArray<PublicCatalogOffering> => [
+  ...workspaceCoworkCurrentTiers.map((tier) => getCoworkOffering(tier, locale)),
+  ...workspaceMeetingRoomCatalog.map(({ duration }) =>
+    getMeetingRoomOffering(duration, locale)
+  ),
+  ...(office ? [getOfficeOffering(office, locale)] : []),
+];
+
+/**
+ * Every product customers can book anonymously, in catalog order, with the
+ * request that prices its smallest booking on `date`.
+ */
 export const getPublicOfferingListings = ({
   date,
   locale,

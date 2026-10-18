@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
 import {
   getMeetingRoomReservationDefaultValuesFromSearchParams,
-  getMeetingRoomReservationSearchParams,
+  getMeetingRoomReservationSelectionSearchParams,
 } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import type { MeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -16,8 +16,7 @@ const pragueInstant = (local: string) =>
     .toInstant();
 
 // 15:20 in Prague, so some hourly bookings that began earlier today are
-// still open; reservation links keep only hourly starts that have not begun,
-// and today's whole day until it ends.
+// still open; checkout and reservation links keep a selection until it ends.
 const now = pragueInstant("2099-07-30T15:20");
 const today = "2099-07-30";
 const latest = "2100-01-30";
@@ -50,7 +49,7 @@ const openReservationLink = (
   Effect.runPromise(
     getShareableReservationUrl(
       "meeting-room",
-      getMeetingRoomReservationSearchParams({
+      getMeetingRoomReservationSelectionSearchParams({
         duration: selection.durationKey,
         startDateTime: selection.startDateTime,
       })
@@ -73,6 +72,21 @@ describe("resolveMeetingRoomSelection", () => {
       name: "a four-hour booking at the next whole hour",
       selection: { date: today, startTime: "16:00", duration: "hour:4" },
       startDateTime: `${today}T16:00`,
+    },
+    {
+      name: "a four-hour booking that began at 14:00",
+      selection: { date: today, startTime: "14:00", duration: "hour:4" },
+      startDateTime: `${today}T14:00`,
+    },
+    {
+      name: "a four-hour booking that began at 12:00",
+      selection: { date: today, startTime: "12:00", duration: "hour:4" },
+      startDateTime: `${today}T12:00`,
+    },
+    {
+      name: "a one-hour booking that began at 15:00",
+      selection: { date: today, startTime: "15:00", duration: "hour:1" },
+      startDateTime: `${today}T15:00`,
     },
     {
       name: "a future hourly booking",
@@ -137,22 +151,7 @@ describe("resolveMeetingRoomSelection", () => {
     });
   });
 
-  const begun = [
-    {
-      name: "a four-hour booking that began at 14:00",
-      selection: { date: today, startTime: "14:00", duration: "hour:4" },
-      earliest: today,
-    },
-    {
-      name: "a four-hour booking that began at 12:00",
-      selection: { date: today, startTime: "12:00", duration: "hour:4" },
-      earliest: today,
-    },
-    {
-      name: "a one-hour booking that began at 15:00",
-      selection: { date: today, startTime: "15:00", duration: "hour:1" },
-      earliest: today,
-    },
+  const ended = [
     {
       name: "a four-hour booking that ended at 15:00",
       selection: { date: today, startTime: "11:00", duration: "hour:4" },
@@ -170,7 +169,7 @@ describe("resolveMeetingRoomSelection", () => {
     },
   ] as const;
 
-  for (const { name, selection, earliest } of begun) {
+  for (const { name, selection, earliest } of ended) {
     test(`rejects ${name}`, async () => {
       expect(await rejectSelection(selection)).toEqual({
         code: "date_out_of_range",

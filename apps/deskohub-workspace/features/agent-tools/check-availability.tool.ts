@@ -7,9 +7,10 @@ import { m } from "@/features/i18n";
 import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-reservation-capacity";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
-import { getCoworkReservationSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
-import { getMeetingRoomReservationSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
-import { getOfficeReservationSearchParams } from "@/features/reservation/office-reservation-checkout-query";
+import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
+import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
+import { getOfficeReservationSelectionSearchParams } from "@/features/reservation/office-reservation-checkout-query";
+import type { ReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import {
@@ -99,7 +100,7 @@ export type CheckAvailabilityResult = typeof outputSchema.Type;
 type AvailabilityResult = Omit<
   typeof outputSchema.Type,
   "checked_at" | "note" | "reservation_url"
-> & { readonly reservationSearchParams: URLSearchParams };
+> & { readonly reservationSearchParams: ReservationSelectionSearchParams };
 
 export const checkAvailabilityTool = defineAgentTool({
   name: "check_availability",
@@ -186,7 +187,7 @@ const checkCowork = Effect.fn("agentTools.checkCoworkAvailability")(
             family: "cowork" as const,
             available: days.every((day) => day.available),
             days,
-            reservationSearchParams: getCoworkReservationSearchParams({
+            reservationSearchParams: getCoworkOfferSearchParams({
               entryTier: input.tier ?? "open-space",
               date: input.date,
             }),
@@ -292,10 +293,11 @@ const checkMeetingRoom = Effect.fn("agentTools.checkMeetingRoomAvailability")(
               timeZone,
             }),
           },
-          reservationSearchParams: getMeetingRoomReservationSearchParams({
-            duration: meetingRoom.durationKey,
-            startDateTime: meetingRoom.startDateTime,
-          }),
+          reservationSearchParams:
+            getMeetingRoomReservationSelectionSearchParams({
+              duration: meetingRoom.durationKey,
+              startDateTime: meetingRoom.startDateTime,
+            }),
         } satisfies AvailabilityResult;
       })
     )
@@ -322,7 +324,7 @@ const checkOffice = Effect.fn("agentTools.checkOfficeAvailability")(
         }))
       ),
       Effect.map(
-        ({ today, range, seats, office, days }) =>
+        ({ range, seats, office, days }) =>
           ({
             family: "office" as const,
             available:
@@ -330,11 +332,10 @@ const checkOffice = Effect.fn("agentTools.checkOfficeAvailability")(
               days.every((day) => day.available),
             days,
             office: { seats, max_seats: office.maximumSeats },
-            reservationSearchParams: getOfficeReservationSearchParams({
+            reservationSearchParams: getOfficeReservationSelectionSearchParams({
+              startsOn: range.startsOn,
+              dayCount: range.dates.length,
               seats,
-              ...(range.startsOn === today.toString() && {
-                dayCount: range.dates.length,
-              }),
             }),
           }) satisfies AvailabilityResult
       )

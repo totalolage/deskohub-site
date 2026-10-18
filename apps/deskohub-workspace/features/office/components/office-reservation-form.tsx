@@ -36,21 +36,21 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
+import { useReservationSelectionUrl } from "@/features/reservation/components/use-reservation-selection-url";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationDayCount,
-  getOfficeReservationDefaultValues,
   getOfficeReservationEndsOn,
   getOfficeReservationMaximumDayCount,
   getOfficeReservationMaximumEndsOn,
   getOfficeReservationOrder,
   getOfficeSeatOptions,
-  type NormalizedOfficeReservationOrder,
   type OfficeReservationData,
   type OfficeReservationInput,
   officeReservationDetailsSchema,
   officeReservationSchema,
 } from "@/features/reservation/office-reservation";
+import { getOfficeReservationSelectionSearchParams } from "@/features/reservation/office-reservation-checkout-query";
 import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getOfficeAvailabilityQuery,
@@ -71,7 +71,6 @@ type OfficeReservationFormProps = {
   readonly seatCapacity: number;
   readonly initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
   readonly initialAvailability?: ReadonlyArray<PreloadedWorkspaceAvailability>;
-  readonly initialReservation?: NormalizedOfficeReservationOrder;
   readonly initialValues: OfficeReservationInput;
   readonly locale: Locale;
   readonly replacementToken?: string;
@@ -106,19 +105,15 @@ export function OfficeReservationForm({
   seatCapacity,
   initialAdvertisedPrices = [],
   initialAvailability,
-  initialReservation,
   initialValues,
   locale,
   replacementToken,
   submittedCode,
   today,
 }: OfficeReservationFormProps) {
-  const defaultValues = initialReservation
-    ? getOfficeReservationDefaultValues(initialReservation)
-    : initialValues;
   const form = useForm<OfficeReservationInput, unknown, OfficeReservationData>({
     resolver: effectSchemaResolver(officeReservationSchema),
-    defaultValues,
+    defaultValues: initialValues,
     mode: "onBlur",
     reValidateMode: "onChange",
   });
@@ -207,6 +202,11 @@ export function OfficeReservationForm({
       form.setValue("dayCount", maximumDayCount, { shouldValidate: true });
     }
   }, [dayCount, form, maximumDayCount]);
+  useReservationSelectionUrl(
+    startsOn && Predicate.isNumber(dayCount) && dayCount <= maximumDayCount
+      ? getOfficeReservationSelectionSearchParams({ startsOn, dayCount, seats })
+      : undefined
+  );
   const unavailable = Boolean(
     startsOn &&
       (maximumDayCount === 0 ||

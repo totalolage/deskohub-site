@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   type AdvertisedPrice,
+  getAdvertisedProductItem,
   isMeetingRoomAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
@@ -34,6 +35,7 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
+import { useReservationSelectionUrl } from "@/features/reservation/components/use-reservation-selection-url";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import {
   getMeetingRoomReservationDefaultValues,
@@ -44,6 +46,7 @@ import {
   meetingRoomReservationSchema,
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
+import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,
@@ -116,6 +119,12 @@ export function MeetingRoomReservationForm({
     control: form.control,
     name: ["startDateTime", "duration"],
   });
+  useReservationSelectionUrl(
+    getMeetingRoomReservationSelectionSearchParams({
+      startDateTime: selectedStartDateTime,
+      duration: selectedDurationKey,
+    })
+  );
   const selectedDuration =
     getMeetingRoomReservationDuration(selectedDurationKey);
   const isWholeDaySelected =
@@ -284,17 +293,14 @@ export function MeetingRoomReservationForm({
                   const durationKey = getMeetingRoomReservationDurationKey(
                     product.duration
                   );
-                  const advertisedProductItem = advertisedPricesByDuration
-                    .get(durationKey)
-                    ?.summary.sections.find(({ key }) => key === "order")
-                    ?.items.find(
-                      (item) =>
-                        "product" in item &&
-                        item.product.kind === "meeting-room" &&
-                        getMeetingRoomReservationDurationKey(
-                          item.product.duration
-                        ) === durationKey
-                    );
+                  const durationAdvertisedPrice =
+                    advertisedPricesByDuration.get(durationKey);
+                  const advertisedProductItem =
+                    durationAdvertisedPrice &&
+                    getAdvertisedProductItem(durationAdvertisedPrice, {
+                      kind: "meeting-room",
+                      duration: product.duration,
+                    });
                   const originalAmount =
                     advertisedProductItem &&
                     "originalAmount" in advertisedProductItem &&

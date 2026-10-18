@@ -1075,12 +1075,12 @@
   "agentToolErrorServiceUnavailable": "The tools are temporarily unavailable. Try again later or use the website.",
   "agentToolAvailabilityAdvisoryNote": "Availability is an estimate from recent data. It is confirmed when the booking is made on the website.",
   "agentToolQuoteNote": "This is the current price for the selection. It is confirmed on the website before payment, where the booking is made and paid.",
-  "agentToolOfficeQuoteStartsToday": "The reservation link opens the booking page on today's date. On the page, choose the start date this price is for and check that the number of days and seats match.",
   "agentToolBookingHandoff": "Bookings are made and paid on the website. Open the reservation link to choose the details and pay.",
   "publicOfferingOpeningHours": "The space is open 24/7. Open Space desks are usable until {until}.",
   "publicOfferingOpenSpaceUsage": "Usable from midnight until {until} on the reserved day.",
   "publicOfferingReservedDeskUsage": "Reserved for the whole calendar day, with 24/7 code access.",
   "publicOfferingMeetingRoomUsage": "Hourly bookings start on the hour you choose. The whole-day booking runs from midnight to midnight.",
   "publicOfferingOfficeDescription": "A private office reserved only for you for whole days, with the seats you need.",
-  "publicOfferingOfficeUsage": "Book whole days starting up to one month ahead. One booking can last up to {hours} hours, normally 28 days."
+  "publicOfferingOfficeUsage": "Book whole days starting up to one month ahead. One booking can last up to {hours} hours, normally 28 days.",
+  "publicOfferingOfficeSeatPrice": "Each reserved seat, per day"
 }

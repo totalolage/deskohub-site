@@ -174,7 +174,7 @@
   "landingNavMeetingRoom": "Zasedačka",
   "landingNavGallery": "Fotky",
   "landingNavEvents": "Eventy",
-  "landingNavWhereToFindUs": "Poloha",
+  "landingNavWhereToFindUs": "Kde jsme",
   "landingNavOurTeam": "Tým",
   "landingNavPricing": "Ceník",
   "landingNavPrivateOffice": "Soukromá kancelář",
@@ -1084,12 +1084,12 @@
   "agentToolErrorServiceUnavailable": "Nástroje jsou dočasně nedostupné. Zkus to později nebo použij web.",
   "agentToolAvailabilityAdvisoryNote": "Dostupnost je odhad z nedávných dat. Potvrdí se až při rezervaci na webu.",
   "agentToolQuoteNote": "Toto je aktuální cena za výběr. Před platbou se potvrdí na webu, kde se rezervace dokončí a zaplatí.",
-  "agentToolOfficeQuoteStartsToday": "Odkaz na rezervaci otevře stránku s dnešním datem. Na stránce vyber datum začátku, pro které byla cena spočítána, a zkontroluj, že počet dní a míst odpovídá.",
   "agentToolBookingHandoff": "Rezervace se vytváří a platí na webu. Otevři odkaz na rezervaci, vyber podrobnosti a zaplať.",
   "publicOfferingOpeningHours": "Prostor je otevřený nonstop. Místa v Open Space lze využívat do {until}.",
   "publicOfferingOpenSpaceUsage": "K dispozici od půlnoci do {until} v den rezervace.",
   "publicOfferingReservedDeskUsage": "Rezervováno na celý kalendářní den s nonstop přístupem na kód.",
   "publicOfferingMeetingRoomUsage": "Hodinové rezervace začínají ve zvolenou celou hodinu. Celodenní rezervace trvá od půlnoci do půlnoci.",
   "publicOfferingOfficeDescription": "Soukromá kancelář jen pro tebe na celé dny, s tolika místy, kolik potřebuješ.",
-  "publicOfferingOfficeUsage": "Rezervuj celé dny se začátkem nejvýše měsíc dopředu. Jedna rezervace může trvat nejvýše {hours} hodin, obvykle 28 dní."
+  "publicOfferingOfficeUsage": "Rezervuj celé dny se začátkem nejvýše měsíc dopředu. Jedna rezervace může trvat nejvýše {hours} hodin, obvykle 28 dní.",
+  "publicOfferingOfficeSeatPrice": "Každé rezervované místo, za den"
 }

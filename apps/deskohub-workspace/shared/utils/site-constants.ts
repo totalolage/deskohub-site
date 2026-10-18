@@ -23,6 +23,7 @@ export const workspaceSiteConstants = {
       cityDistrict: "Libeň",
       city: "Praha 8",
       postalCode: "180 00",
+      country: "CZ",
     },
     coordinates: {
       lat: 50.103277,

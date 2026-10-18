@@ -44,6 +44,9 @@ export const workspaceE2ETimeouts = {
   localeSwitchHeldResponse: 3 * SECOND,
   paymentTerminalCase: 4 * MINUTE,
   providerTransition: 90 * SECOND,
+  // Edits, reloads, and restoration checks on one reservation form, with no
+  // submission: at most two edit-and-reload rounds or two page selections.
+  reservationUrlStateCase: 4 * MINUTE,
   uiTransition: 45 * SECOND,
   zeroTotalCheckoutCase: 5 * MINUTE,
 } as const;

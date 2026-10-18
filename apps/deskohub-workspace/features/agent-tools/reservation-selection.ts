@@ -14,8 +14,8 @@ import {
   meetingRoomReservationDurationKeySchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
+  getEarliestMeetingRoomStartDateTime,
   getMeetingRoomReservationInterval,
-  isUpcomingMeetingRoomStart,
 } from "@/features/reservation/meeting-room-reservation-time";
 import {
   getOfficeReservationMaximumDayCount,
@@ -26,7 +26,6 @@ import { hasReservationIntervalEnded } from "@/features/reservation/reservation-
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import { getWorkspaceAvailabilityRange } from "@/features/reservation/workspace-availability";
-import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   getPlainDatesBetween,
   isPlainDateString,
@@ -181,13 +180,8 @@ export const resolveMeetingRoomSelection = Effect.fn(
           "start_time"
         )
       ),
-      Effect.tap(({ startDateTime, duration, interval }) =>
-        ensureMeetingRoomSelectionOpen({
-          ...input,
-          startDateTime,
-          duration,
-          interval,
-        })
+      Effect.tap(({ duration, interval }) =>
+        ensureMeetingRoomSelectionOpen({ ...input, duration, interval })
       ),
       Effect.map(({ durationKey, duration, startDateTime, interval }) => ({
         durationKey,
@@ -279,29 +273,11 @@ const decodeMeetingRoomStart = ({
   );
 
 /**
- * Checkout accepts a whole day until it ends, and a reservation link restores
- * today's whole day unchanged. A link keeps an hourly start only before it
- * begins, so the tool accepts the same selections and its link opens the form
- * on them.
+ * Checkout and a reservation link keep a selection until its interval ends, so
+ * the tool accepts the same selections and its link opens the form on them.
  */
-const isMeetingRoomSelectionOpen = ({
-  startDateTime,
-  duration,
-  interval,
-  now,
-}: {
-  readonly startDateTime: string;
-  readonly duration: MeetingRoomReservationDuration;
-  readonly interval: ReservationInterval;
-  readonly now: Temporal.Instant;
-}) =>
-  isMeetingRoomWholeDayReservationDuration(duration)
-    ? !hasReservationIntervalEnded(interval, now)
-    : isUpcomingMeetingRoomStart({ startDateTime, duration, now });
-
 const ensureMeetingRoomSelectionOpen = (input: {
   readonly date: string;
-  readonly startDateTime: string;
   readonly duration: MeetingRoomReservationDuration;
   readonly interval: ReservationInterval;
   readonly now: Temporal.Instant;
@@ -310,7 +286,9 @@ const ensureMeetingRoomSelectionOpen = (input: {
     getWorkspaceAvailabilityRange(getCurrentWorkspaceDate(input.now).toString())
   ).pipe(
     Effect.filterOrFail(
-      (range) => isMeetingRoomSelectionOpen(input) && input.date <= range.to,
+      (range) =>
+        !hasReservationIntervalEnded(input.interval, input.now) &&
+        input.date <= range.to,
       (range) =>
         AgentToolError.dateOutOfRange({
           earliest: getFirstOpenMeetingRoomDate(input.duration, input.now),
@@ -325,13 +303,11 @@ const getFirstOpenMeetingRoomDate = (
   duration: MeetingRoomReservationDuration,
   now: Temporal.Instant
 ) =>
-  isMeetingRoomWholeDayReservationDuration(duration)
-    ? getCurrentWorkspaceDate(now).toString()
-    : now
-        .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-        .round({ smallestUnit: "hour", roundingMode: "ceil" })
-        .toPlainDate()
-        .toString();
+  Temporal.PlainDateTime.from(
+    getEarliestMeetingRoomStartDateTime(duration, now)
+  )
+    .toPlainDate()
+    .toString();
 
 const ensureDateOrder = ({
   date,

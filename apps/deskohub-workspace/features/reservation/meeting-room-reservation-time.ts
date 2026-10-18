@@ -96,25 +96,6 @@ export const getMeetingRoomReservationInterval = (
 };
 
 /**
- * Whether a start is a valid meeting-room start that has not begun yet, the
- * start a reservation link keeps.
- */
-export const isUpcomingMeetingRoomStart = ({
-  startDateTime,
-  duration,
-  now,
-}: {
-  readonly startDateTime: string;
-  readonly duration: MeetingRoomReservationDuration;
-  readonly now: Temporal.Instant;
-}) => {
-  const interval = getMeetingRoomReservationInterval(startDateTime, duration);
-  return (
-    interval !== null && Temporal.Instant.compare(interval.startsAt, now) >= 0
-  );
-};
-
-/**
  * Last Prague calendar date a meeting-room interval occupies. The end is
  * exclusive, so a booking ending exactly at midnight belongs to the previous
  * day.

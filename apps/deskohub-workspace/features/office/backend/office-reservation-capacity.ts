@@ -4,7 +4,7 @@ import {
   getWorkspaceTableCandidates,
   getWorkspaceTableSeatCapacity,
   workspaceOfficeReservationTableTag,
-} from "@/features/checkout/backend/reservation";
+} from "@/features/checkout/backend/reservation/workspace-table-selection";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 
 export const getOfficeReservationSeatCapacity = Effect.fn(function* (

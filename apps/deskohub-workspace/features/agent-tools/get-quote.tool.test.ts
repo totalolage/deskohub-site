@@ -202,20 +202,20 @@ describe("get_quote", () => {
         {
           lastReservation: { kind: "office", dayCount: 5, seats: 4 },
           seatCapacity: 6,
-          startsOn: today,
+          today,
         }
       )
     ).toMatchObject({ startsOn: today, dayCount: 2, seats: 2 });
     expect(office.note).toBe(m.agentToolQuoteNote({}, { locale: "en-US" }));
   });
 
-  test("links a later office booking on today with the quoted days and says to pick its start date", async () => {
-    const today = workspaceDateFromToday(0);
+  test("links a later office booking on its quoted start over the customer's remembered options", async () => {
+    const startsOn = workspaceDateFromToday(3);
 
     for (const locale of ["en-US", "cs-CZ"] as const) {
       const office = await quote({
         family: "office",
-        date: workspaceDateFromToday(3),
+        date: startsOn,
         end_date: workspaceDateFromToday(4),
         seats: 2,
         locale,
@@ -227,13 +227,11 @@ describe("get_quote", () => {
           {
             lastReservation: { kind: "office", dayCount: 5, seats: 4 },
             seatCapacity: 6,
-            startsOn: today,
+            today: workspaceDateFromToday(0),
           }
         )
-      ).toMatchObject({ startsOn: today, dayCount: 2, seats: 2 });
-      expect(office.note).toBe(
-        `${m.agentToolQuoteNote({}, { locale })} ${m.agentToolOfficeQuoteStartsToday({}, { locale })}`
-      );
+      ).toMatchObject({ startsOn, dayCount: 2, seats: 2 });
+      expect(office.note).toBe(m.agentToolQuoteNote({}, { locale }));
     }
   });
 
@@ -254,7 +252,7 @@ describe("get_quote", () => {
 
     expect(result.total.amount).toBe(await advertisedTotal(request!, services));
     expect(result.reservation_url).toBe(
-      `http://deskohub.test/reservation/meeting-room?duration=day%3A1&startDateTime=${today}T00%3A00`
+      `http://deskohub.test/reservation/meeting-room?startDateTime=${today}T00%3A00&duration=day%3A1`
     );
     expect(
       getMeetingRoomReservationDefaultValuesFromSearchParams(
@@ -316,8 +314,7 @@ describe("get_quote", () => {
 
     expect(result).toMatchObject({
       total: { amount: 2320 },
-      reservation_url:
-        "http://deskohub.test/reservation/office?dayCount=2&seats=2",
+      reservation_url: `http://deskohub.test/reservation/office?startsOn=${startsOn}&dayCount=2&seats=2`,
     });
     expect(result.total.amount).toBe(
       await advertisedTotal(

@@ -10,8 +10,8 @@ import {
 } from "@/features/checkout/public-offerings";
 import { type Locale, m } from "@/features/i18n";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
-import { getCoworkReservationSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
-import { getMeetingRoomReservationSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
+import { getCoworkOfferSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
+import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import {
   getMeetingRoomReservationDurationKey,
   meetingRoomReservationDurationKeySchema,
@@ -135,7 +135,7 @@ const toAgentOffering = (offering: PublicOffering) =>
       cowork: (cowork) =>
         getShareableReservationUrl(
           "cowork",
-          getCoworkReservationSearchParams({ entryTier: cowork.tier })
+          getCoworkOfferSearchParams({ entryTier: cowork.tier })
         ).pipe(
           Effect.map(
             (reservationUrl): AgentOffering => ({
@@ -164,7 +164,11 @@ const toAgentOffering = (offering: PublicOffering) =>
 
         return getShareableReservationUrl(
           "meeting-room",
-          getMeetingRoomReservationSearchParams({ duration })
+          // No start yet: the page opens on the earliest one.
+          getMeetingRoomReservationSelectionSearchParams({
+            duration,
+            startDateTime: "",
+          })
         ).pipe(
           Effect.map(
             (reservationUrl): AgentOffering => ({

@@ -116,7 +116,7 @@ describe("check_availability", () => {
         starts_at: `${free}T09:00`,
         ends_at: `${free}T13:00`,
       },
-      reservation_url: `http://deskohub.test/reservation/meeting-room?duration=hour%3A4&startDateTime=${free}T09%3A00`,
+      reservation_url: `http://deskohub.test/reservation/meeting-room?startDateTime=${free}T09%3A00&duration=hour%3A4`,
     });
     expect(busyResult).toMatchObject({
       available: false,
@@ -142,7 +142,7 @@ describe("check_availability", () => {
         starts_at: `${today}T00:00`,
         ends_at: `${tomorrow}T00:00`,
       },
-      reservation_url: `http://deskohub.test/reservation/meeting-room?duration=day%3A1&startDateTime=${today}T00%3A00`,
+      reservation_url: `http://deskohub.test/reservation/meeting-room?startDateTime=${today}T00%3A00&duration=day%3A1`,
     });
     expect(
       getMeetingRoomReservationDefaultValuesFromSearchParams(
@@ -175,7 +175,7 @@ describe("check_availability", () => {
         { date: last, available: true },
       ],
       office: { seats: 2, max_seats: 6 },
-      reservation_url: "http://deskohub.test/reservation/office?seats=2",
+      reservation_url: `http://deskohub.test/reservation/office?startsOn=${first}&dayCount=3&seats=2`,
     });
     expect(tooManySeats).toMatchObject({
       available: false,
@@ -185,16 +185,16 @@ describe("check_availability", () => {
     expect(services.dotyposRequests).toEqual([]);
   });
 
-  test("prefills the office day count only for a range starting today", async () => {
-    const today = workspaceDateFromToday(0);
+  test("links a later office range on its start date with its days and seats", async () => {
+    const startsOn = workspaceDateFromToday(2);
     const result = await checkAvailability({
       family: "office",
-      date: today,
-      end_date: workspaceDateFromToday(1),
+      date: startsOn,
+      end_date: workspaceDateFromToday(3),
     });
 
     expect(result.reservation_url).toBe(
-      "http://deskohub.test/reservation/office?dayCount=2&seats=1"
+      `http://deskohub.test/reservation/office?startsOn=${startsOn}&dayCount=2&seats=1`
     );
   });
 

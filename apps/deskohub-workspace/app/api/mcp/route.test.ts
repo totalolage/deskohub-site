@@ -249,17 +249,18 @@ describe("customer MCP route", () => {
     }
   });
 
-  test("publishes a later office quote's start-date guidance in the output schema", async () => {
+  test("links a later office quote on its quoted start date", async () => {
+    const startsOn = workspaceDateFromToday(3);
     const { result } = await callTool("get_quote", {
       family: "office",
-      date: workspaceDateFromToday(3),
+      date: startsOn,
       end_date: workspaceDateFromToday(4),
       seats: 2,
       locale: "cs-CZ",
     });
 
-    expect(result?.structuredContent?.note).toContain(
-      "Odkaz na rezervaci otevře stránku s dnešním datem."
+    expect(result?.structuredContent?.reservation_url).toEndWith(
+      `/reservation/office?startsOn=${startsOn}&dayCount=2&seats=2`
     );
     expect(await validateStructuredContent("get_quote", result)).toMatchObject({
       valid: true,

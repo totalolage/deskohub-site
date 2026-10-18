@@ -33,12 +33,18 @@ import {
   getWorkspaceProductByTier,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import {
+  currencyCZK,
+  formatWorkspaceMoney,
+} from "@/features/checkout/workspace-money";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { m } from "@/features/i18n";
+import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { getCoworkDateAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
 import { coworkReservationDefaultValues } from "@/features/reservation/cowork-reservation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { getCoworkPageOfferings } from "@/features/reservation/reservation-page-offerings";
+import { coworkReservationPath } from "@/features/reservation/routes";
 import {
   getCoworkAvailabilityQueries,
   getWorkspaceAvailabilityRange,
@@ -414,6 +420,65 @@ describe("CoworkReservationForm advertised pricing", () => {
 
   afterAll(async () => {
     await unregisterWorkspaceComponentTestEnv();
+  });
+
+  test("offers the tier prices the form first shows in the page's structured data", async () => {
+    workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
+    globalThis.fetch = mock((request: RequestInfo | URL) =>
+      Promise.reject(new Error(`Unexpected client fetch: ${String(request)}`))
+    ) as typeof fetch;
+    const initialValues = {
+      ...coworkReservationDefaultValues,
+      coffee: false,
+      date: "2099-07-30",
+    };
+    // Both tiers are on sale in what the page preloads.
+    const initialAdvertisedPrices = getCoworkDateAdvertisedPriceRequests({
+      date: initialValues.date,
+      locale: "en-US",
+    }).map((request) => ({
+      request,
+      advertisedPrice: getCoworkAdvertisedPriceResponse(request),
+    }));
+
+    const view = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ReservationOfferingsStructuredData
+          locale="en-US"
+          offerings={getCoworkPageOfferings({
+            advertisedPrices: initialAdvertisedPrices,
+            coffee: initialValues.coffee,
+            date: initialValues.date,
+            locale: "en-US",
+          })}
+          pathname={coworkReservationPath}
+        />
+        <CoworkReservationForm
+          initialAdvertisedPrices={initialAdvertisedPrices}
+          initialValues={initialValues}
+          locale="en-US"
+          today="2099-07-30"
+        />
+      </QueryClientProvider>
+    );
+    const services = JSON.parse(
+      view.container.querySelector('script[type="application/ld+json"]')
+        ?.textContent ?? "{}"
+    )["@graph"];
+
+    expect(services.map(({ offers }) => offers.price)).toEqual([145, 328]);
+    for (const [tier, service] of [
+      ["open-space", services[0]],
+      ["reserved-desk", services[1]],
+    ]) {
+      expect(
+        view.container.querySelector(`[data-reservation-type-price="${tier}"]`)
+          ?.textContent
+      ).toContain(
+        formatWorkspaceMoney(currencyCZK(service.offers.price * 100), "en-US")
+      );
+    }
+    expect(getAdvertisedPrices).not.toHaveBeenCalled();
   });
 
   test("renders every page-loaded price and availability without a client request", async () => {

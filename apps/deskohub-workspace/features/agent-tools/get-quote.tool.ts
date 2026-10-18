@@ -14,15 +14,16 @@ import { type Locale, m } from "@/features/i18n";
 import { loadAdvisoryOfficeSeatCapacity } from "@/features/office/backend/office-reservation-capacity";
 import { getShareableReservationUrl } from "@/features/reservation/backend/shareable-reservation-url";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
-import { getCoworkReservationSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
+import { getCoworkReservationSelectionSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
-import { getMeetingRoomReservationSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
+import { getMeetingRoomReservationSelectionSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import {
   getMeetingRoomReservationDurationKey,
   type MeetingRoomReservationDurationKey,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
-import { getOfficeReservationSearchParams } from "@/features/reservation/office-reservation-checkout-query";
+import { getOfficeReservationSelectionSearchParams } from "@/features/reservation/office-reservation-checkout-query";
+import type { ReservationSelectionSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import { getWorkspaceAvailabilityRange } from "@/features/reservation/workspace-availability";
@@ -85,16 +86,15 @@ export type GetQuoteResult = typeof outputSchema.Type;
 
 type QuoteSelection = {
   readonly request: AdvertisedPriceRequest;
-  readonly reservationSearchParams: URLSearchParams;
-  /** What the customer still has to choose on the page the link opens. */
-  readonly linkNote?: string;
+  /** Names every quoted option, so the page fills nothing from history. */
+  readonly reservationSearchParams: ReservationSelectionSearchParams;
 };
 
 export const getQuoteTool = defineAgentTool({
   name: "get_quote",
   title: "Quote a DH Workspace booking",
   description:
-    "Prices a complete selection anonymously: a cowork tier and date, a meeting-room start time and duration, or office dates and seats. The total includes any public sale running at the moment of the quote, and the reservation link opens the booking page prefilled. An office link always opens on today's date, so for an office booking starting later the customer picks the quoted start date on the page and checks the number of days. The price is confirmed on the website before payment; it does not check availability.",
+    "Prices a complete selection anonymously: a cowork tier and date, a meeting-room start time and duration, or office dates and seats. The total includes any public sale running at the moment of the quote, and the reservation link opens the booking page prefilled. The price is confirmed on the website before payment; it does not check availability.",
   access: "public",
   readOnly: true,
   unavailableCode: "quote_unavailable",
@@ -147,10 +147,8 @@ const toQuoteResult = ({
   input,
   locale,
   now,
-  selection,
   pricing: { advertised, reservationUrl },
 }: SelectionInput & {
-  readonly selection: QuoteSelection;
   readonly pricing: Effect.Success<ReturnType<typeof priceQuoteSelection>>;
 }): GetQuoteResult => {
   const { expectedPrice, undiscountedPrice } = advertised.quote.payment;
@@ -163,9 +161,7 @@ const toQuoteResult = ({
       getReservationQuoteDiscount(advertised.quote.payment)
     ),
     quoted_at: now.toString(),
-    note: [m.agentToolQuoteNote({}, { locale }), selection.linkNote]
-      .filter((sentence) => sentence !== undefined)
-      .join(" "),
+    note: m.agentToolQuoteNote({}, { locale }),
     reservation_url: reservationUrl,
   };
 };
@@ -192,7 +188,8 @@ const getCoworkSelection = Effect.fn("agentTools.getCoworkQuoteSelection")(
               locale,
               reservation: getCoworkAdvertisedPriceReservation(offer),
             },
-            reservationSearchParams: getCoworkQuoteSearchParams(offer),
+            reservationSearchParams:
+              getCoworkReservationSelectionSearchParams(offer),
           }) satisfies QuoteSelection
       )
     )
@@ -277,18 +274,6 @@ const toCoworkOffer = ({
   }),
 });
 
-/**
- * A quote names every option, so its link asks for no workstation instead of
- * letting the page restore the customer's last one.
- */
-const getCoworkQuoteSearchParams = (offer: ReturnType<typeof toCoworkOffer>) =>
-  getCoworkReservationSearchParams({
-    ...offer,
-    ...(getCoworkTierWorkstationAddon(offer.entryTier) !== "unavailable" && {
-      monitorOption: offer.monitorOption ?? null,
-    }),
-  });
-
 const getMeetingRoomSelection = Effect.fn(
   "agentTools.getMeetingRoomQuoteSelection"
 )((selectionInput: SelectionInput) =>
@@ -312,10 +297,11 @@ const getMeetingRoomSelection = Effect.fn(
       ({ request, meetingRoom }) =>
         ({
           request,
-          reservationSearchParams: getMeetingRoomReservationSearchParams({
-            duration: meetingRoom.durationKey,
-            startDateTime: meetingRoom.startDateTime,
-          }),
+          reservationSearchParams:
+            getMeetingRoomReservationSelectionSearchParams({
+              duration: meetingRoom.durationKey,
+              startDateTime: meetingRoom.startDateTime,
+            }),
         }) satisfies QuoteSelection
     )
   )
@@ -346,11 +332,6 @@ const findMeetingRoomPriceRequest = ({
     )
   );
 
-/**
- * The office form always opens on today's date, so the link carries the quoted
- * days and seats, and a quote starting later tells the customer to pick its
- * start date on the page.
- */
 const getOfficeSelection = Effect.fn("agentTools.getOfficeQuoteSelection")(
   (selectionInput: SelectionInput) =>
     Effect.succeed(selectionInput).pipe(
@@ -366,7 +347,7 @@ const getOfficeSelection = Effect.fn("agentTools.getOfficeQuoteSelection")(
       Effect.let("seats", ({ input }) => input.seats ?? 1),
       Effect.tap(ensureOfficeSeatsWithinCapacity),
       Effect.map(
-        ({ locale, today, range, seats }) =>
+        ({ locale, range, seats }) =>
           ({
             request: getOfficeAdvertisedPriceRequest({
               startsOn: range.startsOn,
@@ -374,12 +355,10 @@ const getOfficeSelection = Effect.fn("agentTools.getOfficeQuoteSelection")(
               seats,
               locale,
             }),
-            reservationSearchParams: getOfficeReservationSearchParams({
+            reservationSearchParams: getOfficeReservationSelectionSearchParams({
+              startsOn: range.startsOn,
               dayCount: range.dates.length,
               seats,
-            }),
-            ...(range.startsOn !== today.toString() && {
-              linkNote: m.agentToolOfficeQuoteStartsToday({}, { locale }),
             }),
           }) satisfies QuoteSelection
       )

@@ -33,14 +33,25 @@ Reservation pages (cowork, meeting room, office) stream every advertised price a
 - `useReservationAvailability` seeds `initialData` only for a query whose key hash matches a preloaded one. A fresh seed doesn't refetch on mount; focus, reconnect, `staleTime`, and price polling still apply.
 - Content fallbacks mirror the option cards through layout constants exported from `reservation-type-input.tsx`. The office fallback renders `officeSeatOptionsFallbackCount` seat cards because capacity comes from Dotypos inside the boundary. Preload the cowork LCP tier image from the fallback and render it eagerly with high fetch priority.
 
+## Selection in the URL
+
+Each reservation form mirrors its selection into the page URL through `useReservationSelectionUrl` (`features/reservation/components/use-reservation-selection-url.ts`).
+
+- Each family's writer sits beside its link parser in `features/reservation/*-reservation-checkout-query.ts` and returns `ReservationSelectionSearchParams` with the parameter names the parser reads. Keep the two inverse and cover the round trip in the parser's test. The type rejects contact parameters (`name`, `email`, `phone`, `customer`); never write them.
+- The hook writes only after the selection changes, never on first render: on mount it would run before the App Router patches `history.replaceState`, which drops Next's history state. It replaces the entry with `window.history.replaceState(null, "", url)`, which keeps `useSearchParams` in step without a navigation or server round trip.
+- The server-rendered `searchParams` prop goes stale after an edit. Build anything that must carry the current selection, such as a sign-in or verify return path from a reservation page, from `useSearchParams` and `usePathname` or from `window.location` when the link is followed.
+- The office parser takes `startsOn` only inside the booking window from the server's `today`; the page preloads that start date's prices.
+- An absent parameter means "unspecified", which the parser may fill from the customer's last reservation. Encode a deliberate empty choice as an explicit value instead, as cowork writes `monitorOption=none` for an optional workstation turned off.
+- Links shared outside the app, such as agent-tool links, pass the same writers to `getShareableReservationUrl`. A quote link passes the whole quoted selection so the last reservation fills nothing; an offer link that leaves add-ons open uses `getCoworkOfferSearchParams`.
+- After a Pay return the URL carries `payState` plus the edited selection. Each family's `get*RestoredReservationValues` lets selection parameters beside the token replace the restored selection (`hasReservationSelectionSearchParams`), keeping the token's checkout session, replacement token, contact, and discount intent. The Pay page's edit link carries the token alone, so it still restores the signed selection.
+
 ## Customer mode
 
 A signed-in, linked customer books with the account card by default.
 
 - `customer: "account"` makes the server replace the submitted name and email (and phone, when the profile has one) with the linked account contact and book for its Dotypos customer. The client can't pick another account.
 - "Book for someone else" submits the typed contact through the ordinary find-or-create path.
-- Prefill precedence: restored Pay state, explicit query values, the customer's last reservation of the family (cowork only when that offer is available on the form's date), then defaults.
-- A link that names a complete selection, such as an agent quote, names every option it fixes, so the last reservation fills nothing. `monitorOption=none` asks for a cowork offer without a workstation; links that leave an option out keep the last-reservation fallback.
+- Prefill precedence: restored Pay state (with any edited selection beside it), explicit query values, the customer's last reservation of the family (cowork only when that offer is available on the form's date), then defaults.
 - An explicit `customer=account|contact` query parameter selects the mode. Otherwise contact query fields select contact mode, except on office links, which never prefill a contact.
 - The marketing checkbox is omitted when the account card books for a customer whose consent is active, and shown in contact mode or when consent can't be read.
 
