@@ -42,3 +42,29 @@ export const getActionFailureMessage = (
   if (failure === undefined) return serverError;
   return copy[failure] ?? copy.fallback;
 };
+
+/** A catalog message without inputs, rendered in the given locale. */
+type LocalizedMessage<Locale> = (
+  inputs: Record<string, never>,
+  options: { readonly locale?: Locale }
+) => string;
+
+/**
+ * An area's `getActionFailureMessage` in the operator's locale: the area's
+ * catalog messages replace the runtime's English timeout and unexpected
+ * failure, and anything else behaves as in `getActionFailureMessage`.
+ */
+export const createActionFailureMessage =
+  <Locale extends string>(messages: {
+    readonly timeout: LocalizedMessage<Locale>;
+    readonly unexpected: LocalizedMessage<Locale>;
+  }) =>
+  (
+    serverError: string | undefined,
+    { fallback, locale }: { readonly fallback: string; readonly locale: Locale }
+  ) =>
+    getActionFailureMessage(serverError, {
+      fallback,
+      timeout: messages.timeout({}, { locale }),
+      unexpected: messages.unexpected({}, { locale }),
+    });
