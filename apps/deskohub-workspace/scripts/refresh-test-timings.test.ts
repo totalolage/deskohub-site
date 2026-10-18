@@ -9,19 +9,16 @@ import {
   testTimingsPath,
 } from "./refresh-test-timings";
 
-describe("isShardedTestFile", () => {
-  test("keeps files the sharded test script runs", () => {
-    expect(isShardedTestFile("shared/utils/site-constants.test.ts")).toBe(true);
-  });
-
-  test("skips build-output checks and dependencies", () => {
-    expect(
-      isShardedTestFile(
-        "features/administration/i18n/administration-messages.build.test.ts"
-      )
-    ).toBe(false);
-    expect(isShardedTestFile("node_modules/pkg/index.test.ts")).toBe(false);
-  });
+test("skips build-output checks and dependencies like the test script", () => {
+  expect(isShardedTestFile("features/checkout/discount-code.test.ts")).toBe(
+    true
+  );
+  expect(
+    isShardedTestFile(
+      "features/administration/i18n/administration-messages.build.test.ts"
+    )
+  ).toBe(false);
+  expect(isShardedTestFile("node_modules/pkg/index.test.ts")).toBe(false);
 });
 
 describe("mergeTestTimings", () => {
