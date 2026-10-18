@@ -156,6 +156,9 @@ const fetchTile = Effect.fn("osm.fetchTile")(
     );
 
     return HttpClient.execute(request).pipe(
+      // Trace headers would leak internal span IDs to the tile server and make
+      // every request for the same tile unique, defeating HTTP tile caches.
+      Effect.provideService(HttpClient.TracerPropagationEnabled, false),
       Effect.filterOrFail(
         ({ status }) => status >= 200 && status < 300,
         ({ status }) =>
