@@ -20,6 +20,7 @@ const languageLabels = {
   "en-US": m.languageEnglish({}, { locale }),
 };
 const languageSwitcherLabel = m.languageSwitcherLabel({}, { locale });
+const administrator = mountPoint.dataset.administrator === "true";
 const signedIn = mountPoint.dataset.session === "signed-in";
 const signInHref = `/${locale}/auth/sign-in`;
 
@@ -37,6 +38,13 @@ createRoot(mountPoint).render(
         href: Promise.resolve(signedIn ? `/${locale}/account` : signInHref),
         label: m.accountNavLabel({}, { locale }),
         signInHref,
+      }}
+      administrator={{
+        visible: Promise.resolve(administrator),
+        href: `/${locale}/admin`,
+        label: m.siteHeaderAdminLabel({}, { locale }),
+        ribbonLabel: m.siteHeaderAdminRibbonLabel({}, { locale }),
+        ribbonActionLabel: m.siteHeaderAdminRibbonAction({}, { locale }),
       }}
       closeNavigationMenuLabel={m.closeNavigationMenuLabel({}, { locale })}
       contactHref={`/${locale}/reservation/cowork`}
