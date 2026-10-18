@@ -21,6 +21,10 @@ const previewLinks = [
     label: "Customer reservation",
   },
   {
+    href: "reservation-author",
+    label: "Reservation author confirmation",
+  },
+  {
     href: "reservation-notification",
     label: "Reservation notification",
   },
