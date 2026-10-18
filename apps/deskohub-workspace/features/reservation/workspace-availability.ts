@@ -84,7 +84,7 @@ const officeWorkspaceAvailabilityQuerySchema = Schema.Struct({
  * The availability query mode that lists every free meeting-room start on one
  * date instead of checking one interval across a date range.
  */
-export const meetingRoomStartTimesMode = "start-times";
+const meetingRoomStartTimesMode = "start-times";
 
 const meetingRoomStartTimesQuerySchema = Schema.Struct({
   kind: Schema.Literal(meetingRoomReservationKind),
