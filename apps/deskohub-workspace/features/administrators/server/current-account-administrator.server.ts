@@ -1,13 +1,14 @@
 import "server-only";
 
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { connection } from "next/server";
-import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { runWorkspaceEffectOrElse } from "@/shared/backend/workspace-effect";
-import { AccountRoleGrants } from "../backend/account-role-grants.service";
-import { currentAccountIsAdministrator } from "../backend/current-account-administrator";
+import { currentAdministratorAccess } from "../backend/current-administrator";
+import { administratorAccessLayer } from "./administrator-access-layer.server";
 
 /**
+ * Whether the current request may enter the administration, by the same
+ * {@link currentAdministratorAccess} decision the administration guards use.
  * Re-reads the session and the grant on every request, so a revoked grant
  * takes effect on the next page load. Any failure reads as not an
  * administrator.
@@ -15,10 +16,9 @@ import { currentAccountIsAdministrator } from "../backend/current-account-admini
 export const isCurrentAccountAdministrator = async (): Promise<boolean> => {
   await connection();
 
-  return currentAccountIsAdministrator.pipe(
-    Effect.provide(
-      Layer.mergeAll(CustomerAuthentication.Default, AccountRoleGrants.Live)
-    ),
+  return currentAdministratorAccess.pipe(
+    Effect.map((access) => access.kind === "administrator"),
+    Effect.provide(administratorAccessLayer),
     runWorkspaceEffectOrElse("administrators.current-account", {
       boundary: "page",
       failureCode: "administrator_check_unavailable",
