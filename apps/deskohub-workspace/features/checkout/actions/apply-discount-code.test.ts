@@ -160,6 +160,21 @@ describe("applyDiscountCodeForm", () => {
     expect(redirectedUrl).toContain("discountCodeErrorId=");
   });
 
+  test("routes an automated request back to the Pay path with its error", async () => {
+    const redirectedUrl = await runForm(
+      { status: "automated_request" },
+      { payStateToken: "original-token" }
+    );
+    const url = new URL(redirectedUrl, "https://deskohub.test");
+
+    expect(url.pathname).toBe("/en-US/checkout/pay");
+    expect(url.searchParams.get(payStateTokenQueryParam)).toBe(
+      "original-token"
+    );
+    expect(url.searchParams.get("discountCodeError")).toBe("automated-request");
+    expect(url.searchParams.get("discountCodeErrorId")).toBeTruthy();
+  });
+
   test.each([
     ["already_attributed", "referral-already-attributed"],
     ["ineligible", "referral-ineligible"],

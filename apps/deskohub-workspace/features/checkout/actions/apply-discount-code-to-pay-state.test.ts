@@ -37,6 +37,7 @@ import {
   withActionDeadline,
   workspaceActionDeadline,
 } from "@/shared/backend/workspace-action";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
@@ -96,6 +97,7 @@ type SubmissionInput = {
   readonly requestedDiscountCode?: CanonicalPromotionCode;
   /** How long each live payable-reservation guard takes. */
   readonly requireCurrentDuration?: Duration.Input;
+  readonly verifyHuman?: ReturnType<typeof mock>;
   /** Replaces the pricing stub, for example with real pricing. */
   readonly pricing?: Layer.Layer<CheckoutPricingService>;
 };
@@ -114,7 +116,7 @@ const prepareSubmission = async (input?: SubmissionInput) => {
     import("@/features/referrals"),
     import("@/shared/backend/bot-protection/bot-protection.service.mock"),
   ]);
-  const verifyHuman = mock(() => Effect.void);
+  const verifyHuman = input?.verifyHuman ?? mock(() => Effect.void);
   let payableReservationReadCount = 0;
   const getReservation = () => ({
     id: "reservation-id",
@@ -324,6 +326,7 @@ describe("applyDiscountCodeToPayState", () => {
 
     expect(scenario.verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "deny",
+      verifiedBots: { allow: customerAgentNames },
       callSite: "checkout.apply-discount-code",
     });
     expect(scenario.applyDiscountCode).toHaveBeenCalledWith(
@@ -364,6 +367,31 @@ describe("applyDiscountCodeToPayState", () => {
     expect(scenario.result.freshPayUrl).not.toContain("SAVE20");
     expect(JSON.stringify(scenario.result)).not.toContain("SAVE20");
     expect(JSON.stringify(scenario.result)).not.toContain("save20");
+  });
+
+  test("returns automated_request before calling referral or pricing services", async () => {
+    const { BotDetectedError } = await import(
+      "@/shared/backend/bot-protection/bot-protection.service"
+    );
+    const verifyHuman = mock(() =>
+      Effect.fail(
+        new BotDetectedError({
+          message: "Automated request detected",
+          reason: "unverified_bot",
+        })
+      )
+    );
+    const scenario = await runSubmission({ verifyHuman });
+
+    expect(scenario.result).toEqual({ status: "automated_request" });
+    expect(verifyHuman).toHaveBeenCalledWith({
+      verificationFailurePolicy: "deny",
+      verifiedBots: { allow: customerAgentNames },
+    });
+    expect(scenario.lookupCodeKind).not.toHaveBeenCalled();
+    expect(scenario.acceptCode).not.toHaveBeenCalled();
+    expect(scenario.applyDiscountCode).not.toHaveBeenCalled();
+    expect(scenario.requireCurrent).not.toHaveBeenCalled();
   });
 
   test("real refreshed action URLs satisfy both owned checkout guards", async () => {
