@@ -255,6 +255,11 @@ class FakeAccountExternalState {
   /** Whether a signed-in header switch saves the preference first. */
   switcherSavesPreference = true;
   /**
+   * Whether each opened language listbox misses its first Escape, as when
+   * the key lands before the listbox listens for it.
+   */
+  listboxMissesFirstEscape = false;
+  /**
    * The preview's `login_email_code` flag: every sign-in email also carries
    * a code, and the sign-in card and deletion dialog open a code step.
    */
@@ -1039,6 +1044,7 @@ class FakeBrowser {
   referralCookie: string | undefined;
   private selectedSection = "";
   private languageListboxOpen = false;
+  private languageListboxMissesEscape = false;
   private focusedSelector = "";
   /** The code step on screen: the sign-in card's, or the deletion dialog's. */
   private codeStep:
@@ -1284,6 +1290,8 @@ class FakeBrowser {
       kind: "press",
       selectorOrDestination: selector,
     });
+    // An open listbox takes the activation as an outside interaction.
+    if (this.languageListboxOpen) return;
     if (this.signedIn() && this.external.switcherSavesPreference) {
       this.external.switcherSaves.push(locale);
       this.external.saveLocalePreference(locale);
@@ -1501,6 +1509,7 @@ class FakeBrowser {
     }
     if (selector === languageTriggerSelector) {
       this.languageListboxOpen = true;
+      this.languageListboxMissesEscape = this.external.listboxMissesFirstEscape;
       return;
     }
     if (
@@ -1535,7 +1544,11 @@ class FakeBrowser {
       kind: "press",
       selectorOrDestination: key,
     });
-    if (key === "Escape") this.languageListboxOpen = false;
+    if (key === "Escape" && this.languageListboxMissesEscape) {
+      this.languageListboxMissesEscape = false;
+    } else if (key === "Escape") {
+      this.languageListboxOpen = false;
+    }
     if (key === "End" && this.focusedSelector === billingKindSelector) {
       this.external.billingKind = "business";
     }
@@ -1575,6 +1588,9 @@ class FakeBrowser {
         billingPreserved: preserved(billingCompanyNameSelector),
         profilePreserved: profileDraftSelectors.every(preserved),
       });
+    }
+    if (input.includes(`document.querySelector('[role="listbox"]')`)) {
+      return JSON.stringify(this.languageListboxOpen);
     }
     if (input.includes("document.cookie.split")) {
       return JSON.stringify({ czech: this.localeCookie === "cs-CZ" });
@@ -2860,6 +2876,18 @@ test("makes the saved language preference the site locale and switches it back f
   expect(external.currentAuthUserId).toBe("auth-original");
   // Without a review hook nothing is captured.
   expect(external.languageReviews).toEqual([]);
+});
+
+test("presses Escape again when the language listbox missed the first one", async () => {
+  const { exit, scenario, stepIds } = await runLanguageCase((external) => {
+    external.listboxMissesFirstEscape = true;
+  });
+
+  expect(Exit.isSuccess(exit)).toBe(true);
+  // The header switch still saved English (US) instead of being swallowed
+  // by a listbox left open.
+  expect(scenario.external.switcherSaves).toEqual(["en-US"]);
+  expect(stepIds).toEqual(languageCaseStepIds);
 });
 
 test("rejects a proxy that lets the URL locale outrank the saved preference", async () => {
