@@ -1,4 +1,9 @@
-import { Result, Schema } from "effect";
+import {
+  decodeStandardSchema,
+  parseStandardSchema,
+} from "@deskohub/standard-schema";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { Schema } from "effect";
 import type { Locale } from "@/features/i18n";
 import type { AgentEvalTaskId } from "./tasks";
 
@@ -25,11 +30,13 @@ const agentEvalHarnessSchema = Schema.Struct({
   command: Schema.NonEmptyArray(Schema.NonEmptyString),
 });
 
-export type AgentEvalHarness = typeof agentEvalHarnessSchema.Type;
-
-const agentEvalHarnessListSchema = Schema.fromJsonString(
-  Schema.NonEmptyArray(agentEvalHarnessSchema)
+const agentEvalHarnessListSchema = Schema.toStandardSchemaV1(
+  Schema.fromJsonString(Schema.NonEmptyArray(agentEvalHarnessSchema))
 );
+
+export type AgentEvalHarness = StandardSchemaV1.InferOutput<
+  typeof agentEvalHarnessListSchema
+>[number];
 
 /**
  * Decodes the devbox-owned harness list. The list is local wiring (agent
@@ -38,19 +45,16 @@ const agentEvalHarnessListSchema = Schema.fromJsonString(
 export const parseAgentEvalHarnesses = (
   serialized: string
 ): readonly AgentEvalHarness[] => {
-  const decoded = Schema.decodeUnknownResult(agentEvalHarnessListSchema)(
-    serialized
+  const harnesses = parseStandardSchema(
+    agentEvalHarnessListSchema,
+    serialized,
+    "The agent eval harness list must be a JSON array of { id, perception, command } entries"
   );
-  if (Result.isFailure(decoded)) {
-    throw new Error(
-      "The agent eval harness list must be a JSON array of { id, perception, command } entries"
-    );
-  }
-  const ids = decoded.success.map((harness) => harness.id);
+  const ids = harnesses.map((harness) => harness.id);
   if (new Set(ids).size !== ids.length) {
     throw new Error("Agent eval harness ids must be unique");
   }
-  return decoded.success;
+  return harnesses;
 };
 
 /**
@@ -73,22 +77,26 @@ export type AgentEvalRequest = {
   readonly outputDir: string;
 };
 
-const agentEvalResponseSchema = Schema.fromJsonString(
-  Schema.Struct({
-    /** The agent's last message to the user. */
-    finalAnswer: Schema.String,
-    /** Browser actions the agent took (clicks, typing, navigation). */
-    steps: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-    /** Model cost in US dollars, when the harness can report it. */
-    costUsd: Schema.optionalKey(
-      Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
-    ),
-    /** Set when the agent or harness gave up or crashed. */
-    error: Schema.optionalKey(Schema.String),
-  })
+const agentEvalResponseSchema = Schema.toStandardSchemaV1(
+  Schema.fromJsonString(
+    Schema.Struct({
+      /** The agent's last message to the user. */
+      finalAnswer: Schema.String,
+      /** Browser actions the agent took (clicks, typing, navigation). */
+      steps: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      /** Model cost in US dollars, when the harness can report it. */
+      costUsd: Schema.optionalKey(
+        Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
+      ),
+      /** Set when the agent or harness gave up or crashed. */
+      error: Schema.optionalKey(Schema.String),
+    })
+  )
 );
 
-export type AgentEvalResponse = typeof agentEvalResponseSchema.Type;
+export type AgentEvalResponse = StandardSchemaV1.InferOutput<
+  typeof agentEvalResponseSchema
+>;
 
 /**
  * Decodes the single JSON object a harness writes to stdout. Harness logs
@@ -96,9 +104,5 @@ export type AgentEvalResponse = typeof agentEvalResponseSchema.Type;
  */
 export const parseAgentEvalResponse = (
   stdout: string
-): AgentEvalResponse | undefined => {
-  const decoded = Schema.decodeUnknownResult(agentEvalResponseSchema)(
-    stdout.trim()
-  );
-  return Result.isSuccess(decoded) ? decoded.success : undefined;
-};
+): AgentEvalResponse | undefined =>
+  decodeStandardSchema(agentEvalResponseSchema, stdout.trim());

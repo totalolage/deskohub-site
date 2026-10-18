@@ -33,8 +33,6 @@ export type AgentEvalReservationRecord = {
   readonly seats?: number;
   readonly providerStatus?: "NEW" | "CONFIRMED" | "CANCELLED";
   readonly paid: boolean;
-  /** Payment-provider order IDs of the reservation's attempts. */
-  readonly orderIds: readonly string[];
 };
 
 /** What the judge read from the status page after a payment run. */
@@ -230,15 +228,23 @@ const judgeOffice = (
 
 /**
  * Judges a booking or payment task from server records. Booking tasks pass
- * when the newest reservation is a live hold with the requested product and
- * dates and was not paid; the payment task also needs a paid reservation and
- * a confirmed status page the agent reached.
+ * when no reservation the run authored was paid and the newest is a live hold
+ * with the requested product and dates; the payment task also needs a paid
+ * reservation and a confirmed status page the agent reached.
  */
 export const judgeAgentEvalReservation = (
   parameters: Exclude<AgentEvalTaskParameters, { readonly taskId: "facts" }>,
   records: readonly AgentEvalReservationRecord[],
   statusPage?: AgentEvalStatusPageCheck
 ): AgentEvalJudgement => {
+  // A booking task forbids paying, so any payment fails it, even one for an
+  // earlier reservation the agent later abandoned.
+  if (
+    parameters.taskId !== "open-space-payment" &&
+    records.some((record) => record.paid)
+  ) {
+    return failed("paid-without-permission");
+  }
   const record = newestReservation(records);
   if (!record) return failed("no-reservation");
   if (record.providerStatus === "CANCELLED")
@@ -256,8 +262,7 @@ export const judgeAgentEvalReservation = (
       } else {
         judgement = judgeOffice(record, parameters.startDate);
       }
-      if (!judgement.success) return judgement;
-      return record.paid ? failed("paid-without-permission") : matched;
+      return judgement;
     }
     case "open-space-payment": {
       const judgement = judgeOpenSpace(record, parameters.date);

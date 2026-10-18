@@ -37,6 +37,12 @@ const failedRun = (
 ) =>
   run({ failureCategory, reason: "wrong-date", success: false, ...overrides });
 
+const target = {
+  deploymentId: "dpl_synthetic",
+  sha: "a".repeat(40),
+  verifiedAt: "2026-10-18T12:00:00.000Z",
+};
+
 describe("summarizeAgentEvalResults", () => {
   const results = [
     run({ costUsd: 0.5, steps: 8, wallTimeMs: 60_000 }),
@@ -56,7 +62,10 @@ describe("summarizeAgentEvalResults", () => {
       taskId: "open-space-payment",
     }),
   ];
-  const summary = summarizeAgentEvalResults("set", results);
+  const summary = summarizeAgentEvalResults(
+    { runSetId: "set", target },
+    results
+  );
 
   test("gives one cell per task, harness, and locale", () => {
     expect(
@@ -121,7 +130,7 @@ describe("summarizeAgentEvalResults", () => {
     expect(summary.cellsBelowMinimumRuns).toBe(3);
     expect(
       summarizeAgentEvalResults(
-        "set",
+        { runSetId: "set", target },
         Array.from({ length: 5 }, (_, repeat) => run({ repeat }))
       ).cellsBelowMinimumRuns
     ).toBe(0);
@@ -131,12 +140,15 @@ describe("summarizeAgentEvalResults", () => {
 describe("formatAgentEvalSummaryMarkdown", () => {
   test("renders the success table, failure categories, and payment handoff", () => {
     const markdown = formatAgentEvalSummaryMarkdown(
-      summarizeAgentEvalResults("20261018-120000-abcd", [
+      summarizeAgentEvalResults({ runSetId: "20261018-120000-abcd", target }, [
         run({ costUsd: 0.5 }),
         failedRun("date-picker"),
       ])
     );
     expect(markdown).toContain("## Agent eval results: 20261018-120000-abcd");
+    expect(markdown).toContain(
+      `Preview deployment \`dpl_synthetic\` built from \`${"a".repeat(40)}\``
+    );
     expect(markdown).toContain("1 of 2 runs passed (50%).");
     expect(markdown).toContain(
       "| open-space-to-pay | playwright-mcp | en-US | 1/2 | 50% | 10 | 90 s | 60 s | $0.50 | date-picker 1 |"

@@ -9,12 +9,14 @@ import { createSyntheticCustomerProfile } from "../account/fixtures";
 import {
   makeWorkspaceE2EAccountJournalRecorder,
   readWorkspaceE2EAccountJournal,
+  type WorkspaceE2EAccountJournal,
   writeWorkspaceE2EAccountJournal,
 } from "../account/journal";
 import { workspaceE2EAccountProfileFixture } from "../account/profile-fixture";
 import {
   prepareWorkspaceE2EAccountJournalReconciliations,
   reconcileWorkspaceE2EAccountJournals,
+  type WorkspaceE2EAccountJournalOwner,
 } from "../account/reconcile";
 import {
   resolveWorkspaceE2ESessionSigningSecret,
@@ -26,7 +28,7 @@ import type { DatasourceConfig } from "../config";
 import { tryWorkspaceE2EPromise } from "../errors";
 import { workspaceE2ERunIdSchema } from "../run-identifiers";
 import { workspaceAgentEvalTimeouts, workspaceE2ETimeouts } from "../timeouts";
-import { launchAgentEvalBrowser } from "./browser";
+import { type AgentEvalBrowser, launchAgentEvalBrowser } from "./browser";
 import type { AgentEvalRuntime, AgentEvalSettings } from "./environment";
 import type { AgentEvalHarness, AgentEvalRequest } from "./harness-contract";
 import { runAgentEvalHarness } from "./harness-process";
@@ -40,9 +42,12 @@ import {
 import { observeAgentEvalBrowser } from "./observations";
 import { selectAgentEvalTaskParameters } from "./parameters";
 import {
-  readAgentEvalReservationIds,
+  type AgentEvalRunResources,
+  proveAgentEvalRunOwnership,
   readAgentEvalReservations,
+  readAgentEvalRunResources,
 } from "./records";
+import { redactAgentEvalOutput } from "./redaction";
 import type { AgentEvalRunResult } from "./results";
 import {
   type AgentEvalRunSet,
@@ -63,11 +68,13 @@ export const agentEvalTaskBudgetMs = (taskId: AgentEvalTaskId) => {
 /** The one recipient label each run's synthetic account derives from. */
 const agentEvalRecipientLabel = "agent";
 
-const agentEvalJournalOwner = (runSetId: string, runId: string) => ({
-  journalDirectory: agentEvalJournalDirectory(runSetId),
-  ownerId: runId,
-  recipientLabels: [agentEvalRecipientLabel],
-});
+const agentEvalJournalOwner = (runSetId: string, runId: string) =>
+  ({
+    journalDirectory: agentEvalJournalDirectory(runSetId),
+    ownerId: runId,
+    proveOwnership: proveAgentEvalRunOwnership,
+    recipientLabels: [agentEvalRecipientLabel],
+  }) satisfies WorkspaceE2EAccountJournalOwner;
 
 /** A short opaque id; the synthetic recipient's local part derives from it. */
 const makeAgentEvalRunId = () =>
@@ -76,10 +83,12 @@ const makeAgentEvalRunId = () =>
   );
 
 /**
- * Cancels the run's reservations, expires its Dotypos profile, and deletes
+ * Cancels the run's reservations, expires its Dotypos profiles, and deletes
  * its account, by the journal. Reservations the account authored after the
- * journal last changed are added first, so an interrupted run still cleans
- * up. Idempotent, so suite teardown repeats it for every journal.
+ * journal last changed, for any contact, and contact profiles Dotypos
+ * created during the run are added first, so an interrupted run still cleans
+ * up. Authorship proves the run owns another contact's resources.
+ * Idempotent, so suite teardown repeats it for every journal.
  */
 export const reconcileAgentEvalRun = Effect.fn("reconcileAgentEvalRun")(
   function* (
@@ -96,28 +105,16 @@ export const reconcileAgentEvalRun = Effect.fn("reconcileAgentEvalRun")(
     );
     if (!journal) return;
     const [accountId] = journal.authUserIds;
-    const [customerId] = journal.dotyposCustomerIds;
-    if (accountId && customerId) {
-      const reservationIds = yield* readAgentEvalReservationIds(
+    if (accountId) {
+      const resources = yield* readAgentEvalRunResources(
+        datasourceConfig,
         accountId,
-        customerId
+        journal.startedAt
       );
-      if (
-        reservationIds.some((id) => !journal.dotyposReservationIds.includes(id))
-      ) {
+      const merged = mergeAgentEvalRunResources(journal, resources);
+      if (merged !== journal) {
         yield* tryWorkspaceE2EPromise("journal agent eval reservations", () =>
-          writeWorkspaceE2EAccountJournal(
-            {
-              ...journal,
-              dotyposReservationIds: [
-                ...new Set([
-                  ...journal.dotyposReservationIds,
-                  ...reservationIds,
-                ]),
-              ],
-            },
-            owner.journalDirectory
-          )
+          writeWorkspaceE2EAccountJournal(merged, owner.journalDirectory)
         );
       }
     }
@@ -130,8 +127,41 @@ export const reconcileAgentEvalRun = Effect.fn("reconcileAgentEvalRun")(
   }
 );
 
-const truncate = (value: string | undefined, length: number) =>
-  value === undefined ? null : value.slice(0, length);
+/** The journal with the run's resources added; the same journal when none is new. */
+const mergeAgentEvalRunResources = (
+  journal: WorkspaceE2EAccountJournal,
+  resources: AgentEvalRunResources
+): WorkspaceE2EAccountJournal => {
+  const added = (existing: readonly string[], found: readonly string[]) =>
+    found.filter((id) => !existing.includes(id));
+  const reservationIds = added(
+    journal.dotyposReservationIds,
+    resources.dotyposReservationIds
+  );
+  const customerIds = added(
+    journal.dotyposCustomerIds,
+    resources.dotyposCustomerIds
+  );
+  return reservationIds.length === 0 && customerIds.length === 0
+    ? journal
+    : {
+        ...journal,
+        dotyposCustomerIds: [...journal.dotyposCustomerIds, ...customerIds],
+        dotyposReservationIds: [
+          ...journal.dotyposReservationIds,
+          ...reservationIds,
+        ],
+      };
+};
+
+const redactAndTruncate = (
+  value: string | undefined,
+  length: number,
+  identifiers: readonly string[]
+) =>
+  value === undefined
+    ? null
+    : redactAgentEvalOutput(value, identifiers).slice(0, length);
 
 /**
  * Opens the status page the agent last reached and waits for the confirmed
@@ -206,7 +236,12 @@ export const runAgentEvalCase = async ({
     `agent-eval-${crypto.randomUUID()}`
   );
   const startUrl = `${config.baseUrl}/${locale}`;
-  let browser: Awaited<ReturnType<typeof launchAgentEvalBrowser>> | undefined;
+  let browser: AgentEvalBrowser | undefined;
+  if (runSet.target.sha !== settings.targetSha) {
+    throw new Error(
+      "The run set's verified preview was not built from TARGET_SHA; rerun the setup project"
+    );
+  }
 
   try {
     const parameters = await runtime.runPromise(
@@ -234,7 +269,9 @@ export const runAgentEvalCase = async ({
       })
     );
 
-    browser = await launchAgentEvalBrowser({ headless, launchOptions, locale });
+    browser = await runtime.runPromise(
+      launchAgentEvalBrowser({ headless, launchOptions, locale })
+    );
     const { context } = browser;
     await runtime.runPromise(
       primePreviewBypass({
@@ -285,19 +322,27 @@ export const runAgentEvalCase = async ({
     );
     const wallTimeMs = Math.round(performance.now() - harnessStartedAt);
     const observations = observer.snapshot();
+
+    const resources = await runtime.runPromise(
+      readAgentEvalRunResources(
+        datasourceConfig,
+        accountId,
+        recorder.journal.startedAt
+      )
+    );
+    await recorder.record({
+      dotyposCustomerIds: resources.dotyposCustomerIds,
+      dotyposReservationIds: resources.dotyposReservationIds,
+    });
+    const identifiers = [runId, email, customerId, ...resources.identifiers];
     await writeFile(
       resolve(outputDir, "harness-stderr.log"),
-      harnessRun.stderr,
+      redactAgentEvalOutput(harnessRun.stderr, identifiers),
       {
         encoding: "utf8",
         mode: 0o600,
       }
     );
-
-    const reservationIds = await runtime.runPromise(
-      readAgentEvalReservationIds(accountId, customerId)
-    );
-    await recorder.record({ dotyposReservationIds: reservationIds });
 
     let judgement: AgentEvalJudgement;
     if (parameters.taskId === "facts") {
@@ -321,8 +366,16 @@ export const runAgentEvalCase = async ({
         observations,
         taskId,
       }),
-      finalAnswer: truncate(harnessRun.response?.finalAnswer, 2_000),
-      harnessError: truncate(harnessRun.response?.error, 500),
+      finalAnswer: redactAndTruncate(
+        harnessRun.response?.finalAnswer,
+        2_000,
+        identifiers
+      ),
+      harnessError: redactAndTruncate(
+        harnessRun.response?.error,
+        500,
+        identifiers
+      ),
       harnessId: harness.id,
       harnessOutcome: harnessRun.outcome,
       locale,
@@ -346,7 +399,7 @@ export const runAgentEvalCase = async ({
     return result;
   } finally {
     try {
-      await browser?.close();
+      if (browser) await runtime.runPromise(browser.close);
     } finally {
       await runtime.runPromise(
         reconcileAgentEvalRun(datasourceConfig, runSet.runSetId, runId)

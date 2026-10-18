@@ -8,6 +8,7 @@ import {
   agentEvalFailureCategories,
 } from "./judges";
 import type { AgentEvalBrowserObservations } from "./observations";
+import type { AgentEvalTarget } from "./target";
 import type { AgentEvalTaskId } from "./tasks";
 
 /** The ticket's floor: each task, harness, and locale runs at least 5 times. */
@@ -71,6 +72,8 @@ type AgentEvalPaymentHandoff = {
 
 export type AgentEvalSummary = {
   readonly runSetId: string;
+  /** The verified preview every run in the set targeted. */
+  readonly target: AgentEvalTarget;
   readonly runs: number;
   readonly successes: number;
   readonly cells: readonly AgentEvalSummaryCell[];
@@ -103,7 +106,10 @@ const definedNumbers = (values: readonly (number | null)[]) =>
 
 /** Aggregates one run set's results, one cell per task, harness, and locale. */
 export const summarizeAgentEvalResults = (
-  runSetId: string,
+  {
+    runSetId,
+    target,
+  }: { readonly runSetId: string; readonly target: AgentEvalTarget },
   results: readonly AgentEvalRunResult[]
 ): AgentEvalSummary => {
   const cells = [
@@ -170,6 +176,7 @@ export const summarizeAgentEvalResults = (
     paymentHandoff,
     runSetId,
     runs: results.length,
+    target,
     successes: results.filter((result) => result.success).length,
   };
 };
@@ -194,6 +201,8 @@ export const formatAgentEvalSummaryMarkdown = (
 ): string => {
   const lines = [
     `## Agent eval results: ${summary.runSetId}`,
+    "",
+    `Preview deployment \`${summary.target.deploymentId}\` built from \`${summary.target.sha}\`, verified ${summary.target.verifiedAt}.`,
     "",
     `${summary.successes} of ${summary.runs} runs passed (${formatPercent(summary.runs === 0 ? 0 : summary.successes / summary.runs)}).`,
   ];

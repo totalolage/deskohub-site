@@ -99,6 +99,28 @@ describe("commandOutput", () => {
   });
 });
 
+describe.skipIf(Bun.which("node") === null)("runCommand under Node", () => {
+  test("captures output, ends a timed command gracefully, and rejects a missing one", async () => {
+    const { stdout } = await runCommand(
+      ["node", join(import.meta.dir, "command.node-fixture.mjs")],
+      { timeoutMs: 15_000 }
+    );
+    const results = JSON.parse(stdout);
+    expect(results.captured.result).toMatchObject({
+      exitCode: 3,
+      stderr: "err\n",
+      stdout: "hello",
+      timedOut: false,
+    });
+    expect(results.terminated.result).toMatchObject({
+      exitCode: 0,
+      stdout: "ready\nterm\n",
+      timedOut: true,
+    });
+    expect(results.missing.rejected).toContain("ENOENT");
+  });
+});
+
 const readPids = async (pidFile: string): Promise<readonly number[]> => {
   for (let attempt = 0; attempt < 250; attempt++) {
     try {

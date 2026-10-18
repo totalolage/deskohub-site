@@ -41,7 +41,7 @@ test("reconcile run accounts and summarize results", async () => {
   }
 
   const summary = summarizeAgentEvalResults(
-    runSet.runSetId,
+    runSet,
     await readAgentEvalRunResults(runSet.runSetId)
   );
   const markdownPath = await writeAgentEvalSummary(summary);

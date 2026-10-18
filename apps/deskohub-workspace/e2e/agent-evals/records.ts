@@ -1,4 +1,6 @@
 import {
+  type DotyposCustomer,
+  type DotyposCustomerId,
   type DotyposReservationId,
   DotyposService,
   ExternalAPIError,
@@ -12,6 +14,12 @@ import {
   storedWorkspaceReservationDetailsSchema,
 } from "@/features/reservation/persistence-contracts";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
+import { readSyntheticCustomerProfile } from "../account/fixtures";
+import type { WorkspaceE2EAccountJournal } from "../account/journal";
+import {
+  isNotFound,
+  type WorkspaceE2EAccountJournalEvidence,
+} from "../account/reconcile";
 import type { DatasourceConfig } from "../config";
 import { toWorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
@@ -45,21 +53,22 @@ const toProduct = (
 };
 
 /**
- * Lists the Dotypos reservations the account authored for its seeded
- * customer, so the run's journal can cancel them even when judging never
- * happened. A booking made for another contact belongs to a customer the run
- * didn't create, so cleanup leaves it alone.
+ * Every reservation the run's account authored, with the customer each is
+ * for (the seeded profile or another contact) and its payment-provider
+ * orders. The account exists only for this run, so all of them are the
+ * run's.
  */
-export const readAgentEvalReservationIds = Effect.fn(
-  "readAgentEvalReservationIds"
-)(function* (accountId: string, dotyposCustomerId: string) {
+const readAgentEvalAuthoredReservations = Effect.fn(
+  "readAgentEvalAuthoredReservations"
+)(function* (accountId: string) {
   const { db } = yield* E2EDatabase;
-  const rows = yield* runDatabaseOperation(
-    "read agent eval reservation ids",
+  const reservations = yield* runDatabaseOperation(
+    "read agent eval authored reservations",
     db
       .select({
         dotyposCustomerId: workspaceReservations.dotyposCustomerId,
         dotyposReservationId: workspaceReservations.dotyposReservationId,
+        id: workspaceReservations.id,
       })
       .from(workspaceReservations)
       .where(
@@ -69,15 +78,187 @@ export const readAgentEvalReservationIds = Effect.fn(
         )
       )
   );
-  return [
-    ...new Set(
-      rows.flatMap((row) =>
-        row.dotyposReservationId && row.dotyposCustomerId === dotyposCustomerId
-          ? [row.dotyposReservationId]
+  if (reservations.length === 0) return { orderIds: [], reservations };
+  const attempts = yield* runDatabaseOperation(
+    "read agent eval payment orders",
+    db
+      .select({ providerOrderId: paymentAttempts.providerOrderId })
+      .from(paymentAttempts)
+      .where(
+        inArray(
+          paymentAttempts.workspaceReservationId,
+          reservations.map((reservation) => reservation.id)
+        )
+      )
+  );
+  return {
+    orderIds: attempts.flatMap((attempt) =>
+      attempt.providerOrderId ? [attempt.providerOrderId] : []
+    ),
+    reservations,
+  };
+});
+
+/**
+ * Whether Dotypos created the profile after the run started. Checkout's
+ * find-or-create reuses an existing contact's profile, which the run must
+ * leave alone.
+ */
+export const isCreatedDuringAgentEvalRun = (
+  customer: Pick<DotyposCustomer, "created">,
+  runStartedAt: string
+) =>
+  typeof customer.created === "string" &&
+  Date.parse(customer.created) >= Date.parse(runStartedAt);
+
+const readCustomerIfPresent = (
+  datasourceConfig: DatasourceConfig,
+  customerId: string
+) =>
+  readSyntheticCustomerProfile(
+    datasourceConfig,
+    customerId as DotyposCustomerId
+  ).pipe(
+    Effect.map(Option.some),
+    Effect.catchIf(isNotFound("getCustomer"), () => Effect.succeedNone)
+  );
+
+/** The Dotypos and payment identifiers a run produced, for its journal and redaction. */
+export type AgentEvalRunResources = {
+  readonly dotyposReservationIds: readonly string[];
+  /** Profiles the run created: the seeded one and any new contact's. */
+  readonly dotyposCustomerIds: readonly string[];
+  /** Every identifier that must not reach the run's artifacts. */
+  readonly identifiers: readonly string[];
+};
+
+/**
+ * Reads what the run's account created through checkout: every reservation
+ * it authored, for whichever contact, and each contact profile Dotypos
+ * created during the run. A booking for an existing customer journals the
+ * hold but not that customer's profile.
+ */
+export const readAgentEvalRunResources = Effect.fn("readAgentEvalRunResources")(
+  function* (
+    datasourceConfig: DatasourceConfig,
+    accountId: string,
+    runStartedAt: string
+  ) {
+    const authored = yield* readAgentEvalAuthoredReservations(accountId);
+    const contactIds = [
+      ...new Set(
+        authored.reservations.flatMap((reservation) =>
+          reservation.dotyposCustomerId ? [reservation.dotyposCustomerId] : []
+        )
+      ),
+    ];
+    const createdContactIds = yield* Effect.forEach(
+      contactIds,
+      (customerId) =>
+        readCustomerIfPresent(datasourceConfig, customerId).pipe(
+          Effect.map((customer) =>
+            Option.isSome(customer) &&
+            isCreatedDuringAgentEvalRun(customer.value, runStartedAt)
+              ? [customerId]
+              : []
+          )
+        ),
+      { concurrency: 4 }
+    ).pipe(Effect.map((ids) => ids.flat()));
+    const dotyposReservationIds = [
+      ...new Set(
+        authored.reservations.flatMap((reservation) =>
+          reservation.dotyposReservationId
+            ? [reservation.dotyposReservationId]
+            : []
+        )
+      ),
+    ];
+    return {
+      dotyposCustomerIds: createdContactIds,
+      dotyposReservationIds,
+      identifiers: [
+        accountId,
+        ...contactIds,
+        ...dotyposReservationIds,
+        ...authored.reservations.map((reservation) => reservation.id),
+        ...authored.orderIds,
+      ],
+    } satisfies AgentEvalRunResources;
+  }
+);
+
+const settledReservationIds = (
+  datasourceConfig: DatasourceConfig,
+  reservationIds: readonly string[]
+) =>
+  Effect.forEach(reservationIds, (reservationId) =>
+    readProviderReservation(datasourceConfig, reservationId).pipe(
+      Effect.map((reservation) =>
+        Option.isSome(reservation) && reservation.value.status === "CANCELLED"
+          ? [reservationId]
           : []
       )
-    ),
-  ];
+    )
+  ).pipe(Effect.map((ids) => new Set(ids.flat())));
+
+const settledCustomerIds = (
+  datasourceConfig: DatasourceConfig,
+  customerIds: readonly string[]
+) =>
+  Effect.forEach(customerIds, (customerId) =>
+    readCustomerIfPresent(datasourceConfig, customerId).pipe(
+      Effect.map((customer) =>
+        Option.isSome(customer) &&
+        customer.value.expireDate != null &&
+        Date.parse(customer.value.expireDate) <= Date.now()
+          ? [customerId]
+          : []
+      )
+    )
+  ).pipe(Effect.map((ids) => new Set(ids.flat())));
+
+/**
+ * Proves the run created the journaled resources of another contact: the
+ * run's account authored the hold, and Dotypos created the contact's profile
+ * during the run. Cleanup deletes the reservation rows that prove
+ * authorship, so on a repeat a resource that is already cancelled or expired
+ * counts as settled; anything else unproven still fails validation.
+ */
+export const proveAgentEvalRunOwnership = Effect.fn(
+  "proveAgentEvalRunOwnership"
+)(function* (
+  datasourceConfig: DatasourceConfig,
+  journal: WorkspaceE2EAccountJournal
+) {
+  const [accountId] = journal.authUserIds;
+  const owned = accountId
+    ? yield* readAgentEvalRunResources(
+        datasourceConfig,
+        accountId,
+        journal.startedAt
+      )
+    : undefined;
+  const ownedReservationIds = new Set(owned?.dotyposReservationIds);
+  const ownedCustomerIds = new Set(owned?.dotyposCustomerIds);
+  return {
+    dotyposCustomerIds: {
+      ownedIds: ownedCustomerIds,
+      settledIds: yield* settledCustomerIds(
+        datasourceConfig,
+        journal.dotyposCustomerIds.filter((id) => !ownedCustomerIds.has(id))
+      ),
+    },
+    dotyposReservationIds: {
+      ownedIds: ownedReservationIds,
+      settledIds: yield* settledReservationIds(
+        datasourceConfig,
+        journal.dotyposReservationIds.filter(
+          (id) => !ownedReservationIds.has(id)
+        )
+      ),
+    },
+  } satisfies WorkspaceE2EAccountJournalEvidence;
 });
 
 const readProviderReservation = Effect.fn("readProviderReservation")(
@@ -133,7 +314,6 @@ export const readAgentEvalReservations = Effect.fn("readAgentEvalReservations")(
       "read agent eval payment attempts",
       db
         .select({
-          providerOrderId: paymentAttempts.providerOrderId,
           state: paymentAttempts.state,
           workspaceReservationId: paymentAttempts.workspaceReservationId,
         })
@@ -162,9 +342,6 @@ export const readAgentEvalReservations = Effect.fn("readAgentEvalReservations")(
           : Option.none();
         const record: AgentEvalReservationRecord = {
           createdAt: reservation.createdAt.toString(),
-          orderIds: ownAttempts.flatMap((attempt) =>
-            attempt.providerOrderId ? [attempt.providerOrderId] : []
-          ),
           paid:
             reservation.paymentState === "paid" ||
             ownAttempts.some((attempt) => attempt.state === "paid"),

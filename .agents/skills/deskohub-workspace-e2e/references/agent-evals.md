@@ -16,7 +16,7 @@ Real browser agents (an accessibility-tree agent, a hybrid DOM and screenshot ag
 
 - Devbox only, started by hand. No CI workflow, GitHub secret, Turbo task, or E2E launcher runs this config, and nothing in CI runs Python. The colocated `*.test.ts` unit tests run in the normal `bun turbo test`.
 - The repository holds the tasks, judges, orchestration, results, and the harness contract. Agent runtimes, model choices, LLM credentials, and adapter paths are devbox wiring and stay out of the repository, GitHub, and Vercel.
-- Previews only, never production. The setup project asks the Vercel API for the deployment behind `WORKSPACE_E2E_BASE_URL` and refuses anything but a ready Preview of the Workspace project (and, with `TARGET_SHA`, one built from that commit). Every run also requires the Nexi sandbox origin and an allowlisted preview database.
+- Previews only, never production. The setup project asks the Vercel API for the deployment behind `WORKSPACE_E2E_BASE_URL` and refuses anything but a ready Preview of the Workspace project built from `TARGET_SHA`, which is required. It records the verified deployment ID and commit in the run set, and every run checks them before it seeds anything. Every run also requires the Nexi sandbox origin and an allowlisted preview database.
 - Synthetic data only: each run seeds its own `@deskohub.test` account and Dotypos profile.
 
 ## Run a run set
@@ -27,7 +27,7 @@ From `apps/deskohub-workspace`, export the preview variables of [runner variable
 WORKSPACE_AGENT_EVAL_HARNESSES=<harness list> \
 WORKSPACE_E2E_VERCEL_TOKEN=<token with deployment read> \
 WORKSPACE_E2E_VERCEL_PROJECT=<Workspace project id> \
-TARGET_SHA=<preview commit> \
+TARGET_SHA=<full 40-character preview commit> \
 bun run test:agent-evals
 ```
 
@@ -38,13 +38,13 @@ bun run test:agent-evals
 
 ## Harness contract
 
-`e2e/agent-evals/harness-contract.ts` holds the types and parsers; `harness-process.ts` spawns the command.
+`e2e/agent-evals/harness-contract.ts` holds the types and parsers; `harness-process.ts` spawns the command through the shared `runCommand` (`scripts/shared/command.ts`), which runs under Playwright's Node workers too.
 
 - `WORKSPACE_AGENT_EVAL_HARNESSES` is the path of a JSON array of `{ "id", "perception", "command" }`. `id` is a unique kebab-case slug; `perception` is `accessibility-tree`, `hybrid`, or `screenshot`; `command` is the executable and its arguments, spawned without a shell. Relative executables resolve against the list file's directory, which is also the working directory. The command inherits the run's environment.
 - The request is one JSON object on stdin: `{ "version": 1, "taskId", "locale", "prompt", "startUrl", "cdpEndpoint", "timeoutMs", "outputDir" }`.
 - The browser is already open on `startUrl`, past Deployment Protection and signed in, through cookies in its default context. The harness attaches to that context and tab through `cdpEndpoint` (an `http://127.0.0.1:<port>` DevTools endpoint). It must not launch another browser, open an isolated context, clear cookies, or close the browser. New tabs are fine.
-- The response is exactly one JSON object on stdout: `{ "finalAnswer", "steps", "costUsd"?, "error"? }`. Logs go to stderr, which the run saves to `harness-stderr.log` in the test's output directory. Extra response keys are ignored. Set `error` when the agent gives up or crashes.
-- Outcomes: `completed`; `agent-error` (response with `error`); `exit` (nonzero exit without `error`); `invalid-response` (exit 0 without one valid JSON object); `timeout`; `spawn-failure`. The run sends SIGTERM 30 seconds after `timeoutMs` and SIGKILL 10 seconds later, so a harness enforces `timeoutMs` itself and stops its own child processes on SIGTERM.
+- The response is exactly one JSON object on stdout: `{ "finalAnswer", "steps", "costUsd"?, "error"? }`. Logs go to stderr, which the run redacts and saves to `harness-stderr.log` in the test's output directory. Extra response keys are ignored. Set `error` when the agent gives up or crashes.
+- Outcomes: `completed`; `agent-error` (response with `error`); `exit` (nonzero exit without `error`); `invalid-response` (exit 0 without one valid JSON object); `timeout`; `spawn-failure`. The command leads its own process group. The run sends the group SIGTERM 30 seconds after `timeoutMs` and SIGKILL 10 seconds later, so a harness enforces `timeoutMs` itself and stops its own child processes on SIGTERM.
 - The bypass and the session never appear in the prompt. The harness's `outputDir` may hold transcripts and screenshots; keep it local.
 
 ## What one run does
@@ -58,11 +58,13 @@ bun run test:agent-evals
 5. Spawns the harness and waits for its outcome.
 6. Judges from the preview database and Dotypos, writes the run result, then closes the browser and reconciles the journal: cancels and converges the account's reservations, expires the profile, and deletes the account. The report teardown repeats the reconciliation for every journal, so interrupted runs clean up too.
 
+Cleanup covers whatever the run's account booked, including a hold for another contact. The account exists only for its run, so every reservation it authored belongs to the run and is journaled. Checkout's find-or-create may reuse an existing customer, so a contact's profile is journaled and expired only when Dotypos created it after the run started. These resources don't match the run's recipient email, so `proveAgentEvalRunOwnership` supplies the ownership evidence the shared journal validation accepts. On a repeat, a resource that is already cancelled or expired counts as settled and stays untouched; any other unproven ID still fails validation.
+
 A failed eval is a result, not a test failure. A test fails only when preparation, the harness spawn boundary, or cleanup fails, and the run set stops after five such failures.
 
 ## Tasks and judges
 
-Prompts are natural language in `en-US` and `cs-CZ` with only the start URL (`tasks.ts`). Judges (`judges.ts`) read the newest reservation the run's account authored, so an abandoned earlier draft doesn't count:
+Prompts are natural language in `en-US` and `cs-CZ` with only the start URL (`tasks.ts`). Judges (`judges.ts`) read the newest reservation the run's account authored, so an abandoned earlier draft doesn't count, except that a booking task fails when any reservation of the run was paid:
 
 | Task | Passes when |
 | --- | --- |
@@ -72,14 +74,15 @@ Prompts are natural language in `en-US` and `cs-CZ` with only the start URL (`ta
 | `office-to-pay` | A live, unpaid office hold for 2 seats over the 3 requested days. |
 | `open-space-payment` | The Open Space reservation is paid with the sandbox card from the prompt, the agent reached the status page, and that page shows the confirmed reservation. |
 
-A booking task that ends paid fails with `paid-without-permission`: the agent didn't stop at the handoff.
+A booking task in which any reservation the run authored was paid, even an abandoned one, fails with `paid-without-permission`: the agent didn't stop at the handoff.
 
 ## Read the results
 
 Results live in `e2e-artifacts/agent-eval-results/<run set id>/`, which Playwright doesn't clear:
 
-- `runs/<task>.<locale>.<harness>.<repeat>.json`: one run. `success`, `reason` (the judge's code), `failureCategory`, `harnessOutcome`, `steps`, `costUsd`, `wallTimeMs`, `timeToPayUrlMs`, `routes`, `paymentPage` (`openedAfterMs`, `inNewTab`, `actedIn`), and the truncated `finalAnswer`. No transcript and no personal data.
-- `summary.json` and `summary.md`: success rate per task, harness, and locale with median steps, wall time, and time to Pay, total cost, failure-category counts, and the payment-page handoff per harness. The report teardown also prints the Markdown table; post it on the eval ticket.
+- `runs/<task>.<locale>.<harness>.<repeat>.json`: one run. `success`, `reason` (the judge's code), `failureCategory`, `harnessOutcome`, `steps`, `costUsd`, `wallTimeMs`, `timeToPayUrlMs`, `routes`, `paymentPage` (`openedAfterMs`, `inNewTab`, `actedIn`), and the redacted, truncated `finalAnswer` and `harnessError`. No transcript and no personal data: `redaction.ts` strips the run's account, profile, reservation, and payment-order IDs, registered secrets such as the bypass, URLs and reservation, checkout, and account paths, token-like runs, email addresses, UUIDs, and long numbers before anything is written.
+- `run-set.json`: the run set ID, start time, and verified `target` (`deploymentId`, `sha`, `verifiedAt`). It never holds a URL, host, or the bypass.
+- `summary.json` and `summary.md`: the verified target, then success rate per task, harness, and locale with median steps, wall time, and time to Pay, total cost, failure-category counts, and the payment-page handoff per harness. The report teardown also prints the Markdown table; post it on the eval ticket.
 
 Failure categories come from the judge's reason and the routes: a wrong date or start time is `date-picker`; a wrong product, seat count, or duration, or no hold after the agent reached the reservation page, is `form-control`; no hold and no reservation page is `navigation`; a sign-in page with no hold is `sign-in`; an unpaid, unconfirmed, or unwanted payment is `payment-tab`; a harness that never produced a run, and a facts miss, are `other`. Reclassify by hand from the run's output directory when the table needs a finer cut.
 

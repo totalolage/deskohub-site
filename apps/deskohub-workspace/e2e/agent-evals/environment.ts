@@ -39,6 +39,8 @@ export const makeAgentEvalSettings = () => {
     environment,
     harnessDirectory: dirname(harnessListPath),
     harnesses: parseAgentEvalHarnesses(readFileSync(harnessListPath, "utf8")),
+    /** The commit the preview must be built from. */
+    targetSha: agentEnvironment.TARGET_SHA,
     vercelProjectId: agentEnvironment.WORKSPACE_E2E_VERCEL_PROJECT,
     vercelToken: agentEnvironment.WORKSPACE_E2E_VERCEL_TOKEN,
   };

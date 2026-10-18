@@ -1,12 +1,18 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { NodeServices } from "@effect/platform-node";
 import {
   type BrowserContext,
   chromium,
   type LaunchOptions,
 } from "@playwright/test";
+import { Effect, FileSystem } from "effect";
 import type { Locale } from "@/features/i18n";
+import {
+  toWorkspaceE2EError,
+  tryWorkspaceE2EPromise,
+  type WorkspaceE2EError,
+} from "../errors";
+import { pollUntil } from "../polling";
 import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 
 /**
@@ -17,69 +23,85 @@ import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 export type AgentEvalBrowser = {
   readonly cdpEndpoint: string;
   readonly context: BrowserContext;
-  readonly close: () => Promise<void>;
+  /** Closes the browser and removes its profile directory. */
+  readonly close: Effect.Effect<void>;
 };
 
-const readDevToolsPort = async (userDataDir: string) => {
-  const deadline = Date.now() + workspaceE2ETimeouts.browserAction;
-  while (Date.now() < deadline) {
-    try {
-      const [port] = (
-        await readFile(join(userDataDir, "DevToolsActivePort"), "utf8")
-      ).split("\n");
-      if (port && /^\d+$/.test(port)) return port;
-    } catch (cause) {
-      if (
-        !(cause instanceof Error && "code" in cause && cause.code === "ENOENT")
-      ) {
-        throw cause;
-      }
+/** Chromium writes the port it picked to this file once DevTools listens. */
+const readDevToolsPort = (
+  fileSystem: FileSystem.FileSystem,
+  userDataDir: string
+): Effect.Effect<string, WorkspaceE2EError> =>
+  pollUntil(
+    fileSystem.readFileString(join(userDataDir, "DevToolsActivePort")).pipe(
+      Effect.map((contents) => {
+        const [port] = contents.split("\n");
+        return port && /^\d+$/.test(port) ? port : undefined;
+      }),
+      Effect.catchIf(
+        (cause) => cause.reason._tag === "NotFound",
+        () => Effect.succeed(undefined)
+      ),
+      Effect.mapError((cause) =>
+        toWorkspaceE2EError("read the Chromium DevTools port", cause)
+      )
+    ),
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: "the Chromium DevTools port",
+      timeoutMs: workspaceE2ETimeouts.browserAction,
     }
-    await new Promise((resolve) =>
-      setTimeout(resolve, workspaceE2EPollIntervalMs.browser)
-    );
-  }
-  throw new Error("Chromium did not publish its DevTools port");
-};
+  );
 
 /**
  * Launches the run's own Chromium with a loopback DevTools port. Agent evals
  * launch their browser instead of using Playwright's worker browser because
  * the harness must attach to it from another process.
  */
-export const launchAgentEvalBrowser = async ({
-  headless,
-  launchOptions,
-  locale,
-}: {
-  readonly headless: boolean;
-  readonly launchOptions: LaunchOptions;
-  readonly locale: Locale;
-}): Promise<AgentEvalBrowser> => {
-  const userDataDir = await mkdtemp(join(tmpdir(), "workspace-agent-eval-"));
-  try {
-    const context = await chromium.launchPersistentContext(userDataDir, {
-      ...launchOptions,
-      // Chromium binds the DevTools port to loopback and picks a free one.
-      args: [...(launchOptions.args ?? []), "--remote-debugging-port=0"],
-      headless,
-      locale,
-      viewport: { height: 900, width: 1440 },
-    });
-    const port = await readDevToolsPort(userDataDir).catch(async (cause) => {
-      await context.close();
-      throw cause;
-    });
+export const launchAgentEvalBrowser = Effect.fn("launchAgentEvalBrowser")(
+  function* ({
+    headless,
+    launchOptions,
+    locale,
+  }: {
+    readonly headless: boolean;
+    readonly launchOptions: LaunchOptions;
+    readonly locale: Locale;
+  }) {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const userDataDir = yield* fileSystem
+      .makeTempDirectory({ prefix: "workspace-agent-eval-" })
+      .pipe(
+        Effect.mapError((cause) =>
+          toWorkspaceE2EError("create the agent eval browser profile", cause)
+        )
+      );
+    const removeUserDataDir = fileSystem
+      .remove(userDataDir, { force: true, recursive: true })
+      .pipe(Effect.ignore);
+    const context = yield* tryWorkspaceE2EPromise(
+      "launch the agent eval browser",
+      () =>
+        chromium.launchPersistentContext(userDataDir, {
+          ...launchOptions,
+          // Chromium binds the DevTools port to loopback and picks a free one.
+          args: [...(launchOptions.args ?? []), "--remote-debugging-port=0"],
+          headless,
+          locale,
+          viewport: { height: 900, width: 1440 },
+        })
+    ).pipe(Effect.onError(() => removeUserDataDir));
+    const close = Effect.promise(() => context.close()).pipe(
+      Effect.ensuring(removeUserDataDir)
+    );
+    const port = yield* readDevToolsPort(fileSystem, userDataDir).pipe(
+      Effect.onError(() => close)
+    );
     return {
       cdpEndpoint: `http://127.0.0.1:${port}`,
-      close: async () => {
-        await context.close();
-        await rm(userDataDir, { force: true, recursive: true });
-      },
+      close,
       context,
-    };
-  } catch (cause) {
-    await rm(userDataDir, { force: true, recursive: true });
-    throw cause;
-  }
-};
+    } satisfies AgentEvalBrowser;
+  },
+  Effect.provide(NodeServices.layer)
+);

@@ -1,5 +1,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { parseStandardSchema } from "@deskohub/standard-schema";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
 import { workspaceDir, writeJsonAtomically } from "../runtime";
 import {
@@ -28,14 +30,22 @@ export const agentEvalOutputDirectory = resolve(
 
 const runSetPath = resolve(agentEvalOutputDirectory, "run-set.json");
 
-const runSetSchema = Schema.fromJsonString(
-  Schema.Struct({
-    runSetId: Schema.String.check(Schema.isPattern(/^[0-9a-z-]+$/)),
-    startedAt: Schema.String,
-  })
+const runSetSchema = Schema.toStandardSchemaV1(
+  Schema.fromJsonString(
+    Schema.Struct({
+      runSetId: Schema.String.check(Schema.isPattern(/^[0-9a-z-]+$/)),
+      startedAt: Schema.String,
+      /** The preview the setup verified before any run seeded data. */
+      target: Schema.Struct({
+        deploymentId: Schema.NonEmptyString,
+        sha: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)),
+        verifiedAt: Schema.String,
+      }),
+    })
+  )
 );
 
-export type AgentEvalRunSet = typeof runSetSchema.Type;
+export type AgentEvalRunSet = StandardSchemaV1.InferOutput<typeof runSetSchema>;
 
 const agentEvalRunSetDirectory = (runSetId: string) =>
   resolve(agentEvalResultsRoot, runSetId);
@@ -55,12 +65,24 @@ export const makeAgentEvalRunSetId = (now = new Date()) =>
     .replace(/[-:]/g, "")
     .replace("T", "-")}-${crypto.randomUUID().slice(0, 4)}`;
 
+/**
+ * Opens the invocation's run set, and keeps a copy beside its results so the
+ * verified target outlives Playwright's output directory.
+ */
 export const writeAgentEvalRunSet = async (runSet: AgentEvalRunSet) => {
   await writeJsonAtomically(runSetPath, runSet);
+  await writeJsonAtomically(
+    resolve(agentEvalRunSetDirectory(runSet.runSetId), "run-set.json"),
+    runSet
+  );
 };
 
 export const readAgentEvalRunSet = async (): Promise<AgentEvalRunSet> =>
-  Schema.decodeUnknownSync(runSetSchema)(await readFile(runSetPath, "utf8"));
+  parseStandardSchema(
+    runSetSchema,
+    await readFile(runSetPath, "utf8"),
+    "The agent eval run set is invalid"
+  );
 
 const runResultFileName = (result: AgentEvalRunResult) =>
   `${result.taskId}.${result.locale}.${result.harnessId}.${result.repeat}.json`;

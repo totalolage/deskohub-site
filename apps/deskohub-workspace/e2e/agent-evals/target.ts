@@ -1,11 +1,24 @@
-import { Effect } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
-import { toWorkspaceE2EError, workspaceE2EError } from "../errors";
+import { Effect, Schedule } from "effect";
+import { workspaceE2EError } from "../errors";
+import {
+  resolveVercelDeployment,
+  type VercelDeployment,
+} from "../integrations/vercel";
 
 export type AgentEvalTargetExpectation = {
   readonly vercelProjectId: string;
-  /** The commit the preview must be built from, when the operator pins one. */
-  readonly sha?: string;
+  /** The commit the preview must be built from (`TARGET_SHA`). */
+  readonly sha: string;
+};
+
+/**
+ * The verified preview a run set targets, kept with its results. It names
+ * the deployment and commit only: no URL, host, or bypass.
+ */
+export type AgentEvalTarget = {
+  readonly deploymentId: string;
+  readonly sha: string;
+  readonly verifiedAt: string;
 };
 
 export type AgentEvalTargetAssessment =
@@ -19,23 +32,18 @@ const refused = (reason: string): AgentEvalTargetAssessment => ({
 
 /**
  * Decides from Vercel's deployment record whether agents may run against
- * it. Agents book and pay, so only a ready Preview deployment of the
- * Workspace project qualifies: production (and any other named target) is
- * refused even though its immutable URL looks like a preview's.
+ * it. Agents book and pay, so only a ready Preview deployment built from the
+ * pinned commit qualifies: production (and any other named target) is
+ * refused even though its immutable URL looks like a preview's. The lookup
+ * already refused deployments of other projects.
  */
 export const assessAgentEvalDeployment = (
-  payload: unknown,
-  expected: AgentEvalTargetExpectation
+  deployment: Pick<
+    VercelDeployment,
+    "githubCommitSha" | "readyState" | "target"
+  >,
+  expected: Pick<AgentEvalTargetExpectation, "sha">
 ): AgentEvalTargetAssessment => {
-  if (payload === null || typeof payload !== "object") {
-    return refused("Vercel returned no deployment record");
-  }
-  const deployment = payload as {
-    readonly meta?: { readonly githubCommitSha?: unknown };
-    readonly projectId?: unknown;
-    readonly readyState?: unknown;
-    readonly target?: unknown;
-  };
   if (deployment.target !== null && deployment.target !== "preview") {
     return refused(
       deployment.target === "production"
@@ -43,24 +51,23 @@ export const assessAgentEvalDeployment = (
         : "The target is not a preview deployment"
     );
   }
-  if (deployment.projectId !== expected.vercelProjectId) {
-    return refused("The target belongs to another Vercel project");
-  }
   if (deployment.readyState !== "READY") {
     return refused("The preview deployment is not ready");
   }
-  if (
-    expected.sha !== undefined &&
-    deployment.meta?.githubCommitSha !== expected.sha
-  ) {
+  if (deployment.githubCommitSha !== expected.sha) {
     return refused("The preview was not built from TARGET_SHA");
   }
   return { kind: "preview" };
 };
 
+const transientRetries = Schedule.spaced("5 seconds").pipe(
+  Schedule.both(Schedule.recurs(2))
+);
+
 /**
  * Reads the deployment behind the immutable base URL from the Vercel API and
- * fails unless it is a ready Workspace preview.
+ * fails unless it is a ready Workspace preview of `TARGET_SHA`. Transient
+ * Vercel failures are retried twice.
  */
 export const verifyAgentEvalTarget = Effect.fn("verifyAgentEvalTarget")(
   function* ({
@@ -72,34 +79,29 @@ export const verifyAgentEvalTarget = Effect.fn("verifyAgentEvalTarget")(
     readonly expectation: AgentEvalTargetExpectation;
     readonly vercelToken: string;
   }) {
-    const httpClient = yield* HttpClient.HttpClient;
-    const response = yield* httpClient
-      .execute(
-        HttpClientRequest.get(
-          `https://api.vercel.com/v13/deployments/${encodeURIComponent(expectedHost)}`
-        ).pipe(HttpClientRequest.bearerToken(vercelToken))
-      )
-      .pipe(
-        Effect.mapError((cause) =>
-          toWorkspaceE2EError("read the agent eval target deployment", cause)
-        )
-      );
-    if (response.status !== 200) {
-      return yield* workspaceE2EError(
-        `Vercel answered ${response.status} for the agent eval target deployment`,
-        { operation: "read the agent eval target deployment" }
-      );
-    }
-    const payload = yield* response.json.pipe(
-      Effect.mapError((cause) =>
-        toWorkspaceE2EError("decode the agent eval target deployment", cause)
+    const deployment = yield* resolveVercelDeployment({
+      expectedHost,
+      vercelProjectId: expectation.vercelProjectId,
+      vercelToken,
+    }).pipe(
+      Effect.retry({
+        schedule: transientRetries,
+        while: (failure) => failure._tag === "TransientVercelRequestFailure",
+      }),
+      Effect.catchTag("TransientVercelRequestFailure", ({ failure }) =>
+        Effect.fail(failure)
       )
     );
-    const assessment = assessAgentEvalDeployment(payload, expectation);
+    const assessment = assessAgentEvalDeployment(deployment, expectation);
     if (assessment.kind === "refused") {
       return yield* workspaceE2EError(assessment.reason, {
         operation: "verify the agent eval target",
       });
     }
+    return {
+      deploymentId: deployment.id,
+      sha: expectation.sha,
+      verifiedAt: new Date().toISOString(),
+    } satisfies AgentEvalTarget;
   }
 );

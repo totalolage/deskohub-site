@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import { chromium } from "@playwright/test";
+import { Effect } from "effect";
 import { playwrightChromiumAvailable } from "../../shared/testing/playwright-browser";
 import { launchAgentEvalBrowser } from "./browser";
 import { observeAgentEvalBrowser } from "./observations";
@@ -35,11 +36,13 @@ afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
 describe.skipIf(!chromiumAvailable)("agent eval browser", () => {
   test("observes tabs a harness opens and drives over CDP", async () => {
-    const browser = await launchAgentEvalBrowser({
-      headless: true,
-      launchOptions: {},
-      locale: "en-US",
-    });
+    const browser = await Effect.runPromise(
+      launchAgentEvalBrowser({
+        headless: true,
+        launchOptions: {},
+        locale: "en-US",
+      })
+    );
     const harness = await chromium.connectOverCDP(browser.cdpEndpoint);
     try {
       const startPage =
@@ -83,16 +86,18 @@ describe.skipIf(!chromiumAvailable)("agent eval browser", () => {
       expect(observations.tabCount).toBe(2);
     } finally {
       await harness.close();
-      await browser.close();
+      await Effect.runPromise(browser.close);
     }
   });
 
   test("tells a same-tab handoff the agent only looked at", async () => {
-    const browser = await launchAgentEvalBrowser({
-      headless: true,
-      launchOptions: {},
-      locale: "cs-CZ",
-    });
+    const browser = await Effect.runPromise(
+      launchAgentEvalBrowser({
+        headless: true,
+        launchOptions: {},
+        locale: "cs-CZ",
+      })
+    );
     try {
       const page =
         browser.context.pages()[0] ?? (await browser.context.newPage());
@@ -112,7 +117,7 @@ describe.skipIf(!chromiumAvailable)("agent eval browser", () => {
         timeToPayUrlMs: null,
       });
     } finally {
-      await browser.close();
+      await Effect.runPromise(browser.close);
     }
   });
 });

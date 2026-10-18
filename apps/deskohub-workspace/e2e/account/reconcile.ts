@@ -189,6 +189,22 @@ const accountLaneRecipientLabels = [
 ] as const;
 
 /**
+ * What an owner proves about journaled IDs of one kind beyond a recipient
+ * email match.
+ */
+type WorkspaceE2EAccountOwnershipEvidence = {
+  /** Created by the owner, as another record proves (such as authorship). */
+  readonly ownedIds: ReadonlySet<string>;
+  /** Already cancelled or expired, so cleanup leaves them alone. */
+  readonly settledIds: ReadonlySet<string>;
+};
+
+export type WorkspaceE2EAccountJournalEvidence = {
+  readonly dotyposCustomerIds: WorkspaceE2EAccountOwnershipEvidence;
+  readonly dotyposReservationIds: WorkspaceE2EAccountOwnershipEvidence;
+};
+
+/**
  * One account identity journal owner and the exact run-scoped recipient
  * labels whose synthetic identities it may own.
  */
@@ -197,6 +213,19 @@ export type WorkspaceE2EAccountJournalOwner = {
   readonly journalDirectory?: string;
   readonly ownerId: WorkspaceE2EAccountJournalOwnerId;
   readonly recipientLabels: readonly string[];
+  /**
+   * Proves ownership of journaled Dotypos IDs whose owner email is not one of
+   * the recipients, such as a hold the owner's account booked for another
+   * contact. IDs it neither owns nor settles still fail validation.
+   */
+  readonly proveOwnership?: (
+    datasourceConfig: DatasourceConfig,
+    journal: WorkspaceE2EAccountJournal
+  ) => Effect.Effect<
+    WorkspaceE2EAccountJournalEvidence,
+    WorkspaceE2EError,
+    E2EDatabase
+  >;
 };
 
 export const workspaceE2EAccountLaneJournalOwner: WorkspaceE2EAccountJournalOwner =
@@ -233,16 +262,19 @@ export const validateWorkspaceE2EAccountLaneJournalOwnership = ({
   authUserOwners,
   customerOwners,
   reservationOwners,
+  evidence,
 }: {
   readonly journal: WorkspaceE2EAccountJournal;
   readonly recipientEmails: ReadonlySet<string>;
   readonly authUserOwners: ReadonlyMap<string, string | null | undefined>;
   readonly customerOwners: ReadonlyMap<string, string | null | undefined>;
   readonly reservationOwners: ReadonlyMap<string, string | null | undefined>;
+  readonly evidence?: WorkspaceE2EAccountJournalEvidence;
 }): WorkspaceE2EAccountLaneReconciliation => {
   const validateCandidates = (
     ids: readonly string[],
-    owners: ReadonlyMap<string, string | null | undefined>
+    owners: ReadonlyMap<string, string | null | undefined>,
+    proof?: WorkspaceE2EAccountOwnershipEvidence
   ) =>
     ids.flatMap((id) => {
       if (!owners.has(id)) {
@@ -250,6 +282,9 @@ export const validateWorkspaceE2EAccountLaneJournalOwnership = ({
       }
       const email = owners.get(id);
       if (email === undefined) return [];
+      if (email !== null && recipientEmails.has(email)) return [id];
+      if (proof?.ownedIds.has(id)) return [id];
+      if (proof?.settledIds.has(id)) return [];
       if (email === null) {
         throw new Error(
           "Workspace account e2e candidate owner email is unavailable"
@@ -266,11 +301,13 @@ export const validateWorkspaceE2EAccountLaneJournalOwnership = ({
     authUserIds: validateCandidates(journal.authUserIds, authUserOwners),
     dotyposCustomerIds: validateCandidates(
       journal.dotyposCustomerIds,
-      customerOwners
+      customerOwners,
+      evidence?.dotyposCustomerIds
     ),
     dotyposReservationIds: validateCandidates(
       journal.dotyposReservationIds,
-      reservationOwners
+      reservationOwners,
+      evidence?.dotyposReservationIds
     ),
   };
 };
@@ -341,6 +378,9 @@ export const prepareWorkspaceE2EAccountLaneReconciliation = (
           )
         )
     );
+    const evidence = owner.proveOwnership
+      ? yield* owner.proveOwnership(datasourceConfig, journal)
+      : undefined;
     try {
       const validated = validateWorkspaceE2EAccountLaneJournalOwnership({
         journal,
@@ -348,6 +388,7 @@ export const prepareWorkspaceE2EAccountLaneReconciliation = (
         authUserOwners: new Map(authUserOwners),
         customerOwners: new Map(customerOwners),
         reservationOwners: new Map(reservationOwners),
+        ...(evidence ? { evidence } : {}),
       });
       return owner.journalDirectory === undefined
         ? validated
@@ -389,7 +430,8 @@ export const prepareWorkspaceE2EAccountJournalReconciliations = (
     )
   );
 
-const isNotFound =
+/** A Dotypos 404 for the operation, however deeply E2E errors wrap it. */
+export const isNotFound =
   (operation: string) =>
   (cause: unknown): boolean => {
     if (cause instanceof WorkspaceE2EError) {

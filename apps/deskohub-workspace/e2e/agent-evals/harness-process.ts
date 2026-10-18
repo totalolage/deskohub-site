@@ -1,7 +1,7 @@
 import { isAbsolute, resolve } from "node:path";
-import { NodeServices } from "@effect/platform-node";
-import { Effect, Stream } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { Effect } from "effect";
+import { runCommand } from "../../scripts/shared/command";
+import { workspaceAgentEvalTimeouts } from "../timeouts";
 import {
   type AgentEvalHarness,
   type AgentEvalRequest,
@@ -20,20 +20,22 @@ export type AgentEvalHarnessRun = {
 };
 
 const stderrTailCharacters = 16_000;
-const forceKillAfter = "10 seconds";
-
-const decodeOutput = (stream: Stream.Stream<Uint8Array, unknown>) =>
-  stream.pipe(Stream.decodeText(), Stream.mkString);
 
 const resolveExecutable = (executable: string, directory: string) =>
   executable.includes("/") && !isAbsolute(executable)
     ? resolve(directory, executable)
     : executable;
 
-const toOutcome = (
-  exitCode: number,
-  response: AgentEvalResponse | undefined
-): AgentEvalHarnessOutcomeKind => {
+const toOutcome = ({
+  exitCode,
+  response,
+  timedOut,
+}: {
+  readonly exitCode: number | null;
+  readonly response: AgentEvalResponse | undefined;
+  readonly timedOut: boolean;
+}): AgentEvalHarnessOutcomeKind => {
+  if (timedOut) return "timeout";
   if (response?.error !== undefined) return "agent-error";
   if (exitCode !== 0) return "exit";
   return response ? "completed" : "invalid-response";
@@ -41,9 +43,9 @@ const toOutcome = (
 
 /**
  * Spawns one harness command without a shell, writes the request to its
- * stdin, and reads its JSON response from stdout. The process is terminated
- * once `killAfterMs` passes. Never fails: every ending is an outcome the run
- * records.
+ * stdin, and reads its JSON response from stdout. Once `killAfterMs` passes,
+ * the harness's process group gets SIGTERM and, after the exit grace,
+ * SIGKILL. Never fails: every ending is an outcome the run records.
  */
 export const runAgentEvalHarness = ({
   harness,
@@ -58,55 +60,36 @@ export const runAgentEvalHarness = ({
   readonly request: AgentEvalRequest;
 }): Effect.Effect<AgentEvalHarnessRun> => {
   const [executable, ...args] = harness.command;
-  return Effect.scoped(
-    Effect.gen(function* () {
-      const handle = yield* ChildProcess.make(
-        resolveExecutable(executable, harnessDirectory),
-        args,
-        {
-          cwd: harnessDirectory,
-          extendEnv: true,
-          forceKillAfter,
-          stdin: Stream.make(
-            new TextEncoder().encode(`${JSON.stringify(request)}\n`)
-          ),
-        }
-      );
-      const [stdout, stderr, exitCode] = yield* Effect.all(
-        [
-          decodeOutput(handle.stdout),
-          decodeOutput(handle.stderr),
-          handle.exitCode,
-        ],
-        { concurrency: "unbounded" }
-      );
-      const response = parseAgentEvalResponse(stdout);
-      return {
-        exitCode,
-        outcome: toOutcome(exitCode, response),
-        response,
-        stderr: stderr.slice(-stderrTailCharacters),
-      } satisfies AgentEvalHarnessRun;
+  return Effect.tryPromise(() =>
+    runCommand([resolveExecutable(executable, harnessDirectory), ...args], {
+      cwd: harnessDirectory,
+      stdin: `${JSON.stringify(request)}\n`,
+      terminateGraceMs: workspaceAgentEvalTimeouts.harnessKillGrace,
+      timeoutMs: killAfterMs,
     })
   ).pipe(
-    Effect.timeoutOrElse({
-      duration: `${killAfterMs} millis`,
-      orElse: () =>
-        Effect.succeed<AgentEvalHarnessRun>({
-          exitCode: null,
-          outcome: "timeout",
-          response: undefined,
-          stderr: "",
+    Effect.map((result) => {
+      const response = result.timedOut
+        ? undefined
+        : parseAgentEvalResponse(result.stdout);
+      return {
+        exitCode: result.exitCode,
+        outcome: toOutcome({
+          exitCode: result.exitCode,
+          response,
+          timedOut: result.timedOut,
         }),
+        response,
+        stderr: result.stderr.slice(-stderrTailCharacters),
+      } satisfies AgentEvalHarnessRun;
     }),
     Effect.catch((cause) =>
       Effect.succeed<AgentEvalHarnessRun>({
         exitCode: null,
         outcome: "spawn-failure",
         response: undefined,
-        stderr: String(cause).slice(-stderrTailCharacters),
+        stderr: String(cause.cause ?? cause).slice(-stderrTailCharacters),
       })
-    ),
-    Effect.provide(NodeServices.layer)
+    )
   );
 };

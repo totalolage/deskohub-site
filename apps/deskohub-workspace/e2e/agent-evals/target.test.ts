@@ -1,22 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { assessAgentEvalDeployment } from "./target";
 
-const expectation = { sha: "a".repeat(40), vercelProjectId: "prj_workspace" };
+const expectation = { sha: "a".repeat(40) };
 const preview = {
-  meta: { githubCommitSha: "a".repeat(40) },
-  projectId: "prj_workspace",
+  githubCommitSha: "a".repeat(40),
   readyState: "READY",
   target: null,
 };
 
 describe("assessAgentEvalDeployment", () => {
-  test("accepts a ready Workspace preview built from the pinned commit", () => {
+  test("accepts a ready preview built from the pinned commit", () => {
     expect(assessAgentEvalDeployment(preview, expectation)).toEqual({
       kind: "preview",
     });
-    expect(
-      assessAgentEvalDeployment(preview, { vercelProjectId: "prj_workspace" })
-    ).toEqual({ kind: "preview" });
   });
 
   test.each([
@@ -31,9 +27,9 @@ describe("assessAgentEvalDeployment", () => {
       "not a preview",
     ],
     [
-      "another project",
-      { ...preview, projectId: "prj_other" },
-      "another Vercel project",
+      "a record without a target",
+      { ...preview, target: undefined },
+      "not a preview",
     ],
     [
       "a deployment still building",
@@ -42,12 +38,16 @@ describe("assessAgentEvalDeployment", () => {
     ],
     [
       "a preview of another commit",
-      { ...preview, meta: { githubCommitSha: "b".repeat(40) } },
+      { ...preview, githubCommitSha: "b".repeat(40) },
       "TARGET_SHA",
     ],
-    ["a missing record", null, "no deployment record"],
-  ])("refuses %s", (_label, payload, reason) => {
-    const assessment = assessAgentEvalDeployment(payload, expectation);
+    [
+      "a preview without a commit",
+      { ...preview, githubCommitSha: undefined },
+      "TARGET_SHA",
+    ],
+  ])("refuses %s", (_label, deployment, reason) => {
+    const assessment = assessAgentEvalDeployment(deployment, expectation);
     expect(assessment.kind).toBe("refused");
     expect(assessment.kind === "refused" && assessment.reason).toContain(
       reason
