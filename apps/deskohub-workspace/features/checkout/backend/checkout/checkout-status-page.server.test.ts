@@ -1,6 +1,9 @@
+import "@/shared/testing/workspace-test-env";
+
 import { expect, mock, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import type { IReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
+import type { CapturePostHogEventInput } from "@/shared/backend/analytics/posthog-event.service";
 import type {
   CheckoutStatusViewModel,
   ICheckoutStatusService,
@@ -11,6 +14,7 @@ const input = {
   accessCookie: undefined,
   locale: "en-US",
   orderId: "order-id",
+  requestHeaders: new Headers(),
   returnOutcome: "success",
 } as const;
 const fulfilledStatus = {
@@ -72,4 +76,59 @@ test("does not read checkout status when reservation access is unauthorized", as
   expect(isAuthorized).toHaveBeenCalledTimes(1);
   expect(refreshStatus).not.toHaveBeenCalled();
   expect(getStatus).not.toHaveBeenCalled();
+});
+
+test("attributes a payment the page refresh finalizes to the page request's agent", async () => {
+  const { capturePaymentCompleted } = await import(
+    "@/features/checkout/backend/analytics/posthog-lifecycle-events"
+  );
+  const { PostHogEventService } = await import(
+    "@/shared/backend/analytics/posthog-event.service"
+  );
+  const captures: CapturePostHogEventInput[] = [];
+  const refreshStatus = mock(() =>
+    capturePaymentCompleted({
+      attempt: {
+        id: "019edbd2-82f7-7cc0-8536-f2b3874d62d5",
+        workspaceReservationId: "019edbcf-5026-7ecc-821b-eda46998eaaa",
+        provider: "nexi",
+        providerOrderId: "provider-order-id",
+        amount: { value: 35_000, exponent: 2, currency: "CZK" },
+      },
+      timestamp: Temporal.Instant.from("2026-06-17T12:00:00.000Z"),
+    }).pipe(
+      Effect.provide(
+        Layer.succeed(PostHogEventService, {
+          alias: () => Effect.void,
+          capture: (event) =>
+            Effect.sync(() => {
+              captures.push(event);
+            }),
+        })
+      ),
+      Effect.as(fulfilledStatus)
+    )
+  );
+
+  await Effect.runPromise(
+    loadCheckoutStatusPage(
+      { getStatus: mock(() => Effect.succeed(fulfilledStatus)), refreshStatus },
+      {
+        isAuthorized: mock(() => Effect.succeed(true)),
+      } as IReservationAuthorizationService,
+      {
+        ...input,
+        requestHeaders: new Headers({
+          "user-agent":
+            "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot",
+        }),
+      }
+    )
+  );
+
+  expect(captures).toHaveLength(1);
+  expect(captures[0]?.properties).toMatchObject({
+    agent_category: "ai_user_agent",
+    agent_name: "chatgpt",
+  });
 });

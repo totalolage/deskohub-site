@@ -63,6 +63,7 @@ export const POST = defineWorkspaceRoute(
   {
     operation: "cloudinaryWebhook",
     cancellation: "continue-after-disconnect",
+    caller: "service",
   },
   (request) =>
     processWebhookRequest(request).pipe(

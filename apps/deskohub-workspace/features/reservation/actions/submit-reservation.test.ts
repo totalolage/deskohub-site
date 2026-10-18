@@ -169,6 +169,7 @@ describe("submitWorkspaceReservation", () => {
     expect(verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
       verifiedBots: { allow: customerAgentNames },
+      callSite: "reservation.submit",
     });
     expect(eventOrder).toEqual(["bot-verification", "checkout"]);
     expect(createHostedPaymentCheckout).toHaveBeenCalledWith(

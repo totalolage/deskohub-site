@@ -21,6 +21,7 @@ export const processPostOrderInvoiceRequest = Effect.fn(
   yield* botProtection.verifyHuman({
     verificationFailurePolicy: "deny",
     verifiedBots: { allow: customerAgentNames },
+    callSite: "accounting.manage-post-order-invoice",
   });
   const service = yield* ReservationInvoiceService;
   const access = {

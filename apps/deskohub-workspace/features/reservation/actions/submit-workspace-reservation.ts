@@ -51,6 +51,7 @@ export const submitWorkspaceReservation = Effect.fn(
     yield* botProtection.verifyHuman({
       verificationFailurePolicy: "allow",
       verifiedBots: { allow: customerAgentNames },
+      callSite: "reservation.submit",
     });
     const service = yield* CheckoutService;
     const cookieWriter = yield* ReservationAccessCookieWriter;
