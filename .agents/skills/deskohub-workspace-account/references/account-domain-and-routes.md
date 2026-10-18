@@ -51,6 +51,15 @@ glossary defines the customer account, reservation author, and tombstone.
   signed-in submission reuses an authorless draft. Payment does not set an
   author. An authorless legacy reservation stays authorless until the #682
   backfill.
+- `CustomerReservationHistoryService` lists the rows of the account's own
+  customer and the rows it authored for other customers (fetched from Dotypos
+  by reservation id, 50 ids per request). Each summary's `party` labels the
+  other side: `booked-for` for an authored row of another customer,
+  `booked-by` or `booked-by-deleted-account` when `isCustomerOwnAuthor` says
+  a different account booked the account's own customer. Names come from
+  `getCustomerDisplayName` over one batched `getCustomers` read. Author and
+  name reads are degradable: a failure logs a fixed code and leaves the party
+  unnamed (null), never failing the history.
 - `author_account_id` is null only for guest checkouts and for reservations
   made before authors were recorded, until the legacy backfill fills them and
   the column becomes NOT NULL.

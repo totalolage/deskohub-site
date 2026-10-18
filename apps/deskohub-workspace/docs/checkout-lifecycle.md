@@ -115,6 +115,10 @@ Every new reservation declares personal or business purpose. A business reservat
 
 A personal customer who did not request an invoice during checkout may create one later from the protected invoice link in the reservation email. The link carries the same reservation-scoped cryptographic capability used for access-code disclosure; the order ID alone never authorizes invoice lookup or creation. The page collects a fresh billing address, delivers the immutable invoice only to the reservation email captured at payment time, and allows an existing invoice to be resent to that address without exposing it.
 
+## Account reservation history
+
+A signed-in customer's reservation history lists the reservations of their own customer record and the reservations they booked for other customers. A reservation booked for someone else is labelled with that customer's name. A reservation another account booked for them is labelled with that account holder's name, or as booked by a deleted account once that account is deleted. A name that cannot be read is replaced with a neutral label and never hides the reservation or the rest of the history.
+
 ## Privacy and accounting
 
 Workspace stores only the identifiers, states, amounts, timestamps, and immutable evidence needed to operate and recover checkout. Customer contact details, free-form notes, payment-instrument data, raw provider payloads, and access codes are excluded from ordinary local checkout records.
