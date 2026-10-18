@@ -1,9 +1,10 @@
-import { describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Duration, Effect, Schema } from "effect";
 import { getActionRuntimeFailure } from "../utils/action-runtime-failure";
 
 let actionHeaderReads = 0;
+let actionRequestHeaders: Record<string, string> = {};
 let scheduledTelemetryFlushes = 0;
 
 mock.module("server-only", () => ({}));
@@ -29,11 +30,18 @@ mock.module("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, getAll: () => [] }),
   headers: async () => {
     actionHeaderReads += 1;
-    return new Headers({ referer: "https://deskohub.test/en-US" });
+    return new Headers({
+      referer: "https://deskohub.test/en-US",
+      ...actionRequestHeaders,
+    });
   },
 }));
 
 describe("Workspace actions", () => {
+  afterEach(() => {
+    actionRequestHeaders = {};
+  });
+
   test("starts the lifecycle after validation and provides Bot protection", async () => {
     const { BotProtectionService } = await import(
       "./bot-protection/bot-protection.service"
@@ -123,6 +131,45 @@ describe("Workspace actions", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  // A Server Action on a path the proxy skips, such as a dotted one, reaches
+  // the action with whatever headers the client sent.
+  test.each([
+    [
+      "the request's own agent category",
+      {
+        "user-agent":
+          "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot",
+      },
+      { category: "ai_user_agent", name: "chatgpt" },
+    ],
+    [
+      "no client-sent category",
+      {
+        "user-agent": "Mozilla/5.0 (Macintosh) Chrome/141.0.0.0 Safari/537.36",
+        "x-deskohub-agent-category": "ai_user_agent",
+        "x-deskohub-agent-name": "chatgpt",
+      },
+      { category: "unclassified" },
+    ],
+  ])("puts %s in the request context", async (_, headers, traffic) => {
+    actionRequestHeaders = headers;
+    const { CurrentAgentTraffic } = await import("./workspace-request-context");
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.agent-traffic",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () =>
+        Effect.gen(function* () {
+          return yield* CurrentAgentTraffic;
+        })
+    );
+
+    const result = await action("input");
+    expect(result?.data).toEqual(traffic);
   });
 
   test("schedules a telemetry flush for validation failures", async () => {

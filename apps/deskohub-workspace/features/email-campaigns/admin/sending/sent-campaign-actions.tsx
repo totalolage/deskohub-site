@@ -10,6 +10,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type { CampaignId } from "../../campaign-identifiers";
+import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import {
   duplicateCampaign,
   retryUndeliveredCampaignRecipients,
@@ -50,9 +51,10 @@ export function SentCampaignActions({
     onError: ({ error }) =>
       setFeedback({
         kind: "error",
-        message:
-          error.serverError ??
-          m.emailCampaignsSentDuplicateFailed({}, { locale }),
+        message: getEmailCampaignAdminActionFailureMessage(error.serverError, {
+          fallback: m.emailCampaignsSentDuplicateFailed({}, { locale }),
+          locale,
+        }),
       }),
   });
   const retry = useWorkspaceAction(retryUndeliveredCampaignRecipients, {
@@ -71,8 +73,10 @@ export function SentCampaignActions({
     onError: ({ error }) =>
       setFeedback({
         kind: "error",
-        message:
-          error.serverError ?? m.emailCampaignsSentRetryFailed({}, { locale }),
+        message: getEmailCampaignAdminActionFailureMessage(error.serverError, {
+          fallback: m.emailCampaignsSentRetryFailed({}, { locale }),
+          locale,
+        }),
       }),
   });
   const busy = duplicate.isExecuting || retry.isExecuting;

@@ -19,6 +19,7 @@ export const GET = defineWorkspaceRoute(
   {
     operation: "accountCustomerLink",
     cancellation: "interrupt-on-disconnect",
+    caller: "client",
   },
   () =>
     readCurrentAccountCustomerLink.pipe(

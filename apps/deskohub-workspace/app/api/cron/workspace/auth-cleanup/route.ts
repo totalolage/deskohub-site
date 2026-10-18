@@ -37,6 +37,7 @@ export const GET = defineWorkspaceRoute(
   {
     operation: "authCleanupCron",
     cancellation: "continue-after-disconnect",
+    caller: "service",
   },
   (request) => {
     if (!isAuthorizedCronRequest(request)) {

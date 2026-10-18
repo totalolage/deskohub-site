@@ -903,6 +903,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* botProtection.verifyHuman({
       verificationFailurePolicy: "allow",
       verifiedBots: { allow: customerAgentNames },
+      callSite: "reservation.prepare-pay-state",
     });
 
     const accountActivity = yield* OptionalAccountActivityGuard;

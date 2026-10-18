@@ -80,5 +80,7 @@
   "adminCliSessionsTableStatusExpired": "Vypršela",
   "adminCliSessionsTableStatusRevoked": "Odvolána",
   "adminCliSessionsTitle": "Relace CLI",
-  "adminCliSessionsUnchangedNotice": "Tato relace CLI už byla odvolána nebo neexistuje."
+  "adminCliSessionsUnchangedNotice": "Tato relace CLI už byla odvolána nebo neexistuje.",
+  "adminCliActionTimedOut": "Server neodpověděl včas. Zkuste to znovu.",
+  "adminCliActionFailedUnexpectedly": "Na serveru se něco pokazilo. Zkuste to znovu."
 }

@@ -6,7 +6,7 @@ Every Workspace Effect runs through one runner or boundary. Server runners live 
 
 - For a same-app UI operation that needs no addressable HTTP resource, use `defineWorkspaceAction` and validate input with its Standard Schema `schema`. Provide feature capabilities inside the handler. The action runtime owns request context, bot protection, failure mapping, the deadline, and telemetry. Don't make client components call app-owned endpoints just to reach server code.
 - In a `"use server"` module, export an async bridge declared in that module, not the function the action factory returns, so Next assigns the Server Action identity. A passing production build doesn't prove the bridge works; cover it with an E2E test that invokes the action.
-- For an addressable HTTP resource, use `defineWorkspaceRoute` and set `cancellation` explicitly. Use `"interrupt-on-disconnect"` for pure response generation and `"continue-after-disconnect"` only for side effects that must finish without the requester.
+- For an addressable HTTP resource, use `defineWorkspaceRoute` and set `cancellation` explicitly. Use `"interrupt-on-disconnect"` for pure response generation and `"continue-after-disconnect"` only for side effects that must finish without the requester. Set `caller` too: `"service"` for a webhook, cron, or warehouse pull, whose work counts as unclassified agent traffic, and `"client"` for everything else, which classifies the request's own headers.
 - Keep status codes and public messages out of domain and Layer errors. Before you return the route handler Effect, provide all capabilities and map the final error channel to `WorkspaceRouteFailure`, keeping the original error as `cause`. Map unexpected errors with `WorkspaceRouteFailure.internal(publicMessage)`.
 - An Effect HTTP API served through `HttpRouter.toWebHandler` has its own runtime. Merge `WorkspaceObservabilityLive` into its Layer and pass `memoMap: workspaceMemoMap`, as `features/admin-cli/workspace-admin-api.server.ts` does. When a handler maps a failure to a cause-less public error, log the original cause first.
 
@@ -16,6 +16,7 @@ Every Workspace Effect runs through one runner or boundary. Server runners live 
 
 - Put only process-wide, finalizer-free capabilities in a runtime Layer. Keep per-request state (log annotations, request context, headers, abort signals) inside the run.
 - Never dispose a runtime; serverless processes end without a shutdown hook. Flush telemetry with `scheduleWorkspaceTelemetryFlush` at request boundaries and `Effect.ensuring` in tasks, as `defineWorkspaceTask` does.
+- Run work the response shouldn't wait for, such as analytics capture, with `runWorkspaceEffectAfterResponse(operation, effect)`. It schedules through Next's `after()` and logs, never raises, a scheduling failure.
 
 ## Fail-open runs
 

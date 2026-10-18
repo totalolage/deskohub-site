@@ -24,6 +24,8 @@ import {
 import { env } from "./env";
 import { appendVercelPreviewProtectionBypass } from "./features/checkout/backend/checkout/vercel-preview-protection-bypass";
 import { reservationAccessTokenQueryParam } from "./features/reservation/reservation-access-token";
+import { classifyAgentTraffic } from "./shared/agent-traffic/agent-traffic";
+import { scheduleAgentPageRequest } from "./shared/backend/agent-traffic/agent-page-request";
 import { resolveWorkspaceRuntimeCallbackOrigin } from "./shared/backend/config/workspace-url.config";
 import { withRequestPathname } from "./shared/backend/utils/request-pathname";
 import { markPrivateResponse } from "./shared/utils/private-response";
@@ -212,6 +214,7 @@ async function localizedPageResponse(
     if (sharedReferralCode) {
       request.cookies.set(referralCodeCookieName, sharedReferralCode);
     }
+    recordAgentPageRequest(request, resolvedLocale);
     const response = continueRequest(request, {
       headersChanged: Boolean(sharedReferralCode) || forwardRequestHeaders,
     });
@@ -249,6 +252,25 @@ async function localizedPageResponse(
   setLocaleCookie(response, localeCookieName, resolvedLocale);
   return response;
 }
+
+// One event per agent page load that reaches a render; humans and other
+// unclassified traffic send none. A path no page matches renders the
+// not-found page and is reported as the `unknown` route.
+const recordAgentPageRequest = (request: NextRequest, locale: string) => {
+  const traffic = classifyAgentTraffic(request.headers);
+  if (
+    traffic.category === "unclassified" ||
+    !isDocumentNavigation(request) ||
+    isAdministrationPath(request.nextUrl.pathname)
+  ) {
+    return;
+  }
+  scheduleAgentPageRequest({
+    traffic,
+    locale,
+    pathname: request.nextUrl.pathname,
+  });
+};
 
 const requestLocale = (request: NextRequest) =>
   resolveWorkspaceLocale(
