@@ -803,7 +803,7 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
-  test("records the accepted documents and separate withdrawal acknowledgements", async () => {
+  test("records early-performance consent with the accepted terms of a near-term paid checkout", async () => {
     const nearTermReservation = normalizedCoworkReservationOrderSchema.make({
       ...reservationData,
       date: Temporal.Now.zonedDateTimeISO(
@@ -838,6 +838,9 @@ describe("CheckoutService", () => {
         }),
       }),
     ]);
+    const [[recorded]] = harness.recordLegalEvidence.mock.calls;
+    expect(recorded?.[1]).not.toHaveProperty("evidence.acknowledgements");
+    expect(harness.createHostedPaymentPage).toHaveBeenCalled();
   });
 
   test("creates the attempt before attaching the hosted payment page", async () => {
