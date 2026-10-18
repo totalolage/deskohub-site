@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { Schema } from "effect";
+import workspacePackage from "../package.json";
 import { runCommand } from "./shared/command";
 
 const testTimingsSchema = Schema.Struct({
@@ -26,13 +27,29 @@ const workspaceRoot = resolve(import.meta.dir, "..");
 export const testTimingsPath = join(workspaceRoot, "test-timings.json");
 export const shardTimingsArtifactPattern = "workspace-test-timings-shard-*";
 const testFilePattern = "**/*{.,_}{test,spec}.{ts,tsx,js,jsx,mjs,cjs}";
-// The `test` script skips build-output checks; CI runs them after a build.
-const buildOutputTestPattern = new Bun.Glob("**/*.build.test.ts");
+
+/** Reads the `--path-ignore-patterns` globs from a `bun test` command line. */
+export const testPathIgnorePatterns = (
+  testCommand: string
+): ReadonlyArray<string> =>
+  Array.from(
+    testCommand.matchAll(
+      /--path-ignore-patterns[= ](?:'([^']*)'|"([^"]*)"|(\S+))/g
+    ),
+    ([, singleQuoted, doubleQuoted, bare]) =>
+      singleQuoted ?? doubleQuoted ?? bare ?? ""
+  );
+
+// Every shard runs the `test` script, so its ignores, such as the
+// build-output checks CI runs after a build, decide which files get timed.
+const shardIgnoredTestPatterns = testPathIgnorePatterns(
+  workspacePackage.scripts.test
+).map((pattern) => new Bun.Glob(pattern));
 
 /** Whether the sharded `test` script runs this workspace-relative file. */
 export const isShardedTestFile = (file: string) =>
   !file.split("/").includes("node_modules") &&
-  !buildOutputTestPattern.match(file);
+  !shardIgnoredTestPatterns.some((pattern) => pattern.match(file));
 
 /** Orders entries by path code units, as Bun orders test files. */
 const byPath = (

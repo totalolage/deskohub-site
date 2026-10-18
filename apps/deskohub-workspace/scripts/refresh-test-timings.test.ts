@@ -6,6 +6,7 @@ import {
   mergeTestTimings,
   parseTestTimings,
   predictShardDurations,
+  testPathIgnorePatterns,
   testTimingsPath,
 } from "./refresh-test-timings";
 
@@ -19,6 +20,14 @@ test("skips build-output checks and dependencies like the test script", () => {
     )
   ).toBe(false);
   expect(isShardedTestFile("node_modules/pkg/index.test.ts")).toBe(false);
+});
+
+test("reads every quoting of --path-ignore-patterns", () => {
+  expect(
+    testPathIgnorePatterns(
+      `bun test --path-ignore-patterns='**/*.build.test.ts' --path-ignore-patterns="a b/**" --path-ignore-patterns c/**`
+    )
+  ).toEqual(["**/*.build.test.ts", "a b/**", "c/**"]);
 });
 
 describe("mergeTestTimings", () => {
