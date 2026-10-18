@@ -10,7 +10,4 @@ export {
   ReservationAuthorDirectory,
   ReservationAuthorReadError,
 } from "./backend/reservation-author-directory.service";
-export {
-  CustomerAccountAccessError,
-  type LinkedCustomerAccount,
-} from "./customer-account";
+export { CustomerAccountAccessError } from "./customer-account";
