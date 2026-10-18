@@ -6,7 +6,16 @@ import {
   type StandardSchemaWithJSON,
 } from "@modelcontextprotocol/server";
 import type { StandardJSONSchemaV1 } from "@standard-schema/spec";
-import { Effect, FiberSet, Option, Schema } from "effect";
+import {
+  Context,
+  Effect,
+  Exit,
+  FiberSet,
+  Option,
+  Schema,
+  Scope,
+  Stream,
+} from "effect";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { type AgentTool, getRequestedAgentToolLocale } from "./agent-tool";
 import { AgentToolAdmission } from "./agent-tool-admission.service";
@@ -56,7 +65,32 @@ export const answerAgentToolMcpRequest = <R>({
     })
   );
 
+/**
+ * Serves the request in a scope that stays open until its response body ends
+ * or the client cancels it: a 2025-era call answers with an event stream
+ * before the tool has finished, and closing the scope interrupts the tool.
+ */
 const serveAgentToolMcpRequest = <R>({
+  tools,
+  request,
+}: {
+  readonly tools: ReadonlyArray<AgentTool<R>>;
+  readonly request: Request;
+}) =>
+  Effect.Do.pipe(
+    Effect.bind("scope", () => Scope.make()),
+    Effect.bind("response", ({ scope }) =>
+      exchangeAgentToolMcpRequest({ tools, request }).pipe(
+        Scope.provide(scope),
+        Effect.onExit((exit) =>
+          Exit.isSuccess(exit) ? Effect.void : Scope.close(scope, exit)
+        )
+      )
+    ),
+    Effect.flatMap(closeScopeAfterBody)
+  );
+
+const exchangeAgentToolMcpRequest = <R>({
   tools,
   request,
 }: {
@@ -90,8 +124,34 @@ const serveAgentToolMcpRequest = <R>({
     ),
     Effect.flatMap(({ handler }) =>
       Effect.tryPromise(() => handler.fetch(request))
-    ),
-    Effect.scoped
+    )
+  );
+
+/** The response, with `scope` closed once its body ends or is cancelled. */
+const closeScopeAfterBody = ({
+  scope,
+  response,
+}: {
+  readonly scope: Scope.Closeable;
+  readonly response: Response;
+}) =>
+  Option.fromNullishOr(response.body).pipe(
+    Option.match({
+      onNone: () => Scope.close(scope, Exit.void).pipe(Effect.as(response)),
+      onSome: (body) =>
+        Effect.succeed(
+          new Response(
+            Stream.fromReadableStream({
+              evaluate: () => body,
+              onError: (cause) => cause,
+            }).pipe(
+              Stream.ensuring(Scope.close(scope, Exit.void)),
+              Stream.toReadableStreamWith(Context.empty())
+            ),
+            response
+          )
+        ),
+    })
   );
 
 /** Runs an Effect as a fiber of the request that serves the MCP exchange. */

@@ -143,7 +143,7 @@ for (const versionNegotiation of [
             | undefined;
           const offerings = content?.offerings ?? [];
 
-          expect(result.isError).toBeFalsy();
+          expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
           expect(offerings).toEqual(
             expect.arrayContaining([
               expect.objectContaining({
@@ -181,7 +181,7 @@ for (const versionNegotiation of [
             | McpAvailabilityContent
             | undefined;
 
-          expect(result.isError).toBeFalsy();
+          expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
           expect(content).toMatchObject({
             family: "cowork",
             available: expect.any(Boolean),
@@ -205,7 +205,7 @@ for (const versionNegotiation of [
             | McpQuoteContent
             | undefined;
 
-          expect(result.isError).toBeFalsy();
+          expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
           expect(content).toMatchObject({
             family: "cowork",
             total: { amount: expect.any(Number), currency: "CZK" },
