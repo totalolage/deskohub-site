@@ -28,6 +28,7 @@ import { Input } from "@/shared/components/ui/input";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { audienceSingleLocale } from "../../audience-filter";
 import type { CampaignAudienceId } from "../../campaign-identifiers";
+import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import {
   type DiscountGroupOption,
   describeAudienceFilter,
@@ -146,9 +147,10 @@ function AudienceForm({
     onError: ({ error }) => {
       setFeedback({
         kind: "error",
-        message:
-          error.serverError ??
-          m.emailCampaignsAudienceEditorSaveFailed({}, { locale }),
+        message: getEmailCampaignAdminActionFailureMessage(error.serverError, {
+          fallback: m.emailCampaignsAudienceEditorSaveFailed({}, { locale }),
+          locale,
+        }),
       });
     },
     onTransportError: () => {
@@ -296,8 +298,10 @@ function ArchiveAudienceControl({
     },
     onError: ({ error }) =>
       setError(
-        error.serverError ??
-          m.emailCampaignsAudienceArchiveFailed({}, { locale })
+        getEmailCampaignAdminActionFailureMessage(error.serverError, {
+          fallback: m.emailCampaignsAudienceArchiveFailed({}, { locale }),
+          locale,
+        })
       ),
     onTransportError: () =>
       setError(m.emailCampaignsAudienceArchiveFailedRetry({}, { locale })),
@@ -346,8 +350,10 @@ function UnarchiveAudienceControl({
     },
     onError: ({ error }) =>
       setError(
-        error.serverError ??
-          m.emailCampaignsAudienceUnarchiveFailed({}, { locale })
+        getEmailCampaignAdminActionFailureMessage(error.serverError, {
+          fallback: m.emailCampaignsAudienceUnarchiveFailed({}, { locale }),
+          locale,
+        })
       ),
     onTransportError: () =>
       setError(m.emailCampaignsAudienceUnarchiveFailedRetry({}, { locale })),
@@ -397,8 +403,10 @@ function DeleteAudienceControl({
     },
     onError: ({ error }) =>
       setError(
-        error.serverError ??
-          m.emailCampaignsAudienceDeleteFailed({}, { locale })
+        getEmailCampaignAdminActionFailureMessage(error.serverError, {
+          fallback: m.emailCampaignsAudienceDeleteFailed({}, { locale }),
+          locale,
+        })
       ),
     onTransportError: () =>
       setError(m.emailCampaignsAudienceDeleteFailedRetry({}, { locale })),
