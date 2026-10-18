@@ -517,7 +517,8 @@ describe("account auth return lifecycle", () => {
   test.each([
     [{ status: 429, code: "SIGN_IN_EMAIL_LIMIT_REACHED" }, "address-limit"],
     [{ status: 429 }, "rate-limited"],
-    [{ status: 403, code: "BOT_DETECTED" }, "failed"],
+    [{ status: 403, code: "BOT_DETECTED" }, "automated"],
+    [{ status: 429, code: "BOT_DETECTED" }, "automated"],
     [{ status: 503 }, "failed"],
     [{ status: 400, code: "INVALID_EMAIL" }, "failed"],
   ] as const)(
@@ -599,8 +600,28 @@ describe("account auth return lifecycle", () => {
     }
   );
 
+  test("maps a BotID code rejection without capturing it as a code error", async () => {
+    const lifecycle = authReturn.createAuthReturnLifecycle({
+      locale: "en-US",
+    });
+    await lifecycle.sendSignInEmail(customerEmail);
+    emailOtp.mockImplementationOnce(() =>
+      Promise.resolve({
+        data: null,
+        error: { status: 403, code: "BOT_DETECTED" },
+      })
+    );
+
+    expect(await lifecycle.verifySignInCode(customerEmail, "000000")).toBe(
+      "automated"
+    );
+    expect(captureSignInCodeRejection).not.toHaveBeenCalled();
+    expect(listenerCleanups[0]).not.toHaveBeenCalled();
+    lifecycle.cancel();
+  });
+
   test.each([
-    { status: 403, code: "BOT_DETECTED" },
+    { status: 403, code: "UNKNOWN_ERROR" },
     { status: 429 },
     { status: 503 },
   ])("reports an unclassified code failure %o generically", async (error) => {

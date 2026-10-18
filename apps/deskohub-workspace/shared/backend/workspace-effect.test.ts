@@ -12,8 +12,12 @@ mock.module("@/instrumentation", () => ({
   },
 }));
 
-const { defineWorkspacePage, runWorkspaceEffect, runWorkspaceEffectOrElse } =
-  await import("./workspace-effect");
+const {
+  defineWorkspacePage,
+  defineWorkspaceTask,
+  runWorkspaceEffect,
+  runWorkspaceEffectOrElse,
+} = await import("./workspace-effect");
 
 describe("Workspace Effect execution", () => {
   test("provides the censored Workspace logger", async () => {
@@ -50,6 +54,15 @@ describe("Workspace Effect execution", () => {
     );
 
     await expect(page({ slug: "sale" })).resolves.toBe("page:sale");
+  });
+
+  test("tasks serve no customer request, so their agent traffic is unclassified", async () => {
+    const { CurrentAgentTraffic } = await import("./workspace-request-context");
+    const task = defineWorkspaceTask("test.task-agent-traffic", () =>
+      Effect.map(CurrentAgentTraffic, (traffic) => traffic)
+    );
+
+    await expect(task()).resolves.toEqual({ category: "unclassified" });
   });
 });
 

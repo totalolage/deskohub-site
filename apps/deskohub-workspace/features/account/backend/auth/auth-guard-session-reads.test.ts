@@ -80,6 +80,7 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     arePasskeysEnabled: async () => false,
     httpsOnly: true,
     sendMagicLink,
+    verifyHuman: () => Effect.void,
     beforeDeleteUser: () => Effect.void,
     captureAccountLocalePreference: captureLocalePreference,
   });

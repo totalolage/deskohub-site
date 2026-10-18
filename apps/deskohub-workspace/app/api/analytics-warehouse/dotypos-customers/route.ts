@@ -19,6 +19,7 @@ export const GET = defineWorkspaceRoute(
   {
     operation: "analyticsWarehouseDotyposCustomers",
     cancellation: "interrupt-on-disconnect",
+    caller: "service",
   },
   (request: Request) =>
     respondWithDotyposCustomerSource(request).pipe(

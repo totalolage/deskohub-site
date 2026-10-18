@@ -16,6 +16,7 @@ import { ReservationAccessCookieWriter } from "@/features/reservation/backend/re
 import { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
 /**
@@ -45,7 +46,13 @@ export const submitWorkspaceReservation = Effect.fn(
     const { locale } = input;
     yield* Effect.annotateLogsScoped({ locale });
     const botProtection = yield* BotProtectionService;
-    yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
+    // Pay submit: the customer's own purchase path, so verified customer
+    // agents may start the hosted payment the customer completes.
+    yield* botProtection.verifyHuman({
+      verificationFailurePolicy: "allow",
+      verifiedBots: { allow: customerAgentNames },
+      callSite: "reservation.submit",
+    });
     const service = yield* CheckoutService;
     const cookieWriter = yield* ReservationAccessCookieWriter;
     const checkout = yield* service.createHostedPaymentCheckout(
@@ -96,7 +103,7 @@ export const submitWorkspaceReservation = Effect.fn(
             message: Match.value(error).pipe(
               Match.tagsExhaustive({
                 BotDetectedError: () =>
-                  m.reservationRateLimitMessage({}, { locale: input.locale }),
+                  m.automatedRequestRejected({}, { locale: input.locale }),
                 BotVerificationError: () =>
                   m.reservationErrorMessage({}, { locale: input.locale }),
                 ReservationAccessCookieError: () =>

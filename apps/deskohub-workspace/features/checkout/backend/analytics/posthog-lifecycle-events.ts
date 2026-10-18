@@ -15,11 +15,13 @@ import type {
   ReservationAvailabilityResult,
   ReservationPrePaymentOutcome,
 } from "@/features/reservation/reservation-analytics";
+import { agentTrafficProperties } from "@/shared/agent-traffic/agent-traffic";
 import {
   type PostHogEventProperties,
   PostHogEventService,
 } from "@/shared/backend/analytics/posthog-event.service";
 import { CurrentPostHogRequestContext } from "@/shared/backend/analytics/posthog-request-context";
+import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
 
 type LifecycleEventTimestamp = WorkspaceReservation["createdAt"];
 
@@ -55,11 +57,13 @@ const captureLifecycleEvent = Effect.fn("posthog.captureLifecycleEvent")(
     readonly timestamp: LifecycleEventTimestamp;
   }) {
     const posthog = yield* PostHogEventService;
+    const agentTraffic = yield* CurrentAgentTraffic;
     yield* posthog.capture({
       distinctId: PostHogDistinctId.make(input.distinctId),
       event: input.event,
       properties: {
         ...input.properties,
+        ...agentTrafficProperties(agentTraffic),
         $process_person_profile: false,
       },
       timestamp: input.timestamp,
@@ -102,14 +106,13 @@ const captureRequestEvent = Effect.fn("posthog.captureRequestEvent")(
     if (!distinctId) return;
 
     const posthog = yield* PostHogEventService;
-    const properties: PostHogEventProperties =
-      sessionId === undefined
-        ? { ...input.properties, $process_person_profile: false }
-        : {
-            ...input.properties,
-            $process_person_profile: false,
-            $session_id: sessionId,
-          };
+    const agentTraffic = yield* CurrentAgentTraffic;
+    const properties: PostHogEventProperties = {
+      ...input.properties,
+      ...agentTrafficProperties(agentTraffic),
+      $process_person_profile: false,
+      ...(sessionId !== undefined && { $session_id: sessionId }),
+    };
     yield* posthog.capture({
       distinctId,
       event: input.event,

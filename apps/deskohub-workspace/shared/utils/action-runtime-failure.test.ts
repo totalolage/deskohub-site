@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { DEFAULT_SERVER_ERROR_MESSAGE } from "next-safe-action";
 import {
   actionRuntimeFailureMessages,
+  createActionFailureMessage,
   getActionFailureMessage,
   getActionRuntimeFailure,
 } from "./action-runtime-failure";
@@ -63,5 +64,50 @@ describe("action runtime failures", () => {
         fallback: "Zkontrolujte formulář.",
       })
     ).toBe("Zkontrolujte formulář.");
+  });
+});
+
+describe("createActionFailureMessage", () => {
+  const getFailureMessage = createActionFailureMessage<"cs-CZ" | "en-US">({
+    timeout: (_inputs, { locale }) =>
+      locale === "cs-CZ" ? "Vypršel čas." : "Timed out.",
+    unexpected: (_inputs, { locale }) =>
+      locale === "cs-CZ" ? "Něco se pokazilo." : "Something broke.",
+  });
+
+  test("replaces a runtime failure with the area's copy in the operator's locale", () => {
+    expect(
+      getFailureMessage(actionRuntimeFailureMessages.timeout, {
+        fallback: "Uložení selhalo.",
+        locale: "cs-CZ",
+      })
+    ).toBe("Vypršel čas.");
+    expect(
+      getFailureMessage(actionRuntimeFailureMessages.unexpected, {
+        fallback: "Saving failed.",
+        locale: "en-US",
+      })
+    ).toBe("Something broke.");
+  });
+
+  test("keeps the action's public message and falls back otherwise", () => {
+    expect(
+      getFailureMessage("Kód už existuje.", {
+        fallback: "Uložení selhalo.",
+        locale: "cs-CZ",
+      })
+    ).toBe("Kód už existuje.");
+    expect(
+      getFailureMessage(undefined, {
+        fallback: "Uložení selhalo.",
+        locale: "cs-CZ",
+      })
+    ).toBe("Uložení selhalo.");
+    expect(
+      getFailureMessage(actionRuntimeFailureMessages.invalidInput, {
+        fallback: "Uložení selhalo.",
+        locale: "cs-CZ",
+      })
+    ).toBe("Uložení selhalo.");
   });
 });

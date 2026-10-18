@@ -6,6 +6,7 @@ import type { ContactFormValues } from "@/features/contact/schemas/contact";
 import { createContactSchema } from "@/features/contact/schemas/contact";
 import { type Locale, m } from "@/features/i18n";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 
 export type { ContactFormValues } from "@/features/contact/schemas/contact";
 
@@ -63,7 +64,13 @@ const getContactFieldErrors = (issue: Schema.SchemaError["issue"]) => {
 export const processContactSubmission = Effect.fn("submitContactForm")(
   function* ({ locale, submittedValues }: SubmitContactFormInput) {
     const botProtection = yield* BotProtectionService;
-    yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
+    // Contact: a verified customer agent may write on the customer's behalf;
+    // unverified bots stay rejected.
+    yield* botProtection.verifyHuman({
+      verificationFailurePolicy: "deny",
+      verifiedBots: { allow: customerAgentNames },
+      callSite: "contact.submit",
+    });
 
     yield* Effect.annotateLogsScoped({ submittedValues, locale });
     yield* Effect.logInfo("Workspace contact form action received");
@@ -112,7 +119,7 @@ export const processContactSubmission = Effect.fn("submitContactForm")(
         }).pipe(
           Effect.as({
             status: "error" as const,
-            message: m.contactRateLimitMessage({}, { locale }),
+            message: m.automatedRequestRejected({}, { locale }),
             values: submittedValues,
           })
         )

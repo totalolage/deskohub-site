@@ -15,11 +15,13 @@ const { act, cleanup, fireEvent, render } = await import(
 const { SignInCodeStep } = await import("./sign-in-code-step");
 
 const locale = "en-US";
+type TestLocale = "en-US" | "cs-CZ";
 const cooldownOverAt = () => Date.now() - 61 * 1000;
 const nextFrame = () =>
   new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 type StepOptions = {
+  readonly locale?: TestLocale;
   readonly requestedAt?: number;
   readonly verifyCode?: (code: string) => Promise<SignInCodeVerification>;
   readonly requestNewEmail?: () => Promise<
@@ -28,13 +30,14 @@ type StepOptions = {
 };
 
 const renderStep = ({
+  locale: stepLocale = locale,
   requestedAt = cooldownOverAt(),
   verifyCode = () => Promise.resolve("wrong"),
   requestNewEmail = () => Promise.resolve("sent"),
 }: StepOptions = {}) => {
   const props = {
-    locale,
-    verifiedMessage: m.accountSignInCodeVerified({}, { locale }),
+    locale: stepLocale,
+    verifiedMessage: m.accountSignInCodeVerified({}, { locale: stepLocale }),
     verifyCode: mock(verifyCode),
     onVerified: mock(() => undefined),
     requestNewEmail: mock(requestNewEmail),
@@ -43,7 +46,7 @@ const renderStep = ({
   const view = render(<SignInCodeStep {...props} requestedAt={requestedAt} />);
   const input = () =>
     view.getByLabelText(
-      m.accountSignInCodeLabel({}, { locale })
+      m.accountSignInCodeLabel({}, { locale: stepLocale })
     ) as HTMLInputElement;
   const status = () =>
     view.container.querySelector("#account-sign-in-code-status")!;
@@ -101,6 +104,23 @@ describe("sign-in code step", () => {
     expect(props.verifyCode).toHaveBeenCalledTimes(1);
     expect(props.verifyCode).toHaveBeenCalledWith("482913");
   });
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "shows the automated-request message in %s with error styling",
+    async (stepLocale) => {
+      const { input, status } = renderStep({
+        locale: stepLocale,
+        verifyCode: () => Promise.resolve("automated"),
+      });
+
+      await typeCode(input(), "482913");
+
+      expect(status().textContent).toBe(
+        m.accountSignInAutomatedRequest({}, { locale: stepLocale })
+      );
+      expect(status().classList.contains("text-red-700")).toBe(true);
+    }
+  );
 
   test.each(["482 913", "482913", " 482-913\n"])(
     "normalises a pasted code %p and submits it",

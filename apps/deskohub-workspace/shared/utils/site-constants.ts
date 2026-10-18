@@ -66,6 +66,8 @@ export const workspaceSiteConstants = {
   },
 } as const;
 
+export const workspaceSiteOrigin = `https://${workspaceSiteConstants.brand.domain}`;
+
 type WorkspaceCanonicalSearchParams = ConstructorParameters<
   typeof URLSearchParams
 >[0];
@@ -83,10 +85,7 @@ export function getWorkspaceCanonicalUrl(
     pathname instanceof URL
       ? `${pathname.pathname}${pathname.search}${pathname.hash}`
       : normalizePathname(pathname);
-  const url = new URL(
-    canonicalPathname,
-    `https://${workspaceSiteConstants.brand.domain}`
-  );
+  const url = new URL(canonicalPathname, workspaceSiteOrigin);
 
   if (searchParams) {
     for (const [key, value] of new URLSearchParams(searchParams)) {
@@ -95,14 +94,4 @@ export function getWorkspaceCanonicalUrl(
   }
 
   return url.toString();
-}
-
-export function getWorkspaceLocalizedCanonicalUrl(
-  locale: string,
-  pathname = "/"
-): string {
-  const localizedPathname = normalizePathname(pathname);
-  const suffix = localizedPathname === "/" ? "" : localizedPathname;
-
-  return getWorkspaceCanonicalUrl(`/${locale}${suffix}`);
 }

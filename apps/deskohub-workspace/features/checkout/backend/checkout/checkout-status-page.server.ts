@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import type { Locale } from "@/features/i18n";
 import type { IReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
+import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
 import type { ICheckoutStatusService } from "./checkout-status.service";
 
 type CheckoutStatusInput = Parameters<
@@ -10,6 +11,11 @@ type CheckoutStatusInput = Parameters<
 export type CheckoutStatusPageInput = CheckoutStatusInput & {
   readonly accessCookie?: string;
   readonly locale: Locale;
+  /**
+   * The page request's headers. A refresh can finalize a payment, and its
+   * lifecycle events carry this request's agent traffic.
+   */
+  readonly requestHeaders: Headers;
 };
 
 export const loadCheckoutStatusPage = Effect.fn("CheckoutStatusPage.load")(
@@ -47,5 +53,7 @@ export const loadCheckoutStatusPage = Effect.fn("CheckoutStatusPage.load")(
         ).pipe(Effect.andThen(checkoutStatus.getStatus(statusInput)))
       )
     );
-  }
+  },
+  (effect, _checkoutStatus, _authorization, input) =>
+    effect.pipe(withWorkspaceRequestContext(input.requestHeaders))
 );
