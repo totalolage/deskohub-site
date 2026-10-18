@@ -10,6 +10,7 @@ import { preload } from "react-dom";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import {
   type AdvertisedPrice,
+  getAdvertisedProductItem,
   isCoworkAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
@@ -606,15 +607,15 @@ export function CoworkReservationForm({
                   const isUnavailable = unavailableCoworkTiers.has(
                     option.value
                   );
-                  const advertisedProductItem = advertisedPricesByTier
-                    .get(option.value)
-                    ?.summary.sections.find(({ key }) => key === "order")
-                    ?.items.find(
-                      (item) =>
-                        "product" in item &&
-                        item.product.kind === "cowork" &&
-                        item.product.tier === option.value
-                    );
+                  const tierAdvertisedPrice = advertisedPricesByTier.get(
+                    option.value
+                  );
+                  const advertisedProductItem =
+                    tierAdvertisedPrice &&
+                    getAdvertisedProductItem(tierAdvertisedPrice, {
+                      kind: "cowork",
+                      tier: option.value,
+                    });
                   const originalAmount =
                     advertisedProductItem &&
                     "originalAmount" in advertisedProductItem
