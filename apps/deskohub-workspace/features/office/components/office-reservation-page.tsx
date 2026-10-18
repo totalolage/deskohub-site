@@ -7,6 +7,7 @@ import { isOfficePageEnabled } from "@/features/office/backend/office-reservatio
 import { preloadPageAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { preloadPageAvailability } from "@/features/reservation/backend/workspace-availability-loader";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
+import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationEndsOn,
@@ -22,6 +23,7 @@ import {
   getReservationExistingCustomerForm,
   type ReservationExistingCustomer,
 } from "@/features/reservation/reservation-existing-customer";
+import { getOfficePageOfferings } from "@/features/reservation/reservation-page-offerings";
 import { officeReservationPath } from "@/features/reservation/routes";
 import { getOfficeAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -115,17 +117,34 @@ export async function renderOfficeReservationContent({
   ]);
 
   return (
-    <OfficeReservationForm
-      checkoutSessionId={checkoutSessionId}
-      existingCustomer={existingCustomerForm}
-      seatCapacity={seatCapacity}
-      initialAdvertisedPrices={initialAdvertisedPrices}
-      initialAvailability={initialAvailability}
-      initialValues={initialValues}
-      locale={locale}
-      replacementToken={replacementToken}
-      submittedCode={submittedCode}
-      today={today}
-    />
+    <>
+      <ReservationOfferingsStructuredData
+        locale={locale}
+        offerings={getOfficePageOfferings({
+          advertisedPrices: initialAdvertisedPrices,
+          locale,
+          seatCapacity,
+          selection: {
+            startsOn: decodePlainDate(initialValues.startsOn),
+            endsOn: initialEndsOn,
+            seats: initialValues.seats,
+          },
+          submittedCode,
+        })}
+        pathname={officeReservationPath}
+      />
+      <OfficeReservationForm
+        checkoutSessionId={checkoutSessionId}
+        existingCustomer={existingCustomerForm}
+        seatCapacity={seatCapacity}
+        initialAdvertisedPrices={initialAdvertisedPrices}
+        initialAvailability={initialAvailability}
+        initialValues={initialValues}
+        locale={locale}
+        replacementToken={replacementToken}
+        submittedCode={submittedCode}
+        today={today}
+      />
+    </>
   );
 }

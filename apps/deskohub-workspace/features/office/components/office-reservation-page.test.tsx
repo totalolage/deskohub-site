@@ -1,7 +1,22 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
-import type { ReactElement } from "react";
+import { Children, type ReactElement, type ReactNode } from "react";
+import { renderToString } from "react-dom/server";
+import {
+  isOfficeAdvertisedPrice,
+  type OfficeAdvertisedPriceRequest,
+} from "@/features/checkout/advertised-price";
+import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
+import { getWorkspaceOfficeAccessPrice } from "@/features/checkout/product-catalog";
+import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
+import {
+  currencyCZK,
+  toWorkspaceMoneyMajorAmount,
+  type WorkspaceMoney,
+  workspaceMoneyWithValue,
+} from "@/features/checkout/workspace-money";
+import { m } from "@/features/i18n";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import {
@@ -14,8 +29,9 @@ mock.module("next/root-params", () => ({
   locale: () => Promise.resolve("en-US"),
 }));
 
+// Each request preloads, without a price the structured data could use.
 const loadAdvertisedPrices = mock((requests: ReadonlyArray<unknown>) =>
-  Effect.succeed(requests)
+  Effect.succeed(requests.map((request) => ({ request })))
 );
 const loadOfficeReservationSeatCapacity = mock(() => Promise.resolve(5));
 
@@ -64,6 +80,16 @@ const { renderOfficeReservationContent } = await import(
   "./office-reservation-page"
 );
 
+/** The form the page renders beside its structured data. */
+const renderOfficeReservationForm = async (
+  input: Parameters<typeof renderOfficeReservationContent>[0]
+) => {
+  const page = (await renderOfficeReservationContent(input)) as ReactElement<{
+    readonly children: ReactNode;
+  }>;
+  return Children.toArray(page.props.children)[1];
+};
+
 beforeEach(() => mock.clearAllMocks());
 
 test("prefills safe office shape on a fresh date and quote", async () => {
@@ -71,7 +97,7 @@ test("prefills safe office shape on a fresh date and quote", async () => {
   Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
 
   try {
-    const form = (await renderOfficeReservationContent({
+    const form = (await renderOfficeReservationForm({
       locale: "en-US",
       pageData: 5,
       searchParams: { dayCount: "3", seats: "4" },
@@ -121,12 +147,100 @@ test("prefills safe office shape on a fresh date and quote", async () => {
   }
 });
 
+test("prices the office offer at the amounts shown for the URL selection", async () => {
+  const originalNow = Temporal.Now.instant;
+  Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
+  const halve = (money: WorkspaceMoney) => currencyCZK(money.value / 2);
+  // A sale halves every preloaded amount, so catalog prices cannot match.
+  loadAdvertisedPrices.mockImplementationOnce((requests) =>
+    Effect.succeed(
+      (requests as ReadonlyArray<OfficeAdvertisedPriceRequest>).map(
+        (request) => {
+          const quote = Effect.runSync(
+            buildOfficeReservationQuote(request.reservation.details)
+          );
+          const [item] = quote.items;
+          const saleQuote = {
+            ...quote,
+            items: [
+              {
+                ...item,
+                accessAmount: halve(item.accessAmount),
+                seatAmount: halve(item.seatAmount),
+              },
+            ],
+          } satisfies typeof quote;
+          return {
+            request,
+            advertisedPrice: {
+              kind: "office" as const,
+              quote: saleQuote,
+              summary: getOfficeCheckoutSummary(saleQuote),
+              advertisedPriceToken: "sealed",
+            },
+          };
+        }
+      )
+    )
+  );
+
+  try {
+    const page = (await renderOfficeReservationContent({
+      locale: "en-US",
+      pageData: 5,
+      searchParams: { dayCount: "2", seats: "3", startsOn: "2099-08-10" },
+    })) as ReactElement<{ readonly children: ReactNode }>;
+    const [structuredData, form] = Children.toArray(page.props.children) as [
+      ReactElement,
+      ReactElement<Parameters<typeof OfficeReservationForm>[0]>,
+    ];
+    const markup = renderToString(structuredData);
+    const office = JSON.parse(
+      markup.slice(markup.indexOf(">") + 1, markup.lastIndexOf("</script>"))
+    )["@graph"].find(
+      (service: { readonly name: string }) =>
+        service.name ===
+        m.reservationOfficeProductTitle({}, { locale: "en-US" })
+    );
+    const displayed = form.props.initialAdvertisedPrices?.find(
+      ({ request }) =>
+        request.reservation.kind === "office" &&
+        request.reservation.details.seats === 3
+    )?.advertisedPrice;
+    const displayedItem =
+      displayed && isOfficeAdvertisedPrice(displayed)
+        ? displayed.quote.items[0]
+        : undefined;
+    if (!displayedItem) throw new Error("Expected the selection's price");
+    const perDay = (money: WorkspaceMoney) =>
+      toWorkspaceMoneyMajorAmount(
+        workspaceMoneyWithValue(money.value / displayedItem.dayCount, money)
+      );
+
+    expect(form.props.initialValues).toMatchObject({
+      startsOn: "2099-08-10",
+      dayCount: 2,
+      seats: 3,
+    });
+    expect(displayedItem.dayCount).toBe(2);
+    expect(office.offers.priceSpecification).toMatchObject([
+      { price: perDay(displayedItem.accessAmount) },
+      { price: perDay(displayedItem.seatAmount) },
+    ]);
+    expect(office.offers.priceSpecification[0].price).not.toBe(
+      toWorkspaceMoneyMajorAmount(getWorkspaceOfficeAccessPrice(1))
+    );
+  } finally {
+    Temporal.Now.instant = originalNow;
+  }
+});
+
 test("keys the preloaded availability to the Prague date near midnight", async () => {
   const originalNow = Temporal.Now.instant;
   Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T22:30:00Z");
 
   try {
-    const form = (await renderOfficeReservationContent({
+    const form = (await renderOfficeReservationForm({
       locale: "en-US",
       pageData: 5,
       replacementToken: "signed-replacement-token",
@@ -162,7 +276,7 @@ describe("a signed restoration", () => {
     const originalNow = Temporal.Now.instant;
     Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
     try {
-      return (await renderOfficeReservationContent({
+      return (await renderOfficeReservationForm({
         initialReservation: restoredReservation,
         locale: "en-US",
         pageData: 5,
