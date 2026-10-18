@@ -53,7 +53,7 @@ export class AgentToolAdmission extends Context.Service<
 }
 
 /** Why the rate limit couldn't be checked; the call is denied. */
-export class AgentToolAdmissionError extends Data.TaggedError(
+class AgentToolAdmissionError extends Data.TaggedError(
   "AgentToolAdmissionError"
 )<{
   /** `rule-missing`: the project has no rule with the rate-limit ID. */
