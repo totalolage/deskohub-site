@@ -210,12 +210,9 @@ export const classifyAgentTraffic = (headers: Headers): AgentTraffic => {
 
 // Who operates each BotID customer agent. Keyed by `customerAgentNames`, so a
 // new customer agent fails typecheck until it is named here.
-const customerAgentOperators: Record<
-  (typeof customerAgentNames)[number],
-  AgentName
-> = {
+const customerAgentOperators = {
   "chatgpt-operator": "chatgpt",
-};
+} satisfies Record<(typeof customerAgentNames)[number], AgentName>;
 
 /**
  * Classifies a bot BotID verified from its verified-bot name and category. A

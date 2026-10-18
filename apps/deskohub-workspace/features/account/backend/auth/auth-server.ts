@@ -48,8 +48,8 @@ import type {
   VerifyHumanInput,
 } from "@/shared/backend/bot-protection/bot-protection.service";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import {
   lookupMagicLinkDeliveryLocale,
   type MagicLinkLocaleLookup,

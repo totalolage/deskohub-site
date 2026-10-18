@@ -387,6 +387,7 @@ describe("applyDiscountCodeToPayState", () => {
     expect(verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "deny",
       verifiedBots: { allow: customerAgentNames },
+      callSite: "checkout.apply-discount-code",
     });
     expect(scenario.lookupCodeKind).not.toHaveBeenCalled();
     expect(scenario.acceptCode).not.toHaveBeenCalled();
