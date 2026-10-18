@@ -6,6 +6,7 @@ import {
   NetworkError,
 } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Cause, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -1824,7 +1825,7 @@ describe("AdministrationService reservation author", () => {
   const customerId = DotyposCustomerIdSchema.make("booked-for-customer");
   const authorCustomerId = DotyposCustomerIdSchema.make("author-customer");
   const authorAccountId = customerAccountIdSchema.make("author-account");
-  const authorEmail = "author@example.test";
+  const authorEmail = testEmailAddress("administration-author");
   const now = Temporal.Instant.from("2026-10-17T08:00:00Z");
 
   const loadAuthor = async ({
