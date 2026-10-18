@@ -17,6 +17,7 @@ import {
 import {
   decodeReservationCheckoutCustomer,
   getTrimmedSearchParam,
+  type ReservationSelectionSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
 import type { CustomerLastReservationForKind } from "@/features/reservation/reservation-existing-customer";
 import type { SupportedSearchParams } from "@/shared/utils";
@@ -69,3 +70,11 @@ export const getMeetingRoomReservationDefaultValuesFromSearchParams = (
     marketingConsent: false,
   };
 };
+
+/** The meeting-room selection as the link parameters the parser above reads. */
+export const getMeetingRoomReservationSelectionSearchParams = (
+  selection: Pick<MeetingRoomReservationInput, "startDateTime" | "duration">
+): ReservationSelectionSearchParams => ({
+  startDateTime: selection.startDateTime || undefined,
+  duration: selection.duration,
+});

@@ -60,10 +60,15 @@ import {
 } from "./payment-terminal";
 import { assertReservationReplacement } from "./reservation-reuse";
 
-// The first slots drive the meeting-room checkout cases below; the four
-// trailing one-hour slots are reserved for the reservation-link regression
-// cases in ./reservation-links.ts (three link cases plus a replacement slot).
+// The first slots drive the meeting-room checkout cases below; the next four
+// one-hour slots are reserved for the reservation-link regression cases in
+// ./reservation-links.ts (three link cases plus a replacement slot), and the
+// last four-hour slot for the meeting-room URL-state case in
+// ./reservation-url-state.ts, which never holds it.
 export const meetingRoomE2ECoreSlotCount = 6;
+export const meetingRoomE2EReservationLinkSlotCount = 4;
+export const meetingRoomE2EUrlStateSlotIndex =
+  meetingRoomE2ECoreSlotCount + meetingRoomE2EReservationLinkSlotCount;
 
 export const meetingRoomE2EDurations = [
   { unit: "hour", amount: 1 },
@@ -76,6 +81,7 @@ export const meetingRoomE2EDurations = [
   { unit: "hour", amount: 1 },
   { unit: "hour", amount: 1 },
   { unit: "hour", amount: 1 },
+  { unit: "hour", amount: 4 },
 ] as const satisfies readonly MeetingRoomReservationDuration[];
 
 export type MeetingRoomE2EPreparation = {

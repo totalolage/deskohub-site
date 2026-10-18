@@ -51,6 +51,7 @@ import {
 } from "./payment-terminal";
 import { makeReservationLinkE2ECases } from "./reservation-links";
 import { assertReservationReplacement } from "./reservation-reuse";
+import { makeReservationUrlStateE2ECases } from "./reservation-url-state";
 
 export type WorkspaceE2EPreparation = {
   readonly customerDiscountGroup: E2EDotyposDiscountGroup;
@@ -339,6 +340,20 @@ export const makeWorkspaceE2ECases = ({
           datasourceConfig,
           flowStates,
           preparation: preparation.meetingRoom,
+          run,
+        }))
+      );
+
+      cases.push(
+        ...(yield* makeReservationUrlStateE2ECases({
+          allocation,
+          config,
+          datasourceConfig,
+          preparation: {
+            discounts: discountPreparation,
+            meetingRoom: preparation.meetingRoom,
+            office: preparation.office,
+          },
           run,
         }))
       );

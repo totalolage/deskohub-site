@@ -21,7 +21,10 @@ import {
 } from "../runtime";
 import { WorkspaceE2ECaseService } from "../services/cases";
 import { E2ETelemetryService } from "../services/telemetry";
-import { workspaceE2ECaseIds } from "./case-catalog";
+import {
+  isWorkspaceE2EOfficeCaseId,
+  workspaceE2ECaseIds,
+} from "./case-catalog";
 import {
   resolveWorkspaceE2ERunContext,
   writeWorkspaceE2ERunContext,
@@ -143,8 +146,7 @@ test("prepare the workspace checkout run", async () => {
 
   const expectedCaseIds = workspaceE2ECaseIds.filter(
     (caseId) =>
-      preparation.office !== undefined ||
-      caseId !== "checkout-office-paid-multi-day"
+      preparation.office !== undefined || !isWorkspaceE2EOfficeCaseId(caseId)
   );
   expect(actualCaseIds).toEqual([...expectedCaseIds].toSorted());
   await writeWorkspaceE2ERunPlan({ preparation, runContext, version: 2 });

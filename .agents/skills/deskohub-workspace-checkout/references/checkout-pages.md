@@ -33,6 +33,15 @@ Reservation pages (cowork, meeting room, office) stream every advertised price a
 - `useReservationAvailability` seeds `initialData` only for a query whose key hash matches a preloaded one. A fresh seed doesn't refetch on mount; focus, reconnect, `staleTime`, and price polling still apply.
 - Content fallbacks mirror the option cards through layout constants exported from `reservation-type-input.tsx`. The office fallback renders `officeSeatOptionsFallbackCount` seat cards because capacity comes from Dotypos inside the boundary. Preload the cowork LCP tier image from the fallback and render it eagerly with high fetch priority.
 
+## Selection in the URL
+
+Each reservation form mirrors its selection into the page URL through `useReservationSelectionUrl` (`features/reservation/components/use-reservation-selection-url.ts`).
+
+- Each family's writer sits beside its link parser in `features/reservation/*-reservation-checkout-query.ts` and returns `ReservationSelectionSearchParams` with the parameter names the parser reads. Keep the two inverse and cover the round trip in the parser's test. The type rejects contact parameters (`name`, `email`, `phone`, `customer`); never write them.
+- The hook writes only after the selection changes, never on first render: on mount it would run before the App Router patches `history.replaceState`, which drops Next's history state. It replaces the entry with `window.history.replaceState(null, "", url)`, which keeps `useSearchParams` in step without a navigation or server round trip.
+- The server-rendered `searchParams` prop goes stale after an edit. Build anything that must carry the current selection, such as a sign-in or verify return path from a reservation page, from `useSearchParams` and `usePathname` or from `window.location` when the link is followed.
+- The office parser takes `startsOn` only inside the booking window from the server's `today`; the page preloads that start date's prices.
+
 ## Customer mode
 
 A signed-in, linked customer books with the account card by default.

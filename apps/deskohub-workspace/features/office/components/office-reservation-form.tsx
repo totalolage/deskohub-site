@@ -36,6 +36,7 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
+import { useReservationSelectionUrl } from "@/features/reservation/components/use-reservation-selection-url";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationDayCount,
@@ -51,6 +52,7 @@ import {
   officeReservationDetailsSchema,
   officeReservationSchema,
 } from "@/features/reservation/office-reservation";
+import { getOfficeReservationSelectionSearchParams } from "@/features/reservation/office-reservation-checkout-query";
 import type { ReservationExistingCustomerForm } from "@/features/reservation/reservation-existing-customer";
 import {
   getOfficeAvailabilityQuery,
@@ -207,6 +209,11 @@ export function OfficeReservationForm({
       form.setValue("dayCount", maximumDayCount, { shouldValidate: true });
     }
   }, [dayCount, form, maximumDayCount]);
+  useReservationSelectionUrl(
+    startsOn && Predicate.isNumber(dayCount) && dayCount <= maximumDayCount
+      ? getOfficeReservationSelectionSearchParams({ startsOn, dayCount, seats })
+      : undefined
+  );
   const unavailable = Boolean(
     startsOn &&
       (maximumDayCount === 0 ||

@@ -3,8 +3,12 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "./meeting-room-reservation-checkout-query";
+import {
+  getMeetingRoomReservationDefaultValuesFromSearchParams,
+  getMeetingRoomReservationSelectionSearchParams,
+} from "./meeting-room-reservation-checkout-query";
 import { getMeetingRoomReservationInterval } from "./meeting-room-reservation-time";
+import { setReservationSelectionSearchParams } from "./reservation-checkout-query";
 
 const adaEmail = testEmailAddress("ada");
 
@@ -194,5 +198,29 @@ describe("customer last reservation defaults", () => {
         { kind: "meeting-room", duration: "hour:4" }
       ).duration
     ).toBe("hour:1");
+  });
+});
+
+describe("getMeetingRoomReservationSelectionSearchParams", () => {
+  test.each([
+    { startDateTime: "2099-08-12T09:00", duration: "hour:1" },
+    { startDateTime: "2099-08-13T14:00", duration: "hour:4" },
+    { startDateTime: "2099-08-14T08:00", duration: "day:1" },
+  ] as const)("the parser reads back the written selection %o", (selection) => {
+    const searchParams = new URLSearchParams(
+      "duration=hour:4&discountCode=SPRING"
+    );
+    setReservationSelectionSearchParams(
+      searchParams,
+      getMeetingRoomReservationSelectionSearchParams(selection)
+    );
+
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        searchParams,
+        deterministicNow()
+      )
+    ).toEqual(expect.objectContaining(selection));
+    expect(searchParams.get("discountCode")).toBe("SPRING");
   });
 });

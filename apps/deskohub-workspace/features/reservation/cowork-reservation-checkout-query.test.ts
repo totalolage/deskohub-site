@@ -5,9 +5,11 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { Schema } from "effect";
 import { normalizedCoworkReservationOrderSchema } from "./cowork-reservation";
 import {
+  getCoworkReservationSelectionSearchParams,
   getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
 } from "./cowork-reservation-checkout-query";
+import { setReservationSelectionSearchParams } from "./reservation-checkout-query";
 
 const adaEmail = testEmailAddress("ada");
 
@@ -99,5 +101,47 @@ describe("customer last reservation defaults", () => {
     ).toEqual(
       getReservationDefaultValuesFromSearchParams({ tier: "open-space" })
     );
+  });
+});
+
+describe("getCoworkReservationSelectionSearchParams", () => {
+  test.each([
+    {
+      entryTier: "open-space",
+      date: "2099-06-10",
+      coffee: false,
+      monitorOption: undefined,
+    },
+    {
+      entryTier: "open-space",
+      date: "2099-06-11",
+      coffee: true,
+      monitorOption: undefined,
+    },
+    {
+      entryTier: "reserved-desk",
+      date: "2099-06-12",
+      coffee: true,
+      monitorOption: "2x32-4k",
+    },
+    {
+      entryTier: "reserved-desk",
+      date: "2099-06-12",
+      coffee: true,
+      monitorOption: undefined,
+    },
+  ] as const)("the parser reads back the written selection %o", (selection) => {
+    const searchParams = new URLSearchParams(
+      "entryTier=reserved-desk&monitorOption=2x27-qhd&discountCode=SPRING"
+    );
+    setReservationSelectionSearchParams(
+      searchParams,
+      getCoworkReservationSelectionSearchParams(selection)
+    );
+
+    expect(getReservationDefaultValuesFromSearchParams(searchParams)).toEqual(
+      expect.objectContaining({ ...selection })
+    );
+    expect(searchParams.get("discountCode")).toBe("SPRING");
   });
 });

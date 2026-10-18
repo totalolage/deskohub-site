@@ -9,7 +9,7 @@ import {
   loadOfficeAvailability,
   makeOfficeCheckoutData,
   type OfficeCheckoutSlot,
-  selectAvailableOfficeSlot,
+  selectAvailableOfficeSlots,
 } from "../checkout/data";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
@@ -30,7 +30,11 @@ import type {
 import { executeCheckoutFlow } from "./checkout";
 
 export type OfficeE2EPreparation = {
+  // Held by the paid office checkout.
   readonly slot: OfficeCheckoutSlot;
+  // Never held: the reservation URL-state cases only open and edit the form
+  // for it, so it must stay apart from the paid range to remain available.
+  readonly urlStateSlot: OfficeCheckoutSlot;
 };
 
 export const prepareOfficeE2E = (
@@ -52,8 +56,15 @@ export const prepareOfficeE2E = (
       return undefined;
     }
 
-    const slot = yield* selectAvailableOfficeSlot(config, allocation);
-    return { slot };
+    const [slot, urlStateSlot] = yield* selectAvailableOfficeSlots(
+      config,
+      2,
+      allocation
+    );
+    return yield* tryWorkspaceE2ESync("assign office checkout ranges", () => {
+      assert(slot && urlStateSlot, "office checkout ranges missing");
+      return { slot, urlStateSlot };
+    });
   });
 
 export const makeOfficeE2ECases = ({

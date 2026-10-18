@@ -22,6 +22,37 @@ export const getTrimmedSearchParam = (
   return value || undefined;
 };
 
+/**
+ * A reservation form's selection as the query parameters its link parser
+ * reads. A parameter set to `undefined` is removed from the URL.
+ *
+ * Contact parameters (`name`, `email`, `phone`) and the `customer` mode are
+ * never part of a selection: writing them would put personal data into the
+ * browser history and analytics.
+ */
+export type ReservationSelectionSearchParams = Readonly<
+  Record<string, string | undefined> &
+    Partial<Record<ReservationContactQueryParam, never>>
+>;
+
+type ReservationContactQueryParam =
+  | keyof typeof queryCustomerSchemas
+  | typeof reservationCustomerQueryParam;
+
+/**
+ * Writes a selection into a URL's search parameters, leaving every parameter
+ * outside it, such as `discountCode`, as it is.
+ */
+export const setReservationSelectionSearchParams = (
+  searchParams: URLSearchParams,
+  selection: ReservationSelectionSearchParams
+) => {
+  for (const [name, value] of Object.entries(selection)) {
+    if (value === undefined) searchParams.delete(name);
+    else searchParams.set(name, value);
+  }
+};
+
 export const decodeReservationCheckoutCustomer = (
   searchParams: SupportedSearchParams
 ): { [Key in keyof typeof queryCustomerSchemas]?: string } =>

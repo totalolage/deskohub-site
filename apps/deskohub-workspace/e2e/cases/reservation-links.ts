@@ -70,9 +70,9 @@ import {
   assertHeldMeetingRoomSlotAvailability,
   type MeetingRoomE2EPreparation,
   meetingRoomE2ECoreSlotCount,
+  meetingRoomE2EReservationLinkSlotCount,
 } from "./meeting-room";
 
-const _reservationLinkSlotCount = 4;
 // Syntactically canonical but never seeded, so the checkout can only treat it
 // as customer intent and never as an applied discount.
 const unknownLinkCode = canonicalPromotionCodeSchema.make("E2E_LINK_UNKNOWN");
@@ -122,7 +122,10 @@ export const makeReservationLinkE2ECases = ({
 > =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
-    const linkSlots = preparation.slots.slice(meetingRoomE2ECoreSlotCount);
+    const linkSlots = preparation.slots.slice(
+      meetingRoomE2ECoreSlotCount,
+      meetingRoomE2ECoreSlotCount + meetingRoomE2EReservationLinkSlotCount
+    );
     const requireLinkSlot = (
       slot: MeetingRoomCheckoutSlot | undefined,
       id: string

@@ -14,6 +14,7 @@ import {
 import {
   decodeReservationCheckoutCustomer,
   getTrimmedSearchParam,
+  type ReservationSelectionSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
 import { isTodayOrFutureWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { CustomerLastReservationForKind } from "@/features/reservation/reservation-existing-customer";
@@ -118,6 +119,19 @@ export const getReservationDefaultValuesFromSearchParams = (
     }),
   };
 };
+
+/** The cowork selection as the link parameters the parser above reads. */
+export const getCoworkReservationSelectionSearchParams = (
+  selection: Pick<
+    CoworkReservationInput,
+    "entryTier" | "date" | "coffee" | "monitorOption"
+  >
+): ReservationSelectionSearchParams => ({
+  entryTier: selection.entryTier,
+  date: selection.date || undefined,
+  coffee: String(selection.coffee),
+  monitorOption: selection.monitorOption,
+});
 
 export const getReservationDefaultValuesFromPayState = (
   reservation: NormalizedCoworkReservationOrder

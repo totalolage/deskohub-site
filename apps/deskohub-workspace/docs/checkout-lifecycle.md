@@ -63,6 +63,29 @@ Example with synthetic, deliberately non-working values (`example.invalid`, `EXA
 /{locale}/reservation/meeting-room?name=Guest&email=guest%40example.invalid&phone=%2B420123456789&startDateTime=2099-08-12T10%3A00&duration=hour%3A1&discountCode=EXAMPLE_CODE
 ```
 
+The office reservation page accepts these parameters:
+
+- `startsOn` is the first reserved day in `YYYY-MM-DD` form, in the Workspace timezone. It must fall inside the office booking window, from today through the last bookable day one month ahead. A malformed date, or one outside the window, opens the page on today.
+- `dayCount` is the number of whole days. A count that doesn't fit the booking window from the start date falls back to the default.
+- `seats` is the number of seats. A count above the office capacity falls back to the default.
+- `discountCode` carries an ordinary discount code.
+
+The page shows the price and availability for the linked start date. A linked date that is fully booked stays selected and is marked unavailable, so the customer can pick another day. Office links never prefill contact details.
+
+```
+/{locale}/reservation/office?startsOn=2099-08-12&dayCount=3&seats=2&discountCode=EXAMPLE_CODE
+```
+
+### The page keeps the selection in its URL
+
+As the customer changes a selection, each reservation page writes it back to its URL with the same parameters a link uses:
+
+- cowork: `entryTier`, `date`, `coffee`, `monitorOption`
+- meeting room: `startDateTime`, `duration`
+- office: `startsOn`, `dayCount`, `seats` (the day count only once it's a valid count)
+
+Reloading the page, or opening a copy of its URL, restores the same selection. The update replaces the current browser history entry, so Back still leaves the page in one step. The page never writes `name`, `email`, `phone`, or `customer` to the URL, so contact details don't reach browser history or analytics; these parameters in an incoming link are still read and left as they arrived. Every other parameter, such as `discountCode`, also stays as it arrived.
+
 ## Reservation holds and edits
 
 Reservation submission creates a temporary hold before payment. Repeating the same immediate submission is idempotent and must not create duplicate holds.

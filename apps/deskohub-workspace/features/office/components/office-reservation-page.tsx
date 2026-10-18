@@ -74,7 +74,7 @@ export async function renderOfficeReservationContent({
     getOfficeReservationDefaultValuesFromSearchParams(searchParams, {
       lastReservation: existingCustomer?.lastReservation,
       seatCapacity,
-      startsOn: today,
+      today,
     });
   const { existingCustomer: existingCustomerForm, initialValues } =
     existingCustomer
