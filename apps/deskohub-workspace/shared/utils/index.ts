@@ -8,8 +8,8 @@ export {
 } from "./search-params";
 export {
   getWorkspaceCanonicalUrl,
-  getWorkspaceLocalizedCanonicalUrl,
   workspaceSiteConstants,
+  workspaceSiteOrigin,
 } from "./site-constants";
 export {
   currentInstant,
