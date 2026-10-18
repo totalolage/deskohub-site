@@ -12,5 +12,6 @@ export {
   defaultLocale,
   getLocalizedDynamicPagePath,
   getLocalizedPagePath,
+  type StaticLocalizedPageRoute,
   withLocalePrefixAndSearch,
 } from "./routing";

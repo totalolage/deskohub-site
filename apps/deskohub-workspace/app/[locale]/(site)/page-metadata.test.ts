@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { Metadata } from "next";
 import { locales } from "@/features/i18n";
+import { publicPages } from "@/features/public-pages";
 
 let requestLocale: string = "en-US";
 
@@ -25,60 +26,42 @@ mock.module(
 
 type PageModule = { readonly generateMetadata: () => Promise<Metadata> };
 
-const publicPages: ReadonlyArray<
-  readonly [pathname: string, load: () => Promise<PageModule>]
-> = [
-  ["", () => import("./(full-header)/page")],
-  ["/contact", () => import("./(full-header)/contact/page")],
-  ["/faq", () => import("./(full-header)/faq/page")],
-  ["/meeting-room", () => import("./(full-header)/meeting-room/page")],
-  ["/team", () => import("./(full-header)/team/page")],
-  ["/ttrpg-room", () => import("./(full-header)/ttrpg-room/page")],
-  ["/cookie-policy", () => import("./(full-header)/cookie-policy/page")],
-  [
-    "/marketing-communications",
-    () => import("./(full-header)/marketing-communications/page"),
-  ],
-  ["/operating-rules", () => import("./(full-header)/operating-rules/page")],
-  ["/privacy-policy", () => import("./(full-header)/privacy-policy/page")],
-  [
-    "/terms-and-conditions",
-    () => import("./(full-header)/terms-and-conditions/page"),
-  ],
-  [
-    "/reservation/cowork",
-    () => import("./(minimal-header)/reservation/cowork/page"),
-  ],
-  [
-    "/reservation/meeting-room",
-    () => import("./(minimal-header)/reservation/meeting-room/page"),
-  ],
-  [
-    "/reservation/office",
-    () => import("./(minimal-header)/reservation/office/page"),
-  ],
-  ["/logo", () => import("./(minimal-header)/logo/page")],
-];
+// Route groups don't appear in URLs, so find each page file by its pathname.
+const pageFileByPathname = new Map(
+  Array.from(new Bun.Glob("**/page.tsx").scanSync(import.meta.dir), (file) => [
+    `/${file
+      .split("/")
+      .slice(0, -1)
+      .filter((segment) => !/^\(.+\)$/.test(segment))
+      .join("/")}`,
+    file,
+  ])
+);
 
 describe("public page metadata", () => {
-  for (const [pathname, load] of publicPages) {
+  for (const { pathname } of publicPages) {
+    const suffix = pathname === "/" ? "" : pathname;
+
     for (const locale of locales) {
-      test(`${pathname || "/"} in ${locale} is indexable with self-canonical and hreflang alternates`, async () => {
+      test(`${pathname} in ${locale} is indexable with self-canonical and hreflang alternates`, async () => {
+        const pageFile = pageFileByPathname.get(pathname);
+        expect(pageFile).toBeDefined();
         requestLocale = locale;
-        const metadata = await (await load()).generateMetadata();
+        const page: PageModule = await import(`${import.meta.dir}/${pageFile}`);
+        const metadata = await page.generateMetadata();
 
         expect(metadata.robots).toBeUndefined();
         expect(metadata.alternates).toEqual({
-          canonical: `https://workspace.deskohub.cz/${locale}${pathname}`,
+          canonical: `https://workspace.deskohub.cz/${locale}${suffix}`,
           languages: {
-            "en-US": `https://workspace.deskohub.cz/en-US${pathname}`,
-            "cs-CZ": `https://workspace.deskohub.cz/cs-CZ${pathname}`,
-            "x-default": `https://workspace.deskohub.cz${pathname || "/"}`,
+            "en-US": `https://workspace.deskohub.cz/en-US${suffix}`,
+            "cs-CZ": `https://workspace.deskohub.cz/cs-CZ${suffix}`,
+            "x-default": `https://workspace.deskohub.cz${pathname}`,
           },
         });
         if (metadata.openGraph) {
           expect(metadata.openGraph.url).toBe(
-            `https://workspace.deskohub.cz/${locale}${pathname}`
+            `https://workspace.deskohub.cz/${locale}${suffix}`
           );
         }
       });
