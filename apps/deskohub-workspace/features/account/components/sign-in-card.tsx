@@ -74,7 +74,18 @@ export function SignInCard({
   passkeysEnabled = false,
 }: SignInCardProps) {
   const [failure, setFailure] = useState<SignInEmailFailure | null>(null);
-  const [request, setRequest] = useEmailSignInRequest();
+  const [storedRequest, setRequest] = useEmailSignInRequest();
+  // The pending request continues only to its own destination: its link
+  // already lands there. A card opened without one takes the request's; a
+  // card opened for another one starts a fresh request.
+  const requestedReturnTo = parseSameOriginPath(returnTo);
+  const request =
+    storedRequest &&
+    (requestedReturnTo === undefined ||
+      storedRequest.returnTo === requestedReturnTo)
+      ? storedRequest
+      : null;
+  const destination = request ? request.returnTo : requestedReturnTo;
   const clientReady = useClientReady();
   const submissionInProgress = useRef(false);
   // The control that switched the view unmounts with it, so the next view
@@ -87,8 +98,8 @@ export function SignInCard({
       element.focus();
     };
   const authReturn = useMemo(
-    () => createAuthReturnLifecycle({ locale, returnTo }),
-    [locale, returnTo]
+    () => createAuthReturnLifecycle({ locale, returnTo: destination }),
+    [locale, destination]
   );
   const signInFormSchema = createSignInFormSchema(locale);
   const form = useForm<SignInFormInput, unknown, SignInFormValues>({
@@ -113,7 +124,7 @@ export function SignInCard({
       requestedAt: Date.now(),
       signInCode: result.signInCode,
       attemptId: result.attemptId,
-      returnTo: parseSameOriginPath(returnTo),
+      returnTo: destination,
     });
   };
 

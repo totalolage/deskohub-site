@@ -63,6 +63,11 @@ export type SignInEmailFailure =
   | "rate-limited"
   /** BotID judged the request automated; continue in your own browser. */
   | "automated"
+  /**
+   * The given return path is not a same-origin path within
+   * `maxSameOriginPathLength`, so no email was sent to land elsewhere.
+   */
+  | "invalid-return-path"
   | "failed";
 
 export type SignInEmailResult =
@@ -454,7 +459,8 @@ export const createAuthReturnLifecycle = ({
  * (`getAuthVerifyPath`), such as a checkout form: the sign-in lands on the
  * same-origin `returnTo`, and the request is stored for this tab so the
  * verify page takes over the link's hand-off and the code entry. Navigate
- * there once the result is `sent`.
+ * there once the result is `sent`. A `returnTo` that isn't a valid return
+ * path fails with `invalid-return-path` before anything is sent.
  */
 export const startEmailSignIn = async ({
   locale,
@@ -465,7 +471,14 @@ export const startEmailSignIn = async ({
   readonly email: string;
   readonly returnTo?: string;
 }): Promise<SignInEmailResult> => {
-  const lifecycle = createAuthReturnLifecycle({ locale, returnTo });
+  const returnPath = parseSameOriginPath(returnTo);
+  if (returnTo !== undefined && returnPath === undefined) {
+    return { status: "failed", reason: "invalid-return-path" };
+  }
+  const lifecycle = createAuthReturnLifecycle({
+    locale,
+    returnTo: returnPath,
+  });
   const result = await lifecycle.sendSignInEmail(email);
   // The verify page listens for the hand-off from here on.
   lifecycle.cancel();
@@ -475,7 +488,7 @@ export const startEmailSignIn = async ({
       requestedAt: Date.now(),
       signInCode: result.signInCode,
       attemptId: result.attemptId,
-      returnTo: parseSameOriginPath(returnTo),
+      returnTo: returnPath,
     });
   }
   return result;

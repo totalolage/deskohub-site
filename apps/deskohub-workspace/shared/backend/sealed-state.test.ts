@@ -29,17 +29,23 @@ const now = new Date("2026-10-17T10:00:00.000Z");
 const at = (milliseconds: number) => () =>
   new Date(now.getTime() + milliseconds);
 const ttlMilliseconds = 30 * 60 * 1000;
+const maxTokenLength = 1024;
 
 const contactSchema = Schema.Struct({
   name: Schema.String,
   phone: Schema.String,
 });
 const contact = { name: "Ada Lovelace", phone: "+420 777 777 777" };
+// Scattered CJK characters barely compress.
+const incompressibleName = Array.from({ length: 600 }, (_, index) =>
+  String.fromCharCode(0x4e00 + ((index * 7919) % 20000))
+).join("");
 
 const contactState = makeSealedState({
   purpose: "test-contact",
   schema: contactSchema,
   ttlMilliseconds,
+  maxTokenLength,
 });
 
 describe("purpose-bound sealed state", () => {
@@ -72,6 +78,7 @@ describe("purpose-bound sealed state", () => {
       purpose: "test-other",
       schema: contactSchema,
       ttlMilliseconds,
+      maxTokenLength,
     });
     const token = runSync(
       otherState.seal(contact, { keys: [activeKey], now: at(0) })
@@ -122,6 +129,7 @@ describe("purpose-bound sealed state", () => {
       purpose: "test-other",
       schema: contactSchema,
       ttlMilliseconds,
+      maxTokenLength,
     });
 
     expect(
@@ -170,11 +178,55 @@ describe("purpose-bound sealed state", () => {
       purpose: "test-contact",
       schema: Schema.Struct({ name: Schema.String }),
       ttlMilliseconds,
+      maxTokenLength,
     });
     const token = runSync(
       looseState.seal({ name: "Ada" }, { keys: [activeKey], now: at(0) })
     );
 
+    expect(
+      failureCode(contactState.open(token, { keys: [activeKey], now: at(0) }))
+    ).toBe("invalid-token");
+  });
+
+  test("compresses the value so repetitive input stays short", () => {
+    const longContact = { name: "Ada ".repeat(200), phone: contact.phone };
+    const token = runSync(
+      contactState.seal(longContact, { keys: [activeKey], now: at(0) })
+    );
+
+    expect(token.length).toBeLessThan(maxTokenLength / 2);
+    expect(
+      runSync(contactState.open(token, { keys: [activeKey], now: at(0) }))
+    ).toEqual(longContact);
+  });
+
+  test("fails to seal a value longer than its token allows", () => {
+    expect(
+      failureCode(
+        contactState.seal(
+          { name: incompressibleName, phone: contact.phone },
+          { keys: [activeKey], now: at(0) }
+        )
+      )
+    ).toBe("too-large");
+  });
+
+  test("never opens a token longer than its kind of state allows", () => {
+    const roomyState = makeSealedState({
+      purpose: "test-contact",
+      schema: contactSchema,
+      ttlMilliseconds,
+      maxTokenLength: maxTokenLength * 4,
+    });
+    const token = runSync(
+      roomyState.seal(
+        { name: incompressibleName, phone: contact.phone },
+        { keys: [activeKey], now: at(0) }
+      )
+    );
+
+    expect(token.length).toBeGreaterThan(maxTokenLength);
     expect(
       failureCode(contactState.open(token, { keys: [activeKey], now: at(0) }))
     ).toBe("invalid-token");

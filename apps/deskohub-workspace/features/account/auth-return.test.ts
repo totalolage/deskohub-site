@@ -928,5 +928,29 @@ describe("account auth return lifecycle", () => {
         sessionStorage.getItem("deskohub:account-sign-in-code")
       ).toBeNull();
     });
+
+    test.each([
+      [
+        "a path longer than a return path may be",
+        `/en-US/cowork?contact=${"c".repeat(8 * 1024)}`,
+      ],
+      ["another origin", "https://evil.example/en-US/cowork"],
+    ])(
+      "sends nothing for %s instead of dropping where it continues",
+      async (_case, rejectedReturnTo) => {
+        expect(
+          await authReturn.startEmailSignIn({
+            locale: "en-US",
+            email: customerEmail,
+            returnTo: rejectedReturnTo,
+          })
+        ).toEqual({ status: "failed", reason: "invalid-return-path" });
+        expect(magicLink).not.toHaveBeenCalled();
+        expect(listenForReturn).not.toHaveBeenCalled();
+        expect(
+          sessionStorage.getItem("deskohub:account-sign-in-code")
+        ).toBeNull();
+      }
+    );
   });
 });

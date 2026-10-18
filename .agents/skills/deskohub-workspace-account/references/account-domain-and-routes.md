@@ -148,17 +148,28 @@ glossary defines the customer account, reservation author, and tombstone.
   target. Checkout return targets carry queries.
 - A page that sends the sign-in email itself, such as a checkout form, calls
   `startEmailSignIn({ locale, email, returnTo })` and moves to
-  `getAuthVerifyPath`. The tab's pending
+  `getAuthVerifyPath`. It fails with `invalid-return-path` rather than send
+  an email whose `returnTo` would be dropped. The tab's pending
   request (`email-sign-in-request.ts`) is one external store shared by the
   sign-in card and the verify page and mirrored to sessionStorage; never put
   the email in the URL. The request records whether the email carries a code
   (`login_email_code`), so the verify page shows the code entry or the
-  link-only instructions.
+  link-only instructions. It also records its return target: the sign-in
+  card resumes it when opened without one or for the same one, and starts
+  a fresh request when opened for another, since the sent link already
+  lands on the stored target.
 - State that must survive the round trip through the email, such as checkout
   contact details, rides in the return target's query as a token from
   `makeAuthReturnState(purpose, schema)`
   (`features/account/backend/auth-return-state.ts`): sealed with the shared
-  sealed-state helper, purpose-bound, and usable for 30 minutes.
+  sealed-state helper, purpose-bound, compressed, and usable for 30 minutes.
+- Return targets have a size contract. `parseSameOriginPath` accepts paths up
+  to `maxSameOriginPathLength` (8 KiB), so the magic link that carries one
+  base64url-encoded stays under Vercel's 14 KB URL limit. An auth return
+  token is at most `maxAuthReturnStateLength` (6 KiB) and fails to seal with
+  `too-large` beyond it, leaving 2 KiB for the page and its other
+  parameters. A new sealed schema must fit its largest accepted value;
+  extend the boundary test in `auth-return-state.test.ts` with it.
 - Section navigation items are links to the section paths, marked with
   `aria-current="page"`; disabled items stay buttons. A plain click on the
   signed-in account page switches the already rendered section in place and

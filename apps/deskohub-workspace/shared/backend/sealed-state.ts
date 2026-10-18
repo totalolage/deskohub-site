@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { deflateRawSync, inflateRawSync } from "node:zlib";
 import { Config, Data, Effect, Schema } from "effect";
 
 /*
@@ -11,6 +12,9 @@ import { Config, Data, Effect, Schema } from "effect";
 const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
+// Far above any state that fits a URL, so a crafted token can't inflate into
+// a large allocation.
+const maxInflatedStateByteLength = 64 * 1024;
 
 export const sealedStateKeyIdSchema = Schema.Trim.check(Schema.isNonEmpty())
   .pipe(Schema.brand("SealedStateKeyId"))
@@ -31,6 +35,8 @@ export const sealedStateClaimsSchema = Schema.Struct({
 const sealedStateProtectedHeaderSchema = Schema.Struct({
   kid: sealedStateClaimsSchema.fields.kid,
   purpose: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
+  // JWE's `zip` header (RFC 7516): the plaintext is DEFLATE-compressed.
+  zip: Schema.optional(Schema.Literal("DEF")),
 });
 
 export type SealedStateClaims = typeof sealedStateClaimsSchema.Type;
@@ -55,6 +61,13 @@ export type SealedStateOptions = SealedStateCryptoOptions & {
    * without one.
    */
   readonly purpose?: string;
+  /**
+   * Compresses the state before sealing, for state whose size matters, such
+   * as one riding on a URL. A compressed length hints at the content, so
+   * compress only state that holds nothing secret beside the input of the
+   * person it is sealed for.
+   */
+  readonly compressed?: boolean;
 };
 
 const sealedStateTokenErrorTag = "SealedStateTokenError";
@@ -67,7 +80,9 @@ export class SealedStateTokenError extends Data.TaggedError(
     | "invalid-secret"
     | "invalid-token"
     | "unknown-kid"
-    | "expired";
+    | "expired"
+    /** The sealed token is longer than its kind of state allows. */
+    | "too-large";
   readonly message: string;
   readonly cause?: unknown;
 }> {
@@ -281,12 +296,19 @@ export const sealState = Effect.fn("sealedState.seal")(function* <T>(
   options: SealedStateOptions = {}
 ) {
   const key = yield* getSealedStateKeyByKid(keyId, options);
-  const headerJson = yield* stringifyJson(
-    options.purpose === undefined
-      ? { kid: key.kid }
-      : { kid: key.kid, purpose: options.purpose }
-  );
+  const headerJson = yield* stringifyJson({
+    kid: key.kid,
+    ...(options.purpose !== undefined && { purpose: options.purpose }),
+    ...(options.compressed === true && { zip: "DEF" }),
+  });
   const stateJson = yield* stringifyJson(state);
+  const plaintext = options.compressed
+    ? yield* Effect.try({
+        try: () => deflateRawSync(stateJson),
+        catch: (cause) =>
+          invalidToken("Sealed state could not be compressed.", cause),
+      })
+    : Buffer.from(stateJson, "utf8");
 
   return yield* Effect.try({
     try: () => {
@@ -299,7 +321,7 @@ export const sealState = Effect.fn("sealedState.seal")(function* <T>(
 
       cipher.setAAD(textEncoder.encode(encodedHeader));
       const ciphertext = Buffer.concat([
-        cipher.update(stateJson, "utf8"),
+        cipher.update(plaintext),
         cipher.final(),
       ]);
 
@@ -357,8 +379,19 @@ export const decodeSealedState = Effect.fn("sealedState.decode")(function* <
     },
     catch: (cause) => invalidToken("Invalid sealed state token.", cause),
   });
+  const stateBytes =
+    header.zip === "DEF"
+      ? yield* Effect.try({
+          try: () =>
+            inflateRawSync(plaintext, {
+              maxOutputLength: maxInflatedStateByteLength,
+            }),
+          catch: (cause) =>
+            invalidToken("Invalid sealed state token payload.", cause),
+        })
+      : plaintext;
   const stateJson = yield* parseJson(
-    plaintext,
+    stateBytes,
     "Invalid sealed state token payload."
   );
   const state = yield* Schema.decodeUnknownEffect(schema, {
@@ -394,17 +427,21 @@ export const openSealedState = Effect.fn("sealedState.open")(function* <
 
 /**
  * A purpose-bound codec for one kind of sealed state: `seal` encodes the
- * value with `schema` and stamps it to expire after `ttlMilliseconds`;
- * `open` accepts only an unexpired token sealed for the same purpose.
+ * value with `schema`, compresses it, and stamps it to expire after
+ * `ttlMilliseconds`; `open` accepts only an unexpired token sealed for the
+ * same purpose. A token longer than `maxTokenLength` fails to seal with
+ * `too-large` and doesn't open.
  */
 export const makeSealedState = <A, I>({
   purpose,
   schema,
   ttlMilliseconds,
+  maxTokenLength,
 }: {
   readonly purpose: string;
   readonly schema: Schema.Codec<A, I>;
   readonly ttlMilliseconds: number;
+  readonly maxTokenLength: number;
 }) => {
   const envelope = Schema.Struct({
     ...sealedStateClaimsSchema.fields,
@@ -422,13 +459,27 @@ export const makeSealedState = <A, I>({
         invalidToken("Sealed state could not be encoded.", cause)
       )
     );
-    return yield* sealState(encoded, claims.kid, { ...options, purpose });
+    const token = yield* sealState(encoded, claims.kid, {
+      ...options,
+      purpose,
+      compressed: true,
+    });
+    if (token.length > maxTokenLength) {
+      return yield* new SealedStateTokenError({
+        code: "too-large",
+        message: "Sealed state is longer than its token allows.",
+      });
+    }
+    return token;
   });
 
   const open = Effect.fn("sealedState.openValue")(function* (
     token: string,
     options: SealedStateCryptoOptions = {}
   ) {
+    if (token.length > maxTokenLength) {
+      return yield* invalidToken("Invalid sealed state token.");
+    }
     const state = yield* openSealedState(token, envelope, {
       ...options,
       purpose,
