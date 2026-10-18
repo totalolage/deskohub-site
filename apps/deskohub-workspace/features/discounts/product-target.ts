@@ -13,7 +13,7 @@ export const workspaceProductTargetSchema = Schema.Union([
 
 export type WorkspaceProductTarget = typeof workspaceProductTargetSchema.Type;
 
-type WorkspaceProductFamily = WorkspaceProductTarget["kind"];
+export type WorkspaceProductFamily = WorkspaceProductTarget["kind"];
 
 /** Family targets, each covering every product of its reservation family. */
 export const workspaceProductTargets = [
@@ -21,6 +21,9 @@ export const workspaceProductTargets = [
   { kind: "meeting-room" as const },
   { kind: "office" as const },
 ] satisfies readonly WorkspaceProductTarget[];
+
+export const workspaceProductFamilies: readonly WorkspaceProductFamily[] =
+  workspaceProductTargets.map(({ kind }) => kind);
 
 /** Cowork tier targets, each covering one saleable cowork tier. */
 export const workspaceCoworkTierProductTargets =
