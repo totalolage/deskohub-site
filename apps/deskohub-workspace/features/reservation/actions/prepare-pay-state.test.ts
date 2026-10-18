@@ -44,6 +44,7 @@ import {
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 import { getSlowestSuccessfulCalendarLoad } from "@/shared/backend/config/google-calendar.config.test-utils";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { withInstantSleeps } from "@/shared/testing/workspace-test-clock.test-utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
@@ -1214,6 +1215,7 @@ describe("prepareWorkspacePayState", () => {
     ]);
     expect(verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
+      verifiedBots: { allow: customerAgentNames },
     });
     expect(grantInitialMarketingConsent).not.toHaveBeenCalled();
 
@@ -1245,6 +1247,7 @@ describe("prepareWorkspacePayState", () => {
     expect(result.enqueueCleanup).not.toHaveBeenCalled();
     expect(result.verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
+      verifiedBots: { allow: customerAgentNames },
     });
     expect(result.updateReservationDetails).toHaveBeenCalledWith({
       id: existingReservation.id,
@@ -2686,45 +2689,52 @@ describe("prepareWorkspacePayState", () => {
     );
   });
 
-  test("rejects a classified bot before resolving downstream services", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
-    const { BotDetectedError } = await import(
-      "@/shared/backend/bot-protection/bot-protection.service"
-    );
-    const { BotProtectionServiceMock } = await import(
-      "@/shared/backend/bot-protection/bot-protection.service.mock"
-    );
-    const { m } = await import("@/features/i18n");
-    const verifyHuman = mock(() =>
-      Effect.fail(
-        new BotDetectedError({ message: "Automated request detected" })
-      )
-    );
-    const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
-    const effect = prepareWorkspacePayState({
-      locale: "en-US",
-      checkoutSessionId: "session-id",
-      checkoutAttemptId: "attempt-id",
-      advertisedPriceToken: "invalid-but-bot-rejects-first",
-      reservation,
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(
-          accountAuthorityLayer,
-          BotProtectionServiceMock({ verifyHuman }),
-          CheckoutPricingServiceMock({})
+  test.each(["en-US", "cs-CZ"] as const)(
+    "rejects a classified bot before resolving downstream services in %s",
+    async (locale) => {
+      const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+      const { BotDetectedError } = await import(
+        "@/shared/backend/bot-protection/bot-protection.service"
+      );
+      const { BotProtectionServiceMock } = await import(
+        "@/shared/backend/bot-protection/bot-protection.service.mock"
+      );
+      const { m } = await import("@/features/i18n");
+      const verifyHuman = mock(() =>
+        Effect.fail(
+          new BotDetectedError({
+            message: "Automated request detected",
+            reason: "unverified_bot",
+          })
         )
-      )
-    ) as Effect.Effect<never, unknown, never>;
+      );
+      const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
+      const effect = prepareWorkspacePayState({
+        locale,
+        checkoutSessionId: "session-id",
+        checkoutAttemptId: "attempt-id",
+        advertisedPriceToken: "invalid-but-bot-rejects-first",
+        reservation,
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            accountAuthorityLayer,
+            BotProtectionServiceMock({ verifyHuman }),
+            CheckoutPricingServiceMock({})
+          )
+        )
+      ) as Effect.Effect<never, unknown, never>;
 
-    const error = await Effect.runPromise(Effect.flip(effect));
+      const error = await Effect.runPromise(Effect.flip(effect));
 
-    expect(error).toMatchObject({
-      _tag: "PublicSafeActionError",
-      message: m.reservationRateLimitMessage({}, { locale: "en-US" }),
-    });
-    expect(verifyHuman).toHaveBeenCalledWith({
-      verificationFailurePolicy: "allow",
-    });
-  });
+      expect(error).toMatchObject({
+        _tag: "PublicSafeActionError",
+        message: m.automatedRequestRejected({}, { locale }),
+      });
+      expect(verifyHuman).toHaveBeenCalledWith({
+        verificationFailurePolicy: "allow",
+        verifiedBots: { allow: customerAgentNames },
+      });
+    }
+  );
 });

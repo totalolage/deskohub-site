@@ -104,6 +104,7 @@ import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.se
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
   currentInstant,
@@ -897,7 +898,12 @@ const ensureContactEmailAcceptsMail = Effect.fn(
 export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
   function* (input: PreparePayStateInput) {
     const botProtection = yield* BotProtectionService;
-    yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
+    // Reservation form: the customer's own purchase path, so verified customer
+    // agents may continue; sign-in and payment still gate the order.
+    yield* botProtection.verifyHuman({
+      verificationFailurePolicy: "allow",
+      verifiedBots: { allow: customerAgentNames },
+    });
 
     const accountActivity = yield* OptionalAccountActivityGuard;
     const rememberedReferralCode = yield* readRememberedReferralCode.pipe(
@@ -1379,7 +1385,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           new PublicSafeActionError({
             message: Match.value(error).pipe(
               Match.tag("BotDetectedError", () =>
-                m.reservationRateLimitMessage({}, { locale: input.locale })
+                m.automatedRequestRejected({}, { locale: input.locale })
               ),
               Match.tag("UndeliverableContactEmailError", () =>
                 m.contactValidationEmailUndeliverable(
