@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { addRedaction } from "../runtime";
 import { judgeAgentEvalFacts } from "./judges";
-import { redactAgentEvalOutput } from "./redaction";
+import { redactAgentEvalOutput, redactAgentEvalValue } from "./redaction";
 
 // Synthetic sentinels only; none of them is a real identifier or secret.
 const bypass = "sentinel-bypass-0123456789";
@@ -55,5 +55,24 @@ describe("redactAgentEvalOutput", () => {
     const redacted = redactAgentEvalOutput(answer, [reservationId]);
     expect(redacted).toBe(answer);
     expect(judgeAgentEvalFacts(redacted).success).toBe(true);
+  });
+});
+
+describe("redactAgentEvalValue", () => {
+  test("redacts every string and keeps the shape the judge reads", () => {
+    const judgeInput = {
+      finalAnswer: `Booked ${reservationId}, see ${statusUrl}`,
+      parameters: { date: "2027-02-22", taskId: "open-space-payment" },
+      records: [{ note: `order ${orderId}`, paid: true, seats: 1 }],
+      statusPage: null,
+    };
+    const redacted = redactAgentEvalValue(judgeInput, [reservationId, orderId]);
+    const text = JSON.stringify(redacted);
+    for (const sentinel of [reservationId, orderId, "access="]) {
+      expect(text).not.toContain(sentinel);
+    }
+    expect(redacted.parameters).toEqual(judgeInput.parameters);
+    expect(redacted.records[0]).toMatchObject({ paid: true, seats: 1 });
+    expect(redacted.statusPage).toBeNull();
   });
 });

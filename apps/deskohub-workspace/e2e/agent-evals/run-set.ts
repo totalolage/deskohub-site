@@ -4,11 +4,16 @@ import { parseStandardSchema } from "@deskohub/standard-schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
 import { workspaceDir, writeJsonAtomically } from "../runtime";
+import type {
+  AgentEvalReservationRecord,
+  AgentEvalStatusPageCheck,
+} from "./judges";
 import {
   type AgentEvalRunResult,
   type AgentEvalSummary,
   formatAgentEvalSummaryMarkdown,
 } from "./results";
+import type { AgentEvalTaskParameters } from "./tasks";
 
 /**
  * Playwright clears the config's output directory on every invocation, so
@@ -91,6 +96,44 @@ export const writeAgentEvalRunResult = async (result: AgentEvalRunResult) => {
   await writeJsonAtomically(
     resolve(runResultsDirectory(result.runSetId), runResultFileName(result)),
     result
+  );
+};
+
+/**
+ * What the judge read for one run, kept beside the run result so the run can
+ * be judged again after the judges change: the facts task's redacted final
+ * answer, or a booking task's reservation records and status page check.
+ * Reservations are deleted or cancelled at cleanup, so this is the only copy.
+ */
+export type AgentEvalJudgeInput =
+  | {
+      readonly parameters: Extract<
+        AgentEvalTaskParameters,
+        { taskId: "facts" }
+      >;
+      readonly finalAnswer: string;
+    }
+  | {
+      readonly parameters: Exclude<
+        AgentEvalTaskParameters,
+        { taskId: "facts" }
+      >;
+      readonly records: readonly AgentEvalReservationRecord[];
+      readonly statusPage: AgentEvalStatusPageCheck | null;
+    };
+
+/** Writes a judge input; the caller redacts it first. */
+export const writeAgentEvalJudgeInput = async (
+  result: AgentEvalRunResult,
+  judgeInput: AgentEvalJudgeInput
+) => {
+  await writeJsonAtomically(
+    resolve(
+      agentEvalRunSetDirectory(result.runSetId),
+      "judge-inputs",
+      runResultFileName(result)
+    ),
+    judgeInput
   );
 };
 

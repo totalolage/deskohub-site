@@ -43,3 +43,25 @@ export const redactAgentEvalOutput = (
     .replace(uuidPattern, "[id]")
     .replace(longNumberPattern, "[number]");
 };
+
+/**
+ * Redacts every string in a JSON value, such as a saved judge input, the way
+ * `redactAgentEvalOutput` redacts text. Keys and non-string values stay.
+ */
+export const redactAgentEvalValue = <Value>(
+  value: Value,
+  identifiers: readonly string[]
+): Value => {
+  const redact = (node: unknown): unknown => {
+    if (typeof node === "string")
+      return redactAgentEvalOutput(node, identifiers);
+    if (Array.isArray(node)) return node.map(redact);
+    if (node !== null && typeof node === "object") {
+      return Object.fromEntries(
+        Object.entries(node).map(([key, entry]) => [key, redact(entry)])
+      );
+    }
+    return node;
+  };
+  return redact(value) as Value;
+};

@@ -44,14 +44,17 @@ import { selectAgentEvalTaskParameters } from "./parameters";
 import {
   type AgentEvalRunResources,
   proveAgentEvalRunOwnership,
+  readAgentEvalPaymentLedgerReservationIds,
   readAgentEvalReservations,
   readAgentEvalRunResources,
 } from "./records";
-import { redactAgentEvalOutput } from "./redaction";
+import { redactAgentEvalOutput, redactAgentEvalValue } from "./redaction";
 import type { AgentEvalRunResult } from "./results";
 import {
+  type AgentEvalJudgeInput,
   type AgentEvalRunSet,
   agentEvalJournalDirectory,
+  writeAgentEvalJudgeInput,
   writeAgentEvalRunResult,
 } from "./run-set";
 import { type AgentEvalTaskId, makeAgentEvalPrompt } from "./tasks";
@@ -123,7 +126,24 @@ export const reconcileAgentEvalRun = Effect.fn("reconcileAgentEvalRun")(
       runId,
       [owner]
     );
-    yield* reconcileWorkspaceE2EAccountJournals(datasourceConfig, prepared);
+    // The journal's reservation ids are the rows reconciliation deletes; its
+    // candidates are the ones it cancels in Dotypos. A reservation that
+    // reached payment is cancelled but keeps its payment ledger rows.
+    const retained = yield* readAgentEvalPaymentLedgerReservationIds(
+      prepared.flatMap((entry) => entry.journal.dotyposReservationIds)
+    );
+    yield* reconcileWorkspaceE2EAccountJournals(
+      datasourceConfig,
+      prepared.map((entry) => ({
+        ...entry,
+        journal: {
+          ...entry.journal,
+          dotyposReservationIds: entry.journal.dotyposReservationIds.filter(
+            (id) => !retained.includes(id)
+          ),
+        },
+      }))
+    );
   }
 );
 
@@ -345,8 +365,11 @@ export const runAgentEvalCase = async ({
     );
 
     let judgement: AgentEvalJudgement;
+    let judgeInput: AgentEvalJudgeInput;
     if (parameters.taskId === "facts") {
-      judgement = judgeAgentEvalFacts(harnessRun.response?.finalAnswer ?? "");
+      const finalAnswer = harnessRun.response?.finalAnswer ?? "";
+      judgement = judgeAgentEvalFacts(finalAnswer);
+      judgeInput = { finalAnswer, parameters };
     } else {
       const records = await runtime.runPromise(
         readAgentEvalReservations(datasourceConfig, accountId)
@@ -356,6 +379,7 @@ export const runAgentEvalCase = async ({
           ? await checkStatusPage(context, observations.statusPageUrl)
           : undefined;
       judgement = judgeAgentEvalReservation(parameters, records, statusPage);
+      judgeInput = { parameters, records, statusPage: statusPage ?? null };
     }
 
     const result: AgentEvalRunResult = {
@@ -396,6 +420,10 @@ export const runAgentEvalCase = async ({
       wallTimeMs,
     };
     await writeAgentEvalRunResult(result);
+    await writeAgentEvalJudgeInput(
+      result,
+      redactAgentEvalValue(judgeInput, identifiers)
+    );
     return result;
   } finally {
     try {
