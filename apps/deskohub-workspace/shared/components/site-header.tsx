@@ -10,8 +10,14 @@ import {
   LocaleSwitcherLabels,
   LocaleSwitcherLinks,
 } from "@/shared/components/locale-switcher-links";
+import {
+  AdministratorEntryButton,
+  AdministratorEntryMenuButton,
+  AdministratorRibbon,
+} from "@/shared/components/site-header-administrator-entry";
 import type {
   SiteHeaderAccountEntry,
+  SiteHeaderAdministratorEntry,
   SiteHeaderMenuItem,
 } from "@/shared/components/site-header-config";
 import { SiteHeaderLogo } from "@/shared/components/site-header-logo";
@@ -21,6 +27,7 @@ import { cn } from "@/shared/utils";
 
 type SiteHeaderProps = {
   account?: SiteHeaderAccountEntry;
+  administrator?: SiteHeaderAdministratorEntry;
   currentLocale: Locale;
   languageLabels: Record<Locale, string>;
   localePreference?: LocalePreferenceSaving;
@@ -135,7 +142,7 @@ function NavigationLink({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className="text-balance text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow"
+      className="text-balance text-center text-sm uppercase tracking-[0.08em] text-white/76 transition-colors hover:text-sunset-yellow xl:max-2xl:text-xs xl:max-2xl:tracking-[0.05em]"
       onClick={onClick}
     >
       {label}
@@ -158,6 +165,7 @@ function CurrentPageNavigationLink(props: Omit<NavigationLinkProps, "active">) {
 
 export function SiteHeader({
   account,
+  administrator,
   currentLocale,
   languageLabels,
   localePreference,
@@ -176,19 +184,19 @@ export function SiteHeader({
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-(--site-header-height) border-b border-white/10 bg-navy-blue/92 text-white backdrop-blur-md">
-      <div className="mx-auto flex h-full w-full max-w-8xl items-center justify-between gap-3 px-3 sm:gap-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-(--site-header-bar-height) w-full max-w-8xl items-center justify-between gap-3 px-3 sm:gap-4 sm:px-6 lg:px-8 xl:gap-2 xl:px-6 2xl:gap-3">
         <Link
           href={`/${currentLocale}`}
           aria-label="Deskohub Workspace"
           className="shrink-0"
           onClick={closeMenu}
         >
-          <SiteHeaderLogo />
+          <SiteHeaderLogo sharesBarWithNavigation />
         </Link>
 
         <nav
           aria-label={primaryNavigationLabel}
-          className="hidden items-center gap-4 xl:flex 2xl:gap-6"
+          className="hidden items-center gap-2.5 xl:flex 2xl:gap-3"
         >
           {links.map((link) => (
             <CurrentPageNavigationLink
@@ -199,7 +207,7 @@ export function SiteHeader({
           ))}
         </nav>
 
-        <div className="flex shrink-0 items-center gap-2 sm:gap-3 xl:gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3 xl:gap-2 2xl:gap-3">
           <Button
             asChild
             variant="secondary"
@@ -213,6 +221,13 @@ export function SiteHeader({
             </Link>
           </Button>
 
+          {administrator !== undefined && (
+            <AdministratorEntryButton
+              entry={administrator}
+              onNavigate={closeMenu}
+            />
+          )}
+
           {account !== undefined && (
             <AccountEntryLink entry={account} onClick={closeMenu} />
           )}
@@ -220,7 +235,7 @@ export function SiteHeader({
           <nav
             aria-label={languageSwitcherLabel}
             data-locale-switcher
-            className="hidden rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72 xl:block"
+            className="hidden rounded-full border border-white/12 bg-white/6 px-4 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72 xl:block xl:max-2xl:px-3 xl:max-2xl:tracking-[0.08em]"
           >
             <Suspense
               fallback={
@@ -262,16 +277,26 @@ export function SiteHeader({
         </div>
       </div>
 
+      {administrator !== undefined && (
+        <AdministratorRibbon entry={administrator} onNavigate={closeMenu} />
+      )}
+
       <div
         id="site-header-mobile-menu"
         className={cn(
-          "overflow-hidden bg-navy-blue/98 transition-[max-height,visibility] duration-300 motion-reduce:transition-none xl:hidden",
+          "bg-navy-blue/98 transition-[max-height,visibility] duration-300 motion-reduce:transition-none xl:hidden",
           mobileMenuOpen
-            ? "visible max-h-128 border-t border-white/10"
-            : "invisible max-h-0"
+            ? "visible max-h-[calc(100dvh-var(--site-header-height))] overflow-y-auto overscroll-contain border-t border-white/10"
+            : "invisible max-h-0 overflow-hidden"
         )}
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
+          {administrator !== undefined && (
+            <AdministratorEntryMenuButton
+              entry={administrator}
+              onNavigate={closeMenu}
+            />
+          )}
           <nav aria-label={mobilePrimaryNavigationLabel} className="grid gap-2">
             {account !== undefined && (
               <AccountEntryLink entry={account} mobile onClick={closeMenu} />

@@ -27,7 +27,7 @@ const withLocalePrefix = (pathname: string, locale: Locale): string =>
 
 const localeRouteSegment = "/[locale]";
 
-type StaticLocalizedPageRoute = Exclude<
+export type StaticLocalizedPageRoute = Exclude<
   Extract<AppRoutes, `${typeof localeRouteSegment}/${string}`>,
   `${typeof localeRouteSegment}/${string}[${string}`
 >;

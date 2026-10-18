@@ -1,0 +1,2 @@
+ALTER TABLE "legal_evidence_events" ADD COLUMN "acknowledgements" jsonb;--> statement-breakpoint
+ALTER TABLE "legal_evidence_events" ADD CONSTRAINT "legal_evidence_events_acknowledgements_check" CHECK ("acknowledgements" is null or jsonb_typeof("acknowledgements") = 'object');
