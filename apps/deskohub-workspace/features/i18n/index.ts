@@ -8,10 +8,10 @@ export {
   type Locale,
   locales,
 } from "./paraglide/runtime.js";
-export { publicPagePathnames } from "./public-pages";
 export {
   defaultLocale,
   getLocalizedDynamicPagePath,
   getLocalizedPagePath,
+  type StaticLocalizedPageRoute,
   withLocalePrefixAndSearch,
 } from "./routing";

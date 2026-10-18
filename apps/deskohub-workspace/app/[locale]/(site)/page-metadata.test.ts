@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { Metadata } from "next";
-import { locales, publicPagePathnames } from "@/features/i18n";
+import { locales } from "@/features/i18n";
+import { publicPages } from "@/features/public-pages";
 
 let requestLocale: string = "en-US";
 
@@ -38,7 +39,7 @@ const pageFileByPathname = new Map(
 );
 
 describe("public page metadata", () => {
-  for (const pathname of publicPagePathnames) {
+  for (const { pathname } of publicPages) {
     const suffix = pathname === "/" ? "" : pathname;
 
     for (const locale of locales) {
