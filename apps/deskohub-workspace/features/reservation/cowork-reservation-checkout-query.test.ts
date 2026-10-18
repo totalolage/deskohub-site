@@ -151,6 +151,43 @@ describe("getCoworkReservationSearchParams", () => {
     expect(openSpaceValues.monitorOption).toBeUndefined();
   });
 
+  test("asks for no workstation over the remembered one", () => {
+    const searchParams = getCoworkReservationSearchParams({
+      entryTier: "reserved-desk",
+      date: "2099-06-10",
+      coffee: true,
+      monitorOption: null,
+    });
+    const lastReservation = {
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    } as const;
+
+    expect(searchParams.get("monitorOption")).toBe("none");
+    const values = getReservationDefaultValuesFromSearchParams(
+      searchParams,
+      lastReservation
+    );
+    expect(values).toMatchObject({
+      entryTier: "reserved-desk",
+      date: "2099-06-10",
+      coffee: true,
+    });
+    expect(values.monitorOption).toBeUndefined();
+    // A link that leaves the workstation open still restores it.
+    expect(
+      getReservationDefaultValuesFromSearchParams(
+        getCoworkReservationSearchParams({
+          entryTier: "reserved-desk",
+          date: "2099-06-10",
+        }),
+        lastReservation
+      ).monitorOption
+    ).toBe("2x27-qhd");
+  });
+
   test("omits options that were not selected", () => {
     const searchParams = getCoworkReservationSearchParams({
       entryTier: "open-space",

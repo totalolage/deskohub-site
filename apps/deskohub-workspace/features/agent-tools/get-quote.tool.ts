@@ -186,7 +186,7 @@ const getCoworkSelection = Effect.fn("agentTools.getCoworkQuoteSelection")(
               locale,
               reservation: getCoworkAdvertisedPriceReservation(offer),
             },
-            reservationSearchParams: getCoworkReservationSearchParams(offer),
+            reservationSearchParams: getCoworkQuoteSearchParams(offer),
           }) satisfies QuoteSelection
       )
     )
@@ -270,6 +270,18 @@ const toCoworkOffer = ({
     monitorOption: input.monitor_option,
   }),
 });
+
+/**
+ * A quote names every option, so its link asks for no workstation instead of
+ * letting the page restore the customer's last one.
+ */
+const getCoworkQuoteSearchParams = (offer: ReturnType<typeof toCoworkOffer>) =>
+  getCoworkReservationSearchParams({
+    ...offer,
+    ...(getCoworkTierWorkstationAddon(offer.entryTier) !== "unavailable" && {
+      monitorOption: offer.monitorOption ?? null,
+    }),
+  });
 
 const getMeetingRoomSelection = Effect.fn(
   "agentTools.getMeetingRoomQuoteSelection"

@@ -3,7 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { Effect, type Schema } from "effect";
 import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import { m } from "@/features/i18n";
+import { getReservationDefaultValuesFromSearchParams } from "@/features/reservation/cowork-reservation-checkout-query";
 import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
+import { getOfficeReservationDefaultValuesFromSearchParams } from "@/features/reservation/office-reservation-checkout-query";
 import type { GetQuoteResult } from "./get-quote.tool";
 
 const {
@@ -108,6 +110,38 @@ describe("get_quote", () => {
     });
   });
 
+  test("links a Reserved Desk without a workstation over the customer's remembered one", async () => {
+    const date = workspaceDateFromToday(3);
+    const services = makeAgentToolTestServices();
+
+    const result = await quote(
+      { family: "cowork", date, tier: "reserved-desk" },
+      services
+    );
+    const restored = getReservationDefaultValuesFromSearchParams(
+      new URL(result.reservation_url).searchParams,
+      {
+        kind: "cowork",
+        entryTier: "reserved-desk",
+        coffee: true,
+        monitorOption: "2x27-qhd",
+      }
+    );
+
+    expect(result.total.amount).toBe(410);
+    expect(restored).toMatchObject({ entryTier: "reserved-desk", date });
+    expect(restored.monitorOption).toBeUndefined();
+    expect(
+      await advertisedTotal(
+        {
+          locale: "en-US",
+          reservation: getCoworkAdvertisedPriceReservation(restored),
+        },
+        services
+      )
+    ).toBe(result.total.amount);
+  });
+
   test("quotes a meeting-room booking exactly as the advertised price", async () => {
     const date = workspaceDateFromToday(5);
     const services = makeAgentToolTestServices();
@@ -136,6 +170,42 @@ describe("get_quote", () => {
       note: m.agentToolQuoteNote({}, { locale: "cs-CZ" }),
     });
     expect(result.total.amount).toBe(await advertisedTotal(request!, services));
+  });
+
+  test("links meeting-room and office selections over the customer's remembered options", async () => {
+    const date = workspaceDateFromToday(5);
+    const today = workspaceDateFromToday(0);
+
+    const meetingRoom = await quote({
+      family: "meeting-room",
+      date,
+      start_time: "14:00",
+      duration: "hour:4",
+    });
+    const office = await quote({
+      family: "office",
+      date: today,
+      end_date: workspaceDateFromToday(1),
+      seats: 2,
+    });
+
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        new URL(meetingRoom.reservation_url).searchParams,
+        undefined,
+        { kind: "meeting-room", duration: "day:1" }
+      )
+    ).toMatchObject({ duration: "hour:4", startDateTime: `${date}T14:00` });
+    expect(
+      getOfficeReservationDefaultValuesFromSearchParams(
+        new URL(office.reservation_url).searchParams,
+        {
+          lastReservation: { kind: "office", dayCount: 5, seats: 4 },
+          seatCapacity: 6,
+          startsOn: today,
+        }
+      )
+    ).toMatchObject({ startsOn: today, dayCount: 2, seats: 2 });
   });
 
   test("quotes today's whole meeting-room day in the afternoon and links the same selection", async () => {

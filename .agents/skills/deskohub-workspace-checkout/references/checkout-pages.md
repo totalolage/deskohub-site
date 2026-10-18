@@ -40,6 +40,7 @@ A signed-in, linked customer books with the account card by default.
 - `customer: "account"` makes the server replace the submitted name and email (and phone, when the profile has one) with the linked account contact and book for its Dotypos customer. The client can't pick another account.
 - "Book for someone else" submits the typed contact through the ordinary find-or-create path.
 - Prefill precedence: restored Pay state, explicit query values, the customer's last reservation of the family (cowork only when that offer is available on the form's date), then defaults.
+- A link that names a complete selection, such as an agent quote, names every option it fixes, so the last reservation fills nothing. `monitorOption=none` asks for a cowork offer without a workstation; links that leave an option out keep the last-reservation fallback.
 - An explicit `customer=account|contact` query parameter selects the mode. Otherwise contact query fields select contact mode, except on office links, which never prefill a contact.
 - The marketing checkbox is omitted when the account card books for a customer whose consent is active, and shown in contact mode or when consent can't be read.
 

@@ -50,8 +50,13 @@ const queryDateSchema = Schema.toStandardSchemaV1(
 const queryTierSchema = Schema.toStandardSchemaV1(
   Schema.Literals(workspaceCoworkCurrentTiers)
 );
+/** The `monitorOption` value of a link that asks for no workstation. */
+const noMonitorOptionQueryValue = "none";
 const queryMonitorOptionSchema = Schema.toStandardSchemaV1(
-  Schema.Literals(workspaceProductMonitorOptions)
+  Schema.Literals([
+    ...workspaceProductMonitorOptions,
+    noMonitorOptionQueryValue,
+  ] as const)
 );
 
 const decodeReservationCheckoutQuery = (
@@ -82,27 +87,32 @@ const decodeReservationCheckoutQuery = (
     ...(entryTier !== undefined && { entryTier }),
     ...(date !== undefined && { date }),
     ...(coffee !== undefined && { coffee: coffee === "true" }),
-    ...(monitorOption !== undefined && { monitorOption }),
+    ...(monitorOption !== undefined && {
+      monitorOption:
+        monitorOption === noMonitorOptionQueryValue ? undefined : monitorOption,
+    }),
     ...decodeReservationCheckoutCustomer(searchParams),
   };
 };
 
 /**
  * The query of a link that opens the cowork form on an offer, which
- * `getReservationDefaultValuesFromSearchParams` reads back.
+ * `getReservationDefaultValuesFromSearchParams` reads back. A `null`
+ * `monitorOption` asks for no workstation; leaving an option out lets the
+ * page fill it from the customer's last reservation.
  */
 export const getCoworkReservationSearchParams = (offer: {
   readonly entryTier: WorkspaceCoworkCurrentTier;
   readonly date?: string;
   readonly coffee?: boolean;
-  readonly monitorOption?: WorkspaceProductMonitorOption;
+  readonly monitorOption?: WorkspaceProductMonitorOption | null;
 }) =>
   new URLSearchParams({
     entryTier: offer.entryTier,
     ...(offer.date !== undefined && { date: offer.date }),
     ...(offer.coffee !== undefined && { coffee: String(offer.coffee) }),
     ...(offer.monitorOption !== undefined && {
-      monitorOption: offer.monitorOption,
+      monitorOption: offer.monitorOption ?? noMonitorOptionQueryValue,
     }),
   });
 
