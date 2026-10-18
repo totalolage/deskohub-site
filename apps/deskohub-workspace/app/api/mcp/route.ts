@@ -7,7 +7,6 @@ import {
   customerAgentTools,
   selectAgentTools,
 } from "@/features/agent-tools";
-import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
@@ -27,19 +26,17 @@ const customerTools = selectAgentTools(
 /**
  * The customer MCP server: stateless Streamable HTTP. POST carries every
  * request; GET and DELETE, which only sessions use, are answered with 405.
- * Browsers may call it only from the deployment's own origin.
+ * Browsers may call it only from the host serving the request. Each tool call
+ * is counted by the caller's agent category.
  */
 const handleMcpRequest = defineWorkspaceRoute(
-  { operation: "agentToolsMcp", cancellation: "interrupt-on-disconnect" },
+  {
+    operation: "agentToolsMcp",
+    cancellation: "interrupt-on-disconnect",
+    caller: "client",
+  },
   (request: Request) =>
-    getWorkspaceRuntimeCallbackOrigin.pipe(
-      Effect.flatMap((origin) =>
-        answerAgentToolMcpRequest({
-          tools: customerTools,
-          request,
-          allowedOriginHostnames: [origin.hostname],
-        })
-      ),
+    answerAgentToolMcpRequest({ tools: customerTools, request }).pipe(
       Effect.provide(
         Layer.merge(CustomerAgentToolsLive, AgentToolAdmission.Default)
       ),

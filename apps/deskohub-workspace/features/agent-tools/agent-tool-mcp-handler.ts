@@ -16,10 +16,17 @@ import {
   Scope,
   Stream,
 } from "effect";
+import { scheduleAgentTrafficEvent } from "@/shared/backend/agent-traffic/agent-traffic-events";
+import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { currentInstant } from "@/shared/utils/temporal";
 import { type AgentTool, getRequestedAgentToolLocale } from "./agent-tool";
 import { AgentToolAdmission } from "./agent-tool-admission.service";
-import { AgentToolError, toAgentToolErrorResult } from "./agent-tool-error";
+import {
+  AgentToolError,
+  type AgentToolErrorCode,
+  toAgentToolErrorResult,
+} from "./agent-tool-error";
 
 /** The version of the tool contract agents see; bump it on breaking changes. */
 const agentToolServerVersion = "1.0.0";
@@ -36,9 +43,15 @@ const agentToolServerInstructions = [
 /**
  * Answers one MCP request with a set of agent tools: stateless Streamable
  * HTTP with a fresh server per request. Tools emit no progress messages, so
- * the SDK answers 2026-era calls with JSON. A request whose
- * `Origin` names another site is rejected with 403; clients that send no
- * `Origin`, such as hosted agent connectors, are served.
+ * the SDK answers 2026-era calls with JSON. A browser may call only from the
+ * host that serves the request, so a request whose `Origin` names another
+ * site is rejected with 403. Clients that send no `Origin`, such as hosted
+ * agent connectors, are served.
+ *
+ * The host comes from the request itself, so every domain and alias of the
+ * deployment serves its own pages. That guards against DNS rebinding only
+ * where the platform routes no foreign hostname to the deployment, as Vercel
+ * routes only a project's own domains.
  *
  * Tool calls run as fibers of the returned Effect, so they share its
  * services, request context, and trace, and are interrupted with it.
@@ -46,15 +59,12 @@ const agentToolServerInstructions = [
 export const answerAgentToolMcpRequest = <R>({
   tools,
   request,
-  allowedOriginHostnames,
 }: {
   readonly tools: ReadonlyArray<AgentTool<R>>;
   readonly request: Request;
-  /** Hostnames a browser `Origin` may name, such as the deployment's own. */
-  readonly allowedOriginHostnames: ReadonlyArray<string>;
 }) =>
   Option.fromNullishOr(
-    originValidationResponse(request, [...allowedOriginHostnames])
+    originValidationResponse(request, [new URL(request.url).hostname])
   ).pipe(
     Option.match({
       onSome: (rejection) =>
@@ -243,13 +253,31 @@ const callAgentTool = <R>({
         structuredContent: result,
       })
     ),
+    Effect.tap(() => recordAgentToolCall(tool.name, "success")),
     Effect.catchTag("AgentToolError", (error) =>
       reportAgentToolError(error).pipe(
+        Effect.andThen(recordAgentToolCall(tool.name, error.code)),
         Effect.as(toToolErrorResult(error, getRequestedAgentToolLocale(args)))
       )
     ),
     Effect.annotateLogs({ agentTool: tool.name }),
     Effect.withSpan(`agentTools.${tool.name}`)
+  );
+
+/** Counts the call by the caller's agent category, after the response. */
+const recordAgentToolCall = (
+  tool: string,
+  outcome: "success" | AgentToolErrorCode
+) =>
+  Effect.all({ traffic: CurrentAgentTraffic, timestamp: currentInstant }).pipe(
+    Effect.flatMap(({ traffic, timestamp }) =>
+      scheduleAgentTrafficEvent({
+        event: "agent tool call",
+        traffic,
+        properties: { tool, outcome },
+        timestamp,
+      })
+    )
   );
 
 const reportAgentToolError = (error: AgentToolError) =>

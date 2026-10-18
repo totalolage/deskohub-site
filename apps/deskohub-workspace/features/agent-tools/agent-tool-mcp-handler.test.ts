@@ -1,15 +1,31 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   type CallToolResult,
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { Effect, Layer, Schema } from "effect";
-import { agentToolLocaleField, defineAgentTool } from "./agent-tool";
-import { AgentToolAdmission } from "./agent-tool-admission.service";
-import { answerAgentToolMcpRequest } from "./agent-tool-mcp-handler";
+import type { AgentTrafficEvent } from "@/shared/backend/agent-traffic/agent-traffic-events";
+import { CurrentAgentTraffic } from "@/shared/backend/workspace-request-context";
+
+const agentTrafficEvents = await import(
+  "@/shared/backend/agent-traffic/agent-traffic-events"
+);
+
+const scheduledEvents: AgentTrafficEvent[] = [];
+mock.module("@/shared/backend/agent-traffic/agent-traffic-events", () => ({
+  ...agentTrafficEvents,
+  scheduleAgentTrafficEvent: (event: AgentTrafficEvent) =>
+    Effect.sync(() => {
+      scheduledEvents.push(event);
+    }),
+}));
+
+const { agentToolLocaleField, defineAgentTool } = await import("./agent-tool");
+const { AgentToolAdmission } = await import("./agent-tool-admission.service");
+const { answerAgentToolMcpRequest } = await import("./agent-tool-mcp-handler");
 
 const endpoint = "http://deskohub.test/api/mcp";
 
@@ -40,27 +56,37 @@ const slowTool = defineAgentTool({
     ),
 });
 
-const admitAll = Layer.succeed(AgentToolAdmission, {
-  isCallAllowed: () => Effect.succeed(true),
-});
-
-const answer = (request: Request) =>
+const answer = (request: Request, admitted = true) =>
   Effect.runPromise(
-    answerAgentToolMcpRequest({
-      tools: [slowTool],
-      request,
-      allowedOriginHostnames: ["deskohub.test"],
-    }).pipe(Effect.provide(admitAll))
+    answerAgentToolMcpRequest({ tools: [slowTool], request }).pipe(
+      Effect.provide(
+        Layer.succeed(AgentToolAdmission, {
+          isCallAllowed: () => Effect.succeed(admitted),
+        })
+      ),
+      Effect.provideService(CurrentAgentTraffic, {
+        category: "ai_user_agent",
+        name: "claude",
+      })
+    )
   );
 
-const callLegacy = (args: Schema.JsonObject) =>
+const callLegacy = (
+  args: Schema.JsonObject,
+  {
+    url = endpoint,
+    origin,
+    admitted,
+  }: { url?: string; origin?: string; admitted?: boolean } = {}
+) =>
   answer(
-    new Request(endpoint, {
+    new Request(url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
         "mcp-protocol-version": "2025-11-25",
+        ...(origin !== undefined && { origin }),
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
@@ -68,7 +94,8 @@ const callLegacy = (args: Schema.JsonObject) =>
         method: "tools/call",
         params: { name: "slow_echo", arguments: args },
       }),
-    })
+    }),
+    admitted
   );
 
 const readEventStreamResult = async (response: Response) => {
@@ -79,6 +106,34 @@ const readEventStreamResult = async (response: Response) => {
     ?.slice("data:".length);
   return JSON.parse(data ?? "null")?.result as CallToolResult | undefined;
 };
+
+/** Connects a 2026-era client that sends `origin`, as a browser page would. */
+const connectClient = async ({
+  url = endpoint,
+  origin,
+}: {
+  url?: string;
+  origin?: string;
+} = {}) => {
+  const client = new Client(
+    { name: "handler-test", version: "1.0.0" },
+    { versionNegotiation: { mode: "auto" } }
+  );
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(url), {
+      fetch: (input: string | URL | Request, init?: RequestInit) => {
+        const request = new Request(input, init);
+        if (origin !== undefined) request.headers.set("origin", origin);
+        return answer(request);
+      },
+    })
+  );
+  return client;
+};
+
+beforeEach(() => {
+  scheduledEvents.length = 0;
+});
 
 describe("answerAgentToolMcpRequest", () => {
   test("keeps a 2025-era call running until its event stream ends", async () => {
@@ -92,16 +147,7 @@ describe("answerAgentToolMcpRequest", () => {
   });
 
   test("answers a slow call on the 2026 leg", async () => {
-    const client = new Client(
-      { name: "handler-test", version: "1.0.0" },
-      { versionNegotiation: { mode: "auto" } }
-    );
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(endpoint), {
-        fetch: (input: string | URL | Request, init?: RequestInit) =>
-          answer(new Request(input, init)),
-      })
-    );
+    const client = await connectClient();
 
     const result = await client.callTool({
       name: "slow_echo",
@@ -122,5 +168,89 @@ describe("answerAgentToolMcpRequest", () => {
     }
 
     expect(interruptions).toBe(before + 1);
+  });
+
+  // Vercel routes only the project's own domains and aliases to a deployment.
+  const servingHosts = [
+    ["production", "workspace.deskohub.cz"],
+    ["preview", "deskohub-workspace-git-feature-totalolage.vercel.app"],
+    ["custom domain", "book.example.cz"],
+  ] as const;
+
+  for (const [kind, host] of servingHosts) {
+    const url = `https://${host}/api/mcp`;
+    const ownOrigin = `https://${host}`;
+
+    test(`serves a browser on the ${kind} host's own origin on both protocol versions`, async () => {
+      const legacy = await callLegacy({ seats: 4 }, { url, origin: ownOrigin });
+      const client = await connectClient({ url, origin: ownOrigin });
+      const current = await client.callTool({
+        name: "slow_echo",
+        arguments: { seats: 5 },
+      });
+      await client.close();
+
+      expect(legacy.status).toBe(200);
+      expect(await readEventStreamResult(legacy)).toMatchObject({
+        structuredContent: { seats: 4 },
+      });
+      expect(current.structuredContent).toEqual({ seats: 5 });
+    });
+
+    test(`rejects other and opaque origins on the ${kind} host on both protocol versions`, async () => {
+      for (const origin of [
+        "https://attacker.example",
+        "null",
+        `https://${host}.attacker.example`,
+      ]) {
+        const legacy = await callLegacy({ seats: 1 }, { url, origin });
+
+        expect(legacy.status).toBe(403);
+        await expect(connectClient({ url, origin })).rejects.toThrow();
+      }
+    });
+  }
+
+  test("rejects a browser on another of the deployment's hosts", async () => {
+    const response = await callLegacy(
+      { seats: 1 },
+      {
+        url: "https://deskohub-workspace-git-feature-totalolage.vercel.app/api/mcp",
+        origin: "https://workspace.deskohub.cz",
+      }
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  test("counts each tool call by the caller's agent category", async () => {
+    await readEventStreamResult(await callLegacy({ seats: 3 }));
+    await readEventStreamResult(await callLegacy({ seats: "three" }));
+
+    expect(scheduledEvents).toEqual([
+      {
+        event: "agent tool call",
+        traffic: { category: "ai_user_agent", name: "claude" },
+        properties: { tool: "slow_echo", outcome: "success" },
+        timestamp: expect.any(Temporal.Instant),
+      },
+      {
+        event: "agent tool call",
+        traffic: { category: "ai_user_agent", name: "claude" },
+        properties: { tool: "slow_echo", outcome: "invalid_input" },
+        timestamp: expect.any(Temporal.Instant),
+      },
+    ]);
+  });
+
+  test("counts a rate-limited call by its error code", async () => {
+    const response = await callLegacy({ seats: 1 }, { admitted: false });
+
+    expect(await readEventStreamResult(response)).toMatchObject({
+      isError: true,
+    });
+    expect(scheduledEvents).toMatchObject([
+      { properties: { tool: "slow_echo", outcome: "rate_limited" } },
+    ]);
   });
 });

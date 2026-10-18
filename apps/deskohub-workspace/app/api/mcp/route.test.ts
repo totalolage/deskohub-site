@@ -6,7 +6,21 @@ import type {
   InitializeResult,
   ListToolsResult,
 } from "@modelcontextprotocol/client";
-import type { Schema } from "effect";
+import { Effect, type Schema } from "effect";
+import type { AgentTrafficEvent } from "@/shared/backend/agent-traffic/agent-traffic-events";
+
+const agentTrafficEvents = await import(
+  "@/shared/backend/agent-traffic/agent-traffic-events"
+);
+
+const scheduledEvents: AgentTrafficEvent[] = [];
+mock.module("@/shared/backend/agent-traffic/agent-traffic-events", () => ({
+  ...agentTrafficEvents,
+  scheduleAgentTrafficEvent: (event: AgentTrafficEvent) =>
+    Effect.sync(() => {
+      scheduledEvents.push(event);
+    }),
+}));
 
 let rateLimit: { rateLimited: boolean; error?: "not-found" | "blocked" } = {
   rateLimited: false,
@@ -138,6 +152,7 @@ describe("customer MCP route", () => {
   beforeEach(() => {
     rateLimit = { rateLimited: false };
     checkRateLimit.mockClear();
+    scheduledEvents.length = 0;
   });
 
   test("initializes as the DH Workspace server with booking instructions", async () => {
@@ -423,5 +438,26 @@ describe("customer MCP route", () => {
       expect(connecting).rejects.toThrow();
       await connecting.catch(() => undefined);
     });
+  });
+
+  test("counts a tool call by the agent category of the request's own headers", async () => {
+    const response = await postRpc(
+      "tools/call",
+      { name: "list_offerings", arguments: {} },
+      {
+        "user-agent":
+          "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +https://www.anthropic.com)",
+      }
+    );
+    await readJsonRpc(response);
+
+    expect(scheduledEvents).toEqual([
+      {
+        event: "agent tool call",
+        traffic: { category: "ai_user_agent", name: "claude" },
+        properties: { tool: "list_offerings", outcome: "success" },
+        timestamp: expect.any(Temporal.Instant),
+      },
+    ]);
   });
 });

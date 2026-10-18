@@ -39,17 +39,20 @@ type McpQuoteContent = {
 
 /**
  * Sends the SDK client's requests through the Playwright context, so they
- * carry its preview bypass cookie and show up in the trace.
+ * carry its preview bypass cookie and show up in the trace. With `origin`,
+ * they also carry the `Origin` a browser page on that origin would send.
  */
 const contextFetch =
-  (context: BrowserContext): FetchLike =>
+  (context: BrowserContext, origin?: string): FetchLike =>
   async (url, init) => {
     if (init?.body != null && typeof init.body !== "string") {
       throw new TypeError("The MCP client sent a non-text request body");
     }
+    const requestHeaders = new Headers(init?.headers);
+    if (origin !== undefined) requestHeaders.set("origin", origin);
     const response = await context.request.fetch(url.toString(), {
       method: init?.method ?? "GET",
-      headers: Object.fromEntries(new Headers(init?.headers)),
+      headers: Object.fromEntries(requestHeaders),
       data: init?.body ?? undefined,
       timeout: workspaceE2ETimeouts.customerMcpRequest,
     });
@@ -72,10 +75,15 @@ const contextFetch =
 
 // `legacy` is the SDK default: the 2025-era `initialize` handshake, answered
 // as an event stream. `auto` first probes the 2026-era `server/discover`.
-for (const versionNegotiation of [
-  "legacy",
-  "auto",
-] as const satisfies readonly VersionNegotiationMode[]) {
+// The legacy client sends no `Origin`, as a hosted connector does; the auto
+// client sends the preview's own, as a page on the deployment would.
+for (const { versionNegotiation, sendsOwnOrigin } of [
+  { versionNegotiation: "legacy", sendsOwnOrigin: false },
+  { versionNegotiation: "auto", sendsOwnOrigin: true },
+] as const satisfies readonly {
+  versionNegotiation: VersionNegotiationMode;
+  sendsOwnOrigin: boolean;
+}[]) {
   test(`serves public offerings to an MCP client in ${versionNegotiation} version negotiation`, async ({
     baseURL,
     context,
@@ -106,7 +114,12 @@ for (const versionNegotiation of [
           await client.connect(
             new StreamableHTTPClientTransport(
               new URL("/api/mcp", previewOrigin),
-              { fetch: contextFetch(context) }
+              {
+                fetch: contextFetch(
+                  context,
+                  sendsOwnOrigin ? previewOrigin : undefined
+                ),
+              }
             ),
             requestOptions
           );
