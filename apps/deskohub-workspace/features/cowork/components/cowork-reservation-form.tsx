@@ -56,6 +56,7 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
+import { useReservationSelectionUrl } from "@/features/reservation/components/use-reservation-selection-url";
 import {
   getCoworkCoffeeAdvertisedPriceRequest,
   getCoworkFormAdvertisedPriceRequests,
@@ -69,6 +70,7 @@ import {
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import {
+  getCoworkReservationSelectionSearchParams,
   getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
 } from "@/features/reservation/cowork-reservation-checkout-query";
@@ -174,6 +176,14 @@ export function CoworkReservationForm({
       control: form.control,
       name: ["entryTier", "date", "coffee", "monitorOption"],
     });
+  useReservationSelectionUrl(
+    getCoworkReservationSelectionSearchParams({
+      entryTier: selectedTier,
+      date: selectedDate,
+      coffee: selectedCoffee,
+      monitorOption: selectedMonitorOption,
+    })
+  );
   const showCoffeeAddon = getCoworkTierCoffeeAddon(selectedTier) === "optional";
   const showWorkstationAddon =
     getCoworkTierWorkstationAddon(selectedTier) === "optional";

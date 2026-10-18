@@ -3,12 +3,16 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import {
   activateHydratedBrowserElement,
   openBrowserPage,
+  readBrowserUrl,
   waitForBrowserCondition,
   waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
 import { getPrefilledReservationConditionScript } from "../browser-scripts";
-import { submitReservationForPayPage } from "../checkout/payment";
+import {
+  prepareReservationSelection,
+  submitReservationForPayPage,
+} from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import { tryWorkspaceE2ESync } from "../errors";
@@ -31,6 +35,7 @@ export const assertReservationReplacement = ({
   data,
   datasourceConfig,
   initialHoldStep,
+  prepareReservationScript,
   replacementData,
   reservationPath,
   run,
@@ -43,6 +48,7 @@ export const assertReservationReplacement = ({
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
   initialHoldStep?: (row: CheckoutRow) => WorkspaceE2EStep<void>;
+  prepareReservationScript: (data: CheckoutData) => string;
   replacementData: CheckoutData;
   reservationPath: string;
   run: Runner;
@@ -90,7 +96,7 @@ export const assertReservationReplacement = ({
       yield* runStep(initialHoldStep(firstRow));
     }
 
-    const secondOrderId = yield* runStep({
+    yield* runStep({
       execute: Effect.gen(function* () {
         yield* returnToPrefilledReservation({
           data,
@@ -99,6 +105,20 @@ export const assertReservationReplacement = ({
           session,
           timeouts: config.timeouts,
         });
+        yield* editAndReloadRestoredReservation({
+          config,
+          prepareReservationScript: prepareReservationScript(replacementData),
+          replacementData,
+          reservationPath,
+          run,
+          session,
+        });
+      }),
+      id: "edit-and-reload-prefilled-reservation",
+      timeoutMs: config.timeouts.checkoutStart,
+    });
+    const secondOrderId = yield* runStep({
+      execute: Effect.gen(function* () {
         return yield* submitReservationForPayPage({
           onOrderId: (orderId) => {
             state.orderId = orderId;
@@ -216,6 +236,67 @@ const returnToPrefilledReservation = ({
       {
         timeoutMs: timeouts.uiTransition,
       }
+    );
+  });
+
+/**
+ * Edits the restored reservation through the form, then reloads the URL the
+ * page wrote. The reload must show the edit while the URL keeps the signed
+ * restoration, so the resubmission still replaces the first hold.
+ */
+const editAndReloadRestoredReservation = ({
+  config,
+  prepareReservationScript,
+  replacementData,
+  reservationPath,
+  run,
+  session,
+}: {
+  config: WorkspaceE2EConfig;
+  prepareReservationScript: string;
+  replacementData: CheckoutData;
+  reservationPath: string;
+  run: Runner;
+  session: string;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const restoredUrl = yield* readBrowserUrl(run, session);
+    yield* prepareReservationSelection({
+      prepareScript: prepareReservationScript,
+      run,
+      session,
+      timeoutMs: config.timeouts.checkoutStart,
+      timeouts: config.timeouts,
+    });
+    const editedUrl = yield* waitForBrowserUrl({
+      description: "edited selection written beside the restoration",
+      matches: (value) => {
+        const url = parseUrl(value);
+        return (
+          value !== restoredUrl &&
+          url?.pathname === reservationPath &&
+          url.searchParams.has("payState")
+        );
+      },
+      run,
+      session,
+      timeoutMs: config.timeouts.uiTransition,
+    });
+    yield* openBrowserPage(config, run, session, editedUrl, {
+      timeoutMs: config.timeouts.browserNavigation,
+    });
+    yield* waitForBrowserReactHydration(
+      run,
+      session,
+      "#reservation-marketing-consent",
+      { timeoutMs: config.timeouts.uiTransition }
+    );
+    yield* waitForBrowserCondition(
+      run,
+      session,
+      "reloaded edit over the restored reservation",
+      getPrefilledReservationConditionScript(replacementData),
+      { timeoutMs: config.timeouts.uiTransition }
     );
   });
 

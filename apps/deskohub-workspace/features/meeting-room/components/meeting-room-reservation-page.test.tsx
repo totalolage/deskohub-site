@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
 import { Children, type ReactElement, type ReactNode } from "react";
+import { checkoutSessionIdSchema } from "@/features/checkout/checkout-identifiers";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import { meetingRoomReservationDurations } from "@/features/reservation/meeting-room-reservation-duration";
@@ -10,6 +11,9 @@ import type { MeetingRoomReservationForm } from "./meeting-room-reservation-form
 
 const adaEmail = testEmailAddress("ada");
 const overrideEmail = testEmailAddress("override");
+const restoredCheckoutSessionId = checkoutSessionIdSchema.make(
+  "restored-checkout-session"
+);
 
 mock.module("next/root-params", () => ({
   locale: () => Promise.resolve("en-US"),
@@ -227,10 +231,8 @@ test("prefills the fresh form from checkout query defaults", async () => {
   }
 });
 
-test("keeps restored reservation values over checkout query defaults", async () => {
-  const originalNow = Temporal.Now.instant;
-  Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
-  const restoredReservation = normalizedMeetingRoomReservationOrderSchema.make({
+const restoredFourHourReservation =
+  normalizedMeetingRoomReservationOrderSchema.make({
     kind: "meeting-room",
     duration: { unit: "hour", amount: 4 },
     reservationDate: "2099-07-30",
@@ -241,22 +243,54 @@ test("keeps restored reservation values over checkout query defaults", async () 
     phone: "+420777777777",
   });
 
+test("keeps restored reservation values over checkout query contact details", async () => {
+  const originalNow = Temporal.Now.instant;
+  Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
+
   try {
     const form = (await renderMeetingRoomReservationForm({
-      initialReservation: restoredReservation,
+      initialReservation: restoredFourHourReservation,
       locale: "en-US",
-      searchParams: {
-        duration: "hour:1",
-        name: "Query Override",
-        startDateTime: "2099-08-12T09:00",
-      },
+      searchParams: { name: "Query Override", email: overrideEmail },
     })) as ReactElement<Parameters<typeof MeetingRoomReservationForm>[0]>;
 
     expect(form.props.initialValues).toMatchObject({
       startDateTime: "2099-07-30T17:00",
       duration: "hour:4",
       name: "Ada Lovelace",
+      email: adaEmail,
     });
+  } finally {
+    Temporal.Now.instant = originalNow;
+  }
+});
+
+test("reopens the selection edited after returning from Pay with the restored checkout", async () => {
+  const originalNow = Temporal.Now.instant;
+  Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
+
+  try {
+    const form = (await renderMeetingRoomReservationForm({
+      checkoutSessionId: restoredCheckoutSessionId,
+      initialReservation: restoredFourHourReservation,
+      locale: "en-US",
+      replacementToken: "restored-pay-state",
+      searchParams: {
+        duration: "hour:1",
+        name: "Query Override",
+        payState: "restored-pay-state",
+        startDateTime: "2099-08-12T09:00",
+      },
+    })) as ReactElement<Parameters<typeof MeetingRoomReservationForm>[0]>;
+
+    expect(form.props.initialValues).toMatchObject({
+      startDateTime: "2099-08-12T09:00",
+      duration: "hour:1",
+      name: "Ada Lovelace",
+      email: adaEmail,
+    });
+    expect(form.props.checkoutSessionId).toBe(restoredCheckoutSessionId);
+    expect(form.props.replacementToken).toBe("restored-pay-state");
   } finally {
     Temporal.Now.instant = originalNow;
   }

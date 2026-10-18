@@ -447,6 +447,47 @@ test("restores a signed current-tier open-space reservation into the form", asyn
   expectPreloadedFormAvailability(form);
 });
 
+test("reopens the cowork selection edited after returning from Pay with the restored checkout", async () => {
+  const restoredReservedDeskReservation = decodeReservedDeskReservation({
+    kind: "cowork",
+    name: "Jan Novák",
+    email: janEmail,
+    phone: "+420712345678",
+    billing: defaultReservationBillingSelection,
+    entryTier: "reserved-desk",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+    date: "2099-08-01",
+  }) as NormalizedCoworkReservationOrder;
+
+  const form = (await renderCoworkReservationForm({
+    locale: "en-US",
+    initialReservation: restoredReservedDeskReservation,
+    replacementToken: "restored-pay-state",
+    searchParams: {
+      coffee: "true",
+      date: "2099-08-03",
+      entryTier: "reserved-desk",
+      monitorOption: "none",
+      name: "Query Override",
+      payState: "restored-pay-state",
+    },
+  })) as CoworkFormElement;
+
+  expect(form.props.initialValues).toMatchObject({
+    entryTier: "reserved-desk",
+    coffee: true,
+    monitorOption: undefined,
+    date: "2099-08-03",
+    name: "Jan Novák",
+    email: janEmail,
+  });
+  expect(form.props.replacementToken).toBe("restored-pay-state");
+  expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toEqual(
+    everyCoworkPriceRequest("en-US", "2099-08-03")
+  );
+});
+
 test("restores a signed current-tier reserved-desk reservation into the form", async () => {
   const restoredReservedDeskReservation = decodeReservedDeskReservation({
     kind: "cowork",

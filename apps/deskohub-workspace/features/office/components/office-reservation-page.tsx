@@ -10,11 +10,13 @@ import { createReservationPage } from "@/features/reservation/components/create-
 import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
-  getOfficeReservationDefaultValues,
   getOfficeReservationEndsOn,
   type NormalizedOfficeReservationOrder,
 } from "@/features/reservation/office-reservation";
-import { getOfficeReservationDefaultValuesFromSearchParams } from "@/features/reservation/office-reservation-checkout-query";
+import {
+  getOfficeReservationDefaultValuesFromSearchParams,
+  getOfficeRestoredReservationValues,
+} from "@/features/reservation/office-reservation-checkout-query";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
@@ -69,14 +71,17 @@ export async function renderOfficeReservationContent({
 }) {
   const today = decodePlainDate(getCurrentWorkspaceDate().toString());
   const restoredInitialValues = initialReservation
-    ? getOfficeReservationDefaultValues(initialReservation)
+    ? getOfficeRestoredReservationValues(initialReservation, searchParams, {
+        seatCapacity,
+        today,
+      })
     : undefined;
   const restoredOrQueryValues =
     restoredInitialValues ??
     getOfficeReservationDefaultValuesFromSearchParams(searchParams, {
       lastReservation: existingCustomer?.lastReservation,
       seatCapacity,
-      startsOn: today,
+      today,
     });
   const { existingCustomer: existingCustomerForm, initialValues } =
     existingCustomer
@@ -134,7 +139,6 @@ export async function renderOfficeReservationContent({
         seatCapacity={seatCapacity}
         initialAdvertisedPrices={initialAdvertisedPrices}
         initialAvailability={initialAvailability}
-        initialReservation={initialReservation}
         initialValues={initialValues}
         locale={locale}
         replacementToken={replacementToken}

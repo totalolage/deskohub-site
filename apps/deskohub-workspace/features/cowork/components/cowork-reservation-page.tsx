@@ -13,7 +13,7 @@ import type {
   NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import {
-  getReservationDefaultValuesFromPayState,
+  getCoworkRestoredReservationValues,
   getReservationDefaultValuesFromSearchParams,
 } from "@/features/reservation/cowork-reservation-checkout-query";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
@@ -135,7 +135,7 @@ export async function renderCoworkReservationContent({
   const today = getCurrentWorkspaceDate().toString();
   const restoredOrQueryValues = initialReservation
     ? withWorkspaceDate(
-        getReservationDefaultValuesFromPayState(initialReservation),
+        getCoworkRestoredReservationValues(initialReservation, searchParams),
         today
       )
     : await getCoworkQueryValues(

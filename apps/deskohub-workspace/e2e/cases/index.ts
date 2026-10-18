@@ -1,7 +1,10 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
-import { getSubmitCoworkReservationScript } from "../browser-scripts";
+import {
+  getPrepareCoworkAdvertisedPriceScript,
+  getSubmitCoworkReservationScript,
+} from "../browser-scripts";
 import { workspaceE2EMaximumSameDateCoworkReservations } from "../capacity";
 import {
   checkoutFlows,
@@ -14,7 +17,6 @@ import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
   type WorkspaceE2EError,
-  workspaceE2EError,
 } from "../errors";
 import { discountCodeFixtures } from "../integrations/discount-fixtures";
 import type { E2EDotyposDiscountGroup } from "../integrations/dotypos";
@@ -51,6 +53,7 @@ import {
 } from "./payment-terminal";
 import { makeReservationLinkE2ECases } from "./reservation-links";
 import { assertReservationReplacement } from "./reservation-reuse";
+import { makeReservationUrlStateE2ECases } from "./reservation-url-state";
 
 export type WorkspaceE2EPreparation = {
   readonly customerDiscountGroup: E2EDotyposDiscountGroup;
@@ -231,6 +234,7 @@ export const makeWorkspaceE2ECases = ({
             config,
             data: reservationReplacementData,
             datasourceConfig,
+            prepareReservationScript: getPrepareCoworkAdvertisedPriceScript,
             replacementData: editedReservationReplacementData,
             reservationPath: "/en-US/reservation/cowork",
             run,
@@ -339,6 +343,20 @@ export const makeWorkspaceE2ECases = ({
           datasourceConfig,
           flowStates,
           preparation: preparation.meetingRoom,
+          run,
+        }))
+      );
+
+      cases.push(
+        ...(yield* makeReservationUrlStateE2ECases({
+          allocation,
+          config,
+          datasourceConfig,
+          preparation: {
+            discounts: discountPreparation,
+            meetingRoom: preparation.meetingRoom,
+            office: preparation.office,
+          },
           run,
         }))
       );

@@ -7,11 +7,11 @@ import { preloadPageAvailability } from "@/features/reservation/backend/workspac
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
 import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
+import type { NormalizedMeetingRoomReservationOrder } from "@/features/reservation/meeting-room-reservation";
 import {
-  getMeetingRoomReservationDefaultValues,
-  type NormalizedMeetingRoomReservationOrder,
-} from "@/features/reservation/meeting-room-reservation";
-import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
+  getMeetingRoomReservationDefaultValuesFromSearchParams,
+  getMeetingRoomRestoredReservationValues,
+} from "@/features/reservation/meeting-room-reservation-checkout-query";
 import { getReservationCustomerQueryMode } from "@/features/reservation/reservation-checkout-query";
 import {
   type CustomerLastReservationForKind,
@@ -82,7 +82,7 @@ export async function renderMeetingRoomReservationContent({
   readonly submittedCode?: CanonicalPromotionCode;
 }) {
   const restoredInitialValues = initialReservation
-    ? getMeetingRoomReservationDefaultValues(initialReservation)
+    ? getMeetingRoomRestoredReservationValues(initialReservation, searchParams)
     : undefined;
   // The presence of a signed reservation decides the restored path even when
   // it has ended: the fallback must not consume public query values.
