@@ -53,6 +53,43 @@ describe("Workspace Effect execution", () => {
   });
 });
 
+describe("runWorkspaceEffect", () => {
+  test("keeps the function alive until an unawaited run settles", async () => {
+    const vercelRequestContext = Symbol.for("@vercel/request-context");
+    const globals = globalThis as Record<symbol, unknown>;
+    const previousContext = globals[vercelRequestContext];
+    const registered: Promise<unknown>[] = [];
+    globals[vercelRequestContext] = {
+      get: () => ({
+        waitUntil: (promise: Promise<unknown>) => registered.push(promise),
+      }),
+    };
+    const error = spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      const succeeded = Effect.succeed("loaded").pipe(
+        runWorkspaceEffect("test.background-success")
+      );
+      const failed = Effect.fail("unavailable").pipe(
+        runWorkspaceEffect("test.background-failure")
+      );
+
+      expect(registered).toHaveLength(2);
+      await expect(succeeded).resolves.toBe("loaded");
+      await expect(failed.then(String, () => "rejected")).resolves.toBe(
+        "rejected"
+      );
+      await expect(Promise.all(registered)).resolves.toEqual([
+        undefined,
+        undefined,
+      ]);
+    } finally {
+      error.mockRestore();
+      globals[vercelRequestContext] = previousContext;
+    }
+  });
+});
+
 describe("runWorkspaceEffectOrElse", () => {
   const failureCode = "test.fallback_failed";
 

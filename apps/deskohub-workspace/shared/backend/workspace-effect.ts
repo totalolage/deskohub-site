@@ -1,4 +1,5 @@
 import { NextEffect } from "@deskohub/next-effect";
+import { waitUntil } from "@vercel/functions";
 import { Cause, Data, Effect, Exit, Layer, Result } from "effect";
 import { unstable_rethrow } from "next/navigation";
 import { after } from "next/server";
@@ -45,8 +46,8 @@ class WorkspaceTelemetryError extends Data.TaggedError(
 
 export const runWorkspaceEffect =
   (operation: string, options: RunWorkspaceEffectOptions = {}) =>
-  <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-    workspaceRuntime.run(
+  <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => {
+    const run = workspaceRuntime.run(
       effect.pipe(
         Effect.annotateLogs({
           boundary: options.boundary ?? "run",
@@ -55,6 +56,15 @@ export const runWorkspaceEffect =
       ),
       { signal: options.signal }
     );
+    // Next.js hands background `use cache` revalidations to `waitUntil` only
+    // once the shell is ready, so a revalidation started by a later-streamed
+    // boundary can outlive the response. The suspended instance then fires
+    // the run's timers on its next invocation as spurious timeouts.
+    waitUntil(run.then(ignoreSettlement, ignoreSettlement));
+    return run;
+  };
+
+const ignoreSettlement = () => undefined;
 
 /**
  * Runs a Workspace Effect like `runWorkspaceEffect`, but answers every
