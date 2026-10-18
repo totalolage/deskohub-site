@@ -5,6 +5,7 @@ import { preloadPageAdvertisedPrices } from "@/features/reservation/backend/adve
 import { isRememberedMeetingRoomReservationAvailable } from "@/features/reservation/backend/reservation-existing-customer.server";
 import { preloadPageAvailability } from "@/features/reservation/backend/workspace-availability-loader";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
+import { ReservationOfferingsStructuredData } from "@/features/reservation/components/reservation-offerings-structured-data";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import {
   getMeetingRoomReservationDefaultValues,
@@ -17,6 +18,7 @@ import {
   getReservationExistingCustomerForm,
   type ReservationExistingCustomer,
 } from "@/features/reservation/reservation-existing-customer";
+import { getMeetingRoomPageOfferings } from "@/features/reservation/reservation-page-offerings";
 import { meetingRoomReservationPath } from "@/features/reservation/routes";
 import { getMeetingRoomSelectionAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -123,18 +125,30 @@ export async function renderMeetingRoomReservationContent({
   ]);
 
   return (
-    <MeetingRoomReservationForm
-      checkoutSessionId={checkoutSessionId}
-      existingCustomer={existingCustomerForm}
-      initialAdvertisedPrices={initialAdvertisedPrices}
-      initialAvailability={initialAvailability}
-      initialReservation={
-        restoredInitialValues ? initialReservation : undefined
-      }
-      initialValues={initialValues}
-      locale={locale}
-      replacementToken={replacementToken}
-      submittedCode={submittedCode}
-    />
+    <>
+      <ReservationOfferingsStructuredData
+        locale={locale}
+        offerings={getMeetingRoomPageOfferings({
+          advertisedPrices: initialAdvertisedPrices,
+          locale,
+          startDateTime: initialValues.startDateTime,
+          submittedCode,
+        })}
+        pathname={meetingRoomReservationPath}
+      />
+      <MeetingRoomReservationForm
+        checkoutSessionId={checkoutSessionId}
+        existingCustomer={existingCustomerForm}
+        initialAdvertisedPrices={initialAdvertisedPrices}
+        initialAvailability={initialAvailability}
+        initialReservation={
+          restoredInitialValues ? initialReservation : undefined
+        }
+        initialValues={initialValues}
+        locale={locale}
+        replacementToken={replacementToken}
+        submittedCode={submittedCode}
+      />
+    </>
   );
 }

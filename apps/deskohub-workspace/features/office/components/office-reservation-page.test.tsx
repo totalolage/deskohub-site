@@ -1,6 +1,6 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
-import type { ReactElement } from "react";
+import { Children, type ReactElement, type ReactNode } from "react";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeAvailabilityQuery,
@@ -12,8 +12,9 @@ mock.module("next/root-params", () => ({
   locale: () => Promise.resolve("en-US"),
 }));
 
+// Each request preloads, without a price the structured data could use.
 const loadAdvertisedPrices = mock((requests: ReadonlyArray<unknown>) =>
-  Effect.succeed(requests)
+  Effect.succeed(requests.map((request) => ({ request })))
 );
 const loadOfficeReservationSeatCapacity = mock(() => Promise.resolve(5));
 
@@ -62,6 +63,16 @@ const { renderOfficeReservationContent } = await import(
   "./office-reservation-page"
 );
 
+/** The form the page renders beside its structured data. */
+const renderOfficeReservationForm = async (
+  input: Parameters<typeof renderOfficeReservationContent>[0]
+) => {
+  const page = (await renderOfficeReservationContent(input)) as ReactElement<{
+    readonly children: ReactNode;
+  }>;
+  return Children.toArray(page.props.children)[1];
+};
+
 beforeEach(() => mock.clearAllMocks());
 
 test("prefills safe office shape on a fresh date and quote", async () => {
@@ -69,7 +80,7 @@ test("prefills safe office shape on a fresh date and quote", async () => {
   Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
 
   try {
-    const form = (await renderOfficeReservationContent({
+    const form = (await renderOfficeReservationForm({
       locale: "en-US",
       pageData: 5,
       searchParams: { dayCount: "3", seats: "4" },
@@ -124,7 +135,7 @@ test("keys the preloaded availability to the Prague date near midnight", async (
   Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T22:30:00Z");
 
   try {
-    const form = (await renderOfficeReservationContent({
+    const form = (await renderOfficeReservationForm({
       locale: "en-US",
       pageData: 5,
       replacementToken: "signed-replacement-token",
