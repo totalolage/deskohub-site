@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   getLocalizedDynamicPagePath,
   getLocalizedPagePath,
+  locales,
 } from "@/features/i18n/routing";
 import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
 
@@ -34,6 +35,7 @@ mock.module("@/features/account/components/sign-in-card", () => ({
 mock.module("@/features/i18n", () => ({
   getLocalizedDynamicPagePath,
   getLocalizedPagePath,
+  locales,
   m: {},
 }));
 mock.module("@/features/i18n/server/request-locale", () => ({
