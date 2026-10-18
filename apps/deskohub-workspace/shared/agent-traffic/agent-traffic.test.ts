@@ -237,6 +237,15 @@ describe("classifyVerifiedBot", () => {
     ).toEqual(traffic);
   });
 
+  test("classifies a BotID customer agent as a user agent whatever its category", () => {
+    expect(
+      classifyVerifiedBot({
+        verifiedBotName: "chatgpt-operator",
+        verifiedBotCategory: "monitor",
+      })
+    ).toEqual({ category: "ai_user_agent", name: "chatgpt" });
+  });
+
   test("collapses an unknown verified bot name to other", () => {
     expect(
       classifyVerifiedBot({

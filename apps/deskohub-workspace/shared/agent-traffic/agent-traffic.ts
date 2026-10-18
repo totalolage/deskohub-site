@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 
 /**
  * What kind of client sent a request, in a fixed low-cardinality set. Humans
@@ -63,7 +64,6 @@ interface KnownAgent {
 const knownAgents: readonly KnownAgent[] = [
   // User-triggered fetchers and agent browsers
   { token: "chatgpt-user", category: "ai_user_agent", name: "chatgpt" },
-  { token: "chatgpt-operator", category: "ai_user_agent", name: "chatgpt" },
   { token: "gpt-actions", category: "ai_user_agent", name: "chatgpt" },
   { token: "claude-user", category: "ai_user_agent", name: "claude" },
   { token: "perplexity-user", category: "ai_user_agent", name: "perplexity" },
@@ -208,11 +208,33 @@ export const classifyAgentTraffic = (headers: Headers): AgentTraffic => {
   return unclassifiedTraffic;
 };
 
-/** Classifies a bot BotID verified from its verified-bot name and category. */
+// Who operates each BotID customer agent. Keyed by `customerAgentNames`, so a
+// new customer agent fails typecheck until it is named here.
+const customerAgentOperators: Record<
+  (typeof customerAgentNames)[number],
+  AgentName
+> = {
+  "chatgpt-operator": "chatgpt",
+};
+
+/**
+ * Classifies a bot BotID verified from its verified-bot name and category. A
+ * customer agent browses for a customer, so it is an `ai_user_agent` whatever
+ * category BotID reports.
+ */
 export const classifyVerifiedBot = ({
   verifiedBotName,
   verifiedBotCategory,
 }: VerifiedBot): AgentTraffic => {
+  const customerAgent = customerAgentNames.find(
+    (name) => name === verifiedBotName
+  );
+  if (customerAgent) {
+    return {
+      category: "ai_user_agent",
+      name: customerAgentOperators[customerAgent],
+    };
+  }
   const name = verifiedBotName?.toLowerCase();
   const knownAgent = knownAgents.find(({ token }) => token === name);
   if (knownAgent) {
