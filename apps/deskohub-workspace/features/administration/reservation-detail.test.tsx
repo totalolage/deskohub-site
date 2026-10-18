@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
+import { testEmailAddress } from "@deskohub/test-email";
 import { within } from "@testing-library/react";
 import { prerender } from "react-dom/static";
+import type { Locale } from "@/features/i18n";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
@@ -12,8 +15,10 @@ import { loadFixtureReservation } from "./fixtures";
 
 mock.module("server-only", () => ({}));
 mock.module("next/server", () => ({ connection: () => Promise.resolve() }));
+let locale: Locale = "cs-CZ";
+
 mock.module("@/features/i18n/server/request-locale", () => ({
-  getRequestLocale: () => Promise.resolve("cs-CZ"),
+  getRequestLocale: () => Promise.resolve(locale),
 }));
 
 mock.module("./actions", () => ({
@@ -32,7 +37,7 @@ async function prerenderReservationDetail() {
     "./reservation-detail"
   );
   const { prelude } = await prerender(
-    <RouteLocaleProvider locale="cs-CZ">
+    <RouteLocaleProvider locale={locale}>
       <AdministrationReservationDetail
         params={Promise.resolve({ reservationId: "unused" })}
       />
@@ -59,6 +64,7 @@ describe("AdministrationReservationDetail", () => {
   });
 
   test("renders the reservation detail in Czech on a Czech route", async () => {
+    locale = "cs-CZ";
     const fixture = loadFixtureReservation("0198-admin-fixture-attention");
     expect(fixture).not.toBeNull();
     if (!fixture) return;
@@ -104,5 +110,73 @@ describe("AdministrationReservationDetail", () => {
       within(history).getByText("Potvrzení zákazníkovi selhalo")
     ).toBeDefined();
     expect(view.queryByText("Reservation details")).toBeNull();
+    expect(view.queryByText("Rezervaci vytvořil účet")).toBeNull();
   });
+
+  const authorEmail = testEmailAddress("ada.author");
+  const authorCases = [
+    {
+      locale: "en-US",
+      label: "Booked by",
+      deleted: "Deleted account",
+      unavailable: "Author details unavailable",
+      unnamed: "Unnamed customer",
+    },
+    {
+      locale: "cs-CZ",
+      label: "Rezervaci vytvořil účet",
+      deleted: "Smazaný účet",
+      unavailable: "Údaje o autorovi nejsou k dispozici",
+      unnamed: "Zákazník bez jména",
+    },
+  ] as const;
+
+  for (const copy of authorCases) {
+    test(`shows who booked the reservation for someone else in ${copy.locale}`, async () => {
+      locale = copy.locale;
+      const fixture = loadFixtureReservation("0198-admin-fixture-attention");
+      if (!fixture) throw new Error("Missing reservation fixture");
+      const renderAuthor = async (author: ReservationDetailData["author"]) => {
+        detail = { ...fixture, author };
+        const view = await prerenderReservationDetail();
+        const label = view.getByText(copy.label);
+        const value = label.nextElementSibling;
+        if (!(value instanceof HTMLElement)) {
+          throw new Error("Missing Booked by value");
+        }
+        return within(value);
+      };
+
+      const named = await renderAuthor({
+        kind: "account",
+        customerId: DotyposCustomerIdSchema.make("customer-ada"),
+        displayName: "Ada Author",
+        hasName: true,
+        email: authorEmail,
+      });
+      expect(
+        named.getByRole("link", { name: "Ada Author" }).getAttribute("href")
+      ).toBe(`/${copy.locale}/admin/customers/customer-ada`);
+      expect(named.getByText(authorEmail)).toBeDefined();
+
+      const unnamed = await renderAuthor({
+        kind: "account",
+        customerId: null,
+        displayName: "Unnamed customer",
+        hasName: false,
+        email: authorEmail,
+      });
+      expect(unnamed.getByText(copy.unnamed)).toBeDefined();
+      expect(unnamed.queryByRole("link")).toBeNull();
+
+      expect(
+        (await renderAuthor({ kind: "deleted" })).getByText(copy.deleted)
+      ).toBeDefined();
+      expect(
+        (await renderAuthor({ kind: "unavailable" })).getByText(
+          copy.unavailable
+        )
+      ).toBeDefined();
+    });
+  }
 });
