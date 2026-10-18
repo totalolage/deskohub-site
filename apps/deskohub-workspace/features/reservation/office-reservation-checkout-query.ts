@@ -1,8 +1,10 @@
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Schema } from "effect";
 import {
+  getOfficeReservationDefaultValues,
   getOfficeReservationMaximumDayCount,
   getOfficeReservationMaximumEndsOn,
+  type NormalizedOfficeReservationOrder,
   type OfficeReservationInput,
   officeReservationDayCountSchema,
   officeReservationDefaultValues,
@@ -10,6 +12,7 @@ import {
 } from "@/features/reservation/office-reservation";
 import {
   getTrimmedSearchParam,
+  hasReservationSelectionSearchParams,
   type ReservationSelectionSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
 import type { CustomerLastReservationForKind } from "@/features/reservation/reservation-existing-customer";
@@ -92,3 +95,28 @@ export const getOfficeReservationSelectionSearchParams = (
   dayCount: String(selection.dayCount),
   seats: String(selection.seats),
 });
+
+/**
+ * The form values for a signed office restoration, with the selection the
+ * customer edited into the URL after returning from Pay.
+ */
+export const getOfficeRestoredReservationValues = (
+  reservation: NormalizedOfficeReservationOrder,
+  searchParams: SupportedSearchParams,
+  options: { readonly seatCapacity: number; readonly today: string }
+): OfficeReservationInput => {
+  const restoredValues = getOfficeReservationDefaultValues(reservation);
+  if (
+    !hasReservationSelectionSearchParams(searchParams, [
+      "startsOn",
+      "dayCount",
+      "seats",
+    ])
+  ) {
+    return restoredValues;
+  }
+
+  const { startsOn, dayCount, seats } =
+    getOfficeReservationDefaultValuesFromSearchParams(searchParams, options);
+  return { ...restoredValues, startsOn, dayCount, seats };
+};

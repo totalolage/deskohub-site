@@ -1,9 +1,11 @@
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Schema } from "effect";
 import {
+  getMeetingRoomReservationDefaultValues,
   type MeetingRoomReservationInput,
   meetingRoomReservationDefaultValues,
   meetingRoomStartDateTimeSchema,
+  type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
 import {
   getMeetingRoomReservationDuration,
@@ -17,6 +19,7 @@ import {
 import {
   decodeReservationCheckoutCustomer,
   getTrimmedSearchParam,
+  hasReservationSelectionSearchParams,
   type ReservationSelectionSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
 import type { CustomerLastReservationForKind } from "@/features/reservation/reservation-existing-customer";
@@ -78,3 +81,29 @@ export const getMeetingRoomReservationSelectionSearchParams = (
   startDateTime: selection.startDateTime || undefined,
   duration: selection.duration,
 });
+
+/**
+ * The form values for a signed meeting-room restoration, with the selection
+ * the customer edited into the URL after returning from Pay. A restoration
+ * whose interval has ended restores nothing.
+ */
+export const getMeetingRoomRestoredReservationValues = (
+  reservation: NormalizedMeetingRoomReservationOrder,
+  searchParams: SupportedSearchParams,
+  now = Temporal.Now.instant()
+): MeetingRoomReservationInput | undefined => {
+  const restoredValues = getMeetingRoomReservationDefaultValues(reservation);
+  if (
+    !restoredValues ||
+    !hasReservationSelectionSearchParams(searchParams, [
+      "startDateTime",
+      "duration",
+    ])
+  ) {
+    return restoredValues;
+  }
+
+  const { startDateTime, duration } =
+    getMeetingRoomReservationDefaultValuesFromSearchParams(searchParams, now);
+  return { ...restoredValues, startDateTime, duration };
+};

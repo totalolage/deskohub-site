@@ -40,13 +40,11 @@ import { useReservationSelectionUrl } from "@/features/reservation/components/us
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationDayCount,
-  getOfficeReservationDefaultValues,
   getOfficeReservationEndsOn,
   getOfficeReservationMaximumDayCount,
   getOfficeReservationMaximumEndsOn,
   getOfficeReservationOrder,
   getOfficeSeatOptions,
-  type NormalizedOfficeReservationOrder,
   type OfficeReservationData,
   type OfficeReservationInput,
   officeReservationDetailsSchema,
@@ -73,7 +71,6 @@ type OfficeReservationFormProps = {
   readonly seatCapacity: number;
   readonly initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
   readonly initialAvailability?: ReadonlyArray<PreloadedWorkspaceAvailability>;
-  readonly initialReservation?: NormalizedOfficeReservationOrder;
   readonly initialValues: OfficeReservationInput;
   readonly locale: Locale;
   readonly replacementToken?: string;
@@ -108,19 +105,15 @@ export function OfficeReservationForm({
   seatCapacity,
   initialAdvertisedPrices = [],
   initialAvailability,
-  initialReservation,
   initialValues,
   locale,
   replacementToken,
   submittedCode,
   today,
 }: OfficeReservationFormProps) {
-  const defaultValues = initialReservation
-    ? getOfficeReservationDefaultValues(initialReservation)
-    : initialValues;
   const form = useForm<OfficeReservationInput, unknown, OfficeReservationData>({
     resolver: effectSchemaResolver(officeReservationSchema),
-    defaultValues,
+    defaultValues: initialValues,
     mode: "onBlur",
     reValidateMode: "onChange",
   });

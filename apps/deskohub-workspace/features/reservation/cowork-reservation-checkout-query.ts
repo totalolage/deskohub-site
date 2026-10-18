@@ -14,6 +14,7 @@ import {
 import {
   decodeReservationCheckoutCustomer,
   getTrimmedSearchParam,
+  hasReservationSelectionSearchParams,
   type ReservationSelectionSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
 import { isTodayOrFutureWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -49,8 +50,11 @@ const queryDateSchema = Schema.toStandardSchemaV1(
 const queryTierSchema = Schema.toStandardSchemaV1(
   Schema.Literals(workspaceCoworkCurrentTiers)
 );
+// `none` turns the workstation off, which an absent parameter can't say: the
+// parser fills a missing option from the customer's last reservation.
+const noMonitorQueryValue = "none";
 const queryMonitorOptionSchema = Schema.toStandardSchemaV1(
-  Schema.Literals(workspaceProductMonitorOptions)
+  Schema.Literals([...workspaceProductMonitorOptions, noMonitorQueryValue])
 );
 
 const decodeReservationCheckoutQuery = (
@@ -81,7 +85,10 @@ const decodeReservationCheckoutQuery = (
     ...(entryTier !== undefined && { entryTier }),
     ...(date !== undefined && { date }),
     ...(coffee !== undefined && { coffee: coffee === "true" }),
-    ...(monitorOption !== undefined && { monitorOption }),
+    ...(monitorOption !== undefined && {
+      monitorOption:
+        monitorOption === noMonitorQueryValue ? undefined : monitorOption,
+    }),
     ...decodeReservationCheckoutCustomer(searchParams),
   };
 };
@@ -130,7 +137,12 @@ export const getCoworkReservationSelectionSearchParams = (
   entryTier: selection.entryTier,
   date: selection.date || undefined,
   coffee: String(selection.coffee),
-  monitorOption: selection.monitorOption,
+  monitorOption:
+    selection.monitorOption ??
+    (getWorkspaceProductByTier(selection.entryTier).workstationAddon ===
+    "optional"
+      ? noMonitorQueryValue
+      : undefined),
 });
 
 export const getReservationDefaultValuesFromPayState = (
@@ -156,4 +168,30 @@ export const getReservationDefaultValuesFromPayState = (
     }),
     marketingConsent: false,
   };
+};
+
+/**
+ * The form values for a signed cowork restoration, with the selection the
+ * customer edited into the URL after returning from Pay.
+ */
+export const getCoworkRestoredReservationValues = (
+  reservation: NormalizedCoworkReservationOrder,
+  searchParams: SupportedSearchParams
+): CoworkReservationInput => {
+  const restoredValues = getReservationDefaultValuesFromPayState(reservation);
+  if (
+    !hasReservationSelectionSearchParams(searchParams, [
+      "entryTier",
+      "tier",
+      "date",
+      "coffee",
+      "monitorOption",
+    ])
+  ) {
+    return restoredValues;
+  }
+
+  const { entryTier, date, coffee, monitorOption } =
+    getReservationDefaultValuesFromSearchParams(searchParams);
+  return { ...restoredValues, entryTier, date, coffee, monitorOption };
 };

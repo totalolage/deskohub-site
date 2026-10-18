@@ -55,7 +55,7 @@ Browsers percent-encode query values, so a leading `+` in a phone number must be
 
 Each field is decoded on its own. An empty, malformed, past, or daylight-saving-invalid start, or an unsupported duration, falls back to the fresh default for that field alone; valid sibling parameters still apply. When no start is given, the page chooses the earliest whole-hour start for the chosen duration, which may be an interval that has already begun. This choice is not an availability guarantee; only submission checks availability.
 
-A signed checkout-restoration link takes precedence over the public parameters. When the restored checkout has ended, the page uses its fresh defaults and does not carry the public parameters forward. A reservation link never opts the customer into marketing consent or legal acceptance.
+A signed checkout-restoration link takes precedence over the public contact and `discountCode` parameters. Selection parameters beside it are the customer's own edits after returning from the order summary (the order summary links back with the restoration alone), so they replace the restored selection; the restored checkout, its hold replacement, contact details, and discount still apply. When the restored checkout has ended, the page uses its fresh defaults and does not carry the public parameters forward. A reservation link never opts the customer into marketing consent or legal acceptance.
 
 Example with synthetic, deliberately non-working values (`example.invalid`, `EXAMPLE_CODE`):
 
@@ -80,11 +80,11 @@ The page shows the price and availability for the linked start date. A linked da
 
 As the customer changes a selection, each reservation page writes it back to its URL with the same parameters a link uses:
 
-- cowork: `entryTier`, `date`, `coffee`, `monitorOption`
+- cowork: `entryTier`, `date`, `coffee`, `monitorOption` (`none` when the customer turns an optional workstation off, so the customer's last reservation doesn't turn it back on)
 - meeting room: `startDateTime`, `duration`
 - office: `startsOn`, `dayCount`, `seats` (the day count only once it's a valid count)
 
-Reloading the page, or opening a copy of its URL, restores the same selection. The update replaces the current browser history entry, so Back still leaves the page in one step. The page never writes `name`, `email`, `phone`, or `customer` to the URL, so contact details don't reach browser history or analytics; these parameters in an incoming link are still read and left as they arrived. Every other parameter, such as `discountCode`, also stays as it arrived.
+Reloading the page, or opening a copy of its URL, restores the same selection, including after returning from the order summary to edit it. The update replaces the current browser history entry, so Back still leaves the page in one step. The page never writes `name`, `email`, `phone`, or `customer` to the URL, so contact details don't reach browser history or analytics; these parameters in an incoming link are still read and left as they arrived. Every other parameter, such as `discountCode`, also stays as it arrived.
 
 ## Reservation holds and edits
 

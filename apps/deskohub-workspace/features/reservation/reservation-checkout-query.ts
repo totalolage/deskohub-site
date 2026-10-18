@@ -40,6 +40,23 @@ type ReservationContactQueryParam =
   | typeof reservationCustomerQueryParam;
 
 /**
+ * Whether a URL names any of a reservation family's selection parameters.
+ *
+ * The Pay page links back to the reservation page with the signed
+ * restoration token alone, so selection parameters beside that token are the
+ * customer's edits after returning: they replace the restored selection,
+ * while the restoration keeps the checkout, its hold replacement, the contact
+ * details, and the discount intent.
+ */
+export const hasReservationSelectionSearchParams = (
+  searchParams: SupportedSearchParams,
+  selectionParams: readonly string[]
+) =>
+  selectionParams.some(
+    (name) => getSearchParam(searchParams, name) !== undefined
+  );
+
+/**
  * Writes a selection into a URL's search parameters, leaving every parameter
  * outside it, such as `discountCode`, as it is.
  */

@@ -1,7 +1,9 @@
-import { beforeEach, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { testEmailAddress } from "@deskohub/test-email";
 import { Effect } from "effect";
 import type { ReactElement } from "react";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
+import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import {
   getOfficeAvailabilityQuery,
   type WorkspaceAvailabilityQuery,
@@ -142,4 +144,65 @@ test("keys the preloaded availability to the Prague date near midnight", async (
   } finally {
     Temporal.Now.instant = originalNow;
   }
+});
+
+describe("a signed restoration", () => {
+  const evaEmail = testEmailAddress("eva");
+  const restoredReservation = normalizedOfficeReservationOrderSchema.make({
+    kind: "office",
+    startsOn: "2099-08-04",
+    endsOn: "2099-08-05",
+    seats: 2,
+    name: "Eva Svobodová",
+    email: evaEmail,
+    phone: "+420777777777",
+    billing: { purpose: "personal", invoice: "none" },
+  });
+  const renderRestored = async (searchParams: Record<string, string>) => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
+    try {
+      return (await renderOfficeReservationContent({
+        initialReservation: restoredReservation,
+        locale: "en-US",
+        pageData: 5,
+        replacementToken: "restored-pay-state",
+        searchParams: { payState: "restored-pay-state", ...searchParams },
+      })) as ReactElement<Parameters<typeof OfficeReservationForm>[0]>;
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  };
+
+  test("restores the signed office reservation into the form", async () => {
+    const form = await renderRestored({});
+
+    expect(form.props.initialValues).toMatchObject({
+      startsOn: "2099-08-04",
+      dayCount: 2,
+      seats: 2,
+      name: "Eva Svobodová",
+      email: evaEmail,
+    });
+  });
+
+  test("reopens the selection edited after returning from Pay with the restored checkout", async () => {
+    const form = await renderRestored({
+      dayCount: "3",
+      seats: "4",
+      startsOn: "2099-08-10",
+    });
+
+    expect(form.props.initialValues).toMatchObject({
+      startsOn: "2099-08-10",
+      dayCount: 3,
+      seats: 4,
+      name: "Eva Svobodová",
+      email: evaEmail,
+    });
+    expect(form.props.replacementToken).toBe("restored-pay-state");
+    expect(preloadAvailability.mock.calls[0]?.[0]).toMatchObject({
+      replacementToken: "restored-pay-state",
+    });
+  });
 });

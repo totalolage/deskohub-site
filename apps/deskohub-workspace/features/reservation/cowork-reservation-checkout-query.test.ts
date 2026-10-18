@@ -144,4 +144,48 @@ describe("getCoworkReservationSelectionSearchParams", () => {
     );
     expect(searchParams.get("discountCode")).toBe("SPRING");
   });
+
+  test("an optional workstation turned off stays off over the last reservation", () => {
+    const lastReservation = {
+      kind: "cowork",
+      entryTier: "reserved-desk",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    } as const;
+    const searchParams = new URLSearchParams();
+    setReservationSelectionSearchParams(
+      searchParams,
+      getCoworkReservationSelectionSearchParams({
+        entryTier: "reserved-desk",
+        date: "2099-06-12",
+        coffee: true,
+        monitorOption: undefined,
+      })
+    );
+
+    expect(searchParams.get("monitorOption")).toBe("none");
+    expect(
+      getReservationDefaultValuesFromSearchParams(searchParams, lastReservation)
+    ).toMatchObject({ entryTier: "reserved-desk", monitorOption: undefined });
+    // A link that leaves the option open still takes the remembered one.
+    expect(
+      getReservationDefaultValuesFromSearchParams(
+        { entryTier: "reserved-desk" },
+        lastReservation
+      )
+    ).toMatchObject({ monitorOption: "2x27-qhd" });
+  });
+
+  test("a tier without an optional workstation writes no monitor option", () => {
+    for (const entryTier of ["open-space", "profi"] as const) {
+      expect(
+        getCoworkReservationSelectionSearchParams({
+          entryTier,
+          date: "2099-06-12",
+          coffee: true,
+          monitorOption: undefined,
+        }).monitorOption
+      ).toBeUndefined();
+    }
+  });
 });

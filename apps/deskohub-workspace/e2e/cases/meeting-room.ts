@@ -23,7 +23,10 @@ import {
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { normalizeBrowserText, waitForBrowserText } from "../browser";
-import { getSubmitMeetingRoomReservationScript } from "../browser-scripts";
+import {
+  getPrepareMeetingRoomAdvertisedPriceScript,
+  getSubmitMeetingRoomReservationScript,
+} from "../browser-scripts";
 import {
   loadMeetingRoomAvailability,
   type MeetingRoomCheckoutSlot,
@@ -268,6 +271,8 @@ export const makeMeetingRoomE2ECases = ({
               id: "assert-held-meeting-room-slot-availability",
               timeoutMs: config.timeouts.datasource,
             }),
+            prepareReservationScript:
+              getPrepareMeetingRoomAdvertisedPriceScript,
             replacementData: editedReplacementData,
             reservationPath: "/en-US/reservation/meeting-room",
             run,
