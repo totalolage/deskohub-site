@@ -79,5 +79,7 @@
   "adminCliSessionsTableStatusExpired": "Expired",
   "adminCliSessionsTableStatusRevoked": "Revoked",
   "adminCliSessionsTitle": "CLI sessions",
-  "adminCliSessionsUnchangedNotice": "That CLI session was already revoked or no longer exists."
+  "adminCliSessionsUnchangedNotice": "That CLI session was already revoked or no longer exists.",
+  "adminCliActionTimedOut": "The server took too long to respond. Try again.",
+  "adminCliActionFailedUnexpectedly": "Something went wrong on the server. Try again."
 }

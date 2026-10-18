@@ -30,6 +30,7 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import type { CampaignId } from "../../campaign-identifiers";
+import { getEmailCampaignAdminActionFailureMessage } from "../action-failure-message";
 import { sendCampaign } from "./actions";
 import {
   type ConfirmationCodeFieldSchema,
@@ -72,8 +73,10 @@ export function CampaignConfirmSendDialog({
     },
     onError: ({ error: actionError }) =>
       setError(
-        actionError.serverError ??
-          m.emailCampaignsSendConfirmFailed({}, { locale })
+        getEmailCampaignAdminActionFailureMessage(actionError.serverError, {
+          fallback: m.emailCampaignsSendConfirmFailed({}, { locale }),
+          locale,
+        })
       ),
   });
 

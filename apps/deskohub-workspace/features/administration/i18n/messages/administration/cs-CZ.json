@@ -669,5 +669,7 @@
   "administrationReservationTimelineWorkflowCreatedDescription": "Deskohub vytvořil místní proces rezervace.",
   "administrationReservationTimelineWorkflowCreatedTitle": "Objednávkový proces byl vytvořen",
   "administrationReservationUnavailable": "Nedostupné",
-  "administrationTableActions": "Akce"
+  "administrationTableActions": "Akce",
+  "administrationActionTimedOut": "Server neodpověděl včas. Zkuste to znovu.",
+  "administrationActionFailedUnexpectedly": "Na serveru se něco pokazilo. Zkuste to znovu."
 }
