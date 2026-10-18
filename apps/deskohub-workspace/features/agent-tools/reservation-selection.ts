@@ -22,6 +22,8 @@ import {
   getOfficeReservationMaximumEndsOn,
 } from "@/features/reservation/office-reservation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { hasReservationIntervalEnded } from "@/features/reservation/reservation-interval";
+import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import { workspaceReservationKindSchema } from "@/features/reservation/reservation-kind";
 import { getWorkspaceAvailabilityRange } from "@/features/reservation/workspace-availability";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -65,13 +67,29 @@ export const reservationSelectionFields = {
   duration: Schema.optionalKey(
     meetingRoomReservationDurationKeySchema.annotate({
       description:
-        "Meeting room only: hour:1 (one hour), hour:4 (four hours), or day:1 (a whole Prague calendar day that has not started yet).",
+        "Meeting room only: hour:1 (one hour), hour:4 (four hours), or day:1 (a whole Prague calendar day, today included until it ends).",
     })
   ),
   seats: Schema.optionalKey(
     Schema.Int.annotate({
       description: "Office only: number of seats. Defaults to 1.",
     }).check(Schema.isGreaterThanOrEqualTo(1))
+  ),
+};
+
+/**
+ * The shared fields for a quote: a cowork booking covers one date, so only an
+ * office takes a date range.
+ */
+export const quoteSelectionFields = {
+  ...reservationSelectionFields,
+  date: workspaceDateArgument(
+    "Prague calendar date in YYYY-MM-DD format. For an office, the first date."
+  ),
+  end_date: Schema.optionalKey(
+    workspaceDateArgument(
+      "Office only: the last date, inclusive, in YYYY-MM-DD format. Defaults to date."
+    )
   ),
 };
 
@@ -163,8 +181,13 @@ export const resolveMeetingRoomSelection = Effect.fn(
           "start_time"
         )
       ),
-      Effect.tap(({ startDateTime, duration }) =>
-        ensureMeetingRoomStartUpcoming({ ...input, startDateTime, duration })
+      Effect.tap(({ startDateTime, duration, interval }) =>
+        ensureMeetingRoomSelectionOpen({
+          ...input,
+          startDateTime,
+          duration,
+          interval,
+        })
       ),
       Effect.map(({ durationKey, duration, startDateTime, interval }) => ({
         durationKey,
@@ -229,7 +252,10 @@ const requireArgument = <A>(value: A, field: string) =>
     Effect.mapError(() => AgentToolError.invalidInput(field))
   );
 
-/** The selected start; an hourly booking needs a start time. */
+/**
+ * The selected start; an hourly booking needs a start time, and a whole day
+ * starts at midnight whatever time the call names.
+ */
 const decodeMeetingRoomStart = ({
   date,
   startTime,
@@ -239,65 +265,73 @@ const decodeMeetingRoomStart = ({
   readonly startTime?: string;
   readonly duration: MeetingRoomReservationDuration;
 }) =>
-  Effect.succeed(startTime).pipe(
+  Effect.succeed(
+    isMeetingRoomWholeDayReservationDuration(duration) ? "00:00" : startTime
+  ).pipe(
     Effect.filterOrFail(
-      (time) => time !== undefined || duration.unit !== "hour",
+      (time) => time !== undefined,
       () => AgentToolError.invalidInput("start_time")
     ),
     Effect.flatMap((time) =>
-      Schema.decodeEffect(meetingRoomStartDateTimeSchema)(
-        `${date}T${time ?? "00:00"}`
-      )
+      Schema.decodeEffect(meetingRoomStartDateTimeSchema)(`${date}T${time}`)
     ),
     Effect.mapError(() => AgentToolError.invalidInput("start_time"))
   );
 
 /**
- * A reservation link keeps only a start that has not begun yet, so the tool
- * accepts the same starts and its link opens the form on the selection.
+ * Checkout accepts a whole day until it ends, and a reservation link restores
+ * today's whole day unchanged. A link keeps an hourly start only before it
+ * begins, so the tool accepts the same selections and its link opens the form
+ * on them.
  */
-const ensureMeetingRoomStartUpcoming = ({
-  date,
+const isMeetingRoomSelectionOpen = ({
   startDateTime,
   duration,
+  interval,
   now,
 }: {
+  readonly startDateTime: string;
+  readonly duration: MeetingRoomReservationDuration;
+  readonly interval: ReservationInterval;
+  readonly now: Temporal.Instant;
+}) =>
+  isMeetingRoomWholeDayReservationDuration(duration)
+    ? !hasReservationIntervalEnded(interval, now)
+    : isUpcomingMeetingRoomStart({ startDateTime, duration, now });
+
+const ensureMeetingRoomSelectionOpen = (input: {
   readonly date: string;
   readonly startDateTime: string;
   readonly duration: MeetingRoomReservationDuration;
+  readonly interval: ReservationInterval;
   readonly now: Temporal.Instant;
 }) =>
   Effect.succeed(
-    getWorkspaceAvailabilityRange(getCurrentWorkspaceDate(now).toString())
+    getWorkspaceAvailabilityRange(getCurrentWorkspaceDate(input.now).toString())
   ).pipe(
     Effect.filterOrFail(
-      (range) =>
-        isUpcomingMeetingRoomStart({ startDateTime, duration, now }) &&
-        date <= range.to,
+      (range) => isMeetingRoomSelectionOpen(input) && input.date <= range.to,
       (range) =>
         AgentToolError.dateOutOfRange({
-          earliest: getFirstUpcomingMeetingRoomDate(duration, now),
+          earliest: getFirstOpenMeetingRoomDate(input.duration, input.now),
           latest: range.to,
         })
     ),
     Effect.asVoid
   );
 
-/** The Prague date of the first start that has not begun yet. */
-const getFirstUpcomingMeetingRoomDate = (
+/** The Prague date of the first selection the tool accepts. */
+const getFirstOpenMeetingRoomDate = (
   duration: MeetingRoomReservationDuration,
   now: Temporal.Instant
 ) =>
-  now
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .round({
-      smallestUnit: isMeetingRoomWholeDayReservationDuration(duration)
-        ? "day"
-        : "hour",
-      roundingMode: "ceil",
-    })
-    .toPlainDate()
-    .toString();
+  isMeetingRoomWholeDayReservationDuration(duration)
+    ? getCurrentWorkspaceDate(now).toString()
+    : now
+        .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+        .round({ smallestUnit: "hour", roundingMode: "ceil" })
+        .toPlainDate()
+        .toString();
 
 const ensureDateOrder = ({
   date,

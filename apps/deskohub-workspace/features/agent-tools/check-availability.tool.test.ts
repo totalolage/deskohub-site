@@ -2,20 +2,28 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { Effect, type Schema } from "effect";
 import { m } from "@/features/i18n";
+import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import type { CheckAvailabilityResult } from "./check-availability.tool";
 
-const { makeAgentToolTestServices, makeTestOccupancy, workspaceDateFromToday } =
-  await import("./agent-tools.test-utils");
+const {
+  atInstant,
+  makeAgentToolTestServices,
+  makeTestOccupancy,
+  workspaceDateFromToday,
+  workspaceInstantToday,
+} = await import("./agent-tools.test-utils");
 const { checkAvailabilityTool } = await import("./check-availability.tool");
 
 const checkAvailability = (
   args: Schema.Json,
-  services = makeAgentToolTestServices()
+  services = makeAgentToolTestServices(),
+  now?: Temporal.Instant
 ) =>
   checkAvailabilityTool
     .call(args)
     .pipe(
       Effect.provide(services.layer),
+      now === undefined ? (effect) => effect : atInstant(now),
       Effect.runPromise
     ) as Promise<CheckAvailabilityResult>;
 
@@ -115,6 +123,33 @@ describe("check_availability", () => {
       meeting_room: { starts_at: `${busy}T00:00` },
     });
     expect(services.dotyposRequests).toEqual([]);
+  });
+
+  test("checks today's whole meeting-room day in the afternoon and links the same selection", async () => {
+    const now = workspaceInstantToday("15:20");
+    const [today, tomorrow] = [0, 1].map(workspaceDateFromToday);
+
+    const result = await checkAvailability(
+      { family: "meeting-room", date: today!, duration: "day:1" },
+      makeAgentToolTestServices(),
+      now
+    );
+
+    expect(result).toMatchObject({
+      available: true,
+      meeting_room: {
+        duration: "day:1",
+        starts_at: `${today}T00:00`,
+        ends_at: `${tomorrow}T00:00`,
+      },
+      reservation_url: `http://deskohub.test/reservation/meeting-room?duration=day%3A1&startDateTime=${today}T00%3A00`,
+    });
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        new URL(result.reservation_url).searchParams,
+        now
+      )
+    ).toMatchObject({ duration: "day:1", startDateTime: `${today}T00:00` });
   });
 
   test("checks every office date and the seat capacity", async () => {

@@ -3,11 +3,15 @@ import { describe, expect, test } from "bun:test";
 import { Effect, type Schema } from "effect";
 import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import { m } from "@/features/i18n";
+import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "@/features/reservation/meeting-room-reservation-checkout-query";
 import type { GetQuoteResult } from "./get-quote.tool";
 
-const { makeAgentToolTestServices, workspaceDateFromToday } = await import(
-  "./agent-tools.test-utils"
-);
+const {
+  atInstant,
+  makeAgentToolTestServices,
+  workspaceDateFromToday,
+  workspaceInstantToday,
+} = await import("./agent-tools.test-utils");
 const { getQuoteTool } = await import("./get-quote.tool");
 const { buildAdvertisedPrice } = await import(
   "@/features/checkout/backend/checkout/advertised-price.server"
@@ -22,11 +26,16 @@ const { getOfficeAdvertisedPriceRequest } = await import(
   "@/features/reservation/office-advertised-price"
 );
 
-const quote = (args: Schema.Json, services = makeAgentToolTestServices()) =>
+const quote = (
+  args: Schema.Json,
+  services = makeAgentToolTestServices(),
+  now?: Temporal.Instant
+) =>
   getQuoteTool
     .call(args)
     .pipe(
       Effect.provide(services.layer),
+      now === undefined ? (effect) => effect : atInstant(now),
       Effect.runPromise
     ) as Promise<GetQuoteResult>;
 
@@ -127,6 +136,73 @@ describe("get_quote", () => {
       note: m.agentToolQuoteNote({}, { locale: "cs-CZ" }),
     });
     expect(result.total.amount).toBe(await advertisedTotal(request!, services));
+  });
+
+  test("quotes today's whole meeting-room day in the afternoon and links the same selection", async () => {
+    const now = workspaceInstantToday("15:20");
+    const today = workspaceDateFromToday(0);
+    const services = makeAgentToolTestServices();
+
+    const result = await quote(
+      { family: "meeting-room", date: today, duration: "day:1" },
+      services,
+      now
+    );
+    const request = getMeetingRoomDurationAdvertisedPriceRequests({
+      locale: "en-US",
+      startDateTime: `${today}T00:00`,
+    }).find(({ reservation }) => reservation.details.duration.unit === "day");
+
+    expect(result.total.amount).toBe(await advertisedTotal(request!, services));
+    expect(result.reservation_url).toBe(
+      `http://deskohub.test/reservation/meeting-room?duration=day%3A1&startDateTime=${today}T00%3A00`
+    );
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        new URL(result.reservation_url).searchParams,
+        now
+      )
+    ).toMatchObject({ duration: "day:1", startDateTime: `${today}T00:00` });
+  });
+
+  test("quotes one cowork date and rejects a cowork date range", async () => {
+    const date = workspaceDateFromToday(3);
+
+    const services = makeAgentToolTestServices();
+    const sameDay = await quote(
+      { family: "cowork", date, end_date: date, tier: "open-space" },
+      services
+    );
+    const range = await quoteFailure({
+      family: "cowork",
+      date,
+      end_date: workspaceDateFromToday(5),
+      tier: "open-space",
+    });
+
+    expect(sameDay.total.amount).toBe(
+      await advertisedTotal(
+        {
+          locale: "en-US",
+          reservation: getCoworkAdvertisedPriceReservation({
+            entryTier: "open-space",
+            coffee: false,
+            date,
+          }),
+        },
+        services
+      )
+    );
+    expect(range.details).toEqual({ code: "invalid_input", field: "end_date" });
+    expect(
+      getQuoteTool.input["~standard"].jsonSchema.input({
+        target: "draft-2020-12",
+      })
+    ).toMatchObject({
+      properties: {
+        end_date: { description: expect.stringMatching(/^Office only:/) },
+      },
+    });
   });
 
   test("quotes office days and seats exactly as the advertised price", async () => {

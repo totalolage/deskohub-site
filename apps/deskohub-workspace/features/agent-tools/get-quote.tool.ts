@@ -37,14 +37,14 @@ import { agentToolMoneySchema, toAgentToolMoney } from "./agent-tool-money";
 import {
   ensureOfficeOpen,
   isCoworkOfferOpen,
-  reservationSelectionFields,
+  quoteSelectionFields,
   resolveCoworkDates,
   resolveMeetingRoomSelection,
   resolveOfficeRange,
 } from "./reservation-selection";
 
 const inputSchema = Schema.Struct({
-  ...reservationSelectionFields,
+  ...quoteSelectionFields,
   tier: Schema.optionalKey(
     Schema.Literals(workspaceCoworkCurrentTiers).annotate({
       description: "Cowork only, required: open-space or reserved-desk.",
@@ -168,6 +168,7 @@ const getCoworkSelection = Effect.fn("agentTools.getCoworkQuoteSelection")(
   (selectionInput: SelectionInput) =>
     Effect.succeed(selectionInput).pipe(
       Effect.bind("entryTier", ({ input }) => requireCoworkTier(input)),
+      Effect.tap(({ input }) => ensureSingleCoworkDate(input)),
       Effect.let("today", ({ now }) => getCurrentWorkspaceDate(now)),
       Effect.tap(({ input, today }) =>
         resolveCoworkDates({ date: input.date, today })
@@ -197,6 +198,16 @@ const requireCoworkTier = ({ tier }: GetQuoteInput) =>
       (entryTier) => entryTier !== undefined,
       () => AgentToolError.invalidInput("tier")
     )
+  );
+
+/** A cowork booking covers one date; checkout has no cowork date range. */
+const ensureSingleCoworkDate = ({ date, end_date }: GetQuoteInput) =>
+  Effect.succeed(end_date).pipe(
+    Effect.filterOrFail(
+      (endDate) => endDate === undefined || endDate === date,
+      () => AgentToolError.invalidInput("end_date")
+    ),
+    Effect.asVoid
   );
 
 const ensureCoworkOfferOpen = ({

@@ -6,6 +6,7 @@ import {
   DotyposTableSchema,
 } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import type { OccupancyReservation } from "@/features/checkout/backend/reservation";
 import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
@@ -60,6 +61,24 @@ const agentToolTestTables: readonly DotyposTable[] = [
 /** A Prague date `days` after today, as YYYY-MM-DD. */
 export const workspaceDateFromToday = (days: number) =>
   getCurrentWorkspaceDate().add({ days }).toString();
+
+/** Today in Prague at a local wall-clock time such as `15:20`. */
+export const workspaceInstantToday = (time: string) =>
+  getCurrentWorkspaceDate()
+    .toZonedDateTime({
+      timeZone: workspaceSiteConstants.location.timeZone,
+      plainTime: Temporal.PlainTime.from(time),
+    })
+    .toInstant();
+
+/** Runs an Effect with the clock fixed at an instant. */
+export const atInstant =
+  (instant: Temporal.Instant) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    TestClock.setTime(instant.epochMilliseconds).pipe(
+      Effect.andThen(effect),
+      Effect.provide(TestClock.layer())
+    );
 
 /** A confirmed booking of a table for a whole Prague date. */
 export const makeTestOccupancy = (input: {

@@ -16,10 +16,10 @@ const pragueInstant = (local: string) =>
     .toInstant();
 
 // 15:20 in Prague, so some hourly bookings that began earlier today are
-// still open; reservation links keep only starts that have not begun.
+// still open; reservation links keep only hourly starts that have not begun,
+// and today's whole day until it ends.
 const now = pragueInstant("2099-07-30T15:20");
 const today = "2099-07-30";
-const tomorrow = "2099-07-31";
 const latest = "2100-01-30";
 
 type MeetingRoomArguments = {
@@ -84,6 +84,16 @@ describe("resolveMeetingRoomSelection", () => {
       selection: { date: "2099-08-12", duration: "day:1" },
       startDateTime: "2099-08-12T00:00",
     },
+    {
+      name: "today's whole day",
+      selection: { date: today, duration: "day:1" },
+      startDateTime: `${today}T00:00`,
+    },
+    {
+      name: "a whole day named with a start time",
+      selection: { date: today, startTime: "09:00", duration: "day:1" },
+      startDateTime: `${today}T00:00`,
+    },
   ] as const;
 
   for (const { name, selection, startDateTime } of accepted) {
@@ -100,6 +110,19 @@ describe("resolveMeetingRoomSelection", () => {
       });
     });
   }
+
+  test("links today's whole day to the same form selection just before it ends", async () => {
+    const lastMinute = pragueInstant("2099-07-30T23:59");
+    const resolved = await resolveSelection(
+      { date: today, duration: "day:1" },
+      lastMinute
+    );
+
+    expect(await openReservationLink(resolved, lastMinute)).toMatchObject({
+      duration: "day:1",
+      startDateTime: `${today}T00:00`,
+    });
+  });
 
   test("links a start exactly at now to the same form selection", async () => {
     const atStart = pragueInstant("2099-07-30T16:00");
@@ -141,14 +164,9 @@ describe("resolveMeetingRoomSelection", () => {
       earliest: today,
     },
     {
-      name: "today's whole day",
-      selection: { date: today, duration: "day:1" },
-      earliest: tomorrow,
-    },
-    {
       name: "yesterday's whole day",
       selection: { date: "2099-07-29", duration: "day:1" },
-      earliest: tomorrow,
+      earliest: today,
     },
   ] as const;
 
