@@ -31,6 +31,7 @@ Every case uses a unique synthetic customer. Never make an edge case mutate a fi
 
 Account cases run serially in `account-auth` from the catalog in `e2e/account/catalog.ts`. Cases use reservation fixtures 120 days out, outside the checkout date range.
 
+- Journal reconciliation removes a synthetic account the way account deletion does: `removeSyntheticAuthUser` tombstones its customer account through `CustomerAccountRepository.tombstone`, then deletes the Better Auth user. Never delete a synthetic `customer_accounts` row; a kept reservation still names it.
 - Every case shares the runner's egress IP, so the lane gets one Better Auth magic-link rate window per path. `makeMagicLinkRateBudget` (`e2e/account/rate-budget.ts`) allows one operation fewer than the deployed limit per window. An over-budget link waits out the whole quiet window (`accountCase` in `e2e/timeouts.ts` budgets for one).
 - Declare each case's sends and verifications in `workspaceE2EAccountMagicLinkLedger`. `catalog.test.ts` replays the ledger through the real budget, and `cases.test.ts` runs every case through `makeWorkspaceE2EAccountCases` with a fake boundary and checks each spends exactly its entry. Extend that fake when a case gains a new browser or fixture interaction.
 - Fit a new link into the ledger by reusing the lane's signed-in session or a link it already spends. A different synthetic identity doesn't change the limiter key. Keep the replayed-link verification the account skill requires.

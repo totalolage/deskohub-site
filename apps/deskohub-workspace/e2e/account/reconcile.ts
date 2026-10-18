@@ -60,8 +60,9 @@ const toWorkspaceE2EFailure = (cause: unknown): WorkspaceE2EError =>
  * Interruption-safe finalizer for one account case journal. Cancels and
  * converges every journaled synthetic reservation, expires (never deletes)
  * every journaled synthetic Dotypos profile, and deletes exactly the
- * journaled synthetic Better Auth user rows, whose cascades remove sessions,
- * accounts, and the customer-account link. Runs for completed journals again
+ * journaled synthetic accounts as account deletion does: each customer
+ * account keeps its tombstone, and the Better Auth user rows' cascades remove
+ * sessions, accounts, and the customer-account link. Runs for completed journals again
  * because every step is idempotent for the exact owned IDs.
  */
 const reconcileWorkspaceE2EAccountJournal = ({
