@@ -26,7 +26,7 @@
   session settings, and `advanced.database.joins`. When you add a user field
   there, update `db/schema/auth.ts` and `db/schema/auth.test.ts` in the same
   change.
-- Generate the auth tables and `customer_account_links` with Drizzle tooling
+- Generate the auth tables, `customer_account_links`, and `customer_accounts` with Drizzle tooling
   from the checked-in schema; never hand-edit snapshots. Better Auth's own
   `migrate` command doesn't apply to this setup. Follow the migration process
   in the `deskohub-workspace-operations` skill.
@@ -85,8 +85,9 @@ Keep these settings unless a reviewed decision changes them:
   since a swallowed link revocation lets both halves sign in. Every other
   email-OTP path is in `disabledPaths`. Code sign-in accepts only `email`, `otp`, and
   `callbackURL`, seeds a new account's locale from that callback, is always
-  BotID-checked, and allows ten requests per IP per 10 minutes. While the flag
-  is on, sends are BotID-checked and capped at five per address per rolling
+  BotID-checked, and allows ten requests per IP per 10 minutes. Every sign-in
+  email send is BotID-checked, matching the client `protect` list. While the
+  flag is on, sends are also capped at five per address per rolling
   hour (`SIGN_IN_EMAIL_LIMIT_REACHED`, 429), one verification row per send
   keyed by a digest of the address. Logic: `sign-in-code.ts`.
 - The browser side is `features/account/auth-return.ts`. It sends
@@ -95,8 +96,9 @@ Keep these settings unless a reviewed decision changes them:
   and the callback URL it sent the link with. It maps 429
   `SIGN_IN_EMAIL_LIMIT_REACHED` to the per-address limit, any other 429 to the
   rate limit, and `INVALID_OTP`, `OTP_EXPIRED`, and `TOO_MANY_ATTEMPTS` to
-  code rejections. Everything else, including 403 `BOT_DETECTED` and 503, is a
-  generic failure.
+  code rejections. `BOT_DETECTED` (403) maps to `automated`, which tells the
+  customer to continue in their own browser. Everything else, including 503,
+  is a generic failure.
 - `nextCookies()` must stay the last plugin; it forwards Server Action
   `Set-Cookie` headers.
 - Better Auth's logger is disabled. `onAPIError` logs only the fixed
