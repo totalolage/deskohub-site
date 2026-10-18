@@ -143,6 +143,38 @@ non-production traffic apart:
   then. Every reconcile without consent or with an unsafe telemetry host
   discards them. They don't survive a page load.
 
+## Agent traffic
+
+- `shared/agent-traffic/agent-traffic.ts` classifies a request into a fixed
+  `agent_category` and an allow-listed `agent_name` from `User-Agent`,
+  `Signature-Agent`, and BotID's verified-bot name and category. Unknown names
+  become `other`. Never record those raw values or an IP.
+- Every boundary classifies the request's own `User-Agent` and
+  `Signature-Agent` headers: the proxy for page loads,
+  `withWorkspaceRequestContext` for Server Actions and `client` routes, and
+  the Better Auth guard. The result goes into request context
+  (`CurrentAgentTraffic`). Nothing forwards a category between boundaries,
+  and the proxy matcher skips dotted paths, so never read a category from a
+  request header.
+- `agent page request` (proxy, document navigations that reach a render) and
+  `bot protection rejection` (BotID) events go out after the response,
+  regardless of consent, from `shared/backend/agent-traffic/agent-traffic-events.ts`
+  with a random per-event distinct ID and `$process_person_profile: false`.
+  They carry only the agent fields, route template, locale, call site, and
+  `verified_bot`. The page route is a template Next generated from the app
+  directory (`AppRoutes`) without its locale segment; a path no page matches
+  is `unknown`, so a requested path value never reaches PostHog. The privacy
+  policy discloses this; a new property needs a matching policy change.
+- Checkout lifecycle events carry the agent fields of the request that
+  emitted them. Actions and `client` routes provide request context
+  themselves; a page whose run can emit one, such as the checkout status
+  page that finalizes payments, passes its own `headers()` to
+  `withWorkspaceRequestContext`. Work that serves no customer request is `unclassified`
+  without a name: tasks, and `service` routes (webhooks, crons, warehouse
+  pulls). Attribute those events to the customer's traffic in PostHog through
+  the reservation's shared distinct ID; never persist a category on the
+  reservation.
+
 ## Flag-request gotcha
 
 The SDK's `/flags` request bypasses `before_send` and merges persisted

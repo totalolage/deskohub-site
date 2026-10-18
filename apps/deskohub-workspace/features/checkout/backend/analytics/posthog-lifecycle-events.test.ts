@@ -3,6 +3,10 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { PostHogDistinctId } from "@deskohub/posthog/identifiers";
 import { Effect, Layer } from "effect";
+import {
+  classifyAgentTraffic,
+  unclassifiedTraffic,
+} from "@/shared/agent-traffic/agent-traffic";
 import type { CapturePostHogEventInput } from "@/shared/backend/analytics/posthog-event.service";
 import { withWorkspaceRequestContext } from "@/shared/backend/workspace-request-context";
 import {
@@ -59,6 +63,8 @@ describe("PostHog lifecycle events", () => {
       event: "payment completed",
       properties: {
         $process_person_profile: false,
+        // Work outside a request context, such as a scheduled task, is unclassified.
+        agent_category: "unclassified",
       },
       timestamp,
       uuid: `${attemptId}:payment completed`,
@@ -107,8 +113,12 @@ describe("PostHog lifecycle events", () => {
           operations.push(`capture:${input.event}:${input.distinctId}`);
         }),
     });
+    const agentUserAgent =
+      "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot";
     const requestHeaders = new Headers({
       cookie: `${consentCookie(["necessary", "analytics"])}; ${POSTHOG_DISTINCT_ID_COOKIE}=${browserId}; ${POSTHOG_SESSION_ID_COOKIE}=synthetic-session-id`,
+      "user-agent": agentUserAgent,
+      "signature-agent": '"https://chatgpt.com"',
     });
     const paymentAttempt = {
       id: attemptId,
@@ -168,7 +178,10 @@ describe("PostHog lifecycle events", () => {
         });
       }).pipe(
         Effect.provide(service),
-        withWorkspaceRequestContext(requestHeaders)
+        withWorkspaceRequestContext(
+          requestHeaders,
+          classifyAgentTraffic(requestHeaders)
+        )
       )
     );
 
@@ -225,6 +238,16 @@ describe("PostHog lifecycle events", () => {
         $process_person_profile: false,
       });
     }
+    for (const capture of captures) {
+      expect(capture.properties).toMatchObject({
+        agent_category: "ai_user_agent",
+        agent_name: "chatgpt",
+      });
+      for (const value of Object.values(capture.properties ?? {})) {
+        expect(String(value)).not.toContain("ChatGPT-User");
+        expect(String(value)).not.toContain("chatgpt.com");
+      }
+    }
     const fulfilledCapture = captures.find(
       ({ event }) => event === "reservation fulfilled"
     );
@@ -271,7 +294,7 @@ describe("PostHog lifecycle events", () => {
               }),
           })
         ),
-        withWorkspaceRequestContext(requestHeaders)
+        withWorkspaceRequestContext(requestHeaders, unclassifiedTraffic)
       )
     );
 
@@ -306,7 +329,7 @@ describe("PostHog lifecycle events", () => {
               }),
           })
         ),
-        withWorkspaceRequestContext(requestHeaders)
+        withWorkspaceRequestContext(requestHeaders, unclassifiedTraffic)
       )
     );
 

@@ -101,7 +101,12 @@ const loadStatusPageOnTestClock = (options: {
       loadCheckoutStatusPage(
         checkoutStatus,
         { isAuthorized: () => Effect.succeed(true) },
-        { locale: "en-US", orderId, returnOutcome: "success" }
+        {
+          locale: "en-US",
+          orderId,
+          requestHeaders: new Headers(),
+          returnOutcome: "success",
+        }
       ).pipe(Effect.provideService(FetchHttpClient.Fetch, options.fetch))
     );
     let elapsedSeconds = 0;

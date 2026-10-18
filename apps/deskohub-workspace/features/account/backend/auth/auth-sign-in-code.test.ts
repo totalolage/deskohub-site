@@ -80,6 +80,7 @@ const wrongCode = (code: string) => (code === "000000" ? "111111" : "000000");
 const expectedSignInBotCheck: VerifyHumanInput = {
   verificationFailurePolicy: "allow",
   verifiedBots: { allow: customerAgentNames },
+  callSite: "account.sign-in",
 };
 
 const errorCode = async (response: Response) =>
