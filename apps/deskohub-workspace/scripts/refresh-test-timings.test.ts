@@ -2,11 +2,24 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
   formatTestTimings,
+  isShardedTestFile,
   mergeTestTimings,
   parseTestTimings,
   predictShardDurations,
   testTimingsPath,
 } from "./refresh-test-timings";
+
+test("skips build-output checks and dependencies like the test script", () => {
+  expect(isShardedTestFile("features/checkout/discount-code.test.ts")).toBe(
+    true
+  );
+  expect(
+    isShardedTestFile(
+      "features/administration/i18n/administration-messages.build.test.ts"
+    )
+  ).toBe(false);
+  expect(isShardedTestFile("node_modules/pkg/index.test.ts")).toBe(false);
+});
 
 describe("mergeTestTimings", () => {
   test("combines shard recordings sorted by path with whole milliseconds", () => {

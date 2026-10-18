@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 
 mock.module("server-only", () => ({}));
 
@@ -167,6 +168,7 @@ describe("submitWorkspaceReservation", () => {
 
     expect(verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
+      verifiedBots: { allow: customerAgentNames },
     });
     expect(eventOrder).toEqual(["bot-verification", "checkout"]);
     expect(createHostedPaymentCheckout).toHaveBeenCalledWith(
@@ -283,26 +285,32 @@ describe("submitWorkspaceReservation", () => {
     expect(rememberedReferralCode).toBe("RFL12345");
   });
 
-  test("rejects a classified bot before creating checkout", async () => {
-    const { BotDetectedError } = await import(
-      "@/shared/backend/bot-protection/bot-protection.service"
-    );
-    const { m } = await import("@/features/i18n");
-    const verifyHuman = mock(() =>
-      Effect.fail(
-        new BotDetectedError({ message: "Automated request detected" })
-      )
-    );
-    const scenario = await runSubmitReservation({ verifyHuman });
+  test.each(["en-US", "cs-CZ"] as const)(
+    "rejects a classified bot before creating checkout in %s",
+    async (locale) => {
+      const { BotDetectedError } = await import(
+        "@/shared/backend/bot-protection/bot-protection.service"
+      );
+      const { m } = await import("@/features/i18n");
+      const verifyHuman = mock(() =>
+        Effect.fail(
+          new BotDetectedError({
+            message: "Automated request detected",
+            reason: "unverified_bot",
+          })
+        )
+      );
+      const scenario = await runSubmitReservation({ verifyHuman, locale });
 
-    const error = await Effect.runPromise(Effect.flip(scenario.effect));
+      const error = await Effect.runPromise(Effect.flip(scenario.effect));
 
-    expect(error).toMatchObject({
-      _tag: "PublicSafeActionError",
-      message: m.reservationRateLimitMessage({}, { locale: "en-US" }),
-    });
-    expect(scenario.createHostedPaymentCheckout).not.toHaveBeenCalled();
-  });
+      expect(error).toMatchObject({
+        _tag: "PublicSafeActionError",
+        message: m.automatedRequestRejected({}, { locale }),
+      });
+      expect(scenario.createHostedPaymentCheckout).not.toHaveBeenCalled();
+    }
+  );
 
   test("maps cowork availability failures from their typed cause", async () => {
     const { CheckoutError } = await import(

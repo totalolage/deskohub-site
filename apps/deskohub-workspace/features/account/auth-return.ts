@@ -61,6 +61,8 @@ export type SignInEmailFailure =
   | "address-limit"
   /** The browser sent too many auth requests; try again shortly. */
   | "rate-limited"
+  /** BotID judged the request automated; continue in your own browser. */
+  | "automated"
   | "failed";
 
 export type SignInEmailResult =
@@ -83,6 +85,8 @@ export type SignInCodeVerification =
   | "wrong"
   | "expired"
   | "too-many-attempts"
+  /** BotID judged the request automated; continue in your own browser. */
+  | "automated"
   | "failed";
 
 export type AuthReturnLifecycle = {
@@ -141,6 +145,7 @@ const toSignInEmailFailure = ({
   status,
   code,
 }: AuthError): SignInEmailFailure => {
+  if (code === "BOT_DETECTED") return "automated";
   if (status !== 429) return "failed";
   return code === "SIGN_IN_EMAIL_LIMIT_REACHED"
     ? "address-limit"
@@ -398,6 +403,7 @@ export const createAuthReturnLifecycle = ({
     if (Option.isNone(response)) return "failed";
     const { error } = response.value;
     if (error !== null) {
+      if (error.code === "BOT_DETECTED") return "automated";
       const rejection =
         error.code !== undefined &&
         Object.hasOwn(signInCodeRejections, error.code)

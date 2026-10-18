@@ -104,6 +104,7 @@ import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.se
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import { customerAgentNames } from "@/shared/bot-protection/customer-agents";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
   currentInstant,
@@ -897,7 +898,12 @@ const ensureContactEmailAcceptsMail = Effect.fn(
 export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
   function* (input: PreparePayStateInput) {
     const botProtection = yield* BotProtectionService;
-    yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
+    // Reservation form: the customer's own purchase path, so verified customer
+    // agents may continue; sign-in and payment still gate the order.
+    yield* botProtection.verifyHuman({
+      verificationFailurePolicy: "allow",
+      verifiedBots: { allow: customerAgentNames },
+    });
 
     const accountActivity = yield* OptionalAccountActivityGuard;
     const rememberedReferralCode = yield* readRememberedReferralCode.pipe(
@@ -925,7 +931,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     // between the check and the created state. Anonymous sessions run
     // unchanged; a session-authority failure fails closed.
     const result = yield* accountActivity.guardStateCreation(
-      Effect.gen(function* () {
+      Effect.fn(function* (accountId) {
         yield* Match.value(input.reservation).pipe(
           Match.discriminatorsExhaustive("kind")({
             cowork: () => Effect.void,
@@ -1042,6 +1048,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           reservation,
           draft: {
             dotyposCustomerId,
+            authorAccountId: accountId,
             reservationPurpose: billing.purpose,
             reservationDetails:
               getStoredWorkspaceReservationDetails(reservation),
@@ -1071,6 +1078,21 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         );
         const { checkoutSessionId, reservationDraft } = preparedDraft;
         yield* Effect.annotateLogsScoped({ reservationDraft });
+
+        // A draft started before the customer signed in has no author yet,
+        // so the signed-in account resuming it becomes its author. A draft
+        // another account authored isn't this account's to resume.
+        if (accountId) {
+          const author = yield* reservations.assignAuthor({
+            id: reservationDraft.id,
+            authorAccountId: accountId,
+          });
+          if (author !== accountId) {
+            return yield* new CheckoutAttemptUnavailableError({
+              reservation: reservationDraft,
+            });
+          }
+        }
         yield* Effect.logInfo("Workspace reservation draft ready");
 
         if (isReusableSubmissionReservation(reservationDraft)) {
@@ -1363,7 +1385,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           new PublicSafeActionError({
             message: Match.value(error).pipe(
               Match.tag("BotDetectedError", () =>
-                m.reservationRateLimitMessage({}, { locale: input.locale })
+                m.automatedRequestRejected({}, { locale: input.locale })
               ),
               Match.tag("UndeliverableContactEmailError", () =>
                 m.contactValidationEmailUndeliverable(

@@ -131,6 +131,7 @@ export function SignInCodeStep({
         wrong: m.accountSignInCodeInvalid({}, { locale }),
         expired: m.accountSignInCodeExpired({}, { locale }),
         "too-many-attempts": m.accountSignInCodeTooManyAttempts({}, { locale }),
+        automated: m.accountSignInAutomatedRequest({}, { locale }),
         failed: m.accountSignInCodeFailed({}, { locale }),
       }[status];
   const statusTone = resendFailed
@@ -142,6 +143,7 @@ export function SignInCodeStep({
         wrong: "error",
         expired: "error",
         "too-many-attempts": "error",
+        automated: "error",
         failed: "error",
       }[status];
 
