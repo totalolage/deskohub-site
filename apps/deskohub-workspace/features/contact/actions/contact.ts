@@ -69,6 +69,7 @@ export const processContactSubmission = Effect.fn("submitContactForm")(
     yield* botProtection.verifyHuman({
       verificationFailurePolicy: "deny",
       verifiedBots: { allow: customerAgentNames },
+      callSite: "contact.submit",
     });
 
     yield* Effect.annotateLogsScoped({ submittedValues, locale });

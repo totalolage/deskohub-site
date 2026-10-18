@@ -79,6 +79,7 @@ export const checkoutPaymentReturnGet = defineWorkspaceRoute(
   {
     operation: "checkout.payment-return",
     cancellation: "continue-after-disconnect",
+    caller: "client",
   },
   (request, context: LocalizedCheckoutPaymentRouteContext) =>
     decodeCheckoutPaymentReturn(request, context).pipe(

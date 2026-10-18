@@ -179,26 +179,35 @@ export const defineWorkspacePage = <Props, A, E>(
     )
   );
 
+/**
+ * Schedules `effect` to run with `runWorkspaceEffect` after the current
+ * response is sent, so the request never waits for it. A failure to schedule
+ * is logged, never raised.
+ */
+export const runWorkspaceEffectAfterResponse = <A, E>(
+  operation: string,
+  effect: Effect.Effect<A, E, never>
+) =>
+  Effect.try({
+    try: () => after(() => effect.pipe(runWorkspaceEffect(operation))),
+    catch: (cause) =>
+      new WorkspaceTelemetryError({
+        cause,
+        message: `${operation} could not be scheduled`,
+      }),
+  }).pipe(
+    Effect.tapError((error) =>
+      Effect.logWarning("Workspace work after the response not scheduled", {
+        operation,
+        cause: error.cause,
+      })
+    ),
+    Effect.ignore
+  );
+
 export const scheduleWorkspaceTelemetryFlush = () =>
   postHogLoggerProvider
-    ? Effect.try({
-        try: () =>
-          after(() =>
-            flushTelemetry.pipe(runWorkspaceEffect("telemetry.flush"))
-          ),
-        catch: (cause) =>
-          new WorkspaceTelemetryError({
-            cause,
-            message: "PostHog log flush could not be scheduled",
-          }),
-      }).pipe(
-        Effect.tapError((cause) =>
-          Effect.logWarning("PostHog log flush could not be scheduled", {
-            cause,
-          })
-        ),
-        Effect.ignore
-      )
+    ? runWorkspaceEffectAfterResponse("telemetry.flush", flushTelemetry)
     : Effect.void;
 
 export const WorkspaceObservabilityLive = Layer.merge(
