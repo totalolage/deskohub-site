@@ -56,14 +56,13 @@ describe("Workspace Effect execution", () => {
 describe("runWorkspaceEffect", () => {
   test("keeps the function alive until an unawaited run settles", async () => {
     const vercelRequestContext = Symbol.for("@vercel/request-context");
-    const globals = globalThis as Record<symbol, unknown>;
-    const previousContext = globals[vercelRequestContext];
+    const previousContext = Reflect.get(globalThis, vercelRequestContext);
     const registered: Promise<unknown>[] = [];
-    globals[vercelRequestContext] = {
+    Reflect.set(globalThis, vercelRequestContext, {
       get: () => ({
         waitUntil: (promise: Promise<unknown>) => registered.push(promise),
       }),
-    };
+    });
     const error = spyOn(console, "error").mockImplementation(() => undefined);
 
     try {
@@ -85,7 +84,7 @@ describe("runWorkspaceEffect", () => {
       ]);
     } finally {
       error.mockRestore();
-      globals[vercelRequestContext] = previousContext;
+      Reflect.set(globalThis, vercelRequestContext, previousContext);
     }
   });
 });
