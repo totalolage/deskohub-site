@@ -219,6 +219,9 @@ async function ReservationDetailContent({
                   reservation.customer?.phone ??
                   m.administrationReservationNoContactDetails({}, { locale })}
               </p>
+              {detail.author && (
+                <ReservationAuthorFact author={detail.author} locale={locale} />
+              )}
             </AdministrationDetailSection>
 
             <AdministrationDetailSection
@@ -398,6 +401,49 @@ async function ReservationDetailContent({
         </aside>
       </div>
     </>
+  );
+}
+
+/** The account that booked the reservation for this customer. */
+function ReservationAuthorFact({
+  author,
+  locale,
+}: {
+  readonly author: NonNullable<ReservationDetailData["author"]>;
+  readonly locale: Locale;
+}) {
+  return (
+    <dl className="mt-4 border-t border-navy-blue/10 pt-4 text-sm">
+      <AdministrationFact
+        label={m.administrationReservationDetailBookedBy({}, { locale })}
+        value={
+          author.kind === "account" ? (
+            <>
+              {author.customerId ? (
+                <Link
+                  className="font-semibold underline decoration-navy-blue/20 underline-offset-4"
+                  href={`/admin/customers/${author.customerId}`}
+                >
+                  {getAdministrationCustomerName(author, locale)}
+                </Link>
+              ) : (
+                <span className="font-semibold">
+                  {getAdministrationCustomerName(author, locale)}
+                </span>
+              )}
+              <span className="mt-1 block break-all font-normal text-navy-blue/60">
+                {author.email}
+              </span>
+            </>
+          ) : (
+            {
+              deleted: m.administrationReservationAuthorDeleted,
+              unavailable: m.administrationReservationAuthorUnavailable,
+            }[author.kind]({}, { locale })
+          )
+        }
+      />
+    </dl>
   );
 }
 

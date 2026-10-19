@@ -3,10 +3,11 @@ import "server-only";
 import { Effect, Layer, Ref } from "effect";
 import { cacheLife } from "next/cache";
 import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
-import { loadPublicOfferings } from "@/features/checkout/backend/checkout/public-offerings";
+import { loadPublicPriceList } from "@/features/checkout/backend/checkout/public-offerings";
 import {
   getPublicCatalogOfferings,
   type PublicOffering,
+  type PublicPriceListOffering,
 } from "@/features/checkout/public-offerings";
 import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import { discoverActivePublicSales } from "@/features/discounts/active-public-sales.server";
@@ -19,7 +20,6 @@ import type { LandingPageSaleBannerContent } from "@/features/landing-page/compo
 import { getLandingPageSaleBanner } from "@/features/landing-page/landing-page-sale-banner.server";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { ReferralFeatureFlagService } from "@/features/referrals/referral-feature-flag.service";
-import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { serializeMarkdown } from "@/shared/markdown/markdown";
 import {
@@ -67,42 +67,42 @@ const officeDecision = (releases: PublicPageMarkdownReleases) =>
     ),
   });
 
-/** Catalog prices, as the HTML page shows them until its prices load. */
-const catalogOfferings = (
-  locale: Locale,
-  officeOpen: boolean
-): ReadonlyArray<PublicOffering> =>
-  getPublicCatalogOfferings({
-    locale,
-    ...(officeOpen && { office: {} }),
-  }).map((offering): PublicOffering => {
-    // The office advertises one day with one seat.
-    const price =
-      offering.kind === "office"
-        ? workspaceMoneyWithValue(
-            offering.price.value + offering.seatPrice.value,
-            offering.price
-          )
-        : offering.price;
-    return {
-      ...offering,
-      advertisedPrice: {
-        price,
-        discount: workspaceMoneyWithValue(0, price),
-      },
-    };
-  });
+/** An offering without a quote advertises its catalog price. */
+const withCatalogAdvertisedPrice = (
+  offering: PublicPriceListOffering
+): PublicOffering => {
+  if (offering.advertisedPrice) {
+    return { ...offering, advertisedPrice: offering.advertisedPrice };
+  }
+  // The office advertises one day with one seat.
+  const price =
+    offering.kind === "office"
+      ? workspaceMoneyWithValue(
+          offering.price.value + offering.seatPrice.value,
+          offering.price
+        )
+      : offering.price;
+  return {
+    ...offering,
+    advertisedPrice: { price, discount: workspaceMoneyWithValue(0, price) },
+  };
+};
 
 /**
  * The offerings at their advertised prices, as the reservation pages show
- * them. When pricing fails, the catalog prices stand in.
+ * them. An offering whose quote fails keeps its catalog price, and the
+ * catalog stands in when pricing cannot run. Markdown shows no seat
+ * maximum, so it never reads the availability inventory.
  */
 const loadMarkdownOfferings = (
   locale: Locale,
   releases: PublicPageMarkdownReleases
 ): Effect.Effect<Sourced<ReadonlyArray<PublicOffering>>> =>
-  loadPublicOfferings(locale).pipe(
-    Effect.map(({ offerings, complete }) => ({ value: offerings, complete })),
+  loadPublicPriceList(locale).pipe(
+    Effect.map(({ offerings, complete }) => ({
+      value: offerings.map(withCatalogAdvertisedPrice),
+      complete,
+    })),
     Effect.provide(
       Layer.mergeAll(
         // Referral discounts belong to a signed-in customer, never to an
@@ -112,7 +112,6 @@ const loadMarkdownOfferings = (
         ).pipe(
           Layer.provideMerge(ReferralFeatureFlagService.fromDecision(false))
         ),
-        SharedAvailabilityInventoryLive,
         officeDecision(releases)
       )
     ),
@@ -122,10 +121,12 @@ const loadMarkdownOfferings = (
         { cause }
       ).pipe(
         Effect.as({
-          value: catalogOfferings(
+          value: getPublicCatalogOfferings({
             locale,
-            releases.publishedPathnames.includes("/reservation/office")
-          ),
+            ...(releases.publishedPathnames.includes("/reservation/office") && {
+              office: {},
+            }),
+          }).map(withCatalogAdvertisedPrice),
           complete: false,
         })
       )

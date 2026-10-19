@@ -90,3 +90,16 @@ test("routes every internal footer page link through a locale-prefixed guarded l
     expect(href === "/cs-CZ" || href.startsWith("/cs-CZ/")).toBe(true);
   }
 });
+
+test("links the prices and opening hours page", async () => {
+  const { PublicSiteFooter } = await import("./public-site-footer");
+  const view = render(await PublicSiteFooter());
+
+  expect(
+    view
+      .getByRole("link", {
+        name: m.footerPricingLink({}, { locale: "cs-CZ" }),
+      })
+      .getAttribute("href")
+  ).toBe("/cs-CZ/pricing");
+});

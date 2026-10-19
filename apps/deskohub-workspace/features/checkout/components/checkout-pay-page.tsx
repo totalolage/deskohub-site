@@ -20,6 +20,7 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import {
   CheckoutPayCard,
   CheckoutPayConsent,
+  CheckoutPayProviderHandoff,
   CheckoutPaySubmitButton,
 } from "./checkout-pay-page-card";
 
@@ -114,6 +115,8 @@ export function CheckoutPayPage({
     } as const
   )[variant];
   const isSubmitPending = isExecuting || hasCheckoutRedirect;
+  // A free order completes without the payment provider.
+  const providerTotal = summary.total.value > 0 ? summary.total : undefined;
 
   return (
     <CheckoutPayCard lead={lead} title={title}>
@@ -153,6 +156,8 @@ export function CheckoutPayPage({
         </Button>
       ) : (
         <>
+          {!!providerTotal && <CheckoutPayProviderHandoff locale={locale} />}
+
           <CheckoutPayConsent
             checked={legalConsent}
             id="checkout-pay-legal-consent"
@@ -186,6 +191,7 @@ export function CheckoutPayPage({
               );
             }}
             pending={isSubmitPending}
+            total={providerTotal}
             variant={actionVariant}
           />
         </>

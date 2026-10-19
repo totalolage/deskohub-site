@@ -6,6 +6,7 @@ import type { ContactBusinessEmailProps } from "../contact-business";
 import type { ContactConfirmationEmailProps } from "../contact-confirmation";
 import type { CustomerReservationEmailProps } from "../customer-reservation";
 import type { InvoiceDeliveryEmailProps } from "../invoice-delivery";
+import type { ReservationAuthorEmailProps } from "../reservation-author";
 import type { ReservationNotificationEmailProps } from "../reservation-notification";
 import type { WorkspaceCampaignEmailProps } from "../workspace-campaign";
 
@@ -91,6 +92,27 @@ export const customerReservationPreviewProps = {
   ],
   followUp: `If you want to add anything, reply or write to ${workspaceSiteConstants.contact.infoEmail}.`,
 } satisfies CustomerReservationEmailProps;
+
+export const reservationAuthorPreviewProps = {
+  locale: "en-US",
+  preview: "Your reservation for Ada Lovelace is confirmed",
+  heading: "You booked Profi Workstation for Ada Lovelace",
+  body: "We emailed the access details to the reservation's customer separately.",
+  status: {
+    button: "View reservation",
+    url: "https://workspace.deskohub.cz/en-US/reservation/status/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C",
+  },
+  labels: {
+    location: "Where to go",
+    directions: "Open route in Google Maps",
+    table: "Table",
+    tables: "Tables",
+  },
+  location: customerReservationPreviewProps.location,
+  table: customerReservationPreviewProps.table,
+  details: customerReservationPreviewProps.details,
+  followUp: customerReservationPreviewProps.followUp,
+} satisfies ReservationAuthorEmailProps;
 
 export const reservationNotificationPreviewProps = {
   preview: "Zaplacená rezervace čeká na kontrolu",

@@ -2,11 +2,18 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   getOfficeReservationDefaultValuesFromSearchParams,
   getOfficeReservationSelectionSearchParams,
+  getStoredOfficeReservationSelectionSearchParams,
 } from "./office-reservation-checkout-query";
 import { setReservationSelectionSearchParams } from "./reservation-checkout-query";
+
+const workspaceMidnight = (date: string) =>
+  Temporal.PlainDate.from(date)
+    .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+    .toInstant();
 
 describe("getOfficeReservationDefaultValuesFromSearchParams", () => {
   test("prefills safe office shape on a fresh date", () => {
@@ -144,5 +151,50 @@ describe("customer last reservation defaults", () => {
         { lastReservation, seatCapacity: 2, today: "2099-06-12" }
       )
     ).toMatchObject({ dayCount: 2, seats: 1 });
+  });
+});
+
+describe("getStoredOfficeReservationSelectionSearchParams", () => {
+  test.each([
+    { startsOn: "2099-06-12", endsBefore: "2099-06-13", seats: 1 },
+    { startsOn: "2099-06-20", endsBefore: "2099-06-25", seats: 4 },
+  ])("the parser reads back the stored reservation %o", (reservation) => {
+    const searchParams = new URLSearchParams();
+    setReservationSelectionSearchParams(
+      searchParams,
+      getStoredOfficeReservationSelectionSearchParams({
+        kind: "office",
+        reservedFrom: workspaceMidnight(reservation.startsOn),
+        reservedUntil: workspaceMidnight(reservation.endsBefore),
+        seats: reservation.seats,
+      }) ?? {}
+    );
+
+    expect(
+      getOfficeReservationDefaultValuesFromSearchParams(searchParams, {
+        seatCapacity: 6,
+        today: "2099-06-12",
+      })
+    ).toMatchObject({
+      startsOn: reservation.startsOn,
+      dayCount: Temporal.PlainDate.from(reservation.startsOn).until(
+        reservation.endsBefore
+      ).days,
+      seats: reservation.seats,
+    });
+    for (const contactKey of ["name", "email", "phone", "customer"]) {
+      expect(searchParams.has(contactKey)).toBe(false);
+    }
+  });
+
+  test("gives no selection for an interval that isn't whole workspace days", () => {
+    expect(
+      getStoredOfficeReservationSelectionSearchParams({
+        kind: "office",
+        reservedFrom: workspaceMidnight("2099-06-20").add({ hours: 9 }),
+        reservedUntil: workspaceMidnight("2099-06-21"),
+        seats: 2,
+      })
+    ).toBeUndefined();
   });
 });

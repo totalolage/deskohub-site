@@ -52,7 +52,10 @@ const implementation = Effect.gen(function* () {
       readonly accessCookie?: string;
       readonly accessToken?: ReservationAccessToken;
     }) {
-      const authorized = yield* authorization.isAuthorized(input);
+      const authorized = yield* authorization.isAuthorized({
+        ...input,
+        permission: "view-access-code",
+      });
       if (!authorized) return invalidLinkAccess;
 
       const reservation = yield* reservations.findById(input.orderId).pipe(

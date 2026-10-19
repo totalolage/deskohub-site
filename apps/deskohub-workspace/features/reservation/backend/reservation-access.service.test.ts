@@ -168,7 +168,13 @@ const runAccess = async (options: HarnessOptions = {}) => {
     Effect.runPromise
   );
 
-  return { access, findById, getReservation, resolveCustomerAccessCode };
+  return {
+    access,
+    findById,
+    getReservation,
+    isAuthorized,
+    resolveCustomerAccessCode,
+  };
 };
 
 const createAccessToken = () =>
@@ -185,6 +191,14 @@ describe("ReservationAccessService", () => {
     expect(result.findById).not.toHaveBeenCalled();
     expect(result.getReservation).not.toHaveBeenCalled();
     expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
+  });
+
+  test("asks for the access-code permission, not the status permission", async () => {
+    const result = await runAccess({ authorized: false });
+
+    expect(result.isAuthorized).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId, permission: "view-access-code" })
+    );
   });
 
   test("fails closed when the local reservation is missing or cannot be read", async () => {

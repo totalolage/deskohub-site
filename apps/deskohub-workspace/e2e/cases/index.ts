@@ -161,8 +161,12 @@ export const makeWorkspaceE2ECases = ({
                 )
               )
             ),
-          id: `payment-${scenario.state}`,
-          timeoutMs: config.timeouts.paymentTerminalCase,
+          id: scenario.id,
+          // A real hosted payment may take the sandbox restart.
+          timeoutMs:
+            scenario.trigger === "injected"
+              ? config.timeouts.paymentTerminalCase
+              : config.timeouts.checkoutCase,
         });
       }
 
