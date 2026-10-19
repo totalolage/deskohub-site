@@ -33,7 +33,7 @@ import type {
 import type { AutomationRunPhase } from "../automation-states";
 
 /** A step id as flows spell it. */
-export const stepId = (id: string) => id as AutomationStepId;
+const stepId = (id: string) => id as AutomationStepId;
 
 export const waitStep = (id: string, wait: AutomationWait): AutomationStep => ({
   _tag: "Wait",
@@ -46,7 +46,7 @@ export const conditionStep = (
   filter: AutomationConditionFilter
 ): AutomationStep => ({ _tag: "Condition", id: stepId(id), filter });
 
-export const sendStep = (id = "send"): AutomationStep => ({
+const sendStep = (id = "send"): AutomationStep => ({
   _tag: "Send",
   id: stepId(id),
 });
