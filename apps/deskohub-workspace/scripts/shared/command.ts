@@ -31,7 +31,8 @@ export interface CommandOptions {
   readonly timeoutMs?: number;
   /**
    * Sends SIGTERM to the process group at the timeout and SIGKILL this much
-   * later, so the command can stop its own descendants first.
+   * later, so the command can stop its own descendants first. A command that
+   * exits sooner gets the group's SIGKILL as soon as its output settles.
    */
   readonly terminateGraceMs?: number;
 }
@@ -290,7 +291,9 @@ export const runCommand = async (
   let timedOut = false;
   let killTimer: ReturnType<typeof setTimeout> | undefined;
   let drainTimer: ReturnType<typeof setTimeout> | undefined;
+  let killed = false;
   const kill = () => {
+    killed = true;
     killCommand(child, ownsGroup);
     drainTimer = setTimeout(abandonOutput.resolve, timedOutDrainMs);
   };
@@ -314,6 +317,9 @@ export const runCommand = async (
     ]);
     return { exitCode, signalCode, stdout, stderr, timedOut };
   } finally {
+    // A command that exited during the grace can leave descendants that
+    // ignored SIGTERM and hold no output pipe; nothing would end them later.
+    if (timedOut && !killed) killCommand(child, ownsGroup);
     clearTimeout(timer);
     clearTimeout(killTimer);
     clearTimeout(drainTimer);

@@ -44,8 +44,9 @@ const toOutcome = ({
 /**
  * Spawns one harness command without a shell, writes the request to its
  * stdin, and reads its JSON response from stdout. Once `killAfterMs` passes,
- * the harness's process group gets SIGTERM and, after the exit grace,
- * SIGKILL. Never fails: every ending is an outcome the run records.
+ * the harness's process group gets SIGTERM and, after the exit grace or as
+ * soon as the harness exits, SIGKILL. Never fails: every ending is an outcome
+ * the run records.
  */
 export const runAgentEvalHarness = ({
   harness,

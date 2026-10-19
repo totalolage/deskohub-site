@@ -24,5 +24,13 @@ const results = {
     )
   ),
   missing: await settle(runCommand(["/nonexistent/command-fixture"])),
+  // The command exits on SIGTERM and leaves a descendant that ignores it;
+  // the test checks that the descendant ends too.
+  orphaning: await settle(
+    runCommand(["bash", "-c", process.argv[2]], {
+      terminateGraceMs: 5_000,
+      timeoutMs: 300,
+    })
+  ),
 };
 process.stdout.write(JSON.stringify(results));
