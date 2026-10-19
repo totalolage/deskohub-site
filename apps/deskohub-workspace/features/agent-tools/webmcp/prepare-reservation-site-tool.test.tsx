@@ -138,7 +138,9 @@ function Harness({
     },
     resolver: contactResolver,
   });
-  harnessForm = form;
+  useEffect(() => {
+    harnessForm = form;
+  }, [form]);
   const date = useWatch({ control: form.control, name: "date" });
 
   return (
