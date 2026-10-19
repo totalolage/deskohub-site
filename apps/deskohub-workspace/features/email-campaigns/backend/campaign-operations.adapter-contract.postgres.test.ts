@@ -11,6 +11,7 @@ import {
   CliSessionId,
   CurrentCliSession,
   campaignOperationEndpoints,
+  campaignOperations,
   dhwVersionHeader,
   digestCliAuthenticationSecret,
   makeCliAuthenticationSecret,
@@ -19,11 +20,12 @@ import {
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeCrypto, NodeHttpServer } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { cliSessions } from "@/db/schema";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
+import type { CampaignId } from "@/features/email-campaigns/campaign-identifiers";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { insertTestAdministrator } from "@/shared/testing/workspace-test-accounts.test-utils";
 
@@ -90,6 +92,10 @@ type Seeded = {
   readonly deletableDraftId: string;
   readonly draftWithoutAudienceId: string;
   readonly automatedDraftId: string;
+  /** A completed dry run of the automated draft's current working copy. */
+  readonly readyPreviewId: string;
+  /** A completed dry run of an older working copy. */
+  readonly stalePreviewId: string;
 };
 
 type AdapterContractCase<Name extends CampaignOperationName> = {
@@ -98,7 +104,7 @@ type AdapterContractCase<Name extends CampaignOperationName> = {
   readonly revokeAdministrator?: true;
   readonly input: (seeded: Seeded) => OperationInput<Registry[Name]>;
   readonly expect:
-    | { readonly _tag: "Success" }
+    | { readonly _tag: "Success"; readonly output?: unknown }
     | Omit<Extract<Outcome, { readonly _tag: "Failure" }>, never>;
 };
 
@@ -118,6 +124,11 @@ const failure = (
 const requestId = () => CliMutationRequestId.make(crypto.randomUUID());
 const missingId = "01990000-0000-7000-8000-00000000dead";
 const savedAudienceFilter = { _tag: "Group", operator: "and", filters: [] };
+/** "Twice an hour, send": the schedule fires more than hourly (D33). */
+const twiceHourlyFlow = {
+  trigger: { _tag: "Schedule", calendar: { minutes: [0, 30] } },
+  steps: [{ _tag: "Send", id: "send" }],
+} as const;
 const czechContent = {
   "cs-CZ": { subject: "Novinky", preheader: "", bodyMarkdown: "# Ahoj" },
 };
@@ -325,9 +336,194 @@ const cases: AdapterContractCases<Registry> = {
       expect: success,
     },
   ],
+  getAutomation: [
+    {
+      title: "reports the schedule's frequency",
+      input: ({ automatedDraftId }) => ({ campaignId: automatedDraftId }),
+      expect: {
+        _tag: "Success",
+        output: {
+          trigger: {
+            frequency: { maxFiresPerHour: 2, firesMoreThanHourly: true },
+          },
+        },
+      },
+    },
+    {
+      title: "refuses a one-off campaign",
+      input: ({ draftId }) => ({ campaignId: draftId }),
+      expect: failure("OperationConflict", "campaign-delivery-mismatch"),
+    },
+  ],
+  updateAutomationFlow: [
+    {
+      title: "stores a schedule firing twice an hour",
+      input: ({ automatedDraftId }) => ({
+        campaignId: automatedDraftId,
+        flow: twiceHourlyFlow,
+      }),
+      expect: {
+        _tag: "Success",
+        output: {
+          trigger: {
+            frequency: { maxFiresPerHour: 2, firesMoreThanHourly: true },
+          },
+        },
+      },
+    },
+    {
+      title: "refuses an unknown input key",
+      input: ({ automatedDraftId }) =>
+        ({
+          campaignId: automatedDraftId,
+          flow: twiceHourlyFlow,
+          unexpected: true,
+        }) as never,
+      expect: failure("OperationInputInvalid", "input-invalid"),
+    },
+    {
+      title: "refuses a calendar that never happens",
+      input: ({ automatedDraftId }) => ({
+        campaignId: automatedDraftId,
+        flow: {
+          ...twiceHourlyFlow,
+          trigger: {
+            _tag: "Schedule",
+            calendar: { daysOfMonth: [31], months: [2] },
+          },
+        },
+      }),
+      expect: failure("OperationInputInvalid", "calendar-never-occurs"),
+    },
+  ],
+  activateAutomation: [
+    {
+      title: "activates with a completed dry run of the current draft",
+      input: ({ automatedDraftId, readyPreviewId }) => ({
+        campaignId: automatedDraftId,
+        previewId: readyPreviewId,
+      }),
+      expect: { _tag: "Success", output: { versionNumber: 1, active: true } },
+    },
+    {
+      title: "refuses activation without a completed dry run",
+      input: ({ automatedDraftId }) => ({
+        campaignId: automatedDraftId,
+        previewId: missingId,
+      }),
+      expect: failure("OperationConflict", "automation-preview-required"),
+    },
+    {
+      title: "refuses a dry run of an older draft",
+      input: ({ automatedDraftId, stalePreviewId }) => ({
+        campaignId: automatedDraftId,
+        previewId: stalePreviewId,
+      }),
+      expect: failure("OperationConflict", "automation-draft-changed"),
+    },
+  ],
+  pauseAutomation: [
+    {
+      title: "refuses to pause a draft",
+      input: ({ automatedDraftId }) => ({ campaignId: automatedDraftId }),
+      expect: failure("OperationConflict", "automation-status-conflict"),
+    },
+  ],
+  resumeAutomation: [
+    {
+      title: "refuses to resume a draft",
+      input: ({ automatedDraftId }) => ({ campaignId: automatedDraftId }),
+      expect: failure("OperationConflict", "automation-status-conflict"),
+    },
+  ],
+  archiveAutomation: [
+    {
+      title: "archives a draft",
+      input: ({ automatedDraftId }) => ({ campaignId: automatedDraftId }),
+      expect: { _tag: "Success", output: { status: "archived" } },
+    },
+  ],
+  listAutomationVersions: [
+    {
+      title: "has no versions before activation",
+      input: ({ automatedDraftId }) => ({ campaignId: automatedDraftId }),
+      expect: { _tag: "Success", output: [] },
+    },
+  ],
+  getAutomationVersion: [
+    {
+      title: "reports a missing version",
+      input: ({ automatedDraftId }) => ({
+        campaignId: automatedDraftId,
+        versionNumber: 1,
+      }),
+      expect: failure("OperationNotFound", "automation-version-not-found"),
+    },
+  ],
+  getAutomationRunStats: [
+    {
+      title: "counts no runs before activation",
+      input: ({ automatedDraftId }) => ({ campaignId: automatedDraftId }),
+      expect: {
+        _tag: "Success",
+        output: { byState: { active: 0, sending: 0, ended: 0 } },
+      },
+    },
+  ],
+  listAutomationRuns: [
+    {
+      title: "lists no runs before activation",
+      input: ({ automatedDraftId }) => ({
+        campaignId: automatedDraftId,
+        state: "active",
+        limit: 10,
+      }),
+      expect: { _tag: "Success", output: { runs: [], nextCursor: null } },
+    },
+  ],
+  getAutomationRun: [
+    {
+      title: "reports a missing run",
+      input: () => ({ runId: missingId }),
+      expect: failure("OperationNotFound", "automation-run-not-found"),
+    },
+  ],
+  previewCalendarExpression: [
+    {
+      title: "describes a schedule firing twice an hour",
+      input: () => ({
+        expression: { minutes: [0, 30], hours: [10], months: [1] },
+        usage: "trigger",
+        locale: "en-US",
+      }),
+      expect: {
+        _tag: "Success",
+        output: {
+          frequency: { maxFiresPerHour: 2, firesMoreThanHourly: true },
+        },
+      },
+    },
+  ],
+  getAutomationEngineHealth: [
+    {
+      title: "refuses a revoked administrator",
+      revokeAdministrator: true,
+      input: () => ({}),
+      expect: failure("OperationUnauthorized", "administrator-required"),
+    },
+  ],
 };
 
-const volatileKeys = ["id", "createdAt", "updatedAt", "archivedAt"];
+const volatileKeys = [
+  "id",
+  "createdAt",
+  "updatedAt",
+  "archivedAt",
+  "activatedAt",
+  "acceptingSince",
+  "completedAt",
+  "nextFireAt",
+];
 
 /** Generated ids and instants differ per run; everything else must match. */
 const normalise = <A>(value: A): A =>
@@ -338,11 +534,24 @@ const normalise = <A>(value: A): A =>
   );
 
 const sessionId = CliSessionId.make(crypto.randomUUID());
-const currentDhwVersion: string = (
+const packagedDhwVersion: string = (
   await Bun.file(
     new URL("../../../../dhw/package.json", import.meta.url)
   ).json()
 ).version;
+/**
+ * The release that ships every operation: the packaged `dhw`, or the next
+ * release when an operation already requires it before Release Please
+ * bumps the package.
+ */
+const currentDhwVersion = Object.values(campaignOperations).reduce(
+  (newest, { minimumDhwVersion }) =>
+    minimumDhwVersion !== undefined &&
+    Bun.semver.order(minimumDhwVersion, newest) > 0
+      ? minimumDhwVersion
+      : newest,
+  packagedDhwVersion
+);
 
 /**
  * `/api/v1/cli` with the real campaign handlers over the disposable
@@ -352,6 +561,9 @@ const handleCliRequest = await (async () => {
   if (!testDatabase) return undefined;
   const { AdminCliCampaignsApiHandlers } = await import(
     "@/features/admin-cli/email-campaigns-api.server"
+  );
+  const { AdminCliAutomationsApiHandlers } = await import(
+    "@/features/admin-cli/email-automations-api.server"
   );
   const { CliClientCompatibilityLive } = await import(
     "@/features/admin-cli/cli-client-version"
@@ -379,7 +591,10 @@ const handleCliRequest = await (async () => {
   return HttpRouter.toWebHandler(
     HttpApiBuilder.layer(WorkspaceAdminApi).pipe(
       Layer.provide(AdminCliCampaignsApiHandlers),
-      Layer.provide(unhandledHttpApiGroups(WorkspaceAdminApi, ["campaigns"])),
+      Layer.provide(AdminCliAutomationsApiHandlers),
+      Layer.provide(
+        unhandledHttpApiGroups(WorkspaceAdminApi, ["campaigns", "automations"])
+      ),
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(CliBearerAuthentication, {
@@ -447,6 +662,8 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
     deletableDraftId: crypto.randomUUID(),
     draftWithoutAudienceId: crypto.randomUUID(),
     automatedDraftId: crypto.randomUUID(),
+    readyPreviewId: crypto.randomUUID(),
+    stalePreviewId: crypto.randomUUID(),
   });
 
   /** Empties the campaign domain and seeds the same rows for every run. */
@@ -469,18 +686,63 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
          ($1, 'October news', 'operational', 'workspace', '{}', $5, 'once', 'draft', now() - interval '4 minutes'),
          ($2, 'Scrapped news', 'operational', 'workspace', '{}', $5, 'once', 'draft', now() - interval '3 minutes'),
          ($3, 'Untargeted news', 'operational', 'workspace', '{}', null, 'once', 'draft', now() - interval '2 minutes'),
-         ($4, 'Review request', 'marketing', 'workspace', '{}', $5, 'automated', 'draft', now() - interval '1 minute')`,
+         ($4, 'Review request', 'marketing', 'workspace', $6, $5, 'automated', 'draft', now() - interval '1 minute')`,
       [
         seeded.draftId,
         seeded.deletableDraftId,
         seeded.draftWithoutAudienceId,
         seeded.automatedDraftId,
         seeded.audienceId,
+        czechContent,
       ]
     );
     await pool.query(
       "insert into email_campaign_automations (campaign_id) values ($1)",
       [seeded.automatedDraftId]
+    );
+    const draftHash = await saveAutomationFlow(
+      seeded.automatedDraftId,
+      twiceHourlyFlow
+    );
+    await pool.query(
+      `insert into email_campaign_automation_previews
+         (id, campaign_id, draft_hash, kind, status, as_of, units_total, units_done, completed_at) values
+         ($1, $3, $4, 'schedule', 'completed', now(), 1, 1, now()),
+         ($2, $3, 'an older draft', 'schedule', 'completed', now(), 1, 1, now())`,
+      [
+        seeded.readyPreviewId,
+        seeded.stalePreviewId,
+        seeded.automatedDraftId,
+        draftHash,
+      ]
+    );
+  };
+
+  /** Saves the working copy as an administrator would; returns its hash. */
+  const saveAutomationFlow = async (campaignId: string, flow: unknown) => {
+    const { AutomationLifecycle } = await import(
+      "../automation/backend/automation-lifecycle.service"
+    );
+    const { automationFlowFixture } = await import(
+      "../automation/backend/automation-lifecycle.test-utils"
+    );
+    const { loadAutomationWorkingCopy } = await import(
+      "../automation/backend/automation-working-copy"
+    );
+    const id = campaignId as CampaignId;
+    return AutomationLifecycle.pipe(
+      Effect.flatMap((lifecycle) =>
+        lifecycle.updateFlow({
+          campaignId: id,
+          flow: automationFlowFixture(flow),
+        })
+      ),
+      Effect.andThen(
+        testDatabase.db.transaction((tx) => loadAutomationWorkingCopy(tx, id))
+      ),
+      Effect.map((copy) => Option.getOrThrow(copy.draftHash)),
+      Effect.provide(AutomationLifecycle.Live),
+      Effect.runPromise
     );
   };
 
@@ -488,7 +750,9 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
   const databaseState = async () => {
     const campaigns = await pool.query(
       `select c.title, c.purpose, c.template_key, c.delivery, c.status, c.content,
-              a.title as audience, ca.flow, ca.campaign_id is not null as automated
+              a.title as audience, ca.flow, ca.campaign_id is not null as automated,
+              (select count(*)::int from email_campaign_automation_versions v
+                where v.campaign_id = c.id) as versions
          from email_campaigns c
          left join email_campaign_audiences a on a.id = c.audience_id
          left join email_campaign_automations ca on ca.campaign_id = c.id
@@ -606,7 +870,12 @@ describe.skipIf(!testDatabase)("campaign operation adapters", () => {
       name === "previewCampaignTemplate"
         ? fields.get("preview")
         : Object.fromEntries(fields);
-    return new Request(`https://workspace.deskohub.test${path}`, {
+    // A GET carries the rest of its input as query parameters.
+    const query =
+      endpoint.method === "GET" && fields.size > 0
+        ? `?${new URLSearchParams([...fields].map(([key, value]) => [key, String(value)]))}`
+        : "";
+    return new Request(`https://workspace.deskohub.test${path}${query}`, {
       method: endpoint.method,
       headers: {
         authorization: "Bearer contract",
