@@ -88,7 +88,11 @@ async function expectCoworkReservationForm(page: Page) {
   await expect(
     page.getByRole("list", { name: "Reservation steps" })
   ).toBeVisible();
-  await expect(page.getByLabel("Reservation date")).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Reservation date: choose from the calendar",
+    })
+  ).toBeVisible();
 }
 
 test.beforeEach(async ({ baseURL, context }) => {
