@@ -1,5 +1,6 @@
 "use client";
 
+import type { AdministrationCampaignRecipientPreviewType as CampaignRecipientPreview } from "@deskohub/workspace-admin-api";
 import Interpolate from "@doist/react-interpolate";
 import { type ReactNode, useMemo } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
@@ -12,11 +13,10 @@ import { m } from "@/features/administration/i18n";
 import type { Locale } from "@/features/i18n";
 import { useRouteLocale } from "@/features/i18n/route-locale";
 import { campaignLocaleName } from "./campaign-locale-names";
-import type { CampaignRecipientResolution } from "./recipient-preview.server";
 
-type Recipient = CampaignRecipientResolution["recipients"][number];
-type Exclusion = CampaignRecipientResolution["exclusions"][number];
-type Duplicate = CampaignRecipientResolution["duplicates"][number];
+type Recipient = CampaignRecipientPreview["recipients"][number];
+type Exclusion = CampaignRecipientPreview["exclusions"][number];
+type Duplicate = CampaignRecipientPreview["duplicates"][number];
 
 function CustomerLink({ customerId }: { readonly customerId: string }) {
   return (
@@ -42,11 +42,9 @@ const createRecipientColumns = (
     header: m.emailCampaignsRecipientPreviewLanguageColumn({}, { locale }),
   },
   {
-    accessorKey: "dotyposCustomerId",
+    accessorKey: "customerId",
     header: m.emailCampaignsRecipientPreviewCustomerColumn({}, { locale }),
-    cell: ({ row }) => (
-      <CustomerLink customerId={row.original.dotyposCustomerId} />
-    ),
+    cell: ({ row }) => <CustomerLink customerId={row.original.customerId} />,
   },
 ];
 
@@ -68,11 +66,9 @@ const createExclusionColumns = (
   locale: Locale
 ): AdministrationDataTableColumn<Exclusion>[] => [
   {
-    accessorKey: "dotyposCustomerId",
+    accessorKey: "customerId",
     header: m.emailCampaignsRecipientPreviewCustomerColumn({}, { locale }),
-    cell: ({ row }) => (
-      <CustomerLink customerId={row.original.dotyposCustomerId} />
-    ),
+    cell: ({ row }) => <CustomerLink customerId={row.original.customerId} />,
   },
   {
     accessorFn: (exclusion) => describeExclusionReason(exclusion, locale),
@@ -120,7 +116,7 @@ function MobileItem({ children }: { readonly children: ReactNode }) {
 export function RecipientTable({
   recipients,
 }: {
-  readonly recipients: CampaignRecipientResolution["recipients"];
+  readonly recipients: CampaignRecipientPreview["recipients"];
 }) {
   const locale = useRouteLocale();
   const columns = useMemo(() => createRecipientColumns(locale), [locale]);
@@ -139,18 +135,18 @@ export function RecipientTable({
       ariaLabel={m.emailCampaignsRecipientPreviewRecipients({}, { locale })}
       columns={columns}
       data={recipients}
-      getRowId={(recipient) => recipient.dotyposCustomerId}
+      getRowId={(recipient) => recipient.customerId}
       mobile={
         <MobileList>
           {recipients.map((recipient) => (
-            <MobileItem key={recipient.dotyposCustomerId}>
+            <MobileItem key={recipient.customerId}>
               <p className="break-all font-semibold">{recipient.email}</p>
               <p className="text-navy-blue/65">
                 {campaignLocaleName(recipient.locale, locale)} ·{" "}
                 <Interpolate
                   mapping={{
                     customer: (
-                      <CustomerLink customerId={recipient.dotyposCustomerId} />
+                      <CustomerLink customerId={recipient.customerId} />
                     ),
                   }}
                   string={m.emailCampaignsRecipientPreviewCustomerInline(
@@ -170,7 +166,7 @@ export function RecipientTable({
 export function ExclusionTable({
   exclusions,
 }: {
-  readonly exclusions: CampaignRecipientResolution["exclusions"];
+  readonly exclusions: CampaignRecipientPreview["exclusions"];
 }) {
   const locale = useRouteLocale();
   const columns = useMemo(() => createExclusionColumns(locale), [locale]);
@@ -189,11 +185,11 @@ export function ExclusionTable({
       )}
       columns={columns}
       data={exclusions}
-      getRowId={(exclusion) => exclusion.dotyposCustomerId}
+      getRowId={(exclusion) => exclusion.customerId}
       mobile={
         <MobileList>
           {exclusions.map((exclusion) => (
-            <MobileItem key={exclusion.dotyposCustomerId}>
+            <MobileItem key={exclusion.customerId}>
               <p className="font-semibold">
                 {describeExclusionReason(exclusion, locale)}
               </p>
@@ -201,7 +197,7 @@ export function ExclusionTable({
                 <Interpolate
                   mapping={{
                     customer: (
-                      <CustomerLink customerId={exclusion.dotyposCustomerId} />
+                      <CustomerLink customerId={exclusion.customerId} />
                     ),
                   }}
                   string={m.emailCampaignsRecipientPreviewCustomerInline(
@@ -221,7 +217,7 @@ export function ExclusionTable({
 export function DuplicateTable({
   duplicates,
 }: {
-  readonly duplicates: CampaignRecipientResolution["duplicates"];
+  readonly duplicates: CampaignRecipientPreview["duplicates"];
 }) {
   const locale = useRouteLocale();
   const columns = useMemo(() => createDuplicateColumns(locale), [locale]);
