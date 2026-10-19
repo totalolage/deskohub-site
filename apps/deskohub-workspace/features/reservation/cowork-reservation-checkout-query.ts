@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import {
   getWorkspaceProductByTier,
   isWorkspaceCoworkCurrentProductTier,
+  type WorkspaceCoworkCurrentTier,
   workspaceCoworkCurrentTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
