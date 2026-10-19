@@ -586,6 +586,29 @@ describe.skipIf(!testDatabase)(
       ]);
     });
 
+    test("records each event at the sweep's instant, not the database's clock", async () => {
+      const dotypos = activityDotypos(100);
+      const now = at("2027-01-20T09:03:00Z");
+      await resetSweeps({ activity: now.subtract({ minutes: 3 }) });
+      const visit = {
+        label: "recorded",
+        startsAt: now.subtract({ hours: 2 }),
+        endsAt: now.subtract({ minutes: 2 }),
+      };
+      await book(dotypos, visit);
+
+      await runEngine(dotypos, (tick) => tick(now));
+
+      const { rows } = await testDatabase.pool.query<{ recorded_at: string }>(
+        "select recorded_at from customer_events where workspace_reservation_id = $1",
+        [workspaceId(visit.label)]
+      );
+      expect(rows.map((row) => storedIso(row.recorded_at))).toEqual([
+        "2027-01-20T09:03:00.000Z",
+        "2027-01-20T09:03:00.000Z",
+      ]);
+    });
+
     test("a 600-hour office visit starts in its first window and finishes after its end", async () => {
       const dotypos = activityDotypos(100);
       const now = at("2027-02-01T08:01:00Z");

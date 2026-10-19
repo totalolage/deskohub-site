@@ -11,7 +11,7 @@ import type { reservationCustomerEventKinds } from "./customer-event";
  * A customer event as its writer records it: the kind, when it happened and
  * the ids it concerns. It never carries reservation state or profile values.
  */
-export type NewCustomerEvent =
+export type NewCustomerEvent = (
   | {
       readonly kind: (typeof reservationCustomerEventKinds)[number];
       readonly occurredAt: Temporal.Instant;
@@ -23,7 +23,11 @@ export type NewCustomerEvent =
       readonly occurredAt: Temporal.Instant;
       readonly dotyposCustomerId: DotyposCustomerId;
       readonly customerAccountId: CustomerAccountId;
-    };
+    }
+) & {
+  /** When the writer recorded it; the database's clock when omitted. */
+  readonly recordedAt?: Temporal.Instant;
+};
 
 /**
  * Records the event through the caller's transaction executor, so it commits

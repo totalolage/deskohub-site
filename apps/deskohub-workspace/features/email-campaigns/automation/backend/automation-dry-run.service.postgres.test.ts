@@ -50,10 +50,23 @@ import type {
 import type { AutomationPreviewId } from "../automation-identifiers";
 import { AutomationConditionEvaluation } from "./automation-condition-evaluation.service";
 import { AutomationDryRun } from "./automation-dry-run.service";
+import { makeAutomationDryRunner } from "./automation-dry-run.test-utils";
 import { automationEngineTestLayer } from "./automation-engine.test-utils";
+import {
+  databaseInstant,
+  makeAutomationEngineScenario,
+} from "./automation-engine-scenario.test-utils";
 import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
-import { automationLifecycleTestKit } from "./automation-lifecycle.test-utils";
+import {
+  automationFlowFixture,
+  automationLifecycleTestKit,
+} from "./automation-lifecycle.test-utils";
 import { makePreviewUnitHandler } from "./automation-preview-unit";
+import {
+  comeBackOfferFlow,
+  lapsedRegularsFilter,
+  reviewRequestFlow,
+} from "./automation-stories.test-utils";
 import { AutomationUnitProcessor } from "./automation-unit-processor.service";
 import { makeAutomationUnitQueueFake } from "./automation-unit-queue.test-utils";
 
@@ -1151,6 +1164,301 @@ describe.skipIf(!testDatabase)(
           cause: { reasons: [{ error: { _tag: "AutomationFlowInvalid" } }] },
         });
       });
+    });
+  }
+);
+
+describe.skipIf(!testDatabase)(
+  "AutomationDryRun and the engine agree (§8)",
+  async () => {
+    if (!testDatabase) return;
+    const { pool } = testDatabase;
+    const instant = (value: string) => Temporal.Instant.from(value);
+    const iso = (value: Date | string | null | undefined) =>
+      databaseInstant(value)?.toString() ?? null;
+    const scenario = await makeAutomationEngineScenario({
+      database: testDatabase,
+      now: instant("2026-10-13T06:00:00Z"),
+      prefix: `dry-run-parity-${runId}`,
+    });
+    const dryRunner = makeAutomationDryRunner({
+      database: testDatabase,
+      dotypos: scenario.dotypos.layer,
+    });
+    const { fixtures, kit, read } = scenario;
+    afterAll(() => scenario.cleanup());
+
+    type PreviewRow = {
+      readonly dotypos_customer_id: string;
+      readonly customer_event_id: string | null;
+      readonly outcome: string;
+      readonly step_id: string | null;
+      readonly send_at: Date | string | null;
+    };
+    const previewRows = async (previewId: AutomationPreviewId) =>
+      (
+        await pool.query<PreviewRow>(
+          "select * from email_campaign_automation_preview_rows where preview_id = $1 order by trigger_at, dotypos_customer_id",
+          [previewId]
+        )
+      ).rows;
+
+    /**
+     * Starts a dry run of the active automation at `at` and processes it,
+     * then runs the engine on the same Dotypos data from the same instant
+     * until every run of the campaign has ended. The dry run's rows are
+     * read once it completes, since the planner prunes week-old dry runs.
+     * The automation is archived afterwards, so later tests' schedules
+     * don't fire it.
+     */
+    const dryRunThenEngine = async (
+      active: {
+        readonly campaignId: CampaignId;
+        readonly previewId: AutomationPreviewId;
+      },
+      at: Temporal.Instant,
+      until: Temporal.Instant
+    ) => {
+      const { campaignId } = active;
+      await scenario.prepare(at);
+      // The kit's stand-in for the dry run that let it activate.
+      await pool.query(
+        "update email_campaign_automation_previews set status = 'superseded' where id = $1",
+        [active.previewId]
+      );
+      const started = await dryRunner.start(campaignId, at);
+      const previewed = await scenario.runUntil({
+        from: at,
+        until: at,
+        sameInstant: true,
+        settled: async () => {
+          const { rows } = await pool.query<{ status: string }>(
+            "select status from email_campaign_automation_previews where id = $1",
+            [started.previewId]
+          );
+          return rows[0]?.status === "completed";
+        },
+      });
+      expect(previewed.settled).toBe(true);
+      const rows = await previewRows(started.previewId);
+      const progress = await scenario.runUntil({
+        from: at,
+        until,
+        sameInstant: true,
+        settled: async () => {
+          const runs = await read.runs(campaignId);
+          return runs.length > 0 && runs.every((run) => run.status === "ended");
+        },
+      });
+      expect(progress.settled).toBe(true);
+      await scenario.lifecycle(
+        (lifecycle) => lifecycle.archive(campaignId),
+        progress.at
+      );
+      return { started, rows, runs: await read.runs(campaignId) };
+    };
+
+    /** The columns of an ended run that parity compares. */
+    type EndedRun = {
+      readonly outcome: string | null;
+      readonly step_id: string;
+      readonly step_entered_at: Date | string;
+    };
+    /** A run's end as a dry-run row states it: the send instant is when the run reached its send step. */
+    const engineOutcome = (run: EndedRun) => ({
+      outcome: run.outcome === "sent" ? "would-send" : run.outcome,
+      stepId: run.step_id,
+      sendAt: run.outcome === "sent" ? iso(run.step_entered_at) : null,
+    });
+    const rowOutcome = (row: PreviewRow) => ({
+      outcome: row.outcome,
+      stepId: row.step_id,
+      sendAt: iso(row.send_at),
+    });
+
+    test("story 1: identical send instants for the same events", async () => {
+      const active = await kit.seedActive(reviewRequestFlow, {
+        at: instant("2026-10-13T06:00:00Z"),
+      });
+      const second = await fixtures.addCustomer("story1-second");
+      const once = await fixtures.addCustomer("story1-once");
+      const finishedVisit = async (
+        label: string,
+        customer: DotyposCustomerId,
+        endsAt: Temporal.Instant
+      ) => {
+        const reservationId = await fixtures.book({
+          label,
+          customer,
+          startsAt: endsAt.subtract({ hours: 8 }),
+          endsAt,
+        });
+        return fixtures.recordEvent({
+          kind: "reservation-finished",
+          customer,
+          occurredAt: endsAt,
+          reservationId,
+        });
+      };
+      // Before activation: the dry run replays it, the engine ignores it.
+      const earlier = await finishedVisit(
+        "story1-second-first",
+        second,
+        instant("2026-10-01T15:00:00Z")
+      );
+      await finishedVisit(
+        "story1-second-second",
+        second,
+        instant("2026-10-13T15:00:00Z")
+      );
+      await finishedVisit("story1-once", once, instant("2026-10-13T15:00:00Z"));
+
+      const { started, rows, runs } = await dryRunThenEngine(
+        active,
+        instant("2026-10-13T15:05:00Z"),
+        instant("2026-10-15T00:00:00Z")
+      );
+
+      expect(started.kind).toBe("replay");
+      expect(runs).toHaveLength(2);
+      for (const run of runs) {
+        const row = rows.find(
+          (candidate) => candidate.customer_event_id === run.trigger_event_id
+        );
+        expect(row).toBeDefined();
+        expect(rowOutcome(row!)).toEqual(engineOutcome(run));
+      }
+      const byCustomer = new Map(
+        runs.map((run) => [run.dotypos_customer_id, engineOutcome(run)])
+      );
+      // 10:00 in Prague the next day, after the 2-hour settle.
+      expect(byCustomer.get(second)).toEqual({
+        outcome: "would-send",
+        stepId: "send",
+        sendAt: "2026-10-14T08:00:00Z",
+      });
+      expect(byCustomer.get(once)).toMatchObject({
+        outcome: "condition-failed",
+        stepId: "second-visit-within-a-month",
+      });
+      expect(
+        rows.find((row) => row.customer_event_id === earlier)
+      ).toMatchObject({ outcome: "condition-failed" });
+    });
+
+    test("story 2: identical send instants for the same fire", async () => {
+      const activatedAt = instant("2026-10-18T10:00:00Z");
+      const active = await kit.seedActive(comeBackOfferFlow, {
+        at: activatedAt,
+        audienceFilter: lapsedRegularsFilter,
+      });
+      const visit = async (
+        label: string,
+        customer: DotyposCustomerId,
+        startsAt: string
+      ) =>
+        fixtures.book({
+          label,
+          customer,
+          startsAt: instant(startsAt),
+          endsAt: instant(startsAt).add({ hours: 8 }),
+        });
+      const regular = await fixtures.addCustomer("story2-regular");
+      await visit("story2-regular-1", regular, "2026-07-10T07:00:00Z");
+      await visit("story2-regular-2", regular, "2026-08-14T07:00:00Z");
+      const recent = await fixtures.addCustomer("story2-recent");
+      await visit("story2-recent-1", recent, "2026-07-10T07:00:00Z");
+      await visit("story2-recent-2", recent, "2026-10-08T07:00:00Z");
+      const single = await fixtures.addCustomer("story2-single");
+      await visit("story2-single-1", single, "2026-07-10T07:00:00Z");
+
+      const { started, rows, runs } = await dryRunThenEngine(
+        active,
+        activatedAt,
+        instant("2026-10-19T09:00:00Z")
+      );
+
+      // Monday 10:00 in Prague.
+      const fire = "2026-10-19T08:00:00Z";
+      expect(started).toMatchObject({ kind: "schedule", asOf: fire });
+      const rowsByCustomer = new Map(
+        rows.map((row) => [row.dotypos_customer_id, rowOutcome(row)])
+      );
+      const runsByCustomer = new Map(
+        runs.map((run) => [run.dotypos_customer_id, engineOutcome(run)])
+      );
+      expect(
+        new Map(
+          [...rowsByCustomer].filter(([, row]) => row.outcome === "would-send")
+        )
+      ).toEqual(new Map(runsByCustomer));
+      expect(runsByCustomer.get(regular)).toEqual({
+        outcome: "would-send",
+        stepId: "send",
+        sendAt: fire,
+      });
+      expect(runsByCustomer.has(recent)).toBe(false);
+      expect(runsByCustomer.has(single)).toBe(false);
+    });
+
+    test("§8.1: at 10:30 on a Monday both send next Monday at 10:00", async () => {
+      const mondayAtHalfPastTen = instant("2026-10-19T08:30:00Z");
+      const active = await kit.seedActive(
+        automationFlowFixture({
+          trigger: {
+            _tag: "Schedule",
+            calendar: { weekdays: ["monday"], hours: [10] },
+          },
+          steps: [
+            {
+              _tag: "Wait",
+              id: "ten-oclock",
+              wait: { _tag: "Calendar", expression: { hours: [10] } },
+            },
+            { _tag: "Send", id: "send" },
+          ],
+        }),
+        { at: mondayAtHalfPastTen }
+      );
+      const customer = await fixtures.addCustomer("half-past-ten");
+      await fixtures.book({
+        label: "half-past-ten",
+        customer,
+        startsAt: instant("2026-09-01T07:00:00Z"),
+        endsAt: instant("2026-09-01T15:00:00Z"),
+      });
+
+      const { started, rows, runs } = await dryRunThenEngine(
+        active,
+        mondayAtHalfPastTen,
+        instant("2026-10-26T10:00:00Z")
+      );
+
+      // 10:00 in Prague on 26 October, after the switch to winter time.
+      const nextMonday = "2026-10-26T09:00:00Z";
+      expect(started).toMatchObject({ kind: "schedule", asOf: nextMonday });
+      const row = rows.find(
+        (candidate) => candidate.dotypos_customer_id === customer
+      );
+      const run = runs.find(
+        (candidate) => candidate.dotypos_customer_id === customer
+      );
+      expect(rowOutcome(row!)).toEqual({
+        outcome: "would-send",
+        stepId: "send",
+        sendAt: nextMonday,
+      });
+      expect(engineOutcome(run!)).toEqual(rowOutcome(row!));
+      for (const other of runs) {
+        expect(
+          rowOutcome(
+            rows.find(
+              (candidate) =>
+                candidate.dotypos_customer_id === other.dotypos_customer_id
+            )!
+          )
+        ).toEqual(engineOutcome(other));
+      }
     });
   }
 );
