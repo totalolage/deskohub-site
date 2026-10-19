@@ -6,6 +6,7 @@ import {
   meetingRoomReservationDefaultValues,
   meetingRoomStartDateTimeSchema,
   type NormalizedMeetingRoomReservationOrder,
+  type StoredMeetingRoomReservationDetails,
 } from "@/features/reservation/meeting-room-reservation";
 import {
   getMeetingRoomReservationDuration,
@@ -13,8 +14,10 @@ import {
   meetingRoomReservationDurationKeySchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import {
+  findMeetingRoomReservationDuration,
   getEarliestMeetingRoomStartDateTime,
   getMeetingRoomReservationInterval,
+  getMeetingRoomStartDateTime,
 } from "@/features/reservation/meeting-room-reservation-time";
 import {
   decodeReservationCheckoutCustomer,
@@ -81,6 +84,33 @@ export const getMeetingRoomReservationSelectionSearchParams = (
   startDateTime: selection.startDateTime || undefined,
   duration: selection.duration,
 });
+
+/**
+ * A stored meeting-room reservation's selection as link parameters, so a
+ * retried checkout reopens the form on the same start and duration. A row
+ * without a recorded duration takes the one its interval matches.
+ */
+export const getStoredMeetingRoomReservationSelectionSearchParams = (
+  reservation: StoredMeetingRoomReservationDetails & {
+    readonly reservedFrom: Temporal.Instant;
+    readonly reservedUntil: Temporal.Instant;
+  }
+): ReservationSelectionSearchParams | undefined => {
+  const duration =
+    reservation.duration ??
+    findMeetingRoomReservationDuration({
+      startsAt: reservation.reservedFrom,
+      endsAt: reservation.reservedUntil,
+    });
+
+  return (
+    duration &&
+    getMeetingRoomReservationSelectionSearchParams({
+      startDateTime: getMeetingRoomStartDateTime(reservation.reservedFrom),
+      duration: getMeetingRoomReservationDurationKey(duration),
+    })
+  );
+};
 
 /**
  * The form values for a signed meeting-room restoration, with the selection

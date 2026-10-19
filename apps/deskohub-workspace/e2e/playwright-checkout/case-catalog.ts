@@ -46,7 +46,7 @@ const workspaceE2EPaidCaseIds = [
   "payment-late-recovery-refund-required",
   "checkout-voucher-full-usage",
   "checkout-discount-code",
-  "payment-failed",
+  "payment-authentication-failed",
   "payment-meeting-room-cancelled",
   "payment-cancelled",
 ] as const;

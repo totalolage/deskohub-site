@@ -9,6 +9,7 @@ import {
 import {
   getMeetingRoomLastServiceDate,
   getMeetingRoomReservationInterval,
+  getMeetingRoomStartDateTime,
 } from "@/features/reservation/meeting-room-reservation-time";
 import {
   defaultReservationBillingSelection,
@@ -213,10 +214,9 @@ const intervalMatchesMeetingRoomReservationDuration = (
   reservation: MeetingRoomReservationOrderInput,
   interval: ReservationInterval
 ) => {
-  const startDateTime = Temporal.Instant.from(interval.startsAt)
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDateTime()
-    .toString({ smallestUnit: "minute" });
+  const startDateTime = getMeetingRoomStartDateTime(
+    Temporal.Instant.from(interval.startsAt)
+  );
   const expectedInterval = getMeetingRoomReservationInterval(
     startDateTime,
     reservation.duration
@@ -427,10 +427,9 @@ export const getMeetingRoomReservationDefaultValues = (
     return undefined;
   }
 
-  const startDateTime = Temporal.Instant.from(reservation.startsAt)
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDateTime()
-    .toString({ smallestUnit: "minute" });
+  const startDateTime = getMeetingRoomStartDateTime(
+    Temporal.Instant.from(reservation.startsAt)
+  );
 
   return {
     startDateTime,

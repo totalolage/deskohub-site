@@ -13,10 +13,14 @@ import {
   temporalPlainDateToDate,
 } from "@/shared/utils/temporal";
 
-export const getCurrentWorkspaceDate = (now = Temporal.Now.instant()) =>
-  now
+/** The workspace calendar date (Prague) of an instant. */
+export const getWorkspaceDate = (instant: Temporal.Instant) =>
+  instant
     .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate();
+
+export const getCurrentWorkspaceDate = (now = Temporal.Now.instant()) =>
+  getWorkspaceDate(now);
 
 export const isTodayOrFutureWorkspaceDate = (date: string) =>
   date >= getCurrentWorkspaceDate().toString();

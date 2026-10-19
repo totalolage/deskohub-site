@@ -8,11 +8,29 @@ import { workspaceE2ETimeouts } from "../timeouts";
 import type {
   CheckoutData,
   CheckoutFlowState,
+  PaymentTerminalScenario,
   WorkspaceE2EStepRunner,
 } from "../types";
 import { assertPaymentTerminalPath } from "./payment-terminal";
 
-test("holds the hosted-payment permit from submission through the terminal state", async () => {
+const injectedFailure: PaymentTerminalScenario = {
+  failureCode: "workspace_e2e_nexi_failed",
+  id: "payment-injected-failure",
+  providerStatus: "DECLINED",
+  state: "failed",
+  titlePattern: /failed/,
+  trigger: "injected",
+};
+
+const hostedAuthenticationFailure: PaymentTerminalScenario = {
+  ...injectedFailure,
+  failureCode: "nexi_payment_failed",
+  id: "payment-authentication-failed",
+  providerStatus: "THREEDS_FAILED",
+  trigger: "hosted_authentication_failure",
+};
+
+const runUntilStatusPage = async (scenario: PaymentTerminalScenario) => {
   const hostedPaymentPermit = makeWorkspaceE2EHostedPaymentPermitRecorder();
   const observedSteps: Array<{
     readonly capacity: "provider-verification" | undefined;
@@ -43,11 +61,7 @@ test("holds the hosted-payment permit from submission through the terminal state
       run: (() =>
         Promise.reject(new Error("runner must not execute"))) as Runner,
       runStep,
-      scenario: {
-        providerStatus: "DECLINED",
-        state: "failed",
-        titlePattern: /failed/,
-      },
+      scenario,
       session: "payment-terminal-capacity",
       state,
       submitReservationScript: "unused",
@@ -58,12 +72,27 @@ test("holds the hosted-payment permit from submission through the terminal state
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
-  expect(observedSteps).toEqual([
+  expect(hostedPaymentPermit.isHolding()).toBe(false);
+  expect(state.orderId).toBe(orderId);
+  return observedSteps;
+};
+
+test("holds the hosted-payment permit from submission through the injected terminal state", async () => {
+  expect(await runUntilStatusPage(injectedFailure)).toEqual([
     { capacity: undefined, hosted: false, id: "prepare-checkout-pay-page" },
     { capacity: undefined, hosted: true, id: "start-hosted-payment" },
     { capacity: undefined, hosted: true, id: "prepare-failed-payment-state" },
     { capacity: undefined, hosted: false, id: "assert-failed-status-page" },
   ]);
-  expect(hostedPaymentPermit.isHolding()).toBe(false);
-  expect(state.orderId).toBe(orderId);
+});
+
+test("holds the hosted-payment permit through the real Nexi return of a failed authentication", async () => {
+  expect(await runUntilStatusPage(hostedAuthenticationFailure)).toEqual([
+    { capacity: undefined, hosted: false, id: "prepare-checkout-pay-page" },
+    { capacity: undefined, hosted: true, id: "start-checkout-payment" },
+    { capacity: undefined, hosted: true, id: "read-provider-session-row" },
+    { capacity: undefined, hosted: true, id: "complete-hosted-payment" },
+    { capacity: undefined, hosted: true, id: "reach-checkout-status-page" },
+    { capacity: undefined, hosted: false, id: "assert-failed-status-page" },
+  ]);
 });

@@ -23,6 +23,7 @@ const locales = ["en-US", "cs-CZ"] as const;
 const auditedPaths = [
   "",
   "/contact",
+  "/pricing",
   "/gallery",
   "/meeting-room",
   "/ttrpg-room",

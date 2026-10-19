@@ -115,9 +115,18 @@ export type CheckoutFlowState = {
 };
 
 export type PaymentTerminalScenario = {
+  readonly failureCode: string;
+  readonly id: string;
   readonly providerStatus: string;
   readonly state: "cancelled" | "failed";
   readonly titlePattern: RegExp;
+  /**
+   * How the payment attempt ends. `hosted_authentication_failure` fails the
+   * 3-D Secure challenge on the Nexi hosted page and returns through the
+   * provider; `injected` writes the terminal state after Nexi opens, because
+   * the hosted page offers no cancellation that Nexi records.
+   */
+  readonly trigger: "hosted_authentication_failure" | "injected";
 };
 
 export type WorkspaceE2ECase = {
