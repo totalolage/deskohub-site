@@ -122,7 +122,9 @@ const assertPaidSupportReservationRow = ({
     }
   );
 
-const assertAuthorizedPaidSupportStatus = ({
+const assertAuthorizedPaidSupportStatus = Effect.fn(
+  "ReservationStatusIsolation.assertAuthorizedPaidSupportStatus"
+)(function* ({
   config,
   orderId,
   run,
@@ -134,35 +136,34 @@ const assertAuthorizedPaidSupportStatus = ({
   readonly run: Runner;
   readonly session: string;
   readonly statusUrl: string;
-}) =>
-  Effect.gen(function* () {
-    yield* openBrowserPage(config, run, session, statusUrl);
-    yield* waitForExactReservationUrl({
-      description: "authorized reservation status URL",
-      run,
-      session,
-      statusUrl,
-      timeoutMs: config.timeouts.browserNavigation,
-    });
-    yield* waitForBrowserText({
-      description: "authorized paid support status",
-      matches: (text) => {
-        const normalized = normalizeBrowserText(text);
-        return (
-          normalized.includes("We couldn't deliver your confirmation.") &&
-          normalized.includes("Your payment went through") &&
-          normalized.includes("Send support request")
-        );
-      },
-      run,
-      session,
-      timeoutMs: config.timeouts.uiTransition,
-    });
-    const result = yield* evalBrowserScript(
-      "assert authorized paid support reservation status",
-      run,
-      session,
-      `(() => {
+}) {
+  yield* openBrowserPage(config, run, session, statusUrl);
+  yield* waitForExactReservationUrl({
+    description: "authorized reservation status URL",
+    run,
+    session,
+    statusUrl,
+    timeoutMs: config.timeouts.browserNavigation,
+  });
+  yield* waitForBrowserText({
+    description: "authorized paid support status",
+    matches: (text) => {
+      const normalized = normalizeBrowserText(text);
+      return (
+        normalized.includes("We couldn't deliver your confirmation.") &&
+        normalized.includes("Your payment went through") &&
+        normalized.includes("Send support request")
+      );
+    },
+    run,
+    session,
+    timeoutMs: config.timeouts.uiTransition,
+  });
+  const result = yield* evalBrowserScript(
+    "assert authorized paid support reservation status",
+    run,
+    session,
+    `(() => {
         const orderId = ${JSON.stringify(orderId)};
         const body = document.body?.innerText ?? "";
         const exactOrderId = [...document.querySelectorAll("dd")].some(
@@ -174,19 +175,21 @@ const assertAuthorizedPaidSupportStatus = ({
           document.querySelector("#checkout-status-support-contact") instanceof HTMLAnchorElement &&
           document.querySelector("#checkout-status-access") === null;
       })()`,
-      { logOutput: false, timeoutMs: config.timeouts.browserAction }
-    );
-    yield* tryWorkspaceE2ESync(
-      "assert authorized paid support reservation status",
-      () =>
-        assert(
-          result.stdout.trim() === "true",
-          "paid reservation status did not expose authorized support details"
-        )
-    );
-  });
+    { logOutput: false, timeoutMs: config.timeouts.browserAction }
+  );
+  yield* tryWorkspaceE2ESync(
+    "assert authorized paid support reservation status",
+    () =>
+      assert(
+        result.stdout.trim() === "true",
+        "paid reservation status did not expose authorized support details"
+      )
+  );
+});
 
-const assertOtherReservationDenied = ({
+const assertOtherReservationDenied = Effect.fn(
+  "ReservationStatusIsolation.assertOtherReservationDenied"
+)(function* ({
   config,
   orderId,
   run,
@@ -198,46 +201,45 @@ const assertOtherReservationDenied = ({
   readonly run: Runner;
   readonly session: string;
   readonly statusUrl: string;
-}) =>
-  Effect.gen(function* () {
-    yield* openBrowserPage(config, run, session, statusUrl);
-    yield* waitForExactReservationUrl({
-      description: "other reservation status URL",
-      run,
-      session,
-      statusUrl,
-      timeoutMs: config.timeouts.browserNavigation,
-    });
-    yield* waitForBrowserText({
-      description: "other reservation not-found status",
-      matches: (text) => {
-        const normalized = normalizeBrowserText(text);
-        return normalized.includes("We could not find this order.");
-      },
-      run,
-      session,
-      timeoutMs: config.timeouts.uiTransition,
-    });
-    const result = yield* evalBrowserScript(
-      "assert other reservation remains private",
-      run,
-      session,
-      `(() => {
+}) {
+  yield* openBrowserPage(config, run, session, statusUrl);
+  yield* waitForExactReservationUrl({
+    description: "other reservation status URL",
+    run,
+    session,
+    statusUrl,
+    timeoutMs: config.timeouts.browserNavigation,
+  });
+  yield* waitForBrowserText({
+    description: "other reservation not-found status",
+    matches: (text) => {
+      const normalized = normalizeBrowserText(text);
+      return normalized.includes("We could not find this order.");
+    },
+    run,
+    session,
+    timeoutMs: config.timeouts.uiTransition,
+  });
+  const result = yield* evalBrowserScript(
+    "assert other reservation remains private",
+    run,
+    session,
+    `(() => {
         const orderId = ${JSON.stringify(orderId)};
         const body = document.body?.innerText ?? "";
         return !body.includes(orderId) &&
           document.querySelector("#checkout-status-access") === null &&
           document.querySelector("#checkout-status-support-contact") === null;
       })()`,
-      { logOutput: false, timeoutMs: config.timeouts.browserAction }
-    );
-    yield* tryWorkspaceE2ESync("assert other reservation remains private", () =>
-      assert(
-        result.stdout.trim() === "true",
-        "other reservation details were exposed to the booking session"
-      )
-    );
-  });
+    { logOutput: false, timeoutMs: config.timeouts.browserAction }
+  );
+  yield* tryWorkspaceE2ESync("assert other reservation remains private", () =>
+    assert(
+      result.stdout.trim() === "true",
+      "other reservation details were exposed to the booking session"
+    )
+  );
+});
 
 /**
  * A signed-out visitor of the status link signs in first: the page redirects

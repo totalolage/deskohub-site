@@ -26,7 +26,7 @@ const environment = (secrets: string | undefined) =>
   ({
     ...makeTestE2EEnvironment({ WORKSPACE_E2E_BETTER_AUTH_SECRETS: secrets }),
     WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL:
-      "postgresql://provider-permit:test@ep-coordinator.eu.neon.tech/neondb",
+      "postgresql://provider-permit:synthetic-password@ep-coordinator.eu.neon.tech/neondb",
   }) as WorkspaceE2EEnvironment;
 const run: Runner = async () => ({ exitCode: 0, stderr: "", stdout: "" });
 // The booker binder never touches the worker browser.

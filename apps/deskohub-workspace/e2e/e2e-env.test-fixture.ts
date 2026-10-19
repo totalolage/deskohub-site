@@ -1,7 +1,8 @@
 import { makeE2EEnvironment } from "./e2e-env";
 
 export const validE2ERuntimeEnvironment = {
-  DATABASE_URL: "postgresql://owner:test@ep-preview-pooler.eu.neon.tech/neondb",
+  DATABASE_URL:
+    "postgresql://synthetic-owner:synthetic-password@ep-preview-pooler.eu.neon.tech/neondb",
   DOTYPOS_API_URL: "https://dotypos.example.test",
   DOTYPOS_BRANCH_ID: "branch",
   DOTYPOS_CLIENT_ID: "client",
@@ -14,9 +15,9 @@ export const validE2ERuntimeEnvironment = {
     "https://deskohub-workspace-abc123xyz-deskohub.vercel.app",
   WORKSPACE_E2E_DATABASE_ALLOWLIST: "ep-preview.eu.neon.tech/neondb",
   WORKSPACE_E2E_DATABASE_URL_UNPOOLED:
-    "postgresql://owner:test@ep-preview.eu.neon.tech/neondb",
+    "postgresql://synthetic-owner:synthetic-password@ep-preview.eu.neon.tech/neondb",
   WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL:
-    "postgresql://provider-permit:test@ep-coordinator.eu.neon.tech/neondb",
+    "postgresql://provider-permit:synthetic-password@ep-coordinator.eu.neon.tech/neondb",
 } satisfies Readonly<Record<string, string | undefined>>;
 
 export const makeTestE2EEnvironment = (
