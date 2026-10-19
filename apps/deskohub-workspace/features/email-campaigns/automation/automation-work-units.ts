@@ -33,3 +33,18 @@ const automationWorkUnitStatusSchema = Schema.Literals(
 );
 export type AutomationWorkUnitStatus =
   typeof automationWorkUnitStatusSchema.Type;
+
+/**
+ * Promotion order, lowest first. Strict priority still drains every class
+ * while demand stays below capacity; under overload the lowest class lags,
+ * so a schedule that fires too often delays its own fires, not events,
+ * conditions, sends or previews.
+ */
+export const automationWorkUnitPriorities = {
+  "sweep-page": 1,
+  intake: 2,
+  deliver: 3,
+  condition: 4,
+  preview: 5,
+  "fire-chunk": 6,
+} as const satisfies Record<AutomationWorkUnitKind, number>;
