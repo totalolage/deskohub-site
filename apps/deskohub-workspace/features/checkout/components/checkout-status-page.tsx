@@ -249,19 +249,34 @@ const getSupportContactMessage = (
   summaryPresentation: CheckoutStatusSummaryPresentation | undefined,
   topic: NonNullable<ReturnType<typeof getSupportTopic>>
 ) => {
-  const reservation =
-    summaryPresentation?.reservationTitle ??
-    m.checkoutStatusMissingSummary({}, { locale });
-  const date = status.summary
-    ? formatReservationDisplayDate(status.summary.reservedFrom, locale)
-    : m.checkoutStatusMissingSummary({}, { locale });
+  // Without reconstructed details the order reference alone identifies it.
+  const reservationDetails = [
+    m.checkoutStatusContactOrderReference(
+      { orderId: status.orderId },
+      { locale }
+    ),
+    ...(status.summary && summaryPresentation
+      ? [
+          m.checkoutStatusContactReservation(
+            {
+              reservation: summaryPresentation.reservationTitle,
+              date: formatReservationDisplayDate(
+                status.summary.reservedFrom,
+                locale
+              ),
+            },
+            { locale }
+          ),
+        ]
+      : []),
+  ].join("\n");
 
   const message = {
     fulfillment_failed: m.checkoutStatusFulfillmentFailedContactMessage,
     late_payment_review: m.checkoutStatusLatePaymentReviewContactMessage,
     payment_pending: m.checkoutStatusPaymentPendingContactMessage,
   }[topic];
-  return message({ orderId: status.orderId, reservation, date }, { locale });
+  return message({ reservationDetails }, { locale });
 };
 
 const getRepeatReservationSearchParams = (

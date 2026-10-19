@@ -674,6 +674,64 @@ describe("CheckoutStatusPage", () => {
     );
   });
 
+  test.each([
+    {
+      locale: "en-US" as const,
+      status: "fulfillment_failed" as const,
+      expected: [
+        "Hi Deskohub Workspace,",
+        "",
+        "My payment was received, but the reservation confirmation email did not arrive.",
+        "",
+        "Order reference: reservation-status-page",
+        "",
+        "Please help me get my secure access link.",
+      ],
+    },
+    {
+      locale: "en-US" as const,
+      status: "late_payment_review" as const,
+      expected: [
+        "Hi Deskohub Workspace,",
+        "",
+        "My payment arrived after the reservation hold expired, and the payment status page says my reservation needs a manual check.",
+        "",
+        "Order reference: reservation-status-page",
+        "",
+        "Please confirm my reservation or refund the payment.",
+      ],
+    },
+    {
+      locale: "cs-CZ" as const,
+      status: "payment_pending_delayed" as const,
+      expected: [
+        "Dobrý den,",
+        "",
+        "stránka se stavem platby u mé rezervace stále ukazuje, že se platba zpracovává.",
+        "",
+        "Číslo objednávky: reservation-status-page",
+        "",
+        "Prosím ověřte, jestli moje platba proběhla.",
+      ],
+    },
+  ])(
+    "leaves the reservation line out of the $status support request without reservation details ($locale)",
+    ({ locale, status, expected }) => {
+      const view = render(
+        <CheckoutStatusPage
+          locale={locale}
+          status={{ ...baseStatus, status }}
+        />
+      );
+
+      const href = view.container
+        .querySelector("#checkout-status-support-contact")
+        ?.getAttribute("href");
+      const contactUrl = new URL(href ?? "", "https://deskohub.local");
+      expect(contactUrl.searchParams.get("message")).toBe(expected.join("\n"));
+    }
+  );
+
   describe("a paid reservation awaiting its confirmation email", () => {
     const awaitingDeliveryStatus = (
       status: "paid_awaiting_delivery" | "paid_delivery_delayed",
