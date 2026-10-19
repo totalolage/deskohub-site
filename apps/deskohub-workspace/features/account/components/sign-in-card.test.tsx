@@ -8,6 +8,7 @@ import {
   test,
 } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
+import { reportPasskeySignInOptions } from "@/features/account/passkey-sign-in-options";
 import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -43,13 +44,14 @@ const signInEmailOtp = mock(
   }): Promise<AuthResponse> =>
     Promise.resolve({ data: { token: "synthetic" }, error: null })
 );
-const signInPasskey = mock(
-  (_options?: { readonly autoFill?: boolean }): Promise<AuthResponse> =>
-    Promise.resolve({
-      data: { session: { userId: "account-1" }, user: { id: "account-1" } },
-      error: null,
-    })
-);
+const signInWithAnyPasskey = (_options?: {
+  readonly autoFill?: boolean;
+}): Promise<AuthResponse> =>
+  Promise.resolve({
+    data: { session: { userId: "account-1" }, user: { id: "account-1" } },
+    error: null,
+  });
+const signInPasskey = mock(signInWithAnyPasskey);
 const getSession = mock(
   (): Promise<{ readonly data: unknown; readonly error: null }> =>
     Promise.resolve({ data: null, error: null })
@@ -100,6 +102,28 @@ const submitEmail = async (
   });
 };
 
+/** Renders and lets the browser capability checks settle. */
+const renderSettled = async (ui: Parameters<typeof render>[0]) => {
+  let view: ReturnType<typeof render> | undefined;
+  await act(async () => {
+    view = render(ui);
+  });
+  return view!;
+};
+
+const supportPasskeyAutofill = () => {
+  Object.defineProperty(globalThis, "PublicKeyCredential", {
+    configurable: true,
+    value: { isConditionalMediationAvailable: async () => true },
+  });
+};
+
+const passkeyOptionsResponse = {
+  request: {
+    url: "https://workspace.invalid/api/auth/passkey/generate-authenticate-options",
+  },
+};
+
 describe("account components", () => {
   beforeEach(() => {
     navigations.length = 0;
@@ -116,6 +140,7 @@ describe("account components", () => {
     signInMagicLink.mockImplementation(() => Promise.resolve({ error: null }));
     signInEmailOtp.mockClear();
     signInPasskey.mockClear();
+    signInPasskey.mockImplementation(signInWithAnyPasskey);
     Reflect.deleteProperty(globalThis, "PublicKeyCredential");
     localStorage.clear();
     getSession.mockClear();
@@ -677,7 +702,9 @@ describe("account components", () => {
   test("sign-in card signs in with a passkey and opens the account", async () => {
     const { SignInCard } = await import("./sign-in-card");
 
-    const view = render(<SignInCard locale={locale} passkeysEnabled />);
+    const view = await renderSettled(
+      <SignInCard locale={locale} passkeysEnabled />
+    );
     expect(
       view
         .getByLabelText(m.accountSignInEmailLabel({}, { locale }))
@@ -700,7 +727,7 @@ describe("account components", () => {
   test("sign-in card continues a passkey sign-in to its return target", async () => {
     const { SignInCard } = await import("./sign-in-card");
 
-    const view = render(
+    const view = await renderSettled(
       <SignInCard
         locale={locale}
         passkeysEnabled
@@ -720,7 +747,9 @@ describe("account components", () => {
 
   test("sign-in card reports a failed passkey sign-in but not a cancelled one", async () => {
     const { SignInCard } = await import("./sign-in-card");
-    const view = render(<SignInCard locale={locale} passkeysEnabled />);
+    const view = await renderSettled(
+      <SignInCard locale={locale} passkeysEnabled />
+    );
     const passkeyButton = () =>
       view.getByRole("button", {
         name: m.accountSignInPasskey({}, { locale }),
@@ -751,10 +780,7 @@ describe("account components", () => {
   });
 
   test("sign-in card starts passkey autofill where the browser supports it", async () => {
-    Object.defineProperty(globalThis, "PublicKeyCredential", {
-      configurable: true,
-      value: { isConditionalMediationAvailable: async () => true },
-    });
+    supportPasskeyAutofill();
     signInPasskey.mockImplementation(() => new Promise(() => undefined));
     const { SignInCard } = await import("./sign-in-card");
 
@@ -768,5 +794,120 @@ describe("account components", () => {
     } finally {
       signInPasskey.mockReset();
     }
+  });
+
+  test("sign-in card holds the passkey button until autofill has its options", async () => {
+    supportPasskeyAutofill();
+    signInPasskey.mockImplementation(() => new Promise(() => undefined));
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = await renderSettled(
+      <SignInCard locale={locale} passkeysEnabled />
+    );
+    const passkeyButton = view.getByRole("button", {
+      name: m.accountSignInPasskey({}, { locale }),
+    }) as HTMLButtonElement;
+
+    expect(signInPasskey).toHaveBeenCalledWith({ autoFill: true });
+    expect(passkeyButton.disabled).toBe(true);
+    expect(passkeyButton.getAttribute("aria-busy")).toBe("true");
+
+    await act(async () => {
+      reportPasskeySignInOptions(passkeyOptionsResponse);
+    });
+
+    expect(passkeyButton.disabled).toBe(false);
+    expect(passkeyButton.getAttribute("aria-busy")).toBe("false");
+  });
+
+  test("sign-in card offers the passkey button at once without passkey autofill", async () => {
+    Object.defineProperty(globalThis, "PublicKeyCredential", {
+      configurable: true,
+      value: { isConditionalMediationAvailable: async () => false },
+    });
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = await renderSettled(
+      <SignInCard locale={locale} passkeysEnabled />
+    );
+
+    expect(signInPasskey).not.toHaveBeenCalled();
+    expect(
+      (
+        view.getByRole("button", {
+          name: m.accountSignInPasskey({}, { locale }),
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+  });
+
+  test("sign-in card offers the passkey button when autofill cannot be armed", async () => {
+    supportPasskeyAutofill();
+    signInPasskey.mockResolvedValueOnce({
+      data: null,
+      error: { code: "ERROR_INVALID_DOMAIN", status: 400 },
+    });
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = await renderSettled(
+      <SignInCard locale={locale} passkeysEnabled />
+    );
+
+    expect(signInPasskey).toHaveBeenCalledWith({ autoFill: true });
+    expect(
+      (
+        view.getByRole("button", {
+          name: m.accountSignInPasskey({}, { locale }),
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+    expect(
+      view.queryByText(m.accountSignInPasskeyFailed({}, { locale }))
+    ).toBeNull();
+  });
+
+  test("sign-in card holds the passkey button again while a failed attempt re-arms autofill", async () => {
+    supportPasskeyAutofill();
+    signInPasskey.mockImplementation((options) =>
+      options?.autoFill
+        ? new Promise(() => undefined)
+        : Promise.resolve({
+            data: null,
+            error: { code: "AUTHENTICATION_FAILED", status: 400 },
+          })
+    );
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = await renderSettled(
+      <SignInCard locale={locale} passkeysEnabled />
+    );
+    const passkeyButton = view.getByRole("button", {
+      name: m.accountSignInPasskey({}, { locale }),
+    }) as HTMLButtonElement;
+    await act(async () => {
+      reportPasskeySignInOptions(passkeyOptionsResponse);
+    });
+    await act(async () => {
+      fireEvent.click(passkeyButton);
+    });
+
+    expect(
+      view.getByText(m.accountSignInPasskeyFailed({}, { locale }))
+    ).toBeTruthy();
+    expect(
+      signInPasskey.mock.calls.map(([options]) => options?.autoFill)
+    ).toEqual([true, false, true]);
+    expect(passkeyButton.disabled).toBe(true);
+
+    // A click now would race the new autofill request.
+    await act(async () => {
+      fireEvent.click(passkeyButton);
+    });
+    expect(signInPasskey).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      reportPasskeySignInOptions(passkeyOptionsResponse);
+    });
+    expect(passkeyButton.disabled).toBe(false);
   });
 });

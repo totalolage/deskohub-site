@@ -5,6 +5,7 @@ import { getSignInDestination } from "@/features/account/routes";
 import type { Locale } from "@/features/i18n";
 import { authClient } from "./auth.client";
 import { rememberPasskeyOnThisBrowser } from "./passkey-prompt";
+import { afterNextPasskeySignInOptions } from "./passkey-sign-in-options";
 import type {
   AccountPasskey,
   PasskeyChangeResult,
@@ -140,6 +141,35 @@ export const signInWithPasskey = async ({
   } catch {
     // The document is already leaving or the browser blocked navigation.
   }
+  return result;
+};
+
+/**
+ * Offers saved passkeys in the email field's autofill and signs in with the
+ * one the customer picks. `onArmed` runs once: when the autofill request has
+ * its options and starts waiting for the customer, or when the attempt ends
+ * without a sign-in first. A ceremony started before then would race it for
+ * the sign-in challenge, and the late autofill request would abort it.
+ */
+export const armPasskeyAutofill = async ({
+  locale,
+  returnTo,
+  onArmed,
+}: {
+  readonly locale: Locale;
+  readonly returnTo?: string;
+  readonly onArmed: () => void;
+}): Promise<PasskeySignInResult> => {
+  let armed = false;
+  const arm = () => {
+    if (armed) return;
+    armed = true;
+    onArmed();
+  };
+  const stopWaiting = afterNextPasskeySignInOptions(arm);
+  const result = await signInWithPasskey({ locale, returnTo, autoFill: true });
+  stopWaiting();
+  if (result !== "signed-in") arm();
   return result;
 };
 

@@ -10,6 +10,7 @@ import {
 } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { unsafeReturnTargets } from "@/shared/testing/unsafe-return-targets.test-utils";
+import { reportPasskeySignInOptions } from "./passkey-sign-in-options";
 
 type PasskeyResponse = {
   readonly data?: unknown;
@@ -48,6 +49,12 @@ mock.module("@/features/account/auth.client", () => ({
 mock.module("./sign-in-analytics", () => ({ recordSignInCompletion }));
 mock.module("./passkey-prompt", () => ({ rememberPasskeyOnThisBrowser }));
 mock.module("./sign-in-code-request", () => ({ forgetSignInCodeRequest }));
+
+const optionsResponse = {
+  request: {
+    url: "https://workspace.invalid/api/auth/passkey/generate-authenticate-options",
+  },
+};
 
 let passkeyClient: typeof import("./passkey-client");
 let originalReplace: typeof window.location.replace;
@@ -180,6 +187,41 @@ describe("passkey client", () => {
     expect(signInPasskey).toHaveBeenCalledWith({ autoFill: true });
     expect(recordSignInCompletion).not.toHaveBeenCalled();
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  test("arms autofill when its options arrive, before the customer picks a passkey", async () => {
+    const { promise: picked, resolve: pick } =
+      Promise.withResolvers<PasskeyResponse>();
+    signInPasskey.mockReturnValueOnce(picked);
+    const onArmed = mock(() => undefined);
+
+    const attempt = passkeyClient.armPasskeyAutofill({
+      locale: "en-US",
+      onArmed,
+    });
+    expect(signInPasskey).toHaveBeenCalledWith({ autoFill: true });
+    expect(onArmed).not.toHaveBeenCalled();
+
+    reportPasskeySignInOptions(optionsResponse);
+    expect(onArmed).toHaveBeenCalledTimes(1);
+
+    pick(failure("ERROR_CEREMONY_ABORTED"));
+    await expect(attempt).resolves.toBe("cancelled");
+    expect(onArmed).toHaveBeenCalledTimes(1);
+  });
+
+  test("arms autofill once an attempt ends before its options arrive", async () => {
+    signInPasskey.mockResolvedValueOnce(failure("PASSKEY_NOT_FOUND"));
+    const onArmed = mock(() => undefined);
+
+    await expect(
+      passkeyClient.armPasskeyAutofill({ locale: "en-US", onArmed })
+    ).resolves.toBe("failed");
+    expect(onArmed).toHaveBeenCalledTimes(1);
+
+    // A later sign-in's options no longer reach the settled attempt.
+    reportPasskeySignInOptions(optionsResponse);
+    expect(onArmed).toHaveBeenCalledTimes(1);
   });
 
   test("reads a throwing or malformed client response as a failure", async () => {

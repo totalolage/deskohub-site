@@ -12,6 +12,7 @@ import { waitForReactClickHandler } from "../react-handlers";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   addVirtualAuthenticator,
+  ModalCeremonyNotAlone,
   type PageVirtualAuthenticator,
   type VirtualAuthenticatorCredential,
 } from "../virtual-authenticator";
@@ -236,14 +237,24 @@ export const makeWorkspaceE2EAccountPasskeys = ({
       async (page) => {
         // The ceremony would also answer an autofill request the form arms
         // meanwhile, and the customer would be signed in without the button.
-        await requireAuthenticator().waitForConditionalRequest(uiTransition);
-        await answerCeremony(async () => {
-          await clickHydrated(page, signInPasskeySelector, uiTransition);
-          await page.waitForURL(
-            (url) => url.origin === origin && url.pathname === accountPathname,
-            { timeout: navigationTimeout }
-          );
-        });
+        // The form re-arms one after a failed button ceremony, so the
+        // authenticator also checks that only the button's request signed in.
+        const installed = requireAuthenticator();
+        await installed.waitForConditionalRequest(uiTransition);
+        await installed
+          .answerModalCeremony(async () => {
+            await clickHydrated(page, signInPasskeySelector, uiTransition);
+            await page.waitForURL(
+              (url) =>
+                url.origin === origin && url.pathname === accountPathname,
+              { timeout: navigationTimeout }
+            );
+          })
+          .catch((cause: unknown) => {
+            throw cause instanceof ModalCeremonyNotAlone
+              ? new PasskeyJourneyFailure(cause.message)
+              : cause;
+          });
       }
     ),
     renameOnly: (name) =>
