@@ -40,7 +40,7 @@ export const customerEventSweepSources = [
   "reservation-activity",
   "reservation-activity-reconcile",
 ] as const;
-const customerEventSweepSourceSchema = Schema.Literals(
+export const customerEventSweepSourceSchema = Schema.Literals(
   customerEventSweepSources
 );
 export type CustomerEventSweepSource =
