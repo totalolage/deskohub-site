@@ -8,17 +8,7 @@ import {
   type AutomationVersionSummaryType as AutomationVersionSummary,
   AutomationFlow as automationFlowContractSchema,
 } from "@deskohub/workspace-admin-api";
-import {
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  inArray,
-  isNull,
-  ne,
-  sql,
-} from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { toStoredInstant } from "@/db/instant";
@@ -66,7 +56,6 @@ import {
 import type {
   AutomationPreviewId,
   AutomationVersionId,
-  AutomationWorkUnitId,
 } from "../automation-identifiers";
 import { automationTriggerSummary } from "../automation-triggers";
 import { nextFireAfter } from "../automation-versions";
@@ -83,6 +72,7 @@ import { lockAutomationForLifecycle } from "./automation-lifecycle-lock";
 import { closePreview } from "./automation-previews";
 import { AutomationRunTransitions } from "./automation-run-transitions";
 import type { AutomationEngineTransaction } from "./automation-unit-handler";
+import { releaseAutomationUnitSubjects } from "./automation-unit-planning";
 import { loadAutomationVersionActivations } from "./automation-version-activations";
 import {
   type AutomationWorkingCopy,
@@ -227,10 +217,7 @@ export class AutomationLifecycle extends Context.Service<
           readonly previewId: AutomationPreviewId;
           readonly activatedBy: CustomerAccountId | null;
         }) {
-          const now = toStoredInstant(yield* currentInstant);
-          return yield* db.transaction((tx) =>
-            activateIn(tx, { ...input, now })
-          );
+          return yield* db.transaction((tx) => activateIn(tx, input));
         }
       );
 
@@ -242,14 +229,16 @@ export class AutomationLifecycle extends Context.Service<
         ) => Effect.Effect<void, DatabaseQueryError | E>
       ) =>
         Effect.fn(name)(function* (campaignId: CampaignId) {
-          const now = toStoredInstant(yield* currentInstant);
           return yield* db.transaction((tx) =>
             Effect.Do.pipe(
               Effect.tap(() => lockAutomationForLifecycle(tx, campaignId)),
+              // Sampled under the lock, so no engine commit that held it
+              // first can postdate the operation (§5.4).
+              Effect.bind("now", () => lifecycleInstant),
               Effect.bind("copy", () =>
                 loadAutomationWorkingCopy(tx, campaignId)
               ),
-              Effect.tap(({ copy }) => apply(tx, { copy, now })),
+              Effect.tap(({ copy, now }) => apply(tx, { copy, now })),
               Effect.flatMap(() => readDetail(tx, campaignId))
             )
           );
@@ -311,6 +300,9 @@ export class AutomationLifecycle extends Context.Service<
   static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
 }
 
+/** The instant a lifecycle operation records, at microsecond precision. */
+const lifecycleInstant = Effect.map(currentInstant, toStoredInstant);
+
 // --- Activation (§7.5) ------------------------------------------------------
 
 const activateIn = (
@@ -319,12 +311,14 @@ const activateIn = (
     readonly campaignId: CampaignId;
     readonly previewId: AutomationPreviewId;
     readonly activatedBy: CustomerAccountId | null;
-    readonly now: Temporal.Instant;
   }
 ) =>
   Effect.Do.pipe(
-    // 1. The lifecycle lock, then the working copy as of its grant.
+    // 1. The lifecycle lock, then the instant and working copy as of its
+    // grant: an occurrence a unit committed under v1 while this waited
+    // precedes `activated_at` (§5.10).
     Effect.tap(() => lockAutomationForLifecycle(tx, input.campaignId)),
+    Effect.bind("now", () => lifecycleInstant),
     Effect.bind("copy", () => loadAutomationWorkingCopy(tx, input.campaignId)),
     Effect.tap(({ copy }) => ensureNotArchived(copy)),
     // 2. A completed dry run of this campaign.
@@ -351,7 +345,7 @@ const activateIn = (
     ),
     // 5. A retry returns the version it published.
     Effect.bind("latest", () => latestVersion(tx, input.campaignId)),
-    Effect.flatMap(({ copy, publishable, flow, latest }) =>
+    Effect.flatMap(({ copy, publishable, flow, latest, now }) =>
       latest.pipe(
         Option.filter(({ draftHash }) => draftHash === publishable.draftHash),
         Option.match({
@@ -363,7 +357,7 @@ const activateIn = (
               flow,
               latest,
               activatedBy: input.activatedBy,
-              now: input.now,
+              now,
             }),
         })
       )
@@ -857,7 +851,7 @@ const dropEnteringFire = (
 
 /**
  * Drops the automation's planned units, which hold no slot, after
- * releasing their runs for replanning; marks its enqueued and claimed
+ * releasing their subjects for replanning; marks its enqueued and claimed
  * units for cancellation, which frees no slot until their claimant or the
  * reaper settles them and releases their subjects (§5.10). A deliver unit
  * with a persisted batch is never touched: it's the batch's only recovery
@@ -882,14 +876,16 @@ const stopUnits = (
   return Effect.Do.pipe(
     Effect.bind("planned", () =>
       tx
-        .select({ id: emailCampaignAutomationWorkUnits.id })
+        .select({
+          id: emailCampaignAutomationWorkUnits.id,
+          subject: emailCampaignAutomationWorkUnits.subject,
+        })
         .from(emailCampaignAutomationWorkUnits)
         .where(
           and(owned, eq(emailCampaignAutomationWorkUnits.status, "planned"))
         )
-        .pipe(Effect.map((rows) => rows.map(({ id }) => id)))
     ),
-    Effect.tap(({ planned }) => releasePlannedRuns(tx, planned)),
+    Effect.tap(({ planned }) => releaseAutomationUnitSubjects(tx, planned)),
     Effect.tap(({ planned }) =>
       planned.length === 0
         ? Effect.void
@@ -898,7 +894,10 @@ const stopUnits = (
             .set({ status: "dropped", settledAt: input.now })
             .where(
               and(
-                inArray(emailCampaignAutomationWorkUnits.id, planned),
+                inArray(
+                  emailCampaignAutomationWorkUnits.id,
+                  planned.map(({ id }) => id)
+                ),
                 eq(emailCampaignAutomationWorkUnits.status, "planned")
               )
             )
@@ -921,45 +920,6 @@ const stopUnits = (
     ),
     Effect.asVoid
   );
-};
-
-/**
- * Returns the runs of units about to be dropped to the planner, locking
- * them in id order (§5.4) before clearing their unit by compare-and-set.
- */
-const releasePlannedRuns = (
-  tx: AutomationEngineTransaction,
-  unitIds: readonly AutomationWorkUnitId[]
-): Effect.Effect<void, DatabaseQueryError> => {
-  return unitIds.length === 0
-    ? Effect.void
-    : tx
-        .select({ id: emailCampaignAutomationRuns.id })
-        .from(emailCampaignAutomationRuns)
-        .where(inArray(emailCampaignAutomationRuns.workUnitId, [...unitIds]))
-        .orderBy(asc(emailCampaignAutomationRuns.id))
-        .for("update")
-        .pipe(
-          Effect.flatMap((locked) =>
-            locked.length === 0
-              ? Effect.void
-              : tx
-                  .update(emailCampaignAutomationRuns)
-                  .set({ workUnitId: null, updatedAt: sql`now()` })
-                  .where(
-                    and(
-                      inArray(
-                        emailCampaignAutomationRuns.id,
-                        locked.map(({ id }) => id)
-                      ),
-                      inArray(emailCampaignAutomationRuns.workUnitId, [
-                        ...unitIds,
-                      ])
-                    )
-                  )
-                  .pipe(Effect.asVoid)
-          )
-        );
 };
 
 /** Archive ends every active run; sending runs settle with their batch. */

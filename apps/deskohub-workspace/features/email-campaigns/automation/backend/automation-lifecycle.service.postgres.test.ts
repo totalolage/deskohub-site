@@ -637,6 +637,18 @@ describe.skipIf(!testDatabase)(
             sendId,
           }),
         };
+        // Units name the runs they own in their subject, as planning does.
+        for (const [unitId, runIds] of [
+          [units.plannedCondition, [runs.planned]],
+          [units.claimedDeliver, [runs.inFlight]],
+        ] as const) {
+          await pool.query(
+            `update email_campaign_automation_work_units
+                set subject = jsonb_build_object('runIds', $2::jsonb)
+              where id = $1`,
+            [unitId, JSON.stringify(runIds)]
+          );
+        }
         return { campaignId, versionId, units, runs };
       };
 

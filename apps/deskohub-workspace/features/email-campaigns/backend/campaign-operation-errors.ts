@@ -7,11 +7,11 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Match } from "effect";
 import type { CalendarExpressionNeverOccurs } from "@/shared/utils/calendar-expression";
-import type { AutomationConditionAudienceMissing } from "../automation/backend/automation-evaluation-facts.service";
 import type { AutomationUnitFetchFailure } from "../automation/backend/automation-unit-handler";
 import {
   AutomationArchived,
   AutomationCalendarNeverOccurs,
+  type AutomationConditionAudienceMissing,
   AutomationDraftChanged,
   type AutomationFlowInvalid,
   type AutomationFlowLocation,

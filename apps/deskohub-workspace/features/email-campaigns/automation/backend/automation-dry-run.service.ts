@@ -47,14 +47,12 @@ import {
 import {
   AutomationArchived,
   AutomationCalendarNeverOccurs,
+  type AutomationConditionAudienceMissing,
   AutomationFlowInvalid,
   type AutomationPageCursorInvalid,
   AutomationPreviewNotFound,
 } from "../errors";
-import {
-  type AutomationConditionAudienceMissing,
-  AutomationEvaluationFacts,
-} from "./automation-evaluation-facts.service";
+import { AutomationEvaluationFacts } from "./automation-evaluation-facts.service";
 import { lockAutomationForLifecycle } from "./automation-lifecycle-lock";
 import {
   conditionFilterOf,

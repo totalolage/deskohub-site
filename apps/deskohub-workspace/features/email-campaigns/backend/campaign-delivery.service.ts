@@ -42,12 +42,14 @@ import {
   emailCampaignSends,
   emailCampaigns,
 } from "@/db/schema";
+import type { DatabaseQueryError } from "@/db/sql-constraint";
 import { type Locale, locales } from "@/features/i18n";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { currentInstant } from "@/shared/utils/temporal";
 import type { AutomationVersionId } from "../automation/automation-identifiers";
 import { AutomationRunSettlement } from "../automation/backend/automation-run-settlement.service";
+import type { AutomationEngineTransaction } from "../automation/backend/automation-unit-handler";
 import type {
   CampaignLocaleContent,
   CampaignLocalizedContent,
@@ -143,7 +145,71 @@ export interface ICampaignDeliveryService {
     CampaignDeliveryOutcome,
     CampaignDeliveryIncomplete | EffectDrizzleQueryError | SqlError.SqlError
   >;
+  /**
+   * §5.9 step 2, in a deliver unit's commit transaction: creates the
+   * automated send of the version, with the version's audience snapshot
+   * and content hash. The unit's claim stands in for the send's lease.
+   */
+  readonly createAutomatedSend: (
+    tx: AutomationEngineTransaction,
+    input: {
+      readonly campaignId: CampaignId;
+      readonly versionId: AutomationVersionId;
+      readonly at: Temporal.Instant;
+    }
+  ) => Effect.Effect<CampaignSendId, DatabaseQueryError>;
+  /**
+   * §5.9 step 2, after the runs moved to `sending`: freezes their
+   * recipients and applies the delivery recheck to the profiles the unit
+   * read (consent read in the transaction, email validity, and the
+   * test-domain guard outside production), skipping whoever fails it. The
+   * rest become batch 0, `requested`, before any request. Rendering that
+   * fails fails them, as nothing was requested.
+   */
+  readonly persistAutomatedBatch: (
+    tx: AutomationEngineTransaction,
+    input: {
+      readonly sendId: CampaignSendId;
+      readonly recipients: readonly BatchRecipient[];
+      readonly profiles: ReadonlyMap<DotyposCustomerId, DotyposCustomer>;
+      readonly at: Temporal.Instant;
+    }
+  ) => Effect.Effect<void, DatabaseQueryError>;
+  /**
+   * §5.9 step 3: requests an automated send's persisted batch under its
+   * key and returns the writes that settle it (step 4). With the profiles
+   * the batch was persisted from, it's the first request; without them it
+   * replays the batch as `deliverAttempt` does, re-reading its recipients,
+   * and past the replay window its recipients become `unconfirmed`. The
+   * settlement records the outcome, completes the send and ends its runs;
+   * a send already completed settles nothing. An unknown outcome fails, so
+   * the caller retries the replay.
+   */
+  readonly submitAutomatedSend: (input: {
+    readonly sendId: CampaignSendId;
+    readonly profiles: Option.Option<
+      ReadonlyMap<DotyposCustomerId, DotyposCustomer>
+    >;
+  }) => Effect.Effect<
+    AutomatedSendSettlement,
+    CampaignDeliveryIncomplete | DatabaseQueryError
+  >;
 }
+
+/**
+ * Settles a submitted automated send in the caller's transaction: records
+ * its batch outcome, completes the send and ends its runs.
+ */
+type AutomatedSendSettlement = (
+  tx: AutomationEngineTransaction,
+  at: Temporal.Instant
+) => Effect.Effect<void, DatabaseQueryError>;
+
+/** Automated sends are never retried, so they deliver their first attempt only. */
+const automatedAttempt = (sendId: CampaignSendId): CampaignDeliveryAttempt => ({
+  sendId,
+  deliveryAttempt: 1,
+});
 
 /**
  * The campaign email an attempt mails: an automated send's version pinned
@@ -159,9 +225,13 @@ type DeliveredCampaign = {
   readonly content: CampaignLocalizedContent;
 };
 
-/** The current attempt as one run that holds the send's lease delivers it. */
-type AttemptContext = CampaignDeliveryAttempt & {
+/** An attempt with the campaign email it mails. */
+type DeliveryContext = CampaignDeliveryAttempt & {
   readonly campaign: DeliveredCampaign;
+};
+
+/** The current attempt as one run that holds the send's lease delivers it. */
+type AttemptContext = DeliveryContext & {
   readonly startedAt: Temporal.Instant;
   readonly leaseId: string;
 };
@@ -467,8 +537,11 @@ export class CampaignDeliveryService extends Context.Service<
             })
           );
 
-      const loadActiveConsents = (customerIds: readonly DotyposCustomerId[]) =>
-        db
+      const loadActiveConsents = (
+        customerIds: readonly DotyposCustomerId[],
+        client: Pick<Transaction, "select"> = db
+      ) =>
+        client
           .select({
             dotyposCustomerId: customerMarketingConsents.dotyposCustomerId,
           })
@@ -491,9 +564,12 @@ export class CampaignDeliveryService extends Context.Service<
       const loadConsenting = (input: {
         readonly campaign: DeliveredCampaign;
         readonly customerIds: readonly DotyposCustomerId[];
+        readonly client?: Pick<Transaction, "select">;
       }) =>
         Match.value(input.campaign.purpose).pipe(
-          Match.when("marketing", () => loadActiveConsents(input.customerIds)),
+          Match.when("marketing", () =>
+            loadActiveConsents(input.customerIds, input.client)
+          ),
           Match.orElse(() => Effect.succeed(new Set(input.customerIds)))
         );
 
@@ -540,6 +616,15 @@ export class CampaignDeliveryService extends Context.Service<
         );
       };
 
+      const classifyRecipients = (input: {
+        readonly recipients: readonly BatchRecipient[];
+        readonly profiles: ReadonlyMap<DotyposCustomerId, DotyposCustomer>;
+        readonly consenting: ReadonlySet<DotyposCustomerId>;
+      }) =>
+        input.recipients.map((recipient) =>
+          classifyRecipient({ ...input, recipient })
+        );
+
       /**
        * Re-reads each recipient's email and, for marketing, consent, then
        * applies the test-domain guard outside production. Each recipient
@@ -547,7 +632,7 @@ export class CampaignDeliveryService extends Context.Service<
        * provider without passing here.
        */
       const hydrate = (input: {
-        readonly context: AttemptContext;
+        readonly context: DeliveryContext;
         readonly recipients: readonly BatchRecipient[];
       }) =>
         Effect.Do.pipe(
@@ -561,15 +646,17 @@ export class CampaignDeliveryService extends Context.Service<
             loadConsenting({ campaign: input.context.campaign, customerIds })
           ),
           Effect.map(({ profiles, consenting }) =>
-            input.recipients.map((recipient) =>
-              classifyRecipient({ recipient, profiles, consenting })
-            )
+            classifyRecipients({
+              recipients: input.recipients,
+              profiles,
+              consenting,
+            })
           ),
           Effect.withSpan("CampaignDeliveryService.hydrate")
         );
 
       const renderMessage = (input: {
-        readonly context: AttemptContext;
+        readonly context: DeliveryContext;
         readonly recipient: ReachableRecipient;
       }) =>
         Effect.succeed(input).pipe(
@@ -615,7 +702,7 @@ export class CampaignDeliveryService extends Context.Service<
         );
 
       const renderMessages = (input: {
-        readonly context: AttemptContext;
+        readonly context: DeliveryContext;
         readonly recipients: readonly ReachableRecipient[];
       }) =>
         Effect.forEach(input.recipients, (recipient) =>
@@ -785,6 +872,17 @@ export class CampaignDeliveryService extends Context.Service<
           readonly replay: boolean;
         }
       ) =>
+        requestOutcome(input).pipe(
+          Effect.flatMap((outcome) => settleBatch({ ...input, outcome }))
+        );
+
+      /** What a persisted batch's request under its key settled as. */
+      const requestOutcome = (
+        input: PreparedBatch & {
+          readonly context: CampaignDeliveryAttempt;
+          readonly replay: boolean;
+        }
+      ) =>
         email
           .sendBatch(input.messages, {
             idempotencyKey: campaignDeliveryBatchIdempotencyKey(input.batch),
@@ -810,7 +908,6 @@ export class CampaignDeliveryService extends Context.Service<
                   "Campaign delivery batch outcome unknown; it will be replayed"
                 ).pipe(Effect.andThen(incomplete(input.context))),
             }),
-            Effect.flatMap((outcome) => settleBatch({ ...input, outcome })),
             Effect.annotateLogs({
               batchIndex: input.batch.batchIndex,
               batchSize: input.batch.dotyposCustomerIds.length,
@@ -847,9 +944,13 @@ export class CampaignDeliveryService extends Context.Service<
        * the same rendering.
        */
       const reproducePayload = (input: {
-        readonly context: AttemptContext;
+        readonly context: DeliveryContext;
         readonly batch: DeliveryBatch;
         readonly requested: RequestedBatch;
+        /** The batch was just persisted from these profiles. */
+        readonly profiles: Option.Option<
+          ReadonlyMap<DotyposCustomerId, DotyposCustomer>
+        >;
       }) =>
         loadBatchRecipients(input.batch).pipe(
           Effect.filterOrFail(
@@ -858,7 +959,18 @@ export class CampaignDeliveryService extends Context.Service<
             payloadChanged
           ),
           Effect.flatMap((recipients) =>
-            hydrate({ context: input.context, recipients })
+            Option.match(input.profiles, {
+              onNone: () => hydrate({ context: input.context, recipients }),
+              // They passed the recheck when the batch was persisted.
+              onSome: (profiles) =>
+                Effect.succeed(
+                  classifyRecipients({
+                    recipients,
+                    profiles,
+                    consenting: new Set(input.batch.dotyposCustomerIds),
+                  })
+                ),
+            })
           ),
           Effect.flatMap((hydrated) =>
             Effect.fromResult(Result.all(hydrated)).pipe(
@@ -900,32 +1012,47 @@ export class CampaignDeliveryService extends Context.Service<
         readonly requested: RequestedBatch;
         readonly batch: DeliveryBatch;
       }) =>
+        requestedBatchOutcome({
+          ...input,
+          profiles: Option.none(),
+          beforeRequest: ensureStartBudget(input.context),
+        }).pipe(
+          Effect.flatMap((outcome) => settleBatch({ ...input, outcome })),
+          Effect.withSpan("CampaignDeliveryService.replayRequestedBatch")
+        );
+
+      /**
+       * Requests a persisted batch with its reproduced payload, within its
+       * key's replay window. Without the profiles it was persisted from, the
+       * request is a replay. A batch that can't be requested again is
+       * `unconfirmed`.
+       */
+      const requestedBatchOutcome = (input: {
+        readonly context: DeliveryContext;
+        readonly requested: RequestedBatch;
+        readonly batch: DeliveryBatch;
+        readonly profiles: Option.Option<
+          ReadonlyMap<DotyposCustomerId, DotyposCustomer>
+        >;
+        readonly beforeRequest: Effect.Effect<void, CampaignDeliveryIncomplete>;
+      }) =>
         ensureReplayWindow(input.requested).pipe(
-          Effect.andThen(ensureStartBudget(input.context)),
+          Effect.andThen(input.beforeRequest),
           Effect.andThen(reproducePayload(input)),
           Effect.flatMap((messages) =>
-            requestBatch({
+            requestOutcome({
               context: input.context,
               batch: input.batch,
               messages,
-              replay: true,
+              replay: Option.isNone(input.profiles),
             })
           ),
           Effect.catchTag("UnreplayableBatch", ({ reason }) =>
             Effect.logWarning("Campaign delivery batch unconfirmed", {
               batchIndex: input.batch.batchIndex,
               reason,
-            }).pipe(
-              Effect.andThen(
-                settleBatch({
-                  context: input.context,
-                  batch: input.batch,
-                  outcome: { status: "unconfirmed" },
-                })
-              )
-            )
-          ),
-          Effect.withSpan("CampaignDeliveryService.replayRequestedBatch")
+            }).pipe(Effect.as<BatchOutcome>({ status: "unconfirmed" }))
+          )
         );
 
       const replayRequestedBatches = (context: AttemptContext) =>
@@ -966,7 +1093,10 @@ export class CampaignDeliveryService extends Context.Service<
           )
           .pipe(Effect.map(([row]) => row?.count ?? 0));
 
-      const nextBatchIndex = (tx: Transaction, context: AttemptContext) =>
+      const nextBatchIndex = (
+        tx: Transaction,
+        context: CampaignDeliveryAttempt
+      ) =>
         tx
           .select({
             batchIndex: sql<number>`coalesce(max(${emailCampaignDeliveryBatches.batchIndex}), -1)::int`,
@@ -986,7 +1116,7 @@ export class CampaignDeliveryService extends Context.Service<
       const insertBatch = (
         tx: Transaction,
         input: {
-          readonly context: AttemptContext;
+          readonly context: CampaignDeliveryAttempt;
           readonly reachable: readonly ReachableRecipient[];
           readonly payloadHash: string;
           readonly now: Temporal.Instant;
@@ -1214,24 +1344,30 @@ export class CampaignDeliveryService extends Context.Service<
        * batch settled, and its runs end with it. Its campaign's status
        * belongs to the automation's lifecycle and stays as it is.
        */
-      const completeAutomatedSend = (tx: Transaction, input: SendSettlement) =>
+      const completeAutomatedSend = (
+        tx: Transaction,
+        input: {
+          readonly sendId: CampaignSendId;
+          readonly now: Temporal.Instant;
+        }
+      ) =>
         tx
           .update(emailCampaignSends)
           .set({ completedAt: input.now })
-          .where(eq(emailCampaignSends.id, input.context.sendId))
+          .where(eq(emailCampaignSends.id, input.sendId))
           .pipe(
             Effect.andThen(
-              runSettlement.settle(tx, {
-                sendId: input.context.sendId,
-                at: input.now,
-              })
+              runSettlement.settle(tx, { sendId: input.sendId, at: input.now })
             )
           );
 
       const recordSendOutcome = (tx: Transaction, input: SendSettlement) =>
         input.context.campaign.automationVersionId === null
           ? recordCampaignStatus(tx, input)
-          : completeAutomatedSend(tx, input);
+          : completeAutomatedSend(tx, {
+              sendId: input.context.sendId,
+              now: input.now,
+            });
 
       /**
        * Settles the send: a one-off campaign becomes Sent, or Failed when
@@ -1276,7 +1412,204 @@ export class CampaignDeliveryService extends Context.Service<
           (leaseId) => releaseLease({ ...input, leaseId })
         );
 
+      /** The campaign email a version pins, as an automated send mails it. */
+      const automatedCampaign = (
+        tx: Transaction,
+        sendId: CampaignSendId
+      ): Effect.Effect<DeliveredCampaign, DatabaseQueryError> =>
+        tx
+          .select({
+            id: emailCampaignSends.campaignId,
+            automationVersionId: emailCampaignAutomationVersions.id,
+            purpose: emailCampaignAutomationVersions.purpose,
+            templateKey: emailCampaignAutomationVersions.templateKey,
+            content: emailCampaignAutomationVersions.content,
+          })
+          .from(emailCampaignSends)
+          .innerJoin(emailCampaignAutomationVersions, sendAutomationVersion)
+          .where(eq(emailCampaignSends.id, sendId))
+          .pipe(Effect.map(([campaign]) => campaign!));
+
+      const createAutomatedSend: ICampaignDeliveryService["createAutomatedSend"] =
+        (tx, input) =>
+          tx
+            .select({
+              audienceFilter: emailCampaignAutomationVersions.audienceFilter,
+              contentHash: emailCampaignAutomationVersions.contentHash,
+            })
+            .from(emailCampaignAutomationVersions)
+            .where(
+              and(
+                eq(emailCampaignAutomationVersions.id, input.versionId),
+                eq(emailCampaignAutomationVersions.campaignId, input.campaignId)
+              )
+            )
+            .pipe(
+              Effect.flatMap(([version]) =>
+                tx
+                  .insert(emailCampaignSends)
+                  .values({
+                    campaignId: input.campaignId,
+                    automationVersionId: input.versionId,
+                    audienceFilter: version!.audienceFilter,
+                    contentHash: version!.contentHash,
+                    createdAt: input.at,
+                  })
+                  .returning({ id: emailCampaignSends.id })
+              ),
+              Effect.map(([send]) => send!.id)
+            );
+
+      /** Renders the batch's emails; a rendering failure fails them all. */
+      const renderAutomatedBatch = (input: {
+        readonly context: DeliveryContext;
+        readonly reachable: readonly ReachableRecipient[];
+      }) =>
+        renderMessages({
+          context: input.context,
+          recipients: input.reachable,
+        }).pipe(
+          Effect.map(Option.some),
+          Effect.catchTags({
+            EmailServiceError: (cause) => renderingFailed(cause),
+            WorkspaceUrlConfigError: (cause) => renderingFailed(cause),
+          })
+        );
+
+      const persistAutomatedBatch: ICampaignDeliveryService["persistAutomatedBatch"] =
+        (tx, input) =>
+          Effect.Do.pipe(
+            Effect.let("customerIds", () =>
+              input.recipients.map(({ dotyposCustomerId }) => dotyposCustomerId)
+            ),
+            Effect.let("attempt", () => automatedAttempt(input.sendId)),
+            Effect.tap(() =>
+              tx.insert(emailCampaignRecipients).values(
+                input.recipients.map((recipient) => ({
+                  ...recipient,
+                  sendId: input.sendId,
+                  statusUpdatedAt: input.at,
+                }))
+              )
+            ),
+            Effect.bind("campaign", () => automatedCampaign(tx, input.sendId)),
+            Effect.bind("consenting", ({ campaign, customerIds }) =>
+              loadConsenting({ campaign, customerIds, client: tx })
+            ),
+            Effect.let("classified", ({ consenting }) =>
+              Arr.separate(
+                classifyRecipients({
+                  recipients: input.recipients,
+                  profiles: input.profiles,
+                  consenting,
+                })
+              )
+            ),
+            Effect.tap(({ classified: [skipped] }) =>
+              markSkipped(tx, { sendId: input.sendId, skipped, now: input.at })
+            ),
+            Effect.bind("messages", ({ attempt, campaign, classified }) =>
+              renderAutomatedBatch({
+                context: { ...attempt, campaign },
+                reachable: classified[1],
+              })
+            ),
+            Effect.tap(({ attempt, classified: [, reachable], messages }) =>
+              Option.match(messages, {
+                onSome: (rendered) =>
+                  insertBatch(tx, {
+                    context: attempt,
+                    reachable,
+                    payloadHash: campaignDeliveryPayloadHash(rendered),
+                    now: input.at,
+                  }).pipe(
+                    Effect.when(Effect.succeed(reachable.length > 0)),
+                    Effect.asVoid
+                  ),
+                onNone: () =>
+                  settlePendingRecipients(tx, {
+                    sendId: input.sendId,
+                    customerIds: reachable.map(
+                      ({ dotyposCustomerId }) => dotyposCustomerId
+                    ),
+                    status: "failed",
+                    now: input.at,
+                  }).pipe(Effect.asVoid),
+              })
+            ),
+            Effect.asVoid,
+            Effect.withSpan("CampaignDeliveryService.persistAutomatedBatch")
+          );
+
+      const submitAutomatedSend: ICampaignDeliveryService["submitAutomatedSend"] =
+        (input) =>
+          findCurrentAttempt(automatedAttempt(input.sendId)).pipe(
+            Effect.flatMap(
+              Option.match({
+                // Completed meanwhile: nothing is left to settle.
+                onNone: () =>
+                  Effect.succeed<AutomatedSendSettlement>(() => Effect.void),
+                onSome: (campaign) =>
+                  listRequestedBatches(automatedAttempt(input.sendId)).pipe(
+                    Effect.flatMap((requested) =>
+                      Effect.forEach(requested, (batch) =>
+                        Effect.succeed(
+                          requestedDeliveryBatch(
+                            automatedAttempt(input.sendId),
+                            batch
+                          )
+                        ).pipe(
+                          Effect.bindTo("batch"),
+                          Effect.bind("outcome", ({ batch: delivery }) =>
+                            requestedBatchOutcome({
+                              context: {
+                                ...automatedAttempt(input.sendId),
+                                campaign,
+                              },
+                              requested: batch,
+                              batch: delivery,
+                              profiles: input.profiles,
+                              beforeRequest: Effect.void,
+                            })
+                          )
+                        )
+                      )
+                    ),
+                    Effect.map(
+                      (settled): AutomatedSendSettlement =>
+                        (tx, at) =>
+                          Effect.forEach(
+                            settled,
+                            (batch) =>
+                              recordBatchStatus(tx, { ...batch, now: at }).pipe(
+                                Effect.andThen(
+                                  recordRecipientsOutcome(tx, {
+                                    ...batch,
+                                    now: at,
+                                  })
+                                )
+                              ),
+                            { discard: true }
+                          ).pipe(
+                            Effect.andThen(
+                              completeAutomatedSend(tx, {
+                                sendId: input.sendId,
+                                now: at,
+                              })
+                            )
+                          )
+                    )
+                  ),
+              })
+            ),
+            Effect.annotateLogs({ sendId: input.sendId }),
+            Effect.withSpan("CampaignDeliveryService.submitAutomatedSend")
+          );
+
       return {
+        createAutomatedSend,
+        persistAutomatedBatch,
+        submitAutomatedSend,
         deliverAttempt: (attempt) =>
           Effect.Do.pipe(
             Effect.bind("startedAt", () => currentInstant),
@@ -1318,6 +1651,11 @@ export class CampaignDeliveryService extends Context.Service<
     Layer.provide(WorkspaceDatabase.Default)
   );
 }
+
+const renderingFailed = (cause: { readonly _tag: string }) =>
+  Effect.logError("Automated send batch could not be rendered", {
+    errorType: cause._tag,
+  }).pipe(Effect.as(Option.none<readonly EmailMessage[]>()));
 
 const payloadChanged = () =>
   new UnreplayableBatch({ reason: "payload-changed" });
