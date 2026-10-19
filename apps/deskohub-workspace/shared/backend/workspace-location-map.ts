@@ -24,6 +24,11 @@ const tileCacheLife = {
 // is downloaded again on the next render.
 const uncachedTileLife = { stale: 0, revalidate: 0, expire: 0 } as const;
 
+// The cached download outlives the render that started it, which cannot pass
+// its abort signal into a cache entry, so the download ends itself within the
+// renderer's per-tile timeout.
+const tileDownloadTimeoutMs = 10_000;
+
 type DownloadedTile = {
   readonly body: Uint8Array;
   readonly headers: Readonly<Record<string, string>>;
@@ -37,7 +42,10 @@ async function downloadTile(
   // Shared across server instances, so a render after a CDN miss reuses the
   // tiles.
   "use cache: remote";
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, {
+    headers,
+    signal: AbortSignal.timeout(tileDownloadTimeoutMs),
+  });
   cacheLife(
     isReusableBySharedCache(response) ? tileCacheLife : uncachedTileLife
   );

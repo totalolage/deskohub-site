@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { commandOutput } from "@/scripts/shared/command";
 import {
   allocateLoopbackPort,
   waitForOwnedLoopbackServer,
@@ -9,10 +10,16 @@ import {
 } from "./loopback-server";
 
 const appRoot = resolve(import.meta.dir, "../..");
+const fixtureBuildTimeoutMs = 120_000;
 const fixtureStartupTimeoutMs = 45_000;
 const fixtureShutdownTimeoutMs = 5_000;
 
 type NextAppFixtureOptions = {
+  /**
+   * How long the `production` build may run before it and its descendants are
+   * killed. Defaults to two minutes.
+   */
+  readonly buildTimeoutMs?: number;
   /**
    * Fixture files by path relative to the fixture root, such as
    * `next.config.mjs` and `app/**` routes. A `GET /fixture-ready` route is
@@ -137,25 +144,16 @@ const childEnv = () => ({
   TMPDIR: process.env.TMPDIR ?? tmpdir(),
 });
 
-const buildFixture = async (fixtureRoot: string, nextCli: string) => {
-  const build = Bun.spawn([process.execPath, nextCli, "build", "--webpack"], {
+const buildFixture = (
+  fixtureRoot: string,
+  nextCli: string,
+  timeoutMs: number
+) =>
+  commandOutput([process.execPath, nextCli, "build", "--webpack"], {
     cwd: fixtureRoot,
     env: childEnv(),
-    stderr: "pipe",
-    stdin: "ignore",
-    stdout: "pipe",
+    timeoutMs,
   });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    build.exited,
-    new Response(build.stdout).text(),
-    new Response(build.stderr).text(),
-  ]);
-  if (exitCode !== 0) {
-    throw new Error(
-      `next build of the fixture exited with ${exitCode}:\n${stdout}\n${stderr}`
-    );
-  }
-};
 
 /**
  * Runs `run` against a throwaway Next app built from `files`, whose
@@ -182,7 +180,12 @@ export const withNextAppFixture = async <A>(
     await writeFixture(fixtureRoot, readinessMarker, options);
     const nextCli = resolve(appRoot, "node_modules/next/dist/bin/next");
     const production = options.mode === "production";
-    if (production) await buildFixture(fixtureRoot, nextCli);
+    if (production)
+      await buildFixture(
+        fixtureRoot,
+        nextCli,
+        options.buildTimeoutMs ?? fixtureBuildTimeoutMs
+      );
     server = Bun.spawn(
       [
         process.execPath,
