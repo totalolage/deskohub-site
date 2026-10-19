@@ -35,6 +35,7 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
+import { rejectCustomerEventInserts } from "@/shared/backend/customer-events/customer-event-outbox.test-utils";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   LatePaymentRecoveryRepository,
@@ -850,6 +851,37 @@ describe.skipIf(!testDatabase)(
           dotyposCustomerId: reservation!.dotyposCustomerId,
         },
       ]);
+    });
+
+    test("rolls the late-payment settlement back with a failed event write", async () => {
+      const checkout = await insertLatePaidCheckout({
+        reservationState: "cancelled",
+        holdExpiresAt: Temporal.Now.instant().subtract({ minutes: 30 }),
+      });
+      await startAndClaim({
+        ...checkout,
+        webhookEventId: "webhook-booked-failure",
+      });
+      const before = await readRows(checkout);
+      const cleanup = await rejectCustomerEventInserts(
+        testDatabase.pool,
+        `new.workspace_reservation_id = '${checkout.reservationId}'`
+      );
+      const result = await runResult((repository) =>
+        repository.completeWithReplacement({
+          paymentAttemptId: checkout.paymentAttemptId,
+          workspaceReservationId: checkout.reservationId,
+          recoveredDotyposReservationId: DotyposReservationIdSchema.make(
+            `dotypos-replacement-${checkout.id}`
+          ),
+          reservationState: "confirmed",
+          completedAt: Temporal.Now.instant(),
+        })
+      ).finally(cleanup);
+
+      expect(result._tag).toBe("Failure");
+      expect(await readRows(checkout)).toEqual(before);
+      expect(await readCustomerEvents(checkout.reservationId)).toEqual([]);
     });
 
     test("records no booked event for a held recovery or a refund", async () => {
