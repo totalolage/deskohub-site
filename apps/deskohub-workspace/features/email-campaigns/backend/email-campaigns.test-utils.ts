@@ -6,6 +6,7 @@ import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import {
   emailCampaignAutomationRuns,
   emailCampaignAutomationScheduleFires,
+  emailCampaignAutomations,
   emailCampaignAutomationTriggerReceipts,
   emailCampaignAutomationVersions,
   emailCampaignAutomationWorkUnits,
@@ -293,6 +294,10 @@ export const deleteAutomatedCampaigns = (
               campaignIds
             )
           );
+        // The automation row references its active version.
+        yield* tx
+          .delete(emailCampaignAutomations)
+          .where(inArray(emailCampaignAutomations.campaignId, campaignIds));
         yield* tx
           .delete(emailCampaignSends)
           .where(inArray(emailCampaignSends.campaignId, campaignIds));
