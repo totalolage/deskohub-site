@@ -10,6 +10,7 @@ import { preload } from "react-dom";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import {
   type AdvertisedPrice,
+  getAdvertisedProductItem,
   isCoworkAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
@@ -55,6 +56,7 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
+import { useReservationSelectionUrl } from "@/features/reservation/components/use-reservation-selection-url";
 import {
   getCoworkCoffeeAdvertisedPriceRequest,
   getCoworkFormAdvertisedPriceRequests,
@@ -68,6 +70,7 @@ import {
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import {
+  getCoworkReservationSelectionSearchParams,
   getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
 } from "@/features/reservation/cowork-reservation-checkout-query";
@@ -173,6 +176,14 @@ export function CoworkReservationForm({
       control: form.control,
       name: ["entryTier", "date", "coffee", "monitorOption"],
     });
+  useReservationSelectionUrl(
+    getCoworkReservationSelectionSearchParams({
+      entryTier: selectedTier,
+      date: selectedDate,
+      coffee: selectedCoffee,
+      monitorOption: selectedMonitorOption,
+    })
+  );
   const showCoffeeAddon = getCoworkTierCoffeeAddon(selectedTier) === "optional";
   const showWorkstationAddon =
     getCoworkTierWorkstationAddon(selectedTier) === "optional";
@@ -596,15 +607,15 @@ export function CoworkReservationForm({
                   const isUnavailable = unavailableCoworkTiers.has(
                     option.value
                   );
-                  const advertisedProductItem = advertisedPricesByTier
-                    .get(option.value)
-                    ?.summary.sections.find(({ key }) => key === "order")
-                    ?.items.find(
-                      (item) =>
-                        "product" in item &&
-                        item.product.kind === "cowork" &&
-                        item.product.tier === option.value
-                    );
+                  const tierAdvertisedPrice = advertisedPricesByTier.get(
+                    option.value
+                  );
+                  const advertisedProductItem =
+                    tierAdvertisedPrice &&
+                    getAdvertisedProductItem(tierAdvertisedPrice, {
+                      kind: "cowork",
+                      tier: option.value,
+                    });
                   const originalAmount =
                     advertisedProductItem &&
                     "originalAmount" in advertisedProductItem

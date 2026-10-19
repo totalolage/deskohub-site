@@ -3,8 +3,17 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "./meeting-room-reservation-checkout-query";
-import { getMeetingRoomReservationInterval } from "./meeting-room-reservation-time";
+import type { NormalizedMeetingRoomReservationOrder } from "./meeting-room-reservation";
+import {
+  getMeetingRoomReservationDefaultValuesFromSearchParams,
+  getMeetingRoomReservationSelectionSearchParams,
+  getMeetingRoomRestoredReservationValues,
+} from "./meeting-room-reservation-checkout-query";
+import {
+  getEarliestMeetingRoomStartDateTime,
+  getMeetingRoomReservationInterval,
+} from "./meeting-room-reservation-time";
+import { setReservationSelectionSearchParams } from "./reservation-checkout-query";
 
 const adaEmail = testEmailAddress("ada");
 
@@ -65,7 +74,7 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
     });
   });
 
-  test("falls back for a start that already began, keeping valid siblings", () => {
+  test("keeps an ongoing start, keeping valid siblings", () => {
     const now = workspaceInstant("2099-07-30T10:30");
 
     expect(
@@ -90,13 +99,56 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
 
     expect(
       getMeetingRoomReservationDefaultValuesFromSearchParams(
-        { duration: "hour:4", startDateTime: "2099-07-30T10:00" },
+        { duration: "hour:4", startDateTime: "2099-07-30T09:00" },
         now
       )
     ).toMatchObject({
-      startDateTime: "2099-07-30T07:00",
+      startDateTime: "2099-07-30T09:00",
       duration: "hour:4",
     });
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        { duration: "day:1", startDateTime: "2099-07-30T00:00" },
+        now
+      )
+    ).toMatchObject({ startDateTime: "2099-07-30T00:00", duration: "day:1" });
+  });
+
+  test("falls back for an interval that already ended", () => {
+    const now = workspaceInstant("2099-07-30T10:30");
+
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        { duration: "hour:1", startDateTime: "2099-07-30T09:00" },
+        now
+      )
+    ).toMatchObject({ startDateTime: "2099-07-30T10:00", duration: "hour:1" });
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        { duration: "hour:4", startDateTime: "2099-07-30T06:00" },
+        now
+      )
+    ).toMatchObject({ startDateTime: "2099-07-30T07:00", duration: "hour:4" });
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        { duration: "day:1", startDateTime: "2099-07-29T00:00" },
+        now
+      )
+    ).toMatchObject({ startDateTime: "2099-07-30T00:00", duration: "day:1" });
+  });
+
+  test("keeps an interval that ends exactly at now, like the picker minimum", () => {
+    const now = workspaceInstant("2099-07-30T11:00");
+
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        { duration: "hour:4", startDateTime: "2099-07-30T07:00" },
+        now
+      )
+    ).toMatchObject({ startDateTime: "2099-07-30T07:00", duration: "hour:4" });
+    expect(
+      getEarliestMeetingRoomStartDateTime({ unit: "hour", amount: 4 }, now)
+    ).toBe("2099-07-30T07:00");
   });
 
   test("keeps a whole-hour start exactly at now", () => {
@@ -194,5 +246,87 @@ describe("customer last reservation defaults", () => {
         { kind: "meeting-room", duration: "hour:4" }
       ).duration
     ).toBe("hour:1");
+  });
+});
+
+describe("getMeetingRoomReservationSelectionSearchParams", () => {
+  test.each([
+    { startDateTime: "2099-08-12T09:00", duration: "hour:1" },
+    { startDateTime: "2099-08-13T14:00", duration: "hour:4" },
+    { startDateTime: "2099-08-14T08:00", duration: "day:1" },
+  ] as const)("the parser reads back the written selection %o", (selection) => {
+    const searchParams = new URLSearchParams(
+      "duration=hour:4&discountCode=SPRING"
+    );
+    setReservationSelectionSearchParams(
+      searchParams,
+      getMeetingRoomReservationSelectionSearchParams(selection)
+    );
+
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        searchParams,
+        deterministicNow()
+      )
+    ).toEqual(expect.objectContaining(selection));
+    expect(searchParams.get("discountCode")).toBe("SPRING");
+  });
+
+  const ongoingNow = workspaceInstant("2099-07-30T10:30");
+  const ongoingSelection = {
+    startDateTime: "2099-07-30T09:00",
+    duration: "hour:4",
+  } as const;
+
+  const writeSelection = (searchParams: URLSearchParams) => {
+    setReservationSelectionSearchParams(
+      searchParams,
+      getMeetingRoomReservationSelectionSearchParams(ongoingSelection)
+    );
+    return new URLSearchParams(searchParams.toString());
+  };
+
+  test("the parser reads back an ongoing interval after its earliest start", () => {
+    expect(
+      getEarliestMeetingRoomStartDateTime(
+        { unit: "hour", amount: 4 },
+        ongoingNow
+      )
+    ).not.toBe(ongoingSelection.startDateTime);
+
+    expect(
+      getMeetingRoomReservationDefaultValuesFromSearchParams(
+        writeSelection(new URLSearchParams()),
+        ongoingNow
+      )
+    ).toEqual(expect.objectContaining(ongoingSelection));
+  });
+
+  test("a Pay restoration reads back an ongoing interval edited into the URL", () => {
+    const restoredReservation: NormalizedMeetingRoomReservationOrder = {
+      kind: "meeting-room",
+      duration: { unit: "hour", amount: 1 },
+      reservationDate: "2099-07-30",
+      startsAt: "2099-07-30T12:00:00Z",
+      endsAt: "2099-07-30T13:00:00Z",
+      name: "Ada Lovelace",
+      email: adaEmail,
+      phone: "+420777777777",
+      billing: { purpose: "personal", invoice: "none" },
+    };
+
+    expect(
+      getMeetingRoomRestoredReservationValues(
+        restoredReservation,
+        writeSelection(new URLSearchParams("payState=signed")),
+        ongoingNow
+      )
+    ).toEqual(
+      expect.objectContaining({
+        ...ongoingSelection,
+        name: "Ada Lovelace",
+        email: adaEmail,
+      })
+    );
   });
 });

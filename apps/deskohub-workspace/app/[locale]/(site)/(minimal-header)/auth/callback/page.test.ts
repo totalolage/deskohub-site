@@ -25,6 +25,7 @@ mock.module("@/features/account/components/auth-callback-redirect", () => ({
 mock.module("@/features/i18n", () => ({
   getLocalizedDynamicPagePath,
   getLocalizedPagePath,
+  isLocale: (value: string) => value === "en-US",
   locales,
   m: {},
 }));

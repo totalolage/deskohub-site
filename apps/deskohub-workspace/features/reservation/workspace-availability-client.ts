@@ -1,5 +1,8 @@
 import { Match } from "effect";
 import {
+  type MeetingRoomStartTimes,
+  type MeetingRoomStartTimesQuery,
+  parseMeetingRoomStartTimesResponse,
   parseWorkspaceAvailabilityResponse,
   type WorkspaceAvailability,
   type WorkspaceAvailabilityQuery,
@@ -42,14 +45,20 @@ export const getWorkspaceAvailabilityUrl = (
   return `/api/workspace/availability?${params.toString()}`;
 };
 
-export const loadWorkspaceAvailability = async ({
-  query,
+export const getMeetingRoomStartTimesUrl = (
+  query: MeetingRoomStartTimesQuery
+) => `/api/workspace/availability?${new URLSearchParams(query).toString()}`;
+
+const fetchAvailability = async ({
   replacementToken,
   signal,
-}: WorkspaceAvailabilityClientRequest & {
+  url,
+}: {
+  readonly replacementToken?: string;
   readonly signal: AbortSignal;
-}): Promise<WorkspaceAvailability> => {
-  const response = await fetch(getWorkspaceAvailabilityUrl(query), {
+  readonly url: string;
+}) => {
+  const response = await fetch(url, {
     signal,
     ...(replacementToken && {
       headers: {
@@ -59,5 +68,37 @@ export const loadWorkspaceAvailability = async ({
   });
   if (!response.ok) throw new Error("Availability request failed");
 
-  return parseWorkspaceAvailabilityResponse(await response.json());
+  return response.json();
 };
+
+export const loadWorkspaceAvailability = async ({
+  query,
+  replacementToken,
+  signal,
+}: WorkspaceAvailabilityClientRequest & {
+  readonly signal: AbortSignal;
+}): Promise<WorkspaceAvailability> =>
+  parseWorkspaceAvailabilityResponse(
+    await fetchAvailability({
+      replacementToken,
+      signal,
+      url: getWorkspaceAvailabilityUrl(query),
+    })
+  );
+
+export const loadMeetingRoomStartTimes = async ({
+  query,
+  replacementToken,
+  signal,
+}: {
+  readonly query: MeetingRoomStartTimesQuery;
+  readonly replacementToken?: string;
+  readonly signal: AbortSignal;
+}): Promise<MeetingRoomStartTimes> =>
+  parseMeetingRoomStartTimesResponse(
+    await fetchAvailability({
+      replacementToken,
+      signal,
+      url: getMeetingRoomStartTimesUrl(query),
+    })
+  );

@@ -110,3 +110,12 @@ jobs:
         run: |
           echo "The production release failed around promotion; production must never keep a promoted untested release" >&2
           exit 1
+
+      # Runs after the recovery steps have settled, so neither a failed ping
+      # nor a cancellation during it can fail or roll back the release.
+      - name: Submit published pages to IndexNow
+        if: steps.canonical-smoke.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 2
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/submit-indexnow.ts
