@@ -147,16 +147,17 @@ function FormMessage({
   const { error, formMessageId } = useFormField();
   const body = error ? String(error.message) : children;
 
-  if (!body) {
-    return null;
-  }
-
+  // The live region stays mounted so screen readers announce the message when
+  // it appears; while empty it leaves the item's flow and gap.
   return (
     <p
       ref={ref}
       id={formMessageId}
       aria-live="polite"
-      className={cn("text-sm font-medium text-burned-orange", className)}
+      className={cn(
+        "text-sm font-medium text-burned-orange empty:sr-only",
+        className
+      )}
       {...props}
     >
       {body}

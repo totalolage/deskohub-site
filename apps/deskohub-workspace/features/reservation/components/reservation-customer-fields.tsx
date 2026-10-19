@@ -175,6 +175,7 @@ function ReservationPhoneField({ locale }: { readonly locale: Locale }) {
       label={m.contactPhoneLabel({}, { locale })}
       name="phone"
       placeholder={m.contactPhonePlaceholder({}, { locale })}
+      type="tel"
     />
   );
 }
@@ -210,7 +211,7 @@ type ReservationTextFieldProps = {
   readonly label: string;
   readonly name: "email" | "name" | "phone";
   readonly placeholder: string;
-  readonly type?: string;
+  readonly type?: "email" | "tel" | "text";
 };
 
 function ReservationTextField({
